@@ -1,0 +1,10 @@
+[workspace]
+authors = ["us all"]
+channels = ["conda-forge"]
+name = "backupgensprint"
+platforms = ["win-64", "osx-arm64", "osx-64", "linux-64", "linux-aarch64"]
+version = "0.1.0"
+
+[tasks]
+
+[dependencies]

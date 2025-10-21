@@ -97,3 +97,7 @@ Thumbs.db
 !**/example*.json
 !**/sample*.csv
 !**/README.md
+
+# pixi environments
+.pixi/*
+!.pixi/config.toml
