@@ -13,3 +13,10 @@ langextract = ">=1.0.8,<2"
 
 [pypi-dependencies]
 nrel-compass = ">=0.9.0, <0.10"
+
+[environments]
+default = { features = ["default"], solve-group = "default" }
+dev = { features = ["dev"], solve-group = "default" }
+
+[feature.dev.dependencies]
+ruff = ">=0.14.1,<0.15"
