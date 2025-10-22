@@ -1,0 +1,99 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual Environment
+.venv/
+venv/
+ENV/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Jupyter Notebook
+.ipynb_checkpoints
+*.ipynb
+
+# Environment variables
+.env
+.env.local
+*.key
+secrets.yaml
+
+# API Keys & Credentials
+*api_key*
+*secret*
+credentials.json
+config/local_*.yaml
+
+# Data files (large)
+*.csv
+*.xlsx
+*.pdf
+01_data_sources/raw/*.csv
+03_permit_documents/**/*.pdf
+
+# Keep directory structure but ignore contents
+01_data_sources/raw/*
+!01_data_sources/raw/.gitkeep
+03_permit_documents/by_state/*
+!03_permit_documents/by_state/.gitkeep
+
+# Logs
+*.log
+logs/
+*.log.*
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# Temporary files
+*.tmp
+*.temp
+.cache/
+tmp/
+
+# OS files
+Thumbs.db
+.DS_Store
+.Spotlight-V100
+.Trashes
+
+# Extraction outputs (too large for git)
+04_extracted_data/llamaextract/**/*.json
+04_extracted_data/langextract/**/*.json
+04_extracted_data/consolidated/*.csv
+06_outputs/datasets/*.csv
+
+# Keep example files
+!**/example*.json
+!**/sample*.csv
+!**/README.md
