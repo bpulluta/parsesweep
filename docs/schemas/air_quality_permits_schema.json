@@ -57,6 +57,10 @@
             "description": "Reference number for the generator set (e.g., EG-2-01)",
             "type": "string"
           },
+          "numGenerators": {
+              "description" : "Number of generators in the set (e.g. twenty-three (23))",
+              "type": "string"
+          },
           "make": {
             "description": "Manufacturer of the generator set (e.g., Cummins, Caterpillar)",
             "type": "string"
