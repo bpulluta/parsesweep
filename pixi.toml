@@ -12,7 +12,7 @@ python = ">=3.11"
 langextract = ">=1.0.8,<2"
 
 [pypi-dependencies]
-nrel-compass = ">=0.9.0, <0.10"
+nrel-compass = ">=0.10.0, <0.11"
 
 [environments]
 default = { features = ["default"], solve-group = "default" }
