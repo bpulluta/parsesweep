@@ -186,15 +186,11 @@ Each state has different systems:
 
 ## Getting Started
 
-### Prerequisites
-```bash
-# Create virtual environment
-python -m venv .venv
-source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+### Development Setup
 
-# Install dependencies
-pip install -r requirements.txt
-```
+1. Install pixi: https://pixi.sh/latest/#installation
+2. Clone repository
+3. Run `pixi shell -e dev`, and you're ready to go!
 
 ### Running Scripts
 
