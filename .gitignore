@@ -100,4 +100,3 @@ Thumbs.db
 
 # pixi environments
 .pixi/*
-!.pixi/config.toml
