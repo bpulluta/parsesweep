@@ -1,0 +1,82 @@
+{
+  "permitNumber": "11790",
+  "generators": {
+    "EG01": {
+      "make": "Cummins",
+      "model": "Cummins QSK78-G12",
+      "fuel_type": "diesel",
+      "tank_size": {},
+      "capacity": {
+        "capacity_kw": "2500 kW",
+        "capacity_hp": "4060 hp"
+      },
+      "backup_mw": "15 MW"
+    },
+    "EG02": {
+      "make": "Cummins",
+      "model": "Cummins QSK78-G12",
+      "fuel_type": "diesel",
+      "tank_size": {},
+      "capacity": {
+        "capacity_kw": "2500",
+        "capacity_hp": "4060"
+      },
+      "backup_mw": null
+    },
+    "EG03": {
+      "make": "Cummins",
+      "model": "Cummins QSK78-G12",
+      "fuel_type": "diesel",
+      "tank_size": {},
+      "capacity": {
+        "capacity_kw": "2500 kW",
+        "capacity_hp": "4060 hp"
+      },
+      "backup_mw": "2.5"
+    },
+    "EG04": {
+      "make": "Cummins",
+      "model": "Cummins QSK78-G12",
+      "fuel_type": "diesel",
+      "tank_size": {},
+      "capacity": {
+        "capacity_kw": "2500 kW",
+        "capacity_hp": "4060 hp"
+      },
+      "backup_mw": null
+    },
+    "EG05": {
+      "make": "Cummins",
+      "model": "Cummins QSK78-G12",
+      "fuel_type": "diesel",
+      "tank_size": {},
+      "capacity": {
+        "capacity_kw": "2500 kW",
+        "capacity_hp": "4060 hp"
+      },
+      "backup_mw": null
+    },
+    "EG06": {
+      "make": "Cummins",
+      "model": "Cummins QSK78-G12",
+      "fuel_type": "diesel",
+      "tank_size": {},
+      "capacity": {
+        "capacity_kw": "2500 kW",
+        "capacity_hp": "4060 hp"
+      },
+      "backup_mw": "2.5"
+    },
+    "EG07": {
+      "make": "Cummins",
+      "model": "Cummins QSK19-G8",
+      "fuel_type": "diesel",
+      "tank_size": {},
+      "capacity": {
+        "capacity_kw": "600",
+        "capacity_hp": "967"
+      },
+      "backup_mw": "0.6"
+    }
+  }
+}
