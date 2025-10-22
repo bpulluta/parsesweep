@@ -1,6 +1,6 @@
 [workspace]
-authors = ["us all"]
-channels = ["conda-forge"]
+authors = ["Super Team"]
+channels = ["conda-forge", "microsoft"]
 name = "backupgensprint"
 platforms = ["win-64", "osx-arm64", "osx-64", "linux-64", "linux-aarch64"]
 version = "0.1.0"
@@ -8,15 +8,63 @@ version = "0.1.0"
 [tasks]
 
 [dependencies]
-python = "~=3.12.0"
+python = ">=3.11"
 langextract = ">=1.0.8,<2"
 
+# Dependencies directly from NREL-COMPASS. We might want to trim it later
+aiohttp = ">=3.11.6,<4"
+beautifulsoup4 = ">=4.12.3,<5"
+click = ">=8.1.7,<9"
+google-api-python-client = ">=2.160.0,<3"
+html2text = ">=2024.2.26,<2025"
+html5lib = ">=1.1,<2"
+httpx = ">=0.28.1,<0.29"
+ipython = ">=8.29.0,<9"
+langchain-text-splitters = ">=1.0.0,<2"
+lxml = ">=5.3.0,<6"
+networkx = ">=3.4.2,<4"
+nltk = ">=3.9.1,<4"
+numpy = ">=1.26.4,<2"
+openai = ">=1.1.0"
+pandas = ">=2.2.3,<3"
+pdf2image = ">=1.17.0,<2"
+pillow = ">=10.4,<11.dev0"  # version range required for c4ai
+playwright = ">=1.49.0,<1.52"  # version range required for c4ai
+pypdf2 = ">=3.0.1,<4"
+pytesseract = ">=0.3.13,<0.4"
+python-dotenv = ">=1.0.1,<2"
+python-slugify = ">=8.0.4,<9"
+rich = ">=13.9.4,<14"
+scipy = ">=1.14.1,<2"
+snowballstemmer = ">=2.2,<3.dev0"  # version range required for c4ai
+tabulate = ">=0.9.0,<0.10"
+tesseract = ">=5.5.0,<6"
+tiktoken = ">=0.8.0,<0.9"
+
+# rebrowser-playwright
+greenlet = "==3.1.1"  # version pin required for rebrowser-playwright
+pyee = "==12.0.0"  # version pin required for rebrowser-playwright
+
 [pypi-dependencies]
-nrel-compass = ">=0.9.0, <0.10"
+# nrel-compass = ">=0.9.0, <0.10"
+# langchain-text-splitters = ">=0.3.11, <0.4"
 
 [environments]
-default = { features = ["default"], solve-group = "default" }
+default = { features = ["default", "elm"], solve-group = "default" }
 dev = { features = ["dev"], solve-group = "default" }
+
+# ELM dependencies explicitly enumerated
+# We should remove this once ELM better defines its dependencies
+[feature.elm.pypi-dependencies]
+camoufox = ">=0.4.11,<0.5"
+crawl4ai = ">=0.6.3"
+ddgs = ">=9.2.3,<10"
+fake-useragent = ">=2.0.3,<3"
+google-search-results = ">=2.4.2,<3"
+rebrowser-playwright = ">=1.47.0,<2"
+scrapling = ">=0.2.99,<0.3"
+tavily-python = ">=0.5.0,<0.6"
+tf-playwright-stealth = ">=1.2.0,<2"
 
 [feature.dev.dependencies]
 ruff = ">=0.14.1,<0.15"
