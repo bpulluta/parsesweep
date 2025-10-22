@@ -77,6 +77,14 @@
             "description": "Rated capacity of the generator set in kilowatts (kW)",
             "type": "number"
           },
+          "maximumCapacityBHP": {
+            "description": "Maximum capacity of the generator set in kilowatts (hp)",
+            "type": "number"
+          },
+          "maximumCapacityKW": {
+            "description": "Maximum capacity of the generator set in kilowatts (kW)",
+            "type": "number"
+          },
           "fuelType": {
             "anyOf": [
               {
