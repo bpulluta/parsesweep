@@ -76,3 +76,6 @@ geckodriver
 tmp/
 temp/
 *.tmp
+.cache/
+test_data/.cache/
+test_data/extracted/
