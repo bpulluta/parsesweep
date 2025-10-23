@@ -415,4 +415,142 @@ def setup_graph_backup(**kwargs):
 
     return G
 
+def setup_graph_control_techs(**kwargs):
+    G = _setup_graph_no_nodes(**kwargs)
+
+    G.add_node(
+        "init",
+        prompt=( #TODO: refine this prompt, what exactly are we looking for? emissions contol techs?
+            "Does the following text mention control technologies "
+            "for the generator with reference number {ref_number}? "
+            "Keep in mind that the reference number "
+            "could be included in range or group of numbers and information "
+            "that applies to that group should be considered relevant. "
+            "Begin your response with either "
+            "'Yes' or 'No' and explain your answer."
+            '\n\n"""\n{text}\n"""'
+        ),
+    )
+
+    G.add_edge("init", "get_techs", condition=llm_response_starts_with_yes)
+
+    G.add_node(
+        "get_techs",
+        prompt=(
+            "What control technologies are associated with the generator with reference number {ref_number}?"
+        ),
+    )
+
+    G.add_edge("get_techs", "final")
+
+    G.add_node(
+        "final",
+        prompt=(
+            "Respond based on our entire conversation so far. Return your "
+            "answer in JSON format (not markdown). Your JSON file must include exactly two "
+            'keys. The keys are "control_technologies" and "explanation". The '
+            'value of the "control_technologies" key should be a string containing '
+            "the control technologies associated with the generator in question. The "
+            'the value of the "explanation" key should be a string explaining '
+            'your answer.'
+        ),
+    )
+
+    return G
+
+def setup_graph_operating_hours(**kwargs):
+    G = _setup_graph_no_nodes(**kwargs)
+
+    G.add_node(
+        "init",
+        prompt=(
+            "Does the following text mention annual operating hours limits "
+            "for the generator with reference number {ref_number}? "
+            "Keep in mind that the reference number "
+            "could be included in range or group of numbers and information "
+            "that applies to that group should be considered relevant. "
+            "Begin your response with either "
+            "'Yes' or 'No' and explain your answer."
+            '\n\n"""\n{text}\n"""'
+        ),
+    )
+
+    G.add_edge("init", "get_hours", condition=llm_response_starts_with_yes)
+
+    G.add_node(
+        "get_hours",
+        prompt=(
+            "How many hours, per year, is the generator with reference number {ref_number} allowed to operate?"
+        ),
+    )
+
+    G.add_edge("get_hours", "final")
+
+    G.add_node(
+        "final",
+        prompt=(
+            "Respond based on our entire conversation so far. Return your "
+            "answer in JSON format (not markdown). Your JSON file must include exactly two "
+            'keys. The keys are "operating_hours" and "explanation". The '
+            'value of the "operating_hours" key should be an integer containing '
+            "the operating hours associated with the generator in question. The "
+            'the value of the "explanation" key should be a string explaining '
+            'your answer.'
+        ),
+    )
+
+    return G
+
+def setup_graph_emissions(**kwargs):
+    G = _setup_graph_no_nodes(**kwargs)
+
+    G.add_node(
+        "init",
+        prompt=(
+            "Does the following text mention emissions limits "
+            "for the generator with reference number {ref_number}? "
+            "Keep in mind that the reference number "
+            "could be included in range or group of numbers and information "
+            "that applies to that group should be considered relevant. "
+            "Begin your response with either "
+            "'Yes' or 'No' and explain your answer."
+            '\n\n"""\n{text}\n"""'
+        ),
+    )
+
+    G.add_edge("init", "get_pollutants", condition=llm_response_starts_with_yes)
+
+    G.add_node(
+        "get_pollutants",
+        prompt=(
+            "Does the text mention emissions limits for multiple pollutants? "
+            "If so, what are the pollutants mentioned?"
+        ),
+    )
+
+    G.add_edge("get_pollutants", "get_units")
+
+    G.add_node(
+        "get_units",
+        prompt=(
+            "What units are used for the emissions limits mentioned in the text?"
+        ),
+    )
+
+    G.add_edge("get_units", "final")
+
+    G.add_node(
+        "final",
+        prompt=(
+            "Respond based on our entire conversation so far. Return your "
+            "answer in JSON format (not markdown). Your JSON file must include exactly two "
+            'keys. The keys are "emissions_limits" and "explanation". The '
+            'value of the "emissions_limits" key should be a dictionary with '
+            "subkeys for each pollutant mentioned and their corresponding limits. The "
+            'the value of the "explanation" key should be a string explaining '
+            'your answer.'
+        ),
+    )
+
+    return G
 
