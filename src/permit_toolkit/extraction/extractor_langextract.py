@@ -35,7 +35,7 @@ class PermitExtractorLangExtract:
         self,
         api_key: str,
         schema: Dict[str, Any],
-        model_id: str = "gpt-4o",  # Use best model for production quality
+        model_id: str = "gpt-4o-mini",  # Use gpt-4o-mini for better rate limits (200k TPM vs 30k)
         max_retries: int = 3,
         enable_text_optimization: bool = False,  # DISABLED by default for quality
         enable_rate_limiting: bool = True,
@@ -144,14 +144,23 @@ IMPORTANT OCR HANDLING:
 - Extract the normalized, readable version (not raw OCR with artifacts)
 
 COMPREHENSIVE EXTRACTION REQUIREMENTS:
-1. PERMIT INFO - Extract ALL of these if present:
-   - Permit number (Registration No.)
-   - Issue/issuance date
-   - Facility name (company name)
-   - Full facility address (street, city, state)
-   - County/location
+1. PERMIT INFO - Extract ALL of these from the HEADER/TOP of the document:
+   - Permit number: Look for "Registration No." or "Permit No." - extract ONLY the numeric digits (e.g., 11541)
+   - Issue date: Look for the date at the VERY TOP of the letter (e.g., "May 16, 2008") - this is the PRIMARY permit date
+     DO NOT use dates from "supersedes" statements or equipment table dates
+   - Facility name: Look in the BODY of the letter for "authorized to operate the [FACILITY NAME]" 
+     or "permit to modify and operate the [FACILITY NAME]"
+     This appears AFTER "Dear" and BEFORE equipment lists
+     Examples: "Southwest Enterprise Solutions Center", "Data Center Building A"
+     This is NOT the addressee name or company name (Mr. Rettig, COPT, etc.)
+   - County: Look near the facility name - phrases like "in [City], [County] County" or "Location: [County] County"
+   - Address: Full street/location description where facility is located
    
 2. GENERATOR DETAILS - For EACH generator mentioned:
+   IMPORTANT: Extract EVERY generator listed in equipment lists, tables, or descriptions.
+   Even if generators have identical specs, extract each one separately with its reference number.
+   Look for:
+   - Reference number (Ref No., Unit #, Generator ID)
    - Count/quantity (e.g., "one (1)", "three (3)")
    - Make/manufacturer (Caterpillar, Cummins, etc.)
    - Model number or description (e.g., "1500 KW", "3516B")
@@ -177,100 +186,119 @@ Use 'generator_id' attribute to group related info (all specs and emissions for 
     def _create_examples(self) -> List:
         """Create comprehensive examples using realistic permit text patterns."""
         return [
-            # Single comprehensive example with all fields
+            # Example with multiple generators - using FICTITIOUS data to avoid contamination
+            # Shows: date at top, permit# in header, facility name in body (NOT permittee), county in location
             lx.data.ExampleData(
-                text="""May 16, 2008
-Registration No. 11541
-Facility: Corporate Office Properties, LP
-Location: Russell County, VA
-Address: Technology Park Drive, Lebanon, VA
+                text="""March 15, 2020
 
-One (1) Caterpillar 1500 KW diesel powered emergency generator
+Registration No. 98765
+Facility ID No. 42-999-00001
 
-Fuel: distillate oil with maximum sulfur content of 0.5 weight percent
-Operating Limit: 500 hours per year
+Dear Mr. Johnson:
 
-Emission Limits:
-NOx: 63.9 lbs/hr, 15.96 tons/yr
-CO: 13.77 lbs/hr, 3.44 tons/yr  
-VOC: 5.07 lbs/hr, 1.27 tons/yr
-SO2: 4.2 lbs/hr, 1.05 tons/yr
-PM10: 4.49 lbs/hr, 1.12 tons/yr""",
+Attached is a permit to modify and operate the Riverside Data Processing Facility
+located in Springfield, Fairfax County, Virginia, in accordance with the provisions of the Commonwealth.
+
+This permit supersedes your permit dated January 10, 2020.
+
+Equipment List - Equipment at this facility consists of the following:
+
+Ref No. | Equipment Description                                   | Rated Capacity      | Original Permit Date
+   A    | One Cummins 2000 KW natural gas-powered generator       | 3000 brake horsepower | 3/15/2020
+   B    | One Cummins 2000 KW natural gas-powered generator       | 3000 brake horsepower | 3/15/2020
+
+Fuel Specifications: Natural gas fuel only.
+
+Operating Hours: The generators shall not operate more than 100 hours per year each for non-emergency purposes.
+
+Emission Limits from each generator exhaust stack shall not exceed:
+Nitrogen Oxides (as NO2): 25.0 lbs/hr, 1.25 tons/yr
+Carbon Monoxide: 10.0 lbs/hr, 0.50 tons/yr  
+Volatile Organic Compounds: 2.0 lbs/hr, 0.10 tons/yr""",
                 extractions=[
                     lx.data.Extraction(
                         extraction_class="PERMIT",
-                        extraction_text="May 16, 2008",
+                        extraction_text="March 15, 2020",
                         attributes={"field": "issue_date"}
                     ),
                     lx.data.Extraction(
                         extraction_class="PERMIT",
-                        extraction_text="11541",
+                        extraction_text="98765",
                         attributes={"field": "permit_number"}
                     ),
                     lx.data.Extraction(
                         extraction_class="PERMIT",
-                        extraction_text="Corporate Office Properties, LP",
+                        extraction_text="Riverside Data Processing Facility",
                         attributes={"field": "facility_name"}
                     ),
                     lx.data.Extraction(
                         extraction_class="PERMIT",
-                        extraction_text="Russell County",
+                        extraction_text="Fairfax County",
                         attributes={"field": "county"}
                     ),
                     lx.data.Extraction(
                         extraction_class="PERMIT",
-                        extraction_text="Technology Park Drive, Lebanon, VA",
+                        extraction_text="Springfield, Fairfax County, Virginia",
                         attributes={"field": "address"}
                     ),
+                    # Generator A
                     lx.data.Extraction(
                         extraction_class="GENERATOR",
-                        extraction_text="One (1) Caterpillar 1500 KW diesel powered emergency generator",
-                        attributes={"generator_id": "1", "make": "Caterpillar", "model": "1500 KW"}
+                        extraction_text="One Cummins 2000 KW natural gas-powered generator",
+                        attributes={"generator_id": "A", "make": "Cummins", "model": "2000 KW"}
                     ),
                     lx.data.Extraction(
                         extraction_class="SPEC",
-                        extraction_text="1500 KW",
-                        attributes={"generator_id": "1", "type": "capacity"}
+                        extraction_text="2000 KW",
+                        attributes={"generator_id": "A", "type": "capacity_kw"}
                     ),
                     lx.data.Extraction(
                         extraction_class="SPEC",
-                        extraction_text="distillate oil",
-                        attributes={"generator_id": "1", "type": "fuel"}
+                        extraction_text="3000 brake horsepower",
+                        attributes={"generator_id": "A", "type": "capacity_bhp"}
+                    ),
+                    # Generator B
+                    lx.data.Extraction(
+                        extraction_class="GENERATOR",
+                        extraction_text="One Cummins 2000 KW natural gas-powered generator",
+                        attributes={"generator_id": "B", "make": "Cummins", "model": "2000 KW"}
                     ),
                     lx.data.Extraction(
                         extraction_class="SPEC",
-                        extraction_text="0.5 weight percent",
-                        attributes={"generator_id": "1", "type": "sulfur"}
+                        extraction_text="2000 KW",
+                        attributes={"generator_id": "B", "type": "capacity_kw"}
                     ),
                     lx.data.Extraction(
                         extraction_class="SPEC",
-                        extraction_text="500 hours per year",
-                        attributes={"generator_id": "1", "type": "hours"}
+                        extraction_text="3000 brake horsepower",
+                        attributes={"generator_id": "B", "type": "capacity_bhp"}
+                    ),
+                    # Shared specs (apply to all generators)
+                    lx.data.Extraction(
+                        extraction_class="SPEC",
+                        extraction_text="natural gas",
+                        attributes={"generator_id": "A", "type": "fuel"}
+                    ),
+                    lx.data.Extraction(
+                        extraction_class="SPEC",
+                        extraction_text="100 hours per year",
+                        attributes={"generator_id": "A", "type": "hours"}
+                    ),
+                    # Emissions (listed once but apply to each generator)
+                    lx.data.Extraction(
+                        extraction_class="EMISSION",
+                        extraction_text="Nitrogen Oxides (as NO2): 25.0 lbs/hr, 1.25 tons/yr",
+                        attributes={"generator_id": "A", "pollutant": "nox"}
                     ),
                     lx.data.Extraction(
                         extraction_class="EMISSION",
-                        extraction_text="NOx: 63.9 lbs/hr, 15.96 tons/yr",
-                        attributes={"generator_id": "1", "pollutant": "nox"}
+                        extraction_text="Carbon Monoxide: 10.0 lbs/hr, 0.50 tons/yr",
+                        attributes={"generator_id": "A", "pollutant": "co"}
                     ),
                     lx.data.Extraction(
                         extraction_class="EMISSION",
-                        extraction_text="CO: 13.77 lbs/hr, 3.44 tons/yr",
-                        attributes={"generator_id": "1", "pollutant": "co"}
-                    ),
-                    lx.data.Extraction(
-                        extraction_class="EMISSION",
-                        extraction_text="VOC: 5.07 lbs/hr, 1.27 tons/yr",
-                        attributes={"generator_id": "1", "pollutant": "voc"}
-                    ),
-                    lx.data.Extraction(
-                        extraction_class="EMISSION",
-                        extraction_text="SO2: 4.2 lbs/hr, 1.05 tons/yr",
-                        attributes={"generator_id": "1", "pollutant": "so2"}
-                    ),
-                    lx.data.Extraction(
-                        extraction_class="EMISSION",
-                        extraction_text="PM10: 4.49 lbs/hr, 1.12 tons/yr",
-                        attributes={"generator_id": "1", "pollutant": "pm10"}
+                        extraction_text="Volatile Organic Compounds: 2.0 lbs/hr, 0.10 tons/yr",
+                        attributes={"generator_id": "A", "pollutant": "voc"}
                     ),
                 ],
             ),
@@ -323,20 +351,47 @@ PM10: 4.49 lbs/hr, 1.12 tons/yr""",
         
         # Parse permit info
         for ext in permit_extractions:
-            field = ext.attributes.get("field", "")
+            field = ext.attributes.get("field", "") or ""  # Handle None
             text = ext.extraction_text.strip()
+            field_lower = field.lower() if field else ""
             
-            if field == "permit_number" or "permit" in field.lower():
-                result["permitDetails"]["permitNumber"] = text
-            elif field == "facility_name" or "facility" in field.lower():
+            if field == "permit_number" or "permit" in field_lower:
+                # Clean up permit number - extract just the number
+                permit_match = re.search(r'\b(\d{4,})\b', text)
+                if permit_match:
+                    result["permitDetails"]["permitNumber"] = permit_match.group(1)
+                else:
+                    result["permitDetails"]["permitNumber"] = text
+            elif field == "facility_name" or "facility" in field_lower:
                 result["permitDetails"]["facilityName"] = text
             elif field == "county":
                 result["permitDetails"]["facilityCounty"] = text
-            elif "date" in field.lower() or "issue" in field.lower():
-                result["permitDetails"]["permitIssuanceDate"] = text
-            elif "expir" in field.lower():
+            elif "date" in field_lower or "issue" in field_lower:
+                # Try to parse and normalize date format to YYYY-MM-DD
+                date_text = text
+                # Try to extract structured date
+                date_match = re.search(r'(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})', text)
+                if date_match:
+                    month, day, year = date_match.groups()
+                    year = year if len(year) == 4 else f"20{year}"
+                    date_text = f"{year}-{month.zfill(2)}-{day.zfill(2)}"
+                else:
+                    # Try month name format: "May 16, 2008"
+                    date_match = re.search(r'(January|February|March|April|May|June|July|August|September|October|November|December)\s+(\d{1,2}),?\s+(\d{4})', text, re.IGNORECASE)
+                    if date_match:
+                        month_names = {
+                            'january': '01', 'february': '02', 'march': '03', 'april': '04',
+                            'may': '05', 'june': '06', 'july': '07', 'august': '08',
+                            'september': '09', 'october': '10', 'november': '11', 'december': '12'
+                        }
+                        month_name = date_match.group(1).lower()
+                        day = date_match.group(2)
+                        year = date_match.group(3)
+                        date_text = f"{year}-{month_names[month_name]}-{day.zfill(2)}"
+                result["permitDetails"]["permitIssuanceDate"] = date_text
+            elif "expir" in field_lower:
                 result["permitDetails"]["permitExpirationDate"] = text
-            elif "address" in field.lower():
+            elif "address" in field_lower:
                 result["permitDetails"]["facilityAddress"] = text
         
         # Parse generators
@@ -370,10 +425,12 @@ PM10: 4.49 lbs/hr, 1.12 tons/yr""",
                 "stackTestRequired": None,
             }
             
+            logger.debug(f"Processing generator_id={gen_id}: {len(gen_data['specs'])} specs, {len(gen_data['emissions'])} emissions")
+            
             # Parse generator description
             if gen_data["generator"]:
-                desc = gen_data["generator"].extraction_text
-                desc_lower = desc.lower()
+                desc = gen_data["generator"].extraction_text or ""  # Handle None
+                desc_lower = desc.lower() if desc else ""
                 
                 # Extract reference number from attributes
                 ref_attr = gen_data["generator"].attributes.get("generator_id")
@@ -391,60 +448,36 @@ PM10: 4.49 lbs/hr, 1.12 tons/yr""",
                     if num_match:
                         generator_obj["numGenerators"] = num_match.group(1)
                 
-                # Extract make from attributes or description
+                # Extract make from attributes ONLY (langextract should find this)
                 make_attr = gen_data["generator"].attributes.get("make")
                 if make_attr:
                     generator_obj["make"] = make_attr
-                else:
-                    # Try to infer from description
-                    if "caterpillar" in desc_lower or "cat " in desc_lower:
-                        generator_obj["make"] = "Caterpillar"
-                    elif "cummins" in desc_lower:
-                        generator_obj["make"] = "Cummins"
-                    elif "kohler" in desc_lower:
-                        generator_obj["make"] = "Kohler"
-                    elif "generac" in desc_lower:
-                        generator_obj["make"] = "Generac"
-                    elif "mtu" in desc_lower or "rolls royce" in desc_lower:
-                        generator_obj["make"] = "MTU"
                 
-                # Extract model from attributes or description
+                # Extract model from attributes ONLY (langextract should find this)
                 model_attr = gen_data["generator"].attributes.get("model")
                 if model_attr:
                     generator_obj["model"] = model_attr
-                else:
-                    # Try to extract model number pattern (e.g., "3516B", "1500 KW")
-                    model_match = re.search(r'\b([A-Z0-9]{4,}[A-Z]?)\b', desc)
-                    if model_match:
-                        generator_obj["model"] = model_match.group(1)
-                
-                # Infer fuel type if not explicitly specified
-                if not generator_obj["fuelType"]:
-                    if "diesel" in desc_lower:
-                        generator_obj["fuelType"] = "diesel"
-                    elif "natural gas" in desc_lower or "gas-fired" in desc_lower:
-                        generator_obj["fuelType"] = "natural gas"
-                    elif "distillate" in desc_lower:
-                        generator_obj["fuelType"] = "distillate oil"
             
-            # Parse specifications
+            # Parse specifications FIRST (before inferring from description)
+            # This ensures explicit fuel specs override inference
             for spec in gen_data["specs"]:
-                text = spec.extraction_text
-                spec_type = spec.attributes.get("type", "")
+                text = spec.extraction_text or ""  # Handle None
+                spec_type = spec.attributes.get("type", "") or ""  # Handle None
+                text_lower = text.lower() if text else ""
                 
-                # Handle fuel type (text, not numeric)
-                if spec_type == "fuel" or "diesel" in text.lower() or "natural gas" in text.lower() or "distillate" in text.lower():
-                    if not generator_obj["fuelType"]:  # Only set if not already set
-                        generator_obj["fuelType"] = text.strip()
+                # Handle fuel type (text, not numeric) - prioritize this
+                if spec_type == "fuel" or "diesel" in text_lower or "natural gas" in text_lower or "distillate" in text_lower:
+                    # Always use explicit fuel spec
+                    generator_obj["fuelType"] = text.strip()
                     continue
                 
                 # Handle control technology (text)
-                if spec_type == "control" or "scr" in text.lower() or "turbocharged" in text.lower():
+                if spec_type == "control" or "scr" in text_lower or "turbocharged" in text_lower:
                     generator_obj["controlTechnology"] = text.strip()
                     continue
                 
                 # Handle sulfur content
-                if spec_type == "sulfur" or "sulfur" in text.lower() or "weight percent" in text.lower():
+                if spec_type == "sulfur" or "sulfur" in text_lower or "weight percent" in text_lower:
                     # Extract percentage value: "0.5 weight percent" or "0.005%" or "15 ppm"
                     percent_match = re.search(r'(\d+(?:\.\d+)?)\s*(?:weight\s*)?percent|(\d+(?:\.\d+)?)\s*%', text, re.IGNORECASE)
                     if percent_match:
@@ -465,13 +498,26 @@ PM10: 4.49 lbs/hr, 1.12 tons/yr""",
                     value = float(value_str)
                     text_lower = text.lower()
                     
-                    if "kw" in text_lower or spec_type == "capacity":
-                        # Check if it's maximum or rated
+                    # Handle capacity specs with explicit types
+                    if spec_type == "capacity_kw" or (spec_type == "capacity" and "kw" in text_lower):
+                        # Check if it's maximum or rated based on text evidence
+                        if "maximum" in text_lower or "max" in text_lower:
+                            generator_obj["maximumCapacityKW"] = value
+                        else:
+                            generator_obj["ratedCapacityKW"] = value
+                    elif spec_type == "capacity_bhp" or (spec_type == "capacity" and ("bhp" in text_lower or "horsepower" in text_lower)):
+                        if "maximum" in text_lower or "max" in text_lower:
+                            generator_obj["maximumCapacityBHP"] = value
+                        else:
+                            generator_obj["ratedCapacityBHP"] = value
+                    elif "kw" in text_lower:
+                        # Fallback for kw without explicit type
                         if "maximum" in text_lower or "max" in text_lower:
                             generator_obj["maximumCapacityKW"] = value
                         else:
                             generator_obj["ratedCapacityKW"] = value
                     elif "bhp" in text_lower or "horsepower" in text_lower:
+                        # Fallback for bhp without explicit type
                         if "maximum" in text_lower or "max" in text_lower:
                             generator_obj["maximumCapacityBHP"] = value
                         else:
@@ -483,43 +529,76 @@ PM10: 4.49 lbs/hr, 1.12 tons/yr""",
             
             # Parse emissions - extract ALL values from text
             for emission in gen_data["emissions"]:
-                text = emission.extraction_text.lower()
-                pollutant = emission.attributes.get("pollutant", "").lower()
+                text = emission.extraction_text or ""  # Handle None
+                text_lower = text.lower() if text else ""
+                pollutant = emission.attributes.get("pollutant", "") or ""  # Handle None
+                pollutant_lower = pollutant.lower() if pollutant else ""
                 
                 # Determine pollutant from text if not in attributes
-                if not pollutant:
-                    if "nox" in text or "nitrogen" in text:
-                        pollutant = "nox"
-                    elif "carbon monoxide" in text or " co " in text or text.startswith("co "):
-                        pollutant = "co"
-                    elif "voc" in text or "volatile organic" in text:
-                        pollutant = "voc"
-                    elif "so2" in text or "sulfur dioxide" in text:
-                        pollutant = "so2"
-                    elif "pm2.5" in text or "pm 2.5" in text:
-                        pollutant = "pm"  # Schema doesn't have pm2.5 separate
-                    elif "pm10" in text or "pm 10" in text or "pm-10" in text:
-                        pollutant = "pm10"
-                    elif "pm" in text or "particulate" in text:
-                        pollutant = "pm"
+                # This is evidence-based: we're reading the pollutant name from the extracted text
+                if not pollutant_lower:
+                    if "nox" in text_lower or "nitrogen" in text_lower:
+                        pollutant_lower = "nox"
+                    elif "carbon monoxide" in text_lower or " co " in text_lower or text_lower.startswith("co "):
+                        pollutant_lower = "co"
+                    elif "voc" in text_lower or "volatile organic" in text_lower:
+                        pollutant_lower = "voc"
+                    elif "so2" in text_lower or "sulfur dioxide" in text_lower:
+                        pollutant_lower = "so2"
+                    elif "pm2.5" in text_lower or "pm 2.5" in text_lower:
+                        pollutant_lower = "pm"  # Schema doesn't have pm2.5 separate
+                    elif "pm10" in text_lower or "pm 10" in text_lower or "pm-10" in text_lower:
+                        pollutant_lower = "pm10"
+                    elif "pm" in text_lower or "particulate" in text_lower:
+                        pollutant_lower = "pm"
+                
+                # SAFETY: Only process if we identified the pollutant from evidence
+                if not pollutant_lower:
+                    logger.debug(f"Skipping emission extraction - cannot identify pollutant from text: {text[:50]}")
+                    continue
                 
                 # Extract ALL numeric values with units (may have multiple per line)
                 # Pattern: number + unit (lbs/hr or tons/yr)
-                for match in re.finditer(r'(\d+(?:\.\d+)?)\s*(lbs?/hr|tons?/yr)', text):
+                for match in re.finditer(r'(\d+(?:\.\d+)?)\s*(lbs?/hr|tons?/yr)', text_lower):
                     value = float(match.group(1))
                     unit = match.group(2).lower()
                     
                     # Map to schema field names
                     if "lbs" in unit or "lb" in unit:
-                        field_name = f"{pollutant}EmissionLimitLbsHr"
+                        field_name = f"{pollutant_lower}EmissionLimitLbsHr"
                     else:  # tons/yr
-                        field_name = f"{pollutant}EmissionLimitTonsYr"
+                        field_name = f"{pollutant_lower}EmissionLimitTonsYr"
                     
                     # Set the value if field exists in schema
                     if field_name in generator_obj:
                         generator_obj[field_name] = value
             
-            result["generatorSets"].append(generator_obj)
+            # QUALITY CHECK: Only add generator if it has minimum required data
+            # Conservative approach: Only filter out generators with NO identifying information
+            # Keep generators if they have:
+            # - Make (manufacturer) OR
+            # - Capacity (kW or BHP) OR  
+            # - Reference number (from langextract) OR
+            # - Any emission data (indicates it's a real generator)
+            has_make = generator_obj.get("make") is not None
+            has_capacity = (generator_obj.get("ratedCapacityKW") is not None or 
+                          generator_obj.get("ratedCapacityBHP") is not None)
+            has_ref = generator_obj.get("referenceNumber") is not None
+            has_emissions = any(generator_obj.get(field) is not None for field in [
+                "noxEmissionLimitLbsHr", "coEmissionLimitLbsHr", "vocEmissionLimitLbsHr"
+            ])
+            
+            if has_make or has_capacity or has_ref or has_emissions:
+                result["generatorSets"].append(generator_obj)
+            else:
+                # Only filter out completely empty generators (likely extraction artifacts)
+                logger.info(f"⚠️  Filtered out generator '{gen_id}' - no identifying data (no make, capacity, ref, or emissions)")
+        
+        # Log summary
+        total_extracted = len(generator_extractions)
+        total_kept = len(result["generatorSets"])
+        if total_extracted != total_kept:
+            logger.info(f"📊 Generator QC: Extracted {total_extracted}, kept {total_kept} (filtered {total_extracted - total_kept} empty)")
         
         return result
     
@@ -603,7 +682,10 @@ PM10: 4.49 lbs/hr, 1.12 tons/yr""",
         # SAFETY CHECK 3: Check for evidence in generator descriptions
         # Look for indicators that all generators share the same specs
         # Use numGenerators field which contains text like "one (1)", "three (3)"
-        num_generators_texts = [g.get("numGenerators", "").lower() for g in generators]
+        num_generators_texts = [
+            (g.get("numGenerators", "") or "").lower() 
+            for g in generators
+        ]
         
         # Check if descriptions suggest multiple identical units
         has_quantity_indicator = any(
