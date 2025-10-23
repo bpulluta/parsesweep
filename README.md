@@ -69,7 +69,7 @@ permit-toolkit consolidate --input data/extracted/Virginia --output data/outputs
 ## Project Structure
 
 ```
-permit-toolkit/
+backupgensprint/
 ├── src/
 │   └── permit_toolkit/        # Main package
 │       ├── scrapers/          # Web scraping modules
@@ -355,31 +355,6 @@ Contributions welcome! Priority areas:
 ## License
 
 MIT License - see LICENSE file for details
-
-## Citation
-
-If you use this toolkit in research, please cite:
-
-```bibtex
-@software{permit_toolkit_2024,
-  title = {Air Quality Permit Toolkit},
-  author = {Your Name},
-  year = {2024},
-  url = {https://github.com/yourusername/permit-toolkit}
-}
-```
-
-## Support
-
-- **Issues**: [GitHub Issues](https://github.com/yourusername/permit-toolkit/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/yourusername/permit-toolkit/discussions)
-- **Email**: your.email@example.com
-
-## Acknowledgments
-
-- Developed for analyzing data center backup generators in the PJM territory
-- Built on OpenAI GPT-4, Selenium, pypdf, pandas, and other open-source tools
-- Inspired by the need for systematic environmental permit analysis
 
 ---
 
