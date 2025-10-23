@@ -21,7 +21,7 @@ wheels/
 *.egg
 MANIFEST
 
-# Virtual Environment
+# Virtual environments
 .venv/
 venv/
 ENV/
@@ -35,68 +35,44 @@ env/
 *~
 .DS_Store
 
-# Jupyter Notebook
-.ipynb_checkpoints
-*.ipynb
-
 # Environment variables
 .env
 .env.local
-*.key
-secrets.yaml
 
-# API Keys & Credentials
-*api_key*
-*secret*
-credentials.json
-config/local_*.yaml
+# Archive directory (old structure for reference only)
+archive/
 
-# Data files (large)
-*.csv
-*.xlsx
-*.pdf
-01_data_sources/raw/*.csv
-03_permit_documents/**/*.pdf
-
-# Keep directory structure but ignore contents
-01_data_sources/raw/*
-!01_data_sources/raw/.gitkeep
-03_permit_documents/by_state/*
-!03_permit_documents/by_state/.gitkeep
+# Data directories (large files - can be reproduced)
+data/permits/
+data/extracted/
+data/outputs/
 
 # Logs
 *.log
 logs/
-*.log.*
 
-# Testing
-.pytest_cache/
+# Test coverage
 .coverage
 htmlcov/
-.tox/
+.pytest_cache/
+
+# Jupyter Notebooks
+.ipynb_checkpoints/
+*.ipynb
+
+# Package files
+*.whl
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Selenium
+chromedriver
+geckodriver
 
 # Temporary files
-*.tmp
-*.temp
-.cache/
 tmp/
-
-# OS files
-Thumbs.db
-.DS_Store
-.Spotlight-V100
-.Trashes
-
-# Extraction outputs (too large for git)
-04_extracted_data/llamaextract/**/*.json
-04_extracted_data/langextract/**/*.json
-04_extracted_data/consolidated/*.csv
-06_outputs/datasets/*.csv
-
-# Keep example files
-!**/example*.json
-!**/sample*.csv
-!**/README.md
-
-# pixi environments
-.pixi/*
+temp/
+*.tmp
