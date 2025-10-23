@@ -14,7 +14,10 @@ from extraction.graphs import (
     setup_graph_fuel,
     setup_graph_tank_size,
     setup_graph_capacity,
-    setup_graph_backup
+    setup_graph_backup,
+    setup_graph_control_techs,
+    setup_graph_operating_hours,
+    setup_graph_emissions
 )
 
 logger = logging.getLogger(__name__)
@@ -76,6 +79,9 @@ class StructuredOrdinanceParser(BaseLLMCaller):
                 "tank_size": self._check_tank_size,
                 "capacity": self._check_capacity,
                 "backup_mw": self._check_backup,
+                "control_technologies": self._check_techs,
+                "operating_hours": self._check_op_hours,
+                "emissions_limits": self._check_emissions,
             }
 
             tasks = {name: asyncio.create_task(func(text, ref_number)) for name, func in check_map.items()}
@@ -208,4 +214,47 @@ class StructuredOrdinanceParser(BaseLLMCaller):
         backup = dtree_backup_out.get("backup_mw", None)
 
         return backup
+    
+    async def _check_techs(self, text, ref_number):
+        logger.debug("Checking for generator control techs for ref number %s", ref_number)
+        tree = _setup_async_decision_tree(
+            setup_graph_control_techs,
+            text=text,
+            ref_number=ref_number,
+            chat_llm_caller=self._init_chat_llm_caller(DEFAULT_SYSTEM_MESSAGE),
+        )
+        dtree_control_techs_out = await _run_async_tree(tree)
+
+        control_techs = dtree_control_techs_out.get("control_technologies", None)
+
+        return control_techs
+    
+    async def _check_op_hours(self, text, ref_number):
+        logger.debug("Checking for generator operating hours for ref number %s", ref_number)
+        tree = _setup_async_decision_tree(
+            setup_graph_operating_hours,
+            text=text,
+            ref_number=ref_number,
+            chat_llm_caller=self._init_chat_llm_caller(DEFAULT_SYSTEM_MESSAGE),
+        )
+        dtree_operating_hours_out = await _run_async_tree(tree)
+
+        operating_hours = dtree_operating_hours_out.get("operating_hours", None)
+
+        return operating_hours
+
+
+    async def _check_emissions(self, text, ref_number):
+        logger.debug("Checking for generator emissions for ref number %s", ref_number)
+        tree = _setup_async_decision_tree(
+            setup_graph_emissions,
+            text=text,
+            ref_number=ref_number,
+            chat_llm_caller=self._init_chat_llm_caller(DEFAULT_SYSTEM_MESSAGE),
+        )
+        dtree_emissions_out = await _run_async_tree(tree)
+
+        emissions = dtree_emissions_out.get("emissions_limits", None)
+
+        return emissions
 
