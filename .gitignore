@@ -79,3 +79,4 @@ temp/
 .cache/
 test_data/.cache/
 test_data/extracted/
+data/comparison/
