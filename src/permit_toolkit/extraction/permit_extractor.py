@@ -93,6 +93,10 @@ class PermitExtractor:
         else:
             logger.info("⚠️  Skipping QA/QC (LangExtract not available)")
         
+        # Stage 3: Post-extraction sanity checks
+        sanity_warnings = self._run_sanity_checks(openai_result['data'])
+        validation_notes.extend(sanity_warnings)
+        
         processing_time = time.time() - start_time
         
         # Calculate confidence
@@ -110,6 +114,31 @@ class PermitExtractor:
             langextract_result=langextract_result
         )
     
+    def _normalize_with_schema(self, data: Dict[str, Any], schema: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Ensure all schema fields are present in extracted data, filling missing fields with null.
+        This prevents data loss when OpenAI omits optional fields.
+        """
+        # Get schema properties
+        schema_props = schema.get('properties', {})
+        
+        # Normalize permitDetails
+        if 'permitDetails' in schema_props and 'permitDetails' in data:
+            permit_schema = schema_props['permitDetails'].get('properties', {})
+            for field in permit_schema.keys():
+                if field not in data['permitDetails']:
+                    data['permitDetails'][field] = None
+        
+        # Normalize generatorSets
+        if 'generatorSets' in schema_props and 'generatorSets' in data:
+            generator_schema = schema_props['generatorSets'].get('items', {}).get('properties', {})
+            for generator in data.get('generatorSets', []):
+                for field in generator_schema.keys():
+                    if field not in generator:
+                        generator[field] = None
+        
+        return data
+    
     def _extract_with_openai(self, text: str, schema: Dict[str, Any]) -> Dict[str, Any]:
         """
         Extract using OpenAI - extract generators exactly as listed in permit.
@@ -119,41 +148,111 @@ class PermitExtractor:
         
         prompt = f"""Extract ALL data from this air quality permit. Return valid JSON matching the schema.
 
-IMPORTANT INSTRUCTIONS:
-1. Extract generators EXACTLY as they appear in the permit document
-   - If permit lists "EG01-EG06" or "Units 1-6" as ONE line/row → ONE entry with numGenerators=6
-   - If permit lists "EG01", "EG02", "EG03" as SEPARATE lines/rows → SEPARATE entries each with numGenerators=1
-   - DO NOT add grouping logic - mirror the source document structure precisely
+CRITICAL: Extract generators EXACTLY as structured in the permit document.
 
-2. For referenceNumber: Copy exactly what's shown (e.g., "EG01", "1510-1", "Unit 3", "EG01-EG06")
+EXAMPLES OF CORRECT EXTRACTION:
 
-3. For numGenerators: 
-   - Count from the reference number or table structure
-   - If unclear, set to 1
+Example 1 - Range notation (ONE entry):
+Document shows: "EG01-EG06 (6) Cummins QSK78-G12 diesel-fueled generators, 2500 kW each"
+Correct JSON:
+{{
+  "referenceNumber": "EG01-EG06",
+  "numGenerators": 6,
+  "make": "Cummins",
+  "model": "QSK78-G12",
+  "ratedCapacityKW": 2500
+}}
 
-4. Extract ALL available fields for each generator entry:
-   - Make, model, capacity (kW and BHP)
-   - Fuel type, sulfur content limits
-   - Operating hours limits
-   - Emission limits: NOx, CO, VOC, PM, SO2 (both lbs/hr and tons/yr if available)
+Example 2 - Separate rows with numeric references (MULTIPLE entries):
+Document shows:
+| Equipment Description                                    | Ref No. | Capacity       |
+|----------------------------------------------------------|---------|----------------|
+| One Caterpillar 1500 KW diesel powered emergency gen.  | 3       | 2500 BHP      |
+| One Caterpillar 1500 KW diesel powered emergency gen.  | 2       | 2500 BHP      |
+| One Caterpillar 1500 KW diesel powered emergency gen.  | 1       | 2500 BHP      |
+
+Correct JSON (3 separate entries, preserving numeric references):
+[
+  {{"referenceNumber": "3", "numGenerators": 1, "make": "Caterpillar", "model": null, "ratedCapacityBHP": 2500, "ratedCapacityKW": 1500}},
+  {{"referenceNumber": "2", "numGenerators": 1, "make": "Caterpillar", "model": null, "ratedCapacityBHP": 2500, "ratedCapacityKW": 1500}},
+  {{"referenceNumber": "1", "numGenerators": 1, "make": "Caterpillar", "model": null, "ratedCapacityBHP": 2500, "ratedCapacityKW": 1500}}
+]
+
+Example 3 - Separate rows with alphanumeric references (MULTIPLE entries):
+Document shows:
+| Unit | Make | Model | Capacity |
+|------|------|-------|----------|
+| EG01 | CAT  | 3512  | 1500 kW  |
+| EG02 | CAT  | 3512  | 1500 kW  |
+| EG03 | CAT  | 3512  | 1500 kW  |
+
+Correct JSON (3 separate entries):
+[
+  {{"referenceNumber": "EG01", "numGenerators": 1, "make": "CAT", "model": "3512", "ratedCapacityKW": 1500}},
+  {{"referenceNumber": "EG02", "numGenerators": 1, "make": "CAT", "model": "3512", "ratedCapacityKW": 1500}},
+  {{"referenceNumber": "EG03", "numGenerators": 1, "make": "CAT", "model": "3512", "ratedCapacityKW": 1500}}
+]
+
+EXTRACTION RULES:
+1. For referenceNumber: Copy EXACTLY as shown in "Ref No." or "Reference No." column - DO NOT add prefixes
+   - Look for reference numbers in equipment tables (may appear before OR after equipment description)
+   - Examples of CORRECT extraction:
+     * If document shows "Ref No. 3" → use "3" (NOT "EG03")
+     * If document shows "EG01" → use "EG01"
+     * If document shows "EG01-EG06" → use "EG01-EG06"
+   - NEVER add "EG" prefix or normalize format - use the EXACT text from the permit
+   - NEVER invent reference numbers not explicitly in the document
+
+2. For numGenerators: Parse from range notation OR count separate rows
+   - Range notation (e.g., "EG01-EG06" for 6 generators) → numGenerators: 6
+   - Separate rows for each unit → numGenerators: 1 for each entry
+
+3. Extract ALL fields including:
+   - Make, model, capacity (kW/BHP)
+   - Fuel type: Use "no. 2 distillate" for diesel/distillate oil unless "no. 1 distillate" is specified
+   - Fuel sulfur content: Extract as decimal (e.g., 0.005 for 0.5%, 0.0015 for 0.0015%)
+   - Fuel throughput limit: Extract gallons/year from "Fuel Throughput" conditions, or null if not specified
+   - Control technology: Extract from "Emission Controls" conditions, or null if not specified
+   - Operating hours limit: Extract hours/year from permit conditions
+   - Emission limits: CAREFULLY match pollutant names
+     * "PM-10" or "PM10" → pm10EmissionLimitLbsHr/TonsYr
+     * "PM-2.5" or "PM2.5" → pm25EmissionLimitLbsHr/TonsYr  
+     * "PM" or "Particulate Matter" (without numbers) → pmEmissionLimitLbsHr/TonsYr
+     * Extract both lbs/hr and tons/yr for each pollutant found
 
 SCHEMA:
 {json.dumps(schema, indent=2)}
 
-EXTRACTION RULES:
+CRITICAL EXTRACTION GUIDELINES:
 
 1. PERMIT DETAILS:
-   - Extract permit number, issue date, facility name, address, county from header/page 1
+   - Extract permit number, issue date, expiration date, facility name, address, county from header
 
 2. GENERATORS - MAINTAIN SOURCE STRUCTURE:
    - Create ONE entry per row/line in the equipment table
    - Do not combine or split entries
-   - If specs repeat across multiple rows, create multiple entries (as source shows)
+   - Match generator reference numbers to their specific limits in permit conditions
 
-3. EMISSION LIMITS:
-   - Extract per-unit limits (usually in lbs/hr)
-   - Include annual limits (tons/yr) if shown
-   - Include all pollutants: NOx, CO, VOC, PM, PM10, SO2
+3. FUEL THROUGHPUT:
+   - Look for conditions like "Fuel Throughput - The engine-generator sets (Ref. Nos. EG##-EG##) combined shall consume no more than #### gallons"
+   - This is the TOTAL for the group - record it for each generator in that group
+   - Convert to numeric value (remove commas)
+   - If NO fuel throughput limit is specified in the permit, set to null (NOT zero)
+
+4. CONTROL TECHNOLOGY:
+   - Extract from "Emission Controls" section
+   - Look for phrases like "controlled by", "turbocharged", "aftercooler", "SCR", etc.
+   - If NOT specified, set to null
+
+5. EMISSION LIMITS:
+   - Match generator reference numbers to emission limit conditions
+   - CRITICAL: Distinguish between PM, PM10, and PM2.5:
+     * "PM-10" or "PM10" goes to pm10EmissionLimitLbsHr/TonsYr
+     * "PM-2.5" or "PM2.5" goes to pm25EmissionLimitLbsHr/TonsYr
+     * "PM" or "Particulate Matter" (without suffix) goes to pmEmissionLimitLbsHr/TonsYr
+   - Extract "Each" limits (per generator) for lbs/hr
+   - Extract "Combined" limits (for group) for tons/yr if "Each" not available
+   - Set to null if not specified
 
 DOCUMENT TEXT:
 {text_excerpt}
@@ -173,6 +272,9 @@ Return valid JSON following the schema exactly. Match the permit's structure - d
             )
             
             data = json.loads(response.choices[0].message.content)
+            
+            # Ensure all schema fields are present (fill missing with null)
+            data = self._normalize_with_schema(data, schema)
             
             # Calculate cost
             usage = response.usage
@@ -362,6 +464,58 @@ Emissions: NOx 58.5 lbs/hr, 6.38 tons/yr; CO 13.0 lbs/hr, 1.42 tons/yr; VOC 2.6 
                 ]
             ),
         ]
+    
+    def _run_sanity_checks(self, data: Dict[str, Any]) -> List[str]:
+        """
+        Run post-extraction sanity checks to catch obvious errors.
+        
+        Returns list of warning messages.
+        """
+        warnings = []
+        generators = data.get('generatorSets', [])
+        
+        if not generators:
+            warnings.append("⚠️ WARNING: No generators extracted")
+            return warnings
+        
+        # Check 1: Duplicate reference numbers
+        ref_numbers = [g.get('referenceNumber') for g in generators if g.get('referenceNumber')]
+        duplicates = [ref for ref in set(ref_numbers) if ref_numbers.count(ref) > 1]
+        if duplicates:
+            warnings.append(f"⚠️ WARNING: Duplicate reference numbers: {', '.join(duplicates)}")
+        
+        # Check 2: Missing critical fields
+        for i, gen in enumerate(generators):
+            ref = gen.get('referenceNumber', f'Entry {i+1}')
+            if not gen.get('make'):
+                warnings.append(f"⚠️ WARNING: {ref} missing make")
+            if not gen.get('model'):
+                warnings.append(f"⚠️ WARNING: {ref} missing model")
+            if not gen.get('ratedCapacityKW') and not gen.get('ratedCapacityBHP'):
+                warnings.append(f"⚠️ WARNING: {ref} missing capacity")
+        
+        # Check 3: Unrealistic values
+        for gen in generators:
+            ref = gen.get('referenceNumber', 'Unknown')
+            num_gens = gen.get('numGenerators', 1)
+            if num_gens and (num_gens < 1 or num_gens > 100):
+                warnings.append(f"⚠️ WARNING: {ref} has unrealistic numGenerators: {num_gens}")
+            
+            capacity = gen.get('ratedCapacityKW')
+            if capacity and (capacity < 10 or capacity > 50000):
+                warnings.append(f"⚠️ WARNING: {ref} has unrealistic capacity: {capacity} kW")
+        
+        # Check 4: Total generator count
+        total_units = sum(g.get('numGenerators', 1) for g in generators)
+        if total_units > 50:
+            warnings.append(f"⚠️ WARNING: High total generator count: {total_units} (check for extraction errors)")
+        
+        if warnings:
+            logger.warning(f"Sanity checks found {len(warnings)} issues")
+        else:
+            logger.info("✓ All sanity checks passed")
+        
+        return warnings
     
     def generate_visualization(
         self,
