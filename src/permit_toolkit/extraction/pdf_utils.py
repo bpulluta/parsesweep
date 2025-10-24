@@ -6,35 +6,49 @@ from typing import Dict, Any
 import json
 
 try:
-    import pymupdf  # PyMuPDF - much better text extraction than pypdf
-    PYMUPDF_AVAILABLE = True
+    import pymupdf4llm  # PyMuPDF4LLM - optimized for LLMs with table preservation
+    PYMUPDF4LLM_AVAILABLE = True
 except ImportError:
-    PYMUPDF_AVAILABLE = False
+    PYMUPDF4LLM_AVAILABLE = False
     try:
-        from pypdf import PdfReader
+        import pymupdf  # PyMuPDF - fallback
+        PYMUPDF_AVAILABLE = True
     except ImportError:
-        PdfReader = None
+        PYMUPDF_AVAILABLE = False
+        try:
+            from pypdf import PdfReader
+        except ImportError:
+            PdfReader = None
 
 logger = logging.getLogger(__name__)
 
 
 def extract_text_from_pdf(pdf_path: Path) -> str:
     """
-    Extract text from a PDF file with basic OCR error cleanup.
+    Extract text from a PDF file with table structure preservation.
     
-    Uses PyMuPDF (preferred) or falls back to pypdf.
-    PyMuPDF provides better text extraction, especially for scanned documents.
+    Uses PyMuPDF4LLM (preferred) for markdown with tables, falls back to PyMuPDF or pypdf.
+    PyMuPDF4LLM provides LLM-optimized extraction with table structure preserved.
     
     Args:
         pdf_path: Path to the PDF file
         
     Returns:
-        Extracted text as a string with common OCR errors fixed
+        Extracted text as markdown string (tables preserved) or plain text
     """
     text = ""
     
-    if PYMUPDF_AVAILABLE:
-        # Use PyMuPDF for superior text extraction
+    if PYMUPDF4LLM_AVAILABLE:
+        # Use PyMuPDF4LLM for LLM-optimized extraction with tables
+        try:
+            text = pymupdf4llm.to_markdown(str(pdf_path))
+            logger.debug(f"Extracted text using PyMuPDF4LLM (markdown with tables) from {pdf_path.name}")
+        except Exception as e:
+            logger.error(f"Error extracting text with PyMuPDF4LLM from {pdf_path}: {e}")
+            # Fall through to try PyMuPDF
+    
+    if not text and PYMUPDF_AVAILABLE:
+        # Fallback to PyMuPDF for basic text extraction
         try:
             doc = pymupdf.open(str(pdf_path))
             for page in doc:
@@ -44,10 +58,10 @@ def extract_text_from_pdf(pdf_path: Path) -> str:
         except Exception as e:
             logger.error(f"Error extracting text with PyMuPDF from {pdf_path}: {e}")
             return ""
-    else:
+    elif not text:
         # Fallback to pypdf
         if PdfReader is None:
-            logger.error("No PDF extraction library available. Install PyMuPDF or pypdf.")
+            logger.error("No PDF extraction library available. Install PyMuPDF4LLM, PyMuPDF or pypdf.")
             return ""
         
         try:

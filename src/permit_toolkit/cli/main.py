@@ -1,5 +1,6 @@
 """Command-line interface for the permit toolkit."""
 
+import json
 import logging
 import sys
 from pathlib import Path
@@ -8,7 +9,7 @@ import click
 
 from permit_toolkit.utils.config import get_config
 from permit_toolkit.scrapers.virginia import VirginiaScraper
-from permit_toolkit.extraction import PermitExtractor, load_schema
+from permit_toolkit.extraction import ExtractorFactory, load_schema
 from permit_toolkit.consolidation import PermitConsolidator
 
 # Setup logging
