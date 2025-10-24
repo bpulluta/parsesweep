@@ -5,14 +5,14 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "permit-toolkit"
 version = "0.1.0"
-description = "A toolkit for extracting structured data from air quality permits across the United States"
+description = "Hybrid extraction toolkit for air quality permits using OpenAI + LangExtract"
 readme = "README.md"
 requires-python = ">=3.9"
 license = {text = "MIT"}
 authors = [
-    {name = "Your Name", email = "your.email@example.com"}
+    {name = "NREL Team", email = "contact@nrel.gov"}
 ]
-keywords = ["air quality", "permits", "data extraction", "environmental data", "backup generators"]
+keywords = ["air quality", "permits", "data extraction", "LLM", "backup generators", "hybrid extraction"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Science/Research",
@@ -32,8 +32,11 @@ dependencies = [
     "beautifulsoup4>=4.12.0",
     "lxml>=4.9.0",
     "selenium>=4.15.0",
+    "pymupdf4llm>=0.0.5",
+    "pymupdf>=1.23.0",
     "pypdf>=3.17.0",
     "openai>=1.0.0",
+    "langextract>=0.1.0",
     "pydantic>=2.5.0",
     "jsonschema>=4.20.0",
     "tqdm>=4.66.0",
@@ -56,13 +59,13 @@ docs = [
 ]
 
 [project.scripts]
-permit-toolkit = "permit_toolkit.cli.main:cli"
+# CLI temporarily archived - needs update for hybrid approach
+# permit-toolkit = "permit_toolkit.cli.main:cli"
 
 [project.urls]
-Homepage = "https://github.com/yourusername/permit-toolkit"
-Documentation = "https://github.com/yourusername/permit-toolkit/docs"
-Repository = "https://github.com/yourusername/permit-toolkit"
-Issues = "https://github.com/yourusername/permit-toolkit/issues"
+Homepage = "https://github.com/NREL/backupgensprint"
+Repository = "https://github.com/NREL/backupgensprint"
+Issues = "https://github.com/NREL/backupgensprint/issues"
 
 [tool.setuptools]
 package-dir = {"" = "src"}

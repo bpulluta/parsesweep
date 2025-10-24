@@ -4,7 +4,7 @@ Example: Basic usage of the permit toolkit
 
 from pathlib import Path
 from permit_toolkit.scrapers.virginia import VirginiaScraper
-from permit_toolkit.extraction import PermitExtractor, load_schema
+from permit_toolkit.extraction import ExtractorFactory, load_schema
 from permit_toolkit.consolidation import PermitConsolidator
 from permit_toolkit.utils import get_config
 
@@ -39,11 +39,6 @@ def main():
         print("   Skipping extraction step...")
     else:
         schema = load_schema(config.default_schema)
-        extractor = PermitExtractor(
-            api_key=config.openai_api_key,
-            schema=schema,
-            model_id="gpt-4o"
-        )
         
         permits_dir = config.get_permits_dir("Virginia")
         output_dir = config.get_extracted_dir("Virginia")
@@ -55,8 +50,18 @@ def main():
                 print(f"Found {len(pdf_files)} PDF files")
                 for pdf_path in pdf_files:
                     print(f"Processing: {pdf_path.name}")
-                    # result = extractor.extract(pdf_path)  # Uncomment to extract
-                    # extractor.save_result(result, pdf_path, output_dir)
+                    
+                    # Create extractor using factory (auto-detects Virginia)
+                    extractor = ExtractorFactory.create_extractor(
+                        pdf_path=pdf_path,
+                        api_key=config.openai_api_key,
+                        schema=schema,
+                        model_id="gpt-4o-mini"
+                    )
+                    
+                    # result = extractor.extract_from_pdf(pdf_path)  # Uncomment to extract
+                    # output_file = output_dir / f"{pdf_path.stem}.json"
+                    # output_file.write_text(json.dumps(result, indent=2))
                 print("Extraction configured (commented out for demo)")
             else:
                 print("No PDF files found in permits directory")

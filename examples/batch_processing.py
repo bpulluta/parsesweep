@@ -47,8 +47,21 @@ def extract_state_permits(state: str, config, extractor: PermitExtractor):
         logger.info(f"[{i}/{len(pdf_files)}] {pdf_path.name}")
         
         try:
-            result = extractor.extract(pdf_path)
-            extractor.save_result(result, pdf_path, output_dir)
+            # Create extractor using factory (auto-detects state)
+            extractor = ExtractorFactory.create_extractor(
+                pdf_path=pdf_path,
+                api_key=api_key,
+                schema=schema,
+                model_id="gpt-4o-mini"
+            )
+            
+            result = extractor.extract_from_pdf(pdf_path)
+            
+            # Save result
+            import json
+            output_file = output_dir / f"{pdf_path.stem}.json"
+            output_file.write_text(json.dumps(result, indent=2))
+            
             successful += 1
         except Exception as e:
             logger.error(f"Failed: {e}")
@@ -72,12 +85,6 @@ def main():
     
     # Load schema
     schema = load_schema(config.default_schema)
-    
-    # Initialize extractor (shared across all states)
-    extractor = PermitExtractor(
-        api_key=config.openai_api_key,
-        schema=schema,
-        model_id="gpt-4o"
     )
     
     logger.info("="*80)
