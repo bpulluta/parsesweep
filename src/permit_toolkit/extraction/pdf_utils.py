@@ -10,18 +10,23 @@ try:
     PYMUPDF4LLM_AVAILABLE = True
 except ImportError:
     PYMUPDF4LLM_AVAILABLE = False
-    try:
-        import pymupdf  # PyMuPDF - fallback
-        PYMUPDF_AVAILABLE = True
-    except ImportError:
-        PYMUPDF_AVAILABLE = False
-        try:
-            from pypdf import PdfReader
-        except ImportError:
-            PdfReader = None
+    pymupdf4llm = None
+
+try:
+    import pymupdf  # PyMuPDF - fallback
+    PYMUPDF_AVAILABLE = True
+except ImportError:
+    PYMUPDF_AVAILABLE = False
+    pymupdf = None
+
+try:
+    from pypdf import PdfReader
+    PYPDF_AVAILABLE = True
+except ImportError:
+    PYPDF_AVAILABLE = False
+    PdfReader = None
 
 logger = logging.getLogger(__name__)
-
 
 def extract_text_from_pdf(pdf_path: Path) -> str:
     """
@@ -51,10 +56,10 @@ def extract_text_from_pdf(pdf_path: Path) -> str:
         # Fallback to PyMuPDF for basic text extraction
         try:
             doc = pymupdf.open(str(pdf_path))
-            for page in doc:
-                text += page.get_text() + "\n"
+            for page_num in range(len(doc)):
+                text += doc[page_num].get_text() + "\n"
             doc.close()
-            logger.debug(f"Extracted text using PyMuPDF from {pdf_path.name}")
+            logger.debug(f"Extracted {len(doc)} pages using PyMuPDF from {pdf_path.name}")
         except Exception as e:
             logger.error(f"Error extracting text with PyMuPDF from {pdf_path}: {e}")
             return ""
@@ -67,9 +72,9 @@ def extract_text_from_pdf(pdf_path: Path) -> str:
         try:
             with open(pdf_path, 'rb') as f:
                 pdf_reader = PdfReader(f)
-                for page in pdf_reader.pages:
-                    text += page.extract_text() + "\n"
-            logger.debug(f"Extracted text using pypdf from {pdf_path.name}")
+                for page_num in range(len(pdf_reader.pages)):
+                    text += pdf_reader.pages[page_num].extract_text() + "\n"
+            logger.debug(f"Extracted {len(pdf_reader.pages)} pages using pypdf from {pdf_path.name}")
         except Exception as e:
             logger.error(f"Error extracting text with pypdf from {pdf_path}: {e}")
             return ""
