@@ -29,11 +29,14 @@ class Config:
         else:
             self.project_root = Path(project_root)
         
-        # Data directories
-        self.data_dir = self.project_root / "data"
-        self.permits_dir = self.data_dir / "permits"
-        self.extracted_dir = self.data_dir / "extracted"
-        self.outputs_dir = self.data_dir / "outputs"
+        # Data directories - organized by state
+        self.data_root = self.project_root / "data"
+        
+        # Legacy paths (deprecated)
+        self.data_dir = self.data_root
+        self.permits_dir = self.data_root / "permits"
+        self.extracted_dir = self.data_root / "extracted"
+        self.outputs_dir = self.data_root / "outputs"
         
         # Schema path
         self.schema_dir = self.project_root / "schemas"
@@ -101,11 +104,19 @@ class Config:
     
     def get_permits_dir(self, state: str) -> Path:
         """Get permits directory for a specific state."""
-        return self.permits_dir / state
+        return self.data_root / state / "permits"
     
     def get_extracted_dir(self, state: str) -> Path:
         """Get extracted data directory for a specific state."""
-        return self.extracted_dir / state
+        return self.data_root / state / "extracted"
+    
+    def get_visualizations_dir(self, state: str) -> Path:
+        """Get visualizations directory for a specific state."""
+        return self.data_root / state / "visualizations"
+    
+    def get_reports_dir(self, state: str) -> Path:
+        """Get reports directory for a specific state."""
+        return self.data_root / state / "reports"
     
     def __repr__(self) -> str:
         return (
