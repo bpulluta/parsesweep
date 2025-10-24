@@ -26,19 +26,17 @@ sys.path.insert(0, 'src')
 from permit_toolkit.extraction import ExtractorFactory, load_schema
 from permit_toolkit.utils import get_config
 
-# Configuration
+# Define permits to process with expected generator counts (for validation)
+# Format: (filename, expected_count)
+VIRGINIA_PERMITS = [
+    ('11790_DC_Permit.pdf', 7),  # 7 generators (EG01-EG06 + EG07)
+    ('11541_DC_Permit.pdf', 3),  # 3 generators 
+    ('52173_DC_Permit.pdf', 3),  # 3 generators (G-1, G-2, G-3) - image-based PDF
+]
+
+# Setup
 config = get_config()
 schema = load_schema(Path('schemas/air_quality_permits_schema.json'))
-
-# Virginia PDFs to process - add more as needed
-# Format: (filename, expected_generator_count_or_None)
-VIRGINIA_PERMITS = [
-    ('11790_DC_Permit.pdf', 7),    # ✅ Range notation: (6) Cummins + 1 Cummins
-    ('11541_DC_Permit.pdf', 3),    # ✅ Tabular format: 3x Caterpillar
-    ('41064_DC_Permit.pdf', None), # QA review needed
-    ('30142_DC_Permit.pdf', None), # QA review needed
-    ('52173_DC_Permit.pdf', None), # QA review needed
-]
 
 # Output directories
 OUTPUT_JSON_DIR = Path('data/extracted/Virginia')
@@ -76,13 +74,21 @@ for pdf_name, expected_generator_count in VIRGINIA_PERMITS:
     
     # Extract data
     json_output_path = OUTPUT_JSON_DIR / f"{Path(pdf_name).stem}.json"
-    extraction_result = extractor.extract_from_pdf(pdf_path, output_json_path=json_output_path)
+    extraction_result = extractor.extract_from_pdf(
+        pdf_path, 
+        output_json_path=json_output_path
+    )
     
     actual_generator_count = len(extraction_result['generatorSets'])
     validation_passed = (actual_generator_count == expected_generator_count) if expected_generator_count is not None else None
     
     print("\n📊 Results:")
     print(f"   Generators extracted: {actual_generator_count}")
+    
+    # Warning if no generators found
+    if actual_generator_count == 0:
+        print("   ⚠️  WARNING: No generators found!")
+    
     if expected_generator_count is not None:
         print(f"   Expected: {expected_generator_count}")
         print(f"   Status: {'✅ PASS' if validation_passed else '❌ FAIL'}")

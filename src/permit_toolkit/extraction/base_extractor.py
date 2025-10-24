@@ -169,6 +169,7 @@ class BasePermitExtractor(ABC):
         self,
         pdf_path: Path,
         output_json_path: Path = None,
+        max_pages: int = 15,
     ) -> Dict[str, Any]:
         """
         Extract data from permit PDF using hybrid LLM + regex approach.
@@ -176,6 +177,8 @@ class BasePermitExtractor(ABC):
         Args:
             pdf_path: Path to the PDF file
             output_json_path: Optional path to save JSON output
+            max_pages: Maximum pages to extract (default: 15 for cost optimization).
+                      Set to None for unlimited pages.
             
         Returns:
             Dict containing extracted permit data
@@ -743,64 +746,72 @@ Focus ONLY on generator/equipment data, NOT permit header details."""
         that match example patterns but don't exist in the actual document.
         
         Deduplication strategy:
-        1. Identify the "primary" equipment make (most generators with that make)
-        2. Remove generators of different makes if they have low confidence (numeric refs only, no emissions match)
-        3. Within same make, deduplicate identical specs (keep best representative)
+        1. Filter out generators with N/A or empty values (phantom entries)
+        2. Filter out generators with simple numeric refs (1, 2, 3) if there are generators with alpha refs (G-1, EG01)
+        3. Within same capacity, deduplicate identical specs
         """
         generators = result.get("generatorSets", [])
         if len(generators) <= 1:
             return result
         
-        # Count generators by make
-        make_counts = {}
+        # First pass: Remove completely empty/N/A generators
+        valid_generators = []
         for gen in generators:
-            make = (gen.get("make") or "unknown").lower().strip()
-            make_counts[make] = make_counts.get(make, 0) + 1
-        
-        # Identify primary make (most common)
-        primary_make = max(make_counts.items(), key=lambda x: x[1])[0] if make_counts else None
-        logger.debug(f"Primary equipment make: {primary_make} ({make_counts.get(primary_make, 0)} units)")
-        
-        # Filter out likely contaminated generators
-        kept_generators = []
-        removed_count = 0
-        
-        for gen in generators:
-            make = (gen.get("make") or "unknown").lower().strip()
-            ref = str(gen.get("referenceNumber", ""))
+            ref = str(gen.get("referenceNumber", "")).strip()
+            make = str(gen.get("make", "")).strip()
+            kw = gen.get("ratedCapacityKW")
             
-            # Check if this is likely contamination
-            is_secondary_make = make != primary_make and make != "unknown"
-            has_alpha_ref = any(c.isalpha() for c in ref)  # EG01 vs just "1"
+            # Filter out N/A or empty generators
+            if ref.upper() in ["N/A", "NA", "NONE", ""] or make.upper() in ["N/A", "NA", "NONE"]:
+                if not kw:  # Only filter if also missing capacity
+                    logger.info(f"⚠️  Filtered out empty/N/A generator: ref='{ref}', make='{make}'")
+                    continue
             
-            # Contamination indicators:
-            # - Different make from primary AND
-            # - Only numeric ref (no letters like "EG") AND  
-            # - No emissions specific to this generator
-            is_likely_contamination = (
-                is_secondary_make and
-                not has_alpha_ref and
-                len(ref) <= 2  # Simple numeric refs like "1", "2", "3"
-            )
-            
-            if is_likely_contamination:
-                removed_count += 1
-                logger.info(f"⚠️  Filtered out {make} generator (ref: {ref}) - likely example contamination (primary make is {primary_make})")
-            else:
-                kept_generators.append(gen)
+            valid_generators.append(gen)
         
-        # Now deduplicate within kept generators
+        generators = valid_generators
+        
+        # Second pass: Check for simple numeric refs vs alpha refs pattern
+        has_alpha_refs = any(
+            any(c.isalpha() for c in str(gen.get("referenceNumber", "")))
+            for gen in generators
+        )
+        
+        # If we have alpha refs (like G-1, EG01), filter out simple numeric refs (1, 2, 3)
+        # These are likely example contamination
+        if has_alpha_refs:
+            kept_generators = []
+            removed_count = 0
+            
+            for gen in generators:
+                ref = str(gen.get("referenceNumber", ""))
+                is_simple_numeric = ref.isdigit() and len(ref) <= 2
+                
+                if is_simple_numeric:
+                    removed_count += 1
+                    make = gen.get("make", "unknown")
+                    kw = gen.get("ratedCapacityKW")
+                    logger.info(f"⚠️  Filtered out generator ref '{ref}' ({make}, {kw} kW) - likely example contamination (simple numeric ref)")
+                else:
+                    kept_generators.append(gen)
+            
+            if removed_count > 0:
+                logger.info(f"✓ Removed {removed_count} example-contaminated generators")
+                generators = kept_generators
+        
+        # Now deduplicate within remaining generators (identical specs)
         from collections import defaultdict
         groups = defaultdict(list)
         
-        for idx, gen in enumerate(kept_generators):
+        for idx, gen in enumerate(generators):
             make = (gen.get("make") or "").lower().strip()
             model = (gen.get("model") or "").lower().strip()
             kw = gen.get("ratedCapacityKW")
             bhp = gen.get("ratedCapacityBHP")
+            ref = str(gen.get("referenceNumber", ""))
             
-            # Create signature
-            sig = (make, model, kw, bhp)
+            # Create signature - include ref to avoid deduping legitimate units with unique refs
+            sig = (make, model, kw, bhp, ref)
             groups[sig].append((idx, gen))
         
         # Keep unique generators + best representative from each duplicate group
@@ -811,38 +822,23 @@ Focus ONLY on generator/equipment data, NOT permit header details."""
                 # Unique generator - keep it
                 kept_indices.add(gen_list[0][0])
             else:
-                # Duplicates found - check if they're legitimate identical units (EG01, EG02, etc.)
-                refs = [gen.get("referenceNumber") for _, gen in gen_list]
-                refs_unique = len(set(r for r in refs if r)) == len([r for r in refs if r])
+                # True duplicates (same ref, same specs) - keep only best one
+                scored_gens = []
+                for idx, gen in gen_list:
+                    score = 0
+                    score += 10 if gen.get("noxEmissionLimitLbsHr") else 0
+                    score += 5 if gen.get("coEmissionLimitLbsHr") else 0
+                    score += 5 if gen.get("fuelType") else 0
+                    score += 3 if gen.get("operatingHoursLimit") else 0
+                    scored_gens.append((score, idx))
                 
-                # Check if any have emissions (indicates real equipment)
-                any_has_emissions = any(
-                    gen.get("noxEmissionLimitLbsHr") is not None 
-                    for _, gen in gen_list
-                )
-                
-                if refs_unique and any_has_emissions:
-                    # All have unique refs and emissions - these are real identical units
-                    for idx, _ in gen_list:
-                        kept_indices.add(idx)
-                else:
-                    # Keep only best one (score by data completeness)
-                    scored_gens = []
-                    for idx, gen in gen_list:
-                        score = 0
-                        score += 10 if gen.get("noxEmissionLimitLbsHr") else 0
-                        score += 5 if gen.get("coEmissionLimitLbsHr") else 0
-                        score += 5 if gen.get("fuelType") else 0
-                        score += 3 if gen.get("operatingHoursLimit") else 0
-                        scored_gens.append((score, idx))
-                    
-                    # Keep best one
-                    best_idx = max(scored_gens, key=lambda x: x[0])[1]
-                    kept_indices.add(best_idx)
-                    logger.info(f"⚠️  Deduped {len(scored_gens)-1} generators matching {sig[0]} {sig[1]}")
+                # Keep best one
+                best_idx = max(scored_gens, key=lambda x: x[0])[1]
+                kept_indices.add(best_idx)
+                logger.info(f"⚠️  Deduped {len(scored_gens)-1} generators with identical ref '{sig[4]}'")
         
         # Rebuild list with kept generators only
-        deduplicated = [kept_generators[i] for i in sorted(kept_indices)]
+        deduplicated = [generators[i] for i in sorted(kept_indices)]
         
         total_removed = len(generators) - len(deduplicated)
         if total_removed > 0:

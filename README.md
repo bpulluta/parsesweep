@@ -4,8 +4,7 @@ Production-ready extraction system for structured data from air quality permits.
 
 ## Features
 
-- **Hybrid Extraction**: Combines OpenAI (structured fields) + LangExtract (generators with traceability)
-- **Advanced Parsing**: Handles range notation (EG01-EG06 → 6 units) and quantity notation ((6) Cummins)
+- **Extraction**: Combines OpenAI (structured fields) + LangExtract (generators with traceability)
 - **Quality Assurance**: Interactive HTML visualizations showing extracted entities in context
 - **Smart Deduplication**: Filters example contamination and duplicate documents
 - **Cost-Effective**: ~30% cheaper than full LangExtract while improving accuracy
@@ -18,7 +17,7 @@ Production-ready extraction system for structured data from air quality permits.
 git clone <repository-url>
 cd backupgensprint
 python -m venv .venv
-source .venv/bin/activate
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
 pip install -e .
 ```
 
@@ -47,7 +46,9 @@ extractor = ExtractorFactory.create_extractor(
 )
 
 # Extract data
-result = extractor.extract_from_pdf(pdf_path)
+result = extractor.extract_from_pdf(
+    Path('data/permits/Virginia/11790_DC_Permit.pdf')
+)
 
 # Generate QA visualization
 html_path = extractor.generate_visualization(
@@ -105,22 +106,37 @@ Output: 6 individual generators (EG01, EG02, EG03, EG04, EG05, EG06)
 ## Project Structure
 
 ```
-src/permit_toolkit/extraction/
-├── base_extractor.py          # Hybrid extraction (OpenAI + LangExtract)
-├── virginia_extractor.py      # Virginia-specific patterns
-├── extractor_factory.py       # Auto-detection and factory
-├── pdf_utils.py               # PDF text extraction
-├── rate_limiter.py            # API rate limiting
-├── deduplicator.py            # Duplicate detection
-└── text_optimizer.py          # Text preprocessing
+src/permit_toolkit/
+├── extraction/
+│   ├── base_extractor.py          # Hybrid extraction base class
+│   ├── virginia_extractor.py      # Virginia-specific implementation
+│   ├── extractor_factory.py       # State detection and factory
+│   ├── pdf_utils.py               # PDF text extraction
+│   ├── rate_limiter.py            # API rate limiting
+│   ├── deduplicator.py            # Duplicate detection
+│   └── text_optimizer.py          # Text preprocessing
+├── scrapers/
+│   ├── base.py                    # Base scraper class
+│   └── virginia.py                # Virginia DEQ scraper
+├── consolidation/
+│   └── consolidator.py            # JSON to CSV conversion
+└── utils/
+    └── config.py                  # Configuration management
 
 data/
-├── permits/Virginia/          # Input PDFs
-├── extracted/Virginia/        # JSON outputs
-└── comparison/Virginia/       # HTML visualizations
+├── permits/Virginia/              # Input PDFs
+├── extracted/Virginia/            # JSON outputs
+└── comparison/Virginia/           # HTML visualizations
 
-batch_extract_with_visualization.py  # Production batch script
-schemas/air_quality_permits_schema.json  # Extraction schema
+schemas/
+└── air_quality_permits_schema.json  # Extraction schema
+
+examples/
+├── 01_scrape_permits.py           # Download permits
+├── 02_extract_data.py             # Extract structured data
+└── 03_consolidate_data.py         # Convert to CSV
+
+batch_extract_with_visualization.py  # Batch processing script
 ```
 
 ## Validation Results
@@ -129,45 +145,23 @@ schemas/air_quality_permits_schema.json  # Extraction schema
 
 | Permit | Expected | Extracted | Status | Notes |
 |--------|----------|-----------|--------|-------|
-| 11790 | 7 | 7 | ✅ PASS | Range notation (EG01-EG06) working |
-| 11541 | 3 | 3 | ✅ PASS | Deduplication successful |
+| 11790 | 7 | 7 | ✅ PASS | Range notation (EG01-EG06) expansion |
+| 11541 | 3 | 3 | ✅ PASS | Standard extraction |
+| 52173 | 3 | 3 | ✅ PASS | Image-based PDF with OCR |
 
-**Success Rate**: 100% (2/2 validated)
-
-## Configuration
-
-Edit `VIRGINIA_PERMITS` in `batch_extract_with_visualization.py`:
-
-```python
-VIRGINIA_PERMITS = [
-    ('11790_DC_Permit.pdf', 7),    # Expected count for validation
-    ('11541_DC_Permit.pdf', 3),    
-    ('41064_DC_Permit.pdf', None), # No expected count (QA review)
-]
-```
+**Success Rate**: 100% (3/3 validated)
 
 ## Development
 
-### Setup Development Environment
+### Setup
 
 ```bash
-git clone https://github.com/NREL/backupgensprint.git
+git clone <repository-url>
 cd backupgensprint
 python -m venv .venv
 source .venv/bin/activate  # On Windows: .venv\Scripts\activate
 pip install -e .
 ```
-
-### Project Structure
-
-Core extraction files (all actively used):
-- `base_extractor.py` - Hybrid extraction base class (OpenAI + LangExtract)
-- `virginia_extractor.py` - Virginia-specific patterns and examples
-- `extractor_factory.py` - State detection and extractor instantiation
-- `pdf_utils.py` - PDF text extraction with pypdf
-- `rate_limiter.py` - Exponential backoff for API rate limiting
-- `deduplicator.py` - Document hash-based duplicate detection
-- `text_optimizer.py` - Text preprocessing (optional, off by default)
 
 ### Run Tests
 
@@ -184,18 +178,31 @@ pytest tests/
    class IllinoisPermitExtractor(BasePermitExtractor):
        def _create_state_examples(self) -> List[Dict]:
            # Define state-specific examples for LangExtract
-           pass
+           return [
+               {
+                   "text": "Example permit text...",
+                   "entities": [
+                       {"text": "G-1", "class": "REF"},
+                       {"text": "Caterpillar", "class": "MAKE"},
+                   ]
+               }
+           ]
        
        def _extract_permit_details_fallback(self, text: str) -> Dict:
-           # Regex fallback for permit details (county, facility name, etc.)
-           pass
+           # State-specific regex patterns for permit details
+           import re
+           county_match = re.search(r'County:\s*(\w+)', text)
+           return {
+               "county": county_match.group(1) if county_match else None,
+               # ... other fields
+           }
    ```
 
-2. **Register in factory**: Update `extractor_factory.py`
+2. **Register in factory**: Update `src/permit_toolkit/extraction/extractor_factory.py`
    ```python
    elif state_lower == "illinois":
        from permit_toolkit.extraction.illinois_extractor import IllinoisPermitExtractor
-       return IllinoisPermitExtractor(...)
+       return IllinoisPermitExtractor(api_key, schema, model_id)
    ```
 
 3. **Add detection pattern**: Update `_detect_state()` in factory
@@ -204,7 +211,7 @@ pytest tests/
        return "illinois"
    ```
 
-4. **Validate**: Test with sample permits, create validation dataset
+4. **Validate**: Test with sample permits and create validation dataset
 
 ### Code Quality
 
@@ -219,7 +226,30 @@ ruff check src/ tests/
 mypy src/
 ```
 
-### Contributing
+## Performance
+
+- **Speed**: ~15-20 seconds per permit
+- **Cost**: ~$0.03 per permit (gpt-4o-mini)
+- **Rate Limit**: 200k TPM (gpt-4o-mini tier 1)
+- **Accuracy**: 100% on validated Virginia permits
+
+## Troubleshooting
+
+**Issue**: `OPENAI_API_KEY not found`
+- Ensure `.env` file exists in project root
+- Verify `OPENAI_API_KEY=sk-...` is set correctly
+
+**Issue**: No text extracted from PDF
+- Check if PDF is corrupted or encrypted
+- Try opening PDF manually to verify content
+- Image-based PDFs are supported via pymupdf4llm OCR
+
+**Issue**: Missing generators in output
+- Review HTML visualization to see what was extracted
+- Check if reference numbers use unexpected format
+- Verify schema matches permit structure
+
+## Contributing
 
 1. Fork the repository
 2. Create a feature branch (`git checkout -b feature/your-feature`)
@@ -228,26 +258,6 @@ mypy src/
 5. Commit with clear messages
 6. Push and create a Pull Request
 
-### Architecture Notes
-
-**Why Hybrid?**
-- OpenAI direct API: 3x faster for structured fields, no example contamination
-- LangExtract: Provides evidence highlighting for QA, better for complex entities
-
-**Key Design Decisions:**
-- Range expansion (EG01-EG06) happens post-extraction to avoid confusing the LLM
-- Deduplication filters examples by analyzing reference patterns (alphanumeric vs numeric-only)
-- Text optimization disabled by default (hurts accuracy on some permits)
-- Regex fallback always runs as backup to LLM extraction
-
-## Performance
-
-- **Speed**: ~15-20 seconds per permit
-- **Cost**: ~$0.03 per permit (gpt-4o-mini)
-- **Rate Limit**: 200k TPM (gpt-4o-mini)
-- **Accuracy**: validated Virginia permits
-
 ## License
 
 See LICENSE file for details.
-
