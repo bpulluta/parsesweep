@@ -1,0 +1,232 @@
+{
+  "data_schema": {
+    "additionalProperties": false,
+    "properties": {
+      "permitDetails": {
+        "additionalProperties": false,
+        "description": "Information about the permit itself, including permit number, dates, facility details, and location.",
+        "properties": {
+          "permitNumber": {
+            "description": "Permit or Registration number (e.g., 52432)",
+            "type": "string"
+          },
+          "permitIssuanceDate": {
+            "description": "Date the permit was issued (YYYY-MM-DD)",
+            "type": "string"
+          },
+          "permitExpirationDate": {
+            "description": "Date the permit expires (YYYY-MM-DD)",
+            "type": "string"
+          },
+          "facilityName": {
+            "description": "Name of the facility holding the permit (e.g., Chirisa Richmond LLC)",
+            "type": "string"
+          },
+          "facilityAddress": {
+            "description": "Address of the facility.",
+            "type": "string"
+          },
+          "facilityCounty": {
+            "description": "County where the facility is located.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "permitNumber",
+          "permitIssuanceDate",
+          "permitExpirationDate",
+          "facilityName",
+          "facilityAddress",
+          "facilityCounty"
+        ],
+        "type": "object"
+      },
+      "generatorSets": {
+        "description": "Array of generator set objects, each containing details about a single generator set as described in the document. Do not consolidate generator sets even if they share make and model types, and list them in order which they appear in the document.",
+        "items": {
+          "additionalProperties": false,
+          "description": "Information about a single generator set, including reference number, manufacturer, model, capacity, fuel type, and emission limits.",
+          "properties": {
+            "referenceNumber": {
+              "description": "Reference number for the generator set (e.g., EG-2-01)",
+              "type": "string"
+            },
+            "numGenerators": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Number of generators in the set (e.g. 23)"
+            },
+            "make": {
+              "description": "Manufacturer of the generator set (e.g., Cummins, Caterpillar)",
+              "type": "string"
+            },
+            "model": {
+              "description": "Model of the generator set (e.g., C3000D6EB, C175-16)",
+              "type": "string"
+            },
+            "ratedCapacityBHP": {
+              "description": "Rated capacity of the generator set in brake horsepower (bhp)",
+              "type": "number"
+            },
+            "ratedCapacityKW": {
+              "description": "Rated capacity of the generator set in kilowatts (kW)",
+              "type": "number"
+            },
+            "maximumCapacityBHP": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Maximum capacity of the generator set in brake horsepower (hp) if given."
+            },
+            "maximumCapacityKW": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Maximum capacity of the generator set in kilowatts (kW)"
+            },
+            "fuelType": {
+              "description": "Type of fuel used by the generator set",
+              "type": "string"
+            },
+            "fuelThroughputLimit": {
+              "description": "Maximum amount of fuel the generator can consume per year (gallons)",
+              "type": "number"
+            },
+            "fuelSulfurContent": {
+              "description": "Sulfur content of the fuel used (percentage)",
+              "type": "number"
+            },
+            "controlTechnology": {
+              "description": "Emission control technology used (e.g., turbocharged engine and aftercooler)",
+              "type": "string"
+            },
+            "operatingHoursLimit": {
+              "description": "Maximum operating hours per year",
+              "type": "number"
+            },
+            "noxEmissionLimitLbsHr": {
+              "description": "Nitrogen Oxides emission limit in pounds per hour",
+              "type": "number"
+            },
+            "noxEmissionLimitTonsYr": {
+              "description": "Nitrogen Oxides emission limit in tons per year",
+              "type": "number"
+            },
+            "coEmissionLimitLbsHr": {
+              "description": "Carbon Monoxide emission limit in pounds per hour",
+              "type": "number"
+            },
+            "coEmissionLimitTonsYr": {
+              "description": "Carbon Monoxide emission limit in tons per year",
+              "type": "number"
+            },
+            "vocEmissionLimitLbsHr": {
+              "description": "Volatile Organic Compounds emission limit in pounds per hour",
+              "type": "number"
+            },
+            "vocEmissionLimitTonsYr": {
+              "description": "Volatile Organic Compounds emission limit in tons per year",
+              "type": "number"
+            },
+            "pmEmissionLimitLbsHr": {
+              "description": "Particulate Matter emission limit in pounds per hour",
+              "type": "number"
+            },
+            "pmEmissionLimitTonsYr": {
+              "description": "Particulate Matter emission limit in tons per year",
+              "type": "number"
+            },
+            "pm10EmissionLimitLbsHr": {
+              "description": "PM-10 emission limit in pounds per hour",
+              "type": "number"
+            },
+            "pm10EmissionLimitTonsYr": {
+              "description": "PM-10 emission limit in tons per year",
+              "type": "number"
+            },
+            "so2EmissionLimitLbsHr": {
+              "description": "Sulfur Dioxide emission limit in pounds per hour",
+              "type": "number"
+            },
+            "so2EmissionLimitTonsYr": {
+              "description": "Sulfur Dioxide emission limit in tons per year",
+              "type": "number"
+            },
+            "stackTestRequired": {
+              "description": "Indicates if a stack test is required for this generator set",
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "referenceNumber",
+            "numGenerators",
+            "make",
+            "model",
+            "ratedCapacityBHP",
+            "ratedCapacityKW",
+            "maximumCapacityBHP",
+            "maximumCapacityKW",
+            "fuelType",
+            "fuelThroughputLimit",
+            "fuelSulfurContent",
+            "controlTechnology",
+            "operatingHoursLimit",
+            "noxEmissionLimitLbsHr",
+            "noxEmissionLimitTonsYr",
+            "coEmissionLimitLbsHr",
+            "coEmissionLimitTonsYr",
+            "vocEmissionLimitLbsHr",
+            "vocEmissionLimitTonsYr",
+            "pmEmissionLimitLbsHr",
+            "pmEmissionLimitTonsYr",
+            "pm10EmissionLimitLbsHr",
+            "pm10EmissionLimitTonsYr",
+            "so2EmissionLimitLbsHr",
+            "so2EmissionLimitTonsYr",
+            "stackTestRequired"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      }
+    },
+    "required": [
+      "permitDetails",
+      "generatorSets"
+    ],
+    "type": "object"
+  },
+  "config": {
+    "priority": null,
+    "extraction_target": "PER_DOC",
+    "extraction_mode": "BALANCED",
+    "parse_model": null,
+    "extract_model": "openai-gpt-4-1",
+    "multimodal_fast_mode": false,
+    "system_prompt": "You are extracting highly specific permitting data from permits to be used in data analysis. It is integral that you do not consolidate generator sets (e.g. EG01-EG03 and EG05-EG011 should not by combined if they appear separately in the document, but should stay as EG01-EG03 and EG05-EG011) even if they share make and model types, and list them in order which they appear in the document to ensure accuracy and continued funding for the project. This is due to different generator sets being installed at different times.",
+    "use_reasoning": false,
+    "cite_sources": false,
+    "confidence_scores": false,
+    "chunk_mode": "SECTION",
+    "high_resolution_mode": true,
+    "invalidate_cache": true,
+    "num_pages_context": null,
+    "page_range": null
+  }
+}
