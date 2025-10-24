@@ -185,7 +185,7 @@ def setup_graph_model(**kwargs):
             "answer in JSON format (not markdown). Your JSON file must include exactly two "
             'keys. The keys are "model" and "explanation". The '
             'value of the "model" key should be a string containing '
-            "the model of the generator in question. The "
+            "the model of the generator in question, do not include the make. The "
             'the value of the "explanation" key should be a string explaining '
             'your answer.'
         ),
@@ -537,7 +537,16 @@ def setup_graph_emissions(**kwargs):
         ),
     )
 
-    G.add_edge("get_units", "final")
+    G.add_edge("get_units", "get_limits")
+
+    G.add_node(
+        "get_limits",
+        prompt=(
+            "What are the emissions limits for the generator with reference number {ref_number}?"
+        ),
+    )
+
+    G.add_edge("get_limits", "final")
 
     G.add_node(
         "final",

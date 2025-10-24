@@ -39,7 +39,7 @@ async def extract_ordinance_values(doc, **kwargs):
 
     return values
 
-MODEL = 'egswaterord-gpt4.1-mini'
+MODEL = 'compassop-gpt-4.1-mini'
 if __name__ == '__main__':
     init_logger('elm', log_level='INFO')
 
@@ -65,12 +65,13 @@ if __name__ == '__main__':
     client = openai.AsyncAzureOpenAI(api_key=azure_api_key,
                                      api_version=azure_version,
                                      azure_endpoint=azure_endpoint)
-    llm_service = OpenAIService(client, rate_limit=1e9)
+    llm_service = OpenAIService(client, rate_limit=5e5)
     services = [llm_service]
-    kwargs = dict(llm_service=llm_service, model=MODEL, temperature=0)
+    kwargs = dict(llm_service=llm_service, model=MODEL)#, temperature=0)
 
     values = ARun.run(services, extract_ordinance_values(doc, **kwargs))
 
+    breakpoint()
     # save outputs
     with open(fp_out, 'w') as f:
         json.dump(values, f, indent=2)
