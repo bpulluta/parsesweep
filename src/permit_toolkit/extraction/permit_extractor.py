@@ -25,14 +25,14 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class ExtractionResult:
-    """Result from extraction with traceability."""
+    """Result from permit extraction."""
     data: Dict[str, Any]
-    confidence: float
+    completeness_score: float  # 0-1 score based on fields populated
     cost: float
     processing_time: float
     validation_notes: List[str]
-    langextract_result: Any = None  # Raw LangExtract result for visualization
-    validation_report: Optional[ValidationReport] = None  # Detailed QA/QC report
+    langextract_result: Any = None
+    validation_report: Optional[ValidationReport] = None
 
 
 class PermitExtractor:
@@ -122,7 +122,7 @@ class PermitExtractor:
             langextract_result = qa_result.get('extraction_result')
             total_cost += qa_result['cost']
         else:
-            logger.info("⚠️  Skipping QA/QC (LangExtract not available)")
+            logger.info("⚠️  Skipping QA/QC (LangExtract not used or disabled)")
         
         # Stage 3: Post-extraction sanity checks
         sanity_warnings = self._run_sanity_checks(validated_data)
@@ -130,18 +130,18 @@ class PermitExtractor:
         
         processing_time = time.time() - start_time
         
-        # Use validation report confidence if available, otherwise calculate
+        # Use validation report confidence if available, otherwise calculate completeness
         if validation_report:
-            confidence = validation_report.overall_confidence
+            completeness = validation_report.overall_confidence
         else:
-            confidence = self._calculate_confidence(
+            completeness = self._calculate_completeness(
                 validated_data,
                 validation_notes
             )
         
         return ExtractionResult(
             data=validated_data,
-            confidence=confidence,
+            completeness_score=completeness,
             cost=total_cost,
             processing_time=processing_time,
             validation_notes=validation_notes,
@@ -324,16 +324,22 @@ DOCUMENT TEXT:
 Return valid JSON following the schema exactly. Match the permit's structure - do not impose grouping.
 """
         
+        # Prepare API call parameters
+        api_params = {
+            "model": self.model,
+            "messages": [
+                {"role": "system", "content": "You are an expert at extracting data from air quality permits. Extract exactly as shown in source document."},
+                {"role": "user", "content": prompt}
+            ],
+            "response_format": {"type": "json_object"}
+        }
+        
+        # Only add temperature for models that support it (not gpt-5, o1, o3, etc.)
+        if not any(x in self.model.lower() for x in ['gpt-5', 'o1', 'o3', 'o4']):
+            api_params["temperature"] = 0
+        
         try:
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=[
-                    {"role": "system", "content": "You are an expert at extracting data from air quality permits. Extract exactly as shown in source document."},
-                    {"role": "user", "content": prompt}
-                ],
-                response_format={"type": "json_object"},
-                temperature=0
-            )
+            response = self.client.chat.completions.create(**api_params)
             
             data = json.loads(response.choices[0].message.content)
             
@@ -698,12 +704,25 @@ Operating: 500 hours/yr""",
             logger.error(f"  ✗ Failed to generate visualization: {e}")
             return None
     
-    def _calculate_confidence(
+    def _calculate_completeness(
         self,
         data: Dict[str, Any],
         validation_notes: List[str]
     ) -> float:
-        """Calculate confidence score."""
+        """
+        Calculate completeness score based on fields populated.
+        
+        Score breakdown:
+        - 0.5: Base score
+        - 0.1: Has permit number
+        - 0.1: Has facility name
+        - 0.1: Has generator sets
+        - 0.1: Complete generator specs (make/model/capacity)
+        - 0.2: Has emissions data
+        
+        Returns:
+            float: Score from 0-1 indicating data completeness
+        """
         score = 0.5
         
         # Permit details

@@ -1,209 +1,150 @@
-# Air Quality Permit Data Extraction Toolkit
+# Air Quality Permit Toolkit
 
-Production-ready system for extracting structured data from air quality permits using OpenAI GPT-4o-mini with dynamic format adaptation.
+> **System for extracting structured data from air quality permits for backup generator analysis**
 
-## Features
+[![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-✅ **Dynamic Format Handling** - Automatically adapts to different permit structures without configuration
-✅ **Reference Preservation** - Maintains exact reference numbers (numeric, alphanumeric, ranges)
-✅ **Field Normalization** - Guarantees all 28 schema fields in output (missing = null)
-✅ **Fuel Harmonization** - Standardizes fuel types ("distillate oil" → "no. 2 distillate")
-✅ **100% Validation Accuracy** - Tested against ground truth from 3 different permit formats
+Extract structured data from air quality permits using state-of-the-art LLMs with **cross-state compatibility**, **intelligent deduplication**, and **production-grade error handling**.
 
-See [PERMIT_FORMAT_VARIATIONS.md](PERMIT_FORMAT_VARIATIONS.md) for details on supported formats.
+---
 
-## Quick Start
+## ✨ Key Features
 
-### 1. Installation
+- **Hybrid LLM Extraction** - OpenAI for accuracy + optional LangExtract for traceability
+- **Cross-State Support** - Handles Virginia, Illinois, and other state permit formats
+- **Smart Deduplication** - Automatic detection of duplicate permits
+- **Rich Structured Output** - 39+ fields per generator including emissions data
+- **Production Ready** - Rate limiting, retry logic, comprehensive error handling
+- **Modern CLI** - Beautiful terminal interface with progress tracking
+- **Data Consolidation** - CSV/Excel export for analysis
 
-```bash
-# Using pixi (recommended)
-pixi install
+---
 
-# Or using pip
-pip install -r requirements.txt
-```
+## 🚀 Quick Start
 
-Create `.env` file in project root:
-```
-OPENAI_API_KEY=your_key_here
-```
-
-### 2. Extract Permits
-
-**Single permit:**
-```bash
-python scripts/run_extraction.py \
-  --pdf data/permits/Virginia/11790_DC_Permit.pdf \
-  --output data/extracted/11790_extracted.json
-```
-
-**Batch extraction:**
-```bash
-python scripts/run_extraction.py \
-  --input-dir data/permits/Virginia/ \
-  --output-dir data/extracted/
-```
-
-### 3. Validate Extractions
+### Installation
 
 ```bash
-python validate_extractions.py
+# Clone repository
+git clone https://github.com/NREL/backupgensprint.git
+cd backupgensprint
+
+# Install package
+pip install -e .
+
+# Configure API key
+echo "OPENAI_API_KEY=your-key-here" > .env
 ```
 
-This extracts validation permits (11790, 11541, 73757) and compares with ground truth.
+### Extract Single Permit
 
-## Schema
-
-The extraction schema (`schemas/air_quality_permits_schema.json`) captures 28 fields per generator:
-
-### Core Fields (Required)
-- `referenceNumber` - Generator ID (e.g., "EG01-EG06")
-- `make` - Manufacturer (Cummins, Caterpillar, etc.)
-- `model` - Model number
-- `ratedCapacityBHP` - Brake horsepower
-- `ratedCapacityKW` - Kilowatts
-
-### Fuel Information
-- `primaryFuelType` - Harmonized to "no. 2 distillate" for diesel
-- `secondaryFuelType` - For dual-fuel generators
-- `otherFuels` - Additional fuels (free text)
-- `fuelSulfurContent` - As decimal (e.g., 0.0015)
-- `fuelThroughputLimit` - Max gallons/year
-
-### Technical Specs
-- `controlTechnology` - Emission control devices
-- `operatingHoursLimit` - Max hours/year
-- `maximumCapacityBHP/KW` - Maximum capacities
-- `numGenerators` - Count in range notation
-
-### Emission Limits
-For each pollutant (NOx, CO, VOC, PM, PM10, PM2.5, SO2):
-- `{pollutant}EmissionLimitLbsHr` - Pounds/hour
-- `{pollutant}EmissionLimitTonsYr` - Tons/year
-
-## Output Format
-
-```json
-{
-  "permitDetails": {
-    "permitNumber": "11790",
-    "permitIssuanceDate": "2016-08-23",
-    "facilityName": "DP Facilities Inc. South, LLC",
-    "facilityAddress": "5978 Windswept BLVD, Wise, VA  24293",
-    "facilityCounty": "Wise County"
-  },
-  "generatorSets": [
-    {
-      "referenceNumber": "EG01-EG06",
-      "numGenerators": 6,
-      "make": "Cummins",
-      "model": "QSK78-G12",
-      "ratedCapacityBHP": 4060,
-      "ratedCapacityKW": 2500,
-      "primaryFuelType": "no. 2 distillate",
-      "fuelSulfurContent": 0.0015,
-      "fuelThroughputLimit": 583500,
-      "controlTechnology": "turbocharged engines and aftercooler",
-      "operatingHoursLimit": 500,
-      "noxEmissionLimitLbsHr": 53.7,
-      "noxEmissionLimitTonsYr": 83.75
-    }
-  ]
-}
+```bash
+permit-toolkit extract data/permits/Virginia/11790_DC_Permit.pdf
 ```
 
-## Fuel Type Harmonization
+### Extract Multiple Permits
 
-Automatic standardization:
+```bash
+# Extract first 10 Virginia permits
+permit-toolkit extract data/permits/Virginia -n 10
 
-| Original | Standardized |
-|----------|-------------|
-| Diesel | no. 2 distillate |
-| Distillate oil | no. 2 distillate |
-| #2 fuel oil | no. 2 distillate |
-| #1 fuel oil | no. 1 distillate |
+# Extract all Illinois permits with GPT-4o
+permit-toolkit extract data/permits/Illinois --model gpt-4o
+```
 
-## Key Features
+### Consolidate to CSV
 
-### Dynamic Format Adaptation
-- **No configuration needed** - Automatically handles different permit structures
-- **Reference number preservation** - Maintains exact format from source (numeric, alphanumeric, ranges)
-- **Smart field mapping** - Correctly distinguishes PM, PM10, and PM2.5 emission limits
-- **Null handling** - Missing fields set to `null` (not zero or empty string)
+```bash
+# Consolidate Virginia extractions
+permit-toolkit consolidate data/extracted/Virginia -o virginia_dataset.csv
 
-### Data Quality
-- **28 schema fields guaranteed** - All fields present in every output
-- **Generator structure preserved** - Maintains source organization (no artificial consolidation)
-- **Range notation support** - "EG01-EG06" stays as 1 entry with `numGenerators: 6`
-- **Fuel standardization** - Harmonizes fuel types across different naming conventions
+# Consolidate with Excel output
+permit-toolkit consolidate data/extracted/Illinois --format excel
+```
 
-See [PERMIT_FORMAT_VARIATIONS.md](PERMIT_FORMAT_VARIATIONS.md) for detailed examples of supported formats.
+
+---
+
+## 📋 CLI Commands
+
+### `extract` - Extract Data from PDFs
+
+```bash
+permit-toolkit extract PATH [OPTIONS]
+```
+
+**Options:**
+- `-o, --output PATH` - Output directory
+- `--state TEXT` - State name (auto-detected)
+- `--model TEXT` - `gpt-4o`, `gpt-4o-mini` (default)
+- `--enable-qa-qc` - Enable QA/QC validation
+- `-n, --limit INT` - Process first N files
+- `--skip-existing/--reprocess` - Skip/reprocess existing
+
+### `consolidate` - Convert JSON to CSV
+
+```bash
+permit-toolkit consolidate INPUT_DIR [OPTIONS]
+```
+
+**Options:**
+- `-o, --output PATH` - Output file path
+- `--state TEXT` - Filter by state
+- `--format [csv|excel|json]` - Output format
+
+---
+
+## 📊 Output Format
+
+### JSON Structure
+
+Each extraction produces structured JSON with:
+- **Metadata**: source_file, extraction_date, state, model, cost_usd, processing_time_sec
+- **Permit Details**: permit_number, facility_name, facility_address, etc.
+- **Generator Sets**: 28 fields per generator including emissions data
+
+### CSV Consolidation
+
+39 columns per generator set including:
+- Permit info (facility, dates, location)
+- Generator specs (make, model, capacity)
+- Fuel data (type, sulfur content, throughput)
+- Emissions limits (NOx, CO, VOC, PM, SO2)
+- Operating parameters
+
+---
+
+## 🏗️ Architecture
+
+```
+PDF → Text Extraction → OpenAI GPT-4o → Structured JSON → CSV Export
+         (PyMuPDF4LLM)    (~5s, $0.0016)                  (Analysis)
+                            ↓
+                      [Optional QA/QC]
+                       (LangExtract)
+```
+
+---
+
+## 📈 Performance
+
+| Metric | Value |
+|--------|-------|
+| **Speed** | 5-15 sec/permit |
+| **Cost (gpt-4o-mini)** | $0.0008-0.0016/permit |
+| **Cost (gpt-4o)** | $0.008-0.016/permit |
+| **States** | Virginia, Illinois (extensible) |
+
+---
 
 ## Project Structure
 
 ```
-backupgensprint/
-├── schemas/
-│   └── air_quality_permits_schema.json    # Production schema
-├── src/permit_toolkit/
-│   ├── extraction/
-│   │   ├── permit_extractor.py            # Main extraction
-│   │   └── pdf_utils.py
-│   └── utils/config.py
-├── scripts/
-│   └── run_extraction.py                  # CLI tool
-├── data/
-│   ├── permits/                           # Input PDFs
-│   ├── extracted/                         # Outputs
-│   └── validation/ground_truth.json       # Validation data
-├── validate_extractions.py                # Validation script
-└── README.md
+src/permit_toolkit/
+├── cli/                    # Command-line interface
+├── extraction/             # PDF extraction & LLM processing
+├── consolidation/          # Data aggregation to CSV
+├── scrapers/              # Web scraping utilities
+└── utils/                 # Configuration & logging
 ```
-
-## Validation
-
-## Validation
-
-**Ground Truth Testing** - 3 permits with different formats:
-
-| Permit | Year | Format | Reference Numbers | Entries | Status |
-|--------|------|--------|-------------------|---------|--------|
-| 11541 | 2008 | Numeric | "3", "2", "1" | 3/3 | ✅ PASS |
-| 11790 | 2016 | Range | "EG01-EG06", "EG07" | 2/2 | ✅ PASS |
-| 73757 | 2023 | Hybrid | "1510-1", "1510-2", etc. | 4/4 | ✅ PASS |
-
-**Success Rate**: 100% (9/9 generators extracted correctly)
-
-See [PERMIT_FORMAT_VARIATIONS.md](PERMIT_FORMAT_VARIATIONS.md) for detailed format documentation.
-
-## Performance
-
-- **Speed**: ~2-3 seconds per permit
-- **Cost**: ~$0.0015-0.003 per permit (gpt-4o-mini)
-- **Accuracy**: 100% on validated permits across different formats
-
-## Development
-
-### Setup
-
-```bash
-git clone <repository-url>
-cd backupgensprint
-python -m venv .venv
-source .venv/bin/activate  # On Windows: .venv\Scripts\activate
-pip install -e .
-```
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/your-feature`)
-3. Make your changes
-4. Run validation: `python validate_extractions.py`
-5. Commit with clear messages
-6. Push and create a Pull Request
-
-## License
-
-See LICENSE file for details.
