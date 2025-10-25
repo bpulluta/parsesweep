@@ -702,6 +702,39 @@ Focus ONLY on generator/equipment data, NOT permit header details."""
                     if field_name in generator_obj:
                         generator_obj[field_name] = value
             
+            # CALCULATE MISSING TONS/YR from lbs/hr + operating hours (if available)
+            operating_hours = generator_obj.get("operatingHoursLimit")
+            num_generators = generator_obj.get("numGenerators")
+            
+            # Parse numGenerators if it's a string like "6" or "(6)"
+            if num_generators:
+                if isinstance(num_generators, str):
+                    import re
+                    num_match = re.search(r'(\d+)', num_generators)
+                    if num_match:
+                        num_generators = int(num_match.group(1))
+                    else:
+                        num_generators = 1
+                elif not isinstance(num_generators, (int, float)):
+                    num_generators = 1
+            else:
+                num_generators = 1  # Default to 1 if not specified
+            
+            if operating_hours and operating_hours > 0:
+                for pollutant in ["nox", "co", "voc", "so2", "pm", "pm10"]:
+                    lbs_hr_field = f"{pollutant}EmissionLimitLbsHr"
+                    tons_yr_field = f"{pollutant}EmissionLimitTonsYr"
+                    
+                    lbs_hr_value = generator_obj.get(lbs_hr_field)
+                    tons_yr_value = generator_obj.get(tons_yr_field)
+                    
+                    # If we have lbs/hr but not tons/yr, calculate it
+                    if lbs_hr_value and not tons_yr_value:
+                        # tons/yr = (lbs/hr_per_unit * hours/yr * num_units) / 2000 lbs/ton
+                        calculated_tons_yr = (lbs_hr_value * operating_hours * num_generators) / 2000.0
+                        generator_obj[tons_yr_field] = round(calculated_tons_yr, 2)
+                        logger.debug(f"Calculated {tons_yr_field} = {calculated_tons_yr:.2f} from {lbs_hr_value} lbs/hr * {operating_hours} hrs/yr * {num_generators} units")
+            
             # QUALITY CHECK: Only add generator if it has minimum required data
             # More strict: require either (make AND capacity) OR (capacity with description)
             # This filters out references to equipment in operational conditions without specs
@@ -730,11 +763,95 @@ Focus ONLY on generator/equipment data, NOT permit header details."""
         if total_extracted != total_kept:
             logger.info(f"📊 Generator QC: Extracted {total_extracted}, kept {total_kept} (filtered {total_extracted - total_kept} empty)")
         
-        # Expand generators with range notation (EG01-EG06) or quantity notation ((6) Cummins)
-        result = self._expand_generator_ranges(result)
+        # CROSS-POLLINATE: Fill missing fields from related generator IDs
+        # E.g., copy sulfur content from "EG01-EO07" to "EG01-EG06" if missing
+        result = self._cross_pollinate_missing_fields(result)
+        
+        # DISABLED: Keep generators with range/quantity notation intact (EG01-EG06 with quantity=6)
+        # Expanding to individual units loses data and makes emission propagation harder
+        # result = self._expand_generator_ranges(result)
         
         # Deduplicate generators (remove likely example contamination)
         result = self._deduplicate_generators(result)
+        
+        return result
+    
+    def _cross_pollinate_missing_fields(self, result: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Fill missing fields by copying from related generator IDs.
+        
+        Scalable approach: For each generator with missing fields, look for similar generators
+        and copy common operational fields (hours, sulfur).
+        
+        Strategy:
+        1. Extract numeric range from ref (e.g., "01-06" from "EG01-EG06")  
+        2. Match generators with overlapping ranges or same facility
+        3. Copy operating parameters that should be consistent across units
+        """
+        import re
+        
+        generators = result.get("generatorSets", [])
+        
+        # Fields that can be safely copied across similar generators
+        copyable_fields = ["operatingHoursLimit", "fuelSulfurContent"]
+        
+        # Build a lookup of available field values
+        field_sources = {field: [] for field in copyable_fields}
+        
+        for gen in generators:
+            for field in copyable_fields:
+                value = gen.get(field)
+                if value is not None:
+                    ref = gen.get("referenceNumber", "")
+                    field_sources[field].append((ref, value, gen))
+        
+        # Fill missing fields
+        for gen in generators:
+            ref = gen.get("referenceNumber", "")
+            if not ref:
+                continue
+            
+            # Extract numeric components for range matching
+            # E.g., "EG01-EG06" -> [1, 6], "EG07" -> [7], "1" -> [1]
+            numbers = [int(m.group()) for m in re.finditer(r'\d+', ref)]
+            
+            for field in copyable_fields:
+                if gen.get(field) is not None:
+                    continue  # Already has value
+                
+                # Find best source for this field
+                best_match = None
+                best_score = 0
+                
+                for source_ref, value, source_gen in field_sources[field]:
+                    # Extract numbers from source ref
+                    source_numbers = [int(m.group()) for m in re.finditer(r'\d+', source_ref)]
+                    
+                    # Scoring: prefer overlapping numeric ranges
+                    score = 0
+                    
+                    # Check for numeric overlap
+                    if numbers and source_numbers:
+                        if any(n in source_numbers or any(sn-1 <= n <= sn+1 for sn in source_numbers) for n in numbers):
+                            score += 10  # Overlapping or adjacent numbers
+                    
+                    # Same prefix letters (E, EG, EO, etc.)
+                    ref_letters = ''.join(c for c in ref if c.isalpha())
+                    source_letters = ''.join(c for c in source_ref if c.isalpha())
+                    if ref_letters and source_letters and ref_letters == source_letters:
+                        score += 5
+                    elif ref_letters and source_letters and ref_letters[0] == source_letters[0]:
+                        score += 2  # At least first letter matches
+                    
+                    if score > best_score:
+                        best_score = score
+                        best_match = (source_ref, value)
+                
+                # Apply best match if found
+                if best_match and best_score > 0:
+                    source_ref, value = best_match
+                    gen[field] = value
+                    logger.debug(f"Cross-pollinated {field}={value} from {source_ref} to {ref} (score: {best_score})")
         
         return result
     
@@ -771,80 +888,92 @@ Focus ONLY on generator/equipment data, NOT permit header details."""
         
         generators = valid_generators
         
-        # Second pass: Check for simple numeric refs vs alpha refs pattern
-        has_alpha_refs = any(
-            any(c.isalpha() for c in str(gen.get("referenceNumber", "")))
-            for gen in generators
-        )
-        
-        # If we have alpha refs (like G-1, EG01), filter out simple numeric refs (1, 2, 3)
-        # These are likely example contamination
-        if has_alpha_refs:
-            kept_generators = []
-            removed_count = 0
-            
-            for gen in generators:
-                ref = str(gen.get("referenceNumber", ""))
-                is_simple_numeric = ref.isdigit() and len(ref) <= 2
-                
-                if is_simple_numeric:
-                    removed_count += 1
-                    make = gen.get("make", "unknown")
-                    kw = gen.get("ratedCapacityKW")
-                    logger.info(f"⚠️  Filtered out generator ref '{ref}' ({make}, {kw} kW) - likely example contamination (simple numeric ref)")
-                else:
-                    kept_generators.append(gen)
-            
-            if removed_count > 0:
-                logger.info(f"✓ Removed {removed_count} example-contaminated generators")
-                generators = kept_generators
-        
-        # Now deduplicate within remaining generators (identical specs)
+        # Second pass: Deduplicate based on specs (not just reference numbers)
+        # Keep generators with unique specs, even if they have simple numeric refs
         from collections import defaultdict
-        groups = defaultdict(list)
+        
+        # Group by specs (excluding reference number - multiple generators can have same specs)
+        spec_groups = defaultdict(list)
         
         for idx, gen in enumerate(generators):
             make = (gen.get("make") or "").lower().strip()
             model = (gen.get("model") or "").lower().strip()
             kw = gen.get("ratedCapacityKW")
             bhp = gen.get("ratedCapacityBHP")
-            ref = str(gen.get("referenceNumber", ""))
+            fuel = (gen.get("fuelType") or "").lower().strip()
             
-            # Create signature - include ref to avoid deduping legitimate units with unique refs
-            sig = (make, model, kw, bhp, ref)
-            groups[sig].append((idx, gen))
+            # Signature based on physical specs (not ref number)
+            sig = (make, model, kw, bhp, fuel)
+            spec_groups[sig].append((idx, gen))
         
-        # Keep unique generators + best representative from each duplicate group
-        kept_indices = set()
+        kept_generators = []
         
-        for sig, gen_list in groups.items():
+        for sig, gen_list in spec_groups.items():
             if len(gen_list) == 1:
-                # Unique generator - keep it
-                kept_indices.add(gen_list[0][0])
+                # Unique specs - keep it
+                kept_generators.append(gen_list[0][1])
             else:
-                # True duplicates (same ref, same specs) - keep only best one
+                # Multiple generators with same specs - rank by data quality
                 scored_gens = []
                 for idx, gen in gen_list:
                     score = 0
                     score += 10 if gen.get("noxEmissionLimitLbsHr") else 0
+                    score += 10 if gen.get("noxEmissionLimitTonsYr") else 0
                     score += 5 if gen.get("coEmissionLimitLbsHr") else 0
-                    score += 5 if gen.get("fuelType") else 0
+                    score += 5 if gen.get("coEmissionLimitTonsYr") else 0
                     score += 3 if gen.get("operatingHoursLimit") else 0
-                    scored_gens.append((score, idx))
+                    score += 3 if gen.get("fuelSulfurContent") else 0
+                    score += 2 if gen.get("fuelType") else 0
+                    
+                    # STRONG preference for alpha refs over numeric (likely contamination)
+                    ref = str(gen.get("referenceNumber", ""))
+                    has_alpha = any(c.isalpha() for c in ref)
+                    is_simple_numeric = ref.isdigit() and len(ref) <= 2
+                    
+                    if has_alpha:
+                        score += 20  # Strong bonus for alpha refs
+                    elif is_simple_numeric and score == 0:
+                        score = -100  # Heavily penalize empty numeric refs
+                    
+                    scored_gens.append((score, idx, gen, ref))
                 
-                # Keep best one
-                best_idx = max(scored_gens, key=lambda x: x[0])[1]
-                kept_indices.add(best_idx)
-                logger.info(f"⚠️  Deduped {len(scored_gens)-1} generators with identical ref '{sig[4]}'")
+                # Sort by score descending
+                scored_gens.sort(reverse=True, key=lambda x: x[0])
+                
+                # Only keep generators with positive scores
+                max_score = scored_gens[0][0]
+                for score, idx, gen, ref in scored_gens:
+                    if score > 0 and score >= max_score * 0.5:  # At least 50% of best
+                        kept_generators.append(gen)
+                    else:
+                        logger.info(f"⚠️  Filtered out duplicate generator ref '{ref}' (score {score} vs {max_score})")
         
-        # Rebuild list with kept generators only
-        deduplicated = [generators[i] for i in sorted(kept_indices)]
+        # FINAL PASS: If we have alpha-ref generators with data, remove ALL numeric-ref generators
+        # Rationale: Permits use either alpha refs (EG01-EG06) OR numeric refs (1,2,3), not both
+        # If we see both, numeric refs are likely example contamination
+        has_alpha_refs = any(
+            any(c.isalpha() for c in str(gen.get("referenceNumber", "")))
+            for gen in kept_generators
+        )
         
-        total_removed = len(generators) - len(deduplicated)
+        if has_alpha_refs:
+            final_generators = []
+            for gen in kept_generators:
+                ref = str(gen.get("referenceNumber", ""))
+                is_simple_numeric = ref.isdigit() and len(ref) <= 2
+                
+                # Remove ALL numeric refs if we have alpha refs (different permit format)
+                if is_simple_numeric:
+                    logger.info(f"⚠️  Filtered out numeric ref '{ref}' (permit uses alpha refs - likely cross-permit contamination)")
+                else:
+                    final_generators.append(gen)
+            kept_generators = final_generators
+        
+        total_removed = len(generators) - len(kept_generators)
         if total_removed > 0:
-            logger.info(f"📊 Deduplication: {len(generators)} → {len(deduplicated)} generators (removed {total_removed})")
+            logger.info(f"📊 Deduplication: {len(generators)} → {len(kept_generators)} generators (removed {total_removed})")
         
-        result["generatorSets"] = deduplicated
+        result["generatorSets"] = kept_generators
         return result
     
     def _expand_generator_ranges(self, result: Dict[str, Any]) -> Dict[str, Any]:

@@ -46,6 +46,8 @@ archive/
 data/permits/
 data/extracted/
 data/outputs/
+data/validation/
+data/visualizations/
 
 # Logs
 *.log

@@ -59,8 +59,7 @@ docs = [
 ]
 
 [project.scripts]
-# CLI temporarily archived - needs update for hybrid approach
-# permit-toolkit = "permit_toolkit.cli.main:cli"
+permit-toolkit = "permit_toolkit.cli.main:main"
 
 [project.urls]
 Homepage = "https://github.com/NREL/backupgensprint"
