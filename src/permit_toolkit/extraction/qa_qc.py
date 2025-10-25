@@ -13,6 +13,44 @@ from typing import Dict, Any, List, Optional, Tuple
 logger = logging.getLogger(__name__)
 
 
+# Pollutant name aliasing for cross-state compatibility
+# Maps canonical names to state-specific variations
+POLLUTANT_ALIASES = {
+    'voc': ['voc', 'vom', 'volatile organic compound', 'volatile organic material', 'volatile organic compounds'],
+    'nox': ['nox', 'no_x', 'nitrogen oxides', 'nitrogen oxide', 'oxides of nitrogen'],
+    'co': ['co', 'carbon monoxide'],
+    'pm': ['pm', 'particulate matter', 'particulates'],
+    'pm10': ['pm10', 'pm-10', 'pm 10', 'particulate matter 10'],
+    'pm2.5': ['pm2.5', 'pm-2.5', 'pm 2.5', 'particulate matter 2.5'],
+    'so2': ['so2', 'so_2', 'sulfur dioxide', 'sulphur dioxide'],
+    'co2': ['co2', 'carbon dioxide'],
+}
+
+
+def normalize_pollutant_name(name: str) -> str:
+    """
+    Normalize pollutant name to canonical form for cross-state comparison.
+    
+    Args:
+        name: Pollutant name from permit (e.g., 'VOM', 'VOC', 'Nitrogen Oxides')
+        
+    Returns:
+        Canonical lowercase name (e.g., 'voc', 'nox')
+    """
+    if not name:
+        return ''
+    
+    name_lower = name.lower().strip()
+    
+    # Check each canonical name's aliases
+    for canonical, aliases in POLLUTANT_ALIASES.items():
+        if name_lower in aliases:
+            return canonical
+    
+    # If no match, return cleaned original
+    return name_lower
+
+
 @dataclass
 class FieldValidation:
     """Validation result for a single field."""
@@ -243,8 +281,16 @@ class QAQCValidator:
             diff = abs(val1 - val2) / avg
             return diff <= self.NUMERIC_TOLERANCE, diff
         
-        # String comparison (case-insensitive)
+        # String comparison (case-insensitive, with pollutant aliasing)
         if isinstance(val1, str) and isinstance(val2, str):
+            # Try pollutant normalization first (handles VOM→VOC, etc.)
+            norm1 = normalize_pollutant_name(val1)
+            norm2 = normalize_pollutant_name(val2)
+            
+            if norm1 and norm2 and norm1 == norm2:
+                return True, 0.0
+            
+            # Fall back to exact match
             match = val1.lower().strip() == val2.lower().strip()
             return match, 0.0 if match else 1.0
         

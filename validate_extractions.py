@@ -63,7 +63,7 @@ def main():
         
         # Run extraction
         print(f"🔍 Extracting data...")
-        result = extractor.extract(text, schema, enable_qa_qc=False)
+        result = extractor.extract(text, schema, enable_qa_qc=True)
         
         # Save to standard location
         output_file = extracted_dir / f"{permit_id}_extracted.json"
