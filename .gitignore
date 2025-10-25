@@ -48,6 +48,7 @@ data/extracted/
 data/outputs/
 data/validation/
 data/visualizations/
+scripts/ 
 
 # Logs
 *.log

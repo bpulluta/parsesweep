@@ -23,6 +23,7 @@ jsonschema = ">=4.20.0,<5"
 tqdm = ">=4.66.0,<5"
 pyyaml = ">=6.0.0,<7"
 requests = ">=2.31.0,<3"
+tesseract = ">=5.5.1,<6"
 
 # PyPI-only dependencies
 [pypi-dependencies]
