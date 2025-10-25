@@ -34,13 +34,14 @@ class PermitConsolidator:
         with open(json_path, 'r') as f:
             return json.load(f)
     
-    def flatten_permit(self, permit_data: Dict[str, Any], source_file: str = None) -> List[Dict[str, Any]]:
+    def flatten_permit(self, permit_data: Dict[str, Any], source_file: str = None, metadata: Dict[str, Any] = None) -> List[Dict[str, Any]]:
         """
         Flatten permit JSON into tabular rows (one per generator).
         
         Args:
             permit_data: Permit dictionary from JSON
             source_file: Optional source filename for tracking
+            metadata: Optional metadata from top-level JSON (extraction info)
             
         Returns:
             List of dictionaries, one per generator set
@@ -60,6 +61,12 @@ class PermitConsolidator:
             'facility_county': permit_details.get('facilityCounty'),
         }
         
+        # Add only essential metadata fields (state)
+        if metadata:
+            base_info.update({
+                'state': metadata.get('state'),
+            })
+        
         if source_file:
             base_info['source_file'] = source_file
         
@@ -78,7 +85,7 @@ class PermitConsolidator:
                 'make': gen.get('make'),
                 'model': gen.get('model'),
                 
-                # Capacity
+                # Capacity - rated
                 'rated_capacity_bhp': gen.get('ratedCapacityBHP'),
                 'rated_capacity_kw': gen.get('ratedCapacityKW'),
                 'rated_capacity_mw': (
@@ -86,8 +93,18 @@ class PermitConsolidator:
                     if gen.get('ratedCapacityKW') else None
                 ),
                 
-                # Fuel
-                'fuel_type': gen.get('fuelType'),
+                # Capacity - maximum (new fields)
+                'maximum_capacity_bhp': gen.get('maximumCapacityBHP'),
+                'maximum_capacity_kw': gen.get('maximumCapacityKW'),
+                'maximum_capacity_mw': (
+                    gen.get('maximumCapacityKW') / 1000 
+                    if gen.get('maximumCapacityKW') else None
+                ),
+                
+                # Fuel - updated to support multiple fuel types
+                'primary_fuel_type': gen.get('primaryFuelType'),
+                'secondary_fuel_type': gen.get('secondaryFuelType'),
+                'other_fuels': gen.get('otherFuels'),
                 'fuel_throughput_gal_yr': gen.get('fuelThroughputLimit'),
                 'fuel_sulfur_content': gen.get('fuelSulfurContent'),
                 
@@ -139,7 +156,13 @@ class PermitConsolidator:
         """
         # Find JSON files
         if self.state:
-            json_files = list((self.extraction_dir / self.state).glob("*.json"))
+            # Check if extraction_dir already IS the state directory
+            state_dir = self.extraction_dir / self.state
+            if state_dir.exists():
+                json_files = list(state_dir.glob("*.json"))
+            else:
+                # extraction_dir is already the state-specific directory
+                json_files = list(self.extraction_dir.glob("*.json"))
         else:
             json_files = list(self.extraction_dir.glob("**/*.json"))
         
@@ -155,8 +178,24 @@ class PermitConsolidator:
         for json_file in json_files:
             try:
                 logger.debug(f"Processing: {json_file.name}")
-                data = self.load_json(json_file)
-                records = self.flatten_permit(data, source_file=json_file.name)
+                full_data = self.load_json(json_file)
+                
+                # Extract metadata and permit data from new structure
+                permit_data = full_data.get('data', full_data)  # Support both old and new structure
+                
+                # Build metadata dict from top-level fields (new structure)
+                metadata = {
+                    'extraction_date': full_data.get('extraction_date'),
+                    'state': full_data.get('state'),
+                    'model': full_data.get('model'),
+                    'qa_qc_enabled': full_data.get('qa_qc_enabled'),
+                    'cost_usd': full_data.get('cost_usd'),
+                    'processing_time_sec': full_data.get('processing_time_sec'),
+                    'completeness_score': full_data.get('completeness_score'),
+                    'generator_count': full_data.get('generator_count'),
+                } if 'data' in full_data else None
+                
+                records = self.flatten_permit(permit_data, source_file=json_file.name, metadata=metadata)
                 all_records.extend(records)
                 logger.debug(f"  ✓ Extracted {len(records)} generator records")
                 
@@ -172,8 +211,15 @@ class PermitConsolidator:
         # Create DataFrame
         df = pd.DataFrame(all_records)
         
-        # Sort by facility and generator
-        df = df.sort_values(['facility_name', 'generator_ref'])
+        # Sort by facility and generator (if columns exist)
+        sort_columns = []
+        if 'facility_name' in df.columns:
+            sort_columns.append('facility_name')
+        if 'generator_ref' in df.columns:
+            sort_columns.append('generator_ref')
+        
+        if sort_columns:
+            df = df.sort_values(sort_columns)
         
         # Save if output path specified
         if output_path:

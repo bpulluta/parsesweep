@@ -16,391 +16,241 @@ from permit_toolkit.consolidation import PermitConsolidator
 
 
 @click.command()
-@click.argument('pdf_path', type=click.Path(exists=True))
-@click.option('--output', '-o', type=click.Path(), help='Output directory for results')
-@click.option('--model', default='gpt-4o-mini', help='OpenAI model to use')
-@click.option('--no-viz', is_flag=True, help='Skip visualization generation')
-@click.option('--verbose', '-v', is_flag=True, help='Enable verbose logging')
-def extract(pdf_path: str, output: Optional[str], model: str, no_viz: bool, verbose: bool):
+@click.argument('path', type=click.Path(exists=True))
+@click.option('--output', '-o', type=click.Path(), help='Output directory')
+@click.option('--state', help='State name (inferred from path if not provided)')
+@click.option('--model', default='gpt-4o-mini', show_default=True, help='Model to use')
+@click.option('--enable-qa-qc', is_flag=True, help='Enable LangExtract QA/QC (slower but adds traceability)')
+@click.option('--use-azure', is_flag=True, help='Use Azure OpenAI')
+@click.option('--limit', '-n', type=int, help='Process only first N files (directory only)')
+@click.option('--skip-existing/--reprocess', default=True, show_default=True, help='Skip already processed files')
+def extract(path: str, output: Optional[str], state: Optional[str],
+            model: str, enable_qa_qc: bool, use_azure: bool, limit: Optional[int],
+            skip_existing: bool):
     """
-    Extract structured data from a single permit PDF.
+    Extract structured data from permit PDFs (single file or directory).
     
-    Example:
+    \b
+    Examples:
+        # Single file
         permit-toolkit extract data/permits/Virginia/11790_DC_Permit.pdf
+        
+        # Directory - extract first 5 Virginia permits (fast mode)
+        permit-toolkit extract data/permits/Virginia -n 5
+        
+        # Directory with full QA/QC validation
+        permit-toolkit extract data/permits/Virginia --enable-qa-qc
+        
+        # Use Azure OpenAI with higher rate limits
+        permit-toolkit extract data/permits/Illinois --use-azure
     """
+    import time
+    import json
+    from permit_toolkit.extraction import PermitExtractor, load_schema
+    from permit_toolkit.extraction.pdf_utils import extract_text_from_pdf
+    from permit_toolkit.utils.config import get_config
+    
     config = get_config()
+    path = Path(path)
     
-    # Setup logger
-    log_file = Path(output) / 'extraction.log' if output else None
-    logger = get_logger(log_file=log_file, verbose=verbose)
+    # Determine if single file or directory
+    is_dir = path.is_dir()
     
-    logger.header("PERMIT EXTRACTION")
-    
-    # Validate API key
-    if not config.openai_api_key:
-        logger.error("OPENAI_API_KEY not found in environment")
-        logger.info(f"Create .env file at: {config.project_root / '.env'}")
-        sys.exit(1)
-    
-    pdf_path = Path(pdf_path)
+    # Infer state from path
+    if is_dir:
+        state = state or path.name
+    else:
+        state = state or path.parent.name
     
     # Setup output directory
-    if output:
-        output_dir = Path(output)
-    else:
-        output_dir = config.data_root / 'extracted' / pdf_path.parent.name
+    output_dir = Path(output) if output else (config.data_root / 'extracted' / state)
     output_dir.mkdir(parents=True, exist_ok=True)
     
-    # Load schema
-    schema = load_schema(config.default_schema)
-    
-    logger.section("Configuration")
-    logger.info(f"PDF:        {pdf_path.name}")
-    logger.info(f"Model:      {model}")
-    logger.info(f"Output:     {output_dir}")
-    
-    # Extract text
-    logger.section("Processing")
-    logger.info("Extracting text from PDF...")
-    try:
-        text = extract_text_from_pdf(pdf_path)
-        logger.success(f"Extracted {len(text):,} characters")
-    except Exception as e:
-        logger.error(f"Failed to extract text: {e}")
-        sys.exit(1)
-    
-    # Create extractor
-    extractor = PermitExtractor(api_key=config.openai_api_key, model=model)
-    
-    # Extract data
-    logger.info("Extracting structured data...")
-    
-    try:
-        result = extractor.extract(text, schema, enable_validation=True)
-        
-        # Display clear metrics
-        logger.section("Extraction Metrics")
-        logger.info(f"Total Cost:      ${result.metadata.total_cost_usd:.4f}")
-        logger.info(f"  OpenAI:        ${result.metadata.openai_cost_usd:.4f} ({result.metadata.openai_time_sec:.2f}s)")
-        logger.info(f"  LangExtract:   ${result.metadata.langextract_cost_usd:.4f} ({result.metadata.langextract_time_sec:.2f}s)")
-        
-        logger.section("Data Quality")
-        logger.info(f"Generator Entries:   {result.metadata.generator_count}")
-        logger.info(f"Total Units:         {result.metadata.total_units}")
-        logger.info(f"Fields Populated:    {result.metadata.fields_with_data}")
-        logger.info(f"Critical Complete:   {'✓ Yes' if result.metadata.critical_fields_complete else '✗ No'}")
-        
-        logger.section("Validation Results")
-        logger.info(f"OpenAI Found:        {result.metadata.openai_generator_count} generators")
-        logger.info(f"LangExtract Found:   {result.metadata.langextract_generator_count} generators")
-        logger.info(f"Counts Match:        {'✓ Yes' if result.metadata.generators_match else '⚠️  No'}")
-        
-        if result.metadata.conflicts_found > 0:
-            logger.info(f"Conflicts Detected:  {result.metadata.conflicts_found}")
-            logger.info(f"Conflicts Resolved:  {result.metadata.conflicts_resolved} (using LangExtract evidence)")
-        if result.metadata.fields_augmented > 0:
-            logger.info(f"Fields Augmented:    {result.metadata.fields_augmented} (from LangExtract)")
-        
-        if not result.metadata.conflicts_found and result.metadata.generators_match:
-            logger.success("All data validated - OpenAI and LangExtract agree ✓")
-        
-        # Show validation actions if verbose
-        if verbose and result.metadata.validation_actions:
-            logger.section("Validation Actions")
-            for action in result.metadata.validation_actions:
-                logger.info(f"  {action}")
-        
-        # Save JSON result with clear metadata
-        output_file = output_dir / f"{pdf_path.stem}.json"
-        output_data = {
-            'source_file': pdf_path.name,
-            'extraction_date': time.strftime('%Y-%m-%d %H:%M:%S'),
-            'model': model,
-            
-            # Cost breakdown
-            'cost': {
-                'total_usd': result.metadata.total_cost_usd,
-                'openai_usd': result.metadata.openai_cost_usd,
-                'langextract_usd': result.metadata.langextract_cost_usd
-            },
-            
-            # Timing
-            'timing': {
-                'total_sec': result.metadata.total_time_sec,
-                'openai_sec': result.metadata.openai_time_sec,
-                'langextract_sec': result.metadata.langextract_time_sec
-            },
-            
-            # Quality metrics
-            'quality': {
-                'generator_count': result.metadata.generator_count,
-                'total_units': result.metadata.total_units,
-                'fields_populated': result.metadata.fields_with_data,
-                'critical_fields_complete': result.metadata.critical_fields_complete,
-                'has_permit_details': result.metadata.has_permit_details,
-                'has_facility_info': result.metadata.has_facility_info,
-                'has_generators': result.metadata.has_generators,
-                'has_emissions_data': result.metadata.has_emissions_data,
-                'has_operating_restrictions': result.metadata.has_operating_restrictions
-            },
-            
-            # Validation results
-            'validation': {
-                'openai_generator_count': result.metadata.openai_generator_count,
-                'langextract_generator_count': result.metadata.langextract_generator_count,
-                'generators_match': result.metadata.generators_match,
-                'conflicts_found': result.metadata.conflicts_found,
-                'conflicts_resolved': result.metadata.conflicts_resolved,
-                'fields_augmented': result.metadata.fields_augmented,
-                'actions': result.metadata.validation_actions
-            },
-            
-            # Extracted data
-            'data': result.data
-        }
-        
-        with open(output_file, 'w') as f:
-            json.dump(output_data, f, indent=2)
-        
-        logger.success(f"Saved JSON: {output_file}")
-        
-        # Generate visualization if LangExtract result available
-        if not no_viz and result.langextract_result:
-            logger.info("Generating visualization...")
-            try:
-                # Generate HTML visualization showing source citations
-                viz_dir = output_dir / 'visualizations'
-                viz_dir.mkdir(exist_ok=True)
-                viz_file = viz_dir / f"{pdf_path.stem}.html"
-                
-                # Simple HTML generation with LangExtract extractions
-                html_content = result.langextract_result.to_html() if hasattr(result.langextract_result, 'to_html') else None
-                if html_content:
-                    with open(viz_file, 'w') as f:
-                        f.write(html_content)
-                    logger.success(f"Saved visualization: {viz_file}")
-                else:
-                    logger.warning("LangExtract result does not support HTML visualization")
-            except Exception as e:
-                logger.warning(f"Visualization generation failed: {e}")
-        
-        # Summary
-        logger.section("Extraction Summary")
-        facility = result.data.get('permitDetails', {})
-        if facility.get('facilityName'):
-            logger.info(f"Facility:        {facility['facilityName']}")
-        if facility.get('permitNumber'):
-            logger.info(f"Permit:         {facility['permitNumber']}")
-        
-        logger.success("\nExtraction successful!")
-        
-    except Exception as e:
-        logger.error(f"Extraction failed: {e}")
-        if verbose:
-            import traceback
-            logger.debug(traceback.format_exc())
-        sys.exit(1)
-
-
-@click.command()
-@click.argument('input_dir', type=click.Path(exists=True))
-@click.option('--output', '-o', type=click.Path(), help='Output directory for results')
-@click.option('--state', help='State name (for organization)')
-@click.option('--model', default='gpt-4o-mini', help='OpenAI model to use')
-@click.option('--limit', '-n', type=int, help='Process only N files')
-@click.option('--skip-existing', is_flag=True, default=True, help='Skip already processed files')
-@click.option('--no-viz', is_flag=True, help='Skip visualization generation')
-@click.option('--verbose', '-v', is_flag=True, help='Enable verbose logging')
-def batch_extract(input_dir: str, output: Optional[str], state: Optional[str], 
-                  model: str, limit: Optional[int], skip_existing: bool, 
-                  no_viz: bool, verbose: bool):
-    """
-    Extract data from multiple permit PDFs in a directory.
-    
-    Example:
-        permit-toolkit batch-extract data/permits/Virginia --state Virginia
-    """
-    config = get_config()
-    
-    input_dir = Path(input_dir)
-    
-    # Infer state from path if not provided
-    if not state:
-        state = input_dir.name
-    
-    # Setup output directory
-    if output:
-        output_dir = Path(output)
+    # Get PDF files
+    if is_dir:
+        pdf_files = sorted(path.glob("*.pdf"))
+        if limit:
+            pdf_files = pdf_files[:limit]
+        if skip_existing:
+            original_count = len(pdf_files)
+            pdf_files = [p for p in pdf_files if not (output_dir / f"{p.stem}.json").exists()]
+            skipped = original_count - len(pdf_files)
+            if skipped > 0 and len(pdf_files) > 0:
+                print(f"⏭️  Skipping {skipped} already processed file{'s' if skipped != 1 else ''}")
     else:
-        output_dir = config.data_root / state / 'extracted'
-    output_dir.mkdir(parents=True, exist_ok=True)
-    
-    # Setup logger
-    log_file = output_dir / 'batch_extraction.log'
-    logger = get_logger(log_file=log_file, verbose=verbose)
-    
-    logger.header(f"BATCH EXTRACTION - {state.upper()}")
-    
-    # Validate API key
-    if not config.openai_api_key:
-        logger.error("OPENAI_API_KEY not found in environment")
-        logger.info(f"Create .env file at: {config.project_root / '.env'}")
-        sys.exit(1)
-    
-    # Find PDF files
-    pdf_files = sorted(input_dir.glob("*.pdf"))
+        pdf_files = [path]
     
     if not pdf_files:
-        logger.error(f"No PDF files found in {input_dir}")
-        sys.exit(1)
+        print("✅ All files already processed!" if is_dir else f"❌ File not found: {path}")
+        return
     
-    # Apply limit
-    if limit:
-        pdf_files = pdf_files[:limit]
+    # ANSI color codes
+    BLUE = '\033[94m'
+    GREEN = '\033[92m'
+    YELLOW = '\033[93m'
+    CYAN = '\033[96m'
+    MAGENTA = '\033[95m'
+    BOLD = '\033[1m'
+    DIM = '\033[2m'
+    RESET = '\033[0m'
     
-    # Filter already processed
-    if skip_existing:
-        original_count = len(pdf_files)
-        pdf_files = [
-            pdf for pdf in pdf_files
-            if not (output_dir / f"{pdf.stem}.json").exists()
-        ]
-        skipped = original_count - len(pdf_files)
-        if skipped > 0:
-            logger.info(f"Skipping {skipped} already processed files")
-        
-        if not pdf_files:
-            logger.success("All files already processed!")
-            return
+    # Header with clean visual separation
+    print(f"\n{BOLD}{BLUE}┌{'─' * 78}┐{RESET}")
+    print(f"{BOLD}{BLUE}│{RESET} {BOLD}{'AIR QUALITY PERMIT EXTRACTION':^76}{RESET} {BOLD}{BLUE}│{RESET}")
+    print(f"{BOLD}{BLUE}└{'─' * 78}┘{RESET}")
     
-    logger.section("Configuration")
-    logger.info(f"Input:      {input_dir}")
-    logger.info(f"Output:     {output_dir}")
-    logger.info(f"State:      {state}")
-    logger.info(f"Model:      {model}")
-    logger.info(f"Files:      {len(pdf_files)}")
+    # Configuration table with colors
+    print(f"\n  {DIM}State{RESET}     {CYAN}{state}{RESET}")
+    print(f"  {DIM}Input{RESET}     {path}")
+    print(f"  {DIM}Output{RESET}    {output_dir}")
+    print(f"  {DIM}Model{RESET}     {model}")
+    qa_status = f"{GREEN}Enabled{RESET}" if enable_qa_qc else f"{DIM}Disabled{RESET}"
+    print(f"  {DIM}QA/QC{RESET}     {qa_status}")
+    if use_azure:
+        print(f"  {DIM}Provider{RESET}  {MAGENTA}Azure OpenAI{RESET}")
+    print(f"  {DIM}Files{RESET}     {BOLD}{len(pdf_files)}{RESET}")
     
-    # Load schema
+    # Initialize extractor
     schema = load_schema(config.default_schema)
     
-    # Create extractor
-    extractor = PermitExtractor(api_key=config.openai_api_key, model=model)
+    if use_azure:
+        import os
+        from openai import AzureOpenAI
+        
+        azure_key = os.environ.get('AZURE_OPENAI_API_KEY')
+        azure_endpoint = os.environ.get('AZURE_OPENAI_ENDPOINT')
+        azure_version = os.environ.get('AZURE_OPENAI_API_VERSION', '2025-04-01-preview')
+        
+        if not azure_key or not azure_endpoint:
+            print("❌ Azure OpenAI credentials not found")
+            print("   Required: AZURE_OPENAI_API_KEY, AZURE_OPENAI_ENDPOINT")
+            return
+        
+        azure_client = AzureOpenAI(
+            api_key=azure_key,
+            api_version=azure_version,
+            azure_endpoint=azure_endpoint
+        )
+        extractor = PermitExtractor(api_key=azure_key, model=model)
+        extractor.client = azure_client
+    else:
+        if not config.openai_api_key:
+            print("❌ OPENAI_API_KEY not found")
+            print(f"   Create .env file at: {config.project_root / '.env'}")
+            return
+        extractor = PermitExtractor(api_key=config.openai_api_key, model=model)
     
-    # Initialize metrics
-    metrics = ExtractionMetrics(total_files=len(pdf_files))
+    # Processing section
+    print(f"\n{DIM}{'─' * 80}{RESET}")
     
-    logger.section("Processing")
+    results = []
+    total_cost = 0.0
+    total_time = 0.0
     
-    # Process each file
     for i, pdf_path in enumerate(pdf_files, 1):
-        logger.progress(i, len(pdf_files), pdf_path.name)
+        # Progress indicator with cleaner format
+        if len(pdf_files) > 1:
+            pct = (i - 1) / len(pdf_files)
+            bar_len = 30
+            filled = int(bar_len * pct)
+            bar = f"{GREEN}{'█' * filled}{RESET}{DIM}{'░' * (bar_len - filled)}{RESET}"
+            status = f"{CYAN}[{i}/{len(pdf_files)}]{RESET}"
+            print(f"\n  {status} {bar} {pdf_path.name}")
+        else:
+            print(f"\n  {CYAN}→{RESET} {pdf_path.name}")
         
         try:
-            # Extract text
+            # Extract
             text = extract_text_from_pdf(pdf_path)
+            result = extractor.extract(text, schema, enable_qa_qc=enable_qa_qc)
             
-            # Extract data
-            result = extractor.extract(text, schema, enable_validation=True)
+            # Count total generators (sum across all generator sets)
+            generator_sets = result.data.get('generatorSets', [])
+            num_gens = sum(gen_set.get('numGenerators', 0) or 0 for gen_set in generator_sets)
+            permit_num = result.data.get('permitDetails', {}).get('permitNumber', 'N/A')
             
-            # Save JSON with new metadata structure
-            output_file = output_dir / f"{pdf_path.stem}.json"
             output_data = {
                 'source_file': pdf_path.name,
                 'extraction_date': time.strftime('%Y-%m-%d %H:%M:%S'),
                 'state': state,
                 'model': model,
-                
-                # Cost breakdown
-                'cost': {
-                    'total_usd': result.metadata.total_cost_usd,
-                    'openai_usd': result.metadata.openai_cost_usd,
-                    'langextract_usd': result.metadata.langextract_cost_usd
-                },
-                
-                # Timing
-                'timing': {
-                    'total_sec': result.metadata.total_time_sec,
-                    'openai_sec': result.metadata.openai_time_sec,
-                    'langextract_sec': result.metadata.langextract_time_sec
-                },
-                
-                # Quality metrics
-                'quality': {
-                    'generator_count': result.metadata.generator_count,
-                    'total_units': result.metadata.total_units,
-                    'fields_populated': result.metadata.fields_with_data,
-                    'critical_fields_complete': result.metadata.critical_fields_complete,
-                    'has_permit_details': result.metadata.has_permit_details,
-                    'has_facility_info': result.metadata.has_facility_info,
-                    'has_generators': result.metadata.has_generators,
-                    'has_emissions_data': result.metadata.has_emissions_data,
-                    'has_operating_restrictions': result.metadata.has_operating_restrictions
-                },
-                
-                # Validation results
-                'validation': {
-                    'openai_generator_count': result.metadata.openai_generator_count,
-                    'langextract_generator_count': result.metadata.langextract_generator_count,
-                    'generators_match': result.metadata.generators_match,
-                    'conflicts_found': result.metadata.conflicts_found,
-                    'conflicts_resolved': result.metadata.conflicts_resolved,
-                    'fields_augmented': result.metadata.fields_augmented,
-                    'actions': result.metadata.validation_actions if verbose else []
-                },
-                
-                # Extracted data
-                'data': result.data
+                'qa_qc_enabled': enable_qa_qc,
+                'cost_usd': result.cost,
+                'processing_time_sec': result.processing_time,
+                'completeness_score': result.completeness_score,
+                'generator_count': num_gens,
+                'permit_number': permit_num,
+                'data': result.data,
+                'validation_notes': result.validation_notes
             }
             
+            output_file = output_dir / f"{pdf_path.stem}.json"
             with open(output_file, 'w') as f:
                 json.dump(output_data, f, indent=2)
             
-            # Generate visualization if available
-            if not no_viz and result.langextract_result:
-                try:
-                    viz_dir = output_dir / 'visualizations'
-                    viz_dir.mkdir(exist_ok=True)
-                    viz_file = viz_dir / f"{pdf_path.stem}.html"
-                    
-                    html_content = result.langextract_result.to_html() if hasattr(result.langextract_result, 'to_html') else None
-                    if html_content:
-                        with open(viz_file, 'w') as f:
-                            f.write(html_content)
-                except Exception as viz_error:
-                    if verbose:
-                        logger.warning(f"Visualization failed: {viz_error}")
+            # Track results
+            results.append({
+                'file': pdf_path.name,
+                'permit': permit_num,
+                'generators': num_gens,
+                'cost': result.cost,
+                'time': result.processing_time,
+                'success': True
+            })
+            total_cost += result.cost
+            total_time += result.processing_time
             
-            # Record metrics
-            metrics.add_success(
-                cost=result.metadata.total_cost_usd,
-                duration=result.metadata.total_time_sec
-            )
-            
-            # Log result with validation info
-            status_msg = f"{result.metadata.generator_count} gens"
-            if result.metadata.conflicts_resolved > 0:
-                status_msg += f", {result.metadata.conflicts_resolved} corrections"
-            if result.metadata.fields_augmented > 0:
-                status_msg += f", +{result.metadata.fields_augmented} fields"
-            
-            logger.file_result(
-                pdf_path.name, 
-                "success",
-                cost=result.metadata.total_cost_usd,
-                duration=result.metadata.total_time_sec,
-                details=status_msg
-            )
+            # Success message with compact format and colors
+            gen_text = f"{GREEN}{num_gens}{RESET} generators"
+            permit_text = f"Permit {CYAN}{permit_num}{RESET}"
+            cost_text = f"{MAGENTA}${result.cost:.4f}{RESET}"
+            time_text = f"{DIM}{result.processing_time:.1f}s{RESET}"
+            print(f"     {GREEN}✓{RESET} {gen_text}  {DIM}•{RESET}  {permit_text}  {DIM}•{RESET}  {cost_text}  {DIM}•{RESET}  {time_text}")
             
         except Exception as e:
-            metrics.add_failure()
-            logger.file_result(pdf_path.name, "failed", details=str(e))
-            if verbose:
-                import traceback
-                logger.debug(traceback.format_exc())
+            results.append({
+                'file': pdf_path.name,
+                'success': False,
+                'error': str(e)
+            })
+            error_msg = str(e)[:60]
+            print(f"     {YELLOW}✗{RESET} {DIM}Error: {error_msg}{RESET}")
     
-    # Print summary
-    logger.metrics_summary(metrics)
-    logger.info(f"\nLog file: {log_file}")
+    # Summary with clean table format
+    print(f"\n{DIM}{'─' * 80}{RESET}")
+    print(f"\n  {BOLD}{'SUMMARY':^76}{RESET}")
+    print(f"\n{DIM}{'─' * 80}{RESET}")
+    
+    successful = [r for r in results if r.get('success')]
+    failed = [r for r in results if not r.get('success')]
+    
+    # Results overview
+    print(f"\n  {BOLD}Results{RESET}")
+    print(f"    {DIM}Processed{RESET}    {len(results)} file{'s' if len(results) != 1 else ''}")
+    print(f"    {DIM}Successful{RESET}   {GREEN}{len(successful)}{RESET}")
+    if failed:
+        print(f"    {DIM}Failed{RESET}       {YELLOW}{len(failed)}{RESET}")
+    
+    if successful:
+        # Cost metrics
+        avg_cost = total_cost / len(successful)
+        print(f"\n  {BOLD}Cost{RESET}")
+        print(f"    {DIM}Total{RESET}        {MAGENTA}${total_cost:.4f}{RESET}")
+        print(f"    {DIM}Per file{RESET}     {MAGENTA}${avg_cost:.4f}{RESET}")
+        
+        # Time metrics
+        avg_time = total_time / len(successful)
+        print(f"\n  {BOLD}Time{RESET}")
+        print(f"    {DIM}Total{RESET}        {total_time:.1f}s")
+        print(f"    {DIM}Per file{RESET}     {avg_time:.1f}s")
+        
+        # Generator count
+        total_gens = sum(r['generators'] for r in successful)
+        print(f"\n  {BOLD}Generators{RESET}")
+        print(f"    {DIM}Extracted{RESET}    {GREEN}{total_gens}{RESET}")
+    
+    print(f"\n  {DIM}Output → {RESET}{output_dir}")
+    print(f"\n{DIM}{'─' * 80}{RESET}\n")
 
 
 @click.command()
@@ -496,42 +346,177 @@ def validate(extraction_file: str, verbose: bool):
 
 @click.command()
 @click.argument('input_dir', type=click.Path(exists=True))
-@click.argument('output_file', type=click.Path())
-@click.option('--state', help='Filter by state')
-@click.option('--verbose', '-v', is_flag=True, help='Enable verbose logging')
-def consolidate(input_dir: str, output_file: str, state: Optional[str], verbose: bool):
+@click.option('--output', '-o', type=click.Path(), help='Output CSV file path')
+@click.option('--state', help='Filter by state (e.g., Virginia, Illinois)')
+@click.option('--format', type=click.Choice(['csv', 'excel', 'json'], case_sensitive=False), 
+              default='csv', show_default=True, help='Output format')
+def consolidate(input_dir: str, output: Optional[str], state: Optional[str], format: str):
     """
-    Consolidate multiple extraction JSON files into a CSV dataset.
+    Consolidate extracted JSON files into analysis-ready datasets.
     
-    Example:
-        permit-toolkit consolidate data/Virginia/extracted data/Virginia/dataset.csv --state Virginia
+    Flattens nested JSON structures into tabular format with one row per
+    generator set, including all permit details and emissions data.
+    
+    \b
+    Examples:
+        # Consolidate all Virginia extractions
+        permit-toolkit consolidate data/extracted/Virginia
+        
+        # Consolidate with custom output
+        permit-toolkit consolidate data/extracted/Illinois -o il_dataset.csv
+        
+        # Filter by state from mixed directory
+        permit-toolkit consolidate data/extracted --state Virginia
+        
+        # Export to Excel
+        permit-toolkit consolidate data/extracted/Virginia --format excel
     """
-    logger = get_logger(verbose=verbose)
-    
-    logger.header("CONSOLIDATION")
+    # ANSI color codes
+    BLUE = '\033[94m'
+    GREEN = '\033[92m'
+    YELLOW = '\033[93m'
+    CYAN = '\033[96m'
+    MAGENTA = '\033[95m'
+    BOLD = '\033[1m'
+    DIM = '\033[2m'
+    RESET = '\033[0m'
     
     input_dir = Path(input_dir)
-    output_file = Path(output_file)
-    output_file.parent.mkdir(parents=True, exist_ok=True)
     
-    logger.info(f"Input:  {input_dir}")
-    logger.info(f"Output: {output_file}")
+    # Auto-infer state from directory name if not provided
+    if not state and input_dir.name not in ['extracted', 'data']:
+        state = input_dir.name
+    
+    # Determine output file path
+    if not output:
+        state_suffix = f"_{state.lower()}" if state else ""
+        ext = 'xlsx' if format == 'excel' else format
+        output = Path(f"data/outputs/consolidated{state_suffix}.{ext}")
+    else:
+        output = Path(output)
+    
+    output.parent.mkdir(parents=True, exist_ok=True)
+    
+    # Header with clean visual separation
+    print(f"\n{BOLD}{BLUE}┌{'─' * 78}┐{RESET}")
+    print(f"{BOLD}{BLUE}│{RESET} {BOLD}{'DATA CONSOLIDATION':^76}{RESET} {BOLD}{BLUE}│{RESET}")
+    print(f"{BOLD}{BLUE}└{'─' * 78}┘{RESET}\n")
+    
+    # Configuration display
+    print(f"  {DIM}Input{RESET}     {input_dir}")
+    print(f"  {DIM}Output{RESET}    {output}")
     if state:
-        logger.info(f"State:  {state}")
+        print(f"  {DIM}State{RESET}     {CYAN}{state}{RESET}")
+    print(f"  {DIM}Format{RESET}    {format.upper()}")
     
-    # Create consolidator
+    # Find JSON files - use consolidator to check
+    print(f"  {DIM}Files{RESET}     ", end='', flush=True)
+    
+    # Create consolidator first to let it find files
     consolidator = PermitConsolidator(
         extraction_dir=input_dir,
         state=state
     )
     
-    # Consolidate
-    logger.info("\nConsolidating extractions...")
-    df = consolidator.consolidate_to_dataframe()
+    # Find JSON files - check if input_dir itself contains JSONs or has subdirectories
+    if state and (input_dir / state).exists():
+        # State subdirectory exists
+        json_files = list((input_dir / state).glob("*.json"))
+    elif state:
+        # input_dir IS the state directory
+        json_files = list(input_dir.glob("*.json"))
+    else:
+        # No state filter, search recursively
+        json_files = list(input_dir.glob("**/*.json"))
     
-    # Save
-    df.to_csv(output_file, index=False)
+    if not json_files:
+        print(f"\n\n{YELLOW}⚠{RESET}  No JSON files found in {input_dir}")
+        if state:
+            print(f"   (filtering for state: {state})")
+        return
     
-    logger.success(f"Created dataset with {len(df)} records")
-    logger.info(f"Columns: {', '.join(df.columns[:5])}...")
-    logger.info(f"\nSaved to: {output_file}")
+    print(f"{len(json_files)}\n")
+    
+    print(f"{DIM}{'─' * 80}{RESET}\n")
+    
+    # Create consolidator and process
+    start_time = time.time()
+    
+    print(f"  {CYAN}→{RESET} Processing JSON files...")
+    df = consolidator.consolidate()
+    
+    if len(df) == 0:
+        print(f"  {YELLOW}⚠{RESET}  No records extracted\n")
+        print(f"{DIM}{'─' * 80}{RESET}\n")
+        return
+    
+    print(f"  {GREEN}✓{RESET} Consolidated {len(df)} records\n")
+    
+    # Save output in requested format
+    print(f"  {CYAN}→{RESET} Saving to {format.upper()}...")
+    if format == 'excel':
+        df.to_excel(output, index=False, engine='openpyxl')
+    elif format == 'json':
+        df.to_json(output, orient='records', indent=2)
+    else:  # csv
+        df.to_csv(output, index=False)
+    
+    processing_time = time.time() - start_time
+    print(f"  {GREEN}✓{RESET} Saved {output.name}\n")
+    
+    # Summary section
+    print(f"{DIM}{'─' * 80}{RESET}\n")
+    print(f"{BOLD}{'SUMMARY':^80}{RESET}\n")
+    print(f"{DIM}{'─' * 80}{RESET}\n")
+    
+    # Calculate statistics
+    num_facilities = df['facility_name'].nunique() if 'facility_name' in df.columns else 0
+    num_permits = df['permit_number'].nunique() if 'permit_number' in df.columns else 0
+    
+    # Sum generators (handle the num_generators column correctly)
+    if 'num_generators' in df.columns:
+        # Each row represents a generator set with num_generators count
+        total_generators = int(df['num_generators'].sum())
+    else:
+        total_generators = len(df)  # Fallback to row count
+    
+    # Completeness analysis
+    avg_completeness = None
+    if 'completeness_score' in df.columns:
+        avg_completeness = df['completeness_score'].mean()
+    
+    # Data quality metrics
+    records_with_emissions = 0
+    if 'nox_limit_tons_yr' in df.columns:
+        records_with_emissions = df['nox_limit_tons_yr'].notna().sum()
+    
+    # Dataset stats
+    print(f"  {BOLD}Dataset{RESET}")
+    print(f"    Generator Sets   {CYAN}{len(df)}{RESET}")
+    print(f"    Facilities       {num_facilities}")
+    print(f"    Permits          {num_permits}")
+    print(f"    Total Generators {MAGENTA}{total_generators}{RESET}")
+    
+    # Quality metrics
+    if avg_completeness is not None:
+        color = GREEN if avg_completeness >= 0.8 else YELLOW if avg_completeness >= 0.6 else '\033[91m'
+        print(f"\n  {BOLD}Quality{RESET}")
+        print(f"    Avg Completeness {color}{avg_completeness:.1%}{RESET}")
+    
+    if records_with_emissions > 0:
+        pct = (records_with_emissions / len(df)) * 100
+        print(f"    With Emissions   {records_with_emissions} ({pct:.0f}%)")
+    
+    # File info
+    file_size = output.stat().st_size
+    size_kb = file_size / 1024
+    size_str = f"{size_kb:.1f} KB" if size_kb < 1024 else f"{size_kb/1024:.1f} MB"
+    
+    print(f"\n  {BOLD}Output{RESET}")
+    print(f"    Columns          {len(df.columns)}")
+    print(f"    File Size        {size_str}")
+    print(f"    Processing Time  {processing_time:.1f}s")
+    
+    print(f"\n  Output → {output}")
+    
+    print(f"\n{DIM}{'─' * 80}{RESET}\n")

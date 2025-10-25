@@ -2,7 +2,7 @@
 
 import click
 
-from permit_toolkit.cli.commands import extract, batch_extract, validate, consolidate
+from permit_toolkit.cli.commands import extract, validate, consolidate
 
 
 @click.group()
@@ -18,8 +18,8 @@ def cli():
         # Extract single permit
         permit-toolkit extract data/permits/Virginia/11790_DC_Permit.pdf
         
-        # Batch extract all permits in a directory
-        permit-toolkit batch-extract data/permits/Virginia --state Virginia
+        # Extract directory of permits
+        permit-toolkit extract data/permits/Virginia -n 5
         
         # Validate extraction result
         permit-toolkit validate data/extracted/Virginia/11790_DC_Permit.json
@@ -32,7 +32,6 @@ def cli():
 
 # Register commands
 cli.add_command(extract)
-cli.add_command(batch_extract)
 cli.add_command(validate)
 cli.add_command(consolidate)
 
