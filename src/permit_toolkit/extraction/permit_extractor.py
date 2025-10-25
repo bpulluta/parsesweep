@@ -91,8 +91,10 @@ class PermitExtractor:
         total_cost += openai_result['cost']
         validated_data = openai_result['data']
         
-        # Stage 2: LangExtract QA/QC (optional)
-        if enable_qa_qc and self.langextract_available:
+        # Stage 2: LangExtract QA/QC (optional - currently disabled)
+        # Note: LangExtract has poor cross-state coverage (48% VA, 5.7% IL)
+        # Re-enable after developing universal examples
+        if False and enable_qa_qc and self.langextract_available:
             logger.info("🔍 Stage 2: LangExtract QA/QC with Cross-Validation")
             qa_result = self._validate_with_langextract(text, openai_result['data'])
             
@@ -279,10 +281,14 @@ CRITICAL EXTRACTION GUIDELINES:
 
 5. EMISSION LIMITS:
    - Match generator reference numbers to emission limit conditions
-   - CRITICAL: Distinguish between PM, PM10, and PM2.5:
-     * "PM-10" or "PM10" goes to pm10EmissionLimitLbsHr/TonsYr
-     * "PM-2.5" or "PM2.5" goes to pm25EmissionLimitLbsHr/TonsYr
-     * "PM" or "Particulate Matter" (without suffix) goes to pmEmissionLimitLbsHr/TonsYr
+   - CRITICAL: Pollutant name mapping:
+     * "VOC", "TVOC", or "VOM" (Volatile Organic Material - Illinois term) → vocEmissionLimitLbsHr/TonsYr
+     * "NOx", "NO_x", "Nitrogen Oxides" → noxEmissionLimitLbsHr/TonsYr
+     * "CO", "Carbon Monoxide" → coEmissionLimitLbsHr/TonsYr
+     * "PM-10" or "PM10" → pm10EmissionLimitLbsHr/TonsYr
+     * "PM-2.5" or "PM2.5" → pm25EmissionLimitLbsHr/TonsYr
+     * "PM" or "Particulate Matter" (without suffix) → pmEmissionLimitLbsHr/TonsYr
+     * "SO2", "Sulfur Dioxide" → so2EmissionLimitLbsHr/TonsYr
    - Extract "Each" limits (per generator) for lbs/hr
    - Extract "Combined" limits (for group) for tons/yr if "Each" not available
    - Set to null if not specified
@@ -378,14 +384,17 @@ CRITICAL: Extract EVERY instance of the following information types:
    Extract ALL pollutant limits in BOTH lbs/hr AND tons/yr:
    - Nitrogen Oxides (NOx, NO_x)
    - Carbon Monoxide (CO)
-   - Volatile Organic Compounds (VOC, TVOC)
+   - Volatile Organic Compounds (VOC, TVOC, VOM - use "voc" for VOM)
    - Particulate Matter (PM, PM-10, PM10, PM-2.5, PM2.5)
    - Sulfur Dioxide (SO2, SO_2)
+   
+   NOTE: Illinois permits use "VOM" (Volatile Organic Material) - treat as VOC
    
    Look for patterns like:
    "NOx: 53.7 lbs/hr, 83.75 tons/yr"
    "CO emissions shall not exceed 3.85 lbs/hr"
    "PM-10: 0.36 lbs/hr and 0.58 tons per year"
+   "VOM: 0.075 g/bhp-hr (27.58 lbs/hr, 120.9 tons/yr)"
 
 IMPORTANT: For each extraction, capture the EXACT source text from the permit for traceability.""",
                 examples=examples,
