@@ -10,8 +10,24 @@ echo ""
 
 # Check Python version
 echo "Checking Python version..."
+if ! command -v python3 &> /dev/null; then
+    echo "❌ Python 3 not found. Please install Python 3.9 or later."
+    exit 1
+fi
+
 python_version=$(python3 --version 2>&1 | awk '{print $2}')
+python_major=$(echo "$python_version" | cut -d. -f1)
+python_minor=$(echo "$python_version" | cut -d. -f2)
+
 echo "Found Python $python_version"
+
+# Check if version is 3.9 or later
+if [ "$python_major" -lt 3 ] || ([ "$python_major" -eq 3 ] && [ "$python_minor" -lt 9 ]); then
+    echo "❌ Python 3.9 or later is required. You have Python $python_version"
+    exit 1
+fi
+
+echo "✓ Python version is compatible"
 
 # Create virtual environment if it doesn't exist
 if [ ! -d ".venv" ]; then

@@ -1,4 +1,5 @@
 # Air Quality Permit Toolkit - Core Dependencies
+# Python >= 3.9 required
 
 # Core Data Processing
 pandas>=2.0.0
@@ -17,7 +18,7 @@ pypdf>=3.17.0
 
 # LLM-based Extraction
 openai>=1.0.0
-langextract>=0.1.0
+langextract>=1.0.0
 
 # Data Validation
 pydantic>=2.5.0

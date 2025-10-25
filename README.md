@@ -23,18 +23,69 @@ Extract structured data from air quality permits using state-of-the-art LLMs wit
 
 ## 🚀 Quick Start
 
-### Installation
+### Prerequisites
+
+- **Python 3.9+** (Python 3.9, 3.10, 3.11, or 3.12)
+- OpenAI API key
+
+### Installation with pixi (⭐ Recommended)
+
+**Why pixi?** Fast binary installs, reproducible environments, zero configuration, works across all platforms.
 
 ```bash
-# Clone repository
+# 1. Install pixi (one-time setup)
+curl -fsSL https://pixi.sh/install.sh | bash
+# Or on Windows: iwr -useb https://pixi.sh/install.ps1 | iex
+
+# 2. Clone repository
 git clone https://github.com/NREL/backupgensprint.git
 cd backupgensprint
+
+# 3. Install dependencies (automatic, takes ~30 seconds)
+pixi install
+
+# 4. Configure API key
+echo "OPENAI_API_KEY=your-key-here" > .env
+
+# 5. Verify installation
+pixi run permit-toolkit --help
+```
+
+**That's it!** No virtual environments, no version conflicts, just works.
+
+**Using pixi commands:**
+```bash
+# Run commands with 'pixi run' prefix
+pixi run permit-toolkit extract data/permits/Virginia/sample.pdf
+pixi run permit-toolkit consolidate data/extracted/Virginia
+
+# Or enter pixi shell (no prefix needed)
+pixi shell
+permit-toolkit extract data/permits/Virginia/sample.pdf
+exit
+```
+
+### Alternative: pip Installation
+
+If you prefer traditional Python tools:
+
+```bash
+# Clone and enter directory
+git clone https://github.com/NREL/backupgensprint.git
+cd backupgensprint
+
+# Create virtual environment (recommended)
+python -m venv .venv
+source .venv/bin/activate  # Windows: .venv\Scripts\activate
 
 # Install package
 pip install -e .
 
 # Configure API key
 echo "OPENAI_API_KEY=your-key-here" > .env
+
+# Verify installation
+permit-toolkit --help
 ```
 
 ### Extract Single Permit
@@ -148,3 +199,141 @@ src/permit_toolkit/
 ├── scrapers/              # Web scraping utilities
 └── utils/                 # Configuration & logging
 ```
+
+---
+
+## 🔧 Requirements
+
+### Core Dependencies
+- Python 3.9+ (tested with 3.9, 3.10, 3.11, 3.12, 3.13)
+- pandas >= 2.0.0
+- numpy >= 1.24.0
+- openai >= 1.0.0
+- langextract >= 1.0.0
+- pymupdf4llm >= 0.0.5
+- click >= 8.1.0
+- All others listed in `requirements.txt`, `pyproject.toml`, and `pixi.toml`
+
+### Environment Variables
+```bash
+OPENAI_API_KEY=sk-your-key-here  # Required
+```
+
+---
+
+## 🐛 Troubleshooting
+
+### Installation Issues
+
+**Issue: `permit-toolkit: command not found`**
+```bash
+# For pip: Ensure virtual environment is activated
+source .venv/bin/activate
+
+# For pixi: Use 'pixi run' prefix
+pixi run permit-toolkit --help
+
+# Or reinstall
+pip install -e .  # pip
+pixi install      # pixi
+```
+
+**Issue: `No module named 'permit_toolkit'`**
+```bash
+# Ensure you installed with -e flag
+pip install -e .
+
+# Not: pip install -r requirements.txt
+```
+
+**Issue: Python version error**
+```bash
+# Check version
+python --version
+
+# Must be >= 3.9
+# Install newer Python if needed
+```
+
+### Runtime Issues
+
+**Issue: OpenAI API errors**
+```bash
+# Check API key is set
+echo $OPENAI_API_KEY
+
+# Set it if empty
+export OPENAI_API_KEY="sk-your-key-here"
+
+# Or load from .env
+export $(cat .env | grep -v '^#' | xargs)
+```
+
+**Issue: PDF extraction fails**
+```bash
+# Check PDF file exists and is readable
+ls -lh data/permits/Virginia/your_file.pdf
+
+# Try with verbose logging
+pixi run permit-toolkit extract your_file.pdf --model gpt-4o-mini
+```
+
+**Issue: Pixi installation slow or fails**
+```bash
+# Clean cache and retry
+pixi clean
+pixi install
+
+# Check your platform is supported
+uname -a  # Should be: macOS (Intel/ARM), Linux (x64), or Windows (x64)
+```
+
+---
+
+## 📦 Dependency Management
+
+This project supports **both pip and pixi** installation methods:
+
+| Method | Files | Best For |
+|--------|-------|----------|
+| **pip** | `requirements.txt`, `pyproject.toml` | Development, CI/CD |
+| **pixi** | `pixi.toml` | Production, reproducible environments |
+
+All dependency files are synchronized to ensure consistency.
+
+**Adding new dependencies:**
+1. Add to `requirements.txt` and `pyproject.toml`
+2. Add to `pixi.toml` ([dependencies] or [pypi-dependencies])
+3. Test both: `pip install -e .` and `pixi install`
+
+---
+
+## 🤝 Contributing
+
+Contributions are welcome! Please:
+1. Fork the repository
+2. Create a feature branch
+3. Install dev dependencies: `pip install -e ".[dev]"` or use pixi dev environment
+4. Run tests: `pytest`
+5. Format code: `black src/` and `ruff check src/`
+6. Submit a pull request
+
+---
+
+## 📄 License
+
+MIT License - See [LICENSE](LICENSE) file for details.
+
+---
+
+## 🙏 Acknowledgments
+
+Developed by the NREL team for air quality permit analysis and backup generator data collection.
+
+---
+
+## 📞 Support
+
+- **Issues**: https://github.com/NREL/backupgensprint/issues
+- **Documentation**: This README
+- **API Costs**: Monitor usage at https://platform.openai.com/usage
