@@ -174,6 +174,31 @@ class PermitExtractor:
         
         return data
     
+    def _clean_emission_zeros(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Convert emission limit zeros to null.
+        
+        OpenAI sometimes returns 0 instead of null for missing emission limits.
+        A true "0 tons/yr" limit would be unusual and should be explicit in the permit.
+        This prevents misleading data where 0 could be confused with "not specified".
+        """
+        emission_fields = [
+            'noxEmissionLimitLbsHr', 'noxEmissionLimitTonsYr',
+            'coEmissionLimitLbsHr', 'coEmissionLimitTonsYr',
+            'vocEmissionLimitLbsHr', 'vocEmissionLimitTonsYr',
+            'so2EmissionLimitLbsHr', 'so2EmissionLimitTonsYr',
+            'pmEmissionLimitLbsHr', 'pmEmissionLimitTonsYr',
+            'pm10EmissionLimitLbsHr', 'pm10EmissionLimitTonsYr',
+            'pm25EmissionLimitLbsHr', 'pm25EmissionLimitTonsYr',
+        ]
+        
+        for generator in data.get('generatorSets', []):
+            for field in emission_fields:
+                if field in generator and generator[field] == 0:
+                    generator[field] = None
+        
+        return data
+    
     def _extract_with_openai(self, text: str, schema: Dict[str, Any]) -> Dict[str, Any]:
         """
         Extract using OpenAI - extract generators exactly as listed in permit.
@@ -314,6 +339,10 @@ Return valid JSON following the schema exactly. Match the permit's structure - d
             
             # Ensure all schema fields are present (fill missing with null)
             data = self._normalize_with_schema(data, schema)
+            
+            # Post-process: Convert emission limit zeros to null
+            # (OpenAI sometimes returns 0 for missing values instead of null)
+            data = self._clean_emission_zeros(data)
             
             # Calculate cost
             usage = response.usage
