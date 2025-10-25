@@ -91,10 +91,10 @@ class PermitExtractor:
         total_cost += openai_result['cost']
         validated_data = openai_result['data']
         
-        # Stage 2: LangExtract QA/QC (optional - currently disabled)
-        # Note: LangExtract has poor cross-state coverage (48% VA, 5.7% IL)
-        # Re-enable after developing universal examples
-        if False and enable_qa_qc and self.langextract_available:
+        # Stage 2: LangExtract QA/QC with universal examples (re-enabled)
+        # Uses cross-state compatible examples (3 minimal formats)
+        # Targets >30% coverage on both VA and IL
+        if enable_qa_qc and self.langextract_available:
             logger.info("🔍 Stage 2: LangExtract QA/QC with Cross-Validation")
             qa_result = self._validate_with_langextract(text, openai_result['data'])
             
@@ -449,196 +449,104 @@ IMPORTANT: For each extraction, capture the EXACT source text from the permit fo
     
     def _create_langextract_examples(self) -> List:
         """
-        Create comprehensive LangExtract examples covering all critical fields.
+        Create UNIVERSAL LangExtract examples that work across state formats.
+        
+        Design principles:
+        - Minimal format assumptions (handles lists, tables, paragraphs)
+        - Semantic content focus (extract meaning, not format)
+        - Multiple pollutant variations (VOC, VOM, full names)
+        - Flexible reference patterns (EG##, G-#, numeric)
+        - Simplified text to avoid format-specific brittleness
         """
         return [
-            # Example 1: Generator range with full specs and ALL emission types
+            # Example 1: Compact emission list (works for VA bullet lists)
             self.lx.data.ExampleData(
-                text="""EG01-EG06 (6) Cummins QSK78-G12 diesel-fueled engine-generator sets, 2500 kW (4060 hp)
-Fuel: No. 2 distillate oil with sulfur content not exceeding 0.0015% by weight
-Fuel Throughput: The engine-generator sets (Ref. Nos. EG01-EG06) combined shall consume no more than 583,600 gallons per year.
-Operating Hours: Each emergency engine-generator set shall not operate more than 500 hours per year.
-Emissions: 
-- NOx: 53.7 lbs/hr and 83.75 tons/yr
-- CO: 3.85 lbs/hr and 6.05 tons/yr
-- VOC: 1.29 lbs/hr and 2.01 tons/yr
-- PM-10: 0.36 lbs/hr and 0.58 tons/yr""",
+                text="""EG01-EG06: 6 generators, 2500 kW
+NOx 53.7 lbs/hr 83.75 tons/yr
+CO 3.85 lbs/hr 6.05 tons/yr
+VOC 1.29 lbs/hr 2.01 tons/yr
+Hours: 500/year""",
                 extractions=[
-                    # Generator ID and specs
-                    self.lx.data.Extraction(
-                        extraction_class="GENERATOR",
-                        extraction_text="(6) Cummins QSK78-G12 diesel-fueled engine-generator sets",
-                        attributes={"generator_id": "EG01-EG06", "make": "Cummins", "model": "QSK78-G12", "quantity": "6"}
-                    ),
-                    # Capacity specs
-                    self.lx.data.Extraction(
-                        extraction_class="SPEC",
-                        extraction_text="2500 kW",
-                        attributes={"generator_id": "EG01-EG06", "type": "capacity_kw", "value": "2500"}
-                    ),
-                    self.lx.data.Extraction(
-                        extraction_class="SPEC",
-                        extraction_text="4060 hp",
-                        attributes={"generator_id": "EG01-EG06", "type": "capacity_bhp", "value": "4060"}
-                    ),
-                    # Fuel specs
-                    self.lx.data.Extraction(
-                        extraction_class="FUEL",
-                        extraction_text="No. 2 distillate oil",
-                        attributes={"generator_id": "EG01-EG06", "type": "fuel_type"}
-                    ),
-                    self.lx.data.Extraction(
-                        extraction_class="FUEL",
-                        extraction_text="sulfur content not exceeding 0.0015% by weight",
-                        attributes={"generator_id": "EG01-EG06", "type": "sulfur", "value": "0.0015"}
-                    ),
-                    self.lx.data.Extraction(
-                        extraction_class="FUEL",
-                        extraction_text="consume no more than 583,600 gallons per year",
-                        attributes={"generator_id": "EG01-EG06", "type": "throughput", "value": "583600"}
-                    ),
-                    # Operating hours
-                    self.lx.data.Extraction(
-                        extraction_class="SPEC",
-                        extraction_text="not operate more than 500 hours per year",
-                        attributes={"generator_id": "EG01-EG06", "type": "hours", "value": "500"}
-                    ),
-                    # ALL emission limits with both lbs/hr and tons/yr
                     self.lx.data.Extraction(
                         extraction_class="EMISSION",
-                        extraction_text="NOx: 53.7 lbs/hr and 83.75 tons/yr",
+                        extraction_text="NOx 53.7 lbs/hr 83.75 tons/yr",
                         attributes={"generator_id": "EG01-EG06", "pollutant": "nox", "lbs_hr": "53.7", "tons_yr": "83.75"}
                     ),
                     self.lx.data.Extraction(
                         extraction_class="EMISSION",
-                        extraction_text="CO: 3.85 lbs/hr and 6.05 tons/yr",
+                        extraction_text="CO 3.85 lbs/hr 6.05 tons/yr",
                         attributes={"generator_id": "EG01-EG06", "pollutant": "co", "lbs_hr": "3.85", "tons_yr": "6.05"}
                     ),
                     self.lx.data.Extraction(
                         extraction_class="EMISSION",
-                        extraction_text="VOC: 1.29 lbs/hr and 2.01 tons/yr",
+                        extraction_text="VOC 1.29 lbs/hr 2.01 tons/yr",
                         attributes={"generator_id": "EG01-EG06", "pollutant": "voc", "lbs_hr": "1.29", "tons_yr": "2.01"}
                     ),
                     self.lx.data.Extraction(
-                        extraction_class="EMISSION",
-                        extraction_text="PM-10: 0.36 lbs/hr and 0.58 tons/yr",
-                        attributes={"generator_id": "EG01-EG06", "pollutant": "pm10", "lbs_hr": "0.36", "tons_yr": "0.58"}
+                        extraction_class="SPEC",
+                        extraction_text="500/year",
+                        attributes={"generator_id": "EG01-EG06", "type": "hours", "value": "500"}
                     ),
                 ]
             ),
-            # Example 2: Single generator with different format
+            # Example 2: Table format with full names (works for IL tables)
             self.lx.data.ExampleData(
-                text="""EG07: One (1) Cummins QSK19-G8 diesel emergency generator, 600 kW (967 bhp)
-Control Technology: turbocharged engine and aftercooler
-Emissions shall not exceed:
-NOx - 12.79 lbs/hr
-CO - 1.08 lbs/hr  
-VOC - 0.28 lbs/hr
-PM-10 - 0.17 lbs/hr""",
+                text="""G-1 thru G-6: six 2000 kW engines
+Nitrogen Oxides (NOx) 55.16 lbs/hr 66.19 tons/yr
+Carbon Monoxide (CO) 11.63 lbs/hr 13.95 tons/yr
+Volatile Organic Material (VOM) 1.60 lbs/hr 1.92 tons/yr  
+Particulate Matter (PM) 0.73 lbs/hr 0.88 tons/yr""",
                 extractions=[
                     self.lx.data.Extraction(
-                        extraction_class="GENERATOR",
-                        extraction_text="One (1) Cummins QSK19-G8 diesel emergency generator",
-                        attributes={"generator_id": "EG07", "make": "Cummins", "model": "QSK19-G8", "quantity": "1"}
-                    ),
-                    self.lx.data.Extraction(
-                        extraction_class="SPEC",
-                        extraction_text="600 kW",
-                        attributes={"generator_id": "EG07", "type": "capacity_kw", "value": "600"}
-                    ),
-                    self.lx.data.Extraction(
-                        extraction_class="SPEC",
-                        extraction_text="967 bhp",
-                        attributes={"generator_id": "EG07", "type": "capacity_bhp", "value": "967"}
-                    ),
-                    self.lx.data.Extraction(
-                        extraction_class="CONTROL",
-                        extraction_text="turbocharged engine and aftercooler",
-                        attributes={"generator_id": "EG07", "type": "control_technology"}
+                        extraction_class="EMISSION",
+                        extraction_text="Nitrogen Oxides (NOx) 55.16 lbs/hr 66.19 tons/yr",
+                        attributes={"generator_id": "G-1 thru G-6", "pollutant": "nox", "lbs_hr": "55.16", "tons_yr": "66.19"}
                     ),
                     self.lx.data.Extraction(
                         extraction_class="EMISSION",
-                        extraction_text="NOx - 12.79 lbs/hr",
-                        attributes={"generator_id": "EG07", "pollutant": "nox", "lbs_hr": "12.79"}
+                        extraction_text="Carbon Monoxide (CO) 11.63 lbs/hr 13.95 tons/yr",
+                        attributes={"generator_id": "G-1 thru G-6", "pollutant": "co", "lbs_hr": "11.63", "tons_yr": "13.95"}
                     ),
                     self.lx.data.Extraction(
                         extraction_class="EMISSION",
-                        extraction_text="CO - 1.08 lbs/hr",
-                        attributes={"generator_id": "EG07", "pollutant": "co", "lbs_hr": "1.08"}
+                        extraction_text="Volatile Organic Material (VOM) 1.60 lbs/hr 1.92 tons/yr",
+                        attributes={"generator_id": "G-1 thru G-6", "pollutant": "voc", "lbs_hr": "1.60", "tons_yr": "1.92"}
                     ),
                     self.lx.data.Extraction(
                         extraction_class="EMISSION",
-                        extraction_text="VOC - 0.28 lbs/hr",
-                        attributes={"generator_id": "EG07", "pollutant": "voc", "lbs_hr": "0.28"}
-                    ),
-                    self.lx.data.Extraction(
-                        extraction_class="EMISSION",
-                        extraction_text="PM-10 - 0.17 lbs/hr",
-                        attributes={"generator_id": "EG07", "pollutant": "pm10", "lbs_hr": "0.17"}
+                        extraction_text="Particulate Matter (PM) 0.73 lbs/hr 0.88 tons/yr",
+                        attributes={"generator_id": "G-1 thru G-6", "pollutant": "pm", "lbs_hr": "0.73", "tons_yr": "0.88"}
                     ),
                 ]
             ),
-            # Example 3: Numeric reference with tons/year only
+            # Example 3: Annual only (simplified)
             self.lx.data.ExampleData(
-                text="""Equipment Ref. No. 3: One Caterpillar 1500 kW diesel powered emergency generator (2500 BHP)
-Operating limit: 500 hours per year
-Fuel: Distillate oil with sulfur content ≤ 0.5%
+                text="""Ref. 3: Caterpillar 1500 kW
 Annual emissions:
-NOx: 15.98 tons/yr
-CO: 3.44 tons/yr
-VOC: 1.27 tons/yr
-SO2: 1.05 tons/yr
-PM-10: 1.12 tons/yr""",
+NOx 15.98 tons/yr
+CO 3.44 tons/yr
+PM-10 1.12 tons/yr
+Operating: 500 hours/yr""",
                 extractions=[
                     self.lx.data.Extraction(
-                        extraction_class="GENERATOR",
-                        extraction_text="One Caterpillar 1500 kW diesel powered emergency generator",
-                        attributes={"generator_id": "3", "make": "Caterpillar", "quantity": "1"}
-                    ),
-                    self.lx.data.Extraction(
-                        extraction_class="SPEC",
-                        extraction_text="1500 kW",
-                        attributes={"generator_id": "3", "type": "capacity_kw", "value": "1500"}
-                    ),
-                    self.lx.data.Extraction(
-                        extraction_class="SPEC",
-                        extraction_text="2500 BHP",
-                        attributes={"generator_id": "3", "type": "capacity_bhp", "value": "2500"}
-                    ),
-                    self.lx.data.Extraction(
-                        extraction_class="SPEC",
-                        extraction_text="500 hours per year",
-                        attributes={"generator_id": "3", "type": "hours", "value": "500"}
-                    ),
-                    self.lx.data.Extraction(
-                        extraction_class="FUEL",
-                        extraction_text="sulfur content ≤ 0.5%",
-                        attributes={"generator_id": "3", "type": "sulfur", "value": "0.005"}
-                    ),
-                    self.lx.data.Extraction(
                         extraction_class="EMISSION",
-                        extraction_text="NOx: 15.98 tons/yr",
+                        extraction_text="NOx 15.98 tons/yr",
                         attributes={"generator_id": "3", "pollutant": "nox", "tons_yr": "15.98"}
                     ),
                     self.lx.data.Extraction(
                         extraction_class="EMISSION",
-                        extraction_text="CO: 3.44 tons/yr",
+                        extraction_text="CO 3.44 tons/yr",
                         attributes={"generator_id": "3", "pollutant": "co", "tons_yr": "3.44"}
                     ),
                     self.lx.data.Extraction(
                         extraction_class="EMISSION",
-                        extraction_text="VOC: 1.27 tons/yr",
-                        attributes={"generator_id": "3", "pollutant": "voc", "tons_yr": "1.27"}
-                    ),
-                    self.lx.data.Extraction(
-                        extraction_class="EMISSION",
-                        extraction_text="SO2: 1.05 tons/yr",
-                        attributes={"generator_id": "3", "pollutant": "so2", "tons_yr": "1.05"}
-                    ),
-                    self.lx.data.Extraction(
-                        extraction_class="EMISSION",
-                        extraction_text="PM-10: 1.12 tons/yr",
+                        extraction_text="PM-10 1.12 tons/yr",
                         attributes={"generator_id": "3", "pollutant": "pm10", "tons_yr": "1.12"}
+                    ),
+                    self.lx.data.Extraction(
+                        extraction_class="SPEC",
+                        extraction_text="500 hours/yr",
+                        attributes={"generator_id": "3", "type": "hours", "value": "500"}
                     ),
                 ]
             ),
