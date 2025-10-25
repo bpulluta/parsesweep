@@ -55,11 +55,11 @@ def extract_text_from_pdf(pdf_path: Path) -> str:
     if not text and PYMUPDF_AVAILABLE:
         # Fallback to PyMuPDF for basic text extraction
         try:
-            doc = pymupdf.open(str(pdf_path))
-            for page_num in range(len(doc)):
-                text += doc[page_num].get_text() + "\n"
-            doc.close()
-            logger.debug(f"Extracted {len(doc)} pages using PyMuPDF from {pdf_path.name}")
+            with pymupdf.open(str(pdf_path)) as doc:
+                page_count = len(doc)
+                for page_num in range(page_count):
+                    text += doc[page_num].get_text() + "\n"
+            logger.debug(f"Extracted {page_count} pages using PyMuPDF from {pdf_path.name}")
         except Exception as e:
             logger.error(f"Error extracting text with PyMuPDF from {pdf_path}: {e}")
             return ""
