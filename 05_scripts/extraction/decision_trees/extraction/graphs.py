@@ -95,8 +95,8 @@ def setup_graph_generators(**kwargs):
         prompt=(
             "Respond based on our entire conversation so far. Return your "
             "answer in JSON format (not markdown). Your JSON file must include exactly two "
-            'keys. The keys are "referenceNumbers" and "explanation". The '
-            'value of the "referenceNumbers" key should be a list containing '
+            'keys. The keys are "reference_numbers" and "explanation". The '
+            'value of the "reference_numbers" key should be a list containing '
             "the identifiers of all backup generators mentioned in the text. The "
             'the value of the "explanation" key should be a string explaining '
             'your answer.'
@@ -199,8 +199,8 @@ def setup_graph_fuel(**kwargs):
     G.add_node(
         "init",
         prompt=(
-            "Does the following text mention the fuel type (e.g., diesel, natural gas) "
-            "for the generator with reference number {ref_number}? "
+            "Does the following text mention the fuel type (e.g., diesel, natural gas, "
+            "distillate oil, etc.) for the generator with reference number {ref_number}? "
             "Keep in mind that the reference number "
             "could be included in range or group of numbers and information "
             "that applies to that group should be considered relevant. "
@@ -335,6 +335,7 @@ def setup_graph_capacity(**kwargs):
     G.add_edge("get_application", "get_capacity_kw", condition=llm_response_starts_with_no)
     G.add_edge("check_permit", "get_capacity_kw", condition=llm_response_starts_with_yes)
 
+    # TODO: add check to ensure capacity is explicitly stated for this generator, not inferred
     G.add_node(
         "get_capacity_kw",
         prompt=(
@@ -394,7 +395,7 @@ def setup_graph_backup(**kwargs):
         "get_backup",
         prompt=(
             "How much back up generation is provided by the generator with reference number "
-            "{ref_number} in megawatts (MW)?"
+            "{ref_number} in megawatts (MW)?" # TODO: model is doing math here, should specify not to infer?
         ),
     )
 
@@ -420,7 +421,7 @@ def setup_graph_control_techs(**kwargs):
 
     G.add_node(
         "init",
-        prompt=( #TODO: refine this prompt, what exactly are we looking for? emissions contol techs?
+        prompt=( #TODO: refine this prompt, what exactly are we looking for? emissions contol techs? define what control techs are?
             "Does the following text mention control technologies "
             "for the generator with reference number {ref_number}? "
             "Keep in mind that the reference number "
