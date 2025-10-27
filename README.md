@@ -5,7 +5,7 @@
 [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-Extract structured data from air quality permits using state-of-the-art LLMs with **cross-state compatibility**, **intelligent deduplication**, and **production-grade error handling**.
+Extract structured data from air quality permits using state-of-the-art LLMs with **cross-state compatibility**, **intelligent deduplication**, and **error handling**.
 
 ---
 
@@ -15,8 +15,6 @@ Extract structured data from air quality permits using state-of-the-art LLMs wit
 - **Cross-State Support** - Handles Virginia, Illinois, and other state permit formats
 - **Smart Deduplication** - Automatic detection of duplicate permits
 - **Rich Structured Output** - 39+ fields per generator including emissions data
-- **Production Ready** - Rate limiting, retry logic, comprehensive error handling
-- **Modern CLI** - Beautiful terminal interface with progress tracking
 - **Data Consolidation** - CSV/Excel export for analysis
 
 ---
@@ -26,9 +24,9 @@ Extract structured data from air quality permits using state-of-the-art LLMs wit
 ### Prerequisites
 
 - **Python 3.9+** (Python 3.9, 3.10, 3.11, or 3.12)
-- OpenAI API key
+- **API Access**: Either OpenAI API key OR Azure OpenAI service
 
-### Installation with pixi (⭐ Recommended)
+### Installation with pixi (Recommended)
 
 **Why pixi?** Fast binary installs, reproducible environments, zero configuration, works across all platforms.
 
@@ -44,8 +42,15 @@ cd backupgensprint
 # 3. Install dependencies (automatic, takes ~30 seconds)
 pixi install
 
-# 4. Configure API key
+# 4. Configure API credentials
+
+# Option A: OpenAI API
 echo "OPENAI_API_KEY=your-key-here" > .env
+
+# Option B: Azure OpenAI
+echo "AZURE_OPENAI_API_KEY=your-azure-key" > .env
+echo "AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com/" >> .env
+echo "AZURE_OPENAI_API_VERSION=2025-04-01-preview" >> .env
 
 # 5. Verify installation
 pixi run permit-toolkit --help
@@ -81,8 +86,15 @@ source .venv/bin/activate  # Windows: .venv\Scripts\activate
 # Install package
 pip install -e .
 
-# Configure API key
+# Configure API credentials
+
+# Option A: OpenAI API
 echo "OPENAI_API_KEY=your-key-here" > .env
+
+# Option B: Azure OpenAI
+echo "AZURE_OPENAI_API_KEY=your-azure-key" > .env
+echo "AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com/" >> .env
+echo "AZURE_OPENAI_API_VERSION=2025-04-01-preview" >> .env
 
 # Verify installation
 permit-toolkit --help
@@ -91,17 +103,21 @@ permit-toolkit --help
 ### Extract Single Permit
 
 ```bash
+# Using OpenAI
 permit-toolkit extract data/permits/Virginia/11790_DC_Permit.pdf
+
+# Using Azure OpenAI  
+permit-toolkit extract data/permits/Virginia/11790_DC_Permit.pdf --use-azure
 ```
 
 ### Extract Multiple Permits
 
 ```bash
-# Extract first 10 Virginia permits
+# Extract first 10 Virginia permits (OpenAI)
 permit-toolkit extract data/permits/Virginia -n 10
 
-# Extract all Illinois permits with GPT-4o
-permit-toolkit extract data/permits/Illinois --model gpt-4o
+# Extract all Illinois permits with GPT-4o via Azure
+permit-toolkit extract data/permits/Illinois --model gpt-4o --use-azure
 ```
 
 ### Consolidate to CSV
@@ -114,6 +130,80 @@ permit-toolkit consolidate data/extracted/Virginia -o virginia_dataset.csv
 permit-toolkit consolidate data/extracted/Illinois --format excel
 ```
 
+---
+
+## 🔷 Azure OpenAI Setup
+
+For users with Azure OpenAI deployments, the toolkit supports Azure as an alternative to OpenAI API with typically higher rate limits and enhanced security.
+
+### Prerequisites for Azure
+
+1. **Azure OpenAI Service** deployed with model access (gpt-4o, gpt-4o-mini, etc.)
+2. **API credentials** from your Azure portal
+
+### Configuration
+
+1. **Get your Azure credentials** from the Azure portal:
+   ```bash
+   # Your Azure OpenAI resource endpoint
+   AZURE_OPENAI_ENDPOINT="https://your-resource.openai.azure.com/"
+   
+   # Your API key from Azure portal > Keys and Endpoint
+   AZURE_OPENAI_API_KEY="your-32-character-key"
+   
+   # API version (optional, defaults to 2025-04-01-preview)
+   AZURE_OPENAI_API_VERSION="2025-04-01-preview"
+   
+   # Deployment name (optional, uses your Azure model deployment name)
+   AZURE_OPENAI_MODEL="your-deployment-name"
+   ```
+
+2. **Set environment variables**:
+   ```bash
+   # Create .env file with Azure credentials
+   cat > .env << EOF
+   AZURE_OPENAI_API_KEY=your-azure-key
+   AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com/
+   AZURE_OPENAI_API_VERSION=2025-04-01-preview
+   AZURE_OPENAI_MODEL=your-deployment-name
+   EOF
+   ```
+
+3. **Verify Azure connection**:
+   ```bash
+   # Test with a single permit
+   pixi run permit-toolkit extract data/permits/Virginia/sample.pdf --use-azure --model gpt-4o
+   ```
+
+### Azure Usage Examples
+
+```bash
+# Load environment variables from .env file
+export $(cat .env | grep -v '^#' | xargs)
+
+# Extract with Azure OpenAI (uses AZURE_OPENAI_MODEL from .env)
+permit-toolkit extract data/permits/Virginia --use-azure
+
+# Override model with --model flag (ignores AZURE_OPENAI_MODEL)
+permit-toolkit extract data/permits/Illinois --use-azure --model compassop-gpt-4o
+
+# Batch processing with Azure (higher rate limits)
+permit-toolkit extract data/permits/Virginia --use-azure -n 50
+```
+
+**Changing Azure Models:**
+
+You have three options to select which Azure model deployment to use:
+
+1. **Set in .env (recommended)** - Edit `AZURE_OPENAI_MODEL` in your `.env` file:
+   ```bash
+   AZURE_OPENAI_MODEL=compassop-gpt-4.1-mini  # Change this line
+   ```
+
+2. **Use --model flag** - Override on command line:
+   ```bash
+   permit-toolkit extract file.pdf --use-azure --model compassop-gpt-5
+   ```
 
 ---
 
@@ -129,6 +219,7 @@ permit-toolkit extract PATH [OPTIONS]
 - `-o, --output PATH` - Output directory
 - `--state TEXT` - State name (auto-detected)
 - `--model TEXT` - `gpt-4o`, `gpt-4o-mini` (default)
+- `--use-azure` - Use Azure OpenAI instead of OpenAI API
 - `--enable-qa-qc` - Enable QA/QC validation
 - `-n, --limit INT` - Process first N files
 - `--skip-existing/--reprocess` - Skip/reprocess existing
@@ -169,11 +260,11 @@ Each extraction produces structured JSON with:
 ## 🏗️ Architecture
 
 ```
-PDF → Text Extraction → OpenAI GPT-4o → Structured JSON → CSV Export
-         (PyMuPDF4LLM)    (~5s, $0.0016)                  (Analysis)
-                            ↓
-                      [Optional QA/QC]
-                       (LangExtract)
+PDF → Text Extraction → OpenAI GPT-4o / Azure OpenAI → Structured JSON → CSV Export
+         (PyMuPDF4LLM)        (~5s, $0.0016)                              (Analysis)
+                                       ↓
+                                 [Optional QA/QC]
+                                  (LangExtract)
 ```
 
 ---
@@ -215,8 +306,18 @@ src/permit_toolkit/
 - All others listed in `requirements.txt`, `pyproject.toml`, and `pixi.toml`
 
 ### Environment Variables
+
+**OpenAI API (default):**
 ```bash
 OPENAI_API_KEY=sk-your-key-here  # Required
+```
+
+**Azure OpenAI (alternative):**
+```bash
+AZURE_OPENAI_API_KEY=your-azure-key      # Required
+AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com/  # Required
+AZURE_OPENAI_API_VERSION=2025-04-01-preview  # Optional (default shown)
+AZURE_OPENAI_MODEL=your-deployment-name  # Optional (e.g., compassop-gpt-4.1-mini)
 ```
 
 ---
@@ -267,6 +368,20 @@ export OPENAI_API_KEY="sk-your-key-here"
 
 # Or load from .env
 export $(cat .env | grep -v '^#' | xargs)
+```
+
+**Issue: Azure OpenAI errors**
+```bash
+# Check Azure credentials are set
+echo $AZURE_OPENAI_API_KEY
+echo $AZURE_OPENAI_ENDPOINT
+
+# Set them if empty
+export AZURE_OPENAI_API_KEY="your-azure-key"
+export AZURE_OPENAI_ENDPOINT="https://your-resource.openai.azure.com/"
+
+# Test Azure connection
+permit-toolkit extract sample.pdf --use-azure --model gpt-4o-mini
 ```
 
 **Issue: PDF extraction fails**

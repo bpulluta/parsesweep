@@ -1,6 +1,7 @@
 """CLI commands for permit toolkit."""
 
 import json
+import os
 import sys
 import time
 from pathlib import Path
@@ -103,35 +104,45 @@ def extract(path: str, output: Optional[str], state: Optional[str],
     print(f"\n  {DIM}State{RESET}     {CYAN}{state}{RESET}")
     print(f"  {DIM}Input{RESET}     {path}")
     print(f"  {DIM}Output{RESET}    {output_dir}")
-    print(f"  {DIM}Model{RESET}     {model}")
+    
+    # Display model info
+    if use_azure:
+        azure_model = os.environ.get('AZURE_OPENAI_MODEL')
+        display_model = azure_model if azure_model else model
+        print(f"  {DIM}Model{RESET}     {display_model}")
+        print(f"  {DIM}Provider{RESET}  {MAGENTA}Azure OpenAI{RESET}")
+    else:
+        print(f"  {DIM}Model{RESET}     {model}")
+    
     qa_status = f"{GREEN}Enabled{RESET}" if enable_qa_qc else f"{DIM}Disabled{RESET}"
     print(f"  {DIM}QA/QC{RESET}     {qa_status}")
-    if use_azure:
-        print(f"  {DIM}Provider{RESET}  {MAGENTA}Azure OpenAI{RESET}")
     print(f"  {DIM}Files{RESET}     {BOLD}{len(pdf_files)}{RESET}")
     
     # Initialize extractor
     schema = load_schema(config.default_schema)
     
     if use_azure:
-        import os
         from openai import AzureOpenAI
         
         azure_key = os.environ.get('AZURE_OPENAI_API_KEY')
         azure_endpoint = os.environ.get('AZURE_OPENAI_ENDPOINT')
         azure_version = os.environ.get('AZURE_OPENAI_API_VERSION', '2025-04-01-preview')
+        azure_model = os.environ.get('AZURE_OPENAI_MODEL')
         
         if not azure_key or not azure_endpoint:
             print("❌ Azure OpenAI credentials not found")
             print("   Required: AZURE_OPENAI_API_KEY, AZURE_OPENAI_ENDPOINT")
             return
         
+        # Use Azure deployment name if configured, otherwise use the model parameter
+        deployment_name = azure_model if azure_model else model
+        
         azure_client = AzureOpenAI(
             api_key=azure_key,
             api_version=azure_version,
             azure_endpoint=azure_endpoint
         )
-        extractor = PermitExtractor(api_key=azure_key, model=model)
+        extractor = PermitExtractor(api_key=azure_key, model=deployment_name)
         extractor.client = azure_client
     else:
         if not config.openai_api_key:
