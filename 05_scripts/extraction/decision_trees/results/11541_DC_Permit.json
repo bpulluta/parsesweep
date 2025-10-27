@@ -1,0 +1,110 @@
+{
+  "permitNumber": "11541",
+  "generators": {
+    "1": {
+      "make": "Caterpillar",
+      "model": "1500 KW diesel-powered emergency generator",
+      "fuel_type": "diesel (distillate oil)",
+      "tank_size": {},
+      "capacity": {
+        "capacity_kw": "1500",
+        "capacity_hp": "2500"
+      },
+      "backup_mw": "1.5",
+      "control_technologies": null,
+      "operating_hours": 500,
+      "emissions_limits": {
+        "Sulfur Dioxide (SO2)": {
+          "lbs/hr": 4.2,
+          "tons/yr": 1.05
+        },
+        "Nitrogen Oxides (NOx, as NO2)": {
+          "lbs/hr": 63.9,
+          "tons/yr": 15.96
+        },
+        "Carbon Monoxide (CO)": {
+          "lbs/hr": 13.77,
+          "tons/yr": 3.44
+        },
+        "Particulate Matter (PM-10)": {
+          "lbs/hr": 4.49,
+          "tons/yr": 1.12
+        },
+        "Volatile Organic Compounds (VOCs)": {
+          "lbs/hr": 5.07,
+          "tons/yr": 1.27
+        }
+      }
+    },
+    "2": {
+      "make": "Caterpillar",
+      "model": "1500 KW diesel-powered emergency generator",
+      "fuel_type": "distillate oil (diesel)",
+      "tank_size": {},
+      "capacity": {
+        "capacity_kw": "1500",
+        "capacity_hp": "2500"
+      },
+      "backup_mw": null,
+      "control_technologies": null,
+      "operating_hours": 500,
+      "emissions_limits": {
+        "Sulfur Dioxide": {
+          "hourly": "4.20 lbs/hr",
+          "annual": "1.05 tons/yr"
+        },
+        "Nitrogen Oxides": {
+          "hourly": "63.90 lbs/hr",
+          "annual": "15.96 tons/yr"
+        },
+        "Carbon Monoxide": {
+          "hourly": "13.77 lbs/hr",
+          "annual": "3.44 tons/yr"
+        },
+        "Particulate Matter (PM-10)": {
+          "hourly": "4.49 lbs/hr",
+          "annual": "1.12 tons/yr"
+        },
+        "Volatile Organic Compounds": {
+          "hourly": "5.07 lbs/hr",
+          "annual": "1.27 tons/yr"
+        }
+      }
+    },
+    "3": {
+      "make": "Caterpillar",
+      "model": "1500 KW",
+      "fuel_type": "diesel (distillate oil)",
+      "tank_size": {},
+      "capacity": {
+        "capacity_kw": "1500 kW",
+        "capacity_hp": "2500 brake horsepower"
+      },
+      "backup_mw": null,
+      "control_technologies": null,
+      "operating_hours": 500,
+      "emissions_limits": {
+        "Sulfur Dioxide": {
+          "lbs_per_hour": 4.2,
+          "tons_per_year": 1.05
+        },
+        "Nitrogen Oxides": {
+          "lbs_per_hour": 63.9,
+          "tons_per_year": 15.96
+        },
+        "Carbon Monoxide": {
+          "lbs_per_hour": 13.77,
+          "tons_per_year": 3.44
+        },
+        "Particulate Matter (PM-10)": {
+          "lbs_per_hour": 4.49,
+          "tons_per_year": 1.12
+        },
+        "Volatile Organic Compounds": {
+          "lbs_per_hour": 5.07,
+          "tons_per_year": 1.27
+        }
+      }
+    }
+  }
+}

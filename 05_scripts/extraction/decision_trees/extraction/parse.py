@@ -100,8 +100,6 @@ class StructuredOrdinanceParser(BaseLLMCaller):
 
         values['generators'] = generators
 
-        breakpoint()
-        
         logger.debug("Value extraction complete.")
 
         return values
