@@ -68,7 +68,7 @@ class StructuredOrdinanceParser(BaseLLMCaller):
         """Parse text and extract structured ordinance data."""
         permit_num = await self._get_permit_num(text)
         refs = await self._get_generator_refs(text)
-        values = {'permitNumber': permit_num}
+        values = {'permit_number': permit_num}
         generators = {}
         for ref_number in refs:
             gen_values = {}
@@ -80,7 +80,7 @@ class StructuredOrdinanceParser(BaseLLMCaller):
                 "capacity": self._check_capacity,
                 "backup_mw": self._check_backup,
                 "control_technologies": self._check_techs,
-                "operating_hours": self._check_op_hours,
+                "operating_hours_limit_yr": self._check_op_hours,
                 "emissions_limits": self._check_emissions,
             }
 
@@ -126,7 +126,7 @@ class StructuredOrdinanceParser(BaseLLMCaller):
         )
         dtree_refs_out = await _run_async_tree(tree)
 
-        gen_refs = dtree_refs_out.get("referenceNumbers", [])
+        gen_refs = dtree_refs_out.get("reference_numbers", [])
 
         return gen_refs
     
@@ -195,8 +195,8 @@ class StructuredOrdinanceParser(BaseLLMCaller):
             chat_llm_caller=self._init_chat_llm_caller(DEFAULT_SYSTEM_MESSAGE),
         )
         dtree_capacity_out = await _run_async_tree(tree)
-        values = {"capacity_kw": dtree_capacity_out.get("capacity_kw", None),
-                  "capacity_hp": dtree_capacity_out.get("capacity_hp", None),}
+        values = {"rated_capacity_kw": dtree_capacity_out.get("capacity_kw", None),
+                  "rated_capacity_hp": dtree_capacity_out.get("capacity_hp", None),}
         # tank_size = dtree_tank_out.get("tank_size", None)
 
         return values

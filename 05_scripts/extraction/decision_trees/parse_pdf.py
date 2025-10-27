@@ -40,7 +40,7 @@ async def extract_ordinance_values(doc, **kwargs):
 
     return values
 
-MODEL = 'compassop-gpt-4.1-mini'
+MODEL = 'compassop-gpt-5'
 if __name__ == '__main__':
     init_logger('elm', log_level='INFO')
 
@@ -53,7 +53,7 @@ if __name__ == '__main__':
 
         fp_txt_all = fp_pdf.replace('.pdf', '_all.txt')
         fp_txt_clean = fp_pdf.replace('.pdf', '_clean.txt')
-        fp_out = os.path.join('results', f.replace('.pdf', '.json'))
+        fp_out = os.path.join('results_5', f.replace('.pdf', '.json'))
 
         if os.path.exists(fp_out):
             continue
@@ -72,7 +72,7 @@ if __name__ == '__main__':
         client = openai.AsyncAzureOpenAI(api_key=azure_api_key,
                                         api_version=azure_version,
                                         azure_endpoint=azure_endpoint)
-        llm_service = OpenAIService(client, rate_limit=5e5)
+        llm_service = OpenAIService(client, rate_limit=3e5)
         services = [llm_service]
         kwargs = dict(llm_service=llm_service, model=MODEL)#, temperature=0)
 
