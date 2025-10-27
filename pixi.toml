@@ -6,6 +6,8 @@ platforms = ["win-64", "osx-arm64", "osx-64", "linux-64"]
 version = "0.1.0"
 
 [tasks]
+# Post-install task to install the local package
+post-install = "pip install --no-build-isolation --no-deps --disable-pip-version-check -e ."
 
 [dependencies]
 python = ">=3.9,<3.13"
@@ -25,13 +27,19 @@ pyyaml = ">=6.0.0,<7"
 requests = ">=2.31.0,<3"
 tesseract = ">=5.5.1,<6"
 
+# Visualization dependencies for map generation
+folium = ">=0.15.0,<1"
+geopy = ">=2.4.0,<3"
+
 # PyPI-only dependencies
 [pypi-dependencies]
+permit-toolkit = { path = ".", editable = true }
 pymupdf4llm = ">=0.0.5"
 pymupdf = ">=1.23.0"
 pypdf = ">=3.17.0"
 langextract = ">=1.0.0"
 selenium = ">=4.15.0"  # Moved to PyPI for better cross-platform support
+openpyxl = ">=3.1.0"  # For Excel export support
 
 [environments]
 default = { solve-group = "default" }
