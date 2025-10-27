@@ -10,9 +10,7 @@ from typing import Optional
 import click
 
 from permit_toolkit.utils.config import get_config
-from permit_toolkit.utils.logger import get_logger, ExtractionMetrics
-from permit_toolkit.extraction import PermitExtractor, load_schema
-from permit_toolkit.extraction.pdf_utils import extract_text_from_pdf
+from permit_toolkit.utils.logger import get_logger
 from permit_toolkit.consolidation import PermitConsolidator
 
 
@@ -529,5 +527,176 @@ def consolidate(input_dir: str, output: Optional[str], state: Optional[str], for
     print(f"    Processing Time  {processing_time:.1f}s")
     
     print(f"\n  Output → {output}")
+    
+    print(f"\n{DIM}{'─' * 80}{RESET}\n")
+
+
+@click.command()
+@click.argument('input_dir', type=click.Path(exists=True))
+@click.option('--output', '-o', type=click.Path(), help='Output HTML file path')
+@click.option('--state', help='State name(s) to map (comma-separated for multiple)')
+@click.option('--all-states', is_flag=True, help='Map all available states')
+@click.option('--title', help='Map title (default: auto-generated)')
+@click.option('--no-cache', is_flag=True, help='Disable geocoding cache (force fresh geocoding)')
+@click.option('--limit', '-n', type=int, help='Limit number of permits per state')
+def map(input_dir: str, output: Optional[str], state: Optional[str], 
+        all_states: bool, title: Optional[str], no_cache: bool, limit: Optional[int]):
+    """
+    Generate interactive HTML map of facilities with generators.
+    
+    Creates a visual map showing facility locations, generator counts, and
+    capacity. Markers are color-coded and sized by generator count. Includes
+    smart geocoding with address fallbacks and caching for efficiency.
+    
+    \b
+    Examples:
+        # Map Virginia facilities
+        permit-toolkit map data/extracted --state Virginia
+        
+        # Map multiple PJM states
+        permit-toolkit map data/extracted --state "Virginia,Maryland,Ohio"
+        
+        # Map all available states
+        permit-toolkit map data/extracted --all-states
+        
+        # Custom output location
+        permit-toolkit map data/extracted/Virginia -o maps/va_facilities.html
+    """
+    # ANSI color codes
+    BLUE = '\033[94m'
+    GREEN = '\033[92m'
+    YELLOW = '\033[93m'
+    CYAN = '\033[96m'
+    MAGENTA = '\033[95m'
+    BOLD = '\033[1m'
+    DIM = '\033[2m'
+    RESET = '\033[0m'
+    
+    input_dir = Path(input_dir)
+    
+    # Determine which states to process
+    if all_states:
+        states = [d.name for d in input_dir.iterdir() if d.is_dir() and not d.name.startswith('.')]
+    elif state:
+        states = [s.strip() for s in state.split(',')]
+    else:
+        # Try to infer from directory structure
+        if input_dir.name not in ['extracted', 'data']:
+            states = [input_dir.name]
+        else:
+            print(f"{YELLOW}⚠{RESET}  Must specify either --state or --all-states\n")
+            return
+    
+    # Determine output file
+    if not output:
+        state_suffix = states[0].lower() if len(states) == 1 else "multi_state"
+        output = Path(f"data/visualizations/{state_suffix}_facilities_map.html")
+    else:
+        output = Path(output)
+    
+    # Auto-generate title if not provided
+    if not title:
+        if len(states) == 1:
+            title = f"{states[0]} Data Center Facilities"
+        elif len(states) <= 3:
+            title = f"{', '.join(states)} Data Center Facilities"
+        else:
+            title = f"Data Center Facilities ({len(states)} States)"
+    
+    # Cache file location
+    cache_file = None if no_cache else input_dir.parent / "geocoding_cache.json"
+    
+    # Header
+    print(f"\n{BOLD}{BLUE}┌{'─' * 78}┐{RESET}")
+    print(f"{BOLD}{BLUE}│{RESET} {BOLD}{'FACILITY MAP GENERATION':^76}{RESET} {BOLD}{BLUE}│{RESET}")
+    print(f"{BOLD}{BLUE}└{'─' * 78}┘{RESET}\n")
+    
+    # Configuration display
+    print(f"  {DIM}Input{RESET}     {input_dir}")
+    print(f"  {DIM}Output{RESET}    {output}")
+    print(f"  {DIM}States{RESET}    {CYAN}{', '.join(states)}{RESET}")
+    if not no_cache and cache_file and cache_file.exists():
+        print(f"  {DIM}Cache{RESET}     {GREEN}Enabled{RESET} ({cache_file.name})")
+    elif no_cache:
+        print(f"  {DIM}Cache{RESET}     {DIM}Disabled{RESET}")
+    else:
+        print(f"  {DIM}Cache{RESET}     {YELLOW}Creating new{RESET}")
+    
+    print(f"\n{DIM}{'─' * 80}{RESET}\n")
+    
+    # Create mapper
+    try:
+        from permit_toolkit.visualization import FacilityMapper
+        if FacilityMapper is None:
+            raise ImportError("FacilityMapper not available")
+        mapper = FacilityMapper(input_dir, cache_file)
+    except ImportError:
+        print(f"{YELLOW}⚠{RESET}  Missing dependencies for mapping")
+        print("   Install with: pip install folium geopy")
+        print("   Or: pip install -r requirements.txt\n")
+        return
+    
+    # Load permits
+    print(f"  {CYAN}→{RESET} Loading permit data...")
+    df = mapper.load_permits(states, limit_per_state=limit)
+    
+    if len(df) == 0:
+        print(f"  {YELLOW}⚠{RESET}  No permit data found\n")
+        print(f"{DIM}{'─' * 80}{RESET}\n")
+        return
+    
+    print(f"  {GREEN}✓{RESET} Loaded {len(df)} facilities\n")
+    
+    # Geocode facilities
+    print(f"  {CYAN}→{RESET} Geocoding addresses...")
+    df_geocoded = mapper.geocode_facilities(df, show_progress=True)
+    
+    success_count = df_geocoded['latitude'].notna().sum()
+    success_rate = (success_count / len(df_geocoded)) * 100
+    
+    color = GREEN if success_rate >= 80 else YELLOW if success_rate >= 60 else '\033[91m'
+    print(f"  {GREEN}✓{RESET} Geocoded {color}{success_count}/{len(df_geocoded)}{RESET} facilities ({color}{success_rate:.0f}%{RESET})\n")
+    
+    # Create map
+    print(f"  {CYAN}→{RESET} Generating map...")
+    m = mapper.create_map(df_geocoded, output, title)
+    
+    if m is None:
+        print(f"  {YELLOW}⚠{RESET}  No valid coordinates to map\n")
+        print(f"{DIM}{'─' * 80}{RESET}\n")
+        return
+    
+    file_size = output.stat().st_size / 1024
+    size_str = f"{file_size:.1f} KB" if file_size < 1024 else f"{file_size/1024:.1f} MB"
+    print(f"  {GREEN}✓{RESET} Map saved ({size_str})\n")
+    
+    # Generate summary statistics
+    summary = mapper.generate_summary_stats(df_geocoded)
+    
+    # Summary section
+    print(f"{DIM}{'─' * 80}{RESET}\n")
+    print(f"{BOLD}{'SUMMARY':^80}{RESET}\n")
+    print(f"{DIM}{'─' * 80}{RESET}\n")
+    
+    print(f"  {BOLD}Facilities{RESET}")
+    print(f"    Total            {summary['total_facilities']}")
+    print(f"    Mapped           {GREEN}{summary['facilities_mapped']}{RESET}")
+    print(f"    States           {summary['states']}")
+    print(f"    Counties         {summary['counties']}")
+    
+    print(f"\n  {BOLD}Generators{RESET}")
+    print(f"    Total Count      {MAGENTA}{summary['total_generators']}{RESET}")
+    print(f"    Total Capacity   {summary['total_capacity_mw']:,.1f} MW")
+    print(f"    Avg per Facility {summary['avg_generators_per_facility']:.1f}")
+    
+    if len(summary['by_state']) > 1:
+        print(f"\n  {BOLD}By State{RESET}")
+        for state_name, stats in summary['by_state'].items():
+            print(f"    {state_name:15} {stats['facilities']:3} facilities  "
+                  f"{stats['total_generators']:4} generators  "
+                  f"{stats['total_capacity_mw']:6.0f} MW")
+    
+    print(f"\n  Output → {output}")
+    print(f"  {DIM}Open in browser: open {output}{RESET}")
     
     print(f"\n{DIM}{'─' * 80}{RESET}\n")

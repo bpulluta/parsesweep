@@ -2,7 +2,7 @@
 
 import click
 
-from permit_toolkit.cli.commands import extract, validate, consolidate
+from permit_toolkit.cli.commands import extract, validate, consolidate, map
 
 
 @click.group()
@@ -26,6 +26,9 @@ def cli():
         
         # Consolidate extractions into CSV
         permit-toolkit consolidate data/Virginia/extracted data/Virginia/dataset.csv
+        
+        # Generate interactive map
+        permit-toolkit map data/extracted --state Virginia
     """
     pass
 
@@ -34,6 +37,7 @@ def cli():
 cli.add_command(extract)
 cli.add_command(validate)
 cli.add_command(consolidate)
+cli.add_command(map)
 
 
 def main():

@@ -16,6 +16,7 @@ Extract structured data from air quality permits using state-of-the-art LLMs wit
 - **Smart Deduplication** - Automatic detection of duplicate permits
 - **Rich Structured Output** - 39+ fields per generator including emissions data
 - **Data Consolidation** - CSV/Excel export for analysis
+- **Interactive Maps** - Geocoded facility visualization with generator counts
 
 ---
 
@@ -83,7 +84,7 @@ cd backupgensprint
 python -m venv .venv
 source .venv/bin/activate  # Windows: .venv\Scripts\activate
 
-# Install package
+# Install package with all dependencies
 pip install -e .
 
 # Configure API credentials
@@ -130,9 +131,22 @@ permit-toolkit consolidate data/extracted/Virginia -o virginia_dataset.csv
 permit-toolkit consolidate data/extracted/Illinois --format excel
 ```
 
+### Visualize on Map
+
+```bash
+# Map single state facilities
+permit-toolkit map data/extracted --state Virginia
+
+# Map multiple states
+permit-toolkit map data/extracted --state "Virginia,Maryland,Ohio"
+
+# Map all available states
+permit-toolkit map data/extracted --all-states
+```
+
 ---
 
-## 🔷 Azure OpenAI Setup
+## Azure OpenAI Setup
 
 For users with Azure OpenAI deployments, the toolkit supports Azure as an alternative to OpenAI API with typically higher rate limits and enhanced security.
 
@@ -218,13 +232,13 @@ permit-toolkit extract PATH [OPTIONS]
 **Options:**
 - `-o, --output PATH` - Output directory
 - `--state TEXT` - State name (auto-detected)
-- `--model TEXT` - `gpt-4o`, `gpt-4o-mini` (default)
-- `--use-azure` - Use Azure OpenAI instead of OpenAI API
+- `--model TEXT` - Model selection: `gpt-4o`, `gpt-4o-mini` (default)
+- `--use-azure` - Use Azure OpenAI
 - `--enable-qa-qc` - Enable QA/QC validation
 - `-n, --limit INT` - Process first N files
-- `--skip-existing/--reprocess` - Skip/reprocess existing
+- `--skip-existing/--reprocess` - Skip/reprocess existing files
 
-### `consolidate` - Convert JSON to CSV
+### `consolidate` - Convert JSON to Datasets
 
 ```bash
 permit-toolkit consolidate INPUT_DIR [OPTIONS]
@@ -233,7 +247,30 @@ permit-toolkit consolidate INPUT_DIR [OPTIONS]
 **Options:**
 - `-o, --output PATH` - Output file path
 - `--state TEXT` - Filter by state
-- `--format [csv|excel|json]` - Output format
+- `--format [csv|excel|json]` - Output format (default: csv)
+
+### `map` - Visualize Facilities
+
+```bash
+permit-toolkit map INPUT_DIR [OPTIONS]
+```
+
+**Options:**
+- `-o, --output PATH` - Output HTML file path
+- `--state TEXT` - State name(s) to map (comma-separated)
+- `--all-states` - Map all available states
+- `-n, --limit INT` - Limit facilities per state
+- `--title TEXT` - Custom map title
+- `--no-cache` - Force fresh geocoding
+
+### `validate` - Validate Extraction
+
+```bash
+permit-toolkit validate EXTRACTION_FILE [OPTIONS]
+```
+
+**Options:**
+- `-v, --verbose` - Enable verbose logging
 
 ---
 
@@ -260,12 +297,47 @@ Each extraction produces structured JSON with:
 ## 🏗️ Architecture
 
 ```
-PDF → Text Extraction → OpenAI GPT-4o / Azure OpenAI → Structured JSON → CSV Export
-         (PyMuPDF4LLM)        (~5s, $0.0016)                              (Analysis)
-                                       ↓
-                                 [Optional QA/QC]
-                                  (LangExtract)
+                          ┌─────────────────┐
+                          │   PDF Permits   │
+                          └────────┬────────┘
+                                   │
+                          ┌────────▼────────┐
+                          │ Text Extraction │
+                          │  (PyMuPDF4LLM)  │
+                          └────────┬────────┘
+                                   │
+                  ┌────────────────┼────────────────┐
+                  │                                 │
+         ┌────────▼────────┐              ┌────────▼────────┐
+         │  OpenAI GPT-4o  │              │  Azure OpenAI   │
+         │  (~5s, $0.0016) │              │  (Enterprise)   │
+         └────────┬────────┘              └────────┬────────┘
+                  │                                 │
+                  └────────────────┬────────────────┘
+                                   │
+                                   │  (Optional: --enable-qa-qc)
+                                   │  ┌──────────────────┐
+                                   ├─▶│  LangExtract     │
+                                   │  │  Comparison      │
+                                   │  └──────────────────┘
+                                   │
+                          ┌────────▼────────┐
+                          │ Structured JSON │
+                          └────────┬────────┘
+                                   │
+                  ┌────────────────┼────────────────┐
+                  │                                 │
+         ┌────────▼────────┐              ┌────────▼────────┐
+         │  CSV/Excel      │              │  HTML Map       │
+         │  Consolidation  │              │  Visualization  │
+         └─────────────────┘              └─────────────────┘
 ```
+
+**Pipeline:**
+1. `extract` - PDFs to structured JSON (OpenAI or Azure)
+2. `consolidate` - JSON to CSV/Excel datasets
+3. `map` - JSON to interactive HTML maps
+4. `validate` - Quality assurance checks
 
 ---
 
@@ -280,13 +352,14 @@ PDF → Text Extraction → OpenAI GPT-4o / Azure OpenAI → Structured JSON →
 
 ---
 
-## Project Structure
+## 📂 Project Structure
 
 ```
 src/permit_toolkit/
 ├── cli/                    # Command-line interface
 ├── extraction/             # PDF extraction & LLM processing
-├── consolidation/          # Data aggregation to CSV
+├── consolidation/          # Data export (CSV/Excel)
+├── visualization/          # Map generation (HTML)
 ├── scrapers/              # Web scraping utilities
 └── utils/                 # Configuration & logging
 ```
@@ -298,12 +371,15 @@ src/permit_toolkit/
 ### Core Dependencies
 - Python 3.9+ (tested with 3.9, 3.10, 3.11, 3.12, 3.13)
 - pandas >= 2.0.0
-- numpy >= 1.24.0
 - openai >= 1.0.0
 - langextract >= 1.0.0
 - pymupdf4llm >= 0.0.5
 - click >= 8.1.0
-- All others listed in `requirements.txt`, `pyproject.toml`, and `pixi.toml`
+- folium >= 0.15.0
+- geopy >= 2.4.0
+- openpyxl >= 3.1.0
+
+See `requirements.txt`, `pyproject.toml`, or `pixi.toml` for complete list.
 
 ### Environment Variables
 
@@ -382,6 +458,14 @@ export AZURE_OPENAI_ENDPOINT="https://your-resource.openai.azure.com/"
 
 # Test Azure connection
 permit-toolkit extract sample.pdf --use-azure --model gpt-4o-mini
+```
+
+**Issue: Geocoding failures**
+```bash
+# Requires internet access to OpenStreetMap
+curl https://nominatim.openstreetmap.org/
+
+# Corporate networks may need proxy configuration
 ```
 
 **Issue: PDF extraction fails**

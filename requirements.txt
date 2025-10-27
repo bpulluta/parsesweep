@@ -33,3 +33,10 @@ click>=8.1.0
 
 # Progress Tracking
 tqdm>=4.66.0
+
+# Visualization (for map generation)
+folium>=0.15.0
+geopy>=2.4.0
+
+# Excel export support (optional for consolidation)
+openpyxl>=3.1.0
