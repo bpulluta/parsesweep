@@ -1,0 +1,222 @@
+{
+  "permitNumber": "52281",
+  "generators": {
+    "G-1": {
+      "make": "Caterpillar",
+      "model": "3512",
+      "fuel_type": "diesel (distillate oil meeting ASTM D975 specifications)",
+      "tank_size": {},
+      "capacity": {
+        "capacity_kw": "1,135 kW",
+        "capacity_hp": "1,522 HP"
+      },
+      "backup_mw": "1.135 MW",
+      "control_technologies": "Good operating practices and maintenance/operational procedures including a maintenance schedule, spare parts inventory, written operating procedures based on manufacturer recommendations, and operator training.",
+      "operating_hours": 240,
+      "emissions_limits": {
+        "PM-10": {
+          "per_generator_lbs_per_hr": 1.2,
+          "combined_tons_per_yr": 0.3
+        },
+        "Nitrogen Oxides (as NO2)": {
+          "per_generator_lbs_per_hr": 39.9,
+          "combined_tons_per_yr": 9.6
+        },
+        "Carbon Monoxide": {
+          "per_generator_lbs_per_hr": 9.1,
+          "combined_tons_per_yr": 2.2
+        },
+        "Volatile Organic Compounds": {
+          "per_generator_lbs_per_hr": 1.2,
+          "combined_tons_per_yr": 0.3
+        }
+      }
+    },
+    "G-2": {
+      "make": "Caterpillar",
+      "model": "Model 3512 Diesel",
+      "fuel_type": "diesel (distillate oil)",
+      "tank_size": {},
+      "capacity": {
+        "capacity_kw": "1,135 kW",
+        "capacity_hp": "1,522 HP"
+      },
+      "backup_mw": "1.135",
+      "control_technologies": "Emission controls through good operating practices, including maintenance procedures such as developing and following a maintenance schedule, maintaining maintenance records, keeping an inventory of spare parts, having written operating procedures based on manufacturer's recommendations, and training operators on proper operation.",
+      "operating_hours": 240,
+      "emissions_limits": {
+        "PM-10": {
+          "per_generator_lbs_per_hr": 1.2,
+          "combined_tons_per_yr": 0.3
+        },
+        "Nitrogen Oxides (as NO2)": {
+          "per_generator_lbs_per_hr": 39.9,
+          "combined_tons_per_yr": 9.6
+        },
+        "Carbon Monoxide": {
+          "per_generator_lbs_per_hr": 9.1,
+          "combined_tons_per_yr": 2.2
+        },
+        "Volatile Organic Compounds": {
+          "per_generator_lbs_per_hr": 1.2,
+          "combined_tons_per_yr": 0.3
+        }
+      }
+    },
+    "G-8/DG#3": {
+      "make": "Caterpillar",
+      "model": "Model 3516 Diesel",
+      "fuel_type": "distillate oil",
+      "tank_size": {},
+      "capacity": {
+        "capacity_kw": "1,750 kW",
+        "capacity_hp": "2,347 HP"
+      },
+      "backup_mw": "1.75",
+      "control_technologies": "Good operating practices including proper maintenance, written operating procedures, operator training, and compliance with federal emission standards (40 CFR 60 Subpart IIII and/or 40 CFR 63 Subpart ZZZZ). No specific physical control devices are mentioned.",
+      "operating_hours": 240,
+      "emissions_limits": {
+        "PM-10": {
+          "per_generator_lbs_per_hr": 1.6,
+          "combined_tons_per_yr": 1.2
+        },
+        "Nitrogen Oxides (as NO2)": {
+          "per_generator_lbs_per_hr": 55.3,
+          "combined_tons_per_yr": 39.8
+        },
+        "Carbon Monoxide": {
+          "per_generator_lbs_per_hr": 12.7,
+          "combined_tons_per_yr": 9.1
+        },
+        "Volatile Organic Compounds": {
+          "per_generator_lbs_per_hr": 1.6,
+          "combined_tons_per_yr": 1.2
+        }
+      }
+    },
+    "G-9/DG#4": {
+      "make": "Caterpillar",
+      "model": "3516 Diesel",
+      "fuel_type": "distillate oil (diesel)",
+      "tank_size": {},
+      "capacity": {
+        "capacity_kw": "1,750 kW",
+        "capacity_hp": "2,347 HP"
+      },
+      "backup_mw": "1.75",
+      "control_technologies": "Good operating practices, maintenance and operating procedures (including maintenance scheduling, spare parts inventory, written operational procedures, and operator training), and monitoring devices such as non-resettable hour meters.",
+      "operating_hours": 240,
+      "emissions_limits": {
+        "PM-10": {
+          "per_generator_lbs_per_hr": 1.6,
+          "combined_tons_per_yr": 1.2
+        },
+        "Nitrogen Oxides (as NO2)": {
+          "per_generator_lbs_per_hr": 55.3,
+          "combined_tons_per_yr": 39.8
+        },
+        "Carbon Monoxide": {
+          "per_generator_lbs_per_hr": 12.7,
+          "combined_tons_per_yr": 9.1
+        },
+        "Volatile Organic Compounds": {
+          "per_generator_lbs_per_hr": 1.6,
+          "combined_tons_per_yr": 1.2
+        }
+      }
+    },
+    "G-11": {
+      "make": "Caterpillar",
+      "model": "3516C",
+      "fuel_type": "Diesel (distillate oil meeting ASTM D975 specification for numbers 1 or 2 fuel oil)",
+      "tank_size": {},
+      "capacity": {
+        "capacity_kw": "1,825 kW",
+        "capacity_hp": "2,448 HP"
+      },
+      "backup_mw": "1.825",
+      "control_technologies": "Good operating practices; maintenance schedules with recordkeeping; inventory of spare parts; written operating procedures based on manufacturer's recommendations; operator training with records; compliance with federal NSPS Subpart IIII and MACT Subpart ZZZZ requirements including monitoring, testing, notification, and recordkeeping.",
+      "operating_hours": 240,
+      "emissions_limits": {
+        "PM-10": {
+          "per_generator_lbs_per_hr": 4.1,
+          "combined_tons_per_yr": 1.5
+        },
+        "Nitrogen Oxides (as NO2)": {
+          "per_generator_lbs_per_hr": 32.9,
+          "combined_tons_per_yr": 11.9
+        },
+        "Carbon Monoxide": {
+          "per_generator_lbs_per_hr": 21.8,
+          "combined_tons_per_yr": 7.9
+        },
+        "Volatile Organic Compounds": {
+          "per_generator_lbs_per_hr": 3.6,
+          "combined_tons_per_yr": 1.3
+        }
+      }
+    },
+    "G-12": {
+      "make": "Caterpillar",
+      "model": "3516C",
+      "fuel_type": "diesel (distillate oil)",
+      "tank_size": {},
+      "capacity": {
+        "capacity_kw": "1,825 kW",
+        "capacity_hp": "2,448 HP"
+      },
+      "backup_mw": "1.825",
+      "control_technologies": null,
+      "operating_hours": 240,
+      "emissions_limits": {
+        "PM-10": {
+          "per_generator": "4.1 lbs/hr",
+          "combined": "1.5 tons/yr"
+        },
+        "Nitrogen Oxides (as NO2)": {
+          "per_generator": "32.9 lbs/hr",
+          "combined": "11.9 tons/yr"
+        },
+        "Carbon Monoxide": {
+          "per_generator": "21.8 lbs/hr",
+          "combined": "7.9 tons/yr"
+        },
+        "Volatile Organic Compounds": {
+          "per_generator": "3.6 lbs/hr",
+          "combined": "1.3 tons/yr"
+        }
+      }
+    },
+    "G-13": {
+      "make": "Caterpillar",
+      "model": "3516C",
+      "fuel_type": "distillate oil (diesel)",
+      "tank_size": {},
+      "capacity": {
+        "capacity_kw": "1,825 kW",
+        "capacity_hp": "2,447 HP"
+      },
+      "backup_mw": "1.825",
+      "control_technologies": null,
+      "operating_hours": 240,
+      "emissions_limits": {
+        "PM-10": {
+          "per_generator": "4.1 lbs/hr",
+          "combined": "1.5 tons/yr"
+        },
+        "Nitrogen Oxides (as NO2)": {
+          "per_generator": "32.9 lbs/hr",
+          "combined": "11.9 tons/yr"
+        },
+        "Carbon Monoxide": {
+          "per_generator": "21.8 lbs/hr",
+          "combined": "7.9 tons/yr"
+        },
+        "Volatile Organic Compounds": {
+          "per_generator": "3.6 lbs/hr",
+          "combined": "1.3 tons/yr"
+        }
+      }
+    }
+  }
+}

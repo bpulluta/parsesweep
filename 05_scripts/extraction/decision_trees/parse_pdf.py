@@ -1,5 +1,6 @@
 """Example on parsing an existing PDF file on-disk for ordinances."""
 from functools import partial
+import os
 import json
 
 import openai
@@ -43,35 +44,40 @@ MODEL = 'compassop-gpt-4.1-mini'
 if __name__ == '__main__':
     init_logger('elm', log_level='INFO')
 
-    # download this from https://app.box.com/s/a8oi8jotb9vnu55rzdul7e291jnn7hmq
-    fp_pdf = '11790_DC_Permit.pdf'
-
-    fp_txt_all = fp_pdf.replace('.pdf', '_all.txt')
-    fp_txt_clean = fp_pdf.replace('.pdf', '_clean.txt')
-    fp_out = fp_pdf.replace('.pdf', '.json')
-    
-
-    doc = PDFDocument.from_file(fp_pdf)
-
-    text_splitter = RecursiveCharacterTextSplitter(
-        RTS_SEPARATORS,
-        chunk_size=3000,
-        chunk_overlap=300,
-        length_function=partial(ApiBase.count_tokens, model=MODEL),
-    )
-
-    # setup LLM and Ordinance service/utility classes
-    azure_api_key, azure_version, azure_endpoint = validate_azure_api_params()
-    client = openai.AsyncAzureOpenAI(api_key=azure_api_key,
-                                     api_version=azure_version,
-                                     azure_endpoint=azure_endpoint)
-    llm_service = OpenAIService(client, rate_limit=5e5)
-    services = [llm_service]
-    kwargs = dict(llm_service=llm_service, model=MODEL)#, temperature=0)
-
-    values = ARun.run(services, extract_ordinance_values(doc, **kwargs))
+    files = [f for f in os.listdir('permits/') if not f.startswith('.')]
 
     breakpoint()
-    # save outputs
-    with open(fp_out, 'w') as f:
-        json.dump(values, f, indent=2)
+    for f in files:
+        fp_pdf = os.path.join('permits/', f)
+
+
+        fp_txt_all = fp_pdf.replace('.pdf', '_all.txt')
+        fp_txt_clean = fp_pdf.replace('.pdf', '_clean.txt')
+        fp_out = os.path.join('results', f.replace('.pdf', '.json'))
+
+        if os.path.exists(fp_out):
+            continue
+
+        doc = PDFDocument.from_file(fp_pdf)
+
+        text_splitter = RecursiveCharacterTextSplitter(
+            RTS_SEPARATORS,
+            chunk_size=3000,
+            chunk_overlap=300,
+            length_function=partial(ApiBase.count_tokens, model=MODEL),
+        )
+
+        # setup LLM and Ordinance service/utility classes
+        azure_api_key, azure_version, azure_endpoint = validate_azure_api_params()
+        client = openai.AsyncAzureOpenAI(api_key=azure_api_key,
+                                        api_version=azure_version,
+                                        azure_endpoint=azure_endpoint)
+        llm_service = OpenAIService(client, rate_limit=5e5)
+        services = [llm_service]
+        kwargs = dict(llm_service=llm_service, model=MODEL)#, temperature=0)
+
+        values = ARun.run(services, extract_ordinance_values(doc, **kwargs))
+
+        # save outputs
+        with open(fp_out, 'w') as f:
+            json.dump(values, f, indent=2)

@@ -1,0 +1,978 @@
+{
+  "permitNumber": "30142",
+  "generators": {
+    "A/B10": {
+      "make": "Caterpillar",
+      "model": "3516E",
+      "fuel_type": "diesel",
+      "tank_size": {},
+      "capacity": {
+        "capacity_kw": "3000 kW",
+        "capacity_hp": "4393 HP"
+      },
+      "backup_mw": "3.0",
+      "control_technologies": "Electronic fuel injection, turbocharged engine, and aftercooler; plus good operating practices and appropriate maintenance in accordance with manufacturer's recommendations; compliance with applicable federal emission standards under 40 CFR 63 Subpart ZZZZ (MACT) and 40 CFR 60 Subpart IIII (NSPS).",
+      "operating_hours": 100,
+      "emissions_limits": {
+        "Nitrogen Oxides (NO2)": {
+          "lbs_per_hour": 58.1,
+          "tons_per_year": 14.6
+        },
+        "Carbon Monoxide (CO)": {
+          "lbs_per_hour": 11.6,
+          "tons_per_year": 2.9
+        },
+        "Volatile Organic Compounds (VOC)": {
+          "lbs_per_hour": 5.4,
+          "tons_per_year": 1.4
+        }
+      }
+    },
+    "C12": {
+      "make": "Caterpillar",
+      "model": "3516E",
+      "fuel_type": "diesel",
+      "tank_size": {},
+      "capacity": {
+        "capacity_kw": "3000 kW",
+        "capacity_hp": "4393 HP"
+      },
+      "backup_mw": "3.0",
+      "control_technologies": "Electronic fuel injection, turbocharged engine, and aftercooler",
+      "operating_hours": 100,
+      "emissions_limits": {
+        "Nitrogen Oxides (NO2)": {
+          "lbs_per_hour": 58.1,
+          "tons_per_year": 14.6
+        },
+        "Carbon Monoxide (CO)": {
+          "lbs_per_hour": 11.6,
+          "tons_per_year": 2.9
+        },
+        "Volatile Organic Compounds (VOC)": {
+          "lbs_per_hour": 5.4,
+          "tons_per_year": 1.4
+        }
+      }
+    },
+    "C13": {
+      "make": "Caterpillar",
+      "model": "3516E Emergency Generator",
+      "fuel_type": "diesel",
+      "tank_size": {},
+      "capacity": {
+        "capacity_kw": "3000 eKW",
+        "capacity_hp": "4393 bhp"
+      },
+      "backup_mw": "3 MW",
+      "control_technologies": "Electronic fuel injection, turbocharged engine, aftercooler, good operating practices and maintenance, and compliance with federal emission standards 40 CFR 63 Subpart ZZZZ and 40 CFR 60 Subpart IIII.",
+      "operating_hours": 100,
+      "emissions_limits": {
+        "Nitrogen Oxides (NO2)": {
+          "lbs_per_hour": 58.1,
+          "tons_per_year": 14.6
+        },
+        "Carbon Monoxide (CO)": {
+          "lbs_per_hour": 11.6,
+          "tons_per_year": 2.9
+        },
+        "Volatile Organic Compounds (VOC)": {
+          "lbs_per_hour": 5.4,
+          "tons_per_year": 1.4
+        }
+      }
+    },
+    "C14": {
+      "make": "Caterpillar",
+      "model": "3516E Emergency Generator",
+      "fuel_type": "diesel",
+      "tank_size": {},
+      "capacity": {
+        "capacity_kw": "3000",
+        "capacity_hp": "4393"
+      },
+      "backup_mw": null,
+      "control_technologies": "Electronic fuel injection, turbocharged engine, aftercooler, and use of good operating practices and appropriate maintenance in accordance with manufacturer recommendations.",
+      "operating_hours": 100,
+      "emissions_limits": null
+    },
+    "C15": {
+      "make": "Caterpillar",
+      "model": "3516E",
+      "fuel_type": "diesel",
+      "tank_size": {},
+      "capacity": {
+        "capacity_kw": "3000 eKW",
+        "capacity_hp": "4393 bhp"
+      },
+      "backup_mw": "3.0",
+      "control_technologies": "Electronic fuel injection, turbocharged engine, aftercooler, and good operating practices with appropriate maintenance according to manufacturer's recommendations.",
+      "operating_hours": 100,
+      "emissions_limits": {
+        "Nitrogen Oxides (as NO2)": {
+          "lbs_per_hour": 58.1,
+          "tons_per_year": 14.6
+        },
+        "Carbon Monoxide (CO)": {
+          "lbs_per_hour": 11.6,
+          "tons_per_year": 2.9
+        },
+        "Volatile Organic Compounds (VOC)": {
+          "lbs_per_hour": 5.4,
+          "tons_per_year": 1.4
+        }
+      }
+    },
+    "A/B11": {
+      "make": "Cummins",
+      "model": "C3000 C6e Emergency Generator",
+      "fuel_type": "diesel",
+      "tank_size": {},
+      "capacity": {
+        "capacity_kw": "3000 eKW",
+        "capacity_hp": "4309 bhp"
+      },
+      "backup_mw": "3.0",
+      "control_technologies": "Electronic fuel injection, turbocharged engine, aftercooler, and good operating practices with appropriate maintenance.",
+      "operating_hours": 100,
+      "emissions_limits": {
+        "Nitrogen Oxides (as NO2)": {
+          "hourly_limit_lbs_per_hr": 56.9,
+          "annual_limit_tons_per_yr": 8.6
+        }
+      }
+    },
+    "C16": {
+      "make": "Cummins",
+      "model": "C3000 C6e",
+      "fuel_type": "diesel",
+      "tank_size": {},
+      "capacity": {
+        "capacity_kw": "3000 eKW",
+        "capacity_hp": "4309 bhp"
+      },
+      "backup_mw": "3.0",
+      "control_technologies": "Electronic fuel injection, turbocharged engine, aftercooler, and good operating practices with appropriate maintenance",
+      "operating_hours": 100,
+      "emissions_limits": {
+        "Nitrogen Oxides (NO2)": {
+          "hourly": "56.9 lbs/hr",
+          "annual": "8.6 tons/yr"
+        }
+      }
+    },
+    "C17": {
+      "make": "Cummins",
+      "model": "C3000 C6e Emergency Generator",
+      "fuel_type": "diesel fuel",
+      "tank_size": {},
+      "capacity": {
+        "capacity_kw": "3000 kW",
+        "capacity_hp": "4309 HP"
+      },
+      "backup_mw": "3",
+      "control_technologies": "Electronic fuel injection, turbocharged engine, aftercooler, good operating practices, and appropriate maintenance per manufacturer recommendations.",
+      "operating_hours": 100,
+      "emissions_limits": {
+        "Nitrogen Oxides (NO2)": {
+          "hourly_limit_lbs_per_hr": 56.9,
+          "annual_limit_tons_per_year": 8.6
+        }
+      }
+    },
+    "D1": {
+      "make": "Rolls Royce MTU",
+      "model": "20V4000G94S",
+      "fuel_type": "diesel",
+      "tank_size": {},
+      "capacity": {
+        "capacity_kw": "2500 eKW",
+        "capacity_hp": "3672 bhp"
+      },
+      "backup_mw": "2.5",
+      "control_technologies": "Electronic fuel injection, turbocharged engine, and aftercooler",
+      "operating_hours": 100,
+      "emissions_limits": {
+        "Nitrogen Oxides (as NO2)": {
+          "lbs_per_hour": 48.43,
+          "tons_per_year": 33.9
+        },
+        "Carbon Monoxide": {
+          "lbs_per_hour": 11.9,
+          "tons_per_year": 8.3
+        },
+        "Volatile Organic Compounds": {
+          "lbs_per_hour": 2.3,
+          "tons_per_year": 1.6
+        }
+      }
+    },
+    "D2": {
+      "make": "Rolls Royce MTU",
+      "model": "MTU 20V4000G94S",
+      "fuel_type": "diesel",
+      "tank_size": {},
+      "capacity": {
+        "capacity_kw": "2500 eKW",
+        "capacity_hp": "3672 bhp"
+      },
+      "backup_mw": "2.5",
+      "control_technologies": "Electronic fuel injection, turbocharged engine, and aftercooler",
+      "operating_hours": 100,
+      "emissions_limits": {
+        "Nitrogen Oxides (as NO2)": {
+          "lbs_per_hour": 48.43,
+          "tons_per_year": 33.9
+        },
+        "Carbon Monoxide": {
+          "lbs_per_hour": 11.9,
+          "tons_per_year": 8.3
+        },
+        "Volatile Organic Compounds": {
+          "lbs_per_hour": 2.3,
+          "tons_per_year": 1.6
+        }
+      }
+    },
+    "D3": {
+      "make": "Rolls Royce MTU",
+      "model": "20V4000G94S",
+      "fuel_type": "diesel",
+      "tank_size": {},
+      "capacity": {
+        "capacity_kw": "2500 eKW",
+        "capacity_hp": "3672 bhp"
+      },
+      "backup_mw": "2.5 MW",
+      "control_technologies": "Electronic fuel injection, turbocharged engine, and aftercooler",
+      "operating_hours": 100,
+      "emissions_limits": {
+        "Nitrogen Oxides (as NO2)": {
+          "lbs_per_hour": 48.43,
+          "tons_per_year": 33.9
+        },
+        "Carbon Monoxide": {
+          "lbs_per_hour": 11.9,
+          "tons_per_year": 8.3
+        },
+        "Volatile Organic Compounds": {
+          "lbs_per_hour": 2.3,
+          "tons_per_year": 1.6
+        }
+      }
+    },
+    "D4": {
+      "make": "Rolls Royce MTU",
+      "model": "20V4000G94S Emergency Generator",
+      "fuel_type": "diesel",
+      "tank_size": {},
+      "capacity": {
+        "capacity_kw": "2500 eKW",
+        "capacity_hp": "3672 bhp"
+      },
+      "backup_mw": "2.5",
+      "control_technologies": "Electronic fuel injection, turbocharged engine, aftercooler, good operating practices, maintenance per manufacturer's recommendations, operation and maintenance according to manufacturer's written instructions or approved procedures.",
+      "operating_hours": 100,
+      "emissions_limits": {
+        "Nitrogen Oxides (as NO2)": {
+          "lbs_per_hour": 48.43,
+          "tons_per_year": 33.9
+        },
+        "Carbon Monoxide": {
+          "lbs_per_hour": 11.9,
+          "tons_per_year": 8.3
+        },
+        "Volatile Organic Compounds": {
+          "lbs_per_hour": 2.3,
+          "tons_per_year": 1.6
+        }
+      }
+    },
+    "D5": {
+      "make": "Rolls Royce MTU",
+      "model": "20V4000G94S",
+      "fuel_type": "diesel",
+      "tank_size": {},
+      "capacity": {
+        "capacity_kw": "2500 eKW",
+        "capacity_hp": "3672 bhp"
+      },
+      "backup_mw": "2.5 MW",
+      "control_technologies": "Electronic fuel injection, turbocharged engine, aftercooler, good operating practices, and maintenance per manufacturer recommendations",
+      "operating_hours": 100,
+      "emissions_limits": {
+        "Nitrogen Oxides (as NO2)": {
+          "lbs_per_hour": 48.43,
+          "tons_per_year": 33.9
+        },
+        "Carbon Monoxide (CO)": {
+          "lbs_per_hour": 11.9,
+          "tons_per_year": 8.3
+        },
+        "Volatile Organic Compounds (VOC)": {
+          "lbs_per_hour": 2.3,
+          "tons_per_year": 1.6
+        }
+      }
+    },
+    "D6": {
+      "make": "Rolls Royce MTU",
+      "model": "MTU 20V4000G94S",
+      "fuel_type": "diesel",
+      "tank_size": {},
+      "capacity": {
+        "capacity_kw": null,
+        "capacity_hp": null
+      },
+      "backup_mw": "2.5",
+      "control_technologies": "Electronic fuel injection, turbocharged engine, and aftercooler",
+      "operating_hours": 100,
+      "emissions_limits": {
+        "Nitrogen Oxides (NO2)": {
+          "lbs_per_hour": 48.43,
+          "tons_per_year": 33.9
+        },
+        "Carbon Monoxide (CO)": {
+          "lbs_per_hour": 11.9,
+          "tons_per_year": 8.3
+        },
+        "Volatile Organic Compounds (VOC)": {
+          "lbs_per_hour": 2.3,
+          "tons_per_year": 1.6
+        }
+      }
+    },
+    "D7": {
+      "make": "Rolls Royce MTU",
+      "model": "MTU 20V4000G94S Emergency Generator",
+      "fuel_type": "diesel",
+      "tank_size": {},
+      "capacity": {
+        "capacity_kw": "2500",
+        "capacity_hp": "3672"
+      },
+      "backup_mw": "2.5",
+      "control_technologies": "Electronic fuel injection, turbocharged engine, and aftercooler",
+      "operating_hours": 100,
+      "emissions_limits": {
+        "Nitrogen Oxides (as NO2)": {
+          "lbs_per_hour": 48.43,
+          "tons_per_year": 33.9
+        },
+        "Carbon Monoxide": {
+          "lbs_per_hour": 11.9,
+          "tons_per_year": 8.3
+        },
+        "Volatile Organic Compounds": {
+          "lbs_per_hour": 2.3,
+          "tons_per_year": 1.6
+        }
+      }
+    },
+    "D8": {
+      "make": "Rolls Royce MTU",
+      "model": "16V4000G64S",
+      "fuel_type": "diesel",
+      "tank_size": {},
+      "capacity": {
+        "capacity_kw": "2500",
+        "capacity_hp": "3640"
+      },
+      "backup_mw": "2.5",
+      "control_technologies": "Electronic fuel injection, turbocharged engine, and aftercooler",
+      "operating_hours": 100,
+      "emissions_limits": {
+        "Nitrogen Oxides (as NO2)": {
+          "lbs_per_hour": 48.5,
+          "tons_per_year": 4.9
+        },
+        "Carbon Monoxide": {
+          "lbs_per_hour": 9.7,
+          "tons_per_year": 1.0
+        }
+      }
+    },
+    "D9": {
+      "make": "Cummins",
+      "model": "25000QKAN",
+      "fuel_type": "diesel",
+      "tank_size": {},
+      "capacity": {
+        "capacity_kw": "2500 eKW",
+        "capacity_hp": "3640 bhp"
+      },
+      "backup_mw": "2.5",
+      "control_technologies": "Electronic fuel injection, turbocharged engine, aftercooler",
+      "operating_hours": 100,
+      "emissions_limits": {
+        "Nitrogen Oxides (NO2)": {
+          "lbs_per_hour": 48.1,
+          "tons_per_year": 9.7
+        },
+        "Carbon Monoxide (CO)": {
+          "lbs_per_hour": 7.2,
+          "tons_per_year": 1.5
+        }
+      }
+    },
+    "D10": {
+      "make": "Cummins",
+      "model": "25000QKAN Emergency Generator",
+      "fuel_type": "diesel fuel",
+      "tank_size": {},
+      "capacity": {
+        "capacity_kw": "2500 eKW",
+        "capacity_hp": "3640 bhp"
+      },
+      "backup_mw": "2.5",
+      "control_technologies": "Electronic fuel injection, turbocharged engine, and aftercooler",
+      "operating_hours": 100,
+      "emissions_limits": {
+        "Nitrogen Oxides (NO2)": {
+          "lbs_per_hour": 48.1,
+          "tons_per_year": 9.7
+        },
+        "Carbon Monoxide": {
+          "lbs_per_hour": 7.2,
+          "tons_per_year": 1.5
+        }
+      }
+    },
+    "D18": {
+      "make": "Rolls Royce MTU",
+      "model": "20V4000G94S",
+      "fuel_type": "diesel fuel",
+      "tank_size": {},
+      "capacity": {
+        "capacity_kw": "2500 eKW",
+        "capacity_hp": "3672 bhp"
+      },
+      "backup_mw": "2.5",
+      "control_technologies": "Electronic fuel injection, turbocharged engine, aftercooler, good operating practices, and performing appropriate maintenance as per manufacturer recommendations.",
+      "operating_hours": 100,
+      "emissions_limits": {
+        "Nitrogen Oxides (NO2)": {
+          "hourly_limit_lbs_per_hr": 48.43,
+          "annual_limit_tons_per_yr": 33.9
+        },
+        "Carbon Monoxide (CO)": {
+          "hourly_limit_lbs_per_hr": 11.9,
+          "annual_limit_tons_per_yr": 8.3
+        },
+        "Volatile Organic Compounds (VOC)": {
+          "hourly_limit_lbs_per_hr": 2.3,
+          "annual_limit_tons_per_yr": 1.6
+        }
+      }
+    },
+    "D19": {
+      "make": "Rolls Royce MTU",
+      "model": "20V4000G94S Emergency Generator",
+      "fuel_type": "diesel",
+      "tank_size": {},
+      "capacity": {
+        "capacity_kw": null,
+        "capacity_hp": null
+      },
+      "backup_mw": "2.5",
+      "control_technologies": "Electronic fuel injection, turbocharged engine, and aftercooler",
+      "operating_hours": 100,
+      "emissions_limits": {
+        "Nitrogen Oxides (as NO2)": {
+          "lbs_per_hour": 48.43,
+          "tons_per_year": 33.9
+        },
+        "Carbon Monoxide": {
+          "lbs_per_hour": 11.9,
+          "tons_per_year": 8.3
+        },
+        "Volatile Organic Compounds": {
+          "lbs_per_hour": 2.3,
+          "tons_per_year": 1.6
+        }
+      }
+    },
+    "D20": {
+      "make": "Rolls Royce MTU",
+      "model": "20V4000G94S",
+      "fuel_type": "diesel",
+      "tank_size": {},
+      "capacity": {
+        "capacity_kw": null,
+        "capacity_hp": null
+      },
+      "backup_mw": "2.5",
+      "control_technologies": "Electronic fuel injection, turbocharged engine, and aftercooler, supplemented by good operating practices and maintenance according to manufacturer recommendations.",
+      "operating_hours": 100,
+      "emissions_limits": {
+        "Nitrogen Oxides (NO2)": {
+          "pounds_per_hour": 48.43,
+          "tons_per_year": 33.9
+        },
+        "Carbon Monoxide": {
+          "pounds_per_hour": 11.9,
+          "tons_per_year": 8.3
+        },
+        "Volatile Organic Compounds": {
+          "pounds_per_hour": 2.3,
+          "tons_per_year": 1.6
+        }
+      }
+    },
+    "D21": {
+      "make": "Rolls Royce MTU",
+      "model": "MTU 20V4000G94S",
+      "fuel_type": "diesel",
+      "tank_size": {},
+      "capacity": {
+        "capacity_kw": "2500 eKW",
+        "capacity_hp": "3672 bhp"
+      },
+      "backup_mw": "2.5",
+      "control_technologies": "Electronic fuel injection, turbocharged engine, aftercooler, good operating practices, and performing appropriate maintenance according to manufacturer recommendations.",
+      "operating_hours": 100,
+      "emissions_limits": {
+        "Nitrogen Oxides (NO2)": {
+          "hourly_limit_lbs_per_hr": 48.43,
+          "annual_limit_tons_per_yr": 33.9
+        },
+        "Carbon Monoxide (CO)": {
+          "hourly_limit_lbs_per_hr": 11.9,
+          "annual_limit_tons_per_yr": 8.3
+        },
+        "Volatile Organic Compounds (VOC)": {
+          "hourly_limit_lbs_per_hr": 2.3,
+          "annual_limit_tons_per_yr": 1.6
+        }
+      }
+    },
+    "D22": {
+      "make": "Rolls Royce MTU",
+      "model": "20V4000G94S",
+      "fuel_type": "diesel",
+      "tank_size": {},
+      "capacity": {
+        "capacity_kw": null,
+        "capacity_hp": null
+      },
+      "backup_mw": "2.5 MW",
+      "control_technologies": "Electronic fuel injection, turbocharged engine, and aftercooler",
+      "operating_hours": 100,
+      "emissions_limits": {
+        "Nitrogen Oxides (NO2)": {
+          "lbs_per_hour": 48.43,
+          "tons_per_year": 33.9
+        },
+        "Carbon Monoxide (CO)": {
+          "lbs_per_hour": 11.9,
+          "tons_per_year": 8.3
+        },
+        "Volatile Organic Compounds (VOC)": {
+          "lbs_per_hour": 2.3,
+          "tons_per_year": 1.6
+        }
+      }
+    },
+    "D23": {
+      "make": "Rolls Royce MTU",
+      "model": "20V4000G94S Emergency Generator",
+      "fuel_type": "diesel",
+      "tank_size": {},
+      "capacity": {
+        "capacity_kw": null,
+        "capacity_hp": null
+      },
+      "backup_mw": "2.5",
+      "control_technologies": "Electronic fuel injection, turbocharged engine, aftercooler, and good operating practices and maintenance as per manufacturer recommendations.",
+      "operating_hours": 100,
+      "emissions_limits": {
+        "Nitrogen Oxides (as NO2)": {
+          "pounds_per_hour": 48.43,
+          "tons_per_year": 33.9
+        },
+        "Carbon Monoxide": {
+          "pounds_per_hour": 11.9,
+          "tons_per_year": 8.3
+        },
+        "Volatile Organic Compounds": {
+          "pounds_per_hour": 2.3,
+          "tons_per_year": 1.6
+        }
+      }
+    },
+    "D24": {
+      "make": "Rolls Royce MTU",
+      "model": "20V4000G94S",
+      "fuel_type": "diesel",
+      "tank_size": {},
+      "capacity": {
+        "capacity_kw": "2500 eKW",
+        "capacity_hp": "3672 bhp"
+      },
+      "backup_mw": "2.5",
+      "control_technologies": "Electronic fuel injection, turbocharged engine, aftercooler, good operating practices, and appropriate maintenance according to manufacturer recommendations.",
+      "operating_hours": 100,
+      "emissions_limits": {
+        "Nitrogen Oxides (NO2)": {
+          "lbs_per_hour": 48.43,
+          "tons_per_year": 33.9
+        },
+        "Carbon Monoxide (CO)": {
+          "lbs_per_hour": 11.9,
+          "tons_per_year": 8.3
+        },
+        "Volatile Organic Compounds (VOC)": {
+          "lbs_per_hour": 2.3,
+          "tons_per_year": 1.6
+        }
+      }
+    },
+    "D25": {
+      "make": "Rolls Royce MTU",
+      "model": "16V4000G64S",
+      "fuel_type": "diesel",
+      "tank_size": {},
+      "capacity": {
+        "capacity_kw": "2500 eKW",
+        "capacity_hp": "3640 bhp"
+      },
+      "backup_mw": "2.5",
+      "control_technologies": "electronic fuel injection, turbocharged engine, and aftercooler",
+      "operating_hours": 100,
+      "emissions_limits": {
+        "Nitrogen Oxides (as NO2)": {
+          "lbs/hr": 48.5,
+          "tons/yr": 4.9
+        },
+        "Carbon Monoxide (CO)": {
+          "lbs/hr": 9.7,
+          "tons/yr": 1.0
+        }
+      }
+    },
+    "D26": {
+      "make": "Cummins",
+      "model": "25000QKAN",
+      "fuel_type": "diesel",
+      "tank_size": {},
+      "capacity": {
+        "capacity_kw": "2500 eKW",
+        "capacity_hp": "3640 bhp"
+      },
+      "backup_mw": "2.5",
+      "control_technologies": "Electronic fuel injection, turbocharged engine, aftercooler, and good operating practices with appropriate maintenance as per manufacturer recommendations.",
+      "operating_hours": 100,
+      "emissions_limits": {
+        "Nitrogen Oxides (as NO2)": {
+          "pounds_per_hour": 48.1,
+          "tons_per_year": 9.7
+        },
+        "Carbon Monoxide": {
+          "pounds_per_hour": 7.2,
+          "tons_per_year": 1.5
+        }
+      }
+    },
+    "D27": {
+      "make": "Cummins",
+      "model": "25000QKAN",
+      "fuel_type": "diesel fuel",
+      "tank_size": {},
+      "capacity": {
+        "capacity_kw": "2500 kW",
+        "capacity_hp": "3640 HP"
+      },
+      "backup_mw": "2.5",
+      "control_technologies": "Electronic fuel injection, turbocharged engine, and aftercooler.",
+      "operating_hours": 100,
+      "emissions_limits": {
+        "Nitrogen Oxides (NO2)": {
+          "lbs_per_hour": 48.1,
+          "tons_per_year": 9.7
+        },
+        "Carbon Monoxide": {
+          "lbs_per_hour": 7.2,
+          "tons_per_year": 1.5
+        }
+      }
+    },
+    "G8": {
+      "make": "Caterpillar",
+      "model": "3516B",
+      "fuel_type": "diesel",
+      "tank_size": {},
+      "capacity": {
+        "capacity_kw": "2250 kW",
+        "capacity_hp": "3286 HP"
+      },
+      "backup_mw": "2.25",
+      "control_technologies": "Electronic fuel injection, turbocharged engine, aftercooler, and good operating practices with appropriate maintenance according to manufacturer recommendations.",
+      "operating_hours": 100,
+      "emissions_limits": {
+        "Nitrogen Oxides (as NO2)": {
+          "maximum_rate_lbs_per_hr": 46.4,
+          "annual_limit_tons_per_yr": 16.3
+        },
+        "Carbon Monoxide (CO)": {
+          "maximum_rate_lbs_per_hr": 9.4,
+          "annual_limit_tons_per_yr": 3.3
+        }
+      }
+    },
+    "G9": {
+      "make": "Caterpillar",
+      "model": "3516C",
+      "fuel_type": "diesel",
+      "tank_size": {},
+      "capacity": {
+        "capacity_kw": "2250 kW",
+        "capacity_hp": "3286 bhp"
+      },
+      "backup_mw": "2.25",
+      "control_technologies": "Electronic fuel injection, turbocharged engine, aftercooler, good operating practices, and maintenance according to manufacturer recommendations",
+      "operating_hours": 100,
+      "emissions_limits": {
+        "Nitrogen Oxides (as NO2)": {
+          "hourly_limit_lbs_per_hr": 42.5,
+          "annual_limit_tons_per_yr": 2.2
+        }
+      }
+    },
+    "EG1": {
+      "make": "Caterpillar",
+      "model": "3516B",
+      "fuel_type": "diesel",
+      "tank_size": {},
+      "capacity": {
+        "capacity_kw": "2250 eKW",
+        "capacity_hp": "3286 bhp"
+      },
+      "backup_mw": "2.25",
+      "control_technologies": "Electronic fuel injection, turbocharged engine, aftercooler, good operating practices, and appropriate maintenance",
+      "operating_hours": 100,
+      "emissions_limits": {
+        "Nitrogen Oxides (NO2)": {
+          "lbs_per_hour": 46.4,
+          "tons_per_year": 16.3
+        },
+        "Carbon Monoxide (CO)": {
+          "lbs_per_hour": 9.4,
+          "tons_per_year": 3.3
+        }
+      }
+    },
+    "EG2": {
+      "make": "Caterpillar",
+      "model": "3516B",
+      "fuel_type": "diesel",
+      "tank_size": {},
+      "capacity": {
+        "capacity_kw": "2250",
+        "capacity_hp": "3286"
+      },
+      "backup_mw": "2.25 MW",
+      "control_technologies": "Electronic fuel injection, turbocharged engine, and aftercooler, along with good operating practices and maintenance per manufacturer recommendations.",
+      "operating_hours": 100,
+      "emissions_limits": {
+        "Nitrogen Oxides (NO2)": {
+          "lbs_per_hour": 46.4,
+          "tons_per_year": 16.3
+        },
+        "Carbon Monoxide (CO)": {
+          "lbs_per_hour": 9.4,
+          "tons_per_year": 3.3
+        }
+      }
+    },
+    "EG3": {
+      "make": "Caterpillar",
+      "model": "3516B",
+      "fuel_type": "diesel",
+      "tank_size": {},
+      "capacity": {
+        "capacity_kw": "2250",
+        "capacity_hp": "3286"
+      },
+      "backup_mw": "2.25",
+      "control_technologies": "Electronic fuel injection, turbocharged engine, aftercooler",
+      "operating_hours": 100,
+      "emissions_limits": {
+        "Nitrogen Oxides": {
+          "hourly_limit_lbs_per_hr": 46.4,
+          "annual_limit_tons_per_yr": 16.3
+        },
+        "Carbon Monoxide": {
+          "hourly_limit_lbs_per_hr": 9.4,
+          "annual_limit_tons_per_yr": 3.3
+        }
+      }
+    },
+    "EG4": {
+      "make": "Caterpillar",
+      "model": "3516B",
+      "fuel_type": "diesel",
+      "tank_size": {},
+      "capacity": {
+        "capacity_kw": "2250 eKW",
+        "capacity_hp": "3286 bhp"
+      },
+      "backup_mw": "2.25",
+      "control_technologies": "Electronic fuel injection, turbocharged engine, aftercooler, good operating practices, and appropriate maintenance as per manufacturer's recommendations.",
+      "operating_hours": 100,
+      "emissions_limits": {
+        "Nitrogen Oxides (as NO2)": {
+          "hourly_limit_lbs_per_hr": 46.4,
+          "annual_limit_tons_per_yr": 16.3
+        },
+        "Carbon Monoxide": {
+          "hourly_limit_lbs_per_hr": 9.4,
+          "annual_limit_tons_per_yr": 3.3
+        }
+      }
+    },
+    "EG5": {
+      "make": "Caterpillar",
+      "model": "3516B",
+      "fuel_type": "diesel",
+      "tank_size": {},
+      "capacity": {
+        "capacity_kw": "2250",
+        "capacity_hp": "3286"
+      },
+      "backup_mw": "2.25",
+      "control_technologies": "Electronic fuel injection, turbocharged engine, aftercooler, and good operating practices with appropriate maintenance according to manufacturer recommendations.",
+      "operating_hours": 100,
+      "emissions_limits": {
+        "Nitrogen Oxides (NO2)": {
+          "lbs_per_hour": 46.4,
+          "tons_per_year": 16.3
+        },
+        "Carbon Monoxide (CO)": {
+          "lbs_per_hour": 9.4,
+          "tons_per_year": 3.3
+        }
+      }
+    },
+    "EG6": {
+      "make": "Caterpillar",
+      "model": "3516B",
+      "fuel_type": "diesel",
+      "tank_size": {},
+      "capacity": {
+        "capacity_kw": "2250 eKW",
+        "capacity_hp": "3286 bhp"
+      },
+      "backup_mw": "2.25",
+      "control_technologies": "Electronic fuel injection, turbocharged engine, and aftercooler; adherence to good operating practices and manufacturer-recommended maintenance",
+      "operating_hours": 100,
+      "emissions_limits": {
+        "Nitrogen Oxides (as NO2)": {
+          "lbs_per_hour": 46.4,
+          "tons_per_year": 16.3
+        },
+        "Carbon Monoxide": {
+          "lbs_per_hour": 9.4,
+          "tons_per_year": 3.3
+        }
+      }
+    },
+    "EG7": {
+      "make": "Caterpillar",
+      "model": "3516B",
+      "fuel_type": "diesel",
+      "tank_size": {},
+      "capacity": {
+        "capacity_kw": "2250",
+        "capacity_hp": "3286"
+      },
+      "backup_mw": "2.25 MW",
+      "control_technologies": "Electronic fuel injection, turbocharged engine, and aftercooler",
+      "operating_hours": 100,
+      "emissions_limits": {
+        "Nitrogen Oxides (NO2)": {
+          "hourly_limit": "46.4 lbs/hr",
+          "annual_limit": "16.3 tons/yr"
+        },
+        "Carbon Monoxide (CO)": {
+          "hourly_limit": "9.4 lbs/hr",
+          "annual_limit": "3.3 tons/yr"
+        }
+      }
+    },
+    "EGR": {
+      "make": "Caterpillar",
+      "model": "3516B",
+      "fuel_type": "diesel",
+      "tank_size": {},
+      "capacity": {
+        "capacity_kw": "2250 eKW",
+        "capacity_hp": "3286 bhp"
+      },
+      "backup_mw": "2.25",
+      "control_technologies": "Electronic fuel injection, turbocharged engine, and aftercooler, along with good operating practices and appropriate maintenance according to manufacturer recommendations.",
+      "operating_hours": 100,
+      "emissions_limits": {
+        "Nitrogen Oxides (as NO2)": {
+          "lbs_per_hour": 46.4,
+          "tons_per_year": 16.3
+        },
+        "Carbon Monoxide": {
+          "lbs_per_hour": 9.4,
+          "tons_per_year": 3.3
+        }
+      }
+    },
+    "EGHS": {
+      "make": "Caterpillar",
+      "model": "Model 2671",
+      "fuel_type": "diesel",
+      "tank_size": {},
+      "capacity": {
+        "capacity_kw": "800",
+        "capacity_hp": "1214"
+      },
+      "backup_mw": "0.8",
+      "control_technologies": "Electronic fuel injection, turbocharged engine, aftercooler, and good operating practices with appropriate maintenance according to manufacturer recommendations.",
+      "operating_hours": 100,
+      "emissions_limits": {
+        "Nitrogen Oxides (NO2)": {
+          "lbs_per_hour": 17.0,
+          "tons_per_year": 0.9
+        }
+      }
+    },
+    "EGLS": {
+      "make": "Caterpillar",
+      "model": "Model C DM8501",
+      "fuel_type": "diesel",
+      "tank_size": {},
+      "capacity": {
+        "capacity_kw": "250",
+        "capacity_hp": "398"
+      },
+      "backup_mw": "0.25",
+      "control_technologies": "Electronic fuel injection, turbocharged engine, aftercooler, good operating practices, appropriate maintenance per manufacturer recommendations, operation and maintenance according to manufacturer's written instructions or approved procedures",
+      "operating_hours": 100,
+      "emissions_limits": {
+        "Nitrogen Oxides (NOx)": "No explicit numeric limits specified for EGLS",
+        "Carbon Monoxide (CO)": "No explicit numeric limits specified for EGLS",
+        "Volatile Organic Compounds (VOC)": "No explicit numeric limits specified for EGLS",
+        "Visible Emissions (Opacity)": "Not to exceed 10% opacity except during one 6-minute period per hour up to 20% opacity"
+      }
+    },
+    "FP1": {
+      "make": "John Deere",
+      "model": "4046TF29DE",
+      "fuel_type": "diesel",
+      "tank_size": {},
+      "capacity": {
+        "capacity_kw": "approximately 47.7 kW",
+        "capacity_hp": "64 HP"
+      },
+      "backup_mw": null,
+      "control_technologies": "Use of good operating practices and performing appropriate maintenance in accordance with the manufacturer's recommendations to control visible emissions, carbon monoxide (CO), volatile organic compounds (VOC), and nitrogen oxide (NOx) emissions. Operation and maintenance must follow the manufacturer's written instructions or approved procedures. No specific add-on control devices are mentioned for FP1.",
+      "operating_hours": 100,
+      "emissions_limits": {}
+    }
+  }
+}
