@@ -407,6 +407,9 @@ class FacilityMapper:
                 weight=2
             ).add_to(marker_cluster)
         
+        # Add layer control
+        folium.LayerControl().add_to(m)
+        
         # Add legend with updated colors
         legend_html = """
         <div style="position: fixed; 
@@ -488,22 +491,31 @@ class FacilityMapper:
             control=True
         ).add_to(map_obj)
         
-        # Add markers - clean, professional styling with color scheme
-        for _, row in df_mapped.iterrows():
-            # Professional color scheme - scientifically appropriate, high contrast
-            count = row['generator_count']
+        # Professional color scheme - scientifically appropriate, high contrast
+        def get_color(count):
             if count >= 50:
-                base_color = '#d32f2f'  # Red - critical
-                border_color = '#b71c1c'
+                return '#d32f2f'  # Red - critical
             elif count >= 20:
-                base_color = '#f57c00'  # Orange - high
-                border_color = '#e65100'
+                return '#f57c00'  # Orange - high
             elif count >= 10:
-                base_color = '#0288d1'  # Blue - medium
-                border_color = '#01579b'
+                return '#0288d1'  # Blue - medium  
             else:
-                base_color = '#388e3c'  # Green - low
-                border_color = '#1b5e20'
+                return '#388e3c'  # Green - low
+        
+        def get_border_color(count):
+            if count >= 50:
+                return '#b71c1c'
+            elif count >= 20:
+                return '#e65100'
+            elif count >= 10:
+                return '#01579b'
+            else:
+                return '#1b5e20'
+        
+        # Add markers - clean, professional styling
+        for _, row in df_mapped.iterrows():
+            base_color = get_color(row['generator_count'])
+            border_color = get_border_color(row['generator_count'])
             
             popup_html = f"""
             <div style="font-family: 'Helvetica Neue', Arial, sans-serif; min-width: 280px; font-size: 13px;">

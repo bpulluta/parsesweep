@@ -657,18 +657,18 @@ def map(input_dir: str, output: Optional[str], state: Optional[str],
     color = GREEN if success_rate >= 80 else YELLOW if success_rate >= 60 else '\033[91m'
     print(f"  {GREEN}✓{RESET} Geocoded {color}{success_count}/{len(df_geocoded)}{RESET} facilities ({color}{success_rate:.0f}%{RESET})\n")
     
-    # Create map
-    print(f"  {CYAN}→{RESET} Generating map...")
-    m = mapper.create_map(df_geocoded, output, title)
+    # Create dashboard
+    print(f"  {CYAN}→{RESET} Generating dashboard...")
+    output_path = mapper.create_dashboard(df_geocoded, output, title)
     
-    if m is None:
+    if output_path is None:
         print(f"  {YELLOW}⚠{RESET}  No valid coordinates to map\n")
         print(f"{DIM}{'─' * 80}{RESET}\n")
         return
     
     file_size = output.stat().st_size / 1024
     size_str = f"{file_size:.1f} KB" if file_size < 1024 else f"{file_size/1024:.1f} MB"
-    print(f"  {GREEN}✓{RESET} Map saved ({size_str})\n")
+    print(f"  {GREEN}✓{RESET} Dashboard saved ({size_str})\n")
     
     # Generate summary statistics
     summary = mapper.generate_summary_stats(df_geocoded)
