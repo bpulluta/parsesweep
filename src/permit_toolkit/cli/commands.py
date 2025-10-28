@@ -47,9 +47,14 @@ def extract(path: str, output: Optional[str], state: Optional[str],
     """
     import time
     import json
+    from pathlib import Path
+    from dotenv import load_dotenv
     from permit_toolkit.extraction import PermitExtractor, load_schema
     from permit_toolkit.extraction.pdf_utils import extract_text_from_pdf
     from permit_toolkit.utils.config import get_config
+    
+    # Load environment variables from .env file
+    load_dotenv()
     
     config = get_config()
     path = Path(path)
@@ -121,6 +126,9 @@ def extract(path: str, output: Optional[str], state: Optional[str],
     # Initialize extractor
     schema = load_schema(config.default_schema)
     
+    # Track the actual model being used for output
+    actual_model = model
+    
     if use_azure:
         from openai import AzureOpenAI
         
@@ -136,6 +144,7 @@ def extract(path: str, output: Optional[str], state: Optional[str],
         
         # Use Azure deployment name if configured, otherwise use the model parameter
         deployment_name = azure_model if azure_model else model
+        actual_model = deployment_name  # Track actual model for output
         
         azure_client = AzureOpenAI(
             api_key=azure_key,
@@ -184,7 +193,7 @@ def extract(path: str, output: Optional[str], state: Optional[str],
                 'source_file': pdf_path.name,
                 'extraction_date': time.strftime('%Y-%m-%d %H:%M:%S'),
                 'state': state,
-                'model': model,
+                'model': actual_model,  # Use actual model name (Azure deployment or OpenAI model)
                 'qa_qc_enabled': enable_qa_qc,
                 'cost_usd': result.cost,
                 'processing_time_sec': result.processing_time,

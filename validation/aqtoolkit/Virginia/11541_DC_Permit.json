@@ -2,7 +2,7 @@
   "source_file": "11541_DC_Permit.pdf",
   "extraction_date": "2025-10-28 11:07:41",
   "state": "permits",
-  "model": "gpt-4o-mini",
+  "model": "compassop-gpt-5",
   "qa_qc_enabled": false,
   "cost_usd": 0.0051483,
   "processing_time_sec": 51.671066761016846,
