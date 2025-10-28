@@ -49,7 +49,7 @@ data/outputs/
 data/validation/
 data/visualizations/
 scripts/ 
-
+sample-site/
 # Logs
 *.log
 logs/

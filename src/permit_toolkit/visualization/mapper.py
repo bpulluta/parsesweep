@@ -193,19 +193,39 @@ class FacilityMapper:
                     
                     permit_details = data.get('data', {}).get('permitDetails', {})
                     
+                    # Extract facility information with robust fallbacks
+                    permit_number = data.get('permit_number') or permit_details.get('permitNumber', 'Unknown')
+                    facility_name = permit_details.get('facilityName') or 'Unknown Facility'
+                    facility_address = permit_details.get('facilityAddress') or ''
+                    facility_county = permit_details.get('facilityCounty') or 'Unknown'
+                    permit_date = permit_details.get('permitIssuanceDate') or 'Unknown'
+                    generator_count = data.get('generator_count', 0)
+                    
+                    # Calculate total capacity from generator sets
+                    total_capacity_kw = sum(
+                        gen.get('ratedCapacityKW', 0) * gen.get('numGenerators', 1)
+                        for gen in data.get('data', {}).get('generatorSets', [])
+                        if gen.get('ratedCapacityKW')
+                    )
+                    
+                    # Skip facilities with no meaningful data (both address and county empty/null)
+                    if (not facility_address or facility_address.strip() == '') and \
+                       (not facility_county or facility_county in ['Unknown', '']):
+                        continue
+                    
+                    # Skip facilities with zero generators
+                    if generator_count == 0 and total_capacity_kw == 0:
+                        continue
+                    
                     facility = {
-                        'permit_number': data.get('permit_number', 'Unknown'),
-                        'facility_name': permit_details.get('facilityName', 'Unknown'),
-                        'address_raw': permit_details.get('facilityAddress', ''),
-                        'county': permit_details.get('facilityCounty', 'Unknown'),
+                        'permit_number': permit_number,
+                        'facility_name': facility_name,
+                        'address_raw': facility_address,
+                        'county': facility_county,
                         'state': state,
-                        'generator_count': data.get('generator_count', 0),
-                        'permit_date': permit_details.get('permitIssuanceDate', 'Unknown'),
-                        'total_capacity_kw': sum(
-                            gen.get('ratedCapacityKW', 0) * gen.get('numGenerators', 1)
-                            for gen in data.get('data', {}).get('generatorSets', [])
-                            if gen.get('ratedCapacityKW')
-                        ),
+                        'generator_count': generator_count,
+                        'permit_date': permit_date,
+                        'total_capacity_kw': total_capacity_kw,
                         'source_file': data.get('source_file', json_file.name)
                     }
                     
@@ -297,12 +317,27 @@ class FacilityMapper:
         center_lat = df_mapped['latitude'].mean()
         center_lon = df_mapped['longitude'].mean()
         
-        # Create base map
+        # Create base map with modern CartoDB Positron tiles (clean, minimal design)
         m = folium.Map(
             location=[center_lat, center_lon],
             zoom_start=7,
-            tiles='OpenStreetMap'
+            tiles='CartoDB positron',
+            control_scale=True
         )
+        
+        # Add alternative tile layers for user selection
+        folium.TileLayer('OpenStreetMap', name='OpenStreetMap').add_to(m)
+        folium.TileLayer('CartoDB dark_matter', name='Dark Mode').add_to(m)
+        folium.TileLayer(
+            tiles='https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+            attr='Esri',
+            name='Satellite',
+            overlay=False,
+            control=True
+        ).add_to(m)
+        
+        # Add layer control to switch between views
+        folium.LayerControl(position='topright').add_to(m)
         
         # Add title if provided
         if title:
@@ -372,9 +407,6 @@ class FacilityMapper:
                 weight=2
             ).add_to(marker_cluster)
         
-        # Add layer control
-        folium.LayerControl().add_to(m)
-        
         # Add legend with updated colors
         legend_html = """
         <div style="position: fixed; 
@@ -400,6 +432,525 @@ class FacilityMapper:
         m.save(str(output_file))
         
         return m
+    
+    def create_dashboard(self, df: pd.DataFrame, output_file: Path, title: Optional[str] = None) -> None:
+        """
+        Create an enhanced HTML dashboard with map, statistics, and data table.
+        
+        Args:
+            df: DataFrame with geocoded facility data
+            output_file: Path to save the HTML dashboard
+            title: Optional title for the dashboard
+        """
+        # Filter mapped facilities
+        df_mapped = df[df['latitude'].notna()].copy()
+        
+        if len(df_mapped) == 0:
+            return None
+        
+        # Calculate statistics
+        total_facilities = len(df_mapped)
+        total_generators = df_mapped['generator_count'].sum()
+        total_capacity_mw = df_mapped['total_capacity_kw'].sum() / 1000
+        avg_capacity_mw = total_capacity_mw / total_facilities if total_facilities > 0 else 0
+        states = df_mapped['state'].nunique()
+        counties = df_mapped['county'].nunique()
+        
+        # Create map center
+        center_lat = df_mapped['latitude'].mean()
+        center_lon = df_mapped['longitude'].mean()
+        
+        # Build professional map with LIGHT theme as default (publication quality)
+        map_obj = folium.Map(
+            location=[center_lat, center_lon],
+            zoom_start=6,
+            tiles='CartoDB positron',
+            name='Light',
+            attr='&copy; OpenStreetMap contributors &copy; CARTO',
+            control_scale=True,
+            prefer_canvas=True
+        )
+        
+        # Add Dark theme as alternative
+        folium.TileLayer(
+            tiles='CartoDB dark_matter',
+            name='Dark',
+            overlay=False,
+            control=True
+        ).add_to(map_obj)
+        
+        # Add Satellite view
+        folium.TileLayer(
+            tiles='https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+            attr='Esri',
+            name='Satellite',
+            overlay=False,
+            control=True
+        ).add_to(map_obj)
+        
+        # Add markers - clean, professional styling with color scheme
+        for _, row in df_mapped.iterrows():
+            # Professional color scheme - scientifically appropriate, high contrast
+            count = row['generator_count']
+            if count >= 50:
+                base_color = '#d32f2f'  # Red - critical
+                border_color = '#b71c1c'
+            elif count >= 20:
+                base_color = '#f57c00'  # Orange - high
+                border_color = '#e65100'
+            elif count >= 10:
+                base_color = '#0288d1'  # Blue - medium
+                border_color = '#01579b'
+            else:
+                base_color = '#388e3c'  # Green - low
+                border_color = '#1b5e20'
+            
+            popup_html = f"""
+            <div style="font-family: 'Helvetica Neue', Arial, sans-serif; min-width: 280px; font-size: 13px;">
+                <div style="border-bottom: 3px solid {base_color}; padding-bottom: 8px; margin-bottom: 10px;">
+                    <div style="font-weight: 600; font-size: 14px; color: #212121;">{row['facility_name']}</div>
+                    <div style="color: #757575; font-size: 12px; margin-top: 2px;">Permit {row['permit_number']}</div>
+                </div>
+                <table style="width: 100%; border-collapse: collapse; font-size: 13px; line-height: 1.8;">
+                    <tr>
+                        <td style="color: #616161; padding: 4px 0;">Generators:</td>
+                        <td style="text-align: right; font-weight: 600; color: {border_color};">{row['generator_count']}</td>
+                    </tr>
+                    <tr>
+                        <td style="color: #616161; padding: 4px 0;">Capacity:</td>
+                        <td style="text-align: right; font-weight: 600;">{row['total_capacity_kw']/1000:.2f} MW</td>
+                    </tr>
+                    <tr style="border-top: 1px solid #e0e0e0;">
+                        <td style="color: #616161; padding: 8px 0 4px 0;">County:</td>
+                        <td style="text-align: right;">{row['county']}</td>
+                    </tr>
+                    <tr>
+                        <td style="color: #616161; padding: 4px 0;">State:</td>
+                        <td style="text-align: right; font-weight: 500;">{row['state']}</td>
+                    </tr>
+                    <tr>
+                        <td style="color: #616161; padding: 4px 0;">Permit Date:</td>
+                        <td style="text-align: right;">{row['permit_date']}</td>
+                    </tr>
+                </table>
+            </div>
+            """
+            
+            # Simple tooltip
+            tooltip_text = f"{row['facility_name']}: {row['generator_count']} generators, {row['total_capacity_kw']/1000:.1f} MW"
+            
+            # Calculate marker size
+            base_radius = 5
+            size_multiplier = min(row['generator_count'] / 12, 18)
+            marker_radius = base_radius + size_multiplier
+            
+            # Clean circle markers
+            folium.CircleMarker(
+                location=[row['latitude'], row['longitude']],
+                radius=marker_radius,
+                popup=folium.Popup(popup_html, max_width=320),
+                tooltip=tooltip_text,
+                color=border_color,
+                fill=True,
+                fillColor=base_color,
+                fillOpacity=0.75,
+                weight=2,
+                opacity=1.0
+            ).add_to(map_obj)
+        
+        folium.LayerControl(position='topright').add_to(map_obj)
+        
+        # Get map HTML
+        map_html = map_obj._repr_html_()
+        
+        # Build data table rows
+        table_rows = ""
+        for _, row in df_mapped.sort_values('generator_count', ascending=False).iterrows():
+            # Use the same color scheme for consistency
+            if row['generator_count'] >= 50:
+                badge_color = '#E63946'
+                border_color = '#C1121F'
+            elif row['generator_count'] >= 20:
+                badge_color = '#F77F00'
+                border_color = '#D05801'
+            elif row['generator_count'] >= 10:
+                badge_color = '#06AED5'
+                border_color = '#048BA8'
+            else:
+                badge_color = '#2A9D8F'
+                border_color = '#1A7A6F'
+            
+            table_rows += f"""
+            <tr>
+                <td><b>{row['facility_name']}</b></td>
+                <td>{row['permit_number']}</td>
+                <td><span class="badge" style="background-color: {badge_color}; border: 2px solid {border_color};">{row['generator_count']}</span></td>
+                <td><b style="color: {border_color};">{row['total_capacity_kw']/1000:.2f} MW</b></td>
+                <td>{row['county']}</td>
+                <td>{row['state']}</td>
+                <td>{row['permit_date']}</td>
+            </tr>
+            """
+        
+        # State-by-state breakdown
+        state_stats = df_mapped.groupby('state').agg({
+            'facility_name': 'count',
+            'generator_count': 'sum',
+            'total_capacity_kw': 'sum'
+        }).reset_index()
+        state_stats.columns = ['State', 'Facilities', 'Generators', 'Capacity (kW)']
+        state_stats['Capacity (MW)'] = state_stats['Capacity (kW)'] / 1000
+        
+        state_rows = ""
+        for _, row in state_stats.iterrows():
+            state_rows += f"""
+            <tr>
+                <td><b>{row['State']}</b></td>
+                <td>{row['Facilities']}</td>
+                <td>{row['Generators']}</td>
+                <td>{row['Capacity (MW)']:.1f} MW</td>
+            </tr>
+            """
+        
+        # Create professional, publication-ready dashboard HTML with text-based NREL branding
+        dashboard_html = f"""
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{title or 'Data Center Facilities'}</title>
+    <style>
+        * {{
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }}
+        
+        body {{
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+            background: #ffffff;
+            color: #212121;
+            line-height: 1.5;
+        }}
+        
+        .container {{
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+        }}
+        
+        .header {{
+            border-bottom: 3px solid #e0e0e0;
+            padding-bottom: 20px;
+            margin-bottom: 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }}
+        
+        .header-content {{
+            flex: 1;
+        }}
+        
+        .header-logo {{
+            flex-shrink: 0;
+            margin-left: 20px;
+        }}
+        
+        .nrel-text {{
+            font-size: 60px;
+            font-weight: 1000;
+            color: #0079C2;
+            letter-spacing: 2px;
+            font-family: Arial, Helvetica, sans-serif;
+        }}
+        
+        .header h1 {{
+            font-size: 28px;
+            font-weight: 600;
+            color: #212121;
+            margin-bottom: 8px;
+        }}
+        
+        .header p {{
+            font-size: 14px;
+            color: #616161;
+        }}
+        
+        .stats {{
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 16px;
+            margin-bottom: 30px;
+        }}
+        
+        .stat-box {{
+            background: #fafafa;
+            border: 1px solid #e0e0e0;
+            border-radius: 4px;
+            padding: 16px;
+            text-align: center;
+        }}
+        
+        .stat-value {{
+            font-size: 32px;
+            font-weight: 700;
+            color: #212121;
+            margin-bottom: 4px;
+        }}
+        
+        .stat-label {{
+            font-size: 12px;
+            color: #757575;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            font-weight: 500;
+        }}
+        
+        .map-section {{
+            margin-bottom: 30px;
+            display: grid;
+            grid-template-columns: 1fr auto;
+            gap: 20px;
+        }}
+        
+        .map-container {{
+            background: white;
+            border: 1px solid #e0e0e0;
+            border-radius: 4px;
+            overflow: hidden;
+            height: 600px;
+        }}
+        
+        .legend {{
+            background: white;
+            border: 1px solid #e0e0e0;
+            border-radius: 4px;
+            padding: 20px;
+            width: 220px;
+            height: fit-content;
+        }}
+        
+        .legend h3 {{
+            font-size: 14px;
+            font-weight: 600;
+            color: #212121;
+            margin-bottom: 16px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }}
+        
+        .legend-item {{
+            display: flex;
+            align-items: center;
+            margin-bottom: 12px;
+            font-size: 13px;
+        }}
+        
+        .legend-dot {{
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            margin-right: 10px;
+            flex-shrink: 0;
+        }}
+        
+        .section {{
+            background: white;
+            border: 1px solid #e0e0e0;
+            border-radius: 4px;
+            padding: 24px;
+            margin-bottom: 30px;
+        }}
+        
+        .section-title {{
+            font-size: 16px;
+            font-weight: 600;
+            color: #212121;
+            margin-bottom: 20px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }}
+        
+        table {{
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }}
+        
+        th {{
+            background: #fafafa;
+            padding: 12px;
+            text-align: left;
+            font-weight: 600;
+            color: #424242;
+            border-bottom: 2px solid #e0e0e0;
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }}
+        
+        td {{
+            padding: 12px;
+            border-bottom: 1px solid #f5f5f5;
+            color: #424242;
+        }}
+        
+        tr:hover {{
+            background: #fafafa;
+        }}
+        
+        .badge {{
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 3px;
+            color: white;
+            font-weight: 600;
+            font-size: 12px;
+        }}
+        
+        .footer {{
+            text-align: center;
+            padding: 24px;
+            color: #9e9e9e;
+            font-size: 12px;
+            border-top: 1px solid #e0e0e0;
+            margin-top: 40px;
+        }}
+        
+        @media (max-width: 1024px) {{
+            .map-section {{
+                grid-template-columns: 1fr;
+            }}
+            .legend {{
+                width: 100%;
+            }}
+            .map-container {{
+                height: 500px;
+            }}
+        }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="header-content">
+                <h1>{title or 'Data Center Facilities'}</h1>
+                <p>Air quality permit data for backup generator facilities</p>
+            </div>
+            <div class="header-logo">
+                <div class="nrel-text">NREL</div>
+            </div>
+        </div>
+        
+        <div class="stats">
+            <div class="stat-box">
+                <div class="stat-value">{total_facilities}</div>
+                <div class="stat-label">Facilities</div>
+            </div>
+            <div class="stat-box">
+                <div class="stat-value">{total_generators}</div>
+                <div class="stat-label">Generators</div>
+            </div>
+            <div class="stat-box">
+                <div class="stat-value">{total_capacity_mw:.1f}</div>
+                <div class="stat-label">Total MW</div>
+            </div>
+            <div class="stat-box">
+                <div class="stat-value">{avg_capacity_mw:.1f}</div>
+                <div class="stat-label">Avg MW/Facility</div>
+            </div>
+            <div class="stat-box">
+                <div class="stat-value">{states}</div>
+                <div class="stat-label">States</div>
+            </div>
+            <div class="stat-box">
+                <div class="stat-value">{counties}</div>
+                <div class="stat-label">Counties</div>
+            </div>
+        </div>
+        
+        <div class="map-section">
+            <div class="map-container">
+                {map_html}
+            </div>
+            
+            <div class="legend">
+                <h3>Generator Count</h3>
+                <div class="legend-item">
+                    <div class="legend-dot" style="background: #d32f2f; border: 2px solid #b71c1c;"></div>
+                    <span>50+ (Critical)</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-dot" style="background: #f57c00; border: 2px solid #e65100;"></div>
+                    <span>20-49 (High)</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-dot" style="background: #0288d1; border: 2px solid #01579b;"></div>
+                    <span>10-19 (Medium)</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-dot" style="background: #388e3c; border: 2px solid #1b5e20;"></div>
+                    <span>&lt; 10 (Low)</span>
+                </div>
+            </div>
+        </div>
+        
+        <div class="section">
+            <h2 class="section-title">Facility Details</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Facility Name</th>
+                        <th>Permit</th>
+                        <th>Generators</th>
+                        <th>Capacity</th>
+                        <th>County</th>
+                        <th>State</th>
+                        <th>Permit Date</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {table_rows}
+                </tbody>
+            </table>
+        </div>
+        
+        <div class="section">
+            <h2 class="section-title">Summary by State</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>State</th>
+                        <th>Facilities</th>
+                        <th>Generators</th>
+                        <th>Total Capacity</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {state_rows}
+                </tbody>
+            </table>
+        </div>
+        
+        <div class="footer">
+            <p>Data extracted from air quality permits using automated LLM extraction</p>
+            <p>Geocoding powered by OpenStreetMap Nominatim</p>
+        </div>
+    </div>
+</body>
+</html>
+"""
+        
+        # Save dashboard
+        output_file.parent.mkdir(parents=True, exist_ok=True)
+        # Save dashboard
+        output_file.parent.mkdir(parents=True, exist_ok=True)
+        with open(output_file, 'w', encoding='utf-8') as f:
+            f.write(dashboard_html)
+        
+        return output_file
     
     def generate_summary_stats(self, df: pd.DataFrame) -> Dict:
         """Generate summary statistics."""
