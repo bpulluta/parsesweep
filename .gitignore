@@ -48,7 +48,8 @@ data/extracted/
 data/outputs/
 data/validation/
 data/visualizations/
-scripts/ 
+scripts/
+schema_comparison/ 
 
 # Logs
 *.log

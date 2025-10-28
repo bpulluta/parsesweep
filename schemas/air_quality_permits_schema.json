@@ -6,7 +6,7 @@
       "description": "Permit-level metadata copied exactly from the permit; do not infer or normalize beyond date formatting when unambiguous.",
       "properties": {
         "permitNumber": {
-          "description": "Identifier shown on the permit cover or header. Preserve formatting.",
+          "description": "The actual permit number/identifier only (e.g., '11790', '21050040', '08010054'). Extract only the numeric or alphanumeric identifier, excluding labels like 'Registration No.:', 'Application No.:', 'Permit', etc. For permits with multiple identifiers (e.g., 'Application No.: 21050040 I.D. No.: 031471AEN'), extract the primary permit number (21050040). Do not include permit type descriptions or renewal status.",
           "type": "string"
         },
         "permitIssuanceDate": {
