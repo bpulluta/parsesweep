@@ -606,15 +606,32 @@ Operating: 500 hours/yr""",
         if duplicates:
             warnings.append(f"⚠️ WARNING: Duplicate reference numbers: {', '.join(duplicates)}")
         
-        # Check 2: Missing critical fields
+        # Check 2: Missing critical fields and alternative options
         for i, gen in enumerate(generators):
             ref = gen.get('referenceNumber', f'Entry {i+1}')
-            if not gen.get('make'):
+            make = gen.get('make', '')
+            model = gen.get('model', '')
+            
+            if not make:
                 warnings.append(f"⚠️ WARNING: {ref} missing make")
-            if not gen.get('model'):
+            elif ' or ' in make.lower() or ' / ' in make:
+                warnings.append(f"⚠️ WARNING: {ref} has multiple make options: '{make}' - schema requires single deterministic choice")
+            
+            if not model:
                 warnings.append(f"⚠️ WARNING: {ref} missing model")
+            elif ' or ' in model.lower() or ' / ' in model:
+                warnings.append(f"⚠️ WARNING: {ref} has multiple model options: '{model}' - schema requires single deterministic choice")
+            
             if not gen.get('ratedCapacityKW') and not gen.get('ratedCapacityBHP'):
                 warnings.append(f"⚠️ WARNING: {ref} missing capacity")
+            
+            # Check for multiple capacity values in same field
+            rated_kw = gen.get('ratedCapacityKW')
+            rated_bhp = gen.get('ratedCapacityBHP')
+            if rated_kw and isinstance(rated_kw, str) and ' or ' in str(rated_kw).lower():
+                warnings.append(f"⚠️ WARNING: {ref} has multiple kW options: '{rated_kw}' - schema requires smallest value")
+            if rated_bhp and isinstance(rated_bhp, str) and ' or ' in str(rated_bhp).lower():
+                warnings.append(f"⚠️ WARNING: {ref} has multiple BHP options: '{rated_bhp}' - schema requires smallest value")
         
         # Check 3: Unrealistic values
         for gen in generators:
@@ -631,6 +648,38 @@ Operating: 500 hours/yr""",
         total_units = sum(g.get('numGenerators', 1) for g in generators)
         if total_units > 50:
             warnings.append(f"⚠️ WARNING: High total generator count: {total_units} (check for extraction errors)")
+        
+        # Check 5: Critical extractionNotes validation
+        # Check permit-level extractionNotes for multiple IDs
+        permit_details = data.get('permitDetails', {})
+        permit_number = permit_details.get('permitNumber', '')
+        permit_notes = permit_details.get('extractionNotes')
+        
+        # Look for indicators of multiple IDs in permit number field itself
+        if any(indicator in str(permit_number).lower() for indicator in ['application no', 'id no', 'permit no']):
+            if not permit_notes:
+                warnings.append("⚠️ INFO: Permit number may contain multiple identifiers but no extractionNotes provided")
+        
+        # Check generator-level extractionNotes for critical fields
+        for gen in generators:
+            ref = gen.get('referenceNumber', 'Unknown')
+            gen_notes = gen.get('extractionNotes')
+            
+            # If emissionsScope is set but emissionsGroupRef is null and vice versa, might need notes
+            scope = gen.get('emissionsScope')
+            group_ref = gen.get('emissionsGroupRef')
+            if scope in ['combined_group', 'facility_wide'] and not group_ref:
+                if not gen_notes or 'emission' not in gen_notes.lower():
+                    warnings.append(f"⚠️ INFO: {ref} has emissionsScope='{scope}' without emissionsGroupRef or clarifying notes")
+            
+            # If fuelNormalized is populated, ideally should have notes explaining mapping
+            fuel_norm = gen.get('fuelNormalized')
+            if fuel_norm and fuel_norm not in [None, 'other']:
+                primary_fuel = gen.get('primaryFuelType', '')
+                # Only suggest notes if the normalization isn't obvious
+                if fuel_norm and not any(norm_hint in primary_fuel.lower() for norm_hint in ['no. 2', 'no. 1', 'natural gas', 'propane']):
+                    if not gen_notes or 'fuel' not in gen_notes.lower():
+                        warnings.append(f"ℹ️ INFO: {ref} has fuelNormalized='{fuel_norm}' - consider adding extractionNotes to document mapping")
         
         if warnings:
             logger.warning(f"Sanity checks found {len(warnings)} issues")
