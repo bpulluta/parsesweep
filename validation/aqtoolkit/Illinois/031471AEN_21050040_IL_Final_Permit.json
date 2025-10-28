@@ -1,11 +1,11 @@
 {
   "source_file": "031471AEN_21050040_IL_Final_Permit.pdf",
-  "extraction_date": "2025-10-25 01:33:58",
-  "state": "Illinois",
-  "model": "gpt-5",
+  "extraction_date": "2025-10-28 11:06:49",
+  "state": "permits",
+  "model": "gpt-4o-mini",
   "qa_qc_enabled": false,
-  "cost_usd": 0.0048606,
-  "processing_time_sec": 47.825368881225586,
+  "cost_usd": 0.0061674,
+  "processing_time_sec": 52.50543284416199,
   "completeness_score": 1.0,
   "generator_count": 51,
   "permit_number": "21050040",
@@ -13,22 +13,22 @@
     "permitDetails": {
       "permitNumber": "21050040",
       "permitIssuanceDate": "2021-10-04",
-      "permitExpirationDate": "",
+      "permitExpirationDate": null,
       "facilityName": "Aligned Data Centers (ORD) Prop Co, LLC",
-      "facilityAddress": "505 Northwest Ave, Northlake, Illinois 60164",
+      "facilityAddress": "505 Northwest Ave, Northlake, Cook County, 60164",
       "facilityCounty": "Cook County"
     },
     "generatorSets": [
       {
-        "referenceNumber": "Forty-Nine (49) 3,000 kW (4,393 BHP) Diesel Emergency Generators",
+        "referenceNumber": "Forty-Nine (49) 3,000 kW (4,393 BHP) Diesel Emergency Generators;",
         "numGenerators": 49,
-        "make": "",
-        "model": "",
+        "make": null,
+        "model": null,
         "ratedCapacityBHP": 4393,
         "ratedCapacityKW": 3000,
         "maximumCapacityBHP": null,
         "maximumCapacityKW": null,
-        "primaryFuelType": "no. 2 distillate",
+        "primaryFuelType": "diesel fuel oil No. 2",
         "secondaryFuelType": null,
         "otherFuels": null,
         "fuelThroughputLimit": null,
@@ -47,18 +47,42 @@
         "pm10EmissionLimitTonsYr": null,
         "so2EmissionLimitLbsHr": 0.05,
         "so2EmissionLimitTonsYr": 0.04,
-        "stackTestRequired": null
+        "stackTestRequired": null,
+        "fuelGrade": "No. 2",
+        "fuelSpecification": "40 CFR 80.510(b)",
+        "fuelSulfurContentPpm": 15,
+        "ulsd": true,
+        "fuelNormalized": "distillate_no2",
+        "includedInPermitProject": true,
+        "emissionsScope": "combined_group",
+        "emissionsGroupRef": "All 49 Gensets",
+        "fuelThroughputScope": null,
+        "fuelThroughputGroupRef": null,
+        "allowedOperatingModes": [
+          "emergency",
+          "maintenance_testing",
+          "ISO_emergency"
+        ],
+        "opacityLimitPercent": 30,
+        "monitoring": {
+          "hourMeter": true,
+          "fuelFlowMeter": null,
+          "observationFrequency": null,
+          "recordkeepingWindowYears": 5
+        },
+        "nspsSubpartIIII": true,
+        "mactSubpartZZZZ": true
       },
       {
-        "referenceNumber": "Two (2) 500 kW (762 BHP) Diesel Emergency Generators",
+        "referenceNumber": "Two (2) 500 kW (762 BHP) Diesel Emergency Generators;",
         "numGenerators": 2,
-        "make": "",
-        "model": "",
+        "make": null,
+        "model": null,
         "ratedCapacityBHP": 762,
         "ratedCapacityKW": 500,
         "maximumCapacityBHP": null,
         "maximumCapacityKW": null,
-        "primaryFuelType": "no. 2 distillate",
+        "primaryFuelType": "diesel fuel oil No. 2",
         "secondaryFuelType": null,
         "otherFuels": null,
         "fuelThroughputLimit": null,
@@ -77,15 +101,39 @@
         "pm10EmissionLimitTonsYr": null,
         "so2EmissionLimitLbsHr": 0.01,
         "so2EmissionLimitTonsYr": 0.0004,
-        "stackTestRequired": null
+        "stackTestRequired": null,
+        "fuelGrade": "No. 2",
+        "fuelSpecification": "40 CFR 80.510(b)",
+        "fuelSulfurContentPpm": 15,
+        "ulsd": true,
+        "fuelNormalized": "distillate_no2",
+        "includedInPermitProject": true,
+        "emissionsScope": "combined_group",
+        "emissionsGroupRef": "All 2 Gensets",
+        "fuelThroughputScope": null,
+        "fuelThroughputGroupRef": null,
+        "allowedOperatingModes": [
+          "emergency",
+          "maintenance_testing",
+          "ISO_emergency"
+        ],
+        "opacityLimitPercent": 30,
+        "monitoring": {
+          "hourMeter": true,
+          "fuelFlowMeter": null,
+          "observationFrequency": null,
+          "recordkeepingWindowYears": 5
+        },
+        "nspsSubpartIIII": true,
+        "mactSubpartZZZZ": true
       }
     ]
   },
   "validation_notes": [
-    "\u26a0\ufe0f WARNING: Forty-Nine (49) 3,000 kW (4,393 BHP) Diesel Emergency Generators missing make",
-    "\u26a0\ufe0f WARNING: Forty-Nine (49) 3,000 kW (4,393 BHP) Diesel Emergency Generators missing model",
-    "\u26a0\ufe0f WARNING: Two (2) 500 kW (762 BHP) Diesel Emergency Generators missing make",
-    "\u26a0\ufe0f WARNING: Two (2) 500 kW (762 BHP) Diesel Emergency Generators missing model",
+    "\u26a0\ufe0f WARNING: Forty-Nine (49) 3,000 kW (4,393 BHP) Diesel Emergency Generators; missing make",
+    "\u26a0\ufe0f WARNING: Forty-Nine (49) 3,000 kW (4,393 BHP) Diesel Emergency Generators; missing model",
+    "\u26a0\ufe0f WARNING: Two (2) 500 kW (762 BHP) Diesel Emergency Generators; missing make",
+    "\u26a0\ufe0f WARNING: Two (2) 500 kW (762 BHP) Diesel Emergency Generators; missing model",
     "\u26a0\ufe0f WARNING: High total generator count: 51 (check for extraction errors)"
   ]
 }
