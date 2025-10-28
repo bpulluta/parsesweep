@@ -28,6 +28,10 @@
         "facilityCounty": {
           "description": "County exactly as written in the permit for the facility location.",
           "type": "string"
+        },
+        "facilityState": {
+          "description": "Two-letter state abbreviation for the facility location.",
+          "type": "string"
         }
       },
       "required": [
@@ -49,6 +53,17 @@
           "referenceNumber": {
             "description": "Unit or group identifier used by the permit (e.g., EG01, EG04\u2013EG05, 1510-4).",
             "type": "string"
+          },
+          "includedInPermitProject": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "True if explicitly listed as included in this permitting action; false if listed only as previously/other permitted equipment; null if not distinguished."
           },
           "numGenerators": {
             "anyOf": [
@@ -143,6 +158,30 @@
             ],
             "description": "Maximum fuel consumption for this reference as a number only. Do not guess units or basis here."
           },
+          "fuelThroughputScope": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "per_unit",
+              "combined_group",
+              "facility_wide",
+              null
+            ],
+            "description": "Scope for throughput: 'per_unit', 'combined_group', or 'facility_wide'; null if not stated."
+          },
+          "fuelThroughputGroupRef": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Exact label/range when combined throughput applies (e.g., 'EG01\u2013EG07')."
+          },
           "fuelSulfurContent": {
             "anyOf": [
               {
@@ -154,172 +193,7 @@
             ],
             "description": "Enter the PERCENT value only when a percent is explicitly stated (e.g., 0.5 for 0.5%). Do not convert ppm to percent; leave null if not stated."
           },
-          "controlTechnology": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Emission control technology or pollution control devices used on the generator. Extract from 'Emission Controls' or 'Process Requirements' sections. Common examples: 'turbocharged engine and aftercooler', 'selective catalytic reduction (SCR)', 'diesel oxidation catalyst (DOC)', 'good operating practices and maintenance per manufacturer recommendations'. Leave null if not specified."
-          },
-          "operatingHoursLimit": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Maximum allowed hours per year for this reference as a number only. If the permit uses a rolling 12-month basis, store the number only; do not include basis text here."
-          },
-          "noxEmissionLimitLbsHr": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Numeric as written for this reference. Do not aggregate or apportion. Use 'emissionsScope'/'emissionsGroupRef' to indicate scope."
-          },
-          "noxEmissionLimitTonsYr": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Numeric as written for this reference. Do not aggregate or apportion. Use 'emissionsScope'/'emissionsGroupRef' to indicate scope."
-          },
-          "coEmissionLimitLbsHr": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Numeric as written for this reference. Do not aggregate or apportion. Use 'emissionsScope'/'emissionsGroupRef' to indicate scope."
-          },
-          "coEmissionLimitTonsYr": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Numeric as written for this reference. Do not aggregate or apportion. Use 'emissionsScope'/'emissionsGroupRef' to indicate scope."
-          },
-          "vocEmissionLimitLbsHr": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Numeric as written for this reference. Do not aggregate or apportion. Use 'emissionsScope'/'emissionsGroupRef' to indicate scope."
-          },
-          "vocEmissionLimitTonsYr": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Numeric as written for this reference. Do not aggregate or apportion. Use 'emissionsScope'/'emissionsGroupRef' to indicate scope."
-          },
-          "pmEmissionLimitLbsHr": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Numeric as written for this reference. Do not aggregate or apportion. Use 'emissionsScope'/'emissionsGroupRef' to indicate scope."
-          },
-          "pmEmissionLimitTonsYr": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Numeric as written for this reference. Do not aggregate or apportion. Use 'emissionsScope'/'emissionsGroupRef' to indicate scope."
-          },
-          "pm10EmissionLimitLbsHr": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Numeric as written for this reference. Do not aggregate or apportion. Use 'emissionsScope'/'emissionsGroupRef' to indicate scope."
-          },
-          "pm10EmissionLimitTonsYr": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Numeric as written for this reference. Do not aggregate or apportion. Use 'emissionsScope'/'emissionsGroupRef' to indicate scope."
-          },
-          "so2EmissionLimitLbsHr": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Numeric as written for this reference. Do not aggregate or apportion. Use 'emissionsScope'/'emissionsGroupRef' to indicate scope."
-          },
-          "so2EmissionLimitTonsYr": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Numeric as written for this reference. Do not aggregate or apportion. Use 'emissionsScope'/'emissionsGroupRef' to indicate scope."
-          },
-          "stackTestRequired": {
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Indicates if a stack test is required for this generator set. Leave null if not specified in permit."
-          },
-          "fuelGrade": {
+           "fuelGrade": {
             "anyOf": [
               {
                 "type": "string"
@@ -384,7 +258,169 @@
             ],
             "description": "Optional normalization bucket; populate only when unambiguous from source text. Allowed values: distillate_no2, distillate_no1, natural_gas, propane, biodiesel_blend, dual_fuel, other. Otherwise null."
           },
-          "includedInPermitProject": {
+          "controlTechnology": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Emission control technology or pollution control devices used on the generator. Extract from 'Emission Controls' or 'Process Requirements' sections. Common examples: 'turbocharged engine and aftercooler', 'selective catalytic reduction (SCR)', 'diesel oxidation catalyst (DOC)', 'good operating practices and maintenance per manufacturer recommendations'. Leave null if not specified."
+          },
+          "operatingHoursLimit": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Maximum allowed hours per year for this reference as a number only. If the permit uses a rolling 12-month basis, store the number only; do not include basis text here."
+          },
+          "noxEmissionLimitLbsHr": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Numeric as written for this reference. Do not aggregate or apportion. Use 'emissionsScope'/'emissionsGroupRef' to indicate scope."
+          },
+          "noxEmissionLimitTonsYr": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Cumulative Nitrogen Oxides emission limit in tons per year. Leave null if not specified in permit. This can be facility wide, span multiple generator sets, or just for one generator. Numeric as written for this reference. Do not aggregate or apportion. Use 'emissionsScope'/'emissionsGroupRef' to indicate scope."
+          },
+          "coEmissionLimitLbsHr": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Numeric as written for this reference. Do not aggregate or apportion. Use 'emissionsScope'/'emissionsGroupRef' to indicate scope."
+          },
+          "coEmissionLimitTonsYr": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Cumulative Carbon Monoxide emission limit in tons per year. Leave null if not specified in permit. This can be facility wide, span multiple generator sets, or just for one generator. Numeric as written for this reference. Do not aggregate or apportion. Use 'emissionsScope'/'emissionsGroupRef' to indicate scope."
+          },
+          "vocEmissionLimitLbsHr": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Cumulative Volatile Organic Compounds emission limit in tons per year. Leave null if not specified in permit. This can be facility wide, span multiple generator sets, or just for one generator. Numeric as written for this reference. Do not aggregate or apportion. Use 'emissionsScope'/'emissionsGroupRef' to indicate scope."
+          },
+          "vocEmissionLimitTonsYr": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Numeric as written for this reference. Do not aggregate or apportion. Use 'emissionsScope'/'emissionsGroupRef' to indicate scope."
+          },
+          "pmEmissionLimitLbsHr": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Numeric as written for this reference. Do not aggregate or apportion. Use 'emissionsScope'/'emissionsGroupRef' to indicate scope."
+          },
+          "pmEmissionLimitTonsYr": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Cumulative Particulate Matter emission limit in tons per year. Leave null if not specified in permit. This can be facility wide, span multiple generator sets, or just for one generator. Numeric as written for this reference. Do not aggregate or apportion. Use 'emissionsScope'/'emissionsGroupRef' to indicate scope."
+          },
+          "pm10EmissionLimitLbsHr": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Numeric as written for this reference. Do not aggregate or apportion. Use 'emissionsScope'/'emissionsGroupRef' to indicate scope."
+          },
+          "pm10EmissionLimitTonsYr": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Cumulative PM-10 emission limit in tons per year. Leave null if not specified in permit. This can be facility wide, span multiple generator sets, or just for one generator. Numeric as written for this reference. Do not aggregate or apportion. Use 'emissionsScope'/'emissionsGroupRef' to indicate scope."
+          },
+          "so2EmissionLimitLbsHr": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Numeric as written for this reference. Do not aggregate or apportion. Use 'emissionsScope'/'emissionsGroupRef' to indicate scope."
+          },
+          "so2EmissionLimitTonsYr": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Cumulative Sulfur Dioxide emission limit in tons per year. Leave null if not specified in permit. This can be facility wide, span multiple generator sets, or just for one generator. Numeric as written for this reference. Do not aggregate or apportion. Use 'emissionsScope'/'emissionsGroupRef' to indicate scope."
+          },
+          "instantEmissionsAggregationType": {
+            "description": "How the instantaneous emissions (lbs/hr) are tallied for this generator set (e.g. for each generator)",
+            "type": "string"
+          },
+          "cumulativeEmissionsAggregationType": {
+            "description": "How the cumulative emissions (tons/yr) are aggregated (e.g. by generator set, or facility wide)",
+            "type": "string"
+          },
+          "stackTestRequired": {
             "anyOf": [
               {
                 "type": "boolean"
@@ -393,57 +429,9 @@
                 "type": "null"
               }
             ],
-            "description": "True if explicitly listed as included in this permitting action; false if listed only as previously/other permitted equipment; null if not distinguished."
+            "description": "Indicates if a stack test is required for this generator set. Leave null if not specified in permit."
           },
-          "emissionsScope": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "enum": [
-              "per_unit",
-              "combined_group",
-              "facility_wide",
-              null
-            ],
-            "description": "Scope for emission limits: 'per_unit' when limits apply to each unit; 'combined_group' for a stated unit range; 'facility_wide' for totals; null if not stated."
-          },
-          "emissionsGroupRef": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Exact label/range when combined or facility-wide (e.g., 'EG04\u2013EG05 combined', 'facility-wide')."
-          },
-          "fuelThroughputScope": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "enum": [
-              "per_unit",
-              "combined_group",
-              "facility_wide",
-              null
-            ],
-            "description": "Scope for throughput: 'per_unit', 'combined_group', or 'facility_wide'; null if not stated."
-          },
-          "fuelThroughputGroupRef": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Exact label/range when combined throughput applies (e.g., 'EG01\u2013EG07')."
-          },
-          "allowedOperatingModes": {
+            "allowedOperatingModes": {
             "anyOf": [
               {
                 "type": "array"
