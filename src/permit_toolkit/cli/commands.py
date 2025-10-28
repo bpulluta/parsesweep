@@ -1,6 +1,7 @@
 """CLI commands for permit toolkit."""
 
 import json
+import logging
 import os
 import sys
 import time
@@ -8,9 +9,9 @@ from pathlib import Path
 from typing import Optional
 
 import click
+from dotenv import load_dotenv
 
 from permit_toolkit.utils.config import get_config
-from permit_toolkit.utils.logger import get_logger, ExtractionMetrics
 from permit_toolkit.extraction import PermitExtractor, load_schema
 from permit_toolkit.extraction.pdf_utils import extract_text_from_pdf
 from permit_toolkit.consolidation import PermitConsolidator
@@ -45,14 +46,6 @@ def extract(path: str, output: Optional[str], state: Optional[str],
         # Use Azure OpenAI with higher rate limits
         permit-toolkit extract data/permits/Illinois --use-azure
     """
-    import time
-    import json
-    from pathlib import Path
-    from dotenv import load_dotenv
-    from permit_toolkit.extraction import PermitExtractor, load_schema
-    from permit_toolkit.extraction.pdf_utils import extract_text_from_pdf
-    from permit_toolkit.utils.config import get_config
-    
     # Load environment variables from .env file
     load_dotenv()
     
@@ -283,12 +276,16 @@ def validate(extraction_file: str, verbose: bool):
     Example:
         permit-toolkit validate data/extracted/Virginia/11790_DC_Permit.json
     """
-    logger = get_logger(verbose=verbose)
+    # Setup logging
+    log_level = logging.DEBUG if verbose else logging.INFO
+    logging.basicConfig(level=log_level, format='%(message)s')
     
-    logger.header("VALIDATION")
+    print(f"\n{'='*80}")
+    print("VALIDATION")
+    print(f"{'='*80}\n")
     
     extraction_file = Path(extraction_file)
-    logger.info(f"File: {extraction_file.name}")
+    print(f"File: {extraction_file.name}")
     
     # Load extraction
     with open(extraction_file) as f:
@@ -303,30 +300,32 @@ def validate(extraction_file: str, verbose: bool):
     
     try:
         json_validate(instance=data.get('data', data), schema=schema)
-        logger.success("Schema validation passed")
+        print("✓ Schema validation passed")
     except ValidationError as e:
-        logger.error(f"Schema validation failed: {e.message}")
+        print(f"✗ Schema validation failed: {e.message}")
         sys.exit(1)
     
     # Check data quality
     permit_data = data.get('data', data)
     generators = permit_data.get('generatorSets', [])
     
-    logger.section("Extraction Quality")
+    print(f"\n{'─'*80}")
+    print("Extraction Quality")
+    print(f"{'─'*80}\n")
     
     # Use metadata if available (new format)
     if 'quality' in data:
         quality = data['quality']
-        logger.info(f"Generator Count:    {quality['generator_count']}")
-        logger.info(f"Completeness Score: {quality['completeness_score']:.1%}")
-        logger.info(f"Fields Extracted:   {quality['fields_extracted']}")
-        logger.info(f"Fields Missing:     {quality['fields_missing']}")
-        logger.info(f"Has Permit Details: {'Yes' if quality['has_permit_details'] else 'No'}")
-        logger.info(f"Has Generators:     {'Yes' if quality['has_generators'] else 'No'}")
-        logger.info(f"Has Emissions Data: {'Yes' if quality['has_emissions_data'] else 'No'}")
+        print(f"Generator Count:    {quality['generator_count']}")
+        print(f"Completeness Score: {quality['completeness_score']:.1%}")
+        print(f"Fields Extracted:   {quality['fields_extracted']}")
+        print(f"Fields Missing:     {quality['fields_missing']}")
+        print(f"Has Permit Details: {'Yes' if quality['has_permit_details'] else 'No'}")
+        print(f"Has Generators:     {'Yes' if quality['has_generators'] else 'No'}")
+        print(f"Has Emissions Data: {'Yes' if quality['has_emissions_data'] else 'No'}")
     else:
         # Fallback for old format
-        logger.info(f"Generator Sets: {len(generators)}")
+        print(f"Generator Sets: {len(generators)}")
         
         if generators:
             # Check completeness
@@ -334,7 +333,7 @@ def validate(extraction_file: str, verbose: bool):
                 1 for g in generators
                 if g.get('make') and g.get('model') and g.get('fuelType')
             )
-            logger.info(f"Complete Records: {complete_count}/{len(generators)} "
+            print(f"Complete Records: {complete_count}/{len(generators)} "
                        f"({complete_count/len(generators)*100:.1f}%)")
             
             # Check for emissions data
@@ -342,26 +341,28 @@ def validate(extraction_file: str, verbose: bool):
                 1 for g in generators
                 if any(g.get(k) for k in ['noxEmissionLimitLbsHr', 'coEmissionLimitLbsHr', 'vocEmissionLimitLbsHr'])
             )
-            logger.info(f"With Emissions: {with_emissions}/{len(generators)} "
+            print(f"With Emissions: {with_emissions}/{len(generators)} "
                        f"({with_emissions/len(generators)*100:.1f}%)")
     
     # Check metadata
     if 'cost' in data:
         if isinstance(data['cost'], dict):
-            logger.info(f"\nExtraction Cost: ${data['cost']['total_usd']:.4f}")
-            logger.info(f"  OpenAI:        ${data['cost']['openai_usd']:.4f}")
-            logger.info(f"  LangExtract:   ${data['cost']['langextract_usd']:.4f}")
+            print(f"\nExtraction Cost: ${data['cost']['total_usd']:.4f}")
+            print(f"  OpenAI:        ${data['cost']['openai_usd']:.4f}")
+            if 'langextract_usd' in data['cost']:
+                print(f"  LangExtract:   ${data['cost']['langextract_usd']:.4f}")
         else:
-            logger.info(f"\nExtraction Cost: ${data['cost']:.4f}")
+            print(f"\nExtraction Cost: ${data['cost']:.4f}")
     
     if 'timing' in data:
-        logger.info(f"Processing Time: {data['timing']['total_sec']:.2f}s")
-        logger.info(f"  OpenAI:        {data['timing']['openai_sec']:.2f}s")
-        logger.info(f"  LangExtract:   {data['timing']['langextract_sec']:.2f}s")
+        print(f"Processing Time: {data['timing']['total_sec']:.2f}s")
+        print(f"  OpenAI:        {data['timing']['openai_sec']:.2f}s")
+        print(f"  LangExtract:   {data['timing']['langextract_sec']:.2f}s")
     elif 'processing_time_sec' in data:
-        logger.info(f"Processing Time: {data['processing_time_sec']:.2f}s")
+        print(f"Processing Time: {data['processing_time_sec']:.2f}s")
     
-    logger.success("\nValidation complete!")
+    print("\n✓ Validation complete!\n")
+    print(f"{'='*80}\n")
 
 
 @click.command()
