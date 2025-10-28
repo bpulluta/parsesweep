@@ -40,7 +40,8 @@
         "permitExpirationDate",
         "facilityName",
         "facilityAddress",
-        "facilityCounty"
+        "facilityCounty",
+        "facilityState",
       ],
       "type": "object"
     },
