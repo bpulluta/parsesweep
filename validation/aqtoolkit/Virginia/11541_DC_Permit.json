@@ -1,11 +1,11 @@
 {
   "source_file": "11541_DC_Permit.pdf",
-  "extraction_date": "2025-10-25 01:15:36",
-  "state": "Virginia",
-  "model": "gpt-5",
+  "extraction_date": "2025-10-28 11:07:41",
+  "state": "permits",
+  "model": "compassop-gpt-5",
   "qa_qc_enabled": false,
-  "cost_usd": 0.004180499999999999,
-  "processing_time_sec": 62.51511812210083,
+  "cost_usd": 0.0051483,
+  "processing_time_sec": 51.671066761016846,
   "completeness_score": 1.0,
   "generator_count": 3,
   "permit_number": "11541",
@@ -13,10 +13,10 @@
     "permitDetails": {
       "permitNumber": "11541",
       "permitIssuanceDate": "2008-05-16",
-      "permitExpirationDate": "",
-      "facilityName": "Southwest Enterprise Solutions Center",
+      "permitExpirationDate": null,
+      "facilityName": "the Southwest Enterprise Solutions Center",
       "facilityAddress": "located on Technology Park Drive, at the Regional Business Technology Park in Lebanon, Russell County, Virginia",
-      "facilityCounty": "Russell County"
+      "facilityCounty": "Russell County, Virginia"
     },
     "generatorSets": [
       {
@@ -32,7 +32,7 @@
         "secondaryFuelType": null,
         "otherFuels": null,
         "fuelThroughputLimit": null,
-        "fuelSulfurContent": 0.005,
+        "fuelSulfurContent": 0.5,
         "controlTechnology": null,
         "operatingHoursLimit": 500,
         "noxEmissionLimitLbsHr": 63.9,
@@ -47,7 +47,29 @@
         "pm10EmissionLimitTonsYr": 1.12,
         "so2EmissionLimitLbsHr": 4.2,
         "so2EmissionLimitTonsYr": 1.05,
-        "stackTestRequired": null
+        "stackTestRequired": null,
+        "fuelGrade": "numbers 1 or 2 fuel oil",
+        "fuelSpecification": "ASTM D396-76",
+        "fuelSulfurContentPpm": null,
+        "ulsd": null,
+        "fuelNormalized": null,
+        "includedInPermitProject": true,
+        "emissionsScope": "per_unit",
+        "emissionsGroupRef": null,
+        "fuelThroughputScope": null,
+        "fuelThroughputGroupRef": null,
+        "allowedOperatingModes": [
+          "emergency"
+        ],
+        "opacityLimitPercent": 10,
+        "monitoring": {
+          "hourMeter": null,
+          "fuelFlowMeter": null,
+          "observationFrequency": null,
+          "recordkeepingWindowYears": 5
+        },
+        "nspsSubpartIIII": true,
+        "mactSubpartZZZZ": null
       },
       {
         "referenceNumber": "2",
@@ -62,7 +84,7 @@
         "secondaryFuelType": null,
         "otherFuels": null,
         "fuelThroughputLimit": null,
-        "fuelSulfurContent": 0.005,
+        "fuelSulfurContent": 0.5,
         "controlTechnology": null,
         "operatingHoursLimit": 500,
         "noxEmissionLimitLbsHr": 63.9,
@@ -77,7 +99,29 @@
         "pm10EmissionLimitTonsYr": 1.12,
         "so2EmissionLimitLbsHr": 4.2,
         "so2EmissionLimitTonsYr": 1.05,
-        "stackTestRequired": null
+        "stackTestRequired": null,
+        "fuelGrade": "numbers 1 or 2 fuel oil",
+        "fuelSpecification": "ASTM D396-76",
+        "fuelSulfurContentPpm": null,
+        "ulsd": null,
+        "fuelNormalized": null,
+        "includedInPermitProject": false,
+        "emissionsScope": "per_unit",
+        "emissionsGroupRef": null,
+        "fuelThroughputScope": null,
+        "fuelThroughputGroupRef": null,
+        "allowedOperatingModes": [
+          "emergency"
+        ],
+        "opacityLimitPercent": 10,
+        "monitoring": {
+          "hourMeter": null,
+          "fuelFlowMeter": null,
+          "observationFrequency": null,
+          "recordkeepingWindowYears": 5
+        },
+        "nspsSubpartIIII": true,
+        "mactSubpartZZZZ": null
       },
       {
         "referenceNumber": "1",
@@ -92,7 +136,7 @@
         "secondaryFuelType": null,
         "otherFuels": null,
         "fuelThroughputLimit": null,
-        "fuelSulfurContent": 0.005,
+        "fuelSulfurContent": 0.5,
         "controlTechnology": null,
         "operatingHoursLimit": 500,
         "noxEmissionLimitLbsHr": 63.9,
@@ -107,7 +151,29 @@
         "pm10EmissionLimitTonsYr": 1.12,
         "so2EmissionLimitLbsHr": 4.2,
         "so2EmissionLimitTonsYr": 1.05,
-        "stackTestRequired": null
+        "stackTestRequired": null,
+        "fuelGrade": "numbers 1 or 2 fuel oil",
+        "fuelSpecification": "ASTM D396-76",
+        "fuelSulfurContentPpm": null,
+        "ulsd": null,
+        "fuelNormalized": null,
+        "includedInPermitProject": false,
+        "emissionsScope": "per_unit",
+        "emissionsGroupRef": null,
+        "fuelThroughputScope": null,
+        "fuelThroughputGroupRef": null,
+        "allowedOperatingModes": [
+          "emergency"
+        ],
+        "opacityLimitPercent": 10,
+        "monitoring": {
+          "hourMeter": null,
+          "fuelFlowMeter": null,
+          "observationFrequency": null,
+          "recordkeepingWindowYears": 5
+        },
+        "nspsSubpartIIII": true,
+        "mactSubpartZZZZ": null
       }
     ]
   },

@@ -1,11 +1,11 @@
 {
   "source_file": "11790_DC_Permit.pdf",
-  "extraction_date": "2025-10-25 01:16:59",
-  "state": "Virginia",
-  "model": "gpt-5",
+  "extraction_date": "2025-10-28 11:08:37",
+  "state": "permits",
+  "model": "compassop-gpt-5",
   "qa_qc_enabled": false,
-  "cost_usd": 0.0049166999999999995,
-  "processing_time_sec": 82.27098393440247,
+  "cost_usd": 0.0052785,
+  "processing_time_sec": 54.85375189781189,
   "completeness_score": 1.0,
   "generator_count": 7,
   "permit_number": "11790",
@@ -13,14 +13,14 @@
     "permitDetails": {
       "permitNumber": "11790",
       "permitIssuanceDate": "2016-08-23",
-      "permitExpirationDate": "",
+      "permitExpirationDate": null,
       "facilityName": "DP Facilities Inc. South, LLC",
       "facilityAddress": "5978 Windswept Blvd Wise, VA 24293",
-      "facilityCounty": "Wise County"
+      "facilityCounty": "Wise County, VA"
     },
     "generatorSets": [
       {
-        "referenceNumber": "EG01 - EG06",
+        "referenceNumber": "EG01 EG06",
         "numGenerators": 6,
         "make": "Cummins",
         "model": "QSK78-G12",
@@ -28,7 +28,7 @@
         "ratedCapacityKW": 2500,
         "maximumCapacityBHP": null,
         "maximumCapacityKW": null,
-        "primaryFuelType": "no. 2 distillate",
+        "primaryFuelType": "diesel fuel",
         "secondaryFuelType": null,
         "otherFuels": null,
         "fuelThroughputLimit": 583500,
@@ -47,7 +47,32 @@
         "pm10EmissionLimitTonsYr": 0.58,
         "so2EmissionLimitLbsHr": null,
         "so2EmissionLimitTonsYr": null,
-        "stackTestRequired": null
+        "stackTestRequired": null,
+        "fuelGrade": null,
+        "fuelSpecification": "ASTM D975",
+        "fuelSulfurContentPpm": null,
+        "ulsd": true,
+        "fuelNormalized": "distillate_no2",
+        "includedInPermitProject": true,
+        "emissionsScope": "per_unit",
+        "emissionsGroupRef": null,
+        "fuelThroughputScope": "combined_group",
+        "fuelThroughputGroupRef": "EO01-EO07",
+        "allowedOperatingModes": [
+          "emergency",
+          "maintenance_testing"
+        ],
+        "opacityLimitPercent": 10,
+        "monitoring": {
+          "hourMeter": true,
+          "fuelFlowMeter": null,
+          "observationFrequency": "monthly if operated",
+          "recordkeepingWindowYears": 5
+        },
+        "nspsSubpartIIII": true,
+        "mactSubpartZZZZ": true,
+        "pm25EmissionLimitLbsHr": 0.36,
+        "pm25EmissionLimitTonsYr": 0.58
       },
       {
         "referenceNumber": "EG07",
@@ -58,7 +83,7 @@
         "ratedCapacityKW": 600,
         "maximumCapacityBHP": null,
         "maximumCapacityKW": null,
-        "primaryFuelType": "no. 2 distillate",
+        "primaryFuelType": "diesel fuel",
         "secondaryFuelType": null,
         "otherFuels": null,
         "fuelThroughputLimit": 583500,
@@ -77,7 +102,32 @@
         "pm10EmissionLimitTonsYr": 0.58,
         "so2EmissionLimitLbsHr": null,
         "so2EmissionLimitTonsYr": null,
-        "stackTestRequired": null
+        "stackTestRequired": null,
+        "fuelGrade": null,
+        "fuelSpecification": "ASTM D975",
+        "fuelSulfurContentPpm": null,
+        "ulsd": true,
+        "fuelNormalized": "distillate_no2",
+        "includedInPermitProject": true,
+        "emissionsScope": "per_unit",
+        "emissionsGroupRef": null,
+        "fuelThroughputScope": "combined_group",
+        "fuelThroughputGroupRef": "EO01-EO07",
+        "allowedOperatingModes": [
+          "emergency",
+          "maintenance_testing"
+        ],
+        "opacityLimitPercent": 10,
+        "monitoring": {
+          "hourMeter": true,
+          "fuelFlowMeter": null,
+          "observationFrequency": "monthly if operated",
+          "recordkeepingWindowYears": 5
+        },
+        "nspsSubpartIIII": true,
+        "mactSubpartZZZZ": true,
+        "pm25EmissionLimitLbsHr": 0.17,
+        "pm25EmissionLimitTonsYr": 0.58
       }
     ]
   },

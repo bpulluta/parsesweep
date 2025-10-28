@@ -78,6 +78,14 @@ class PermitConsolidator:
         # Create one record per generator
         for gen in generator_sets:
             record = base_info.copy()
+            
+            # Handle monitoring nested object
+            monitoring = gen.get('monitoring', {}) or {}
+            
+            # Convert allowedOperatingModes array to comma-separated string
+            allowed_modes = gen.get('allowedOperatingModes')
+            allowed_modes_str = ', '.join(allowed_modes) if allowed_modes else None
+            
             record.update({
                 # Generator identification
                 'num_generators': gen.get('numGenerators'),
@@ -88,29 +96,39 @@ class PermitConsolidator:
                 # Capacity - rated
                 'rated_capacity_bhp': gen.get('ratedCapacityBHP'),
                 'rated_capacity_kw': gen.get('ratedCapacityKW'),
-                'rated_capacity_mw': (
-                    gen.get('ratedCapacityKW') / 1000 
-                    if gen.get('ratedCapacityKW') else None
-                ),
                 
-                # Capacity - maximum (new fields)
+                # Capacity - maximum
                 'maximum_capacity_bhp': gen.get('maximumCapacityBHP'),
                 'maximum_capacity_kw': gen.get('maximumCapacityKW'),
-                'maximum_capacity_mw': (
-                    gen.get('maximumCapacityKW') / 1000 
-                    if gen.get('maximumCapacityKW') else None
-                ),
                 
-                # Fuel - updated to support multiple fuel types
+                # Fuel - primary, secondary, other
                 'primary_fuel_type': gen.get('primaryFuelType'),
                 'secondary_fuel_type': gen.get('secondaryFuelType'),
                 'other_fuels': gen.get('otherFuels'),
-                'fuel_throughput_gal_yr': gen.get('fuelThroughputLimit'),
-                'fuel_sulfur_content': gen.get('fuelSulfurContent'),
+                'fuel_grade': gen.get('fuelGrade'),
+                'fuel_specification': gen.get('fuelSpecification'),
+                'fuel_normalized': gen.get('fuelNormalized'),
+                'ulsd': gen.get('ulsd'),
+                
+                # Fuel - throughput and sulfur
+                'fuel_throughput_limit': gen.get('fuelThroughputLimit'),
+                'fuel_throughput_scope': gen.get('fuelThroughputScope'),
+                'fuel_throughput_group_ref': gen.get('fuelThroughputGroupRef'),
+                'fuel_sulfur_content_pct': gen.get('fuelSulfurContent'),
+                'fuel_sulfur_content_ppm': gen.get('fuelSulfurContentPpm'),
                 
                 # Operating parameters
                 'operating_hours_limit_yr': gen.get('operatingHoursLimit'),
+                'allowed_operating_modes': allowed_modes_str,
                 'control_technology': gen.get('controlTechnology'),
+                'opacity_limit_percent': gen.get('opacityLimitPercent'),
+                
+                # Permit project inclusion
+                'included_in_permit_project': gen.get('includedInPermitProject'),
+                
+                # Emissions scope
+                'emissions_scope': gen.get('emissionsScope'),
+                'emissions_group_ref': gen.get('emissionsGroupRef'),
                 
                 # Emissions - NOx
                 'nox_limit_lbs_hr': gen.get('noxEmissionLimitLbsHr'),
@@ -132,12 +150,24 @@ class PermitConsolidator:
                 'pm10_limit_lbs_hr': gen.get('pm10EmissionLimitLbsHr'),
                 'pm10_limit_tons_yr': gen.get('pm10EmissionLimitTonsYr'),
                 
+                # Emissions - PM2.5
+                'pm25_limit_lbs_hr': gen.get('pm25EmissionLimitLbsHr'),
+                'pm25_limit_tons_yr': gen.get('pm25EmissionLimitTonsYr'),
+                
                 # Emissions - SO2
                 'so2_limit_lbs_hr': gen.get('so2EmissionLimitLbsHr'),
                 'so2_limit_tons_yr': gen.get('so2EmissionLimitTonsYr'),
                 
-                # Testing
+                # Testing and monitoring
                 'stack_test_required': gen.get('stackTestRequired'),
+                'hour_meter_required': monitoring.get('hourMeter'),
+                'fuel_flow_meter_required': monitoring.get('fuelFlowMeter'),
+                'observation_frequency': monitoring.get('observationFrequency'),
+                'recordkeeping_window_years': monitoring.get('recordkeepingWindowYears'),
+                
+                # Regulatory applicability
+                'nsps_subpart_iiii': gen.get('nspsSubpartIIII'),
+                'mact_subpart_zzzz': gen.get('mactSubpartZZZZ'),
             })
             
             records.append(record)
@@ -224,7 +254,8 @@ class PermitConsolidator:
         # Save if output path specified
         if output_path:
             output_path.parent.mkdir(parents=True, exist_ok=True)
-            df.to_csv(output_path, index=False)
+            # Use utf-8 encoding and ensure proper character handling
+            df.to_csv(output_path, index=False, encoding='utf-8')
             logger.info(f"✓ Saved consolidated data to: {output_path}")
         
         # Log summary
@@ -248,23 +279,25 @@ class PermitConsolidator:
             Dictionary with summary statistics
         """
         summary = {
-            'total_facilities': int(df['facility_name'].nunique()),
+            'total_facilities': int(df['facility_name'].nunique()) if 'facility_name' in df.columns else 0,
             'total_generators': len(df),
-            'total_capacity_mw': float(df['rated_capacity_mw'].sum()),
-            'counties': int(df['facility_county'].nunique()),
+            'total_capacity_kw': float(df['rated_capacity_kw'].sum()) if 'rated_capacity_kw' in df.columns else 0,
+            'counties': int(df['facility_county'].nunique()) if 'facility_county' in df.columns else 0,
         }
         
-        # Fuel type distribution
-        fuel_dist = df['fuel_type'].value_counts().to_dict()
-        summary['fuel_type_distribution'] = fuel_dist
+        # Fuel type distribution (using primary_fuel_type)
+        if 'primary_fuel_type' in df.columns:
+            fuel_dist = df['primary_fuel_type'].value_counts().to_dict()
+            summary['fuel_type_distribution'] = fuel_dist
         
         # Capacity by manufacturer
-        capacity_by_make = (
-            df.groupby('make')['rated_capacity_mw']
-            .sum()
-            .sort_values(ascending=False)
-            .to_dict()
-        )
-        summary['capacity_by_manufacturer'] = capacity_by_make
+        if 'make' in df.columns and 'rated_capacity_kw' in df.columns:
+            capacity_by_make = (
+                df.groupby('make')['rated_capacity_kw']
+                .sum()
+                .sort_values(ascending=False)
+                .to_dict()
+            )
+            summary['capacity_by_manufacturer'] = capacity_by_make
         
         return summary
