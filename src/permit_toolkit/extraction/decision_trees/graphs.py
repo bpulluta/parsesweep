@@ -1,8 +1,7 @@
-# -*- coding: utf-8 -*-
 """ELM Ordinance Decision Tree Graph setup functions."""
+
 import networkx as nx
-from elm.ords.extraction.graphs import (llm_response_starts_with_no,
-                                        llm_response_starts_with_yes)
+from elm.ords.extraction.graphs import llm_response_starts_with_no, llm_response_starts_with_yes
 
 
 _SECTION_PROMPT = (
@@ -18,13 +17,11 @@ _COMMENT_PROMPT = (
 
 
 def _setup_graph_no_nodes(**kwargs):
-    return nx.DiGraph(
-        SECTION_PROMPT=_SECTION_PROMPT,
-        COMMENT_PROMPT=_COMMENT_PROMPT,
-        **kwargs)
+    return nx.DiGraph(SECTION_PROMPT=_SECTION_PROMPT, COMMENT_PROMPT=_COMMENT_PROMPT, **kwargs)
 
-def setup_graph_permit_num(**kwargs):
-    G = _setup_graph_no_nodes(**kwargs)
+
+def setup_graph_permit_num(**kwargs):  # noqa: D103
+    G = _setup_graph_no_nodes(**kwargs)  # noqa: N806
 
     G.add_node(
         "init",
@@ -41,9 +38,7 @@ def setup_graph_permit_num(**kwargs):
 
     G.add_node(
         "get_permit_num",
-        prompt=(
-            "What is the permit or registration number mentioned in the text?"
-        ),
+        prompt=("What is the permit or registration number mentioned in the text?"),
     )
 
     G.add_edge("get_permit_num", "final")
@@ -57,14 +52,15 @@ def setup_graph_permit_num(**kwargs):
             'value of the "permit_number" key should be a string containing '
             "the permit or registration number mentioned in the text. The "
             'the value of the "explanation" key should be a string explaining '
-            'your answer.'
+            "your answer."
         ),
     )
 
     return G
 
-def setup_graph_generators(**kwargs):
-    G = _setup_graph_no_nodes(**kwargs)
+
+def setup_graph_generators(**kwargs):  # noqa: D103
+    G = _setup_graph_no_nodes(**kwargs)  # noqa: N806
 
     G.add_node(
         "init",
@@ -99,14 +95,15 @@ def setup_graph_generators(**kwargs):
             'value of the "reference_numbers" key should be a list containing '
             "the identifiers of all backup generators mentioned in the text. The "
             'the value of the "explanation" key should be a string explaining '
-            'your answer.'
+            "your answer."
         ),
     )
 
     return G
 
-def setup_graph_make(**kwargs):
-    G = _setup_graph_no_nodes(**kwargs)
+
+def setup_graph_make(**kwargs):  # noqa: D103
+    G = _setup_graph_no_nodes(**kwargs)  # noqa: N806
 
     G.add_node(
         "init",
@@ -126,9 +123,7 @@ def setup_graph_make(**kwargs):
 
     G.add_node(
         "get_make",
-        prompt=(
-            "Who is the manufacturer of the generator with reference number {ref_number}?"
-        ),
+        prompt=("Who is the manufacturer of the generator with reference number {ref_number}?"),
     )
 
     G.add_edge("get_make", "final")
@@ -142,14 +137,15 @@ def setup_graph_make(**kwargs):
             'value of the "make" key should be a string containing '
             "the manufacturer of the generator in question. The "
             'the value of the "explanation" key should be a string explaining '
-            'your answer.'
+            "your answer."
         ),
     )
 
     return G
 
-def setup_graph_model(**kwargs):
-    G = _setup_graph_no_nodes(**kwargs)
+
+def setup_graph_model(**kwargs):  # noqa: D103
+    G = _setup_graph_no_nodes(**kwargs)  # noqa: N806
 
     G.add_node(
         "init",
@@ -171,9 +167,7 @@ def setup_graph_model(**kwargs):
 
     G.add_node(
         "get_model",
-        prompt=(
-            "What is the model of the generator with reference number {ref_number}?"
-        ),
+        prompt=("What is the model of the generator with reference number {ref_number}?"),
     )
 
     G.add_edge("get_model", "final")
@@ -187,14 +181,15 @@ def setup_graph_model(**kwargs):
             'value of the "model" key should be a string containing '
             "the model of the generator in question, do not include the make. The "
             'the value of the "explanation" key should be a string explaining '
-            'your answer.'
+            "your answer."
         ),
     )
 
     return G
 
-def setup_graph_fuel(**kwargs):
-    G = _setup_graph_no_nodes(**kwargs)
+
+def setup_graph_fuel(**kwargs):  # noqa: D103
+    G = _setup_graph_no_nodes(**kwargs)  # noqa: N806
 
     G.add_node(
         "init",
@@ -213,9 +208,7 @@ def setup_graph_fuel(**kwargs):
 
     G.add_node(
         "get_fuel_type",
-        prompt=(
-            "What type of fuel does the generator with reference number {ref_number} use?"
-        ),
+        prompt=("What type of fuel does the generator with reference number {ref_number} use?"),
     )
 
     G.add_edge("get_fuel_type", "final")
@@ -229,14 +222,15 @@ def setup_graph_fuel(**kwargs):
             'value of the "fuel_type" key should be a string containing '
             "the fuel type of the generator in question. The "
             'the value of the "explanation" key should be a string explaining '
-            'your answer.'
+            "your answer."
         ),
     )
 
     return G
 
-def setup_graph_tank_size(**kwargs):
-    G = _setup_graph_no_nodes(**kwargs)
+
+def setup_graph_tank_size(**kwargs):  # noqa: D103
+    G = _setup_graph_no_nodes(**kwargs)  # noqa: N806
 
     G.add_node(
         "init",
@@ -271,7 +265,7 @@ def setup_graph_tank_size(**kwargs):
             "If so, what is that duration (include units, e.g., hours, days)?"
         ),
     )
-    
+
     G.add_edge("get_max_duration", "final")
 
     G.add_node(
@@ -285,14 +279,15 @@ def setup_graph_tank_size(**kwargs):
             'value of the "max_duration" key should be a string containing '
             "the max duration of the generator in question. The "
             'the value of the "explanation" key should be a string explaining '
-            'your answer.'
+            "your answer."
         ),
     )
 
     return G
 
-def setup_graph_capacity(**kwargs):
-    G = _setup_graph_no_nodes(**kwargs)
+
+def setup_graph_capacity(**kwargs):  # noqa: D103
+    G = _setup_graph_no_nodes(**kwargs)  # noqa: N806
 
     G.add_node(
         "init",
@@ -318,9 +313,7 @@ def setup_graph_capacity(**kwargs):
 
     G.add_node(
         "get_permits",
-        prompt=(
-            "What are the permit reference numbers that the capacity applies to?"
-        ),
+        prompt=("What are the permit reference numbers that the capacity applies to?"),
     )
 
     G.add_edge("get_permits", "check_permit")
@@ -335,7 +328,8 @@ def setup_graph_capacity(**kwargs):
     G.add_edge("get_application", "get_capacity_kw", condition=llm_response_starts_with_no)
     G.add_edge("check_permit", "get_capacity_kw", condition=llm_response_starts_with_yes)
 
-    # TODO: add check to ensure capacity is explicitly stated for this generator, not inferred
+    # TODO: add check to ensure capacity is explicitly stated
+    # for this generator, not inferred
     G.add_node(
         "get_capacity_kw",
         prompt=(
@@ -347,13 +341,13 @@ def setup_graph_capacity(**kwargs):
     G.add_edge("get_capacity_kw", "get_capacity_hp")
 
     G.add_node(
-        "get_capacity_hp",  
+        "get_capacity_hp",
         prompt=(
             "What is the rated capacity of the generator with the reference "
             "number {ref_number} in horsepower (HP)?"
         ),
     )
-    
+
     G.add_edge("get_capacity_hp", "final")
 
     G.add_node(
@@ -367,14 +361,15 @@ def setup_graph_capacity(**kwargs):
             'value of the "capacity_hp" key should be a string containing '
             "the rated capacity of the generator in horsepower (HP). The "
             'the value of the "explanation" key should be a string explaining '
-            'your answer.'
+            "your answer."
         ),
     )
 
     return G
 
-def setup_graph_backup(**kwargs):
-    G = _setup_graph_no_nodes(**kwargs)
+
+def setup_graph_backup(**kwargs):  # noqa: D103
+    G = _setup_graph_no_nodes(**kwargs)  # noqa: N806
 
     G.add_node(
         "init",
@@ -395,7 +390,9 @@ def setup_graph_backup(**kwargs):
         "get_backup",
         prompt=(
             "How much back up generation is provided by the generator with reference number "
-            "{ref_number} in megawatts (MW)?" # TODO: model is doing math here, should specify not to infer?
+            "{ref_number} in megawatts (MW)?"
+            # TODO: model is doing math here,
+            # should specify not to infer?
         ),
     )
 
@@ -410,18 +407,21 @@ def setup_graph_backup(**kwargs):
             'value of the "backup_mw" key should be a string containing '
             "the amount of back up generation provided by the generator in megawatts (MW). The "
             'the value of the "explanation" key should be a string explaining '
-            'your answer.'
+            "your answer."
         ),
     )
 
     return G
 
-def setup_graph_control_techs(**kwargs):
-    G = _setup_graph_no_nodes(**kwargs)
+
+def setup_graph_control_techs(**kwargs):  # noqa: D103
+    G = _setup_graph_no_nodes(**kwargs)  # noqa: N806
 
     G.add_node(
         "init",
-        prompt=( #TODO: refine this prompt, what exactly are we looking for? emissions contol techs? define what control techs are?
+        prompt=(
+            # TODO: refine this prompt, what exactly are we looking for?
+            # emissions contol techs? define what control techs are?
             "Does the following text mention control technologies "
             "for the generator with reference number {ref_number}? "
             "Keep in mind that the reference number "
@@ -438,7 +438,8 @@ def setup_graph_control_techs(**kwargs):
     G.add_node(
         "get_techs",
         prompt=(
-            "What control technologies are associated with the generator with reference number {ref_number}?"
+            "What control technologies are associated with the generator "
+            "with reference number {ref_number}?"
         ),
     )
 
@@ -448,19 +449,22 @@ def setup_graph_control_techs(**kwargs):
         "final",
         prompt=(
             "Respond based on our entire conversation so far. Return your "
-            "answer in JSON format (not markdown). Your JSON file must include exactly two "
+            "answer in JSON format (not markdown). Your JSON file must "
+            "include exactly two "
             'keys. The keys are "control_technologies" and "explanation". The '
-            'value of the "control_technologies" key should be a string containing '
-            "the control technologies associated with the generator in question. The "
+            'value of the "control_technologies" key should be a string '
+            "containing the control technologies associated with the "
+            "generator in question. The "
             'the value of the "explanation" key should be a string explaining '
-            'your answer.'
+            "your answer."
         ),
     )
 
     return G
 
-def setup_graph_operating_hours(**kwargs):
-    G = _setup_graph_no_nodes(**kwargs)
+
+def setup_graph_operating_hours(**kwargs):  # noqa: D103
+    G = _setup_graph_no_nodes(**kwargs)  # noqa: N806
 
     G.add_node(
         "init",
@@ -481,7 +485,8 @@ def setup_graph_operating_hours(**kwargs):
     G.add_node(
         "get_hours",
         prompt=(
-            "How many hours, per year, is the generator with reference number {ref_number} allowed to operate?"
+            "How many hours, per year, is the generator with reference "
+            "number {ref_number} allowed to operate?"
         ),
     )
 
@@ -496,14 +501,15 @@ def setup_graph_operating_hours(**kwargs):
             'value of the "operating_hours" key should be an integer containing '
             "the operating hours associated with the generator in question. The "
             'the value of the "explanation" key should be a string explaining '
-            'your answer.'
+            "your answer."
         ),
     )
 
     return G
 
-def setup_graph_emissions(**kwargs):
-    G = _setup_graph_no_nodes(**kwargs)
+
+def setup_graph_emissions(**kwargs):  # noqa: D103
+    G = _setup_graph_no_nodes(**kwargs)  # noqa: N806
 
     G.add_node(
         "init",
@@ -533,9 +539,7 @@ def setup_graph_emissions(**kwargs):
 
     G.add_node(
         "get_units",
-        prompt=(
-            "What units are used for the emissions limits mentioned in the text?"
-        ),
+        prompt=("What units are used for the emissions limits mentioned in the text?"),
     )
 
     G.add_edge("get_units", "get_limits")
@@ -558,9 +562,8 @@ def setup_graph_emissions(**kwargs):
             'value of the "emissions_limits" key should be a dictionary with '
             "subkeys for each pollutant mentioned and their corresponding limits. The "
             'the value of the "explanation" key should be a string explaining '
-            'your answer.'
+            "your answer."
         ),
     )
 
     return G
-
