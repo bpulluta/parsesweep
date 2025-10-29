@@ -1,13 +1,14 @@
 [workspace]
 authors = ["Super Team"]
 channels = ["conda-forge"]
-name = "backupgensprint"
+name = "permit-toolkit"
 platforms = ["win-64", "osx-arm64", "osx-64", "linux-64"]
 version = "0.1.0"
 
 [tasks]
 
 [dependencies]
+poppler = ">=24.8.0,<25"
 python = ">=3.9,<3.13"
 
 # Core dependencies for permit-toolkit
@@ -34,6 +35,7 @@ pypdf = ">=3.17.0"
 langextract = ">=1.0.0"
 selenium = ">=4.15.0"  # Moved to PyPI for better cross-platform support
 nrel-compass = ">=0.10.0, <0.11"
+permit-toolkit = { path = ".", editable = true}
 
 [environments]
 default = { solve-group = "default" }
