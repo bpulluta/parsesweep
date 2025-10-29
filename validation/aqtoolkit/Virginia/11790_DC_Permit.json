@@ -1,11 +1,11 @@
 {
   "source_file": "11790_DC_Permit.pdf",
-  "extraction_date": "2025-10-28 18:30:45",
-  "state": "permits",
+  "extraction_date": "2025-10-28 20:11:32",
+  "state": "Virginia",
   "model": "compassop-gpt-5",
   "qa_qc_enabled": false,
-  "cost_usd": 0.00617175,
-  "processing_time_sec": 54.66231417655945,
+  "cost_usd": 0.006410099999999999,
+  "processing_time_sec": 65.00112009048462,
   "completeness_score": 1.0,
   "generator_count": 7,
   "permit_number": "11790",
@@ -16,7 +16,7 @@
       "permitExpirationDate": null,
       "facilityName": "DP Facilities Inc. South, LLC",
       "facilityAddress": "5978 Windswept Blvd Wise, VA 24293",
-      "facilityCounty": "Wise County, VA",
+      "facilityCounty": "Wise County",
       "facilityState": "VA",
       "extractionNotes": null
     },
@@ -52,7 +52,7 @@
         "pm10EmissionLimitLbsHr": 0.36,
         "pm25EmissionLimitLbsHr": 0.36,
         "so2EmissionLimitLbsHr": null,
-        "instantEmissionsAggregationType": "per unit",
+        "instantEmissionsAggregationType": "lbs/hr per unit",
         "noxEmissionLimitTonsYr": 83.75,
         "coEmissionLimitTonsYr": 6.05,
         "vocEmissionLimitTonsYr": 2.01,
@@ -60,7 +60,7 @@
         "pm10EmissionLimitTonsYr": 0.58,
         "pm25EmissionLimitTonsYr": 0.58,
         "so2EmissionLimitTonsYr": null,
-        "cumulativeEmissionsAggregationType": "facility_wide",
+        "cumulativeEmissionsAggregationType": "Facility-wide Total",
         "stackTestRequired": null,
         "allowedOperatingModes": [
           "emergency",
@@ -70,12 +70,12 @@
         "monitoring": {
           "hourMeter": true,
           "fuelFlowMeter": null,
-          "observationFrequency": "monthly if operated",
+          "observationFrequency": "not less than once each month in which the unit is operated",
           "recordkeepingWindowYears": 5
         },
         "nspsSubpartIIII": true,
         "mactSubpartZZZZ": true,
-        "extractionNotes": "Permit lists PM10/PM2.5 together; recorded the same values for PM10 and PM2.5. Tons/yr limits are facility-wide; marked aggregation as facility_wide."
+        "extractionNotes": null
       },
       {
         "referenceNumber": "EG07",
@@ -108,7 +108,7 @@
         "pm10EmissionLimitLbsHr": 0.17,
         "pm25EmissionLimitLbsHr": 0.17,
         "so2EmissionLimitLbsHr": null,
-        "instantEmissionsAggregationType": "per unit",
+        "instantEmissionsAggregationType": null,
         "noxEmissionLimitTonsYr": 83.75,
         "coEmissionLimitTonsYr": 6.05,
         "vocEmissionLimitTonsYr": 2.01,
@@ -116,7 +116,7 @@
         "pm10EmissionLimitTonsYr": 0.58,
         "pm25EmissionLimitTonsYr": 0.58,
         "so2EmissionLimitTonsYr": null,
-        "cumulativeEmissionsAggregationType": "facility_wide",
+        "cumulativeEmissionsAggregationType": "Facility-wide Total",
         "stackTestRequired": null,
         "allowedOperatingModes": [
           "emergency",
@@ -126,12 +126,12 @@
         "monitoring": {
           "hourMeter": true,
           "fuelFlowMeter": null,
-          "observationFrequency": "monthly if operated",
+          "observationFrequency": "not less than once each month in which the unit is operated",
           "recordkeepingWindowYears": 5
         },
         "nspsSubpartIIII": true,
         "mactSubpartZZZZ": true,
-        "extractionNotes": "Permit lists PM10/PM2.5 together; recorded the same values for PM10 and PM2.5. Tons/yr limits are facility-wide; marked aggregation as facility_wide."
+        "extractionNotes": null
       }
     ]
   },
