@@ -94,7 +94,7 @@
           },
           "model": {
             "type": "string",
-            "description": "Apply the same selection rule as 'make'. Copy the chosen model verbatim that corresponds to the selected make as a single value. Do not include 'or' or list multiple models. Document alternatives in extractionNotes. Leave null if not stated."
+            "description": "If multiple models are listed (e.g., 'Caterpillar 3516C or MTU 16V4000 DS2250 or equivalent'), select deterministically using the same rule as 'make': (1) prefer the model with the smallest stated electrical rating (kW); (2) if kW not given, compare BHP and pick smallest; (3) if tied, pick first explicitly named model. Copy the chosen model verbatim as a single value. Do not include 'or' or list multiple models. Document alternatives in extractionNotes. Leave null if not stated."
           },
           "ratedCapacityBHP": {
             "type": "number",
@@ -262,7 +262,6 @@
             ],
             "description": "Optional normalization bucket; populate only when unambiguous from source text. Allowed values: distillate_no2, distillate_no1, natural_gas, propane, biodiesel_blend, dual_fuel, other. Otherwise null. If normalization required interpretation or mapping of ambiguous fuel descriptions, document the source text and reasoning in extractionNotes (e.g., 'Mapped diesel fuel oil No. 2 → distillate_no2')."
           },
-          
           "controlTechnology": {
             "anyOf": [
               {
@@ -470,59 +469,59 @@
           "monitoring": {
             "anyOf": [
               {
-                "type": "object"
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "hourMeter": {
+                    "anyOf": [
+                      {
+                        "type": "boolean"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "True if a non-resettable hour meter is required or present."
+                  },
+                  "fuelFlowMeter": {
+                    "anyOf": [
+                      {
+                        "type": "boolean"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "True only if a fuel flow meter is explicitly required."
+                  },
+                  "observationFrequency": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "Minimum observation cadence as written (e.g., 'monthly if operated')."
+                  },
+                  "recordkeepingWindowYears": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "Years to retain records if explicitly stated (e.g., 5)."
+                  }
+                }
               },
               {
                 "type": "null"
               }
             ],
-            "additionalProperties": false,
-            "properties": {
-              "hourMeter": {
-                "anyOf": [
-                  {
-                    "type": "boolean"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "description": "True if a non-resettable hour meter is required or present."
-              },
-              "fuelFlowMeter": {
-                "anyOf": [
-                  {
-                    "type": "boolean"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "description": "True only if a fuel flow meter is explicitly required."
-              },
-              "observationFrequency": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "description": "Minimum observation cadence as written (e.g., 'monthly if operated')."
-              },
-              "recordkeepingWindowYears": {
-                "anyOf": [
-                  {
-                    "type": "number"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "description": "Years to retain records if explicitly stated (e.g., 5)."
-              }
-            },
             "description": "Monitoring and recordkeeping explicitly tied to this reference. Do not infer."
           },
           "nspsSubpartIIII": {
