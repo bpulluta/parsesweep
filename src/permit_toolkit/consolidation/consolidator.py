@@ -59,6 +59,8 @@ class PermitConsolidator:
             'facility_name': permit_details.get('facilityName'),
             'facility_address': permit_details.get('facilityAddress'),
             'facility_county': permit_details.get('facilityCounty'),
+            'facility_state': permit_details.get('facilityState'),
+            'permit_extraction_notes': permit_details.get('extractionNotes'),
         }
         
         # Add only essential metadata fields (state)
@@ -126,9 +128,9 @@ class PermitConsolidator:
                 # Permit project inclusion
                 'included_in_permit_project': gen.get('includedInPermitProject'),
                 
-                # Emissions scope
-                'emissions_scope': gen.get('emissionsScope'),
-                'emissions_group_ref': gen.get('emissionsGroupRef'),
+                # Emissions aggregation (new schema fields, with backward compatibility)
+                'instant_emissions_aggregation_type': gen.get('instantEmissionsAggregationType') or gen.get('emissionsScope'),
+                'cumulative_emissions_aggregation_type': gen.get('cumulativeEmissionsAggregationType') or gen.get('emissionsGroupRef'),
                 
                 # Emissions - NOx
                 'nox_limit_lbs_hr': gen.get('noxEmissionLimitLbsHr'),
@@ -168,6 +170,9 @@ class PermitConsolidator:
                 # Regulatory applicability
                 'nsps_subpart_iiii': gen.get('nspsSubpartIIII'),
                 'mact_subpart_zzzz': gen.get('mactSubpartZZZZ'),
+                
+                # Extraction notes
+                'generator_extraction_notes': gen.get('extractionNotes'),
             })
             
             records.append(record)
