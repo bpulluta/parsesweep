@@ -1,233 +1,234 @@
-# Data Center Backup Generation Analysis - PJM Territory
+# Air Quality Permit Toolkit
 
-## Project Overview
+> **Production-ready system for extracting structured data from air quality permits using advanced LLMs**
 
-This project aims to create a comprehensive, curated dataset of backup generation systems at data centers across the PJM (Pennsylvania-New Jersey-Maryland) Interconnection territory. The analysis focuses on extracting detailed information from air quality permits to understand the emergency power infrastructure at these critical facilities.
+[![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-### Project Objectives
-
-1. **Identify Data Centers**: Use EPA ICIS air quality permit data to identify data centers across 13 PJM states
-2. **Collect Permit Documents**: Web scrape county/state environmental agency websites to obtain permit PDFs
-3. **Extract Structured Data**: Use LlamaExtract or LangExtract to parse permit PDFs into structured JSON
-4. **Build Dataset**: Create a consolidated dataset of backup generator specifications and operating parameters
-
-### Target Data Points
-
-From air quality permits, we extract the following information for each backup generator:
-
-**Generator Specifications:**
-- Make and Model
-- Fuel Type (Diesel, Natural Gas, etc.)
-- Rated Capacity (MW/kW)
-- Tank Size (gallons)
-- Expected maximum duration without refueling
-
-**Operating Parameters:**
-- Number of permitted hours of operation per year
-- Number of expected hours per year
-- Capacity factor (if available)
-
-**Emissions & Controls:**
-- Emission limits (NOx, CO, PM, etc.)
-- Control technology
-- Fuel sulfur content
-
-## Geographic Scope
-
-**PJM Territory States (13):**
-- Delaware (DE)
-- Illinois (IL)
-- Indiana (IN)
-- Kentucky (KY)
-- Maryland (MD)
-- Michigan (MI)
-- New Jersey (NJ)
-- North Carolina (NC)
-- Ohio (OH)
-- Pennsylvania (PA)
-- Tennessee (TN)
-- Virginia (VA)
-- West Virginia (WV)
-
-**Current Status:** 309 operating data centers identified with air quality permits
-
-## Project Structure
-
-```
-backupgensprint/
-│
-├── 01_data_sources/           # Original source data
-│   └── raw/                   # Raw ICIS data from EPA
-│       └── ICIS-AIR_FACILITIES.csv
-│
-├── 02_data_lists/             # Processed lists of facilities
-│   └── pjm_territory/         # Data centers in PJM states
-│       ├── pjm_operating_data_centers.csv
-│       ├── pjm_data_centers_complete.csv
-│       └── data_centers_major_states.csv
-│
-├── 03_permit_documents/       # Permit PDFs collected from agencies
-│   ├── by_state/              # Organized by state
-│   │   ├── Delaware/
-│   │   ├── Illinois/
-│   │   ├── Virginia/
-│   │   └── ...
-│   └── by_county/             # Alternative organization (TBD)
-│
-├── 04_extracted_data/         # Structured data extracted from PDFs
-│   ├── llamaextract/          # LlamaExtract JSON outputs
-│   │   ├── Delaware/
-│   │   ├── Virginia/
-│   │   └── ...
-│   ├── langextract/           # LangExtract JSON outputs
-│   │   └── (same structure)
-│   └── consolidated/          # Combined and cleaned datasets
-│       └── (final CSV/JSON outputs - TBD)
-│
-├── 05_scripts/                # Python scripts and tools
-│   ├── data_collection/       # Scripts to identify and list facilities
-│   │   └── icis_data_center_filter.py  # ✅ Filter ICIS data for data centers
-│   ├── extraction/            # Web scraping and PDF extraction
-│   │   └── (web scraping scripts - TBD)
-│   ├── analysis/              # Data analysis scripts
-│   │   └── pjm_data_center_analysis.py  # ✅ Analysis and reporting
-│   └── utils/                 # Helper utilities
-│       └── (utility scripts - TBD)
-│
-├── 06_outputs/                # Generated reports and datasets
-│   ├── reports/               # Analysis reports and documentation
-│   │   └── PJM_DataCenter_Analysis_Report.md
-│   └── datasets/              # Final curated datasets
-│       └── (final outputs - TBD)
-│
-├── docs/                      # Documentation
-    ├── schemas/               # Data schemas and templates
-    │   └── air_quality_permits_schema.json  # ✅ Proven schema for LlamaExtract
-    └── references/            # Reference materials
-        └── AQPermitDatabases_Data Centers_PJM.docx
-
-```
-
-## Workflow
-
-### Phase 1: Data Center Identification ✅ COMPLETE
-- [x] Download EPA ICIS air quality facilities data
-- [x] Filter for data center NAICS codes (518210, 541511-519)
-- [x] Filter for PJM territory states
-- [x] Identify operating facilities (309 data centers)
-- [x] Export facility lists with contact info and addresses
-
-### Phase 2: Permit Document Collection 🔄 IN PROGRESS
-- [ ] Review state/county permit databases (see docs/references/)
-- [ ] Develop web scraping scripts for each jurisdiction
-- [ ] Download permit PDFs for identified facilities
-- [ ] Organize documents by state and facility
-- [ ] Track download status and missing permits
-
-### Phase 3: Data Extraction 🔄 IN PROGRESS
-- [x] Define extraction schema (see docs/schemas/air_quality_permits_schema.json)
-- [x] Test LlamaExtract for extraction (Virginia pilot: 12 permits extracted successfully)
-- [ ] Process remaining Virginia permits
-- [ ] Scale extraction to all states
-- [ ] Quality control and validation
-
-### Phase 4: Data Consolidation 📋 PLANNED
-- [ ] Combine extracted JSON files
-- [ ] Standardize units and formats
-- [ ] Handle missing or incomplete data
-- [ ] Calculate derived metrics (capacity factors, etc.)
-- [ ] Export final curated dataset
-
-### Phase 5: Analysis & Publication 📋 PLANNED
-- [ ] Statistical analysis of backup generation capacity
-- [ ] State and regional comparisons
-- [ ] Fuel type and capacity distributions
-- [ ] Documentation and methodology writeup
-
-## Data Schema
-
-The extraction schema is defined in `docs/schemas/air_quality_permits_schema.json`. This schema has been tested and works well with LlamaExtract. Key entities:
-
-### Permit Details
-- Permit number, issuance/expiration dates
-- Facility name, address, county
-
-### Generator Sets (array)
-- Reference number (e.g., "EG01", "EG02")
-- Make and model
-- Rated capacity (BHP, kW, MW)
-- Fuel type and specifications
-- Operating limits (hours/year, fuel throughput)
-- Emission limits and control technology
-
-### Fuel Storage
-- Tank capacity
-- Fuel type
-- Number of tanks
-
-## Web Scraping Resources
-
-The document `docs/references/AQPermitDatabases_Data Centers_PJM.docx` contains:
-- Links to state/county air quality permit databases
-- Agency contact information
-- Notes on data availability and access methods
-
-Each state has different systems:
-- Some offer online searchable databases
-- Some require direct county contact
-- PDF availability varies by jurisdiction
-
-## Technology Stack
-
-- **Python 3.x**: Core scripting language
-- **pandas**: Data manipulation and CSV processing
-- **LlamaExtract / LangExtract**: PDF data extraction (evaluation pending)
-- **Web scraping**: TBD (requests, selenium, scrapy, etc.)
-
-## Getting Started
-
-### Development Setup
-
-1. Install pixi: https://pixi.sh/latest/#installation
-2. Clone repository
-3. Run `pixi shell -e dev`, and you're ready to go!
-
-### Running Scripts
-
-**Filter ICIS data for PJM data centers:**
-```bash
-cd 05_scripts/data_collection
-python pjm_data_center_analysis.py
-```
-
-**Analyze facility distributions:**
-```bash
-cd 05_scripts/analysis
-python pjm_data_center_analysis.py
-```
-
-## Next Steps
-
-### Immediate Priorities
-1. **Web Scraping Development**: Build scrapers for state permit databases (start with Virginia, Illinois, Pennsylvania)
-2. **Batch Extraction**: Process all collected permits using LlamaExtract with the proven schema
-3. **Data Consolidation**: Build script to merge extracted JSON files into a unified CSV dataset
-4. **County Database Mapping**: Create tracking spreadsheet mapping facilities to permit URLs
-
-### Questions to Resolve
-- What extraction tool works best? **Answer: LlamaExtract with current schema works well**
-- Should we use Selenium for JavaScript-heavy permit portals? **TBD based on state requirements**
-- How to handle OCR for scanned PDFs? **TBD when encountered**
-- Best way to track extraction errors and missing data? **Build validation script**
-
-## Contributors
-
-This project analyzes critical infrastructure data to understand emergency power capacity at data centers across the PJM grid territory.
-
-## License
-
-TBD
+Extract structured backup generator data from air quality permits across multiple states with **high accuracy**, **smart validation**, and **easy-to-use CLI**.
 
 ---
 
-**Last Updated:** October 22, 2025
+## ✨ Key Features
+
+- **Advanced LLM Extraction** - OpenAI GPT-4/5 or Azure OpenAI with structured outputs
+- **Multi-State Support** - Handles Virginia, Illinois, and other state permit formats  
+- **Rich Data Output** - 46 fields per generator including emissions, capacity, fuel, monitoring
+- **Smart Validation** - Built-in sanity checks and extraction notes for transparency
+- **CSV Export** - One-command consolidation to analysis-ready datasets
+- **⚡ Fast** - 10-80 seconds per permit, ~$0.003-0.013 per extraction
+
+---
+
+## 🚀 Quick Start (3 minutes)
+
+### Prerequisites
+
+- **Python 3.9-3.12** (Python 3.13 not yet supported)
+- **API Access**: OpenAI API key OR Azure OpenAI credentials
+
+### Installation
+
+We use **pixi** for dependency management (fast, reproducible, cross-platform):
+
+```bash
+# 1. Install pixi (one-time setup)
+curl -fsSL https://pixi.sh/install.sh | bash
+# Windows: iwr -useb https://pixi.sh/install.ps1 | iex
+
+# 2. Clone and setup
+git clone https://github.com/NREL/backupgensprint.git
+cd backupgensprint
+pixi install  # Installs all dependencies (takes ~30 seconds)
+
+# 3. Configure API (choose one)
+
+# Option A: OpenAI API
+echo "OPENAI_API_KEY=sk-your-key-here" > .env
+
+# Option B: Azure OpenAI
+cat > .env << 'EOF'
+AZURE_OPENAI_API_KEY=your-azure-key
+AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com/
+AZURE_OPENAI_API_VERSION=2024-02-15-preview
+AZURE_OPENAI_MODEL=compassop-gpt-5
+EOF
+```
+
+### First Extraction
+
+```bash
+# Extract a single permit
+pixi run permit-toolkit extract validation/permits/11790_DC_Permit.pdf
+
+# Extract all permits in a directory  
+pixi run permit-toolkit extract validation/permits/ --use-azure
+
+# Results appear in data/extracted/
+```
+
+---
+
+## 📖 Usage Guide
+
+### Extract Command
+
+```bash
+pixi run permit-toolkit extract <PATH> [OPTIONS]
+```
+
+**Common Examples:**
+
+```bash
+# Single file
+pixi run permit-toolkit extract validation/permits/11790_DC_Permit.pdf
+
+# Full directory
+pixi run permit-toolkit extract validation/permits/
+
+# With Azure OpenAI (recommended - higher rate limits)
+pixi run permit-toolkit extract validation/permits/ --use-azure
+
+# Custom output location
+pixi run permit-toolkit extract validation/permits/ --output validation/aqtoolkit
+
+# Test with first 5 files only
+pixi run permit-toolkit extract data/permits/Illinois/ -n 5
+```
+
+### Consolidate Command
+
+Convert extracted JSONs to analysis-ready CSV:
+
+```bash
+pixi run permit-toolkit consolidate <JSON_DIR> --output <CSV_FILE>
+```
+
+**Examples:**
+
+```bash
+# Consolidate validation data
+pixi run permit-toolkit consolidate validation/aqtoolkit/ \
+  --output validation/aqtoolkit/validation_consolidated.csv
+
+# Consolidate all Virginia permits
+pixi run permit-toolkit consolidate data/extracted/Virginia/ \
+  --output data/outputs/virginia_generators.csv
+```
+
+---
+
+## 📊 Output Format
+
+### Extraction (JSON)
+
+Each PDF produces a JSON with:
+- **Metadata**: Processing time, cost, completeness score
+- **Permit Details**: Number, dates, facility info, state
+- **Generator Sets**: One entry per equipment reference
+
+Key fields per generator:
+- Equipment: make, model, capacity (BHP/kW)
+- Fuel: type, sulfur content, normalized category
+- **Emissions (reorganized for clarity)**:
+  - Instant (lbs/hr): NOx, CO, VOC, PM, PM10, PM2.5, SO2 + aggregation type
+  - Cumulative (tons/yr): NOx, CO, VOC, PM, PM10, PM2.5, SO2 + aggregation type
+- Monitoring: hour meter, fuel flow meter, observation frequency
+- Regulations: NSPS Subpart IIII, MACT Subpart ZZZZ
+- **Extraction Notes**: Documents LLM decisions when alternatives exist
+
+### Consolidated CSV
+
+One row per generator with 58 columns including:
+- All permit and facility details
+- All equipment specifications
+- All emissions limits (instant → aggregation type → cumulative → aggregation type)
+- All monitoring and regulatory requirements
+- Extraction notes for transparency
+
+---
+
+## 🏗️ Project Structure
+
+```
+backupgensprint/
+├── schemas/
+│   └── air_quality_permits_schema.json    # Extraction schema (46 fields)
+├── src/permit_toolkit/
+│   ├── extraction/                        # PDF → JSON extraction
+│   ├── consolidation/                     # JSON → CSV consolidation
+│   └── cli/                               # Command-line interface
+├── validation/
+│   ├── permits/                           # Test PDFs (7 permits)
+│   └── aqtoolkit/                         # Ground truth data
+│       ├── Virginia/                      # 5 Virginia permit JSONs
+│       ├── Illinois/                      # 2 Illinois permit JSONs
+│       └── validation_consolidated.csv    # Consolidated validation data
+├── .env                                   # API credentials (create this)
+├── pixi.toml                              # Dependency configuration
+└── README.md                              # This file
+```
+
+---
+
+## 🐛 Troubleshooting
+
+### API Key Issues
+
+```bash
+# Verify .env file
+cat .env
+# Should show: OPENAI_API_KEY=sk-... OR AZURE_OPENAI_API_KEY=...
+
+# Test with single file
+pixi run permit-toolkit extract validation/permits/11790_DC_Permit.pdf --use-azure
+```
+
+### Rate Limits
+
+```bash
+# Use Azure OpenAI (much higher limits)
+pixi run permit-toolkit extract <path> --use-azure
+
+# Or process in smaller batches
+pixi run permit-toolkit extract <path> -n 10
+```
+
+### Slow Extractions
+
+```bash
+# Use faster model
+AZURE_OPENAI_MODEL=compassop-gpt-4.1-mini pixi run permit-toolkit extract <path> --use-azure
+```
+
+### Module Not Found
+
+```bash
+# Reinstall
+pixi install
+
+# Or use pixi shell
+pixi shell
+python -m pip install -e .
+```
+
+### Get Help
+
+```bash
+# Command-specific help
+pixi run permit-toolkit extract --help
+pixi run permit-toolkit consolidate --help
+```
+---
+
+## 📄 License
+
+MIT License - see [LICENSE](LICENSE) file.
+
+---
+
+## 🙏 Credits
+
+Developed by NREL Buildings team for backup generator analysis.
+
+For questions, open a GitHub issue.

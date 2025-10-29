@@ -1,0 +1,96 @@
+{
+  "run_id": "f43cc2fc-d98f-49b3-b654-4c3b3022e883",
+  "extraction_agent_id": "4c93eb04-9835-45df-bf0d-5a4a88233156",
+  "data": {
+    "permitDetails": {
+      "permitNumber": "11790",
+      "permitIssuanceDate": "2016-08-23",
+      "permitExpirationDate": "",
+      "facilityName": "DP Facilities Inc. South, LLC",
+      "facilityAddress": "5978 Windswept Blvd, Wise, VA 24293",
+      "facilityCounty": "Wise County"
+    },
+    "generatorSets": [
+      {
+        "referenceNumber": "EG01 - EG06",
+        "includedInProject": true,
+        "numGenerators": 6,
+        "make": "Cummins",
+        "model": "QSK78-G12",
+        "ratedCapacityBHP": 4060,
+        "ratedCapacityKW": 2500,
+        "maximumCapacityBHP": null,
+        "maximumCapacityKW": null,
+        "primaryFuelType": "diesel fuel",
+        "fuelNumber": "S15",
+        "secondaryFuelType": null,
+        "otherFuels": null,
+        "fuelThroughputLimit": 583600,
+        "fuelAggregation": "EG01 - EG07",
+        "fuelSulfurContent": 0.0015,
+        "controlTechnology": "Turbocharged engines and charge air coolers, plus good operating practices and maintenance per manufacturer recommendations",
+        "operatingHoursLimit": 500,
+        "noxEmissionLimitLbsHr": 53.7,
+        "noxEmissionLimitTonsYr": 83.75,
+        "coEmissionLimitLbsHr": 3.85,
+        "coEmissionLimitTonsYr": 6.05,
+        "vocEmissionLimitLbsHr": 1.29,
+        "vocEmissionLimitTonsYr": 2.01,
+        "pmEmissionLimitLbsHr": 0.36,
+        "pmEmissionLimitTonsYr": 0.58,
+        "pm10EmissionLimitLbsHr": 0.36,
+        "pm10EmissionLimitTonsYr": 0.58,
+        "so2EmissionLimitLbsHr": null,
+        "so2EmissionLimitTonsYr": null,
+        "instantEmissionsAggregationType": "Per unit (lbs/hr per unit)",
+        "cumulativeEmissionsAggregationType": "Facility-wide (EG01 - EG07)",
+        "stackTestRequired": null
+      },
+      {
+        "referenceNumber": "EG07",
+        "includedInProject": true,
+        "numGenerators": 1,
+        "make": "Cummins",
+        "model": "QSK19-G8",
+        "ratedCapacityBHP": 967,
+        "ratedCapacityKW": 600,
+        "maximumCapacityBHP": null,
+        "maximumCapacityKW": null,
+        "primaryFuelType": "diesel fuel",
+        "fuelNumber": "S15",
+        "secondaryFuelType": null,
+        "otherFuels": null,
+        "fuelThroughputLimit": 583600,
+        "fuelAggregation": "EG01 - EG07",
+        "fuelSulfurContent": 0.0015,
+        "controlTechnology": "Turbocharged engine and charge air cooler, plus good operating practices and maintenance per manufacturer recommendations",
+        "operatingHoursLimit": 500,
+        "noxEmissionLimitLbsHr": 12.79,
+        "noxEmissionLimitTonsYr": 83.75,
+        "coEmissionLimitLbsHr": 1.08,
+        "coEmissionLimitTonsYr": 6.05,
+        "vocEmissionLimitLbsHr": 0.28,
+        "vocEmissionLimitTonsYr": 2.01,
+        "pmEmissionLimitLbsHr": 0.17,
+        "pmEmissionLimitTonsYr": 0.58,
+        "pm10EmissionLimitLbsHr": 0.17,
+        "pm10EmissionLimitTonsYr": 0.58,
+        "so2EmissionLimitLbsHr": null,
+        "so2EmissionLimitTonsYr": null,
+        "instantEmissionsAggregationType": "Per unit (lbs/hr)",
+        "cumulativeEmissionsAggregationType": "Facility-wide (EG01 - EG07)",
+        "stackTestRequired": null
+      }
+    ]
+  },
+  "extraction_metadata": {
+    "field_metadata": {
+      
+    },
+    "usage": {
+      "num_pages_extracted": 9,
+      "num_document_tokens": 4858,
+      "num_output_tokens": 3158
+    }
+  }
+}
