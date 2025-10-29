@@ -1,6 +1,7 @@
 """Command line interface for decision tree extraction"""
 
 import json
+import time
 import logging
 import click
 import asyncio
@@ -106,6 +107,7 @@ async def _process_one(fp, output_dir, model, llm_service, process_sem):
     #         {"pdf_ocr_read_coroutine": read_pdf_file_ocr}
     #     )
 
+    start_time = time.monotonic()
     async with process_sem:
         # docs = await load_local_docs([fp], **file_loader_kwargs)
         # doc = docs[0]
@@ -118,8 +120,23 @@ async def _process_one(fp, output_dir, model, llm_service, process_sem):
         values = await parser.parse(text)
         # values = await parser.parse(doc.text)
 
-        with fp_out.open("w", encoding="utf-8") as f:
-            json.dump(values, f, indent=2)
+    output_data = {
+        "source_file": fp.name,
+        "extraction_date": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "state": None,
+        "model": model,
+        "qa_qc_enabled": False,
+        "cost_usd": None,
+        "processing_time_sec": time.monotonic() - start_time,
+        "completeness_score": None,
+        # "generator_count": sum(gen_set.get('numGenerators', 0) or 0 for gen_set in generator_sets),
+        # "permit_number": presult.data.get('permitDetails', {}).get('permitNumber', 'N/A')
+        "data": values,
+        "validation_notes": None,
+    }
+
+    with fp_out.open("w", encoding="utf-8") as f:
+        json.dump(output_data, f, indent=2)
 
 
 async def load_local_docs(fps, **kwargs):
