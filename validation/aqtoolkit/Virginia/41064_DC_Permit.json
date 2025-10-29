@@ -1,11 +1,11 @@
 {
   "source_file": "41064_DC_Permit.pdf",
-  "extraction_date": "2025-10-28 18:32:16",
-  "state": "permits",
+  "extraction_date": "2025-10-28 20:14:51",
+  "state": "Virginia",
   "model": "compassop-gpt-5",
   "qa_qc_enabled": false,
-  "cost_usd": 0.009900599999999999,
-  "processing_time_sec": 88.42070198059082,
+  "cost_usd": 0.010172549999999999,
+  "processing_time_sec": 86.72165703773499,
   "completeness_score": 1.0,
   "generator_count": 26,
   "permit_number": "41064",
@@ -38,7 +38,7 @@
         "fuelThroughputScope": null,
         "fuelThroughputGroupRef": null,
         "fuelSulfurContent": 0.0015,
-        "fuelGrade": "ultra low sulfur 2-D or 2-D S15",
+        "fuelGrade": "grade ultra low sulfur 2-D or grade 2-D S15",
         "fuelSpecification": "ASTM D975",
         "fuelSulfurContentPpm": 15,
         "ulsd": true,
@@ -52,7 +52,7 @@
         "pm10EmissionLimitLbsHr": 0.4,
         "pm25EmissionLimitLbsHr": null,
         "so2EmissionLimitLbsHr": null,
-        "instantEmissionsAggregationType": "per_generator",
+        "instantEmissionsAggregationType": "each diesel engine-generator set",
         "noxEmissionLimitTonsYr": 53.7,
         "coEmissionLimitTonsYr": 22.0,
         "vocEmissionLimitTonsYr": 4.2,
@@ -60,23 +60,24 @@
         "pm10EmissionLimitTonsYr": 1.6,
         "pm25EmissionLimitTonsYr": null,
         "so2EmissionLimitTonsYr": null,
-        "cumulativeEmissionsAggregationType": "facility_wide",
+        "cumulativeEmissionsAggregationType": "facility-wide",
         "stackTestRequired": true,
         "allowedOperatingModes": [
           "emergency",
           "ISO_emergency",
-          "maintenance_testing"
+          "maintenance_testing",
+          "non_emergency_after_approval"
         ],
         "opacityLimitPercent": 5,
         "monitoring": {
           "hourMeter": true,
           "fuelFlowMeter": null,
-          "observationFrequency": "once per day during each test firing and during days called into service",
+          "observationFrequency": "once per day during each test firing and during days in which the engine generator sets are called into service",
           "recordkeepingWindowYears": null
         },
         "nspsSubpartIIII": null,
         "mactSubpartZZZZ": null,
-        "extractionNotes": "NOx has two limits for this group: 4.81 lbs/hr with SCR in operation and 48.07 lbs/hr with SCR not in operation; recorded the 'with SCR' value. Facility-wide tons/year limits recorded with 'facility_wide' aggregation."
+        "extractionNotes": "NOx limits specified as 4.81 lbs/hr with SCR in operation or 48.07 lbs/hr with SCR not in operation; recorded the 'with SCR in operation' value. Alternate power generation (peak-shaving, demand response, interruptible) explicitly allowed for SCR-equipped units when urea injection is enabled."
       },
       {
         "referenceNumber": "DCA-A through DCA-E and DCA-Swing",
@@ -95,7 +96,7 @@
         "fuelThroughputScope": null,
         "fuelThroughputGroupRef": null,
         "fuelSulfurContent": 0.0015,
-        "fuelGrade": "ultra low sulfur 2-D or 2-D S15",
+        "fuelGrade": "grade ultra low sulfur 2-D or grade 2-D S15",
         "fuelSpecification": "ASTM D975",
         "fuelSulfurContentPpm": 15,
         "ulsd": true,
@@ -109,7 +110,7 @@
         "pm10EmissionLimitLbsHr": 0.54,
         "pm25EmissionLimitLbsHr": null,
         "so2EmissionLimitLbsHr": null,
-        "instantEmissionsAggregationType": "per_generator",
+        "instantEmissionsAggregationType": "each diesel engine-generator set",
         "noxEmissionLimitTonsYr": 53.7,
         "coEmissionLimitTonsYr": 22.0,
         "vocEmissionLimitTonsYr": 4.2,
@@ -117,7 +118,7 @@
         "pm10EmissionLimitTonsYr": 1.6,
         "pm25EmissionLimitTonsYr": null,
         "so2EmissionLimitTonsYr": null,
-        "cumulativeEmissionsAggregationType": "facility_wide",
+        "cumulativeEmissionsAggregationType": "facility-wide",
         "stackTestRequired": null,
         "allowedOperatingModes": [
           "emergency",
@@ -128,7 +129,7 @@
         "monitoring": {
           "hourMeter": true,
           "fuelFlowMeter": null,
-          "observationFrequency": "once per day during each test firing and during days called into service",
+          "observationFrequency": "once per day during each test firing and during days in which the engine generator sets are called into service",
           "recordkeepingWindowYears": null
         },
         "nspsSubpartIIII": null,
@@ -152,7 +153,7 @@
         "fuelThroughputScope": null,
         "fuelThroughputGroupRef": null,
         "fuelSulfurContent": 0.0015,
-        "fuelGrade": "ultra low sulfur 2-D or 2-D S15",
+        "fuelGrade": "grade ultra low sulfur 2-D or grade 2-D S15",
         "fuelSpecification": "ASTM D975",
         "fuelSulfurContentPpm": 15,
         "ulsd": true,
@@ -166,7 +167,7 @@
         "pm10EmissionLimitLbsHr": 0.4,
         "pm25EmissionLimitLbsHr": null,
         "so2EmissionLimitLbsHr": null,
-        "instantEmissionsAggregationType": "per_generator",
+        "instantEmissionsAggregationType": "each diesel engine-generator set",
         "noxEmissionLimitTonsYr": 53.7,
         "coEmissionLimitTonsYr": 22.0,
         "vocEmissionLimitTonsYr": 4.2,
@@ -174,23 +175,24 @@
         "pm10EmissionLimitTonsYr": 1.6,
         "pm25EmissionLimitTonsYr": null,
         "so2EmissionLimitTonsYr": null,
-        "cumulativeEmissionsAggregationType": "facility_wide",
+        "cumulativeEmissionsAggregationType": "facility-wide",
         "stackTestRequired": null,
         "allowedOperatingModes": [
           "emergency",
           "ISO_emergency",
-          "maintenance_testing"
+          "maintenance_testing",
+          "non_emergency_after_approval"
         ],
         "opacityLimitPercent": 5,
         "monitoring": {
           "hourMeter": true,
           "fuelFlowMeter": null,
-          "observationFrequency": "once per day during each test firing and during days called into service",
+          "observationFrequency": "once per day during each test firing and during days in which the engine generator sets are called into service",
           "recordkeepingWindowYears": null
         },
         "nspsSubpartIIII": null,
         "mactSubpartZZZZ": null,
-        "extractionNotes": "NOx has two limits for this group: 4.81 lbs/hr with SCR in operation and 48.11 lbs/hr with SCR not in operation; recorded the 'with SCR' value."
+        "extractionNotes": "NOx limits specified as 4.81 lbs/hr with SCR in operation or 48.11 lbs/hr with SCR not in operation; recorded the 'with SCR in operation' value."
       },
       {
         "referenceNumber": "DCB-G through DCB-H",
@@ -209,7 +211,7 @@
         "fuelThroughputScope": null,
         "fuelThroughputGroupRef": null,
         "fuelSulfurContent": 0.0015,
-        "fuelGrade": "ultra low sulfur 2-D or 2-D S15",
+        "fuelGrade": "grade ultra low sulfur 2-D or grade 2-D S15",
         "fuelSpecification": "ASTM D975",
         "fuelSulfurContentPpm": 15,
         "ulsd": true,
@@ -223,7 +225,7 @@
         "pm10EmissionLimitLbsHr": 0.22,
         "pm25EmissionLimitLbsHr": null,
         "so2EmissionLimitLbsHr": null,
-        "instantEmissionsAggregationType": "per_generator",
+        "instantEmissionsAggregationType": "each diesel engine-generator set",
         "noxEmissionLimitTonsYr": 53.7,
         "coEmissionLimitTonsYr": 22.0,
         "vocEmissionLimitTonsYr": 4.2,
@@ -231,23 +233,24 @@
         "pm10EmissionLimitTonsYr": 1.6,
         "pm25EmissionLimitTonsYr": null,
         "so2EmissionLimitTonsYr": null,
-        "cumulativeEmissionsAggregationType": "facility_wide",
+        "cumulativeEmissionsAggregationType": "facility-wide",
         "stackTestRequired": null,
         "allowedOperatingModes": [
           "emergency",
           "ISO_emergency",
-          "maintenance_testing"
+          "maintenance_testing",
+          "non_emergency_after_approval"
         ],
         "opacityLimitPercent": 5,
         "monitoring": {
           "hourMeter": true,
           "fuelFlowMeter": null,
-          "observationFrequency": "once per day during each test firing and during days called into service",
+          "observationFrequency": "once per day during each test firing and during days in which the engine generator sets are called into service",
           "recordkeepingWindowYears": null
         },
         "nspsSubpartIIII": null,
         "mactSubpartZZZZ": null,
-        "extractionNotes": "NOx has two limits for this group: 3.17 lbs/hr with SCR in operation and 31.67 lbs/hr with SCR not in operation; recorded the 'with SCR' value."
+        "extractionNotes": "NOx limits specified as 3.17 lbs/hr with SCR in operation or 31.67 lbs/hr with SCR not in operation; recorded the 'with SCR in operation' value."
       },
       {
         "referenceNumber": "DCC-A through DCC-D",
@@ -266,7 +269,7 @@
         "fuelThroughputScope": null,
         "fuelThroughputGroupRef": null,
         "fuelSulfurContent": 0.0015,
-        "fuelGrade": "ultra low sulfur 2-D or 2-D S15",
+        "fuelGrade": "grade ultra low sulfur 2-D or grade 2-D S15",
         "fuelSpecification": "ASTM D975",
         "fuelSulfurContentPpm": 15,
         "ulsd": true,
@@ -280,7 +283,7 @@
         "pm10EmissionLimitLbsHr": 0.4,
         "pm25EmissionLimitLbsHr": null,
         "so2EmissionLimitLbsHr": null,
-        "instantEmissionsAggregationType": "per_generator",
+        "instantEmissionsAggregationType": "each diesel engine-generator set",
         "noxEmissionLimitTonsYr": 53.7,
         "coEmissionLimitTonsYr": 22.0,
         "vocEmissionLimitTonsYr": 4.2,
@@ -288,23 +291,24 @@
         "pm10EmissionLimitTonsYr": 1.6,
         "pm25EmissionLimitTonsYr": null,
         "so2EmissionLimitTonsYr": null,
-        "cumulativeEmissionsAggregationType": "facility_wide",
+        "cumulativeEmissionsAggregationType": "facility-wide",
         "stackTestRequired": null,
         "allowedOperatingModes": [
           "emergency",
           "ISO_emergency",
-          "maintenance_testing"
+          "maintenance_testing",
+          "non_emergency_after_approval"
         ],
         "opacityLimitPercent": 5,
         "monitoring": {
           "hourMeter": true,
           "fuelFlowMeter": null,
-          "observationFrequency": "once per day during each test firing and during days called into service",
+          "observationFrequency": "once per day during each test firing and during days in which the engine generator sets are called into service",
           "recordkeepingWindowYears": null
         },
         "nspsSubpartIIII": null,
         "mactSubpartZZZZ": null,
-        "extractionNotes": "NOx has two limits for this group: 4.81 lbs/hr with SCR in operation and 48.11 lbs/hr with SCR not in operation; recorded the 'with SCR' value."
+        "extractionNotes": "NOx limits specified as 4.81 lbs/hr with SCR in operation or 48.11 lbs/hr with SCR not in operation; recorded the 'with SCR in operation' value."
       },
       {
         "referenceNumber": "DCC-E through DCC-F",
@@ -323,12 +327,12 @@
         "fuelThroughputScope": null,
         "fuelThroughputGroupRef": null,
         "fuelSulfurContent": 0.0015,
-        "fuelGrade": "ultra low sulfur 2-D or 2-D S15",
+        "fuelGrade": "grade ultra low sulfur 2-D or grade 2-D S15",
         "fuelSpecification": "ASTM D975",
         "fuelSulfurContentPpm": 15,
         "ulsd": true,
         "fuelNormalized": "distillate_no2",
-        "controlTechnology": "closed loop selective catalytic reduction (SCR) control devices",
+        "controlTechnology": "AirClarityTM 1500 SCR Systems",
         "operatingHoursLimit": 500,
         "noxEmissionLimitLbsHr": 3.21,
         "coEmissionLimitLbsHr": 3.04,
@@ -337,7 +341,7 @@
         "pm10EmissionLimitLbsHr": 0.36,
         "pm25EmissionLimitLbsHr": null,
         "so2EmissionLimitLbsHr": null,
-        "instantEmissionsAggregationType": "per_generator",
+        "instantEmissionsAggregationType": "each diesel engine-generator set",
         "noxEmissionLimitTonsYr": 53.7,
         "coEmissionLimitTonsYr": 22.0,
         "vocEmissionLimitTonsYr": 4.2,
@@ -345,23 +349,24 @@
         "pm10EmissionLimitTonsYr": 1.6,
         "pm25EmissionLimitTonsYr": null,
         "so2EmissionLimitTonsYr": null,
-        "cumulativeEmissionsAggregationType": "facility_wide",
+        "cumulativeEmissionsAggregationType": "facility-wide",
         "stackTestRequired": null,
         "allowedOperatingModes": [
           "emergency",
           "ISO_emergency",
-          "maintenance_testing"
+          "maintenance_testing",
+          "non_emergency_after_approval"
         ],
         "opacityLimitPercent": 5,
         "monitoring": {
           "hourMeter": true,
           "fuelFlowMeter": null,
-          "observationFrequency": "once per day during each test firing and during days called into service",
+          "observationFrequency": "once per day during each test firing and during days in which the engine generator sets are called into service",
           "recordkeepingWindowYears": null
         },
         "nspsSubpartIIII": null,
         "mactSubpartZZZZ": null,
-        "extractionNotes": "NOx has two limits for this group: 3.21 lbs/hr with SCR in operation and 32.14 lbs/hr with SCR not in operation; recorded the 'with SCR' value."
+        "extractionNotes": "NOx limits specified as 3.21 lbs/hr with SCR in operation or 32.14 lbs/hr with SCR not in operation; recorded the 'with SCR in operation' value."
       },
       {
         "referenceNumber": "DCD-A through DCD-C",
@@ -380,7 +385,7 @@
         "fuelThroughputScope": null,
         "fuelThroughputGroupRef": null,
         "fuelSulfurContent": 0.0015,
-        "fuelGrade": "ultra low sulfur 2-D or 2-D S15",
+        "fuelGrade": "grade ultra low sulfur 2-D or grade 2-D S15",
         "fuelSpecification": "ASTM D975",
         "fuelSulfurContentPpm": 15,
         "ulsd": true,
@@ -394,7 +399,7 @@
         "pm10EmissionLimitLbsHr": 0.41,
         "pm25EmissionLimitLbsHr": null,
         "so2EmissionLimitLbsHr": null,
-        "instantEmissionsAggregationType": "per_generator",
+        "instantEmissionsAggregationType": "each diesel engine-generator set",
         "noxEmissionLimitTonsYr": 53.7,
         "coEmissionLimitTonsYr": 22.0,
         "vocEmissionLimitTonsYr": 4.2,
@@ -402,23 +407,24 @@
         "pm10EmissionLimitTonsYr": 1.6,
         "pm25EmissionLimitTonsYr": null,
         "so2EmissionLimitTonsYr": null,
-        "cumulativeEmissionsAggregationType": "facility_wide",
+        "cumulativeEmissionsAggregationType": "facility-wide",
         "stackTestRequired": null,
         "allowedOperatingModes": [
           "emergency",
           "ISO_emergency",
-          "maintenance_testing"
+          "maintenance_testing",
+          "non_emergency_after_approval"
         ],
         "opacityLimitPercent": 5,
         "monitoring": {
           "hourMeter": true,
           "fuelFlowMeter": null,
-          "observationFrequency": "once per day during each test firing and during days called into service",
+          "observationFrequency": "once per day during each test firing and during days in which the engine generator sets are called into service",
           "recordkeepingWindowYears": null
         },
         "nspsSubpartIIII": null,
         "mactSubpartZZZZ": null,
-        "extractionNotes": "NOx has two limits for this group: 5.06 lbs/hr with SCR in operation and 50.59 lbs/hr with SCR not in operation; recorded the 'with SCR' value."
+        "extractionNotes": "NOx limits specified as 5.06 lbs/hr with SCR in operation or 50.59 lbs/hr with SCR not in operation; recorded the 'with SCR in operation' value."
       }
     ]
   },

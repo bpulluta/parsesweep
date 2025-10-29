@@ -1,11 +1,11 @@
 {
   "source_file": "11541_DC_Permit.pdf",
-  "extraction_date": "2025-10-28 18:29:50",
-  "state": "permits",
+  "extraction_date": "2025-10-28 19:05:43",
+  "state": "Virginia",
   "model": "compassop-gpt-5",
   "qa_qc_enabled": false,
-  "cost_usd": 0.005758349999999999,
-  "processing_time_sec": 50.187283992767334,
+  "cost_usd": 0.005850299999999999,
+  "processing_time_sec": 57.518129110336304,
   "completeness_score": 1.0,
   "generator_count": 3,
   "permit_number": "11541",
@@ -14,11 +14,11 @@
       "permitNumber": "11541",
       "permitIssuanceDate": "2008-05-16",
       "permitExpirationDate": null,
-      "facilityName": "Southwest Enterprise Solutions Center",
+      "facilityName": "Corporate Office Properties, LP",
       "facilityAddress": "located on Technology Park Drive, at the Regional Business Technology Park in Lebanon, Russell County, Virginia",
       "facilityCounty": "Russell County",
       "facilityState": "VA",
-      "extractionNotes": "Selected Registration No. 11541 as primary permit number; also found Facility ID No. 51-167-00092."
+      "extractionNotes": "Selected Registration No. 11541 as primary identifier; also found Facility ID No. 51-167-00092."
     },
     "generatorSets": [
       {
@@ -26,7 +26,7 @@
         "numGenerators": 1,
         "includedInPermitProject": true,
         "make": "Caterpillar",
-        "model": null,
+        "model": "",
         "ratedCapacityBHP": 2500,
         "ratedCapacityKW": 1500,
         "maximumCapacityBHP": null,
@@ -39,7 +39,7 @@
         "fuelThroughputGroupRef": null,
         "fuelSulfurContent": 0.5,
         "fuelGrade": "numbers 1 or 2 fuel oil",
-        "fuelSpecification": "ASTM 0396-76",
+        "fuelSpecification": "ASTM D396-76",
         "fuelSulfurContentPpm": null,
         "ulsd": null,
         "fuelNormalized": null,
@@ -52,7 +52,7 @@
         "pm10EmissionLimitLbsHr": 4.49,
         "pm25EmissionLimitLbsHr": null,
         "so2EmissionLimitLbsHr": 4.2,
-        "instantEmissionsAggregationType": "for each generator",
+        "instantEmissionsAggregationType": "each Caterpillar diesel powered emergency generator exhaust stack",
         "noxEmissionLimitTonsYr": 15.96,
         "coEmissionLimitTonsYr": 3.44,
         "vocEmissionLimitTonsYr": 1.27,
@@ -60,11 +60,9 @@
         "pm10EmissionLimitTonsYr": 1.12,
         "pm25EmissionLimitTonsYr": null,
         "so2EmissionLimitTonsYr": 1.05,
-        "cumulativeEmissionsAggregationType": "for each generator",
+        "cumulativeEmissionsAggregationType": "each Caterpillar diesel powered emergency generator exhaust stack",
         "stackTestRequired": null,
-        "allowedOperatingModes": [
-          "emergency"
-        ],
+        "allowedOperatingModes": null,
         "opacityLimitPercent": 10,
         "monitoring": {
           "hourMeter": null,
@@ -74,14 +72,14 @@
         },
         "nspsSubpartIIII": true,
         "mactSubpartZZZZ": null,
-        "extractionNotes": null
+        "extractionNotes": "Fuel specification allows numbers 1 or 2 fuel oil; recorded as distillate oil per multiple grade allowance."
       },
       {
         "referenceNumber": "2",
         "numGenerators": 1,
         "includedInPermitProject": false,
         "make": "Caterpillar",
-        "model": null,
+        "model": "",
         "ratedCapacityBHP": 2500,
         "ratedCapacityKW": 1500,
         "maximumCapacityBHP": null,
@@ -94,7 +92,7 @@
         "fuelThroughputGroupRef": null,
         "fuelSulfurContent": 0.5,
         "fuelGrade": "numbers 1 or 2 fuel oil",
-        "fuelSpecification": "ASTM 0396-76",
+        "fuelSpecification": "ASTM D396-76",
         "fuelSulfurContentPpm": null,
         "ulsd": null,
         "fuelNormalized": null,
@@ -107,7 +105,7 @@
         "pm10EmissionLimitLbsHr": 4.49,
         "pm25EmissionLimitLbsHr": null,
         "so2EmissionLimitLbsHr": 4.2,
-        "instantEmissionsAggregationType": "for each generator",
+        "instantEmissionsAggregationType": "each Caterpillar diesel powered emergency generator exhaust stack",
         "noxEmissionLimitTonsYr": 15.96,
         "coEmissionLimitTonsYr": 3.44,
         "vocEmissionLimitTonsYr": 1.27,
@@ -115,11 +113,9 @@
         "pm10EmissionLimitTonsYr": 1.12,
         "pm25EmissionLimitTonsYr": null,
         "so2EmissionLimitTonsYr": 1.05,
-        "cumulativeEmissionsAggregationType": "for each generator",
+        "cumulativeEmissionsAggregationType": "each Caterpillar diesel powered emergency generator exhaust stack",
         "stackTestRequired": null,
-        "allowedOperatingModes": [
-          "emergency"
-        ],
+        "allowedOperatingModes": null,
         "opacityLimitPercent": 10,
         "monitoring": {
           "hourMeter": null,
@@ -129,14 +125,14 @@
         },
         "nspsSubpartIIII": true,
         "mactSubpartZZZZ": null,
-        "extractionNotes": null
+        "extractionNotes": "Fuel specification allows numbers 1 or 2 fuel oil; recorded as distillate oil per multiple grade allowance."
       },
       {
         "referenceNumber": "1",
         "numGenerators": 1,
         "includedInPermitProject": false,
         "make": "Caterpillar",
-        "model": null,
+        "model": "",
         "ratedCapacityBHP": 2500,
         "ratedCapacityKW": 1500,
         "maximumCapacityBHP": null,
@@ -149,7 +145,7 @@
         "fuelThroughputGroupRef": null,
         "fuelSulfurContent": 0.5,
         "fuelGrade": "numbers 1 or 2 fuel oil",
-        "fuelSpecification": "ASTM 0396-76",
+        "fuelSpecification": "ASTM D396-76",
         "fuelSulfurContentPpm": null,
         "ulsd": null,
         "fuelNormalized": null,
@@ -162,7 +158,7 @@
         "pm10EmissionLimitLbsHr": 4.49,
         "pm25EmissionLimitLbsHr": null,
         "so2EmissionLimitLbsHr": 4.2,
-        "instantEmissionsAggregationType": "for each generator",
+        "instantEmissionsAggregationType": "each Caterpillar diesel powered emergency generator exhaust stack",
         "noxEmissionLimitTonsYr": 15.96,
         "coEmissionLimitTonsYr": 3.44,
         "vocEmissionLimitTonsYr": 1.27,
@@ -170,11 +166,9 @@
         "pm10EmissionLimitTonsYr": 1.12,
         "pm25EmissionLimitTonsYr": null,
         "so2EmissionLimitTonsYr": 1.05,
-        "cumulativeEmissionsAggregationType": "for each generator",
+        "cumulativeEmissionsAggregationType": "each Caterpillar diesel powered emergency generator exhaust stack",
         "stackTestRequired": null,
-        "allowedOperatingModes": [
-          "emergency"
-        ],
+        "allowedOperatingModes": null,
         "opacityLimitPercent": 10,
         "monitoring": {
           "hourMeter": null,
@@ -184,7 +178,7 @@
         },
         "nspsSubpartIIII": true,
         "mactSubpartZZZZ": null,
-        "extractionNotes": null
+        "extractionNotes": "Fuel specification allows numbers 1 or 2 fuel oil; recorded as distillate oil per multiple grade allowance."
       }
     ]
   },
