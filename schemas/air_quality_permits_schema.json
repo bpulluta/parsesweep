@@ -370,8 +370,15 @@
             "description": "Numeric as written for this reference. Do not aggregate or apportion. Use 'emissionsScope'/'emissionsGroupRef' to indicate scope."
           },
           "instantEmissionsAggregationType": {
-            "description": "How the instantaneous emissions (lbs/hr) are tallied for this generator set (e.g. for each generator)",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "How the instantaneous emissions (lbs/hr) are aggregated or scoped. Extract verbatim phrases like 'for each generator', 'per generator', 'each unit', 'combined', 'facility-wide', etc. Leave null if not explicitly stated in permit conditions."
           },
           "noxEmissionLimitTonsYr": {
             "anyOf": [
@@ -451,8 +458,15 @@
             "description": "Cumulative Sulfur Dioxide emission limit in tons per year. Leave null if not specified in permit. This can be facility wide, span multiple generator sets, or just for one generator. Numeric as written for this reference. Do not aggregate or apportion. Use 'emissionsScope'/'emissionsGroupRef' to indicate scope."
           },
           "cumulativeEmissionsAggregationType": {
-            "description": "How the cumulative emissions (tons/yr) are aggregated (e.g. by generator set, or facility wide)",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "How the cumulative emissions (tons/yr) are aggregated or scoped. Extract verbatim phrases like 'for each generator', 'per generator', 'each unit', 'combined', 'facility-wide', etc. Leave null if not explicitly stated in permit conditions."
           },
           "stackTestRequired": {
             "anyOf": [

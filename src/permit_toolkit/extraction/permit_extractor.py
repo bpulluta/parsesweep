@@ -124,7 +124,8 @@ class PermitExtractor:
         else:
             logger.info("⚠️  Skipping QA/QC (LangExtract not used or disabled)")
         
-        # Stage 3: Post-extraction sanity checks
+        # Stage 3: Post-extraction sanity checks and normalization
+        validated_data = self._normalize_fuel_fields(validated_data)
         sanity_warnings = self._run_sanity_checks(validated_data)
         validation_notes.extend(sanity_warnings)
         
@@ -196,6 +197,41 @@ class PermitExtractor:
             for field in emission_fields:
                 if field in generator and generator[field] == 0:
                     generator[field] = None
+        
+        return data
+    
+    def _normalize_fuel_fields(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Normalize fuel-related fields for consistency across extractions.
+        
+        Ensures consistent handling of:
+        - ASTM specification formats (D396-76 not 0396-76)
+        - Multi-grade fuel descriptions
+        """
+        for generator in data.get('generatorSets', []):
+            # Fix ASTM specification format: "ASTM 0396-76" → "ASTM D396-76"
+            fuel_spec = generator.get('fuelSpecification')
+            if fuel_spec and isinstance(fuel_spec, str):
+                # Fix leading zero in ASTM spec (common OCR/extraction error)
+                if 'ASTM 0' in fuel_spec or 'ASTM  0' in fuel_spec:
+                    generator['fuelSpecification'] = fuel_spec.replace('ASTM 0', 'ASTM D').replace('ASTM  0', 'ASTM D')
+            
+            # Check for multi-grade fuel descriptions
+            primary_fuel = generator.get('primaryFuelType', '')
+            fuel_grade = generator.get('fuelGrade', '')
+            extraction_notes = generator.get('extractionNotes') or ''
+            
+            if primary_fuel and isinstance(primary_fuel, str) and fuel_grade and isinstance(fuel_grade, str):
+                # If fuelGrade indicates multiple grades but primaryFuelType is specific, warn
+                multi_grade_indicators = ['numbers 1 or 2', 'no. 1 or 2', 'grades no. 1 and 2', 'no. 1 and no. 2']
+                has_multi_grade = any(indicator in fuel_grade.lower() for indicator in multi_grade_indicators)
+                
+                if has_multi_grade and 'no. 2' in primary_fuel.lower() and 'distillate' not in primary_fuel.lower():
+                    # Fuel grade allows multiple but primary was normalized to specific grade
+                    # Add clarifying note if not already present
+                    if 'fuel specification allows' not in extraction_notes.lower() and 'multiple grade' not in extraction_notes.lower():
+                        note = f"Fuel specification allows {fuel_grade}; set primaryFuelType to 'no. 2 distillate' per extraction guideline."
+                        generator['extractionNotes'] = note if not extraction_notes else f"{extraction_notes} {note}"
         
         return data
     
@@ -293,18 +329,33 @@ CRITICAL EXTRACTION GUIDELINES:
    - Do not combine or split entries
    - Match generator reference numbers to their specific limits in permit conditions
 
-3. FUEL THROUGHPUT:
+3. FUEL SPECIFICATIONS:
+   - primaryFuelType: Extract EXACTLY as written in permit (e.g., "diesel fuel", "distillate oil", "No. 2 fuel oil")
+   - fuelGrade: Extract explicit grade mentions (e.g., "No. 2", "numbers 1 or 2") - copy verbatim
+   - fuelSpecification: Extract ASTM standards exactly (e.g., "ASTM D396-76" NOT "ASTM 0396-76")
+   - When permit says "numbers 1 or 2 fuel oil" or "Grades No. 1 and 2":
+     * primaryFuelType: "distillate oil" (generic term when multiple grades allowed)
+     * fuelGrade: record the exact phrase (e.g., "numbers 1 or 2 fuel oil")
+     * Add to extractionNotes: "Fuel specification allows [grades]; recorded as distillate oil per multiple grade allowance"
+   - fuelSulfurContent: Extract as decimal (0.5% = 0.005, 15 ppm = 0.000015)
+
+4. FUEL THROUGHPUT:
    - Look for conditions like "Fuel Throughput - The engine-generator sets (Ref. Nos. EG##-EG##) combined shall consume no more than #### gallons"
    - This is the TOTAL for the group - record it for each generator in that group
    - Convert to numeric value (remove commas)
    - If NO fuel throughput limit is specified in the permit, set to null (NOT zero)
 
-4. CONTROL TECHNOLOGY:
+5. CONTROL TECHNOLOGY:
    - Extract from "Emission Controls" section
    - Look for phrases like "controlled by", "turbocharged", "aftercooler", "SCR", etc.
    - If NOT specified, set to null
 
-5. EMISSION LIMITS:
+5. CONTROL TECHNOLOGY:
+   - Extract from "Emission Controls" section
+   - Look for phrases like "controlled by", "turbocharged", "aftercooler", "SCR", etc.
+   - If NOT specified, set to null
+
+6. EMISSION LIMITS AND AGGREGATION:
    - Match generator reference numbers to emission limit conditions
    - CRITICAL: Pollutant name mapping:
      * "VOC", "TVOC", or "VOM" (Volatile Organic Material - Illinois term) → vocEmissionLimitLbsHr/TonsYr
@@ -317,6 +368,16 @@ CRITICAL EXTRACTION GUIDELINES:
    - Extract "Each" limits (per generator) for lbs/hr
    - Extract "Combined" limits (for group) for tons/yr if "Each" not available
    - Set to null if not specified
+   
+   - AGGREGATION TYPES (CRITICAL - DO NOT SKIP):
+     * instantEmissionsAggregationType: Look for phrases with lbs/hr limits like:
+       - "for each generator" / "per generator" / "each unit" → record verbatim
+       - "combined" / "total" / "facility-wide" → record verbatim
+       - If permit just lists value without scope, set to null
+     * cumulativeEmissionsAggregationType: Look for phrases with tons/yr limits like:
+       - "for each generator" / "per generator" / "each unit" → record verbatim
+       - "combined" / "total" / "facility-wide" → record verbatim
+       - If permit just lists value without scope, set to null
 
 DOCUMENT TEXT:
 {text_excerpt}
