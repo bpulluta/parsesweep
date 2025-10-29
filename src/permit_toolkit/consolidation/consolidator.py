@@ -63,12 +63,7 @@ class PermitConsolidator:
             'permit_extraction_notes': permit_details.get('extractionNotes'),
         }
         
-        # Add only essential metadata fields (state)
-        if metadata:
-            base_info.update({
-                'state': metadata.get('state'),
-            })
-        
+        # Add source file if provided
         if source_file:
             base_info['source_file'] = source_file
         
@@ -128,37 +123,25 @@ class PermitConsolidator:
                 # Permit project inclusion
                 'included_in_permit_project': gen.get('includedInPermitProject'),
                 
-                # Emissions aggregation (new schema fields, with backward compatibility)
-                'instant_emissions_aggregation_type': gen.get('instantEmissionsAggregationType') or gen.get('emissionsScope'),
-                'cumulative_emissions_aggregation_type': gen.get('cumulativeEmissionsAggregationType') or gen.get('emissionsGroupRef'),
-                
-                # Emissions - NOx
+                # Instant emissions (lbs/hr)
                 'nox_limit_lbs_hr': gen.get('noxEmissionLimitLbsHr'),
-                'nox_limit_tons_yr': gen.get('noxEmissionLimitTonsYr'),
-                
-                # Emissions - CO
                 'co_limit_lbs_hr': gen.get('coEmissionLimitLbsHr'),
-                'co_limit_tons_yr': gen.get('coEmissionLimitTonsYr'),
-                
-                # Emissions - VOC
                 'voc_limit_lbs_hr': gen.get('vocEmissionLimitLbsHr'),
-                'voc_limit_tons_yr': gen.get('vocEmissionLimitTonsYr'),
-                
-                # Emissions - PM
                 'pm_limit_lbs_hr': gen.get('pmEmissionLimitLbsHr'),
-                'pm_limit_tons_yr': gen.get('pmEmissionLimitTonsYr'),
-                
-                # Emissions - PM10
                 'pm10_limit_lbs_hr': gen.get('pm10EmissionLimitLbsHr'),
-                'pm10_limit_tons_yr': gen.get('pm10EmissionLimitTonsYr'),
-                
-                # Emissions - PM2.5
                 'pm25_limit_lbs_hr': gen.get('pm25EmissionLimitLbsHr'),
-                'pm25_limit_tons_yr': gen.get('pm25EmissionLimitTonsYr'),
-                
-                # Emissions - SO2
                 'so2_limit_lbs_hr': gen.get('so2EmissionLimitLbsHr'),
+                'instant_emissions_aggregation_type': gen.get('instantEmissionsAggregationType') or gen.get('emissionsScope'),
+                
+                # Cumulative emissions (tons/yr)
+                'nox_limit_tons_yr': gen.get('noxEmissionLimitTonsYr'),
+                'co_limit_tons_yr': gen.get('coEmissionLimitTonsYr'),
+                'voc_limit_tons_yr': gen.get('vocEmissionLimitTonsYr'),
+                'pm_limit_tons_yr': gen.get('pmEmissionLimitTonsYr'),
+                'pm10_limit_tons_yr': gen.get('pm10EmissionLimitTonsYr'),
+                'pm25_limit_tons_yr': gen.get('pm25EmissionLimitTonsYr'),
                 'so2_limit_tons_yr': gen.get('so2EmissionLimitTonsYr'),
+                'cumulative_emissions_aggregation_type': gen.get('cumulativeEmissionsAggregationType') or gen.get('emissionsGroupRef'),
                 
                 # Testing and monitoring
                 'stack_test_required': gen.get('stackTestRequired'),
