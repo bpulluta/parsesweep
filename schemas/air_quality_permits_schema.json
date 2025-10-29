@@ -171,8 +171,16 @@
             "description": "Maximum fuel consumption for this reference as a number only. Do not guess units or basis here."
           },
           "fuelThroughputScope": {
-            "type": ["string", "null"],
-            "enum": ["per_unit", "combined_group", "facility_wide", null],
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "per_unit",
+              "combined_group",
+              "facility_wide",
+              null
+            ],
             "description": "Scope for throughput: 'per_unit', 'combined_group', or 'facility_wide'; null if not stated."
           },
           "fuelThroughputGroupRef": {
@@ -260,7 +268,7 @@
               "other",
               null
             ],
-            "description": "Optional normalization bucket; populate only when unambiguous from source text. Allowed values: distillate_no2, distillate_no1, natural_gas, propane, biodiesel_blend, dual_fuel, other. Otherwise null. If normalization required interpretation or mapping of ambiguous fuel descriptions, document the source text and reasoning in extractionNotes (e.g., 'Mapped diesel fuel oil No. 2 → distillate_no2')."
+            "description": "Optional normalization bucket; populate only when unambiguous from source text. Allowed values: distillate_no2, distillate_no1, natural_gas, propane, biodiesel_blend, dual_fuel, other. Otherwise null. If normalization required interpretation or mapping of ambiguous fuel descriptions, document the source text and reasoning in extractionNotes (e.g., 'Mapped diesel fuel oil No. 2 \u2192 distillate_no2')."
           },
           "controlTechnology": {
             "anyOf": [
@@ -295,17 +303,6 @@
             ],
             "description": "Numeric as written for this reference. Do not aggregate or apportion. Use 'emissionsScope'/'emissionsGroupRef' to indicate scope."
           },
-          "noxEmissionLimitTonsYr": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Cumulative Nitrogen Oxides emission limit in tons per year. Leave null if not specified in permit. This can be facility wide, span multiple generator sets, or just for one generator. Numeric as written for this reference. Do not aggregate or apportion. Use 'emissionsScope'/'emissionsGroupRef' to indicate scope."
-          },
           "coEmissionLimitLbsHr": {
             "anyOf": [
               {
@@ -316,17 +313,6 @@
               }
             ],
             "description": "Numeric as written for this reference. Do not aggregate or apportion. Use 'emissionsScope'/'emissionsGroupRef' to indicate scope."
-          },
-          "coEmissionLimitTonsYr": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Cumulative Carbon Monoxide emission limit in tons per year. Leave null if not specified in permit. This can be facility wide, span multiple generator sets, or just for one generator. Numeric as written for this reference. Do not aggregate or apportion. Use 'emissionsScope'/'emissionsGroupRef' to indicate scope."
           },
           "vocEmissionLimitLbsHr": {
             "anyOf": [
@@ -339,17 +325,6 @@
             ],
             "description": "Numeric as written for this reference. Do not aggregate or apportion. Use 'emissionsScope'/'emissionsGroupRef' to indicate scope."
           },
-          "vocEmissionLimitTonsYr": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Cumulative Volatile Organic Compounds emission limit in tons per year. Leave null if not specified in permit. This can be facility wide, span multiple generator sets, or just for one generator. Numeric as written for this reference. Do not aggregate or apportion. Use 'emissionsScope'/'emissionsGroupRef' to indicate scope."
-          },
           "pmEmissionLimitLbsHr": {
             "anyOf": [
               {
@@ -360,17 +335,6 @@
               }
             ],
             "description": "Numeric as written for this reference. Do not aggregate or apportion. Use 'emissionsScope'/'emissionsGroupRef' to indicate scope."
-          },
-          "pmEmissionLimitTonsYr": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Cumulative Particulate Matter emission limit in tons per year. Leave null if not specified in permit. This can be facility wide, span multiple generator sets, or just for one generator. Numeric as written for this reference. Do not aggregate or apportion. Use 'emissionsScope'/'emissionsGroupRef' to indicate scope."
           },
           "pm10EmissionLimitLbsHr": {
             "anyOf": [
@@ -383,7 +347,7 @@
             ],
             "description": "Numeric as written for this reference. Do not aggregate or apportion. Use 'emissionsScope'/'emissionsGroupRef' to indicate scope."
           },
-          "pm10EmissionLimitTonsYr": {
+          "pm25EmissionLimitLbsHr": {
             "anyOf": [
               {
                 "type": "number"
@@ -392,7 +356,7 @@
                 "type": "null"
               }
             ],
-            "description": "PM-10 emission limit in tons per year. Leave null if not specified in permit. This can be facility wide, span multiple generator sets, or just for one generator. Numeric as written for this reference. Do not aggregate or apportion. Use 'emissionsScope'/'emissionsGroupRef' to indicate scope."
+            "description": "Numeric as written for this reference. Do not aggregate or apportion. Use 'emissionsScope'/'emissionsGroupRef' to indicate scope."
           },
           "so2EmissionLimitLbsHr": {
             "anyOf": [
@@ -405,6 +369,76 @@
             ],
             "description": "Numeric as written for this reference. Do not aggregate or apportion. Use 'emissionsScope'/'emissionsGroupRef' to indicate scope."
           },
+          "instantEmissionsAggregationType": {
+            "description": "How the instantaneous emissions (lbs/hr) are tallied for this generator set (e.g. for each generator)",
+            "type": "string"
+          },
+          "noxEmissionLimitTonsYr": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Cumulative Nitrogen Oxides emission limit in tons per year. Leave null if not specified in permit. This can be facility wide, span multiple generator sets, or just for one generator. Numeric as written for this reference. Do not aggregate or apportion. Use 'emissionsScope'/'emissionsGroupRef' to indicate scope."
+          },
+          "coEmissionLimitTonsYr": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Cumulative Carbon Monoxide emission limit in tons per year. Leave null if not specified in permit. This can be facility wide, span multiple generator sets, or just for one generator. Numeric as written for this reference. Do not aggregate or apportion. Use 'emissionsScope'/'emissionsGroupRef' to indicate scope."
+          },
+          "vocEmissionLimitTonsYr": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Cumulative Volatile Organic Compounds emission limit in tons per year. Leave null if not specified in permit. This can be facility wide, span multiple generator sets, or just for one generator. Numeric as written for this reference. Do not aggregate or apportion. Use 'emissionsScope'/'emissionsGroupRef' to indicate scope."
+          },
+          "pmEmissionLimitTonsYr": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Cumulative Particulate Matter emission limit in tons per year. Leave null if not specified in permit. This can be facility wide, span multiple generator sets, or just for one generator. Numeric as written for this reference. Do not aggregate or apportion. Use 'emissionsScope'/'emissionsGroupRef' to indicate scope."
+          },
+          "pm10EmissionLimitTonsYr": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "PM-10 emission limit in tons per year. Leave null if not specified in permit. This can be facility wide, span multiple generator sets, or just for one generator. Numeric as written for this reference. Do not aggregate or apportion. Use 'emissionsScope'/'emissionsGroupRef' to indicate scope."
+          },
+          "pm25EmissionLimitTonsYr": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "PM-2.5 emission limit in tons per year. Leave null if not specified in permit. This can be facility wide, span multiple generator sets, or just for one generator. Numeric as written for this reference. Do not aggregate or apportion. Use 'emissionsScope'/'emissionsGroupRef' to indicate scope."
+          },
           "so2EmissionLimitTonsYr": {
             "anyOf": [
               {
@@ -415,10 +449,6 @@
               }
             ],
             "description": "Cumulative Sulfur Dioxide emission limit in tons per year. Leave null if not specified in permit. This can be facility wide, span multiple generator sets, or just for one generator. Numeric as written for this reference. Do not aggregate or apportion. Use 'emissionsScope'/'emissionsGroupRef' to indicate scope."
-          },
-          "instantEmissionsAggregationType": {
-            "description": "How the instantaneous emissions (lbs/hr) are tallied for this generator set (e.g. for each generator)",
-            "type": "string"
           },
           "cumulativeEmissionsAggregationType": {
             "description": "How the cumulative emissions (tons/yr) are aggregated (e.g. by generator set, or facility wide)",
@@ -453,7 +483,7 @@
                 "non_emergency_after_approval"
               ]
             },
-            "description": "Only include modes explicitly authorized. Map: 'emergency only'→'emergency'; ISO/RTO emergencies→'ISO_emergency'; 'maintenance/testing'→'maintenance_testing'; agency-approved non-emergency→'non_emergency_after_approval'. If the permit references 40 CFR 60.4211(f) hour carve-outs or similar state limits, map modes accordingly; do not invent hours. For non-obvious CFR mappings, document the regulation reference and interpretation in extractionNotes (e.g., 'Mapped 40 CFR 60.4211(f)(2) maintenance allowance → maintenance_testing')."
+            "description": "Only include modes explicitly authorized. Map: 'emergency only'\u2192'emergency'; ISO/RTO emergencies\u2192'ISO_emergency'; 'maintenance/testing'\u2192'maintenance_testing'; agency-approved non-emergency\u2192'non_emergency_after_approval'. If the permit references 40 CFR 60.4211(f) hour carve-outs or similar state limits, map modes accordingly; do not invent hours. For non-obvious CFR mappings, document the regulation reference and interpretation in extractionNotes (e.g., 'Mapped 40 CFR 60.4211(f)(2) maintenance allowance \u2192 maintenance_testing')."
           },
           "opacityLimitPercent": {
             "anyOf": [
@@ -570,6 +600,9 @@
       "type": "array"
     }
   },
-  "required": ["permitDetails", "generatorSets"],
+  "required": [
+    "permitDetails",
+    "generatorSets"
+  ],
   "type": "object"
 }
