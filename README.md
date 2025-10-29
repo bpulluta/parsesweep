@@ -219,53 +219,6 @@ python -m pip install -e .
 pixi run permit-toolkit extract --help
 pixi run permit-toolkit consolidate --help
 ```
-
----
-
-## 📈 Validation Results
-
-Tested on 7 permits (Virginia + Illinois):
-
-| Metric | Result |
-|--------|--------|
-| Total generators | 696 |
-| Avg processing time | 81.9 sec/permit |
-| Avg cost | $0.009/permit |
-| Field completeness | 95%+ |
-| Extraction notes | 59% of generators |
-
-All validation data in `validation/aqtoolkit/`.
-
----
-
-## 🤝 Team Usage
-
-**For your teammates:**
-
-1. **First time setup** (5 minutes):
-   ```bash
-   curl -fsSL https://pixi.sh/install.sh | bash
-   git clone <repo>
-   cd backupgensprint
-   pixi install
-   # Add .env file with API credentials
-   ```
-
-2. **Daily usage** (2 commands):
-   ```bash
-   # Extract
-   pixi run permit-toolkit extract <your_pdfs>/ --use-azure
-   
-   # Consolidate
-   pixi run permit-toolkit consolidate data/extracted/<state>/ --output results.csv
-   ```
-
-3. **If issues arise**:
-   - Check `.env` file has credentials
-   - Try `--use-azure` flag for higher rate limits
-   - Use `-n 5` to test with small batch first
-   - Run with `--help` to see all options
-
 ---
 
 ## 📄 License
