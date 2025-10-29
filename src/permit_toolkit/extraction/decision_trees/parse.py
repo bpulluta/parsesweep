@@ -1,12 +1,12 @@
-# -*- coding: utf-8 -*-
-"""ELM Ordinance structured parsing class."""
+"""Structured data parsing class"""
+
 import asyncio
 import logging
 
 from elm.ords.llm.calling import BaseLLMCaller, ChatLLMCaller
 from elm.ords.utilities import llm_response_as_json
 from elm.ords.extraction.tree import AsyncDecisionTree
-from extraction.graphs import (
+from permit_toolkit.extraction.decision_trees.graphs import (
     setup_graph_permit_num,
     setup_graph_generators,
     setup_graph_make,
@@ -17,33 +17,39 @@ from extraction.graphs import (
     setup_graph_backup,
     setup_graph_control_techs,
     setup_graph_operating_hours,
-    setup_graph_emissions
+    setup_graph_emissions,
 )
 
 logger = logging.getLogger(__name__)
 
 
 DEFAULT_SYSTEM_MESSAGE = (
-    "You are a legal expert extracting data from emergency generator "
-    "permits for data centers."
+    "You are an expert in air quality permits, especially for emergency "
+    "standby generators at data centers. Answer strictly based on the "
+    "information contained in the provided permit documents and any linked "
+    "official references; do not speculate or rely on unsupported "
+    "assumptions."
 )
+
 
 def _setup_async_decision_tree(graph_setup_func, **kwargs):
     """Setup Async Decision tree dor ordinance extraction."""
-    G = graph_setup_func(**kwargs)
+    G = graph_setup_func(**kwargs)  # noqa: N806
     tree = AsyncDecisionTree(G)
     assert len(tree.chat_llm_caller.messages) == 1
     return tree
+
 
 async def _run_async_tree(tree, response_as_json=True):
     """Run Async Decision Tree and return output as dict."""
     try:
         response = await tree.async_run()
     except RuntimeError:
-        logger.error(
+        msg = (
             "    - NOTE: This is not necessarily an error and may just mean "
             "that the text does not have the requested data."
         )
+        logger.exception(msg)
         response = None
 
     if response_as_json:
@@ -68,7 +74,7 @@ class StructuredOrdinanceParser(BaseLLMCaller):
         """Parse text and extract structured ordinance data."""
         permit_num = await self._get_permit_num(text)
         refs = await self._get_generator_refs(text)
-        values = {'permit_number': permit_num}
+        values = {"permit_number": permit_num}
         generators = {}
         for ref_number in refs:
             gen_values = {}
@@ -84,7 +90,10 @@ class StructuredOrdinanceParser(BaseLLMCaller):
                 "emissions_limits": self._check_emissions,
             }
 
-            tasks = {name: asyncio.create_task(func(text, ref_number)) for name, func in check_map.items()}
+            tasks = {
+                name: asyncio.create_task(func(text, ref_number))
+                for name, func in check_map.items()
+            }
 
             logger.debug("Starting value extraction with %d tasks.", len(tasks))
 
@@ -98,12 +107,12 @@ class StructuredOrdinanceParser(BaseLLMCaller):
                     gen_values[key] = result
             generators[ref_number] = gen_values
 
-        values['generators'] = generators
+        values["generators"] = generators
 
         logger.debug("Value extraction complete.")
 
         return values
-    
+
     async def _get_permit_num(self, text):
         logger.debug("Checking for permit number")
         tree = _setup_async_decision_tree(
@@ -113,9 +122,7 @@ class StructuredOrdinanceParser(BaseLLMCaller):
         )
         dtree_permit_out = await _run_async_tree(tree)
 
-        permit_num = dtree_permit_out.get("permit_number", None)
-
-        return permit_num
+        return dtree_permit_out.get("permit_number", None)
 
     async def _get_generator_refs(self, text):
         logger.debug("Checking for generators")
@@ -126,10 +133,8 @@ class StructuredOrdinanceParser(BaseLLMCaller):
         )
         dtree_refs_out = await _run_async_tree(tree)
 
-        gen_refs = dtree_refs_out.get("reference_numbers", [])
+        return dtree_refs_out.get("reference_numbers", [])
 
-        return gen_refs
-    
     async def _check_make(self, text, ref_number):
         logger.debug("Checking for generator make for ref number %s", ref_number)
         tree = _setup_async_decision_tree(
@@ -140,9 +145,7 @@ class StructuredOrdinanceParser(BaseLLMCaller):
         )
         dtree_make_out = await _run_async_tree(tree)
 
-        make = dtree_make_out.get("make", None)
-
-        return make
+        return dtree_make_out.get("make", None)
 
     async def _check_model(self, text, ref_number):
         logger.debug("Checking for generator model for ref number %s", ref_number)
@@ -154,9 +157,7 @@ class StructuredOrdinanceParser(BaseLLMCaller):
         )
         dtree_model_out = await _run_async_tree(tree)
 
-        model = dtree_model_out.get("model", None)
-
-        return model
+        return dtree_model_out.get("model", None)
 
     async def _check_fuel_type(self, text, ref_number):
         logger.debug("Checking for generator fuel type for ref number %s", ref_number)
@@ -168,10 +169,8 @@ class StructuredOrdinanceParser(BaseLLMCaller):
         )
         dtree_fuel_type_out = await _run_async_tree(tree)
 
-        fuel_type = dtree_fuel_type_out.get("fuel_type", None)
+        return dtree_fuel_type_out.get("fuel_type", None)
 
-        return fuel_type
-    
     async def _check_tank_size(self, text, ref_number):
         logger.debug("Checking for generator tank size for ref number %s", ref_number)
         tree = _setup_async_decision_tree(
@@ -182,10 +181,8 @@ class StructuredOrdinanceParser(BaseLLMCaller):
         )
         dtree_tank_out = await _run_async_tree(tree)
 
-        tank_size = dtree_tank_out.get("tank_size", None)
+        return dtree_tank_out.get("tank_size", None)
 
-        return dtree_tank_out
-    
     async def _check_capacity(self, text, ref_number):
         logger.debug("Checking for generator capacity for ref number %s", ref_number)
         tree = _setup_async_decision_tree(
@@ -195,11 +192,11 @@ class StructuredOrdinanceParser(BaseLLMCaller):
             chat_llm_caller=self._init_chat_llm_caller(DEFAULT_SYSTEM_MESSAGE),
         )
         dtree_capacity_out = await _run_async_tree(tree)
-        values = {"rated_capacity_kw": dtree_capacity_out.get("capacity_kw", None),
-                  "rated_capacity_hp": dtree_capacity_out.get("capacity_hp", None),}
+        return {
+            "rated_capacity_kw": dtree_capacity_out.get("capacity_kw", None),
+            "rated_capacity_hp": dtree_capacity_out.get("capacity_hp", None),
+        }
         # tank_size = dtree_tank_out.get("tank_size", None)
-
-        return values
 
     async def _check_backup(self, text, ref_number):
         logger.debug("Checking for generator backup for ref number %s", ref_number)
@@ -211,10 +208,8 @@ class StructuredOrdinanceParser(BaseLLMCaller):
         )
         dtree_backup_out = await _run_async_tree(tree)
 
-        backup = dtree_backup_out.get("backup_mw", None)
+        return dtree_backup_out.get("backup_mw", None)
 
-        return backup
-    
     async def _check_techs(self, text, ref_number):
         logger.debug("Checking for generator control techs for ref number %s", ref_number)
         tree = _setup_async_decision_tree(
@@ -225,10 +220,8 @@ class StructuredOrdinanceParser(BaseLLMCaller):
         )
         dtree_control_techs_out = await _run_async_tree(tree)
 
-        control_techs = dtree_control_techs_out.get("control_technologies", None)
+        return dtree_control_techs_out.get("control_technologies", None)
 
-        return control_techs
-    
     async def _check_op_hours(self, text, ref_number):
         logger.debug("Checking for generator operating hours for ref number %s", ref_number)
         tree = _setup_async_decision_tree(
@@ -239,10 +232,7 @@ class StructuredOrdinanceParser(BaseLLMCaller):
         )
         dtree_operating_hours_out = await _run_async_tree(tree)
 
-        operating_hours = dtree_operating_hours_out.get("operating_hours", None)
-
-        return operating_hours
-
+        return dtree_operating_hours_out.get("operating_hours", None)
 
     async def _check_emissions(self, text, ref_number):
         logger.debug("Checking for generator emissions for ref number %s", ref_number)
@@ -254,7 +244,4 @@ class StructuredOrdinanceParser(BaseLLMCaller):
         )
         dtree_emissions_out = await _run_async_tree(tree)
 
-        emissions = dtree_emissions_out.get("emissions_limits", None)
-
-        return emissions
-
+        return dtree_emissions_out.get("emissions_limits", None)
