@@ -74,44 +74,51 @@ class StructuredOrdinanceParser(BaseLLMCaller):
         """Parse text and extract structured ordinance data."""
         permit_num = await self._get_permit_num(text)
         refs = await self._get_generator_refs(text)
-        values = {"permit_number": permit_num}
-        generators = {}
-        for ref_number in refs:
-            gen_values = {}
-            check_map = {
-                "make": self._check_make,
-                "model": self._check_model,
-                "fuel_type": self._check_fuel_type,
-                "tank_size": self._check_tank_size,
-                "capacity": self._check_capacity,
-                "backup_mw": self._check_backup,
-                "control_technologies": self._check_techs,
-                "operating_hours_limit_yr": self._check_op_hours,
-                "emissions_limits": self._check_emissions,
+        values = {
+            "permitDetails": {
+                "permitNumber": permit_num,
+                "permitIssuanceDate": None,
+                "permitExpirationDate": None,
+                "facilityName": None,
+                "facilityAddress": None,
+                "facilityCounty": None,
+                "facilityState": None,
+                "extractionNotes": None,
             }
+        }
+        check_map = {
+            "make": self._check_make,
+            "model": self._check_model,
+            "fuel_type": self._check_fuel_type,
+            "tank_size": self._check_tank_size,
+            "capacity": self._check_capacity,
+            "backup_mw": self._check_backup,
+            "control_technologies": self._check_techs,
+            "operating_hours_limit_yr": self._check_op_hours,
+            "emissions_limits": self._check_emissions,
+        }
+        tasks = {
+            (ref_number, name): asyncio.create_task(func(text, ref_number))
+            for ref_number in refs
+            for name, func in check_map.items()
+        }
+        logger.debug("Starting value extraction with %d tasks.", len(tasks))
 
-            tasks = {
-                name: asyncio.create_task(func(text, ref_number))
-                for name, func in check_map.items()
-            }
+        results = await asyncio.gather(*tasks.values(), return_exceptions=True)
 
-            logger.debug(
-                "Starting value extraction with %d tasks.", len(tasks)
-            )
+        generators = {
+            ref_number: {"referenceNumber": ref_number} for ref_number in refs
+        }
+        for (ref_number, key), result in zip(tasks.keys(), results):
+            if isinstance(result, Exception):
+                logger.warning("Task %s failed: %s", key, result)
+                generators[ref_number][key] = None
+            else:
+                generators[ref_number][key] = result
 
-            results = await asyncio.gather(
-                *tasks.values(), return_exceptions=True
-            )
-
-            for key, result in zip(tasks.keys(), results):
-                if isinstance(result, Exception):
-                    logger.warning("Task %s failed: %s", key, result)
-                    gen_values[key] = None
-                else:
-                    gen_values[key] = result
-            generators[ref_number] = gen_values
-
-        values["generators"] = generators
+        values["generatorSets"] = [
+            generators[ref_number] for ref_number in refs
+        ]
 
         logger.debug("Value extraction complete.")
 
