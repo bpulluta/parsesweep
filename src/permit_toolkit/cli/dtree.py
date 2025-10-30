@@ -10,9 +10,9 @@ import multiprocessing
 from pathlib import Path
 
 import openai
-import pymupdf4llm
 from dotenv import load_dotenv
 from rex import init_logger
+# import pymupdf4llm
 
 from elm.web.document import PDFDocument
 from elm.utilities import validate_azure_api_params
@@ -22,6 +22,7 @@ from elm.ords.services.provider import RunningAsyncServices
 from elm.web.file_loader import AsyncLocalFileLoader
 from elm.utilities.parse import read_pdf  # , read_pdf_ocr
 
+from permit_toolkit.extraction.pdf_utils import extract_text_from_pdf
 from permit_toolkit.extraction.decision_trees.parse import (
     StructuredOrdinanceParser,
 )
@@ -49,6 +50,7 @@ def dtree_extract(input_dir, output, model, verbose):
     load_dotenv()
 
     init_logger("elm", log_level="DEBUG" if verbose else "INFO")
+    init_logger("permit_toolkit", log_level="DEBUG" if verbose else "INFO")
 
     output = Path(output)
     input_dir = Path(input_dir)
@@ -67,6 +69,8 @@ def dtree_extract(input_dir, output, model, verbose):
 
 async def _process_all(input_dir, output_dir, model, num_docs=20):
     files = list(input_dir.glob("*.pdf"))
+
+    logger.info("Processing %d PDF file(s) from %s", len(files), input_dir)
 
     # setup LLM and Ordinance service/utility classes
     azure_api_key, azure_version, azure_endpoint = validate_azure_api_params()
@@ -206,4 +210,4 @@ def _read_pdf_file(pdf_fp, **kwargs):
 
 def _read_pdf_file_pymupdf4llm(pdf_fp):
     """Utility func so that pdftotext.PDF doesn't have to be pickled"""
-    return pymupdf4llm.to_markdown(pdf_fp)
+    return extract_text_from_pdf(pdf_fp)
