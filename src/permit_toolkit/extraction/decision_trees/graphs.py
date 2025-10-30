@@ -753,12 +753,27 @@ def setup_graph_generators(**kwargs):  # noqa: D103
         "get_refs",
         prompt=(
             "Does the text provide a reference number or identifier for each "
-            "backup generator mentioned? Begin your response with either "
-            "'Yes' or 'No' and explain your answer."
+            "backup generator mentioned "
+            "(e.g., 'EG01', 'EG04-EG05', '1510-4')? "
+            "Begin your response with either 'Yes' or 'No' and explain "
+            "your answer."
         ),
     )
 
-    G.add_edge("get_refs", "final", condition=llm_response_starts_with_yes)
+    G.add_edge("get_refs", "list_refs", condition=llm_response_starts_with_yes)
+
+    G.add_node(
+        "list_refs",
+        prompt=(
+            "Please list out all reference numbers or identifiers for each "
+            "backup generator mentioned exactly as they appear in the permit. "
+            "Do not consolidate generator sets even if they share make/model. "
+            "List out the identifiers in the order they appear in the "
+            "document."
+        ),
+    )
+
+    G.add_edge("list_refs", "final")
 
     G.add_node(
         "final",
@@ -767,8 +782,132 @@ def setup_graph_generators(**kwargs):  # noqa: D103
             "answer in JSON format (not markdown). Your JSON file must "
             "include exactly two "
             'keys. The keys are "reference_numbers" and "explanation". The '
-            'value of the "reference_numbers" key should be a list containing '
-            "the identifiers of all backup generators mentioned in the text. "
+            'value of the "reference_numbers" key should be the list of all '
+            "backup generator identifiers mentioned in the text, as "
+            "determined previously. "
+            'The value of the "explanation" key should be a string explaining '
+            "your answer."
+        ),
+    )
+
+    return G
+
+
+def setup_graph_num_gens(**kwargs):  # noqa: D103
+    G = _setup_graph_no_nodes(**kwargs)  # noqa: N806
+
+    G.add_node(
+        "init",
+        prompt=(
+            "Does the following text mention the number of engines **for "
+            "the generator with reference number {ref_number}**? Keep in "
+            "mind that the reference number "
+            "could be included in range or group of numbers and information "
+            "that applies to that group should be considered relevant. "
+            "Begin your response with either "
+            "'Yes' or 'No' and explain your answer."
+            '\n\n"""\n{text}\n"""'
+        ),
+    )
+
+    G.add_edge("init", "get_count", condition=llm_response_starts_with_yes)
+
+    G.add_node(
+        "get_count",
+        prompt=(
+            "What is the number of engines for the generator with reference "
+            "number {ref_number}?"
+        ),
+    )
+
+    G.add_edge("get_count", "final")
+
+    G.add_node(
+        "final",
+        prompt=(
+            "Respond based on our entire conversation so far. Return your "
+            "answer in JSON format (not markdown). Your JSON file must "
+            "include exactly two keys. The keys are "
+            '"engine_count" and "explanation". The '
+            'value of the "engine_count" key should be an integer '
+            "representing the number of engines for the generator with "
+            "reference number {ref_number}. "
+            'The value of the "explanation" key should be a string explaining '
+            "your answer."
+        ),
+    )
+
+    return G
+
+
+def setup_graph_included_in_permit(**kwargs):  # noqa: D103
+    G = _setup_graph_no_nodes(**kwargs)  # noqa: N806
+
+    G.add_node(
+        "init",
+        prompt=(
+            "Does the following text **directly specify** that the "
+            "generator with reference number {ref_number} has been "
+            "previously permitted? Keep in mind that the reference number "
+            "could be included in range or group of numbers and information "
+            "that applies to that group should be considered relevant. "
+            "Begin your response with either "
+            "'Yes' or 'No' and explain your answer."
+            '\n\n"""\n{text}\n"""'
+        ),
+    )
+    G.add_edge(
+        "init", "final_prev_permitted", condition=llm_response_starts_with_yes
+    )
+    G.add_edge(
+        "init", "is_current_permit", condition=llm_response_starts_with_no
+    )
+
+    G.add_node(
+        "final_prev_permitted",
+        prompt=(
+            "Respond based on our entire conversation so far. Return your "
+            "answer in JSON format (not markdown). Your JSON file must "
+            "include exactly two keys. The keys are "
+            '"included_in_permit_project" and "explanation". The '
+            'value of the "included_in_permit_project" key should '
+            "be `false`, since we determined that the generator with "
+            "reference number {ref_number} has been previously permitted. "
+            'The value of the "explanation" key should be a string explaining '
+            "your answer."
+        ),
+    )
+
+    G.add_node(
+        "is_current_permit",
+        prompt=(
+            "Does the permit text **directly specify** that the "
+            "generator with reference number {ref_number} is included in "
+            "this permitting action (i.e. **not** previously permitted)? "
+            "Keep in mind that the reference number "
+            "could be included in range or group of numbers and information "
+            "that applies to that group should be considered relevant. "
+            "Begin your response with either "
+            "'Yes' or 'No' and explain your answer."
+        ),
+    )
+
+    G.add_edge(
+        "is_current_permit",
+        "final",
+        condition=llm_response_starts_with_yes,
+    )
+
+    G.add_node(
+        "final",
+        prompt=(
+            "Respond based on our entire conversation so far. Return your "
+            "answer in JSON format (not markdown). Your JSON file must "
+            "include exactly two keys. The keys are "
+            '"included_in_permit_project" and "explanation". The '
+            'value of the "included_in_permit_project" key should be `true`, '
+            "since we determined that the generator with reference number "
+            "{ref_number} is explicitly included in this permitting action. "
             'The value of the "explanation" key should be a string explaining '
             "your answer."
         ),
@@ -784,7 +923,7 @@ def setup_graph_make(**kwargs):  # noqa: D103
         "init",
         prompt=(
             "Does the following text mention the manufacturer (e.g. "
-            "Caterpillar, Cummins)for the generator with reference "
+            "Caterpillar, Cummins) for the generator with reference "
             "number {ref_number}? Keep in mind that the reference number "
             "could be included in range or group of numbers and information "
             "that applies to that group should be considered relevant. "
@@ -800,7 +939,14 @@ def setup_graph_make(**kwargs):  # noqa: D103
         "get_make",
         prompt=(
             "Who is the manufacturer of the generator with reference "
-            "number {ref_number}?"
+            "number {ref_number}? If multiple makes/models are listed for "
+            "the same reference (e.g., 'Caterpillar 3516C or MTU 16V4000 "
+            "DS2250 or equivalent'), select one deterministically: (1) "
+            "prefer the option with the smallest stated electrical rating "
+            "(kW); (2) if kW is not given for all, compare BHP and pick the "
+            "smallest; (3) if still tied, pick the first explicitly named "
+            "make. Report the chosen make verbatim as a single value. Do "
+            "not include 'or', 'equivalent', or list multiple options. "
         ),
     )
 
@@ -812,11 +958,12 @@ def setup_graph_make(**kwargs):  # noqa: D103
             "Respond based on our entire conversation so far. Return your "
             "answer in JSON format (not markdown). Your JSON file must "
             "include exactly two "
-            'keys. The keys are "make" and "explanation". The '
-            'value of the "make" key should be a string containing '
-            "the manufacturer of the generator in question. "
+            'keys. The keys are "make" and "explanation". The value of the '
+            '"make" key should be a string containing the manufacturer of '
+            "the generator with reference number {ref_number}. "
             'The value of the "explanation" key should be a string explaining '
-            "your answer."
+            "your answer. Be sure to document any and al alternatives in the "
+            '"explanation" text.'
         ),
     )
 
@@ -829,14 +976,13 @@ def setup_graph_model(**kwargs):  # noqa: D103
     G.add_node(
         "init",
         prompt=(
-            "Does the following text mention the model name "
-            "or engine type for the generator with reference "
-            "number {ref_number}? "
-            "Keep in mind that the reference number "
-            "could be included in range or group of numbers and information "
-            "that applies to that group should be considered relevant. "
-            "The model name generally follows the "
-            "manufacturer name. Begin your response with either "
+            "Does the following text mention the model name or engine type "
+            "for the generator with reference number {ref_number}? "
+            "Keep in mind that the reference number could be included in "
+            "range or group of numbers and information that applies to that "
+            "group should be considered relevant. "
+            "The model name generally follows the manufacturer name. "
+            "Begin your response with either "
             "'Yes' or 'No' and explain your answer."
             '\n\n"""\n{text}\n"""'
         ),
@@ -848,7 +994,14 @@ def setup_graph_model(**kwargs):  # noqa: D103
         "get_model",
         prompt=(
             "What is the model of the generator with reference number "
-            "{ref_number}?"
+            "{ref_number}? If multiple models are listed for "
+            "the same reference (e.g., 'Caterpillar 3516C or MTU 16V4000 "
+            "DS2250 or equivalent'), select one deterministically: (1) "
+            "prefer the option with the smallest stated electrical rating "
+            "(kW); (2) if kW is not given for all, compare BHP and pick the "
+            "smallest; (3) if still tied, pick the first explicitly named "
+            "make. Report the chosen make verbatim as a single value. Do "
+            "not include 'or', 'equivalent', or list multiple options. "
         ),
     )
 
@@ -859,16 +1012,487 @@ def setup_graph_model(**kwargs):  # noqa: D103
         prompt=(
             "Respond based on our entire conversation so far. Return your "
             "answer in JSON format (not markdown). Your JSON file must "
-            "include exactly two "
-            'keys. The keys are "model" and "explanation". The '
-            'value of the "model" key should be a string containing '
-            "the model of the generator in question, do not include the make. "
+            "include exactly two keys. The keys are "
+            '"model" and "explanation". The value of the "model" key should '
+            "be a string containing the model of the generator with reference "
+            "number {ref_number}. **Do not include the make**. "
             'The value of the "explanation" key should be a string explaining '
-            "your answer."
+            "your answer. Be sure to document any and al alternatives in the "
+            '"explanation" text.'
         ),
     )
 
     return G
+
+
+def setup_graph_rated_capacity_kw(**kwargs):  # noqa: D103
+    G = _setup_graph_no_nodes(**kwargs)  # noqa: N806
+
+    G.add_node(
+        "init",
+        prompt=(
+            "Does the following text **directly specify** a numeric nominal "
+            "nameplate capacity, in kW, **for the generator with reference "
+            "number {ref_number}**? Keep in mind that the reference number "
+            "could be included in range or group of numbers and information "
+            "that applies to that group should be considered relevant. "
+            "Begin your response with either "
+            "'Yes' or 'No' and explain your answer."
+            '\n\n"""\n{text}\n"""'
+        ),
+    )
+
+    G.add_edge("init", "check_units", condition=llm_response_starts_with_yes)
+    G.add_node(
+        "check_units",
+        prompt=(
+            "Does the text for the generator with reference number "
+            "{ref_number} directly specify capacity **in units of kW**? "
+            "Begin your response with either 'Yes' or 'No' and explain "
+            "your answer."
+        ),
+    )
+
+    G.add_edge(
+        "check_units",
+        "check_distinguish",
+        condition=llm_response_starts_with_yes,
+    )
+
+    G.add_node(
+        "check_distinguish",
+        prompt=(
+            "Does the text for the generator with reference number "
+            "{ref_number} distinguish between **nominal** and "
+            "**maximum** capacity? "
+            "Begin your response with either 'Yes' or 'No' and explain "
+            "your answer."
+        ),
+    )
+
+    G.add_edge(
+        "check_distinguish",
+        "cap_distinguish",
+        condition=llm_response_starts_with_yes,
+    )
+    G.add_edge(
+        "check_distinguish",
+        "cap_no_distinguish",
+        condition=llm_response_starts_with_no,
+    )
+
+    G.add_node(
+        "cap_distinguish",
+        prompt=(
+            "We are interested in the **nominal** capacity for the generator "
+            "with reference number {ref_number}. What is that capacity, in "
+            "kW? If multiple kW values are listed for this generator, please "
+            "give the smallest stated kW as a single number. Do not attempt "
+            "to infer this value from other units."
+        ),
+    )
+
+    G.add_node(
+        "cap_no_distinguish",
+        prompt=(
+            "What is the capacity, in kW, for the generator with reference "
+            "number {ref_number}? If multiple kW values are listed for this "
+            "generator, please give the smallest stated kW as a single "
+            "number. Do not attempt to infer this value from other units."
+        ),
+    )
+
+    G.add_edge("cap_distinguish", "final")
+    G.add_edge("cap_no_distinguish", "final")
+
+    G.add_node(
+        "final",
+        prompt=(
+            "Respond based on our entire conversation so far. Return your "
+            "answer in JSON format (not markdown). Your JSON file must "
+            "include exactly two keys. The keys are "
+            '"rated_capacity_kw" and "explanation". The '
+            'value of the "rated_capacity_kw" key should be an numerical '
+            "value representing the nominal nameplate capacity, in kW, "
+            "**for the generator with reference number {ref_number}**. "
+            'The value of the "explanation" key should be a string explaining '
+            "your answer. Document any ambiguities or multiple values in the "
+            "'explanation' text."
+        ),
+    )
+
+    return G
+
+
+def setup_graph_rated_capacity_bhp(**kwargs):  # noqa: D103
+    G = _setup_graph_no_nodes(**kwargs)  # noqa: N806
+
+    G.add_node(
+        "init",
+        prompt=(
+            "Does the following text **directly specify** a numeric nominal "
+            "nameplate capacity, in BHP, **for the generator with reference "
+            "number {ref_number}**? Keep in mind that the reference number "
+            "could be included in range or group of numbers and information "
+            "that applies to that group should be considered relevant. "
+            "Begin your response with either "
+            "'Yes' or 'No' and explain your answer."
+            '\n\n"""\n{text}\n"""'
+        ),
+    )
+
+    G.add_edge("init", "check_units", condition=llm_response_starts_with_yes)
+    G.add_node(
+        "check_units",
+        prompt=(
+            "Does the text for the generator with reference number "
+            "{ref_number} directly specify capacity **in units of BHP**? "
+            "Begin your response with either 'Yes' or 'No' and explain "
+            "your answer."
+        ),
+    )
+
+    G.add_edge(
+        "check_units",
+        "check_distinguish",
+        condition=llm_response_starts_with_yes,
+    )
+
+    G.add_node(
+        "check_distinguish",
+        prompt=(
+            "Does the text for the generator with reference number "
+            "{ref_number} distinguish between **nominal** and "
+            "**maximum** capacity? "
+            "Begin your response with either 'Yes' or 'No' and explain "
+            "your answer."
+        ),
+    )
+
+    G.add_edge(
+        "check_distinguish",
+        "cap_distinguish",
+        condition=llm_response_starts_with_yes,
+    )
+    G.add_edge(
+        "check_distinguish",
+        "cap_no_distinguish",
+        condition=llm_response_starts_with_no,
+    )
+
+    G.add_node(
+        "cap_distinguish",
+        prompt=(
+            "We are interested in the **nominal** capacity for the generator "
+            "with reference number {ref_number}. What is that capacity, in "
+            "BHP? If multiple BHP values are listed for this generator, "
+            "please give the smallest stated BHP as a single number. Do not "
+            "attempt to infer this value from other units."
+        ),
+    )
+
+    G.add_node(
+        "cap_no_distinguish",
+        prompt=(
+            "What is the capacity, in BHP, for the generator with reference "
+            "number {ref_number}? If multiple BHP values are listed for this "
+            "generator, please give the smallest stated BHP as a single "
+            "number. Do not attempt to infer this value from other units."
+        ),
+    )
+
+    G.add_edge("cap_distinguish", "final")
+    G.add_edge("cap_no_distinguish", "final")
+
+    G.add_node(
+        "final",
+        prompt=(
+            "Respond based on our entire conversation so far. Return your "
+            "answer in JSON format (not markdown). Your JSON file must "
+            "include exactly two keys. The keys are "
+            '"rated_capacity_bhp" and "explanation". The '
+            'value of the "rated_capacity_bhp" key should be an numerical '
+            "value representing the nominal nameplate capacity, in BHP, "
+            "**for the generator with reference number {ref_number}**. "
+            'The value of the "explanation" key should be a string explaining '
+            "your answer. Document any ambiguities or multiple values in the "
+            "'explanation' text."
+        ),
+    )
+
+    return G
+
+
+def setup_graph_max_capacity_kw(**kwargs):  # noqa: D103
+    G = _setup_graph_no_nodes(**kwargs)  # noqa: N806
+
+    G.add_node(
+        "init",
+        prompt=(
+            "Does the following text **directly specify a maximum** "
+            "capacity, in kW, **for the generator with reference "
+            "number {ref_number}**? Keep in mind that the reference number "
+            "could be included in range or group of numbers and information "
+            "that applies to that group should be considered relevant. "
+            "Begin your response with either "
+            "'Yes' or 'No' and explain your answer."
+            '\n\n"""\n{text}\n"""'
+        ),
+    )
+
+    G.add_edge("init", "check_units", condition=llm_response_starts_with_yes)
+    G.add_node(
+        "check_units",
+        prompt=(
+            "Does the text for the generator with reference number "
+            "{ref_number} directly specify maximum capacity **in units of "
+            "kW**? "
+            "Begin your response with either 'Yes' or 'No' and explain "
+            "your answer."
+        ),
+    )
+
+    G.add_edge(
+        "check_units",
+        "check_distinguish",
+        condition=llm_response_starts_with_yes,
+    )
+
+    G.add_node(
+        "check_distinguish",
+        prompt=(
+            "Does the text for the generator with reference number "
+            "{ref_number} distinguish between **nominal** and "
+            "**maximum** capacity? "
+            "Begin your response with either 'Yes' or 'No' and explain "
+            "your answer."
+        ),
+    )
+
+    G.add_edge(
+        "check_distinguish",
+        "cap_distinguish",
+        condition=llm_response_starts_with_yes,
+    )
+
+    G.add_node(
+        "cap_distinguish",
+        prompt=(
+            "We are interested in the **maximum** capacity for the generator "
+            "with reference number {ref_number}. What is that capacity, in "
+            "kW? If multiple kW values are listed for this generator, please "
+            "give the largest stated kW as a single number. Do not attempt "
+            "to infer this value from other units."
+        ),
+    )
+
+    G.add_edge("cap_distinguish", "final")
+
+    G.add_node(
+        "final",
+        prompt=(
+            "Respond based on our entire conversation so far. Return your "
+            "answer in JSON format (not markdown). Your JSON file must "
+            "include exactly two keys. The keys are "
+            '"max_capacity_kw" and "explanation". The '
+            'value of the "max_capacity_kw" key should be an numerical '
+            "value representing the **maximum** nameplate capacity, in kW, "
+            "**for the generator with reference number {ref_number}**. "
+            'The value of the "explanation" key should be a string explaining '
+            "your answer. Document any ambiguities or multiple values in the "
+            "'explanation' text."
+        ),
+    )
+
+    return G
+
+
+def setup_graph_max_capacity_bhp(**kwargs):  # noqa: D103
+    G = _setup_graph_no_nodes(**kwargs)  # noqa: N806
+
+    G.add_node(
+        "init",
+        prompt=(
+            "Does the following text **directly specify a maximum** "
+            "capacity, in BHP, **for the generator with reference "
+            "number {ref_number}**? Keep in mind that the reference number "
+            "could be included in range or group of numbers and information "
+            "that applies to that group should be considered relevant. "
+            "Begin your response with either "
+            "'Yes' or 'No' and explain your answer."
+            '\n\n"""\n{text}\n"""'
+        ),
+    )
+
+    G.add_edge("init", "check_units", condition=llm_response_starts_with_yes)
+    G.add_node(
+        "check_units",
+        prompt=(
+            "Does the text for the generator with reference number "
+            "{ref_number} directly specify maximum capacity **in units of "
+            "BHP**? "
+            "Begin your response with either 'Yes' or 'No' and explain "
+            "your answer."
+        ),
+    )
+
+    G.add_edge(
+        "check_units",
+        "check_distinguish",
+        condition=llm_response_starts_with_yes,
+    )
+
+    G.add_node(
+        "check_distinguish",
+        prompt=(
+            "Does the text for the generator with reference number "
+            "{ref_number} distinguish between **nominal** and "
+            "**maximum** capacity? "
+            "Begin your response with either 'Yes' or 'No' and explain "
+            "your answer."
+        ),
+    )
+
+    G.add_edge(
+        "check_distinguish",
+        "cap_distinguish",
+        condition=llm_response_starts_with_yes,
+    )
+
+    G.add_node(
+        "cap_distinguish",
+        prompt=(
+            "We are interested in the **maximum** capacity for the generator "
+            "with reference number {ref_number}. What is that capacity, in "
+            "BHP? If multiple BHP values are listed for this generator, "
+            "please give the largest stated BHP as a single number. Do not "
+            "attempt to infer this value from other units."
+        ),
+    )
+
+    G.add_edge("cap_distinguish", "final")
+
+    G.add_node(
+        "final",
+        prompt=(
+            "Respond based on our entire conversation so far. Return your "
+            "answer in JSON format (not markdown). Your JSON file must "
+            "include exactly two keys. The keys are "
+            '"max_capacity_bhp" and "explanation". The '
+            'value of the "max_capacity_bhp" key should be an numerical '
+            "value representing the **maximum** nameplate capacity, in BHP, "
+            "**for the generator with reference number {ref_number}**. "
+            'The value of the "explanation" key should be a string explaining '
+            "your answer. Document any ambiguities or multiple values in the "
+            "'explanation' text."
+        ),
+    )
+
+    return G
+
+
+# def setup_graph_capacity(**kwargs):  # noqa: D103
+#     G = _setup_graph_no_nodes(**kwargs)  # noqa: N806
+
+#     G.add_node(
+#         "init",
+#         prompt=(
+#             "Does the following text mention the rated capacity "
+#             "for the generator(s) in the permit? "
+#             "Begin your response with either 'Yes' or 'No' and explain "
+#             "your answer."
+#             '\n\n"""\n{text}\n"""'
+#         ),
+#     )
+
+#     G.add_edge(
+#         "init", "get_application", condition=llm_response_starts_with_yes
+#     )
+
+#     G.add_node(
+#         "get_application",
+#         prompt=(
+#             "Does the capacity mentioned apply to multiple generators? "
+#             "Begin your response with either 'Yes' or 'No' and explain "
+#             "your answer."
+#         ),
+#     )
+
+#     G.add_edge(
+#         "get_application",
+#         "get_permits",
+#         condition=llm_response_starts_with_yes,
+#     )
+
+#     G.add_node(
+#         "get_permits",
+#         prompt=(
+#             "What are the permit reference numbers that the capacity "
+#             "applies to?"
+#         ),
+#     )
+
+#     G.add_edge("get_permits", "check_permit")
+
+#     G.add_node(
+#         "check_permit",
+#         prompt=(
+#             "Does the capacity mentioned apply to the generator with "
+#             "reference number {ref_number}?"
+#         ),
+#     )
+
+#     G.add_edge(
+#         "get_application",
+#         "get_capacity_kw",
+#         condition=llm_response_starts_with_no,
+#     )
+#     G.add_edge(
+#         "check_permit",
+#         "get_capacity_kw",
+#         condition=llm_response_starts_with_yes,
+#     )
+
+#     # TODO: add check to ensure capacity is explicitly stated
+#     # for this generator, not inferred
+#     G.add_node(
+#         "get_capacity_kw",
+#         prompt=(
+#             "What is the rated capacity of the generator with the reference "
+#             "number {ref_number} in kilowatts (kW)?"
+#         ),
+#     )
+
+#     G.add_edge("get_capacity_kw", "get_capacity_hp")
+
+#     G.add_node(
+#         "get_capacity_hp",
+#         prompt=(
+#             "What is the rated capacity of the generator with the reference "
+#             "number {ref_number} in horsepower (HP)?"
+#         ),
+#     )
+
+#     G.add_edge("get_capacity_hp", "final")
+
+#     G.add_node(
+#         "final",
+#         prompt=(
+#             "Respond based on our entire conversation so far. Return your "
+#             "answer in JSON format (not markdown). Your JSON file must "
+#             "include exactly three "
+#             'keys. The keys are "capacity_kw", "capacity_hp", and '
+#             '"explanation". The '
+#             'value of the "capacity_kw" key should be a string containing '
+#             "the rated capacity of the generator in kilowatts (kW). The "
+#             'value of the "capacity_hp" key should be a string containing '
+#             "the rated capacity of the generator in horsepower (HP). "
+#             'The value of the "explanation" key should be a string explaining '
+#             "your answer."
+#         ),
+#     )
+
+#     return G
 
 
 def setup_graph_fuel(**kwargs):  # noqa: D103
@@ -877,8 +1501,9 @@ def setup_graph_fuel(**kwargs):  # noqa: D103
     G.add_node(
         "init",
         prompt=(
-            "Does the following text mention the fuel type (e.g., diesel, "
-            "natural gas, distillate oil, etc.) for the generator with "
+            "Does the following text specify the **primary** fuel type "
+            "(e.g., 'diesel fuel', 'no. 2 distillate', 'ultra-low sulfur "
+            "diesel', 'natural gas', 'propane', etc.) for the generator with "
             "reference number {ref_number}? "
             "Keep in mind that the reference number "
             "could be included in range or group of numbers and information "
@@ -909,7 +1534,8 @@ def setup_graph_fuel(**kwargs):  # noqa: D103
             "include exactly two "
             'keys. The keys are "fuel_type" and "explanation". The '
             'value of the "fuel_type" key should be a string containing '
-            "the fuel type of the generator in question. "
+            "the fuel type, exactly as written in the permit, of the "
+            "generator with reference number {ref_number}. "
             'The value of the "explanation" key should be a string explaining '
             "your answer."
         ),
@@ -918,15 +1544,15 @@ def setup_graph_fuel(**kwargs):  # noqa: D103
     return G
 
 
-def setup_graph_tank_size(**kwargs):  # noqa: D103
+def setup_graph_secondary_fuel(**kwargs):  # noqa: D103
     G = _setup_graph_no_nodes(**kwargs)  # noqa: N806
 
     G.add_node(
         "init",
         prompt=(
-            "Does the following text mention the tank size (e.g., 500 "
-            "gallons) "
-            "for the generator with reference number {ref_number}? "
+            "Does the following text specify a **secondary** fuel type "
+            "(i.e. for dual-fuel generators) for the generator with "
+            "reference number {ref_number}? "
             "Keep in mind that the reference number "
             "could be included in range or group of numbers and information "
             "that applies to that group should be considered relevant. "
@@ -936,41 +1562,30 @@ def setup_graph_tank_size(**kwargs):  # noqa: D103
         ),
     )
 
-    G.add_edge("init", "get_tank_size", condition=llm_response_starts_with_yes)
+    G.add_edge("init", "get_fuel_type", condition=llm_response_starts_with_yes)
 
     G.add_node(
-        "get_tank_size",
+        "get_fuel_type",
         prompt=(
-            "What is the tank size of the generator with reference number "
-            "{ref_number}? "
-            "Include the units (e.g., gallons, liters) in your answer."
+            "What type of **secondary** fuel (e.g., 'diesel fuel', 'no. 2 "
+            "distillate', 'ultra-low sulfur diesel', 'natural gas', "
+            "'propane', etc.) does the generator with reference number "
+            "{ref_number} use?"
         ),
     )
 
-    G.add_edge("get_tank_size", "get_max_duration")
-
-    G.add_node(
-        "get_max_duration",
-        prompt=(
-            "Does the text specify an expected max duration without refueling "
-            "for the generator with reference number {ref_number}? "
-            "If so, what is that duration (include units, e.g., hours, days)?"
-        ),
-    )
-
-    G.add_edge("get_max_duration", "final")
+    G.add_edge("get_fuel_type", "final")
 
     G.add_node(
         "final",
         prompt=(
             "Respond based on our entire conversation so far. Return your "
             "answer in JSON format (not markdown). Your JSON file must "
-            "include exactly three "
-            'keys. The keys are "tank_size", "max_duration", and '
-            '"explanation". The value of the "tank_size" key should be a '
-            "string containing the tank size of the generator in question. "
-            'The value of the "max_duration" key should be a string '
-            "containing the max duration of the generator in question. "
+            "include exactly two "
+            'keys. The keys are "secondary_fuel_type" and "explanation". The '
+            'value of the "secondary_fuel_type" key should be a string '
+            "containing the **secondary** fuel type, exactly as written in "
+            "the permit, of the generator with reference number {ref_number}. "
             'The value of the "explanation" key should be a string explaining '
             "your answer."
         ),
@@ -979,108 +1594,115 @@ def setup_graph_tank_size(**kwargs):  # noqa: D103
     return G
 
 
-def setup_graph_capacity(**kwargs):  # noqa: D103
+def setup_graph_other_fuel(**kwargs):  # noqa: D103
     G = _setup_graph_no_nodes(**kwargs)  # noqa: N806
 
     G.add_node(
         "init",
         prompt=(
-            "Does the following text mention the rated capacity "
-            "for the generator(s) in the permit? "
+            "Does the following text specify fuels **beyond** primary and "
+            "secondary for the generator with reference number {ref_number}? "
+            "Keep in mind that the reference number "
+            "could be included in range or group of numbers and information "
+            "that applies to that group should be considered relevant. "
             "Begin your response with either 'Yes' or 'No' and explain "
             "your answer."
             '\n\n"""\n{text}\n"""'
         ),
     )
 
-    G.add_edge(
-        "init", "get_application", condition=llm_response_starts_with_yes
-    )
+    G.add_edge("init", "get_fuel_type", condition=llm_response_starts_with_yes)
 
     G.add_node(
-        "get_application",
+        "get_fuel_type",
         prompt=(
-            "Does the capacity mentioned apply to multiple generators? "
-            "Begin your response with either 'Yes' or 'No' and explain "
-            "your answer."
+            "What type of **other** fuels (e.g., 'diesel fuel', 'no. 2 "
+            "distillate', 'ultra-low sulfur diesel', 'natural gas', "
+            "'propane', etc.), **beyond** primary and secondary, "
+            "does the generator with reference number {ref_number} use?"
         ),
     )
 
-    G.add_edge(
-        "get_application",
-        "get_permits",
-        condition=llm_response_starts_with_yes,
-    )
-
-    G.add_node(
-        "get_permits",
-        prompt=(
-            "What are the permit reference numbers that the capacity "
-            "applies to?"
-        ),
-    )
-
-    G.add_edge("get_permits", "check_permit")
-
-    G.add_node(
-        "check_permit",
-        prompt=(
-            "Does the capacity mentioned apply to the generator with "
-            "reference number {ref_number}?"
-        ),
-    )
-
-    G.add_edge(
-        "get_application",
-        "get_capacity_kw",
-        condition=llm_response_starts_with_no,
-    )
-    G.add_edge(
-        "check_permit",
-        "get_capacity_kw",
-        condition=llm_response_starts_with_yes,
-    )
-
-    # TODO: add check to ensure capacity is explicitly stated
-    # for this generator, not inferred
-    G.add_node(
-        "get_capacity_kw",
-        prompt=(
-            "What is the rated capacity of the generator with the reference "
-            "number {ref_number} in kilowatts (kW)?"
-        ),
-    )
-
-    G.add_edge("get_capacity_kw", "get_capacity_hp")
-
-    G.add_node(
-        "get_capacity_hp",
-        prompt=(
-            "What is the rated capacity of the generator with the reference "
-            "number {ref_number} in horsepower (HP)?"
-        ),
-    )
-
-    G.add_edge("get_capacity_hp", "final")
+    G.add_edge("get_fuel_type", "final")
 
     G.add_node(
         "final",
         prompt=(
             "Respond based on our entire conversation so far. Return your "
             "answer in JSON format (not markdown). Your JSON file must "
-            "include exactly three "
-            'keys. The keys are "capacity_kw", "capacity_hp", and '
-            '"explanation". The '
-            'value of the "capacity_kw" key should be a string containing '
-            "the rated capacity of the generator in kilowatts (kW). The "
-            'value of the "capacity_hp" key should be a string containing '
-            "the rated capacity of the generator in horsepower (HP). "
+            "include exactly two "
+            'keys. The keys are "other_fuel_type" and "explanation". The '
+            'value of the "other_fuel_types" key should be a string '
+            "containing comma-separated names of other fuel types, "
+            "**beyond** primary and secondary, exactly as listed in the "
+            "permit for the generator with reference number {ref_number}. "
             'The value of the "explanation" key should be a string explaining '
             "your answer."
         ),
     )
 
     return G
+
+
+# def setup_graph_tank_size(**kwargs):  # noqa: D103
+#     G = _setup_graph_no_nodes(**kwargs)  # noqa: N806
+
+#     G.add_node(
+#         "init",
+#         prompt=(
+#             "Does the following text mention the tank size (e.g., 500 "
+#             "gallons) "
+#             "for the generator with reference number {ref_number}? "
+#             "Keep in mind that the reference number "
+#             "could be included in range or group of numbers and information "
+#             "that applies to that group should be considered relevant. "
+#             "Begin your response with either 'Yes' or 'No' and explain "
+#             "your answer."
+#             '\n\n"""\n{text}\n"""'
+#         ),
+#     )
+
+#     G.add_edge("init", "get_tank_size", condition=llm_response_starts_with_yes)
+
+#     G.add_node(
+#         "get_tank_size",
+#         prompt=(
+#             "What is the tank size of the generator with reference number "
+#             "{ref_number}? "
+#             "Include the units (e.g., gallons, liters) in your answer."
+#         ),
+#     )
+
+#     G.add_edge("get_tank_size", "get_max_duration")
+
+#     G.add_node(
+#         "get_max_duration",
+#         prompt=(
+#             "Does the text specify an expected max duration without refueling "
+#             "for the generator with reference number {ref_number}? "
+#             "If so, what is that duration (include units, e.g., hours, days)?"
+#         ),
+#     )
+
+#     G.add_edge("get_max_duration", "final")
+
+#     G.add_node(
+#         "final",
+#         prompt=(
+#             "Respond based on our entire conversation so far. Return your "
+#             "answer in JSON format (not markdown). Your JSON file must "
+#             "include exactly three "
+#             'keys. The keys are "tank_size", "max_duration", and '
+#             '"explanation". The value of the "tank_size" key should be a '
+#             "string containing the tank size of the generator with reference number {ref_number}. "
+#             'The value of the "max_duration" key should be a string '
+#             "containing the max duration of the generator with reference number {ref_number}. "
+#             'The value of the "explanation" key should be a string explaining '
+#             "your answer."
+#         ),
+#     )
+
+#     return G
 
 
 def setup_graph_backup(**kwargs):  # noqa: D103
@@ -1219,7 +1841,7 @@ def setup_graph_operating_hours(**kwargs):  # noqa: D103
             'keys. The keys are "operating_hours" and "explanation". The '
             'value of the "operating_hours" key should be an integer '
             "containing "
-            "the operating hours associated with the generator in question. "
+            "the operating hours associated with the generator with reference number {ref_number}. "
             'The value of the "explanation" key should be a string explaining '
             "your answer."
         ),

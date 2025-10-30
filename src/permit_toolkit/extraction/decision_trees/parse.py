@@ -21,11 +21,19 @@ from permit_toolkit.extraction.decision_trees.graphs import (
     setup_graph_permit_copy_required,
     setup_graph_roe_clause,
     setup_graph_generators,
-    # setup_graph_make,
+    setup_graph_num_gens,
+    setup_graph_included_in_permit,
+    setup_graph_make,
     setup_graph_model,
+    setup_graph_rated_capacity_kw,
+    setup_graph_rated_capacity_bhp,
+    setup_graph_max_capacity_kw,
+    setup_graph_max_capacity_bhp,
     setup_graph_fuel,
-    setup_graph_tank_size,
-    setup_graph_capacity,
+    setup_graph_secondary_fuel,
+    setup_graph_other_fuel,
+    # setup_graph_tank_size,
+    # setup_graph_capacity,
     setup_graph_backup,
     setup_graph_control_techs,
     setup_graph_operating_hours,
@@ -187,8 +195,18 @@ class StructuredOrdinanceParser(BaseLLMCaller):
         logger.debug("Permit info extraction complete.")
 
         generator_details = {
+            "numGenerators": (
+                setup_graph_num_gens,
+                "engine_count",
+                "Checking for number of generators",
+            ),
+            "includedInPermitProject": (
+                setup_graph_included_in_permit,
+                "included_in_permit_project",
+                "Checking if generator is included in permit project",
+            ),
             "make": (
-                setup_graph_generators,
+                setup_graph_make,
                 "make",
                 "Checking for generator make",
             ),
@@ -197,16 +215,46 @@ class StructuredOrdinanceParser(BaseLLMCaller):
                 "model",
                 "Checking for generator model",
             ),
-            "fuel_type": (
+            "ratedCapacityKW": (
+                setup_graph_rated_capacity_kw,
+                "rated_capacity_kw",
+                "Checking for generator rated capacity in kW",
+            ),
+            "ratedCapacityBHP": (
+                setup_graph_rated_capacity_bhp,
+                "rated_capacity_bhp",
+                "Checking for generator rated capacity in BHP",
+            ),
+            "maxCapacityKW": (
+                setup_graph_max_capacity_kw,
+                "max_capacity_kw",
+                "Checking for generator maximum capacity in kW",
+            ),
+            "maxCapacityBHP": (
+                setup_graph_max_capacity_bhp,
+                "max_capacity_bhp",
+                "Checking for generator maximum capacity in BHP",
+            ),
+            "primaryFuelType": (
                 setup_graph_fuel,
                 "fuel_type",
                 "Checking for generator fuel type",
             ),
-            "tank_size": (
-                setup_graph_tank_size,
-                "tank_size",
-                "Checking for generator tank size",
+            "secondaryFuelType": (
+                setup_graph_secondary_fuel,
+                "secondary_fuel_type",
+                "Checking for generator secondary fuel type",
             ),
+            "otherFuelType": (
+                setup_graph_other_fuel,
+                "other_fuel_types",
+                "Checking for generator other fuel type",
+            ),
+            # "tank_size": (
+            #     setup_graph_tank_size,
+            #     "tank_size",
+            #     "Checking for generator tank size",
+            # ),
             # "capacity": self._check_capacity,
             "backup_mw": (
                 setup_graph_backup,
@@ -282,18 +330,18 @@ class StructuredOrdinanceParser(BaseLLMCaller):
         dtree_out = await _run_async_tree(tree)
         return dtree_out.get(out_key, None)
 
-    async def _check_capacity(self, text, ref_number):
-        logger.debug(
-            "Checking for generator capacity for ref number %s", ref_number
-        )
-        tree = _setup_async_decision_tree(
-            setup_graph_capacity,
-            text=text,
-            ref_number=ref_number,
-            chat_llm_caller=self._init_chat_llm_caller(DEFAULT_SYSTEM_MESSAGE),
-        )
-        dtree_capacity_out = await _run_async_tree(tree)
-        return {
-            "rated_capacity_kw": dtree_capacity_out.get("capacity_kw", None),
-            "rated_capacity_hp": dtree_capacity_out.get("capacity_hp", None),
-        }
+    # async def _check_capacity(self, text, ref_number):
+    #     logger.debug(
+    #         "Checking for generator capacity for ref number %s", ref_number
+    #     )
+    #     tree = _setup_async_decision_tree(
+    #         setup_graph_capacity,
+    #         text=text,
+    #         ref_number=ref_number,
+    #         chat_llm_caller=self._init_chat_llm_caller(DEFAULT_SYSTEM_MESSAGE),
+    #     )
+    #     dtree_capacity_out = await _run_async_tree(tree)
+    #     return {
+    #         "rated_capacity_kw": dtree_capacity_out.get("capacity_kw", None),
+    #         "rated_capacity_hp": dtree_capacity_out.get("capacity_hp", None),
+    #     }
