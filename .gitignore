@@ -84,7 +84,10 @@ temp/
 test_data/.cache/
 test_data/extracted/
 data/comparison/
+data/permitsMD/
 
 # pixi environments
 .pixi
 *.egg-info
+
+

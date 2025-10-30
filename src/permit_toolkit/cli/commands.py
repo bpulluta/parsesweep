@@ -258,7 +258,7 @@ def extract(path: str, output: Optional[str], state: Optional[str],
         print(f"    {DIM}Per file{RESET}     {avg_time:.1f}s")
         
         # Generator count
-        total_gens = sum(r['generators'] for r in successful)
+        total_gens = sum(r.get('generators', 0) or 0 for r in successful)
         print(f"\n  {BOLD}Generators{RESET}")
         print(f"    {DIM}Extracted{RESET}    {GREEN}{total_gens}{RESET}")
     
