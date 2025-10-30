@@ -85,6 +85,7 @@ test_data/.cache/
 test_data/extracted/
 data/comparison/
 data/permitsMD/
+.scratch/
 
 # pixi environments
 .pixi
