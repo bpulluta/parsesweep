@@ -49,12 +49,20 @@ logger = logging.getLogger(__name__)
 def dtree_extract(input_dir, output, model, verbose):
     load_dotenv()
 
-    init_logger("elm", log_level="DEBUG" if verbose else "INFO")
-    init_logger("permit_toolkit", log_level="DEBUG" if verbose else "INFO")
-
     output = Path(output)
     input_dir = Path(input_dir)
     output.mkdir(parents=True, exist_ok=True)
+
+    init_logger("elm", log_level="DEBUG" if verbose else "INFO")
+    init_logger("permit_toolkit", log_level="DEBUG" if verbose else "INFO")
+
+    # handler = logging.FileHandler(output / "all.log", encoding="utf-8")
+    # fmt = logging.Formatter(
+    #     fmt="[%(asctime)s] %(levelname)s - %(taskName)s: %(message)s",
+    # )
+    # handler.setFormatter(fmt)
+    # handler.setLevel("DEBUG" if verbose else "INFO")
+    # logger.addHandler(handler)
 
     # Need to set start method to "spawn" instead of "fork" for unix
     # systems. If this call is not present, software hangs when process
@@ -124,17 +132,21 @@ async def _process_one(fp, output_dir, model, llm_service, process_sem):
         values = await parser.parse(text)
         # values = await parser.parse(doc.text)
 
+    permit_details = values.get("permitDetails", {})
+    generator_sets = values.get("generatorSets", [])
     output_data = {
         "source_file": fp.name,
         "extraction_date": time.strftime("%Y-%m-%d %H:%M:%S"),
-        "state": None,
+        "state": permit_details.get("facilityState"),
         "model": model,
         "qa_qc_enabled": False,
         "cost_usd": None,
         "processing_time_sec": time.monotonic() - start_time,
         "completeness_score": None,
-        # "generator_count": sum(gen_set.get('numGenerators', 0) or 0 for gen_set in generator_sets),
-        # "permit_number": presult.data.get('permitDetails', {}).get('permitNumber', 'N/A')
+        "generator_count": sum(
+            gen_set.get("numGenerators", 0) or 0 for gen_set in generator_sets
+        ),
+        "permit_number": permit_details.get("permitNumber", "N/A"),
         "data": values,
         "validation_notes": None,
     }
