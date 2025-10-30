@@ -4,10 +4,47 @@ import json
 import logging
 from pathlib import Path
 from typing import List, Dict, Any
+import unicodedata
 
 import pandas as pd
 
 logger = logging.getLogger(__name__)
+
+
+def clean_text(text: Any) -> Any:
+    """
+    Clean text fields by normalizing Unicode and removing problematic characters.
+    
+    Args:
+        text: Input text or other data type
+        
+    Returns:
+        Cleaned text or original value if not a string
+    """
+    if not isinstance(text, str):
+        return text
+    
+    # Normalize Unicode characters (NFKC handles compatibility characters)
+    text = unicodedata.normalize('NFKC', text)
+    
+    # Replace common problematic characters with ASCII equivalents
+    replacements = {
+        '\u2265': '>=',  # ≥ greater than or equal
+        '\u2264': '<=',  # ≤ less than or equal  
+        '\u00b0': 'deg', # ° degree symbol
+        '\u2013': '-',   # – en dash
+        '\u2014': '-',   # — em dash
+        '\u2018': "'",   # ' left single quote
+        '\u2019': "'",   # ' right single quote
+        '\u201c': '"',   # " left double quote
+        '\u201d': '"',   # " right double quote
+        '\u00a0': ' ',   # non-breaking space
+    }
+    
+    for char, replacement in replacements.items():
+        text = text.replace(char, replacement)
+    
+    return text
 
 
 class PermitConsolidator:
@@ -31,7 +68,7 @@ class PermitConsolidator:
         
     def load_json(self, json_path: Path) -> Dict[str, Any]:
         """Load a single extracted permit JSON file."""
-        with open(json_path, 'r') as f:
+        with open(json_path, 'r', encoding='utf-8') as f:
             return json.load(f)
     
     def flatten_permit(self, permit_data: Dict[str, Any], source_file: str = None, metadata: Dict[str, Any] = None) -> List[Dict[str, Any]]:
@@ -229,6 +266,11 @@ class PermitConsolidator:
         # Create DataFrame
         df = pd.DataFrame(all_records)
         
+        # Clean all text fields to ensure proper ASCII/UTF-8 compatibility
+        for col in df.columns:
+            if df[col].dtype == 'object':  # Only clean text columns
+                df[col] = df[col].apply(clean_text)
+        
         # Sort by facility and generator (if columns exist)
         sort_columns = []
         if 'facility_name' in df.columns:
@@ -242,8 +284,9 @@ class PermitConsolidator:
         # Save if output path specified
         if output_path:
             output_path.parent.mkdir(parents=True, exist_ok=True)
-            # Use utf-8 encoding and ensure proper character handling
-            df.to_csv(output_path, index=False, encoding='utf-8')
+            # Use utf-8-sig to add BOM for Excel compatibility, or utf-8 for clean UTF-8
+            # Using utf-8 with errors='replace' ensures problematic characters are handled
+            df.to_csv(output_path, index=False, encoding='utf-8', errors='replace')
             logger.info(f"✓ Saved consolidated data to: {output_path}")
         
         # Log summary
