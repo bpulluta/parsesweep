@@ -32,44 +32,128 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 
-def extract_text_from_pdf(pdf_path: Path) -> str:
+def _validate_extraction_quality(text: str, pdf_path: Path) -> bool:
     """
-    Extract text from a PDF file with table structure preservation.
+    Validate extraction quality to detect truncation or corruption.
 
-    Uses PyMuPDF4LLM (preferred) for markdown with tables, falls back to PyMuPDF or pypdf.
-    PyMuPDF4LLM provides LLM-optimized extraction with table structure preserved.
+    Heuristics:
+    1. Minimum character threshold (permits are typically multi-page with substantial text)
+    2. Key permit terms present (generator, engine, emission, etc.)
+    3. Content-to-page ratio check (if available)
+
+    Args:
+        text: Extracted text
+        pdf_path: Path to PDF for metadata
+
+    Returns:
+        True if extraction quality is acceptable, False otherwise
+    """
+    # Check 1: Minimum length threshold
+    # Permits are typically 10+ pages with 1000+ chars/page
+    # 5000 chars is conservative minimum for multi-page permit
+    if len(text) < 5000:
+        logger.debug(
+            f"Extraction too short: {len(text)} chars (expected >5000)"
+        )
+        return False
+
+    # Check 2: Key permit terms presence
+    # Any legitimate permit should contain most of these terms
+    key_terms = ["generator", "engine", "emission", "permit", "equipment"]
+    terms_found = sum(1 for term in key_terms if term.lower() in text.lower())
+    if terms_found < 3:
+        logger.debug(f"Key terms missing: only {terms_found}/5 found")
+        return False
+
+    # Check 3: Page count vs content ratio
+    # If PDF has many pages but very little text, something went wrong
+    try:
+        if PYMUPDF_AVAILABLE:
+            with pymupdf.open(str(pdf_path)) as doc:
+                page_count = len(doc)
+                chars_per_page = (
+                    len(text) / page_count if page_count > 0 else 0
+                )
+                if page_count > 5 and chars_per_page < 100:
+                    logger.debug(
+                        f"Low content density: {chars_per_page:.0f} chars/page for {page_count} pages"
+                    )
+                    return False
+    except Exception:
+        pass  # Skip check if can't open PDF
+
+    return True
+
+
+def extract_text_from_pdf(
+    pdf_path: Path, prefer_markdown: bool = False
+) -> str:
+    """
+    Extract text from a PDF file with adaptive method selection.
+
+    Strategy:
+    1. Try PyMuPDF4LLM for markdown/table structure (if prefer_markdown=True)
+    2. Validate extraction quality (content length, key terms)
+    3. Fall back to PyMuPDF if quality check fails
+    4. Ultimate fallback to pypdf
+
+    This ensures optimal extraction method is used based on PDF characteristics.
 
     Args:
         pdf_path: Path to the PDF file
+        prefer_markdown: If True, try PyMuPDF4LLM first for table preservation
 
     Returns:
-        Extracted text as markdown string (tables preserved) or plain text
+        Extracted text string (markdown or plain text depending on method)
     """
     text = ""
     pdf_path = Path(pdf_path)
-    if PYMUPDF4LLM_AVAILABLE:
-        # Use PyMuPDF4LLM for LLM-optimized extraction with tables
+
+    # Strategy 1: Try PyMuPDF4LLM first if markdown preferred (for table-heavy docs)
+    if prefer_markdown and PYMUPDF4LLM_AVAILABLE:
+        try:
+            text = pymupdf4llm.to_markdown(str(pdf_path))
+            logger.debug(f"Extracted using PyMuPDF4LLM from {pdf_path.name}")
+
+            # Quality check: PyMuPDF4LLM has known truncation issues
+            # If extracted text is suspiciously short, fall back to PyMuPDF
+            if not _validate_extraction_quality(text, pdf_path):
+                logger.warning(
+                    f"PyMuPDF4LLM extraction quality low for {pdf_path.name}, falling back to PyMuPDF"
+                )
+                text = ""
+        except Exception as e:
+            logger.error(
+                f"Error extracting text with PyMuPDF4LLM from {pdf_path}: {e}"
+            )
+            text = ""
+
+    # Strategy 2: Use PyMuPDF as primary/fallback - most reliable
+    if not text and PYMUPDF_AVAILABLE:
+        try:
+            with pymupdf.open(str(pdf_path)) as doc:
+                page_count = len(doc)
+                for page_num in range(page_count):
+                    text += doc[page_num].get_text() + "\n"
+            logger.debug(
+                f"Extracted {page_count} pages using PyMuPDF from {pdf_path.name}"
+            )
+        except Exception as e:
+            logger.error(
+                f"Error extracting text with PyMuPDF from {pdf_path}: {e}"
+            )
+
+    # Strategy 3: Final fallback to pypdf
+    if not text and PYPDF_AVAILABLE:
         try:
             text = pymupdf4llm.to_markdown(str(pdf_path))
             logger.debug(
                 f"Extracted text using PyMuPDF4LLM (markdown with tables) from {pdf_path.name}"
             )
         except Exception as e:
-            logger.error(f"Error extracting text with PyMuPDF4LLM from {pdf_path}: {e}")
-            # Fall through to try PyMuPDF
-
-    if not text and PYMUPDF_AVAILABLE:
-        # Fallback to PyMuPDF for basic text extraction
-        try:
-            with pymupdf.open(str(pdf_path)) as doc:
-                page_count = len(doc)
-                for page_num in range(page_count):
-                    text += doc[page_num].get_text() + "\n"
-            logger.debug(f"Extracted {page_count} pages using PyMuPDF from {pdf_path.name}")
-        except Exception as e:
-            logger.error(f"Error extracting text with PyMuPDF from {pdf_path}: {e}")
-            return ""
-    elif not text:
+            logger.error(
+                f"Error extracting text with PyMuPDF4LLM from {pdf_path}: {e}"
+            )
         # Fallback to pypdf
         if PdfReader is None:
             logger.error(
@@ -86,7 +170,9 @@ def extract_text_from_pdf(pdf_path: Path) -> str:
                 f"Extracted {len(pdf_reader.pages)} pages using pypdf from {pdf_path.name}"
             )
         except Exception as e:
-            logger.error(f"Error extracting text with pypdf from {pdf_path}: {e}")
+            logger.error(
+                f"Error extracting text with pypdf from {pdf_path}: {e}"
+            )
             return ""
 
     # Apply basic OCR error corrections for common issues
@@ -126,7 +212,9 @@ def _cleanup_ocr_errors(text: str) -> str:
     # ========================================================================
     # Pattern: SulfurDioxide → Sulfur Dioxide, CarbonMonoxide → Carbon Monoxide
     # Scalable: Works for any CamelCase technical terms (2+ capitalized words)
-    text = re.sub(r"\b([A-Z][a-z]+)([A-Z][a-z]+(?:[A-Z][a-z]+)*)\b", r"\1 \2", text)
+    text = re.sub(
+        r"\b([A-Z][a-z]+)([A-Z][a-z]+(?:[A-Z][a-z]+)*)\b", r"\1 \2", text
+    )
 
     # ========================================================================
     # RULE 3: Symbol substitutions (OCR misreads special characters)
@@ -155,7 +243,10 @@ def _cleanup_ocr_errors(text: str) -> str:
     # RULE 6: Spacing fixes (remove run-together words)
     # ========================================================================
     spacing_rules = [
-        (r"Caterpillardiesel", "Caterpillar diesel"),  # Specific manufacturer+type
+        (
+            r"Caterpillardiesel",
+            "Caterpillar diesel",
+        ),  # Specific manufacturer+type
         (r"hoursperyear", "hours per year"),
         (r"peryear", "per year"),
         (r"perhour", "per hour"),
@@ -190,7 +281,9 @@ def _cleanup_ocr_errors(text: str) -> str:
     # RULE 8: Numeric spacing (add spaces between numbers and units)
     # ========================================================================
     # Add spaces around numeric values with units (4.20lbs/hr → 4.20 lbs/hr)
-    text = re.sub(r"(\d+\.?\d*)([a-z]+/[a-z]+)", r"\1 \2", text, flags=re.IGNORECASE)
+    text = re.sub(
+        r"(\d+\.?\d*)([a-z]+/[a-z]+)", r"\1 \2", text, flags=re.IGNORECASE
+    )
 
     return text
 
@@ -215,9 +308,15 @@ def truncate_text(text: str, max_chars: int = 50000) -> str:
     keep_first = int(max_chars * 0.7)
     keep_last = max_chars - keep_first
 
-    truncated = text[:keep_first] + "\n\n[...middle section truncated...]\n\n" + text[-keep_last:]
+    truncated = (
+        text[:keep_first]
+        + "\n\n[...middle section truncated...]\n\n"
+        + text[-keep_last:]
+    )
 
-    logger.info(f"Document truncated from {len(text)} to {max_chars} characters")
+    logger.info(
+        f"Document truncated from {len(text)} to {max_chars} characters"
+    )
     return truncated
 
 
