@@ -71,6 +71,668 @@ def setup_graph_permit_num(**kwargs):  # noqa: D103
     return G
 
 
+def setup_graph_permit_issue_date(**kwargs):  # noqa: D103
+    G = _setup_graph_no_nodes(**kwargs)  # noqa: N806
+
+    G.add_node(
+        "init",
+        prompt=(
+            "Does the following text mention an issue date for the permit?"
+            "Begin your response with either 'Yes' or 'No' and explain your "
+            "answer."
+            '\n\n"""\n{text}\n"""'
+        ),
+    )
+
+    G.add_edge(
+        "init", "get_permit_date", condition=llm_response_starts_with_yes
+    )
+
+    G.add_node(
+        "get_permit_date",
+        prompt="What is the stated issue date for the permit?",
+    )
+
+    G.add_edge("get_permit_date", "final")
+
+    G.add_node(
+        "final",
+        prompt=(
+            "Respond based on our entire conversation so far. Return your "
+            "answer in JSON format (not markdown). Your JSON file must "
+            "include exactly two "
+            'keys. The keys are "issue_date" and "explanation". The '
+            'value of the "issue_date" key should be a string containing '
+            "the permit issue date in YYYY-MM-DD format, if unambiguous. "
+            "If you could not determine a specific issue date, this key "
+            "should be `null`"
+            'The value of the "explanation" key should be a string explaining '
+            "your answer."
+        ),
+    )
+
+    return G
+
+
+def setup_graph_permit_expiration_date(**kwargs):  # noqa: D103
+    G = _setup_graph_no_nodes(**kwargs)  # noqa: N806
+
+    G.add_node(
+        "init",
+        prompt=(
+            "Does the following text explicitly mention an expiration date "
+            "for the permit? "
+            "Begin your response with either 'Yes' or 'No' and explain your "
+            "answer."
+            '\n\n"""\n{text}\n"""'
+        ),
+    )
+
+    G.add_edge(
+        "init",
+        "get_permit_expiration_date",
+        condition=llm_response_starts_with_yes,
+    )
+
+    G.add_node(
+        "get_permit_expiration_date",
+        prompt="What is the given expiration date for the permit?",
+    )
+
+    G.add_edge("get_permit_expiration_date", "final")
+
+    G.add_node(
+        "final",
+        prompt=(
+            "Respond based on our entire conversation so far. Return your "
+            "answer in JSON format (not markdown). Your JSON file must "
+            "include exactly two keys. The keys are "
+            '"permit_expiration_date" and "explanation". The '
+            'value of the "permit_expiration_date" key should be a string '
+            "containing the explicitly provided expiration date for the "
+            "permit in YYYY-MM-DD format, if unambiguous. "
+            "If the text does not explicitly give an expiration date for "
+            "the permit, this key should be `null`. "
+            'The value of the "explanation" key should be a string explaining '
+            "your answer."
+        ),
+    )
+
+    return G
+
+
+def setup_graph_facility_name(**kwargs):  # noqa: D103
+    G = _setup_graph_no_nodes(**kwargs)  # noqa: N806
+
+    G.add_node(
+        "init",
+        prompt=(
+            "Does the following text mention a facility name corresponding "
+            "to this permit? "
+            "Begin your response with either 'Yes' or 'No' and explain your "
+            "answer."
+            '\n\n"""\n{text}\n"""'
+        ),
+    )
+
+    G.add_edge(
+        "init", "get_facility_name", condition=llm_response_starts_with_yes
+    )
+
+    G.add_node(
+        "get_facility_name",
+        prompt=(
+            "What is the exact facility name as given in the permit text? "
+            "Please do not normalize or shorten the name."
+        ),
+    )
+
+    G.add_edge("get_facility_name", "final")
+
+    G.add_node(
+        "final",
+        prompt=(
+            "Respond based on our entire conversation so far. Return your "
+            "answer in JSON format (not markdown). Your JSON file must "
+            "include exactly two "
+            'keys. The keys are "facility_name" and "explanation". The '
+            'value of the "facility_name" key should be a string containing '
+            "the facility name exactly as written in the permit. Please do "
+            "not normalize or shorten the name."
+            "If you could not determine a specific facility name, this key "
+            "should be `null`. "
+            'The value of the "explanation" key should be a string explaining '
+            "your answer."
+        ),
+    )
+
+    return G
+
+
+def setup_graph_facility_address(**kwargs):  # noqa: D103
+    G = _setup_graph_no_nodes(**kwargs)  # noqa: N806
+
+    G.add_node(
+        "init",
+        prompt=(
+            "Does the following text mention a facility street address "
+            "corresponding to this permit? "
+            "Begin your response with either 'Yes' or 'No' and explain your "
+            "answer."
+            '\n\n"""\n{text}\n"""'
+        ),
+    )
+
+    G.add_edge(
+        "init", "get_facility_address", condition=llm_response_starts_with_yes
+    )
+
+    G.add_node(
+        "get_facility_address",
+        prompt=(
+            "What is the full facility street address as given in the permit? "
+            "Please do not try to normalize the address."
+        ),
+    )
+
+    G.add_edge("get_facility_address", "final")
+
+    G.add_node(
+        "final",
+        prompt=(
+            "Respond based on our entire conversation so far. Return your "
+            "answer in JSON format (not markdown). Your JSON file must "
+            "include exactly two "
+            'keys. The keys are "facility_address" and "explanation". The '
+            'value of the "facility_address" key should be a string '
+            "containing the full facility street address exactly as "
+            "written in the permit. "
+            "If you could not determine a specific facility street address "
+            "corresponding to this permit, this key should be `null`. "
+            'The value of the "explanation" key should be a string explaining '
+            "your answer."
+        ),
+    )
+
+    return G
+
+
+def setup_graph_county_name(**kwargs):  # noqa: D103
+    G = _setup_graph_no_nodes(**kwargs)  # noqa: N806
+
+    G.add_node(
+        "init",
+        prompt=(
+            "Does the following text mention a county name corresponding "
+            "to this permit? "
+            "Begin your response with either 'Yes' or 'No' and explain your "
+            "answer."
+            '\n\n"""\n{text}\n"""'
+        ),
+    )
+
+    G.add_edge(
+        "init", "get_county_name", condition=llm_response_starts_with_yes
+    )
+
+    G.add_node(
+        "get_county_name",
+        prompt=(
+            "What is the county name exactly as written in the permit? "
+            "Please do not normalize or shorten the name."
+        ),
+    )
+    G.add_edge("get_county_name", "final")
+
+    G.add_node(
+        "final",
+        prompt=(
+            "Respond based on our entire conversation so far. Return your "
+            "answer in JSON format (not markdown). Your JSON file must "
+            "include exactly two "
+            'keys. The keys are "county_name" and "explanation". The '
+            'value of the "county_name" key should be a string containing '
+            "the county name, if unambiguous. "
+            "If you could not determine a specific county name, this key "
+            "should be `null`. "
+            'The value of the "explanation" key should be a string explaining '
+            "your answer."
+        ),
+    )
+
+    return G
+
+
+def setup_graph_state_name(**kwargs):  # noqa: D103
+    G = _setup_graph_no_nodes(**kwargs)  # noqa: N806
+
+    G.add_node(
+        "init",
+        prompt=(
+            "Does the following text mention a state name corresponding "
+            "to this permit? "
+            "Begin your response with either 'Yes' or 'No' and explain your "
+            "answer."
+            '\n\n"""\n{text}\n"""'
+        ),
+    )
+
+    G.add_edge(
+        "init", "get_state_name", condition=llm_response_starts_with_yes
+    )
+
+    G.add_node(
+        "get_state_name",
+        prompt="What is the state name exactly as written in the permit?",
+    )
+    G.add_edge("get_state_name", "get_state_abbr")
+    G.add_node(
+        "get_state_abbr",
+        prompt="What is the two-letter abbreviation for this state?",
+    )
+    G.add_edge("get_state_abbr", "final")
+
+    G.add_node(
+        "final",
+        prompt=(
+            "Respond based on our entire conversation so far. Return your "
+            "answer in JSON format (not markdown). Your JSON file must "
+            "include exactly two "
+            'keys. The keys are "state_abbr" and "explanation". The '
+            'value of the "state_abbr" key should be a string containing '
+            "the two-letter abbreviation for the state corresponding "
+            "to this permit, if unambiguous. "
+            "If you could not determine a specific state, this key "
+            "should be `null`. "
+            'The value of the "explanation" key should be a string explaining '
+            "your answer."
+        ),
+    )
+
+    return G
+
+
+def setup_graph_construction_notification(**kwargs):  # noqa: D103
+    G = _setup_graph_no_nodes(**kwargs)  # noqa: N806
+
+    G.add_node(
+        "init",
+        prompt=(
+            "Does the following permit text **directly require** "
+            "a notification of the construction commencement date? "
+            "Begin your response with either 'Yes' or 'No' and explain your "
+            "answer."
+            '\n\n"""\n{text}\n"""'
+        ),
+    )
+
+    G.add_edge(
+        "init",
+        "final_mentioned",
+        condition=llm_response_starts_with_yes,
+    )
+
+    G.add_node(
+        "final_mentioned",
+        prompt=(
+            "Respond based on our entire conversation so far. Return your "
+            "answer in JSON format (not markdown). Your JSON file must "
+            "include exactly two keys. The keys are "
+            '"construction_notification_required" and "explanation". The '
+            'value of the "construction_notification_required" key should '
+            "be `true`, since we determined that the permit requires "
+            "notification of the construction commencement date. "
+            'The value of the "explanation" key should be a string explaining '
+            "your answer."
+        ),
+    )
+
+    G.add_edge(
+        "init",
+        "explicit_not_mentioned",
+        condition=llm_response_starts_with_no,
+    )
+    G.add_node(
+        "explicit_not_mentioned",
+        prompt=(
+            "Does the permit text **directly mention** that a notification "
+            "of the construction commencement date is **not** required? "
+            "Begin your response with either 'Yes' or 'No' and explain your "
+            "answer."
+        ),
+    )
+    G.add_edge(
+        "explicit_not_mentioned",
+        "final_not_mentioned",
+        condition=llm_response_starts_with_yes,
+    )
+
+    G.add_node(
+        "final_not_mentioned",
+        prompt=(
+            "Respond based on our entire conversation so far. Return your "
+            "answer in JSON format (not markdown). Your JSON file must "
+            "include exactly two keys. The keys are "
+            '"construction_notification_required" and "explanation". The '
+            'value of the "construction_notification_required" key should '
+            "be `false`, since we determined that the permit explicitly does "
+            "not require notification of the construction commencement date. "
+            'The value of the "explanation" key should be a string explaining '
+            "your answer."
+        ),
+    )
+
+    return G
+
+
+def setup_graph_construction_notification_window(**kwargs):  # noqa: D103
+    G = _setup_graph_no_nodes(**kwargs)  # noqa: N806
+
+    G.add_node(
+        "init",
+        prompt=(
+            "Does the following permit text **directly require** "
+            "a notification of the construction commencement date? "
+            "Begin your response with either 'Yes' or 'No' and explain your "
+            "answer."
+            '\n\n"""\n{text}\n"""'
+        ),
+    )
+
+    G.add_edge(
+        "init",
+        "check_for_window",
+        condition=llm_response_starts_with_yes,
+    )
+
+    G.add_node(
+        "check_for_window",
+        prompt=(
+            "Does the permit text **directly specify** a number of days "
+            "within which construction commencement must be reported "
+            "(e.g., 30)?"
+            "Begin your response with either 'Yes' or 'No' and explain your "
+            "answer."
+        ),
+    )
+
+    G.add_edge(
+        "check_for_window", "final", condition=llm_response_starts_with_yes
+    )
+
+    G.add_node(
+        "final",
+        prompt=(
+            "Respond based on our entire conversation so far. Return your "
+            "answer in JSON format (not markdown). Your JSON file must "
+            "include exactly two keys. The keys are "
+            '"construction_notification_window" and "explanation". The '
+            'value of the "construction_notification_window" key should '
+            "an integer corresponding to the number of days within which "
+            "construction commencement must be reported, if unambiguous. "
+            "If you could not determine a specific number of days, this key "
+            "should be `null`. "
+            'The value of the "explanation" key should be a string explaining '
+            "your answer."
+        ),
+    )
+
+    return G
+
+
+def setup_graph_startup_notification(**kwargs):  # noqa: D103
+    G = _setup_graph_no_nodes(**kwargs)  # noqa: N806
+
+    G.add_node(
+        "init",
+        prompt=(
+            "Does the following permit text **directly require** "
+            "a notification of an initial startup date? "
+            "Begin your response with either 'Yes' or 'No' and explain your "
+            "answer."
+            '\n\n"""\n{text}\n"""'
+        ),
+    )
+
+    G.add_edge(
+        "init",
+        "final_mentioned",
+        condition=llm_response_starts_with_yes,
+    )
+
+    G.add_node(
+        "final_mentioned",
+        prompt=(
+            "Respond based on our entire conversation so far. Return your "
+            "answer in JSON format (not markdown). Your JSON file must "
+            "include exactly two keys. The keys are "
+            '"startup_notification_required" and "explanation". The '
+            'value of the "startup_notification_required" key should '
+            "be `true`, since we determined that the permit requires "
+            "a notification of an initial startup date. "
+            'The value of the "explanation" key should be a string explaining '
+            "your answer."
+        ),
+    )
+
+    G.add_edge(
+        "init",
+        "explicit_not_mentioned",
+        condition=llm_response_starts_with_no,
+    )
+    G.add_node(
+        "explicit_not_mentioned",
+        prompt=(
+            "Does the permit text **directly mention** that a notification "
+            "of an initial startup date is **not** required? "
+            "Begin your response with either 'Yes' or 'No' and explain your "
+            "answer."
+        ),
+    )
+    G.add_edge(
+        "explicit_not_mentioned",
+        "final_not_mentioned",
+        condition=llm_response_starts_with_yes,
+    )
+
+    G.add_node(
+        "final_not_mentioned",
+        prompt=(
+            "Respond based on our entire conversation so far. Return your "
+            "answer in JSON format (not markdown). Your JSON file must "
+            "include exactly two keys. The keys are "
+            '"startup_notification_required" and "explanation". The '
+            'value of the "startup_notification_required" key should '
+            "be `false`, since we determined that the permit explicitly does "
+            "not require notification of an initial startup date. "
+            'The value of the "explanation" key should be a string explaining '
+            "your answer."
+        ),
+    )
+
+    return G
+
+
+def setup_graph_startup_notification_window(**kwargs):  # noqa: D103
+    G = _setup_graph_no_nodes(**kwargs)  # noqa: N806
+
+    G.add_node(
+        "init",
+        prompt=(
+            "Does the following permit text **directly require** "
+            "a notification of an initial startup date? "
+            "Begin your response with either 'Yes' or 'No' and explain your "
+            "answer."
+            '\n\n"""\n{text}\n"""'
+        ),
+    )
+
+    G.add_edge(
+        "init",
+        "check_for_window",
+        condition=llm_response_starts_with_yes,
+    )
+
+    G.add_node(
+        "check_for_window",
+        prompt=(
+            "Does the permit text **directly specify** a number of days "
+            "within which the initial startup date must be reported "
+            "(e.g., 15)?"
+            "Begin your response with either 'Yes' or 'No' and explain your "
+            "answer."
+        ),
+    )
+
+    G.add_edge(
+        "check_for_window", "final", condition=llm_response_starts_with_yes
+    )
+
+    G.add_node(
+        "final",
+        prompt=(
+            "Respond based on our entire conversation so far. Return your "
+            "answer in JSON format (not markdown). Your JSON file must "
+            "include exactly two keys. The keys are "
+            '"startup_notification_window" and "explanation". The '
+            'value of the "startup_notification_window" key should '
+            "an integer corresponding to the number of days within which "
+            "the initial startup date must be reported, if unambiguous. "
+            "If you could not determine a specific number of days, this key "
+            "should be `null`. "
+            'The value of the "explanation" key should be a string explaining '
+            "your answer."
+        ),
+    )
+
+    return G
+
+
+def setup_graph_permit_copy_required(**kwargs):  # noqa: D103
+    G = _setup_graph_no_nodes(**kwargs)  # noqa: N806
+
+    G.add_node(
+        "init",
+        prompt=(
+            "Does the following permit text **directly require** the facility "
+            "to keep a copy of the permit onsite? "
+            "Begin your response with either 'Yes' or 'No' and explain your "
+            "answer."
+            '\n\n"""\n{text}\n"""'
+        ),
+    )
+
+    G.add_edge(
+        "init",
+        "final_mentioned",
+        condition=llm_response_starts_with_yes,
+    )
+
+    G.add_node(
+        "final_mentioned",
+        prompt=(
+            "Respond based on our entire conversation so far. Return your "
+            "answer in JSON format (not markdown). Your JSON file must "
+            "include exactly two keys. The keys are "
+            '"permit_copy_required" and "explanation". The '
+            'value of the "permit_copy_required" key should '
+            "be `true`, since we determined that the permit requires "
+            "that a copy of the permit be kept onsite. "
+            'The value of the "explanation" key should be a string explaining '
+            "your answer."
+        ),
+    )
+
+    G.add_edge(
+        "init",
+        "explicit_not_mentioned",
+        condition=llm_response_starts_with_no,
+    )
+    G.add_node(
+        "explicit_not_mentioned",
+        prompt=(
+            "Does the permit text **directly mention** that the facility is "
+            "**not** required to keep a copy of the permit onsite? "
+            "Begin your response with either 'Yes' or 'No' and explain your "
+            "answer."
+        ),
+    )
+    G.add_edge(
+        "explicit_not_mentioned",
+        "final_not_mentioned",
+        condition=llm_response_starts_with_yes,
+    )
+
+    G.add_node(
+        "final_not_mentioned",
+        prompt=(
+            "Respond based on our entire conversation so far. Return your "
+            "answer in JSON format (not markdown). Your JSON file must "
+            "include exactly two keys. The keys are "
+            '"permit_copy_required" and "explanation". The '
+            'value of the "permit_copy_required" key should '
+            "be `false`, since we determined that the permit explicitly does "
+            "not require the facility to keep a copy of the permit onsite. "
+            'The value of the "explanation" key should be a string explaining '
+            "your answer."
+        ),
+    )
+
+    return G
+
+
+def setup_graph_roe_clause(**kwargs):  # noqa: D103
+    G = _setup_graph_no_nodes(**kwargs)  # noqa: N806
+
+    G.add_node(
+        "init",
+        prompt=(
+            "Does the following permit text mention any right-of-entry "
+            "language enabling inspection? "
+            "Begin your response with either 'Yes' or 'No' and explain your "
+            "answer."
+            '\n\n"""\n{text}\n"""'
+        ),
+    )
+
+    G.add_edge(
+        "init", "get_roe_clause", condition=llm_response_starts_with_yes
+    )
+
+    G.add_node(
+        "get_roe_clause",
+        prompt=(
+            "What is the direct text excerpt containing right-of-entry "
+            "language enabling inspection? Be sure to include any and all "
+            "language around timing (e.g., 'whenever the facility is in "
+            "operation')."
+        ),
+    )
+
+    G.add_edge("get_roe_clause", "final")
+
+    G.add_node(
+        "final",
+        prompt=(
+            "Respond based on our entire conversation so far. Return your "
+            "answer in JSON format (not markdown). Your JSON file must "
+            "include exactly two "
+            'keys. The keys are "roe_clause" and "explanation". The '
+            'value of the "roe_clause" key should be a string containing '
+            "the right-of-entry language excerpt from before. Make sure the "
+            "excerpt comes directly from the original text - do not "
+            "paraphrase, expand upon, or generally make any changes to the "
+            "original text. "
+            "If you could not find any specific right-of-entry language "
+            "enabling inspection, this key should be `null`. "
+            'The value of the "explanation" key should be a string explaining '
+            "your answer."
+        ),
+    )
+
+    return G
+
+
 def setup_graph_generators(**kwargs):  # noqa: D103
     G = _setup_graph_no_nodes(**kwargs)  # noqa: N806
 

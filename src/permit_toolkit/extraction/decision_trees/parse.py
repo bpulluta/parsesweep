@@ -8,6 +8,18 @@ from elm.ords.utilities import llm_response_as_json
 from elm.ords.extraction.tree import AsyncDecisionTree
 from permit_toolkit.extraction.decision_trees.graphs import (
     setup_graph_permit_num,
+    setup_graph_permit_issue_date,
+    setup_graph_permit_expiration_date,
+    setup_graph_facility_name,
+    setup_graph_facility_address,
+    setup_graph_county_name,
+    setup_graph_state_name,
+    setup_graph_construction_notification,
+    setup_graph_construction_notification_window,
+    setup_graph_startup_notification,
+    setup_graph_startup_notification_window,
+    setup_graph_permit_copy_required,
+    setup_graph_roe_clause,
     setup_graph_generators,
     # setup_graph_make,
     setup_graph_model,
@@ -17,7 +29,6 @@ from permit_toolkit.extraction.decision_trees.graphs import (
     setup_graph_backup,
     setup_graph_control_techs,
     setup_graph_operating_hours,
-    setup_graph_emissions,
 )
 
 logger = logging.getLogger(__name__)
@@ -72,31 +83,110 @@ class StructuredOrdinanceParser(BaseLLMCaller):
 
     async def parse(self, text):
         """Parse text and extract structured ordinance data."""
-        permit_num = await self._run_single_tree(
-            setup_func=setup_graph_permit_num,
-            text=text,
-            out_key="permit_number",
-            logger_message="Checking for permit number",
-        )
         refs = await self._run_single_tree(
             setup_func=setup_graph_generators,
             text=text,
             out_key="reference_numbers",
             logger_message="Checking for generators",
         )
-        values = {
-            "permitDetails": {
-                "permitNumber": permit_num,
-                "permitIssuanceDate": None,
-                "permitExpirationDate": None,
-                "facilityName": None,
-                "facilityAddress": None,
-                "facilityCounty": None,
-                "facilityState": None,
-                "extractionNotes": None,
-            }
+        logger.debug("Found the following reference numbers: %s", refs)
+
+        permit_details = {
+            "permitNumber": (
+                setup_graph_permit_num,
+                "permit_number",
+                "Checking for permit number",
+            ),
+            "permitIssuanceDate": (
+                setup_graph_permit_issue_date,
+                "issue_date",
+                "Checking for permit date",
+            ),
+            "permitExpirationDate": (
+                setup_graph_permit_expiration_date,
+                "permit_expiration_date",
+                "Checking for permit expiration date",
+            ),
+            "facilityName": (
+                setup_graph_facility_name,
+                "facility_name",
+                "Checking for facility name",
+            ),
+            "facilityAddress": (
+                setup_graph_facility_address,
+                "facility_address",
+                "Checking for facility address",
+            ),
+            "facilityCounty": (
+                setup_graph_county_name,
+                "county_name",
+                "Checking for county name",
+            ),
+            "facilityState": (
+                setup_graph_state_name,
+                "state_abbr",
+                "Checking for state name",
+            ),
+            "initialConstructionCommencedNotificationRequired": (
+                setup_graph_construction_notification,
+                "construction_notification_required",
+                "Checking if construction notification is required",
+            ),
+            "constructionCommencedNotificationWindowDays": (
+                setup_graph_construction_notification_window,
+                "construction_notification_window",
+                "Checking for construction notification window",
+            ),
+            "initialStartupNotificationRequired": (
+                setup_graph_startup_notification,
+                "startup_notification_required",
+                "Checking if startup notification is required",
+            ),
+            "startupNotificationWindowDays": (
+                setup_graph_startup_notification_window,
+                "startup_notification_window",
+                "Checking for startup notification window",
+            ),
+            "permitCopyOnsiteRequired": (
+                setup_graph_permit_copy_required,
+                "permit_copy_required",
+                "Checking if a copy of the permit is required onsite",
+            ),
+            "rightOfEntryClause": (
+                setup_graph_roe_clause,
+                "roe_clause",
+                "Checking for right of entry clause",
+            ),
         }
-        check_map = {
+        tasks = {
+            name: asyncio.create_task(
+                self._run_single_tree(
+                    setup_func=f,
+                    text=text,
+                    out_key=k,
+                    logger_message=m,
+                )
+            )
+            for name, (f, k, m) in permit_details.items()
+        }
+        logger.debug(
+            "Starting permit info extraction with %d tasks.", len(tasks)
+        )
+
+        results = await asyncio.gather(*tasks.values(), return_exceptions=True)
+
+        permit_details = {}
+        for key, result in zip(tasks.keys(), results):
+            if isinstance(result, Exception):
+                logger.warning("Task %s failed: %s", key, result)
+                permit_details[key] = None
+            else:
+                permit_details[key] = result
+
+        values = {"permitDetails": permit_details}
+        logger.debug("Permit info extraction complete.")
+
+        generator_details = {
             "make": (
                 setup_graph_generators,
                 "make",
@@ -133,11 +223,11 @@ class StructuredOrdinanceParser(BaseLLMCaller):
                 "operating_hours",
                 "Checking for generator operating hours",
             ),
-            "emissions_limits": (
-                setup_graph_emissions,
-                "emissions_limits",
-                "Checking for generator emissions limits",
-            ),
+            # "emissions_limits": (
+            #     setup_graph_emissions,
+            #     "emissions_limits",
+            #     "Checking for generator emissions limits",
+            # ),
         }
         tasks = {
             (ref_number, name): asyncio.create_task(
@@ -150,7 +240,7 @@ class StructuredOrdinanceParser(BaseLLMCaller):
                 )
             )
             for ref_number in refs
-            for name, (f, k, m) in check_map.items()
+            for name, (f, k, m) in generator_details.items()
         }
         logger.debug("Starting value extraction with %d tasks.", len(tasks))
 
