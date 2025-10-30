@@ -9,7 +9,7 @@ from elm.ords.extraction.tree import AsyncDecisionTree
 from permit_toolkit.extraction.decision_trees.graphs import (
     setup_graph_permit_num,
     setup_graph_generators,
-    setup_graph_make,
+    # setup_graph_make,
     setup_graph_model,
     setup_graph_fuel,
     setup_graph_tank_size,
@@ -72,8 +72,18 @@ class StructuredOrdinanceParser(BaseLLMCaller):
 
     async def parse(self, text):
         """Parse text and extract structured ordinance data."""
-        permit_num = await self._get_permit_num(text)
-        refs = await self._get_generator_refs(text)
+        permit_num = await self._run_single_tree(
+            setup_func=setup_graph_permit_num,
+            text=text,
+            out_key="permit_number",
+            logger_message="Checking for permit number",
+        )
+        refs = await self._run_single_tree(
+            setup_func=setup_graph_generators,
+            text=text,
+            out_key="reference_numbers",
+            logger_message="Checking for generators",
+        )
         values = {
             "permitDetails": {
                 "permitNumber": permit_num,
@@ -87,20 +97,60 @@ class StructuredOrdinanceParser(BaseLLMCaller):
             }
         }
         check_map = {
-            "make": self._check_make,
-            "model": self._check_model,
-            "fuel_type": self._check_fuel_type,
-            "tank_size": self._check_tank_size,
-            "capacity": self._check_capacity,
-            "backup_mw": self._check_backup,
-            "control_technologies": self._check_techs,
-            "operating_hours_limit_yr": self._check_op_hours,
-            "emissions_limits": self._check_emissions,
+            "make": (
+                setup_graph_generators,
+                "make",
+                "Checking for generator make",
+            ),
+            "model": (
+                setup_graph_model,
+                "model",
+                "Checking for generator model",
+            ),
+            "fuel_type": (
+                setup_graph_fuel,
+                "fuel_type",
+                "Checking for generator fuel type",
+            ),
+            "tank_size": (
+                setup_graph_tank_size,
+                "tank_size",
+                "Checking for generator tank size",
+            ),
+            # "capacity": self._check_capacity,
+            "backup_mw": (
+                setup_graph_backup,
+                "backup_mw",
+                "Checking for generator backup",
+            ),
+            "control_technologies": (
+                setup_graph_control_techs,
+                "control_technologies",
+                "Checking for generator control techs",
+            ),
+            "operating_hours_limit_yr": (
+                setup_graph_operating_hours,
+                "operating_hours",
+                "Checking for generator operating hours",
+            ),
+            "emissions_limits": (
+                setup_graph_emissions,
+                "emissions_limits",
+                "Checking for generator emissions limits",
+            ),
         }
         tasks = {
-            (ref_number, name): asyncio.create_task(func(text, ref_number))
+            (ref_number, name): asyncio.create_task(
+                self._run_single_tree(
+                    setup_func=f,
+                    text=text,
+                    out_key=k,
+                    logger_message=m,
+                    ref_number=ref_number,
+                )
+            )
             for ref_number in refs
-            for name, func in check_map.items()
+            for name, (f, k, m) in check_map.items()
         }
         logger.debug("Starting value extraction with %d tasks.", len(tasks))
 
@@ -124,83 +174,23 @@ class StructuredOrdinanceParser(BaseLLMCaller):
 
         return values
 
-    async def _get_permit_num(self, text):
-        logger.debug("Checking for permit number")
+    async def _run_single_tree(
+        self, setup_func, text, out_key, logger_message, **extra_kwargs
+    ):
+        if "ref_number" in extra_kwargs:
+            logger_message = (
+                f"{logger_message} for ref number {extra_kwargs['ref_number']}"
+            )
+
+        logger.debug(logger_message)
         tree = _setup_async_decision_tree(
-            setup_graph_permit_num,
+            setup_func,
             text=text,
             chat_llm_caller=self._init_chat_llm_caller(DEFAULT_SYSTEM_MESSAGE),
+            **extra_kwargs,
         )
-        dtree_permit_out = await _run_async_tree(tree)
-
-        return dtree_permit_out.get("permit_number", None)
-
-    async def _get_generator_refs(self, text):
-        logger.debug("Checking for generators")
-        tree = _setup_async_decision_tree(
-            setup_graph_generators,
-            text=text,
-            chat_llm_caller=self._init_chat_llm_caller(DEFAULT_SYSTEM_MESSAGE),
-        )
-        dtree_refs_out = await _run_async_tree(tree)
-
-        return dtree_refs_out.get("reference_numbers", [])
-
-    async def _check_make(self, text, ref_number):
-        logger.debug(
-            "Checking for generator make for ref number %s", ref_number
-        )
-        tree = _setup_async_decision_tree(
-            setup_graph_make,
-            text=text,
-            ref_number=ref_number,
-            chat_llm_caller=self._init_chat_llm_caller(DEFAULT_SYSTEM_MESSAGE),
-        )
-        dtree_make_out = await _run_async_tree(tree)
-
-        return dtree_make_out.get("make", None)
-
-    async def _check_model(self, text, ref_number):
-        logger.debug(
-            "Checking for generator model for ref number %s", ref_number
-        )
-        tree = _setup_async_decision_tree(
-            setup_graph_model,
-            text=text,
-            ref_number=ref_number,
-            chat_llm_caller=self._init_chat_llm_caller(DEFAULT_SYSTEM_MESSAGE),
-        )
-        dtree_model_out = await _run_async_tree(tree)
-
-        return dtree_model_out.get("model", None)
-
-    async def _check_fuel_type(self, text, ref_number):
-        logger.debug(
-            "Checking for generator fuel type for ref number %s", ref_number
-        )
-        tree = _setup_async_decision_tree(
-            setup_graph_fuel,
-            text=text,
-            ref_number=ref_number,
-            chat_llm_caller=self._init_chat_llm_caller(DEFAULT_SYSTEM_MESSAGE),
-        )
-        dtree_fuel_type_out = await _run_async_tree(tree)
-
-        return dtree_fuel_type_out.get("fuel_type", None)
-
-    async def _check_tank_size(self, text, ref_number):
-        logger.debug(
-            "Checking for generator tank size for ref number %s", ref_number
-        )
-        tree = _setup_async_decision_tree(
-            setup_graph_tank_size,
-            text=text,
-            ref_number=ref_number,
-            chat_llm_caller=self._init_chat_llm_caller(DEFAULT_SYSTEM_MESSAGE),
-        )
-        dtree_tank_out = await _run_async_tree(tree)
-
-        return dtree_tank_out.get("tank_size", None)
+        dtree_out = await _run_async_tree(tree)
+        return dtree_out.get(out_key, None)
 
     async def _check_capacity(self, text, ref_number):
         logger.debug(
@@ -217,62 +207,3 @@ class StructuredOrdinanceParser(BaseLLMCaller):
             "rated_capacity_kw": dtree_capacity_out.get("capacity_kw", None),
             "rated_capacity_hp": dtree_capacity_out.get("capacity_hp", None),
         }
-        # tank_size = dtree_tank_out.get("tank_size", None)
-
-    async def _check_backup(self, text, ref_number):
-        logger.debug(
-            "Checking for generator backup for ref number %s", ref_number
-        )
-        tree = _setup_async_decision_tree(
-            setup_graph_backup,
-            text=text,
-            ref_number=ref_number,
-            chat_llm_caller=self._init_chat_llm_caller(DEFAULT_SYSTEM_MESSAGE),
-        )
-        dtree_backup_out = await _run_async_tree(tree)
-
-        return dtree_backup_out.get("backup_mw", None)
-
-    async def _check_techs(self, text, ref_number):
-        logger.debug(
-            "Checking for generator control techs for ref number %s",
-            ref_number,
-        )
-        tree = _setup_async_decision_tree(
-            setup_graph_control_techs,
-            text=text,
-            ref_number=ref_number,
-            chat_llm_caller=self._init_chat_llm_caller(DEFAULT_SYSTEM_MESSAGE),
-        )
-        dtree_control_techs_out = await _run_async_tree(tree)
-
-        return dtree_control_techs_out.get("control_technologies", None)
-
-    async def _check_op_hours(self, text, ref_number):
-        logger.debug(
-            "Checking for generator operating hours for ref number %s",
-            ref_number,
-        )
-        tree = _setup_async_decision_tree(
-            setup_graph_operating_hours,
-            text=text,
-            ref_number=ref_number,
-            chat_llm_caller=self._init_chat_llm_caller(DEFAULT_SYSTEM_MESSAGE),
-        )
-        dtree_operating_hours_out = await _run_async_tree(tree)
-
-        return dtree_operating_hours_out.get("operating_hours", None)
-
-    async def _check_emissions(self, text, ref_number):
-        logger.debug(
-            "Checking for generator emissions for ref number %s", ref_number
-        )
-        tree = _setup_async_decision_tree(
-            setup_graph_emissions,
-            text=text,
-            ref_number=ref_number,
-            chat_llm_caller=self._init_chat_llm_caller(DEFAULT_SYSTEM_MESSAGE),
-        )
-        dtree_emissions_out = await _run_async_tree(tree)
-
-        return dtree_emissions_out.get("emissions_limits", None)
