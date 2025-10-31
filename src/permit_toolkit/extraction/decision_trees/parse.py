@@ -191,7 +191,8 @@ class StructuredOrdinanceParser(BaseLLMCaller):
                     text=text,
                     # out_key=k,
                     logger_message=m,
-                )
+                ),
+                name=name,
             )
             for name, (f, k, m) in permit_details.items()
         }
@@ -220,7 +221,7 @@ class StructuredOrdinanceParser(BaseLLMCaller):
         generator_details = {
             "numGenerators": (
                 setup_graph_num_gens,
-                "engine_count",
+                "generator_count",
                 "Checking for number of generators",
             ),
             "includedInPermitProject": (
@@ -285,7 +286,7 @@ class StructuredOrdinanceParser(BaseLLMCaller):
             ),
             "fuelSulfurContentPct": (
                 setup_graph_fuel_sulphur,
-                "fuel_sulphur",
+                "fuel_sulfur_pct",
                 "Checking for generator fuel sulphur content",
             ),
             "fuelCertificationRequired": (
@@ -370,11 +371,6 @@ class StructuredOrdinanceParser(BaseLLMCaller):
                 "mact_applicable",
                 "Checking for MACT Subpart ZZZZ applicability",
             ),
-            # "emissions_limits": (
-            #     setup_graph_emissions,
-            #     "emissions_limits",
-            #     "Checking for generator emissions limits",
-            # ),
         }
         tasks = {
             (ref_number, name, k): asyncio.create_task(
@@ -384,7 +380,8 @@ class StructuredOrdinanceParser(BaseLLMCaller):
                     # out_key=k,
                     logger_message=m,
                     ref_number=ref_number,
-                )
+                ),
+                name=f"{ref_number}: {name}",
             )
             for ref_number in refs
             for name, (f, k, m) in generator_details.items()
