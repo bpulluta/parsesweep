@@ -49,7 +49,7 @@ data/outputs/
 data/validation/
 data/visualizations/
 scripts/
-schema_comparison/ 
+schema_comparison/
 
 # Logs
 *.log
@@ -85,3 +85,10 @@ test_data/.cache/
 test_data/extracted/
 data/comparison/
 data/permitsMD/
+.scratch/
+
+# pixi environments
+.pixi
+*.egg-info
+
+

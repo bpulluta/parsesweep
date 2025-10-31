@@ -1,0 +1,138 @@
+{
+  "permitNumber": "11790",
+  "generators": {
+    "EG01": {
+      "make": "Cummins",
+      "model": "Cummins QSK78-G12",
+      "fuel_type": "diesel",
+      "tank_size": {},
+      "capacity": {
+        "capacity_kw": "2500 kW",
+        "capacity_hp": "4060 hp"
+      },
+      "backup_mw": "2.5",
+      "control_technologies": "Turbocharged engines, charge air coolers, good operating practices, and appropriate maintenance in accordance with manufacturer recommendations",
+      "operating_hours": 500,
+      "emissions_limits": {
+        "Volatile Organic Compounds (VOC)": "1.29 lbs/hr per unit",
+        "Nitrogen Oxides (NOx, as NO2)": "53.70 lbs/hr per unit",
+        "Carbon Monoxide (CO)": "3.85 lbs/hr per unit",
+        "Particulate Matter (PM10/PM2.5)": "0.36 lbs/hr per unit"
+      }
+    },
+    "EG02": {
+      "make": "Cummins",
+      "model": "Cummins QSK78-G12",
+      "fuel_type": "diesel",
+      "tank_size": {},
+      "capacity": {
+        "capacity_kw": "2500 kW",
+        "capacity_hp": "4060 hp"
+      },
+      "backup_mw": null,
+      "control_technologies": "Turbocharged engines, charge air coolers, good operating practices, and performing appropriate maintenance in accordance with manufacturer recommendations.",
+      "operating_hours": 500,
+      "emissions_limits": {
+        "Volatile Organic Compounds (VOC)": "1.29 lbs/hr",
+        "Nitrogen Oxides (NOx as NO2)": "53.70 lbs/hr",
+        "Carbon Monoxide (CO)": "3.85 lbs/hr",
+        "PM10/PM2.5": "0.36 lbs/hr"
+      }
+    },
+    "EG03": {
+      "make": "Cummins",
+      "model": "Cummins QSK78-G12",
+      "fuel_type": "diesel",
+      "tank_size": {},
+      "capacity": {
+        "capacity_kw": "2500 kW",
+        "capacity_hp": "4060 hp"
+      },
+      "backup_mw": null,
+      "control_technologies": "Turbocharged engines, charge air coolers, use of good operating practices, and performing appropriate maintenance in accordance with manufacturer recommendations.",
+      "operating_hours": 500,
+      "emissions_limits": {
+        "Volatile Organic Compounds (VOC)": "1.29 lbs/hr",
+        "Nitrogen Oxides (NOx, as NO2)": "53.70 lbs/hr",
+        "Carbon Monoxide (CO)": "3.85 lbs/hr",
+        "Particulate Matter (PM10/PM2.5)": "0.36 lbs/hr"
+      }
+    },
+    "EG04": {
+      "make": "Cummins",
+      "model": null,
+      "fuel_type": "diesel fuel",
+      "tank_size": {},
+      "capacity": {
+        "capacity_kw": "2500",
+        "capacity_hp": "4060"
+      },
+      "backup_mw": null,
+      "control_technologies": "Turbocharged engines, charge air coolers, use of good operating practices, and performing appropriate maintenance in accordance with manufacturer recommendations.",
+      "operating_hours": 500,
+      "emissions_limits": {
+        "Volatile Organic Compounds (VOC)": "1.29 lbs/hr",
+        "Nitrogen Oxides (NOx, as NO2)": "53.70 lbs/hr",
+        "Carbon Monoxide (CO)": "3.85 lbs/hr",
+        "Particulate Matter (PM10/PM2.5)": "0.36 lbs/hr"
+      }
+    },
+    "EG05": {
+      "make": "Cummins",
+      "model": "Cummins QSK78-G12",
+      "fuel_type": "diesel",
+      "tank_size": {},
+      "capacity": {
+        "capacity_kw": "2500 kW",
+        "capacity_hp": "4060 hp"
+      },
+      "backup_mw": null,
+      "control_technologies": "Turbocharged engines, charge air coolers, use of good operating practices, and performing appropriate maintenance in accordance with the manufacturer recommendations",
+      "operating_hours": 500,
+      "emissions_limits": {
+        "Volatile Organic Compounds (VOC)": "1.29 lbs/hr",
+        "Nitrogen Oxides (NOx, as NO2)": "53.70 lbs/hr",
+        "Carbon Monoxide (CO)": "3.85 lbs/hr",
+        "Particulate Matter (PM10/PM2.5)": "0.36 lbs/hr"
+      }
+    },
+    "EG06": {
+      "make": "Cummins",
+      "model": "QSK78-G12",
+      "fuel_type": "diesel fuel",
+      "tank_size": {},
+      "capacity": {
+        "capacity_kw": "2500 kW",
+        "capacity_hp": "4060 hp"
+      },
+      "backup_mw": "2.5",
+      "control_technologies": "Turbocharged engines, charge air coolers, use of good operating practices, and performing appropriate maintenance in accordance with the manufacturer's recommendations.",
+      "operating_hours": 500,
+      "emissions_limits": {
+        "Volatile Organic Compounds (VOC)": "1.29 lbs/hr per unit",
+        "Nitrogen Oxides (NOx, as NO2)": "53.70 lbs/hr per unit",
+        "Carbon Monoxide (CO)": "3.85 lbs/hr per unit",
+        "PM10/PM2.5": "0.36 lbs/hr per unit"
+      }
+    },
+    "EG07": {
+      "make": "Cummins",
+      "model": "QSK19-G8",
+      "fuel_type": "diesel",
+      "tank_size": {},
+      "capacity": {
+        "capacity_kw": "600",
+        "capacity_hp": "967"
+      },
+      "backup_mw": "0.6",
+      "control_technologies": "Turbocharged engines, charge air coolers, use of good operating practices, and performing appropriate maintenance in accordance with the manufacturer's recommendations.",
+      "operating_hours": 500,
+      "emissions_limits": {
+        "Volatile Organic Compounds (VOC)": "0.28 lbs/hr",
+        "Nitrogen Oxides (NOx, as NO2)": "12.79 lbs/hr",
+        "Carbon Monoxide (CO)": "1.08 lbs/hr",
+        "Particulate Matter (PM10/PM2.5)": "0.17 lbs/hr"
+      }
+    }
+  }
+}
