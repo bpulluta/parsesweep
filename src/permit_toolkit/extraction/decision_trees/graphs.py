@@ -17,6 +17,14 @@ _COMMENT_PROMPT = (
     "of how you determined the value, if you think it is necessary "
     "(`null` otherwise)."
 )
+_START_WITH_YN = (
+    "Begin your response with either 'Yes' or 'No' and briefly "
+    "explain your answer."
+)
+_EXPLANATION_KEY = (
+    'The value of the "explanation" key should be a string briefly explaining '
+    "your answer."
+)
 
 
 def _setup_graph_no_nodes(**kwargs):
@@ -34,9 +42,8 @@ def setup_graph_permit_num(**kwargs):  # noqa: D103
         "init",
         prompt=(
             "Does the following text mention a permit or registration number "
-            "for the application?"
-            "Begin your response with either 'Yes' or 'No' and explain your "
-            "answer."
+            "for the application? "
+            f"{_START_WITH_YN}"
             '\n\n"""\n{text}\n"""'
         ),
     )
@@ -63,8 +70,7 @@ def setup_graph_permit_num(**kwargs):  # noqa: D103
             'keys. The keys are "permit_number" and "explanation". The '
             'value of the "permit_number" key should be a string containing '
             "the permit or registration number mentioned in the text. "
-            'The value of the "explanation" key should be a string explaining '
-            "your answer."
+            f"{_EXPLANATION_KEY}"
         ),
     )
 
@@ -77,9 +83,8 @@ def setup_graph_permit_issue_date(**kwargs):  # noqa: D103
     G.add_node(
         "init",
         prompt=(
-            "Does the following text mention an issue date for the permit?"
-            "Begin your response with either 'Yes' or 'No' and explain your "
-            "answer."
+            "Does the following text mention an issue date for the permit? "
+            f"{_START_WITH_YN}"
             '\n\n"""\n{text}\n"""'
         ),
     )
@@ -106,8 +111,7 @@ def setup_graph_permit_issue_date(**kwargs):  # noqa: D103
             "the permit issue date in YYYY-MM-DD format, if unambiguous. "
             "If you could not determine a specific issue date, this key "
             "should be `null`"
-            'The value of the "explanation" key should be a string explaining '
-            "your answer."
+            f"{_EXPLANATION_KEY}"
         ),
     )
 
@@ -122,8 +126,7 @@ def setup_graph_permit_expiration_date(**kwargs):  # noqa: D103
         prompt=(
             "Does the following text explicitly mention an expiration date "
             "for the permit? "
-            "Begin your response with either 'Yes' or 'No' and explain your "
-            "answer."
+            f"{_START_WITH_YN}"
             '\n\n"""\n{text}\n"""'
         ),
     )
@@ -153,8 +156,7 @@ def setup_graph_permit_expiration_date(**kwargs):  # noqa: D103
             "permit in YYYY-MM-DD format, if unambiguous. "
             "If the text does not explicitly give an expiration date for "
             "the permit, this key should be `null`. "
-            'The value of the "explanation" key should be a string explaining '
-            "your answer."
+            f"{_EXPLANATION_KEY}"
         ),
     )
 
@@ -169,8 +171,7 @@ def setup_graph_facility_name(**kwargs):  # noqa: D103
         prompt=(
             "Does the following text mention a facility name corresponding "
             "to this permit? "
-            "Begin your response with either 'Yes' or 'No' and explain your "
-            "answer."
+            f"{_START_WITH_YN}"
             '\n\n"""\n{text}\n"""'
         ),
     )
@@ -201,8 +202,7 @@ def setup_graph_facility_name(**kwargs):  # noqa: D103
             "not normalize or shorten the name."
             "If you could not determine a specific facility name, this key "
             "should be `null`. "
-            'The value of the "explanation" key should be a string explaining '
-            "your answer."
+            f"{_EXPLANATION_KEY}"
         ),
     )
 
@@ -217,8 +217,7 @@ def setup_graph_facility_address(**kwargs):  # noqa: D103
         prompt=(
             "Does the following text mention a street address for the "
             "facility corresponding to this permit? "
-            "Begin your response with either 'Yes' or 'No' and explain your "
-            "answer."
+            f"{_START_WITH_YN}"
             '\n\n"""\n{text}\n"""'
         ),
     )
@@ -249,8 +248,7 @@ def setup_graph_facility_address(**kwargs):  # noqa: D103
             "written in the permit. "
             "If you could not determine a specific facility street address "
             "corresponding to this permit, this key should be `null`. "
-            'The value of the "explanation" key should be a string explaining '
-            "your answer."
+            f"{_EXPLANATION_KEY}"
         ),
     )
 
@@ -265,8 +263,7 @@ def setup_graph_county_name(**kwargs):  # noqa: D103
         prompt=(
             "Does the following text mention a county name corresponding "
             "to this permit? "
-            "Begin your response with either 'Yes' or 'No' and explain your "
-            "answer."
+            f"{_START_WITH_YN}"
             '\n\n"""\n{text}\n"""'
         ),
     )
@@ -295,8 +292,7 @@ def setup_graph_county_name(**kwargs):  # noqa: D103
             "the county name, if unambiguous. "
             "If you could not determine a specific county name, this key "
             "should be `null`. "
-            'The value of the "explanation" key should be a string explaining '
-            "your answer."
+            f"{_EXPLANATION_KEY}"
         ),
     )
 
@@ -311,8 +307,7 @@ def setup_graph_state_name(**kwargs):  # noqa: D103
         prompt=(
             "Does the following text mention a state name corresponding "
             "to this permit? "
-            "Begin your response with either 'Yes' or 'No' and explain your "
-            "answer."
+            f"{_START_WITH_YN}"
             '\n\n"""\n{text}\n"""'
         ),
     )
@@ -344,8 +339,7 @@ def setup_graph_state_name(**kwargs):  # noqa: D103
             "to this permit, if unambiguous. "
             "If you could not determine a specific state, this key "
             "should be `null`. "
-            'The value of the "explanation" key should be a string explaining '
-            "your answer."
+            f"{_EXPLANATION_KEY}"
         ),
     )
 
@@ -360,8 +354,7 @@ def setup_graph_construction_notification(**kwargs):  # noqa: D103
         prompt=(
             "Does the following permit text **directly require** "
             "a notification of the construction commencement date? "
-            "Begin your response with either 'Yes' or 'No' and explain your "
-            "answer."
+            f"{_START_WITH_YN}"
             '\n\n"""\n{text}\n"""'
         ),
     )
@@ -382,8 +375,7 @@ def setup_graph_construction_notification(**kwargs):  # noqa: D103
             'value of the "construction_notification_required" key should '
             "be `true`, since we determined that the permit requires "
             "notification of the construction commencement date. "
-            'The value of the "explanation" key should be a string explaining '
-            "your answer."
+            f"{_EXPLANATION_KEY}"
         ),
     )
 
@@ -397,8 +389,7 @@ def setup_graph_construction_notification(**kwargs):  # noqa: D103
         prompt=(
             "Does the permit text **directly mention** that a notification "
             "of the construction commencement date is **not** required? "
-            "Begin your response with either 'Yes' or 'No' and explain your "
-            "answer."
+            f"{_START_WITH_YN}"
         ),
     )
     G.add_edge(
@@ -417,8 +408,7 @@ def setup_graph_construction_notification(**kwargs):  # noqa: D103
             'value of the "construction_notification_required" key should '
             "be `false`, since we determined that the permit explicitly does "
             "not require notification of the construction commencement date. "
-            'The value of the "explanation" key should be a string explaining '
-            "your answer."
+            f"{_EXPLANATION_KEY}"
         ),
     )
 
@@ -433,8 +423,7 @@ def setup_graph_construction_notification_window(**kwargs):  # noqa: D103
         prompt=(
             "Does the following permit text **directly require** "
             "a notification of the construction commencement date? "
-            "Begin your response with either 'Yes' or 'No' and explain your "
-            "answer."
+            f"{_START_WITH_YN}"
             '\n\n"""\n{text}\n"""'
         ),
     )
@@ -450,9 +439,8 @@ def setup_graph_construction_notification_window(**kwargs):  # noqa: D103
         prompt=(
             "Does the permit text **directly specify** a number of days "
             "within which construction commencement must be reported "
-            "(e.g., 30)?"
-            "Begin your response with either 'Yes' or 'No' and explain your "
-            "answer."
+            "(e.g., 30)? "
+            f"{_START_WITH_YN}"
         ),
     )
 
@@ -472,8 +460,7 @@ def setup_graph_construction_notification_window(**kwargs):  # noqa: D103
             "construction commencement must be reported, if unambiguous. "
             "If you could not determine a specific number of days, this key "
             "should be `null`. "
-            'The value of the "explanation" key should be a string explaining '
-            "your answer."
+            f"{_EXPLANATION_KEY}"
         ),
     )
 
@@ -488,8 +475,7 @@ def setup_graph_startup_notification(**kwargs):  # noqa: D103
         prompt=(
             "Does the following permit text **directly require** "
             "a notification of an initial startup date? "
-            "Begin your response with either 'Yes' or 'No' and explain your "
-            "answer."
+            f"{_START_WITH_YN}"
             '\n\n"""\n{text}\n"""'
         ),
     )
@@ -510,8 +496,7 @@ def setup_graph_startup_notification(**kwargs):  # noqa: D103
             'value of the "startup_notification_required" key should '
             "be `true`, since we determined that the permit requires "
             "a notification of an initial startup date. "
-            'The value of the "explanation" key should be a string explaining '
-            "your answer."
+            f"{_EXPLANATION_KEY}"
         ),
     )
 
@@ -525,8 +510,7 @@ def setup_graph_startup_notification(**kwargs):  # noqa: D103
         prompt=(
             "Does the permit text **directly mention** that a notification "
             "of an initial startup date is **not** required? "
-            "Begin your response with either 'Yes' or 'No' and explain your "
-            "answer."
+            f"{_START_WITH_YN}"
         ),
     )
     G.add_edge(
@@ -545,8 +529,7 @@ def setup_graph_startup_notification(**kwargs):  # noqa: D103
             'value of the "startup_notification_required" key should '
             "be `false`, since we determined that the permit explicitly does "
             "not require notification of an initial startup date. "
-            'The value of the "explanation" key should be a string explaining '
-            "your answer."
+            f"{_EXPLANATION_KEY}"
         ),
     )
 
@@ -561,8 +544,7 @@ def setup_graph_startup_notification_window(**kwargs):  # noqa: D103
         prompt=(
             "Does the following permit text **directly require** "
             "a notification of an initial startup date? "
-            "Begin your response with either 'Yes' or 'No' and explain your "
-            "answer."
+            f"{_START_WITH_YN}"
             '\n\n"""\n{text}\n"""'
         ),
     )
@@ -578,9 +560,8 @@ def setup_graph_startup_notification_window(**kwargs):  # noqa: D103
         prompt=(
             "Does the permit text **directly specify** a number of days "
             "within which the initial startup date must be reported "
-            "(e.g., 15)?"
-            "Begin your response with either 'Yes' or 'No' and explain your "
-            "answer."
+            "(e.g., 15)? "
+            f"{_START_WITH_YN}"
         ),
     )
 
@@ -600,8 +581,7 @@ def setup_graph_startup_notification_window(**kwargs):  # noqa: D103
             "the initial startup date must be reported, if unambiguous. "
             "If you could not determine a specific number of days, this key "
             "should be `null`. "
-            'The value of the "explanation" key should be a string explaining '
-            "your answer."
+            f"{_EXPLANATION_KEY}"
         ),
     )
 
@@ -616,8 +596,7 @@ def setup_graph_permit_copy_required(**kwargs):  # noqa: D103
         prompt=(
             "Does the following permit text **directly require** the facility "
             "to keep a copy of the permit onsite? "
-            "Begin your response with either 'Yes' or 'No' and explain your "
-            "answer."
+            f"{_START_WITH_YN}"
             '\n\n"""\n{text}\n"""'
         ),
     )
@@ -638,8 +617,7 @@ def setup_graph_permit_copy_required(**kwargs):  # noqa: D103
             'value of the "permit_copy_required" key should '
             "be `true`, since we determined that the permit requires "
             "that a copy of the permit be kept onsite. "
-            'The value of the "explanation" key should be a string explaining '
-            "your answer."
+            f"{_EXPLANATION_KEY}"
         ),
     )
 
@@ -653,8 +631,7 @@ def setup_graph_permit_copy_required(**kwargs):  # noqa: D103
         prompt=(
             "Does the permit text **directly mention** that the facility is "
             "**not** required to keep a copy of the permit onsite? "
-            "Begin your response with either 'Yes' or 'No' and explain your "
-            "answer."
+            f"{_START_WITH_YN}"
         ),
     )
     G.add_edge(
@@ -673,8 +650,7 @@ def setup_graph_permit_copy_required(**kwargs):  # noqa: D103
             'value of the "permit_copy_required" key should '
             "be `false`, since we determined that the permit explicitly does "
             "not require the facility to keep a copy of the permit onsite. "
-            'The value of the "explanation" key should be a string explaining '
-            "your answer."
+            f"{_EXPLANATION_KEY}"
         ),
     )
 
@@ -689,8 +665,7 @@ def setup_graph_roe_clause(**kwargs):  # noqa: D103
         prompt=(
             "Does the following permit text mention any right-of-entry "
             "language enabling inspection? "
-            "Begin your response with either 'Yes' or 'No' and explain your "
-            "answer."
+            f"{_START_WITH_YN}"
             '\n\n"""\n{text}\n"""'
         ),
     )
@@ -725,8 +700,7 @@ def setup_graph_roe_clause(**kwargs):  # noqa: D103
             "original text. "
             "If you could not find any specific right-of-entry language "
             "enabling inspection, this key should be `null`. "
-            'The value of the "explanation" key should be a string explaining '
-            "your answer."
+            f"{_EXPLANATION_KEY}"
         ),
     )
 
@@ -740,9 +714,8 @@ def setup_graph_generators(**kwargs):  # noqa: D103
         "init",
         prompt=(
             "Does the following text mention at least one backup generator "
-            "in the application?"
-            "Begin your response with either 'Yes' or 'No' and explain your "
-            "answer."
+            "in the application? "
+            f"{_START_WITH_YN}"
             '\n\n"""\n{text}\n"""'
         ),
     )
@@ -755,8 +728,7 @@ def setup_graph_generators(**kwargs):  # noqa: D103
             "Does the text provide a reference number or identifier for each "
             "backup generator mentioned "
             "(e.g., 'EG01', 'EG04-EG05', '1510-4')? "
-            "Begin your response with either 'Yes' or 'No' and explain "
-            "your answer."
+            f"{_START_WITH_YN}"
         ),
     )
 
@@ -785,8 +757,7 @@ def setup_graph_generators(**kwargs):  # noqa: D103
             'value of the "reference_numbers" key should be the list of all '
             "backup generator identifiers mentioned in the text, as "
             "determined previously. "
-            'The value of the "explanation" key should be a string explaining '
-            "your answer."
+            f"{_EXPLANATION_KEY}"
         ),
     )
 
@@ -804,8 +775,7 @@ def setup_graph_num_gens(**kwargs):  # noqa: D103
             "mind that the reference number "
             "could be included in range or group of numbers and information "
             "that applies to that group should be considered relevant. "
-            "Begin your response with either "
-            "'Yes' or 'No' and explain your answer."
+            f"{_START_WITH_YN}"
             '\n\n"""\n{text}\n"""'
         ),
     )
@@ -832,8 +802,7 @@ def setup_graph_num_gens(**kwargs):  # noqa: D103
             'value of the "engine_count" key should be an integer '
             "representing the number of engines for the generator with "
             "reference number {ref_number}. "
-            'The value of the "explanation" key should be a string explaining '
-            "your answer."
+            f"{_EXPLANATION_KEY}"
         ),
     )
 
@@ -851,8 +820,7 @@ def setup_graph_included_in_permit(**kwargs):  # noqa: D103
             "previously permitted? Keep in mind that the reference number "
             "could be included in range or group of numbers and information "
             "that applies to that group should be considered relevant. "
-            "Begin your response with either "
-            "'Yes' or 'No' and explain your answer."
+            f"{_START_WITH_YN}"
             '\n\n"""\n{text}\n"""'
         ),
     )
@@ -873,8 +841,7 @@ def setup_graph_included_in_permit(**kwargs):  # noqa: D103
             'value of the "included_in_permit_project" key should '
             "be `false`, since we determined that the generator with "
             "reference number {ref_number} has been previously permitted. "
-            'The value of the "explanation" key should be a string explaining '
-            "your answer."
+            f"{_EXPLANATION_KEY}"
         ),
     )
 
@@ -887,8 +854,7 @@ def setup_graph_included_in_permit(**kwargs):  # noqa: D103
             "Keep in mind that the reference number "
             "could be included in range or group of numbers and information "
             "that applies to that group should be considered relevant. "
-            "Begin your response with either "
-            "'Yes' or 'No' and explain your answer."
+            f"{_START_WITH_YN}"
         ),
     )
 
@@ -908,8 +874,7 @@ def setup_graph_included_in_permit(**kwargs):  # noqa: D103
             'value of the "included_in_permit_project" key should be `true`, '
             "since we determined that the generator with reference number "
             "{ref_number} is explicitly included in this permitting action. "
-            'The value of the "explanation" key should be a string explaining '
-            "your answer."
+            f"{_EXPLANATION_KEY}"
         ),
     )
 
@@ -927,8 +892,7 @@ def setup_graph_make(**kwargs):  # noqa: D103
             "number {ref_number}? Keep in mind that the reference number "
             "could be included in range or group of numbers and information "
             "that applies to that group should be considered relevant. "
-            "Begin your response with either "
-            "'Yes' or 'No' and explain your answer."
+            f"{_START_WITH_YN}"
             '\n\n"""\n{text}\n"""'
         ),
     )
@@ -961,8 +925,8 @@ def setup_graph_make(**kwargs):  # noqa: D103
             'keys. The keys are "make" and "explanation". The value of the '
             '"make" key should be a string containing the manufacturer of '
             "the generator with reference number {ref_number}. "
-            'The value of the "explanation" key should be a string explaining '
-            "your answer. Be sure to document any and al alternatives in the "
+            f"{_EXPLANATION_KEY} "
+            "Be sure to document any and al alternatives in the "
             '"explanation" text.'
         ),
     )
@@ -982,8 +946,7 @@ def setup_graph_model(**kwargs):  # noqa: D103
             "range or group of numbers and information that applies to that "
             "group should be considered relevant. "
             "The model name generally follows the manufacturer name. "
-            "Begin your response with either "
-            "'Yes' or 'No' and explain your answer."
+            f"{_START_WITH_YN}"
             '\n\n"""\n{text}\n"""'
         ),
     )
@@ -1016,8 +979,8 @@ def setup_graph_model(**kwargs):  # noqa: D103
             '"model" and "explanation". The value of the "model" key should '
             "be a string containing the model of the generator with reference "
             "number {ref_number}. **Do not include the make**. "
-            'The value of the "explanation" key should be a string explaining '
-            "your answer. Be sure to document any and al alternatives in the "
+            f"{_EXPLANATION_KEY} "
+            "Be sure to document any and al alternatives in the "
             '"explanation" text.'
         ),
     )
@@ -1036,8 +999,7 @@ def setup_graph_rated_capacity_kw(**kwargs):  # noqa: D103
             "number {ref_number}**? Keep in mind that the reference number "
             "could be included in range or group of numbers and information "
             "that applies to that group should be considered relevant. "
-            "Begin your response with either "
-            "'Yes' or 'No' and explain your answer."
+            f"{_START_WITH_YN}"
             '\n\n"""\n{text}\n"""'
         ),
     )
@@ -1048,8 +1010,7 @@ def setup_graph_rated_capacity_kw(**kwargs):  # noqa: D103
         prompt=(
             "Does the text for the generator with reference number "
             "{ref_number} directly specify capacity **in units of kW**? "
-            "Begin your response with either 'Yes' or 'No' and explain "
-            "your answer."
+            f"{_START_WITH_YN}"
         ),
     )
 
@@ -1065,8 +1026,7 @@ def setup_graph_rated_capacity_kw(**kwargs):  # noqa: D103
             "Does the text for the generator with reference number "
             "{ref_number} distinguish between **nominal** and "
             "**maximum** capacity? "
-            "Begin your response with either 'Yes' or 'No' and explain "
-            "your answer."
+            f"{_START_WITH_YN}"
         ),
     )
 
@@ -1115,8 +1075,8 @@ def setup_graph_rated_capacity_kw(**kwargs):  # noqa: D103
             'value of the "rated_capacity_kw" key should be an numerical '
             "value representing the nominal nameplate capacity, in kW, "
             "**for the generator with reference number {ref_number}**. "
-            'The value of the "explanation" key should be a string explaining '
-            "your answer. Document any ambiguities or multiple values in the "
+            f"{_EXPLANATION_KEY} "
+            "Document any ambiguities or multiple values in the "
             "'explanation' text."
         ),
     )
@@ -1135,8 +1095,7 @@ def setup_graph_rated_capacity_bhp(**kwargs):  # noqa: D103
             "number {ref_number}**? Keep in mind that the reference number "
             "could be included in range or group of numbers and information "
             "that applies to that group should be considered relevant. "
-            "Begin your response with either "
-            "'Yes' or 'No' and explain your answer."
+            f"{_START_WITH_YN}"
             '\n\n"""\n{text}\n"""'
         ),
     )
@@ -1147,8 +1106,7 @@ def setup_graph_rated_capacity_bhp(**kwargs):  # noqa: D103
         prompt=(
             "Does the text for the generator with reference number "
             "{ref_number} directly specify capacity **in units of BHP**? "
-            "Begin your response with either 'Yes' or 'No' and explain "
-            "your answer."
+            f"{_START_WITH_YN}"
         ),
     )
 
@@ -1164,8 +1122,7 @@ def setup_graph_rated_capacity_bhp(**kwargs):  # noqa: D103
             "Does the text for the generator with reference number "
             "{ref_number} distinguish between **nominal** and "
             "**maximum** capacity? "
-            "Begin your response with either 'Yes' or 'No' and explain "
-            "your answer."
+            f"{_START_WITH_YN}"
         ),
     )
 
@@ -1214,8 +1171,8 @@ def setup_graph_rated_capacity_bhp(**kwargs):  # noqa: D103
             'value of the "rated_capacity_bhp" key should be an numerical '
             "value representing the nominal nameplate capacity, in BHP, "
             "**for the generator with reference number {ref_number}**. "
-            'The value of the "explanation" key should be a string explaining '
-            "your answer. Document any ambiguities or multiple values in the "
+            f"{_EXPLANATION_KEY} "
+            "Document any ambiguities or multiple values in the "
             "'explanation' text."
         ),
     )
@@ -1234,8 +1191,7 @@ def setup_graph_max_capacity_kw(**kwargs):  # noqa: D103
             "number {ref_number}**? Keep in mind that the reference number "
             "could be included in range or group of numbers and information "
             "that applies to that group should be considered relevant. "
-            "Begin your response with either "
-            "'Yes' or 'No' and explain your answer."
+            f"{_START_WITH_YN}"
             '\n\n"""\n{text}\n"""'
         ),
     )
@@ -1247,8 +1203,7 @@ def setup_graph_max_capacity_kw(**kwargs):  # noqa: D103
             "Does the text for the generator with reference number "
             "{ref_number} directly specify maximum capacity **in units of "
             "kW**? "
-            "Begin your response with either 'Yes' or 'No' and explain "
-            "your answer."
+            f"{_START_WITH_YN}"
         ),
     )
 
@@ -1264,8 +1219,7 @@ def setup_graph_max_capacity_kw(**kwargs):  # noqa: D103
             "Does the text for the generator with reference number "
             "{ref_number} distinguish between **nominal** and "
             "**maximum** capacity? "
-            "Begin your response with either 'Yes' or 'No' and explain "
-            "your answer."
+            f"{_START_WITH_YN}"
         ),
     )
 
@@ -1298,8 +1252,8 @@ def setup_graph_max_capacity_kw(**kwargs):  # noqa: D103
             'value of the "max_capacity_kw" key should be an numerical '
             "value representing the **maximum** nameplate capacity, in kW, "
             "**for the generator with reference number {ref_number}**. "
-            'The value of the "explanation" key should be a string explaining '
-            "your answer. Document any ambiguities or multiple values in the "
+            f"{_EXPLANATION_KEY} "
+            "Document any ambiguities or multiple values in the "
             "'explanation' text."
         ),
     )
@@ -1318,8 +1272,7 @@ def setup_graph_max_capacity_bhp(**kwargs):  # noqa: D103
             "number {ref_number}**? Keep in mind that the reference number "
             "could be included in range or group of numbers and information "
             "that applies to that group should be considered relevant. "
-            "Begin your response with either "
-            "'Yes' or 'No' and explain your answer."
+            f"{_START_WITH_YN}"
             '\n\n"""\n{text}\n"""'
         ),
     )
@@ -1331,8 +1284,7 @@ def setup_graph_max_capacity_bhp(**kwargs):  # noqa: D103
             "Does the text for the generator with reference number "
             "{ref_number} directly specify maximum capacity **in units of "
             "BHP**? "
-            "Begin your response with either 'Yes' or 'No' and explain "
-            "your answer."
+            f"{_START_WITH_YN}"
         ),
     )
 
@@ -1348,8 +1300,7 @@ def setup_graph_max_capacity_bhp(**kwargs):  # noqa: D103
             "Does the text for the generator with reference number "
             "{ref_number} distinguish between **nominal** and "
             "**maximum** capacity? "
-            "Begin your response with either 'Yes' or 'No' and explain "
-            "your answer."
+            f"{_START_WITH_YN}"
         ),
     )
 
@@ -1382,8 +1333,8 @@ def setup_graph_max_capacity_bhp(**kwargs):  # noqa: D103
             'value of the "max_capacity_bhp" key should be an numerical '
             "value representing the **maximum** nameplate capacity, in BHP, "
             "**for the generator with reference number {ref_number}**. "
-            'The value of the "explanation" key should be a string explaining '
-            "your answer. Document any ambiguities or multiple values in the "
+            f"{_EXPLANATION_KEY} "
+            "Document any ambiguities or multiple values in the "
             "'explanation' text."
         ),
     )
@@ -1508,8 +1459,7 @@ def setup_graph_fuel(**kwargs):  # noqa: D103
             "Keep in mind that the reference number "
             "could be included in range or group of numbers and information "
             "that applies to that group should be considered relevant. "
-            "Begin your response with either 'Yes' or 'No' and explain "
-            "your answer."
+            f"{_START_WITH_YN}"
             '\n\n"""\n{text}\n"""'
         ),
     )
@@ -1536,8 +1486,7 @@ def setup_graph_fuel(**kwargs):  # noqa: D103
             'value of the "fuel_type" key should be a string containing '
             "the fuel type, exactly as written in the permit, of the "
             "generator with reference number {ref_number}. "
-            'The value of the "explanation" key should be a string explaining '
-            "your answer."
+            f"{_EXPLANATION_KEY}"
         ),
     )
 
@@ -1556,8 +1505,7 @@ def setup_graph_secondary_fuel(**kwargs):  # noqa: D103
             "Keep in mind that the reference number "
             "could be included in range or group of numbers and information "
             "that applies to that group should be considered relevant. "
-            "Begin your response with either 'Yes' or 'No' and explain "
-            "your answer."
+            f"{_START_WITH_YN}"
             '\n\n"""\n{text}\n"""'
         ),
     )
@@ -1586,8 +1534,7 @@ def setup_graph_secondary_fuel(**kwargs):  # noqa: D103
             'value of the "secondary_fuel_type" key should be a string '
             "containing the **secondary** fuel type, exactly as written in "
             "the permit, of the generator with reference number {ref_number}. "
-            'The value of the "explanation" key should be a string explaining '
-            "your answer."
+            f"{_EXPLANATION_KEY}"
         ),
     )
 
@@ -1605,8 +1552,7 @@ def setup_graph_other_fuel(**kwargs):  # noqa: D103
             "Keep in mind that the reference number "
             "could be included in range or group of numbers and information "
             "that applies to that group should be considered relevant. "
-            "Begin your response with either 'Yes' or 'No' and explain "
-            "your answer."
+            f"{_START_WITH_YN}"
             '\n\n"""\n{text}\n"""'
         ),
     )
@@ -1636,8 +1582,7 @@ def setup_graph_other_fuel(**kwargs):  # noqa: D103
             "containing comma-separated names of other fuel types, "
             "**beyond** primary and secondary, exactly as listed in the "
             "permit for the generator with reference number {ref_number}. "
-            'The value of the "explanation" key should be a string explaining '
-            "your answer."
+            f"{_EXPLANATION_KEY}"
         ),
     )
 
@@ -1656,8 +1601,7 @@ def setup_graph_fuel_grade(**kwargs):  # noqa: D103
             "Keep in mind that the reference number "
             "could be included in range or group of numbers and information "
             "that applies to that group should be considered relevant. "
-            "Begin your response with either 'Yes' or 'No' and explain "
-            "your answer."
+            f"{_START_WITH_YN}"
             '\n\n"""\n{text}\n"""'
         ),
     )
@@ -1686,8 +1630,7 @@ def setup_graph_fuel_grade(**kwargs):  # noqa: D103
             'value of the "fuel_grade" key should be a string containing '
             "the fuel grade, exactly as written in the permit, for the "
             "generator with reference number {ref_number}. "
-            'The value of the "explanation" key should be a string explaining '
-            "your answer."
+            f"{_EXPLANATION_KEY}"
         ),
     )
 
@@ -1706,8 +1649,7 @@ def setup_graph_fuel_spec(**kwargs):  # noqa: D103
             "Keep in mind that the reference number "
             "could be included in range or group of numbers and information "
             "that applies to that group should be considered relevant. "
-            "Begin your response with either 'Yes' or 'No' and explain "
-            "your answer."
+            f"{_START_WITH_YN}"
             '\n\n"""\n{text}\n"""'
         ),
     )
@@ -1734,8 +1676,7 @@ def setup_graph_fuel_spec(**kwargs):  # noqa: D103
             'value of the "fuel_spec" key should be a string containing '
             "the fuel grade, exactly as written in the permit, for the "
             "generator with reference number {ref_number}. "
-            'The value of the "explanation" key should be a string explaining '
-            "your answer."
+            f"{_EXPLANATION_KEY}"
         ),
     )
 
@@ -1754,8 +1695,7 @@ def setup_graph_fuel_sulphur(**kwargs):  # noqa: D103
             "Keep in mind that the reference number "
             "could be included in range or group of numbers and information "
             "that applies to that group should be considered relevant. "
-            "Begin your response with either 'Yes' or 'No' and explain "
-            "your answer."
+            f"{_START_WITH_YN}"
             '\n\n"""\n{text}\n"""'
         ),
     )
@@ -1783,8 +1723,7 @@ def setup_graph_fuel_sulphur(**kwargs):  # noqa: D103
             'value of the "fuel_sulfur" key should be numerical value '
             "representing the fuel sulfur content **as a percent** for the "
             "generator with reference number {ref_number}. "
-            'The value of the "explanation" key should be a string explaining '
-            "your answer."
+            f"{_EXPLANATION_KEY}"
         ),
     )
 
@@ -1799,8 +1738,7 @@ def setup_graph_fuel_cert_required(**kwargs):  # noqa: D103
         prompt=(
             "Does the following permit text **directly require** "
             "a fuel supplier certification with each shipment? "
-            "Begin your response with either 'Yes' or 'No' and explain your "
-            "answer."
+            f"{_START_WITH_YN}"
             '\n\n"""\n{text}\n"""'
         ),
     )
@@ -1821,8 +1759,7 @@ def setup_graph_fuel_cert_required(**kwargs):  # noqa: D103
             'value of the "fuel_cert_required" key should '
             "be `true`, since we determined that the permit requires "
             "a fuel supplier certification with each shipment. "
-            'The value of the "explanation" key should be a string explaining '
-            "your answer."
+            f"{_EXPLANATION_KEY}"
         ),
     )
 
@@ -1836,8 +1773,7 @@ def setup_graph_fuel_cert_required(**kwargs):  # noqa: D103
         prompt=(
             "Does the permit text **directly mention** that a fuel supplier "
             "certification is **not** required with each shipment? "
-            "Begin your response with either 'Yes' or 'No' and explain your "
-            "answer."
+            f"{_START_WITH_YN}"
         ),
     )
     G.add_edge(
@@ -1856,8 +1792,7 @@ def setup_graph_fuel_cert_required(**kwargs):  # noqa: D103
             'value of the "fuel_cert_required" key should '
             "be `false`, since we determined that the permit explicitly does "
             "not require a fuel supplier certification with each shipment. "
-            'The value of the "explanation" key should be a string explaining '
-            "your answer."
+            f"{_EXPLANATION_KEY}"
         ),
     )
 
@@ -1872,8 +1807,7 @@ def setup_graph_fuel_cert_fields(**kwargs):  # noqa: D103
         prompt=(
             "Does the following permit text **directly require** "
             "a fuel supplier certification with each shipment? "
-            "Begin your response with either 'Yes' or 'No' and explain your "
-            "answer."
+            f"{_START_WITH_YN}"
             '\n\n"""\n{text}\n"""'
         ),
     )
@@ -1925,20 +1859,176 @@ def setup_graph_fuel_cert_fields(**kwargs):  # noqa: D103
         ),
     )
     G.add_edge("check_sulfur", "final")
-    # G.add_node(
-    #     "final",
-    #     prompt=(
-    #         "Respond based on our entire conversation so far. Return your "
-    #         "answer in JSON format (not markdown). Your JSON file must "
-    #         "include exactly two keys. The keys are "
-    #         '"fuel_cert_fields" and "explanation". The value of the '
-    #         '"fuel_cert_required" key should  be another dictionary with '
-    #         "be `false`, since we determined that the permit explicitly does "
-    #         "not require a fuel supplier certification with each shipment. "
-    #         'The value of the "explanation" key should be a string explaining '
-    #         "your answer."
-    #     ),
-    # )
+    G.add_node(
+        "final",
+        prompt=(
+            "Respond based on our entire conversation so far. Return your "
+            "answer in JSON format (not markdown). Your JSON file must "
+            "include exactly two keys. The keys are "
+            '"fuel_cert_fields" and "explanation". The value of the '
+            '"fuel_cert_fields" key should be another dictionary with '
+            'the following keys: "supplierNameRequired", '
+            '"receiptDateRequired" "quantityRequired",'
+            '"astmComplianceStatementRequired", and '
+            '"sulfurContentRequired". All of these should have boolean values '
+            "based on whether each field is explicitly required in the "
+            "permit. "
+            f"{_EXPLANATION_KEY}"
+        ),
+    )
+
+    return G
+
+
+def setup_graph_fuel_change_trigger(**kwargs):  # noqa: D103
+    G = _setup_graph_no_nodes(**kwargs)  # noqa: N806
+
+    G.add_node(
+        "init",
+        prompt=(
+            "Does the following text contain permit language describing "
+            "when fuel changes trigger permit modification (e.g., 'A change "
+            "in the fuel may require a new or amended permit') for the "
+            "generator with reference number {ref_number}? "
+            "Keep in mind that the reference number "
+            "could be included in range or group of numbers and information "
+            "that applies to that group should be considered relevant. "
+            f"{_START_WITH_YN}"
+            '\n\n"""\n{text}\n"""'
+        ),
+    )
+
+    G.add_edge(
+        "init", "get_trigger text", condition=llm_response_starts_with_yes
+    )
+
+    G.add_node(
+        "get_trigger",
+        prompt=(
+            "What is the direct free-text excerpt of the permit language "
+            "describing when fuel changes trigger permit modification for "
+            "the generator with reference number {ref_number}?"
+        ),
+    )
+
+    G.add_edge("get_trigger", "final")
+
+    G.add_node(
+        "final",
+        prompt=(
+            "Respond based on our entire conversation so far. Return your "
+            "answer in JSON format (not markdown). Your JSON file must "
+            "include exactly two "
+            'keys. The keys are "fuel_change_trigger" and "explanation". The '
+            'value of the "fuel_change_trigger" key should be the direct '
+            "free-text excerpt of the permit language describing when fuel "
+            "changes trigger permit modification for the "
+            "generator with reference number {ref_number}. "
+            f"{_EXPLANATION_KEY}"
+        ),
+    )
+
+    return G
+
+
+def setup_graph_fuel_throughput_limit(**kwargs):  # noqa: D103
+    G = _setup_graph_no_nodes(**kwargs)  # noqa: N806
+
+    G.add_node(
+        "init",
+        prompt=(
+            "Does the following permit text **directly specify** a maximum "
+            "fuel consumption as a numeric value (e.g., gallons per year) "
+            "for the generator with reference number {ref_number}? "
+            "Keep in mind that the reference number "
+            "could be included in range or group of numbers and information "
+            "that applies to that group should be considered relevant. "
+            f"{_START_WITH_YN}"
+            '\n\n"""\n{text}\n"""'
+        ),
+    )
+
+    G.add_edge("init", "get_limit", condition=llm_response_starts_with_yes)
+    G.add_node(
+        "get_limit",
+        prompt=(
+            "What is the maximum fuel consumption limit directly specified "
+            "in the permit text for the generator with reference number "
+            "{ref_number}? "
+        ),
+    )
+
+    G.add_edge("get_limit", "get_scope")
+    G.add_node(
+        "get_scope",
+        prompt=(
+            "What is the scope of the fuel throughput limit (e.g. 'per_unit' "
+            "(each generator), 'combined_group' (multiple generators "
+            "combined), 'facility_wide', etc) for the generator with "
+            "reference number {ref_number}? "
+        ),
+    )
+
+    G.add_edge("get_scope", "check_combined")
+    G.add_node(
+        "check_combined",
+        prompt=(
+            "Does the scope you identified reference to generator group "
+            "for which fuel throughput is combined? "
+            f"{_START_WITH_YN}"
+        ),
+    )
+
+    G.add_edge(
+        "check_combined",
+        "final_no_combine",
+        condition=llm_response_starts_with_no,
+    )
+    G.add_node(
+        "final_no_combine",
+        prompt=(
+            "Respond based on our entire conversation so far. Return your "
+            "answer in JSON format (not markdown). Your JSON file must "
+            "include exactly three "
+            'keys. The keys are "fuel_limit", "scope", and "explanation". The '
+            'value of the "fuel_limit" key should be numerical value '
+            "representing the maximum fuel consumption limit for the "
+            "generator with reference number {ref_number}. The value of the "
+            '"scope" key should be the scope of the fuel throughput limit. '
+            f"{_EXPLANATION_KEY}"
+        ),
+    )
+
+    G.add_edge(
+        "check_combined",
+        "get_group",
+        condition=llm_response_starts_with_yes,
+    )
+    G.add_node(
+        "get_group",
+        prompt=(
+            "What is the reference to the combined generator group (e.g., "
+            "'EG01-EG07') for the fuel throughput?"
+        ),
+    )
+
+    G.add_edge("get_group", "final_combined")
+    G.add_node(
+        "final_combined",
+        prompt=(
+            "Respond based on our entire conversation so far. Return your "
+            "answer in JSON format (not markdown). Your JSON file must "
+            "include exactly four "
+            'keys. The keys are "fuel_limit", "scope", "group", and '
+            '"explanation". The value of the "fuel_limit" key should be '
+            "numerical value representing the maximum fuel consumption limit "
+            "for the generator with reference number {ref_number}. The value "
+            'of the "scope" key should be the scope of the fuel throughput '
+            'limit. The value of the "group" key should be the reference '
+            "to the combined generator group for the fuel throughput. "
+            f"{_EXPLANATION_KEY}"
+        ),
+    )
 
     return G
 
@@ -2004,53 +2094,53 @@ def setup_graph_fuel_cert_fields(**kwargs):  # noqa: D103
 #     return G
 
 
-def setup_graph_backup(**kwargs):  # noqa: D103
-    G = _setup_graph_no_nodes(**kwargs)  # noqa: N806
+# def setup_graph_backup(**kwargs):  # noqa: D103
+#     G = _setup_graph_no_nodes(**kwargs)  # noqa: N806
 
-    G.add_node(
-        "init",
-        prompt=(
-            "Does the following text mention how much back up generation, "
-            "in megawatts (MW), is provided by the generator with reference "
-            "number {ref_number}? Keep in mind that the reference number "
-            "could be included in range or group of numbers and information "
-            "that applies to that group should be considered relevant. "
-            "Begin your response with either 'Yes' or 'No' and explain your "
-            "answer."
-            '\n\n"""\n{text}\n"""'
-        ),
-    )
+#     G.add_node(
+#         "init",
+#         prompt=(
+#             "Does the following text mention how much back up generation, "
+#             "in megawatts (MW), is provided by the generator with reference "
+#             "number {ref_number}? Keep in mind that the reference number "
+#             "could be included in range or group of numbers and information "
+#             "that applies to that group should be considered relevant. "
+#             "Begin your response with either 'Yes' or 'No' and explain your "
+#             "answer."
+#             '\n\n"""\n{text}\n"""'
+#         ),
+#     )
 
-    G.add_edge("init", "get_backup", condition=llm_response_starts_with_yes)
+#     G.add_edge("init", "get_backup", condition=llm_response_starts_with_yes)
 
-    G.add_node(
-        "get_backup",
-        prompt=(
-            "How much back up generation is provided by the generator with "
-            "reference number {ref_number} in megawatts (MW)?"
-            # TODO: model is doing math here,
-            # should specify not to infer?
-        ),
-    )
+#     G.add_node(
+#         "get_backup",
+#         prompt=(
+#             "How much back up generation is provided by the generator with "
+#             "reference number {ref_number} in megawatts (MW)?"
+#             # TODO: model is doing math here,
+#             # should specify not to infer?
+#         ),
+#     )
 
-    G.add_edge("get_backup", "final")
+#     G.add_edge("get_backup", "final")
 
-    G.add_node(
-        "final",
-        prompt=(
-            "Respond based on our entire conversation so far. Return your "
-            "answer in JSON format (not markdown). Your JSON file must "
-            "include exactly two "
-            'keys. The keys are "backup_mw" and "explanation". The '
-            'value of the "backup_mw" key should be a string containing '
-            "the amount of back up generation provided by the generator in "
-            "megawatts (MW). "
-            'The value of the "explanation" key should be a string explaining '
-            "your answer."
-        ),
-    )
+#     G.add_node(
+#         "final",
+#         prompt=(
+#             "Respond based on our entire conversation so far. Return your "
+#             "answer in JSON format (not markdown). Your JSON file must "
+#             "include exactly two "
+#             'keys. The keys are "backup_mw" and "explanation". The '
+#             'value of the "backup_mw" key should be a string containing '
+#             "the amount of back up generation provided by the generator in "
+#             "megawatts (MW). "
+#             'The value of the "explanation" key should be a string explaining '
+#             "your answer."
+#         ),
+#     )
 
-    return G
+#     return G
 
 
 def setup_graph_control_techs(**kwargs):  # noqa: D103
@@ -2061,13 +2151,14 @@ def setup_graph_control_techs(**kwargs):  # noqa: D103
         prompt=(
             # TODO: refine this prompt, what exactly are we looking for?
             # emissions contol techs? define what control techs are?
-            "Does the following text mention control technologies "
+            "Does the following text mention emission control technology "
+            "or devices (e.g., 'turbocharged engine and aftercooler', "
+            "'SCR', 'DOC', etc.) "
             "for the generator with reference number {ref_number}? "
             "Keep in mind that the reference number "
             "could be included in range or group of numbers and information "
             "that applies to that group should be considered relevant. "
-            "Begin your response with either "
-            "'Yes' or 'No' and explain your answer."
+            f"{_START_WITH_YN}"
             '\n\n"""\n{text}\n"""'
         ),
     )
@@ -2078,7 +2169,7 @@ def setup_graph_control_techs(**kwargs):  # noqa: D103
         "get_techs",
         prompt=(
             "What control technologies are associated with the generator "
-            "with reference number {ref_number}?"
+            "with reference number {ref_number} based on the permit text?"
         ),
     )
 
@@ -2092,10 +2183,10 @@ def setup_graph_control_techs(**kwargs):  # noqa: D103
             "include exactly two "
             'keys. The keys are "control_technologies" and "explanation". The '
             'value of the "control_technologies" key should be a string '
-            "containing the control technologies associated with the "
-            "generator in question. "
-            'The value of the "explanation" key should be a string explaining '
-            "your answer."
+            "listing all of the control technologies associated with the "
+            "generator with reference number {ref_number} based on the "
+            "permit text. "
+            f"{_EXPLANATION_KEY}"
         ),
     )
 
@@ -2108,13 +2199,13 @@ def setup_graph_operating_hours(**kwargs):  # noqa: D103
     G.add_node(
         "init",
         prompt=(
-            "Does the following text mention annual operating hours limits "
-            "for the generator with reference number {ref_number}? "
+            "Does the following text **directly specify** annual operating "
+            "hour limits for the generator with reference number "
+            "{ref_number}? "
             "Keep in mind that the reference number "
             "could be included in range or group of numbers and information "
             "that applies to that group should be considered relevant. "
-            "Begin your response with either "
-            "'Yes' or 'No' and explain your answer."
+            f"{_START_WITH_YN}"
             '\n\n"""\n{text}\n"""'
         ),
     )
@@ -2139,66 +2230,44 @@ def setup_graph_operating_hours(**kwargs):  # noqa: D103
             "include exactly two "
             'keys. The keys are "operating_hours" and "explanation". The '
             'value of the "operating_hours" key should be an integer '
-            "containing "
-            "the operating hours associated with the generator with reference number {ref_number}. "
-            'The value of the "explanation" key should be a string explaining '
-            "your answer."
+            "containing the operating hours associated with the generator "
+            "with reference number {ref_number}. "
+            f"{_EXPLANATION_KEY}"
         ),
     )
 
     return G
 
 
-def setup_graph_emissions(**kwargs):  # noqa: D103
+def setup_graph_operating_window(**kwargs):  # noqa: D103
     G = _setup_graph_no_nodes(**kwargs)  # noqa: N806
 
     G.add_node(
         "init",
         prompt=(
-            "Does the following text mention emissions limits "
-            "for the generator with reference number {ref_number}? "
+            "Does the following text **directly specify** an operating "
+            "rolling window method (e.g., 'consecutive 12-month period; "
+            "calculated monthly', etc) for the generator with reference "
+            "number {ref_number}? "
             "Keep in mind that the reference number "
             "could be included in range or group of numbers and information "
             "that applies to that group should be considered relevant. "
-            "Begin your response with either "
-            "'Yes' or 'No' and explain your answer."
+            f"{_START_WITH_YN}"
             '\n\n"""\n{text}\n"""'
         ),
     )
 
-    G.add_edge(
-        "init", "get_pollutants", condition=llm_response_starts_with_yes
-    )
+    G.add_edge("init", "get_window", condition=llm_response_starts_with_yes)
 
     G.add_node(
-        "get_pollutants",
+        "get_window",
         prompt=(
-            "Does the text mention emissions limits for multiple pollutants? "
-            "If so, what are the pollutants mentioned?"
+            "What is the operating rolling window method specified in the "
+            "permit text for the generator with reference number {ref_number}?"
         ),
     )
 
-    G.add_edge("get_pollutants", "get_units")
-
-    G.add_node(
-        "get_units",
-        prompt=(
-            "What units are used for the emissions limits mentioned in the "
-            "text?"
-        ),
-    )
-
-    G.add_edge("get_units", "get_limits")
-
-    G.add_node(
-        "get_limits",
-        prompt=(
-            "What are the emissions limits for the generator with "
-            "reference number {ref_number}?"
-        ),
-    )
-
-    G.add_edge("get_limits", "final")
+    G.add_edge("get_window", "final")
 
     G.add_node(
         "final",
@@ -2206,13 +2275,703 @@ def setup_graph_emissions(**kwargs):  # noqa: D103
             "Respond based on our entire conversation so far. Return your "
             "answer in JSON format (not markdown). Your JSON file must "
             "include exactly two "
-            'keys. The keys are "emissions_limits" and "explanation". The '
-            'value of the "emissions_limits" key should be a dictionary with '
-            "subkeys for each pollutant mentioned and their corresponding "
-            "limits. "
-            'The value of the "explanation" key should be a string explaining '
-            "your answer."
+            'keys. The keys are "operating_window" and "explanation". The '
+            'value of the "operating_window" key should be a string defining '
+            "the operating rolling window method specified in the permit "
+            "text for the generator with reference number {ref_number}. "
+            f"{_EXPLANATION_KEY}"
         ),
     )
 
     return G
+
+
+def setup_graph_operating_modes(**kwargs):  # noqa: D103
+    G = _setup_graph_no_nodes(**kwargs)  # noqa: N806
+
+    G.add_node(
+        "init",
+        prompt=(
+            "Does the following text **directly specify** allowed operating "
+            "modes (e.g., 'emergency only', 'emergency, maintenance and "
+            "testing', 'emergency and non-emergency with approval', etc.) "
+            "for the generator with reference number {ref_number}? "
+            "Keep in mind that the reference number "
+            "could be included in range or group of numbers and information "
+            "that applies to that group should be considered relevant. "
+            f"{_START_WITH_YN}"
+            '\n\n"""\n{text}\n"""'
+        ),
+    )
+
+    G.add_edge("init", "get_modes", condition=llm_response_starts_with_yes)
+
+    G.add_node(
+        "get_modes",
+        prompt=(
+            "What are the allowed operating modes specified in the "
+            "permit text for the generator with reference number {ref_number}?"
+        ),
+    )
+
+    G.add_edge("get_modes", "final")
+
+    G.add_node(
+        "final",
+        prompt=(
+            "Respond based on our entire conversation so far. Return your "
+            "answer in JSON format (not markdown). Your JSON file must "
+            "include exactly two "
+            'keys. The keys are "operating_modes" and "explanation". The '
+            'value of the "operating_modes" key should be a string defining '
+            "the allowed operating modes specified in the permit text for the "
+            "generator with reference number {ref_number}. "
+            f"{_EXPLANATION_KEY}"
+        ),
+    )
+
+    return G
+
+
+def setup_graph_opacity(**kwargs):  # noqa: D103
+    G = _setup_graph_no_nodes(**kwargs)  # noqa: N806
+
+    G.add_node(
+        "init",
+        prompt=(
+            "Does the following text **directly specify** a visible emission "
+            "opacity limit for the generator with reference number "
+            "{ref_number}? "
+            "Keep in mind that the reference number "
+            "could be included in range or group of numbers and information "
+            "that applies to that group should be considered relevant. "
+            f"{_START_WITH_YN}"
+            '\n\n"""\n{text}\n"""'
+        ),
+    )
+
+    G.add_edge("init", "get_limit", condition=llm_response_starts_with_yes)
+
+    G.add_node(
+        "get_limit",
+        prompt=(
+            "What is the opacity limit specified in the text for "
+            "the generator with reference number {ref_number}? Give your "
+            "answer as a percent regardless of how stated in permit. "
+        ),
+    )
+
+    G.add_edge("get_limit", "final")
+
+    G.add_node(
+        "final",
+        prompt=(
+            "Respond based on our entire conversation so far. Return your "
+            "answer in JSON format (not markdown). Your JSON file must "
+            "include exactly two "
+            'keys. The keys are "opacity_limit_pct" and "explanation". The '
+            'value of the "opacity_limit_pct" key should be a numerical value '
+            "representing the visible emission opacity limit for the "
+            "generator with reference number {ref_number}. "
+            f"{_EXPLANATION_KEY}"
+        ),
+    )
+
+    return G
+
+
+def setup_graph_hour_meter(**kwargs):  # noqa: D103
+    G = _setup_graph_no_nodes(**kwargs)  # noqa: N806
+
+    G.add_node(
+        "init",
+        prompt=(
+            "Does the following text **directly specify** that the generator "
+            "with reference number {ref_number} must be equipped with an hour "
+            "metering device? Keep in mind that the reference number could be "
+            "included in range or group of numbers and information that "
+            "applies to that group should be considered relevant. "
+            f"{_START_WITH_YN}"
+            '\n\n"""\n{text}\n"""'
+        ),
+    )
+    G.add_edge("init", "obs_freq", condition=llm_response_starts_with_yes)
+
+    G.add_node(
+        "obs_freq",
+        prompt=(
+            "Does the permit text specify a minimum monitoring/observation "
+            "frequency (e.g., 'daily when operated', 'monthly', 'quarterly', "
+            "etc.) for the hour meter of the generator with reference number "
+            "{ref_number}? "
+            f"{_START_WITH_YN}"
+        ),
+    )
+    G.add_edge(
+        "obs_freq", "get_obs_freq", condition=llm_response_starts_with_yes
+    )
+    G.add_edge(
+        "obs_freq", "final_required", condition=llm_response_starts_with_no
+    )
+
+    G.add_node(
+        "get_obs_freq",
+        prompt=(
+            "What is the minimum monitoring/observation frequency, exactly as "
+            "written in the permit text, for the hour meter of the generator "
+            "with reference number {ref_number}? "
+        ),
+    )
+
+    G.add_edge("get_obs_freq", "final_required")
+    G.add_node(
+        "final_required",
+        prompt=(
+            "Respond based on our entire conversation so far. Return your "
+            "answer in JSON format (not markdown). Your JSON file must "
+            "include exactly three keys. The keys are "
+            '"hour_meter_device_required", "obs_freq", and "explanation". The '
+            'value of the "hour_meter_device_required" key should '
+            "be `true`, since we determined that the generator with "
+            "reference number {ref_number} must be equipped with an hour "
+            "metering device. "
+            'The value of the "obs_freq" key should be the minimum '
+            "monitoring/observation frequency for the hour meter, exactly as "
+            "written in the permit text. "
+            f"{_EXPLANATION_KEY}"
+        ),
+    )
+
+    G.add_edge(
+        "init", "is_explicit_not_req", condition=llm_response_starts_with_no
+    )
+    G.add_node(
+        "is_explicit_not_req",
+        prompt=(
+            "Does the permit text **directly specify** that an hour metering "
+            "device is **not** required for the generator with reference "
+            "number {ref_number}? Keep in mind that the reference number "
+            "could be included in range or group of numbers and information "
+            "that applies to that group should be considered relevant. "
+            f"{_START_WITH_YN}"
+        ),
+    )
+
+    G.add_edge(
+        "is_explicit_not_req",
+        "final",
+        condition=llm_response_starts_with_yes,
+    )
+
+    G.add_node(
+        "final",
+        prompt=(
+            "Respond based on our entire conversation so far. Return your "
+            "answer in JSON format (not markdown). Your JSON file must "
+            "include exactly two keys. The keys are "
+            '"hour_meter_device_required" and "explanation". The '
+            'value of the "hour_meter_device_required" key should be `false`, '
+            "since we determined that the permit text **directly specifies** "
+            "that an hour metering device is **not** required for the "
+            "generator with reference number {ref_number}. "
+            f"{_EXPLANATION_KEY}"
+        ),
+    )
+
+    return G
+
+
+def setup_graph_record_years(**kwargs):  # noqa: D103
+    G = _setup_graph_no_nodes(**kwargs)  # noqa: N806
+
+    G.add_node(
+        "init",
+        prompt=(
+            "Does the following text **directly specify** a minimum number of "
+            "years to retain records for the generator with reference number "
+            "{ref_number}? "
+            "Keep in mind that the reference number "
+            "could be included in range or group of numbers and information "
+            "that applies to that group should be considered relevant. "
+            f"{_START_WITH_YN}"
+            '\n\n"""\n{text}\n"""'
+        ),
+    )
+
+    G.add_edge("init", "get_min_years", condition=llm_response_starts_with_yes)
+
+    G.add_node(
+        "get_min_years",
+        prompt=(
+            "What is the minimum number of years to retain records specified "
+            "in the text for the generator with reference number "
+            "{ref_number}? "
+        ),
+    )
+
+    G.add_edge("get_min_years", "final")
+
+    G.add_node(
+        "final",
+        prompt=(
+            "Respond based on our entire conversation so far. Return your "
+            "answer in JSON format (not markdown). Your JSON file must "
+            "include exactly two "
+            'keys. The keys are "min_record_years" and "explanation". The '
+            'value of the "min_record_years" key should be an integer value '
+            "representing the minimum number of years to retain records for "
+            "the generator with reference number {ref_number}. "
+            f"{_EXPLANATION_KEY}"
+        ),
+    )
+
+    return G
+
+
+def setup_graph_operation_reason_log(**kwargs):  # noqa: D103
+    G = _setup_graph_no_nodes(**kwargs)  # noqa: N806
+
+    G.add_node(
+        "init",
+        prompt=(
+            "Does the following permit text **explicitly require** logging "
+            "of the operation reasons (date, cause, hours, etc.) for each run "
+            "of the generator with reference number {ref_number}? "
+            "Keep in mind that the reference number could be "
+            "included in range or group of numbers and information that "
+            "applies to that group should be considered relevant. "
+            f"{_START_WITH_YN}"
+            '\n\n"""\n{text}\n"""'
+        ),
+    )
+    G.add_edge(
+        "init", "final_required", condition=llm_response_starts_with_yes
+    )
+
+    G.add_node(
+        "final_required",
+        prompt=(
+            "Respond based on our entire conversation so far. Return your "
+            "answer in JSON format (not markdown). Your JSON file must "
+            "include exactly three keys. The keys are "
+            '"operation_reason_log_required", and "explanation". The '
+            'value of the "operation_reason_log_required" key should '
+            "be `true`, since we determined that the permit explicitly "
+            "requires logging of the operation reasons for each run of the "
+            "generator with reference number {ref_number}. "
+            f"{_EXPLANATION_KEY}"
+        ),
+    )
+
+    G.add_edge(
+        "init", "is_explicit_not_req", condition=llm_response_starts_with_no
+    )
+    G.add_node(
+        "is_explicit_not_req",
+        prompt=(
+            "Does the permit text **directly specify** that logging of the "
+            "operation reasons (date, cause, hours, etc.) for each run of the "
+            "generator with reference number {ref_number} is **not** "
+            "required? Keep in mind that the reference number "
+            "could be included in range or group of numbers and information "
+            "that applies to that group should be considered relevant. "
+            f"{_START_WITH_YN}"
+        ),
+    )
+
+    G.add_edge(
+        "is_explicit_not_req",
+        "final",
+        condition=llm_response_starts_with_yes,
+    )
+
+    G.add_node(
+        "final",
+        prompt=(
+            "Respond based on our entire conversation so far. Return your "
+            "answer in JSON format (not markdown). Your JSON file must "
+            "include exactly two keys. The keys are "
+            '"hour_meter_device_required" and "explanation". The '
+            'value of the "hour_meter_device_required" key should be `false`, '
+            "since we determined that the permit text **directly specifies** "
+            "that an hour metering device is **not** required for the "
+            "generator with reference number {ref_number}. "
+            f"{_EXPLANATION_KEY}"
+        ),
+    )
+
+    return G
+
+
+def setup_graph_manufacturers_o_and_m(**kwargs):  # noqa: D103
+    G = _setup_graph_no_nodes(**kwargs)  # noqa: N806
+
+    G.add_node(
+        "init",
+        prompt=(
+            "Does the following permit text **directly specify** that the "
+            "manufacturer's operation and maintenance procedures/instructions "
+            "must be available for the generator with reference number "
+            "{ref_number}? "
+            "Keep in mind that the reference number could be "
+            "included in range or group of numbers and information that "
+            "applies to that group should be considered relevant. "
+            f"{_START_WITH_YN}"
+            '\n\n"""\n{text}\n"""'
+        ),
+    )
+    G.add_edge(
+        "init", "final_required", condition=llm_response_starts_with_yes
+    )
+
+    G.add_node(
+        "final_required",
+        prompt=(
+            "Respond based on our entire conversation so far. Return your "
+            "answer in JSON format (not markdown). Your JSON file must "
+            "include exactly three keys. The keys are "
+            '"manufacturers_instructions_required", and "explanation". The '
+            'value of the "manufacturers_instructions_required" key should '
+            "be `true`, since we determined that the permit explicitly "
+            "requires that the manufacturer's operation and maintenance "
+            "procedures/instructions must be available for the generator "
+            "with reference number {ref_number}. "
+            f"{_EXPLANATION_KEY}"
+        ),
+    )
+
+    G.add_edge(
+        "init", "is_explicit_not_req", condition=llm_response_starts_with_no
+    )
+    G.add_node(
+        "is_explicit_not_req",
+        prompt=(
+            "Does the permit text **directly specify** that the "
+            "manufacturer's operation and maintenance procedures/instructions "
+            "are **not** required to be available for the generator with "
+            "reference number {ref_number}? Keep in mind that the reference "
+            "number could be included in range or group of numbers and "
+            "information that applies to that group should be considered "
+            "relevant. "
+            f"{_START_WITH_YN}"
+        ),
+    )
+
+    G.add_edge(
+        "is_explicit_not_req",
+        "final",
+        condition=llm_response_starts_with_yes,
+    )
+
+    G.add_node(
+        "final",
+        prompt=(
+            "Respond based on our entire conversation so far. Return your "
+            "answer in JSON format (not markdown). Your JSON file must "
+            "include exactly two keys. The keys are "
+            '"manufacturers_instructions_required" and "explanation". The '
+            'value of the "manufacturers_instructions_required" key should be '
+            "`false`, since we determined that the permit explicitly does "
+            "**not** require that the manufacturer's operation and "
+            "maintenance procedures/instructions to be available for the "
+            "generator with reference number {ref_number}. "
+            f"{_EXPLANATION_KEY}"
+        ),
+    )
+
+    return G
+
+
+def setup_graph_maintenance_records(**kwargs):  # noqa: D103
+    G = _setup_graph_no_nodes(**kwargs)  # noqa: N806
+
+    G.add_node(
+        "init",
+        prompt=(
+            "Does the following permit text **directly specify** that "
+            "maintenance records and/or operator training records "
+            "must be available for the generator with reference number "
+            "{ref_number}? "
+            "Keep in mind that the reference number could be "
+            "included in range or group of numbers and information that "
+            "applies to that group should be considered relevant. "
+            f"{_START_WITH_YN}"
+            '\n\n"""\n{text}\n"""'
+        ),
+    )
+    G.add_edge(
+        "init", "final_required", condition=llm_response_starts_with_yes
+    )
+
+    G.add_node(
+        "final_required",
+        prompt=(
+            "Respond based on our entire conversation so far. Return your "
+            "answer in JSON format (not markdown). Your JSON file must "
+            "include exactly three keys. The keys are "
+            '"maintenance_records_required", and "explanation". The '
+            'value of the "maintenance_records_required" key should '
+            "be `true`, since we determined that the permit explicitly "
+            "requires that maintenance records and/or operator training "
+            "records must be available for the generator with reference "
+            "number {ref_number}. "
+            f"{_EXPLANATION_KEY}"
+        ),
+    )
+
+    G.add_edge(
+        "init", "is_explicit_not_req", condition=llm_response_starts_with_no
+    )
+    G.add_node(
+        "is_explicit_not_req",
+        prompt=(
+            "Does the permit text **directly specify** that maintenance "
+            "records and/or operator training records are **not** required to "
+            "be available for the generator with reference number "
+            "{ref_number}? Keep in mind that the reference number could be "
+            "included in range or group of numbers and information that "
+            "applies to that group should be considered relevant. "
+            f"{_START_WITH_YN}"
+        ),
+    )
+
+    G.add_edge(
+        "is_explicit_not_req",
+        "final",
+        condition=llm_response_starts_with_yes,
+    )
+
+    G.add_node(
+        "final",
+        prompt=(
+            "Respond based on our entire conversation so far. Return your "
+            "answer in JSON format (not markdown). Your JSON file must "
+            "include exactly three keys. The keys are "
+            '"maintenance_records_required", and "explanation". The '
+            'value of the "maintenance_records_required" key should '
+            "be `false`, since we determined that the permit specifies "
+            "that maintenance records and/or operator training records do "
+            "**not** have to be made available for the generator with "
+            "reference number {ref_number}. "
+            f"{_EXPLANATION_KEY}"
+        ),
+    )
+
+    return G
+
+
+def setup_graph_nsps(**kwargs):  # noqa: D103
+    G = _setup_graph_no_nodes(**kwargs)  # noqa: N806
+
+    G.add_node(
+        "init",
+        prompt=(
+            "Does the following permit text **directly specify** that "
+            "NSPS Subpart IIII is applicable for the generator with reference "
+            "number {ref_number}? "
+            "Keep in mind that the reference number could be "
+            "included in range or group of numbers and information that "
+            "applies to that group should be considered relevant. "
+            f"{_START_WITH_YN}"
+            '\n\n"""\n{text}\n"""'
+        ),
+    )
+    G.add_edge(
+        "init", "final_required", condition=llm_response_starts_with_yes
+    )
+
+    G.add_node(
+        "final_required",
+        prompt=(
+            "Respond based on our entire conversation so far. Return your "
+            "answer in JSON format (not markdown). Your JSON file must "
+            "include exactly three keys. The keys are "
+            '"nsps_applicable", and "explanation". The '
+            'value of the "nsps_applicable" key should '
+            "be `true`, since we determined that the permit explicitly "
+            "states that NSPS Subpart IIII is applicable for the generator "
+            "with reference number {ref_number}. "
+            f"{_EXPLANATION_KEY}"
+        ),
+    )
+
+    G.add_edge(
+        "init", "is_explicit_not_req", condition=llm_response_starts_with_no
+    )
+    G.add_node(
+        "is_explicit_not_req",
+        prompt=(
+            "Does the permit text **directly specify** that NSPS Subpart IIII "
+            "is **not** applicable for the generator with reference number "
+            "{ref_number}? Keep in mind that the reference number could be "
+            "included in range or group of numbers and information that "
+            "applies to that group should be considered relevant. "
+            f"{_START_WITH_YN}"
+        ),
+    )
+
+    G.add_edge(
+        "is_explicit_not_req",
+        "final",
+        condition=llm_response_starts_with_yes,
+    )
+
+    G.add_node(
+        "final",
+        prompt=(
+            "Respond based on our entire conversation so far. Return your "
+            "answer in JSON format (not markdown). Your JSON file must "
+            "include exactly three keys. The keys are "
+            '"nsps_applicable", and "explanation". The value of the '
+            '"nsps_applicable" key should be `false`, since we determined '
+            "that the permit directly specifies that NSPS Subpart IIII "
+            "is **not** applicable for the generator with reference number "
+            "{ref_number}. "
+            f"{_EXPLANATION_KEY}"
+        ),
+    )
+
+    return G
+
+
+def setup_graph_mact(**kwargs):  # noqa: D103
+    G = _setup_graph_no_nodes(**kwargs)  # noqa: N806
+
+    G.add_node(
+        "init",
+        prompt=(
+            "Does the following permit text **directly specify** that "
+            "MACT Subpart ZZZZ is applicable for the generator with reference "
+            "number {ref_number}? "
+            "Keep in mind that the reference number could be "
+            "included in range or group of numbers and information that "
+            "applies to that group should be considered relevant. "
+            f"{_START_WITH_YN}"
+            '\n\n"""\n{text}\n"""'
+        ),
+    )
+    G.add_edge(
+        "init", "final_required", condition=llm_response_starts_with_yes
+    )
+
+    G.add_node(
+        "final_required",
+        prompt=(
+            "Respond based on our entire conversation so far. Return your "
+            "answer in JSON format (not markdown). Your JSON file must "
+            "include exactly three keys. The keys are "
+            '"mact_applicable", and "explanation". The '
+            'value of the "mact_applicable" key should '
+            "be `true`, since we determined that the permit explicitly "
+            "states that MACT Subpart ZZZZ is applicable for the generator "
+            "with reference number {ref_number}. "
+            f"{_EXPLANATION_KEY}"
+        ),
+    )
+
+    G.add_edge(
+        "init", "is_explicit_not_req", condition=llm_response_starts_with_no
+    )
+    G.add_node(
+        "is_explicit_not_req",
+        prompt=(
+            "Does the permit text **directly specify** that MACT Subpart ZZZZ "
+            "is **not** applicable for the generator with reference number "
+            "{ref_number}? Keep in mind that the reference number could be "
+            "included in range or group of numbers and information that "
+            "applies to that group should be considered relevant. "
+            f"{_START_WITH_YN}"
+        ),
+    )
+
+    G.add_edge(
+        "is_explicit_not_req",
+        "final",
+        condition=llm_response_starts_with_yes,
+    )
+
+    G.add_node(
+        "final",
+        prompt=(
+            "Respond based on our entire conversation so far. Return your "
+            "answer in JSON format (not markdown). Your JSON file must "
+            "include exactly three keys. The keys are "
+            '"mact_applicable", and "explanation". The value of the '
+            '"mact_applicable" key should be `false`, since we determined '
+            "that the permit directly specifies that MACT Subpart ZZZZ "
+            "is **not** applicable for the generator with reference number "
+            "{ref_number}. "
+            f"{_EXPLANATION_KEY}"
+        ),
+    )
+
+    return G
+
+
+# def setup_graph_emissions(**kwargs):  # noqa: D103
+#     G = _setup_graph_no_nodes(**kwargs)  # noqa: N806
+
+#     G.add_node(
+#         "init",
+#         prompt=(
+#             "Does the following text mention emissions limits "
+#             "for the generator with reference number {ref_number}? "
+#             "Keep in mind that the reference number "
+#             "could be included in range or group of numbers and information "
+#             "that applies to that group should be considered relevant. "
+#             "Begin your response with either "
+#             "'Yes' or 'No' and explain your answer."
+#             '\n\n"""\n{text}\n"""'
+#         ),
+#     )
+
+#     G.add_edge(
+#         "init", "get_pollutants", condition=llm_response_starts_with_yes
+#     )
+
+#     G.add_node(
+#         "get_pollutants",
+#         prompt=(
+#             "Does the text mention emissions limits for multiple pollutants? "
+#             "If so, what are the pollutants mentioned?"
+#         ),
+#     )
+
+#     G.add_edge("get_pollutants", "get_units")
+
+#     G.add_node(
+#         "get_units",
+#         prompt=(
+#             "What units are used for the emissions limits mentioned in the "
+#             "text?"
+#         ),
+#     )
+
+#     G.add_edge("get_units", "get_limits")
+
+#     G.add_node(
+#         "get_limits",
+#         prompt=(
+#             "What are the emissions limits for the generator with "
+#             "reference number {ref_number}?"
+#         ),
+#     )
+
+#     G.add_edge("get_limits", "final")
+
+#     G.add_node(
+#         "final",
+#         prompt=(
+#             "Respond based on our entire conversation so far. Return your "
+#             "answer in JSON format (not markdown). Your JSON file must "
+#             "include exactly two "
+#             'keys. The keys are "emissions_limits" and "explanation". The '
+#             'value of the "emissions_limits" key should be a dictionary with '
+#             "subkeys for each pollutant mentioned and their corresponding "
+#             "limits. "
+#             'The value of the "explanation" key should be a string explaining '
+#             "your answer."
+#         ),
+#     )
+
+#     return G

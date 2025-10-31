@@ -36,11 +36,24 @@ from permit_toolkit.extraction.decision_trees.graphs import (
     setup_graph_fuel_spec,
     setup_graph_fuel_sulphur,
     setup_graph_fuel_cert_required,
+    setup_graph_fuel_cert_fields,
+    setup_graph_fuel_change_trigger,
+    setup_graph_fuel_throughput_limit,
     # setup_graph_tank_size,
     # setup_graph_capacity,
-    setup_graph_backup,
+    # setup_graph_backup,
     setup_graph_control_techs,
     setup_graph_operating_hours,
+    setup_graph_operating_window,
+    setup_graph_operating_modes,
+    setup_graph_opacity,
+    setup_graph_hour_meter,
+    setup_graph_record_years,
+    setup_graph_operation_reason_log,
+    setup_graph_manufacturers_o_and_m,
+    setup_graph_maintenance_records,
+    setup_graph_nsps,
+    setup_graph_mact,
 )
 
 logger = logging.getLogger(__name__)
@@ -95,12 +108,13 @@ class StructuredOrdinanceParser(BaseLLMCaller):
 
     async def parse(self, text):
         """Parse text and extract structured ordinance data."""
-        refs = await self._run_single_tree(
+        ref_out = await self._run_single_tree(
             setup_func=setup_graph_generators,
             text=text,
-            out_key="reference_numbers",
+            # out_key="reference_numbers",
             logger_message="Checking for generators",
         )
+        refs = ref_out.get("reference_numbers", [])
         logger.debug("Found the following reference numbers: %s", refs)
 
         permit_details = {
@@ -171,11 +185,11 @@ class StructuredOrdinanceParser(BaseLLMCaller):
             ),
         }
         tasks = {
-            name: asyncio.create_task(
+            (name, k): asyncio.create_task(
                 self._run_single_tree(
                     setup_func=f,
                     text=text,
-                    out_key=k,
+                    # out_key=k,
                     logger_message=m,
                 )
             )
@@ -188,15 +202,20 @@ class StructuredOrdinanceParser(BaseLLMCaller):
         results = await asyncio.gather(*tasks.values(), return_exceptions=True)
 
         permit_details = {}
-        for key, result in zip(tasks.keys(), results):
+        for (key, dtk), result in zip(tasks.keys(), results):
             if isinstance(result, Exception):
                 logger.warning("Task %s failed: %s", key, result)
                 permit_details[key] = None
             else:
-                permit_details[key] = result
+                permit_details[key] = result.get(dtk)
 
         values = {"permitDetails": permit_details}
         logger.debug("Permit info extraction complete.")
+
+        if not refs:
+            values["generatorSets"] = []
+            logger.debug("No generators found; skipping generator extraction.")
+            return values
 
         generator_details = {
             "numGenerators": (
@@ -249,7 +268,7 @@ class StructuredOrdinanceParser(BaseLLMCaller):
                 "secondary_fuel_type",
                 "Checking for generator secondary fuel type",
             ),
-            "otherFuelType": (
+            "otherFuels": (
                 setup_graph_other_fuel,
                 "other_fuel_types",
                 "Checking for generator other fuel type",
@@ -274,16 +293,20 @@ class StructuredOrdinanceParser(BaseLLMCaller):
                 "fuel_cert_required",
                 "Checking if fuel supplier certification is required",
             ),
-            # "tank_size": (
-            #     setup_graph_tank_size,
-            #     "tank_size",
-            #     "Checking for generator tank size",
-            # ),
-            # "capacity": self._check_capacity,
-            "backup_mw": (
-                setup_graph_backup,
-                "backup_mw",
-                "Checking for generator backup",
+            "fuelCertificationFields": (
+                setup_graph_fuel_cert_fields,
+                "fuel_cert_fields",
+                "Checking for required fuel supplier certification fields",
+            ),
+            "fuelChangePermitTrigger": (
+                setup_graph_fuel_change_trigger,
+                "fuel_change_trigger",
+                "Checking for fuel change trigger",
+            ),
+            "fuelThroughputLimit": (
+                setup_graph_fuel_throughput_limit,
+                "fuel_limit",
+                "Checking for fuel throughput limit",
             ),
             "control_technologies": (
                 setup_graph_control_techs,
@@ -295,6 +318,58 @@ class StructuredOrdinanceParser(BaseLLMCaller):
                 "operating_hours",
                 "Checking for generator operating hours",
             ),
+            "operatingHoursRollingWindow": (
+                setup_graph_operating_window,
+                "operating_window",
+                "Checking for generator operating window",
+            ),
+            "allowedOperatingModes": (
+                setup_graph_operating_modes,
+                "operating_modes",
+                "Checking for generator operating modes",
+            ),
+            "opacityLimitPercent": (
+                setup_graph_opacity,
+                "opacity_limit_pct",
+                "Checking for generator opacity limits",
+            ),
+            "hourMeterRequired": (
+                setup_graph_hour_meter,
+                "hour_meter_device_required",
+                "Checking if hour metering device is required",
+            ),
+            "recordkeepingWindowYears": (
+                setup_graph_record_years,
+                "min_record_years",
+                "Checking for hour meter record keeping years",
+            ),
+            "operationReasonLogRequired": (
+                setup_graph_operation_reason_log,
+                "operation_reason_log_required",
+                "Checking for operating reasons logging requirements",
+            ),
+            "manufacturerOandMRequired": (
+                setup_graph_manufacturers_o_and_m,
+                "manufacturers_instructions_required",
+                "Checking for manufacturer's operation and maintenance "
+                "instructions requirements",
+            ),
+            "maintenanceTrainingRecordsRequired": (
+                setup_graph_maintenance_records,
+                "maintenance_records_required",
+                "Checking for maintenance and operator training records "
+                "requirements",
+            ),
+            "nspsSubpartIIII": (
+                setup_graph_nsps,
+                "nsps_applicable",
+                "Checking for NSPS Subpart IIII applicability",
+            ),
+            "mactSubpartZZZZ": (
+                setup_graph_mact,
+                "mact_applicable",
+                "Checking for MACT Subpart ZZZZ applicability",
+            ),
             # "emissions_limits": (
             #     setup_graph_emissions,
             #     "emissions_limits",
@@ -302,11 +377,11 @@ class StructuredOrdinanceParser(BaseLLMCaller):
             # ),
         }
         tasks = {
-            (ref_number, name): asyncio.create_task(
+            (ref_number, name, k): asyncio.create_task(
                 self._run_single_tree(
                     setup_func=f,
                     text=text,
-                    out_key=k,
+                    # out_key=k,
                     logger_message=m,
                     ref_number=ref_number,
                 )
@@ -321,12 +396,28 @@ class StructuredOrdinanceParser(BaseLLMCaller):
         generators = {
             ref_number: {"referenceNumber": ref_number} for ref_number in refs
         }
-        for (ref_number, key), result in zip(tasks.keys(), results):
+        for (ref_number, key, dtk), result in zip(tasks.keys(), results):
             if isinstance(result, Exception):
                 logger.warning("Task %s failed: %s", key, result)
                 generators[ref_number][key] = None
+                if key == "fuelThroughputLimit":
+                    generators[ref_number]["fuelThroughputScope"] = None
+                    generators[ref_number]["fuelThroughputGroupRef"] = None
+                elif key == "hourMeterRequired":
+                    generators[ref_number]["observationFrequency"] = None
             else:
-                generators[ref_number][key] = result
+                generators[ref_number][key] = result.get(dtk)
+                if key == "fuelThroughputLimit":
+                    generators[ref_number]["fuelThroughputScope"] = result.get(
+                        "scope"
+                    )
+                    generators[ref_number]["fuelThroughputGroupRef"] = (
+                        result.get("group")
+                    )
+                elif key == "hourMeterRequired":
+                    generators[ref_number]["observationFrequency"] = (
+                        result.get("obs_freq")
+                    )
 
         values["generatorSets"] = [
             generators[ref_number] for ref_number in refs
@@ -337,7 +428,7 @@ class StructuredOrdinanceParser(BaseLLMCaller):
         return values
 
     async def _run_single_tree(
-        self, setup_func, text, out_key, logger_message, **extra_kwargs
+        self, setup_func, text, logger_message, **extra_kwargs
     ):
         if "ref_number" in extra_kwargs:
             logger_message = (
@@ -351,8 +442,9 @@ class StructuredOrdinanceParser(BaseLLMCaller):
             chat_llm_caller=self._init_chat_llm_caller(DEFAULT_SYSTEM_MESSAGE),
             **extra_kwargs,
         )
-        dtree_out = await _run_async_tree(tree)
-        return dtree_out.get(out_key, None)
+        return await _run_async_tree(tree)
+        # dtree_out = await _run_async_tree(tree)
+        # return dtree_out.get(out_key, None)
 
     # async def _check_capacity(self, text, ref_number):
     #     logger.debug(
