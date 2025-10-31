@@ -215,8 +215,8 @@ def setup_graph_facility_address(**kwargs):  # noqa: D103
     G.add_node(
         "init",
         prompt=(
-            "Does the following text mention a street address for the "
-            "facility corresponding to this permit? "
+            "Does the following text mention a street address (even if "
+            "it's partial) for the facility corresponding to this permit? "
             f"{_START_WITH_YN}"
             '\n\n"""\n{text}\n"""'
         ),
@@ -713,8 +713,7 @@ def setup_graph_generators(**kwargs):  # noqa: D103
     G.add_node(
         "init",
         prompt=(
-            "Does the following text mention at least one backup generator "
-            "in the application? "
+            "Does the following text mention at least one backup generator? "
             f"{_START_WITH_YN}"
             '\n\n"""\n{text}\n"""'
         ),
@@ -726,26 +725,77 @@ def setup_graph_generators(**kwargs):  # noqa: D103
         "get_refs",
         prompt=(
             "Does the text provide a reference number or identifier for each "
-            "backup generator mentioned "
-            "(e.g., 'EG01', 'EG04-EG05', '1510-4')? "
+            "backup generator mentioned (e.g., 'EG01', 'EG04-EG05', "
+            "'1510-4', etc.)? "
             f"{_START_WITH_YN}"
         ),
     )
 
     G.add_edge("get_refs", "list_refs", condition=llm_response_starts_with_yes)
-
     G.add_node(
         "list_refs",
         prompt=(
             "Please list out all reference numbers or identifiers for each "
-            "backup generator mentioned exactly as they appear in the permit. "
-            "Do not consolidate generator sets even if they share make/model. "
-            "List out the identifiers in the order they appear in the "
-            "document."
+            "unique backup generator unit or backup generator group mentioned "
+            "in the permit (e.g., EG01, EG04-EG05, 1510-4, etc.). Make sure "
+            "each generator is represented **exactly one time**. If a "
+            "generator reference number exists within a range that you have "
+            "already listed, do not list it again. "
+            "List out the **unique** identifiers in the order they appear in "
+            "the document."
         ),
     )
 
-    G.add_edge("list_refs", "final")
+    G.add_edge("list_refs", "check_unique")
+    G.add_node(
+        "check_unique",
+        prompt=(
+            "Do all of the generators referenced in the permit appear "
+            "**exactly once** in your list (either as a standalone identifier "
+            "or within an identifier group)? "
+            f"{_START_WITH_YN}"
+        ),
+    )
+    G.add_edge(
+        "check_unique", "make_unique", condition=llm_response_starts_with_no
+    )
+    G.add_edge(
+        "check_unique", "is_complete", condition=llm_response_starts_with_yes
+    )
+
+    G.add_node(
+        "make_unique",
+        prompt=(
+            "Adjust your list so that all of the generators referenced in the "
+            "permit appear **exactly once** in your list. Prefer groupings "
+            "of generator identifiers (e.g., EG01-EG05). "
+        ),
+    )
+    G.add_edge("make_unique", "is_complete")
+
+    G.add_node(
+        "is_complete",
+        prompt=(
+            "Is your list of identifiers complete? In other words, do all of "
+            "the generators referenced in the permit appear in your list? "
+            f"{_START_WITH_YN}"
+        ),
+    )
+
+    G.add_edge(
+        "is_complete", "make_complete", condition=llm_response_starts_with_no
+    )
+    G.add_edge("is_complete", "final", condition=llm_response_starts_with_yes)
+
+    G.add_node(
+        "make_complete",
+        prompt=(
+            "Adjust your list so that it lists **all** of the generators "
+            "referenced in the permit. Prefer groupings of generator "
+            "identifiers (e.g., EG01-EG05). "
+        ),
+    )
+    G.add_edge("make_complete", "final")
 
     G.add_node(
         "final",
@@ -770,11 +820,11 @@ def setup_graph_num_gens(**kwargs):  # noqa: D103
     G.add_node(
         "init",
         prompt=(
-            "Does the following text mention the number of engines **for "
-            "the generator with reference number {ref_number}**? Keep in "
-            "mind that the reference number "
-            "could be included in range or group of numbers and information "
-            "that applies to that group should be considered relevant. "
+            "Does the following text specify how many **generators with the "
+            "reference number {ref_number}** are permitted? Keep in mind that "
+            "the reference number could be included in range or group of "
+            "numbers and information that applies to that group should be "
+            "considered relevant. "
             f"{_START_WITH_YN}"
             '\n\n"""\n{text}\n"""'
         ),
@@ -785,8 +835,8 @@ def setup_graph_num_gens(**kwargs):  # noqa: D103
     G.add_node(
         "get_count",
         prompt=(
-            "What is the number of engines for the generator with reference "
-            "number {ref_number}?"
+            "What is the number of generators with reference number "
+            "{ref_number} that are permitted?"
         ),
     )
 
@@ -797,11 +847,10 @@ def setup_graph_num_gens(**kwargs):  # noqa: D103
         prompt=(
             "Respond based on our entire conversation so far. Return your "
             "answer in JSON format (not markdown). Your JSON file must "
-            "include exactly two keys. The keys are "
-            '"engine_count" and "explanation". The '
-            'value of the "engine_count" key should be an integer '
-            "representing the number of engines for the generator with "
-            "reference number {ref_number}. "
+            'include exactly two keys. The keys are "generator_count" and '
+            '"explanation". The value of the "generator_count" key should be '
+            "an integer representing the number of generators with reference "
+            "number {ref_number} that are permitted. "
             f"{_EXPLANATION_KEY}"
         ),
     )
@@ -940,8 +989,8 @@ def setup_graph_model(**kwargs):  # noqa: D103
     G.add_node(
         "init",
         prompt=(
-            "Does the following text mention the model name or engine type "
-            "for the generator with reference number {ref_number}? "
+            "Does the following text mention the model name for the "
+            "generator with reference number {ref_number}? "
             "Keep in mind that the reference number could be included in "
             "range or group of numbers and information that applies to that "
             "group should be considered relevant. "
@@ -1342,8 +1391,8 @@ def setup_graph_max_capacity_bhp(**kwargs):  # noqa: D103
     return G
 
 
-# def setup_graph_capacity(**kwargs):  # noqa: D103
-#     G = _setup_graph_no_nodes(**kwargs)  # noqa: N806
+# def setup_graph_capacity(**kwargs):
+#     G = _setup_graph_no_nodes(**kwargs)
 
 #     G.add_node(
 #         "init",
@@ -1614,7 +1663,9 @@ def setup_graph_fuel_grade(**kwargs):  # noqa: D103
         "get_fuel_grade",
         prompt=(
             "What is the fuel grade specified in the text for the "
-            "generator with reference number {ref_number}?"
+            "generator with reference number {ref_number}? Only provide "
+            "the fuel grade do not include other text such as the fuel "
+            "specification."
         ),
     )
 
@@ -1628,7 +1679,7 @@ def setup_graph_fuel_grade(**kwargs):  # noqa: D103
             "include exactly two "
             'keys. The keys are "fuel_grade" and "explanation". The '
             'value of the "fuel_grade" key should be a string containing '
-            "the fuel grade, exactly as written in the permit, for the "
+            "the fuel grade identifier without any extra text for the "
             "generator with reference number {ref_number}. "
             f"{_EXPLANATION_KEY}"
         ),
@@ -1644,7 +1695,7 @@ def setup_graph_fuel_spec(**kwargs):  # noqa: D103
         "init",
         prompt=(
             "Does the following text cite a fuel specification standard "
-            "(e.g., 'ASTM D975', 'ASTM D396', etc.) for the "
+            "(e.g., 'ASTM D975', 'ASTM D396', etc.) for the fuel used by the "
             "generator with reference number {ref_number}? "
             "Keep in mind that the reference number "
             "could be included in range or group of numbers and information "
@@ -1660,11 +1711,13 @@ def setup_graph_fuel_spec(**kwargs):  # noqa: D103
         "get_fuel_spec",
         prompt=(
             "What is the fuel specification standard cited in the text for "
-            "the generator with reference number {ref_number}?"
+            "the fuel used by the generator with reference number "
+            "{ref_number}? Only provide the fuel specification identifier; "
+            "do not include any other verbiage."
         ),
     )
 
-    G.add_edge("get_fuel_grade", "final")
+    G.add_edge("get_fuel_spec", "final")
 
     G.add_node(
         "final",
@@ -1674,8 +1727,9 @@ def setup_graph_fuel_spec(**kwargs):  # noqa: D103
             "include exactly two "
             'keys. The keys are "fuel_spec" and "explanation". The '
             'value of the "fuel_spec" key should be a string containing '
-            "the fuel grade, exactly as written in the permit, for the "
-            "generator with reference number {ref_number}. "
+            "the fuel specification identifier without any extra verbiage "
+            "for the fuel used by the generator with "
+            "reference number {ref_number}. "
             f"{_EXPLANATION_KEY}"
         ),
     )
@@ -1719,8 +1773,8 @@ def setup_graph_fuel_sulphur(**kwargs):  # noqa: D103
             "Respond based on our entire conversation so far. Return your "
             "answer in JSON format (not markdown). Your JSON file must "
             "include exactly two "
-            'keys. The keys are "fuel_sulfur" and "explanation". The '
-            'value of the "fuel_sulfur" key should be numerical value '
+            'keys. The keys are "fuel_sulfur_pct" and "explanation". The '
+            'value of the "fuel_sulfur_pct" key should be numerical value '
             "representing the fuel sulfur content **as a percent** for the "
             "generator with reference number {ref_number}. "
             f"{_EXPLANATION_KEY}"
@@ -1898,9 +1952,7 @@ def setup_graph_fuel_change_trigger(**kwargs):  # noqa: D103
         ),
     )
 
-    G.add_edge(
-        "init", "get_trigger text", condition=llm_response_starts_with_yes
-    )
+    G.add_edge("init", "get_trigger", condition=llm_response_starts_with_yes)
 
     G.add_node(
         "get_trigger",
@@ -2033,8 +2085,8 @@ def setup_graph_fuel_throughput_limit(**kwargs):  # noqa: D103
     return G
 
 
-# def setup_graph_tank_size(**kwargs):  # noqa: D103
-#     G = _setup_graph_no_nodes(**kwargs)  # noqa: N806
+# def setup_graph_tank_size(**kwargs):
+#     G = _setup_graph_no_nodes(**kwargs)
 
 #     G.add_node(
 #         "init",
@@ -2094,8 +2146,8 @@ def setup_graph_fuel_throughput_limit(**kwargs):  # noqa: D103
 #     return G
 
 
-# def setup_graph_backup(**kwargs):  # noqa: D103
-#     G = _setup_graph_no_nodes(**kwargs)  # noqa: N806
+# def setup_graph_backup(**kwargs):
+#     G = _setup_graph_no_nodes(**kwargs)
 
 #     G.add_node(
 #         "init",
@@ -2609,10 +2661,10 @@ def setup_graph_manufacturers_o_and_m(**kwargs):  # noqa: D103
     G.add_node(
         "init",
         prompt=(
-            "Does the following permit text **directly specify** that the "
+            "Does the following permit text **directly specify** that "
             "manufacturer's operation and maintenance procedures/instructions "
-            "must be available for the generator with reference number "
-            "{ref_number}? "
+            "(or similar) must be available, either generally or specifically "
+            "for the generator with reference number {ref_number}? "
             "Keep in mind that the reference number could be "
             "included in range or group of numbers and information that "
             "applies to that group should be considered relevant. "
@@ -2633,9 +2685,8 @@ def setup_graph_manufacturers_o_and_m(**kwargs):  # noqa: D103
             '"manufacturers_instructions_required", and "explanation". The '
             'value of the "manufacturers_instructions_required" key should '
             "be `true`, since we determined that the permit explicitly "
-            "requires that the manufacturer's operation and maintenance "
-            "procedures/instructions must be available for the generator "
-            "with reference number {ref_number}. "
+            "requires that manufacturer's operation and maintenance "
+            "procedures/instructions (or similar) must be available. "
             f"{_EXPLANATION_KEY}"
         ),
     )
@@ -2646,10 +2697,11 @@ def setup_graph_manufacturers_o_and_m(**kwargs):  # noqa: D103
     G.add_node(
         "is_explicit_not_req",
         prompt=(
-            "Does the permit text **directly specify** that the "
-            "manufacturer's operation and maintenance procedures/instructions "
-            "are **not** required to be available for the generator with "
-            "reference number {ref_number}? Keep in mind that the reference "
+            "Does the permit text **directly specify** that manufacturer's "
+            "operation and maintenance procedures/instructions (or similar) "
+            "are **not** required to be available, either generally or "
+            "specifically for for the generator with reference number "
+            "{ref_number}? Keep in mind that the reference "
             "number could be included in range or group of numbers and "
             "information that applies to that group should be considered "
             "relevant. "
@@ -2672,9 +2724,8 @@ def setup_graph_manufacturers_o_and_m(**kwargs):  # noqa: D103
             '"manufacturers_instructions_required" and "explanation". The '
             'value of the "manufacturers_instructions_required" key should be '
             "`false`, since we determined that the permit explicitly does "
-            "**not** require that the manufacturer's operation and "
-            "maintenance procedures/instructions to be available for the "
-            "generator with reference number {ref_number}. "
+            "**not** require that manufacturer's operation and maintenance "
+            "procedures/instructions (or similar) to be available. "
             f"{_EXPLANATION_KEY}"
         ),
     )
@@ -2690,8 +2741,8 @@ def setup_graph_maintenance_records(**kwargs):  # noqa: D103
         prompt=(
             "Does the following permit text **directly specify** that "
             "maintenance records and/or operator training records "
-            "must be available for the generator with reference number "
-            "{ref_number}? "
+            "(or similar) must be available, either generally or specifically "
+            "for the generator with reference number {ref_number}? "
             "Keep in mind that the reference number could be "
             "included in range or group of numbers and information that "
             "applies to that group should be considered relevant. "
@@ -2713,8 +2764,7 @@ def setup_graph_maintenance_records(**kwargs):  # noqa: D103
             'value of the "maintenance_records_required" key should '
             "be `true`, since we determined that the permit explicitly "
             "requires that maintenance records and/or operator training "
-            "records must be available for the generator with reference "
-            "number {ref_number}. "
+            "records (or similar) must be available. "
             f"{_EXPLANATION_KEY}"
         ),
     )
@@ -2726,9 +2776,10 @@ def setup_graph_maintenance_records(**kwargs):  # noqa: D103
         "is_explicit_not_req",
         prompt=(
             "Does the permit text **directly specify** that maintenance "
-            "records and/or operator training records are **not** required to "
-            "be available for the generator with reference number "
-            "{ref_number}? Keep in mind that the reference number could be "
+            "records and/or operator training records (or similar) are "
+            "**not** required to available, either generally or specifically "
+            "for the generator with reference number {ref_number}? "
+            "Keep in mind that the reference number could be "
             "included in range or group of numbers and information that "
             "applies to that group should be considered relevant. "
             f"{_START_WITH_YN}"
@@ -2750,9 +2801,8 @@ def setup_graph_maintenance_records(**kwargs):  # noqa: D103
             '"maintenance_records_required", and "explanation". The '
             'value of the "maintenance_records_required" key should '
             "be `false`, since we determined that the permit specifies "
-            "that maintenance records and/or operator training records do "
-            "**not** have to be made available for the generator with "
-            "reference number {ref_number}. "
+            "that maintenance records and/or operator training records (or "
+            "similar) do **not** have to be made available. "
             f"{_EXPLANATION_KEY}"
         ),
     )
@@ -2908,8 +2958,8 @@ def setup_graph_mact(**kwargs):  # noqa: D103
     return G
 
 
-# def setup_graph_emissions(**kwargs):  # noqa: D103
-#     G = _setup_graph_no_nodes(**kwargs)  # noqa: N806
+# def setup_graph_emissions(**kwargs):
+#     G = _setup_graph_no_nodes(**kwargs)
 
 #     G.add_node(
 #         "init",

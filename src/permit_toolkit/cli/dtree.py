@@ -16,9 +16,10 @@ from rex import init_logger
 
 from elm.web.document import PDFDocument
 from elm.utilities import validate_azure_api_params
-from elm.ords.services.openai import OpenAIService
+from elm.ords.services.openai import OpenAIService, usage_from_response
 from elm.ords.services.cpu import PDFLoader
 from elm.ords.services.provider import RunningAsyncServices
+from elm.ords.services.usage import UsageTracker
 from elm.web.file_loader import AsyncLocalFileLoader
 from elm.utilities.parse import read_pdf  # , read_pdf_ocr
 
@@ -29,6 +30,29 @@ from permit_toolkit.extraction.decision_trees.parse import (
 
 
 logger = logging.getLogger(__name__)
+LLM_COST_REGISTRY = {
+    "o1": {"prompt": 15, "response": 60},
+    "o3-mini": {"prompt": 1.1, "response": 4.4},
+    "gpt-4.5": {"prompt": 75, "response": 150},
+    "gpt-4o": {"prompt": 2.5, "response": 10},
+    "gpt-4o-mini": {"prompt": 0.15, "response": 0.6},
+    "gpt-4.1": {"prompt": 2, "response": 8},
+    "gpt-4.1-mini": {"prompt": 0.4, "response": 1.6},
+    "gpt-4.1-nano": {"prompt": 0.1, "response": 0.4},
+    "gpt-5": {"prompt": 1.25, "response": 10},
+    "gpt-5-mini": {"prompt": 0.25, "response": 2},
+    "gpt-5-nano": {"prompt": 0.05, "response": 0.4},
+    "gpt-5-chat-latest": {"prompt": 1.25, "response": 10},
+    "compassop-gpt-4o": {"prompt": 2.5, "response": 10},
+    "compassop-gpt-4o-mini": {"prompt": 0.15, "response": 0.6},
+    "compassop-gpt-4.1": {"prompt": 2, "response": 8},
+    "compassop-gpt-4.1-mini": {"prompt": 0.4, "response": 1.6},
+    "compassop-gpt-4.1-nano": {"prompt": 0.1, "response": 0.4},
+    "compassop-gpt-5": {"prompt": 1.25, "response": 10},
+    "compassop-gpt-5-mini": {"prompt": 0.25, "response": 2},
+    "compassop-gpt-5-nano": {"prompt": 0.05, "response": 0.4},
+    "compassop-gpt-5-chat-latest": {"prompt": 1.25, "response": 10},
+}
 
 
 @click.command()
@@ -53,16 +77,17 @@ def dtree_extract(input_dir, output, model, verbose):
     input_dir = Path(input_dir)
     output.mkdir(parents=True, exist_ok=True)
 
-    init_logger("elm", log_level="DEBUG" if verbose else "INFO")
+    elm_logger = init_logger("elm", log_level="DEBUG" if verbose else "INFO")
     init_logger("permit_toolkit", log_level="DEBUG" if verbose else "INFO")
 
-    # handler = logging.FileHandler(output / "all.log", encoding="utf-8")
-    # fmt = logging.Formatter(
-    #     fmt="[%(asctime)s] %(levelname)s - %(taskName)s: %(message)s",
-    # )
-    # handler.setFormatter(fmt)
-    # handler.setLevel("DEBUG" if verbose else "INFO")
-    # logger.addHandler(handler)
+    if verbose:
+        handler = logging.FileHandler(output / "all.log", encoding="utf-8")
+        fmt = logging.Formatter(
+            fmt="[%(asctime)s] %(levelname)s - %(taskName)s: %(message)s",
+        )
+        handler.setFormatter(fmt)
+        handler.setLevel("DEBUG")
+        elm_logger.addHandler(handler)
 
     # Need to set start method to "spawn" instead of "fork" for unix
     # systems. If this call is not present, software hangs when process
@@ -95,7 +120,7 @@ async def _process_all(input_dir, output_dir, model, num_docs=20):
         tasks = [
             asyncio.create_task(
                 _process_one(fp, output_dir, model, llm_service, process_sem),
-                # name=self.jurisdiction.full_name,
+                name=fp.name,
             )
             for fp in files
         ]
@@ -119,6 +144,8 @@ async def _process_one(fp, output_dir, model, llm_service, process_sem):
     #         {"pdf_ocr_read_coroutine": read_pdf_file_ocr}
     #     )
 
+    usage_tracker = UsageTracker("totals", usage_from_response)
+
     start_time = time.monotonic()
     async with process_sem:
         # docs = await load_local_docs([fp], **file_loader_kwargs)
@@ -127,7 +154,7 @@ async def _process_one(fp, output_dir, model, llm_service, process_sem):
         text = await PDFLoader.call(_read_pdf_file_pymupdf4llm, fp)
 
         parser = StructuredOrdinanceParser(
-            llm_service=llm_service, model=model
+            llm_service=llm_service, usage_tracker=usage_tracker, model=model
         )
         values = await parser.parse(text)
         # values = await parser.parse(doc.text)
@@ -140,7 +167,7 @@ async def _process_one(fp, output_dir, model, llm_service, process_sem):
         "state": permit_details.get("facilityState"),
         "model": model,
         "qa_qc_enabled": False,
-        "cost_usd": None,
+        "cost_usd": _compute_total_cost_from_usage(usage_tracker, model),
         "processing_time_sec": time.monotonic() - start_time,
         "completeness_score": None,
         "generator_count": sum(
@@ -223,3 +250,20 @@ def _read_pdf_file(pdf_fp, **kwargs):
 def _read_pdf_file_pymupdf4llm(pdf_fp):
     """Utility func so that pdftotext.PDF doesn't have to be pickled"""
     return extract_text_from_pdf(pdf_fp)
+
+
+def _compute_total_cost_from_usage(usage_tracker, model):
+    """Compute total cost from total tracked usage"""
+    total_usage = usage_tracker.totals
+    model_costs = LLM_COST_REGISTRY.get(model, {})
+    total_cost = (
+        total_usage.get("prompt_tokens", 0)
+        / 1e6
+        * model_costs.get("prompt", 0)
+    )
+    total_cost += (
+        total_usage.get("response_tokens", 0)
+        / 1e6
+        * model_costs.get("response", 0)
+    )
+    return total_cost
