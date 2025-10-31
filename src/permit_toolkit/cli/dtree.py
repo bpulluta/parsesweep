@@ -82,7 +82,10 @@ def dtree_extract(input_dir, output, model, verbose):
     init_logger("permit_toolkit", log_level="DEBUG" if verbose else "INFO")
 
     if verbose:
-        handler = logging.FileHandler(output / "all.log", encoding="utf-8")
+        today = time.strftime("%Y-%m-%d %H:%M:%S")
+        handler = logging.FileHandler(
+            output / f"all_{today}.log", encoding="utf-8"
+        )
         fmt = logging.Formatter(
             fmt="[%(asctime)s] %(levelname)s - %(taskName)s: %(message)s",
         )
