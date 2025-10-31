@@ -71,6 +71,7 @@ LLM_COST_REGISTRY = {
     help="Option to use verbose (DEBUG) logging",
 )
 def dtree_extract(input_dir, output, model, verbose):
+    """Extract backup generator info using decision trees"""
     load_dotenv()
 
     output = Path(output)
@@ -105,7 +106,6 @@ async def _process_all(input_dir, output_dir, model, num_docs=20):
 
     logger.info("Processing %d PDF file(s) from %s", len(files), input_dir)
 
-    # setup LLM and Ordinance service/utility classes
     azure_api_key, azure_version, azure_endpoint = validate_azure_api_params()
     client = openai.AsyncAzureOpenAI(
         api_key=azure_api_key,
