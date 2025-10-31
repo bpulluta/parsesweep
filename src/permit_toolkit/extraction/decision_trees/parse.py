@@ -39,9 +39,6 @@ from permit_toolkit.extraction.decision_trees.graphs import (
     setup_graph_fuel_cert_fields,
     setup_graph_fuel_change_trigger,
     setup_graph_fuel_throughput_limit,
-    # setup_graph_tank_size,
-    # setup_graph_capacity,
-    # setup_graph_backup,
     setup_graph_control_techs,
     setup_graph_operating_hours,
     setup_graph_operating_window,
@@ -111,7 +108,6 @@ class StructuredOrdinanceParser(BaseLLMCaller):
         ref_out = await self._run_single_tree(
             setup_func=setup_graph_generators,
             text=text,
-            # out_key="reference_numbers",
             logger_message="Checking for generators",
         )
         refs = ref_out.get("reference_numbers", [])
@@ -187,10 +183,7 @@ class StructuredOrdinanceParser(BaseLLMCaller):
         tasks = {
             (name, k): asyncio.create_task(
                 self._run_single_tree(
-                    setup_func=f,
-                    text=text,
-                    # out_key=k,
-                    logger_message=m,
+                    setup_func=f, text=text, logger_message=m
                 ),
                 name=name,
             )
@@ -377,7 +370,6 @@ class StructuredOrdinanceParser(BaseLLMCaller):
                 self._run_single_tree(
                     setup_func=f,
                     text=text,
-                    # out_key=k,
                     logger_message=m,
                     ref_number=ref_number,
                 ),
@@ -440,21 +432,3 @@ class StructuredOrdinanceParser(BaseLLMCaller):
             **extra_kwargs,
         )
         return await _run_async_tree(tree)
-        # dtree_out = await _run_async_tree(tree)
-        # return dtree_out.get(out_key, None)
-
-    # async def _check_capacity(self, text, ref_number):
-    #     logger.debug(
-    #         "Checking for generator capacity for ref number %s", ref_number
-    #     )
-    #     tree = _setup_async_decision_tree(
-    #         setup_graph_capacity,
-    #         text=text,
-    #         ref_number=ref_number,
-    #         chat_llm_caller=self._init_chat_llm_caller(DEFAULT_SYSTEM_MESSAGE),
-    #     )
-    #     dtree_capacity_out = await _run_async_tree(tree)
-    #     return {
-    #         "rated_capacity_kw": dtree_capacity_out.get("capacity_kw", None),
-    #         "rated_capacity_hp": dtree_capacity_out.get("capacity_hp", None),
-    #     }
