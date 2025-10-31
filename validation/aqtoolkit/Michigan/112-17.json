@@ -1,0 +1,79 @@
+{
+  "source_file": "112-17.pdf",
+  "extraction_date": "2025-10-31 16:28:48",
+  "state": "Michigan",
+  "model": "compassop-gpt-5",
+  "qa_qc_enabled": false,
+  "cost_usd": 0.06451749999999999,
+  "processing_time_sec": 42.660990476608276,
+  "completeness_score": 0.7999999999999999,
+  "generator_count": 1,
+  "permit_number": "112-17",
+  "data": {
+    "permitDetails": {
+      "permitNumber": "112-17",
+      "permitIssuanceDate": "2017-08-21",
+      "permitExpirationDate": null,
+      "facilityName": "Beaumont Information Technology Center",
+      "facilityAddress": "1350 Stephenson Highway",
+      "facilityCounty": "Cakland",
+      "facilityState": "MI",
+      "initialConstructionCommencedNotificationRequired": null,
+      "constructionCommencedNotificationWindowDays": null,
+      "initialStartupNotificationRequired": null,
+      "startupNotificationWindowDays": null,
+      "permitCopyOnsiteRequired": null,
+      "rightOfEntryClause": null,
+      "extractionNotes": "State Registration Number P0243 also shown; primary permit number 112-17 selected. County appears as 'Cakland' in the document."
+    },
+    "generatorSets": [
+      {
+        "referenceNumber": "EU-GENP",
+        "numGenerators": 1,
+        "includedInPermitProject": true,
+        "make": null,
+        "model": null,
+        "ratedCapacityKW": 1500,
+        "ratedCapacityBHP": 2205,
+        "maximumCapacityBHP": 2205,
+        "maximumCapacityKW": 1500,
+        "primaryFuelType": "diesel fuel",
+        "secondaryFuelType": null,
+        "otherFuels": null,
+        "fuelGrade": null,
+        "fuelSpecification": null,
+        "fuelSulfurContentPct": 0.0015,
+        "fuelCertificationRequired": true,
+        "fuelCertificationFields": {
+          "supplierNameRequired": true,
+          "receiptDateRequired": false,
+          "quantityRequired": false,
+          "astmComplianceStatementRequired": false,
+          "sulfurContentRequired": true
+        },
+        "fuelChangePermitTrigger": null,
+        "fuelThroughputLimit": null,
+        "fuelThroughputScope": null,
+        "fuelThroughputGroupRef": null,
+        "controlTechnology": null,
+        "operatingHoursLimit": 500,
+        "operatingHoursRollingWindow": "12-month rolling time period basis as determined at the end of each calendar month",
+        "allowedOperatingModes": "emergency operation; necessary maintenance checks and readiness testing; non-emergency situations up to 50 hours per calendar year (subject to 40 CFR 60.4211(f))",
+        "opacityLimitPercent": 20,
+        "hourMeterRequired": true,
+        "observationFrequency": "monthly and 12-month rolling time period",
+        "recordkeepingWindowYears": 5,
+        "operationReasonLogRequired": true,
+        "manufacturerOandMRequired": true,
+        "maintenanceTrainingRecordsRequired": null,
+        "nspsSubpartIIII": true,
+        "mactSubpartZZZZ": true,
+        "extractionNotes": "Make/model not stated. Emission limits for certified engines specified as NMHC+NOx: 6.4 g/kW-hr; CO: 3.5 g/kW-hr; PM: 0.20 g/kW-hr."
+      }
+    ]
+  },
+  "validation_notes": [
+    "\u26a0\ufe0f WARNING: EU-GENP missing make",
+    "\u26a0\ufe0f WARNING: EU-GENP missing model"
+  ]
+}
