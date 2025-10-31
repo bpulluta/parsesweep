@@ -215,8 +215,8 @@ def setup_graph_facility_address(**kwargs):  # noqa: D103
     G.add_node(
         "init",
         prompt=(
-            "Does the following text mention a facility street address "
-            "corresponding to this permit? "
+            "Does the following text mention a street address for the "
+            "facility corresponding to this permit? "
             "Begin your response with either 'Yes' or 'No' and explain your "
             "answer."
             '\n\n"""\n{text}\n"""'
@@ -230,7 +230,7 @@ def setup_graph_facility_address(**kwargs):  # noqa: D103
     G.add_node(
         "get_facility_address",
         prompt=(
-            "What is the full facility street address as given in the permit? "
+            "What is the facility street address as given in the permit? "
             "Please do not try to normalize the address."
         ),
     )
@@ -245,7 +245,7 @@ def setup_graph_facility_address(**kwargs):  # noqa: D103
             "include exactly two "
             'keys. The keys are "facility_address" and "explanation". The '
             'value of the "facility_address" key should be a string '
-            "containing the full facility street address exactly as "
+            "containing the facility street address exactly as "
             "written in the permit. "
             "If you could not determine a specific facility street address "
             "corresponding to this permit, this key should be `null`. "
@@ -1640,6 +1640,305 @@ def setup_graph_other_fuel(**kwargs):  # noqa: D103
             "your answer."
         ),
     )
+
+    return G
+
+
+def setup_graph_fuel_grade(**kwargs):  # noqa: D103
+    G = _setup_graph_no_nodes(**kwargs)  # noqa: N806
+
+    G.add_node(
+        "init",
+        prompt=(
+            "Does the following text specify the fuel grade (e.g., "
+            "'Grade No. 2-D', 'Grade No. 1-D S15', etc.) for the "
+            "generator with reference number {ref_number}? "
+            "Keep in mind that the reference number "
+            "could be included in range or group of numbers and information "
+            "that applies to that group should be considered relevant. "
+            "Begin your response with either 'Yes' or 'No' and explain "
+            "your answer."
+            '\n\n"""\n{text}\n"""'
+        ),
+    )
+
+    G.add_edge(
+        "init", "get_fuel_grade", condition=llm_response_starts_with_yes
+    )
+
+    G.add_node(
+        "get_fuel_grade",
+        prompt=(
+            "What is the fuel grade specified in the text for the "
+            "generator with reference number {ref_number}?"
+        ),
+    )
+
+    G.add_edge("get_fuel_grade", "final")
+
+    G.add_node(
+        "final",
+        prompt=(
+            "Respond based on our entire conversation so far. Return your "
+            "answer in JSON format (not markdown). Your JSON file must "
+            "include exactly two "
+            'keys. The keys are "fuel_grade" and "explanation". The '
+            'value of the "fuel_grade" key should be a string containing '
+            "the fuel grade, exactly as written in the permit, for the "
+            "generator with reference number {ref_number}. "
+            'The value of the "explanation" key should be a string explaining '
+            "your answer."
+        ),
+    )
+
+    return G
+
+
+def setup_graph_fuel_spec(**kwargs):  # noqa: D103
+    G = _setup_graph_no_nodes(**kwargs)  # noqa: N806
+
+    G.add_node(
+        "init",
+        prompt=(
+            "Does the following text cite a fuel specification standard "
+            "(e.g., 'ASTM D975', 'ASTM D396', etc.) for the "
+            "generator with reference number {ref_number}? "
+            "Keep in mind that the reference number "
+            "could be included in range or group of numbers and information "
+            "that applies to that group should be considered relevant. "
+            "Begin your response with either 'Yes' or 'No' and explain "
+            "your answer."
+            '\n\n"""\n{text}\n"""'
+        ),
+    )
+
+    G.add_edge("init", "get_fuel_spec", condition=llm_response_starts_with_yes)
+
+    G.add_node(
+        "get_fuel_spec",
+        prompt=(
+            "What is the fuel specification standard cited in the text for "
+            "the generator with reference number {ref_number}?"
+        ),
+    )
+
+    G.add_edge("get_fuel_grade", "final")
+
+    G.add_node(
+        "final",
+        prompt=(
+            "Respond based on our entire conversation so far. Return your "
+            "answer in JSON format (not markdown). Your JSON file must "
+            "include exactly two "
+            'keys. The keys are "fuel_spec" and "explanation". The '
+            'value of the "fuel_spec" key should be a string containing '
+            "the fuel grade, exactly as written in the permit, for the "
+            "generator with reference number {ref_number}. "
+            'The value of the "explanation" key should be a string explaining '
+            "your answer."
+        ),
+    )
+
+    return G
+
+
+def setup_graph_fuel_sulphur(**kwargs):  # noqa: D103
+    G = _setup_graph_no_nodes(**kwargs)  # noqa: N806
+
+    G.add_node(
+        "init",
+        prompt=(
+            "Does the following text specify a fuel sulfur content "
+            "(e.g., 0.0015 for 0.0015%, 15 ppm, etc.) for the "
+            "generator with reference number {ref_number}? "
+            "Keep in mind that the reference number "
+            "could be included in range or group of numbers and information "
+            "that applies to that group should be considered relevant. "
+            "Begin your response with either 'Yes' or 'No' and explain "
+            "your answer."
+            '\n\n"""\n{text}\n"""'
+        ),
+    )
+
+    G.add_edge("init", "get_sulfur", condition=llm_response_starts_with_yes)
+
+    G.add_node(
+        "get_sulfur",
+        prompt=(
+            "What is the fuel sulfur content specified in the text for "
+            "the generator with reference number {ref_number}? Give your "
+            "answer as a percent regardless of how stated in permit. "
+        ),
+    )
+
+    G.add_edge("get_sulfur", "final")
+
+    G.add_node(
+        "final",
+        prompt=(
+            "Respond based on our entire conversation so far. Return your "
+            "answer in JSON format (not markdown). Your JSON file must "
+            "include exactly two "
+            'keys. The keys are "fuel_sulfur" and "explanation". The '
+            'value of the "fuel_sulfur" key should be numerical value '
+            "representing the fuel sulfur content **as a percent** for the "
+            "generator with reference number {ref_number}. "
+            'The value of the "explanation" key should be a string explaining '
+            "your answer."
+        ),
+    )
+
+    return G
+
+
+def setup_graph_fuel_cert_required(**kwargs):  # noqa: D103
+    G = _setup_graph_no_nodes(**kwargs)  # noqa: N806
+
+    G.add_node(
+        "init",
+        prompt=(
+            "Does the following permit text **directly require** "
+            "a fuel supplier certification with each shipment? "
+            "Begin your response with either 'Yes' or 'No' and explain your "
+            "answer."
+            '\n\n"""\n{text}\n"""'
+        ),
+    )
+
+    G.add_edge(
+        "init",
+        "final_mentioned",
+        condition=llm_response_starts_with_yes,
+    )
+
+    G.add_node(
+        "final_mentioned",
+        prompt=(
+            "Respond based on our entire conversation so far. Return your "
+            "answer in JSON format (not markdown). Your JSON file must "
+            "include exactly two keys. The keys are "
+            '"fuel_cert_required" and "explanation". The '
+            'value of the "fuel_cert_required" key should '
+            "be `true`, since we determined that the permit requires "
+            "a fuel supplier certification with each shipment. "
+            'The value of the "explanation" key should be a string explaining '
+            "your answer."
+        ),
+    )
+
+    G.add_edge(
+        "init",
+        "explicit_not_mentioned",
+        condition=llm_response_starts_with_no,
+    )
+    G.add_node(
+        "explicit_not_mentioned",
+        prompt=(
+            "Does the permit text **directly mention** that a fuel supplier "
+            "certification is **not** required with each shipment? "
+            "Begin your response with either 'Yes' or 'No' and explain your "
+            "answer."
+        ),
+    )
+    G.add_edge(
+        "explicit_not_mentioned",
+        "final_not_mentioned",
+        condition=llm_response_starts_with_yes,
+    )
+
+    G.add_node(
+        "final_not_mentioned",
+        prompt=(
+            "Respond based on our entire conversation so far. Return your "
+            "answer in JSON format (not markdown). Your JSON file must "
+            "include exactly two keys. The keys are "
+            '"fuel_cert_required" and "explanation". The '
+            'value of the "fuel_cert_required" key should '
+            "be `false`, since we determined that the permit explicitly does "
+            "not require a fuel supplier certification with each shipment. "
+            'The value of the "explanation" key should be a string explaining '
+            "your answer."
+        ),
+    )
+
+    return G
+
+
+def setup_graph_fuel_cert_fields(**kwargs):  # noqa: D103
+    G = _setup_graph_no_nodes(**kwargs)  # noqa: N806
+
+    G.add_node(
+        "init",
+        prompt=(
+            "Does the following permit text **directly require** "
+            "a fuel supplier certification with each shipment? "
+            "Begin your response with either 'Yes' or 'No' and explain your "
+            "answer."
+            '\n\n"""\n{text}\n"""'
+        ),
+    )
+
+    G.add_edge(
+        "init",
+        "check_supplier_name",
+        condition=llm_response_starts_with_yes,
+    )
+
+    G.add_node(
+        "check_supplier_name",
+        prompt=(
+            "Does the permit text **directly mention** that a fuel supplier "
+            "name is required in the fuel supplier certification? "
+        ),
+    )
+    G.add_edge("check_supplier_name", "check_receipt_date")
+    G.add_node(
+        "check_receipt_date",
+        prompt=(
+            "Does the permit text **directly mention** that receipt/delivery "
+            "date is required in the fuel supplier certification? "
+        ),
+    )
+    G.add_edge("check_receipt_date", "check_quantity")
+    G.add_node(
+        "check_quantity",
+        prompt=(
+            "Does the permit text **directly mention** that quantity/volume "
+            "is required in the fuel supplier certification? "
+        ),
+    )
+    G.add_edge("check_quantity", "check_astm")
+    G.add_node(
+        "check_astm",
+        prompt=(
+            "Does the permit text **directly mention** that an ASTM "
+            "compliance statement is required in the fuel supplier "
+            "certification? "
+        ),
+    )
+    G.add_edge("check_astm", "check_sulfur")
+    G.add_node(
+        "check_sulfur",
+        prompt=(
+            "Does the permit text **directly mention** that sulfur content "
+            "is required in the fuel supplier certification? "
+        ),
+    )
+    G.add_edge("check_sulfur", "final")
+    # G.add_node(
+    #     "final",
+    #     prompt=(
+    #         "Respond based on our entire conversation so far. Return your "
+    #         "answer in JSON format (not markdown). Your JSON file must "
+    #         "include exactly two keys. The keys are "
+    #         '"fuel_cert_fields" and "explanation". The value of the '
+    #         '"fuel_cert_required" key should  be another dictionary with '
+    #         "be `false`, since we determined that the permit explicitly does "
+    #         "not require a fuel supplier certification with each shipment. "
+    #         'The value of the "explanation" key should be a string explaining '
+    #         "your answer."
+    #     ),
+    # )
 
     return G
 
