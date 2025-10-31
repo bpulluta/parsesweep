@@ -32,6 +32,10 @@ from permit_toolkit.extraction.decision_trees.graphs import (
     setup_graph_fuel,
     setup_graph_secondary_fuel,
     setup_graph_other_fuel,
+    setup_graph_fuel_grade,
+    setup_graph_fuel_spec,
+    setup_graph_fuel_sulphur,
+    setup_graph_fuel_cert_required,
     # setup_graph_tank_size,
     # setup_graph_capacity,
     setup_graph_backup,
@@ -249,6 +253,26 @@ class StructuredOrdinanceParser(BaseLLMCaller):
                 setup_graph_other_fuel,
                 "other_fuel_types",
                 "Checking for generator other fuel type",
+            ),
+            "fuelGrade": (
+                setup_graph_fuel_grade,
+                "fuel_grade",
+                "Checking for generator fuel grade",
+            ),
+            "fuelSpecification": (
+                setup_graph_fuel_spec,
+                "fuel_spec",
+                "Checking for generator fuel specification",
+            ),
+            "fuelSulfurContentPct": (
+                setup_graph_fuel_sulphur,
+                "fuel_sulphur",
+                "Checking for generator fuel sulphur content",
+            ),
+            "fuelCertificationRequired": (
+                setup_graph_fuel_cert_required,
+                "fuel_cert_required",
+                "Checking if fuel supplier certification is required",
             ),
             # "tank_size": (
             #     setup_graph_tank_size,
