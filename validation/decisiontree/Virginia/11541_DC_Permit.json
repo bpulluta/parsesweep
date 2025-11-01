@@ -1,110 +1,158 @@
 {
-  "permitNumber": "11541",
-  "generators": {
-    "1": {
-      "make": "Caterpillar",
-      "model": "1500 KW diesel-powered emergency generator",
-      "fuel_type": "diesel (distillate oil)",
-      "tank_size": {},
-      "capacity": {
-        "capacity_kw": "1500",
-        "capacity_hp": "2500"
-      },
-      "backup_mw": "1.5",
-      "control_technologies": null,
-      "operating_hours": 500,
-      "emissions_limits": {
-        "Sulfur Dioxide (SO2)": {
-          "lbs/hr": 4.2,
-          "tons/yr": 1.05
-        },
-        "Nitrogen Oxides (NOx, as NO2)": {
-          "lbs/hr": 63.9,
-          "tons/yr": 15.96
-        },
-        "Carbon Monoxide (CO)": {
-          "lbs/hr": 13.77,
-          "tons/yr": 3.44
-        },
-        "Particulate Matter (PM-10)": {
-          "lbs/hr": 4.49,
-          "tons/yr": 1.12
-        },
-        "Volatile Organic Compounds (VOCs)": {
-          "lbs/hr": 5.07,
-          "tons/yr": 1.27
-        }
-      }
+  "source_file": "11541_DC_Permit.pdf",
+  "extraction_date": "2025-10-31 22:50:46",
+  "state": "VA",
+  "model": "compassop-gpt-5",
+  "qa_qc_enabled": false,
+  "cost_usd": 2.9004199999999996,
+  "processing_time_sec": 1318.0223751169979,
+  "completeness_score": null,
+  "generator_count": 3,
+  "permit_number": "11541",
+  "data": {
+    "permitDetails": {
+      "permitNumber": "11541",
+      "permitIssuanceDate": "2008-05-16",
+      "permitExpirationDate": null,
+      "facilityName": "the Southwest Enterprise Solutions Center",
+      "facilityAddress": "Technology Park Drive, at the Regional Business\nTechnology Park in Lebanon, Russell County, Virginia",
+      "facilityCounty": "Russell County",
+      "facilityState": "VA",
+      "initialConstructionCommencedNotificationRequired": true,
+      "constructionCommencedNotificationWindowDays": 30,
+      "initialStartupNotificationRequired": true,
+      "startupNotificationWindowDays": 16,
+      "permitCopyOnsiteRequired": true,
+      "rightOfEntryClause": "R2btotEntryThepermitteeshall allow authonzed local, state, and federal \nrepresentatives, upon the presentation of credentials: \na. Toenter upon the permittee's premises on which the facility is located or in which \nany records are required to be kept underthe terms and conditions ofthis permit; \nb Tohave access to and copy at reasonable times any records required to be kept \nunderthe terms and conditions ofthis permit orthe State Air Pollution Control \nBoard Regulations; \nc. Toinspect at reasonable times anyfacility,equipment, or process subject to the \nterms and conditions ofthis permit orthe State Air Pollution Control Board \nRegulations^and \nd. Tosampleortestat reasonable times. \nPor purposes ofthis condition,the time for inspection shall be deemed reasonable \nduring regularbusiness hours orwheneverthefacilityis in operation. Nothing \ncontained herein shall make an inspection time unreasonable during an emergency. \n^VAC6-170-180and9VAO 5-80-1180)"
     },
-    "2": {
-      "make": "Caterpillar",
-      "model": "1500 KW diesel-powered emergency generator",
-      "fuel_type": "distillate oil (diesel)",
-      "tank_size": {},
-      "capacity": {
-        "capacity_kw": "1500",
-        "capacity_hp": "2500"
+    "generatorSets": [
+      {
+        "referenceNumber": "Ref. No. 3",
+        "numGenerators": 1,
+        "includedInPermitProject": true,
+        "make": "Caterpillar",
+        "model": null,
+        "ratedCapacityKW": 1500,
+        "ratedCapacityBHP": 2500,
+        "maxCapacityKW": null,
+        "maxCapacityBHP": null,
+        "primaryFuelType": "distillate oil",
+        "secondaryFuelType": null,
+        "otherFuels": null,
+        "fuelGrade": "No. 1 or No. 2",
+        "fuelSpecification": "ASTM 0396-76",
+        "fuelSulfurContentPct": 0.5,
+        "fuelCertificationRequired": true,
+        "fuelCertificationFields": {
+          "supplierNameRequired": true,
+          "receiptDateRequired": true,
+          "quantityRequired": true,
+          "astmComplianceStatementRequired": true,
+          "sulfurContentRequired": true
+        },
+        "fuelChangePermitTrigger": "Fuel - The approved fuel for the Caterpillar diesel powered emergency generators is distillate oil. A change in the fuel may require a permit to modify and operate.",
+        "fuelThroughputLimit": null,
+        "fuelThroughputScope": null,
+        "fuelThroughputGroupRef": null,
+        "control_technologies": null,
+        "operating_hours_limit_yr": 500,
+        "operatingHoursRollingWindow": "Calculated monthly as the sum of each consecutive 12-month period.",
+        "allowedOperatingModes": null,
+        "opacityLimitPercent": 10,
+        "hourMeterRequired": null,
+        "observationFrequency": null,
+        "recordkeepingWindowYears": 5,
+        "operationReasonLogRequired": null,
+        "manufacturerOandMRequired": true,
+        "maintenanceTrainingRecordsRequired": true,
+        "nspsSubpartIIII": null,
+        "mactSubpartZZZZ": null
       },
-      "backup_mw": null,
-      "control_technologies": null,
-      "operating_hours": 500,
-      "emissions_limits": {
-        "Sulfur Dioxide": {
-          "hourly": "4.20 lbs/hr",
-          "annual": "1.05 tons/yr"
+      {
+        "referenceNumber": "Ref. No. 2",
+        "numGenerators": 1,
+        "includedInPermitProject": false,
+        "make": "Caterpillar",
+        "model": null,
+        "ratedCapacityKW": 1500,
+        "ratedCapacityBHP": 2500,
+        "maxCapacityKW": null,
+        "maxCapacityBHP": null,
+        "primaryFuelType": "distillate oil",
+        "secondaryFuelType": null,
+        "otherFuels": null,
+        "fuelGrade": "No. 1 or No. 2",
+        "fuelSpecification": "ASTM 0396-76",
+        "fuelSulfurContentPct": 0.5,
+        "fuelCertificationRequired": true,
+        "fuelCertificationFields": {
+          "supplierNameRequired": true,
+          "receiptDateRequired": true,
+          "quantityRequired": true,
+          "astmComplianceStatementRequired": true,
+          "sulfurContentRequired": true
         },
-        "Nitrogen Oxides": {
-          "hourly": "63.90 lbs/hr",
-          "annual": "15.96 tons/yr"
-        },
-        "Carbon Monoxide": {
-          "hourly": "13.77 lbs/hr",
-          "annual": "3.44 tons/yr"
-        },
-        "Particulate Matter (PM-10)": {
-          "hourly": "4.49 lbs/hr",
-          "annual": "1.12 tons/yr"
-        },
-        "Volatile Organic Compounds": {
-          "hourly": "5.07 lbs/hr",
-          "annual": "1.27 tons/yr"
-        }
-      }
-    },
-    "3": {
-      "make": "Caterpillar",
-      "model": "1500 KW",
-      "fuel_type": "diesel (distillate oil)",
-      "tank_size": {},
-      "capacity": {
-        "capacity_kw": "1500 kW",
-        "capacity_hp": "2500 brake horsepower"
+        "fuelChangePermitTrigger": "A change in the fuel may require a permit to modify and operate.",
+        "fuelThroughputLimit": null,
+        "fuelThroughputScope": null,
+        "fuelThroughputGroupRef": null,
+        "control_technologies": null,
+        "operating_hours_limit_yr": 500,
+        "operatingHoursRollingWindow": "Consecutive 12-month period; calculated monthly.",
+        "allowedOperatingModes": null,
+        "opacityLimitPercent": 10,
+        "hourMeterRequired": null,
+        "observationFrequency": null,
+        "recordkeepingWindowYears": 5,
+        "operationReasonLogRequired": null,
+        "manufacturerOandMRequired": true,
+        "maintenanceTrainingRecordsRequired": true,
+        "nspsSubpartIIII": true,
+        "mactSubpartZZZZ": null
       },
-      "backup_mw": null,
-      "control_technologies": null,
-      "operating_hours": 500,
-      "emissions_limits": {
-        "Sulfur Dioxide": {
-          "lbs_per_hour": 4.2,
-          "tons_per_year": 1.05
+      {
+        "referenceNumber": "Ref. No. 1",
+        "numGenerators": 1,
+        "includedInPermitProject": false,
+        "make": "Caterpillar",
+        "model": null,
+        "ratedCapacityKW": 1500,
+        "ratedCapacityBHP": 2500,
+        "maxCapacityKW": null,
+        "maxCapacityBHP": null,
+        "primaryFuelType": "distillate oil",
+        "secondaryFuelType": null,
+        "otherFuels": null,
+        "fuelGrade": "No. 1 or No. 2",
+        "fuelSpecification": "ASTM D396-76",
+        "fuelSulfurContentPct": 0.5,
+        "fuelCertificationRequired": true,
+        "fuelCertificationFields": {
+          "supplierNameRequired": true,
+          "receiptDateRequired": true,
+          "quantityRequired": true,
+          "astmComplianceStatementRequired": true,
+          "sulfurContentRequired": true
         },
-        "Nitrogen Oxides": {
-          "lbs_per_hour": 63.9,
-          "tons_per_year": 15.96
-        },
-        "Carbon Monoxide": {
-          "lbs_per_hour": 13.77,
-          "tons_per_year": 3.44
-        },
-        "Particulate Matter (PM-10)": {
-          "lbs_per_hour": 4.49,
-          "tons_per_year": 1.12
-        },
-        "Volatile Organic Compounds": {
-          "lbs_per_hour": 5.07,
-          "tons_per_year": 1.27
-        }
+        "fuelChangePermitTrigger": "A change in the fuel may require a permit to modify and operate.",
+        "fuelThroughputLimit": null,
+        "fuelThroughputScope": null,
+        "fuelThroughputGroupRef": null,
+        "control_technologies": null,
+        "operating_hours_limit_yr": 500,
+        "operatingHoursRollingWindow": "Calculated monthly as the sum of each consecutive 12-month period",
+        "allowedOperatingModes": null,
+        "opacityLimitPercent": 10,
+        "hourMeterRequired": null,
+        "observationFrequency": null,
+        "recordkeepingWindowYears": 5,
+        "operationReasonLogRequired": null,
+        "manufacturerOandMRequired": true,
+        "maintenanceTrainingRecordsRequired": true,
+        "nspsSubpartIIII": null,
+        "mactSubpartZZZZ": null
       }
-    }
-  }
+    ]
+  },
+  "validation_notes": null
 }
