@@ -1,138 +1,116 @@
 {
-  "permitNumber": "11790",
-  "generators": {
-    "EG01": {
-      "make": "Cummins",
-      "model": "Cummins QSK78-G12",
-      "fuel_type": "diesel",
-      "tank_size": {},
-      "capacity": {
-        "capacity_kw": "2500 kW",
-        "capacity_hp": "4060 hp"
-      },
-      "backup_mw": "2.5",
-      "control_technologies": "Turbocharged engines, charge air coolers, good operating practices, and appropriate maintenance in accordance with manufacturer recommendations",
-      "operating_hours": 500,
-      "emissions_limits": {
-        "Volatile Organic Compounds (VOC)": "1.29 lbs/hr per unit",
-        "Nitrogen Oxides (NOx, as NO2)": "53.70 lbs/hr per unit",
-        "Carbon Monoxide (CO)": "3.85 lbs/hr per unit",
-        "Particulate Matter (PM10/PM2.5)": "0.36 lbs/hr per unit"
-      }
+  "source_file": "11790_DC_Permit.pdf",
+  "extraction_date": "2025-10-31 22:28:19",
+  "state": "VA",
+  "model": "compassop-gpt-5",
+  "qa_qc_enabled": false,
+  "cost_usd": 2.4424925,
+  "processing_time_sec": 1070.5835612709998,
+  "completeness_score": null,
+  "generator_count": 7,
+  "permit_number": "11790",
+  "data": {
+    "permitDetails": {
+      "permitNumber": "11790",
+      "permitIssuanceDate": "2016-08-23",
+      "permitExpirationDate": null,
+      "facilityName": "DP Facilities Inc. South, LLC",
+      "facilityAddress": "5978 Windswept Blvd",
+      "facilityCounty": "Wise County",
+      "facilityState": "VA",
+      "initialConstructionCommencedNotificationRequired": null,
+      "constructionCommencedNotificationWindowDays": null,
+      "initialStartupNotificationRequired": null,
+      "startupNotificationWindowDays": null,
+      "permitCopyOnsiteRequired": true,
+      "rightOfEntryClause": "15. Rl^ht^Entry-The permittee shall allow authorized local, state, and federal represented^\nupon tbe presentation of credentials:\na. Toenter upon the permittee's premises on which the facility is located or in which anv records\nare required to be kept undertbe terms and conditions oftbis permit:\nb. Tohave access to and copy at reasonable times any records required to be kept underthe\nterms and conditions oftbis permit ortbe State Air Follution Control Board Regulations:\nc. Toinspect at reasonable times anyfacility, equipment, or process subjectto the terms and\nconditions oftbis permit ortbe State Air Pollution Control Board Regulations: and\nd. Tosampleortest at reasonable times.\nFor purposes of tbis condition, tbe time for inspection sball be deemed reasonable during regular\nbusiness hours orwheneverthefacllityis in operation. Nothing contained bereln sball make an\ninspection time unreasonable during an emergency.\n(9VAC5-170-130andOVAC 5-50-1150)"
     },
-    "EG02": {
-      "make": "Cummins",
-      "model": "Cummins QSK78-G12",
-      "fuel_type": "diesel",
-      "tank_size": {},
-      "capacity": {
-        "capacity_kw": "2500 kW",
-        "capacity_hp": "4060 hp"
+    "generatorSets": [
+      {
+        "referenceNumber": "EG01\u2013EG06",
+        "numGenerators": 6,
+        "includedInPermitProject": true,
+        "make": "Cummins",
+        "model": "QSK78-G12",
+        "ratedCapacityKW": 2500,
+        "ratedCapacityBHP": null,
+        "maxCapacityKW": null,
+        "maxCapacityBHP": null,
+        "primaryFuelType": "diesel fuel",
+        "secondaryFuelType": null,
+        "otherFuels": null,
+        "fuelGrade": null,
+        "fuelSpecification": "ASTM D975",
+        "fuelSulfurContentPct": 0.0015,
+        "fuelCertificationRequired": true,
+        "fuelCertificationFields": {
+          "supplierNameRequired": true,
+          "receiptDateRequired": true,
+          "quantityRequired": true,
+          "astmComplianceStatementRequired": true,
+          "sulfurContentRequired": true
+        },
+        "fuelChangePermitTrigger": "A change in the fuel may require a new or amended permit.",
+        "fuelThroughputLimit": 583500,
+        "fuelThroughputScope": "combined_group",
+        "fuelThroughputGroupRef": "EO01-EO07",
+        "control_technologies": "Turbocharged engines, charge air coolers, good operating practices and appropriate maintenance per manufacturer recommendations",
+        "operating_hours_limit_yr": 500,
+        "operatingHoursRollingWindow": "Consecutive 12-month rolling period, calculated monthly; compliance demonstrated each month by adding the most recently completed calendar month to the totals for the preceding 11 months.",
+        "allowedOperatingModes": "Emergency operation during sudden and reasonably unforeseeable events that disrupt or disconnect the primary power source beyond the owner/operator\u2019s control (e.g., electrical grid failure; on-site disaster or equipment failure; public service emergencies such as flood, fire, natural disaster, or severe weather conditions); and operation for periodic maintenance, testing, and operational training.",
+        "opacityLimitPercent": 10,
+        "hourMeterRequired": true,
+        "observationFrequency": "not less than once each month in which the unit is operated",
+        "recordkeepingWindowYears": 5,
+        "operationReasonLogRequired": true,
+        "manufacturerOandMRequired": true,
+        "maintenanceTrainingRecordsRequired": true,
+        "nspsSubpartIIII": true,
+        "mactSubpartZZZZ": true
       },
-      "backup_mw": null,
-      "control_technologies": "Turbocharged engines, charge air coolers, good operating practices, and performing appropriate maintenance in accordance with manufacturer recommendations.",
-      "operating_hours": 500,
-      "emissions_limits": {
-        "Volatile Organic Compounds (VOC)": "1.29 lbs/hr",
-        "Nitrogen Oxides (NOx as NO2)": "53.70 lbs/hr",
-        "Carbon Monoxide (CO)": "3.85 lbs/hr",
-        "PM10/PM2.5": "0.36 lbs/hr"
+      {
+        "referenceNumber": "EG07",
+        "numGenerators": 1,
+        "includedInPermitProject": true,
+        "make": "Cummins",
+        "model": "QSK19-G8",
+        "ratedCapacityKW": 600,
+        "ratedCapacityBHP": null,
+        "maxCapacityKW": null,
+        "maxCapacityBHP": null,
+        "primaryFuelType": "diesel fuel",
+        "secondaryFuelType": null,
+        "otherFuels": null,
+        "fuelGrade": null,
+        "fuelSpecification": "ASTM D975",
+        "fuelSulfurContentPct": 0.0015,
+        "fuelCertificationRequired": true,
+        "fuelCertificationFields": {
+          "supplierNameRequired": true,
+          "receiptDateRequired": true,
+          "quantityRequired": true,
+          "astmComplianceStatementRequired": true,
+          "sulfurContentRequired": true
+        },
+        "fuelChangePermitTrigger": "A change in the fuel ma^ requireanew or amended permit.",
+        "fuelThroughputLimit": 583500,
+        "fuelThroughputScope": "combined_group",
+        "fuelThroughputGroupRef": "EO01-EO07",
+        "control_technologies": "Turbocharged engine; charge air cooler; good operating practices; appropriate maintenance in accordance with manufacturer recommendations",
+        "operating_hours_limit_yr": 500,
+        "operatingHoursRollingWindow": "Consecutive 12-month rolling period, calculated monthly; compliance demonstrated each month by adding the most recently completed calendar month to the totals for the preceding 11 months.",
+        "allowedOperatingModes": "Emergency operation during sudden and reasonably unforeseeable events that disrupt or disconnect the primary energy or power source (including failure of the electrical grid; on-site disaster or equipment failure; and public service emergencies such as flood, fire, natural disaster, or severe weather conditions) and operation for periodic maintenance, testing, and operational training.",
+        "opacityLimitPercent": 10,
+        "hourMeterRequired": true,
+        "observationFrequency": "not less than once each month in which the unit is operated.",
+        "recordkeepingWindowYears": 5,
+        "operationReasonLogRequired": true,
+        "manufacturerOandMRequired": true,
+        "maintenanceTrainingRecordsRequired": true,
+        "nspsSubpartIIII": true,
+        "mactSubpartZZZZ": true
       }
-    },
-    "EG03": {
-      "make": "Cummins",
-      "model": "Cummins QSK78-G12",
-      "fuel_type": "diesel",
-      "tank_size": {},
-      "capacity": {
-        "capacity_kw": "2500 kW",
-        "capacity_hp": "4060 hp"
-      },
-      "backup_mw": null,
-      "control_technologies": "Turbocharged engines, charge air coolers, use of good operating practices, and performing appropriate maintenance in accordance with manufacturer recommendations.",
-      "operating_hours": 500,
-      "emissions_limits": {
-        "Volatile Organic Compounds (VOC)": "1.29 lbs/hr",
-        "Nitrogen Oxides (NOx, as NO2)": "53.70 lbs/hr",
-        "Carbon Monoxide (CO)": "3.85 lbs/hr",
-        "Particulate Matter (PM10/PM2.5)": "0.36 lbs/hr"
-      }
-    },
-    "EG04": {
-      "make": "Cummins",
-      "model": null,
-      "fuel_type": "diesel fuel",
-      "tank_size": {},
-      "capacity": {
-        "capacity_kw": "2500",
-        "capacity_hp": "4060"
-      },
-      "backup_mw": null,
-      "control_technologies": "Turbocharged engines, charge air coolers, use of good operating practices, and performing appropriate maintenance in accordance with manufacturer recommendations.",
-      "operating_hours": 500,
-      "emissions_limits": {
-        "Volatile Organic Compounds (VOC)": "1.29 lbs/hr",
-        "Nitrogen Oxides (NOx, as NO2)": "53.70 lbs/hr",
-        "Carbon Monoxide (CO)": "3.85 lbs/hr",
-        "Particulate Matter (PM10/PM2.5)": "0.36 lbs/hr"
-      }
-    },
-    "EG05": {
-      "make": "Cummins",
-      "model": "Cummins QSK78-G12",
-      "fuel_type": "diesel",
-      "tank_size": {},
-      "capacity": {
-        "capacity_kw": "2500 kW",
-        "capacity_hp": "4060 hp"
-      },
-      "backup_mw": null,
-      "control_technologies": "Turbocharged engines, charge air coolers, use of good operating practices, and performing appropriate maintenance in accordance with the manufacturer recommendations",
-      "operating_hours": 500,
-      "emissions_limits": {
-        "Volatile Organic Compounds (VOC)": "1.29 lbs/hr",
-        "Nitrogen Oxides (NOx, as NO2)": "53.70 lbs/hr",
-        "Carbon Monoxide (CO)": "3.85 lbs/hr",
-        "Particulate Matter (PM10/PM2.5)": "0.36 lbs/hr"
-      }
-    },
-    "EG06": {
-      "make": "Cummins",
-      "model": "QSK78-G12",
-      "fuel_type": "diesel fuel",
-      "tank_size": {},
-      "capacity": {
-        "capacity_kw": "2500 kW",
-        "capacity_hp": "4060 hp"
-      },
-      "backup_mw": "2.5",
-      "control_technologies": "Turbocharged engines, charge air coolers, use of good operating practices, and performing appropriate maintenance in accordance with the manufacturer's recommendations.",
-      "operating_hours": 500,
-      "emissions_limits": {
-        "Volatile Organic Compounds (VOC)": "1.29 lbs/hr per unit",
-        "Nitrogen Oxides (NOx, as NO2)": "53.70 lbs/hr per unit",
-        "Carbon Monoxide (CO)": "3.85 lbs/hr per unit",
-        "PM10/PM2.5": "0.36 lbs/hr per unit"
-      }
-    },
-    "EG07": {
-      "make": "Cummins",
-      "model": "QSK19-G8",
-      "fuel_type": "diesel",
-      "tank_size": {},
-      "capacity": {
-        "capacity_kw": "600",
-        "capacity_hp": "967"
-      },
-      "backup_mw": "0.6",
-      "control_technologies": "Turbocharged engines, charge air coolers, use of good operating practices, and performing appropriate maintenance in accordance with the manufacturer's recommendations.",
-      "operating_hours": 500,
-      "emissions_limits": {
-        "Volatile Organic Compounds (VOC)": "0.28 lbs/hr",
-        "Nitrogen Oxides (NOx, as NO2)": "12.79 lbs/hr",
-        "Carbon Monoxide (CO)": "1.08 lbs/hr",
-        "Particulate Matter (PM10/PM2.5)": "0.17 lbs/hr"
-      }
-    }
-  }
+    ]
+  },
+  "validation_notes": null
 }
