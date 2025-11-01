@@ -82,9 +82,9 @@ def dtree_extract(input_dir, output, model, verbose):
     init_logger("permit_toolkit", log_level="DEBUG" if verbose else "INFO")
 
     if verbose:
-        today = time.strftime("%Y-%m-%d %H:%M:%S")
+        today = time.strftime("%Y-%m-%d_%H_%M_%S")
         handler = logging.FileHandler(
-            output / f"all_{today}.log", encoding="utf-8"
+            output / f"run_{today}.log", encoding="utf-8"
         )
         fmt = logging.Formatter(
             fmt="[%(asctime)s] %(levelname)s - %(taskName)s: %(message)s",
@@ -115,7 +115,7 @@ async def _process_all(input_dir, output_dir, model, num_docs=20):
         api_version=azure_version,
         azure_endpoint=azure_endpoint,
     )
-    llm_service = OpenAIService(client, rate_limit=3e5)
+    llm_service = OpenAIService(client, rate_limit=200_000)
     services = [llm_service, PDFLoader(max_workers=4)]
     process_sem = asyncio.Semaphore(num_docs)
 
