@@ -27,6 +27,9 @@ from permit_toolkit.extraction.pdf_utils import extract_text_from_pdf
 from permit_toolkit.extraction.decision_trees.parse import (
     StructuredOrdinanceParser,
 )
+from permit_toolkit.extraction.decision_trees.text_extract import (
+    PermitTextExtractor,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -104,7 +107,9 @@ def dtree_extract(input_dir, output, model, verbose):
     loop.run_until_complete(_process_all(input_dir, output, model))
 
 
-async def _process_all(input_dir, output_dir, model, num_docs=20):
+async def _process_all(
+    input_dir, output_dir, model, num_docs=1, num_concurrent_extractions=5
+):
     files = list(input_dir.glob("*.pdf"))
 
     logger.info("Processing %d PDF file(s) from %s", len(files), input_dir)
@@ -118,11 +123,19 @@ async def _process_all(input_dir, output_dir, model, num_docs=20):
     llm_service = OpenAIService(client, rate_limit=200_000)
     services = [llm_service, PDFLoader(max_workers=4)]
     process_sem = asyncio.Semaphore(num_docs)
+    extract_sem = asyncio.Semaphore(num_concurrent_extractions)
 
     async with RunningAsyncServices(services):
         tasks = [
             asyncio.create_task(
-                _process_one(fp, output_dir, model, llm_service, process_sem),
+                _process_one(
+                    fp,
+                    output_dir,
+                    model,
+                    llm_service,
+                    process_sem,
+                    extract_sem,
+                ),
                 name=fp.name,
             )
             for fp in files
@@ -130,7 +143,9 @@ async def _process_all(input_dir, output_dir, model, num_docs=20):
         await asyncio.gather(*tasks)
 
 
-async def _process_one(fp, output_dir, model, llm_service, process_sem):
+async def _process_one(
+    fp, output_dir, model, llm_service, process_sem, extract_sem
+):
     fp_out = output_dir / fp.name.replace(".pdf", ".json")
 
     if fp_out.exists():
@@ -156,10 +171,24 @@ async def _process_one(fp, output_dir, model, llm_service, process_sem):
 
         text = await PDFLoader.call(_read_pdf_file_pymupdf4llm, fp)
 
+        text_extractor = PermitTextExtractor(
+            llm_service=llm_service, usage_tracker=usage_tracker, model=model
+        )
+        extracted_text = await text_extractor.extract(text)
+        if not extracted_text:
+            logger.error("No relevant text extracted from permit %s", fp.name)
+            return
+
+        logger.debug("Extracted relevant permit text:\n%s", extracted_text)
+        logger.debug(
+            "Original text length: %s, Extracted text length: %s",
+            f"{len(text):,d}",
+            f"{len(extracted_text):,d}",
+        )
         parser = StructuredOrdinanceParser(
             llm_service=llm_service, usage_tracker=usage_tracker, model=model
         )
-        values = await parser.parse(text)
+        values = await parser.parse(extracted_text, extract_sem=extract_sem)
         # values = await parser.parse(doc.text)
 
     permit_details = values.get("permitDetails", {})

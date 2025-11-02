@@ -1,21 +1,21 @@
 {
   "source_file": "11541_DC_Permit.pdf",
-  "extraction_date": "2025-10-31 22:50:46",
+  "extraction_date": "2025-11-01 18:10:41",
   "state": "VA",
   "model": "compassop-gpt-5",
   "qa_qc_enabled": false,
-  "cost_usd": 2.9004199999999996,
-  "processing_time_sec": 1318.0223751169979,
+  "cost_usd": 2.13769,
+  "processing_time_sec": 1022.4480991379996,
   "completeness_score": null,
   "generator_count": 3,
-  "permit_number": "11541",
+  "permit_number": "Registration No. 11541",
   "data": {
     "permitDetails": {
-      "permitNumber": "11541",
+      "permitNumber": "Registration No. 11541",
       "permitIssuanceDate": "2008-05-16",
       "permitExpirationDate": null,
       "facilityName": "the Southwest Enterprise Solutions Center",
-      "facilityAddress": "Technology Park Drive, at the Regional Business\nTechnology Park in Lebanon, Russell County, Virginia",
+      "facilityAddress": "Technology Park Drive, at the Regional Business Technology Park in Lebanon, Russell County, Virginia",
       "facilityCounty": "Russell County",
       "facilityState": "VA",
       "initialConstructionCommencedNotificationRequired": true,
@@ -23,11 +23,11 @@
       "initialStartupNotificationRequired": true,
       "startupNotificationWindowDays": 16,
       "permitCopyOnsiteRequired": true,
-      "rightOfEntryClause": "R2btotEntryThepermitteeshall allow authonzed local, state, and federal \nrepresentatives, upon the presentation of credentials: \na. Toenter upon the permittee's premises on which the facility is located or in which \nany records are required to be kept underthe terms and conditions ofthis permit; \nb Tohave access to and copy at reasonable times any records required to be kept \nunderthe terms and conditions ofthis permit orthe State Air Pollution Control \nBoard Regulations; \nc. Toinspect at reasonable times anyfacility,equipment, or process subject to the \nterms and conditions ofthis permit orthe State Air Pollution Control Board \nRegulations^and \nd. Tosampleortestat reasonable times. \nPor purposes ofthis condition,the time for inspection shall be deemed reasonable \nduring regularbusiness hours orwheneverthefacilityis in operation. Nothing \ncontained herein shall make an inspection time unreasonable during an emergency. \n^VAC6-170-180and9VAO 5-80-1180)"
+      "rightOfEntryClause": "12.\nR2btotEntryThepermitteeshall allow authonzed local, state, and federal\nrepresentatives, upon the presentation of credentials:\na. Toenter upon the permittee's premises on which the facility is located or in which\nany records are required to be kept underthe terms and conditions ofthis permit;\nb Tohave access to and copy at reasonable times any records required to be kept\nunderthe terms and conditions ofthis permit orthe State Air Pollution Control\nBoard Regulations;\nc. Toinspect at reasonable times anyfacility,equipment, or process subject to the\nterms and conditions ofthis permit orthe State Air Pollution Control Board\nRegulations^and\nd. Tosampleortestat reasonable times.\nPor purposes ofthis condition,the time for inspection shall be deemed reasonable\nduring regularbusiness hours orwheneverthefacilityis in operation. Nothing\ncontained herein shall make an inspection time unreasonable during an emergency.\n^VAC6-170-180and9VAO 5-80-1180)"
     },
     "generatorSets": [
       {
-        "referenceNumber": "Ref. No. 3",
+        "referenceNumber": "Ref No. 3",
         "numGenerators": 1,
         "includedInPermitProject": true,
         "make": "Caterpillar",
@@ -40,7 +40,7 @@
         "secondaryFuelType": null,
         "otherFuels": null,
         "fuelGrade": "No. 1 or No. 2",
-        "fuelSpecification": "ASTM 0396-76",
+        "fuelSpecification": "ASTM D396-76",
         "fuelSulfurContentPct": 0.5,
         "fuelCertificationRequired": true,
         "fuelCertificationFields": {
@@ -69,7 +69,7 @@
         "mactSubpartZZZZ": null
       },
       {
-        "referenceNumber": "Ref. No. 2",
+        "referenceNumber": "Ref No. 2",
         "numGenerators": 1,
         "includedInPermitProject": false,
         "make": "Caterpillar",
@@ -98,7 +98,7 @@
         "fuelThroughputGroupRef": null,
         "control_technologies": null,
         "operating_hours_limit_yr": 500,
-        "operatingHoursRollingWindow": "Consecutive 12-month period; calculated monthly.",
+        "operatingHoursRollingWindow": "Consecutive 12-month period; calculated monthly (sum of hours over each consecutive 12-month period).",
         "allowedOperatingModes": null,
         "opacityLimitPercent": 10,
         "hourMeterRequired": null,
@@ -111,7 +111,7 @@
         "mactSubpartZZZZ": null
       },
       {
-        "referenceNumber": "Ref. No. 1",
+        "referenceNumber": "Ref No. 1",
         "numGenerators": 1,
         "includedInPermitProject": false,
         "make": "Caterpillar",
@@ -123,8 +123,8 @@
         "primaryFuelType": "distillate oil",
         "secondaryFuelType": null,
         "otherFuels": null,
-        "fuelGrade": "No. 1 or No. 2",
-        "fuelSpecification": "ASTM D396-76",
+        "fuelGrade": null,
+        "fuelSpecification": "ASTM 0396-76",
         "fuelSulfurContentPct": 0.5,
         "fuelCertificationRequired": true,
         "fuelCertificationFields": {
@@ -140,7 +140,7 @@
         "fuelThroughputGroupRef": null,
         "control_technologies": null,
         "operating_hours_limit_yr": 500,
-        "operatingHoursRollingWindow": "Calculated monthly as the sum of each consecutive 12-month period",
+        "operatingHoursRollingWindow": "Consecutive 12-month period, calculated monthly as the sum of each consecutive 12-month period.",
         "allowedOperatingModes": null,
         "opacityLimitPercent": 10,
         "hourMeterRequired": null,
