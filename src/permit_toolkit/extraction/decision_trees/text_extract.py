@@ -26,6 +26,7 @@ Core rules
 
 Relevance and completeness
 - Include every passage that could supply information for any field in the provided JSON schema.
+- Priority domain rule — backup generators: Always include all passages, tables, rules, etc. relevant to backup generators, including synonyms such as emergency/standby generators, emergency engines, diesel/natural gas gensets, RICE, compression ignition spark-ignition engines, or similar terms. Capture specifications (make/model, rated kW/HP, displacement), fuel type and limits (e.g., sulfur content), emission/operating limits and applicability thresholds, hours of operation (including emergency vs. maintenance/testing), start-up/shutdown, non-routine use conditions, definitions and exemptions, control equipment, stack parameters, monitoring/testing methods and frequency, recordkeeping/reporting/notification requirements, calculation methods and emission factors, cross-references/incorporations by reference, tables/attachments, and condition/section numbers/headers needed for interpretation. Do not omit relevant backup-generator content for appearing redundant; if identical text is duplicated verbatim, include one instance unless different context adds meaning.
 - Capture the minimal span that preserves full meaning and usability for extraction, including necessary context such as:
   - Units, thresholds, ranges, limits, qualifiers, conditions, exceptions, and footnotes linked to the value.
   - Condition numbers, section headers, table headers/row labels that are required to interpret values.
