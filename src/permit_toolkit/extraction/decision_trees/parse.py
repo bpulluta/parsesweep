@@ -103,12 +103,13 @@ class StructuredOrdinanceParser(BaseLLMCaller):
             **self.kwargs,
         )
 
-    async def parse(self, text):
+    async def parse(self, text, extract_sem):
         """Parse text and extract structured ordinance data."""
         ref_out = await self._run_single_tree(
             setup_func=setup_graph_generators,
             text=text,
             logger_message="Checking for generators",
+            extract_sem=extract_sem,
         )
         refs = ref_out.get("reference_numbers", [])
         logger.debug("Found the following reference numbers: %s", refs)
@@ -183,7 +184,10 @@ class StructuredOrdinanceParser(BaseLLMCaller):
         tasks = {
             (name, k): asyncio.create_task(
                 self._run_single_tree(
-                    setup_func=f, text=text, logger_message=m
+                    setup_func=f,
+                    text=text,
+                    logger_message=m,
+                    extract_sem=extract_sem,
                 ),
                 name=name,
             )
@@ -372,6 +376,7 @@ class StructuredOrdinanceParser(BaseLLMCaller):
                     text=text,
                     logger_message=m,
                     ref_number=ref_number,
+                    extract_sem=extract_sem,
                 ),
                 name=f"{ref_number}: {name}",
             )
@@ -417,7 +422,7 @@ class StructuredOrdinanceParser(BaseLLMCaller):
         return values
 
     async def _run_single_tree(
-        self, setup_func, text, logger_message, **extra_kwargs
+        self, setup_func, text, logger_message, extract_sem, **extra_kwargs
     ):
         if "ref_number" in extra_kwargs:
             logger_message = (
@@ -431,4 +436,6 @@ class StructuredOrdinanceParser(BaseLLMCaller):
             chat_llm_caller=self._init_chat_llm_caller(DEFAULT_SYSTEM_MESSAGE),
             **extra_kwargs,
         )
-        return await _run_async_tree(tree)
+
+        async with extract_sem:
+            return await _run_async_tree(tree)
