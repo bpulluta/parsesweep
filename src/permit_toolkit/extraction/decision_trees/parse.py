@@ -26,8 +26,10 @@ from permit_toolkit.extraction.decision_trees.graphs import (
     setup_graph_make,
     setup_graph_model,
     setup_graph_rated_capacity_kw,
+    setup_graph_rated_capacity_hp,
     setup_graph_rated_capacity_bhp,
     setup_graph_max_capacity_kw,
+    setup_graph_max_capacity_hp,
     setup_graph_max_capacity_bhp,
     setup_graph_fuel,
     setup_graph_secondary_fuel,
@@ -241,6 +243,11 @@ class StructuredOrdinanceParser(BaseLLMCaller):
                 "rated_capacity_kw",
                 "Checking for generator rated capacity in kW",
             ),
+            "ratedCapacityHP": (
+                setup_graph_rated_capacity_hp,
+                "rated_capacity_hp",
+                "Checking for generator rated capacity in HP",
+            ),
             "ratedCapacityBHP": (
                 setup_graph_rated_capacity_bhp,
                 "rated_capacity_bhp",
@@ -250,6 +257,11 @@ class StructuredOrdinanceParser(BaseLLMCaller):
                 setup_graph_max_capacity_kw,
                 "max_capacity_kw",
                 "Checking for generator maximum capacity in kW",
+            ),
+            "maxCapacityHP": (
+                setup_graph_max_capacity_hp,
+                "max_capacity_hp",
+                "Checking for generator maximum capacity in HP",
             ),
             "maxCapacityBHP": (
                 setup_graph_max_capacity_bhp,
