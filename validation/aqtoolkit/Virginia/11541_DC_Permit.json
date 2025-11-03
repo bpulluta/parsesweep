@@ -1,11 +1,11 @@
 {
   "source_file": "11541_DC_Permit.pdf",
-  "extraction_date": "2025-10-30 18:53:07",
+  "extraction_date": "2025-11-03 13:42:17",
   "state": "Virginia",
   "model": "compassop-gpt-5",
   "qa_qc_enabled": false,
-  "cost_usd": 0.0047501999999999996,
-  "processing_time_sec": 51.020724058151245,
+  "cost_usd": 0.07564874999999999,
+  "processing_time_sec": 77.47789216041565,
   "completeness_score": 0.7999999999999999,
   "generator_count": 3,
   "permit_number": "11541",
@@ -21,10 +21,10 @@
       "initialConstructionCommencedNotificationRequired": true,
       "constructionCommencedNotificationWindowDays": 30,
       "initialStartupNotificationRequired": true,
-      "startupNotificationWindowDays": 16,
+      "startupNotificationWindowDays": 15,
       "permitCopyOnsiteRequired": true,
-      "rightOfEntryClause": "The permittee shall allow authorized local, state, and federal representatives, upon the presentation of credentials: a. To enter upon the permittee's premises on which the facility is located or in which any records are required to be kept under the terms and conditions of this permit; b. To have access to and copy at reasonable times any records required to be kept under the terms and conditions of this permit or the State Air Pollution Control Board Regulations; c. To inspect at reasonable times any facility, equipment, or process subject to the terms and conditions of this permit or the State Air Pollution Control Board Regulations; and d. To sample or test at reasonable times. For purposes of this condition, the time for inspection shall be deemed reasonable during regular business hours or whenever the facility is in operation. Nothing contained herein shall make an inspection time unreasonable during an emergency.",
-      "extractionNotes": "Multiple identifiers present: Registration No. 11541 and Facility ID No. 51-167-00092. Selected 11541 as permitNumber. Facility name extracted as written in the authorization line."
+      "rightOfEntryClause": "The permittee shall allow authorized local, state, and federal representatives, upon the presentation of credentials: a. To enter upon the permittee's premises on which the facility is located or in which any records are required to be kept under the terms and conditions of this permit; b. To have access to and copy at reasonable times any records required to be kept under the terms and conditions of this permit or the State Air Pollution Control Board Regulations; c. To inspect at reasonable times any facility, equipment, or process subject to the terms and conditions of this permit or the State Air Pollution Control Board Regulations; and d. To sample or test at reasonable times. For purposes of this condition, the time for inspection shall be deemed reasonable during regular business hours or whenever the facility is in operation.",
+      "extractionNotes": "Facility ID No. 51-167-00092 also listed."
     },
     "generatorSets": [
       {
@@ -35,6 +35,7 @@
         "model": null,
         "ratedCapacityKW": 1500,
         "ratedCapacityBHP": 2500,
+        "ratedCapacityHP": null,
         "maximumCapacityBHP": null,
         "maximumCapacityKW": null,
         "primaryFuelType": "distillate oil",
@@ -57,7 +58,8 @@
         "fuelThroughputGroupRef": null,
         "controlTechnology": null,
         "operatingHoursLimit": 500,
-        "operatingHoursRollingWindow": "calculated monthly as the sum of each consecutive 12-month period",
+        "operatingHoursRollingWindow": "calculated monthly as the sum of each consecutive 12-month period.",
+        "operatingHoursLimitScope": "per-unit",
         "allowedOperatingModes": null,
         "opacityLimitPercent": 10,
         "hourMeterRequired": null,
@@ -68,7 +70,7 @@
         "maintenanceTrainingRecordsRequired": true,
         "nspsSubpartIIII": true,
         "mactSubpartZZZZ": null,
-        "extractionNotes": "Fuel specification allows numbers 1 or 2; recorded as distillate oil per multiple grade allowance. Model not provided in permit."
+        "extractionNotes": "Fuel specification allows numbers 1 or 2 fuel oil; recorded as distillate oil per multiple grade allowance"
       },
       {
         "referenceNumber": "2",
@@ -78,6 +80,7 @@
         "model": null,
         "ratedCapacityKW": 1500,
         "ratedCapacityBHP": 2500,
+        "ratedCapacityHP": null,
         "maximumCapacityBHP": null,
         "maximumCapacityKW": null,
         "primaryFuelType": "distillate oil",
@@ -100,7 +103,8 @@
         "fuelThroughputGroupRef": null,
         "controlTechnology": null,
         "operatingHoursLimit": 500,
-        "operatingHoursRollingWindow": "calculated monthly as the sum of each consecutive 12-month period",
+        "operatingHoursRollingWindow": "calculated monthly as the sum of each consecutive 12-month period.",
+        "operatingHoursLimitScope": "per-unit",
         "allowedOperatingModes": null,
         "opacityLimitPercent": 10,
         "hourMeterRequired": null,
@@ -111,7 +115,7 @@
         "maintenanceTrainingRecordsRequired": true,
         "nspsSubpartIIII": true,
         "mactSubpartZZZZ": null,
-        "extractionNotes": "Fuel specification allows numbers 1 or 2; recorded as distillate oil per multiple grade allowance. Model not provided in permit."
+        "extractionNotes": "Fuel specification allows numbers 1 or 2 fuel oil; recorded as distillate oil per multiple grade allowance"
       },
       {
         "referenceNumber": "1",
@@ -121,6 +125,7 @@
         "model": null,
         "ratedCapacityKW": 1500,
         "ratedCapacityBHP": 2500,
+        "ratedCapacityHP": null,
         "maximumCapacityBHP": null,
         "maximumCapacityKW": null,
         "primaryFuelType": "distillate oil",
@@ -143,7 +148,8 @@
         "fuelThroughputGroupRef": null,
         "controlTechnology": null,
         "operatingHoursLimit": 500,
-        "operatingHoursRollingWindow": "calculated monthly as the sum of each consecutive 12-month period",
+        "operatingHoursRollingWindow": "calculated monthly as the sum of each consecutive 12-month period.",
+        "operatingHoursLimitScope": "per-unit",
         "allowedOperatingModes": null,
         "opacityLimitPercent": 10,
         "hourMeterRequired": null,
@@ -154,7 +160,7 @@
         "maintenanceTrainingRecordsRequired": true,
         "nspsSubpartIIII": true,
         "mactSubpartZZZZ": null,
-        "extractionNotes": "Fuel specification allows numbers 1 or 2; recorded as distillate oil per multiple grade allowance. Model not provided in permit."
+        "extractionNotes": "Fuel specification allows numbers 1 or 2 fuel oil; recorded as distillate oil per multiple grade allowance"
       }
     ]
   },

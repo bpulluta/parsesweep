@@ -97,6 +97,15 @@ class PermitConsolidator:
             'facility_address': permit_details.get('facilityAddress'),
             'facility_county': permit_details.get('facilityCounty'),
             'facility_state': permit_details.get('facilityState'),
+            
+            # Additional permit details
+            'initial_construction_commenced_notification_required': permit_details.get('initialConstructionCommencedNotificationRequired'),
+            'construction_commenced_notification_window_days': permit_details.get('constructionCommencedNotificationWindowDays'),
+            'initial_startup_notification_required': permit_details.get('initialStartupNotificationRequired'),
+            'startup_notification_window_days': permit_details.get('startupNotificationWindowDays'),
+            'permit_copy_onsite_required': permit_details.get('permitCopyOnsiteRequired'),
+            'right_of_entry_clause': permit_details.get('rightOfEntryClause'),
+            
             'permit_extraction_notes': permit_details.get('extractionNotes'),
         }
         
@@ -113,12 +122,14 @@ class PermitConsolidator:
         for gen in generator_sets:
             record = base_info.copy()
             
-            # Handle monitoring nested object
-            monitoring = gen.get('monitoring', {}) or {}
-            
-            # Convert allowedOperatingModes array to comma-separated string
+            # Convert allowedOperatingModes - handle both string and array
             allowed_modes = gen.get('allowedOperatingModes')
-            allowed_modes_str = ', '.join(allowed_modes) if allowed_modes else None
+            if isinstance(allowed_modes, list):
+                allowed_modes_str = '; '.join(allowed_modes) if allowed_modes else None
+            elif isinstance(allowed_modes, str):
+                allowed_modes_str = allowed_modes
+            else:
+                allowed_modes_str = None
             
             record.update({
                 # Generator identification
@@ -129,6 +140,7 @@ class PermitConsolidator:
                 
                 # Capacity - rated
                 'rated_capacity_bhp': gen.get('ratedCapacityBHP'),
+                'rated_capacity_hp': gen.get('ratedCapacityHP'),
                 'rated_capacity_kw': gen.get('ratedCapacityKW'),
                 
                 # Capacity - maximum
@@ -141,51 +153,36 @@ class PermitConsolidator:
                 'other_fuels': gen.get('otherFuels'),
                 'fuel_grade': gen.get('fuelGrade'),
                 'fuel_specification': gen.get('fuelSpecification'),
-                'fuel_normalized': gen.get('fuelNormalized'),
-                'ulsd': gen.get('ulsd'),
                 
                 # Fuel - throughput and sulfur
                 'fuel_throughput_limit': gen.get('fuelThroughputLimit'),
                 'fuel_throughput_scope': gen.get('fuelThroughputScope'),
                 'fuel_throughput_group_ref': gen.get('fuelThroughputGroupRef'),
-                'fuel_sulfur_content_pct': gen.get('fuelSulfurContent'),
-                'fuel_sulfur_content_ppm': gen.get('fuelSulfurContentPpm'),
+                'fuel_sulfur_content_pct': gen.get('fuelSulfurContentPct'),
+                
+                # Fuel certification
+                'fuel_certification_required': gen.get('fuelCertificationRequired'),
+                'fuel_certification_fields': json.dumps(gen.get('fuelCertificationFields')) if gen.get('fuelCertificationFields') else None,
+                'fuel_change_permit_trigger': gen.get('fuelChangePermitTrigger'),
                 
                 # Operating parameters
-                'operating_hours_limit_yr': gen.get('operatingHoursLimit'),
+                'operating_hours_limit': gen.get('operatingHoursLimit'),
+                'operating_hours_rolling_window': gen.get('operatingHoursRollingWindow'),
+                'operating_hours_limit_scope': gen.get('operatingHoursLimitScope'),
                 'allowed_operating_modes': allowed_modes_str,
                 'control_technology': gen.get('controlTechnology'),
                 'opacity_limit_percent': gen.get('opacityLimitPercent'),
                 
+                # Monitoring requirements
+                'hour_meter_required': gen.get('hourMeterRequired'),
+                'observation_frequency': gen.get('observationFrequency'),
+                'recordkeeping_window_years': gen.get('recordkeepingWindowYears'),
+                'operation_reason_log_required': gen.get('operationReasonLogRequired'),
+                'manufacturer_oandm_required': gen.get('manufacturerOandMRequired'),
+                'maintenance_training_records_required': gen.get('maintenanceTrainingRecordsRequired'),
+                
                 # Permit project inclusion
                 'included_in_permit_project': gen.get('includedInPermitProject'),
-                
-                # Instant emissions (lbs/hr)
-                'nox_limit_lbs_hr': gen.get('noxEmissionLimitLbsHr'),
-                'co_limit_lbs_hr': gen.get('coEmissionLimitLbsHr'),
-                'voc_limit_lbs_hr': gen.get('vocEmissionLimitLbsHr'),
-                'pm_limit_lbs_hr': gen.get('pmEmissionLimitLbsHr'),
-                'pm10_limit_lbs_hr': gen.get('pm10EmissionLimitLbsHr'),
-                'pm25_limit_lbs_hr': gen.get('pm25EmissionLimitLbsHr'),
-                'so2_limit_lbs_hr': gen.get('so2EmissionLimitLbsHr'),
-                'instant_emissions_aggregation_type': gen.get('instantEmissionsAggregationType') or gen.get('emissionsScope'),
-                
-                # Cumulative emissions (tons/yr)
-                'nox_limit_tons_yr': gen.get('noxEmissionLimitTonsYr'),
-                'co_limit_tons_yr': gen.get('coEmissionLimitTonsYr'),
-                'voc_limit_tons_yr': gen.get('vocEmissionLimitTonsYr'),
-                'pm_limit_tons_yr': gen.get('pmEmissionLimitTonsYr'),
-                'pm10_limit_tons_yr': gen.get('pm10EmissionLimitTonsYr'),
-                'pm25_limit_tons_yr': gen.get('pm25EmissionLimitTonsYr'),
-                'so2_limit_tons_yr': gen.get('so2EmissionLimitTonsYr'),
-                'cumulative_emissions_aggregation_type': gen.get('cumulativeEmissionsAggregationType') or gen.get('emissionsGroupRef'),
-                
-                # Testing and monitoring
-                'stack_test_required': gen.get('stackTestRequired'),
-                'hour_meter_required': monitoring.get('hourMeter'),
-                'fuel_flow_meter_required': monitoring.get('fuelFlowMeter'),
-                'observation_frequency': monitoring.get('observationFrequency'),
-                'recordkeeping_window_years': monitoring.get('recordkeepingWindowYears'),
                 
                 # Regulatory applicability
                 'nsps_subpart_iiii': gen.get('nspsSubpartIIII'),
