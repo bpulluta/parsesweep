@@ -205,38 +205,6 @@ class PermitExtractor:
 
         return data
 
-    def _clean_emission_zeros(self, data: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Convert emission limit zeros to null.
-
-        OpenAI sometimes returns 0 instead of null for missing emission limits.
-        A true "0 tons/yr" limit would be unusual and should be explicit in the permit.
-        This prevents misleading data where 0 could be confused with "not specified".
-        """
-        emission_fields = [
-            "noxEmissionLimitLbsHr",
-            "noxEmissionLimitTonsYr",
-            "coEmissionLimitLbsHr",
-            "coEmissionLimitTonsYr",
-            "vocEmissionLimitLbsHr",
-            "vocEmissionLimitTonsYr",
-            "so2EmissionLimitLbsHr",
-            "so2EmissionLimitTonsYr",
-            "pmEmissionLimitLbsHr",
-            "pmEmissionLimitTonsYr",
-            "pm10EmissionLimitLbsHr",
-            "pm10EmissionLimitTonsYr",
-            "pm25EmissionLimitLbsHr",
-            "pm25EmissionLimitTonsYr",
-        ]
-
-        for generator in data.get("generatorSets", []):
-            for field in emission_fields:
-                if field in generator and generator[field] == 0:
-                    generator[field] = None
-
-        return data
-
     def _normalize_fuel_fields(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """
         Normalize fuel-related fields for consistency across extractions.
@@ -370,17 +338,14 @@ EXTRACTION RULES:
    - Separate rows for each unit → numGenerators: 1 for each entry
 
 3. Extract ALL fields including:
-   - Make, model, capacity (kW/BHP)
-   - Fuel type: Use "no. 2 distillate" for diesel/distillate oil unless "no. 1 distillate" is specified
-   - Fuel sulfur content: Extract as decimal (e.g., 0.005 for 0.5%, 0.0015 for 0.0015%)
-   - Fuel throughput limit: Extract gallons/year from "Fuel Throughput" conditions, or null if not specified
-   - Control technology: Extract from "Emission Controls" conditions, or null if not specified
-   - Operating hours limit: Extract hours/year from permit conditions
-   - Emission limits: CAREFULLY match pollutant names
-     * "PM-10" or "PM10" → pm10EmissionLimitLbsHr/TonsYr
-     * "PM-2.5" or "PM2.5" → pm25EmissionLimitLbsHr/TonsYr
-     * "PM" or "Particulate Matter" (without numbers) → pmEmissionLimitLbsHr/TonsYr
-     * Extract both lbs/hr and tons/yr for each pollutant found
+   - Make, model, capacity (kW/BHP/HP)
+   - Fuel type, grade, specification, sulfur content
+   - Fuel throughput limits (gallons/year)
+   - Control technology descriptions
+   - Operating hours limits and rolling windows
+   - Operating modes allowed
+   - Monitoring and recordkeeping requirements
+   - Regulatory applicability (NSPS, MACT)
 
 SCHEMA:
 {json.dumps(schema, indent=2)}
@@ -411,39 +376,25 @@ CRITICAL EXTRACTION GUIDELINES:
    - Convert to numeric value (remove commas)
    - If NO fuel throughput limit is specified in the permit, set to null (NOT zero)
 
-5. CONTROL TECHNOLOGY:
-   - Extract from "Emission Controls" section
-   - Look for phrases like "controlled by", "turbocharged", "aftercooler", "SCR", etc.
+5. CONTROL TECHNOLOGY & OPERATIONS:
+   - controlTechnology: Extract from "Emission Controls" section (e.g., "turbocharged", "aftercooler", "SCR")
+   - operatingHoursLimit: Extract maximum hours/year from permit conditions
+   - operatingHoursRollingWindow: Extract time period exactly as written (e.g., "consecutive 12-month period")
+   - operatingHoursLimitScope: "per-unit", "combined", or "facility-wide"
+   - allowedOperatingModes: Extract exactly as written (e.g., "emergency only", "emergency, maintenance and testing")
    - If NOT specified, set to null
 
-5. CONTROL TECHNOLOGY:
-   - Extract from "Emission Controls" section
-   - Look for phrases like "controlled by", "turbocharged", "aftercooler", "SCR", etc.
-   - If NOT specified, set to null
+6. MONITORING & RECORDKEEPING:
+   - hourMeterRequired: true/false/null
+   - observationFrequency: Extract exactly as written (e.g., "daily when operated", "monthly")
+   - recordkeepingWindowYears: Number of years to retain records
+   - operationReasonLogRequired: true if logging operation reasons required
+   - manufacturerOandMRequired: true if manufacturer O&M procedures required
+   - maintenanceTrainingRecordsRequired: true if maintenance/training records required
 
-6. EMISSION LIMITS AND AGGREGATION:
-   - Match generator reference numbers to emission limit conditions
-   - CRITICAL: Pollutant name mapping:
-     * "VOC", "TVOC", or "VOM" (Volatile Organic Material - Illinois term) → vocEmissionLimitLbsHr/TonsYr
-     * "NOx", "NO_x", "Nitrogen Oxides" → noxEmissionLimitLbsHr/TonsYr
-     * "CO", "Carbon Monoxide" → coEmissionLimitLbsHr/TonsYr
-     * "PM-10" or "PM10" → pm10EmissionLimitLbsHr/TonsYr
-     * "PM-2.5" or "PM2.5" → pm25EmissionLimitLbsHr/TonsYr
-     * "PM" or "Particulate Matter" (without suffix) → pmEmissionLimitLbsHr/TonsYr
-     * "SO2", "Sulfur Dioxide" → so2EmissionLimitLbsHr/TonsYr
-   - Extract "Each" limits (per generator) for lbs/hr
-   - Extract "Combined" limits (for group) for tons/yr if "Each" not available
-   - Set to null if not specified
-
-   - AGGREGATION TYPES (CRITICAL - DO NOT SKIP):
-     * instantEmissionsAggregationType: Look for phrases with lbs/hr limits like:
-       - "for each generator" / "per generator" / "each unit" → record verbatim
-       - "combined" / "total" / "facility-wide" → record verbatim
-       - If permit just lists value without scope, set to null
-     * cumulativeEmissionsAggregationType: Look for phrases with tons/yr limits like:
-       - "for each generator" / "per generator" / "each unit" → record verbatim
-       - "combined" / "total" / "facility-wide" → record verbatim
-       - If permit just lists value without scope, set to null
+7. REGULATORY APPLICABILITY:
+   - nspsSubpartIIII: true if NSPS Subpart IIII applies, false if explicitly not applicable, null if not mentioned
+   - mactSubpartZZZZ: true if MACT Subpart ZZZZ applies, false if explicitly not applicable, null if not mentioned
 
 DOCUMENT TEXT:
 {text_excerpt}
@@ -477,10 +428,6 @@ Return valid JSON following the schema exactly. Match the permit's structure - d
 
             # Ensure all schema fields are present (fill missing with null)
             data = self._normalize_with_schema(data, schema)
-
-            # Post-process: Convert emission limit zeros to null
-            # (OpenAI sometimes returns 0 for missing values instead of null)
-            data = self._clean_emission_zeros(data)
 
             # Calculate cost
             usage = response.usage
@@ -538,33 +485,24 @@ CRITICAL: Extract EVERY instance of the following information types:
 
 2. CAPACITY SPECIFICATIONS:
    - Rated capacity in kilowatts (kW)
-   - Rated capacity in brake horsepower (bhp or hp)
+   - Rated capacity in brake horsepower (BHP or HP)
    - Maximum capacity if different from rated
 
 3. OPERATING LIMITS:
    - Operating hours per year (e.g., "500 hours per year", "≤218 hrs/yr")
    - Fuel throughput limits (gallons per year)
+   - Operating modes allowed (e.g., "emergency only", "emergency, maintenance and testing")
 
 4. FUEL SPECIFICATIONS:
    - Fuel type (diesel, distillate, natural gas, etc.)
+   - Fuel grade (e.g., "No. 2", "Grade No. 1 and 2")
    - Sulfur content (%, ppm, or decimal)
-   - Control technology descriptions
+   - Control technology descriptions (e.g., "turbocharged", "SCR")
 
-5. EMISSION LIMITS (MOST CRITICAL):
-   Extract ALL pollutant limits in BOTH lbs/hr AND tons/yr:
-   - Nitrogen Oxides (NOx, NO_x)
-   - Carbon Monoxide (CO)
-   - Volatile Organic Compounds (VOC, TVOC, VOM - use "voc" for VOM)
-   - Particulate Matter (PM, PM-10, PM10, PM-2.5, PM2.5)
-   - Sulfur Dioxide (SO2, SO_2)
-
-   NOTE: Illinois permits use "VOM" (Volatile Organic Material) - treat as VOC
-
-   Look for patterns like:
-   "NOx: 53.7 lbs/hr, 83.75 tons/yr"
-   "CO emissions shall not exceed 3.85 lbs/hr"
-   "PM-10: 0.36 lbs/hr and 0.58 tons per year"
-   "VOM: 0.075 g/bhp-hr (27.58 lbs/hr, 120.9 tons/yr)"
+5. MONITORING & REGULATORY:
+   - Hour meter requirements
+   - Recordkeeping requirements
+   - Regulatory applicability (NSPS, MACT)
 
 IMPORTANT: For each extraction, capture the EXACT source text from the permit for traceability.""",
                 examples=examples,
@@ -643,157 +581,123 @@ IMPORTANT: For each extraction, capture the EXACT source text from the permit fo
 
     def _create_langextract_examples(self) -> List:
         """
-        Create UNIVERSAL LangExtract examples that work across state formats.
+        Create UNIVERSAL LangExtract examples for schema-aligned QA/QC.
 
         Design principles:
+        - Focus on actual schema fields (no emission limits)
         - Minimal format assumptions (handles lists, tables, paragraphs)
-        - Semantic content focus (extract meaning, not format)
-        - Multiple pollutant variations (VOC, VOM, full names)
         - Flexible reference patterns (EG##, G-#, numeric)
         - Simplified text to avoid format-specific brittleness
         """
         return [
-            # Example 1: Compact emission list (works for VA bullet lists)
+            # Example 1: Generator specs with capacity and fuel
             self.lx.data.ExampleData(
-                text="""EG01-EG06: 6 generators, 2500 kW
-NOx 53.7 lbs/hr 83.75 tons/yr
-CO 3.85 lbs/hr 6.05 tons/yr
-VOC 1.29 lbs/hr 2.01 tons/yr
-Hours: 500/year""",
+                text="""EG01-EG06: 6 generators, 2500 kW each
+Make: Cummins
+Model: QSK78-G12
+Fuel: No. 2 distillate oil, 0.0015% sulfur
+Operating hours: 500 hours/year""",
                 extractions=[
                     self.lx.data.Extraction(
-                        extraction_class="EMISSION",
-                        extraction_text="NOx 53.7 lbs/hr 83.75 tons/yr",
+                        extraction_class="GENERATOR",
+                        extraction_text="EG01-EG06: 6 generators, 2500 kW",
                         attributes={
                             "generator_id": "EG01-EG06",
-                            "pollutant": "nox",
-                            "lbs_hr": "53.7",
-                            "tons_yr": "83.75",
-                        },
-                    ),
-                    self.lx.data.Extraction(
-                        extraction_class="EMISSION",
-                        extraction_text="CO 3.85 lbs/hr 6.05 tons/yr",
-                        attributes={
-                            "generator_id": "EG01-EG06",
-                            "pollutant": "co",
-                            "lbs_hr": "3.85",
-                            "tons_yr": "6.05",
-                        },
-                    ),
-                    self.lx.data.Extraction(
-                        extraction_class="EMISSION",
-                        extraction_text="VOC 1.29 lbs/hr 2.01 tons/yr",
-                        attributes={
-                            "generator_id": "EG01-EG06",
-                            "pollutant": "voc",
-                            "lbs_hr": "1.29",
-                            "tons_yr": "2.01",
+                            "num_generators": "6",
+                            "capacity_kw": "2500",
                         },
                     ),
                     self.lx.data.Extraction(
                         extraction_class="SPEC",
-                        extraction_text="500/year",
+                        extraction_text="Operating hours: 500 hours/year",
                         attributes={
                             "generator_id": "EG01-EG06",
-                            "type": "hours",
+                            "type": "operating_hours",
                             "value": "500",
                         },
                     ),
+                    self.lx.data.Extraction(
+                        extraction_class="FUEL",
+                        extraction_text="No. 2 distillate oil, 0.0015% sulfur",
+                        attributes={
+                            "generator_id": "EG01-EG06",
+                            "fuel_type": "No. 2 distillate oil",
+                            "sulfur_pct": "0.0015",
+                        },
+                    ),
                 ],
             ),
-            # Example 2: Table format with full names (works for IL tables)
+            # Example 2: Multiple generators with table format
             self.lx.data.ExampleData(
                 text="""G-1 thru G-6: six 2000 kW engines
-Nitrogen Oxides (NOx) 55.16 lbs/hr 66.19 tons/yr
-Carbon Monoxide (CO) 11.63 lbs/hr 13.95 tons/yr
-Volatile Organic Material (VOM) 1.60 lbs/hr 1.92 tons/yr
-Particulate Matter (PM) 0.73 lbs/hr 0.88 tons/yr""",
+Make: Caterpillar
+Model: 3516C
+Fuel: diesel fuel (ultra-low sulfur)
+Control: turbocharged with aftercooler
+Operating: Emergency use only, 218 hours/year""",
                 extractions=[
                     self.lx.data.Extraction(
-                        extraction_class="EMISSION",
-                        extraction_text="Nitrogen Oxides (NOx) 55.16 lbs/hr 66.19 tons/yr",
+                        extraction_class="GENERATOR",
+                        extraction_text="G-1 thru G-6: six 2000 kW engines",
                         attributes={
                             "generator_id": "G-1 thru G-6",
-                            "pollutant": "nox",
-                            "lbs_hr": "55.16",
-                            "tons_yr": "66.19",
-                        },
-                    ),
-                    self.lx.data.Extraction(
-                        extraction_class="EMISSION",
-                        extraction_text="Carbon Monoxide (CO) 11.63 lbs/hr 13.95 tons/yr",
-                        attributes={
-                            "generator_id": "G-1 thru G-6",
-                            "pollutant": "co",
-                            "lbs_hr": "11.63",
-                            "tons_yr": "13.95",
-                        },
-                    ),
-                    self.lx.data.Extraction(
-                        extraction_class="EMISSION",
-                        extraction_text="Volatile Organic Material (VOM) 1.60 lbs/hr 1.92 tons/yr",
-                        attributes={
-                            "generator_id": "G-1 thru G-6",
-                            "pollutant": "voc",
-                            "lbs_hr": "1.60",
-                            "tons_yr": "1.92",
-                        },
-                    ),
-                    self.lx.data.Extraction(
-                        extraction_class="EMISSION",
-                        extraction_text="Particulate Matter (PM) 0.73 lbs/hr 0.88 tons/yr",
-                        attributes={
-                            "generator_id": "G-1 thru G-6",
-                            "pollutant": "pm",
-                            "lbs_hr": "0.73",
-                            "tons_yr": "0.88",
-                        },
-                    ),
-                ],
-            ),
-            # Example 3: Annual only (simplified)
-            self.lx.data.ExampleData(
-                text="""Ref. 3: Caterpillar 1500 kW
-Annual emissions:
-NOx 15.98 tons/yr
-CO 3.44 tons/yr
-PM-10 1.12 tons/yr
-Operating: 500 hours/yr""",
-                extractions=[
-                    self.lx.data.Extraction(
-                        extraction_class="EMISSION",
-                        extraction_text="NOx 15.98 tons/yr",
-                        attributes={
-                            "generator_id": "3",
-                            "pollutant": "nox",
-                            "tons_yr": "15.98",
-                        },
-                    ),
-                    self.lx.data.Extraction(
-                        extraction_class="EMISSION",
-                        extraction_text="CO 3.44 tons/yr",
-                        attributes={
-                            "generator_id": "3",
-                            "pollutant": "co",
-                            "tons_yr": "3.44",
-                        },
-                    ),
-                    self.lx.data.Extraction(
-                        extraction_class="EMISSION",
-                        extraction_text="PM-10 1.12 tons/yr",
-                        attributes={
-                            "generator_id": "3",
-                            "pollutant": "pm10",
-                            "tons_yr": "1.12",
+                            "num_generators": "6",
+                            "capacity_kw": "2000",
                         },
                     ),
                     self.lx.data.Extraction(
                         extraction_class="SPEC",
-                        extraction_text="500 hours/yr",
+                        extraction_text="Emergency use only, 218 hours/year",
+                        attributes={
+                            "generator_id": "G-1 thru G-6",
+                            "type": "operating_mode",
+                            "value": "Emergency use only",
+                            "hours": "218",
+                        },
+                    ),
+                    self.lx.data.Extraction(
+                        extraction_class="CONTROL",
+                        extraction_text="turbocharged with aftercooler",
+                        attributes={
+                            "generator_id": "G-1 thru G-6",
+                            "technology": "turbocharged with aftercooler",
+                        },
+                    ),
+                ],
+            ),
+            # Example 3: Single generator with fuel throughput
+            self.lx.data.ExampleData(
+                text="""Ref. 3: One Caterpillar 1500 kW diesel generator
+Fuel throughput: not to exceed 50,000 gallons per year
+Operating hours: 500 hours per year maximum
+Hour meter: Required""",
+                extractions=[
+                    self.lx.data.Extraction(
+                        extraction_class="GENERATOR",
+                        extraction_text="Ref. 3: One Caterpillar 1500 kW",
                         attributes={
                             "generator_id": "3",
-                            "type": "hours",
+                            "num_generators": "1",
+                            "make": "Caterpillar",
+                            "capacity_kw": "1500",
+                        },
+                    ),
+                    self.lx.data.Extraction(
+                        extraction_class="SPEC",
+                        extraction_text="Fuel throughput: not to exceed 50,000 gallons per year",
+                        attributes={
+                            "generator_id": "3",
+                            "type": "fuel_throughput",
+                            "value": "50000",
+                            "unit": "gallons/year",
+                        },
+                    ),
+                    self.lx.data.Extraction(
+                        extraction_class="SPEC",
+                        extraction_text="Operating hours: 500 hours per year maximum",
+                        attributes={
+                            "generator_id": "3",
+                            "type": "operating_hours",
                             "value": "500",
                         },
                     ),
@@ -925,25 +829,6 @@ Operating: 500 hours/yr""",
                         f"⚠️ INFO: {ref} has emissionsScope='{scope}' without emissionsGroupRef or clarifying notes"
                     )
 
-            # If fuelNormalized is populated, ideally should have notes explaining mapping
-            fuel_norm = gen.get("fuelNormalized")
-            if fuel_norm and fuel_norm not in [None, "other"]:
-                primary_fuel = gen.get("primaryFuelType", "")
-                # Only suggest notes if the normalization isn't obvious
-                if fuel_norm and not any(
-                    norm_hint in primary_fuel.lower()
-                    for norm_hint in [
-                        "no. 2",
-                        "no. 1",
-                        "natural gas",
-                        "propane",
-                    ]
-                ):
-                    if not gen_notes or "fuel" not in gen_notes.lower():
-                        warnings.append(
-                            f"ℹ️ INFO: {ref} has fuelNormalized='{fuel_norm}' - consider adding extractionNotes to document mapping"
-                        )
-
         if warnings:
             logger.warning(f"Sanity checks found {len(warnings)} issues")
         else:
@@ -1059,13 +944,7 @@ Operating: 500 hours/yr""",
                 and g.get("model")
                 and g.get("ratedCapacityKW")
             )
-            score += 0.1 * (complete / len(generators))
-
-            # Emissions
-            with_emissions = sum(
-                1 for g in generators if g.get("noxEmissionLimitLbsHr")
-            )
-            score += 0.2 * (with_emissions / len(generators))
+            score += 0.3 * (complete / len(generators))
 
         return min(score, 1.0)
 

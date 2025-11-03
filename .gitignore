@@ -92,3 +92,5 @@ data/permitsMD/
 *.egg-info
 
 
+validation/permitsMD/
+validation/aqtoolkit/OLD/
