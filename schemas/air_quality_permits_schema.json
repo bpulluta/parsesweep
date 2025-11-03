@@ -3,35 +3,101 @@
   "properties": {
     "permitDetails": {
       "additionalProperties": false,
-      "description": "Permit-level metadata copied exactly from the permit; do not infer or normalize beyond date formatting when unambiguous.",
+      "description": "Permit-level metadata extracted exactly from the document. Do not infer or normalize beyond date formatting.",
       "properties": {
         "permitNumber": {
-          "description": "The actual permit number/identifier only (e.g., '11790', '21050040', '08010054'). Extract only the numeric or alphanumeric identifier, excluding labels like 'Registration No.:', 'Application No.:', 'Permit', etc. For permits with multiple identifiers (e.g., 'Application No.: 21050040 I.D. No.: 031471AEN'), extract the primary permit number (21050040) and document all identifiers found in extractionNotes. Do not include permit type descriptions or renewal status.",
+          "description": "The permit number or registration identifier exactly as written (e.g., '52432', '21050040'). Extract the primary numeric/alphanumeric identifier, excluding labels like 'Registration No.:' or 'Permit'. If multiple identifiers exist, select the primary one and document others in extractionNotes.",
           "type": "string"
         },
         "permitIssuanceDate": {
-          "description": "Date the permit was issued. Use YYYY-MM-DD if unambiguous; else null.",
+          "description": "Date the permit was issued in YYYY-MM-DD format if unambiguous; otherwise null.",
           "type": "string"
         },
         "permitExpirationDate": {
-          "description": "Expiration date if explicitly stated; null if not listed.",
+          "description": "Expiration date in YYYY-MM-DD format if explicitly stated; otherwise null.",
           "type": "string"
         },
         "facilityName": {
-          "description": "Facility name exactly as written in the permit; do not normalize.",
+          "description": "Facility name exactly as written in the permit. Do not normalize.",
           "type": "string"
         },
         "facilityAddress": {
-          "description": "Full facility street address exactly as written; do not normalize.",
+          "description": "Full facility street address exactly as written. Do not normalize.",
           "type": "string"
         },
         "facilityCounty": {
-          "description": "County exactly as written in the permit for the facility location.",
+          "description": "County name exactly as written in the permit.",
           "type": "string"
         },
         "facilityState": {
-          "description": "Two-letter state abbreviation for the facility location.",
+          "description": "Two-letter state abbreviation (e.g., 'VA', 'IL').",
           "type": "string"
+        },
+        "initialConstructionCommencedNotificationRequired": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "True if permit requires notification of construction commencement date. False if explicitly not required. Null if not mentioned."
+        },
+        "constructionCommencedNotificationWindowDays": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Number of days within which construction commencement must be reported (e.g., 30). Leave null if not specified."
+        },
+        "initialStartupNotificationRequired": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "True if permit requires notification of initial startup date. False if explicitly not required. Null if not mentioned."
+        },
+        "startupNotificationWindowDays": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Number of days within which startup must be reported (e.g., 15). Leave null if not specified."
+        },
+        "permitCopyOnsiteRequired": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "True if permit requires keeping a copy onsite. False if explicitly not required. Null if not mentioned."
+        },
+        "rightOfEntryClause": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Free-text excerpt of right-of-entry language enabling inspection, especially noting timing (e.g., 'whenever the facility is in operation'). Leave null if not stated."
         },
         "extractionNotes": {
           "anyOf": [
@@ -42,7 +108,7 @@
               "type": "null"
             }
           ],
-          "description": "Optional field for documenting permit-level extraction decisions. Use ONLY when: (1) multiple permit identifiers exist and you selected the primary one (e.g., 'Selected Application No. 21050040 as primary identifier; also found ID No. 031471AEN'); (2) ambiguity in facility name or address required clarification; (3) date format was ambiguous and you made an interpretation. Leave null if extraction was straightforward."
+          "description": "Optional notes for documenting permit-level extraction decisions. Use ONLY when: (1) multiple permit identifiers exist and you selected the primary one; (2) ambiguity in facility name or address required clarification; (3) date format was ambiguous. Leave null if extraction was straightforward."
         }
       },
       "required": [
@@ -57,13 +123,13 @@
       "type": "object"
     },
     "generatorSets": {
-      "description": "Array of generator set objects, each containing details about a single generator set as described in the document. Do not consolidate generator sets even if they share make and model types, and list them in order which they appear in the document.",
+      "description": "Array of generator set objects. Do not consolidate generator sets even if they share make/model. List in order they appear in the document.",
       "items": {
         "additionalProperties": false,
-        "description": "One entry per referenced unit or unit group as listed in the permit (e.g., EG01, EG04\u2013EG05, 1510-4). Do not synthesize extra rows.",
+        "description": "One entry per generator unit or group as listed in the permit (e.g., EG01, EG04-EG05, 1510-4).",
         "properties": {
           "referenceNumber": {
-            "description": "Unit or group identifier used by the permit (e.g., EG01, EG04\u2013EG05, 1510-4).",
+            "description": "Unit or group identifier exactly as used in the permit (e.g., 'EG01', 'EG04-EG05', '1510-4').",
             "type": "string"
           },
           "numGenerators": {
@@ -75,7 +141,7 @@
                 "type": "null"
               }
             ],
-            "description": "Count of engines in this reference. Use only a number explicitly tied to this reference; else null."
+            "description": "Count of engines in this reference. Use number explicitly tied to this reference; otherwise null."
           },
           "includedInPermitProject": {
             "anyOf": [
@@ -86,23 +152,23 @@
                 "type": "null"
               }
             ],
-            "description": "True if explicitly listed as included in this permitting action; false if listed only as previously/other permitted equipment; null if not distinguished."
+            "description": "True if explicitly listed as included in this permitting action; false if listed as previously permitted equipment; null if not distinguished."
           },
           "make": {
-            "type": "string",
-            "description": "If multiple makes/models are listed for the same reference (e.g., 'Caterpillar 3516C or MTU 16V4000 DS2250 or equivalent'), select one deterministically: (1) prefer the option with the smallest stated electrical rating (kW); (2) if kW is not given for all, compare BHP and pick the smallest; (3) if still tied, pick the first explicitly named make. Copy the chosen make verbatim as a single value. Do not include 'or', 'equivalent', or list multiple options. Document alternatives in extractionNotes. Leave null if not stated."
+            "description": "If multiple makes/models are listed for the same reference (e.g., 'Caterpillar 3516C or MTU 16V4000 DS2250 or equivalent'), select one deterministically: (1) prefer the option with the smallest stated electrical rating (kW); (2) if kW is not given for all, compare BHP and pick the smallest; (3) if still tied, pick the first explicitly named make. Copy the chosen make verbatim as a single value. Do not include 'or', 'equivalent', or list multiple options. Document alternatives in extractionNotes. Leave null if not stated.",
+            "type": "string"
           },
           "model": {
-            "type": "string",
-            "description": "Apply the same selection rule as 'make'. Copy the chosen model verbatim that corresponds to the selected make as a single value. Do not include 'or' or list multiple models. Document alternatives in extractionNotes. Leave null if not stated."
-          },
-          "ratedCapacityBHP": {
-            "type": "number",
-            "description": "Numeric BHP nameplate for the selected make/model only. If multiple BHP values are shown, record the smallest stated BHP as a single number. Do not convert from kW. Do not include 'or' or text. Document higher alternatives in extractionNotes. Leave null if not stated."
+            "description": "If multiple models are listed (e.g., 'Caterpillar 3516C or MTU 16V4000 DS2250 or equivalent'), select deterministically using the same rule as 'make': (1) prefer the model with the smallest stated electrical rating (kW); (2) if kW not given, compare BHP and pick smallest; (3) if tied, pick first explicitly named model. Copy the chosen model verbatim as a single value. Do not include 'or' or list multiple models. Document alternatives in extractionNotes. Leave null if not stated.",
+            "type": "string"
           },
           "ratedCapacityKW": {
-            "type": "number",
-            "description": "Numeric kW nameplate for the selected make/model only. If multiple kW values are shown (e.g., '2,500 kW each or 2,250 kW each'), record the smallest stated kW as a single number. Do not convert from BHP. Do not include 'or' or text. Document higher alternatives in extractionNotes. Leave null if not stated."
+            "description": "Numeric kW nameplate for the selected make/model only. If multiple kW values are shown (e.g., '2,500 kW each or 2,250 kW each'), record the smallest stated kW as a single number. Do not convert from BHP. Do not include 'or' or text. Document higher alternatives in extractionNotes. Leave null if not stated.",
+            "type": "number"
+          },
+          "ratedCapacityBHP": {
+            "description": "Numeric BHP nameplate for the selected make/model only. If multiple BHP values are shown, record the smallest stated BHP as a single number. Do not convert from kW. Do not include 'or' or text. Document higher alternatives in extractionNotes. Leave null if not stated.",
+            "type": "number"
           },
           "maximumCapacityBHP": {
             "anyOf": [
@@ -113,7 +179,7 @@
                 "type": "null"
               }
             ],
-            "description": "Numeric only as written; null if not stated."
+            "description": "Maximum capacity in brake horsepower if explicitly stated; otherwise null."
           },
           "maximumCapacityKW": {
             "anyOf": [
@@ -124,7 +190,7 @@
                 "type": "null"
               }
             ],
-            "description": "Numeric only as written; null if not stated."
+            "description": "Maximum capacity in kilowatts if explicitly stated; otherwise null."
           },
           "primaryFuelType": {
             "anyOf": [
@@ -135,7 +201,7 @@
                 "type": "null"
               }
             ],
-            "description": "Verbatim fuel name exactly as written (e.g., 'diesel', 'diesel fuel oil No. 2', 'distillate fuel (Grades No. 1 and 2)', 'ULSD', 'natural gas', 'propane', 'biodiesel', 'B20', 'dual fuel'). Do not normalize or infer grade; leave null if not stated. For complex descriptions with multiple grades or options, record verbatim and optionally clarify interpretation in extractionNotes."
+            "description": "Primary fuel type exactly as written in permit (e.g., 'diesel fuel', 'no. 2 distillate', 'ultra-low sulfur diesel', 'natural gas', 'propane'). Do not normalize or infer. Leave null if not stated."
           },
           "secondaryFuelType": {
             "anyOf": [
@@ -146,7 +212,7 @@
                 "type": "null"
               }
             ],
-            "description": "Secondary type of fuel for dual-fuel or multi-fuel generators (e.g., 'natural gas' for a generator that can switch between diesel and natural gas). Leave null if not applicable."
+            "description": "Secondary fuel type for dual-fuel generators exactly as written. Leave null if not applicable."
           },
           "otherFuels": {
             "anyOf": [
@@ -157,45 +223,7 @@
                 "type": "null"
               }
             ],
-            "description": "Additional fuels beyond primary and secondary for generators with 3+ fuel options. Describe as free text (e.g., 'renewable diesel, biodiesel blends'). Leave null if not applicable."
-          },
-          "fuelThroughputLimit": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Maximum fuel consumption for this reference as a number only. Do not guess units or basis here."
-          },
-          "fuelThroughputScope": {
-            "type": ["string", "null"],
-            "enum": ["per_unit", "combined_group", "facility_wide", null],
-            "description": "Scope for throughput: 'per_unit', 'combined_group', or 'facility_wide'; null if not stated."
-          },
-          "fuelThroughputGroupRef": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Exact label/range when combined throughput applies (e.g., 'EG01\u2013EG07')."
-          },
-          "fuelSulfurContent": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Enter the PERCENT value only when a percent is explicitly stated (e.g., 0.5 for 0.5%). Do not convert ppm to percent; leave null if not stated."
+            "description": "Additional fuels beyond primary and secondary, as free text. Leave null if not applicable."
           },
           "fuelGrade": {
             "anyOf": [
@@ -206,7 +234,7 @@
                 "type": "null"
               }
             ],
-            "description": "If the permit explicitly names a grade, copy verbatim (e.g., 'No. 2', 'No. 1'). Do not infer."
+            "description": "Fuel grade if explicitly stated (e.g., 'Grade No. 2-D', 'Grade No. 1-D S15'). Copy verbatim. Leave null if not stated."
           },
           "fuelSpecification": {
             "anyOf": [
@@ -217,9 +245,9 @@
                 "type": "null"
               }
             ],
-            "description": "Standards/specifications verbatim when cited (e.g., 'ASTM D975', 'ASTM D396-78', '40 CFR 80.510')."
+            "description": "Fuel specification standard if cited (e.g., 'ASTM D975', 'ASTM D396'). Copy verbatim. Leave null if not stated."
           },
-          "fuelSulfurContentPpm": {
+          "fuelSulfurContentPct": {
             "anyOf": [
               {
                 "type": "number"
@@ -228,9 +256,9 @@
                 "type": "null"
               }
             ],
-            "description": "Enter sulfur in ppm only when ppm is explicitly stated (e.g., 15). Do not convert percent to ppm."
+            "description": "Sulfur content as percent (e.g., 0.0015 for 0.0015% or 15 ppm). Extract as percent regardless of how stated in permit. Leave null if not stated."
           },
-          "ulsd": {
+          "fuelCertificationRequired": {
             "anyOf": [
               {
                 "type": "boolean"
@@ -239,9 +267,50 @@
                 "type": "null"
               }
             ],
-            "description": "True only if ULSD or \u226415 ppm sulfur is explicitly required; false only if >15 ppm is explicitly allowed; null otherwise."
+            "description": "True if fuel supplier certification is explicitly required with each shipment. False if explicitly not required. Null if not mentioned."
           },
-          "fuelNormalized": {
+          "fuelCertificationFields": {
+            "anyOf": [
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "supplierNameRequired": {
+                    "type": "boolean",
+                    "description": "True if supplier name is required in certification."
+                  },
+                  "receiptDateRequired": {
+                    "type": "boolean",
+                    "description": "True if receipt/delivery date is required in certification."
+                  },
+                  "quantityRequired": {
+                    "type": "boolean",
+                    "description": "True if quantity/volume is required in certification."
+                  },
+                  "astmComplianceStatementRequired": {
+                    "type": "boolean",
+                    "description": "True if ASTM compliance statement is required in certification."
+                  },
+                  "sulfurContentRequired": {
+                    "type": "boolean",
+                    "description": "True if sulfur content is required in certification."
+                  }
+                },
+                "required": [
+                  "supplierNameRequired",
+                  "receiptDateRequired",
+                  "quantityRequired",
+                  "astmComplianceStatementRequired",
+                  "sulfurContentRequired"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Breakdown of required fuel certification fields if certification is required. Leave null if certification not required or fields not specified."
+          },
+          "fuelChangePermitTrigger": {
             "anyOf": [
               {
                 "type": "string"
@@ -250,19 +319,42 @@
                 "type": "null"
               }
             ],
-            "enum": [
-              "distillate_no2",
-              "distillate_no1",
-              "natural_gas",
-              "propane",
-              "biodiesel_blend",
-              "dual_fuel",
-              "other",
-              null
-            ],
-            "description": "Optional normalization bucket; populate only when unambiguous from source text. Allowed values: distillate_no2, distillate_no1, natural_gas, propane, biodiesel_blend, dual_fuel, other. Otherwise null. If normalization required interpretation or mapping of ambiguous fuel descriptions, document the source text and reasoning in extractionNotes (e.g., 'Mapped diesel fuel oil No. 2 → distillate_no2')."
+            "description": "Free-text excerpt of permit language describing when fuel changes trigger permit modification (e.g., 'A change in the fuel may require a new or amended permit'). Leave null if not stated."
           },
-          
+          "fuelThroughputLimit": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Maximum fuel consumption as numeric value only (e.g., gallons per year). Leave null if not stated."
+          },
+          "fuelThroughputScope": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": ["per_unit", "combined_group", "facility_wide"]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Scope of fuel throughput limit: 'per_unit' (each generator), 'combined_group' (multiple generators combined), or 'facility_wide'. Leave null if not stated."
+          },
+          "fuelThroughputGroupRef": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Reference to generator group when throughput is combined (e.g., 'EG01-EG07'). Leave null if not applicable."
+          },
           "controlTechnology": {
             "anyOf": [
               {
@@ -272,7 +364,7 @@
                 "type": "null"
               }
             ],
-            "description": "Emission control technology or pollution control devices used on the generator. Extract from 'Emission Controls' or 'Process Requirements' sections. Common examples: 'turbocharged engine and aftercooler', 'selective catalytic reduction (SCR)', 'diesel oxidation catalyst (DOC)', 'good operating practices and maintenance per manufacturer recommendations'. Leave null if not specified."
+            "description": "Emission control technology or devices as written in permit (e.g., 'turbocharged engine and aftercooler', 'SCR', 'DOC'). Leave null if not specified."
           },
           "operatingHoursLimit": {
             "anyOf": [
@@ -283,178 +375,29 @@
                 "type": "null"
               }
             ],
-            "description": "Maximum allowed hours per year for this reference as a number only. If the permit uses a rolling 12-month basis, store the number only; do not include basis text here."
+            "description": "Maximum allowed operating hours per year as numeric value. Leave null if not specified."
           },
-          "noxEmissionLimitLbsHr": {
+          "operatingHoursRollingWindow": {
             "anyOf": [
               {
-                "type": "number"
+                "type": "string"
               },
               {
                 "type": "null"
               }
             ],
-            "description": "Numeric as written for this reference. Do not aggregate or apportion. Use 'emissionsScope'/'emissionsGroupRef' to indicate scope."
-          },
-          "noxEmissionLimitTonsYr": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Cumulative Nitrogen Oxides emission limit in tons per year. Leave null if not specified in permit. This can be facility wide, span multiple generator sets, or just for one generator. Numeric as written for this reference. Do not aggregate or apportion. Use 'emissionsScope'/'emissionsGroupRef' to indicate scope."
-          },
-          "coEmissionLimitLbsHr": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Numeric as written for this reference. Do not aggregate or apportion. Use 'emissionsScope'/'emissionsGroupRef' to indicate scope."
-          },
-          "coEmissionLimitTonsYr": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Cumulative Carbon Monoxide emission limit in tons per year. Leave null if not specified in permit. This can be facility wide, span multiple generator sets, or just for one generator. Numeric as written for this reference. Do not aggregate or apportion. Use 'emissionsScope'/'emissionsGroupRef' to indicate scope."
-          },
-          "vocEmissionLimitLbsHr": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Numeric as written for this reference. Do not aggregate or apportion. Use 'emissionsScope'/'emissionsGroupRef' to indicate scope."
-          },
-          "vocEmissionLimitTonsYr": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Cumulative Volatile Organic Compounds emission limit in tons per year. Leave null if not specified in permit. This can be facility wide, span multiple generator sets, or just for one generator. Numeric as written for this reference. Do not aggregate or apportion. Use 'emissionsScope'/'emissionsGroupRef' to indicate scope."
-          },
-          "pmEmissionLimitLbsHr": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Numeric as written for this reference. Do not aggregate or apportion. Use 'emissionsScope'/'emissionsGroupRef' to indicate scope."
-          },
-          "pmEmissionLimitTonsYr": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Cumulative Particulate Matter emission limit in tons per year. Leave null if not specified in permit. This can be facility wide, span multiple generator sets, or just for one generator. Numeric as written for this reference. Do not aggregate or apportion. Use 'emissionsScope'/'emissionsGroupRef' to indicate scope."
-          },
-          "pm10EmissionLimitLbsHr": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Numeric as written for this reference. Do not aggregate or apportion. Use 'emissionsScope'/'emissionsGroupRef' to indicate scope."
-          },
-          "pm10EmissionLimitTonsYr": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "PM-10 emission limit in tons per year. Leave null if not specified in permit. This can be facility wide, span multiple generator sets, or just for one generator. Numeric as written for this reference. Do not aggregate or apportion. Use 'emissionsScope'/'emissionsGroupRef' to indicate scope."
-          },
-          "so2EmissionLimitLbsHr": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Numeric as written for this reference. Do not aggregate or apportion. Use 'emissionsScope'/'emissionsGroupRef' to indicate scope."
-          },
-          "so2EmissionLimitTonsYr": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Cumulative Sulfur Dioxide emission limit in tons per year. Leave null if not specified in permit. This can be facility wide, span multiple generator sets, or just for one generator. Numeric as written for this reference. Do not aggregate or apportion. Use 'emissionsScope'/'emissionsGroupRef' to indicate scope."
-          },
-          "instantEmissionsAggregationType": {
-            "description": "How the instantaneous emissions (lbs/hr) are tallied for this generator set (e.g. for each generator)",
-            "type": "string"
-          },
-          "cumulativeEmissionsAggregationType": {
-            "description": "How the cumulative emissions (tons/yr) are aggregated (e.g. by generator set, or facility wide)",
-            "type": "string"
-          },
-          "stackTestRequired": {
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Indicates if a stack test is required for this generator set. Leave null if not specified in permit."
+            "description": "Rolling window method exactly as written (e.g., 'consecutive 12-month period; calculated monthly'). Leave null if not specified."
           },
           "allowedOperatingModes": {
             "anyOf": [
               {
-                "type": "array"
+                "type": "string"
               },
               {
                 "type": "null"
               }
             ],
-            "items": {
-              "type": "string",
-              "enum": [
-                "emergency",
-                "ISO_emergency",
-                "maintenance_testing",
-                "non_emergency_after_approval"
-              ]
-            },
-            "description": "Only include modes explicitly authorized. Map: 'emergency only'→'emergency'; ISO/RTO emergencies→'ISO_emergency'; 'maintenance/testing'→'maintenance_testing'; agency-approved non-emergency→'non_emergency_after_approval'. If the permit references 40 CFR 60.4211(f) hour carve-outs or similar state limits, map modes accordingly; do not invent hours. For non-obvious CFR mappings, document the regulation reference and interpretation in extractionNotes (e.g., 'Mapped 40 CFR 60.4211(f)(2) maintenance allowance → maintenance_testing')."
+            "description": "Operating modes allowed exactly as written in permit (e.g., 'emergency only', 'emergency, maintenance and testing', 'emergency and non-emergency with approval'). Leave null if not specified."
           },
           "opacityLimitPercent": {
             "anyOf": [
@@ -465,65 +408,73 @@
                 "type": "null"
               }
             ],
-            "description": "Percent opacity per EPA Method 9 when explicitly stated; otherwise null."
+            "description": "Opacity limit as percent if explicitly stated (e.g., 20 for 20%). Leave null if not stated."
           },
-          "monitoring": {
+          "hourMeterRequired": {
             "anyOf": [
               {
-                "type": "object"
+                "type": "boolean"
               },
               {
                 "type": "null"
               }
             ],
-            "additionalProperties": false,
-            "properties": {
-              "hourMeter": {
-                "anyOf": [
-                  {
-                    "type": "boolean"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "description": "True if a non-resettable hour meter is required or present."
+            "description": "True if hour meter is explicitly required. False if explicitly not required. Null if not mentioned."
+          },
+          "observationFrequency": {
+            "anyOf": [
+              {
+                "type": "string"
               },
-              "fuelFlowMeter": {
-                "anyOf": [
-                  {
-                    "type": "boolean"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "description": "True only if a fuel flow meter is explicitly required."
-              },
-              "observationFrequency": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "description": "Minimum observation cadence as written (e.g., 'monthly if operated')."
-              },
-              "recordkeepingWindowYears": {
-                "anyOf": [
-                  {
-                    "type": "number"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "description": "Years to retain records if explicitly stated (e.g., 5)."
+              {
+                "type": "null"
               }
-            },
-            "description": "Monitoring and recordkeeping explicitly tied to this reference. Do not infer."
+            ],
+            "description": "Monitoring/observation frequency exactly as written (e.g., 'daily when operated', 'monthly', 'quarterly'). Leave null if not specified."
+          },
+          "recordkeepingWindowYears": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Number of years to retain records if explicitly stated (e.g., 5). Leave null if not specified."
+          },
+          "operationReasonLogRequired": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "True if permit explicitly requires logging operation reasons (date, cause, hours) for each run. False if explicitly not required. Null if not mentioned."
+          },
+          "manufacturerOandMRequired": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "True if manufacturer's operation and maintenance procedures/instructions are explicitly required. False if explicitly not required. Null if not mentioned."
+          },
+          "maintenanceTrainingRecordsRequired": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "True if maintenance records and operator training records are explicitly required. False if explicitly not required. Null if not mentioned."
           },
           "nspsSubpartIIII": {
             "anyOf": [
@@ -534,7 +485,7 @@
                 "type": "null"
               }
             ],
-            "description": "True if the permit explicitly states applicability; false if explicitly not applicable; null if not mentioned."
+            "description": "True if NSPS Subpart IIII is explicitly stated as applicable. False if explicitly stated as not applicable. Null if not mentioned."
           },
           "mactSubpartZZZZ": {
             "anyOf": [
@@ -545,7 +496,7 @@
                 "type": "null"
               }
             ],
-            "description": "True if the permit explicitly states applicability; false if explicitly not applicable; null if not mentioned."
+            "description": "True if MACT Subpart ZZZZ is explicitly stated as applicable. False if explicitly stated as not applicable. Null if not mentioned."
           },
           "extractionNotes": {
             "anyOf": [
@@ -556,7 +507,7 @@
                 "type": "null"
               }
             ],
-            "description": "Optional field for documenting extraction decisions when alternatives or ambiguities exist in source document. Use ONLY when: (1) multiple make/model options were listed and you selected one per the deterministic rule (e.g., 'Selected Caterpillar 3516C (2500 kW) from alternatives: Caterpillar 3516C or MTU 16V4000 DS2250'); (2) multiple capacity values were listed and you selected the smallest (e.g., 'Selected 2250 kW from: 2500 kW or 2250 kW'); (3) other extraction ambiguities requiring clarification. Leave null if extraction was straightforward with no alternatives."
+            "description": "Optional notes documenting extraction decisions (e.g., multiple make/model options, capacity ambiguities). Leave null if straightforward."
           }
         },
         "required": [

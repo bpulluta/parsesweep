@@ -4,10 +4,47 @@ import json
 import logging
 from pathlib import Path
 from typing import List, Dict, Any
+import unicodedata
 
 import pandas as pd
 
 logger = logging.getLogger(__name__)
+
+
+def clean_text(text: Any) -> Any:
+    """
+    Clean text fields by normalizing Unicode and removing problematic characters.
+    
+    Args:
+        text: Input text or other data type
+        
+    Returns:
+        Cleaned text or original value if not a string
+    """
+    if not isinstance(text, str):
+        return text
+    
+    # Normalize Unicode characters (NFKC handles compatibility characters)
+    text = unicodedata.normalize('NFKC', text)
+    
+    # Replace common problematic characters with ASCII equivalents
+    replacements = {
+        '\u2265': '>=',  # ≥ greater than or equal
+        '\u2264': '<=',  # ≤ less than or equal  
+        '\u00b0': 'deg', # ° degree symbol
+        '\u2013': '-',   # – en dash
+        '\u2014': '-',   # — em dash
+        '\u2018': "'",   # ' left single quote
+        '\u2019': "'",   # ' right single quote
+        '\u201c': '"',   # " left double quote
+        '\u201d': '"',   # " right double quote
+        '\u00a0': ' ',   # non-breaking space
+    }
+    
+    for char, replacement in replacements.items():
+        text = text.replace(char, replacement)
+    
+    return text
 
 
 class PermitConsolidator:
@@ -31,7 +68,7 @@ class PermitConsolidator:
         
     def load_json(self, json_path: Path) -> Dict[str, Any]:
         """Load a single extracted permit JSON file."""
-        with open(json_path, 'r') as f:
+        with open(json_path, 'r', encoding='utf-8') as f:
             return json.load(f)
     
     def flatten_permit(self, permit_data: Dict[str, Any], source_file: str = None, metadata: Dict[str, Any] = None) -> List[Dict[str, Any]]:
@@ -59,14 +96,11 @@ class PermitConsolidator:
             'facility_name': permit_details.get('facilityName'),
             'facility_address': permit_details.get('facilityAddress'),
             'facility_county': permit_details.get('facilityCounty'),
+            'facility_state': permit_details.get('facilityState'),
+            'permit_extraction_notes': permit_details.get('extractionNotes'),
         }
         
-        # Add only essential metadata fields (state)
-        if metadata:
-            base_info.update({
-                'state': metadata.get('state'),
-            })
-        
+        # Add source file if provided
         if source_file:
             base_info['source_file'] = source_file
         
@@ -126,37 +160,25 @@ class PermitConsolidator:
                 # Permit project inclusion
                 'included_in_permit_project': gen.get('includedInPermitProject'),
                 
-                # Emissions scope
-                'emissions_scope': gen.get('emissionsScope'),
-                'emissions_group_ref': gen.get('emissionsGroupRef'),
-                
-                # Emissions - NOx
+                # Instant emissions (lbs/hr)
                 'nox_limit_lbs_hr': gen.get('noxEmissionLimitLbsHr'),
-                'nox_limit_tons_yr': gen.get('noxEmissionLimitTonsYr'),
-                
-                # Emissions - CO
                 'co_limit_lbs_hr': gen.get('coEmissionLimitLbsHr'),
-                'co_limit_tons_yr': gen.get('coEmissionLimitTonsYr'),
-                
-                # Emissions - VOC
                 'voc_limit_lbs_hr': gen.get('vocEmissionLimitLbsHr'),
-                'voc_limit_tons_yr': gen.get('vocEmissionLimitTonsYr'),
-                
-                # Emissions - PM
                 'pm_limit_lbs_hr': gen.get('pmEmissionLimitLbsHr'),
-                'pm_limit_tons_yr': gen.get('pmEmissionLimitTonsYr'),
-                
-                # Emissions - PM10
                 'pm10_limit_lbs_hr': gen.get('pm10EmissionLimitLbsHr'),
-                'pm10_limit_tons_yr': gen.get('pm10EmissionLimitTonsYr'),
-                
-                # Emissions - PM2.5
                 'pm25_limit_lbs_hr': gen.get('pm25EmissionLimitLbsHr'),
-                'pm25_limit_tons_yr': gen.get('pm25EmissionLimitTonsYr'),
-                
-                # Emissions - SO2
                 'so2_limit_lbs_hr': gen.get('so2EmissionLimitLbsHr'),
+                'instant_emissions_aggregation_type': gen.get('instantEmissionsAggregationType') or gen.get('emissionsScope'),
+                
+                # Cumulative emissions (tons/yr)
+                'nox_limit_tons_yr': gen.get('noxEmissionLimitTonsYr'),
+                'co_limit_tons_yr': gen.get('coEmissionLimitTonsYr'),
+                'voc_limit_tons_yr': gen.get('vocEmissionLimitTonsYr'),
+                'pm_limit_tons_yr': gen.get('pmEmissionLimitTonsYr'),
+                'pm10_limit_tons_yr': gen.get('pm10EmissionLimitTonsYr'),
+                'pm25_limit_tons_yr': gen.get('pm25EmissionLimitTonsYr'),
                 'so2_limit_tons_yr': gen.get('so2EmissionLimitTonsYr'),
+                'cumulative_emissions_aggregation_type': gen.get('cumulativeEmissionsAggregationType') or gen.get('emissionsGroupRef'),
                 
                 # Testing and monitoring
                 'stack_test_required': gen.get('stackTestRequired'),
@@ -168,6 +190,9 @@ class PermitConsolidator:
                 # Regulatory applicability
                 'nsps_subpart_iiii': gen.get('nspsSubpartIIII'),
                 'mact_subpart_zzzz': gen.get('mactSubpartZZZZ'),
+                
+                # Extraction notes
+                'generator_extraction_notes': gen.get('extractionNotes'),
             })
             
             records.append(record)
@@ -241,6 +266,11 @@ class PermitConsolidator:
         # Create DataFrame
         df = pd.DataFrame(all_records)
         
+        # Clean all text fields to ensure proper ASCII/UTF-8 compatibility
+        for col in df.columns:
+            if df[col].dtype == 'object':  # Only clean text columns
+                df[col] = df[col].apply(clean_text)
+        
         # Sort by facility and generator (if columns exist)
         sort_columns = []
         if 'facility_name' in df.columns:
@@ -254,8 +284,9 @@ class PermitConsolidator:
         # Save if output path specified
         if output_path:
             output_path.parent.mkdir(parents=True, exist_ok=True)
-            # Use utf-8 encoding and ensure proper character handling
-            df.to_csv(output_path, index=False, encoding='utf-8')
+            # Use utf-8-sig to add BOM for Excel compatibility, or utf-8 for clean UTF-8
+            # Using utf-8 with errors='replace' ensures problematic characters are handled
+            df.to_csv(output_path, index=False, encoding='utf-8', errors='replace')
             logger.info(f"✓ Saved consolidated data to: {output_path}")
         
         # Log summary
