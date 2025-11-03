@@ -1133,6 +1133,102 @@ def setup_graph_rated_capacity_kw(**kwargs):  # noqa: D103
     return G
 
 
+def setup_graph_rated_capacity_hp(**kwargs):  # noqa: D103
+    G = _setup_graph_no_nodes(**kwargs)  # noqa: N806
+
+    G.add_node(
+        "init",
+        prompt=(
+            "Does the following text **directly specify** a numeric nominal "
+            "nameplate capacity, in HP, **for the generator with reference "
+            "number {ref_number}**? Keep in mind that the reference number "
+            "could be included in range or group of numbers and information "
+            "that applies to that group should be considered relevant. "
+            f"{_START_WITH_YN}"
+            '\n\n"""\n{text}\n"""'
+        ),
+    )
+
+    G.add_edge("init", "check_units", condition=llm_response_starts_with_yes)
+    G.add_node(
+        "check_units",
+        prompt=(
+            "Does the text for the generator with reference number "
+            "{ref_number} directly specify capacity **in units of HP**? "
+            f"{_START_WITH_YN}"
+        ),
+    )
+
+    G.add_edge(
+        "check_units",
+        "check_distinguish",
+        condition=llm_response_starts_with_yes,
+    )
+
+    G.add_node(
+        "check_distinguish",
+        prompt=(
+            "Does the text for the generator with reference number "
+            "{ref_number} distinguish between **nominal** and "
+            "**maximum** capacity? "
+            f"{_START_WITH_YN}"
+        ),
+    )
+
+    G.add_edge(
+        "check_distinguish",
+        "cap_distinguish",
+        condition=llm_response_starts_with_yes,
+    )
+    G.add_edge(
+        "check_distinguish",
+        "cap_no_distinguish",
+        condition=llm_response_starts_with_no,
+    )
+
+    G.add_node(
+        "cap_distinguish",
+        prompt=(
+            "We are interested in the **nominal** capacity for the generator "
+            "with reference number {ref_number}. What is that capacity, in "
+            "HP? If multiple HP values are listed for this generator, "
+            "please give the smallest stated HP as a single number. Do not "
+            "attempt to infer this value from other units."
+        ),
+    )
+
+    G.add_node(
+        "cap_no_distinguish",
+        prompt=(
+            "What is the capacity, in HP, for the generator with reference "
+            "number {ref_number}? If multiple HP values are listed for this "
+            "generator, please give the smallest stated HP as a single "
+            "number. Do not attempt to infer this value from other units."
+        ),
+    )
+
+    G.add_edge("cap_distinguish", "final")
+    G.add_edge("cap_no_distinguish", "final")
+
+    G.add_node(
+        "final",
+        prompt=(
+            "Respond based on our entire conversation so far. Return your "
+            "answer in JSON format (not markdown). Your JSON file must "
+            "include exactly two keys. The keys are "
+            '"rated_capacity_hp" and "explanation". The '
+            'value of the "rated_capacity_hp" key should be an numerical '
+            "value representing the nominal nameplate capacity, in HP, "
+            "**for the generator with reference number {ref_number}**. "
+            f"{_EXPLANATION_KEY} "
+            "Document any ambiguities or multiple values in the "
+            "'explanation' text."
+        ),
+    )
+
+    return G
+
+
 def setup_graph_rated_capacity_bhp(**kwargs):  # noqa: D103
     G = _setup_graph_no_nodes(**kwargs)  # noqa: N806
 
@@ -1300,6 +1396,87 @@ def setup_graph_max_capacity_kw(**kwargs):  # noqa: D103
             '"max_capacity_kw" and "explanation". The '
             'value of the "max_capacity_kw" key should be an numerical '
             "value representing the **maximum** nameplate capacity, in kW, "
+            "**for the generator with reference number {ref_number}**. "
+            f"{_EXPLANATION_KEY} "
+            "Document any ambiguities or multiple values in the "
+            "'explanation' text."
+        ),
+    )
+
+    return G
+
+
+def setup_graph_max_capacity_hp(**kwargs):  # noqa: D103
+    G = _setup_graph_no_nodes(**kwargs)  # noqa: N806
+
+    G.add_node(
+        "init",
+        prompt=(
+            "Does the following text **directly specify a maximum** "
+            "capacity, in HP, **for the generator with reference "
+            "number {ref_number}**? Keep in mind that the reference number "
+            "could be included in range or group of numbers and information "
+            "that applies to that group should be considered relevant. "
+            f"{_START_WITH_YN}"
+            '\n\n"""\n{text}\n"""'
+        ),
+    )
+
+    G.add_edge("init", "check_units", condition=llm_response_starts_with_yes)
+    G.add_node(
+        "check_units",
+        prompt=(
+            "Does the text for the generator with reference number "
+            "{ref_number} directly specify maximum capacity **in units of "
+            "HP**? "
+            f"{_START_WITH_YN}"
+        ),
+    )
+
+    G.add_edge(
+        "check_units",
+        "check_distinguish",
+        condition=llm_response_starts_with_yes,
+    )
+
+    G.add_node(
+        "check_distinguish",
+        prompt=(
+            "Does the text for the generator with reference number "
+            "{ref_number} distinguish between **nominal** and "
+            "**maximum** capacity? "
+            f"{_START_WITH_YN}"
+        ),
+    )
+
+    G.add_edge(
+        "check_distinguish",
+        "cap_distinguish",
+        condition=llm_response_starts_with_yes,
+    )
+
+    G.add_node(
+        "cap_distinguish",
+        prompt=(
+            "We are interested in the **maximum** capacity for the generator "
+            "with reference number {ref_number}. What is that capacity, in "
+            "HP? If multiple HP values are listed for this generator, "
+            "please give the largest stated HP as a single number. Do not "
+            "attempt to infer this value from other units."
+        ),
+    )
+
+    G.add_edge("cap_distinguish", "final")
+
+    G.add_node(
+        "final",
+        prompt=(
+            "Respond based on our entire conversation so far. Return your "
+            "answer in JSON format (not markdown). Your JSON file must "
+            "include exactly two keys. The keys are "
+            '"max_capacity_bhp" and "explanation". The '
+            'value of the "max_capacity_bhp" key should be an numerical '
+            "value representing the **maximum** nameplate capacity, in HP, "
             "**for the generator with reference number {ref_number}**. "
             f"{_EXPLANATION_KEY} "
             "Document any ambiguities or multiple values in the "
