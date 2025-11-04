@@ -793,7 +793,8 @@ def setup_graph_generators(**kwargs):  # noqa: D103
         prompt=(
             "Adjust your list so that it lists **all** of the generators "
             "referenced in the permit. Prefer groupings of generator "
-            "identifiers (e.g., EG01-EG05). "
+            "identifiers (e.g., EG01-EG05), but **only** if they are also "
+            "grouped in the permit text."
         ),
     )
     G.add_edge("make_complete", "final")
@@ -801,13 +802,12 @@ def setup_graph_generators(**kwargs):  # noqa: D103
     G.add_node(
         "final",
         prompt=(
-            "Respond based on our entire conversation so far. Return your "
-            "answer in JSON format (not markdown). Your JSON file must "
+            "Respond in JSON format (not markdown). Your JSON file must "
             "include exactly two "
             'keys. The keys are "reference_numbers" and "explanation". The '
             'value of the "reference_numbers" key should be the list of all '
-            "backup generator identifiers mentioned in the text, as "
-            "determined previously. "
+            "generator identifiers mentioned in the text, **as you have "
+            "determined in your latest list**. "
             f"{_EXPLANATION_KEY}"
         ),
     )
