@@ -25,11 +25,9 @@
         "fuelNumber": "2-D S15",
         "secondaryFuelType": null,
         "otherFuels": null,
-        "fuelThroughputLimit": null,
         "fuelAggregation": "DCD-D, DCD-E, DCD-R",
         "fuelSulfurContent": 0.0015,
-        "controlTechnology": "Caterpillar CAT® Selective Catalytic Reduction (SCR)",
-        "operatingHoursLimit": 500,
+        "controlTechnology": "Caterpillar CAT\u00ae Selective Catalytic Reduction (SCR)",
         "noxEmissionLimitLbsHr": 4.81,
         "noxEmissionLimitTonsYr": null,
         "coEmissionLimitLbsHr": 6.09,
@@ -44,7 +42,9 @@
         "so2EmissionLimitTonsYr": null,
         "instantEmissionsAggregationType": "per generator",
         "cumulativeEmissionsAggregationType": "facility wide (combined for DCA-A through DCA-F, DCA-Swing, DCB-A through DCB-H, DCC-A through DCC-F, DCD-A through DCD-E, and DCD-R)",
-        "stackTestRequired": true
+        "stackTestRequired": true,
+        "fuelThroughputPerUnitLimit": null,
+        "operatingHoursPerUnitLimit": 500
       },
       {
         "referenceNumber": "DCA-A through DCA-E and DCA-Swing",
@@ -60,11 +60,9 @@
         "fuelNumber": "2-D S15",
         "secondaryFuelType": null,
         "otherFuels": null,
-        "fuelThroughputLimit": null,
         "fuelAggregation": "DCA-A through DCA-E and DCA-Swing",
         "fuelSulfurContent": 0.0015,
         "controlTechnology": "N/A",
-        "operatingHoursLimit": null,
         "noxEmissionLimitLbsHr": 46.36,
         "noxEmissionLimitTonsYr": null,
         "coEmissionLimitLbsHr": 9.33,
@@ -79,7 +77,9 @@
         "so2EmissionLimitTonsYr": null,
         "instantEmissionsAggregationType": "per generator",
         "cumulativeEmissionsAggregationType": "facility wide (combined for DCA-A through DCA-F, DCA-Swing, DCB-A through DCB-H, DCC-A through DCC-F, DCD-A through DCD-E, and DCD-R)",
-        "stackTestRequired": null
+        "stackTestRequired": null,
+        "fuelThroughputPerUnitLimit": null,
+        "operatingHoursPerUnitLimit": null
       },
       {
         "referenceNumber": "DCB-A through DCB-F",
@@ -95,11 +95,9 @@
         "fuelNumber": "2-D S15",
         "secondaryFuelType": null,
         "otherFuels": null,
-        "fuelThroughputLimit": null,
         "fuelAggregation": "DCB-A through DCB-F",
         "fuelSulfurContent": 0.0015,
         "controlTechnology": "SCR-Endure Systems",
-        "operatingHoursLimit": null,
         "noxEmissionLimitLbsHr": 4.81,
         "noxEmissionLimitTonsYr": null,
         "coEmissionLimitLbsHr": 5.86,
@@ -114,7 +112,9 @@
         "so2EmissionLimitTonsYr": null,
         "instantEmissionsAggregationType": "per generator",
         "cumulativeEmissionsAggregationType": "facility wide (combined for DCA-A through DCA-F, DCA-Swing, DCB-A through DCB-H, DCC-A through DCC-F, DCD-A through DCD-E, and DCD-R)",
-        "stackTestRequired": null
+        "stackTestRequired": null,
+        "fuelThroughputPerUnitLimit": null,
+        "operatingHoursPerUnitLimit": null
       },
       {
         "referenceNumber": "DCB-G through DCB-H",
@@ -130,11 +130,9 @@
         "fuelNumber": "2-D S15",
         "secondaryFuelType": null,
         "otherFuels": null,
-        "fuelThroughputLimit": null,
         "fuelAggregation": "DCB-G through DCB-H",
         "fuelSulfurContent": 0.0015,
-        "controlTechnology": "Caterpillar CAT® Selective Catalytic Reduction (SCR)",
-        "operatingHoursLimit": 500,
+        "controlTechnology": "Caterpillar CAT\u00ae Selective Catalytic Reduction (SCR)",
         "noxEmissionLimitLbsHr": 3.17,
         "noxEmissionLimitTonsYr": null,
         "coEmissionLimitLbsHr": 4.17,
@@ -149,7 +147,9 @@
         "so2EmissionLimitTonsYr": null,
         "instantEmissionsAggregationType": "per generator",
         "cumulativeEmissionsAggregationType": "facility wide (combined for DCA-A through DCA-F, DCA-Swing, DCB-A through DCB-H, DCC-A through DCC-F, DCD-A through DCD-E, and DCD-R)",
-        "stackTestRequired": null
+        "stackTestRequired": null,
+        "fuelThroughputPerUnitLimit": null,
+        "operatingHoursPerUnitLimit": 500
       },
       {
         "referenceNumber": "DCC-A through DCC-D",
@@ -165,11 +165,9 @@
         "fuelNumber": "2-D S15",
         "secondaryFuelType": null,
         "otherFuels": null,
-        "fuelThroughputLimit": null,
         "fuelAggregation": "DCC-A through DCC-D",
         "fuelSulfurContent": 0.0015,
         "controlTechnology": "SCR-Endure Systems",
-        "operatingHoursLimit": null,
         "noxEmissionLimitLbsHr": 4.81,
         "noxEmissionLimitTonsYr": null,
         "coEmissionLimitLbsHr": 5.86,
@@ -184,7 +182,9 @@
         "so2EmissionLimitTonsYr": null,
         "instantEmissionsAggregationType": "per generator",
         "cumulativeEmissionsAggregationType": "facility wide (combined for DCA-A through DCA-F, DCA-Swing, DCB-A through DCB-H, DCC-A through DCC-F, DCD-A through DCD-E, and DCD-R)",
-        "stackTestRequired": null
+        "stackTestRequired": null,
+        "fuelThroughputPerUnitLimit": null,
+        "operatingHoursPerUnitLimit": null
       },
       {
         "referenceNumber": "DCC-E through DCC-F",
@@ -200,11 +200,9 @@
         "fuelNumber": "2-D S15",
         "secondaryFuelType": null,
         "otherFuels": null,
-        "fuelThroughputLimit": null,
         "fuelAggregation": "DCC-E through DCC-F",
         "fuelSulfurContent": 0.0015,
         "controlTechnology": "AirClarityTM 1500 SCR Systems",
-        "operatingHoursLimit": 500,
         "noxEmissionLimitLbsHr": 3.21,
         "noxEmissionLimitTonsYr": null,
         "coEmissionLimitLbsHr": 3.04,
@@ -219,7 +217,9 @@
         "so2EmissionLimitTonsYr": null,
         "instantEmissionsAggregationType": "per generator",
         "cumulativeEmissionsAggregationType": "facility wide (combined for DCA-A through DCA-F, DCA-Swing, DCB-A through DCB-H, DCC-A through DCC-F, DCD-A through DCD-E, and DCD-R)",
-        "stackTestRequired": null
+        "stackTestRequired": null,
+        "fuelThroughputPerUnitLimit": null,
+        "operatingHoursPerUnitLimit": 500
       },
       {
         "referenceNumber": "DCD-A through DCD-C",
@@ -235,11 +235,9 @@
         "fuelNumber": "2-D S15",
         "secondaryFuelType": null,
         "otherFuels": null,
-        "fuelThroughputLimit": null,
         "fuelAggregation": "DCD-A through DCD-C",
         "fuelSulfurContent": 0.0015,
-        "controlTechnology": "Caterpillar CAT® Selective Catalytic Reduction (SCR)",
-        "operatingHoursLimit": 500,
+        "controlTechnology": "Caterpillar CAT\u00ae Selective Catalytic Reduction (SCR)",
         "noxEmissionLimitLbsHr": 5.06,
         "noxEmissionLimitTonsYr": null,
         "coEmissionLimitLbsHr": 6.01,
@@ -254,14 +252,14 @@
         "so2EmissionLimitTonsYr": null,
         "instantEmissionsAggregationType": "per generator",
         "cumulativeEmissionsAggregationType": "facility wide (combined for DCA-A through DCA-F, DCA-Swing, DCB-A through DCB-H, DCC-A through DCC-F, DCD-A through DCD-E, and DCD-R)",
-        "stackTestRequired": null
+        "stackTestRequired": null,
+        "fuelThroughputPerUnitLimit": null,
+        "operatingHoursPerUnitLimit": 500
       }
     ]
   },
   "extraction_metadata": {
-    "field_metadata": {
-      
-    },
+    "field_metadata": {},
     "usage": {
       "num_pages_extracted": 20,
       "num_document_tokens": 12626,

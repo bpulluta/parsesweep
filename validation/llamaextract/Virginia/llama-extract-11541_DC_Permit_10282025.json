@@ -25,11 +25,9 @@
         "fuelNumber": "No. 1 or No. 2 fuel oil (ASTM D396-78)",
         "secondaryFuelType": null,
         "otherFuels": null,
-        "fuelThroughputLimit": null,
         "fuelAggregation": "N/A",
         "fuelSulfurContent": 0.5,
         "controlTechnology": null,
-        "operatingHoursLimit": 500,
         "noxEmissionLimitLbsHr": 63.9,
         "noxEmissionLimitTonsYr": 15.98,
         "coEmissionLimitLbsHr": 13.77,
@@ -44,7 +42,9 @@
         "so2EmissionLimitTonsYr": 1.05,
         "instantEmissionsAggregationType": "Per generator (each exhaust stack)",
         "cumulativeEmissionsAggregationType": "Per generator (each unit, tons/yr specified per unit)",
-        "stackTestRequired": null
+        "stackTestRequired": null,
+        "fuelThroughputPerUnitLimit": null,
+        "operatingHoursPerUnitLimit": 500
       },
       {
         "referenceNumber": "2",
@@ -60,11 +60,9 @@
         "fuelNumber": "No. 1 or No. 2 fuel oil (ASTM D396-78)",
         "secondaryFuelType": null,
         "otherFuels": null,
-        "fuelThroughputLimit": null,
         "fuelAggregation": "N/A",
         "fuelSulfurContent": 0.5,
         "controlTechnology": null,
-        "operatingHoursLimit": 500,
         "noxEmissionLimitLbsHr": 63.9,
         "noxEmissionLimitTonsYr": 15.98,
         "coEmissionLimitLbsHr": 13.77,
@@ -79,7 +77,9 @@
         "so2EmissionLimitTonsYr": 1.05,
         "instantEmissionsAggregationType": "Per generator (each exhaust stack)",
         "cumulativeEmissionsAggregationType": "Per generator (each unit, tons/yr specified per unit)",
-        "stackTestRequired": null
+        "stackTestRequired": null,
+        "fuelThroughputPerUnitLimit": null,
+        "operatingHoursPerUnitLimit": 500
       },
       {
         "referenceNumber": "1",
@@ -95,11 +95,9 @@
         "fuelNumber": "No. 1 or No. 2 fuel oil (ASTM D396-78)",
         "secondaryFuelType": null,
         "otherFuels": null,
-        "fuelThroughputLimit": null,
         "fuelAggregation": "N/A",
         "fuelSulfurContent": 0.5,
         "controlTechnology": null,
-        "operatingHoursLimit": 500,
         "noxEmissionLimitLbsHr": 63.9,
         "noxEmissionLimitTonsYr": 15.98,
         "coEmissionLimitLbsHr": 13.77,
@@ -114,14 +112,14 @@
         "so2EmissionLimitTonsYr": 1.05,
         "instantEmissionsAggregationType": "Per generator (each exhaust stack)",
         "cumulativeEmissionsAggregationType": "Per generator (each unit, tons/yr specified per unit)",
-        "stackTestRequired": null
+        "stackTestRequired": null,
+        "fuelThroughputPerUnitLimit": null,
+        "operatingHoursPerUnitLimit": 500
       }
     ]
   },
   "extraction_metadata": {
-    "field_metadata": {
-      
-    },
+    "field_metadata": {},
     "usage": {
       "num_pages_extracted": 8,
       "num_document_tokens": 3867,

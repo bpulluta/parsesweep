@@ -25,11 +25,9 @@
         "fuelNumber": "S15",
         "secondaryFuelType": null,
         "otherFuels": null,
-        "fuelThroughputLimit": 583600,
         "fuelAggregation": "EG01 - EG07",
         "fuelSulfurContent": 0.0015,
         "controlTechnology": "Turbocharged engines and charge air coolers, plus good operating practices and maintenance per manufacturer recommendations",
-        "operatingHoursLimit": 500,
         "noxEmissionLimitLbsHr": 53.7,
         "noxEmissionLimitTonsYr": 83.75,
         "coEmissionLimitLbsHr": 3.85,
@@ -44,7 +42,9 @@
         "so2EmissionLimitTonsYr": null,
         "instantEmissionsAggregationType": "Per unit (lbs/hr per unit)",
         "cumulativeEmissionsAggregationType": "Facility-wide (EG01 - EG07)",
-        "stackTestRequired": null
+        "stackTestRequired": null,
+        "fuelThroughputPerUnitLimit": 583600,
+        "operatingHoursPerUnitLimit": 500
       },
       {
         "referenceNumber": "EG07",
@@ -60,11 +60,9 @@
         "fuelNumber": "S15",
         "secondaryFuelType": null,
         "otherFuels": null,
-        "fuelThroughputLimit": 583600,
         "fuelAggregation": "EG01 - EG07",
         "fuelSulfurContent": 0.0015,
         "controlTechnology": "Turbocharged engine and charge air cooler, plus good operating practices and maintenance per manufacturer recommendations",
-        "operatingHoursLimit": 500,
         "noxEmissionLimitLbsHr": 12.79,
         "noxEmissionLimitTonsYr": 83.75,
         "coEmissionLimitLbsHr": 1.08,
@@ -79,14 +77,14 @@
         "so2EmissionLimitTonsYr": null,
         "instantEmissionsAggregationType": "Per unit (lbs/hr)",
         "cumulativeEmissionsAggregationType": "Facility-wide (EG01 - EG07)",
-        "stackTestRequired": null
+        "stackTestRequired": null,
+        "fuelThroughputPerUnitLimit": 583600,
+        "operatingHoursPerUnitLimit": 500
       }
     ]
   },
   "extraction_metadata": {
-    "field_metadata": {
-      
-    },
+    "field_metadata": {},
     "usage": {
       "num_pages_extracted": 9,
       "num_document_tokens": 4858,

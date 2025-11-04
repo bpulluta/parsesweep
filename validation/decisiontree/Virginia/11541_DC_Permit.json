@@ -51,12 +51,8 @@
           "sulfurContentRequired": true
         },
         "fuelChangePermitTrigger": "Fuel - The approved fuel for the Caterpillar diesel powered emergency generators is distillate oil. A change in the fuel may require a permit to modify and operate.",
-        "fuelThroughputLimit": null,
-        "fuelThroughputScope": null,
-        "fuelThroughputGroupRef": null,
         "control_technologies": null,
         "operating_hours_limit_yr": 500,
-        "operatingHoursRollingWindow": "Calculated monthly as the sum of each consecutive 12-month period.",
         "allowedOperatingModes": null,
         "opacityLimitPercent": 10,
         "hourMeterRequired": null,
@@ -66,7 +62,11 @@
         "manufacturerOandMRequired": true,
         "maintenanceTrainingRecordsRequired": true,
         "nspsSubpartIIII": null,
-        "mactSubpartZZZZ": null
+        "mactSubpartZZZZ": null,
+        "fuelThroughputPerUnitLimit": null,
+        "fuelThroughputPerUnitScope": null,
+        "fuelThroughputPerUnitGroupRef": null,
+        "operatingHoursPerUnitRollingWindow": "Calculated monthly as the sum of each consecutive 12-month period."
       },
       {
         "referenceNumber": "Ref No. 2",
@@ -93,12 +93,8 @@
           "sulfurContentRequired": true
         },
         "fuelChangePermitTrigger": "A change in the fuel may require a permit to modify and operate.",
-        "fuelThroughputLimit": null,
-        "fuelThroughputScope": null,
-        "fuelThroughputGroupRef": null,
         "control_technologies": null,
         "operating_hours_limit_yr": 500,
-        "operatingHoursRollingWindow": "Consecutive 12-month period; calculated monthly (sum of hours over each consecutive 12-month period).",
         "allowedOperatingModes": null,
         "opacityLimitPercent": 10,
         "hourMeterRequired": null,
@@ -108,7 +104,11 @@
         "manufacturerOandMRequired": true,
         "maintenanceTrainingRecordsRequired": true,
         "nspsSubpartIIII": true,
-        "mactSubpartZZZZ": null
+        "mactSubpartZZZZ": null,
+        "fuelThroughputPerUnitLimit": null,
+        "fuelThroughputPerUnitScope": null,
+        "fuelThroughputPerUnitGroupRef": null,
+        "operatingHoursPerUnitRollingWindow": "Consecutive 12-month period; calculated monthly (sum of hours over each consecutive 12-month period)."
       },
       {
         "referenceNumber": "Ref No. 1",
@@ -135,12 +135,8 @@
           "sulfurContentRequired": true
         },
         "fuelChangePermitTrigger": "A change in the fuel may require a permit to modify and operate.",
-        "fuelThroughputLimit": null,
-        "fuelThroughputScope": null,
-        "fuelThroughputGroupRef": null,
         "control_technologies": null,
         "operating_hours_limit_yr": 500,
-        "operatingHoursRollingWindow": "Consecutive 12-month period, calculated monthly as the sum of each consecutive 12-month period.",
         "allowedOperatingModes": null,
         "opacityLimitPercent": 10,
         "hourMeterRequired": null,
@@ -150,7 +146,11 @@
         "manufacturerOandMRequired": true,
         "maintenanceTrainingRecordsRequired": true,
         "nspsSubpartIIII": null,
-        "mactSubpartZZZZ": null
+        "mactSubpartZZZZ": null,
+        "fuelThroughputPerUnitLimit": null,
+        "fuelThroughputPerUnitScope": null,
+        "fuelThroughputPerUnitGroupRef": null,
+        "operatingHoursPerUnitRollingWindow": "Consecutive 12-month period, calculated monthly as the sum of each consecutive 12-month period."
       }
     ]
   },

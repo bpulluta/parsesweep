@@ -51,12 +51,8 @@
           "sulfurContentRequired": false
         },
         "fuelChangePermitTrigger": "A change in fuel type or sulfur content may require a permit to modify and operate.",
-        "fuelThroughputLimit": null,
-        "fuelThroughputScope": null,
-        "fuelThroughputGroupRef": null,
         "control_technologies": "Caterpillar CAT Selective Catalytic Reduction (SCR) \u2014 closed-loop SCR with urea injection and catalyst bed temperature probes (urea enabled at 572\u00b0F and \u226530% load; urea injection discontinued above 930\u00b0F); use of ultra-low sulfur diesel fuel (\u226415 ppm sulfur) to control SO2",
         "operating_hours_limit_yr": null,
-        "operatingHoursRollingWindow": "Consecutive 12-month rolling period, calculated monthly; compliance demonstrated by adding the most recently completed calendar month to the totals for the preceding eleven months.",
         "allowedOperatingModes": "Emergency power generation due to failure or loss of primary electrical service beyond the facility\u2019s reasonable control (allowed while service is unavailable); ISO-declared emergency participation in an ISO Emergency Load Response Program (limited to 60 hours per generator per calendar year, with notification to DEQ after contracting); Critical Power Generation for loss or anticipated loss of acceptable power beyond the facility\u2019s reasonable control (allowed until acceptable service is restored or the loss is no longer reasonably anticipated); Alternate Power Generation for voluntary peak-shaving, demand response, or interruptible power arrangements\u2014only for units with SCR and only when operating at a load sufficient to sustain urea injection (for DCD-D: catalyst bed \u2265572\u00b0F and \u226530% load); periodic maintenance, testing, and operational training.",
         "opacityLimitPercent": null,
         "hourMeterRequired": null,
@@ -66,7 +62,11 @@
         "manufacturerOandMRequired": true,
         "maintenanceTrainingRecordsRequired": true,
         "nspsSubpartIIII": null,
-        "mactSubpartZZZZ": null
+        "mactSubpartZZZZ": null,
+        "fuelThroughputPerUnitLimit": null,
+        "fuelThroughputPerUnitScope": null,
+        "fuelThroughputPerUnitGroupRef": null,
+        "operatingHoursPerUnitRollingWindow": "Consecutive 12-month rolling period, calculated monthly; compliance demonstrated by adding the most recently completed calendar month to the totals for the preceding eleven months."
       },
       {
         "referenceNumber": "DCD-E",
@@ -93,12 +93,8 @@
           "sulfurContentRequired": false
         },
         "fuelChangePermitTrigger": null,
-        "fuelThroughputLimit": null,
-        "fuelThroughputScope": null,
-        "fuelThroughputGroupRef": null,
         "control_technologies": "Caterpillar CAT Selective Catalytic Reduction (closed-loop SCR with urea injection and catalyst-bed temperature monitoring); use of ultra-low sulfur diesel fuel (<= 15 ppm sulfur) to control SO2; proper operating practices per manufacturer to control CO, VOC, and visible emissions",
         "operating_hours_limit_yr": 500,
-        "operatingHoursRollingWindow": "Consecutive 12-month rolling period, calculated monthly; compliance demonstrated monthly by adding the most recently completed calendar month's hours to the totals for the preceding eleven months.",
         "allowedOperatingModes": "Emergency power generation during utility failure beyond the facility\u2019s control; ISO-declared emergency participation in an ISO Emergency Load Response Program (up to 60 hours per generator per calendar year); Critical Power Generation for loss or anticipated loss of acceptable power service beyond the facility\u2019s control; Alternate Power Generation (voluntary peak-shaving, demand response, or interruptible power supply arrangements) for SCR-equipped units only when urea injection can be sustained per Condition 1.e (for DCD-E: catalyst bed temperature at least 572 F and at least 30% load); periodic maintenance, testing, and operational training.",
         "opacityLimitPercent": 5,
         "hourMeterRequired": true,
@@ -108,7 +104,11 @@
         "manufacturerOandMRequired": true,
         "maintenanceTrainingRecordsRequired": true,
         "nspsSubpartIIII": null,
-        "mactSubpartZZZZ": null
+        "mactSubpartZZZZ": null,
+        "fuelThroughputPerUnitLimit": null,
+        "fuelThroughputPerUnitScope": null,
+        "fuelThroughputPerUnitGroupRef": null,
+        "operatingHoursPerUnitRollingWindow": "Consecutive 12-month rolling period, calculated monthly; compliance demonstrated monthly by adding the most recently completed calendar month's hours to the totals for the preceding eleven months."
       },
       {
         "referenceNumber": "DCD-R",
@@ -129,12 +129,8 @@
         "fuelCertificationRequired": true,
         "fuelCertificationFields": null,
         "fuelChangePermitTrigger": "A change in fuel type or sulfur content may require a permit to modify and operate.",
-        "fuelThroughputLimit": null,
-        "fuelThroughputScope": null,
-        "fuelThroughputGroupRef": null,
         "control_technologies": "Caterpillar CAT Selective Catalytic Reduction (SCR) (closed-loop SCR with urea injection) and use of ultra low sulfur diesel (ULSD) fuel to control SO2",
         "operating_hours_limit_yr": 500,
-        "operatingHoursRollingWindow": null,
         "allowedOperatingModes": null,
         "opacityLimitPercent": null,
         "hourMeterRequired": true,
@@ -144,7 +140,11 @@
         "manufacturerOandMRequired": true,
         "maintenanceTrainingRecordsRequired": null,
         "nspsSubpartIIII": null,
-        "mactSubpartZZZZ": null
+        "mactSubpartZZZZ": null,
+        "fuelThroughputPerUnitLimit": null,
+        "fuelThroughputPerUnitScope": null,
+        "fuelThroughputPerUnitGroupRef": null,
+        "operatingHoursPerUnitRollingWindow": null
       },
       {
         "referenceNumber": "DCA-A through DCA-E",
@@ -171,12 +171,8 @@
           "sulfurContentRequired": false
         },
         "fuelChangePermitTrigger": "A change in fuel type or sulfur content may require a permit to modify and operate.",
-        "fuelThroughputLimit": null,
-        "fuelThroughputScope": null,
-        "fuelThroughputGroupRef": null,
         "control_technologies": null,
         "operating_hours_limit_yr": null,
-        "operatingHoursRollingWindow": "Consecutive 12-month rolling period, calculated monthly by adding the most recent calendar month\u2019s total to the prior eleven months.",
         "allowedOperatingModes": null,
         "opacityLimitPercent": null,
         "hourMeterRequired": true,
@@ -186,7 +182,11 @@
         "manufacturerOandMRequired": true,
         "maintenanceTrainingRecordsRequired": true,
         "nspsSubpartIIII": null,
-        "mactSubpartZZZZ": null
+        "mactSubpartZZZZ": null,
+        "fuelThroughputPerUnitLimit": null,
+        "fuelThroughputPerUnitScope": null,
+        "fuelThroughputPerUnitGroupRef": null,
+        "operatingHoursPerUnitRollingWindow": "Consecutive 12-month rolling period, calculated monthly by adding the most recent calendar month\u2019s total to the prior eleven months."
       },
       {
         "referenceNumber": "DCA-Swing",
@@ -213,12 +213,8 @@
           "sulfurContentRequired": false
         },
         "fuelChangePermitTrigger": "A change in fuel type or sulfur content may require a permit to modify and operate.",
-        "fuelThroughputLimit": null,
-        "fuelThroughputScope": null,
-        "fuelThroughputGroupRef": null,
         "control_technologies": null,
         "operating_hours_limit_yr": 500,
-        "operatingHoursRollingWindow": "Consecutive 12-month period, calculated monthly by adding the most recently completed month to the preceding eleven months.",
         "allowedOperatingModes": null,
         "opacityLimitPercent": 5,
         "hourMeterRequired": null,
@@ -228,7 +224,11 @@
         "manufacturerOandMRequired": null,
         "maintenanceTrainingRecordsRequired": true,
         "nspsSubpartIIII": null,
-        "mactSubpartZZZZ": null
+        "mactSubpartZZZZ": null,
+        "fuelThroughputPerUnitLimit": null,
+        "fuelThroughputPerUnitScope": null,
+        "fuelThroughputPerUnitGroupRef": null,
+        "operatingHoursPerUnitRollingWindow": "Consecutive 12-month period, calculated monthly by adding the most recently completed month to the preceding eleven months."
       },
       {
         "referenceNumber": "DCB-A through DCB-F",
@@ -249,12 +249,8 @@
         "fuelCertificationRequired": true,
         "fuelCertificationFields": null,
         "fuelChangePermitTrigger": "A change in fuel type or sulfur content may require a permit to modify and operate.",
-        "fuelThroughputLimit": null,
-        "fuelThroughputScope": null,
-        "fuelThroughputGroupRef": null,
         "control_technologies": null,
         "operating_hours_limit_yr": null,
-        "operatingHoursRollingWindow": "Consecutive 12-month rolling period, calculated monthly by adding the most recently completed calendar month to the preceding eleven months.",
         "allowedOperatingModes": "Emergency operation during a utility power failure beyond the facility\u2019s reasonable control; ISO\u2011declared emergency participation (Emergency Load Response Program), limited to 60 hours per generator per calendar year with required notification; critical power generation during a loss or anticipated loss of acceptable utility power beyond the facility\u2019s reasonable control; and periodic maintenance, testing, and operational training.",
         "opacityLimitPercent": 5,
         "hourMeterRequired": null,
@@ -264,7 +260,11 @@
         "manufacturerOandMRequired": null,
         "maintenanceTrainingRecordsRequired": null,
         "nspsSubpartIIII": null,
-        "mactSubpartZZZZ": null
+        "mactSubpartZZZZ": null,
+        "fuelThroughputPerUnitLimit": null,
+        "fuelThroughputPerUnitScope": null,
+        "fuelThroughputPerUnitGroupRef": null,
+        "operatingHoursPerUnitRollingWindow": "Consecutive 12-month rolling period, calculated monthly by adding the most recently completed calendar month to the preceding eleven months."
       },
       {
         "referenceNumber": "DCB-G through DCB-H",
@@ -291,12 +291,8 @@
           "sulfurContentRequired": false
         },
         "fuelChangePermitTrigger": null,
-        "fuelThroughputLimit": null,
-        "fuelThroughputScope": null,
-        "fuelThroughputGroupRef": null,
         "control_technologies": "Caterpillar CAT Selective Catalytic Reduction (SCR) (closed-loop with urea injection); use of ultra low sulfur diesel (ULSD) fuel (15 ppm sulfur max) to control SO2",
         "operating_hours_limit_yr": null,
-        "operatingHoursRollingWindow": null,
         "allowedOperatingModes": "Emergency power generation during failure or loss of primary electrical power beyond the facility\u2019s reasonable control (for the duration of the outage); ISO-declared emergency participation in an Independent System Operator\u2019s Emergency Load Response Program (ELRP) (limited to 60 hours per generator per calendar year, with DEQ notification within 30 days of contract signing); Critical power generation during a loss or anticipated loss of acceptable electrical power from the primary provider beyond the facility\u2019s reasonable control (until acceptable service is restored or the loss is no longer reasonably anticipated); Alternate power generation for SCR-equipped units\u2014voluntary peak-shaving, demand response, or interruptible power supply arrangements with a power provider/market participant/system operator\u2014only when operating at a load level necessary to sustain urea injection as defined in Condition 1.e; Periodic maintenance, testing, and operational training.",
         "opacityLimitPercent": 5,
         "hourMeterRequired": true,
@@ -306,7 +302,11 @@
         "manufacturerOandMRequired": true,
         "maintenanceTrainingRecordsRequired": null,
         "nspsSubpartIIII": null,
-        "mactSubpartZZZZ": null
+        "mactSubpartZZZZ": null,
+        "fuelThroughputPerUnitLimit": null,
+        "fuelThroughputPerUnitScope": null,
+        "fuelThroughputPerUnitGroupRef": null,
+        "operatingHoursPerUnitRollingWindow": null
       },
       {
         "referenceNumber": "DCC-A through DCC-D",
@@ -327,12 +327,8 @@
         "fuelCertificationRequired": null,
         "fuelCertificationFields": null,
         "fuelChangePermitTrigger": null,
-        "fuelThroughputLimit": null,
-        "fuelThroughputScope": null,
-        "fuelThroughputGroupRef": null,
         "control_technologies": "Selective Catalytic Reduction (SCR) \u2014 SCR-Endure Systems (closed-loop SCR with urea injection and catalyst bed temperature probes); Ultra-low sulfur diesel (ULSD) fuel (<= 15 ppm sulfur) for SO2 control.",
         "operating_hours_limit_yr": null,
-        "operatingHoursRollingWindow": null,
         "allowedOperatingModes": "Emergency (utility power failure beyond the facility\u2019s control) for the duration of the outage, after which operation may continue only under Critical Power Generation; ISO-declared emergency (participation in an Independent System Operator\u2019s Emergency Load Response Program) up to 60 hours per generator per calendar year with notification to DEQ NRO within 30 days of contract; Critical Power Generation (loss or anticipated loss of acceptable power beyond the facility\u2019s control) until acceptable service is restored or the anticipated loss no longer exists; Alternate Power Generation (voluntary peak-shaving, demand response, or interruptible arrangements) allowed for SCR-equipped units such as DCC-A through DCC-D only when operating at a load sufficient to sustain urea injection per Condition 1.e; Periodic maintenance, testing, and operational training.",
         "opacityLimitPercent": 5,
         "hourMeterRequired": null,
@@ -342,7 +338,11 @@
         "manufacturerOandMRequired": null,
         "maintenanceTrainingRecordsRequired": null,
         "nspsSubpartIIII": null,
-        "mactSubpartZZZZ": null
+        "mactSubpartZZZZ": null,
+        "fuelThroughputPerUnitLimit": null,
+        "fuelThroughputPerUnitScope": null,
+        "fuelThroughputPerUnitGroupRef": null,
+        "operatingHoursPerUnitRollingWindow": null
       },
       {
         "referenceNumber": "DCC-E through DCC-F",
@@ -363,12 +363,8 @@
         "fuelCertificationRequired": true,
         "fuelCertificationFields": null,
         "fuelChangePermitTrigger": "A change in fuel type or sulfur content may require a permit to modify and operate.",
-        "fuelThroughputLimit": null,
-        "fuelThroughputScope": null,
-        "fuelThroughputGroupRef": null,
         "control_technologies": null,
         "operating_hours_limit_yr": 500,
-        "operatingHoursRollingWindow": "Consecutive 12-month rolling period, calculated monthly by summing the most recent completed calendar month with the preceding eleven months.",
         "allowedOperatingModes": "Emergency; ISO-declared emergency (participation in an ISO Emergency Load Response Program, limited to 60 hours per generator per calendar year with required DEQ notification upon contract); Critical Power Generation (loss or anticipated loss of acceptable electrical power beyond the facility\u2019s control, until acceptable service is restored or no longer anticipated); Alternate Power Generation for SCR-equipped units (voluntary peak-shaving, demand response, or interruptible power supply, only when operating at a load level necessary to sustain urea injection as defined in Condition 1.e); Periodic maintenance, testing, and operational training.",
         "opacityLimitPercent": null,
         "hourMeterRequired": true,
@@ -378,7 +374,11 @@
         "manufacturerOandMRequired": true,
         "maintenanceTrainingRecordsRequired": true,
         "nspsSubpartIIII": null,
-        "mactSubpartZZZZ": null
+        "mactSubpartZZZZ": null,
+        "fuelThroughputPerUnitLimit": null,
+        "fuelThroughputPerUnitScope": null,
+        "fuelThroughputPerUnitGroupRef": null,
+        "operatingHoursPerUnitRollingWindow": "Consecutive 12-month rolling period, calculated monthly by summing the most recent completed calendar month with the preceding eleven months."
       },
       {
         "referenceNumber": "DCD-A through DCD-C",
@@ -399,12 +399,8 @@
         "fuelCertificationRequired": true,
         "fuelCertificationFields": null,
         "fuelChangePermitTrigger": "A change in fuel type or sulfur content may require a permit to modify and operate.",
-        "fuelThroughputLimit": null,
-        "fuelThroughputScope": null,
-        "fuelThroughputGroupRef": null,
         "control_technologies": null,
         "operating_hours_limit_yr": 500,
-        "operatingHoursRollingWindow": null,
         "allowedOperatingModes": "Emergency power generation due to failure or loss of primary electrical power beyond the facility\u2019s reasonable control (for the duration of the outage); ISO-declared emergency participation in an Independent System Operator\u2019s Emergency Load Response Program (limited to 60 hours per generator per calendar year, with DEQ notification within 30 days of signing a participation contract); Critical Power Generation due to loss or anticipated loss of acceptable electrical power beyond the facility\u2019s reasonable control (until acceptable service is restored or the anticipated loss no longer applies); Alternate Power Generation for SCR-equipped units (voluntary peak-shaving, demand response, or interruptible power arrangements) allowed when operating at a load level necessary to sustain urea injection as defined in Condition 1.e (for DCD-A through DCD-C: catalyst bed \u2265662\u00b0F and \u226530% load); Periodic maintenance, testing, and operational training.",
         "opacityLimitPercent": 5,
         "hourMeterRequired": true,
@@ -414,7 +410,11 @@
         "manufacturerOandMRequired": true,
         "maintenanceTrainingRecordsRequired": true,
         "nspsSubpartIIII": null,
-        "mactSubpartZZZZ": null
+        "mactSubpartZZZZ": null,
+        "fuelThroughputPerUnitLimit": null,
+        "fuelThroughputPerUnitScope": null,
+        "fuelThroughputPerUnitGroupRef": null,
+        "operatingHoursPerUnitRollingWindow": null
       }
     ]
   },

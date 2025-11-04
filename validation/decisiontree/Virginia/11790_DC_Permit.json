@@ -51,12 +51,8 @@
           "sulfurContentRequired": true
         },
         "fuelChangePermitTrigger": "A change in the fuel may require a new or amended permit.",
-        "fuelThroughputLimit": 583500,
-        "fuelThroughputScope": "combined_group",
-        "fuelThroughputGroupRef": "EO01-EO07",
         "control_technologies": "Turbocharged engines, charge air coolers, good operating practices and appropriate maintenance per manufacturer recommendations",
         "operating_hours_limit_yr": 500,
-        "operatingHoursRollingWindow": "Consecutive 12-month rolling period, calculated monthly; compliance demonstrated each month by adding the most recently completed calendar month to the totals for the preceding 11 months.",
         "allowedOperatingModes": "Emergency operation during sudden and reasonably unforeseeable events that disrupt or disconnect the primary power source beyond the owner/operator\u2019s control (e.g., electrical grid failure; on-site disaster or equipment failure; public service emergencies such as flood, fire, natural disaster, or severe weather conditions); and operation for periodic maintenance, testing, and operational training.",
         "opacityLimitPercent": 10,
         "hourMeterRequired": true,
@@ -66,7 +62,11 @@
         "manufacturerOandMRequired": true,
         "maintenanceTrainingRecordsRequired": true,
         "nspsSubpartIIII": true,
-        "mactSubpartZZZZ": true
+        "mactSubpartZZZZ": true,
+        "fuelThroughputPerUnitLimit": 583500,
+        "fuelThroughputPerUnitScope": "combined_group",
+        "fuelThroughputPerUnitGroupRef": "EO01-EO07",
+        "operatingHoursPerUnitRollingWindow": "Consecutive 12-month rolling period, calculated monthly; compliance demonstrated each month by adding the most recently completed calendar month to the totals for the preceding 11 months."
       },
       {
         "referenceNumber": "EG07",
@@ -93,12 +93,8 @@
           "sulfurContentRequired": true
         },
         "fuelChangePermitTrigger": "A change in the fuel ma^ requireanew or amended permit.",
-        "fuelThroughputLimit": 583500,
-        "fuelThroughputScope": "combined_group",
-        "fuelThroughputGroupRef": "EO01-EO07",
         "control_technologies": "Turbocharged engine; charge air cooler; good operating practices; appropriate maintenance in accordance with manufacturer recommendations",
         "operating_hours_limit_yr": 500,
-        "operatingHoursRollingWindow": "Consecutive 12-month rolling period, calculated monthly; compliance demonstrated each month by adding the most recently completed calendar month to the totals for the preceding 11 months.",
         "allowedOperatingModes": "Emergency operation during sudden and reasonably unforeseeable events that disrupt or disconnect the primary energy or power source (including failure of the electrical grid; on-site disaster or equipment failure; and public service emergencies such as flood, fire, natural disaster, or severe weather conditions) and operation for periodic maintenance, testing, and operational training.",
         "opacityLimitPercent": 10,
         "hourMeterRequired": true,
@@ -108,7 +104,11 @@
         "manufacturerOandMRequired": true,
         "maintenanceTrainingRecordsRequired": true,
         "nspsSubpartIIII": true,
-        "mactSubpartZZZZ": true
+        "mactSubpartZZZZ": true,
+        "fuelThroughputPerUnitLimit": 583500,
+        "fuelThroughputPerUnitScope": "combined_group",
+        "fuelThroughputPerUnitGroupRef": "EO01-EO07",
+        "operatingHoursPerUnitRollingWindow": "Consecutive 12-month rolling period, calculated monthly; compliance demonstrated each month by adding the most recently completed calendar month to the totals for the preceding 11 months."
       }
     ]
   },

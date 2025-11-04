@@ -25,11 +25,9 @@
         "fuelNumber": "S15",
         "secondaryFuelType": null,
         "otherFuels": null,
-        "fuelThroughputLimit": 232500,
         "fuelAggregation": "EG-2-01 through EG-2-31",
         "fuelSulfurContent": 0.0015,
         "controlTechnology": "turbocharged engine and aftercooler/charge air cooler; good operating practices and maintenance per manufacturer recommendations",
-        "operatingHoursLimit": null,
         "noxEmissionLimitLbsHr": 57.9,
         "noxEmissionLimitTonsYr": 30.9,
         "coEmissionLimitLbsHr": 2.6,
@@ -44,7 +42,9 @@
         "so2EmissionLimitTonsYr": 0.1,
         "instantEmissionsAggregationType": "Each unit (lbs/hr)",
         "cumulativeEmissionsAggregationType": "Combined total for EG-2-01 through EG-2-31 (tons/yr)",
-        "stackTestRequired": null
+        "stackTestRequired": null,
+        "fuelThroughputPerUnitLimit": 232500,
+        "operatingHoursPerUnitLimit": null
       },
       {
         "referenceNumber": "EG01-EG05",
@@ -60,11 +60,9 @@
         "fuelNumber": "S15",
         "secondaryFuelType": null,
         "otherFuels": null,
-        "fuelThroughputLimit": null,
         "fuelAggregation": "EG01-EG05",
         "fuelSulfurContent": 0.0015,
         "controlTechnology": null,
-        "operatingHoursLimit": 150,
         "noxEmissionLimitLbsHr": 71,
         "noxEmissionLimitTonsYr": 26.6,
         "coEmissionLimitLbsHr": 14.3,
@@ -79,7 +77,9 @@
         "so2EmissionLimitTonsYr": 0.1,
         "instantEmissionsAggregationType": "Each unit (lbs/hr)",
         "cumulativeEmissionsAggregationType": "Combined total for EG01-EG05 (tons/yr)",
-        "stackTestRequired": null
+        "stackTestRequired": null,
+        "fuelThroughputPerUnitLimit": null,
+        "operatingHoursPerUnitLimit": 150
       },
       {
         "referenceNumber": "EG06",
@@ -95,11 +95,9 @@
         "fuelNumber": "S15",
         "secondaryFuelType": null,
         "otherFuels": null,
-        "fuelThroughputLimit": null,
         "fuelAggregation": "EG06",
         "fuelSulfurContent": 0.0015,
         "controlTechnology": null,
-        "operatingHoursLimit": 150,
         "noxEmissionLimitLbsHr": 29.6,
         "noxEmissionLimitTonsYr": 2.2,
         "coEmissionLimitLbsHr": 3.9,
@@ -114,7 +112,9 @@
         "so2EmissionLimitTonsYr": 0.1,
         "instantEmissionsAggregationType": "Each unit (lbs/hr)",
         "cumulativeEmissionsAggregationType": "Combined total for EG06 (tons/yr)",
-        "stackTestRequired": null
+        "stackTestRequired": null,
+        "fuelThroughputPerUnitLimit": null,
+        "operatingHoursPerUnitLimit": 150
       },
       {
         "referenceNumber": "EG07-EG15",
@@ -130,11 +130,9 @@
         "fuelNumber": "S15",
         "secondaryFuelType": null,
         "otherFuels": null,
-        "fuelThroughputLimit": null,
         "fuelAggregation": "EG07-EG15",
         "fuelSulfurContent": 0.0015,
         "controlTechnology": "turbocharged engine and aftercooler/charge air cooler; good operating practices and maintenance per manufacturer recommendations",
-        "operatingHoursLimit": 150,
         "noxEmissionLimitLbsHr": 48,
         "noxEmissionLimitTonsYr": 32.4,
         "coEmissionLimitLbsHr": 6.1,
@@ -149,14 +147,14 @@
         "so2EmissionLimitTonsYr": 0.1,
         "instantEmissionsAggregationType": "Each unit (lbs/hr)",
         "cumulativeEmissionsAggregationType": "Combined total for EG07-EG15 (tons/yr)",
-        "stackTestRequired": true
+        "stackTestRequired": true,
+        "fuelThroughputPerUnitLimit": null,
+        "operatingHoursPerUnitLimit": 150
       }
     ]
   },
   "extraction_metadata": {
-    "field_metadata": {
-      
-    },
+    "field_metadata": {},
     "usage": {
       "num_pages_extracted": 16,
       "num_document_tokens": 8262,
