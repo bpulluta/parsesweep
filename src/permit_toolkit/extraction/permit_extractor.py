@@ -276,195 +276,180 @@ class PermitExtractor:
         # Use more text to capture all data
         text_excerpt = text[:35000]
 
-        prompt = f"""Extract ALL data from this air quality permit. Return valid JSON matching the schema.
+        prompt = f"""Extract ALL data from this air quality permit into valid JSON matching the schema below.
 
-CRITICAL: Extract generators EXACTLY as structured in the permit document. Handle diverse state permit formats.
+══════════════════════════════════════════════════════════════════════════════
+CORE PRINCIPLES
+══════════════════════════════════════════════════════════════════════════════
 
-EXAMPLES OF CORRECT EXTRACTION (Cross-State Patterns):
+1. EXTRACT EXACTLY AS WRITTEN - Do not normalize, convert units, or infer missing data
+2. PRESERVE DOCUMENT STRUCTURE - Keep generator groupings as shown (grouped vs individual)
+3. EXTRACT SYSTEMATICALLY - Process EVERY row/entry in tables and lists from start to finish
+4. VERIFY COMPLETENESS - Count extracted generators vs source document before returning
+5. SEARCH ENTIRE DOCUMENT - Equipment info is often scattered across multiple sections
+6. USE EXTRACTION NOTES - Document uncertainty, data source locations, and missing fields
 
-Example 1 - Range notation with count (ONE entry):
+INFORMATION LOCATIONS BY FIELD:
+• Reference Numbers: Equipment tables, section headings, table of contents, authorization pages
+• Capacity Ratings: Section titles (e.g., "2,500 kWe (3,634 bhp)"), equipment tables, technical specs
+• Make/Model: Often separate from capacity - check technical specs, manufacturer certs, NSPS/MACT sections
+• Fuel Specs: Fuel specifications section, operating conditions, equipment descriptions
+• Operating Limits: Conditions section, emissions limits, regulatory compliance sections
+
+══════════════════════════════════════════════════════════════════════════════
+EXAMPLES - GENERATOR GROUPING PATTERNS (Critical for Correct Extraction)
+══════════════════════════════════════════════════════════════════════════════
+
+PATTERN A: Range with Explicit Count → ONE Entry
 Document: "EG01-EG06 (6) Cummins QSK78-G12 diesel-fueled generators, 2500 kW each"
-Correct JSON:
-{{
-  "referenceNumber": "EG01-EG06",
-  "numGenerators": 6,
-  "make": "Cummins",
-  "model": "QSK78-G12",
-  "ratedCapacityKW": 2500
-}}
+→ {{"referenceNumber": "EG01-EG06", "numGenerators": 6, "make": "Cummins", "model": "QSK78-G12", "ratedCapacityKW": 2500}}
 
-Example 2 - Numeric references in table (MULTIPLE entries):
+PATTERN B: Section Heading with Capacity → ONE Entry for Group  
+Document: Section heading reads "2,500 kWe (3,634 bhp) Diesel-Fired Emergency Generators: P001 through P026"
+Equipment list shows P001, P002, P003... P026 as individual rows
+→ {{"referenceNumber": "P001 through P026", "numGenerators": 26, "ratedCapacityKW": 2500, "ratedCapacityBHP": 3634, "primaryFuelType": "diesel", "extractionNotes": "Capacity from section heading applies to all units P001-P026"}}
+WHY: The section heading groups them with shared specifications
+
+PATTERN C: Separate Table Rows → MULTIPLE Entries
 Document:
-| Equipment Description                                    | Ref No. | Capacity       |
-|----------------------------------------------------------|---------|----------------|
-| One Caterpillar 1500 KW diesel powered emergency gen.  | 3       | 2500 BHP      |
-| One Caterpillar 1500 KW diesel powered emergency gen.  | 2       | 2500 BHP      |
-| One Caterpillar 1500 KW diesel powered emergency gen.  | 1       | 2500 BHP      |
-
-Correct JSON (3 separate entries):
-[
-  {{"referenceNumber": "3", "numGenerators": 1, "make": "Caterpillar", "model": null, "ratedCapacityBHP": 2500, "ratedCapacityKW": 1500}},
-  {{"referenceNumber": "2", "numGenerators": 1, "make": "Caterpillar", "model": null, "ratedCapacityBHP": 2500, "ratedCapacityKW": 1500}},
-  {{"referenceNumber": "1", "numGenerators": 1, "make": "Caterpillar", "model": null, "ratedCapacityBHP": 2500, "ratedCapacityKW": 1500}}
+| Equipment Description                  | Ref No. | Capacity |
+| One Caterpillar 1500 KW emergency gen | 3       | 2500 BHP |
+| One Caterpillar 1500 KW emergency gen | 2       | 2500 BHP |
+| One Caterpillar 1500 KW emergency gen | 1       | 2500 BHP |
+→ [
+  {{"referenceNumber": "3", "numGenerators": 1, "make": "Caterpillar", "ratedCapacityBHP": 2500, "ratedCapacityKW": 1500}},
+  {{"referenceNumber": "2", "numGenerators": 1, "make": "Caterpillar", "ratedCapacityBHP": 2500, "ratedCapacityKW": 1500}},
+  {{"referenceNumber": "1", "numGenerators": 1, "make": "Caterpillar", "ratedCapacityBHP": 2500, "ratedCapacityKW": 1500}}
 ]
+WHY: Each row is a separate unit with individual tracking
 
-Example 3 - State-specific emission unit codes (MULTIPLE entries):
-Document:
-| EU   | Facility ID | Manufacturer | Model | Capacity (HP) |
-|------|-------------|--------------|-------|---------------|
-| 01A  | 1A          | Caterpillar  | 3512  | 1,676         |
-| 01B  | 1B          | Detroit      | T1637 | 2,550         |
-
-Correct JSON (2 separate entries, preserve state's reference format):
-[
-  {{"referenceNumber": "01A", "numGenerators": 1, "make": "Caterpillar", "model": "3512", "ratedCapacityBHP": 1676}},
-  {{"referenceNumber": "01B", "numGenerators": 1, "make": "Detroit", "model": "T1637", "ratedCapacityBHP": 2550}}
-]
-
-Example 4 - Comma-separated codes in SAME row/description (ONE grouped entry):
+PATTERN D: Comma-Separated in Same Description → ONE Entry
 Document: "Fifteen (15) 2,500 kW Diesel-Powered Emergency Generator Sets (EGA1, EGA2, EGAR, EGA3, EGA4, EGB1, EGB2, EGBR, EGB3, EGB4, EGC1, EGC2, EGCR, EGSS, and EGSN)"
-Correct JSON (ONE entry - they share combined limits):
-{{
-  "referenceNumber": "EGA1, EGA2, EGAR, EGA3, EGA4, EGB1, EGB2, EGBR, EGB3, EGB4, EGC1, EGC2, EGCR, EGSS, EGSN",
-  "numGenerators": 15,
-  "make": "[extracted]",
-  "model": "[extracted]",
-  "ratedCapacityKW": 2500,
-  "extractionNotes": "Comma-separated group: 15 units listed together in permit, share combined fuel/emissions limits"
-}}
+→ {{"referenceNumber": "EGA1, EGA2, EGAR, EGA3, EGA4, EGB1, EGB2, EGBR, EGB3, EGB4, EGC1, EGC2, EGCR, EGSS, EGSN", "numGenerators": 15, "ratedCapacityKW": 2500, "extractionNotes": "Comma-separated group shares combined operational limits"}}
+WHY: Listed together in one description = single regulatory group
 
-EXTRACTION RULES:
-1. REFERENCE NUMBER FORMATS (varies by state - preserve EXACTLY as shown):
-   - Virginia/DC: Numeric (1, 2, 3) or alphanumeric (EG01, EG07, EG01-EG06)
-   - Illinois: Alphanumeric codes (EGA1, EGB2, EGCR, EGSS)
-   - Kentucky: Emission Unit codes (01A, 01B, 02C)
-   - Michigan: EU- prefix (EU-GEN1, EU-GENP) or Equipment ID
-   - Look in: "Ref No.", "Reference No.", "EU", "Facility ID", "Unit", or equipment lists
-   - NEVER add prefixes or normalize - use EXACT text from permit
-   - NEVER invent references not explicitly stated
+══════════════════════════════════════════════════════════════════════════════
+FIELD-SPECIFIC EXTRACTION RULES
+══════════════════════════════════════════════════════════════════════════════
 
-2. NUM GENERATORS - Parse from document structure and table layout:
-   - Range notation (e.g., "EG01-EG06" with "(6)" or "six") → numGenerators: 6 (ONE entry)
-   - Comma-separated codes in SAME ROW/DESCRIPTION: "Fifteen (15)... (EGA1, EGA2...EGSN)" → numGenerators: 15 (ONE entry)
-   - Separate table rows → numGenerators: 1 for EACH row (separate entries)
-   - Text counting: Use explicit numbers ("Fifteen (15)" → 15, "Six (6)" → 6)
-   - If codes are listed but count is given, use the count (it's authoritative)
+📍 REFERENCE NUMBERS (State-specific formats - preserve exactly):
+• Ohio: "P001 through P026", "P028 through P041, P043 through P068"
+• Virginia/DC: Numeric (1, 2, 3) or alphanumeric (EG01-EG06)
+• Illinois: Comma-separated codes (EGA1, EGA2, EGAR...)
+• Other states: EU codes (01A, 01B), Equipment IDs, various formats
+• NEVER normalize or add prefixes - extract verbatim from permit
 
-3. CAPACITY - Extract EXACTLY as shown (DO NOT convert units):
-   - Extract rated capacity values ONLY as explicitly stated in permit
-   - Record in appropriate field: ratedCapacityKW, ratedCapacityBHP, ratedCapacityHP, or maxHeatInputMMBTU
-   - If permit shows "2500 kW" → ratedCapacityKW: 2500 (other capacity fields: null)
-   - If permit shows "1676 HP" → ratedCapacityBHP: 1676 (do NOT convert to kW)
-   - If permit shows both "1500 kW" AND "2500 BHP" → record BOTH exactly as stated
-   - If permit mentions "maximum capacity" without a separate "rated capacity", treat it as rated capacity
-   - NEVER calculate or convert between units - extraction errors are worse than missing data
-   - Look in: capacity columns, equipment descriptions, specifications sections
+🔢 NUM GENERATORS (Calculate from ranges if not explicit):
+• "P001 through P026" → count = 26 (P001, P002...P026)
+• "P028 through P041, P043 through P068, P070 through P087" → count each range separately, then sum:
+  - P028-P041 = 14, P043-P068 = 26, P070-P087 = 18 → Total = 58
+• "EG01-EG06" → count = 6
+• "P027, P069, and P091" → count explicit list = 3
+• Use explicit count if given: "Fifteen (15)..." → 15 (authoritative)
+• Separate table rows with no grouping → 1 per row
 
-SCHEMA:
+⚡ CAPACITY (Never convert - extract as shown):
+• Record in correct field: ratedCapacityKW, ratedCapacityBHP, ratedCapacityHP, ratedCapacityMMBtuPerHr
+• "2500 kW" → ratedCapacityKW: 2500, others: null
+• "1500 kW (2500 BHP)" → ratedCapacityKW: 1500, ratedCapacityBHP: 2500 (both as stated)
+• "3634 bhp" → ratedCapacityBHP: 3634
+• If only "maximum capacity" mentioned (no separate "rated"), treat as rated capacity
+• Missing = null (NOT zero, NOT calculated)
+
+🔧 MAKE & MODEL (Often separate from capacity info):
+• Search: technical specs, manufacturer certs, NSPS/MACT sections, equipment narratives
+• Extract exactly as written: "Caterpillar", "Cummins QSK78-G12", "Detroit Diesel"
+• If truly not found anywhere → null (do NOT guess or interpolate)
+
+⛽ FUEL SPECIFICATIONS:
+• primaryFuelType: Extract verbatim ("diesel", "ultra-low sulfur diesel", "distillate oil", "No. 2 fuel oil")
+• fuelGrade: Exact phrase ("No. 2", "numbers 1 or 2 fuel oil", "S15")
+• fuelSpecification: Standards verbatim - fix OCR errors only ("ASTM D396", "40 CFR 80.510(b)")
+• fuelSulfurContentPct: As decimal fraction:
+  - "0.5%" → 0.005 (percent to decimal)
+  - "15 ppm" → 0.000015 (ppm to decimal: ppm ÷ 1,000,000)
+  - "S15" (ULSD) → 0.000015 (15 ppm standard)
+
+⏱️ OPERATING LIMITS:
+• operatingHoursPerUnitLimit: Hours/year per unit (100, 218, 500 common)
+• operatingHoursPerUnitRollingWindow: "consecutive 12-month period", "calendar year", etc.
+• operatingHoursCombinedLimit: Total for group if separate from per-unit
+• allowedOperatingModes: Extract verbatim ("emergency only", "emergency, maintenance and testing")
+
+📋 REGULATORY:
+• nspsSubpartIIII: true if "40 CFR 60 Subpart IIII" mentioned as applicable
+• mactSubpartZZZZ: true if "40 CFR 63 Subpart ZZZZ" mentioned as applicable
+• Check "subject to", "applicable", "complies with" language
+
+══════════════════════════════════════════════════════════════════════════════
+CRITICAL GROUPING DECISION RULES
+══════════════════════════════════════════════════════════════════════════════
+
+GROUP AS ONE ENTRY if:
+✓ Range notation (EG01-EG06, P001 through P026)
+✓ Comma-separated in SAME description/row
+✓ Section heading groups them with shared capacity
+✓ Permit states "combined" limits (fuel, emissions, hours)
+
+SEPARATE ENTRIES if:
+✓ Separate table rows with distinct references
+✓ Different capacities, makes, or specifications
+✓ "Per unit" or "each" language with separate tracking
+✓ Different original permit dates or modification histories
+
+GROUPING MATTERS: Grouped units share COMBINED limits. Splitting incorrectly multiplies limits across individuals.
+
+══════════════════════════════════════════════════════════════════════════════
+JSON SCHEMA
+══════════════════════════════════════════════════════════════════════════════
+
 {json.dumps(schema, indent=2)}
 
-CRITICAL EXTRACTION GUIDELINES (Universal Cross-State):
+══════════════════════════════════════════════════════════════════════════════
+DOCUMENT TEXT TO EXTRACT FROM
+══════════════════════════════════════════════════════════════════════════════
 
-1. PERMIT DETAILS (varies by state):
-   - Permit number: May be labeled as "Permit ID", "Registration No.", "ID No.", "Application No."
-   - Dates: Issue date, expiration date, approval date (formats vary: MM/DD/YYYY or spelled out)
-   - Facility: Name, address, county (look in header, cover page, or permit body)
-   - Multi-ID handling: Some permits list multiple IDs (e.g., "Application No." AND "ID No.") - use extractionNotes
-
-2. GENERATORS - MAINTAIN SOURCE STRUCTURE (CRITICAL - Preserve grouping to match limits):
-   - Extract generators EXACTLY as organized in the permit's equipment table/list
-   - Grouping determines how fuel throughput, emissions, and operating limits are applied
-   - DO NOT split groups that share combined limits
-   - DO NOT merge separate entries that have individual limits
-   
-   GROUPED ENTRIES (keep as ONE entry):
-   - SAME ROW in equipment table with range notation: "EG01-EG06" → ONE entry
-   - SAME ROW with comma-separated codes: "Fifteen (15)... (EGA1, EGA2, EGAR, EGA3...EGSN)" → ONE entry
-   - Combined limits in permit: "EG01-EG07 shall consume no more than 583,600 gallons combined" → group matches limits
-   - Single emission line: If emissions table shows ONE line for multiple units → keep as ONE group
-   - Recording format: referenceNumber includes ALL codes (e.g., "EGA1, EGA2, EGAR, EGA3, EGA4..." or "EG01-EG06")
-   
-   SEPARATE ENTRIES (create individual entries):
-   - SEPARATE ROWS in equipment table: Each row with distinct reference (1, 2, 3) or (01A, 01B, 01C) → separate entries
-   - Individual specifications: Each generator has unique capacity, make/model, or permit date → separate entries
-   - Per-unit language: "500 hours per year EACH" with separate references → separate entries
-   
-   CRITICAL DECISION RULE - Check equipment table structure:
-   - If multiple generator codes appear in SAME ROW/DESCRIPTION → ONE grouped entry (they share combined limits)
-   - If generator codes appear in SEPARATE ROWS → separate entries (they have individual tracking)
-   - Range notation with dash (EG01-EG06) → always ONE entry (it's a contiguous range)
-   - Comma-separated codes in SAME description → ONE entry (grouped for regulatory purposes)
-   
-   WHY GROUPING MATTERS:
-   - Grouped generators share COMBINED fuel throughput limits (e.g., "EG01-EG07: 583,600 gal/yr total")
-   - Grouped generators have COMBINED emissions totals (e.g., "15 generators: 65.53 tons NOx")
-   - Splitting groups would incorrectly multiply the combined limits across individual units
-   - Merging separate entries would lose individual tracking requirements
-   
-   State-specific patterns:
-   - Virginia/DC: Range notation (EG01-EG06) in one row = ONE group; Separate rows (1, 2, 3) = separate entries
-   - Illinois: Comma-separated list in description (EGA1, EGA2...) = ONE group with combined emissions
-   - Kentucky: Each EU code in separate table row (01A, 01B) = separate entries with individual specs
-   - Michigan: Single EU- code per row = individual entries
-
-3. FUEL SPECIFICATIONS:
-   - primaryFuelType: Extract EXACTLY as written (e.g., "diesel", "diesel fuel", "distillate oil", "No. 2 fuel oil")
-   - fuelGrade: Extract explicit grade (e.g., "No. 2", "S15", "numbers 1 or 2") - copy verbatim
-   - fuelSpecification: Extract standards exactly:
-     * ASTM: "ASTM D975", "ASTM D396", "ASTM D396-76" (fix OCR errors: "ASTM 0396" → "ASTM D396")
-     * Federal specs: "40 CFR 1090.305", "40 CFR 80.510(b)"
-   - Multi-grade handling: "numbers 1 or 2" or "Grades No. 1 and 2":
-     * primaryFuelType: "distillate oil" (generic term)
-     * fuelGrade: exact phrase (e.g., "numbers 1 or 2 fuel oil")
-     * extractionNotes: "Fuel spec allows [grades]; recorded as distillate oil"
-   - fuelSulfurContent: Extract as decimal fraction (not percentage):
-     * If "0.5%" → 0.005 (percentage to decimal)
-     * If "15 ppm" → 0.000015 (ppm to decimal: divide by 1,000,000)
-     * If "0.0015%" → 0.000015 (already decimal percentage)
-     * If "S15" (ultra-low sulfur) → 0.000015 (15 ppm standard)
-     * Only standardize format - do NOT calculate or convert between different measurement bases
-
-4. FUEL THROUGHPUT (state-specific phrasing):
-   - Virginia: "shall consume no more than X gallons"
-   - Illinois: May reference "fuel throughput limit"
-   - Kentucky/Michigan: Check "operating limitations" sections
-   - fuelThroughputPerUnitLimit: Per-unit limit if specified (extract as numeric value)
-   - fuelThroughputPerUnitScope: "per_unit", "combined_group", or "facility_wide"
-   - fuelThroughputCombinedLimit: Total for group (e.g., "EG01-EG06 combined: 583,600 gallons/year")
-   - fuelThroughputCombinedGroupRef: Group reference (e.g., "EG01-EG06" or "EGA1-EGA4")
-   - Format as number: remove commas from "583,600" → 583600 (parsing only, not calculation)
-   - If NOT specified → null (NOT zero)
-
-5. CONTROL TECHNOLOGY & OPERATIONS:
-   - controlTechnology: Look in "Emission Controls", "Equipment Description", or specifications
-     * Common: "turbocharged", "aftercooler", "charge air cooler", "SCR", "good combustion practices"
-   - operatingHoursPerUnitLimit: Maximum hours/year per unit
-     * Common: 100, 218, 500 hours/year
-     * Check for "per unit" vs "combined" language
-   - operatingHoursPerUnitRollingWindow: Time period (e.g., "consecutive 12-month period", "calendar year")
-   - operatingHoursCombinedLimit: Combined hours for group if specified
-   - operatingHoursCombinedGroupRef: Group reference for combined limit
-   - allowedOperatingModes: Extract exactly as written:
-     * "emergency only"
-     * "emergency, maintenance and testing"
-     * "emergency, maintenance, testing, and non-emergency" (up to 50 hrs/yr)
-   - If NOT specified → null
-
-6. MONITORING & RECORDKEEPING:
-   - hourMeterRequired: true if "non-resettable hour meter" required
-   - observationFrequency: How often to monitor (e.g., "monthly", "daily when operated")
-   - recordkeepingWindowYears: Years to retain records (typically 5 years per federal requirements)
-
-7. REGULATORY APPLICABILITY (federal standards):
-   - nspsSubpartIIII: true if "40 CFR 60 Subpart IIII" or "NSPS Subpart IIII" applies
-   - mactSubpartZZZZ: true if "40 CFR 63 Subpart ZZZZ" or "MACT Subpart ZZZZ" applies
-   - Check for "subject to", "applicable", or "precluded from" language
-   - null if not mentioned
-
-DOCUMENT TEXT:
 {text_excerpt}
 
-Return valid JSON following the schema exactly. Preserve permit's structure - do not impose grouping or normalization.
+══════════════════════════════════════════════════════════════════════════════
+FINAL INSTRUCTIONS
+══════════════════════════════════════════════════════════════════════════════
+
+BEFORE RETURNING JSON, COMPLETE THIS VERIFICATION CHECKLIST:
+
+1. GENERATOR COUNT VERIFICATION:
+   □ Total numGenerators across all entries = ___
+   □ Total equipment IDs found in source tables/lists = ___
+   □ Do these numbers align? If not, investigate and document in permitDetails.extractionNotes
+
+2. COMPLETENESS CHECK:
+   □ Scanned ALL equipment tables/lists (including multi-page tables)?
+   □ Extracted from first equipment ID to last without skipping?
+   □ Checked equipment authorization pages AND conditions sections?
+   □ Verified no equipment IDs were skipped between entries?
+   □ For tables with rowspan: verified that rows with no description cells were 
+     grouped with the rowspan description above them?
+
+3. FIELD COVERAGE:
+   □ All capacity fields extracted (kW, BHP, HP where stated)?
+   □ Make/model searched in technical specs, NSPS/MACT sections?
+   □ Operating limits extracted from conditions sections?
+   □ All null fields are truly missing (not overlooked)?
+
+4. EXTRACTION NOTES QUALITY:
+   □ Document where information was found (section, page, table)
+   □ Explain why generators were grouped (or not grouped)
+   □ Note any calculations performed (e.g., counting range)
+   □ Flag any ambiguities or uncertainties
+
+Return ONLY valid JSON matching the schema. Use extractionNotes liberally to document:
+• Where you found information (especially if scattered)
+• Why fields are null (not found vs not applicable)
+• Any uncertainty or ambiguity in the source
+• Calculations made (e.g., "counted range P001-P026 = 26 units")
+• Verification results: "Extracted 18 generators from 18-row Facility Inventory table"
+
+Preserve the permit's organizational structure - do not impose your own grouping logic.
 """
 
         # Prepare API call parameters
@@ -869,7 +854,8 @@ Hour meter: Required""",
                 )
 
         # Check 4: Total generator count
-        total_units = sum(g.get("numGenerators", 1) for g in generators)
+        # Handle None values explicitly to avoid TypeError when summing
+        total_units = sum(g.get("numGenerators") or 1 for g in generators)
         if total_units > 50:
             warnings.append(
                 f"⚠️ WARNING: High total generator count: {total_units} (check for extraction errors)"

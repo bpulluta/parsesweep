@@ -32,6 +32,59 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 
+def _extract_with_ocr(pdf_path: Path) -> str:
+    """
+    Extract text from image-based PDF using PyMuPDF's built-in OCR (Tesseract).
+    
+    PyMuPDF 1.23+ has built-in OCR support via get_textpage_ocr().
+    This is used as a fallback when normal text extraction yields insufficient text.
+    
+    Args:
+        pdf_path: Path to the PDF file
+        
+    Returns:
+        Extracted text via OCR
+    """
+    if not PYMUPDF_AVAILABLE:
+        logger.warning("PyMuPDF not available for OCR extraction")
+        return ""
+    
+    try:
+        text = ""
+        with pymupdf.open(str(pdf_path)) as doc:
+            page_count = len(doc)
+            logger.info(f"🔍 Performing OCR on {page_count} pages (image-based PDF detected)...")
+            
+            for page_num in range(page_count):
+                page = doc[page_num]
+                # Try OCR with PyMuPDF (uses Tesseract if available)
+                try:
+                    # get_textpage_ocr requires tesseract to be installed
+                    tp = page.get_textpage_ocr()
+                    if tp:
+                        page_text = page.get_text(textpage=tp)
+                        text += page_text + "\n"
+                        logger.debug(f"  OCR page {page_num + 1}/{page_count}: {len(page_text)} chars")
+                except AttributeError:
+                    # Older PyMuPDF versions or Tesseract not available
+                    logger.warning(f"OCR not available - PyMuPDF {pymupdf.__version__} may need Tesseract")
+                    break
+                except Exception as e:
+                    logger.warning(f"OCR failed for page {page_num + 1}: {e}")
+                    continue
+        
+        if text:
+            logger.info(f"✓ OCR extraction completed: {len(text):,} characters from {page_count} pages")
+        else:
+            logger.warning("OCR extraction yielded no text")
+        
+        return text
+        
+    except Exception as e:
+        logger.error(f"Error during OCR extraction from {pdf_path}: {e}")
+        return ""
+
+
 def _validate_extraction_quality(text: str, pdf_path: Path) -> bool:
     """
     Validate extraction quality to detect truncation or corruption.
@@ -174,6 +227,21 @@ def extract_text_from_pdf(
                 f"Error extracting text with pypdf from {pdf_path}: {e}"
             )
             return ""
+
+    # Strategy 4: OCR fallback for image-based PDFs
+    # If text extraction yielded very little content, try OCR
+    if len(text.strip()) < 500:  # Less than 500 chars indicates image-based PDF
+        logger.warning(
+            f"Very little text extracted ({len(text)} chars), attempting OCR..."
+        )
+        ocr_text = _extract_with_ocr(pdf_path)
+        if ocr_text and len(ocr_text) > len(text):
+            logger.info("✓ OCR extraction successful, using OCR text")
+            text = ocr_text
+        elif not ocr_text:
+            logger.warning(
+                "⚠️ OCR extraction failed - PDF may be image-based without searchable text"
+            )
 
     # Apply basic OCR error corrections for common issues
     text = _cleanup_ocr_errors(text)

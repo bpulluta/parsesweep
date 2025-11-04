@@ -1,0 +1,35 @@
+{
+  "source_file": "577169 permit (FINAL).pdf",
+  "extraction_date": "2025-11-04 15:42:47",
+  "state": "Tennesse",
+  "model": "compassop-gpt-5",
+  "qa_qc_enabled": false,
+  "cost_usd": 0.053872500000000004,
+  "processing_time_sec": 38.13984394073486,
+  "completeness_score": 0.7,
+  "generator_count": 0,
+  "permit_number": "577169",
+  "data": {
+    "permitDetails": {
+      "permitNumber": "577169",
+      "permitIssuanceDate": "2020-12-07",
+      "permitExpirationDate": "2025-12-06",
+      "facilityName": "Foxman LLC",
+      "facilityAddress": "1000 Boolean Drive Clarksville",
+      "facilityCounty": "",
+      "facilityState": "TN",
+      "stateFacilityID": "63-0339",
+      "initialConstructionCommencedNotificationRequired": null,
+      "constructionCommencedNotificationWindowDays": null,
+      "initialStartupNotificationRequired": null,
+      "startupNotificationWindowDays": null,
+      "permitCopyOnsiteRequired": true,
+      "rightOfEntryClause": "Upon presentation of credentials and other documents as may be required by law, the permittee shall allow the Technical Secretary or an authorized representative to perform the following for the purposes of determining compliance with the permit applicable requirements:",
+      "extractionNotes": "Permit number, dates, facility name and address sourced from the cover page. Facility ID appears as '63-0339'. 'Installation Description' includes '63-0339-04: Three Groups of Emergency Stationary Compression Ignition Internal Combustion Engines'. Facility county is not stated in the provided excerpt; field left blank. 'POST AT INSTALLATION ADDRESS' appears on the cover page and was used to set permitCopyOnsiteRequired to true. Section E4 references 'Three Groups of Emergency Engines' but detailed equipment specifications (reference numbers, capacities, make/model, fuel, limits) are not included in the provided text; therefore generatorSets is empty. Attachment 2 lists '40 CFR 60 Subpart IIII General Provisions' but explicit applicability statements are not present in the excerpt."
+    },
+    "generatorSets": []
+  },
+  "validation_notes": [
+    "\u26a0\ufe0f WARNING: No generators extracted"
+  ]
+}
