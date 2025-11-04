@@ -769,7 +769,8 @@ def setup_graph_generators(**kwargs):  # noqa: D103
         prompt=(
             "Adjust your list so that all of the generators referenced in the "
             "permit appear **exactly once** in your list. Prefer groupings "
-            "of generator identifiers (e.g., EG01-EG05). "
+            "of generator identifiers (e.g., EG01-EG05), but **only** if they "
+            "are also grouped in the permit text. "
         ),
     )
     G.add_edge("make_unique", "is_complete")
