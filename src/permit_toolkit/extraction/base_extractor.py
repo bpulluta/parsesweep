@@ -485,8 +485,6 @@ Focus ONLY on generator/equipment data, NOT permit header details."""
                 "fuelType": None,
                 "ratedCapacityKW": None,
                 "ratedCapacityBHP": None,
-                "maximumCapacityKW": None,
-                "maximumCapacityBHP": None,
                 "fuelThroughputPerUnitLimit": None,
                 "fuelSulfurContent": None,
                 "controlTechnology": None,
@@ -607,28 +605,17 @@ Focus ONLY on generator/equipment data, NOT permit header details."""
                     
                     # Handle capacity specs with explicit types
                     if spec_type == "capacity_kw" or (spec_type == "capacity" and "kw" in text_lower):
-                        # Check if it's maximum or rated based on text evidence
-                        if "maximum" in text_lower or "max" in text_lower:
-                            generator_obj["maximumCapacityKW"] = value
-                        else:
-                            generator_obj["ratedCapacityKW"] = value
+                        # Map both "maximum" and "rated" to ratedCapacityKW field
+                        generator_obj["ratedCapacityKW"] = value
                     elif spec_type == "capacity_bhp" or (spec_type == "capacity" and ("bhp" in text_lower or "horsepower" in text_lower)):
-                        if "maximum" in text_lower or "max" in text_lower:
-                            generator_obj["maximumCapacityBHP"] = value
-                        else:
-                            generator_obj["ratedCapacityBHP"] = value
+                        # Map both "maximum" and "rated" to ratedCapacityBHP field
+                        generator_obj["ratedCapacityBHP"] = value
                     elif "kw" in text_lower:
                         # Fallback for kw without explicit type
-                        if "maximum" in text_lower or "max" in text_lower:
-                            generator_obj["maximumCapacityKW"] = value
-                        else:
-                            generator_obj["ratedCapacityKW"] = value
+                        generator_obj["ratedCapacityKW"] = value
                     elif "bhp" in text_lower or "horsepower" in text_lower:
                         # Fallback for bhp without explicit type
-                        if "maximum" in text_lower or "max" in text_lower:
-                            generator_obj["maximumCapacityBHP"] = value
-                        else:
-                            generator_obj["ratedCapacityBHP"] = value
+                        generator_obj["ratedCapacityBHP"] = value
                     elif "hour" in text_lower or spec_type == "hours":
                         generator_obj["operatingHoursPerUnitLimit"] = value
                     elif "gallon" in text_lower or "fuel" in text_lower:
