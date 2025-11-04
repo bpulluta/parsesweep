@@ -1,11 +1,11 @@
 {
   "source_file": "112-17.pdf",
-  "extraction_date": "2025-11-04 09:30:29",
+  "extraction_date": "2025-11-04 15:40:18",
   "state": "Michigan",
   "model": "compassop-gpt-5",
   "qa_qc_enabled": false,
-  "cost_usd": 0.06904,
-  "processing_time_sec": 83.26340508460999,
+  "cost_usd": 0.0570025,
+  "processing_time_sec": 41.99328303337097,
   "completeness_score": 0.7999999999999999,
   "generator_count": 1,
   "permit_number": "112-17",
@@ -15,7 +15,7 @@
       "permitIssuanceDate": "2017-08-21",
       "permitExpirationDate": null,
       "facilityName": "Beaumont Information Technology Center",
-      "facilityAddress": "1350 Stephenson Highway, Troy, Michigan",
+      "facilityAddress": "1350 Stephenson Highway\nTroy, Michigan",
       "facilityCounty": "Cakland",
       "facilityState": "MI",
       "stateFacilityID": "P0243",
@@ -25,7 +25,7 @@
       "startupNotificationWindowDays": null,
       "permitCopyOnsiteRequired": null,
       "rightOfEntryClause": null,
-      "extractionNotes": null
+      "extractionNotes": "Permit number and issuance date from cover page ('PERMIT TO INSTALL 112-17', 'DATE PERMIT TO INSTALL APPROVED: August 21, 2017'). Facility name, address, county, and State Registration Number from first page. Address captured as two lines as presented. County spelled 'Cakland' in source and preserved."
     },
     "generatorSets": [
       {
@@ -44,8 +44,8 @@
         "secondaryFuelType": null,
         "otherFuels": null,
         "fuelGrade": null,
-        "fuelSpecification": "40 CFR 80.510(b)",
-        "fuelSulfurContentPct": 0.0015,
+        "fuelSpecification": "40 CFR 60.4207(b), 40 CFR 80.510(b)",
+        "fuelSulfurContentPct": 1.5e-05,
         "fuelCertificationRequired": true,
         "fuelChangePermitTrigger": null,
         "fuelThroughputPerUnitLimit": null,
@@ -55,18 +55,18 @@
         "fuelThroughputCombinedGroupRef": null,
         "controlTechnology": null,
         "operatingHoursPerUnitLimit": 500,
-        "operatingHoursPerUnitRollingWindow": "12-month rolling time period basis as determined at the end of each calendar month",
+        "operatingHoursPerUnitRollingWindow": "12-month rolling time period basis as determined at the end of each calendar month.",
         "operatingHoursCombinedLimit": null,
         "operatingHoursCombinedGroupRef": null,
         "operatingHoursCombinedRollingWindow": null,
-        "allowedOperatingModes": "The permittee may operate EU-GENP for no more than 100 hours per calendar year for the purpose of necessary maintenance checks and readiness testing, provided that the tests are recommended by Federal, State, or local government, the manufacturer, the vendor, the regional transmission organization or equivalent balancing authority and transmission operator, or the insurance company associated with the engine. The permittee may petition the Department for approval of additional hours to be used for maintenance checks and readiness testing. A petition is not required if the owner or operator maintains records indicating that Federal, State, or local standards require maintenance and testing of emergency internal combustion engines beyond 100 hours per calendar year. EU-GENP may operate up to 50 hours per calendar year in non-emergency situations, but those 50 hours are counted towards the 100 hours per calendar year provided for maintenance and testing. Except as provided in 40 CFR 60.4211(f)(3)(i), the 50 hours per calendar year for non-emergency situations cannot be used for peak shaving or demand response, or to generate income for the permittee to supply non-emergency power as part of a financial arrangement with another entity.",
+        "allowedOperatingModes": "The permittee may operate EU-GENP for no more than 100 hours per calendar year for the purpose of necessary maintenance checks and readiness testing, provided that the tests are recommended by Federal, State, or local government, the manufacturer, the vendor, the regional transmission organization or equivalent balancing authority and transmission operator, or the insurance company associated with the engine.  The permittee may petition the Department for approval of additional hours to be used for maintenance checks and readiness testing.  A petition is not required if the owner or operator maintains records indicating that Federal, State, or local standards require maintenance and testing of emergency internal combustion engines beyond 100 hours per calendar year.  EU-GENP may operate up to 50 hours per calendar year in non-emergency situations, but those 50 hours are counted towards the 100 hours per calendar year provided for maintenance and testing.  Except as provided in 40 CFR 60.4211(f)(3)(i), the 50 hours per calendar year for non-emergency situations cannot be used for peak shaving or demand response, or to generate income for the permittee to supply non-emergency power as part of a financial arrangement with another entity.",
         "opacityLimitPercent": 20,
         "hourMeterRequired": true,
         "observationFrequency": null,
         "recordkeepingWindowYears": 5,
         "nspsSubpartIIII": true,
         "mactSubpartZZZZ": true,
-        "extractionNotes": null
+        "extractionNotes": "Reference number and unit description from Emission Unit Summary Table and Special Conditions for EU-GENP. Rated capacity 1,500 kW and 2,205 HP from Emission Unit Summary and SC IV.2; only HP is stated (no BHP), so ratedCapacityHP set and ratedCapacityBHP left null. Fuel requirements and sulfur limit from SC II.1; fuel specification cites 40 CFR 80.510(b) and 40 CFR 60.4207(b). Fuel certification required per SC VI.5. Operating hours limit and rolling window from SC III.1. Allowed operating modes text from SC III.2. Hour meter required from SC IV.1. Opacity limit 20% from General Condition 11 (note: one six-minute average per hour up to 27% also allowed). NSPS Subpart IIII applicability from SC IX.1 and MACT ZZZZ from SC IX.2. Make/model not provided anywhere in the document."
       }
     ]
   },

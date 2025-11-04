@@ -1,11 +1,11 @@
 {
   "source_file": "031440ANI_08010054_IL_Final_Permit.pdf",
-  "extraction_date": "2025-11-04 09:19:44",
+  "extraction_date": "2025-11-04 15:21:48",
   "state": "Illinois",
   "model": "compassop-gpt-5",
   "qa_qc_enabled": false,
-  "cost_usd": 0.08713375000000001,
-  "processing_time_sec": 73.73416113853455,
+  "cost_usd": 0.09028625,
+  "processing_time_sec": 67.04210090637207,
   "completeness_score": 0.7999999999999999,
   "generator_count": 19,
   "permit_number": "08010054",
@@ -21,15 +21,15 @@
       "stateFacilityID": "031440ANI",
       "initialConstructionCommencedNotificationRequired": null,
       "constructionCommencedNotificationWindowDays": null,
-      "initialStartupNotificationRequired": null,
+      "initialStartupNotificationRequired": false,
       "startupNotificationWindowDays": null,
       "permitCopyOnsiteRequired": null,
       "rightOfEntryClause": "The Illinois EPA shall have the right to conduct such tests at any time at its own expense.",
-      "extractionNotes": "Multiple identifiers present. Selected Application No.: 08010054 as permitNumber. Recorded I.D. No.: 031440ANI as stateFacilityID."
+      "extractionNotes": "No explicit 'Permit No.' was presented; used 'Application No.: 08010054' as permitNumber. State facility identifier taken from 'I.D. No.: 031440ANI'. Address taken from the 'Location:' line that includes county and zip."
     },
     "generatorSets": [
       {
-        "referenceNumber": "EGA1, EGA2, EGAR, EGA3, EGA4, EGB1, EGB2, EGBR, EGB3, EGB4, EGC1, EGC2, EGCR, EGSS, EGSN",
+        "referenceNumber": "EGA1, EGA2, EGAR, EGA3, EGA4, EGB1, EGB2, EGBR, EGB3, EGB4, EGC1, EGC2, EGCR, EGSS, and EGSN",
         "numGenerators": 15,
         "includedInPermitProject": null,
         "originalPermitDate": null,
@@ -66,7 +66,7 @@
         "recordkeepingWindowYears": 5,
         "nspsSubpartIIII": true,
         "mactSubpartZZZZ": true,
-        "extractionNotes": "Comma-separated group: 15 units listed together in permit, share combined runtime and emission limits. Note: permit text states 'total combined runtime for all fourteen...' which appears to be a typographical inconsistency."
+        "extractionNotes": "Group defined in permit preamble: 'Fifteen (15) 2,500 kW (3,634 HP) diesel powered Emergency Generator Sets (EGA1...EGSN)'. Operating hour limits and combined runtime from Condition 14a(i). Note the combined runtime text states 'all fourteen' while fifteen units are listed; extracted verbatim. Fuel type/grade from Condition 13(b). Fuel specification requirement from 40 CFR 80.510(b) cited in Condition 11(b). Hour meter requirement from Condition 19. Opacity limit from 35 Ill. Adm. Code 212.123(a) (30%)."
       },
       {
         "referenceNumber": "EGC5 \u2013 EGC8",
@@ -106,13 +106,13 @@
         "recordkeepingWindowYears": 5,
         "nspsSubpartIIII": true,
         "mactSubpartZZZZ": true,
-        "extractionNotes": null
+        "extractionNotes": "Group defined in permit preamble: 'Four (4) 2,500 kW (3,633 HP) diesel powered Emergency Generator Sets (EGC5 \u2013 EGC8)'. Per-unit runtime limit 230 hours/year from Condition 14(b)(i). Additional federal engine standards for this group referenced in Condition 4(a) (40 CFR 89.112 and 40 CFR 89.113) with opacity provisions of 20% acceleration, 15% lugging, and 50% peaks; the generator-level opacity field captures the 30% limit from 35 Ill. Adm. Code 212.123(a). Fuel type/grade from Condition 13(b). Fuel specification requirement from 40 CFR 80.510(b) cited in Condition 11(b). Hour meter requirement from Condition 19."
       }
     ]
   },
   "validation_notes": [
-    "\u26a0\ufe0f WARNING: EGA1, EGA2, EGAR, EGA3, EGA4, EGB1, EGB2, EGBR, EGB3, EGB4, EGC1, EGC2, EGCR, EGSS, EGSN missing make",
-    "\u26a0\ufe0f WARNING: EGA1, EGA2, EGAR, EGA3, EGA4, EGB1, EGB2, EGBR, EGB3, EGB4, EGC1, EGC2, EGCR, EGSS, EGSN missing model",
+    "\u26a0\ufe0f WARNING: EGA1, EGA2, EGAR, EGA3, EGA4, EGB1, EGB2, EGBR, EGB3, EGB4, EGC1, EGC2, EGCR, EGSS, and EGSN missing make",
+    "\u26a0\ufe0f WARNING: EGA1, EGA2, EGAR, EGA3, EGA4, EGB1, EGB2, EGBR, EGB3, EGB4, EGC1, EGC2, EGCR, EGSS, and EGSN missing model",
     "\u26a0\ufe0f WARNING: EGC5 \u2013 EGC8 missing make",
     "\u26a0\ufe0f WARNING: EGC5 \u2013 EGC8 missing model"
   ]
