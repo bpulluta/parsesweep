@@ -1142,10 +1142,11 @@ def setup_graph_rated_capacity_hp(**kwargs):  # noqa: D103
         "init",
         prompt=(
             "Does the following text **directly specify** a numeric nominal "
-            "nameplate capacity, in HP, **for the generator with reference "
-            "number {ref_number}**? Keep in mind that the reference number "
-            "could be included in range or group of numbers and information "
-            "that applies to that group should be considered relevant. "
+            "nameplate capacity, in horsepower, **for the generator with "
+            "reference number {ref_number}**? Keep in mind that the reference "
+            "number could be included in range or group of numbers and "
+            "information that applies to that group should be considered "
+            "relevant. "
             f"{_START_WITH_YN}"
             '\n\n"""\n{text}\n"""'
         ),
@@ -1156,7 +1157,8 @@ def setup_graph_rated_capacity_hp(**kwargs):  # noqa: D103
         "check_units",
         prompt=(
             "Does the text for the generator with reference number "
-            "{ref_number} directly specify capacity **in units of HP**? "
+            "{ref_number} directly specify capacity **in units of "
+            "horsepower**? "
             f"{_START_WITH_YN}"
         ),
     )
@@ -1193,19 +1195,21 @@ def setup_graph_rated_capacity_hp(**kwargs):  # noqa: D103
         prompt=(
             "We are interested in the **nominal** capacity for the generator "
             "with reference number {ref_number}. What is that capacity, in "
-            "HP? If multiple HP values are listed for this generator, "
-            "please give the smallest stated HP as a single number. Do not "
-            "attempt to infer this value from other units."
+            "horsepower? If multiple horsepower values are listed for this "
+            "generator, please give the smallest stated horsepower as a "
+            "single number. Do not attempt to infer this value from other "
+            "units."
         ),
     )
 
     G.add_node(
         "cap_no_distinguish",
         prompt=(
-            "What is the capacity, in HP, for the generator with reference "
-            "number {ref_number}? If multiple HP values are listed for this "
-            "generator, please give the smallest stated HP as a single "
-            "number. Do not attempt to infer this value from other units."
+            "What is the capacity, in horsepower, for the generator with "
+            "reference number {ref_number}? If multiple horsepower values are "
+            "listed for this generator, please give the smallest stated "
+            "horsepower as a single number. Do not attempt to infer this "
+            "value from other units."
         ),
     )
 
@@ -1220,8 +1224,9 @@ def setup_graph_rated_capacity_hp(**kwargs):  # noqa: D103
             "include exactly two keys. The keys are "
             '"rated_capacity_hp" and "explanation". The '
             'value of the "rated_capacity_hp" key should be an numerical '
-            "value representing the nominal nameplate capacity, in HP, "
-            "**for the generator with reference number {ref_number}**. "
+            "value representing the nominal nameplate capacity, in "
+            "horsepower, **for the generator with reference number "
+            "{ref_number}**. "
             f"{_EXPLANATION_KEY} "
             "Document any ambiguities or multiple values in the "
             "'explanation' text."
@@ -1238,10 +1243,11 @@ def setup_graph_rated_capacity_bhp(**kwargs):  # noqa: D103
         "init",
         prompt=(
             "Does the following text **directly specify** a numeric nominal "
-            "nameplate capacity, in BHP, **for the generator with reference "
-            "number {ref_number}**? Keep in mind that the reference number "
-            "could be included in range or group of numbers and information "
-            "that applies to that group should be considered relevant. "
+            "nameplate capacity, in brake horsepower, **for the generator "
+            "with reference number {ref_number}**? Keep in mind that the "
+            "reference number could be included in range or group of "
+            "numbers and information that applies to that group should be "
+            "considered relevant. "
             f"{_START_WITH_YN}"
             '\n\n"""\n{text}\n"""'
         ),
@@ -1252,7 +1258,8 @@ def setup_graph_rated_capacity_bhp(**kwargs):  # noqa: D103
         "check_units",
         prompt=(
             "Does the text for the generator with reference number "
-            "{ref_number} directly specify capacity **in units of BHP**? "
+            "{ref_number} directly specify capacity **in units of brake "
+            "horsepower**? "
             f"{_START_WITH_YN}"
         ),
     )
@@ -1289,19 +1296,21 @@ def setup_graph_rated_capacity_bhp(**kwargs):  # noqa: D103
         prompt=(
             "We are interested in the **nominal** capacity for the generator "
             "with reference number {ref_number}. What is that capacity, in "
-            "BHP? If multiple BHP values are listed for this generator, "
-            "please give the smallest stated BHP as a single number. Do not "
-            "attempt to infer this value from other units."
+            "brake horsepower? If multiple brake horsepower values are listed "
+            "for this generator, please give the smallest stated brake "
+            "horsepower as a single number. Do not attempt to infer this "
+            "value from other units."
         ),
     )
 
     G.add_node(
         "cap_no_distinguish",
         prompt=(
-            "What is the capacity, in BHP, for the generator with reference "
-            "number {ref_number}? If multiple BHP values are listed for this "
-            "generator, please give the smallest stated BHP as a single "
-            "number. Do not attempt to infer this value from other units."
+            "What is the capacity, in brake horsepower, for the generator "
+            "with reference number {ref_number}? If multiple brake horsepower "
+            "values are listed for this generator, please give the smallest "
+            "stated brake horsepower as a single number. Do not attempt to "
+            "infer this value from other units."
         ),
     )
 
@@ -1316,8 +1325,9 @@ def setup_graph_rated_capacity_bhp(**kwargs):  # noqa: D103
             "include exactly two keys. The keys are "
             '"rated_capacity_bhp" and "explanation". The '
             'value of the "rated_capacity_bhp" key should be an numerical '
-            "value representing the nominal nameplate capacity, in BHP, "
-            "**for the generator with reference number {ref_number}**. "
+            "value representing the nominal nameplate capacity, in brake "
+            "horsepower, **for the generator with reference number "
+            "{ref_number}**. "
             f"{_EXPLANATION_KEY} "
             "Document any ambiguities or multiple values in the "
             "'explanation' text."
@@ -1415,7 +1425,7 @@ def setup_graph_max_capacity_hp(**kwargs):  # noqa: D103
         "init",
         prompt=(
             "Does the following text **directly specify a maximum** "
-            "capacity, in HP, **for the generator with reference "
+            "capacity, in horsepower, **for the generator with reference "
             "number {ref_number}**? Keep in mind that the reference number "
             "could be included in range or group of numbers and information "
             "that applies to that group should be considered relevant. "
@@ -1430,7 +1440,7 @@ def setup_graph_max_capacity_hp(**kwargs):  # noqa: D103
         prompt=(
             "Does the text for the generator with reference number "
             "{ref_number} directly specify maximum capacity **in units of "
-            "HP**? "
+            "horsepower**? "
             f"{_START_WITH_YN}"
         ),
     )
@@ -1462,9 +1472,9 @@ def setup_graph_max_capacity_hp(**kwargs):  # noqa: D103
         prompt=(
             "We are interested in the **maximum** capacity for the generator "
             "with reference number {ref_number}. What is that capacity, in "
-            "HP? If multiple HP values are listed for this generator, "
-            "please give the largest stated HP as a single number. Do not "
-            "attempt to infer this value from other units."
+            "horsepower? If multiple horsepower values are listed for this "
+            "generator, please give the largest stated horsepower as a single "
+            "number. Do not attempt to infer this value from other units."
         ),
     )
 
@@ -1478,8 +1488,9 @@ def setup_graph_max_capacity_hp(**kwargs):  # noqa: D103
             "include exactly two keys. The keys are "
             '"max_capacity_bhp" and "explanation". The '
             'value of the "max_capacity_bhp" key should be an numerical '
-            "value representing the **maximum** nameplate capacity, in HP, "
-            "**for the generator with reference number {ref_number}**. "
+            "value representing the **maximum** nameplate capacity, in "
+            "horsepower, **for the generator with reference number "
+            "{ref_number}**. "
             f"{_EXPLANATION_KEY} "
             "Document any ambiguities or multiple values in the "
             "'explanation' text."
@@ -1495,8 +1506,8 @@ def setup_graph_max_capacity_bhp(**kwargs):  # noqa: D103
     G.add_node(
         "init",
         prompt=(
-            "Does the following text **directly specify a maximum** "
-            "capacity, in BHP, **for the generator with reference "
+            "Does the following text **directly specify a maximum** capacity, "
+            "in brake horsepower, **for the generator with reference "
             "number {ref_number}**? Keep in mind that the reference number "
             "could be included in range or group of numbers and information "
             "that applies to that group should be considered relevant. "
@@ -1511,7 +1522,7 @@ def setup_graph_max_capacity_bhp(**kwargs):  # noqa: D103
         prompt=(
             "Does the text for the generator with reference number "
             "{ref_number} directly specify maximum capacity **in units of "
-            "BHP**? "
+            "brake horsepower**? "
             f"{_START_WITH_YN}"
         ),
     )
@@ -1543,9 +1554,10 @@ def setup_graph_max_capacity_bhp(**kwargs):  # noqa: D103
         prompt=(
             "We are interested in the **maximum** capacity for the generator "
             "with reference number {ref_number}. What is that capacity, in "
-            "BHP? If multiple BHP values are listed for this generator, "
-            "please give the largest stated BHP as a single number. Do not "
-            "attempt to infer this value from other units."
+            "brake horsepower? If multiple brake horsepower values are listed "
+            "for this generator, please give the largest stated brake "
+            "horsepower as a single number. Do not attempt to infer this "
+            "value from other units."
         ),
     )
 
@@ -1559,8 +1571,9 @@ def setup_graph_max_capacity_bhp(**kwargs):  # noqa: D103
             "include exactly two keys. The keys are "
             '"max_capacity_bhp" and "explanation". The '
             'value of the "max_capacity_bhp" key should be an numerical '
-            "value representing the **maximum** nameplate capacity, in BHP, "
-            "**for the generator with reference number {ref_number}**. "
+            "value representing the **maximum** nameplate capacity, in "
+            "brake horsepower, **for the generator with reference number "
+            "{ref_number}**. "
             f"{_EXPLANATION_KEY} "
             "Document any ambiguities or multiple values in the "
             "'explanation' text."
