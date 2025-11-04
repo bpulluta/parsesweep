@@ -37,22 +37,22 @@ from permit_toolkit.extraction.decision_trees.graphs import (
     setup_graph_fuel_grade,
     setup_graph_fuel_spec,
     setup_graph_fuel_sulphur,
-    setup_graph_fuel_cert_required,
-    setup_graph_fuel_cert_fields,
-    setup_graph_fuel_change_trigger,
+    # setup_graph_fuel_cert_required,
+    # setup_graph_fuel_cert_fields,
+    # setup_graph_fuel_change_trigger,
     setup_graph_fuel_throughput_limit,
     setup_graph_control_techs,
     setup_graph_operating_hours,
     setup_graph_operating_window,
     setup_graph_operating_modes,
-    setup_graph_opacity,
-    setup_graph_hour_meter,
-    setup_graph_record_years,
-    setup_graph_operation_reason_log,
-    setup_graph_manufacturers_o_and_m,
-    setup_graph_maintenance_records,
-    setup_graph_nsps,
-    setup_graph_mact,
+    # setup_graph_opacity,
+    # setup_graph_hour_meter,
+    # setup_graph_record_years,
+    # setup_graph_operation_reason_log,
+    # setup_graph_manufacturers_o_and_m,
+    # setup_graph_maintenance_records,
+    # setup_graph_nsps,
+    # setup_graph_mact,
 )
 
 logger = logging.getLogger(__name__)
@@ -298,21 +298,21 @@ class StructuredOrdinanceParser(BaseLLMCaller):
                 "fuel_sulfur_pct",
                 "Checking for generator fuel sulphur content",
             ),
-            "fuelCertificationRequired": (
-                setup_graph_fuel_cert_required,
-                "fuel_cert_required",
-                "Checking if fuel supplier certification is required",
-            ),
-            "fuelCertificationFields": (
-                setup_graph_fuel_cert_fields,
-                "fuel_cert_fields",
-                "Checking for required fuel supplier certification fields",
-            ),
-            "fuelChangePermitTrigger": (
-                setup_graph_fuel_change_trigger,
-                "fuel_change_trigger",
-                "Checking for fuel change trigger",
-            ),
+            # "fuelCertificationRequired": (
+            #     setup_graph_fuel_cert_required,
+            #     "fuel_cert_required",
+            #     "Checking if fuel supplier certification is required",
+            # ),
+            # "fuelCertificationFields": (
+            #     setup_graph_fuel_cert_fields,
+            #     "fuel_cert_fields",
+            #     "Checking for required fuel supplier certification fields",
+            # ),
+            # "fuelChangePermitTrigger": (
+            #     setup_graph_fuel_change_trigger,
+            #     "fuel_change_trigger",
+            #     "Checking for fuel change trigger",
+            # ),
             "fuelThroughputLimit": (
                 setup_graph_fuel_throughput_limit,
                 "fuel_limit",
@@ -338,48 +338,48 @@ class StructuredOrdinanceParser(BaseLLMCaller):
                 "operating_modes",
                 "Checking for generator operating modes",
             ),
-            "opacityLimitPercent": (
-                setup_graph_opacity,
-                "opacity_limit_pct",
-                "Checking for generator opacity limits",
-            ),
-            "hourMeterRequired": (
-                setup_graph_hour_meter,
-                "hour_meter_device_required",
-                "Checking if hour metering device is required",
-            ),
-            "recordkeepingWindowYears": (
-                setup_graph_record_years,
-                "min_record_years",
-                "Checking for hour meter record keeping years",
-            ),
-            "operationReasonLogRequired": (
-                setup_graph_operation_reason_log,
-                "operation_reason_log_required",
-                "Checking for operating reasons logging requirements",
-            ),
-            "manufacturerOandMRequired": (
-                setup_graph_manufacturers_o_and_m,
-                "manufacturers_instructions_required",
-                "Checking for manufacturer's operation and maintenance "
-                "instructions requirements",
-            ),
-            "maintenanceTrainingRecordsRequired": (
-                setup_graph_maintenance_records,
-                "maintenance_records_required",
-                "Checking for maintenance and operator training records "
-                "requirements",
-            ),
-            "nspsSubpartIIII": (
-                setup_graph_nsps,
-                "nsps_applicable",
-                "Checking for NSPS Subpart IIII applicability",
-            ),
-            "mactSubpartZZZZ": (
-                setup_graph_mact,
-                "mact_applicable",
-                "Checking for MACT Subpart ZZZZ applicability",
-            ),
+            # "opacityLimitPercent": (
+            #     setup_graph_opacity,
+            #     "opacity_limit_pct",
+            #     "Checking for generator opacity limits",
+            # ),
+            # "hourMeterRequired": (
+            #     setup_graph_hour_meter,
+            #     "hour_meter_device_required",
+            #     "Checking if hour metering device is required",
+            # ),
+            # "recordkeepingWindowYears": (
+            #     setup_graph_record_years,
+            #     "min_record_years",
+            #     "Checking for hour meter record keeping years",
+            # ),
+            # "operationReasonLogRequired": (
+            #     setup_graph_operation_reason_log,
+            #     "operation_reason_log_required",
+            #     "Checking for operating reasons logging requirements",
+            # ),
+            # "manufacturerOandMRequired": (
+            #     setup_graph_manufacturers_o_and_m,
+            #     "manufacturers_instructions_required",
+            #     "Checking for manufacturer's operation and maintenance "
+            #     "instructions requirements",
+            # ),
+            # "maintenanceTrainingRecordsRequired": (
+            #     setup_graph_maintenance_records,
+            #     "maintenance_records_required",
+            #     "Checking for maintenance and operator training records "
+            #     "requirements",
+            # ),
+            # "nspsSubpartIIII": (
+            #     setup_graph_nsps,
+            #     "nsps_applicable",
+            #     "Checking for NSPS Subpart IIII applicability",
+            # ),
+            # "mactSubpartZZZZ": (
+            #     setup_graph_mact,
+            #     "mact_applicable",
+            #     "Checking for MACT Subpart ZZZZ applicability",
+            # ),
         }
         tasks = {
             (ref_number, name, k): asyncio.create_task(
