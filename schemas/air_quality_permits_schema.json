@@ -308,47 +308,6 @@
             ],
             "description": "True if fuel supplier certification is explicitly required with each shipment. False if explicitly not required. Null if not mentioned."
           },
-          "fuelCertificationFields": {
-            "anyOf": [
-              {
-                "type": "object",
-                "additionalProperties": false,
-                "properties": {
-                  "supplierNameRequired": {
-                    "type": "boolean",
-                    "description": "True if supplier name is required in certification."
-                  },
-                  "receiptDateRequired": {
-                    "type": "boolean",
-                    "description": "True if receipt/delivery date is required in certification."
-                  },
-                  "quantityRequired": {
-                    "type": "boolean",
-                    "description": "True if quantity/volume is required in certification."
-                  },
-                  "astmComplianceStatementRequired": {
-                    "type": "boolean",
-                    "description": "True if ASTM compliance statement is required in certification."
-                  },
-                  "sulfurContentRequired": {
-                    "type": "boolean",
-                    "description": "True if sulfur content is required in certification."
-                  }
-                },
-                "required": [
-                  "supplierNameRequired",
-                  "receiptDateRequired",
-                  "quantityRequired",
-                  "astmComplianceStatementRequired",
-                  "sulfurContentRequired"
-                ]
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Breakdown of required fuel certification fields if certification is required. Leave null if certification not required or fields not specified."
-          },
           "fuelChangePermitTrigger": {
             "anyOf": [
               {
@@ -360,7 +319,7 @@
             ],
             "description": "Free-text excerpt of permit language describing when fuel changes trigger permit modification (e.g., 'A change in the fuel may require a new or amended permit'). Leave null if not stated."
           },
-          "fuelThroughputLimit": {
+          "fuelThroughputPerUnitLimit": {
             "anyOf": [
               {
                 "type": "number"
@@ -369,9 +328,9 @@
                 "type": "null"
               }
             ],
-            "description": "Maximum fuel consumption as numeric value only (e.g., gallons per year). Leave null if not stated."
+            "description": "Maximum fuel consumption per unit as numeric value only (e.g., gallons per year per unit). For per-unit limits or when only one limit type exists. When permits specify BOTH per-unit AND combined throughput limits, use this for per-unit and fuelThroughputCombinedLimit for aggregate. Leave null if not stated."
           },
-          "fuelThroughputScope": {
+          "fuelThroughputPerUnitScope": {
             "anyOf": [
               {
                 "type": "string",
@@ -381,9 +340,9 @@
                 "type": "null"
               }
             ],
-            "description": "Scope of fuel throughput limit: 'per_unit' if applied to each generator individually, 'combined_group' if applied to multiple generators collectively (check fuelThroughputGroupRef for the group reference), or 'facility_wide' if applied to all generators. States may use flexible group names like 'FGEMGENS' or specific generator lists. Leave null if not stated."
+            "description": "Scope of per-unit fuel throughput limit: 'per_unit' if applied to each generator individually, 'combined_group' if applied to multiple generators collectively (check fuelThroughputPerUnitGroupRef for the group reference), or 'facility_wide' if applied to all generators. States may use flexible group names like 'FGEMGENS' or specific generator lists. Leave null if not stated."
           },
-          "fuelThroughputGroupRef": {
+          "fuelThroughputPerUnitGroupRef": {
             "anyOf": [
               {
                 "type": "string"
@@ -392,7 +351,29 @@
                 "type": "null"
               }
             ],
-            "description": "Reference to generator group when throughput is combined. May be explicit list (e.g., 'EG01-EG07') or flexible group identifier used by state (e.g., 'FGEMGENS'). Extract exactly as written. Leave null if not applicable."
+            "description": "Reference to generator group when per-unit throughput applies to a group. May be explicit list (e.g., 'EG01-EG07') or flexible group identifier used by state (e.g., 'FGEMGENS'). Extract exactly as written. Leave null if not applicable."
+          },
+          "fuelThroughputCombinedLimit": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Combined/aggregate fuel throughput limit when permits specify BOTH per-unit and combined limits. Captures the more restrictive aggregate cap for a group of generators. Leave null if only per-unit limit exists or if not specified."
+          },
+          "fuelThroughputCombinedGroupRef": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Reference to generator group when combined fuel throughput limit applies. Extract the specific language describing which units. Leave null if fuelThroughputCombinedLimit not used."
           },
           "controlTechnology": {
             "anyOf": [
@@ -405,7 +386,7 @@
             ],
             "description": "Emission control technology or devices as written in permit (e.g., 'turbocharged engine and aftercooler', 'SCR', 'DOC'). Leave null if not specified."
           },
-          "operatingHoursLimit": {
+          "operatingHoursPerUnitLimit": {
             "anyOf": [
               {
                 "type": "number"
@@ -414,9 +395,9 @@
                 "type": "null"
               }
             ],
-            "description": "Maximum allowed operating hours as numeric value. May be annual (e.g., 500 hours/year) or within a rolling window period. See operatingHoursRollingWindow for period definition and operatingHoursLimitScope for whether applied per-unit or to combined group. Leave null if not specified."
+            "description": "Maximum allowed operating hours per unit as numeric value (e.g., 500 hours/year each unit). When permits specify BOTH per-unit AND combined limits, use this field for the per-unit value and operatingHoursCombinedLimit for the aggregate. When only one limit type exists, use this field regardless of scope. See operatingHoursPerUnitRollingWindow for period definition. Leave null if not specified."
           },
-          "operatingHoursRollingWindow": {
+          "operatingHoursPerUnitRollingWindow": {
             "anyOf": [
               {
                 "type": "string"
@@ -425,9 +406,20 @@
                 "type": "null"
               }
             ],
-            "description": "Rolling window or time period for operating hours limit exactly as written. States use various formats: 'consecutive 12-month period; calculated monthly', 'running 12 month total', '12-month rolling period', etc. Extract verbatim. Leave null if not specified."
+            "description": "Rolling window or time period for per-unit operating hours limit exactly as written. States use various formats: 'consecutive 12-month period; calculated monthly', 'running 12 month total', '12-month rolling period', etc. Extract verbatim. Applies to operatingHoursPerUnitLimit unless operatingHoursCombinedRollingWindow specifies differently for combined limit. Leave null if not specified."
           },
-          "operatingHoursLimitScope": {
+          "operatingHoursCombinedLimit": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Combined/aggregate operating hours limit when permits specify BOTH per-unit and combined limits (e.g., '500 hours/year each' in operatingHoursPerUnitLimit AND 'total combined runtime for all fourteen...shall not exceed 3,220 hours/year' here). Critical for capturing dual-limit scenarios where individual units have one cap and the group has a more restrictive aggregate cap. Leave null if only per-unit limit exists or if not specified."
+          },
+          "operatingHoursCombinedGroupRef": {
             "anyOf": [
               {
                 "type": "string"
@@ -436,7 +428,18 @@
                 "type": "null"
               }
             ],
-            "description": "Scope of operating hours limit: 'per-unit' if applied to each generator individually, 'combined' if applied to multiple generators collectively, 'facility-wide' if applied to all generators, or null if not specified. When scope is 'combined', look for group references like 'FGEMGENS' or specific generator lists in the permit conditions. Critical for multi-unit permits where limits may apply differently across generator groups."
+            "description": "Reference to generator group when combined operating hours limit applies. Extract the specific language describing which units (e.g., 'all fourteen 2,500 kW (3,634 HP) Diesel-Powered Emergency Generator Sets', 'EGC5-EGC8'). Leave null if operatingHoursCombinedLimit not used."
+          },
+          "operatingHoursCombinedRollingWindow": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Rolling window for combined operating hours limit if different from operatingHoursRollingWindow. Extract verbatim. Leave null if not specified or if same as operatingHoursRollingWindow."
           },
           "allowedOperatingModes": {
             "anyOf": [

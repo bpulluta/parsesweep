@@ -1,11 +1,11 @@
 {
   "source_file": "11541_DC_Permit.pdf",
-  "extraction_date": "2025-11-03 13:42:17",
+  "extraction_date": "2025-11-03 20:21:40",
   "state": "Virginia",
   "model": "compassop-gpt-5",
   "qa_qc_enabled": false,
-  "cost_usd": 0.07564874999999999,
-  "processing_time_sec": 77.47789216041565,
+  "cost_usd": 0.07360875,
+  "processing_time_sec": 55.18986511230469,
   "completeness_score": 0.7999999999999999,
   "generator_count": 3,
   "permit_number": "11541",
@@ -21,10 +21,10 @@
       "initialConstructionCommencedNotificationRequired": true,
       "constructionCommencedNotificationWindowDays": 30,
       "initialStartupNotificationRequired": true,
-      "startupNotificationWindowDays": 15,
+      "startupNotificationWindowDays": 16,
       "permitCopyOnsiteRequired": true,
-      "rightOfEntryClause": "The permittee shall allow authorized local, state, and federal representatives, upon the presentation of credentials: a. To enter upon the permittee's premises on which the facility is located or in which any records are required to be kept under the terms and conditions of this permit; b. To have access to and copy at reasonable times any records required to be kept under the terms and conditions of this permit or the State Air Pollution Control Board Regulations; c. To inspect at reasonable times any facility, equipment, or process subject to the terms and conditions of this permit or the State Air Pollution Control Board Regulations; and d. To sample or test at reasonable times. For purposes of this condition, the time for inspection shall be deemed reasonable during regular business hours or whenever the facility is in operation.",
-      "extractionNotes": "Facility ID No. 51-167-00092 also listed."
+      "rightOfEntryClause": "Por purposes ofthis condition,the time for inspection shall be deemed reasonable during regularbusiness hours orwheneverthefacilityis in operation. Nothing contained herein shall make an inspection time unreasonable during an emergency.",
+      "extractionNotes": null
     },
     "generatorSets": [
       {
@@ -43,7 +43,7 @@
         "otherFuels": null,
         "fuelGrade": "numbers 1 or 2 fuel oil",
         "fuelSpecification": "ASTM D396-76",
-        "fuelSulfurContentPct": 0.005,
+        "fuelSulfurContentPct": 0.5,
         "fuelCertificationRequired": true,
         "fuelCertificationFields": {
           "supplierNameRequired": true,
@@ -53,13 +53,12 @@
           "sulfurContentRequired": true
         },
         "fuelChangePermitTrigger": "A change in the fuel may require a permit to modify and operate.",
-        "fuelThroughputLimit": null,
-        "fuelThroughputScope": null,
-        "fuelThroughputGroupRef": null,
+        "fuelThroughputCombinedLimit": null,
+        "fuelThroughputCombinedGroupRef": null,
         "controlTechnology": null,
-        "operatingHoursLimit": 500,
-        "operatingHoursRollingWindow": "calculated monthly as the sum of each consecutive 12-month period.",
-        "operatingHoursLimitScope": "per-unit",
+        "operatingHoursCombinedLimit": null,
+        "operatingHoursCombinedGroupRef": null,
+        "operatingHoursCombinedRollingWindow": null,
         "allowedOperatingModes": null,
         "opacityLimitPercent": 10,
         "hourMeterRequired": null,
@@ -70,7 +69,12 @@
         "maintenanceTrainingRecordsRequired": true,
         "nspsSubpartIIII": true,
         "mactSubpartZZZZ": null,
-        "extractionNotes": "Fuel specification allows numbers 1 or 2 fuel oil; recorded as distillate oil per multiple grade allowance"
+        "extractionNotes": "Fuel specification allows numbers 1 or 2 fuel oil; recorded as distillate oil per multiple grade allowance",
+        "fuelThroughputPerUnitLimit": null,
+        "fuelThroughputPerUnitScope": null,
+        "fuelThroughputPerUnitGroupRef": null,
+        "operatingHoursPerUnitLimit": 500,
+        "operatingHoursPerUnitRollingWindow": "calculated monthly as tbe sum of each consecutive 12-month penod."
       },
       {
         "referenceNumber": "2",
@@ -88,7 +92,7 @@
         "otherFuels": null,
         "fuelGrade": "numbers 1 or 2 fuel oil",
         "fuelSpecification": "ASTM D396-76",
-        "fuelSulfurContentPct": 0.005,
+        "fuelSulfurContentPct": 0.5,
         "fuelCertificationRequired": true,
         "fuelCertificationFields": {
           "supplierNameRequired": true,
@@ -98,13 +102,12 @@
           "sulfurContentRequired": true
         },
         "fuelChangePermitTrigger": "A change in the fuel may require a permit to modify and operate.",
-        "fuelThroughputLimit": null,
-        "fuelThroughputScope": null,
-        "fuelThroughputGroupRef": null,
+        "fuelThroughputCombinedLimit": null,
+        "fuelThroughputCombinedGroupRef": null,
         "controlTechnology": null,
-        "operatingHoursLimit": 500,
-        "operatingHoursRollingWindow": "calculated monthly as the sum of each consecutive 12-month period.",
-        "operatingHoursLimitScope": "per-unit",
+        "operatingHoursCombinedLimit": null,
+        "operatingHoursCombinedGroupRef": null,
+        "operatingHoursCombinedRollingWindow": null,
         "allowedOperatingModes": null,
         "opacityLimitPercent": 10,
         "hourMeterRequired": null,
@@ -115,7 +118,12 @@
         "maintenanceTrainingRecordsRequired": true,
         "nspsSubpartIIII": true,
         "mactSubpartZZZZ": null,
-        "extractionNotes": "Fuel specification allows numbers 1 or 2 fuel oil; recorded as distillate oil per multiple grade allowance"
+        "extractionNotes": "Fuel specification allows numbers 1 or 2 fuel oil; recorded as distillate oil per multiple grade allowance",
+        "fuelThroughputPerUnitLimit": null,
+        "fuelThroughputPerUnitScope": null,
+        "fuelThroughputPerUnitGroupRef": null,
+        "operatingHoursPerUnitLimit": 500,
+        "operatingHoursPerUnitRollingWindow": "calculated monthly as tbe sum of each consecutive 12-month penod."
       },
       {
         "referenceNumber": "1",
@@ -133,7 +141,7 @@
         "otherFuels": null,
         "fuelGrade": "numbers 1 or 2 fuel oil",
         "fuelSpecification": "ASTM D396-76",
-        "fuelSulfurContentPct": 0.005,
+        "fuelSulfurContentPct": 0.5,
         "fuelCertificationRequired": true,
         "fuelCertificationFields": {
           "supplierNameRequired": true,
@@ -143,13 +151,12 @@
           "sulfurContentRequired": true
         },
         "fuelChangePermitTrigger": "A change in the fuel may require a permit to modify and operate.",
-        "fuelThroughputLimit": null,
-        "fuelThroughputScope": null,
-        "fuelThroughputGroupRef": null,
+        "fuelThroughputCombinedLimit": null,
+        "fuelThroughputCombinedGroupRef": null,
         "controlTechnology": null,
-        "operatingHoursLimit": 500,
-        "operatingHoursRollingWindow": "calculated monthly as the sum of each consecutive 12-month period.",
-        "operatingHoursLimitScope": "per-unit",
+        "operatingHoursCombinedLimit": null,
+        "operatingHoursCombinedGroupRef": null,
+        "operatingHoursCombinedRollingWindow": null,
         "allowedOperatingModes": null,
         "opacityLimitPercent": 10,
         "hourMeterRequired": null,
@@ -160,7 +167,12 @@
         "maintenanceTrainingRecordsRequired": true,
         "nspsSubpartIIII": true,
         "mactSubpartZZZZ": null,
-        "extractionNotes": "Fuel specification allows numbers 1 or 2 fuel oil; recorded as distillate oil per multiple grade allowance"
+        "extractionNotes": "Fuel specification allows numbers 1 or 2 fuel oil; recorded as distillate oil per multiple grade allowance",
+        "fuelThroughputPerUnitLimit": null,
+        "fuelThroughputPerUnitScope": null,
+        "fuelThroughputPerUnitGroupRef": null,
+        "operatingHoursPerUnitLimit": 500,
+        "operatingHoursPerUnitRollingWindow": "calculated monthly as tbe sum of each consecutive 12-month penod."
       }
     ]
   },

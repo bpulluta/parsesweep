@@ -45,12 +45,8 @@
         "fuelCertificationRequired": null,
         "fuelCertificationFields": null,
         "fuelChangePermitTrigger": null,
-        "fuelThroughputLimit": 44567,
-        "fuelThroughputScope": "combined_group",
-        "fuelThroughputGroupRef": "FGEMGENS",
         "control_technologies": null,
         "operating_hours_limit_yr": 500,
-        "operatingHoursRollingWindow": "12-month rolling time period, determined at the end of each calendar month",
         "allowedOperatingModes": "Emergency operation; maintenance checks and readiness testing (up to 100 hours per calendar year per engine when recommended by specified entities, with additional hours allowed by petition or if required by applicable standards); and limited non-emergency operation (up to 50 hours per calendar year per engine, counted within the 100 hours for maintenance/testing, and not for peak shaving, non-emergency demand response, or income-generating power, except as provided in 40 CFR 60.4211(f)(3)(i)). All modes are subject to an overall cap of 500 hours per 12-month rolling period per engine.",
         "opacityLimitPercent": 20,
         "hourMeterRequired": true,
@@ -60,7 +56,11 @@
         "manufacturerOandMRequired": null,
         "maintenanceTrainingRecordsRequired": true,
         "nspsSubpartIIII": true,
-        "mactSubpartZZZZ": true
+        "mactSubpartZZZZ": true,
+        "fuelThroughputPerUnitLimit": 44567,
+        "fuelThroughputPerUnitScope": "combined_group",
+        "fuelThroughputPerUnitGroupRef": "FGEMGENS",
+        "operatingHoursPerUnitRollingWindow": "12-month rolling time period, determined at the end of each calendar month"
       }
     ]
   },

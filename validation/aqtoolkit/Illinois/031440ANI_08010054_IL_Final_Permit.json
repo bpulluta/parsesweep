@@ -1,17 +1,17 @@
 {
   "source_file": "031440ANI_08010054_IL_Final_Permit.pdf",
-  "extraction_date": "2025-11-03 13:39:28",
+  "extraction_date": "2025-11-03 20:19:31",
   "state": "Illinois",
   "model": "compassop-gpt-5",
   "qa_qc_enabled": false,
-  "cost_usd": 0.09093000000000001,
-  "processing_time_sec": 106.25931811332703,
+  "cost_usd": 0.11054,
+  "processing_time_sec": 86.79830193519592,
   "completeness_score": 0.7999999999999999,
   "generator_count": 19,
-  "permit_number": "031440ANI",
+  "permit_number": "08010054",
   "data": {
     "permitDetails": {
-      "permitNumber": "031440ANI",
+      "permitNumber": "08010054",
       "permitIssuanceDate": "2018-08-15",
       "permitExpirationDate": "2028-08-15",
       "facilityName": "Equinix LLC",
@@ -24,7 +24,7 @@
       "startupNotificationWindowDays": null,
       "permitCopyOnsiteRequired": null,
       "rightOfEntryClause": null,
-      "extractionNotes": "Also found Application No.: 08010054. Selected I.D. No. as primary identifier due to absence of an explicit permit number."
+      "extractionNotes": "Selected Application No. 08010054 as permitNumber. Also present: I.D. No.: 031440ANI. Document references 'eighteen Emergency Generator Sets' in Condition 13(b) while equipment listing and subsequent conditions describe fifteen plus four units."
     },
     "generatorSets": [
       {
@@ -47,14 +47,13 @@
         "fuelCertificationRequired": null,
         "fuelCertificationFields": null,
         "fuelChangePermitTrigger": "The use of any other fuel in any of the eighteen Emergency Generator Sets at this source requires that the Permittee first obtain a construction permit from the Illinois EPA and then perform stack testing to verify compliance with all applicable requirements.",
-        "fuelThroughputLimit": null,
-        "fuelThroughputScope": null,
-        "fuelThroughputGroupRef": null,
+        "fuelThroughputCombinedLimit": null,
+        "fuelThroughputCombinedGroupRef": null,
         "controlTechnology": null,
-        "operatingHoursLimit": 500,
-        "operatingHoursRollingWindow": "running 12 month total",
-        "operatingHoursLimitScope": "per-unit",
-        "allowedOperatingModes": "In order for the engine to be considered an emergency stationary ICE under 40 CFR 60 Subpart IIII, any operation other than emergency operation, maintenance and testing, emergency demand response, and operation in non-emergency situations for 50 hours per year, as described in 40 CFR 60.4211(f)(1) through (3), is prohibited.",
+        "operatingHoursCombinedLimit": 3220,
+        "operatingHoursCombinedGroupRef": "all fourteen 2,500 kW (3,634 HP) Diesel-Powered Emergency Generator Sets",
+        "operatingHoursCombinedRollingWindow": null,
+        "allowedOperatingModes": "if you own or operate an emergency stationary ICE, you must operate the emergency stationary ICE according to the requirements in 40 CFR 60.4211(f)(1) through (3). In order for the engine to be considered an emergency stationary ICE under 40 CFR 60 Subpart IIII, any operation other than emergency operation, maintenance and testing, emergency demand response, and operation in non-emergency situations for 50 hours per year, as described in 40 CFR 60.4211(f)(1) through (3), is prohibited.",
         "opacityLimitPercent": 30,
         "hourMeterRequired": true,
         "observationFrequency": null,
@@ -64,7 +63,12 @@
         "maintenanceTrainingRecordsRequired": null,
         "nspsSubpartIIII": true,
         "mactSubpartZZZZ": true,
-        "extractionNotes": "Per-unit runtime limit is 500 hours/year. The permit also states a total combined runtime limit of 3,220 hours/year for this group (text says 'all fourteen' but group contains 15 units per this permit). Fuel specification allows Grades No. 1 and 2; recorded as distillate oil per multiple grade allowance."
+        "extractionNotes": "Fuel specification allows Grades No. 1 and 2; recorded primaryFuelType as 'distillate oil' per multiple grade allowance. Condition 14(a)(i) states a combined runtime cap 'for all fourteen' although fifteen units are listed.",
+        "fuelThroughputPerUnitLimit": null,
+        "fuelThroughputPerUnitScope": null,
+        "fuelThroughputPerUnitGroupRef": null,
+        "operatingHoursPerUnitLimit": 500,
+        "operatingHoursPerUnitRollingWindow": "Compliance with annual limits shall be determined on a monthly basis from the sum of the data for the current month plus the preceding 11 months (running 12 month total)."
       },
       {
         "referenceNumber": "EGC5 \u2013 EGC8",
@@ -86,14 +90,13 @@
         "fuelCertificationRequired": null,
         "fuelCertificationFields": null,
         "fuelChangePermitTrigger": "The use of any other fuel in any of the eighteen Emergency Generator Sets at this source requires that the Permittee first obtain a construction permit from the Illinois EPA and then perform stack testing to verify compliance with all applicable requirements.",
-        "fuelThroughputLimit": null,
-        "fuelThroughputScope": null,
-        "fuelThroughputGroupRef": null,
+        "fuelThroughputCombinedLimit": null,
+        "fuelThroughputCombinedGroupRef": null,
         "controlTechnology": null,
-        "operatingHoursLimit": 230,
-        "operatingHoursRollingWindow": "running 12 month total",
-        "operatingHoursLimitScope": "per-unit",
-        "allowedOperatingModes": "In order for the engine to be considered an emergency stationary ICE under 40 CFR 60 Subpart IIII, any operation other than emergency operation, maintenance and testing, emergency demand response, and operation in non-emergency situations for 50 hours per year, as described in 40 CFR 60.4211(f)(1) through (3), is prohibited.",
+        "operatingHoursCombinedLimit": null,
+        "operatingHoursCombinedGroupRef": null,
+        "operatingHoursCombinedRollingWindow": null,
+        "allowedOperatingModes": "if you own or operate an emergency stationary ICE, you must operate the emergency stationary ICE according to the requirements in 40 CFR 60.4211(f)(1) through (3). In order for the engine to be considered an emergency stationary ICE under 40 CFR 60 Subpart IIII, any operation other than emergency operation, maintenance and testing, emergency demand response, and operation in non-emergency situations for 50 hours per year, as described in 40 CFR 60.4211(f)(1) through (3), is prohibited.",
         "opacityLimitPercent": 30,
         "hourMeterRequired": true,
         "observationFrequency": null,
@@ -103,7 +106,12 @@
         "maintenanceTrainingRecordsRequired": null,
         "nspsSubpartIIII": true,
         "mactSubpartZZZZ": true,
-        "extractionNotes": "These four units are also referenced as GEN-EGC5 \u2013 GEN-EGC8 and are subject to 40 CFR 89.112 and 40 CFR 89.113 for emission factors and opacity (20% acceleration, 15% lugging, 50% peaks). Fuel specification allows Grades No. 1 and 2; recorded as distillate oil per multiple grade allowance."
+        "extractionNotes": "EGC5 \u2013 EGC8 are subject to 40 CFR 89.112 and 40 CFR 89.113 per 40 CFR 60.4202(b)(2) and 40 CFR 60.4205(b). Fuel specification allows Grades No. 1 and 2; recorded primaryFuelType as 'distillate oil' per multiple grade allowance.",
+        "fuelThroughputPerUnitLimit": null,
+        "fuelThroughputPerUnitScope": null,
+        "fuelThroughputPerUnitGroupRef": null,
+        "operatingHoursPerUnitLimit": 230,
+        "operatingHoursPerUnitRollingWindow": "Compliance with annual limits shall be determined on a monthly basis from the sum of the data for the current month plus the preceding 11 months (running 12 month total)."
       }
     ]
   },
