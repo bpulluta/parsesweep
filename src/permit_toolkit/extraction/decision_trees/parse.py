@@ -36,7 +36,6 @@ from permit_toolkit.extraction.decision_trees.graphs import (
     setup_graph_fuel_spec,
     setup_graph_fuel_sulphur,
     setup_graph_fuel_cert_required,
-    setup_graph_fuel_cert_fields,
     setup_graph_fuel_change_trigger,
     setup_graph_fuel_throughput_limit,
     setup_graph_control_techs,
@@ -46,9 +45,6 @@ from permit_toolkit.extraction.decision_trees.graphs import (
     setup_graph_opacity,
     setup_graph_hour_meter,
     setup_graph_record_years,
-    setup_graph_operation_reason_log,
-    setup_graph_manufacturers_o_and_m,
-    setup_graph_maintenance_records,
     setup_graph_nsps,
     setup_graph_mact,
 )
@@ -291,11 +287,6 @@ class StructuredOrdinanceParser(BaseLLMCaller):
                 "fuel_cert_required",
                 "Checking if fuel supplier certification is required",
             ),
-            "fuelCertificationFields": (
-                setup_graph_fuel_cert_fields,
-                "fuel_cert_fields",
-                "Checking for required fuel supplier certification fields",
-            ),
             "fuelChangePermitTrigger": (
                 setup_graph_fuel_change_trigger,
                 "fuel_change_trigger",
@@ -340,23 +331,6 @@ class StructuredOrdinanceParser(BaseLLMCaller):
                 setup_graph_record_years,
                 "min_record_years",
                 "Checking for hour meter record keeping years",
-            ),
-            "operationReasonLogRequired": (
-                setup_graph_operation_reason_log,
-                "operation_reason_log_required",
-                "Checking for operating reasons logging requirements",
-            ),
-            "manufacturerOandMRequired": (
-                setup_graph_manufacturers_o_and_m,
-                "manufacturers_instructions_required",
-                "Checking for manufacturer's operation and maintenance "
-                "instructions requirements",
-            ),
-            "maintenanceTrainingRecordsRequired": (
-                setup_graph_maintenance_records,
-                "maintenance_records_required",
-                "Checking for maintenance and operator training records "
-                "requirements",
             ),
             "nspsSubpartIIII": (
                 setup_graph_nsps,

@@ -33,6 +33,17 @@
           "description": "Two-letter state abbreviation (e.g., 'VA', 'IL').",
           "type": "string"
         },
+        "stateFacilityID": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "State-assigned facility identifier at the permit level, exactly as written. This is the overarching facility identifier for the entire permitted facility, distinct from individual equipment identifiers. States use different terminology: Illinois uses 'I.D. No.' (e.g., '031440ANI', '031471AEN'), Virginia uses 'Facility ID No.' or 'Registration No.' (e.g., '51-167-00092', '11790', '52432'), Kentucky uses 'Source ID' (e.g., '21-015-00236'), Michigan uses 'State Registration Number' (e.g., 'B1557', 'P0243'). Extract the identifier value without the label. This is critical for cross-referencing permits in state databases. Leave null if not stated."
+        },
         "initialConstructionCommencedNotificationRequired": {
           "anyOf": [
             {
@@ -154,6 +165,28 @@
             ],
             "description": "True if explicitly stated as 'new' or 'included in this permit action'; false if stated as 'existing' or 'previously permitted'; null if status not mentioned. This indicates whether equipment is being newly permitted or is existing."
           },
+          "originalPermitDate": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Date when this specific equipment was originally permitted or construction commenced, in YYYY-MM-DD format if unambiguous. Often found in equipment lists under columns like 'Original Permit Date', 'Construction Commenced', 'Date Issued', or similar. May differ from permitIssuanceDate when equipment was previously permitted and is being included in a renewal or modification. Extract and convert to YYYY-MM-DD format (e.g., 'September 2007' → '2007-09-01', '8/23/2016' → '2016-08-23', '2/26/2007' → '2007-02-26', '1990' → '1990-01-01', '2004' → '2004-01-01'). For partial dates like 'September 2007' or year-only dates like '1990', use first of month/year. Leave null if not stated."
+          },
+          "equipmentFacilityID": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Equipment-specific facility identifier or unit designation exactly as written in equipment tables. This is distinct from the referenceNumber (permit reference like 'EU-01A') and represents internal facility naming conventions (e.g., '1A', '1B', '2A', 'EPD', 'EPE', 'EPF'). Some states like Kentucky show this in a 'Facility ID' column separate from the 'EU' column. Extract verbatim. Leave null if not stated."
+          },
           "make": {
             "anyOf": [
               {
@@ -207,9 +240,9 @@
                 "type": "null"
               }
             ],
-            "description": "Rated horsepower as a number (e.g., 3634, 3633, 1676, 2550). Extract value without units. Do not convert from kW. Leave null if not stated. Use this field when permit states 'HP' or 'hp' without the 'brake' designation. Some states (e.g., Illinois, Kentucky) use 'HP' terminology while others (e.g., Virginia) use 'BHP'. Both represent engine power output."
+            "description": "Rated horsepower as a number (e.g., 3634, 3633, 1676, 2550). Extract value without units. Do not convert from kW. Leave null if not stated. Use this field when permit states 'HP' or 'hp' without the 'brake' designation. Some states (e.g., Illinois, Kentucky) use 'HP' terminology while others (e.g., Virginia) use 'BHP'. Both represent engine power output. NOTE: If permit mentions 'maximum capacity', treat it as rated capacity and use this field."
           },
-          "maximumCapacityBHP": {
+          "ratedCapacityMMBtuPerHr": {
             "anyOf": [
               {
                 "type": "number"
@@ -218,18 +251,7 @@
                 "type": "null"
               }
             ],
-            "description": "Maximum capacity in brake horsepower if explicitly stated; otherwise null."
-          },
-          "maximumCapacityKW": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Maximum capacity in kilowatts if explicitly stated; otherwise null."
+            "description": "Rated thermal/heat input capacity in MMBtu/hr (million BTU per hour) as a number (e.g., 15.54, 11.73, 17.85). Extract value without units. Some states like Kentucky explicitly list this in equipment tables under 'Capacity (MMBtu/hr)' column. Do not convert from kW or HP - only extract if explicitly stated. Leave null if not stated."
           },
           "primaryFuelType": {
             "anyOf": [
@@ -495,39 +517,6 @@
               }
             ],
             "description": "Number of years to retain records if explicitly stated (e.g., 5). Leave null if not specified."
-          },
-          "operationReasonLogRequired": {
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "True if permit explicitly requires logging operation reasons (date, cause, hours) for each run. False if explicitly not required. Null if not mentioned."
-          },
-          "manufacturerOandMRequired": {
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "True if manufacturer's operation and maintenance procedures/instructions are explicitly required. False if explicitly not required. Null if not mentioned."
-          },
-          "maintenanceTrainingRecordsRequired": {
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "True if maintenance records and operator training records are explicitly required. False if explicitly not required. Null if not mentioned."
           },
           "nspsSubpartIIII": {
             "anyOf": [
