@@ -713,7 +713,8 @@ def setup_graph_generators(**kwargs):  # noqa: D103
     G.add_node(
         "init",
         prompt=(
-            "Does the following text mention at least one backup generator? "
+            "Does the following text mention at least one generator or "
+            "engine? "
             f"{_START_WITH_YN}"
             '\n\n"""\n{text}\n"""'
         ),
@@ -725,7 +726,7 @@ def setup_graph_generators(**kwargs):  # noqa: D103
         "get_refs",
         prompt=(
             "Does the text provide a reference number or identifier for each "
-            "backup generator mentioned (e.g., 'EG01', 'EG04-EG05', "
+            "generator or engine mentioned (e.g., 'EG01', 'EG04-EG05', "
             "'1510-4', etc.)? "
             f"{_START_WITH_YN}"
         ),
@@ -736,7 +737,7 @@ def setup_graph_generators(**kwargs):  # noqa: D103
         "list_refs",
         prompt=(
             "Please list out all reference numbers or identifiers for each "
-            "unique backup generator unit or backup generator group mentioned "
+            "unique generator/engine unit or generator/engine group mentioned "
             "in the permit (e.g., EG01, EG04-EG05, 1510-4, etc.). Make sure "
             "each generator is represented **exactly one time**. If a "
             "generator reference number exists within a range that you have "
@@ -768,7 +769,8 @@ def setup_graph_generators(**kwargs):  # noqa: D103
         prompt=(
             "Adjust your list so that all of the generators referenced in the "
             "permit appear **exactly once** in your list. Prefer groupings "
-            "of generator identifiers (e.g., EG01-EG05). "
+            "of generator identifiers (e.g., EG01-EG05), but **only** if they "
+            "are also grouped in the permit text. "
         ),
     )
     G.add_edge("make_unique", "is_complete")
@@ -792,7 +794,8 @@ def setup_graph_generators(**kwargs):  # noqa: D103
         prompt=(
             "Adjust your list so that it lists **all** of the generators "
             "referenced in the permit. Prefer groupings of generator "
-            "identifiers (e.g., EG01-EG05). "
+            "identifiers (e.g., EG01-EG05), but **only** if they are also "
+            "grouped in the permit text."
         ),
     )
     G.add_edge("make_complete", "final")
@@ -800,13 +803,12 @@ def setup_graph_generators(**kwargs):  # noqa: D103
     G.add_node(
         "final",
         prompt=(
-            "Respond based on our entire conversation so far. Return your "
-            "answer in JSON format (not markdown). Your JSON file must "
+            "Respond in JSON format (not markdown). Your JSON file must "
             "include exactly two "
             'keys. The keys are "reference_numbers" and "explanation". The '
             'value of the "reference_numbers" key should be the list of all '
-            "backup generator identifiers mentioned in the text, as "
-            "determined previously. "
+            "generator identifiers mentioned in the text, **as you have "
+            "determined in your latest list**. "
             f"{_EXPLANATION_KEY}"
         ),
     )
@@ -1133,17 +1135,18 @@ def setup_graph_rated_capacity_kw(**kwargs):  # noqa: D103
     return G
 
 
-def setup_graph_rated_capacity_bhp(**kwargs):  # noqa: D103
+def setup_graph_rated_capacity_hp(**kwargs):  # noqa: D103
     G = _setup_graph_no_nodes(**kwargs)  # noqa: N806
 
     G.add_node(
         "init",
         prompt=(
             "Does the following text **directly specify** a numeric nominal "
-            "nameplate capacity, in BHP, **for the generator with reference "
-            "number {ref_number}**? Keep in mind that the reference number "
-            "could be included in range or group of numbers and information "
-            "that applies to that group should be considered relevant. "
+            "nameplate capacity, in horsepower, **for the generator with "
+            "reference number {ref_number}**? Keep in mind that the reference "
+            "number could be included in range or group of numbers and "
+            "information that applies to that group should be considered "
+            "relevant. "
             f"{_START_WITH_YN}"
             '\n\n"""\n{text}\n"""'
         ),
@@ -1154,7 +1157,8 @@ def setup_graph_rated_capacity_bhp(**kwargs):  # noqa: D103
         "check_units",
         prompt=(
             "Does the text for the generator with reference number "
-            "{ref_number} directly specify capacity **in units of BHP**? "
+            "{ref_number} directly specify capacity **in units of "
+            "horsepower**? "
             f"{_START_WITH_YN}"
         ),
     )
@@ -1191,19 +1195,122 @@ def setup_graph_rated_capacity_bhp(**kwargs):  # noqa: D103
         prompt=(
             "We are interested in the **nominal** capacity for the generator "
             "with reference number {ref_number}. What is that capacity, in "
-            "BHP? If multiple BHP values are listed for this generator, "
-            "please give the smallest stated BHP as a single number. Do not "
-            "attempt to infer this value from other units."
+            "horsepower? If multiple horsepower values are listed for this "
+            "generator, please give the smallest stated horsepower as a "
+            "single number. Do not attempt to infer this value from other "
+            "units."
         ),
     )
 
     G.add_node(
         "cap_no_distinguish",
         prompt=(
-            "What is the capacity, in BHP, for the generator with reference "
-            "number {ref_number}? If multiple BHP values are listed for this "
-            "generator, please give the smallest stated BHP as a single "
-            "number. Do not attempt to infer this value from other units."
+            "What is the capacity, in horsepower, for the generator with "
+            "reference number {ref_number}? If multiple horsepower values are "
+            "listed for this generator, please give the smallest stated "
+            "horsepower as a single number. Do not attempt to infer this "
+            "value from other units."
+        ),
+    )
+
+    G.add_edge("cap_distinguish", "final")
+    G.add_edge("cap_no_distinguish", "final")
+
+    G.add_node(
+        "final",
+        prompt=(
+            "Respond based on our entire conversation so far. Return your "
+            "answer in JSON format (not markdown). Your JSON file must "
+            "include exactly two keys. The keys are "
+            '"rated_capacity_hp" and "explanation". The '
+            'value of the "rated_capacity_hp" key should be an numerical '
+            "value representing the nominal nameplate capacity, in "
+            "horsepower, **for the generator with reference number "
+            "{ref_number}**. "
+            f"{_EXPLANATION_KEY} "
+            "Document any ambiguities or multiple values in the "
+            "'explanation' text."
+        ),
+    )
+
+    return G
+
+
+def setup_graph_rated_capacity_bhp(**kwargs):  # noqa: D103
+    G = _setup_graph_no_nodes(**kwargs)  # noqa: N806
+
+    G.add_node(
+        "init",
+        prompt=(
+            "Does the following text **directly specify** a numeric nominal "
+            "nameplate capacity, in brake horsepower, **for the generator "
+            "with reference number {ref_number}**? Keep in mind that the "
+            "reference number could be included in range or group of "
+            "numbers and information that applies to that group should be "
+            "considered relevant. "
+            f"{_START_WITH_YN}"
+            '\n\n"""\n{text}\n"""'
+        ),
+    )
+
+    G.add_edge("init", "check_units", condition=llm_response_starts_with_yes)
+    G.add_node(
+        "check_units",
+        prompt=(
+            "Does the text for the generator with reference number "
+            "{ref_number} directly specify capacity **in units of brake "
+            "horsepower**? "
+            f"{_START_WITH_YN}"
+        ),
+    )
+
+    G.add_edge(
+        "check_units",
+        "check_distinguish",
+        condition=llm_response_starts_with_yes,
+    )
+
+    G.add_node(
+        "check_distinguish",
+        prompt=(
+            "Does the text for the generator with reference number "
+            "{ref_number} distinguish between **nominal** and "
+            "**maximum** capacity? "
+            f"{_START_WITH_YN}"
+        ),
+    )
+
+    G.add_edge(
+        "check_distinguish",
+        "cap_distinguish",
+        condition=llm_response_starts_with_yes,
+    )
+    G.add_edge(
+        "check_distinguish",
+        "cap_no_distinguish",
+        condition=llm_response_starts_with_no,
+    )
+
+    G.add_node(
+        "cap_distinguish",
+        prompt=(
+            "We are interested in the **nominal** capacity for the generator "
+            "with reference number {ref_number}. What is that capacity, in "
+            "brake horsepower? If multiple brake horsepower values are listed "
+            "for this generator, please give the smallest stated brake "
+            "horsepower as a single number. Do not attempt to infer this "
+            "value from other units."
+        ),
+    )
+
+    G.add_node(
+        "cap_no_distinguish",
+        prompt=(
+            "What is the capacity, in brake horsepower, for the generator "
+            "with reference number {ref_number}? If multiple brake horsepower "
+            "values are listed for this generator, please give the smallest "
+            "stated brake horsepower as a single number. Do not attempt to "
+            "infer this value from other units."
         ),
     )
 
@@ -1218,8 +1325,9 @@ def setup_graph_rated_capacity_bhp(**kwargs):  # noqa: D103
             "include exactly two keys. The keys are "
             '"rated_capacity_bhp" and "explanation". The '
             'value of the "rated_capacity_bhp" key should be an numerical '
-            "value representing the nominal nameplate capacity, in BHP, "
-            "**for the generator with reference number {ref_number}**. "
+            "value representing the nominal nameplate capacity, in brake "
+            "horsepower, **for the generator with reference number "
+            "{ref_number}**. "
             f"{_EXPLANATION_KEY} "
             "Document any ambiguities or multiple values in the "
             "'explanation' text."
@@ -1310,14 +1418,14 @@ def setup_graph_max_capacity_kw(**kwargs):  # noqa: D103
     return G
 
 
-def setup_graph_max_capacity_bhp(**kwargs):  # noqa: D103
+def setup_graph_max_capacity_hp(**kwargs):  # noqa: D103
     G = _setup_graph_no_nodes(**kwargs)  # noqa: N806
 
     G.add_node(
         "init",
         prompt=(
             "Does the following text **directly specify a maximum** "
-            "capacity, in BHP, **for the generator with reference "
+            "capacity, in horsepower, **for the generator with reference "
             "number {ref_number}**? Keep in mind that the reference number "
             "could be included in range or group of numbers and information "
             "that applies to that group should be considered relevant. "
@@ -1332,7 +1440,7 @@ def setup_graph_max_capacity_bhp(**kwargs):  # noqa: D103
         prompt=(
             "Does the text for the generator with reference number "
             "{ref_number} directly specify maximum capacity **in units of "
-            "BHP**? "
+            "horsepower**? "
             f"{_START_WITH_YN}"
         ),
     )
@@ -1364,9 +1472,9 @@ def setup_graph_max_capacity_bhp(**kwargs):  # noqa: D103
         prompt=(
             "We are interested in the **maximum** capacity for the generator "
             "with reference number {ref_number}. What is that capacity, in "
-            "BHP? If multiple BHP values are listed for this generator, "
-            "please give the largest stated BHP as a single number. Do not "
-            "attempt to infer this value from other units."
+            "horsepower? If multiple horsepower values are listed for this "
+            "generator, please give the largest stated horsepower as a single "
+            "number. Do not attempt to infer this value from other units."
         ),
     )
 
@@ -1380,8 +1488,92 @@ def setup_graph_max_capacity_bhp(**kwargs):  # noqa: D103
             "include exactly two keys. The keys are "
             '"max_capacity_bhp" and "explanation". The '
             'value of the "max_capacity_bhp" key should be an numerical '
-            "value representing the **maximum** nameplate capacity, in BHP, "
-            "**for the generator with reference number {ref_number}**. "
+            "value representing the **maximum** nameplate capacity, in "
+            "horsepower, **for the generator with reference number "
+            "{ref_number}**. "
+            f"{_EXPLANATION_KEY} "
+            "Document any ambiguities or multiple values in the "
+            "'explanation' text."
+        ),
+    )
+
+    return G
+
+
+def setup_graph_max_capacity_bhp(**kwargs):  # noqa: D103
+    G = _setup_graph_no_nodes(**kwargs)  # noqa: N806
+
+    G.add_node(
+        "init",
+        prompt=(
+            "Does the following text **directly specify a maximum** capacity, "
+            "in brake horsepower, **for the generator with reference "
+            "number {ref_number}**? Keep in mind that the reference number "
+            "could be included in range or group of numbers and information "
+            "that applies to that group should be considered relevant. "
+            f"{_START_WITH_YN}"
+            '\n\n"""\n{text}\n"""'
+        ),
+    )
+
+    G.add_edge("init", "check_units", condition=llm_response_starts_with_yes)
+    G.add_node(
+        "check_units",
+        prompt=(
+            "Does the text for the generator with reference number "
+            "{ref_number} directly specify maximum capacity **in units of "
+            "brake horsepower**? "
+            f"{_START_WITH_YN}"
+        ),
+    )
+
+    G.add_edge(
+        "check_units",
+        "check_distinguish",
+        condition=llm_response_starts_with_yes,
+    )
+
+    G.add_node(
+        "check_distinguish",
+        prompt=(
+            "Does the text for the generator with reference number "
+            "{ref_number} distinguish between **nominal** and "
+            "**maximum** capacity? "
+            f"{_START_WITH_YN}"
+        ),
+    )
+
+    G.add_edge(
+        "check_distinguish",
+        "cap_distinguish",
+        condition=llm_response_starts_with_yes,
+    )
+
+    G.add_node(
+        "cap_distinguish",
+        prompt=(
+            "We are interested in the **maximum** capacity for the generator "
+            "with reference number {ref_number}. What is that capacity, in "
+            "brake horsepower? If multiple brake horsepower values are listed "
+            "for this generator, please give the largest stated brake "
+            "horsepower as a single number. Do not attempt to infer this "
+            "value from other units."
+        ),
+    )
+
+    G.add_edge("cap_distinguish", "final")
+
+    G.add_node(
+        "final",
+        prompt=(
+            "Respond based on our entire conversation so far. Return your "
+            "answer in JSON format (not markdown). Your JSON file must "
+            "include exactly two keys. The keys are "
+            '"max_capacity_bhp" and "explanation". The '
+            'value of the "max_capacity_bhp" key should be an numerical '
+            "value representing the **maximum** nameplate capacity, in "
+            "brake horsepower, **for the generator with reference number "
+            "{ref_number}**. "
             f"{_EXPLANATION_KEY} "
             "Document any ambiguities or multiple values in the "
             "'explanation' text."

@@ -26,8 +26,10 @@ from permit_toolkit.extraction.decision_trees.graphs import (
     setup_graph_make,
     setup_graph_model,
     setup_graph_rated_capacity_kw,
+    setup_graph_rated_capacity_hp,
     setup_graph_rated_capacity_bhp,
     setup_graph_max_capacity_kw,
+    setup_graph_max_capacity_hp,
     setup_graph_max_capacity_bhp,
     setup_graph_fuel,
     setup_graph_secondary_fuel,
@@ -35,18 +37,22 @@ from permit_toolkit.extraction.decision_trees.graphs import (
     setup_graph_fuel_grade,
     setup_graph_fuel_spec,
     setup_graph_fuel_sulphur,
-    setup_graph_fuel_cert_required,
-    setup_graph_fuel_change_trigger,
+    # setup_graph_fuel_cert_required,
+    # setup_graph_fuel_cert_fields,
+    # setup_graph_fuel_change_trigger,
     setup_graph_fuel_throughput_limit,
     setup_graph_control_techs,
     setup_graph_operating_hours,
     setup_graph_operating_window,
     setup_graph_operating_modes,
-    setup_graph_opacity,
-    setup_graph_hour_meter,
-    setup_graph_record_years,
-    setup_graph_nsps,
-    setup_graph_mact,
+    # setup_graph_opacity,
+    # setup_graph_hour_meter,
+    # setup_graph_record_years,
+    # setup_graph_operation_reason_log,
+    # setup_graph_manufacturers_o_and_m,
+    # setup_graph_maintenance_records,
+    # setup_graph_nsps,
+    # setup_graph_mact,
 )
 
 logger = logging.getLogger(__name__)
@@ -237,6 +243,11 @@ class StructuredOrdinanceParser(BaseLLMCaller):
                 "rated_capacity_kw",
                 "Checking for generator rated capacity in kW",
             ),
+            "ratedCapacityHP": (
+                setup_graph_rated_capacity_hp,
+                "rated_capacity_hp",
+                "Checking for generator rated capacity in HP",
+            ),
             "ratedCapacityBHP": (
                 setup_graph_rated_capacity_bhp,
                 "rated_capacity_bhp",
@@ -246,6 +257,11 @@ class StructuredOrdinanceParser(BaseLLMCaller):
                 setup_graph_max_capacity_kw,
                 "max_capacity_kw",
                 "Checking for generator maximum capacity in kW",
+            ),
+            "maxCapacityHP": (
+                setup_graph_max_capacity_hp,
+                "max_capacity_hp",
+                "Checking for generator maximum capacity in HP",
             ),
             "maxCapacityBHP": (
                 setup_graph_max_capacity_bhp,
@@ -282,16 +298,16 @@ class StructuredOrdinanceParser(BaseLLMCaller):
                 "fuel_sulfur_pct",
                 "Checking for generator fuel sulphur content",
             ),
-            "fuelCertificationRequired": (
-                setup_graph_fuel_cert_required,
-                "fuel_cert_required",
-                "Checking if fuel supplier certification is required",
-            ),
-            "fuelChangePermitTrigger": (
-                setup_graph_fuel_change_trigger,
-                "fuel_change_trigger",
-                "Checking for fuel change trigger",
-            ),
+            # "fuelCertificationRequired": (
+            #     setup_graph_fuel_cert_required,
+            #     "fuel_cert_required",
+            #     "Checking if fuel supplier certification is required",
+            # ),
+            # "fuelChangePermitTrigger": (
+            #     setup_graph_fuel_change_trigger,
+            #     "fuel_change_trigger",
+            #     "Checking for fuel change trigger",
+            # ),
             "fuelThroughputPerUnitLimit": (
                 setup_graph_fuel_throughput_limit,
                 "fuel_limit",
@@ -317,31 +333,48 @@ class StructuredOrdinanceParser(BaseLLMCaller):
                 "operating_modes",
                 "Checking for generator operating modes",
             ),
-            "opacityLimitPercent": (
-                setup_graph_opacity,
-                "opacity_limit_pct",
-                "Checking for generator opacity limits",
-            ),
-            "hourMeterRequired": (
-                setup_graph_hour_meter,
-                "hour_meter_device_required",
-                "Checking if hour metering device is required",
-            ),
-            "recordkeepingWindowYears": (
-                setup_graph_record_years,
-                "min_record_years",
-                "Checking for hour meter record keeping years",
-            ),
-            "nspsSubpartIIII": (
-                setup_graph_nsps,
-                "nsps_applicable",
-                "Checking for NSPS Subpart IIII applicability",
-            ),
-            "mactSubpartZZZZ": (
-                setup_graph_mact,
-                "mact_applicable",
-                "Checking for MACT Subpart ZZZZ applicability",
-            ),
+            # "opacityLimitPercent": (
+            #     setup_graph_opacity,
+            #     "opacity_limit_pct",
+            #     "Checking for generator opacity limits",
+            # ),
+            # "hourMeterRequired": (
+            #     setup_graph_hour_meter,
+            #     "hour_meter_device_required",
+            #     "Checking if hour metering device is required",
+            # ),
+            # "recordkeepingWindowYears": (
+            #     setup_graph_record_years,
+            #     "min_record_years",
+            #     "Checking for hour meter record keeping years",
+            # ),
+            # "operationReasonLogRequired": (
+            #     setup_graph_operation_reason_log,
+            #     "operation_reason_log_required",
+            #     "Checking for operating reasons logging requirements",
+            # ),
+            # "manufacturerOandMRequired": (
+            #     setup_graph_manufacturers_o_and_m,
+            #     "manufacturers_instructions_required",
+            #     "Checking for manufacturer's operation and maintenance "
+            #     "instructions requirements",
+            # ),
+            # "maintenanceTrainingRecordsRequired": (
+            #     setup_graph_maintenance_records,
+            #     "maintenance_records_required",
+            #     "Checking for maintenance and operator training records "
+            #     "requirements",
+            # ),
+            # "nspsSubpartIIII": (
+            #     setup_graph_nsps,
+            #     "nsps_applicable",
+            #     "Checking for NSPS Subpart IIII applicability",
+            # ),
+            # "mactSubpartZZZZ": (
+            #     setup_graph_mact,
+            #     "mact_applicable",
+            #     "Checking for MACT Subpart ZZZZ applicability",
+            # ),
         }
         tasks = {
             (ref_number, name, k): asyncio.create_task(
@@ -370,14 +403,16 @@ class StructuredOrdinanceParser(BaseLLMCaller):
                 generators[ref_number][key] = None
                 if key == "fuelThroughputPerUnitLimit":
                     generators[ref_number]["fuelThroughputPerUnitScope"] = None
-                    generators[ref_number]["fuelThroughputPerUnitGroupRef"] = None
+                    generators[ref_number]["fuelThroughputPerUnitGroupRef"] = (
+                        None
+                    )
                 elif key == "hourMeterRequired":
                     generators[ref_number]["observationFrequency"] = None
             else:
                 generators[ref_number][key] = result.get(dtk)
                 if key == "fuelThroughputPerUnitLimit":
-                    generators[ref_number]["fuelThroughputPerUnitScope"] = result.get(
-                        "scope"
+                    generators[ref_number]["fuelThroughputPerUnitScope"] = (
+                        result.get("scope")
                     )
                     generators[ref_number]["fuelThroughputPerUnitGroupRef"] = (
                         result.get("group")
