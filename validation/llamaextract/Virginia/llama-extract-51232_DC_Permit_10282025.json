@@ -25,11 +25,9 @@
         "fuelNumber": "S15",
         "secondaryFuelType": null,
         "otherFuels": null,
-        "fuelThroughputLimit": 96250,
         "fuelAggregation": "EG44-EG79",
         "fuelSulfurContent": 0.0015,
         "controlTechnology": "Good operating practices and maintenance; turbocharged engine and aftercooler",
-        "operatingHoursLimit": null,
         "noxEmissionLimitLbsHr": 48.1,
         "noxEmissionLimitTonsYr": 13.5,
         "coEmissionLimitLbsHr": 6.1,
@@ -44,7 +42,9 @@
         "so2EmissionLimitTonsYr": null,
         "instantEmissionsAggregationType": "Each generator (lbs/hr)",
         "cumulativeEmissionsAggregationType": "Combined for EG44-EG79 (tons/yr)",
-        "stackTestRequired": true
+        "stackTestRequired": true,
+        "fuelThroughputPerUnitLimit": 96250,
+        "operatingHoursPerUnitLimit": null
       },
       {
         "referenceNumber": "EG04-EG05",
@@ -60,11 +60,9 @@
         "fuelNumber": "S15",
         "secondaryFuelType": null,
         "otherFuels": null,
-        "fuelThroughputLimit": 4042,
         "fuelAggregation": "EG04-EG05",
         "fuelSulfurContent": 0.0015,
         "controlTechnology": "Good operating practices and maintenance; turbocharged engine and aftercooler",
-        "operatingHoursLimit": null,
         "noxEmissionLimitLbsHr": 81.9,
         "noxEmissionLimitTonsYr": 1.8,
         "coEmissionLimitLbsHr": 10.5,
@@ -79,7 +77,9 @@
         "so2EmissionLimitTonsYr": null,
         "instantEmissionsAggregationType": "Each generator (lbs/hr)",
         "cumulativeEmissionsAggregationType": "Combined for EG04-EG05 (tons/yr)",
-        "stackTestRequired": false
+        "stackTestRequired": false,
+        "fuelThroughputPerUnitLimit": 4042,
+        "operatingHoursPerUnitLimit": null
       },
       {
         "referenceNumber": "EG06-EG07",
@@ -95,11 +95,9 @@
         "fuelNumber": "S15",
         "secondaryFuelType": null,
         "otherFuels": null,
-        "fuelThroughputLimit": 4555,
         "fuelAggregation": "EG06-EG07",
         "fuelSulfurContent": 0.0015,
         "controlTechnology": "Good operating practices and maintenance; turbocharged engine and aftercooler",
-        "operatingHoursLimit": null,
         "noxEmissionLimitLbsHr": 42.5,
         "noxEmissionLimitTonsYr": 0.8,
         "coEmissionLimitLbsHr": 4,
@@ -114,7 +112,9 @@
         "so2EmissionLimitTonsYr": null,
         "instantEmissionsAggregationType": "Each generator (lbs/hr)",
         "cumulativeEmissionsAggregationType": "Combined for EG06-EG07 (tons/yr)",
-        "stackTestRequired": false
+        "stackTestRequired": false,
+        "fuelThroughputPerUnitLimit": 4555,
+        "operatingHoursPerUnitLimit": null
       },
       {
         "referenceNumber": "EG08-EG17",
@@ -130,11 +130,9 @@
         "fuelNumber": "S15",
         "secondaryFuelType": null,
         "otherFuels": null,
-        "fuelThroughputLimit": 29010,
         "fuelAggregation": "EG08-EG17",
         "fuelSulfurContent": 0.0015,
         "controlTechnology": "Good operating practices and maintenance; turbocharged engine and aftercooler",
-        "operatingHoursLimit": null,
         "noxEmissionLimitLbsHr": 50.6,
         "noxEmissionLimitTonsYr": 4.3,
         "coEmissionLimitLbsHr": 6.1,
@@ -149,7 +147,9 @@
         "so2EmissionLimitTonsYr": null,
         "instantEmissionsAggregationType": "Each generator (lbs/hr)",
         "cumulativeEmissionsAggregationType": "Combined for EG08-EG17 (tons/yr)",
-        "stackTestRequired": false
+        "stackTestRequired": false,
+        "fuelThroughputPerUnitLimit": 29010,
+        "operatingHoursPerUnitLimit": null
       },
       {
         "referenceNumber": "EG18-EG34",
@@ -165,11 +165,9 @@
         "fuelNumber": "S15",
         "secondaryFuelType": null,
         "otherFuels": null,
-        "fuelThroughputLimit": 49828,
         "fuelAggregation": "EG18-EG34",
         "fuelSulfurContent": 0.0015,
         "controlTechnology": "Good operating practices and maintenance; turbocharged engine and aftercooler",
-        "operatingHoursLimit": null,
         "noxEmissionLimitLbsHr": 48.1,
         "noxEmissionLimitTonsYr": 6.9,
         "coEmissionLimitLbsHr": 6.1,
@@ -184,7 +182,9 @@
         "so2EmissionLimitTonsYr": null,
         "instantEmissionsAggregationType": "Each generator (lbs/hr)",
         "cumulativeEmissionsAggregationType": "Combined for EG18-EG34 (tons/yr)",
-        "stackTestRequired": false
+        "stackTestRequired": false,
+        "fuelThroughputPerUnitLimit": 49828,
+        "operatingHoursPerUnitLimit": null
       },
       {
         "referenceNumber": "EG35-EG43",
@@ -200,11 +200,9 @@
         "fuelNumber": "S15",
         "secondaryFuelType": null,
         "otherFuels": null,
-        "fuelThroughputLimit": 25281,
         "fuelAggregation": "EG35-EG43",
         "fuelSulfurContent": 0.0015,
         "controlTechnology": "Good operating practices and maintenance; turbocharged engine and aftercooler",
-        "operatingHoursLimit": null,
         "noxEmissionLimitLbsHr": 48.6,
         "noxEmissionLimitTonsYr": 3.7,
         "coEmissionLimitLbsHr": 11.9,
@@ -219,7 +217,9 @@
         "so2EmissionLimitTonsYr": null,
         "instantEmissionsAggregationType": "Each generator (lbs/hr)",
         "cumulativeEmissionsAggregationType": "Combined for EG35-EG43 (tons/yr)",
-        "stackTestRequired": false
+        "stackTestRequired": false,
+        "fuelThroughputPerUnitLimit": 25281,
+        "operatingHoursPerUnitLimit": null
       },
       {
         "referenceNumber": "EG44-EG77",
@@ -235,11 +235,9 @@
         "fuelNumber": "S15",
         "secondaryFuelType": null,
         "otherFuels": null,
-        "fuelThroughputLimit": 96250,
         "fuelAggregation": "EG44-EG79",
         "fuelSulfurContent": 0.0015,
         "controlTechnology": "Good operating practices and maintenance; turbocharged engine and aftercooler",
-        "operatingHoursLimit": null,
         "noxEmissionLimitLbsHr": 48.1,
         "noxEmissionLimitTonsYr": 13.5,
         "coEmissionLimitLbsHr": 6.1,
@@ -254,7 +252,9 @@
         "so2EmissionLimitTonsYr": null,
         "instantEmissionsAggregationType": "Each generator (lbs/hr)",
         "cumulativeEmissionsAggregationType": "Combined for EG44-EG79 (tons/yr)",
-        "stackTestRequired": false
+        "stackTestRequired": false,
+        "fuelThroughputPerUnitLimit": 96250,
+        "operatingHoursPerUnitLimit": null
       },
       {
         "referenceNumber": "EG80-EG112",
@@ -270,11 +270,9 @@
         "fuelNumber": "S15",
         "secondaryFuelType": null,
         "otherFuels": null,
-        "fuelThroughputLimit": 89937,
         "fuelAggregation": "EG80-EG112",
         "fuelSulfurContent": 0.0015,
         "controlTechnology": "Good operating practices and maintenance; turbocharged engine and aftercooler",
-        "operatingHoursLimit": null,
         "noxEmissionLimitLbsHr": 44.4,
         "noxEmissionLimitTonsYr": 12.3,
         "coEmissionLimitLbsHr": 9.4,
@@ -289,7 +287,9 @@
         "so2EmissionLimitTonsYr": null,
         "instantEmissionsAggregationType": "Each generator (lbs/hr)",
         "cumulativeEmissionsAggregationType": "Combined for EG80-EG112 (tons/yr)",
-        "stackTestRequired": false
+        "stackTestRequired": false,
+        "fuelThroughputPerUnitLimit": 89937,
+        "operatingHoursPerUnitLimit": null
       },
       {
         "referenceNumber": "EG113-EG145",
@@ -305,11 +305,9 @@
         "fuelNumber": "S15",
         "secondaryFuelType": null,
         "otherFuels": null,
-        "fuelThroughputLimit": 386895,
         "fuelAggregation": "EG113-EG244",
         "fuelSulfurContent": 0.0015,
         "controlTechnology": "Good operating practices and maintenance; turbocharged engine and aftercooler",
-        "operatingHoursLimit": null,
         "noxEmissionLimitLbsHr": 48.1,
         "noxEmissionLimitTonsYr": 53.1,
         "coEmissionLimitLbsHr": 9.4,
@@ -324,7 +322,9 @@
         "so2EmissionLimitTonsYr": null,
         "instantEmissionsAggregationType": "Each generator (lbs/hr)",
         "cumulativeEmissionsAggregationType": "Combined for EG113-EG244 (tons/yr)",
-        "stackTestRequired": false
+        "stackTestRequired": false,
+        "fuelThroughputPerUnitLimit": 386895,
+        "operatingHoursPerUnitLimit": null
       },
       {
         "referenceNumber": "EG146-EG244",
@@ -340,11 +340,9 @@
         "fuelNumber": "S15",
         "secondaryFuelType": null,
         "otherFuels": null,
-        "fuelThroughputLimit": 386895,
         "fuelAggregation": "EG113-EG244",
         "fuelSulfurContent": 0.0015,
         "controlTechnology": "Good operating practices and maintenance; turbocharged engine and aftercooler",
-        "operatingHoursLimit": null,
         "noxEmissionLimitLbsHr": 48.1,
         "noxEmissionLimitTonsYr": 53.1,
         "coEmissionLimitLbsHr": 9.4,
@@ -359,7 +357,9 @@
         "so2EmissionLimitTonsYr": null,
         "instantEmissionsAggregationType": "Each generator (lbs/hr)",
         "cumulativeEmissionsAggregationType": "Combined for EG113-EG244 (tons/yr)",
-        "stackTestRequired": false
+        "stackTestRequired": false,
+        "fuelThroughputPerUnitLimit": 386895,
+        "operatingHoursPerUnitLimit": null
       },
       {
         "referenceNumber": "EG245, EG281, EG317, EG353, EG392, EG431, EG470, EG509",
@@ -375,11 +375,9 @@
         "fuelNumber": "S15",
         "secondaryFuelType": null,
         "otherFuels": null,
-        "fuelThroughputLimit": 670000,
         "fuelAggregation": "EG242-EG547",
         "fuelSulfurContent": 0.0015,
         "controlTechnology": "Good operating practices and maintenance; turbocharged engine and aftercooler",
-        "operatingHoursLimit": null,
         "noxEmissionLimitLbsHr": 48.1,
         "noxEmissionLimitTonsYr": 94,
         "coEmissionLimitLbsHr": 6.1,
@@ -394,7 +392,9 @@
         "so2EmissionLimitTonsYr": null,
         "instantEmissionsAggregationType": "Each generator (lbs/hr)",
         "cumulativeEmissionsAggregationType": "Combined for EG245-EG547 (tons/yr)",
-        "stackTestRequired": true
+        "stackTestRequired": true,
+        "fuelThroughputPerUnitLimit": 670000,
+        "operatingHoursPerUnitLimit": null
       },
       {
         "referenceNumber": "EG246-EG280, EG282-EG316, EG318-EG352, EG354-EG391, EG393-EG430, EG432-EG469, EG471-EG508, EG510-EG547",
@@ -410,11 +410,9 @@
         "fuelNumber": "S15",
         "secondaryFuelType": null,
         "otherFuels": null,
-        "fuelThroughputLimit": 670000,
         "fuelAggregation": "EG242-EG547",
         "fuelSulfurContent": 0.0015,
         "controlTechnology": "Good operating practices and maintenance; turbocharged engine and aftercooler",
-        "operatingHoursLimit": null,
         "noxEmissionLimitLbsHr": 48.1,
         "noxEmissionLimitTonsYr": 94,
         "coEmissionLimitLbsHr": 6.1,
@@ -429,14 +427,14 @@
         "so2EmissionLimitTonsYr": null,
         "instantEmissionsAggregationType": "Each generator (lbs/hr)",
         "cumulativeEmissionsAggregationType": "Combined for EG245-EG547 (tons/yr)",
-        "stackTestRequired": true
+        "stackTestRequired": true,
+        "fuelThroughputPerUnitLimit": 670000,
+        "operatingHoursPerUnitLimit": null
       }
     ]
   },
   "extraction_metadata": {
-    "field_metadata": {
-      
-    },
+    "field_metadata": {},
     "usage": {
       "num_pages_extracted": 24,
       "num_document_tokens": 12996,

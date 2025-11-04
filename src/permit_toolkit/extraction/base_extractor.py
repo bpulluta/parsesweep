@@ -320,15 +320,24 @@ Document text:
 {text[:8000]}"""  # First 8k chars contain permit header
         
         try:
-            response = self.openai_client.chat.completions.create(
-                model=self.model_id,
-                messages=[
+            # Reasoning models (gpt-5, o1, o3, etc.) don't support temperature or response_format
+            is_reasoning_model = any(
+                x in self.model_id.lower() for x in ["gpt-5", "o1", "o3", "o4"]
+            )
+            
+            api_params = {
+                "model": self.model_id,
+                "messages": [
                     {"role": "system", "content": "You are a precise data extraction assistant. Return only valid JSON."},
                     {"role": "user", "content": prompt}
                 ],
-                temperature=0,
-                response_format={"type": "json_object"},
-            )
+            }
+            
+            if not is_reasoning_model:
+                api_params["temperature"] = 0
+                api_params["response_format"] = {"type": "json_object"}
+            
+            response = self.openai_client.chat.completions.create(**api_params)
             
             self.stats['api_calls'] += 1
             
@@ -476,12 +485,10 @@ Focus ONLY on generator/equipment data, NOT permit header details."""
                 "fuelType": None,
                 "ratedCapacityKW": None,
                 "ratedCapacityBHP": None,
-                "maximumCapacityKW": None,
-                "maximumCapacityBHP": None,
-                "fuelThroughputLimit": None,
+                "fuelThroughputPerUnitLimit": None,
                 "fuelSulfurContent": None,
                 "controlTechnology": None,
-                "operatingHoursLimit": None,
+                "operatingHoursPerUnitLimit": None,
                 "noxEmissionLimitLbsHr": None,
                 "noxEmissionLimitTonsYr": None,
                 "coEmissionLimitLbsHr": None,
@@ -598,32 +605,21 @@ Focus ONLY on generator/equipment data, NOT permit header details."""
                     
                     # Handle capacity specs with explicit types
                     if spec_type == "capacity_kw" or (spec_type == "capacity" and "kw" in text_lower):
-                        # Check if it's maximum or rated based on text evidence
-                        if "maximum" in text_lower or "max" in text_lower:
-                            generator_obj["maximumCapacityKW"] = value
-                        else:
-                            generator_obj["ratedCapacityKW"] = value
+                        # Map both "maximum" and "rated" to ratedCapacityKW field
+                        generator_obj["ratedCapacityKW"] = value
                     elif spec_type == "capacity_bhp" or (spec_type == "capacity" and ("bhp" in text_lower or "horsepower" in text_lower)):
-                        if "maximum" in text_lower or "max" in text_lower:
-                            generator_obj["maximumCapacityBHP"] = value
-                        else:
-                            generator_obj["ratedCapacityBHP"] = value
+                        # Map both "maximum" and "rated" to ratedCapacityBHP field
+                        generator_obj["ratedCapacityBHP"] = value
                     elif "kw" in text_lower:
                         # Fallback for kw without explicit type
-                        if "maximum" in text_lower or "max" in text_lower:
-                            generator_obj["maximumCapacityKW"] = value
-                        else:
-                            generator_obj["ratedCapacityKW"] = value
+                        generator_obj["ratedCapacityKW"] = value
                     elif "bhp" in text_lower or "horsepower" in text_lower:
                         # Fallback for bhp without explicit type
-                        if "maximum" in text_lower or "max" in text_lower:
-                            generator_obj["maximumCapacityBHP"] = value
-                        else:
-                            generator_obj["ratedCapacityBHP"] = value
+                        generator_obj["ratedCapacityBHP"] = value
                     elif "hour" in text_lower or spec_type == "hours":
-                        generator_obj["operatingHoursLimit"] = value
+                        generator_obj["operatingHoursPerUnitLimit"] = value
                     elif "gallon" in text_lower or "fuel" in text_lower:
-                        generator_obj["fuelThroughputLimit"] = value
+                        generator_obj["fuelThroughputPerUnitLimit"] = value
             
             # FALLBACK: If SPEC extractions didn't provide capacity/fuel, parse from GENERATOR description
             if gen_data["generator"]:
@@ -703,7 +699,7 @@ Focus ONLY on generator/equipment data, NOT permit header details."""
                         generator_obj[field_name] = value
             
             # CALCULATE MISSING TONS/YR from lbs/hr + operating hours (if available)
-            operating_hours = generator_obj.get("operatingHoursLimit")
+            operating_hours = generator_obj.get("operatingHoursPerUnitLimit")
             num_generators = generator_obj.get("numGenerators")
             
             # Parse numGenerators if it's a string like "6" or "(6)"
@@ -793,7 +789,7 @@ Focus ONLY on generator/equipment data, NOT permit header details."""
         generators = result.get("generatorSets", [])
         
         # Fields that can be safely copied across similar generators
-        copyable_fields = ["operatingHoursLimit", "fuelSulfurContent"]
+        copyable_fields = ["operatingHoursPerUnitLimit", "fuelSulfurContent"]
         
         # Build a lookup of available field values
         field_sources = {field: [] for field in copyable_fields}
@@ -921,7 +917,7 @@ Focus ONLY on generator/equipment data, NOT permit header details."""
                     score += 10 if gen.get("noxEmissionLimitTonsYr") else 0
                     score += 5 if gen.get("coEmissionLimitLbsHr") else 0
                     score += 5 if gen.get("coEmissionLimitTonsYr") else 0
-                    score += 3 if gen.get("operatingHoursLimit") else 0
+                    score += 3 if gen.get("operatingHoursPerUnitLimit") else 0
                     score += 3 if gen.get("fuelSulfurContent") else 0
                     score += 2 if gen.get("fuelType") else 0
                     
@@ -1205,12 +1201,12 @@ Focus ONLY on generator/equipment data, NOT permit header details."""
                 target_gen["fuelType"] = source_gen["fuelType"]
             if not target_gen.get("fuelSulfurContent") and source_gen.get("fuelSulfurContent"):
                 target_gen["fuelSulfurContent"] = source_gen["fuelSulfurContent"]
-            if not target_gen.get("operatingHoursLimit") and source_gen.get("operatingHoursLimit"):
-                target_gen["operatingHoursLimit"] = source_gen["operatingHoursLimit"]
+            if not target_gen.get("operatingHoursPerUnitLimit") and source_gen.get("operatingHoursPerUnitLimit"):
+                target_gen["operatingHoursPerUnitLimit"] = source_gen["operatingHoursPerUnitLimit"]
             if not target_gen.get("controlTechnology") and source_gen.get("controlTechnology"):
                 target_gen["controlTechnology"] = source_gen["controlTechnology"]
-            if not target_gen.get("fuelThroughputLimit") and source_gen.get("fuelThroughputLimit"):
-                target_gen["fuelThroughputLimit"] = source_gen["fuelThroughputLimit"]
+            if not target_gen.get("fuelThroughputPerUnitLimit") and source_gen.get("fuelThroughputPerUnitLimit"):
+                target_gen["fuelThroughputPerUnitLimit"] = source_gen["fuelThroughputPerUnitLimit"]
         
         return result
     

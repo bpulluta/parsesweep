@@ -74,34 +74,12 @@
             "type": "string"
           },
           "ratedCapacityBHP": {
-            "description": "Rated capacity of the generator set in brake horsepower (bhp)",
+            "description": "Rated capacity of the generator set in brake horsepower (bhp). If 'maximum capacity' is mentioned without a separate 'rated capacity', use this field.",
             "type": "number"
           },
           "ratedCapacityKW": {
-            "description": "Rated capacity of the generator set in kilowatts (kW)",
+            "description": "Rated capacity of the generator set in kilowatts (kW). If 'maximum capacity' is mentioned without a separate 'rated capacity', use this field.",
             "type": "number"
-          },
-          "maximumCapacityBHP": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Maximum capacity of the generator set in brake horsepower (hp) if given."
-          },
-          "maximumCapacityKW": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Maximum capacity of the generator set in kilowatts (kW)"
           },
           "primaryFuelType": {
             "anyOf": [
