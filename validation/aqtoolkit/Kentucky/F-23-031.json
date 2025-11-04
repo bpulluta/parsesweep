@@ -1,11 +1,11 @@
 {
   "source_file": "F-23-031.pdf",
-  "extraction_date": "2025-11-04 09:34:04",
+  "extraction_date": "2025-11-04 15:46:07",
   "state": "Kentucky",
   "model": "compassop-gpt-5",
   "qa_qc_enabled": false,
-  "cost_usd": 0.1209325,
-  "processing_time_sec": 96.2540066242218,
+  "cost_usd": 0.130515,
+  "processing_time_sec": 96.51229190826416,
   "completeness_score": 0.7999999999999999,
   "generator_count": 8,
   "permit_number": "F-23-031",
@@ -24,8 +24,8 @@
       "initialStartupNotificationRequired": null,
       "startupNotificationWindowDays": null,
       "permitCopyOnsiteRequired": null,
-      "rightOfEntryClause": "In accordance with the requirements of 401 KAR 52:030, Section 3(1)f, the permittee shall allow authorized representatives of the Cabinet to perform the following during reasonable times: a. Enter upon the premises to inspect any facility, equipment (including air pollution control equipment), practice, or operation; b. To access and copy any records required by the permit; c. Sample or monitor, at reasonable times, substances or parameters to assure compliance with the permit or any applicable requirements. Reasonable times are defined as during all hours of operation, during normal office hours; or during an emergency.",
-      "extractionNotes": "Additional identifiers listed in permit: Agency Interest # 135395; Activity ID APE20230001. Selected Permit ID as primary permit number."
+      "rightOfEntryClause": "the permittee shall allow authorized representatives of the Cabinet to perform the following during reasonable times: a. Enter upon the premises to inspect any facility, equipment (including air pollution control equipment), practice, or operation; b. To access and copy any records required by the permit; c. Sample or monitor, at reasonable times, substances or parameters to assure compliance with the permit or any applicable requirements. Reasonable times are defined as during all hours of operation, during normal office hours; or during an emergency.",
+      "extractionNotes": "Permit number, issuance, and expiration dates from front page. Facility name from 'Source Name'. Facility address taken from 'Source Name: Mailing Address' which includes city/state/zip; 'Source Location' lists only street without city. State facility identifier from 'Source ID'. Additional identifiers present: 'Agency Interest #: 135395' and 'Activity ID: APE20230001'."
     },
     "generatorSets": [
       {
@@ -59,14 +59,14 @@
         "operatingHoursCombinedLimit": null,
         "operatingHoursCombinedGroupRef": null,
         "operatingHoursCombinedRollingWindow": null,
-        "allowedOperatingModes": "a. There is no time limit on the use of emergency stationary RICE emergency situations. [40 CFR 63.6640(f)(1)] b. The permittee may operate each of the engines for a maximum of 100 hours per calendar year for maintenance checks and readiness testing, provided that the tests are recommended by federal, state or local government, the manufacturer, the vendor, the regional transmission organization or equivalent balancing authority and transmission operator, or the insurance company associated with the engine. The permittee may petition the Administrator for approval of additional hours to be used for maintenance checks and readiness testing, but a petition is not required if the permittee maintains records indicating that federal, state, or local standards require maintenance and testing of emergency RICE beyond 100 hours per calendar year. [40 CFR 63.6640(f)(2) and 40 CFR 63.6640(f)(2)(i)] c. The permittee may operate each of the engines for up to 50 hours per calendar year in non-emergency situations. The 50 hours of operation in non-emergency situations are counted as part of the 100 hours per calendar year for maintenance and testing provided in 40 CFR 63.6640(f)(2). The 50 hours per year for non-emergency situations cannot be used for peak shaving or non-emergency demand response, or to generate income for a facility to an electric grid or otherwise supply power as part of a financial arrangement with another entity. [40 CFR 63.6640(f)(4)]",
+        "allowedOperatingModes": "There is no time limit on the use of emergency stationary RICE emergency situations. [40 CFR 63.6640(f)(1)] The permittee may operate each of the engines for a maximum of 100 hours per calendar year for maintenance checks and readiness testing, provided that the tests are recommended by federal, state or local government, the manufacturer, the vendor, the regional transmission organization or equivalent balancing authority and transmission operator, or the insurance company associated with the engine. The permittee may petition the Administrator for approval of additional hours to be used for maintenance checks and readiness testing, but a petition is not required if the permittee maintains records indicating that federal, state, or local standards require maintenance and testing of emergency RICE beyond 100 hours per calendar year. [40 CFR 63.6640(f)(2) and 40 CFR 63.6640(f)(2)(i)] The permittee may operate each of the engines for up to 50 hours per calendar year in non-emergency situations. The 50 hours of operation in non-emergency situations are counted as part of the 100 hours per calendar year for maintenance and testing provided in 40 CFR 63.6640(f)(2). The 50 hours per year for non-emergency situations cannot be used for peak shaving or non-emergency demand response, or to generate income for a facility to an electric grid or otherwise supply power as part of a financial arrangement with another entity. [40 CFR 63.6640(f)(4)]",
         "opacityLimitPercent": null,
         "hourMeterRequired": null,
         "observationFrequency": null,
         "recordkeepingWindowYears": 5,
         "nspsSubpartIIII": null,
         "mactSubpartZZZZ": false,
-        "extractionNotes": null
+        "extractionNotes": "Data from Section B - Emission Units 01A, 01B, & 01C table. 'Existing Diesel-fired Emergency Engines'. Capacities taken from 'Capacity (HP)' and 'Capacity (MMBtu/hr)'."
       },
       {
         "referenceNumber": "01B",
@@ -99,14 +99,14 @@
         "operatingHoursCombinedLimit": null,
         "operatingHoursCombinedGroupRef": null,
         "operatingHoursCombinedRollingWindow": null,
-        "allowedOperatingModes": "a. There is no time limit on the use of emergency stationary RICE emergency situations. [40 CFR 63.6640(f)(1)] b. The permittee may operate each of the engines for a maximum of 100 hours per calendar year for maintenance checks and readiness testing, provided that the tests are recommended by federal, state or local government, the manufacturer, the vendor, the regional transmission organization or equivalent balancing authority and transmission operator, or the insurance company associated with the engine. The permittee may petition the Administrator for approval of additional hours to be used for maintenance checks and readiness testing, but a petition is not required if the permittee maintains records indicating that federal, state, or local standards require maintenance and testing of emergency RICE beyond 100 hours per calendar year. [40 CFR 63.6640(f)(2) and 40 CFR 63.6640(f)(2)(i)] c. The permittee may operate each of the engines for up to 50 hours per calendar year in non-emergency situations. The 50 hours of operation in non-emergency situations are counted as part of the 100 hours per calendar year for maintenance and testing provided in 40 CFR 63.6640(f)(2). The 50 hours per year for non-emergency situations cannot be used for peak shaving or non-emergency demand response, or to generate income for a facility to an electric grid or otherwise supply power as part of a financial arrangement with another entity. [40 CFR 63.6640(f)(4)]",
+        "allowedOperatingModes": "There is no time limit on the use of emergency stationary RICE emergency situations. [40 CFR 63.6640(f)(1)] The permittee may operate each of the engines for a maximum of 100 hours per calendar year for maintenance checks and readiness testing, provided that the tests are recommended by federal, state or local government, the manufacturer, the vendor, the regional transmission organization or equivalent balancing authority and transmission operator, or the insurance company associated with the engine. The permittee may petition the Administrator for approval of additional hours to be used for maintenance checks and readiness testing, but a petition is not required if the permittee maintains records indicating that federal, state, or local standards require maintenance and testing of emergency RICE beyond 100 hours per calendar year. [40 CFR 63.6640(f)(2) and 40 CFR 63.6640(f)(2)(i)] The permittee may operate each of the engines for up to 50 hours per calendar year in non-emergency situations. The 50 hours of operation in non-emergency situations are counted as part of the 100 hours per calendar year for maintenance and testing provided in 40 CFR 63.6640(f)(2). The 50 hours per year for non-emergency situations cannot be used for peak shaving or non-emergency demand response, or to generate income for a facility to an electric grid or otherwise supply power as part of a financial arrangement with another entity. [40 CFR 63.6640(f)(4)]",
         "opacityLimitPercent": null,
         "hourMeterRequired": null,
         "observationFrequency": null,
         "recordkeepingWindowYears": 5,
         "nspsSubpartIIII": null,
         "mactSubpartZZZZ": false,
-        "extractionNotes": null
+        "extractionNotes": "Data from Section B - Emission Units 01A, 01B, & 01C table. 'Existing Diesel-fired Emergency Engines'. Capacities taken from 'Capacity (HP)' and 'Capacity (MMBtu/hr)'."
       },
       {
         "referenceNumber": "01C",
@@ -139,14 +139,14 @@
         "operatingHoursCombinedLimit": null,
         "operatingHoursCombinedGroupRef": null,
         "operatingHoursCombinedRollingWindow": null,
-        "allowedOperatingModes": "a. There is no time limit on the use of emergency stationary RICE emergency situations. [40 CFR 63.6640(f)(1)] b. The permittee may operate each of the engines for a maximum of 100 hours per calendar year for maintenance checks and readiness testing, provided that the tests are recommended by federal, state or local government, the manufacturer, the vendor, the regional transmission organization or equivalent balancing authority and transmission operator, or the insurance company associated with the engine. The permittee may petition the Administrator for approval of additional hours to be used for maintenance checks and readiness testing, but a petition is not required if the permittee maintains records indicating that federal, state, or local standards require maintenance and testing of emergency RICE beyond 100 hours per calendar year. [40 CFR 63.6640(f)(2) and 40 CFR 63.6640(f)(2)(i)] c. The permittee may operate each of the engines for up to 50 hours per calendar year in non-emergency situations. The 50 hours of operation in non-emergency situations are counted as part of the 100 hours per calendar year for maintenance and testing provided in 40 CFR 63.6640(f)(2). The 50 hours per year for non-emergency situations cannot be used for peak shaving or non-emergency demand response, or to generate income for a facility to an electric grid or otherwise supply power as part of a financial arrangement with another entity. [40 CFR 63.6640(f)(4)]",
+        "allowedOperatingModes": "There is no time limit on the use of emergency stationary RICE emergency situations. [40 CFR 63.6640(f)(1)] The permittee may operate each of the engines for a maximum of 100 hours per calendar year for maintenance checks and readiness testing, provided that the tests are recommended by federal, state or local government, the manufacturer, the vendor, the regional transmission organization or equivalent balancing authority and transmission operator, or the insurance company associated with the engine. The permittee may petition the Administrator for approval of additional hours to be used for maintenance checks and readiness testing, but a petition is not required if the permittee maintains records indicating that federal, state, or local standards require maintenance and testing of emergency RICE beyond 100 hours per calendar year. [40 CFR 63.6640(f)(2) and 40 CFR 63.6640(f)(2)(i)] The permittee may operate each of the engines for up to 50 hours per calendar year in non-emergency situations. The 50 hours of operation in non-emergency situations are counted as part of the 100 hours per calendar year for maintenance and testing provided in 40 CFR 63.6640(f)(2). The 50 hours per year for non-emergency situations cannot be used for peak shaving or non-emergency demand response, or to generate income for a facility to an electric grid or otherwise supply power as part of a financial arrangement with another entity. [40 CFR 63.6640(f)(4)]",
         "opacityLimitPercent": null,
         "hourMeterRequired": null,
         "observationFrequency": null,
         "recordkeepingWindowYears": 5,
         "nspsSubpartIIII": null,
         "mactSubpartZZZZ": false,
-        "extractionNotes": null
+        "extractionNotes": "Data from Section B - Emission Units 01A, 01B, & 01C table. 'Existing Diesel-fired Emergency Engines'. Capacities taken from 'Capacity (HP)' and 'Capacity (MMBtu/hr)'."
       },
       {
         "referenceNumber": "02A",
@@ -164,7 +164,7 @@
         "secondaryFuelType": null,
         "otherFuels": null,
         "fuelGrade": null,
-        "fuelSpecification": "40 CFR 1090.305",
+        "fuelSpecification": "40 CFR 1090.305 for nonroad diesel fuel",
         "fuelSulfurContentPct": null,
         "fuelCertificationRequired": null,
         "fuelChangePermitTrigger": null,
@@ -175,7 +175,7 @@
         "fuelThroughputCombinedGroupRef": null,
         "controlTechnology": null,
         "operatingHoursPerUnitLimit": 500,
-        "operatingHoursPerUnitRollingWindow": "on a 12-month rolling total basis",
+        "operatingHoursPerUnitRollingWindow": "12-month rolling total basis",
         "operatingHoursCombinedLimit": null,
         "operatingHoursCombinedGroupRef": null,
         "operatingHoursCombinedRollingWindow": null,
@@ -186,7 +186,7 @@
         "recordkeepingWindowYears": 5,
         "nspsSubpartIIII": true,
         "mactSubpartZZZZ": true,
-        "extractionNotes": null
+        "extractionNotes": "Data from Section B - Emission Units 02A, 02B, 02C, 02D, & 02E table. 'New Diesel-fired Non-emergency Engines'. Model spans a line break in the permit ('DFLE-' and '57740008'); captured as 'DFLE-57740008'. Hour limit text: 'limit the hours of operation of each engine to 500 hrs/yr on a 12-month rolling total basis. [To preclude 401 KAR 51:017 and 401 KAR 52:020]' Fuel specification from 40 CFR 60.4207(b) requirement to use diesel fuel meeting 40 CFR 1090.305."
       },
       {
         "referenceNumber": "02B",
@@ -204,7 +204,7 @@
         "secondaryFuelType": null,
         "otherFuels": null,
         "fuelGrade": null,
-        "fuelSpecification": "40 CFR 1090.305",
+        "fuelSpecification": "40 CFR 1090.305 for nonroad diesel fuel",
         "fuelSulfurContentPct": null,
         "fuelCertificationRequired": null,
         "fuelChangePermitTrigger": null,
@@ -215,7 +215,7 @@
         "fuelThroughputCombinedGroupRef": null,
         "controlTechnology": null,
         "operatingHoursPerUnitLimit": 500,
-        "operatingHoursPerUnitRollingWindow": "on a 12-month rolling total basis",
+        "operatingHoursPerUnitRollingWindow": "12-month rolling total basis",
         "operatingHoursCombinedLimit": null,
         "operatingHoursCombinedGroupRef": null,
         "operatingHoursCombinedRollingWindow": null,
@@ -226,7 +226,7 @@
         "recordkeepingWindowYears": 5,
         "nspsSubpartIIII": true,
         "mactSubpartZZZZ": true,
-        "extractionNotes": null
+        "extractionNotes": "Data from Section B - Emission Units 02A, 02B, 02C, 02D, & 02E table. Same specifications as 02A."
       },
       {
         "referenceNumber": "02C",
@@ -244,7 +244,7 @@
         "secondaryFuelType": null,
         "otherFuels": null,
         "fuelGrade": null,
-        "fuelSpecification": "40 CFR 1090.305",
+        "fuelSpecification": "40 CFR 1090.305 for nonroad diesel fuel",
         "fuelSulfurContentPct": null,
         "fuelCertificationRequired": null,
         "fuelChangePermitTrigger": null,
@@ -255,7 +255,7 @@
         "fuelThroughputCombinedGroupRef": null,
         "controlTechnology": null,
         "operatingHoursPerUnitLimit": 500,
-        "operatingHoursPerUnitRollingWindow": "on a 12-month rolling total basis",
+        "operatingHoursPerUnitRollingWindow": "12-month rolling total basis",
         "operatingHoursCombinedLimit": null,
         "operatingHoursCombinedGroupRef": null,
         "operatingHoursCombinedRollingWindow": null,
@@ -266,7 +266,7 @@
         "recordkeepingWindowYears": 5,
         "nspsSubpartIIII": true,
         "mactSubpartZZZZ": true,
-        "extractionNotes": null
+        "extractionNotes": "Data from Section B - Emission Units 02A, 02B, 02C, 02D, & 02E table. Same specifications as 02A."
       },
       {
         "referenceNumber": "02D",
@@ -284,7 +284,7 @@
         "secondaryFuelType": null,
         "otherFuels": null,
         "fuelGrade": null,
-        "fuelSpecification": "40 CFR 1090.305",
+        "fuelSpecification": "40 CFR 1090.305 for nonroad diesel fuel",
         "fuelSulfurContentPct": null,
         "fuelCertificationRequired": null,
         "fuelChangePermitTrigger": null,
@@ -295,7 +295,7 @@
         "fuelThroughputCombinedGroupRef": null,
         "controlTechnology": null,
         "operatingHoursPerUnitLimit": 500,
-        "operatingHoursPerUnitRollingWindow": "on a 12-month rolling total basis",
+        "operatingHoursPerUnitRollingWindow": "12-month rolling total basis",
         "operatingHoursCombinedLimit": null,
         "operatingHoursCombinedGroupRef": null,
         "operatingHoursCombinedRollingWindow": null,
@@ -306,7 +306,7 @@
         "recordkeepingWindowYears": 5,
         "nspsSubpartIIII": true,
         "mactSubpartZZZZ": true,
-        "extractionNotes": null
+        "extractionNotes": "Data from Section B - Emission Units 02A, 02B, 02C, 02D, & 02E table. Same specifications as 02A."
       },
       {
         "referenceNumber": "02E",
@@ -324,7 +324,7 @@
         "secondaryFuelType": null,
         "otherFuels": null,
         "fuelGrade": null,
-        "fuelSpecification": "40 CFR 1090.305",
+        "fuelSpecification": "40 CFR 1090.305 for nonroad diesel fuel",
         "fuelSulfurContentPct": null,
         "fuelCertificationRequired": null,
         "fuelChangePermitTrigger": null,
@@ -335,7 +335,7 @@
         "fuelThroughputCombinedGroupRef": null,
         "controlTechnology": null,
         "operatingHoursPerUnitLimit": 500,
-        "operatingHoursPerUnitRollingWindow": "on a 12-month rolling total basis",
+        "operatingHoursPerUnitRollingWindow": "12-month rolling total basis",
         "operatingHoursCombinedLimit": null,
         "operatingHoursCombinedGroupRef": null,
         "operatingHoursCombinedRollingWindow": null,
@@ -346,7 +346,7 @@
         "recordkeepingWindowYears": 5,
         "nspsSubpartIIII": true,
         "mactSubpartZZZZ": true,
-        "extractionNotes": null
+        "extractionNotes": "Data from Section B - Emission Units 02A, 02B, 02C, 02D, & 02E table. Same specifications as 02A."
       }
     ]
   },

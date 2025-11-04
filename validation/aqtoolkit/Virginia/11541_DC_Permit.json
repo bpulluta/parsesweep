@@ -1,11 +1,11 @@
 {
   "source_file": "11541_DC_Permit.pdf",
-  "extraction_date": "2025-11-04 09:22:14",
+  "extraction_date": "2025-11-04 15:26:32",
   "state": "Virginia",
   "model": "compassop-gpt-5",
   "qa_qc_enabled": false,
-  "cost_usd": 0.0827025,
-  "processing_time_sec": 69.69418215751648,
+  "cost_usd": 0.07076500000000001,
+  "processing_time_sec": 45.74171590805054,
   "completeness_score": 0.7999999999999999,
   "generator_count": 3,
   "permit_number": "11541",
@@ -22,10 +22,10 @@
       "initialConstructionCommencedNotificationRequired": true,
       "constructionCommencedNotificationWindowDays": 30,
       "initialStartupNotificationRequired": true,
-      "startupNotificationWindowDays": 16,
+      "startupNotificationWindowDays": 15,
       "permitCopyOnsiteRequired": true,
       "rightOfEntryClause": "For purposes of this condition, the time for inspection shall be deemed reasonable during regular business hours or whenever the facility is in operation. Nothing contained herein shall make an inspection time unreasonable during an emergency.",
-      "extractionNotes": "Permit number taken from 'Registration No. 11541'. Facility ID recorded as '51-167-00092'. Issuance date taken from 'Approved on May 16, 2008.' Other pages show OCR artifacts with different dates/numbers."
+      "extractionNotes": "Permit identifiers taken from cover/authorization block: Registration No. 11541; Facility ID No. 51-167-00092. Approval date from 'Approved on May 16,2008.' Facility name taken from authorization text ('is authorized to modify and operate the Southwest Enterprise Solutions Center'). Address taken from location line ('located on Technology Park Drive, at the Regional Business Technology Park in Lebanon, Russell County, Virginia'). Noted inconsistent OCR artifacts elsewhere (e.g., headers showing 'Registration Number11641' and 'May 16, 2006'); used 11541 and 2008-05-16 as clearly stated on permit approval page. Notification windows from Condition 9(a)-(b)."
     },
     "generatorSets": [
       {
@@ -38,6 +38,7 @@
         "model": null,
         "ratedCapacityKW": 1500,
         "ratedCapacityBHP": 2500,
+        "ratedCapacityHP": null,
         "ratedCapacityMMBtuPerHr": null,
         "primaryFuelType": "distillate oil",
         "secondaryFuelType": null,
@@ -54,7 +55,7 @@
         "fuelThroughputCombinedGroupRef": null,
         "controlTechnology": null,
         "operatingHoursPerUnitLimit": 500,
-        "operatingHoursPerUnitRollingWindow": "calculated monthly as the sum of each consecutive 12-month period.",
+        "operatingHoursPerUnitRollingWindow": "calculated monthly as the sum of each consecutive 12-month period",
         "operatingHoursCombinedLimit": null,
         "operatingHoursCombinedGroupRef": null,
         "operatingHoursCombinedRollingWindow": null,
@@ -65,8 +66,7 @@
         "recordkeepingWindowYears": 5,
         "nspsSubpartIIII": true,
         "mactSubpartZZZZ": null,
-        "extractionNotes": "Fuel specification OCR 'ASTM 0396-76' corrected to 'ASTM D396-76' per permit context.",
-        "ratedCapacityHP": null
+        "extractionNotes": "Equipment list Condition 1 under 'Equipment to be added as part of this facility modification:' shows Ref No. 3 'One Caterpillar 1500 KW diesel powered emergency generator' with '2500 brake horsepower' and 'NSPS Subpart llll' and Original Permit Date 5/16/2008. Fuel type/grade/spec and sulfur content from Conditions 2 and 4 apply to the Caterpillar diesel powered emergency generators. Model not stated anywhere in the document."
       },
       {
         "referenceNumber": "2",
@@ -78,6 +78,7 @@
         "model": null,
         "ratedCapacityKW": 1500,
         "ratedCapacityBHP": 2500,
+        "ratedCapacityHP": null,
         "ratedCapacityMMBtuPerHr": null,
         "primaryFuelType": "distillate oil",
         "secondaryFuelType": null,
@@ -94,7 +95,7 @@
         "fuelThroughputCombinedGroupRef": null,
         "controlTechnology": null,
         "operatingHoursPerUnitLimit": 500,
-        "operatingHoursPerUnitRollingWindow": "calculated monthly as the sum of each consecutive 12-month period.",
+        "operatingHoursPerUnitRollingWindow": "calculated monthly as the sum of each consecutive 12-month period",
         "operatingHoursCombinedLimit": null,
         "operatingHoursCombinedGroupRef": null,
         "operatingHoursCombinedRollingWindow": null,
@@ -105,8 +106,7 @@
         "recordkeepingWindowYears": 5,
         "nspsSubpartIIII": true,
         "mactSubpartZZZZ": null,
-        "extractionNotes": "Fuel specification OCR 'ASTM 0396-76' corrected to 'ASTM D396-76' per permit context.",
-        "ratedCapacityHP": null
+        "extractionNotes": "Equipment list Condition 1 under 'Previously permitted equipment:' shows Ref No. 2 'One Caterpillar 1500 KW diesel powered emergency generator' with '2500 brake horsepower' and 'NSPS Subpart llll' and Original Permit Date 2/13/2008. Model not stated."
       },
       {
         "referenceNumber": "1",
@@ -118,6 +118,7 @@
         "model": null,
         "ratedCapacityKW": 1500,
         "ratedCapacityBHP": 2500,
+        "ratedCapacityHP": null,
         "ratedCapacityMMBtuPerHr": null,
         "primaryFuelType": "distillate oil",
         "secondaryFuelType": null,
@@ -134,7 +135,7 @@
         "fuelThroughputCombinedGroupRef": null,
         "controlTechnology": null,
         "operatingHoursPerUnitLimit": 500,
-        "operatingHoursPerUnitRollingWindow": "calculated monthly as the sum of each consecutive 12-month period.",
+        "operatingHoursPerUnitRollingWindow": "calculated monthly as the sum of each consecutive 12-month period",
         "operatingHoursCombinedLimit": null,
         "operatingHoursCombinedGroupRef": null,
         "operatingHoursCombinedRollingWindow": null,
@@ -145,8 +146,7 @@
         "recordkeepingWindowYears": 5,
         "nspsSubpartIIII": true,
         "mactSubpartZZZZ": null,
-        "extractionNotes": "Fuel specification OCR 'ASTM 0396-76' corrected to 'ASTM D396-76' per permit context.",
-        "ratedCapacityHP": null
+        "extractionNotes": "Equipment list Condition 1 under 'Previously permitted equipment:' shows Ref No. 1 'One Caterpillar 1500 KW diesel powered emergency generator' with '2500 brake horsepower' and 'NSPS Subpart llll' and Original Permit Date 2/26/2007. Model not stated."
       }
     ]
   },

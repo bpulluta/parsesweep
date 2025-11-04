@@ -97,10 +97,25 @@ def find_permit_file(base_dir: Path, permit_number: str, state: str) -> Optional
     if not state_dir.exists():
         return None
     
-    for pattern in [f"{permit_number}_DC_Permit.json", f"{permit_number}.json", f"llama-extract-{permit_number}_DC_Permit_*.json"]:
+    # Try exact match patterns
+    patterns = [
+        f"{permit_number}_DC_Permit.json",
+        f"{permit_number}.json",
+        f"llama-extract-{permit_number}_DC_Permit_*.json",
+        f"{permit_number}_*.json",
+        f"*{permit_number}*.json"
+    ]
+    
+    for pattern in patterns:
         files = list(state_dir.glob(pattern))
         if files:
             return files[0]
+    
+    # If no exact match, try to find by matching the permit number within the filename
+    for file in state_dir.glob("*.json"):
+        if permit_number in file.stem:
+            return file
+    
     return None
 
 
@@ -389,14 +404,33 @@ def main():
     # Get permits
     permits = []
     for state_dir in AQTOOLKIT_DIR.iterdir():
-        if state_dir.is_dir() and state_dir.name not in [".DS_Store", ".gitkeep"]:
+        if state_dir.is_dir() and state_dir.name not in {".DS_Store", ".gitkeep"}:
             for json_file in state_dir.glob("*.json"):
                 if json_file.stem != "validation_consolidated":
-                    permit_number = json_file.stem.replace("_DC_Permit", "")
+                    # Extract permit number from filename
+                    # Remove common suffixes
+                    permit_number = json_file.stem
+                    permit_number = permit_number.replace("_DC_Permit", "")
+                    
+                    # Create a clean sheet name (max 31 chars for Excel)
+                    # Remove invalid Excel sheet name characters: [ ] : * ? / \
+                    clean_permit = permit_number.replace("[", "(").replace("]", ")")
+                    clean_permit = clean_permit.replace(":", "-").replace("*", "")
+                    clean_permit = clean_permit.replace("?", "").replace("/", "-")
+                    clean_permit = clean_permit.replace("\\", "-")
+                    
+                    sheet_name = f"{state_dir.name}_{clean_permit}"
+                    if len(sheet_name) > 31:
+                        # Truncate permit number if needed
+                        max_permit_len = 31 - len(state_dir.name) - 1
+                        sheet_name = (f"{state_dir.name}_"
+                                     f"{clean_permit[:max_permit_len]}")
+                    
                     permits.append({
                         "permit_number": permit_number,
                         "state": state_dir.name,
-                        "sheet_name": f"{state_dir.name}_{permit_number}"[:31]
+                        "sheet_name": sheet_name,
+                        "file_path": json_file
                     })
     
     permits = sorted(permits, key=lambda x: (x["state"], x["permit_number"]))
