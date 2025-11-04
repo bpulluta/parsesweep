@@ -713,7 +713,8 @@ def setup_graph_generators(**kwargs):  # noqa: D103
     G.add_node(
         "init",
         prompt=(
-            "Does the following text mention at least one backup generator? "
+            "Does the following text mention at least one generator or "
+            "engine? "
             f"{_START_WITH_YN}"
             '\n\n"""\n{text}\n"""'
         ),
@@ -725,7 +726,7 @@ def setup_graph_generators(**kwargs):  # noqa: D103
         "get_refs",
         prompt=(
             "Does the text provide a reference number or identifier for each "
-            "backup generator mentioned (e.g., 'EG01', 'EG04-EG05', "
+            "generator or engine mentioned (e.g., 'EG01', 'EG04-EG05', "
             "'1510-4', etc.)? "
             f"{_START_WITH_YN}"
         ),
@@ -736,7 +737,7 @@ def setup_graph_generators(**kwargs):  # noqa: D103
         "list_refs",
         prompt=(
             "Please list out all reference numbers or identifiers for each "
-            "unique backup generator unit or backup generator group mentioned "
+            "unique generator/engine unit or generator/engine group mentioned "
             "in the permit (e.g., EG01, EG04-EG05, 1510-4, etc.). Make sure "
             "each generator is represented **exactly one time**. If a "
             "generator reference number exists within a range that you have "
