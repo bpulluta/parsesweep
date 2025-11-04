@@ -158,6 +158,8 @@ class PermitConsolidator:
                 'fuel_throughput_limit': gen.get('fuelThroughputLimit'),
                 'fuel_throughput_scope': gen.get('fuelThroughputScope'),
                 'fuel_throughput_group_ref': gen.get('fuelThroughputGroupRef'),
+                'fuel_throughput_combined_limit': gen.get('fuelThroughputCombinedLimit'),
+                'fuel_throughput_combined_group_ref': gen.get('fuelThroughputCombinedGroupRef'),
                 'fuel_sulfur_content_pct': gen.get('fuelSulfurContentPct'),
                 
                 # Fuel certification
@@ -168,6 +170,9 @@ class PermitConsolidator:
                 # Operating parameters
                 'operating_hours_limit': gen.get('operatingHoursLimit'),
                 'operating_hours_rolling_window': gen.get('operatingHoursRollingWindow'),
+                'operating_hours_combined_limit': gen.get('operatingHoursCombinedLimit'),
+                'operating_hours_combined_group_ref': gen.get('operatingHoursCombinedGroupRef'),
+                'operating_hours_combined_rolling_window': gen.get('operatingHoursCombinedRollingWindow'),
                 'operating_hours_limit_scope': gen.get('operatingHoursLimitScope'),
                 'allowed_operating_modes': allowed_modes_str,
                 'control_technology': gen.get('controlTechnology'),

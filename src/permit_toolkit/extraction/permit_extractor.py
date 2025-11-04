@@ -412,17 +412,28 @@ Return valid JSON following the schema exactly. Match the permit's structure - d
                 },
                 {"role": "user", "content": prompt},
             ],
-            "response_format": {"type": "json_object"},
         }
 
-        # Only add temperature for models that support it (not gpt-5, o1, o3, etc.)
-        if not any(
+        # Reasoning models (gpt-5, o1, o3, etc.) don't support temperature or response_format
+        is_reasoning_model = any(
             x in self.model.lower() for x in ["gpt-5", "o1", "o3", "o4"]
-        ):
+        )
+        
+        if not is_reasoning_model:
             api_params["temperature"] = 0
+            api_params["response_format"] = {"type": "json_object"}
 
         try:
             response = self.client.chat.completions.create(**api_params)
+            
+            # Check for empty response
+            if not response.choices or not response.choices[0].message.content:
+                logger.error(f"  ✗ Empty response from API (model={self.model}, reasoning={is_reasoning_model})")
+                logger.error(f"     Response: {response}")
+                return {
+                    "data": {"permitDetails": {}, "generatorSets": []},
+                    "cost": 0.0,
+                }
 
             data = json.loads(response.choices[0].message.content)
 
@@ -442,7 +453,7 @@ Return valid JSON following the schema exactly. Match the permit's structure - d
             return {"data": data, "cost": cost}
 
         except Exception as e:
-            logger.error("  ✗ OpenAI extraction failed: %s", e)
+            logger.exception("  ✗ OpenAI extraction failed")
             return {
                 "data": {"permitDetails": {}, "generatorSets": []},
                 "cost": 0.0,

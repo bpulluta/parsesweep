@@ -301,7 +301,7 @@ class StructuredOrdinanceParser(BaseLLMCaller):
                 "fuel_change_trigger",
                 "Checking for fuel change trigger",
             ),
-            "fuelThroughputLimit": (
+            "fuelThroughputPerUnitLimit": (
                 setup_graph_fuel_throughput_limit,
                 "fuel_limit",
                 "Checking for fuel throughput limit",
@@ -316,7 +316,7 @@ class StructuredOrdinanceParser(BaseLLMCaller):
                 "operating_hours",
                 "Checking for generator operating hours",
             ),
-            "operatingHoursRollingWindow": (
+            "operatingHoursPerUnitRollingWindow": (
                 setup_graph_operating_window,
                 "operating_window",
                 "Checking for generator operating window",
@@ -394,18 +394,18 @@ class StructuredOrdinanceParser(BaseLLMCaller):
             if isinstance(result, Exception):
                 logger.warning("Task %s failed: %s", key, result)
                 generators[ref_number][key] = None
-                if key == "fuelThroughputLimit":
-                    generators[ref_number]["fuelThroughputScope"] = None
-                    generators[ref_number]["fuelThroughputGroupRef"] = None
+                if key == "fuelThroughputPerUnitLimit":
+                    generators[ref_number]["fuelThroughputPerUnitScope"] = None
+                    generators[ref_number]["fuelThroughputPerUnitGroupRef"] = None
                 elif key == "hourMeterRequired":
                     generators[ref_number]["observationFrequency"] = None
             else:
                 generators[ref_number][key] = result.get(dtk)
-                if key == "fuelThroughputLimit":
-                    generators[ref_number]["fuelThroughputScope"] = result.get(
+                if key == "fuelThroughputPerUnitLimit":
+                    generators[ref_number]["fuelThroughputPerUnitScope"] = result.get(
                         "scope"
                     )
-                    generators[ref_number]["fuelThroughputGroupRef"] = (
+                    generators[ref_number]["fuelThroughputPerUnitGroupRef"] = (
                         result.get("group")
                     )
                 elif key == "hourMeterRequired":

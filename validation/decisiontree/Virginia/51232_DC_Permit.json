@@ -51,12 +51,8 @@
           "sulfurContentRequired": true
         },
         "fuelChangePermitTrigger": "A change in the fuel shall be considered a change in the method of operation of the engine-generator sets (Ref. Nos. EG04-EG547) and may require a new or amended permit. However, if a change in the fuel is not subject to new source review permitting requirements, this condition should not be construed to prohibit such a change.",
-        "fuelThroughputLimit": 96250,
-        "fuelThroughputScope": "combined_group",
-        "fuelThroughputGroupRef": "EG44\u2013EG79",
         "control_technologies": "Turbocharged engine and aftercooler; good operating practices and manufacturer-recommended maintenance",
         "operating_hours_limit_yr": null,
-        "operatingHoursRollingWindow": "Consecutive 12-month rolling period, calculated monthly as the sum of each consecutive 12-month period; compliance demonstrated monthly by adding the most recently completed month to the prior 11 months.",
         "allowedOperatingModes": "Emergency power generation due to sudden and reasonably unforeseeable events disrupting the primary power source (including electrical grid failure, on-site disaster or equipment failure, and public service emergencies such as flood, fire, natural disaster, or severe weather); participation in an ISO-declared emergency (including abnormal system conditions requiring action to maintain frequency or prevent loss of firm load/equipment damage/tripping; capacity deficiency or excess; fuel shortage requiring departure from normal procedures; abnormal natural events or man-made threats requiring conservative operations; or abnormal events external to the ISO territory requiring ISO action); and periodic maintenance, testing, and operational training.",
         "opacityLimitPercent": 10,
         "hourMeterRequired": true,
@@ -66,7 +62,11 @@
         "manufacturerOandMRequired": true,
         "maintenanceTrainingRecordsRequired": true,
         "nspsSubpartIIII": null,
-        "mactSubpartZZZZ": null
+        "mactSubpartZZZZ": null,
+        "fuelThroughputPerUnitLimit": 96250,
+        "fuelThroughputPerUnitScope": "combined_group",
+        "fuelThroughputPerUnitGroupRef": "EG44\u2013EG79",
+        "operatingHoursPerUnitRollingWindow": "Consecutive 12-month rolling period, calculated monthly as the sum of each consecutive 12-month period; compliance demonstrated monthly by adding the most recently completed month to the prior 11 months."
       },
       {
         "referenceNumber": "EG04\u2013EG05",
@@ -93,12 +93,8 @@
           "sulfurContentRequired": true
         },
         "fuelChangePermitTrigger": "A change in the fuel shall be considered a change in the method of operation of the engine-generator sets (Ref. Nos. EG04-EG547) and may require a new or amended permit. However, if a change in the fuel is not subject to new source review permitting requirements, this condition should not be construed to prohibit such a change.",
-        "fuelThroughputLimit": 4042,
-        "fuelThroughputScope": "combined_group",
-        "fuelThroughputGroupRef": "EG04\u2013EG05",
         "control_technologies": "Turbocharged engine and aftercooler; good operating practices and manufacturer-recommended maintenance.",
         "operating_hours_limit_yr": null,
-        "operatingHoursRollingWindow": "Consecutive 12-month period calculated monthly; compliance demonstrated by adding the most recently completed calendar month to the prior 11 months.",
         "allowedOperatingModes": "Emergency situations where the primary power source is disrupted due to conditions beyond the owner/operator\u2019s control (including grid failure, on-site disaster/equipment failure, or public service emergencies such as flood, fire, natural disaster, or severe weather); participation in an ISO-declared emergency (abnormal system conditions to maintain reliability, capacity deficiency/excess, fuel shortages requiring departure from normal procedures, abnormal natural/man-made events requiring conservative operations, or abnormal external events requiring ISO action); and periodic maintenance, testing, and operational training. Any change to non-emergency (alternate) power generation requires prior DEQ approval.",
         "opacityLimitPercent": 10,
         "hourMeterRequired": true,
@@ -108,7 +104,11 @@
         "manufacturerOandMRequired": true,
         "maintenanceTrainingRecordsRequired": true,
         "nspsSubpartIIII": null,
-        "mactSubpartZZZZ": null
+        "mactSubpartZZZZ": null,
+        "fuelThroughputPerUnitLimit": 4042,
+        "fuelThroughputPerUnitScope": "combined_group",
+        "fuelThroughputPerUnitGroupRef": "EG04\u2013EG05",
+        "operatingHoursPerUnitRollingWindow": "Consecutive 12-month period calculated monthly; compliance demonstrated by adding the most recently completed calendar month to the prior 11 months."
       },
       {
         "referenceNumber": "EG06\u2013EG07",
@@ -135,12 +135,8 @@
           "sulfurContentRequired": true
         },
         "fuelChangePermitTrigger": "A change in the fuel shall be considered a change in the method of operation of the engine-generator sets (Ref. Nos. EG04-EG547) and may require a new or amended permit. However, if a change in the fuel is not subject to new source review permitting requirements, this condition should not be construed to prohibit such a change.",
-        "fuelThroughputLimit": 4555,
-        "fuelThroughputScope": "combined_group",
-        "fuelThroughputGroupRef": "EG06\u2013EG07",
         "control_technologies": "Turbocharged engine and aftercooler; good operating practices and appropriate maintenance",
         "operating_hours_limit_yr": null,
-        "operatingHoursRollingWindow": "Consecutive 12-month rolling period, calculated monthly; compliance demonstrated by adding the most recently completed calendar month to the totals for the preceding 11 months.",
         "allowedOperatingModes": "Emergency power generation due to sudden, unforeseeable events beyond the owner/operator\u2019s control (including failure of the electrical grid; on-site disaster or equipment failure; public service emergencies such as flood, fire, natural disaster, or severe weather); participation in an ISO-declared emergency (abnormal system conditions, capacity deficiency or excess, fuel shortage requiring conservative operations, abnormal natural or man-made threats requiring conservative operations, or abnormal external events requiring ISO action); and periodic maintenance, testing, and operational training. Non-emergency (alternate) power generation is not allowed unless DEQ approves a change in the method of operation.",
         "opacityLimitPercent": 10,
         "hourMeterRequired": true,
@@ -150,7 +146,11 @@
         "manufacturerOandMRequired": true,
         "maintenanceTrainingRecordsRequired": true,
         "nspsSubpartIIII": null,
-        "mactSubpartZZZZ": null
+        "mactSubpartZZZZ": null,
+        "fuelThroughputPerUnitLimit": 4555,
+        "fuelThroughputPerUnitScope": "combined_group",
+        "fuelThroughputPerUnitGroupRef": "EG06\u2013EG07",
+        "operatingHoursPerUnitRollingWindow": "Consecutive 12-month rolling period, calculated monthly; compliance demonstrated by adding the most recently completed calendar month to the totals for the preceding 11 months."
       },
       {
         "referenceNumber": "EG08\u2013EG17",
@@ -177,12 +177,8 @@
           "sulfurContentRequired": true
         },
         "fuelChangePermitTrigger": "A change in the fuel shall be considered a change in the method of operation of the engine-generator sets (Ref. Nos. EG04-EG547) and may require a new or amended permit. However, if a change in the fuel is not subject to new source review permitting requirements, this condition should not be construed to prohibit such a change.",
-        "fuelThroughputLimit": 29010,
-        "fuelThroughputScope": "combined_group",
-        "fuelThroughputGroupRef": "EG08\u2013EG17",
         "control_technologies": "Turbocharged engine and aftercooler (for NOx control); good operating practices and appropriate maintenance per manufacturer recommendations (for visible emissions, particulate, VOC, and NOx).",
         "operating_hours_limit_yr": null,
-        "operatingHoursRollingWindow": "Consecutive 12-month rolling period calculated monthly, with compliance demonstrated by summing the most recently completed calendar month and the preceding 11 months.",
         "allowedOperatingModes": "Emergency situations (failure of the electrical grid; on-site disaster or equipment failure; public service emergencies such as flood, fire, natural disaster, severe weather); participation in an ISO-declared emergency; periodic maintenance, testing, and operational training. Non-emergency (alternate) power generation is only allowed after submitting documentation to DEQ and receiving DEQ approval to change the method of operation.",
         "opacityLimitPercent": 10,
         "hourMeterRequired": true,
@@ -192,7 +188,11 @@
         "manufacturerOandMRequired": true,
         "maintenanceTrainingRecordsRequired": true,
         "nspsSubpartIIII": null,
-        "mactSubpartZZZZ": null
+        "mactSubpartZZZZ": null,
+        "fuelThroughputPerUnitLimit": 29010,
+        "fuelThroughputPerUnitScope": "combined_group",
+        "fuelThroughputPerUnitGroupRef": "EG08\u2013EG17",
+        "operatingHoursPerUnitRollingWindow": "Consecutive 12-month rolling period calculated monthly, with compliance demonstrated by summing the most recently completed calendar month and the preceding 11 months."
       },
       {
         "referenceNumber": "EG18\u2013EG34",
@@ -219,12 +219,8 @@
           "sulfurContentRequired": true
         },
         "fuelChangePermitTrigger": "A change in the fuel shall be considered a change in the method of operation of the engine-generator sets (Ref. Nos. EG04-EG547) and may require a new or amended permit. However, if a change in the fuel is not subject to new source review permitting requirements, this condition should not be construed to prohibit such a change.",
-        "fuelThroughputLimit": 49828,
-        "fuelThroughputScope": "combined_group",
-        "fuelThroughputGroupRef": "EG18-EG34",
         "control_technologies": "Turbocharged engine and aftercooler (for NOx); good operating practices and manufacturer-recommended maintenance (for visible emissions, particulate, VOC, and NOx across EG18\u2013EG34; and for CO for EG18\u2013EG26, EG28, and EG32\u2013EG34).",
         "operating_hours_limit_yr": null,
-        "operatingHoursRollingWindow": "Consecutive 12-month rolling period, calculated monthly; compliance is demonstrated each month by adding the total for the most recently completed calendar month to the totals for the preceding 11 months.",
         "allowedOperatingModes": "Emergency power generation (sudden and reasonably unforeseeable events disrupting the primary energy/power source, including electrical grid failure; on-site disaster or equipment failure; public service emergencies such as flood, fire, natural disaster, or severe weather), participation in an ISO-declared emergency, and periodic maintenance, testing, and operational training; any change to non-emergency (alternate) power generation requires prior DEQ approval.",
         "opacityLimitPercent": 10,
         "hourMeterRequired": true,
@@ -234,7 +230,11 @@
         "manufacturerOandMRequired": true,
         "maintenanceTrainingRecordsRequired": true,
         "nspsSubpartIIII": null,
-        "mactSubpartZZZZ": null
+        "mactSubpartZZZZ": null,
+        "fuelThroughputPerUnitLimit": 49828,
+        "fuelThroughputPerUnitScope": "combined_group",
+        "fuelThroughputPerUnitGroupRef": "EG18-EG34",
+        "operatingHoursPerUnitRollingWindow": "Consecutive 12-month rolling period, calculated monthly; compliance is demonstrated each month by adding the total for the most recently completed calendar month to the totals for the preceding 11 months."
       },
       {
         "referenceNumber": "EG35\u2013EG43",
@@ -261,12 +261,8 @@
           "sulfurContentRequired": true
         },
         "fuelChangePermitTrigger": "A change in the fuel shall be considered a change in the method of operation of the engine-generator sets (Ref. Nos. EG04-EG547) and may require a new or amended permit. However, if a change in the fuel is not subject to new source review permitting requirements, this condition should not be construed to prohibit such a change.",
-        "fuelThroughputLimit": 25281,
-        "fuelThroughputScope": "combined_group",
-        "fuelThroughputGroupRef": "EG35\u2013EG43",
         "control_technologies": "Turbocharged engine and aftercooler; good operating practices and manufacturer-recommended maintenance",
         "operating_hours_limit_yr": null,
-        "operatingHoursRollingWindow": "Consecutive 12-month period; calculated monthly as the sum of the last 12 months, with compliance demonstrated monthly by adding the most recent month to the preceding 11 months.",
         "allowedOperatingModes": "Emergency power generation (including grid failure, onsite disaster/equipment failure, and public service emergencies), participation in ISO-declared emergencies, and periodic maintenance, testing, and operational training; non-emergency (alternate) power generation only with prior DEQ approval.",
         "opacityLimitPercent": 10,
         "hourMeterRequired": true,
@@ -276,7 +272,11 @@
         "manufacturerOandMRequired": true,
         "maintenanceTrainingRecordsRequired": true,
         "nspsSubpartIIII": null,
-        "mactSubpartZZZZ": null
+        "mactSubpartZZZZ": null,
+        "fuelThroughputPerUnitLimit": 25281,
+        "fuelThroughputPerUnitScope": "combined_group",
+        "fuelThroughputPerUnitGroupRef": "EG35\u2013EG43",
+        "operatingHoursPerUnitRollingWindow": "Consecutive 12-month period; calculated monthly as the sum of the last 12 months, with compliance demonstrated monthly by adding the most recent month to the preceding 11 months."
       },
       {
         "referenceNumber": "EG44\u2013EG76",
@@ -303,12 +303,8 @@
           "sulfurContentRequired": true
         },
         "fuelChangePermitTrigger": "A change in the fuel shall be considered a change in the method of operation of the engine-generator sets (Ref. Nos. EG04-EG547) and may require a new or amended permit. However, if a change in the fuel is not subject to new source review permitting requirements, this condition should not be construed to prohibit such a change.",
-        "fuelThroughputLimit": 96250,
-        "fuelThroughputScope": "combined_group",
-        "fuelThroughputGroupRef": "EG44\u2013EG79",
         "control_technologies": "Turbocharged engine and aftercooler; good operating practices and manufacturer-recommended maintenance (for visible emissions, PM, VOC, NOx, and CO).",
         "operating_hours_limit_yr": null,
-        "operatingHoursRollingWindow": "Consecutive 12-month rolling period, calculated monthly; compliance demonstrated monthly by adding the most recently completed calendar month to the totals for the preceding 11 months.",
         "allowedOperatingModes": "Emergency power generation due to sudden and reasonably unforeseeable disruption of the primary power source (including failure of the electrical grid, on-site disaster or equipment failure, and public service emergencies such as flood, fire, natural disaster, or severe weather); participation in an ISO-declared emergency; and periodic maintenance, testing, and operational training. Any change to non-emergency (alternate) power generation requires prior DEQ approval.",
         "opacityLimitPercent": 10,
         "hourMeterRequired": true,
@@ -318,7 +314,11 @@
         "manufacturerOandMRequired": true,
         "maintenanceTrainingRecordsRequired": true,
         "nspsSubpartIIII": null,
-        "mactSubpartZZZZ": null
+        "mactSubpartZZZZ": null,
+        "fuelThroughputPerUnitLimit": 96250,
+        "fuelThroughputPerUnitScope": "combined_group",
+        "fuelThroughputPerUnitGroupRef": "EG44\u2013EG79",
+        "operatingHoursPerUnitRollingWindow": "Consecutive 12-month rolling period, calculated monthly; compliance demonstrated monthly by adding the most recently completed calendar month to the totals for the preceding 11 months."
       },
       {
         "referenceNumber": "EG80\u2013EG112",
@@ -345,12 +345,8 @@
           "sulfurContentRequired": true
         },
         "fuelChangePermitTrigger": "A change in the fuel shall be considered a change in the method of operation of the engine-generator sets (Ref. Nos. EG04-EG547) and may require a new or amended permit. However, if a change in the fuel is not subject to new source review permitting requirements, this condition should not be construed to prohibit such a change.",
-        "fuelThroughputLimit": 89937,
-        "fuelThroughputScope": "combined_group",
-        "fuelThroughputGroupRef": "EG80\u2013EG112",
         "control_technologies": "Turbocharged engine and aftercooler; good operating practices and appropriate maintenance per manufacturer recommendations",
         "operating_hours_limit_yr": null,
-        "operatingHoursRollingWindow": "Consecutive 12-month rolling period, calculated monthly by adding the most recently completed calendar month to the preceding 11 months (for the combined EG80\u2013EG112 group).",
         "allowedOperatingModes": "Emergency situations where the primary energy/power source is disrupted beyond the owner/operator\u2019s control (including electrical grid failure, on-site disaster or equipment failure, and public service emergencies such as flood, fire, natural disaster, or severe weather); participation in an ISO-declared emergency (as defined in the permit); and periodic maintenance, testing, and operational training. Any change to non-emergency (alternate) power generation requires prior DEQ approval.",
         "opacityLimitPercent": 10,
         "hourMeterRequired": true,
@@ -360,7 +356,11 @@
         "manufacturerOandMRequired": true,
         "maintenanceTrainingRecordsRequired": true,
         "nspsSubpartIIII": null,
-        "mactSubpartZZZZ": null
+        "mactSubpartZZZZ": null,
+        "fuelThroughputPerUnitLimit": 89937,
+        "fuelThroughputPerUnitScope": "combined_group",
+        "fuelThroughputPerUnitGroupRef": "EG80\u2013EG112",
+        "operatingHoursPerUnitRollingWindow": "Consecutive 12-month rolling period, calculated monthly by adding the most recently completed calendar month to the preceding 11 months (for the combined EG80\u2013EG112 group)."
       },
       {
         "referenceNumber": "EG113\u2013EG145",
@@ -387,12 +387,8 @@
           "sulfurContentRequired": true
         },
         "fuelChangePermitTrigger": "A change in the fuel shall be considered a change in the method of operation of the engine-generator sets (Ref. Nos. EG04-EG547) and may require a new or amended permit. However, if a change in the fuel is not subject to new source review permitting requirements, this condition should not be construed to prohibit such a change.",
-        "fuelThroughputLimit": 386895,
-        "fuelThroughputScope": "combined_group",
-        "fuelThroughputGroupRef": "EG113\u2013EG244",
         "control_technologies": "Turbocharged engine and aftercooler; good operating practices and manufacturer-recommended maintenance (for visible emissions, particulate matter, VOCs, NOx, and CO)",
         "operating_hours_limit_yr": null,
-        "operatingHoursRollingWindow": "Consecutive 12-month rolling period, calculated monthly by summing the most recently completed calendar month plus the preceding 11 months.",
         "allowedOperatingModes": "Emergency operation during sudden and reasonably unforeseeable loss of primary power (including grid failure, on-site disaster or equipment failure, and public service emergencies such as flood, fire, natural disaster, or severe weather); participation in an ISO-declared emergency (abnormal system conditions requiring action to maintain system reliability/safety, capacity deficiency or excess, fuel shortage requiring departure from normal procedures, abnormal natural events or man-made threats requiring conservative operations, or abnormal events external to the ISO territory that may require ISO action); and periodic maintenance, testing, and operational training. Any change to non-emergency (alternate) power generation requires prior DEQ approval.",
         "opacityLimitPercent": 10,
         "hourMeterRequired": true,
@@ -402,7 +398,11 @@
         "manufacturerOandMRequired": true,
         "maintenanceTrainingRecordsRequired": true,
         "nspsSubpartIIII": null,
-        "mactSubpartZZZZ": null
+        "mactSubpartZZZZ": null,
+        "fuelThroughputPerUnitLimit": 386895,
+        "fuelThroughputPerUnitScope": "combined_group",
+        "fuelThroughputPerUnitGroupRef": "EG113\u2013EG244",
+        "operatingHoursPerUnitRollingWindow": "Consecutive 12-month rolling period, calculated monthly by summing the most recently completed calendar month plus the preceding 11 months."
       },
       {
         "referenceNumber": "EG146\u2013EG244",
@@ -429,12 +429,8 @@
           "sulfurContentRequired": true
         },
         "fuelChangePermitTrigger": "A change in the fuel shall be considered a change in the method of operation of the engine-generator sets (Ref. Nos. EG04-EG547) and may require a new or amended permit. However, if a change in the fuel is not subject to new source review permitting requirements, this condition should not be construed to prohibit such a change.",
-        "fuelThroughputLimit": 386895,
-        "fuelThroughputScope": "combined_group",
-        "fuelThroughputGroupRef": "EG113\u2013EG244",
         "control_technologies": "Turbocharged engine and aftercooler; good operating practices and appropriate maintenance (for visible emissions, particulate, VOC, NOx, and CO).",
         "operating_hours_limit_yr": null,
-        "operatingHoursRollingWindow": "Consecutive 12-month rolling period, calculated monthly by adding the most recently completed calendar month to the preceding 11 months.",
         "allowedOperatingModes": "Emergency power generation (due to grid failure; on-site disaster or equipment failure; or public service emergencies such as flood, fire, natural disaster, or severe weather); participation in an ISO-declared emergency (abnormal system conditions requiring action to maintain frequency or prevent loss of firm load/equipment damage; capacity deficiency or excess; fuel shortage requiring departure from normal procedures; abnormal natural events or man-made threats requiring conservative operations; or abnormal events external to the ISO territory requiring ISO action); and periodic maintenance, testing, and operational training. Non-emergency (alternate) power generation is only permissible with prior DEQ approval.",
         "opacityLimitPercent": 10,
         "hourMeterRequired": true,
@@ -444,7 +440,11 @@
         "manufacturerOandMRequired": true,
         "maintenanceTrainingRecordsRequired": true,
         "nspsSubpartIIII": null,
-        "mactSubpartZZZZ": null
+        "mactSubpartZZZZ": null,
+        "fuelThroughputPerUnitLimit": 386895,
+        "fuelThroughputPerUnitScope": "combined_group",
+        "fuelThroughputPerUnitGroupRef": "EG113\u2013EG244",
+        "operatingHoursPerUnitRollingWindow": "Consecutive 12-month rolling period, calculated monthly by adding the most recently completed calendar month to the preceding 11 months."
       },
       {
         "referenceNumber": "EG245",
@@ -471,12 +471,8 @@
           "sulfurContentRequired": true
         },
         "fuelChangePermitTrigger": "A change in the fuel shall be considered a change in the method of operation of the engine-generator sets (Ref. Nos. EG04-EG547) and may require a new or amended permit. However, if a change in the fuel is not subject to new source review permitting requirements, this condition should not be construed to prohibit such a change.",
-        "fuelThroughputLimit": 670000,
-        "fuelThroughputScope": "combined_group",
-        "fuelThroughputGroupRef": "EG242-EG547",
         "control_technologies": "Turbocharged engine and aftercooler",
         "operating_hours_limit_yr": null,
-        "operatingHoursRollingWindow": "Consecutive 12-month rolling period, calculated monthly; compliance demonstrated monthly by adding the most recently completed calendar month to the totals for the preceding 11 months.",
         "allowedOperatingModes": "Emergency power generation due to sudden and reasonably unforeseeable events beyond the owner\u2019s control that disrupt or disconnect the primary power source (including electrical grid failure, on-site disaster or equipment failure, and public service emergencies such as flood, fire, natural disaster, or severe weather); participation in an ISO-declared emergency (as defined in the permit: abnormal system conditions requiring action to maintain reliability/safety; capacity deficiency/excess; fuel shortage; abnormal natural events or man-made threats requiring conservative operations; or an abnormal external event requiring ISO action); and periodic maintenance, testing, and operational training. Any change to non-emergency (alternate) power generation requires prior DEQ approval.",
         "opacityLimitPercent": 10,
         "hourMeterRequired": true,
@@ -486,7 +482,11 @@
         "manufacturerOandMRequired": true,
         "maintenanceTrainingRecordsRequired": true,
         "nspsSubpartIIII": null,
-        "mactSubpartZZZZ": null
+        "mactSubpartZZZZ": null,
+        "fuelThroughputPerUnitLimit": 670000,
+        "fuelThroughputPerUnitScope": "combined_group",
+        "fuelThroughputPerUnitGroupRef": "EG242-EG547",
+        "operatingHoursPerUnitRollingWindow": "Consecutive 12-month rolling period, calculated monthly; compliance demonstrated monthly by adding the most recently completed calendar month to the totals for the preceding 11 months."
       },
       {
         "referenceNumber": "EG281",
@@ -513,12 +513,8 @@
           "sulfurContentRequired": true
         },
         "fuelChangePermitTrigger": "A change in the fuel shall be considered a change in the method of operation of the engine-generator sets (Ref. Nos. EG04-EG547) and may require a new or amended permit. However, if a change in the fuel is not subject to new source review permitting requirements, this condition should not be construed to prohibit such a change.",
-        "fuelThroughputLimit": 670000,
-        "fuelThroughputScope": "combined_group",
-        "fuelThroughputGroupRef": "EG242\u2013EG547",
         "control_technologies": "Turbocharged engine and aftercooler; good operating practices and manufacturer-recommended maintenance for visible emissions, particulate matter (PM/PM10/PM2.5), volatile organic compounds (VOC), nitrogen oxides (NOx), and carbon monoxide (CO).",
         "operating_hours_limit_yr": null,
-        "operatingHoursRollingWindow": "Consecutive 12-month rolling period, calculated monthly by adding the most recently completed calendar month to the totals for the preceding 11 months.",
         "allowedOperatingModes": "Emergency situations (including grid failure, on-site disaster/equipment failure, and public service emergencies), participation in ISO-declared emergencies, periodic maintenance, testing, and operational training; non-emergency (alternate) power generation only if documentation is submitted and DEQ approval is received for a change in method of operation.",
         "opacityLimitPercent": 10,
         "hourMeterRequired": true,
@@ -528,7 +524,11 @@
         "manufacturerOandMRequired": true,
         "maintenanceTrainingRecordsRequired": true,
         "nspsSubpartIIII": null,
-        "mactSubpartZZZZ": null
+        "mactSubpartZZZZ": null,
+        "fuelThroughputPerUnitLimit": 670000,
+        "fuelThroughputPerUnitScope": "combined_group",
+        "fuelThroughputPerUnitGroupRef": "EG242\u2013EG547",
+        "operatingHoursPerUnitRollingWindow": "Consecutive 12-month rolling period, calculated monthly by adding the most recently completed calendar month to the totals for the preceding 11 months."
       },
       {
         "referenceNumber": "EG317",
@@ -555,12 +555,8 @@
           "sulfurContentRequired": true
         },
         "fuelChangePermitTrigger": "A change in the fuel shall be considered a change in the method of operation of the engine-generator sets (Ref. Nos. EG04-EG547) and may require a new or amended permit. However, if a change in the fuel is not subject to new source review permitting requirements, this condition should not be construed to prohibit such a change.",
-        "fuelThroughputLimit": 670000,
-        "fuelThroughputScope": "combined_group",
-        "fuelThroughputGroupRef": "EG242\u2013EG547",
         "control_technologies": "Turbocharged engine and aftercooler (for NOx control); good operating practices and manufacturer-recommended maintenance (for visible emissions, particulate, VOC, and CO).",
         "operating_hours_limit_yr": null,
-        "operatingHoursRollingWindow": "Consecutive 12-month period, calculated monthly as the sum of each consecutive 12-month period; compliance demonstrated monthly by adding the most recently completed calendar month to the preceding 11 months.",
         "allowedOperatingModes": "Operation is allowed only in: (a) emergencies arising from sudden, reasonably unforeseeable disruptions of the primary power source beyond the owner/operator\u2019s control (including grid failure, on-site disaster or equipment failure, and public service emergencies such as flood, fire, natural disaster, or severe weather); (b) participation in an ISO-declared emergency (abnormal system conditions requiring action to maintain reliability or safety, capacity deficiency/excess, fuel shortage requiring departure from normal procedures, abnormal natural/man-made events requiring conservative operations, or abnormal external events requiring ISO action); and (c) periodic maintenance, testing, and operational training. Any change to non-emergency (alternate) power generation requires prior DEQ approval.",
         "opacityLimitPercent": 10,
         "hourMeterRequired": true,
@@ -570,7 +566,11 @@
         "manufacturerOandMRequired": true,
         "maintenanceTrainingRecordsRequired": true,
         "nspsSubpartIIII": null,
-        "mactSubpartZZZZ": null
+        "mactSubpartZZZZ": null,
+        "fuelThroughputPerUnitLimit": 670000,
+        "fuelThroughputPerUnitScope": "combined_group",
+        "fuelThroughputPerUnitGroupRef": "EG242\u2013EG547",
+        "operatingHoursPerUnitRollingWindow": "Consecutive 12-month period, calculated monthly as the sum of each consecutive 12-month period; compliance demonstrated monthly by adding the most recently completed calendar month to the preceding 11 months."
       },
       {
         "referenceNumber": "EG353",
@@ -597,12 +597,8 @@
           "sulfurContentRequired": true
         },
         "fuelChangePermitTrigger": "A change in the fuel shall be considered a change in the method of operation of the engine-generator sets (Ref. Nos. EG04-EG547) and may require a new or amended permit. However, if a change in the fuel is not subject to new source review permitting requirements, this condition should not be construed to prohibit such a change.",
-        "fuelThroughputLimit": 670000,
-        "fuelThroughputScope": "combined_group",
-        "fuelThroughputGroupRef": "EG242\u2013EG547",
         "control_technologies": "Turbocharged engine and aftercooler; good operating practices and appropriate maintenance per manufacturer recommendations",
         "operating_hours_limit_yr": null,
-        "operatingHoursRollingWindow": "Consecutive 12-month rolling period calculated monthly; compliance is demonstrated each month by adding the most recently completed calendar month to the totals for the preceding 11 months.",
         "allowedOperatingModes": "Emergency operation when the primary power source is disrupted beyond the owner/operator's control (including grid failure, on-site disaster or equipment failure, and public service emergencies such as flood, fire, natural disaster, or severe weather); participation in an ISO-declared emergency (as defined in the permit); and periodic maintenance, testing, and operational training. Operation as non-emergency (alternate) power generation is prohibited unless DEQ approves a change in method of operation.",
         "opacityLimitPercent": 10,
         "hourMeterRequired": true,
@@ -612,7 +608,11 @@
         "manufacturerOandMRequired": true,
         "maintenanceTrainingRecordsRequired": true,
         "nspsSubpartIIII": null,
-        "mactSubpartZZZZ": null
+        "mactSubpartZZZZ": null,
+        "fuelThroughputPerUnitLimit": 670000,
+        "fuelThroughputPerUnitScope": "combined_group",
+        "fuelThroughputPerUnitGroupRef": "EG242\u2013EG547",
+        "operatingHoursPerUnitRollingWindow": "Consecutive 12-month rolling period calculated monthly; compliance is demonstrated each month by adding the most recently completed calendar month to the totals for the preceding 11 months."
       },
       {
         "referenceNumber": "EG392",
@@ -639,12 +639,8 @@
           "sulfurContentRequired": true
         },
         "fuelChangePermitTrigger": "A change in the fuel shall be considered a change in the method of operation of the engine-generator sets (Ref. Nos. EG04-EG547) and may require a new or amended permit. However, if a change in the fuel is not subject to new source review permitting requirements, this condition should not be construed to prohibit such a change.",
-        "fuelThroughputLimit": 670000,
-        "fuelThroughputScope": "combined_group",
-        "fuelThroughputGroupRef": "EG242\u2013EG547",
         "control_technologies": "Turbocharged engine and aftercooler; good operating practices and appropriate maintenance",
         "operating_hours_limit_yr": null,
-        "operatingHoursRollingWindow": "Consecutive 12-month period, calculated monthly as a rolling sum: compliance is demonstrated monthly by adding the most recently completed calendar month to the totals for the preceding 11 months.",
         "allowedOperatingModes": "Emergency operation due to disruption of the primary power source beyond the owner's control (including grid failure, on-site disaster or equipment failure, and public service emergencies such as flood, fire, natural disaster, or severe weather); participation in an ISO-declared emergency; periodic maintenance, testing, and operational training; non-emergency (alternate) power generation only after submitting documentation to and receiving approval from DEQ to change the method of operation.",
         "opacityLimitPercent": 10,
         "hourMeterRequired": true,
@@ -654,7 +650,11 @@
         "manufacturerOandMRequired": true,
         "maintenanceTrainingRecordsRequired": true,
         "nspsSubpartIIII": null,
-        "mactSubpartZZZZ": null
+        "mactSubpartZZZZ": null,
+        "fuelThroughputPerUnitLimit": 670000,
+        "fuelThroughputPerUnitScope": "combined_group",
+        "fuelThroughputPerUnitGroupRef": "EG242\u2013EG547",
+        "operatingHoursPerUnitRollingWindow": "Consecutive 12-month period, calculated monthly as a rolling sum: compliance is demonstrated monthly by adding the most recently completed calendar month to the totals for the preceding 11 months."
       },
       {
         "referenceNumber": "EG431",
@@ -681,12 +681,8 @@
           "sulfurContentRequired": true
         },
         "fuelChangePermitTrigger": "A change in the fuel shall be considered a change in the method of operation of the engine-generator sets (Ref. Nos. EG04-EG547) and may require a new or amended permit. However, if a change in the fuel is not subject to new source review permitting requirements, this condition should not be construed to prohibit such a change.",
-        "fuelThroughputLimit": 670000,
-        "fuelThroughputScope": "combined_group",
-        "fuelThroughputGroupRef": "EG242\u2013EG547",
         "control_technologies": "Turbocharged engine and aftercooler; good operating practices and appropriate maintenance per manufacturer recommendations (for visible emissions, particulate, VOC, NOx, and CO).",
         "operating_hours_limit_yr": null,
-        "operatingHoursRollingWindow": "Consecutive 12-month rolling period, calculated monthly as the sum of each consecutive 12-month period; compliance demonstrated by adding the most recently completed month to the prior 11 months.",
         "allowedOperatingModes": "Emergency situations (grid failure; on-site disaster or equipment failure; public service emergencies such as flood, fire, natural disaster, or severe weather); participation in an ISO-declared emergency; and periodic maintenance, testing, and operational training. Any change to non-emergency (alternate) power generation requires prior DEQ approval.",
         "opacityLimitPercent": 10,
         "hourMeterRequired": true,
@@ -696,7 +692,11 @@
         "manufacturerOandMRequired": true,
         "maintenanceTrainingRecordsRequired": true,
         "nspsSubpartIIII": null,
-        "mactSubpartZZZZ": null
+        "mactSubpartZZZZ": null,
+        "fuelThroughputPerUnitLimit": 670000,
+        "fuelThroughputPerUnitScope": "combined_group",
+        "fuelThroughputPerUnitGroupRef": "EG242\u2013EG547",
+        "operatingHoursPerUnitRollingWindow": "Consecutive 12-month rolling period, calculated monthly as the sum of each consecutive 12-month period; compliance demonstrated by adding the most recently completed month to the prior 11 months."
       },
       {
         "referenceNumber": "EG470",
@@ -723,12 +723,8 @@
           "sulfurContentRequired": true
         },
         "fuelChangePermitTrigger": "A change in the fuel shall be considered a change in the method of operation of the engine-generator sets (Ref. Nos. EG04-EG547) and may require a new or amended permit. However, if a change in the fuel is not subject to new source review permitting requirements, this condition should not be construed to prohibit such a change.",
-        "fuelThroughputLimit": 670000,
-        "fuelThroughputScope": "combined_group",
-        "fuelThroughputGroupRef": "EG242\u2013EG547",
         "control_technologies": "Turbocharged engine and aftercooler; good operating practices and manufacturer-recommended maintenance",
         "operating_hours_limit_yr": null,
-        "operatingHoursRollingWindow": "Consecutive 12-month rolling period, calculated monthly by adding the most recently completed calendar month to the preceding 11 months.",
         "allowedOperatingModes": "Emergency operation due to sudden unforeseeable events disrupting primary power (including grid failure; on-site disaster or equipment failure; public service emergencies such as flood, fire, natural disaster, or severe weather); participation in an ISO-declared emergency; and periodic maintenance, testing, and operational training. Non-emergency (alternate) power generation is only allowed if DEQ approves a documented change in the method of operation.",
         "opacityLimitPercent": 10,
         "hourMeterRequired": true,
@@ -738,7 +734,11 @@
         "manufacturerOandMRequired": true,
         "maintenanceTrainingRecordsRequired": true,
         "nspsSubpartIIII": null,
-        "mactSubpartZZZZ": null
+        "mactSubpartZZZZ": null,
+        "fuelThroughputPerUnitLimit": 670000,
+        "fuelThroughputPerUnitScope": "combined_group",
+        "fuelThroughputPerUnitGroupRef": "EG242\u2013EG547",
+        "operatingHoursPerUnitRollingWindow": "Consecutive 12-month rolling period, calculated monthly by adding the most recently completed calendar month to the preceding 11 months."
       },
       {
         "referenceNumber": "EG509",
@@ -765,12 +765,8 @@
           "sulfurContentRequired": true
         },
         "fuelChangePermitTrigger": "A change in the fuel shall be considered a change in the method of operation of the engine-generator sets (Ref. Nos. EG04-EG547) and may require a new or amended permit. However, if a change in the fuel is not subject to new source review permitting requirements, this condition should not be construed to prohibit such a change.",
-        "fuelThroughputLimit": 670000,
-        "fuelThroughputScope": "combined_group",
-        "fuelThroughputGroupRef": "EG242\u2013EG547",
         "control_technologies": "Turbocharged engine and aftercooler; good operating practices and manufacturer-recommended maintenance",
         "operating_hours_limit_yr": null,
-        "operatingHoursRollingWindow": "Consecutive 12-month rolling period, calculated monthly; compliance is demonstrated by adding the most recent completed calendar month to the totals from the preceding 11 months.",
         "allowedOperatingModes": "Emergency power generation (sudden, unforeseeable disruption of the primary power source beyond the owner/operator\u2019s control, including grid failure; on-site disaster or equipment failure; and public service emergencies such as flood, fire, natural disaster, or severe weather); participation in ISO-declared emergencies (as defined in the permit); and periodic maintenance, testing, and operational training. Non-emergency (alternate) power generation is only allowed if DEQ approves a change in the method of operation.",
         "opacityLimitPercent": 10,
         "hourMeterRequired": true,
@@ -780,7 +776,11 @@
         "manufacturerOandMRequired": true,
         "maintenanceTrainingRecordsRequired": true,
         "nspsSubpartIIII": null,
-        "mactSubpartZZZZ": null
+        "mactSubpartZZZZ": null,
+        "fuelThroughputPerUnitLimit": 670000,
+        "fuelThroughputPerUnitScope": "combined_group",
+        "fuelThroughputPerUnitGroupRef": "EG242\u2013EG547",
+        "operatingHoursPerUnitRollingWindow": "Consecutive 12-month rolling period, calculated monthly; compliance is demonstrated by adding the most recent completed calendar month to the totals from the preceding 11 months."
       },
       {
         "referenceNumber": "EG246\u2013EG280",
@@ -807,12 +807,8 @@
           "sulfurContentRequired": true
         },
         "fuelChangePermitTrigger": "A change in the fuel shall be considered a change in the method of operation of the engine-generator sets (Ref. Nos. EG04-EG547) and may require a new or amended permit. However, if a change in the fuel is not subject to new source review permitting requirements, this condition should not be construed to prohibit such a change.",
-        "fuelThroughputLimit": 670000,
-        "fuelThroughputScope": "combined_group",
-        "fuelThroughputGroupRef": "EG242\u2013EG547",
         "control_technologies": "Turbocharged engine and aftercooler; good operating practices and manufacturer-recommended maintenance (for visible emissions, particulate, VOC, NOx, and CO).",
         "operating_hours_limit_yr": null,
-        "operatingHoursRollingWindow": "Consecutive 12-month rolling period, calculated monthly; compliance demonstrated monthly by adding the most recently completed calendar month to the preceding 11 months\u2019 totals.",
         "allowedOperatingModes": "Emergency operation during sudden unforeseeable power disruptions (grid failure, on-site disaster or equipment failure, or public service emergencies such as flood, fire, natural disaster, severe weather); participation in an ISO-declared emergency; and periodic maintenance, testing, and operational training. Non-emergency (alternate) operation is not allowed unless DEQ approves a change in the method of operation.",
         "opacityLimitPercent": 10,
         "hourMeterRequired": true,
@@ -822,7 +818,11 @@
         "manufacturerOandMRequired": true,
         "maintenanceTrainingRecordsRequired": true,
         "nspsSubpartIIII": null,
-        "mactSubpartZZZZ": null
+        "mactSubpartZZZZ": null,
+        "fuelThroughputPerUnitLimit": 670000,
+        "fuelThroughputPerUnitScope": "combined_group",
+        "fuelThroughputPerUnitGroupRef": "EG242\u2013EG547",
+        "operatingHoursPerUnitRollingWindow": "Consecutive 12-month rolling period, calculated monthly; compliance demonstrated monthly by adding the most recently completed calendar month to the preceding 11 months\u2019 totals."
       },
       {
         "referenceNumber": "EG282\u2013EG316",
@@ -849,12 +849,8 @@
           "sulfurContentRequired": true
         },
         "fuelChangePermitTrigger": "A change in the fuel shall be considered a change in the method of operation of the engine-generator sets (Ref. Nos. EG04-EG547) and may require a new or amended permit. However, if a change in the fuel is not subject to new source review permitting requirements, this condition should not be construed to prohibit such a change.",
-        "fuelThroughputLimit": 670000,
-        "fuelThroughputScope": "combined_group",
-        "fuelThroughputGroupRef": "EG242\u2013EG547",
         "control_technologies": "Turbocharged engine and aftercooler; good operating practices and appropriate maintenance per manufacturer (for visible emissions, particulate, VOC, NOx, and CO).",
         "operating_hours_limit_yr": null,
-        "operatingHoursRollingWindow": "Consecutive 12-month rolling period, calculated monthly as the sum of each consecutive 12-month period; compliance demonstrated monthly by adding the most recently completed calendar month to the totals for the preceding 11 months.",
         "allowedOperatingModes": "Emergency operation due to sudden and reasonably unforeseeable events that disrupt or disconnect the primary power source (including electrical grid failure, on-site disaster or equipment failure, and public service emergencies such as flood, fire, natural disaster, or severe weather); participation in an ISO-declared emergency (abnormal system conditions requiring action to maintain reliability/safety, capacity deficiency or excess, fuel shortage requiring departure from normal procedures, abnormal natural events or man-made threats requiring conservative operations, or abnormal events external to the ISO territory requiring ISO action); and periodic maintenance, testing, and operational training. Any change to non-emergency (alternate) power generation requires prior DEQ approval.",
         "opacityLimitPercent": 10,
         "hourMeterRequired": true,
@@ -864,7 +860,11 @@
         "manufacturerOandMRequired": true,
         "maintenanceTrainingRecordsRequired": true,
         "nspsSubpartIIII": null,
-        "mactSubpartZZZZ": null
+        "mactSubpartZZZZ": null,
+        "fuelThroughputPerUnitLimit": 670000,
+        "fuelThroughputPerUnitScope": "combined_group",
+        "fuelThroughputPerUnitGroupRef": "EG242\u2013EG547",
+        "operatingHoursPerUnitRollingWindow": "Consecutive 12-month rolling period, calculated monthly as the sum of each consecutive 12-month period; compliance demonstrated monthly by adding the most recently completed calendar month to the totals for the preceding 11 months."
       },
       {
         "referenceNumber": "EG318\u2013EG352",
@@ -891,12 +891,8 @@
           "sulfurContentRequired": true
         },
         "fuelChangePermitTrigger": "A change in the fuel shall be considered a change in the method of operation of the engine-generator sets (Ref. Nos. EG04-EG547) and may require a new or amended permit. However, if a change in the fuel is not subject to new source review permitting requirements, this condition should not be construed to prohibit such a change.",
-        "fuelThroughputLimit": 670000,
-        "fuelThroughputScope": "combined_group",
-        "fuelThroughputGroupRef": "EG242-EG547",
         "control_technologies": "Turbocharged engine and aftercooler; good operating practices and manufacturer-recommended maintenance (applied to visible emissions, particulate matter, VOCs, CO, and NOx).",
         "operating_hours_limit_yr": null,
-        "operatingHoursRollingWindow": "Consecutive 12-month period, calculated monthly; compliance demonstrated monthly by adding the most recently completed calendar month to the totals for the preceding 11 months.",
         "allowedOperatingModes": "Operation is limited to: (a) emergencies arising from sudden and reasonably unforeseeable events that disrupt or disconnect the primary energy/power source beyond the owner/operator's control (including failure of the electrical grid; on-site disaster or equipment failure; and public service emergencies such as flood, fire, natural disaster, or severe weather); (b) participation in an ISO-declared emergency (including abnormal system conditions requiring action to maintain system frequency, prevent loss of firm load, equipment damage, or tripping; capacity deficiency or excess; fuel shortage requiring departure from normal procedures; abnormal natural events or man-made threats requiring conservative operations; or an abnormal external event requiring ISO action); and (c) periodic maintenance, testing, and operational training. Any change to non-emergency (alternate) operation requires prior DEQ approval.",
         "opacityLimitPercent": 10,
         "hourMeterRequired": true,
@@ -906,7 +902,11 @@
         "manufacturerOandMRequired": true,
         "maintenanceTrainingRecordsRequired": true,
         "nspsSubpartIIII": null,
-        "mactSubpartZZZZ": null
+        "mactSubpartZZZZ": null,
+        "fuelThroughputPerUnitLimit": 670000,
+        "fuelThroughputPerUnitScope": "combined_group",
+        "fuelThroughputPerUnitGroupRef": "EG242-EG547",
+        "operatingHoursPerUnitRollingWindow": "Consecutive 12-month period, calculated monthly; compliance demonstrated monthly by adding the most recently completed calendar month to the totals for the preceding 11 months."
       },
       {
         "referenceNumber": "EG354\u2013EG391",
@@ -933,12 +933,8 @@
           "sulfurContentRequired": true
         },
         "fuelChangePermitTrigger": "A change in the fuel shall be considered a change in the method of operation of the engine-generator sets (Ref. Nos. EG04-EG547) and may require a new or amended permit. However, if a change in the fuel is not subject to new source review permitting requirements, this condition should not be construed to prohibit such a change.",
-        "fuelThroughputLimit": 670000,
-        "fuelThroughputScope": "combined_group",
-        "fuelThroughputGroupRef": "EG242\u2013EG547",
         "control_technologies": "Turbocharged engine and aftercooler (for NOx); good operating practices and manufacturer-recommended maintenance (for visible emissions, PM/PM10/PM2.5, VOC, and CO).",
         "operating_hours_limit_yr": null,
-        "operatingHoursRollingWindow": "Consecutive 12-month rolling period, calculated monthly; compliance demonstrated each month by adding the most recently completed calendar month to the totals for the preceding 11 months.",
         "allowedOperatingModes": "Emergency power generation when the primary power/energy source is disrupted due to conditions beyond the owner/operator\u2019s control (e.g., electrical grid failure; on-site disaster or equipment failure; public service emergencies such as flood, fire, natural disaster, or severe weather); participation in an ISO-declared emergency (abnormal system conditions requiring action to maintain reliability/safety; capacity deficiency or excess; fuel shortage requiring departure from normal procedures; abnormal natural events or man-made threats requiring conservative operations; abnormal events external to the ISO territory requiring ISO action); and periodic maintenance, testing, and operational training. Non-emergency (alternate) power generation is only allowed after submitting documentation and receiving DEQ approval for the change in method of operation.",
         "opacityLimitPercent": 10,
         "hourMeterRequired": true,
@@ -948,7 +944,11 @@
         "manufacturerOandMRequired": true,
         "maintenanceTrainingRecordsRequired": true,
         "nspsSubpartIIII": null,
-        "mactSubpartZZZZ": null
+        "mactSubpartZZZZ": null,
+        "fuelThroughputPerUnitLimit": 670000,
+        "fuelThroughputPerUnitScope": "combined_group",
+        "fuelThroughputPerUnitGroupRef": "EG242\u2013EG547",
+        "operatingHoursPerUnitRollingWindow": "Consecutive 12-month rolling period, calculated monthly; compliance demonstrated each month by adding the most recently completed calendar month to the totals for the preceding 11 months."
       },
       {
         "referenceNumber": "EG393\u2013EG430",
@@ -975,12 +975,8 @@
           "sulfurContentRequired": true
         },
         "fuelChangePermitTrigger": "A change in the fuel shall be considered a change in the method of operation of the engine-generator sets (Ref. Nos. EG04-EG547) and may require a new or amended permit.  However, if a change in the fuel is not subject to new source review permitting requirements, this condition should not be construed to prohibit such a change.",
-        "fuelThroughputLimit": 670000,
-        "fuelThroughputScope": "combined_group",
-        "fuelThroughputGroupRef": "EG242-EG547",
         "control_technologies": "Turbocharged engine and aftercooler (for NOx control); good operating practices and manufacturer-recommended maintenance for visible emissions, particulate matter (PM/PM10/PM2.5), VOCs, and NOx; good operating practices and manufacturer-recommended maintenance for CO",
         "operating_hours_limit_yr": null,
-        "operatingHoursRollingWindow": "Consecutive 12-month rolling period, calculated monthly; compliance demonstrated each month by adding the most recent completed calendar month to the totals for the preceding 11 months.",
         "allowedOperatingModes": "Emergency situations (sudden and reasonably unforeseeable disruptions beyond the owner/operator's control, including failure of the electrical grid; on-site disaster or equipment failure; or public service emergencies such as flood, fire, natural disaster, or severe weather); participation in an ISO-declared emergency; and periodic maintenance, testing, and operational training. Non-emergency (alternate) power generation is allowed only after submitting documentation to DEQ and receiving DEQ approval for the change in method of operation.",
         "opacityLimitPercent": 10,
         "hourMeterRequired": true,
@@ -990,7 +986,11 @@
         "manufacturerOandMRequired": true,
         "maintenanceTrainingRecordsRequired": true,
         "nspsSubpartIIII": null,
-        "mactSubpartZZZZ": null
+        "mactSubpartZZZZ": null,
+        "fuelThroughputPerUnitLimit": 670000,
+        "fuelThroughputPerUnitScope": "combined_group",
+        "fuelThroughputPerUnitGroupRef": "EG242-EG547",
+        "operatingHoursPerUnitRollingWindow": "Consecutive 12-month rolling period, calculated monthly; compliance demonstrated each month by adding the most recent completed calendar month to the totals for the preceding 11 months."
       },
       {
         "referenceNumber": "EG432\u2013EG469",
@@ -1017,12 +1017,8 @@
           "sulfurContentRequired": true
         },
         "fuelChangePermitTrigger": "A change in the fuel shall be considered a change in the method of operation of the engine-generator sets (Ref. Nos. EG04-EG547) and may require a new or amended permit. However, if a change in the fuel is not subject to new source review permitting requirements, this condition should not be construed to prohibit such a change.",
-        "fuelThroughputLimit": 670000,
-        "fuelThroughputScope": "combined_group",
-        "fuelThroughputGroupRef": "EG242-EG547",
         "control_technologies": "Turbocharged engine and aftercooler; good operating practices and manufacturer-recommended maintenance (for visible emissions, particulate, VOC, NOx, and CO)",
         "operating_hours_limit_yr": null,
-        "operatingHoursRollingWindow": "Consecutive 12-month period, calculated monthly by summing the most recently completed calendar month with the preceding 11 months.",
         "allowedOperatingModes": "Emergency operation due to sudden and reasonably unforeseeable disruption of the primary power source (including failure of the electrical grid; on-site disaster or equipment failure; public service emergencies such as flood, fire, natural disaster, or severe weather); participation in an ISO-declared emergency; periodic maintenance, testing, and operational training. Non-emergency (alternate) power generation is allowed only with prior DEQ approval of a change in method of operation.",
         "opacityLimitPercent": 10,
         "hourMeterRequired": true,
@@ -1032,7 +1028,11 @@
         "manufacturerOandMRequired": true,
         "maintenanceTrainingRecordsRequired": true,
         "nspsSubpartIIII": null,
-        "mactSubpartZZZZ": null
+        "mactSubpartZZZZ": null,
+        "fuelThroughputPerUnitLimit": 670000,
+        "fuelThroughputPerUnitScope": "combined_group",
+        "fuelThroughputPerUnitGroupRef": "EG242-EG547",
+        "operatingHoursPerUnitRollingWindow": "Consecutive 12-month period, calculated monthly by summing the most recently completed calendar month with the preceding 11 months."
       },
       {
         "referenceNumber": "EG471\u2013EG508",
@@ -1059,12 +1059,8 @@
           "sulfurContentRequired": true
         },
         "fuelChangePermitTrigger": "A change in the fuel shall be considered a change in the method of operation of the engine-generator sets (Ref. Nos. EG04-EG547) and may require a new or amended permit. However, if a change in the fuel is not subject to new source review permitting requirements, this condition should not be construed to prohibit such a change.",
-        "fuelThroughputLimit": 670000,
-        "fuelThroughputScope": "combined_group",
-        "fuelThroughputGroupRef": "EG242\u2013EG547",
         "control_technologies": "Turbocharged engine and aftercooler (for NOx); good operating practices and appropriate maintenance per manufacturer recommendations (for visible emissions, particulate, VOC, and CO)",
         "operating_hours_limit_yr": null,
-        "operatingHoursRollingWindow": "Consecutive 12-month period, calculated monthly; compliance demonstrated monthly by adding the most recently completed calendar month to the previous 11 months.",
         "allowedOperatingModes": "Emergency power generation (including grid failure, on-site disaster/equipment failure, and public service emergencies such as flood, fire, natural disaster, severe weather); participation in ISO-declared emergencies; periodic maintenance, testing, and operational training; non-emergency (alternate) power generation only after submitting documentation and receiving DEQ approval for the change in method of operation.",
         "opacityLimitPercent": 10,
         "hourMeterRequired": true,
@@ -1074,7 +1070,11 @@
         "manufacturerOandMRequired": true,
         "maintenanceTrainingRecordsRequired": true,
         "nspsSubpartIIII": null,
-        "mactSubpartZZZZ": null
+        "mactSubpartZZZZ": null,
+        "fuelThroughputPerUnitLimit": 670000,
+        "fuelThroughputPerUnitScope": "combined_group",
+        "fuelThroughputPerUnitGroupRef": "EG242\u2013EG547",
+        "operatingHoursPerUnitRollingWindow": "Consecutive 12-month period, calculated monthly; compliance demonstrated monthly by adding the most recently completed calendar month to the previous 11 months."
       },
       {
         "referenceNumber": "EG510\u2013EG547",
@@ -1101,12 +1101,8 @@
           "sulfurContentRequired": true
         },
         "fuelChangePermitTrigger": "A change in the fuel shall be considered a change in the method of operation of the engine-generator sets (Ref. Nos. EG04-EG547) and may require a new or amended permit. However, if a change in the fuel is not subject to new source review permitting requirements, this condition should not be construed to prohibit such a change.",
-        "fuelThroughputLimit": 670000,
-        "fuelThroughputScope": "combined_group",
-        "fuelThroughputGroupRef": "EG242\u2013EG547",
         "control_technologies": "Turbocharged engine and aftercooler; good operating practices and appropriate maintenance",
         "operating_hours_limit_yr": null,
-        "operatingHoursRollingWindow": "Consecutive 12-month rolling period, calculated monthly; compliance demonstrated monthly by adding the most recently completed calendar month to the totals for the preceding 11 months.",
         "allowedOperatingModes": "Emergency power generation due to sudden and reasonably unforeseeable disruptions of the primary power source (including failure of the electrical grid; on-site disaster or equipment failure; and public service emergencies such as flood, fire, natural disaster, or severe weather); participation in an ISO-declared emergency (including abnormal system conditions requiring action to maintain reliability or safety; capacity deficiency or excess; fuel shortage requiring departure from normal procedures; abnormal natural events or man-made threats requiring conservative operations; or an abnormal external event requiring ISO action); and periodic maintenance, testing, and operational training.",
         "opacityLimitPercent": 10,
         "hourMeterRequired": true,
@@ -1116,7 +1112,11 @@
         "manufacturerOandMRequired": true,
         "maintenanceTrainingRecordsRequired": true,
         "nspsSubpartIIII": null,
-        "mactSubpartZZZZ": null
+        "mactSubpartZZZZ": null,
+        "fuelThroughputPerUnitLimit": 670000,
+        "fuelThroughputPerUnitScope": "combined_group",
+        "fuelThroughputPerUnitGroupRef": "EG242\u2013EG547",
+        "operatingHoursPerUnitRollingWindow": "Consecutive 12-month rolling period, calculated monthly; compliance demonstrated monthly by adding the most recently completed calendar month to the totals for the preceding 11 months."
       }
     ]
   },
