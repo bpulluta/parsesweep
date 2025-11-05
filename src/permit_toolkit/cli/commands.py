@@ -15,6 +15,7 @@ from permit_toolkit.utils.config import get_config
 from permit_toolkit.extraction import PermitExtractor, load_schema
 from permit_toolkit.extraction.pdf_utils import extract_text_from_pdf
 from permit_toolkit.consolidation import PermitConsolidator
+from permit_toolkit.consolidation.cleaner import ExtractionCleaner
 
 
 # ANSI color codes for consistent styling
@@ -693,21 +694,24 @@ def consolidate(input_dir: str, output: Optional[str], state: Optional[str], for
         # Auto-determine output location based on input path
         parts = list(input_dir.parts)
         
-        # Replace extraction folder names with 'outputs'
+        # Replace extraction/cleaning folder names with output folder
         replaced = False
-        for extract_folder in ['extracted', 'aqtoolkit', 'llamaextract', 'decisiontree']:
+        for extract_folder in ['extracted', 'cleaned', 'aqtoolkit', 'llamaextract', 'decisiontree']:
             if extract_folder in parts:
                 idx = parts.index(extract_folder)
-                parts[idx] = 'outputs'
+                # Use 'compiled' for cleaned data, 'outputs' for others
+                parts[idx] = 'compiled' if extract_folder == 'cleaned' else 'outputs'
                 replaced = True
                 break
         
         if replaced:
             output_dir = Path(*parts)
         else:
-            # Fallback: create parallel 'outputs' folder
+            # Fallback: create parallel 'compiled' or 'outputs' folder
             parent = input_dir.parent
-            output_dir = parent / 'outputs'
+            # Use 'compiled' if input suggests it's cleaned data
+            folder_name = 'compiled' if 'clean' in input_dir.name.lower() else 'outputs'
+            output_dir = parent / folder_name
         
         # Create filename with optional state suffix
         state_suffix = f"{state.lower()}_" if state else ""
@@ -796,7 +800,7 @@ def consolidate(input_dir: str, output: Optional[str], state: Optional[str], for
     # Save output in requested format
     print(f"  {CYAN}→{RESET} Saving to {format.upper()}...")
     if format == 'excel':
-        df.to_excel(output, index=False, engine='openpyxl')
+        consolidator.save_styled_excel(df, output)
     elif format == 'json':
         df.to_json(output, orient='records', indent=2)
     else:  # csv
@@ -861,3 +865,151 @@ def consolidate(input_dir: str, output: Optional[str], state: Optional[str], for
     print(f"\n  Output → {output}")
     
     print(f"\n{DIM}{'─' * 80}{RESET}\n")
+
+
+@click.command()
+@click.argument('input_dir', type=click.Path(exists=True))
+@click.option('--output', '-o', type=click.Path(), help='Output directory (default: data/cleaned)')
+@click.option('--dry-run', is_flag=True, help='Preview what would be done without writing files')
+@click.option('--deduplicate', is_flag=True, help='Remove true duplicates (same generators, keep newest)')
+def clean(input_dir: str, output: Optional[str], dry_run: bool, deduplicate: bool):
+    """
+    Clean extracted permit data by removing zero-generator files and duplicates.
+    
+    This command processes extracted JSON files from data/extracted/ and creates
+    cleaned output with:
+      • State-organized JSON files (only files with generators)
+      • reports/ - Detailed reports on what was removed/kept
+    
+    By default, all versions of permits are preserved (they may represent different
+    amendments). Use --deduplicate to intelligently remove true duplicates (files
+    with identical generator reference numbers).
+    
+    \b
+    EXAMPLES:
+        # Clean extracted data (preserve all versions)
+        permit-toolkit clean data/extracted
+        
+        # Clean and remove true duplicates
+        permit-toolkit clean data/extracted --deduplicate
+        
+        # Preview without making changes
+        permit-toolkit clean data/extracted --dry-run
+        
+        # Specify custom output directory
+        permit-toolkit clean data/extracted --output data/my_clean_data
+    
+    \b
+    OUTPUT STRUCTURE:
+        data/cleaned/
+          ├── Illinois/         # Cleaned IL permits
+          ├── Maryland/         # Cleaned MD permits
+          ├── ...
+          └── reports/          # JSON reports + summary
+    
+    \b
+    WHAT GETS REMOVED:
+        • Files with 0 generators
+        • True duplicates (with --deduplicate flag)
+    
+    \b
+    WHAT GETS KEPT:
+        • All files with generators (by default, all versions preserved)
+        • With --deduplicate: only newest version of true duplicates
+        • Original files in data/extracted/ remain untouched
+    """
+    # Setup paths
+    input_dir = Path(input_dir)
+    output_dir = Path(output) if output else Path("data/cleaned")
+    
+    # Header
+    print(f"\n{BOLD}{BLUE}┌{'─' * 78}┐{RESET}")
+    print(f"{BOLD}{BLUE}│{RESET} {BOLD}{'DATA CLEANING':^76}{RESET} {BOLD}{BLUE}│{RESET}")
+    print(f"{BOLD}{BLUE}└{'─' * 78}┘{RESET}\n")
+    
+    print(f"  {DIM}Mode{RESET}      {'DRY RUN' if dry_run else 'LIVE'}")
+    print(f"  {DIM}Input{RESET}     {input_dir}")
+    print(f"  {DIM}Output{RESET}    {output_dir}\n")
+    
+    print(f"{DIM}{'─' * 80}{RESET}\n")
+    
+    # Create cleaner
+    cleaner = ExtractionCleaner(input_dir, output_dir)
+    
+    # Collect files
+    print(f"  {CYAN}→{RESET} Collecting extraction files...")
+    permit_groups = cleaner.collect_all_files()
+    print(f"  {GREEN}✓{RESET} Found {cleaner.stats['total_files']} files across {len(permit_groups)} permit numbers\n")
+    
+    # Identify versions
+    print(f"  {CYAN}→{RESET} Identifying permit versions...")
+    cleaner.permit_versions = cleaner.identify_permit_versions(permit_groups, deduplicate=deduplicate)
+    print(f"  {GREEN}✓{RESET} Found {cleaner.stats['permit_version_groups']} permits with multiple versions")
+    print(f"  {GREEN}✓{RESET} Found {cleaner.stats['zero_generator_files']} files with 0 generators")
+    if deduplicate and cleaner.stats.get('true_duplicates_found', 0) > 0:
+        print(f"  {GREEN}✓{RESET} Identified {cleaner.stats['true_duplicates_found']} true duplicate(s)")
+    print()
+    
+    if dry_run:
+        files_with_gens = sum(
+            1 for files in permit_groups.values()
+            for f in files if f["generator_count"] > 0
+        )
+        removed_text = ""
+        if deduplicate and cleaner.stats.get('duplicate_files_removed', 0) > 0:
+            removed = cleaner.stats['duplicate_files_removed']
+            removed_text = f" ({removed} duplicates would be removed)"
+        print(f"  {YELLOW}⚠{RESET}  DRY RUN: Would create:")
+        print(f"     • cleaned/: {files_with_gens}{removed_text} files")
+        print(f"     • reports/: 4 report files\n")
+        print(f"{DIM}{'─' * 80}{RESET}\n")
+        return
+    
+    # Process
+    start_time = time.time()
+    
+    print(f"  {CYAN}→{RESET} Setting up directories...")
+    cleaner.setup_directories()
+    print_success("Created output directories")
+    print()
+    
+    print(f"  {CYAN}→{RESET} Creating cleaned dataset...")
+    cleaner.create_cleaned_dataset(permit_groups, deduplicate=deduplicate)
+    print_success(f"Created cleaned dataset with {cleaner.stats['final_cleaned_files']} files")
+    if deduplicate and cleaner.stats.get('duplicate_files_removed', 0) > 0:
+        print(f"  {DIM}Removed {cleaner.stats['duplicate_files_removed']} duplicate file(s){RESET}")
+    print()
+    
+    print(f"  {CYAN}→{RESET} Generating reports...")
+    cleaner.generate_reports()
+    print_success("Generated detailed reports")
+    print()
+    
+    processing_time = time.time() - start_time
+    
+    # Summary
+    print(f"{DIM}{'─' * 80}{RESET}\n")
+    print(f"{BOLD}{'SUMMARY':^80}{RESET}\n")
+    print(f"{DIM}{'─' * 80}{RESET}\n")
+    
+    print(f"  {BOLD}Input{RESET}")
+    print(f"    Total Files      {cleaner.stats['total_files']}")
+    print(f"    With Generators  {cleaner.stats['files_with_generators']}")
+    print(f"    Zero Generators  {cleaner.stats['zero_generator_files']}")
+    print(f"    Version Groups   {cleaner.stats['permit_version_groups']}")
+    
+    print(f"  {BOLD}Output{RESET}")
+    print(f"    Cleaned Files    {cleaner.stats['final_cleaned_files']}")
+    if deduplicate:
+        dup_removed = cleaner.stats.get('duplicate_files_removed', 0)
+        if dup_removed > 0:
+            print(f"    Duplicates       {dup_removed} removed")
+    print(f"    Reports          {len(list((output_dir / 'reports').glob('*.json'))) + 1}")
+    
+    print(f"\n  {BOLD}Performance{RESET}")
+    print(f"    Processing Time  {processing_time:.1f}s")
+    
+    print(f"\n  Output → {output_dir}")
+    print(f"\n  {DIM}💡 Review reports/permit_versions.json for version details{RESET}")
+    print(f"\n{DIM}{'─' * 80}{RESET}\n")
+
