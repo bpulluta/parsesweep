@@ -2,7 +2,7 @@
 
 import click
 
-from permit_toolkit.cli.commands import extract, validate, consolidate, clean
+from permit_toolkit.cli.commands import extract, validate, consolidate, clean, visualize
 from permit_toolkit.cli.dtree import dtree_extract
 
 
@@ -61,6 +61,7 @@ cli.add_command(extract)
 cli.add_command(validate)
 cli.add_command(consolidate)
 cli.add_command(clean)
+cli.add_command(visualize)
 cli.add_command(dtree_extract)
 
 
