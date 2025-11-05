@@ -869,6 +869,135 @@ def consolidate(input_dir: str, output: Optional[str], state: Optional[str], for
 
 @click.command()
 @click.argument('input_dir', type=click.Path(exists=True))
+@click.option('--output', '-o', type=click.Path(), help='Output HTML file path')
+@click.option('--state', help='State name(s) to map (comma-separated for multiple)')
+@click.option('--all-states', is_flag=True, help='Map all available states')
+@click.option('--title', help='Map title (default: auto-generated)')
+@click.option('--no-cache', is_flag=True, help='Disable geocoding cache (force fresh geocoding)')
+@click.option('--limit', '-n', type=int, help='Limit number of permits per state')
+def visualize(input_dir: str, output: Optional[str], state: Optional[str], 
+             all_states: bool, title: Optional[str], no_cache: bool, limit: Optional[int]):
+    """
+    Generate interactive HTML map of facilities with generators.
+    
+    Creates a visual map showing facility locations, generator counts, and
+    capacity. Markers are color-coded and sized by generator count. Includes
+    smart geocoding with address fallbacks and caching for efficiency.
+    
+    \b
+    Examples:
+        # Map Virginia facilities
+        $ permit-toolkit visualize data/extracted/Virginia
+        
+        # Map all states with custom title
+        $ permit-toolkit visualize data/extracted --all-states --title "Data Centers 2024"
+        
+        # Test with limited data (faster)
+        $ permit-toolkit visualize data/extracted/Virginia --limit 10
+    """
+    from permit_toolkit.visualization import FacilityMapper
+    
+    print(f"\n{BOLD}{BLUE}📍 Generating Facility Map{RESET}\n")
+    print(f"{DIM}{'─' * 80}{RESET}\n")
+    
+    input_path = Path(input_dir)
+    
+    # Determine states to process
+    if all_states:
+        # Find all subdirectories (state folders)
+        states = [d.name for d in input_path.iterdir() if d.is_dir()]
+        if not states:
+            print_error("No state directories found", f"Directory: {input_path}")
+            sys.exit(1)
+        print(f"{CYAN}📂 Processing states:{RESET} {', '.join(states)}\n")
+    elif state:
+        states = [s.strip() for s in state.split(',')]
+        # Validate state directories exist
+        missing = [s for s in states if not (input_path / s).exists()]
+        if missing:
+            print_error(f"State directory not found: {', '.join(missing)}")
+            sys.exit(1)
+        print(f"{CYAN}📂 Processing states:{RESET} {', '.join(states)}\n")
+    else:
+        # Single state directory mode
+        states = [input_path.name]
+        input_path = input_path.parent
+    
+    # Set up output file
+    if not output:
+        output = Path("data/visualizations") / "facility_map.html"
+    output_path = Path(output)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    
+    # Initialize mapper
+    cache_file = input_path.parent / "geocoding_cache.json" if not no_cache else None
+    mapper = FacilityMapper(input_path, cache_file=cache_file)
+    
+    try:
+        # Load permit data
+        print(f"{CYAN}📥 Loading permits...{RESET}")
+        df = mapper.load_permits(states, limit_per_state=limit)
+        
+        if len(df) == 0:
+            print_error("No valid permits found")
+            sys.exit(1)
+        
+        print(f"  ✓ Loaded {len(df)} permits\n")
+        
+        # Geocode facilities
+        print(f"{CYAN}🌍 Geocoding facilities...{RESET}")
+        print(f"  {DIM}(This may take a while for large datasets){RESET}\n")
+        df_geocoded = mapper.geocode_facilities(df, show_progress=True)
+        
+        mapped_count = len(df_geocoded[df_geocoded['latitude'].notna()])
+        success_rate = (mapped_count / len(df) * 100) if len(df) > 0 else 0
+        
+        print(f"\n  ✓ Geocoded {mapped_count}/{len(df)} facilities ({success_rate:.1f}%)\n")
+        
+        # Generate dashboard
+        print(f"{CYAN}📊 Creating interactive dashboard...{RESET}")
+        dashboard_title = title or f"Air Quality Permit Facilities - {', '.join(states)}"
+        mapper.create_dashboard(df_geocoded, output_path, title=dashboard_title)
+        
+        # Generate summary stats
+        summary = mapper.generate_summary_stats(df_geocoded)
+        
+        print(f"\n{GREEN}✅ Map generated successfully!{RESET}\n")
+        print(f"{DIM}{'─' * 80}{RESET}\n")
+        
+        # Print summary
+        print(f"{BOLD}Summary{RESET}")
+        print(f"  {BOLD}Facilities{RESET}")
+        print(f"    Total            {summary['total_facilities']}")
+        print(f"    Mapped           {GREEN}{summary['facilities_mapped']}{RESET}")
+        print(f"    States           {summary['states']}")
+        print(f"    Counties         {summary['counties']}")
+        print()
+        print(f"  {BOLD}Generators{RESET}")
+        print(f"    Total Count      {MAGENTA}{summary['total_generators']}{RESET}")
+        print(f"    Total Capacity   {summary['total_capacity_mw']:,.1f} MW")
+        print(f"    Avg per Facility {summary['avg_generators_per_facility']:.1f}")
+        print()
+        print(f"  {BOLD}Output{RESET}")
+        print(f"    {GREEN}{output_path}{RESET}")
+        print(f"    {DIM}Open in browser to view interactive map{RESET}")
+        print()
+        
+        if summary['geocoding_success_rate'] < 90:
+            print(f"{YELLOW}⚠️  Note:{RESET} Some facilities were geocoded to county centers")
+            print(f"    due to missing or incomplete addresses.\n")
+        
+    except Exception as e:
+        print_error("Failed to generate map", str(e))
+        import traceback
+        print(f"\n{DIM}{traceback.format_exc()}{RESET}")
+        sys.exit(1)
+    
+    print(f"{DIM}{'─' * 80}{RESET}\n")
+
+
+@click.command()
+@click.argument('input_dir', type=click.Path(exists=True))
 @click.option('--output', '-o', type=click.Path(), help='Output directory (default: data/cleaned)')
 @click.option('--dry-run', is_flag=True, help='Preview what would be done without writing files')
 @click.option('--deduplicate', is_flag=True, help='Remove true duplicates (same generators, keep newest)')
