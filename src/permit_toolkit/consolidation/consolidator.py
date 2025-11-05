@@ -7,6 +7,9 @@ from typing import List, Dict, Any
 import unicodedata
 
 import pandas as pd
+from openpyxl import load_workbook
+from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+from openpyxl.utils import get_column_letter
 
 logger = logging.getLogger(__name__)
 
@@ -335,3 +338,115 @@ class PermitConsolidator:
             summary['capacity_by_manufacturer'] = capacity_by_make
         
         return summary
+
+    def save_styled_excel(self, df: pd.DataFrame, output_path: Path):
+        """
+        Save DataFrame to Excel with professional styling.
+        
+        Features:
+        - Alternating row colors for readability
+        - Frozen header row
+        - Auto-adjusted column widths
+        - Bold header with colored background
+        - Proper text wrapping
+        - Borders for clean appearance
+        
+        Args:
+            df: DataFrame to save
+            output_path: Path to save Excel file
+        """
+        # Save DataFrame to Excel first
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        df.to_excel(output_path, index=False, engine='openpyxl')
+        
+        # Load workbook for styling
+        wb = load_workbook(output_path)
+        ws = wb.active
+        
+        # Define professional color scheme
+        header_fill = PatternFill(
+            start_color="1F4E78", end_color="1F4E78", fill_type="solid"
+        )
+        header_font = Font(bold=True, color="FFFFFF", size=11)
+        
+        alt_row_light = PatternFill(
+            start_color="FFFFFF", end_color="FFFFFF", fill_type="solid"
+        )
+        alt_row_dark = PatternFill(
+            start_color="F2F2F2", end_color="F2F2F2", fill_type="solid"
+        )
+        
+        # Border styles
+        thin_border = Border(
+            left=Side(style="thin", color="D3D3D3"),
+            right=Side(style="thin", color="D3D3D3"),
+            top=Side(style="thin", color="D3D3D3"),
+            bottom=Side(style="thin", color="D3D3D3"),
+        )
+        
+        header_border = Border(
+            left=Side(style="thin", color="FFFFFF"),
+            right=Side(style="thin", color="FFFFFF"),
+            top=Side(style="medium", color="1F4E78"),
+            bottom=Side(style="medium", color="1F4E78"),
+        )
+        
+                # Alignment - compact without text wrapping
+        header_align = Alignment(
+            horizontal="center", vertical="center", wrap_text=False
+        )
+        cell_align = Alignment(
+            horizontal="left", vertical="center", wrap_text=False
+        )
+        
+        # Style header row
+        for col_num in range(1, len(df.columns) + 1):
+            cell = ws.cell(row=1, column=col_num)
+            cell.fill = header_fill
+            cell.font = header_font
+            cell.alignment = header_align
+            cell.border = header_border
+        
+        # Set header row height
+        ws.row_dimensions[1].height = 30
+        
+        # Style data rows with alternating colors
+        for row_num in range(2, len(df) + 2):
+            use_alt_color = (row_num - 2) % 2 == 1  # Every other row
+            
+            # Set compact row height
+            ws.row_dimensions[row_num].height = 18
+            
+            for col_num in range(1, len(df.columns) + 1):
+                cell = ws.cell(row=row_num, column=col_num)
+                cell.fill = alt_row_dark if use_alt_color else alt_row_light
+                cell.alignment = cell_align
+                cell.border = thin_border
+        
+        # Set compact column widths based on column name patterns
+        for col_num, column in enumerate(df.columns, 1):
+            col_letter = get_column_letter(col_num)
+            column_name = str(column).lower()
+            
+            # Define compact widths based on column type
+            if 'date' in column_name or 'ref' in column_name or 'id' in column_name:
+                width = 12
+            elif 'state' in column_name or 'county' in column_name:
+                width = 14
+            elif 'name' in column_name or 'address' in column_name:
+                width = 25
+            elif 'notes' in column_name or 'specification' in column_name:
+                width = 30
+            elif any(x in column_name for x in ['limit', 'capacity', 'hours', 'percent', 'pct']):
+                width = 15
+            else:
+                width = 18
+            
+            ws.column_dimensions[col_letter].width = width
+        
+        # Freeze header row
+        ws.freeze_panes = "A2"
+        
+        # Save styled workbook
+        wb.save(output_path)
+        logger.info(f"✓ Applied professional styling to Excel file")
