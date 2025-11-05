@@ -905,11 +905,13 @@ def visualize(input_dir: str, output: Optional[str], state: Optional[str],
     # Determine states to process
     if all_states:
         # Find all subdirectories (state folders)
-        states = [d.name for d in input_path.iterdir() if d.is_dir()]
+        states = [d.name for d in input_path.iterdir() if d.is_dir() and not d.name.startswith('.')]
         if not states:
             print_error("No state directories found", f"Directory: {input_path}")
             sys.exit(1)
         print(f"{CYAN}📂 Processing states:{RESET} {', '.join(states)}\n")
+        # Use input_path as the base directory
+        base_path = input_path
     elif state:
         states = [s.strip() for s in state.split(',')]
         # Validate state directories exist
@@ -918,10 +920,21 @@ def visualize(input_dir: str, output: Optional[str], state: Optional[str],
             print_error(f"State directory not found: {', '.join(missing)}")
             sys.exit(1)
         print(f"{CYAN}📂 Processing states:{RESET} {', '.join(states)}\n")
+        base_path = input_path
     else:
-        # Single state directory mode
-        states = [input_path.name]
-        input_path = input_path.parent
+        # Check if input_path itself is a state directory or contains state directories
+        if (input_path / input_path.name).exists() or not any(d.is_dir() for d in input_path.iterdir() if not d.name.startswith('.')):
+            # Treat as single state directory
+            states = [input_path.name]
+            base_path = input_path.parent
+        else:
+            # Assume it's a directory containing state folders - process all
+            states = [d.name for d in input_path.iterdir() if d.is_dir() and not d.name.startswith('.')]
+            if not states:
+                print_error("No state directories found", f"Directory: {input_path}")
+                sys.exit(1)
+            print(f"{CYAN}📂 Processing all states:{RESET} {', '.join(states)}\n")
+            base_path = input_path
     
     # Set up output file
     if not output:
@@ -930,8 +943,8 @@ def visualize(input_dir: str, output: Optional[str], state: Optional[str],
     output_path.parent.mkdir(parents=True, exist_ok=True)
     
     # Initialize mapper
-    cache_file = input_path.parent / "geocoding_cache.json" if not no_cache else None
-    mapper = FacilityMapper(input_path, cache_file=cache_file)
+    cache_file = base_path.parent / "geocoding_cache.json" if not no_cache else None
+    mapper = FacilityMapper(base_path, cache_file=cache_file)
     
     try:
         # Load permit data
