@@ -1,7 +1,7 @@
 [workspace]
 authors = ["Super Team"]
 channels = ["conda-forge"]
-name = "backupgensprint"
+name = "permit-toolkit"
 platforms = ["win-64", "osx-arm64", "osx-64", "linux-64"]
 version = "0.1.0"
 
@@ -10,6 +10,7 @@ version = "0.1.0"
 post-install = "pip install --no-build-isolation --no-deps --disable-pip-version-check -e ."
 
 [dependencies]
+poppler = ">=24.8.0,<25"
 python = ">=3.9,<3.13"
 
 # Core dependencies for permit-toolkit
@@ -26,6 +27,9 @@ tqdm = ">=4.66.0,<5"
 pyyaml = ">=6.0.0,<7"
 requests = ">=2.31.0,<3"
 tesseract = ">=5.5.1,<6"
+langchain-text-splitters = ">=1.0.0,<2"
+pdftotext = ">=2.2.2,<3"
+openpyxl = ">=3.1.5,<4"
 
 # Visualization dependencies for map generation
 folium = ">=0.15.0,<1"
@@ -39,7 +43,8 @@ pymupdf = ">=1.23.0"
 pypdf = ">=3.17.0"
 langextract = ">=1.0.0"
 selenium = ">=4.15.0"  # Moved to PyPI for better cross-platform support
-openpyxl = ">=3.1.0"  # For Excel export support
+nrel-compass = ">=0.10.0, <0.11"
+>>>>>>> main
 
 [environments]
 default = { solve-group = "default" }

@@ -94,9 +94,9 @@ class QAQCValidator:
         'pm10EmissionLimitLbsHr', 'pm10EmissionLimitTonsYr',
         'pm25EmissionLimitLbsHr', 'pm25EmissionLimitTonsYr',
         'so2EmissionLimitLbsHr', 'so2EmissionLimitTonsYr',
-        'operatingHoursLimit',
-        'fuelThroughputLimit',
-        'fuelSulfurContent',
+        'operatingHoursPerUnitLimit',
+        'fuelThroughputPerUnitLimit',
+        'fuelSulfurContentPct',
         'numGenerators'
     }
     
@@ -558,8 +558,8 @@ class QAQCValidator:
                 value_float = float(value)
                 
                 if spec_type == 'hours':
-                    generators[gen_id]['operatingHoursLimit'] = value_float
-                    generators[gen_id]['operatingHoursLimit_citation'] = text
+                    generators[gen_id]['operatingHoursPerUnitLimit'] = value_float
+                    generators[gen_id]['operatingHoursPerUnitLimit_citation'] = text
                 
                 elif spec_type == 'capacity_kw':
                     generators[gen_id]['ratedCapacityKW'] = value_float
@@ -627,16 +627,16 @@ class QAQCValidator:
                     # If value looks like percentage (>0.01), assume it's % and convert
                     if sulfur_val > 0.01:
                         sulfur_val = sulfur_val / 100
-                    generators[gen_id]['fuelSulfurContent'] = sulfur_val
-                    generators[gen_id]['fuelSulfurContent_citation'] = text
+                    generators[gen_id]['fuelSulfurContentPct'] = sulfur_val
+                    generators[gen_id]['fuelSulfurContentPct_citation'] = text
                 except (ValueError, TypeError):
                     pass
         
         elif fuel_type == 'throughput':
             if value:
                 try:
-                    generators[gen_id]['fuelThroughputLimit'] = float(value)
-                    generators[gen_id]['fuelThroughputLimit_citation'] = text
+                    generators[gen_id]['fuelThroughputPerUnitLimit'] = float(value)
+                    generators[gen_id]['fuelThroughputPerUnitLimit_citation'] = text
                 except (ValueError, TypeError):
                     pass
     

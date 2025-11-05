@@ -31,9 +31,6 @@ class Config:
         
         # Data directories - organized by state
         self.data_root = self.project_root / "data"
-        
-        # Legacy paths (deprecated)
-        self.data_dir = self.data_root
         self.permits_dir = self.data_root / "permits"
         self.extracted_dir = self.data_root / "extracted"
         self.outputs_dir = self.data_root / "outputs"
