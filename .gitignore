@@ -48,8 +48,10 @@ data/extracted/
 data/outputs/
 data/validation/
 data/visualizations/
-scripts/ 
+scripts/
+schema_comparison/
 sample-site/
+
 # Logs
 *.log
 logs/
@@ -89,3 +91,17 @@ phase1_results/
 validation/permits/
 audit_results/
 validation/permitsMD/
+.scratch/
+
+# pixi environments
+.pixi
+*.egg-info
+
+
+validation/permitsMD/
+validation/aqtoolkit/OLD/
+validation/permits/
+phase1_results/
+audit_results/
+data/cleaned/
+>>>>>>> main

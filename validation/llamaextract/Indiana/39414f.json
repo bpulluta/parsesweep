@@ -1,0 +1,73 @@
+{
+    "run_id": "de81dbbe-fd74-4568-9415-47aceaa6a1c6",
+    "extraction_agent_id": "32eabd56-6ea0-46b5-9174-622fe87aeb22",
+    "data": {
+        "permitDetails": {
+            "permitNumber": "005-39414-00116",
+            "permitIssuanceDate": "2018-04-06",
+            "permitExpirationDate": "",
+            "facilityName": "Cummins Incorporated",
+            "facilityAddress": "1350 Arcadia Drive, Columbus, Indiana 47201",
+            "facilityCounty": "Bartholomew County",
+            "facilityState": "IN",
+            "stateFacilityID": "005-00116",
+            "initialConstructionCommencedNotificationRequired": null,
+            "constructionCommencedNotificationWindowDays": null,
+            "initialStartupNotificationRequired": null,
+            "startupNotificationWindowDays": null,
+            "permitCopyOnsiteRequired": null,
+            "rightOfEntryClause": null,
+            "extractionNotes": null
+        },
+        "generatorSets": [
+            {
+                "referenceNumber": "1S",
+                "numGenerators": 1,
+                "includedInPermitProject": true,
+                "originalPermitDate": "1998-01-01",
+                "equipmentFacilityID": null,
+                "make": null,
+                "model": null,
+                "ratedCapacityKW": 1250,
+                "ratedCapacityBHP": 1676.3,
+                "ratedCapacityHP": null,
+                "ratedCapacityMMBtuPerHr": null,
+                "primaryFuelType": "diesel fired",
+                "secondaryFuelType": null,
+                "otherFuels": null,
+                "fuelGrade": null,
+                "fuelSpecification": null,
+                "fuelSulfurContentPct": 0.051,
+                "fuelCertificationRequired": null,
+                "fuelChangePermitTrigger": null,
+                "fuelThroughputPerUnitLimit": null,
+                "fuelThroughputPerUnitScope": null,
+                "fuelThroughputPerUnitGroupRef": null,
+                "fuelThroughputCombinedLimit": null,
+                "fuelThroughputCombinedGroupRef": null,
+                "controlTechnology": "no control equipment",
+                "operatingHoursPerUnitLimit": 500,
+                "operatingHoursPerUnitRollingWindow": "per year",
+                "operatingHoursCombinedLimit": null,
+                "operatingHoursCombinedGroupRef": null,
+                "operatingHoursCombinedRollingWindow": null,
+                "allowedOperatingModes": "emergency",
+                "opacityLimitPercent": 40,
+                "hourMeterRequired": null,
+                "observationFrequency": null,
+                "recordkeepingWindowYears": null,
+                "nspsSubpartIIII": false,
+                "mactSubpartZZZZ": false,
+                "extractionNotes": null
+            }
+        ]
+    },
+    "extraction_metadata": {
+        "field_metadata": {},
+        "usage": {
+            "num_pages_extracted": 18,
+            "num_document_tokens": 11658,
+            "num_output_tokens": 557
+        }
+    }
+}

@@ -1,53 +1,182 @@
 """CLI commands for permit toolkit."""
 
 import json
+import logging
 import os
 import sys
 import time
 from pathlib import Path
-from typing import Optional
+from typing import Optional, List, Tuple
 
 import click
+from dotenv import load_dotenv
 
 from permit_toolkit.utils.config import get_config
-from permit_toolkit.utils.logger import get_logger
+from permit_toolkit.extraction import PermitExtractor, load_schema
+from permit_toolkit.extraction.pdf_utils import extract_text_from_pdf
 from permit_toolkit.consolidation import PermitConsolidator
+from permit_toolkit.consolidation.cleaner import ExtractionCleaner
+
+
+# ANSI color codes for consistent styling
+BLUE = '\033[94m'
+GREEN = '\033[92m'
+YELLOW = '\033[93m'
+RED = '\033[91m'
+CYAN = '\033[96m'
+MAGENTA = '\033[95m'
+BOLD = '\033[1m'
+DIM = '\033[2m'
+RESET = '\033[0m'
+
+
+def print_error(message: str, details: str = None, suggestions: List[str] = None):
+    """Print a user-friendly error message with optional details and suggestions."""
+    print(f"\n{RED}{BOLD}✗ Error:{RESET} {message}\n")
+    
+    if details:
+        print(f"  {DIM}{details}{RESET}\n")
+    
+    if suggestions:
+        print(f"  {BOLD}💡 Try this:{RESET}")
+        for suggestion in suggestions:
+            print(f"     • {suggestion}")
+        print()
+
+
+def print_warning(message: str, details: str = None):
+    """Print a user-friendly warning message."""
+    print(f"\n{YELLOW}{BOLD}⚠ Warning:{RESET} {message}")
+    if details:
+        print(f"  {DIM}{details}{RESET}")
+    print()
+
+
+def print_success(message: str):
+    """Print a success message."""
+    print(f"{GREEN}✓{RESET} {message}")
+
+
+def check_api_keys(use_azure: bool = False) -> Tuple[bool, str]:
+    """
+    Check if required API keys are configured.
+    
+    Returns:
+        Tuple of (is_valid, error_message)
+    """
+    if use_azure:
+        required_keys = ['AZURE_OPENAI_API_KEY', 'AZURE_OPENAI_ENDPOINT']
+        missing = [key for key in required_keys if not os.getenv(key)]
+        
+        if missing:
+            error = f"Azure OpenAI credentials not found"
+            return False, error
+    else:
+        if not os.getenv('OPENAI_API_KEY'):
+            error = f"OpenAI API key not found"
+            return False, error
+    
+    return True, None
+
+
+def validate_path_structure(path: Path, expected_content: str = "PDFs") -> Tuple[bool, str]:
+    """
+    Validate that a path exists and contains expected content.
+    
+    Returns:
+        Tuple of (is_valid, error_message)
+    """
+    if not path.exists():
+        return False, f"Path does not exist: {path}"
+    
+    if not path.is_dir():
+        # Single file is okay for some operations
+        return True, None
+    
+    # Check if directory is empty
+    contents = list(path.iterdir())
+    if not contents:
+        return False, f"Directory is empty: {path}"
+    
+    return True, None
 
 
 @click.command()
-@click.argument('path', type=click.Path(exists=True))
-@click.option('--output', '-o', type=click.Path(), help='Output directory')
-@click.option('--state', help='State name (inferred from path if not provided)')
-@click.option('--model', default='gpt-4o-mini', show_default=True, help='Model to use')
-@click.option('--enable-qa-qc', is_flag=True, help='Enable LangExtract QA/QC (slower but adds traceability)')
-@click.option('--use-azure', is_flag=True, help='Use Azure OpenAI')
-@click.option('--limit', '-n', type=int, help='Process only first N files (directory only)')
-@click.option('--skip-existing/--reprocess', default=True, show_default=True, help='Skip already processed files')
+@click.argument('path', type=click.Path())
+@click.option('--output', '-o', type=click.Path(), help='Output directory (auto-detected if not specified)')
+@click.option('--state', help='State name (auto-detected from path if not specified)')
+@click.option('--model', default='gpt-4o-mini', show_default=True, help='AI model: gpt-4o-mini (fast) or gpt-4o (accurate)')
+@click.option('--enable-qa-qc', is_flag=True, help='Enable detailed validation (slower, adds traceability)')
+@click.option('--use-azure', is_flag=True, help='Use Azure OpenAI (requires AZURE_OPENAI_API_KEY)')
+@click.option('--limit', '-n', type=int, help='Process only first N files')
+@click.option('--skip-existing/--reprocess', default=True, show_default=True, help='Skip files already processed')
 def extract(path: str, output: Optional[str], state: Optional[str],
             model: str, enable_qa_qc: bool, use_azure: bool, limit: Optional[int],
             skip_existing: bool):
     """
-    Extract structured data from permit PDFs (single file or directory).
+    Extract structured data from permit PDF files.
+    
+    This command reads air quality permits (PDF format) and extracts structured
+    information about backup generators, emissions limits, and facility details.
+    
+    The output will be saved as JSON files in a parallel folder structure.
+    For example: permits/Virginia/ → extracted/Virginia/
     
     \b
-    Examples:
-        # Single file
-        permit-toolkit extract data/permits/Virginia/11790_DC_Permit.pdf
+    EXAMPLES:
+        # Extract a single permit file
+        permit-toolkit extract permits/Virginia/11790_DC_Permit.pdf
         
-        # Directory - extract first 5 Virginia permits (fast mode)
-        permit-toolkit extract data/permits/Virginia -n 5
+        # Extract all permits in a directory
+        permit-toolkit extract permits/Virginia
         
-        # Directory with full QA/QC validation
-        permit-toolkit extract data/permits/Virginia --enable-qa-qc
+        # Extract just the first 5 permits (useful for testing)
+        permit-toolkit extract permits/Virginia -n 5
         
-        # Use Azure OpenAI with higher rate limits
-        permit-toolkit extract data/permits/Illinois --use-azure
+        # Use Azure OpenAI (if you have Azure credits)
+        permit-toolkit extract permits/Illinois --use-azure
+        
+        # Reprocess files that were already extracted
+        permit-toolkit extract permits/Virginia --reprocess
+    
+    \b
+    REQUIREMENTS:
+        • PDF files in the specified directory
+        • OpenAI API key in .env file (OPENAI_API_KEY=sk-...)
+        • Or Azure OpenAI credentials (if using --use-azure)
     """
-    import time
-    import json
-    from permit_toolkit.extraction import PermitExtractor, load_schema
-    from permit_toolkit.extraction.pdf_utils import extract_text_from_pdf
-    from permit_toolkit.utils.config import get_config
+    # Load environment variables from .env file
+    load_dotenv()
+    
+    # Validate path exists
+    path = Path(path)
+    if not path.exists():
+        print_error(
+            f"Path not found: {path}",
+            f"The file or directory you specified doesn't exist.",
+            [
+                "Check the path spelling and try again",
+                f"Current directory: {Path.cwd()}",
+                "Use 'ls' or 'dir' to see available files and folders"
+            ]
+        )
+        sys.exit(1)
+    
+    # Check API keys before starting
+    is_valid, error_msg = check_api_keys(use_azure)
+    if not is_valid:
+        provider = "Azure OpenAI" if use_azure else "OpenAI"
+        print_error(
+            error_msg,
+            f"API credentials are required to extract data using {provider}.",
+            [
+                "Create a .env file in your project root if you don't have one",
+                f"Add your API key: {'AZURE_OPENAI_API_KEY' if use_azure else 'OPENAI_API_KEY'}=your-key-here",
+                f"{'Also add AZURE_OPENAI_ENDPOINT=your-endpoint-url' if use_azure else ''}",
+                "Get an API key from: https://platform.openai.com/api-keys" if not use_azure else "Get Azure credentials from: https://portal.azure.com"
+            ]
+        )
+        sys.exit(1)
     
     config = get_config()
     path = Path(path)
@@ -61,29 +190,43 @@ def extract(path: str, output: Optional[str], state: Optional[str],
     else:
         state = state or path.parent.name
     
-    # Setup output directory
-    output_dir = Path(output) if output else (config.data_root / 'extracted' / state)
+    # Setup output directory - parallel folder structure for clean pipeline
+    # Examples: 
+    #   validation/permits/Virginia/ → validation/extracted/Virginia/
+    #   data/permits/Illinois/ → data/extracted/Illinois/
+    #   validation/permits/ → validation/extracted/permits/
+    if output:
+        # User specified output - use it
+        output_dir = Path(output)
+    elif is_dir:
+        # Directory input: replace 'permits' with 'extracted' in path
+        # This maintains the same depth and structure
+        parts = list(path.parts)
+        if 'permits' in parts:
+            # Replace first occurrence of 'permits' with 'extracted'
+            idx = parts.index('permits')
+            parts[idx] = 'extracted'
+            output_dir = Path(*parts)
+        else:
+            # Fallback: create parallel 'extracted' folder
+            parent = path.parent
+            output_dir = parent / 'extracted' / path.name
+    else:
+        # Single file: same logic but for parent directory
+        parts = list(path.parent.parts)
+        if 'permits' in parts:
+            idx = parts.index('permits')
+            parts[idx] = 'extracted'
+            output_dir = Path(*parts)
+        else:
+            # Fallback
+            grandparent = path.parent.parent
+            folder_name = path.parent.name
+            output_dir = grandparent / 'extracted' / folder_name
+    
     output_dir.mkdir(parents=True, exist_ok=True)
     
-    # Get PDF files
-    if is_dir:
-        pdf_files = sorted(path.glob("*.pdf"))
-        if limit:
-            pdf_files = pdf_files[:limit]
-        if skip_existing:
-            original_count = len(pdf_files)
-            pdf_files = [p for p in pdf_files if not (output_dir / f"{p.stem}.json").exists()]
-            skipped = original_count - len(pdf_files)
-            if skipped > 0 and len(pdf_files) > 0:
-                print(f"⏭️  Skipping {skipped} already processed file{'s' if skipped != 1 else ''}")
-    else:
-        pdf_files = [path]
-    
-    if not pdf_files:
-        print("✅ All files already processed!" if is_dir else f"❌ File not found: {path}")
-        return
-    
-    # ANSI color codes
+    # ANSI color codes - define early for use throughout function
     BLUE = '\033[94m'
     GREEN = '\033[92m'
     YELLOW = '\033[93m'
@@ -93,17 +236,107 @@ def extract(path: str, output: Optional[str], state: Optional[str],
     DIM = '\033[2m'
     RESET = '\033[0m'
     
+    # Get PDF files - support recursive discovery
+    if is_dir:
+        # First try direct PDFs in this directory
+        pdf_files = sorted(path.glob("*.pdf"))
+        
+        # If no PDFs found, look for subdirectories (e.g., state folders)
+        if not pdf_files:
+            subdirs = [d for d in path.iterdir() if d.is_dir() and not d.name.startswith('.')]
+            if subdirs:
+                # Found subdirectories - process each one recursively
+                print(f"\n{BOLD}📁 Found {len(subdirs)} subfolder(s) with permits{RESET}")
+                for subdir in subdirs:
+                    subdir_pdfs = sorted(subdir.glob("*.pdf"))
+                    if subdir_pdfs:
+                        print(f"  → {subdir.name}: {len(subdir_pdfs)} PDF(s)")
+                
+                # Call extract for each subdirectory
+                for subdir in subdirs:
+                    subdir_pdfs = sorted(subdir.glob("*.pdf"))
+                    if subdir_pdfs:
+                        import subprocess
+                        cmd = ['pixi', 'run', 'permit-toolkit', 'extract', str(subdir)]
+                        if use_azure:
+                            cmd.append('--use-azure')
+                        if enable_qa_qc:
+                            cmd.append('--enable-qa-qc')
+                        if not skip_existing:
+                            cmd.append('--reprocess')
+                        if limit:
+                            cmd.extend(['-n', str(limit)])
+                        if model != 'gpt-4o-mini':
+                            cmd.extend(['--model', model])
+                        
+                        subprocess.run(cmd)
+                return
+        
+        # Check if we found any PDFs at all
+        if not pdf_files and not subdirs:
+            print_error(
+                f"No PDF files found in: {path}",
+                "The directory exists but doesn't contain any PDF files.",
+                [
+                    "Make sure your PDF files have the .pdf extension",
+                    "Check if PDFs are in a subdirectory",
+                    f"Use 'ls {path}' to see what's in this folder",
+                    "PDFs should be air quality permits for backup generators"
+                ]
+            )
+            sys.exit(1)
+        
+        if limit:
+            pdf_files = pdf_files[:limit]
+        if skip_existing:
+            original_count = len(pdf_files)
+            pdf_files = [p for p in pdf_files if not (output_dir / f"{p.stem}.json").exists()]
+            skipped = original_count - len(pdf_files)
+            if skipped > 0 and len(pdf_files) > 0:
+                print(f"\n{CYAN}ℹ{RESET}  Skipping {skipped} already processed file{'s' if skipped != 1 else ''}")
+                print(f"   {DIM}(use --reprocess to extract them again){RESET}")
+    else:
+        # Single file
+        if not path.suffix.lower() == '.pdf':
+            print_error(
+                f"File is not a PDF: {path.name}",
+                "This tool only works with PDF files containing air quality permits.",
+                [
+                    "Make sure the file has a .pdf extension",
+                    "Check if you specified the correct file path"
+                ]
+            )
+            sys.exit(1)
+        pdf_files = [path]
+    
+    # Final validation - check if we have files to process
+    if not pdf_files:
+        if is_dir:
+            print(f"\n{GREEN}✓{RESET} All {original_count} file(s) already processed!")
+            print(f"  {DIM}Output directory: {output_dir}{RESET}")
+            print(f"\n  {DIM}Use --reprocess to extract them again{RESET}\n")
+        return
+    
     # Header with clean visual separation
     print(f"\n{BOLD}{BLUE}┌{'─' * 78}┐{RESET}")
     print(f"{BOLD}{BLUE}│{RESET} {BOLD}{'AIR QUALITY PERMIT EXTRACTION':^76}{RESET} {BOLD}{BLUE}│{RESET}")
     print(f"{BOLD}{BLUE}└{'─' * 78}┘{RESET}")
     
     # Configuration table with colors
-    print(f"\n  {DIM}State{RESET}     {CYAN}{state}{RESET}")
+    print(f"\n  {BOLD}Configuration{RESET}")
+    print(f"  {DIM}{'─' * 76}{RESET}")
+    print(f"  {DIM}State{RESET}     {CYAN}{state}{RESET}")
     print(f"  {DIM}Input{RESET}     {path}")
-    print(f"  {DIM}Output{RESET}    {output_dir}")
+    
+    # Make output location very prominent
+    print(f"\n  {BOLD}{GREEN}📁 Output Location{RESET}")
+    print(f"  {DIM}{'─' * 76}{RESET}")
+    print(f"  {BOLD}{output_dir.absolute()}{RESET}")
+    print(f"  {DIM}(extracted JSONs will be saved here){RESET}")
     
     # Display model info
+    print(f"\n  {BOLD}Extraction Settings{RESET}")
+    print(f"  {DIM}{'─' * 76}{RESET}")
     if use_azure:
         azure_model = os.environ.get('AZURE_OPENAI_MODEL')
         display_model = azure_model if azure_model else model
@@ -114,10 +347,13 @@ def extract(path: str, output: Optional[str], state: Optional[str],
     
     qa_status = f"{GREEN}Enabled{RESET}" if enable_qa_qc else f"{DIM}Disabled{RESET}"
     print(f"  {DIM}QA/QC{RESET}     {qa_status}")
-    print(f"  {DIM}Files{RESET}     {BOLD}{len(pdf_files)}{RESET}")
+    print(f"  {DIM}Files{RESET}     {BOLD}{len(pdf_files)}{RESET} PDF{'s' if len(pdf_files) != 1 else ''}")
     
     # Initialize extractor
     schema = load_schema(config.default_schema)
+    
+    # Track the actual model being used for output
+    actual_model = model
     
     if use_azure:
         from openai import AzureOpenAI
@@ -134,6 +370,7 @@ def extract(path: str, output: Optional[str], state: Optional[str],
         
         # Use Azure deployment name if configured, otherwise use the model parameter
         deployment_name = azure_model if azure_model else model
+        actual_model = deployment_name  # Track actual model for output
         
         azure_client = AzureOpenAI(
             api_key=azure_key,
@@ -182,7 +419,7 @@ def extract(path: str, output: Optional[str], state: Optional[str],
                 'source_file': pdf_path.name,
                 'extraction_date': time.strftime('%Y-%m-%d %H:%M:%S'),
                 'state': state,
-                'model': model,
+                'model': actual_model,  # Use actual model name (Azure deployment or OpenAI model)
                 'qa_qc_enabled': enable_qa_qc,
                 'cost_usd': result.cost,
                 'processing_time_sec': result.processing_time,
@@ -254,11 +491,13 @@ def extract(path: str, output: Optional[str], state: Optional[str],
         print(f"    {DIM}Per file{RESET}     {avg_time:.1f}s")
         
         # Generator count
-        total_gens = sum(r['generators'] for r in successful)
+        total_gens = sum(r.get('generators', 0) or 0 for r in successful)
         print(f"\n  {BOLD}Generators{RESET}")
         print(f"    {DIM}Extracted{RESET}    {GREEN}{total_gens}{RESET}")
     
-    print(f"\n  {DIM}Output → {RESET}{output_dir}")
+    # Output location reminder - make it very prominent
+    print(f"\n  {BOLD}{GREEN}✓ Results saved to:{RESET}")
+    print(f"    {BOLD}{output_dir.absolute()}{RESET}")
     print(f"\n{DIM}{'─' * 80}{RESET}\n")
 
 
@@ -272,12 +511,16 @@ def validate(extraction_file: str, verbose: bool):
     Example:
         permit-toolkit validate data/extracted/Virginia/11790_DC_Permit.json
     """
-    logger = get_logger(verbose=verbose)
+    # Setup logging
+    log_level = logging.DEBUG if verbose else logging.INFO
+    logging.basicConfig(level=log_level, format='%(message)s')
     
-    logger.header("VALIDATION")
+    print(f"\n{'='*80}")
+    print("VALIDATION")
+    print(f"{'='*80}\n")
     
     extraction_file = Path(extraction_file)
-    logger.info(f"File: {extraction_file.name}")
+    print(f"File: {extraction_file.name}")
     
     # Load extraction
     with open(extraction_file) as f:
@@ -292,30 +535,32 @@ def validate(extraction_file: str, verbose: bool):
     
     try:
         json_validate(instance=data.get('data', data), schema=schema)
-        logger.success("Schema validation passed")
+        print("✓ Schema validation passed")
     except ValidationError as e:
-        logger.error(f"Schema validation failed: {e.message}")
+        print(f"✗ Schema validation failed: {e.message}")
         sys.exit(1)
     
     # Check data quality
     permit_data = data.get('data', data)
     generators = permit_data.get('generatorSets', [])
     
-    logger.section("Extraction Quality")
+    print(f"\n{'─'*80}")
+    print("Extraction Quality")
+    print(f"{'─'*80}\n")
     
     # Use metadata if available (new format)
     if 'quality' in data:
         quality = data['quality']
-        logger.info(f"Generator Count:    {quality['generator_count']}")
-        logger.info(f"Completeness Score: {quality['completeness_score']:.1%}")
-        logger.info(f"Fields Extracted:   {quality['fields_extracted']}")
-        logger.info(f"Fields Missing:     {quality['fields_missing']}")
-        logger.info(f"Has Permit Details: {'Yes' if quality['has_permit_details'] else 'No'}")
-        logger.info(f"Has Generators:     {'Yes' if quality['has_generators'] else 'No'}")
-        logger.info(f"Has Emissions Data: {'Yes' if quality['has_emissions_data'] else 'No'}")
+        print(f"Generator Count:    {quality['generator_count']}")
+        print(f"Completeness Score: {quality['completeness_score']:.1%}")
+        print(f"Fields Extracted:   {quality['fields_extracted']}")
+        print(f"Fields Missing:     {quality['fields_missing']}")
+        print(f"Has Permit Details: {'Yes' if quality['has_permit_details'] else 'No'}")
+        print(f"Has Generators:     {'Yes' if quality['has_generators'] else 'No'}")
+        print(f"Has Emissions Data: {'Yes' if quality['has_emissions_data'] else 'No'}")
     else:
         # Fallback for old format
-        logger.info(f"Generator Sets: {len(generators)}")
+        print(f"Generator Sets: {len(generators)}")
         
         if generators:
             # Check completeness
@@ -323,7 +568,7 @@ def validate(extraction_file: str, verbose: bool):
                 1 for g in generators
                 if g.get('make') and g.get('model') and g.get('fuelType')
             )
-            logger.info(f"Complete Records: {complete_count}/{len(generators)} "
+            print(f"Complete Records: {complete_count}/{len(generators)} "
                        f"({complete_count/len(generators)*100:.1f}%)")
             
             # Check for emissions data
@@ -331,81 +576,151 @@ def validate(extraction_file: str, verbose: bool):
                 1 for g in generators
                 if any(g.get(k) for k in ['noxEmissionLimitLbsHr', 'coEmissionLimitLbsHr', 'vocEmissionLimitLbsHr'])
             )
-            logger.info(f"With Emissions: {with_emissions}/{len(generators)} "
+            print(f"With Emissions: {with_emissions}/{len(generators)} "
                        f"({with_emissions/len(generators)*100:.1f}%)")
     
     # Check metadata
     if 'cost' in data:
         if isinstance(data['cost'], dict):
-            logger.info(f"\nExtraction Cost: ${data['cost']['total_usd']:.4f}")
-            logger.info(f"  OpenAI:        ${data['cost']['openai_usd']:.4f}")
-            logger.info(f"  LangExtract:   ${data['cost']['langextract_usd']:.4f}")
+            print(f"\nExtraction Cost: ${data['cost']['total_usd']:.4f}")
+            print(f"  OpenAI:        ${data['cost']['openai_usd']:.4f}")
+            if 'langextract_usd' in data['cost']:
+                print(f"  LangExtract:   ${data['cost']['langextract_usd']:.4f}")
         else:
-            logger.info(f"\nExtraction Cost: ${data['cost']:.4f}")
+            print(f"\nExtraction Cost: ${data['cost']:.4f}")
     
     if 'timing' in data:
-        logger.info(f"Processing Time: {data['timing']['total_sec']:.2f}s")
-        logger.info(f"  OpenAI:        {data['timing']['openai_sec']:.2f}s")
-        logger.info(f"  LangExtract:   {data['timing']['langextract_sec']:.2f}s")
+        print(f"Processing Time: {data['timing']['total_sec']:.2f}s")
+        print(f"  OpenAI:        {data['timing']['openai_sec']:.2f}s")
+        print(f"  LangExtract:   {data['timing']['langextract_sec']:.2f}s")
     elif 'processing_time_sec' in data:
-        logger.info(f"Processing Time: {data['processing_time_sec']:.2f}s")
+        print(f"Processing Time: {data['processing_time_sec']:.2f}s")
     
-    logger.success("\nValidation complete!")
+    print("\n✓ Validation complete!\n")
+    print(f"{'='*80}\n")
 
 
 @click.command()
-@click.argument('input_dir', type=click.Path(exists=True))
-@click.option('--output', '-o', type=click.Path(), help='Output CSV file path')
-@click.option('--state', help='Filter by state (e.g., Virginia, Illinois)')
+@click.argument('input_dir', type=click.Path())
+@click.option('--output', '-o', type=click.Path(), help='Output file path (auto-detected if not specified)')
+@click.option('--state', help='Filter by specific state (e.g., Virginia, Illinois)')
 @click.option('--format', type=click.Choice(['csv', 'excel', 'json'], case_sensitive=False), 
-              default='csv', show_default=True, help='Output format')
+              default='csv', show_default=True, help='Output format: csv, excel, or json')
 def consolidate(input_dir: str, output: Optional[str], state: Optional[str], format: str):
     """
     Consolidate extracted JSON files into analysis-ready datasets.
     
-    Flattens nested JSON structures into tabular format with one row per
-    generator set, including all permit details and emissions data.
+    This command takes the JSON files created by the extract command and combines
+    them into a single spreadsheet or data file. Each row represents one backup
+    generator set with all its details.
+    
+    The output will be saved in a parallel "outputs" folder.
+    For example: extracted/Virginia/ → outputs/Virginia/
     
     \b
-    Examples:
-        # Consolidate all Virginia extractions
-        permit-toolkit consolidate data/extracted/Virginia
+    EXAMPLES:
+        # Consolidate all extractions in a directory
+        permit-toolkit consolidate extracted/Virginia
         
-        # Consolidate with custom output
-        permit-toolkit consolidate data/extracted/Illinois -o il_dataset.csv
+        # Consolidate and save to Excel
+        permit-toolkit consolidate extracted/Illinois --format excel
         
-        # Filter by state from mixed directory
-        permit-toolkit consolidate data/extracted --state Virginia
+        # Custom output location
+        permit-toolkit consolidate extracted/Virginia -o my_data.csv
         
-        # Export to Excel
-        permit-toolkit consolidate data/extracted/Virginia --format excel
-    """
-    # ANSI color codes
-    BLUE = '\033[94m'
-    GREEN = '\033[92m'
-    YELLOW = '\033[93m'
-    CYAN = '\033[96m'
-    MAGENTA = '\033[95m'
-    BOLD = '\033[1m'
-    DIM = '\033[2m'
-    RESET = '\033[0m'
+        # Consolidate mixed states, filter for one state
+        permit-toolkit consolidate extracted --state Virginia
     
+    \b
+    REQUIREMENTS:
+        • JSON files from the extract command
+        • At least one extracted permit file
+    
+    \b
+    OUTPUT:
+        The tool creates a table with columns for:
+        • Permit details (number, dates, facility info)
+        • Generator specs (make, model, HP, fuel type)
+        • Emissions limits (NOx, CO, VOC, PM)
+        • Operating restrictions and hours
+    """
+    # Load environment for any config needs
+    load_dotenv()
+    
+    # Validate input directory exists
     input_dir = Path(input_dir)
+    if not input_dir.exists():
+        print_error(
+            f"Directory not found: {input_dir}",
+            "The extraction directory you specified doesn't exist.",
+            [
+                "Run 'extract' command first to create extracted JSON files",
+                "Check the path spelling and try again",
+                f"Current directory: {Path.cwd()}",
+                "Example: permit-toolkit consolidate extracted/Virginia"
+            ]
+        )
+        sys.exit(1)
+    
+    if not input_dir.is_dir():
+        print_error(
+            f"Not a directory: {input_dir}",
+            "Please provide a directory containing extracted JSON files.",
+            [
+                "Use the path to a folder, not a single file",
+                "Example: permit-toolkit consolidate extracted/Virginia"
+            ]
+        )
+        sys.exit(1)
+    
+    # Check if input_dir contains JSON files directly or has subdirectories
+    has_direct_jsons = bool(list(input_dir.glob("*.json")))
+    subdirs = [d for d in input_dir.iterdir() if d.is_dir() and not d.name.startswith('.')]
     
     # Auto-infer state from directory name if not provided
-    if not state and input_dir.name not in ['extracted', 'data']:
+    # Only treat as state if directory contains JSON files directly
+    if not state and has_direct_jsons and input_dir.name not in ['extracted', 'data', 'aqtoolkit']:
         state = input_dir.name
     
-    # Determine output file path
-    if not output:
-        state_suffix = f"_{state.lower()}" if state else ""
-        ext = 'xlsx' if format == 'excel' else format
-        output = Path(f"data/outputs/consolidated{state_suffix}.{ext}")
-    else:
+    # Determine output file path - parallel folder structure like extraction
+    # Examples:
+    #   validation/aqtoolkit/Virginia/ → validation/outputs/virginia_consolidated.csv
+    #   validation/aqtoolkit/ → validation/outputs/consolidated.csv
+    #   data/extracted/Illinois/ → data/outputs/illinois_consolidated.csv
+    if output:
+        # User specified output - use it
         output = Path(output)
+    else:
+        # Auto-determine output location based on input path
+        parts = list(input_dir.parts)
+        
+        # Replace extraction/cleaning folder names with output folder
+        replaced = False
+        for extract_folder in ['extracted', 'cleaned', 'aqtoolkit', 'llamaextract', 'decisiontree']:
+            if extract_folder in parts:
+                idx = parts.index(extract_folder)
+                # Use 'compiled' for cleaned data, 'outputs' for others
+                parts[idx] = 'compiled' if extract_folder == 'cleaned' else 'outputs'
+                replaced = True
+                break
+        
+        if replaced:
+            output_dir = Path(*parts)
+        else:
+            # Fallback: create parallel 'compiled' or 'outputs' folder
+            parent = input_dir.parent
+            # Use 'compiled' if input suggests it's cleaned data
+            folder_name = 'compiled' if 'clean' in input_dir.name.lower() else 'outputs'
+            output_dir = parent / folder_name
+        
+        # Create filename with optional state suffix
+        state_suffix = f"{state.lower()}_" if state else ""
+        ext = 'xlsx' if format == 'excel' else format
+        output = output_dir / f"{state_suffix}consolidated.{ext}"
     
     output.parent.mkdir(parents=True, exist_ok=True)
     
+    # Header with clean visual separation
     # Header with clean visual separation
     print(f"\n{BOLD}{BLUE}┌{'─' * 78}┐{RESET}")
     print(f"{BOLD}{BLUE}│{RESET} {BOLD}{'DATA CONSOLIDATION':^76}{RESET} {BOLD}{BLUE}│{RESET}")
@@ -421,12 +736,6 @@ def consolidate(input_dir: str, output: Optional[str], state: Optional[str], for
     # Find JSON files - use consolidator to check
     print(f"  {DIM}Files{RESET}     ", end='', flush=True)
     
-    # Create consolidator first to let it find files
-    consolidator = PermitConsolidator(
-        extraction_dir=input_dir,
-        state=state
-    )
-    
     # Find JSON files - check if input_dir itself contains JSONs or has subdirectories
     if state and (input_dir / state).exists():
         # State subdirectory exists
@@ -438,6 +747,33 @@ def consolidate(input_dir: str, output: Optional[str], state: Optional[str], for
         # No state filter, search recursively
         json_files = list(input_dir.glob("**/*.json"))
     
+    if not json_files:
+        print(f"0\n")
+        print_error(
+            f"No JSON files found in: {input_dir}",
+            "This directory doesn't contain any extracted permit data." + (f" (filtering for state: {state})" if state else ""),
+            [
+                "Run the 'extract' command first to process PDF permits",
+                "Example: permit-toolkit extract permits/Virginia",
+                "Then consolidate: permit-toolkit consolidate extracted/Virginia",
+                "Check that you're using the correct directory path"
+            ]
+        )
+        sys.exit(1)
+    
+    print(f"{len(json_files)}\n")
+    
+    print(f"{DIM}{'─' * 80}{RESET}\n")
+    
+    # Create consolidator and process
+    start_time = time.time()
+    
+    print(f"  {CYAN}→{RESET} Processing JSON files...")
+    
+    consolidator = PermitConsolidator(
+        extraction_dir=input_dir,
+        state=state
+    )
     if not json_files:
         print(f"\n\n{YELLOW}⚠{RESET}  No JSON files found in {input_dir}")
         if state:
@@ -464,7 +800,7 @@ def consolidate(input_dir: str, output: Optional[str], state: Optional[str], for
     # Save output in requested format
     print(f"  {CYAN}→{RESET} Saving to {format.upper()}...")
     if format == 'excel':
-        df.to_excel(output, index=False, engine='openpyxl')
+        consolidator.save_styled_excel(df, output)
     elif format == 'json':
         df.to_json(output, orient='records', indent=2)
     else:  # csv
@@ -533,170 +869,147 @@ def consolidate(input_dir: str, output: Optional[str], state: Optional[str], for
 
 @click.command()
 @click.argument('input_dir', type=click.Path(exists=True))
-@click.option('--output', '-o', type=click.Path(), help='Output HTML file path')
-@click.option('--state', help='State name(s) to map (comma-separated for multiple)')
-@click.option('--all-states', is_flag=True, help='Map all available states')
-@click.option('--title', help='Map title (default: auto-generated)')
-@click.option('--no-cache', is_flag=True, help='Disable geocoding cache (force fresh geocoding)')
-@click.option('--limit', '-n', type=int, help='Limit number of permits per state')
-def map(input_dir: str, output: Optional[str], state: Optional[str], 
-        all_states: bool, title: Optional[str], no_cache: bool, limit: Optional[int]):
+@click.option('--output', '-o', type=click.Path(), help='Output directory (default: data/cleaned)')
+@click.option('--dry-run', is_flag=True, help='Preview what would be done without writing files')
+@click.option('--deduplicate', is_flag=True, help='Remove true duplicates (same generators, keep newest)')
+def clean(input_dir: str, output: Optional[str], dry_run: bool, deduplicate: bool):
     """
-    Generate interactive HTML map of facilities with generators.
+    Clean extracted permit data by removing zero-generator files and duplicates.
     
-    Creates a visual map showing facility locations, generator counts, and
-    capacity. Markers are color-coded and sized by generator count. Includes
-    smart geocoding with address fallbacks and caching for efficiency.
+    This command processes extracted JSON files from data/extracted/ and creates
+    cleaned output with:
+      • State-organized JSON files (only files with generators)
+      • reports/ - Detailed reports on what was removed/kept
+    
+    By default, all versions of permits are preserved (they may represent different
+    amendments). Use --deduplicate to intelligently remove true duplicates (files
+    with identical generator reference numbers).
     
     \b
-    Examples:
-        # Map Virginia facilities
-        permit-toolkit map data/extracted --state Virginia
+    EXAMPLES:
+        # Clean extracted data (preserve all versions)
+        permit-toolkit clean data/extracted
         
-        # Map multiple PJM states
-        permit-toolkit map data/extracted --state "Virginia,Maryland,Ohio"
+        # Clean and remove true duplicates
+        permit-toolkit clean data/extracted --deduplicate
         
-        # Map all available states
-        permit-toolkit map data/extracted --all-states
+        # Preview without making changes
+        permit-toolkit clean data/extracted --dry-run
         
-        # Custom output location
-        permit-toolkit map data/extracted/Virginia -o maps/va_facilities.html
+        # Specify custom output directory
+        permit-toolkit clean data/extracted --output data/my_clean_data
+    
+    \b
+    OUTPUT STRUCTURE:
+        data/cleaned/
+          ├── Illinois/         # Cleaned IL permits
+          ├── Maryland/         # Cleaned MD permits
+          ├── ...
+          └── reports/          # JSON reports + summary
+    
+    \b
+    WHAT GETS REMOVED:
+        • Files with 0 generators
+        • True duplicates (with --deduplicate flag)
+    
+    \b
+    WHAT GETS KEPT:
+        • All files with generators (by default, all versions preserved)
+        • With --deduplicate: only newest version of true duplicates
+        • Original files in data/extracted/ remain untouched
     """
-    # ANSI color codes
-    BLUE = '\033[94m'
-    GREEN = '\033[92m'
-    YELLOW = '\033[93m'
-    CYAN = '\033[96m'
-    MAGENTA = '\033[95m'
-    BOLD = '\033[1m'
-    DIM = '\033[2m'
-    RESET = '\033[0m'
-    
+    # Setup paths
     input_dir = Path(input_dir)
-    
-    # Determine which states to process
-    if all_states:
-        states = [d.name for d in input_dir.iterdir() if d.is_dir() and not d.name.startswith('.')]
-    elif state:
-        states = [s.strip() for s in state.split(',')]
-    else:
-        # Try to infer from directory structure
-        if input_dir.name not in ['extracted', 'data']:
-            states = [input_dir.name]
-        else:
-            print(f"{YELLOW}⚠{RESET}  Must specify either --state or --all-states\n")
-            return
-    
-    # Determine output file
-    if not output:
-        state_suffix = states[0].lower() if len(states) == 1 else "multi_state"
-        output = Path(f"data/visualizations/{state_suffix}_facilities_map.html")
-    else:
-        output = Path(output)
-    
-    # Auto-generate title if not provided
-    if not title:
-        if len(states) == 1:
-            title = f"{states[0]} Data Center Facilities"
-        elif len(states) <= 3:
-            title = f"{', '.join(states)} Data Center Facilities"
-        else:
-            title = f"Data Center Facilities ({len(states)} States)"
-    
-    # Cache file location
-    cache_file = None if no_cache else input_dir.parent / "geocoding_cache.json"
+    output_dir = Path(output) if output else Path("data/cleaned")
     
     # Header
     print(f"\n{BOLD}{BLUE}┌{'─' * 78}┐{RESET}")
-    print(f"{BOLD}{BLUE}│{RESET} {BOLD}{'FACILITY MAP GENERATION':^76}{RESET} {BOLD}{BLUE}│{RESET}")
+    print(f"{BOLD}{BLUE}│{RESET} {BOLD}{'DATA CLEANING':^76}{RESET} {BOLD}{BLUE}│{RESET}")
     print(f"{BOLD}{BLUE}└{'─' * 78}┘{RESET}\n")
     
-    # Configuration display
+    print(f"  {DIM}Mode{RESET}      {'DRY RUN' if dry_run else 'LIVE'}")
     print(f"  {DIM}Input{RESET}     {input_dir}")
-    print(f"  {DIM}Output{RESET}    {output}")
-    print(f"  {DIM}States{RESET}    {CYAN}{', '.join(states)}{RESET}")
-    if not no_cache and cache_file and cache_file.exists():
-        print(f"  {DIM}Cache{RESET}     {GREEN}Enabled{RESET} ({cache_file.name})")
-    elif no_cache:
-        print(f"  {DIM}Cache{RESET}     {DIM}Disabled{RESET}")
-    else:
-        print(f"  {DIM}Cache{RESET}     {YELLOW}Creating new{RESET}")
+    print(f"  {DIM}Output{RESET}    {output_dir}\n")
     
-    print(f"\n{DIM}{'─' * 80}{RESET}\n")
+    print(f"{DIM}{'─' * 80}{RESET}\n")
     
-    # Create mapper
-    try:
-        from permit_toolkit.visualization import FacilityMapper
-        if FacilityMapper is None:
-            raise ImportError("FacilityMapper not available")
-        mapper = FacilityMapper(input_dir, cache_file)
-    except ImportError:
-        print(f"{YELLOW}⚠{RESET}  Missing dependencies for mapping")
-        print("   Install with: pip install folium geopy")
-        print("   Or: pip install -r requirements.txt\n")
-        return
+    # Create cleaner
+    cleaner = ExtractionCleaner(input_dir, output_dir)
     
-    # Load permits
-    print(f"  {CYAN}→{RESET} Loading permit data...")
-    df = mapper.load_permits(states, limit_per_state=limit)
+    # Collect files
+    print(f"  {CYAN}→{RESET} Collecting extraction files...")
+    permit_groups = cleaner.collect_all_files()
+    print(f"  {GREEN}✓{RESET} Found {cleaner.stats['total_files']} files across {len(permit_groups)} permit numbers\n")
     
-    if len(df) == 0:
-        print(f"  {YELLOW}⚠{RESET}  No permit data found\n")
+    # Identify versions
+    print(f"  {CYAN}→{RESET} Identifying permit versions...")
+    cleaner.permit_versions = cleaner.identify_permit_versions(permit_groups, deduplicate=deduplicate)
+    print(f"  {GREEN}✓{RESET} Found {cleaner.stats['permit_version_groups']} permits with multiple versions")
+    print(f"  {GREEN}✓{RESET} Found {cleaner.stats['zero_generator_files']} files with 0 generators")
+    if deduplicate and cleaner.stats.get('true_duplicates_found', 0) > 0:
+        print(f"  {GREEN}✓{RESET} Identified {cleaner.stats['true_duplicates_found']} true duplicate(s)")
+    print()
+    
+    if dry_run:
+        files_with_gens = sum(
+            1 for files in permit_groups.values()
+            for f in files if f["generator_count"] > 0
+        )
+        removed_text = ""
+        if deduplicate and cleaner.stats.get('duplicate_files_removed', 0) > 0:
+            removed = cleaner.stats['duplicate_files_removed']
+            removed_text = f" ({removed} duplicates would be removed)"
+        print(f"  {YELLOW}⚠{RESET}  DRY RUN: Would create:")
+        print(f"     • cleaned/: {files_with_gens}{removed_text} files")
+        print(f"     • reports/: 4 report files\n")
         print(f"{DIM}{'─' * 80}{RESET}\n")
         return
     
-    print(f"  {GREEN}✓{RESET} Loaded {len(df)} facilities\n")
+    # Process
+    start_time = time.time()
     
-    # Geocode facilities
-    print(f"  {CYAN}→{RESET} Geocoding addresses...")
-    df_geocoded = mapper.geocode_facilities(df, show_progress=True)
+    print(f"  {CYAN}→{RESET} Setting up directories...")
+    cleaner.setup_directories()
+    print_success("Created output directories")
+    print()
     
-    success_count = df_geocoded['latitude'].notna().sum()
-    success_rate = (success_count / len(df_geocoded)) * 100
+    print(f"  {CYAN}→{RESET} Creating cleaned dataset...")
+    cleaner.create_cleaned_dataset(permit_groups, deduplicate=deduplicate)
+    print_success(f"Created cleaned dataset with {cleaner.stats['final_cleaned_files']} files")
+    if deduplicate and cleaner.stats.get('duplicate_files_removed', 0) > 0:
+        print(f"  {DIM}Removed {cleaner.stats['duplicate_files_removed']} duplicate file(s){RESET}")
+    print()
     
-    color = GREEN if success_rate >= 80 else YELLOW if success_rate >= 60 else '\033[91m'
-    print(f"  {GREEN}✓{RESET} Geocoded {color}{success_count}/{len(df_geocoded)}{RESET} facilities ({color}{success_rate:.0f}%{RESET})\n")
+    print(f"  {CYAN}→{RESET} Generating reports...")
+    cleaner.generate_reports()
+    print_success("Generated detailed reports")
+    print()
     
-    # Create dashboard
-    print(f"  {CYAN}→{RESET} Generating dashboard...")
-    output_path = mapper.create_dashboard(df_geocoded, output, title)
+    processing_time = time.time() - start_time
     
-    if output_path is None:
-        print(f"  {YELLOW}⚠{RESET}  No valid coordinates to map\n")
-        print(f"{DIM}{'─' * 80}{RESET}\n")
-        return
-    
-    file_size = output.stat().st_size / 1024
-    size_str = f"{file_size:.1f} KB" if file_size < 1024 else f"{file_size/1024:.1f} MB"
-    print(f"  {GREEN}✓{RESET} Dashboard saved ({size_str})\n")
-    
-    # Generate summary statistics
-    summary = mapper.generate_summary_stats(df_geocoded)
-    
-    # Summary section
+    # Summary
     print(f"{DIM}{'─' * 80}{RESET}\n")
     print(f"{BOLD}{'SUMMARY':^80}{RESET}\n")
     print(f"{DIM}{'─' * 80}{RESET}\n")
     
-    print(f"  {BOLD}Facilities{RESET}")
-    print(f"    Total            {summary['total_facilities']}")
-    print(f"    Mapped           {GREEN}{summary['facilities_mapped']}{RESET}")
-    print(f"    States           {summary['states']}")
-    print(f"    Counties         {summary['counties']}")
+    print(f"  {BOLD}Input{RESET}")
+    print(f"    Total Files      {cleaner.stats['total_files']}")
+    print(f"    With Generators  {cleaner.stats['files_with_generators']}")
+    print(f"    Zero Generators  {cleaner.stats['zero_generator_files']}")
+    print(f"    Version Groups   {cleaner.stats['permit_version_groups']}")
     
-    print(f"\n  {BOLD}Generators{RESET}")
-    print(f"    Total Count      {MAGENTA}{summary['total_generators']}{RESET}")
-    print(f"    Total Capacity   {summary['total_capacity_mw']:,.1f} MW")
-    print(f"    Avg per Facility {summary['avg_generators_per_facility']:.1f}")
+    print(f"  {BOLD}Output{RESET}")
+    print(f"    Cleaned Files    {cleaner.stats['final_cleaned_files']}")
+    if deduplicate:
+        dup_removed = cleaner.stats.get('duplicate_files_removed', 0)
+        if dup_removed > 0:
+            print(f"    Duplicates       {dup_removed} removed")
+    print(f"    Reports          {len(list((output_dir / 'reports').glob('*.json'))) + 1}")
     
-    if len(summary['by_state']) > 1:
-        print(f"\n  {BOLD}By State{RESET}")
-        for state_name, stats in summary['by_state'].items():
-            print(f"    {state_name:15} {stats['facilities']:3} facilities  "
-                  f"{stats['total_generators']:4} generators  "
-                  f"{stats['total_capacity_mw']:6.0f} MW")
+    print(f"\n  {BOLD}Performance{RESET}")
+    print(f"    Processing Time  {processing_time:.1f}s")
     
-    print(f"\n  Output → {output}")
-    print(f"  {DIM}Open in browser: open {output}{RESET}")
-    
+    print(f"\n  Output → {output_dir}")
+    print(f"\n  {DIM}💡 Review reports/permit_versions.json for version details{RESET}")
     print(f"\n{DIM}{'─' * 80}{RESET}\n")
+

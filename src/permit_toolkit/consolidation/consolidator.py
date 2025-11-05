@@ -4,10 +4,180 @@ import json
 import logging
 from pathlib import Path
 from typing import List, Dict, Any
+import unicodedata
 
 import pandas as pd
+from openpyxl import load_workbook
+from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+from openpyxl.utils import get_column_letter
 
 logger = logging.getLogger(__name__)
+
+
+def calculate_missing_capacity(
+    bhp: Any, hp: Any, kw: Any, mmbtu_hr: Any,
+    eff_gen: float = 0.90, eff_fuel: float = 0.35
+) -> Dict[str, Any]:
+    """
+    Calculate missing capacity values using engineering formulas.
+    
+    Based on standard conversion factors:
+    - BHP/HP are treated as equivalent
+    - kW = BHP/HP * 0.746 * Eff_gen
+    - MMBTU/hr = BHP/HP * 0.746 * Eff_gen * 3412 / (Eff_fuel * 1,000,000)
+    
+    Args:
+        bhp: Rated capacity in BHP (brake horsepower)
+        hp: Rated capacity in HP (horsepower)
+        kw: Rated capacity in kW (kilowatts)
+        mmbtu_hr: Rated capacity in MMBTU/hr (million BTU per hour input)
+        eff_gen: Generator efficiency (default 0.90)
+        eff_fuel: Thermal efficiency (default 0.35)
+        
+    Returns:
+        Dictionary with calculated values for all capacity fields and flags indicating which were calculated
+    """
+    result = {
+        'rated_capacity_bhp': bhp,
+        'rated_capacity_hp': hp,
+        'rated_capacity_kw': kw,
+        'rated_capacity_mmbtu_per_hr': mmbtu_hr,
+        'calculated_bhp': False,
+        'calculated_hp': False,
+        'calculated_kw': False,
+        'calculated_mmbtu_per_hr': False
+    }
+    
+    # Convert to numeric, handling None/empty values
+    def to_float(val):
+        if val is None or val == '':
+            return None
+        try:
+            return float(val)
+        except (ValueError, TypeError):
+            return None
+    
+    bhp_val = to_float(bhp)
+    hp_val = to_float(hp)
+    kw_val = to_float(kw)
+    mmbtu_val = to_float(mmbtu_hr)
+    
+    # Determine primary power value (BHP/HP are equivalent)
+    power_hp = bhp_val if bhp_val is not None else hp_val
+    
+    # Case 1: Have BHP/HP, calculate missing kW and MMBTU/hr
+    if power_hp is not None:
+        # Fill in whichever HP field was missing (but don't override if both exist)
+        if bhp_val is None:
+            result['rated_capacity_bhp'] = power_hp
+            result['calculated_bhp'] = True
+        if hp_val is None:
+            result['rated_capacity_hp'] = power_hp
+            result['calculated_hp'] = True
+            
+        # Calculate kW ONLY if missing: kW = BHP * 0.746 * Eff_gen
+        if kw_val is None:
+            result['rated_capacity_kw'] = round(power_hp * 0.746 * eff_gen, 2)
+            result['calculated_kw'] = True
+        else:
+            result['rated_capacity_kw'] = kw  # Preserve original value
+        
+        # Calculate MMBTU/hr ONLY if missing: MMBTU/hr = (BHP * 0.746 * Eff_gen * 3412) / (Eff_fuel * 1,000,000)
+        if mmbtu_val is None:
+            result['rated_capacity_mmbtu_per_hr'] = round(
+                (power_hp * 0.746 * eff_gen * 3412) / (eff_fuel * 1_000_000), 3
+            )
+            result['calculated_mmbtu_per_hr'] = True
+        else:
+            result['rated_capacity_mmbtu_per_hr'] = mmbtu_hr  # Preserve original value
+    
+    # Case 2: Have kW, calculate missing BHP/HP and MMBTU/hr
+    elif kw_val is not None:
+        # Calculate BHP/HP from kW: BHP = kW / (0.746 * Eff_gen)
+        calculated_hp = round(kw_val / (0.746 * eff_gen), 2)
+        if bhp_val is None:
+            result['rated_capacity_bhp'] = calculated_hp
+            result['calculated_bhp'] = True
+        else:
+            result['rated_capacity_bhp'] = bhp  # Preserve original value
+        if hp_val is None:
+            result['rated_capacity_hp'] = calculated_hp
+            result['calculated_hp'] = True
+        else:
+            result['rated_capacity_hp'] = hp  # Preserve original value
+        
+        # Calculate MMBTU/hr ONLY if missing: MMBTU/hr = (kW * 3412) / (Eff_fuel * 1,000,000)
+        if mmbtu_val is None:
+            result['rated_capacity_mmbtu_per_hr'] = round(
+                (kw_val * 3412) / (eff_fuel * 1_000_000), 3
+            )
+            result['calculated_mmbtu_per_hr'] = True
+        else:
+            result['rated_capacity_mmbtu_per_hr'] = mmbtu_hr  # Preserve original value
+    
+    # Case 3: Have MMBTU/hr, calculate missing BHP/HP and kW
+    elif mmbtu_val is not None:
+        # Calculate BHP/HP from MMBTU/hr: BHP = (MMBTU/hr * Eff_fuel * 1,000,000) / (0.746 * Eff_gen * 3412)
+        calculated_hp = round(
+            (mmbtu_val * eff_fuel * 1_000_000) / (0.746 * eff_gen * 3412), 2
+        )
+        if bhp_val is None:
+            result['rated_capacity_bhp'] = calculated_hp
+            result['calculated_bhp'] = True
+        else:
+            result['rated_capacity_bhp'] = bhp  # Preserve original value
+        if hp_val is None:
+            result['rated_capacity_hp'] = calculated_hp
+            result['calculated_hp'] = True
+        else:
+            result['rated_capacity_hp'] = hp  # Preserve original value
+        
+        # Calculate kW ONLY if missing: kW = (MMBTU/hr * Eff_fuel * 1,000,000) / 3412
+        if kw_val is None:
+            result['rated_capacity_kw'] = round(
+                (mmbtu_val * eff_fuel * 1_000_000) / 3412, 2
+            )
+            result['calculated_kw'] = True
+        else:
+            result['rated_capacity_kw'] = kw  # Preserve original value
+    
+    return result
+
+
+def clean_text(text: Any) -> Any:
+    """
+    Clean text fields by normalizing Unicode and removing problematic characters.
+    
+    Args:
+        text: Input text or other data type
+        
+    Returns:
+        Cleaned text or original value if not a string
+    """
+    if not isinstance(text, str):
+        return text
+    
+    # Normalize Unicode characters (NFKC handles compatibility characters)
+    text = unicodedata.normalize('NFKC', text)
+    
+    # Replace common problematic characters with ASCII equivalents
+    replacements = {
+        '\u2265': '>=',  # ≥ greater than or equal
+        '\u2264': '<=',  # ≤ less than or equal  
+        '\u00b0': 'deg', # ° degree symbol
+        '\u2013': '-',   # – en dash
+        '\u2014': '-',   # — em dash
+        '\u2018': "'",   # ' left single quote
+        '\u2019': "'",   # ' right single quote
+        '\u201c': '"',   # " left double quote
+        '\u201d': '"',   # " right double quote
+        '\u00a0': ' ',   # non-breaking space
+    }
+    
+    for char, replacement in replacements.items():
+        text = text.replace(char, replacement)
+    
+    return text
 
 
 class PermitConsolidator:
@@ -31,7 +201,7 @@ class PermitConsolidator:
         
     def load_json(self, json_path: Path) -> Dict[str, Any]:
         """Load a single extracted permit JSON file."""
-        with open(json_path, 'r') as f:
+        with open(json_path, 'r', encoding='utf-8') as f:
             return json.load(f)
     
     def flatten_permit(self, permit_data: Dict[str, Any], source_file: str = None, metadata: Dict[str, Any] = None) -> List[Dict[str, Any]]:
@@ -59,14 +229,21 @@ class PermitConsolidator:
             'facility_name': permit_details.get('facilityName'),
             'facility_address': permit_details.get('facilityAddress'),
             'facility_county': permit_details.get('facilityCounty'),
+            'facility_state': permit_details.get('facilityState'),
+            'state_facility_id': permit_details.get('stateFacilityID'),
+            
+            # Additional permit details
+            'initial_construction_commenced_notification_required': permit_details.get('initialConstructionCommencedNotificationRequired'),
+            'construction_commenced_notification_window_days': permit_details.get('constructionCommencedNotificationWindowDays'),
+            'initial_startup_notification_required': permit_details.get('initialStartupNotificationRequired'),
+            'startup_notification_window_days': permit_details.get('startupNotificationWindowDays'),
+            'permit_copy_onsite_required': permit_details.get('permitCopyOnsiteRequired'),
+            'right_of_entry_clause': permit_details.get('rightOfEntryClause'),
+            
+            'permit_extraction_notes': permit_details.get('extractionNotes'),
         }
         
-        # Add only essential metadata fields (state)
-        if metadata:
-            base_info.update({
-                'state': metadata.get('state'),
-            })
-        
+        # Add source file if provided
         if source_file:
             base_info['source_file'] = source_file
         
@@ -78,66 +255,94 @@ class PermitConsolidator:
         # Create one record per generator
         for gen in generator_sets:
             record = base_info.copy()
+            
+            # Convert allowedOperatingModes - handle both string and array
+            allowed_modes = gen.get('allowedOperatingModes')
+            if isinstance(allowed_modes, list):
+                allowed_modes_str = '; '.join(allowed_modes) if allowed_modes else None
+            elif isinstance(allowed_modes, str):
+                allowed_modes_str = allowed_modes
+            else:
+                allowed_modes_str = None
+            
+            # Calculate missing capacity values
+            capacity_values = calculate_missing_capacity(
+                bhp=gen.get('ratedCapacityBHP'),
+                hp=gen.get('ratedCapacityHP'),
+                kw=gen.get('ratedCapacityKW'),
+                mmbtu_hr=gen.get('ratedCapacityMMBtuPerHr')
+            )
+            
             record.update({
                 # Generator identification
                 'num_generators': gen.get('numGenerators'),
                 'generator_ref': gen.get('referenceNumber'),
+                'included_in_permit_project': gen.get('includedInPermitProject'),
+                'original_permit_date': gen.get('originalPermitDate'),
+                'equipment_facility_id': gen.get('equipmentFacilityID'),
                 'make': gen.get('make'),
                 'model': gen.get('model'),
                 
-                # Capacity - rated
-                'rated_capacity_bhp': gen.get('ratedCapacityBHP'),
-                'rated_capacity_kw': gen.get('ratedCapacityKW'),
-                'rated_capacity_mw': (
-                    gen.get('ratedCapacityKW') / 1000 
-                    if gen.get('ratedCapacityKW') else None
-                ),
+                # Capacity (with calculated values)
+                'rated_capacity_bhp': capacity_values['rated_capacity_bhp'],
+                'rated_capacity_hp': capacity_values['rated_capacity_hp'],
+                'rated_capacity_kw': capacity_values['rated_capacity_kw'],
+                'rated_capacity_mmbtu_per_hr': capacity_values['rated_capacity_mmbtu_per_hr'],
                 
-                # Capacity - maximum (new fields)
-                'maximum_capacity_bhp': gen.get('maximumCapacityBHP'),
-                'maximum_capacity_kw': gen.get('maximumCapacityKW'),
-                'maximum_capacity_mw': (
-                    gen.get('maximumCapacityKW') / 1000 
-                    if gen.get('maximumCapacityKW') else None
-                ),
+                # Flags for calculated capacity values (for Excel styling)
+                'calculated_bhp': capacity_values['calculated_bhp'],
+                'calculated_hp': capacity_values['calculated_hp'],
+                'calculated_kw': capacity_values['calculated_kw'],
+                'calculated_mmbtu_per_hr': capacity_values['calculated_mmbtu_per_hr'],
                 
-                # Fuel - updated to support multiple fuel types
+                # Fuel - primary, secondary, other
                 'primary_fuel_type': gen.get('primaryFuelType'),
                 'secondary_fuel_type': gen.get('secondaryFuelType'),
                 'other_fuels': gen.get('otherFuels'),
-                'fuel_throughput_gal_yr': gen.get('fuelThroughputLimit'),
-                'fuel_sulfur_content': gen.get('fuelSulfurContent'),
+                'fuel_grade': gen.get('fuelGrade'),
+                'fuel_specification': gen.get('fuelSpecification'),
                 
-                # Operating parameters
-                'operating_hours_limit_yr': gen.get('operatingHoursLimit'),
+                # Fuel - sulfur content and certification
+                'fuel_sulfur_content_pct': gen.get('fuelSulfurContentPct'),
+                'fuel_certification_required': gen.get('fuelCertificationRequired'),
+                'fuel_change_permit_trigger': gen.get('fuelChangePermitTrigger'),
+                
+                # Fuel - throughput per unit
+                'fuel_throughput_per_unit_limit': gen.get('fuelThroughputPerUnitLimit'),
+                'fuel_throughput_per_unit_scope': gen.get('fuelThroughputPerUnitScope'),
+                'fuel_throughput_per_unit_group_ref': gen.get('fuelThroughputPerUnitGroupRef'),
+                
+                # Fuel - throughput combined
+                'fuel_throughput_combined_limit': gen.get('fuelThroughputCombinedLimit'),
+                'fuel_throughput_combined_group_ref': gen.get('fuelThroughputCombinedGroupRef'),
+                
+                # Control technology
                 'control_technology': gen.get('controlTechnology'),
                 
-                # Emissions - NOx
-                'nox_limit_lbs_hr': gen.get('noxEmissionLimitLbsHr'),
-                'nox_limit_tons_yr': gen.get('noxEmissionLimitTonsYr'),
+                # Operating hours - per unit
+                'operating_hours_per_unit_limit': gen.get('operatingHoursPerUnitLimit'),
+                'operating_hours_per_unit_rolling_window': gen.get('operatingHoursPerUnitRollingWindow'),
                 
-                # Emissions - CO
-                'co_limit_lbs_hr': gen.get('coEmissionLimitLbsHr'),
-                'co_limit_tons_yr': gen.get('coEmissionLimitTonsYr'),
+                # Operating hours - combined
+                'operating_hours_combined_limit': gen.get('operatingHoursCombinedLimit'),
+                'operating_hours_combined_group_ref': gen.get('operatingHoursCombinedGroupRef'),
+                'operating_hours_combined_rolling_window': gen.get('operatingHoursCombinedRollingWindow'),
                 
-                # Emissions - VOC
-                'voc_limit_lbs_hr': gen.get('vocEmissionLimitLbsHr'),
-                'voc_limit_tons_yr': gen.get('vocEmissionLimitTonsYr'),
+                # Operating parameters
+                'allowed_operating_modes': allowed_modes_str,
+                'opacity_limit_percent': gen.get('opacityLimitPercent'),
                 
-                # Emissions - PM
-                'pm_limit_lbs_hr': gen.get('pmEmissionLimitLbsHr'),
-                'pm_limit_tons_yr': gen.get('pmEmissionLimitTonsYr'),
+                # Monitoring requirements
+                'hour_meter_required': gen.get('hourMeterRequired'),
+                'observation_frequency': gen.get('observationFrequency'),
+                'recordkeeping_window_years': gen.get('recordkeepingWindowYears'),
                 
-                # Emissions - PM10
-                'pm10_limit_lbs_hr': gen.get('pm10EmissionLimitLbsHr'),
-                'pm10_limit_tons_yr': gen.get('pm10EmissionLimitTonsYr'),
+                # Regulatory applicability
+                'nsps_subpart_iiii': gen.get('nspsSubpartIIII'),
+                'mact_subpart_zzzz': gen.get('mactSubpartZZZZ'),
                 
-                # Emissions - SO2
-                'so2_limit_lbs_hr': gen.get('so2EmissionLimitLbsHr'),
-                'so2_limit_tons_yr': gen.get('so2EmissionLimitTonsYr'),
-                
-                # Testing
-                'stack_test_required': gen.get('stackTestRequired'),
+                # Extraction notes
+                'generator_extraction_notes': gen.get('extractionNotes'),
             })
             
             records.append(record)
@@ -211,6 +416,11 @@ class PermitConsolidator:
         # Create DataFrame
         df = pd.DataFrame(all_records)
         
+        # Clean all text fields to ensure proper ASCII/UTF-8 compatibility
+        for col in df.columns:
+            if df[col].dtype == 'object':  # Only clean text columns
+                df[col] = df[col].apply(clean_text)
+        
         # Sort by facility and generator (if columns exist)
         sort_columns = []
         if 'facility_name' in df.columns:
@@ -224,7 +434,9 @@ class PermitConsolidator:
         # Save if output path specified
         if output_path:
             output_path.parent.mkdir(parents=True, exist_ok=True)
-            df.to_csv(output_path, index=False)
+            # Use utf-8-sig to add BOM for Excel compatibility, or utf-8 for clean UTF-8
+            # Using utf-8 with errors='replace' ensures problematic characters are handled
+            df.to_csv(output_path, index=False, encoding='utf-8', errors='replace')
             logger.info(f"✓ Saved consolidated data to: {output_path}")
         
         # Log summary
@@ -248,23 +460,193 @@ class PermitConsolidator:
             Dictionary with summary statistics
         """
         summary = {
-            'total_facilities': int(df['facility_name'].nunique()),
+            'total_facilities': int(df['facility_name'].nunique()) if 'facility_name' in df.columns else 0,
             'total_generators': len(df),
-            'total_capacity_mw': float(df['rated_capacity_mw'].sum()),
-            'counties': int(df['facility_county'].nunique()),
+            'total_capacity_kw': float(df['rated_capacity_kw'].sum()) if 'rated_capacity_kw' in df.columns else 0,
+            'counties': int(df['facility_county'].nunique()) if 'facility_county' in df.columns else 0,
         }
         
-        # Fuel type distribution
-        fuel_dist = df['fuel_type'].value_counts().to_dict()
-        summary['fuel_type_distribution'] = fuel_dist
+        # Fuel type distribution (using primary_fuel_type)
+        if 'primary_fuel_type' in df.columns:
+            fuel_dist = df['primary_fuel_type'].value_counts().to_dict()
+            summary['fuel_type_distribution'] = fuel_dist
         
         # Capacity by manufacturer
-        capacity_by_make = (
-            df.groupby('make')['rated_capacity_mw']
-            .sum()
-            .sort_values(ascending=False)
-            .to_dict()
-        )
-        summary['capacity_by_manufacturer'] = capacity_by_make
+        if 'make' in df.columns and 'rated_capacity_kw' in df.columns:
+            capacity_by_make = (
+                df.groupby('make')['rated_capacity_kw']
+                .sum()
+                .sort_values(ascending=False)
+                .to_dict()
+            )
+            summary['capacity_by_manufacturer'] = capacity_by_make
         
         return summary
+
+    def save_styled_excel(self, df: pd.DataFrame, output_path: Path):
+        """
+        Save DataFrame to Excel with professional styling.
+        
+        Features:
+        - Alternating row colors for readability
+        - Frozen header row
+        - Auto-adjusted column widths
+        - Bold header with colored background
+        - Proper text wrapping
+        - Borders for clean appearance
+        - Highlighting for calculated capacity values (light blue background)
+        
+        Args:
+            df: DataFrame to save
+            output_path: Path to save Excel file
+        """
+        # Identify calculated flag columns to exclude from Excel output
+        calc_flag_cols = ['calculated_bhp', 'calculated_hp', 'calculated_kw', 'calculated_mmbtu_per_hr']
+        
+        # Create a copy for Excel without the calculated flag columns
+        df_excel = df.drop(columns=[col for col in calc_flag_cols if col in df.columns], errors='ignore')
+        
+        # Save DataFrame to Excel first
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        df_excel.to_excel(output_path, index=False, engine='openpyxl')
+        
+        # Load workbook for styling
+        wb = load_workbook(output_path)
+        ws = wb.active
+        
+        # Define professional color scheme
+        header_fill = PatternFill(
+            start_color="1F4E78", end_color="1F4E78", fill_type="solid"
+        )
+        header_font = Font(bold=True, color="FFFFFF", size=11)
+        
+        alt_row_light = PatternFill(
+            start_color="FFFFFF", end_color="FFFFFF", fill_type="solid"
+        )
+        alt_row_dark = PatternFill(
+            start_color="F2F2F2", end_color="F2F2F2", fill_type="solid"
+        )
+        
+        # Calculated value fill (light blue/cyan to indicate calculated)
+        calculated_fill = PatternFill(
+            start_color="D6EAF8", end_color="D6EAF8", fill_type="solid"
+        )
+        calculated_fill_alt = PatternFill(
+            start_color="C4DEF6", end_color="C4DEF6", fill_type="solid"
+        )
+        
+        # Border styles
+        thin_border = Border(
+            left=Side(style="thin", color="D3D3D3"),
+            right=Side(style="thin", color="D3D3D3"),
+            top=Side(style="thin", color="D3D3D3"),
+            bottom=Side(style="thin", color="D3D3D3"),
+        )
+        
+        header_border = Border(
+            left=Side(style="thin", color="FFFFFF"),
+            right=Side(style="thin", color="FFFFFF"),
+            top=Side(style="medium", color="1F4E78"),
+            bottom=Side(style="medium", color="1F4E78"),
+        )
+        
+                # Alignment - compact without text wrapping
+        header_align = Alignment(
+            horizontal="center", vertical="center", wrap_text=False
+        )
+        cell_align = Alignment(
+            horizontal="left", vertical="center", wrap_text=False
+        )
+        
+        # Style header row
+        for col_num in range(1, len(df.columns) + 1):
+            cell = ws.cell(row=1, column=col_num)
+            cell.fill = header_fill
+            cell.font = header_font
+            cell.alignment = header_align
+            cell.border = header_border
+        
+        # Set header row height
+        ws.row_dimensions[1].height = 30
+        
+        # Create mapping from Excel columns to original DataFrame columns
+        capacity_cols_map = {}
+        if 'rated_capacity_bhp' in df_excel.columns:
+            capacity_cols_map['rated_capacity_bhp'] = df_excel.columns.get_loc('rated_capacity_bhp') + 1
+        if 'rated_capacity_hp' in df_excel.columns:
+            capacity_cols_map['rated_capacity_hp'] = df_excel.columns.get_loc('rated_capacity_hp') + 1
+        if 'rated_capacity_kw' in df_excel.columns:
+            capacity_cols_map['rated_capacity_kw'] = df_excel.columns.get_loc('rated_capacity_kw') + 1
+        if 'rated_capacity_mmbtu_per_hr' in df_excel.columns:
+            capacity_cols_map['rated_capacity_mmbtu_per_hr'] = df_excel.columns.get_loc('rated_capacity_mmbtu_per_hr') + 1
+        
+        # Style data rows with alternating colors and calculated highlights
+        for row_num in range(2, len(df) + 2):
+            use_alt_color = (row_num - 2) % 2 == 1  # Every other row
+            df_row_idx = row_num - 2  # Index into original DataFrame
+            
+            # Set compact row height
+            ws.row_dimensions[row_num].height = 18
+            
+            for col_num in range(1, len(df_excel.columns) + 1):
+                cell = ws.cell(row=row_num, column=col_num)
+                col_name = df_excel.columns[col_num - 1]
+                
+                # Check if this is a calculated capacity value
+                is_calculated = False
+                if col_name == 'rated_capacity_bhp' and 'calculated_bhp' in df.columns:
+                    is_calculated = df.iloc[df_row_idx]['calculated_bhp']
+                elif col_name == 'rated_capacity_hp' and 'calculated_hp' in df.columns:
+                    is_calculated = df.iloc[df_row_idx]['calculated_hp']
+                elif col_name == 'rated_capacity_kw' and 'calculated_kw' in df.columns:
+                    is_calculated = df.iloc[df_row_idx]['calculated_kw']
+                elif col_name == 'rated_capacity_mmbtu_per_hr' and 'calculated_mmbtu_per_hr' in df.columns:
+                    is_calculated = df.iloc[df_row_idx]['calculated_mmbtu_per_hr']
+                
+                # Apply fill based on whether it's calculated
+                if is_calculated:
+                    cell.fill = calculated_fill_alt if use_alt_color else calculated_fill
+                else:
+                    cell.fill = alt_row_dark if use_alt_color else alt_row_light
+                
+                cell.alignment = cell_align
+                cell.border = thin_border
+        
+        # Set compact column widths based on column name patterns
+        for col_num, column in enumerate(df.columns, 1):
+            col_letter = get_column_letter(col_num)
+            column_name = str(column).lower()
+            
+            # Define compact widths based on column type
+            if 'date' in column_name or 'ref' in column_name or 'id' in column_name:
+                width = 12
+            elif 'state' in column_name or 'county' in column_name:
+                width = 14
+            elif 'name' in column_name or 'address' in column_name:
+                width = 25
+            elif 'notes' in column_name or 'specification' in column_name:
+                width = 30
+            elif any(x in column_name for x in ['limit', 'capacity', 'hours', 'percent', 'pct']):
+                width = 15
+            else:
+                width = 18
+            
+            ws.column_dimensions[col_letter].width = width
+        
+        # Freeze header row
+        ws.freeze_panes = "A2"
+        
+        # Add legend explaining the calculated value highlighting
+        legend_row = len(df) + 4
+        ws.cell(row=legend_row, column=1).value = "Legend:"
+        ws.cell(row=legend_row, column=1).font = Font(bold=True)
+        
+        legend_row += 1
+        ws.cell(row=legend_row, column=1).value = "Light blue cells"
+        ws.cell(row=legend_row, column=1).fill = calculated_fill
+        ws.cell(row=legend_row, column=2).value = "= Calculated capacity values (derived from other capacity metrics)"
+        
+        # Save styled workbook
+        wb.save(output_path)
+        logger.info(f"✓ Applied professional styling to Excel file")
+        logger.info(f"  Calculated capacity values are highlighted in light blue")

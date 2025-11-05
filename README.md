@@ -1,538 +1,559 @@
 # Air Quality Permit Toolkit
 
-> **System for extracting structured data from air quality permits for backup generator analysis**
+> **User-friendly tool for extracting structured data from air quality permits using AI**
 
 [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-Extract structured data from air quality permits using state-of-the-art LLMs with **cross-state compatibility**, **intelligent deduplication**, and **error handling**.
+Convert air quality permit PDFs into structured spreadsheets with just a few commands!
 
 ---
 
-## ✨ Key Features
+## ✨ What Does This Do?
 
-- **Hybrid LLM Extraction** - OpenAI for accuracy + optional LangExtract for traceability
-- **Cross-State Support** - Handles Virginia, Illinois, and other state permit formats
-- **Smart Deduplication** - Automatic detection of duplicate permits
-- **Rich Structured Output** - 39+ fields per generator including emissions data
-- **Data Consolidation** - CSV/Excel export for analysis
-- **Interactive Maps** - Geocoded facility visualization with generator counts
+This tool reads PDF permit documents and automatically extracts information about backup generators into a spreadsheet you can analyze in Excel or Google Sheets.
+
+### Key Features
+
+- **Easy to Use** - Simple commands, clear error messages, helpful guidance
+- **Accurate** - Uses advanced AI (GPT-5) to read and understand permits
+- **Fast** - Process a permit in 10-80 seconds
+- **Validated** - Built-in checks to ensure data quality
+- **Multi-State** - Works with Virginia, Illinois, Michigan, Kentucky permits
+- **Affordable** - ~$0.003-0.013 per permit extraction
 
 ---
 
-## 🚀 Quick Start
+## 🚀 Quick Start (5 minutes)
 
-### Prerequisites
+### Step 1: Install
 
-- **Python 3.9+** (Python 3.9, 3.10, 3.11, or 3.12)
-- **API Access**: Either OpenAI API key OR Azure OpenAI service
-
-### Installation with pixi (Recommended)
-
-**Why pixi?** Fast binary installs, reproducible environments, zero configuration, works across all platforms.
+We use **pixi** for easy setup (it handles all the technical stuff):
 
 ```bash
-# 1. Install pixi (one-time setup)
+# Install pixi (one-time, takes ~30 seconds)
 curl -fsSL https://pixi.sh/install.sh | bash
-# Or on Windows: iwr -useb https://pixi.sh/install.ps1 | iex
+# Windows users: iwr -useb https://pixi.sh/install.ps1 | iex
 
-# 2. Clone repository
+# Clone the project
 git clone https://github.com/NREL/backupgensprint.git
 cd backupgensprint
 
-# 3. Install dependencies (automatic, takes ~30 seconds)
+# Install everything automatically
 pixi install
+```
 
-# 4. Configure API credentials
+### Step 2: Add Your API Key
 
-# Option A: OpenAI API
-echo "OPENAI_API_KEY=your-key-here" > .env
+You need an OpenAI API key (like a password for using AI). [Get one here](https://platform.openai.com/api-keys) (costs ~$0.01 per permit).
 
-# Option B: Azure OpenAI
-echo "AZURE_OPENAI_API_KEY=your-azure-key" > .env
-echo "AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com/" >> .env
-echo "AZURE_OPENAI_API_VERSION=2025-04-01-preview" >> .env
+```bash
+# Create a .env file with your API key
+echo "OPENAI_API_KEY=sk-your-key-here" > .env
 
-# 5. Verify installation
+# Alternative: Use Azure OpenAI if you have it
+cat > .env << 'EOF'
+AZURE_OPENAI_API_KEY=your-azure-key
+AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com/
+EOF
+```
+
+### Step 3: Extract Data
+
+```bash
+# Put your PDF permits in a folder, then:
+pixi run permit-toolkit extract permits/Virginia
+
+# The tool will:
+# ✓ Find all PDF files
+# ✓ Extract data from each permit
+# ✓ Save results as JSON files in extracted/Virginia/
+```
+
+### Step 4: Create Spreadsheet
+
+```bash
+# Combine all extracted data into one spreadsheet
+pixi run permit-toolkit consolidate extracted/Virginia
+
+# Opens the file outputs/Virginia/virginia_consolidated.csv
+# Open this in Excel or Google Sheets!
+```
+
+That's it! 🎉
+
+---
+
+## 📖 Detailed Usage
+
+### Extract Command
+
+Extract data from PDF permits into structured JSON files.
+
+```bash
+pixi run permit-toolkit extract <path-to-permits> [options]
+```
+
+**Examples:**
+
+```bash
+# Extract a single permit
+pixi run permit-toolkit extract permits/Virginia/12345.pdf
+
+# Extract all permits in a folder
+pixi run permit-toolkit extract permits/Virginia
+
+# Test with just 5 permits first (recommended!)
+pixi run permit-toolkit extract permits/Virginia -n 5
+
+# Use Azure OpenAI (faster, higher limits)
+pixi run permit-toolkit extract permits/Illinois --use-azure
+
+# Reprocess files that were already extracted
+pixi run permit-toolkit extract permits/Virginia --reprocess
+
+# Custom output location
+pixi run permit-toolkit extract permits/Virginia -o custom_output/
+```
+
+**Options:**
+- `-n, --limit N` - Only process first N files (great for testing)
+- `--use-azure` - Use Azure OpenAI instead of regular OpenAI
+- `--reprocess` - Re-extract files that were already processed
+- `-o, --output DIR` - Custom output directory (auto-detected by default)
+- `--state NAME` - State name (auto-detected from folder name)
+
+**What It Does:**
+- Reads PDF files and extracts text
+- Uses AI to identify generator information
+- Saves structured data as JSON files
+- Shows progress and success/failure for each file
+- Automatically organizes output: `permits/Virginia/` → `extracted/Virginia/`
+
+### Consolidate Command
+
+Combine extracted JSON files into a single spreadsheet.
+
+```bash
+pixi run permit-toolkit consolidate <path-to-extracted> [options]
+```
+
+**Examples:**
+**Examples:**
+
+```bash
+# Consolidate all extracted permits
+pixi run permit-toolkit consolidate extracted/Virginia
+
+# Result: outputs/Virginia/virginia_consolidated.csv
+
+# Consolidate to Excel format
+pixi run permit-toolkit consolidate extracted/Illinois --format excel
+
+# Result: outputs/Illinois/illinois_consolidated.xlsx
+
+# Custom output file
+pixi run permit-toolkit consolidate extracted/Virginia -o my_data.csv
+
+# Filter specific state from mixed directory
+pixi run permit-toolkit consolidate extracted/ --state Virginia
+```
+
+**Options:**
+- `--format FORMAT` - Output format: `csv`, `excel`, or `json` (default: csv)
+- `-o, --output FILE` - Custom output file path
+- `--state NAME` - Filter by specific state
+
+**What It Does:**
+- Reads all JSON files from extraction
+- Combines into a single table (one row per generator)
+- Saves as CSV/Excel/JSON in `outputs/` folder
+- Automatically organizes: `extracted/Virginia/` → `outputs/Virginia/`
+
+---
+
+## 📊 Understanding the Output
+
+### Extracted JSON Files
+
+Each PDF creates one JSON file with:
+
+```json
+{
+  "permitDetails": {
+    "permitNumber": "11790-DC",
+    "facilityName": "1600 Wilson Boulevard",
+    "facilityState": "Virginia",
+    ...
+  },
+  "generatorSets": [
+    {
+      "equipmentId": "GEN-1",
+      "manufacturer": "Caterpillar",
+      "modelNumber": "3512B",
+      "horsepowerBhp": 1700,
+      "fuelType": "Diesel",
+      "noxLimitLbsHr": 14.5,
+      ...
+    }
+  ]
+}
+```
+
+### Consolidated Spreadsheet
+
+One row per generator with 52 columns:
+
+| Column Group | Examples |
+|--------------|----------|
+| **Permit Info** | permit_number, permit_issuance_date, permit_expiration_date |
+| **Location** | facility_name, facility_address, facility_county, facility_state |
+| **Generator Details** | make, model, rated_capacity_hp, rated_capacity_bhp, rated_capacity_kw |
+| **Fuel Information** | primary_fuel_type, fuel_grade, fuel_sulfur_content_pct, fuel_specification |
+| **Fuel Limits** | fuel_throughput_limit, fuel_throughput_scope, fuel_certification_required |
+| **Operating Limits** | operating_hours_limit, operating_hours_rolling_window, allowed_operating_modes |
+| **Monitoring** | hour_meter_required, observation_frequency, recordkeeping_window_years |
+| **Compliance** | nsps_subpart_iiii, mact_subpart_zzzz, control_technology |
+
+---
+
+## 🔧 Command Reference
+
+### Get Help Anytime
+
+```bash
+# General help
 pixi run permit-toolkit --help
+
+# Command-specific help  
+pixi run permit-toolkit extract --help
+pixi run permit-toolkit consolidate --help
 ```
 
-**That's it!** No virtual environments, no version conflicts, just works.
-
-**Using pixi commands:**
-```bash
-# Run commands with 'pixi run' prefix
-pixi run permit-toolkit extract data/permits/Virginia/sample.pdf
-pixi run permit-toolkit consolidate data/extracted/Virginia
-
-# Or enter pixi shell (no prefix needed)
-pixi shell
-permit-toolkit extract data/permits/Virginia/sample.pdf
-exit
-```
-
-### Alternative: pip Installation
-
-If you prefer traditional Python tools:
+### Common Workflows
 
 ```bash
-# Clone and enter directory
-git clone https://github.com/NREL/backupgensprint.git
-cd backupgensprint
-
-# Create virtual environment (recommended)
-python -m venv .venv
-source .venv/bin/activate  # Windows: .venv\Scripts\activate
-
-# Install package with all dependencies
-pip install -e .
-
-# Configure API credentials
-
-# Option A: OpenAI API
-echo "OPENAI_API_KEY=your-key-here" > .env
-
-# Option B: Azure OpenAI
-echo "AZURE_OPENAI_API_KEY=your-azure-key" > .env
-echo "AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com/" >> .env
-echo "AZURE_OPENAI_API_VERSION=2025-04-01-preview" >> .env
-
-# Verify installation
-permit-toolkit --help
-```
-
-### Extract Single Permit
-
-```bash
-# Using OpenAI
-permit-toolkit extract data/permits/Virginia/11790_DC_Permit.pdf
-
-# Using Azure OpenAI  
-permit-toolkit extract data/permits/Virginia/11790_DC_Permit.pdf --use-azure
-```
-
-### Extract Multiple Permits
-
-```bash
-# Extract first 10 Virginia permits (OpenAI)
-permit-toolkit extract data/permits/Virginia -n 10
-
-# Extract all Illinois permits with GPT-4o via Azure
-permit-toolkit extract data/permits/Illinois --model gpt-4o --use-azure
-```
-
-### Consolidate to CSV
-
-```bash
-# Consolidate Virginia extractions
-permit-toolkit consolidate data/extracted/Virginia -o virginia_dataset.csv
-
-# Consolidate with Excel output
-permit-toolkit consolidate data/extracted/Illinois --format excel
-```
-
-### Visualize on Map
-
-```bash
-# Map single state facilities
-permit-toolkit map data/extracted --state Virginia
-
-# Map multiple states
-permit-toolkit map data/extracted --state "Virginia,Maryland,Ohio"
-
-# Map all available states
-permit-toolkit map data/extracted --all-states
-```
-
----
-
-## Azure OpenAI Setup
-
-For users with Azure OpenAI deployments, the toolkit supports Azure as an alternative to OpenAI API with typically higher rate limits and enhanced security.
-
-### Prerequisites for Azure
-
-1. **Azure OpenAI Service** deployed with model access (gpt-4o, gpt-4o-mini, etc.)
-2. **API credentials** from your Azure portal
-
-### Configuration
-
-1. **Get your Azure credentials** from the Azure portal:
-   ```bash
-   # Your Azure OpenAI resource endpoint
-   AZURE_OPENAI_ENDPOINT="https://your-resource.openai.azure.com/"
-   
-   # Your API key from Azure portal > Keys and Endpoint
-   AZURE_OPENAI_API_KEY="your-32-character-key"
-   
-   # API version (optional, defaults to 2025-04-01-preview)
-   AZURE_OPENAI_API_VERSION="2025-04-01-preview"
-   
-   # Deployment name (optional, uses your Azure model deployment name)
-   AZURE_OPENAI_MODEL="your-deployment-name"
-   ```
-
-2. **Set environment variables**:
-   ```bash
-   # Create .env file with Azure credentials
-   cat > .env << EOF
-   AZURE_OPENAI_API_KEY=your-azure-key
-   AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com/
-   AZURE_OPENAI_API_VERSION=2025-04-01-preview
-   AZURE_OPENAI_MODEL=your-deployment-name
-   EOF
-   ```
-
-3. **Verify Azure connection**:
-   ```bash
-   # Test with a single permit
-   pixi run permit-toolkit extract data/permits/Virginia/sample.pdf --use-azure --model gpt-4o
-   ```
-
-### Azure Usage Examples
-
-```bash
-# Load environment variables from .env file
-export $(cat .env | grep -v '^#' | xargs)
-
-# Extract with Azure OpenAI (uses AZURE_OPENAI_MODEL from .env)
-permit-toolkit extract data/permits/Virginia --use-azure
-
-# Override model with --model flag (ignores AZURE_OPENAI_MODEL)
-permit-toolkit extract data/permits/Illinois --use-azure --model compassop-gpt-4o
-
-# Batch processing with Azure (higher rate limits)
-permit-toolkit extract data/permits/Virginia --use-azure -n 50
-```
-
-**Changing Azure Models:**
-
-You have three options to select which Azure model deployment to use:
-
-1. **Set in .env (recommended)** - Edit `AZURE_OPENAI_MODEL` in your `.env` file:
-   ```bash
-   AZURE_OPENAI_MODEL=compassop-gpt-4.1-mini  # Change this line
-   ```
-
-2. **Use --model flag** - Override on command line:
-   ```bash
-   permit-toolkit extract file.pdf --use-azure --model compassop-gpt-5
-   ```
-
----
-
-## 📋 CLI Commands
-
-### `extract` - Extract Data from PDFs
-
-```bash
-permit-toolkit extract PATH [OPTIONS]
-```
-
-**Options:**
-- `-o, --output PATH` - Output directory
-- `--state TEXT` - State name (auto-detected)
-- `--model TEXT` - Model selection: `gpt-4o`, `gpt-4o-mini` (default)
-- `--use-azure` - Use Azure OpenAI
-- `--enable-qa-qc` - Enable QA/QC validation
-- `-n, --limit INT` - Process first N files
-- `--skip-existing/--reprocess` - Skip/reprocess existing files
-
-### `consolidate` - Convert JSON to Datasets
-
-```bash
-permit-toolkit consolidate INPUT_DIR [OPTIONS]
-```
-
-**Options:**
-- `-o, --output PATH` - Output file path
-- `--state TEXT` - Filter by state
-- `--format [csv|excel|json]` - Output format (default: csv)
-
-### `map` - Visualize Facilities
-
-```bash
-permit-toolkit map INPUT_DIR [OPTIONS]
-```
-
-**Options:**
-- `-o, --output PATH` - Output HTML file path
-- `--state TEXT` - State name(s) to map (comma-separated)
-- `--all-states` - Map all available states
-- `-n, --limit INT` - Limit facilities per state
-- `--title TEXT` - Custom map title
-- `--no-cache` - Force fresh geocoding
-
-### `validate` - Validate Extraction
-
-```bash
-permit-toolkit validate EXTRACTION_FILE [OPTIONS]
-```
-
-**Options:**
-- `-v, --verbose` - Enable verbose logging
-
----
-
-## 📊 Output Format
-
-### JSON Structure
-
-Each extraction produces structured JSON with:
-- **Metadata**: source_file, extraction_date, state, model, cost_usd, processing_time_sec
-- **Permit Details**: permit_number, facility_name, facility_address, etc.
-- **Generator Sets**: 28 fields per generator including emissions data
-
-### CSV Consolidation
-
-39 columns per generator set including:
-- Permit info (facility, dates, location)
-- Generator specs (make, model, capacity)
-- Fuel data (type, sulfur content, throughput)
-- Emissions limits (NOx, CO, VOC, PM, SO2)
-- Operating parameters
-
----
-
-## 🏗️ Architecture
-
-```
-                          ┌─────────────────┐
-                          │   PDF Permits   │
-                          └────────┬────────┘
-                                   │
-                          ┌────────▼────────┐
-                          │ Text Extraction │
-                          │  (PyMuPDF4LLM)  │
-                          └────────┬────────┘
-                                   │
-                  ┌────────────────┼────────────────┐
-                  │                                 │
-         ┌────────▼────────┐              ┌────────▼────────┐
-         │  OpenAI GPT-4o  │              │  Azure OpenAI   │
-         │  (~5s, $0.0016) │              │  (Enterprise)   │
-         └────────┬────────┘              └────────┬────────┘
-                  │                                 │
-                  └────────────────┬────────────────┘
-                                   │
-                                   │  (Optional: --enable-qa-qc)
-                                   │  ┌──────────────────┐
-                                   ├─▶│  LangExtract     │
-                                   │  │  Comparison      │
-                                   │  └──────────────────┘
-                                   │
-                          ┌────────▼────────┐
-                          │ Structured JSON │
-                          └────────┬────────┘
-                                   │
-                  ┌────────────────┼────────────────┐
-                  │                                 │
-         ┌────────▼────────┐              ┌────────▼────────┐
-         │  CSV/Excel      │              │  HTML Map       │
-         │  Consolidation  │              │  Visualization  │
-         └─────────────────┘              └─────────────────┘
-```
-
-**Pipeline:**
-1. `extract` - PDFs to structured JSON (OpenAI or Azure)
-2. `consolidate` - JSON to CSV/Excel datasets
-3. `map` - JSON to interactive HTML maps
-4. `validate` - Quality assurance checks
-
----
-
-## 📈 Performance
-
-| Metric | Value |
-|--------|-------|
-| **Speed** | 5-15 sec/permit |
-| **Cost (gpt-4o-mini)** | $0.0008-0.0016/permit |
-| **Cost (gpt-4o)** | $0.008-0.016/permit |
-| **States** | Virginia, Illinois (extensible) |
-
----
-
-## 📂 Project Structure
-
-```
-src/permit_toolkit/
-├── cli/                    # Command-line interface
-├── extraction/             # PDF extraction & LLM processing
-├── consolidation/          # Data export (CSV/Excel)
-├── visualization/          # Map generation (HTML)
-├── scrapers/              # Web scraping utilities
-└── utils/                 # Configuration & logging
-```
-
----
-
-## 🔧 Requirements
-
-### Core Dependencies
-- Python 3.9+ (tested with 3.9, 3.10, 3.11, 3.12, 3.13)
-- pandas >= 2.0.0
-- openai >= 1.0.0
-- langextract >= 1.0.0
-- pymupdf4llm >= 0.0.5
-- click >= 8.1.0
-- folium >= 0.15.0
-- geopy >= 2.4.0
-- openpyxl >= 3.1.0
-
-See `requirements.txt`, `pyproject.toml`, or `pixi.toml` for complete list.
-
-### Environment Variables
-
-**OpenAI API (default):**
-```bash
-OPENAI_API_KEY=sk-your-key-here  # Required
-```
-
-**Azure OpenAI (alternative):**
-```bash
-AZURE_OPENAI_API_KEY=your-azure-key      # Required
-AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com/  # Required
-AZURE_OPENAI_API_VERSION=2025-04-01-preview  # Optional (default shown)
-AZURE_OPENAI_MODEL=your-deployment-name  # Optional (e.g., compassop-gpt-4.1-mini)
+# Workflow 1: Process new permits
+pixi run permit-toolkit extract permits/NewState
+pixi run permit-toolkit consolidate extracted/NewState
+
+# Workflow 2: Test before processing many files
+pixi run permit-toolkit extract permits/Virginia -n 3
+# Check the results, then process all
+pixi run permit-toolkit extract permits/Virginia
+
+# Workflow 3: Update existing extractions
+pixi run permit-toolkit extract permits/Virginia --reprocess
+pixi run permit-toolkit consolidate extracted/Virginia
+
+# Workflow 4: Multiple states
+pixi run permit-toolkit extract permits/Virginia
+pixi run permit-toolkit extract permits/Illinois  
+pixi run permit-toolkit consolidate extracted/  # All states
 ```
 
 ---
 
 ## 🐛 Troubleshooting
 
-### Installation Issues
+### "API key not found" Error
 
-**Issue: `permit-toolkit: command not found`**
+**Problem:** Tool can't find your OpenAI API key.
+
+**Solution:**
 ```bash
-# For pip: Ensure virtual environment is activated
-source .venv/bin/activate
+# Check if .env file exists
+cat .env
 
-# For pixi: Use 'pixi run' prefix
-pixi run permit-toolkit --help
+# Should show: OPENAI_API_KEY=sk-...
+# If not, create it:
+echo "OPENAI_API_KEY=sk-your-actual-key" > .env
 
-# Or reinstall
-pip install -e .  # pip
-pixi install      # pixi
+# Make sure you're in the project directory
+pwd  # Should end with /backupgensprint
 ```
 
-**Issue: `No module named 'permit_toolkit'`**
-```bash
-# Ensure you installed with -e flag
-pip install -e .
+### "No PDF files found" Error
 
-# Not: pip install -r requirements.txt
+**Problem:** Tool can't find any PDF files in the directory.
+
+**Solution:**
+```bash
+# Check what's in your directory
+ls permits/Virginia/
+
+# Make sure files end in .pdf
+# Check you're using the correct path
 ```
 
-**Issue: Python version error**
-```bash
-# Check version
-python --version
+### "Directory not found" Error
 
-# Must be >= 3.9
-# Install newer Python if needed
+**Problem:** The path you specified doesn't exist.
+
+**Solution:**
+```bash
+# See where you are
+pwd
+
+# List available directories
+ls
+
+# Use the correct path, for example:
+pixi run permit-toolkit extract ./permits/Virginia
 ```
 
-### Runtime Issues
+### Rate Limit Errors
 
-**Issue: OpenAI API errors**
+**Problem:** "Rate limit exceeded" from OpenAI.
+
+**Solution:**
 ```bash
-# Check API key is set
-echo $OPENAI_API_KEY
+# Option 1: Use Azure OpenAI (much higher limits)
+pixi run permit-toolkit extract permits/ --use-azure
 
-# Set it if empty
-export OPENAI_API_KEY="sk-your-key-here"
+# Option 2: Process in smaller batches
+pixi run permit-toolkit extract permits/ -n 10
+# Wait a minute, then run again
 
-# Or load from .env
-export $(cat .env | grep -v '^#' | xargs)
+# Option 3: Upgrade your OpenAI plan
+# Visit: https://platform.openai.com/settings/organization/billing
 ```
 
-**Issue: Azure OpenAI errors**
+### "All files already processed" Message
+
+**Problem:** Tool skips files because they were extracted before.
+
+**Solution:**
 ```bash
-# Check Azure credentials are set
-echo $AZURE_OPENAI_API_KEY
-echo $AZURE_OPENAI_ENDPOINT
-
-# Set them if empty
-export AZURE_OPENAI_API_KEY="your-azure-key"
-export AZURE_OPENAI_ENDPOINT="https://your-resource.openai.azure.com/"
-
-# Test Azure connection
-permit-toolkit extract sample.pdf --use-azure --model gpt-4o-mini
+# Use --reprocess to extract again
+pixi run permit-toolkit extract permits/Virginia --reprocess
 ```
 
-**Issue: Geocoding failures**
-```bash
-# Requires internet access to OpenStreetMap
-curl https://nominatim.openstreetmap.org/
+### Extraction Quality Issues
 
-# Corporate networks may need proxy configuration
+**Problem:** Missing or incorrect data in results.
+
+**Solution:**
+```bash
+# Use more accurate model (slower, more expensive)
+pixi run permit-toolkit extract permits/ --model gpt-4o
+
+# Enable detailed validation
+pixi run permit-toolkit extract permits/ --enable-qa-qc
 ```
 
-**Issue: PDF extraction fails**
+### Need More Help?
+
 ```bash
-# Check PDF file exists and is readable
-ls -lh data/permits/Virginia/your_file.pdf
+# Check command help
+pixi run permit-toolkit extract --help
 
-# Try with verbose logging
-pixi run permit-toolkit extract your_file.pdf --model gpt-4o-mini
-```
+# View example outputs
+ls validation/aqtoolkit/Virginia/
+cat validation/aqtoolkit/Virginia/11790_DC_Permit.json
 
-**Issue: Pixi installation slow or fails**
-```bash
-# Clean cache and retry
-pixi clean
-pixi install
-
-# Check your platform is supported
-uname -a  # Should be: macOS (Intel/ARM), Linux (x64), or Windows (x64)
+# Open an issue on GitHub with:
+# - The command you ran
+# - The error message
+# - A sample PDF (if possible)
 ```
 
 ---
 
-## 📦 Dependency Management
+## 🏗️ Project Structure
 
-This project supports **both pip and pixi** installation methods:
+```
+backupgensprint/
+├── permits/              # Put your PDF permits here
+│   ├── Virginia/
+│   ├── Illinois/
+│   └── ...
+├── extracted/            # Auto-created: JSON files from extraction
+│   ├── Virginia/
+│   └── ...
+├── outputs/              # Auto-created: Consolidated spreadsheets
+│   ├── Virginia/
+│   │   └── virginia_consolidated.csv
+│   └── ...
+├── validation/           # Example data for testing
+│   ├── permits/          # Sample PDF permits
+│   └── aqtoolkit/        # Sample extracted data
+├── schemas/              # Technical: Data structure definitions
+├── src/permit_toolkit/   # Technical: Source code
+├── .env                  # YOUR API KEY GOES HERE (create this file)
+├── pixi.toml             # Technical: Dependencies
+└── README.md             # This file
+```
 
-| Method | Files | Best For |
-|--------|-------|----------|
-| **pip** | `requirements.txt`, `pyproject.toml` | Development, CI/CD |
-| **pixi** | `pixi.toml` | Production, reproducible environments |
-
-All dependency files are synchronized to ensure consistency.
-
-**Adding new dependencies:**
-1. Add to `requirements.txt` and `pyproject.toml`
-2. Add to `pixi.toml` ([dependencies] or [pypi-dependencies])
-3. Test both: `pip install -e .` and `pixi install`
+**Key Folders:**
+- `permits/` - Where you put PDF files to process
+- `extracted/` - Where JSON results are saved (auto-created)
+- `outputs/` - Where final spreadsheets are saved (auto-created)
+- `validation/` - Example data to test the tool
 
 ---
 
-## 🤝 Contributing
+## � Tips for Best Results
 
-Contributions are welcome! Please:
-1. Fork the repository
-2. Create a feature branch
-3. Install dev dependencies: `pip install -e ".[dev]"` or use pixi dev environment
-4. Run tests: `pytest`
-5. Format code: `black src/` and `ruff check src/`
-6. Submit a pull request
+### Before You Start
+
+1. **Organize your PDFs** - Put them in state-specific folders:
+   ```
+   permits/
+   ├── Virginia/
+   │   ├── permit1.pdf
+   │   └── permit2.pdf
+   └── Illinois/
+       └── permit3.pdf
+   ```
+
+2. **Test with a few files first** - Use `-n 5` to process just 5 permits
+   ```bash
+   pixi run permit-toolkit extract permits/Virginia -n 5
+   ```
+
+3. **Check the results** - Look at a few JSON files before processing everything
+   ```bash
+   cat extracted/Virginia/permit1.json | jq
+   ```
+
+### For Large Batches
+
+1. **Use Azure OpenAI** if available (faster rate limits)
+2. **Process in batches** if you hit rate limits:
+   ```bash
+   pixi run permit-toolkit extract permits/Virginia -n 20
+   # Wait a minute
+   pixi run permit-toolkit extract permits/Virginia -n 20
+   ```
+3. **Use --skip-existing** (default) to resume interrupted processing
+
+### Data Quality
+
+- The tool adds **extraction_notes** to explain uncertain data
+- Check the **completeness_score** in JSON files (closer to 1.0 is better)
+- Use `--enable-qa-qc` for extra validation (slower but more reliable)
+
+---
+
+## 🔬 Technical Details
+
+<details>
+<summary>Click to expand technical information</summary>
+
+### AI Models
+
+- **Default**: `gpt-4o-mini` (fast, $0.15/$0.60 per 1M tokens)
+- **Accurate**: `gpt-4o` (slower, $2.50/$10.00 per 1M tokens)
+- **Azure**: Configure in `.env` file
+
+### Extraction Schema
+
+46 fields per generator across 7 categories:
+1. **Equipment** (9 fields): Reference number, make, model, rated HP/BHP/kW, maximum BHP/kW, generator count
+2. **Fuel Specifications** (10 fields): Primary/secondary/other fuel types, grade, specification, sulfur content, certification requirements, change triggers
+3. **Fuel Throughput** (3 fields): Limit, scope (per-unit/combined/facility-wide), group reference
+4. **Operating Limits** (4 fields): Hours limit, rolling window period, scope, allowed operating modes
+5. **Control & Monitoring** (8 fields): Control technology, opacity limit, hour meter, observation frequency, recordkeeping, operation logs, maintenance requirements
+6. **Regulations** (2 fields): NSPS Subpart IIII, MACT Subpart ZZZZ compliance
+7. **Notes** (1 field): Extraction notes for documenting decisions and ambiguities
+
+**Note:** This schema focuses on operational limits and fuel specifications. Emission limits (NOx, CO, VOC, PM) are referenced through regulatory compliance (NSPS/MACT) rather than extracted as individual numeric limits.
+
+### Performance
+
+- **Speed**: 10-80 seconds per permit (depends on complexity and model)
+- **Cost**: $0.003-0.013 per permit with gpt-4o-mini
+- **Accuracy**: ~95% field accuracy on validation set
+
+### Dependencies
+
+Managed via `pixi.toml`:
+- Python 3.9-3.12
+- langextract (LLM extraction framework)
+- pandas, openpyxl (data processing)
+- pypdf (PDF parsing)
+- openai, litellm (AI providers)
+
+</details>
+
+---
+## ❓ FAQ
+
+**Q: Do I need to know how to code?**  
+A: No! Just follow the commands in this guide. Copy and paste them into your terminal.
+
+**Q: How much does it cost?**  
+A: About $0.003-0.013 per permit with OpenAI's gpt-4o-mini model. Processing 100 permits costs ~$0.30-1.30.
+
+**Q: What states does it work with?**  
+A: Currently tested with Virginia, Illinois, Michigan, and Kentucky permits. It should work with other states too, but accuracy may vary.
+
+**Q: Can I process permits offline?**  
+A: No, the tool needs internet access to communicate with OpenAI's API.
+
+**Q: What if the extraction is wrong?**  
+A: Check the `extraction_notes` field in the JSON output - it explains uncertain decisions. You can also use `--enable-qa-qc` for extra validation or manually verify critical data.
+
+**Q: How do I process 1000+ permits?**  
+A: Use Azure OpenAI for higher rate limits, or process in batches. The tool automatically resumes if interrupted.
+
+**Q: Can I customize what data is extracted?**  
+A: Yes! Edit `schemas/air_quality_permits_schema.json` to add or modify fields. Advanced users only.
+
+**Q: Where can I get help?**  
+A: Open a GitHub issue with your question, error message, and sample data.
 
 ---
 
 ## 📄 License
 
-MIT License - See [LICENSE](LICENSE) file for details.
+MIT License - see [LICENSE](LICENSE) file.
 
 ---
 
-## 🙏 Acknowledgments
+## 🙏 Credits
 
-Developed by the NREL team for air quality permit analysis and backup generator data collection.
+Developed by the NREL COMPASS team for backup generator analysis.
+
+**Contributors:**
+- Data extraction framework
+- Schema design and validation
+- CLI interface and user experience
+
+**Powered by:**
+- OpenAI GPT-4 (AI extraction)
+- LangExtract (structured extraction framework)
+- Pixi (dependency management)
+
+For questions or issues, please open a GitHub issue.
 
 ---
 
-## 📞 Support
+## 🚦 Quick Reference Card
 
-- **Issues**: https://github.com/NREL/backupgensprint/issues
-- **Documentation**: This README
-- **API Costs**: Monitor usage at https://platform.openai.com/usage
+```bash
+# Setup (one time)
+curl -fsSL https://pixi.sh/install.sh | bash
+git clone https://github.com/NREL/backupgensprint.git
+cd backupgensprint
+pixi install
+echo "OPENAI_API_KEY=sk-your-key" > .env
+
+# Extract permits
+pixi run permit-toolkit extract permits/Virginia
+
+# Create spreadsheet
+pixi run permit-toolkit consolidate extracted/Virginia
+
+# Get help
+pixi run permit-toolkit --help
+pixi run permit-toolkit extract --help
+pixi run permit-toolkit consolidate --help
+```
+
+**Common Patterns:**
+- Test first: `extract permits/State -n 5`
+- Use Azure: `extract permits/State --use-azure`
+- Reprocess: `extract permits/State --reprocess`
+- Excel output: `consolidate extracted/State --format excel`
