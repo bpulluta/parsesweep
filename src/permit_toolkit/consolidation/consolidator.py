@@ -14,6 +14,136 @@ from openpyxl.utils import get_column_letter
 logger = logging.getLogger(__name__)
 
 
+def calculate_missing_capacity(
+    bhp: Any, hp: Any, kw: Any, mmbtu_hr: Any,
+    eff_gen: float = 0.90, eff_fuel: float = 0.35
+) -> Dict[str, Any]:
+    """
+    Calculate missing capacity values using engineering formulas.
+    
+    Based on standard conversion factors:
+    - BHP/HP are treated as equivalent
+    - kW = BHP/HP * 0.746 * Eff_gen
+    - MMBTU/hr = BHP/HP * 0.746 * Eff_gen * 3412 / (Eff_fuel * 1,000,000)
+    
+    Args:
+        bhp: Rated capacity in BHP (brake horsepower)
+        hp: Rated capacity in HP (horsepower)
+        kw: Rated capacity in kW (kilowatts)
+        mmbtu_hr: Rated capacity in MMBTU/hr (million BTU per hour input)
+        eff_gen: Generator efficiency (default 0.90)
+        eff_fuel: Thermal efficiency (default 0.35)
+        
+    Returns:
+        Dictionary with calculated values for all capacity fields and flags indicating which were calculated
+    """
+    result = {
+        'rated_capacity_bhp': bhp,
+        'rated_capacity_hp': hp,
+        'rated_capacity_kw': kw,
+        'rated_capacity_mmbtu_per_hr': mmbtu_hr,
+        'calculated_bhp': False,
+        'calculated_hp': False,
+        'calculated_kw': False,
+        'calculated_mmbtu_per_hr': False
+    }
+    
+    # Convert to numeric, handling None/empty values
+    def to_float(val):
+        if val is None or val == '':
+            return None
+        try:
+            return float(val)
+        except (ValueError, TypeError):
+            return None
+    
+    bhp_val = to_float(bhp)
+    hp_val = to_float(hp)
+    kw_val = to_float(kw)
+    mmbtu_val = to_float(mmbtu_hr)
+    
+    # Determine primary power value (BHP/HP are equivalent)
+    power_hp = bhp_val if bhp_val is not None else hp_val
+    
+    # Case 1: Have BHP/HP, calculate missing kW and MMBTU/hr
+    if power_hp is not None:
+        # Fill in whichever HP field was missing (but don't override if both exist)
+        if bhp_val is None:
+            result['rated_capacity_bhp'] = power_hp
+            result['calculated_bhp'] = True
+        if hp_val is None:
+            result['rated_capacity_hp'] = power_hp
+            result['calculated_hp'] = True
+            
+        # Calculate kW ONLY if missing: kW = BHP * 0.746 * Eff_gen
+        if kw_val is None:
+            result['rated_capacity_kw'] = round(power_hp * 0.746 * eff_gen, 2)
+            result['calculated_kw'] = True
+        else:
+            result['rated_capacity_kw'] = kw  # Preserve original value
+        
+        # Calculate MMBTU/hr ONLY if missing: MMBTU/hr = (BHP * 0.746 * Eff_gen * 3412) / (Eff_fuel * 1,000,000)
+        if mmbtu_val is None:
+            result['rated_capacity_mmbtu_per_hr'] = round(
+                (power_hp * 0.746 * eff_gen * 3412) / (eff_fuel * 1_000_000), 3
+            )
+            result['calculated_mmbtu_per_hr'] = True
+        else:
+            result['rated_capacity_mmbtu_per_hr'] = mmbtu_hr  # Preserve original value
+    
+    # Case 2: Have kW, calculate missing BHP/HP and MMBTU/hr
+    elif kw_val is not None:
+        # Calculate BHP/HP from kW: BHP = kW / (0.746 * Eff_gen)
+        calculated_hp = round(kw_val / (0.746 * eff_gen), 2)
+        if bhp_val is None:
+            result['rated_capacity_bhp'] = calculated_hp
+            result['calculated_bhp'] = True
+        else:
+            result['rated_capacity_bhp'] = bhp  # Preserve original value
+        if hp_val is None:
+            result['rated_capacity_hp'] = calculated_hp
+            result['calculated_hp'] = True
+        else:
+            result['rated_capacity_hp'] = hp  # Preserve original value
+        
+        # Calculate MMBTU/hr ONLY if missing: MMBTU/hr = (kW * 3412) / (Eff_fuel * 1,000,000)
+        if mmbtu_val is None:
+            result['rated_capacity_mmbtu_per_hr'] = round(
+                (kw_val * 3412) / (eff_fuel * 1_000_000), 3
+            )
+            result['calculated_mmbtu_per_hr'] = True
+        else:
+            result['rated_capacity_mmbtu_per_hr'] = mmbtu_hr  # Preserve original value
+    
+    # Case 3: Have MMBTU/hr, calculate missing BHP/HP and kW
+    elif mmbtu_val is not None:
+        # Calculate BHP/HP from MMBTU/hr: BHP = (MMBTU/hr * Eff_fuel * 1,000,000) / (0.746 * Eff_gen * 3412)
+        calculated_hp = round(
+            (mmbtu_val * eff_fuel * 1_000_000) / (0.746 * eff_gen * 3412), 2
+        )
+        if bhp_val is None:
+            result['rated_capacity_bhp'] = calculated_hp
+            result['calculated_bhp'] = True
+        else:
+            result['rated_capacity_bhp'] = bhp  # Preserve original value
+        if hp_val is None:
+            result['rated_capacity_hp'] = calculated_hp
+            result['calculated_hp'] = True
+        else:
+            result['rated_capacity_hp'] = hp  # Preserve original value
+        
+        # Calculate kW ONLY if missing: kW = (MMBTU/hr * Eff_fuel * 1,000,000) / 3412
+        if kw_val is None:
+            result['rated_capacity_kw'] = round(
+                (mmbtu_val * eff_fuel * 1_000_000) / 3412, 2
+            )
+            result['calculated_kw'] = True
+        else:
+            result['rated_capacity_kw'] = kw  # Preserve original value
+    
+    return result
+
+
 def clean_text(text: Any) -> Any:
     """
     Clean text fields by normalizing Unicode and removing problematic characters.
@@ -135,6 +265,14 @@ class PermitConsolidator:
             else:
                 allowed_modes_str = None
             
+            # Calculate missing capacity values
+            capacity_values = calculate_missing_capacity(
+                bhp=gen.get('ratedCapacityBHP'),
+                hp=gen.get('ratedCapacityHP'),
+                kw=gen.get('ratedCapacityKW'),
+                mmbtu_hr=gen.get('ratedCapacityMMBtuPerHr')
+            )
+            
             record.update({
                 # Generator identification
                 'num_generators': gen.get('numGenerators'),
@@ -145,11 +283,17 @@ class PermitConsolidator:
                 'make': gen.get('make'),
                 'model': gen.get('model'),
                 
-                # Capacity
-                'rated_capacity_bhp': gen.get('ratedCapacityBHP'),
-                'rated_capacity_hp': gen.get('ratedCapacityHP'),
-                'rated_capacity_kw': gen.get('ratedCapacityKW'),
-                'rated_capacity_mmbtu_per_hr': gen.get('ratedCapacityMMBtuPerHr'),
+                # Capacity (with calculated values)
+                'rated_capacity_bhp': capacity_values['rated_capacity_bhp'],
+                'rated_capacity_hp': capacity_values['rated_capacity_hp'],
+                'rated_capacity_kw': capacity_values['rated_capacity_kw'],
+                'rated_capacity_mmbtu_per_hr': capacity_values['rated_capacity_mmbtu_per_hr'],
+                
+                # Flags for calculated capacity values (for Excel styling)
+                'calculated_bhp': capacity_values['calculated_bhp'],
+                'calculated_hp': capacity_values['calculated_hp'],
+                'calculated_kw': capacity_values['calculated_kw'],
+                'calculated_mmbtu_per_hr': capacity_values['calculated_mmbtu_per_hr'],
                 
                 # Fuel - primary, secondary, other
                 'primary_fuel_type': gen.get('primaryFuelType'),
@@ -350,14 +494,21 @@ class PermitConsolidator:
         - Bold header with colored background
         - Proper text wrapping
         - Borders for clean appearance
+        - Highlighting for calculated capacity values (light blue background)
         
         Args:
             df: DataFrame to save
             output_path: Path to save Excel file
         """
+        # Identify calculated flag columns to exclude from Excel output
+        calc_flag_cols = ['calculated_bhp', 'calculated_hp', 'calculated_kw', 'calculated_mmbtu_per_hr']
+        
+        # Create a copy for Excel without the calculated flag columns
+        df_excel = df.drop(columns=[col for col in calc_flag_cols if col in df.columns], errors='ignore')
+        
         # Save DataFrame to Excel first
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        df.to_excel(output_path, index=False, engine='openpyxl')
+        df_excel.to_excel(output_path, index=False, engine='openpyxl')
         
         # Load workbook for styling
         wb = load_workbook(output_path)
@@ -374,6 +525,14 @@ class PermitConsolidator:
         )
         alt_row_dark = PatternFill(
             start_color="F2F2F2", end_color="F2F2F2", fill_type="solid"
+        )
+        
+        # Calculated value fill (light blue/cyan to indicate calculated)
+        calculated_fill = PatternFill(
+            start_color="D6EAF8", end_color="D6EAF8", fill_type="solid"
+        )
+        calculated_fill_alt = PatternFill(
+            start_color="C4DEF6", end_color="C4DEF6", fill_type="solid"
         )
         
         # Border styles
@@ -410,16 +569,46 @@ class PermitConsolidator:
         # Set header row height
         ws.row_dimensions[1].height = 30
         
-        # Style data rows with alternating colors
+        # Create mapping from Excel columns to original DataFrame columns
+        capacity_cols_map = {}
+        if 'rated_capacity_bhp' in df_excel.columns:
+            capacity_cols_map['rated_capacity_bhp'] = df_excel.columns.get_loc('rated_capacity_bhp') + 1
+        if 'rated_capacity_hp' in df_excel.columns:
+            capacity_cols_map['rated_capacity_hp'] = df_excel.columns.get_loc('rated_capacity_hp') + 1
+        if 'rated_capacity_kw' in df_excel.columns:
+            capacity_cols_map['rated_capacity_kw'] = df_excel.columns.get_loc('rated_capacity_kw') + 1
+        if 'rated_capacity_mmbtu_per_hr' in df_excel.columns:
+            capacity_cols_map['rated_capacity_mmbtu_per_hr'] = df_excel.columns.get_loc('rated_capacity_mmbtu_per_hr') + 1
+        
+        # Style data rows with alternating colors and calculated highlights
         for row_num in range(2, len(df) + 2):
             use_alt_color = (row_num - 2) % 2 == 1  # Every other row
+            df_row_idx = row_num - 2  # Index into original DataFrame
             
             # Set compact row height
             ws.row_dimensions[row_num].height = 18
             
-            for col_num in range(1, len(df.columns) + 1):
+            for col_num in range(1, len(df_excel.columns) + 1):
                 cell = ws.cell(row=row_num, column=col_num)
-                cell.fill = alt_row_dark if use_alt_color else alt_row_light
+                col_name = df_excel.columns[col_num - 1]
+                
+                # Check if this is a calculated capacity value
+                is_calculated = False
+                if col_name == 'rated_capacity_bhp' and 'calculated_bhp' in df.columns:
+                    is_calculated = df.iloc[df_row_idx]['calculated_bhp']
+                elif col_name == 'rated_capacity_hp' and 'calculated_hp' in df.columns:
+                    is_calculated = df.iloc[df_row_idx]['calculated_hp']
+                elif col_name == 'rated_capacity_kw' and 'calculated_kw' in df.columns:
+                    is_calculated = df.iloc[df_row_idx]['calculated_kw']
+                elif col_name == 'rated_capacity_mmbtu_per_hr' and 'calculated_mmbtu_per_hr' in df.columns:
+                    is_calculated = df.iloc[df_row_idx]['calculated_mmbtu_per_hr']
+                
+                # Apply fill based on whether it's calculated
+                if is_calculated:
+                    cell.fill = calculated_fill_alt if use_alt_color else calculated_fill
+                else:
+                    cell.fill = alt_row_dark if use_alt_color else alt_row_light
+                
                 cell.alignment = cell_align
                 cell.border = thin_border
         
@@ -447,6 +636,17 @@ class PermitConsolidator:
         # Freeze header row
         ws.freeze_panes = "A2"
         
+        # Add legend explaining the calculated value highlighting
+        legend_row = len(df) + 4
+        ws.cell(row=legend_row, column=1).value = "Legend:"
+        ws.cell(row=legend_row, column=1).font = Font(bold=True)
+        
+        legend_row += 1
+        ws.cell(row=legend_row, column=1).value = "Light blue cells"
+        ws.cell(row=legend_row, column=1).fill = calculated_fill
+        ws.cell(row=legend_row, column=2).value = "= Calculated capacity values (derived from other capacity metrics)"
+        
         # Save styled workbook
         wb.save(output_path)
         logger.info(f"✓ Applied professional styling to Excel file")
+        logger.info(f"  Calculated capacity values are highlighted in light blue")
