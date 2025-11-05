@@ -273,8 +273,9 @@ class PermitExtractor:
         """
         Extract using OpenAI - extract generators exactly as listed in permit.
         """
-        # Use more text to capture all data
-        text_excerpt = text[:35000]
+        # Increase context window to capture conditions sections (typically pages 20-60)
+        # Most permits are 60-100 pages, conditions sections typically at char position 50k-150k
+        text_excerpt = text[:120000]
 
         prompt = f"""Extract ALL data from this air quality permit into valid JSON matching the schema below.
 
@@ -284,17 +285,35 @@ CORE PRINCIPLES
 
 1. EXTRACT EXACTLY AS WRITTEN - Do not normalize, convert units, or infer missing data
 2. PRESERVE DOCUMENT STRUCTURE - Keep generator groupings as shown (grouped vs individual)
-3. EXTRACT SYSTEMATICALLY - Process EVERY row/entry in tables and lists from start to finish
-4. VERIFY COMPLETENESS - Count extracted generators vs source document before returning
-5. SEARCH ENTIRE DOCUMENT - Equipment info is often scattered across multiple sections
-6. USE EXTRACTION NOTES - Document uncertainty, data source locations, and missing fields
+3. **SEARCH MULTIPLE SECTIONS** - Equipment is often listed in BOTH tables AND detailed conditions sections
+4. VERIFY COMPLETENESS - Count extracted generators vs ALL source locations before returning
+5. USE EXTRACTION NOTES - Document data source locations, uncertainty, and missing fields
+
+**CRITICAL - TWO KEY LOCATIONS FOR GENERATOR DATA:**
+
+A. **EQUIPMENT/FACILITY INVENTORY TABLES** (typically early in permit, pages 1-10):
+   - Lists equipment with IDs, basic specs (capacity, fuel)
+   - May have formatting issues in OCR'd documents
+   - Good for getting complete list of equipment IDs
+
+B. **CONDITIONS/PERMIT LIMITS SECTIONS** (typically later, pages 20-60):
+   - Often titled "Table IV-1", "Emissions Unit Number(s): EU7-2, EU10-3...", "Authorized Equipment"
+   - Lists same equipment with detailed operating conditions
+   - Usually has CLEANER text even in OCR documents (numbered lists, clear formatting)
+   - **Contains complete equipment lists with full specifications**
+   
+**EXTRACTION STRATEGY**: 
+1. First scan inventory tables for all equipment IDs
+2. Then scan conditions sections for detailed specs (these often list "EU7-2, EU7-3, EU10-3..." at the top)
+3. Cross-reference: if conditions section lists more equipment than table, use conditions section
+4. If table is unclear/garbled (OCR issues), prioritize equipment listings from conditions sections
 
 INFORMATION LOCATIONS BY FIELD:
-• Reference Numbers: Equipment tables, section headings, table of contents, authorization pages
-• Capacity Ratings: Section titles (e.g., "2,500 kWe (3,634 bhp)"), equipment tables, technical specs
-• Make/Model: Often separate from capacity - check technical specs, manufacturer certs, NSPS/MACT sections
-• Fuel Specs: Fuel specifications section, operating conditions, equipment descriptions
-• Operating Limits: Conditions section, emissions limits, regulatory compliance sections
+• Reference Numbers: Equipment tables, **conditions section headers**, authorization pages
+• Capacity Ratings: Equipment tables, **conditions section equipment descriptions**, section titles
+• Make/Model: Technical specs, conditions descriptions, manufacturer certs, NSPS/MACT sections
+• Fuel Specs: Equipment descriptions, **conditions sections**, fuel specifications clauses
+• Operating Limits: **Conditions sections** (primary source), emissions limits, regulatory compliance
 
 ══════════════════════════════════════════════════════════════════════════════
 EXAMPLES - GENERATOR GROUPING PATTERNS (Critical for Correct Extraction)
@@ -310,7 +329,24 @@ Equipment list shows P001, P002, P003... P026 as individual rows
 → {{"referenceNumber": "P001 through P026", "numGenerators": 26, "ratedCapacityKW": 2500, "ratedCapacityBHP": 3634, "primaryFuelType": "diesel", "extractionNotes": "Capacity from section heading applies to all units P001-P026"}}
 WHY: The section heading groups them with shared specifications
 
-PATTERN C: Separate Table Rows → MULTIPLE Entries
+PATTERN C: Conditions Section with Enumerated List → MULTIPLE or ONE Entry (depending on format)
+Document (Conditions Section - Table IV-3):
+"Emissions Unit Number(s): EU7-2, EU7-3, EU10-3, EU24C-1 thru EU24C-4, EU24C-6, EU24C-8
+EU7-2: One (1) emergency generator rated at 500 kW and firing No. 2 fuel oil.
+EU7-3: One (1) emergency generator rated at 500 kW and firing No. 2 fuel oil.
+EU10-3: One (1) emergency generator rated at 500 kW and firing No. 2 fuel oil.
+EU24C-1 through EU24C-4 and EU24C-8: Five (5) Caterpillar emergency generators each rated at 1,000 kW..."
+
+→ Extract based on how permit organizes them:
+- EU7-2: Individual entry (numGenerators: 1)
+- EU7-3: Individual entry (numGenerators: 1)
+- EU10-3: Individual entry (numGenerators: 1)
+- EU24C-1 through EU24C-4 and EU24C-8: ONE entry with range notation (numGenerators: 5)
+
+WHY: Conditions section explicitly separates some (EU7-2, EU7-3, EU10-3) and groups others (EU24C-1 through EU24C-4)
+Follow the permit's organizational structure - if it lists them separately, extract separately; if grouped with "through", extract as one.
+
+PATTERN D: Separate Table Rows → MULTIPLE Entries
 Document:
 | Equipment Description                  | Ref No. | Capacity |
 | One Caterpillar 1500 KW emergency gen | 3       | 2500 BHP |
@@ -323,10 +359,21 @@ Document:
 ]
 WHY: Each row is a separate unit with individual tracking
 
-PATTERN D: Comma-Separated in Same Description → ONE Entry
+PATTERN E: Comma-Separated in Same Description → ONE Entry
 Document: "Fifteen (15) 2,500 kW Diesel-Powered Emergency Generator Sets (EGA1, EGA2, EGAR, EGA3, EGA4, EGB1, EGB2, EGBR, EGB3, EGB4, EGC1, EGC2, EGCR, EGSS, and EGSN)"
 → {{"referenceNumber": "EGA1, EGA2, EGAR, EGA3, EGA4, EGB1, EGB2, EGBR, EGB3, EGB4, EGC1, EGC2, EGCR, EGSS, EGSN", "numGenerators": 15, "ratedCapacityKW": 2500, "extractionNotes": "Comma-separated group shares combined operational limits"}}
 WHY: Listed together in one description = single regulatory group
+
+PATTERN F: Count + Identical Specs, No Individual IDs → ONE Entry (Group Together)
+Document: "Eight (8) Atlantic Detroit Diesel Emergency Generators Model Number 2000 DSEB"
+→ {{"referenceNumber": "Emergency Generators 1-8", "numGenerators": 8, "make": "Atlantic Detroit Diesel", "model": "2000 DSEB", "extractionNotes": "Eight identical generators regulated as a group"}}
+WHY: When document says "X identical generators" with NO individual reference numbers given, create ONE entry with numGenerators=X and populate all shared fields (make, model, capacity, fuel). This is the CORRECT way to represent a homogeneous group.
+
+**CRITICAL**: If later you find individual reference numbers (DG-1, DG-2..., Generator 1, Generator 2...) in conditions sections:
+- If specs are identical for all → KEEP as ONE entry, update referenceNumber to include all IDs
+- If specs differ → split into individual entries with actual differences documented
+
+DO NOT create 8 separate entries with mostly null fields when document describes them as identical!
 
 ══════════════════════════════════════════════════════════════════════════════
 FIELD-SPECIFIC EXTRACTION RULES
@@ -336,68 +383,78 @@ FIELD-SPECIFIC EXTRACTION RULES
 • Ohio: "P001 through P026", "P028 through P041, P043 through P068"
 • Virginia/DC: Numeric (1, 2, 3) or alphanumeric (EG01-EG06)
 • Illinois: Comma-separated codes (EGA1, EGA2, EGAR...)
-• Other states: EU codes (01A, 01B), Equipment IDs, various formats
+• Maryland: EU codes (EU7-2, EU24C-1, EU31-5) with ranges ("EU24C-1 through EU24C-4")
+• Other states: Various formats
 • NEVER normalize or add prefixes - extract verbatim from permit
 
 🔢 NUM GENERATORS (Calculate from ranges if not explicit):
 • "P001 through P026" → count = 26 (P001, P002...P026)
-• "P028 through P041, P043 through P068, P070 through P087" → count each range separately, then sum:
-  - P028-P041 = 14, P043-P068 = 26, P070-P087 = 18 → Total = 58
+• "EU24C-1 through EU24C-4 and EU24C-8" → count = 5 (EU24C-1, 2, 3, 4, 8)
 • "EG01-EG06" → count = 6
-• "P027, P069, and P091" → count explicit list = 3
 • Use explicit count if given: "Fifteen (15)..." → 15 (authoritative)
-• Separate table rows with no grouping → 1 per row
+• Separate entries (EU7-2, EU7-3, EU10-3 listed individually) → 1 each
 
 ⚡ CAPACITY (Never convert - extract as shown):
 • Record in correct field: ratedCapacityKW, ratedCapacityBHP, ratedCapacityHP, ratedCapacityMMBtuPerHr
 • "2500 kW" → ratedCapacityKW: 2500, others: null
 • "1500 kW (2500 BHP)" → ratedCapacityKW: 1500, ratedCapacityBHP: 2500 (both as stated)
-• "3634 bhp" → ratedCapacityBHP: 3634
-• If only "maximum capacity" mentioned (no separate "rated"), treat as rated capacity
 • Missing = null (NOT zero, NOT calculated)
 
 🔧 MAKE & MODEL (Often separate from capacity info):
-• Search: technical specs, manufacturer certs, NSPS/MACT sections, equipment narratives
-• Extract exactly as written: "Caterpillar", "Cummins QSK78-G12", "Detroit Diesel"
+• Search: conditions section equipment descriptions, technical specs, manufacturer certs
+• Extract exactly as written: "Caterpillar", "Cummins QSK78-G12", "MTU Detroit Diesel"
 • If truly not found anywhere → null (do NOT guess or interpolate)
 
 ⛽ FUEL SPECIFICATIONS:
-• primaryFuelType: Extract verbatim ("diesel", "ultra-low sulfur diesel", "distillate oil", "No. 2 fuel oil")
-• fuelGrade: Exact phrase ("No. 2", "numbers 1 or 2 fuel oil", "S15")
-• fuelSpecification: Standards verbatim - fix OCR errors only ("ASTM D396", "40 CFR 80.510(b)")
-• fuelSulfurContentPct: As decimal fraction:
-  - "0.5%" → 0.005 (percent to decimal)
-  - "15 ppm" → 0.000015 (ppm to decimal: ppm ÷ 1,000,000)
-  - "S15" (ULSD) → 0.000015 (15 ppm standard)
+• primaryFuelType: Extract verbatim ("diesel", "No. 2 fuel oil", "distillate oil")
+• fuelGrade: Exact phrase ("No. 2", "numbers 1 or 2 fuel oil")
+• fuelSulfurContentPct: As decimal (0.5% → 0.005, 15 ppm → 0.000015)
 
 ⏱️ OPERATING LIMITS:
-• operatingHoursPerUnitLimit: Hours/year per unit (100, 218, 500 common)
-• operatingHoursPerUnitRollingWindow: "consecutive 12-month period", "calendar year", etc.
-• operatingHoursCombinedLimit: Total for group if separate from per-unit
+• operatingHoursPerUnitLimit: Hours/year per unit (100, 500 common)
 • allowedOperatingModes: Extract verbatim ("emergency only", "emergency, maintenance and testing")
 
 📋 REGULATORY:
 • nspsSubpartIIII: true if "40 CFR 60 Subpart IIII" mentioned as applicable
 • mactSubpartZZZZ: true if "40 CFR 63 Subpart ZZZZ" mentioned as applicable
-• Check "subject to", "applicable", "complies with" language
 
 ══════════════════════════════════════════════════════════════════════════════
 CRITICAL GROUPING DECISION RULES
 ══════════════════════════════════════════════════════════════════════════════
 
-GROUP AS ONE ENTRY if:
-✓ Range notation (EG01-EG06, P001 through P026)
-✓ Comma-separated in SAME description/row
-✓ Section heading groups them with shared capacity
-✓ Permit states "combined" limits (fuel, emissions, hours)
+**ALWAYS GROUP AS ONE ENTRY** when permit describes identical equipment together:
 
-SEPARATE ENTRIES if:
-✓ Separate table rows with distinct references
-✓ Different capacities, makes, or specifications
-✓ "Per unit" or "each" language with separate tracking
-✓ Different original permit dates or modification histories
+✓ **Explicit count with shared specs**: "Eight (8) Atlantic Detroit Diesel Emergency Generators Model 2000 DSEB"
+  → ONE entry with numGenerators=8, populate make/model/fuel fields from the description
+  → DO NOT create 8 separate entries with null fields!
 
-GROUPING MATTERS: Grouped units share COMBINED limits. Splitting incorrectly multiplies limits across individuals.
+✓ **Range notation**: "EG01-EG06", "P001 through P026", "EU24C-1 through EU24C-4"
+  → ONE entry with appropriate count, preserve range in referenceNumber
+
+✓ **Comma-separated in SAME description**: "(EGA1, EGA2, EGA3, EGA4, EGB1)"
+  → ONE entry, list all IDs in referenceNumber
+
+✓ **Section heading groups with shared capacity**: "2,500 kWe Emergency Generators: P001 through P026"
+  → ONE entry, capacity applies to all units in range
+
+✓ **Explicit grouping phrase**: "Five (5) generators each rated at...", "Twenty-six (26) identical units"
+  → ONE entry with numGenerators matching stated count
+
+**CREATE SEPARATE ENTRIES** when permit treats equipment individually:
+
+✓ **Individually specified in conditions**: 
+  "EU7-2: One (1) emergency generator rated at 500 kW..."
+  "EU7-3: One (1) emergency generator rated at 500 kW..."
+  → TWO entries (even if identical specs) because permit lists separately
+
+✓ **Separate table rows** with distinct references
+  → Each row = one entry
+
+✓ **Different specifications** (capacity, make, model, fuel, limits)
+  → Must be separate entries to capture differences
+
+**WHEN IN DOUBT**: If permit says "X identical generators" with shared specs and no individual tracking → GROUP AS ONE.
+Follow how the permit organizesthe equipment.
 
 ══════════════════════════════════════════════════════════════════════════════
 JSON SCHEMA
@@ -418,38 +475,34 @@ FINAL INSTRUCTIONS
 BEFORE RETURNING JSON, COMPLETE THIS VERIFICATION CHECKLIST:
 
 1. GENERATOR COUNT VERIFICATION:
+   □ Scanned BOTH equipment/inventory tables AND conditions/limits sections?
    □ Total numGenerators across all entries = ___
-   □ Total equipment IDs found in source tables/lists = ___
-   □ Do these numbers align? If not, investigate and document in permitDetails.extractionNotes
+   □ Total equipment IDs found in ALL sections = ___
+   □ Do these numbers align? If not, did you prioritize the more complete/clear source?
 
 2. COMPLETENESS CHECK:
-   □ Scanned ALL equipment tables/lists (including multi-page tables)?
-   □ Extracted from first equipment ID to last without skipping?
-   □ Checked equipment authorization pages AND conditions sections?
-   □ Verified no equipment IDs were skipped between entries?
-   □ For tables with rowspan: verified that rows with no description cells were 
-     grouped with the rowspan description above them?
+   □ Scanned equipment tables (early in permit)?
+   □ Scanned conditions sections (look for "Table IV", "Emissions Unit Number(s):", equipment lists)?
+   □ If table was unclear/garbled, did you extract from conditions section instead?
+   □ Verified no equipment IDs were skipped?
 
 3. FIELD COVERAGE:
-   □ All capacity fields extracted (kW, BHP, HP where stated)?
-   □ Make/model searched in technical specs, NSPS/MACT sections?
+   □ All capacity fields extracted where stated?
+   □ Make/model searched in conditions descriptions and technical specs?
    □ Operating limits extracted from conditions sections?
-   □ All null fields are truly missing (not overlooked)?
 
 4. EXTRACTION NOTES QUALITY:
-   □ Document where information was found (section, page, table)
-   □ Explain why generators were grouped (or not grouped)
-   □ Note any calculations performed (e.g., counting range)
-   □ Flag any ambiguities or uncertainties
+   □ Document where information was found (inventory table vs conditions section)
+   □ Explain grouping decisions
+   □ Note if using conditions section due to table quality issues
+   □ Flag any ambiguities
 
 Return ONLY valid JSON matching the schema. Use extractionNotes liberally to document:
-• Where you found information (especially if scattered)
-• Why fields are null (not found vs not applicable)
-• Any uncertainty or ambiguity in the source
-• Calculations made (e.g., "counted range P001-P026 = 26 units")
-• Verification results: "Extracted 18 generators from 18-row Facility Inventory table"
+• Data source: "From conditions section Table IV-3" or "From facility inventory table, page 4"
+• Why conditions section was prioritized (if applicable): "Table OCR quality poor, used conditions section"
+• Verification: "Extracted 12 generators from conditions section (EU7-2, EU7-3, EU10-3, EU24C-1 through EU24C-4, EU24C-6, EU24C-8, EU31-1 through EU31-5, EU28-1, EU29-1, EU30-9)"
 
-Preserve the permit's organizational structure - do not impose your own grouping logic.
+**REMEMBER**: Conditions sections often have clearer, more complete equipment listings than inventory tables, especially in OCR'd documents. Always check both sources!
 """
 
         # Prepare API call parameters
@@ -842,23 +895,27 @@ Hour meter: Required""",
         for gen in generators:
             ref = gen.get("referenceNumber", "Unknown")
             num_gens = gen.get("numGenerators", 1)
-            if num_gens and (num_gens < 1 or num_gens > 100):
+            if num_gens and (num_gens < 1 or num_gens > 150):
                 warnings.append(
-                    f"⚠️ WARNING: {ref} has unrealistic numGenerators: {num_gens}"
+                    f"⚠️ WARNING: {ref} has unrealistic numGenerators: {num_gens} (check if correct)"
                 )
 
             capacity = gen.get("ratedCapacityKW")
-            if capacity and (capacity < 10 or capacity > 50000):
+            if capacity and (capacity < 5 or capacity > 100000):
                 warnings.append(
-                    f"⚠️ WARNING: {ref} has unrealistic capacity: {capacity} kW"
+                    f"⚠️ WARNING: {ref} has suspicious capacity: {capacity} kW (verify if correct)"
                 )
 
         # Check 4: Total generator count
         # Handle None values explicitly to avoid TypeError when summing
         total_units = sum(g.get("numGenerators") or 1 for g in generators)
-        if total_units > 50:
+        if total_units == 0:
             warnings.append(
-                f"⚠️ WARNING: High total generator count: {total_units} (check for extraction errors)"
+                f"⚠️ WARNING: No generators extracted - check if permit contains generator data"
+            )
+        elif total_units > 100:
+            warnings.append(
+                f"⚠️ WARNING: High total generator count: {total_units} (verify if correct - large datacenter?)"
             )
 
         # Check 5: Critical extractionNotes validation
