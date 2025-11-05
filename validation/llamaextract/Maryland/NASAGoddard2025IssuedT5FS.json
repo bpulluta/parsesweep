@@ -1,576 +1,578 @@
 {
-  "permitDetails": {
-    "permitNumber": "24-033-0675",
-    "permitIssuanceDate": "2025-06-10",
-    "permitExpirationDate": "2029-12-31",
-    "facilityName": "NASA Goddard Space Flight Center",
-    "facilityAddress": "8800 Greenbelt Road, Attn: Code 250, Greenbelt, MD 20771",
-    "facilityCounty": "Prince George's County",
-    "facilityState": "MD",
-    "stateFacilityID": null,
-    "initialConstructionCommencedNotificationRequired": null,
-    "constructionCommencedNotificationWindowDays": null,
-    "initialStartupNotificationRequired": null,
-    "startupNotificationWindowDays": null,
-    "permitCopyOnsiteRequired": true,
-    "rightOfEntryClause": "The Permittee shall allow employees and authorized representatives of the Department, the EPA, and local environmental health agencies, upon presentation of credentials or other documents as may be required by law, to:\n a. Enter at a reasonable time without delay and without prior notification the Permittee's property where a Part 70 source is located, emissions-related activity is conducted, or records required by this permit are kept;\n b. Have access to and make copies of records required by the permit;\n c. Inspect all emissions units within the facility subject to the permit and all related monitoring systems, air pollution control equipment, and practices or operations regulated or required by the permit; and\n d. Sample or monitor any substances or parameters at or related to the emissions units at the facility for the purpose of determining compliance with the permit.",
-    "extractionNotes": "Document includes both a Part 70/Title V permit number (24-033-0675) and a Control No. (B - 07923); selected primary permit number 24-033-0675 as permitNumber."
-  },
-  "generatorSets": [
-    {
-      "referenceNumber": "EU7-2",
-      "numGenerators": 1,
-      "originalPermitDate": "1999-01-01",
-      "equipmentFacilityID": "9-1045",
-      "ratedCapacityKW": 500,
-      "primaryFuelType": "No. 2 fuel oil"
-    },
-    {
-      "referenceNumber": "EU10-3",
-      "numGenerators": 1,
-      "originalPermitDate": "1999-01-01",
-      "equipmentFacilityID": "9-1047",
-      "ratedCapacityKW": 500,
-      "primaryFuelType": "No. 2 fuel oil"
-    },
-    {
-      "referenceNumber": "EU24C-1",
-      "numGenerators": 5,
-      "originalPermitDate": "1996-01-01",
-      "equipmentFacilityID": "9-1054",
-      "make": "Caterpillar",
-      "ratedCapacityKW": 1000,
-      "primaryFuelType": "No. 2 fuel oil"
-    },
-    {
-      "referenceNumber": "EU24C-2",
-      "equipmentFacilityID": "9-1055"
-    },
-    {
-      "referenceNumber": "EU24C-3",
-      "equipmentFacilityID": "9-1056"
-    },
-    {
-      "referenceNumber": "EU24C-4",
-      "equipmentFacilityID": "9-1057"
-    },
-    {
-      "referenceNumber": "EU24C-8",
-      "equipmentFacilityID": "9-1058"
-    },
-    {
-      "referenceNumber": "EU24C-6",
-      "numGenerators": 1,
-      "originalPermitDate": "2012-01-01",
-      "equipmentFacilityID": "9-1366",
-      "make": "MTU Detroit Diesel",
-      "ratedCapacityKW": 1000,
-      "primaryFuelType": "No. 2 fuel oil"
-    },
-    {
-      "referenceNumber": "EU31-1",
-      "numGenerators": 5,
-      "originalPermitDate": "1996-01-01",
-      "equipmentFacilityID": "9-1049",
-      "make": "Caterpillar",
-      "ratedCapacityKW": 1450,
-      "primaryFuelType": "No. 2 fuel oil"
-    },
-    {
-      "referenceNumber": "EU31-2",
-      "equipmentFacilityID": "9-1050"
-    },
-    {
-      "referenceNumber": "EU31-3",
-      "equipmentFacilityID": "9-1051"
-    },
-    {
-      "referenceNumber": "EU31-4",
-      "equipmentFacilityID": "9-1052"
-    },
-    {
-      "referenceNumber": "EU31-5",
-      "equipmentFacilityID": "9-1053"
-    },
-    {
-      "referenceNumber": "EU29-1",
-      "numGenerators": 1,
-      "originalPermitDate": "2013-01-01",
-      "equipmentFacilityID": "9-1422",
-      "ratedCapacityKW": 1000,
-      "primaryFuelType": "No. 2 fuel oil"
-    },
-    {
-      "referenceNumber": "EU7-3",
-      "numGenerators": 1,
-      "originalPermitDate": "2003-01-01",
-      "equipmentFacilityID": "9-1433",
-      "ratedCapacityKW": 500,
-      "primaryFuelType": "No. 2 fuel oil"
-    },
-    {
-      "referenceNumber": "EU28-1",
-      "numGenerators": 1,
-      "originalPermitDate": "2018-01-01",
-      "equipmentFacilityID": "9-1535",
-      "make": "Kohler",
-      "ratedCapacityKW": 563,
-      "ratedCapacityHP": 755,
-      "primaryFuelType": "diesel"
-    },
-    {
-      "referenceNumber": "EU30-9",
-      "numGenerators": 1,
-      "originalPermitDate": "2024-01-01",
-      "equipmentFacilityID": "9-1652",
-      "ratedCapacityKW": 1000,
-      "primaryFuelType": "diesel"
-    },
-    {
-      "referenceNumber": "EU24-1 thru EU24-5 - Boilers",
-      "numGenerators": 5,
-      "originalPermitDate": "2005-04-27",
-      "make": "Nebraska",
-      "ratedCapacityMMBtuPerHr": 49.5,
-      "primaryFuelType": "Landfill gas and natural gas",
-      "secondaryFuelType": "No. 2 fuel oil",
-      "fuelGrade": "No. 2 fuel oil",
-      "fuelSulfurContentPct": 0.003,
-      "controlTechnology": "low NOx burners",
-      "observationFrequency": "Perform a visual observation of stack emissions for a 6-minute period once for each 168 hours that the boiler burns oil or at a minimum of once per year; measure NOx for a 3 to 5-minute period every 168 hours of operation (and for any month that distillate fuel is burned, measure NOx for a 3 to 5-minute period every 168 hours).",
-      "recordkeepingWindowYears": 5,
-      "extractionNotes": "Group includes five boilers (three described as natural gas/landfill gas/No. 2 fuel oil and two as natural gas/No. 2 fuel oil). MDE PTC Nos. 033-5-0808 thru 5-0812 issued April 27, 2005 referenced for these units. COMAR fuel sulfur limit of 0.3 percent (0.003) is quoted; NSPS also quotes 0.5 weight percent as an alternative."
-    },
-    {
-      "referenceNumber": "EU35-1, EU35-2, EU97-1, EU302-1 & EU302-3 - Boilers: Space Heaters",
-      "numGenerators": 5,
-      "primaryFuelType": "natural gas",
-      "allowedOperatingModes": "The Permittee shall burn only natural gas, unless approval is obtained from the Department.",
-      "extractionNotes": "Individual units listed with capacities: EU35-1 (1.5 MMBtu/hr), EU35-2 (1.5 MMBtu/hr), EU97-1 (1.118 MMBtu/hr), EU302-1 (1.7 MMBtu/hr), EU302-3 (1.44 MMBtu/hr). Lochinvar make is specified for EU35-1, EU35-2, and EU97-1; other units do not list make on this page."
-    },
-    {
-      "referenceNumber": "EU7-2",
-      "numGenerators": 1,
-      "ratedCapacityKW": 500,
-      "primaryFuelType": "No. 2 fuel oil",
-      "fuelGrade": "No. 2 fuel oil",
-      "fuelSpecification": "COMAR 26.11.09.07",
-      "fuelSulfurContentPct": 0.003,
-      "fuelCertificationRequired": true,
-      "observationFrequency": "The Permittee shall calculate the capacity factor of each unit within 30 days after the end of each month.",
-      "recordkeepingWindowYears": 5
-    },
-    {
-      "referenceNumber": "EU7-3",
-      "numGenerators": 1,
-      "ratedCapacityKW": 500,
-      "primaryFuelType": "No. 2 fuel oil",
-      "fuelGrade": "No. 2 fuel oil",
-      "fuelSpecification": "COMAR 26.11.09.07",
-      "fuelSulfurContentPct": 0.003,
-      "fuelCertificationRequired": true,
-      "observationFrequency": "The Permittee shall calculate the capacity factor of each unit within 30 days after the end of each month.",
-      "recordkeepingWindowYears": 5
-    },
-    {
-      "referenceNumber": "EU10-3",
-      "numGenerators": 1,
-      "ratedCapacityKW": 500,
-      "primaryFuelType": "No. 2 fuel oil",
-      "fuelGrade": "No. 2 fuel oil",
-      "fuelSpecification": "COMAR 26.11.09.07",
-      "fuelSulfurContentPct": 0.003,
-      "fuelCertificationRequired": true,
-      "observationFrequency": "The Permittee shall calculate the capacity factor of each unit within 30 days after the end of each month.",
-      "recordkeepingWindowYears": 5
-    },
-    {
-      "referenceNumber": "EU24C-1 through EU24C-4 and EU24C-8",
-      "numGenerators": 5,
-      "make": "Caterpillar",
-      "ratedCapacityKW": 1000,
-      "primaryFuelType": "No. 2 fuel oil",
-      "fuelGrade": "No. 2 fuel oil",
-      "fuelSpecification": "COMAR 26.11.09.07",
-      "fuelSulfurContentPct": 0.003,
-      "fuelCertificationRequired": true,
-      "observationFrequency": "The Permittee shall calculate the capacity factor of each unit within 30 days after the end of each month.",
-      "recordkeepingWindowYears": 5
-    },
-    {
-      "referenceNumber": "EU24C-6",
-      "numGenerators": 1,
-      "make": "MTU Detroit Diesel",
-      "ratedCapacityKW": 1000,
-      "primaryFuelType": "No. 2 fuel oil",
-      "fuelGrade": "No. 2 fuel oil",
-      "fuelSpecification": "40 CFR §80.510(b); 40 CFR §1090.305",
-      "fuelSulfurContentPct": 0.0015,
-      "fuelCertificationRequired": true,
-      "operatingHoursPerUnitLimit": 100,
-      "operatingHoursPerUnitRollingWindow": "per calendar year",
-      "allowedOperatingModes": "There is no time limit on the use of emergency stationary ICE in emergency situations. You may operate your emergency stationary ICE for any combination of the purposes specified ... for a maximum of 100 hours per calendar year. Emergency stationary ICE may be operated for up to 50 hours per calendar year in non-emergency situations. (See Table IV-3a operational limitation text.)",
-      "hourMeterRequired": true,
-      "observationFrequency": "The Permittee shall calculate the capacity factor of each unit within 30 days after the end of each month.",
-      "recordkeepingWindowYears": 5,
-      "extractionNotes": "Both COMAR sulfur limit (0.3%) appears in Table IV-3 and NSPS non-road diesel requirement (15 ppm) appears in Table IV-3a; the NSPS 15 ppm value from Table IV-3a is recorded here."
-    },
-    {
-      "referenceNumber": "EU28-1",
-      "numGenerators": 1,
-      "make": "Kohler",
-      "ratedCapacityKW": 563,
-      "ratedCapacityHP": 755,
-      "primaryFuelType": "diesel",
-      "fuelSpecification": "40 CFR §80.510(b); 40 CFR §1090.305",
-      "fuelSulfurContentPct": 0.0015,
-      "fuelCertificationRequired": true,
-      "operatingHoursPerUnitLimit": 100,
-      "operatingHoursPerUnitRollingWindow": "per calendar year",
-      "allowedOperatingModes": "There is no time limit on the use of emergency stationary ICE in emergency situations. You may operate your emergency stationary ICE for any combination of the purposes specified ... for a maximum of 100 hours per calendar year. Emergency stationary ICE may be operated for up to 50 hours per calendar year in non-emergency situations. (See Table IV-3a operational limitation text.)",
-      "hourMeterRequired": true,
-      "observationFrequency": "The Permittee shall calculate the capacity factor of each unit within 30 days after the end of each month.",
-      "recordkeepingWindowYears": 5,
-      "extractionNotes": "NSPS non-road diesel fuel requirements (15 ppm) and related reporting/monitoring are specified in Table IV-3a for this unit."
-    },
-    {
-      "referenceNumber": "EU29-1",
-      "numGenerators": 1,
-      "ratedCapacityKW": 1000,
-      "ratedCapacityHP": 1341,
-      "primaryFuelType": "No. 2 fuel oil",
-      "fuelGrade": "No. 2 fuel oil",
-      "fuelSpecification": "40 CFR §80.510(b); 40 CFR §1090.305",
-      "fuelSulfurContentPct": 0.0015,
-      "fuelCertificationRequired": true,
-      "operatingHoursPerUnitLimit": 100,
-      "operatingHoursPerUnitRollingWindow": "per calendar year",
-      "allowedOperatingModes": "There is no time limit on the use of emergency stationary ICE in emergency situations. You may operate your emergency stationary ICE for any combination of the purposes specified ... for a maximum of 100 hours per calendar year. Emergency stationary ICE may be operated for up to 50 hours per calendar year in non-emergency situations. (See Table IV-3a operational limitation text.)",
-      "hourMeterRequired": true,
-      "observationFrequency": "The Permittee shall calculate the capacity factor of each unit within 30 days after the end of each month.",
-      "recordkeepingWindowYears": 5,
-      "extractionNotes": "NSPS non-road diesel fuel requirements (15 ppm) and related reporting/monitoring are specified in Table IV-3a for this unit."
-    },
-    {
-      "referenceNumber": "EU31-1 thru EU31-5",
-      "numGenerators": 5,
-      "make": "Caterpillar",
-      "ratedCapacityKW": 1450,
-      "primaryFuelType": "No. 2 fuel oil",
-      "fuelGrade": "No. 2 fuel oil",
-      "fuelSpecification": "COMAR 26.11.09.07",
-      "fuelSulfurContentPct": 0.003,
-      "fuelCertificationRequired": true,
-      "observationFrequency": "The Permittee shall calculate the capacity factor of each unit within 30 days after the end of each month.",
-      "recordkeepingWindowYears": 5
-    },
-    {
-      "referenceNumber": "EU30-9",
-      "numGenerators": 1,
-      "ratedCapacityKW": 1000,
-      "ratedCapacityHP": 1341,
-      "primaryFuelType": "No. 2 fuel oil",
-      "fuelGrade": "No. 2 fuel oil",
-      "fuelSpecification": "40 CFR §80.510(b); 40 CFR §1090.305",
-      "fuelSulfurContentPct": 0.0015,
-      "fuelCertificationRequired": true,
-      "operatingHoursPerUnitLimit": 100,
-      "operatingHoursPerUnitRollingWindow": "per calendar year",
-      "allowedOperatingModes": "There is no time limit on the use of emergency stationary ICE in emergency situations. You may operate your emergency stationary ICE for any combination of the purposes specified ... for a maximum of 100 hours per calendar year. Emergency stationary ICE may be operated for up to 50 hours per calendar year in non-emergency situations. (See Table IV-3a operational limitation text.)",
-      "hourMeterRequired": true,
-      "observationFrequency": "The Permittee shall calculate the capacity factor of each unit within 30 days after the end of each month.",
-      "recordkeepingWindowYears": 5,
-      "extractionNotes": "NSPS non-road diesel fuel requirements (15 ppm) and related reporting/monitoring are specified in Table IV-3a for this unit."
-    },
-    {
-      "referenceNumber": "EU30-9",
-      "numGenerators": 1,
-      "originalPermitDate": "2024-01-01",
-      "ratedCapacityKW": 1000,
-      "ratedCapacityHP": 1341,
-      "primaryFuelType": "diesel",
-      "nspsSubpartIIII": true,
-      "mactSubpartZZZZ": true,
-      "extractionNotes": "MDE Registration Number 033-0675-9-1652; listed in 'equipment has been added' table with Date of Installation 2024."
-    },
-    {
-      "referenceNumber": "MDE Registration Nos. 033-0675-9-1366, 9-1422, 9-1535 and 9-1652",
-      "numGenerators": 4,
-      "originalPermitDate": "2006-06-12",
-      "nspsSubpartIIII": true,
-      "mactSubpartZZZZ": true,
-      "extractionNotes": "Text: 'installed and manufactured after June 12, 2006. These engines are subject to 40 CFR Part 60, Subpart IIII.'"
-    },
-    {
-      "referenceNumber": "the other thirteen (13) emergency generators",
-      "numGenerators": 13,
-      "nspsSubpartIIII": false,
-      "mactSubpartZZZZ": false,
-      "extractionNotes": "Text: 'the other thirteen (13) emergency generators owned by NASA-GSFC were installed before 2006 and are not subject to 40 CFR, Part 60, Subpart IIII per 40 CFR §60.4200(a)(2)(i).' and 'The remaining thirteen (13) emergency generators are exempt from the requirements of 40 CFR Part 63, Subpart ZZZZ as long as they meet the requirement in 40 CFR §63.6585(f)(3).' "
-    },
-    {
-      "referenceNumber": "EU7-2",
-      "numGenerators": 1,
-      "originalPermitDate": "1999-01-01",
-      "equipmentFacilityID": "9-1045",
-      "ratedCapacityKW": 500,
-      "primaryFuelType": "No. 2 fuel oil"
-    },
-    {
-      "referenceNumber": "EU10-3",
-      "numGenerators": 1,
-      "originalPermitDate": "1999-01-01",
-      "equipmentFacilityID": "9-1047",
-      "ratedCapacityKW": 500,
-      "primaryFuelType": "No. 2 fuel oil"
-    },
-    {
-      "referenceNumber": "EU24C-1",
-      "numGenerators": 5,
-      "originalPermitDate": "1996-01-01",
-      "equipmentFacilityID": "9-1054",
-      "make": "Caterpillar",
-      "ratedCapacityKW": 1000,
-      "primaryFuelType": "No. 2 fuel oil"
-    },
-    {
-      "referenceNumber": "EU24C-2",
-      "equipmentFacilityID": "9-1055"
-    },
-    {
-      "referenceNumber": "EU24C-3",
-      "equipmentFacilityID": "9-1056"
-    },
-    {
-      "referenceNumber": "EU24C-4",
-      "equipmentFacilityID": "9-1057"
-    },
-    {
-      "referenceNumber": "EU24C-8",
-      "equipmentFacilityID": "9-1058"
-    },
-    {
-      "referenceNumber": "EU24C-6",
-      "numGenerators": 1,
-      "originalPermitDate": "2012-01-01",
-      "equipmentFacilityID": "9-1366",
-      "make": "MTU Detroit Diesel",
-      "ratedCapacityKW": 1000,
-      "primaryFuelType": "No. 2 fuel oil"
-    },
-    {
-      "referenceNumber": "EU31-1",
-      "numGenerators": 5,
-      "originalPermitDate": "1996-01-01",
-      "equipmentFacilityID": "9-1049",
-      "make": "Caterpillar",
-      "ratedCapacityKW": 1450,
-      "primaryFuelType": "No. 2 fuel oil"
-    },
-    {
-      "referenceNumber": "EU31-2",
-      "equipmentFacilityID": "9-1050"
-    },
-    {
-      "referenceNumber": "EU31-3",
-      "equipmentFacilityID": "9-1051"
-    },
-    {
-      "referenceNumber": "EU31-4",
-      "equipmentFacilityID": "9-1052"
-    },
-    {
-      "referenceNumber": "EU31-5",
-      "equipmentFacilityID": "9-1053"
-    },
-    {
-      "referenceNumber": "EU29-1",
-      "numGenerators": 1,
-      "originalPermitDate": "2013-01-01",
-      "equipmentFacilityID": "9-1422",
-      "ratedCapacityKW": 1000,
-      "primaryFuelType": "No. 2 fuel oil"
-    },
-    {
-      "referenceNumber": "EU7-3",
-      "numGenerators": 1,
-      "originalPermitDate": "2003-01-01",
-      "equipmentFacilityID": "9-1433",
-      "ratedCapacityKW": 500,
-      "primaryFuelType": "No. 2 fuel oil"
-    },
-    {
-      "referenceNumber": "EU28-1",
-      "numGenerators": 1,
-      "originalPermitDate": "2018-01-01",
-      "equipmentFacilityID": "9-1535",
-      "make": "Kohler",
-      "ratedCapacityKW": 563,
-      "ratedCapacityHP": 755,
-      "primaryFuelType": "diesel"
-    },
-    {
-      "referenceNumber": "EU30-9",
-      "numGenerators": 1,
-      "originalPermitDate": "2024-01-01",
-      "equipmentFacilityID": "9-1652",
-      "ratedCapacityKW": 1000,
-      "primaryFuelType": "diesel"
-    },
-    {
-      "referenceNumber": "EU7-2",
-      "numGenerators": 1,
-      "equipmentFacilityID": "[9-1045]",
-      "ratedCapacityKW": 500,
-      "primaryFuelType": "No. 2 fuel oil",
-      "fuelSulfurContentPct": 0.0015,
-      "fuelCertificationRequired": true,
-      "operatingHoursPerUnitLimit": 100,
-      "operatingHoursPerUnitRollingWindow": "per calendar year",
-      "allowedOperatingModes": "There is no time limit on the use of emergency stationary ICE in emergency situations; operation for maintenance checks and readiness testing and emergency demand response is allowed (combined maximum of 100 hours per calendar year); emergency stationary ICE may be operated for up to 50 hours per calendar year in non-emergency situations (counts toward the 100 hours).",
-      "hourMeterRequired": true,
-      "recordkeepingWindowYears": 5,
-      "mactSubpartZZZZ": false,
-      "extractionNotes": "Fuel sulfur content (15 ppm -> 0.0015) and fuel certification requirement taken from facility compliance status noting supplier certification for delivered fuel in 2020-2021."
-    },
-    {
-      "referenceNumber": "EU7-3",
-      "numGenerators": 1,
-      "equipmentFacilityID": "[9-1433]",
-      "ratedCapacityKW": 500,
-      "primaryFuelType": "No. 2 fuel oil",
-      "fuelSulfurContentPct": 0.0015,
-      "fuelCertificationRequired": true,
-      "operatingHoursPerUnitLimit": 100,
-      "operatingHoursPerUnitRollingWindow": "per calendar year",
-      "allowedOperatingModes": "There is no time limit on the use of emergency stationary ICE in emergency situations; operation for maintenance checks and readiness testing and emergency demand response is allowed (combined maximum of 100 hours per calendar year); emergency stationary ICE may be operated for up to 50 hours per calendar year in non-emergency situations (counts toward the 100 hours).",
-      "hourMeterRequired": true,
-      "recordkeepingWindowYears": 5,
-      "mactSubpartZZZZ": false,
-      "extractionNotes": "Fuel sulfur content (15 ppm -> 0.0015) and fuel certification requirement taken from facility compliance status noting supplier certification for delivered fuel in 2020-2021."
-    },
-    {
-      "referenceNumber": "EU10-3",
-      "numGenerators": 1,
-      "equipmentFacilityID": "[9-1047]",
-      "ratedCapacityKW": 500,
-      "primaryFuelType": "No. 2 fuel oil",
-      "fuelSulfurContentPct": 0.0015,
-      "fuelCertificationRequired": true,
-      "operatingHoursPerUnitLimit": 100,
-      "operatingHoursPerUnitRollingWindow": "per calendar year",
-      "allowedOperatingModes": "There is no time limit on the use of emergency stationary ICE in emergency situations; operation for maintenance checks and readiness testing and emergency demand response is allowed (combined maximum of 100 hours per calendar year); emergency stationary ICE may be operated for up to 50 hours per calendar year in non-emergency situations (counts toward the 100 hours).",
-      "hourMeterRequired": true,
-      "recordkeepingWindowYears": 5,
-      "mactSubpartZZZZ": false,
-      "extractionNotes": "Fuel sulfur content (15 ppm -> 0.0015) and fuel certification requirement taken from facility compliance status noting supplier certification for delivered fuel in 2020-2021."
-    },
-    {
-      "referenceNumber": "EU24C-1 through EU24C-4 and EU24C-8",
-      "numGenerators": 5,
-      "equipmentFacilityID": "[9-1054 thru 9-1058]",
-      "make": "Caterpillar",
-      "ratedCapacityKW": 1000,
-      "primaryFuelType": "No. 2 fuel oil",
-      "fuelSulfurContentPct": 0.0015,
-      "fuelCertificationRequired": true,
-      "operatingHoursPerUnitLimit": 100,
-      "operatingHoursPerUnitRollingWindow": "per calendar year",
-      "allowedOperatingModes": "There is no time limit on the use of emergency stationary ICE in emergency situations; operation for maintenance checks and readiness testing and emergency demand response is allowed (combined maximum of 100 hours per calendar year); emergency stationary ICE may be operated for up to 50 hours per calendar year in non-emergency situations (counts toward the 100 hours).",
-      "hourMeterRequired": true,
-      "recordkeepingWindowYears": 5,
-      "mactSubpartZZZZ": false,
-      "extractionNotes": "Group of five Caterpillar generators listed together in the source. Fuel sulfur content (15 ppm -> 0.0015) and fuel certification requirement taken from facility compliance status noting supplier certification for delivered fuel in 2020-2021."
-    },
-    {
-      "referenceNumber": "EU24C-6",
-      "numGenerators": 1,
-      "equipmentFacilityID": "[9-1366]",
-      "make": "MTU Detroit Diesel",
-      "ratedCapacityKW": 1000,
-      "primaryFuelType": "No. 2 fuel oil",
-      "fuelSulfurContentPct": 0.0015,
-      "fuelCertificationRequired": true,
-      "operatingHoursPerUnitLimit": 100,
-      "operatingHoursPerUnitRollingWindow": "per calendar year",
-      "allowedOperatingModes": "There is no time limit on the use of emergency stationary ICE in emergency situations; operation for maintenance checks and readiness testing and emergency demand response is allowed (combined maximum of 100 hours per calendar year); emergency stationary ICE may be operated for up to 50 hours per calendar year in non-emergency situations (counts toward the 100 hours).",
-      "hourMeterRequired": true,
-      "recordkeepingWindowYears": 5,
-      "nspsSubpartIIII": true,
-      "mactSubpartZZZZ": true,
-      "extractionNotes": "EU24C-6 explicitly listed as subject to NSPS Subpart IIII and to Subpart ZZZZ; fuel sulfur content (15 ppm -> 0.0015) from facility compliance status."
-    },
-    {
-      "referenceNumber": "EU28-1",
-      "numGenerators": 1,
-      "equipmentFacilityID": "[9-1535]",
-      "make": "Kohler",
-      "ratedCapacityKW": 563,
-      "ratedCapacityHP": 755,
-      "primaryFuelType": "diesel",
-      "fuelSulfurContentPct": 0.0015,
-      "fuelCertificationRequired": true,
-      "operatingHoursPerUnitLimit": 100,
-      "operatingHoursPerUnitRollingWindow": "per calendar year",
-      "allowedOperatingModes": "There is no time limit on the use of emergency stationary ICE in emergency situations; operation for maintenance checks and readiness testing and emergency demand response is allowed (combined maximum of 100 hours per calendar year); emergency stationary ICE may be operated for up to 50 hours per calendar year in non-emergency situations (counts toward the 100 hours).",
-      "hourMeterRequired": true,
-      "recordkeepingWindowYears": 5,
-      "nspsSubpartIIII": true,
-      "mactSubpartZZZZ": true,
-      "extractionNotes": "EU28-1 explicitly listed as subject to NSPS Subpart IIII and Subpart ZZZZ; fuel sulfur content (15 ppm -> 0.0015) from facility compliance status."
-    },
-    {
-      "referenceNumber": "EU29-1",
-      "numGenerators": 1,
-      "equipmentFacilityID": "[9-1422]",
-      "ratedCapacityKW": 1000,
-      "ratedCapacityHP": 1341,
-      "primaryFuelType": "No. 2 fuel oil",
-      "fuelSulfurContentPct": 0.0015,
-      "fuelCertificationRequired": true,
-      "operatingHoursPerUnitLimit": 100,
-      "operatingHoursPerUnitRollingWindow": "per calendar year",
-      "allowedOperatingModes": "There is no time limit on the use of emergency stationary ICE in emergency situations; operation for maintenance checks and readiness testing and emergency demand response is allowed (combined maximum of 100 hours per calendar year); emergency stationary ICE may be operated for up to 50 hours per calendar year in non-emergency situations (counts toward the 100 hours).",
-      "hourMeterRequired": true,
-      "recordkeepingWindowYears": 5,
-      "nspsSubpartIIII": true,
-      "mactSubpartZZZZ": true,
-      "extractionNotes": "EU29-1 explicitly listed as subject to NSPS Subpart IIII and Subpart ZZZZ; fuel sulfur content (15 ppm -> 0.0015) from facility compliance status."
-    },
-    {
-      "referenceNumber": "EU30-9",
-      "numGenerators": 1,
-      "equipmentFacilityID": "[9-1652]",
-      "ratedCapacityKW": 1000,
-      "ratedCapacityHP": 1341,
-      "primaryFuelType": "No. 2 fuel oil",
-      "fuelSulfurContentPct": 0.0015,
-      "fuelCertificationRequired": true,
-      "operatingHoursPerUnitLimit": 100,
-      "operatingHoursPerUnitRollingWindow": "per calendar year",
-      "allowedOperatingModes": "There is no time limit on the use of emergency stationary ICE in emergency situations; operation for maintenance checks and readiness testing and emergency demand response is allowed (combined maximum of 100 hours per calendar year); emergency stationary ICE may be operated for up to 50 hours per calendar year in non-emergency situations (counts toward the 100 hours).",
-      "hourMeterRequired": true,
-      "recordkeepingWindowYears": 5,
-      "nspsSubpartIIII": true,
-      "mactSubpartZZZZ": true,
-      "extractionNotes": "EU30-9 explicitly listed as subject to NSPS Subpart IIII and Subpart ZZZZ; fuel sulfur content (15 ppm -> 0.0015) from facility compliance status."
-    },
-    {
-      "referenceNumber": "EU31-1 thru EU31-5",
-      "numGenerators": 5,
-      "equipmentFacilityID": "[9-1049 thru 9-1053]",
-      "make": "Caterpillar",
-      "ratedCapacityKW": 1450,
-      "primaryFuelType": "No. 2 fuel oil",
-      "fuelSulfurContentPct": 0.0015,
-      "fuelCertificationRequired": true,
-      "operatingHoursPerUnitLimit": 100,
-      "operatingHoursPerUnitRollingWindow": "per calendar year",
-      "allowedOperatingModes": "There is no time limit on the use of emergency stationary ICE in emergency situations; operation for maintenance checks and readiness testing and emergency demand response is allowed (combined maximum of 100 hours per calendar year); emergency stationary ICE may be operated for up to 50 hours per calendar year in non-emergency situations (counts toward the 100 hours).",
-      "hourMeterRequired": true,
-      "recordkeepingWindowYears": 5,
-      "mactSubpartZZZZ": false,
-      "extractionNotes": "Group of five Caterpillar generators listed together in the source. Fuel sulfur content (15 ppm -> 0.0015) and fuel certification requirement taken from facility compliance status noting supplier certification for delivered fuel in 2020-2021."
+    "data": {
+        "permitDetails": {
+            "permitNumber": "24-033-0675",
+            "permitIssuanceDate": "2025-06-10",
+            "permitExpirationDate": "2029-12-31",
+            "facilityName": "NASA Goddard Space Flight Center",
+            "facilityAddress": "8800 Greenbelt Road, Attn: Code 250, Greenbelt, MD 20771",
+            "facilityCounty": "Prince George's County",
+            "facilityState": "MD",
+            "stateFacilityID": null,
+            "initialConstructionCommencedNotificationRequired": null,
+            "constructionCommencedNotificationWindowDays": null,
+            "initialStartupNotificationRequired": null,
+            "startupNotificationWindowDays": null,
+            "permitCopyOnsiteRequired": true,
+            "rightOfEntryClause": "The Permittee shall allow employees and authorized representatives of the Department, the EPA, and local environmental health agencies, upon presentation of credentials or other documents as may be required by law, to:\n a. Enter at a reasonable time without delay and without prior notification the Permittee's property where a Part 70 source is located, emissions-related activity is conducted, or records required by this permit are kept;\n b. Have access to and make copies of records required by the permit;\n c. Inspect all emissions units within the facility subject to the permit and all related monitoring systems, air pollution control equipment, and practices or operations regulated or required by the permit; and\n d. Sample or monitor any substances or parameters at or related to the emissions units at the facility for the purpose of determining compliance with the permit.",
+            "extractionNotes": "Document includes both a Part 70/Title V permit number (24-033-0675) and a Control No. (B - 07923); selected primary permit number 24-033-0675 as permitNumber."
+        },
+        "generatorSets": [
+            {
+                "referenceNumber": "EU7-2",
+                "numGenerators": 1,
+                "originalPermitDate": "1999-01-01",
+                "equipmentFacilityID": "9-1045",
+                "ratedCapacityKW": 500,
+                "primaryFuelType": "No. 2 fuel oil"
+            },
+            {
+                "referenceNumber": "EU10-3",
+                "numGenerators": 1,
+                "originalPermitDate": "1999-01-01",
+                "equipmentFacilityID": "9-1047",
+                "ratedCapacityKW": 500,
+                "primaryFuelType": "No. 2 fuel oil"
+            },
+            {
+                "referenceNumber": "EU24C-1",
+                "numGenerators": 5,
+                "originalPermitDate": "1996-01-01",
+                "equipmentFacilityID": "9-1054",
+                "make": "Caterpillar",
+                "ratedCapacityKW": 1000,
+                "primaryFuelType": "No. 2 fuel oil"
+            },
+            {
+                "referenceNumber": "EU24C-2",
+                "equipmentFacilityID": "9-1055"
+            },
+            {
+                "referenceNumber": "EU24C-3",
+                "equipmentFacilityID": "9-1056"
+            },
+            {
+                "referenceNumber": "EU24C-4",
+                "equipmentFacilityID": "9-1057"
+            },
+            {
+                "referenceNumber": "EU24C-8",
+                "equipmentFacilityID": "9-1058"
+            },
+            {
+                "referenceNumber": "EU24C-6",
+                "numGenerators": 1,
+                "originalPermitDate": "2012-01-01",
+                "equipmentFacilityID": "9-1366",
+                "make": "MTU Detroit Diesel",
+                "ratedCapacityKW": 1000,
+                "primaryFuelType": "No. 2 fuel oil"
+            },
+            {
+                "referenceNumber": "EU31-1",
+                "numGenerators": 5,
+                "originalPermitDate": "1996-01-01",
+                "equipmentFacilityID": "9-1049",
+                "make": "Caterpillar",
+                "ratedCapacityKW": 1450,
+                "primaryFuelType": "No. 2 fuel oil"
+            },
+            {
+                "referenceNumber": "EU31-2",
+                "equipmentFacilityID": "9-1050"
+            },
+            {
+                "referenceNumber": "EU31-3",
+                "equipmentFacilityID": "9-1051"
+            },
+            {
+                "referenceNumber": "EU31-4",
+                "equipmentFacilityID": "9-1052"
+            },
+            {
+                "referenceNumber": "EU31-5",
+                "equipmentFacilityID": "9-1053"
+            },
+            {
+                "referenceNumber": "EU29-1",
+                "numGenerators": 1,
+                "originalPermitDate": "2013-01-01",
+                "equipmentFacilityID": "9-1422",
+                "ratedCapacityKW": 1000,
+                "primaryFuelType": "No. 2 fuel oil"
+            },
+            {
+                "referenceNumber": "EU7-3",
+                "numGenerators": 1,
+                "originalPermitDate": "2003-01-01",
+                "equipmentFacilityID": "9-1433",
+                "ratedCapacityKW": 500,
+                "primaryFuelType": "No. 2 fuel oil"
+            },
+            {
+                "referenceNumber": "EU28-1",
+                "numGenerators": 1,
+                "originalPermitDate": "2018-01-01",
+                "equipmentFacilityID": "9-1535",
+                "make": "Kohler",
+                "ratedCapacityKW": 563,
+                "ratedCapacityHP": 755,
+                "primaryFuelType": "diesel"
+            },
+            {
+                "referenceNumber": "EU30-9",
+                "numGenerators": 1,
+                "originalPermitDate": "2024-01-01",
+                "equipmentFacilityID": "9-1652",
+                "ratedCapacityKW": 1000,
+                "primaryFuelType": "diesel"
+            },
+            {
+                "referenceNumber": "EU24-1 thru EU24-5 - Boilers",
+                "numGenerators": 5,
+                "originalPermitDate": "2005-04-27",
+                "make": "Nebraska",
+                "ratedCapacityMMBtuPerHr": 49.5,
+                "primaryFuelType": "Landfill gas and natural gas",
+                "secondaryFuelType": "No. 2 fuel oil",
+                "fuelGrade": "No. 2 fuel oil",
+                "fuelSulfurContentPct": 0.003,
+                "controlTechnology": "low NOx burners",
+                "observationFrequency": "Perform a visual observation of stack emissions for a 6-minute period once for each 168 hours that the boiler burns oil or at a minimum of once per year; measure NOx for a 3 to 5-minute period every 168 hours of operation (and for any month that distillate fuel is burned, measure NOx for a 3 to 5-minute period every 168 hours).",
+                "recordkeepingWindowYears": 5,
+                "extractionNotes": "Group includes five boilers (three described as natural gas/landfill gas/No. 2 fuel oil and two as natural gas/No. 2 fuel oil). MDE PTC Nos. 033-5-0808 thru 5-0812 issued April 27, 2005 referenced for these units. COMAR fuel sulfur limit of 0.3 percent (0.003) is quoted; NSPS also quotes 0.5 weight percent as an alternative."
+            },
+            {
+                "referenceNumber": "EU35-1, EU35-2, EU97-1, EU302-1 & EU302-3 - Boilers: Space Heaters",
+                "numGenerators": 5,
+                "primaryFuelType": "natural gas",
+                "allowedOperatingModes": "The Permittee shall burn only natural gas, unless approval is obtained from the Department.",
+                "extractionNotes": "Individual units listed with capacities: EU35-1 (1.5 MMBtu/hr), EU35-2 (1.5 MMBtu/hr), EU97-1 (1.118 MMBtu/hr), EU302-1 (1.7 MMBtu/hr), EU302-3 (1.44 MMBtu/hr). Lochinvar make is specified for EU35-1, EU35-2, and EU97-1; other units do not list make on this page."
+            },
+            {
+                "referenceNumber": "EU7-2",
+                "numGenerators": 1,
+                "ratedCapacityKW": 500,
+                "primaryFuelType": "No. 2 fuel oil",
+                "fuelGrade": "No. 2 fuel oil",
+                "fuelSpecification": "COMAR 26.11.09.07",
+                "fuelSulfurContentPct": 0.003,
+                "fuelCertificationRequired": true,
+                "observationFrequency": "The Permittee shall calculate the capacity factor of each unit within 30 days after the end of each month.",
+                "recordkeepingWindowYears": 5
+            },
+            {
+                "referenceNumber": "EU7-3",
+                "numGenerators": 1,
+                "ratedCapacityKW": 500,
+                "primaryFuelType": "No. 2 fuel oil",
+                "fuelGrade": "No. 2 fuel oil",
+                "fuelSpecification": "COMAR 26.11.09.07",
+                "fuelSulfurContentPct": 0.003,
+                "fuelCertificationRequired": true,
+                "observationFrequency": "The Permittee shall calculate the capacity factor of each unit within 30 days after the end of each month.",
+                "recordkeepingWindowYears": 5
+            },
+            {
+                "referenceNumber": "EU10-3",
+                "numGenerators": 1,
+                "ratedCapacityKW": 500,
+                "primaryFuelType": "No. 2 fuel oil",
+                "fuelGrade": "No. 2 fuel oil",
+                "fuelSpecification": "COMAR 26.11.09.07",
+                "fuelSulfurContentPct": 0.003,
+                "fuelCertificationRequired": true,
+                "observationFrequency": "The Permittee shall calculate the capacity factor of each unit within 30 days after the end of each month.",
+                "recordkeepingWindowYears": 5
+            },
+            {
+                "referenceNumber": "EU24C-1 through EU24C-4 and EU24C-8",
+                "numGenerators": 5,
+                "make": "Caterpillar",
+                "ratedCapacityKW": 1000,
+                "primaryFuelType": "No. 2 fuel oil",
+                "fuelGrade": "No. 2 fuel oil",
+                "fuelSpecification": "COMAR 26.11.09.07",
+                "fuelSulfurContentPct": 0.003,
+                "fuelCertificationRequired": true,
+                "observationFrequency": "The Permittee shall calculate the capacity factor of each unit within 30 days after the end of each month.",
+                "recordkeepingWindowYears": 5
+            },
+            {
+                "referenceNumber": "EU24C-6",
+                "numGenerators": 1,
+                "make": "MTU Detroit Diesel",
+                "ratedCapacityKW": 1000,
+                "primaryFuelType": "No. 2 fuel oil",
+                "fuelGrade": "No. 2 fuel oil",
+                "fuelSpecification": "40 CFR \u00a780.510(b); 40 CFR \u00a71090.305",
+                "fuelSulfurContentPct": 0.0015,
+                "fuelCertificationRequired": true,
+                "operatingHoursPerUnitLimit": 100,
+                "operatingHoursPerUnitRollingWindow": "per calendar year",
+                "allowedOperatingModes": "There is no time limit on the use of emergency stationary ICE in emergency situations. You may operate your emergency stationary ICE for any combination of the purposes specified ... for a maximum of 100 hours per calendar year. Emergency stationary ICE may be operated for up to 50 hours per calendar year in non-emergency situations. (See Table IV-3a operational limitation text.)",
+                "hourMeterRequired": true,
+                "observationFrequency": "The Permittee shall calculate the capacity factor of each unit within 30 days after the end of each month.",
+                "recordkeepingWindowYears": 5,
+                "extractionNotes": "Both COMAR sulfur limit (0.3%) appears in Table IV-3 and NSPS non-road diesel requirement (15 ppm) appears in Table IV-3a; the NSPS 15 ppm value from Table IV-3a is recorded here."
+            },
+            {
+                "referenceNumber": "EU28-1",
+                "numGenerators": 1,
+                "make": "Kohler",
+                "ratedCapacityKW": 563,
+                "ratedCapacityHP": 755,
+                "primaryFuelType": "diesel",
+                "fuelSpecification": "40 CFR \u00a780.510(b); 40 CFR \u00a71090.305",
+                "fuelSulfurContentPct": 0.0015,
+                "fuelCertificationRequired": true,
+                "operatingHoursPerUnitLimit": 100,
+                "operatingHoursPerUnitRollingWindow": "per calendar year",
+                "allowedOperatingModes": "There is no time limit on the use of emergency stationary ICE in emergency situations. You may operate your emergency stationary ICE for any combination of the purposes specified ... for a maximum of 100 hours per calendar year. Emergency stationary ICE may be operated for up to 50 hours per calendar year in non-emergency situations. (See Table IV-3a operational limitation text.)",
+                "hourMeterRequired": true,
+                "observationFrequency": "The Permittee shall calculate the capacity factor of each unit within 30 days after the end of each month.",
+                "recordkeepingWindowYears": 5,
+                "extractionNotes": "NSPS non-road diesel fuel requirements (15 ppm) and related reporting/monitoring are specified in Table IV-3a for this unit."
+            },
+            {
+                "referenceNumber": "EU29-1",
+                "numGenerators": 1,
+                "ratedCapacityKW": 1000,
+                "ratedCapacityHP": 1341,
+                "primaryFuelType": "No. 2 fuel oil",
+                "fuelGrade": "No. 2 fuel oil",
+                "fuelSpecification": "40 CFR \u00a780.510(b); 40 CFR \u00a71090.305",
+                "fuelSulfurContentPct": 0.0015,
+                "fuelCertificationRequired": true,
+                "operatingHoursPerUnitLimit": 100,
+                "operatingHoursPerUnitRollingWindow": "per calendar year",
+                "allowedOperatingModes": "There is no time limit on the use of emergency stationary ICE in emergency situations. You may operate your emergency stationary ICE for any combination of the purposes specified ... for a maximum of 100 hours per calendar year. Emergency stationary ICE may be operated for up to 50 hours per calendar year in non-emergency situations. (See Table IV-3a operational limitation text.)",
+                "hourMeterRequired": true,
+                "observationFrequency": "The Permittee shall calculate the capacity factor of each unit within 30 days after the end of each month.",
+                "recordkeepingWindowYears": 5,
+                "extractionNotes": "NSPS non-road diesel fuel requirements (15 ppm) and related reporting/monitoring are specified in Table IV-3a for this unit."
+            },
+            {
+                "referenceNumber": "EU31-1 thru EU31-5",
+                "numGenerators": 5,
+                "make": "Caterpillar",
+                "ratedCapacityKW": 1450,
+                "primaryFuelType": "No. 2 fuel oil",
+                "fuelGrade": "No. 2 fuel oil",
+                "fuelSpecification": "COMAR 26.11.09.07",
+                "fuelSulfurContentPct": 0.003,
+                "fuelCertificationRequired": true,
+                "observationFrequency": "The Permittee shall calculate the capacity factor of each unit within 30 days after the end of each month.",
+                "recordkeepingWindowYears": 5
+            },
+            {
+                "referenceNumber": "EU30-9",
+                "numGenerators": 1,
+                "ratedCapacityKW": 1000,
+                "ratedCapacityHP": 1341,
+                "primaryFuelType": "No. 2 fuel oil",
+                "fuelGrade": "No. 2 fuel oil",
+                "fuelSpecification": "40 CFR \u00a780.510(b); 40 CFR \u00a71090.305",
+                "fuelSulfurContentPct": 0.0015,
+                "fuelCertificationRequired": true,
+                "operatingHoursPerUnitLimit": 100,
+                "operatingHoursPerUnitRollingWindow": "per calendar year",
+                "allowedOperatingModes": "There is no time limit on the use of emergency stationary ICE in emergency situations. You may operate your emergency stationary ICE for any combination of the purposes specified ... for a maximum of 100 hours per calendar year. Emergency stationary ICE may be operated for up to 50 hours per calendar year in non-emergency situations. (See Table IV-3a operational limitation text.)",
+                "hourMeterRequired": true,
+                "observationFrequency": "The Permittee shall calculate the capacity factor of each unit within 30 days after the end of each month.",
+                "recordkeepingWindowYears": 5,
+                "extractionNotes": "NSPS non-road diesel fuel requirements (15 ppm) and related reporting/monitoring are specified in Table IV-3a for this unit."
+            },
+            {
+                "referenceNumber": "EU30-9",
+                "numGenerators": 1,
+                "originalPermitDate": "2024-01-01",
+                "ratedCapacityKW": 1000,
+                "ratedCapacityHP": 1341,
+                "primaryFuelType": "diesel",
+                "nspsSubpartIIII": true,
+                "mactSubpartZZZZ": true,
+                "extractionNotes": "MDE Registration Number 033-0675-9-1652; listed in 'equipment has been added' table with Date of Installation 2024."
+            },
+            {
+                "referenceNumber": "MDE Registration Nos. 033-0675-9-1366, 9-1422, 9-1535 and 9-1652",
+                "numGenerators": 4,
+                "originalPermitDate": "2006-06-12",
+                "nspsSubpartIIII": true,
+                "mactSubpartZZZZ": true,
+                "extractionNotes": "Text: 'installed and manufactured after June 12, 2006. These engines are subject to 40 CFR Part 60, Subpart IIII.'"
+            },
+            {
+                "referenceNumber": "the other thirteen (13) emergency generators",
+                "numGenerators": 13,
+                "nspsSubpartIIII": false,
+                "mactSubpartZZZZ": false,
+                "extractionNotes": "Text: 'the other thirteen (13) emergency generators owned by NASA-GSFC were installed before 2006 and are not subject to 40 CFR, Part 60, Subpart IIII per 40 CFR \u00a760.4200(a)(2)(i).' and 'The remaining thirteen (13) emergency generators are exempt from the requirements of 40 CFR Part 63, Subpart ZZZZ as long as they meet the requirement in 40 CFR \u00a763.6585(f)(3).' "
+            },
+            {
+                "referenceNumber": "EU7-2",
+                "numGenerators": 1,
+                "originalPermitDate": "1999-01-01",
+                "equipmentFacilityID": "9-1045",
+                "ratedCapacityKW": 500,
+                "primaryFuelType": "No. 2 fuel oil"
+            },
+            {
+                "referenceNumber": "EU10-3",
+                "numGenerators": 1,
+                "originalPermitDate": "1999-01-01",
+                "equipmentFacilityID": "9-1047",
+                "ratedCapacityKW": 500,
+                "primaryFuelType": "No. 2 fuel oil"
+            },
+            {
+                "referenceNumber": "EU24C-1",
+                "numGenerators": 5,
+                "originalPermitDate": "1996-01-01",
+                "equipmentFacilityID": "9-1054",
+                "make": "Caterpillar",
+                "ratedCapacityKW": 1000,
+                "primaryFuelType": "No. 2 fuel oil"
+            },
+            {
+                "referenceNumber": "EU24C-2",
+                "equipmentFacilityID": "9-1055"
+            },
+            {
+                "referenceNumber": "EU24C-3",
+                "equipmentFacilityID": "9-1056"
+            },
+            {
+                "referenceNumber": "EU24C-4",
+                "equipmentFacilityID": "9-1057"
+            },
+            {
+                "referenceNumber": "EU24C-8",
+                "equipmentFacilityID": "9-1058"
+            },
+            {
+                "referenceNumber": "EU24C-6",
+                "numGenerators": 1,
+                "originalPermitDate": "2012-01-01",
+                "equipmentFacilityID": "9-1366",
+                "make": "MTU Detroit Diesel",
+                "ratedCapacityKW": 1000,
+                "primaryFuelType": "No. 2 fuel oil"
+            },
+            {
+                "referenceNumber": "EU31-1",
+                "numGenerators": 5,
+                "originalPermitDate": "1996-01-01",
+                "equipmentFacilityID": "9-1049",
+                "make": "Caterpillar",
+                "ratedCapacityKW": 1450,
+                "primaryFuelType": "No. 2 fuel oil"
+            },
+            {
+                "referenceNumber": "EU31-2",
+                "equipmentFacilityID": "9-1050"
+            },
+            {
+                "referenceNumber": "EU31-3",
+                "equipmentFacilityID": "9-1051"
+            },
+            {
+                "referenceNumber": "EU31-4",
+                "equipmentFacilityID": "9-1052"
+            },
+            {
+                "referenceNumber": "EU31-5",
+                "equipmentFacilityID": "9-1053"
+            },
+            {
+                "referenceNumber": "EU29-1",
+                "numGenerators": 1,
+                "originalPermitDate": "2013-01-01",
+                "equipmentFacilityID": "9-1422",
+                "ratedCapacityKW": 1000,
+                "primaryFuelType": "No. 2 fuel oil"
+            },
+            {
+                "referenceNumber": "EU7-3",
+                "numGenerators": 1,
+                "originalPermitDate": "2003-01-01",
+                "equipmentFacilityID": "9-1433",
+                "ratedCapacityKW": 500,
+                "primaryFuelType": "No. 2 fuel oil"
+            },
+            {
+                "referenceNumber": "EU28-1",
+                "numGenerators": 1,
+                "originalPermitDate": "2018-01-01",
+                "equipmentFacilityID": "9-1535",
+                "make": "Kohler",
+                "ratedCapacityKW": 563,
+                "ratedCapacityHP": 755,
+                "primaryFuelType": "diesel"
+            },
+            {
+                "referenceNumber": "EU30-9",
+                "numGenerators": 1,
+                "originalPermitDate": "2024-01-01",
+                "equipmentFacilityID": "9-1652",
+                "ratedCapacityKW": 1000,
+                "primaryFuelType": "diesel"
+            },
+            {
+                "referenceNumber": "EU7-2",
+                "numGenerators": 1,
+                "equipmentFacilityID": "[9-1045]",
+                "ratedCapacityKW": 500,
+                "primaryFuelType": "No. 2 fuel oil",
+                "fuelSulfurContentPct": 0.0015,
+                "fuelCertificationRequired": true,
+                "operatingHoursPerUnitLimit": 100,
+                "operatingHoursPerUnitRollingWindow": "per calendar year",
+                "allowedOperatingModes": "There is no time limit on the use of emergency stationary ICE in emergency situations; operation for maintenance checks and readiness testing and emergency demand response is allowed (combined maximum of 100 hours per calendar year); emergency stationary ICE may be operated for up to 50 hours per calendar year in non-emergency situations (counts toward the 100 hours).",
+                "hourMeterRequired": true,
+                "recordkeepingWindowYears": 5,
+                "mactSubpartZZZZ": false,
+                "extractionNotes": "Fuel sulfur content (15 ppm -> 0.0015) and fuel certification requirement taken from facility compliance status noting supplier certification for delivered fuel in 2020-2021."
+            },
+            {
+                "referenceNumber": "EU7-3",
+                "numGenerators": 1,
+                "equipmentFacilityID": "[9-1433]",
+                "ratedCapacityKW": 500,
+                "primaryFuelType": "No. 2 fuel oil",
+                "fuelSulfurContentPct": 0.0015,
+                "fuelCertificationRequired": true,
+                "operatingHoursPerUnitLimit": 100,
+                "operatingHoursPerUnitRollingWindow": "per calendar year",
+                "allowedOperatingModes": "There is no time limit on the use of emergency stationary ICE in emergency situations; operation for maintenance checks and readiness testing and emergency demand response is allowed (combined maximum of 100 hours per calendar year); emergency stationary ICE may be operated for up to 50 hours per calendar year in non-emergency situations (counts toward the 100 hours).",
+                "hourMeterRequired": true,
+                "recordkeepingWindowYears": 5,
+                "mactSubpartZZZZ": false,
+                "extractionNotes": "Fuel sulfur content (15 ppm -> 0.0015) and fuel certification requirement taken from facility compliance status noting supplier certification for delivered fuel in 2020-2021."
+            },
+            {
+                "referenceNumber": "EU10-3",
+                "numGenerators": 1,
+                "equipmentFacilityID": "[9-1047]",
+                "ratedCapacityKW": 500,
+                "primaryFuelType": "No. 2 fuel oil",
+                "fuelSulfurContentPct": 0.0015,
+                "fuelCertificationRequired": true,
+                "operatingHoursPerUnitLimit": 100,
+                "operatingHoursPerUnitRollingWindow": "per calendar year",
+                "allowedOperatingModes": "There is no time limit on the use of emergency stationary ICE in emergency situations; operation for maintenance checks and readiness testing and emergency demand response is allowed (combined maximum of 100 hours per calendar year); emergency stationary ICE may be operated for up to 50 hours per calendar year in non-emergency situations (counts toward the 100 hours).",
+                "hourMeterRequired": true,
+                "recordkeepingWindowYears": 5,
+                "mactSubpartZZZZ": false,
+                "extractionNotes": "Fuel sulfur content (15 ppm -> 0.0015) and fuel certification requirement taken from facility compliance status noting supplier certification for delivered fuel in 2020-2021."
+            },
+            {
+                "referenceNumber": "EU24C-1 through EU24C-4 and EU24C-8",
+                "numGenerators": 5,
+                "equipmentFacilityID": "[9-1054 thru 9-1058]",
+                "make": "Caterpillar",
+                "ratedCapacityKW": 1000,
+                "primaryFuelType": "No. 2 fuel oil",
+                "fuelSulfurContentPct": 0.0015,
+                "fuelCertificationRequired": true,
+                "operatingHoursPerUnitLimit": 100,
+                "operatingHoursPerUnitRollingWindow": "per calendar year",
+                "allowedOperatingModes": "There is no time limit on the use of emergency stationary ICE in emergency situations; operation for maintenance checks and readiness testing and emergency demand response is allowed (combined maximum of 100 hours per calendar year); emergency stationary ICE may be operated for up to 50 hours per calendar year in non-emergency situations (counts toward the 100 hours).",
+                "hourMeterRequired": true,
+                "recordkeepingWindowYears": 5,
+                "mactSubpartZZZZ": false,
+                "extractionNotes": "Group of five Caterpillar generators listed together in the source. Fuel sulfur content (15 ppm -> 0.0015) and fuel certification requirement taken from facility compliance status noting supplier certification for delivered fuel in 2020-2021."
+            },
+            {
+                "referenceNumber": "EU24C-6",
+                "numGenerators": 1,
+                "equipmentFacilityID": "[9-1366]",
+                "make": "MTU Detroit Diesel",
+                "ratedCapacityKW": 1000,
+                "primaryFuelType": "No. 2 fuel oil",
+                "fuelSulfurContentPct": 0.0015,
+                "fuelCertificationRequired": true,
+                "operatingHoursPerUnitLimit": 100,
+                "operatingHoursPerUnitRollingWindow": "per calendar year",
+                "allowedOperatingModes": "There is no time limit on the use of emergency stationary ICE in emergency situations; operation for maintenance checks and readiness testing and emergency demand response is allowed (combined maximum of 100 hours per calendar year); emergency stationary ICE may be operated for up to 50 hours per calendar year in non-emergency situations (counts toward the 100 hours).",
+                "hourMeterRequired": true,
+                "recordkeepingWindowYears": 5,
+                "nspsSubpartIIII": true,
+                "mactSubpartZZZZ": true,
+                "extractionNotes": "EU24C-6 explicitly listed as subject to NSPS Subpart IIII and to Subpart ZZZZ; fuel sulfur content (15 ppm -> 0.0015) from facility compliance status."
+            },
+            {
+                "referenceNumber": "EU28-1",
+                "numGenerators": 1,
+                "equipmentFacilityID": "[9-1535]",
+                "make": "Kohler",
+                "ratedCapacityKW": 563,
+                "ratedCapacityHP": 755,
+                "primaryFuelType": "diesel",
+                "fuelSulfurContentPct": 0.0015,
+                "fuelCertificationRequired": true,
+                "operatingHoursPerUnitLimit": 100,
+                "operatingHoursPerUnitRollingWindow": "per calendar year",
+                "allowedOperatingModes": "There is no time limit on the use of emergency stationary ICE in emergency situations; operation for maintenance checks and readiness testing and emergency demand response is allowed (combined maximum of 100 hours per calendar year); emergency stationary ICE may be operated for up to 50 hours per calendar year in non-emergency situations (counts toward the 100 hours).",
+                "hourMeterRequired": true,
+                "recordkeepingWindowYears": 5,
+                "nspsSubpartIIII": true,
+                "mactSubpartZZZZ": true,
+                "extractionNotes": "EU28-1 explicitly listed as subject to NSPS Subpart IIII and Subpart ZZZZ; fuel sulfur content (15 ppm -> 0.0015) from facility compliance status."
+            },
+            {
+                "referenceNumber": "EU29-1",
+                "numGenerators": 1,
+                "equipmentFacilityID": "[9-1422]",
+                "ratedCapacityKW": 1000,
+                "ratedCapacityHP": 1341,
+                "primaryFuelType": "No. 2 fuel oil",
+                "fuelSulfurContentPct": 0.0015,
+                "fuelCertificationRequired": true,
+                "operatingHoursPerUnitLimit": 100,
+                "operatingHoursPerUnitRollingWindow": "per calendar year",
+                "allowedOperatingModes": "There is no time limit on the use of emergency stationary ICE in emergency situations; operation for maintenance checks and readiness testing and emergency demand response is allowed (combined maximum of 100 hours per calendar year); emergency stationary ICE may be operated for up to 50 hours per calendar year in non-emergency situations (counts toward the 100 hours).",
+                "hourMeterRequired": true,
+                "recordkeepingWindowYears": 5,
+                "nspsSubpartIIII": true,
+                "mactSubpartZZZZ": true,
+                "extractionNotes": "EU29-1 explicitly listed as subject to NSPS Subpart IIII and Subpart ZZZZ; fuel sulfur content (15 ppm -> 0.0015) from facility compliance status."
+            },
+            {
+                "referenceNumber": "EU30-9",
+                "numGenerators": 1,
+                "equipmentFacilityID": "[9-1652]",
+                "ratedCapacityKW": 1000,
+                "ratedCapacityHP": 1341,
+                "primaryFuelType": "No. 2 fuel oil",
+                "fuelSulfurContentPct": 0.0015,
+                "fuelCertificationRequired": true,
+                "operatingHoursPerUnitLimit": 100,
+                "operatingHoursPerUnitRollingWindow": "per calendar year",
+                "allowedOperatingModes": "There is no time limit on the use of emergency stationary ICE in emergency situations; operation for maintenance checks and readiness testing and emergency demand response is allowed (combined maximum of 100 hours per calendar year); emergency stationary ICE may be operated for up to 50 hours per calendar year in non-emergency situations (counts toward the 100 hours).",
+                "hourMeterRequired": true,
+                "recordkeepingWindowYears": 5,
+                "nspsSubpartIIII": true,
+                "mactSubpartZZZZ": true,
+                "extractionNotes": "EU30-9 explicitly listed as subject to NSPS Subpart IIII and Subpart ZZZZ; fuel sulfur content (15 ppm -> 0.0015) from facility compliance status."
+            },
+            {
+                "referenceNumber": "EU31-1 thru EU31-5",
+                "numGenerators": 5,
+                "equipmentFacilityID": "[9-1049 thru 9-1053]",
+                "make": "Caterpillar",
+                "ratedCapacityKW": 1450,
+                "primaryFuelType": "No. 2 fuel oil",
+                "fuelSulfurContentPct": 0.0015,
+                "fuelCertificationRequired": true,
+                "operatingHoursPerUnitLimit": 100,
+                "operatingHoursPerUnitRollingWindow": "per calendar year",
+                "allowedOperatingModes": "There is no time limit on the use of emergency stationary ICE in emergency situations; operation for maintenance checks and readiness testing and emergency demand response is allowed (combined maximum of 100 hours per calendar year); emergency stationary ICE may be operated for up to 50 hours per calendar year in non-emergency situations (counts toward the 100 hours).",
+                "hourMeterRequired": true,
+                "recordkeepingWindowYears": 5,
+                "mactSubpartZZZZ": false,
+                "extractionNotes": "Group of five Caterpillar generators listed together in the source. Fuel sulfur content (15 ppm -> 0.0015) and fuel certification requirement taken from facility compliance status noting supplier certification for delivered fuel in 2020-2021."
+            }
+        ]
     }
-  ]
 }
