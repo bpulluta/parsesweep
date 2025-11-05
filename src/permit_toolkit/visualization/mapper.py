@@ -161,9 +161,65 @@ class FacilityMapper:
         
         return None
     
+    def _load_single_json(self, json_file: Path, state: str) -> Optional[Dict]:
+        """
+        Load and parse a single JSON file.
+        
+        Args:
+            json_file: Path to JSON file
+            state: State name
+            
+        Returns:
+            Facility dictionary or None if invalid
+        """
+        try:
+            with open(json_file, 'r') as f:
+                data = json.load(f)
+            
+            permit_details = data.get('data', {}).get('permitDetails', {})
+            
+            # Extract facility information with robust fallbacks
+            permit_number = data.get('permit_number') or permit_details.get('permitNumber', 'Unknown')
+            facility_name = permit_details.get('facilityName') or 'Unknown Facility'
+            facility_address = permit_details.get('facilityAddress') or ''
+            facility_county = permit_details.get('facilityCounty') or 'Unknown'
+            permit_date = permit_details.get('permitIssuanceDate') or 'Unknown'
+            generator_count = data.get('generator_count', 0)
+            
+            # Calculate total capacity from generator sets
+            total_capacity_kw = sum(
+                gen.get('ratedCapacityKW', 0) * gen.get('numGenerators', 1)
+                for gen in data.get('data', {}).get('generatorSets', [])
+                if gen.get('ratedCapacityKW')
+            )
+            
+            # Skip facilities with no meaningful data
+            if (not facility_address or facility_address.strip() == '') and \
+               (not facility_county or facility_county in ['Unknown', '']):
+                return None
+            
+            # Skip facilities with zero generators
+            if generator_count == 0 and total_capacity_kw == 0:
+                return None
+            
+            return {
+                'permit_number': permit_number,
+                'facility_name': facility_name,
+                'address_raw': facility_address,
+                'county': facility_county,
+                'state': state,
+                'generator_count': generator_count,
+                'permit_date': permit_date,
+                'total_capacity_kw': total_capacity_kw,
+                'source_file': data.get('source_file', json_file.name)
+            }
+            
+        except Exception:
+            return None
+    
     def load_permits(self, states: List[str], limit_per_state: Optional[int] = None) -> pd.DataFrame:
         """
-        Load permit data from specified states.
+        Load permit data from specified states (optimized for large datasets).
         
         Args:
             states: List of state names to load
@@ -172,67 +228,43 @@ class FacilityMapper:
         Returns:
             DataFrame with facility information
         """
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        
         facilities = []
         
+        # Collect all JSON files first
+        all_files = []
         for state in states:
             state_dir = self.data_dir / state
             if not state_dir.exists():
                 continue
             
-            # Match both Virginia format (*_DC_Permit.json) and Illinois format (*.json)
             json_files = list(state_dir.glob("*.json"))
             
             # Limit files per state if specified
             if limit_per_state:
                 json_files = json_files[:limit_per_state]
             
-            for json_file in json_files:
-                try:
-                    with open(json_file, 'r') as f:
-                        data = json.load(f)
-                    
-                    permit_details = data.get('data', {}).get('permitDetails', {})
-                    
-                    # Extract facility information with robust fallbacks
-                    permit_number = data.get('permit_number') or permit_details.get('permitNumber', 'Unknown')
-                    facility_name = permit_details.get('facilityName') or 'Unknown Facility'
-                    facility_address = permit_details.get('facilityAddress') or ''
-                    facility_county = permit_details.get('facilityCounty') or 'Unknown'
-                    permit_date = permit_details.get('permitIssuanceDate') or 'Unknown'
-                    generator_count = data.get('generator_count', 0)
-                    
-                    # Calculate total capacity from generator sets
-                    total_capacity_kw = sum(
-                        gen.get('ratedCapacityKW', 0) * gen.get('numGenerators', 1)
-                        for gen in data.get('data', {}).get('generatorSets', [])
-                        if gen.get('ratedCapacityKW')
-                    )
-                    
-                    # Skip facilities with no meaningful data (both address and county empty/null)
-                    if (not facility_address or facility_address.strip() == '') and \
-                       (not facility_county or facility_county in ['Unknown', '']):
-                        continue
-                    
-                    # Skip facilities with zero generators
-                    if generator_count == 0 and total_capacity_kw == 0:
-                        continue
-                    
-                    facility = {
-                        'permit_number': permit_number,
-                        'facility_name': facility_name,
-                        'address_raw': facility_address,
-                        'county': facility_county,
-                        'state': state,
-                        'generator_count': generator_count,
-                        'permit_date': permit_date,
-                        'total_capacity_kw': total_capacity_kw,
-                        'source_file': data.get('source_file', json_file.name)
-                    }
-                    
-                    facilities.append(facility)
-                    
-                except Exception:
-                    continue
+            all_files.extend([(f, state) for f in json_files])
+        
+        if not all_files:
+            return pd.DataFrame()
+        
+        # Load files in parallel with progress bar
+        print(f"  Loading {len(all_files)} JSON files...")
+        
+        with ThreadPoolExecutor(max_workers=8) as executor:
+            # Submit all loading tasks
+            future_to_file = {
+                executor.submit(self._load_single_json, json_file, state): (json_file, state)
+                for json_file, state in all_files
+            }
+            
+            # Process results as they complete
+            for future in tqdm(as_completed(future_to_file), total=len(all_files), desc="  Processing"):
+                result = future.result()
+                if result is not None:
+                    facilities.append(result)
         
         return pd.DataFrame(facilities)
     
