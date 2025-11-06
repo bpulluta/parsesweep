@@ -101,9 +101,37 @@ class FacilityMapper:
         - Multiple addresses are provided
         - Addresses are descriptive rather than specific
         - Address includes county and state info
+        - Newlines in addresses
+        - Intersection descriptions
+        - Address ranges
+        - Building/Suite/Attn info
         """
         if not address:
             return f"{county}, {state}"
+        
+        # Replace newlines with spaces
+        address = address.replace('\n', ' ').replace('\r', ' ')
+        
+        # Normalize whitespace
+        address = ' '.join(address.split())
+        
+        # Handle intersection descriptions - use county instead
+        if 'intersection of' in address.lower():
+            # For intersections, geocode to the county center
+            return f"{county}, {state}"
+        
+        # Remove common non-address components that confuse geocoding
+        # Remove building/suite/floor/attention info
+        address = re.sub(r',?\s*(?:Bldg\.?|Building|Suite|Ste\.?|Floor|Fl\.?|Room|Rm\.?)\s+[\w\d\-\.]+', '', address, flags=re.IGNORECASE)
+        address = re.sub(r',?\s*Attn:\s*[^,]+', '', address, flags=re.IGNORECASE)
+        
+        # Handle address ranges like "1300-1700 Street" -> "1300 Street"
+        address = re.sub(r'(\d+)\s*-\s*\d+\s+', r'\1 ', address)
+        
+        # Clean up any double commas or spaces
+        address = re.sub(r'\s*,\s*,\s*', ', ', address)
+        address = re.sub(r'\s+', ' ', address)
+        address = address.strip()
         
         # If multiple addresses separated by commas, take the first one that looks like an address
         parts = [p.strip() for p in address.split(',')]
@@ -117,19 +145,36 @@ class FacilityMapper:
         
         if street_address:
             # Found a street address, use it with county and state
-            return f"{street_address}, {county}, {state}"
+            # Check if we already have city in the parts
+            city_part = None
+            for i, part in enumerate(parts[1:], 1):
+                # Look for a part that's not the county and not a state
+                if county.replace(' County', '').replace(' county', '') not in part and \
+                   not re.match(r'^[A-Z]{2}$', part.strip()) and \
+                   not part.strip().isdigit():
+                    city_part = part
+                    break
+            
+            if city_part:
+                return f"{street_address}, {city_part}, {state}"
+            else:
+                return f"{street_address}, {county}, {state}"
         else:
             # No clear street address, try using the first part with county
             cleaned = parts[0] if parts else address
+            # If it's just descriptive text, use county
+            if len(cleaned) < 5 or not any(c.isdigit() for c in cleaned):
+                return f"{county}, {state}"
             return f"{cleaned}, {county}, {state}"
     
-    def _geocode_address(self, address: str, retry_count: int = 2) -> Optional[Tuple[float, float]]:
+    def _geocode_address(self, address: str, retry_count: int = 2, skip_rate_limit: bool = False) -> Optional[Tuple[float, float]]:
         """
         Geocode an address with caching and retry logic.
         
         Args:
             address: Address to geocode
             retry_count: Number of retries on failure
+            skip_rate_limit: Skip rate limiting sleep (used when called from rate-limited wrapper)
             
         Returns:
             Tuple of (latitude, longitude) or None if geocoding fails
@@ -141,7 +186,8 @@ class FacilityMapper:
         # Try geocoding with retries
         for attempt in range(retry_count):
             try:
-                time.sleep(1.2)  # Rate limiting (Nominatim allows 1 req/sec)
+                if not skip_rate_limit:
+                    time.sleep(1.2)  # Rate limiting (Nominatim allows 1 req/sec)
                 location = self.geolocator.geocode(address)
                 
                 if location:
@@ -270,7 +316,7 @@ class FacilityMapper:
     
     def geocode_facilities(self, df: pd.DataFrame, show_progress: bool = True) -> pd.DataFrame:
         """
-        Add geocoded coordinates to facility dataframe.
+        Add geocoded coordinates to facility dataframe (optimized with batch processing).
         
         Args:
             df: DataFrame with facility data
@@ -279,44 +325,95 @@ class FacilityMapper:
         Returns:
             DataFrame with added latitude and longitude columns
         """
-        coords_list = []
-        iterator = tqdm(df.iterrows(), total=len(df), desc="Geocoding") if show_progress else df.iterrows()
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        from threading import Lock
         
-        for idx, row in iterator:
+        # Pre-clean all addresses and check cache
+        addresses_to_geocode = []
+        coords_list = [None] * len(df)
+        
+        print("  Preparing addresses...")
+        for idx, row in df.iterrows():
             cleaned_address = self._clean_address(
                 row['address_raw'], 
                 row['county'], 
                 row['state']
             )
             
-            coords = self._geocode_address(cleaned_address)
-            
-            if coords:
-                coords_list.append({
+            # Check cache first
+            if cleaned_address in self.geocoding_cache:
+                coords = tuple(self.geocoding_cache[cleaned_address])
+                coords_list[idx] = {
                     'latitude': coords[0],
                     'longitude': coords[1],
                     'geocoded_address': cleaned_address,
                     'geocoding_success': True
-                })
+                }
             else:
-                # Try fallback to just county and state
-                fallback_address = f"{row['county']}, {row['state']}"
-                coords = self._geocode_address(fallback_address)
+                addresses_to_geocode.append((idx, cleaned_address, row['county'], row['state']))
+        
+        cached_count = len([c for c in coords_list if c is not None])
+        print(f"  Found {cached_count} cached addresses, {len(addresses_to_geocode)} to geocode")
+        
+        if addresses_to_geocode:
+            # Geocode remaining addresses with rate-limited parallelization
+            # Use 1 worker to respect Nominatim's 1 req/sec limit
+            rate_lock = Lock()
+            last_request_time = [0.0]
+            
+            def geocode_with_rate_limit(idx, address, county, state):
+                """Geocode a single address with rate limiting."""
+                # Enforce rate limit (1 request per second)
+                with rate_lock:
+                    elapsed = time.time() - last_request_time[0]
+                    if elapsed < 1.2:
+                        time.sleep(1.2 - elapsed)
+                    last_request_time[0] = time.time()
+                
+                # Try primary address (skip internal rate limit since we handle it here)
+                coords = self._geocode_address(address, skip_rate_limit=True)
                 
                 if coords:
-                    coords_list.append({
+                    return idx, {
+                        'latitude': coords[0],
+                        'longitude': coords[1],
+                        'geocoded_address': address,
+                        'geocoding_success': True
+                    }
+                
+                # Try fallback to county
+                fallback_address = f"{county}, {state}"
+                coords = self._geocode_address(fallback_address, skip_rate_limit=True)
+                
+                if coords:
+                    return idx, {
                         'latitude': coords[0],
                         'longitude': coords[1],
                         'geocoded_address': fallback_address,
-                        'geocoding_success': False  # Fallback used
-                    })
-                else:
-                    coords_list.append({
-                        'latitude': None,
-                        'longitude': None,
-                        'geocoded_address': None,
                         'geocoding_success': False
-                    })
+                    }
+                
+                return idx, {
+                    'latitude': None,
+                    'longitude': None,
+                    'geocoded_address': None,
+                    'geocoding_success': False
+                }
+            
+            # Process with single worker (Nominatim rate limit)
+            iterator = tqdm(addresses_to_geocode, desc="  Geocoding", disable=not show_progress)
+            
+            with ThreadPoolExecutor(max_workers=1) as executor:
+                future_to_idx = {
+                    executor.submit(geocode_with_rate_limit, idx, addr, county, state): idx
+                    for idx, addr, county, state in addresses_to_geocode
+                }
+                
+                for future in as_completed(future_to_idx):
+                    idx, result = future.result()
+                    coords_list[idx] = result
+                    if show_progress:
+                        iterator.update(1)
         
         # Add coordinates to dataframe
         coords_df = pd.DataFrame(coords_list)
@@ -561,7 +658,7 @@ class FacilityMapper:
                     </tr>
                     <tr>
                         <td style="color: #616161; padding: 4px 0;">Capacity:</td>
-                        <td style="text-align: right; font-weight: 600;">{row['total_capacity_kw']/1000:.2f} MW</td>
+                        <td style="text-align: right; font-weight: 600;">{row['total_capacity_kw']/1000:.0f} MW</td>
                     </tr>
                     <tr style="border-top: 1px solid #e0e0e0;">
                         <td style="color: #616161; padding: 8px 0 4px 0;">County:</td>
@@ -634,7 +731,7 @@ class FacilityMapper:
                 <td><b>{row['facility_name']}</b></td>
                 <td>{row['permit_number']}</td>
                 <td>{row['generator_count']}</td>
-                <td><span class="badge" style="background-color: {badge_color}; border: 2px solid {border_color};">{capacity_mw:.2f} MW</span></td>
+                <td><span class="badge" style="background-color: {badge_color}; border: 2px solid {border_color};">{capacity_mw:.0f} MW</span></td>
                 <td>{row['county']}</td>
                 <td>{row['state']}</td>
                 <td>{row['permit_date']}</td>
