@@ -339,8 +339,8 @@ class FacilityMapper:
         Returns:
             Folium map object or None if no valid coordinates
         """
-        # Filter out facilities without coordinates
-        df_mapped = df[df['latitude'].notna()].copy()
+        # Filter out facilities without coordinates or with zero capacity
+        df_mapped = df[(df['latitude'].notna()) & (df['total_capacity_kw'] > 0)].copy()
         
         if len(df_mapped) == 0:
             return None
@@ -349,17 +349,24 @@ class FacilityMapper:
         center_lat = df_mapped['latitude'].mean()
         center_lon = df_mapped['longitude'].mean()
         
-        # Create base map with modern CartoDB Positron tiles (clean, minimal design)
+        # Create base map - Light theme by default (clean, professional)
         m = folium.Map(
             location=[center_lat, center_lon],
             zoom_start=7,
             tiles='CartoDB positron',
-            control_scale=True
+            name='Light',
+            control_scale=True,
+            prefer_canvas=True
         )
         
-        # Add alternative tile layers for user selection
-        folium.TileLayer('OpenStreetMap', name='OpenStreetMap').add_to(m)
-        folium.TileLayer('CartoDB dark_matter', name='Dark Mode').add_to(m)
+        # Add alternative map themes
+        folium.TileLayer(
+            tiles='CartoDB dark_matter',
+            name='Dark',
+            overlay=False,
+            control=True
+        ).add_to(m)
+        
         folium.TileLayer(
             tiles='https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
             attr='Esri',
@@ -368,7 +375,7 @@ class FacilityMapper:
             control=True
         ).add_to(m)
         
-        # Add layer control to switch between views
+        # Add layer control
         folium.LayerControl(position='topright').add_to(m)
         
         # Add title if provided
@@ -474,8 +481,8 @@ class FacilityMapper:
             output_file: Path to save the HTML dashboard
             title: Optional title for the dashboard
         """
-        # Filter mapped facilities
-        df_mapped = df[df['latitude'].notna()].copy()
+        # Filter mapped facilities with valid capacity
+        df_mapped = df[(df['latitude'].notna()) & (df['total_capacity_kw'] > 0)].copy()
         
         if len(df_mapped) == 0:
             return None
@@ -492,18 +499,17 @@ class FacilityMapper:
         center_lat = df_mapped['latitude'].mean()
         center_lon = df_mapped['longitude'].mean()
         
-        # Build professional map with LIGHT theme as default (publication quality)
+        # Create professional map - Light theme by default (publication quality)
         map_obj = folium.Map(
             location=[center_lat, center_lon],
             zoom_start=6,
             tiles='CartoDB positron',
             name='Light',
-            attr='&copy; OpenStreetMap contributors &copy; CARTO',
             control_scale=True,
             prefer_canvas=True
         )
         
-        # Add Dark theme as alternative
+        # Add alternative map themes
         folium.TileLayer(
             tiles='CartoDB dark_matter',
             name='Dark',
@@ -511,7 +517,6 @@ class FacilityMapper:
             control=True
         ).add_to(map_obj)
         
-        # Add Satellite view
         folium.TileLayer(
             tiles='https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
             attr='Esri',
@@ -520,22 +525,28 @@ class FacilityMapper:
             control=True
         ).add_to(map_obj)
         
-        # Add markers - clean, professional styling with color scheme
+        # Add markers - clean, professional styling with color scheme based on CAPACITY
         for _, row in df_mapped.iterrows():
-            # Professional color scheme - scientifically appropriate, high contrast
-            count = row['generator_count']
-            if count >= 50:
+            # Professional color scheme based on total capacity (MW)
+            capacity_mw = row['total_capacity_kw'] / 1000
+            
+            # Color thresholds based on capacity
+            if capacity_mw >= 50:  # 50+ MW
                 base_color = '#d32f2f'  # Red - critical
                 border_color = '#b71c1c'
-            elif count >= 20:
+                category = 'Critical (50+ MW)'
+            elif capacity_mw >= 20:  # 20-50 MW
                 base_color = '#f57c00'  # Orange - high
                 border_color = '#e65100'
-            elif count >= 10:
+                category = 'High (20-50 MW)'
+            elif capacity_mw >= 10:  # 10-20 MW
                 base_color = '#0288d1'  # Blue - medium
                 border_color = '#01579b'
-            else:
+                category = 'Medium (10-20 MW)'
+            else:  # < 10 MW
                 base_color = '#388e3c'  # Green - low
                 border_color = '#1b5e20'
+                category = 'Low (<10 MW)'
             
             popup_html = f"""
             <div style="font-family: 'Helvetica Neue', Arial, sans-serif; min-width: 280px; font-size: 13px;">
@@ -568,12 +579,17 @@ class FacilityMapper:
             </div>
             """
             
-            # Simple tooltip
-            tooltip_text = f"{row['facility_name']}: {row['generator_count']} generators, {row['total_capacity_kw']/1000:.1f} MW"
+            # Tooltip showing capacity prominently
+            tooltip_text = f"{row['facility_name']}: {capacity_mw:.1f} MW ({row['generator_count']} generators)"
             
-            # Calculate marker size
-            base_radius = 5
-            size_multiplier = min(row['generator_count'] / 12, 18)
+            # Calculate marker size based on CAPACITY (MW) - more meaningful scale
+            # Using log scale for better visual distribution
+            base_radius = 6
+            if capacity_mw > 0:
+                # Log scale: radius grows logarithmically with capacity
+                size_multiplier = min(2.5 * (capacity_mw ** 0.5), 20)  # Square root scale, capped at 20
+            else:
+                size_multiplier = 0
             marker_radius = base_radius + size_multiplier
             
             # Clean circle markers
@@ -595,29 +611,30 @@ class FacilityMapper:
         # Get map HTML
         map_html = map_obj._repr_html_()
         
-        # Build data table rows
+        # Build data table rows - SORTED BY CAPACITY
         table_rows = ""
-        for _, row in df_mapped.sort_values('generator_count', ascending=False).iterrows():
-            # Use the same color scheme for consistency
-            if row['generator_count'] >= 50:
-                badge_color = '#E63946'
-                border_color = '#C1121F'
-            elif row['generator_count'] >= 20:
-                badge_color = '#F77F00'
-                border_color = '#D05801'
-            elif row['generator_count'] >= 10:
-                badge_color = '#06AED5'
-                border_color = '#048BA8'
+        for _, row in df_mapped.sort_values('total_capacity_kw', ascending=False).iterrows():
+            # Use the same color scheme for consistency (based on capacity)
+            capacity_mw = row['total_capacity_kw'] / 1000
+            if capacity_mw >= 50:
+                badge_color = '#d32f2f'
+                border_color = '#b71c1c'
+            elif capacity_mw >= 20:
+                badge_color = '#f57c00'
+                border_color = '#e65100'
+            elif capacity_mw >= 10:
+                badge_color = '#0288d1'
+                border_color = '#01579b'
             else:
-                badge_color = '#2A9D8F'
-                border_color = '#1A7A6F'
+                badge_color = '#388e3c'
+                border_color = '#1b5e20'
             
             table_rows += f"""
             <tr>
                 <td><b>{row['facility_name']}</b></td>
                 <td>{row['permit_number']}</td>
-                <td><span class="badge" style="background-color: {badge_color}; border: 2px solid {border_color};">{row['generator_count']}</span></td>
-                <td><b style="color: {border_color};">{row['total_capacity_kw']/1000:.2f} MW</b></td>
+                <td>{row['generator_count']}</td>
+                <td><span class="badge" style="background-color: {badge_color}; border: 2px solid {border_color};">{capacity_mw:.2f} MW</span></td>
                 <td>{row['county']}</td>
                 <td>{row['state']}</td>
                 <td>{row['permit_date']}</td>
@@ -909,22 +926,25 @@ class FacilityMapper:
             </div>
             
             <div class="legend">
-                <h3>Generator Count</h3>
+                <h3>Total Capacity (MW)</h3>
                 <div class="legend-item">
                     <div class="legend-dot" style="background: #d32f2f; border: 2px solid #b71c1c;"></div>
-                    <span>50+ (Critical)</span>
+                    <span>50+ MW (Critical)</span>
                 </div>
                 <div class="legend-item">
                     <div class="legend-dot" style="background: #f57c00; border: 2px solid #e65100;"></div>
-                    <span>20-49 (High)</span>
+                    <span>20-50 MW (High)</span>
                 </div>
                 <div class="legend-item">
                     <div class="legend-dot" style="background: #0288d1; border: 2px solid #01579b;"></div>
-                    <span>10-19 (Medium)</span>
+                    <span>10-20 MW (Medium)</span>
                 </div>
                 <div class="legend-item">
                     <div class="legend-dot" style="background: #388e3c; border: 2px solid #1b5e20;"></div>
-                    <span>&lt; 10 (Low)</span>
+                    <span>&lt;10 MW (Low)</span>
+                </div>
+                <div style="margin-top: 16px; padding-top: 16px; border-top: 1px solid #e0e0e0; font-size: 11px; color: #757575;">
+                    <b>Note:</b> Circle size represents total facility capacity
                 </div>
             </div>
         </div>
