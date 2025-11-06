@@ -3,7 +3,7 @@
 import json
 import logging
 from pathlib import Path
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Tuple
 import unicodedata
 
 import pandas as pd
@@ -12,6 +12,14 @@ from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 
 logger = logging.getLogger(__name__)
+
+
+# Validation thresholds for flagging unusual values
+LARGE_CAPACITY_KW = 4000  # Flag generators >4 MW
+SMALL_CAPACITY_KW = 10    # Flag generators <10 kW
+LARGE_GENERATOR_COUNT = 100  # Flag if numGenerators > 10
+HIGH_CONFIDENCE_THRESHOLD = 0.80  # QA/QC high confidence
+LOW_CONFIDENCE_THRESHOLD = 0.60   # QA/QC flag for review
 
 
 def calculate_missing_capacity(
@@ -142,6 +150,66 @@ def calculate_missing_capacity(
             result['rated_capacity_kw'] = kw  # Preserve original value
     
     return result
+
+
+def assess_data_quality(record: dict) -> Tuple[str, str]:
+    """
+    Assess data quality for a generator record and return flag text and severity.
+    Focused ONLY on capacity - that's what matters most.
+    
+    Returns:
+        Tuple of (flag_text, severity_level)
+        severity_level: 'critical', 'warning', or 'ok'
+    """
+    issues = []
+    severity = 'ok'
+    
+    # Check for missing capacity (only critical issue we care about)
+    has_capacity = any([
+        record.get('rated_capacity_kw'),
+        record.get('rated_capacity_hp'),
+        record.get('rated_capacity_bhp'),
+        record.get('rated_capacity_mmbtu_per_hr')
+    ])
+    
+    if not has_capacity:
+        issues.append("No Capacity")
+        severity = 'critical'
+        # Return immediately - no capacity is the only critical issue
+        return f"⚠️ {', '.join(issues)}", severity
+    
+    # Check for unusual capacity values
+    kw = record.get('rated_capacity_kw')
+    if kw:
+        try:
+            kw_val = float(kw)
+            if kw_val > LARGE_CAPACITY_KW:
+                issues.append(f"Large ({kw_val:.0f} kW)")
+                severity = 'warning'
+            elif kw_val < SMALL_CAPACITY_KW:
+                issues.append(f"Small ({kw_val:.0f} kW)")
+                severity = 'warning'
+        except (ValueError, TypeError):
+            pass
+    
+    # Check generator count
+    num_gens = record.get('num_generators')
+    if num_gens:
+        try:
+            num_val = int(num_gens)
+            if num_val > LARGE_GENERATOR_COUNT:
+                issues.append(f"Count: {num_val}")
+                severity = 'warning' if severity == 'ok' else severity
+        except (ValueError, TypeError):
+            pass
+    
+    # Generate concise flag text
+    if not issues:
+        return "✓", "ok"
+    elif severity == 'critical':
+        return "⚠️ " + ", ".join(issues), severity
+    else:  # warning
+        return "⚡ " + ", ".join(issues), severity
 
 
 def clean_text(text: Any) -> Any:
@@ -275,11 +343,11 @@ class PermitConsolidator:
             
             record.update({
                 # Generator identification
-                'num_generators': gen.get('numGenerators'),
                 'generator_ref': gen.get('referenceNumber'),
                 'included_in_permit_project': gen.get('includedInPermitProject'),
                 'original_permit_date': gen.get('originalPermitDate'),
                 'equipment_facility_id': gen.get('equipmentFacilityID'),
+                'num_generators': gen.get('numGenerators'),
                 'make': gen.get('make'),
                 'model': gen.get('model'),
                 
@@ -344,6 +412,11 @@ class PermitConsolidator:
                 # Extraction notes
                 'generator_extraction_notes': gen.get('extractionNotes'),
             })
+            
+            # Add data quality assessment
+            flag_text, severity = assess_data_quality(record)
+            record['data_quality_flag'] = flag_text
+            record['data_quality_severity'] = severity
             
             records.append(record)
         
@@ -485,34 +558,42 @@ class PermitConsolidator:
 
     def save_styled_excel(self, df: pd.DataFrame, output_path: Path):
         """
-        Save DataFrame to Excel with professional styling.
+        Save DataFrame to Excel with professional styling and enhanced validation markers.
         
         Features:
         - Alternating row colors for readability
+        - Color-coded data quality markers (yellow=missing, orange=warning, blue=calculated, green=validated)
         - Frozen header row
         - Auto-adjusted column widths
         - Bold header with colored background
-        - Proper text wrapping
-        - Borders for clean appearance
-        - Highlighting for calculated capacity values (light blue background)
+        - Dedicated Instructions & Legend sheet
+        - Summary Statistics sheet
         
         Args:
             df: DataFrame to save
             output_path: Path to save Excel file
         """
-        # Identify calculated flag columns to exclude from Excel output
-        calc_flag_cols = ['calculated_bhp', 'calculated_hp', 'calculated_kw', 'calculated_mmbtu_per_hr']
+        # Identify internal columns to exclude from Excel output
+        internal_cols = ['calculated_bhp', 'calculated_hp', 'calculated_kw', 'calculated_mmbtu_per_hr', 'data_quality_severity']
         
-        # Create a copy for Excel without the calculated flag columns
-        df_excel = df.drop(columns=[col for col in calc_flag_cols if col in df.columns], errors='ignore')
+        # Create a copy for Excel without the internal columns
+        df_excel = df.drop(columns=[col for col in internal_cols if col in df.columns], errors='ignore')
         
         # Save DataFrame to Excel first
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        df_excel.to_excel(output_path, index=False, engine='openpyxl')
+        
+        with pd.ExcelWriter(output_path, engine='openpyxl') as writer:
+            df_excel.to_excel(writer, sheet_name='Data', index=False)
+            
+            # Add Instructions & Legend sheet
+            self._create_instructions_sheet(writer)
+            
+            # Add Summary Statistics sheet
+            self._create_summary_sheet(writer, df)
         
         # Load workbook for styling
         wb = load_workbook(output_path)
-        ws = wb.active
+        ws = wb['Data']
         
         # Define professional color scheme
         header_fill = PatternFill(
@@ -527,12 +608,29 @@ class PermitConsolidator:
             start_color="F2F2F2", end_color="F2F2F2", fill_type="solid"
         )
         
-        # Calculated value fill (light blue/cyan to indicate calculated)
+        # Enhanced color scheme for data quality
+        # Blue - Calculated/derived values (info)
         calculated_fill = PatternFill(
             start_color="D6EAF8", end_color="D6EAF8", fill_type="solid"
         )
         calculated_fill_alt = PatternFill(
             start_color="C4DEF6", end_color="C4DEF6", fill_type="solid"
+        )
+        
+        # Yellow - Missing critical data (critical)
+        missing_fill = PatternFill(
+            start_color="FFF4CC", end_color="FFF4CC", fill_type="solid"
+        )
+        missing_fill_alt = PatternFill(
+            start_color="FFE699", end_color="FFE699", fill_type="solid"
+        )
+        
+        # Orange - Validation warning (unusual values)
+        warning_fill = PatternFill(
+            start_color="FFE6CC", end_color="FFE6CC", fill_type="solid"
+        )
+        warning_fill_alt = PatternFill(
+            start_color="FFCC99", end_color="FFCC99", fill_type="solid"
         )
         
         # Border styles
@@ -550,7 +648,7 @@ class PermitConsolidator:
             bottom=Side(style="medium", color="1F4E78"),
         )
         
-                # Alignment - compact without text wrapping
+        # Alignment - compact without text wrapping
         header_align = Alignment(
             horizontal="center", vertical="center", wrap_text=False
         )
@@ -559,7 +657,7 @@ class PermitConsolidator:
         )
         
         # Style header row
-        for col_num in range(1, len(df.columns) + 1):
+        for col_num in range(1, len(df_excel.columns) + 1):
             cell = ws.cell(row=1, column=col_num)
             cell.fill = header_fill
             cell.font = header_font
@@ -580,10 +678,24 @@ class PermitConsolidator:
         if 'rated_capacity_mmbtu_per_hr' in df_excel.columns:
             capacity_cols_map['rated_capacity_mmbtu_per_hr'] = df_excel.columns.get_loc('rated_capacity_mmbtu_per_hr') + 1
         
-        # Style data rows with alternating colors and calculated highlights
+        # Style data rows with color coding based on data quality
         for row_num in range(2, len(df) + 2):
             use_alt_color = (row_num - 2) % 2 == 1  # Every other row
             df_row_idx = row_num - 2  # Index into original DataFrame
+            
+            # Get data quality severity for this row
+            severity = df.iloc[df_row_idx].get('data_quality_severity', 'ok')
+            
+            # Get data quality severity for this row
+            severity = df.iloc[df_row_idx].get('data_quality_severity', 'ok')
+            
+            # Choose base row color for critical/warning rows ONLY
+            if severity == 'critical':
+                base_row_fill = missing_fill_alt if use_alt_color else missing_fill
+            elif severity == 'warning':
+                base_row_fill = warning_fill_alt if use_alt_color else warning_fill
+            else:  # 'ok' - use standard alternating colors
+                base_row_fill = alt_row_dark if use_alt_color else alt_row_light
             
             # Set compact row height
             ws.row_dimensions[row_num].height = 18
@@ -592,7 +704,7 @@ class PermitConsolidator:
                 cell = ws.cell(row=row_num, column=col_num)
                 col_name = df_excel.columns[col_num - 1]
                 
-                # Check if this is a calculated capacity value
+                # Check if this specific capacity cell was calculated
                 is_calculated = False
                 if col_name == 'rated_capacity_bhp' and 'calculated_bhp' in df.columns:
                     is_calculated = df.iloc[df_row_idx]['calculated_bhp']
@@ -603,17 +715,17 @@ class PermitConsolidator:
                 elif col_name == 'rated_capacity_mmbtu_per_hr' and 'calculated_mmbtu_per_hr' in df.columns:
                     is_calculated = df.iloc[df_row_idx]['calculated_mmbtu_per_hr']
                 
-                # Apply fill based on whether it's calculated
+                # Apply cell-specific fill: blue for calculated, otherwise use row fill
                 if is_calculated:
                     cell.fill = calculated_fill_alt if use_alt_color else calculated_fill
                 else:
-                    cell.fill = alt_row_dark if use_alt_color else alt_row_light
+                    cell.fill = base_row_fill
                 
                 cell.alignment = cell_align
                 cell.border = thin_border
         
         # Set compact column widths based on column name patterns
-        for col_num, column in enumerate(df.columns, 1):
+        for col_num, column in enumerate(df_excel.columns, 1):
             col_letter = get_column_letter(col_num)
             column_name = str(column).lower()
             
@@ -626,6 +738,8 @@ class PermitConsolidator:
                 width = 25
             elif 'notes' in column_name or 'specification' in column_name:
                 width = 30
+            elif 'quality' in column_name:
+                width = 35
             elif any(x in column_name for x in ['limit', 'capacity', 'hours', 'percent', 'pct']):
                 width = 15
             else:
@@ -636,17 +750,237 @@ class PermitConsolidator:
         # Freeze header row
         ws.freeze_panes = "A2"
         
-        # Add legend explaining the calculated value highlighting
-        legend_row = len(df) + 4
-        ws.cell(row=legend_row, column=1).value = "Legend:"
-        ws.cell(row=legend_row, column=1).font = Font(bold=True)
-        
-        legend_row += 1
-        ws.cell(row=legend_row, column=1).value = "Light blue cells"
-        ws.cell(row=legend_row, column=1).fill = calculated_fill
-        ws.cell(row=legend_row, column=2).value = "= Calculated capacity values (derived from other capacity metrics)"
-        
         # Save styled workbook
         wb.save(output_path)
-        logger.info(f"✓ Applied professional styling to Excel file")
-        logger.info(f"  Calculated capacity values are highlighted in light blue")
+        logger.info("✓ Applied capacity-focused validation styling")
+        logger.info("  🟡 Yellow rows = Missing capacity data")
+        logger.info("  ⚡ Orange rows = Unusual capacity values (verify)")
+        logger.info("  🔵 Blue in capacity cells = Calculated from other units")
+        logger.info("  ✓ Check 'data_quality_flag' column for quick status")
+        logger.info("  📊 See 'Summary Statistics' and 'Instructions' sheets")
+        logger.info("  ⚪ White/Gray = Normal capacity data")
+    
+    def _create_instructions_sheet(self, writer):
+        """
+        Create comprehensive instructions and legend sheet.
+        
+        Args:
+            writer: pandas ExcelWriter object
+        """
+        instructions_data = []
+        
+        # Title section
+        instructions_data.extend([
+            ["AIR QUALITY PERMIT TOOLKIT - CONSOLIDATED DATA GUIDE", "", "", ""],
+            ["", "", "", ""],
+        ])
+        
+        # Color Legend section
+        instructions_data.extend([
+            ["COLOR CODING - SIMPLE & CLEAR", "", "", ""],
+            ["What You See", "What It Means", "What To Do", ""],
+            ["🟡 Yellow ROW", "No capacity data found", "Check source permit - may need manual data entry", ""],
+            ["⚡ Orange ROW", "Unusual capacity (verify)", "Large/small capacity or high count - confirm it's correct", ""],
+            ["🔵 Blue in capacity CELL", "We calculated this value", "That specific capacity cell was calculated from another unit", ""],
+            ["⚪ Gray/White ROW", "Complete & normal capacity", "No action needed", ""],
+            ["", "", "", ""],
+            ["IMPORTANT: Row colors show data quality.", "", "", ""],
+            ["Blue appears ONLY in individual capacity cells that were calculated.", "", "", ""],
+            ["", "", "", ""],
+        ])
+        
+        # Capacity Conversion Formulas section
+        instructions_data.extend([
+            ["CAPACITY CONVERSIONS", "", "", ""],
+            ["Blue cells = calculated using these formulas:", "", "", ""],
+            ["", "", "", ""],
+            ["From/To", "Formula", "Notes", ""],
+            ["HP/BHP → kW", "kW = HP x 0.746 x Eff_gen (90%)", "Standard electrical conversion", ""],
+            ["kW → HP/BHP", "HP = kW ÷ 0.746 ÷ Eff_gen (90%)", "Reverse conversion", ""],
+            ["MMBtu/hr → kW", "kW = (MMBtu/hr x 0.35 x 1M) ÷ 3412", "Thermal efficiency = 35%", ""],
+            ["kW → MMBtu/hr", "MMBtu/hr = (kW × 3412) ÷ (Eff_fuel × 1,000,000)", "Reverse thermal conversion", ""],
+            ["", "", "", ""],
+            ["Efficiency Assumptions:", "", "", ""],
+            ["  • Generator Efficiency (Eff_gen) = 0.90 (90%)", "", "", ""],
+            ["  • Thermal Efficiency (Eff_fuel) = 0.35 (35%)", "", "", ""],
+            ["", "", "", ""],
+        ])
+        
+        # Validation Thresholds section
+        instructions_data.extend([
+            ["WHAT TRIGGERS COLOR CODING", "", "", ""],
+            ["🟡 Yellow = No capacity data found in any field", "", "", ""],
+            ["⚡ Orange = Unusual capacity values:", "", "", ""],
+            ["  • Very large: > 5,000 kW", "", "", ""],
+            ["  • Very small: < 10 kW", "", "", ""],
+            ["  • High generator count: > 10 units", "", "", ""],
+            ["", "", "", ""],
+            ["These are guidance only - verify against source permit.", "", "", ""],
+            ["", "", "", ""],
+        ])
+        
+        # Known Limitations section
+        instructions_data.extend([
+            ["NOTES", "", "", ""],
+            ["✓ Calculated capacity uses standard engineering formulas", "", "", ""],
+            ["✓ We focus on capacity - make/model are nice-to-have", "", "", ""],
+            ["✓ Engineering assumptions: 90% generator efficiency, 35% thermal efficiency", "", "", ""],
+            ["", "", "", ""],
+        ])
+        
+        # Quick Reference section
+        instructions_data.extend([
+            ["QUICK REFERENCE", "", "", ""],
+            ["• Each row = one generator", "", "", ""],
+            ["• Check yellow/orange rows first", "", "", ""],
+            ["• Blue cells = calculated values", "", "", ""],
+            ["• See Summary Statistics sheet for totals", "", "", ""],
+            ["", "", "", ""],
+            ["", "", "", ""],
+            [f"Generated by: Air Quality Permit Toolkit v{self._get_version()}", "", "", ""],
+        ])
+        
+        # Write to Excel
+        df_instructions = pd.DataFrame(instructions_data)
+        df_instructions.to_excel(writer, sheet_name='Instructions & Legend', index=False, header=False)
+        
+        # Apply styling to instructions sheet
+        wb = writer.book
+        ws = wb['Instructions & Legend']
+        
+        # Style title
+        ws.merge_cells('A1:D1')
+        title_cell = ws['A1']
+        title_cell.font = Font(bold=True, size=14, color="1F4E78")
+        title_cell.alignment = Alignment(horizontal="center", vertical="center")
+        
+        # Style section headers (rows with section titles)
+        section_headers = [3, 11, 27, 35, 44, 52]
+        for row in section_headers:
+            cell = ws.cell(row=row, column=1)
+            cell.font = Font(bold=True, size=12, color="1F4E78")
+            cell.fill = PatternFill(start_color="E8F4F8", end_color="E8F4F8", fill_type="solid")
+        
+        # Style color legend examples
+        color_examples = {
+            6: "FFF4CC",  # Yellow
+            7: "FFE6CC",  # Orange
+            8: "D6EAF8",  # Blue
+            9: "FFFFFF",  # White
+        }
+        for row, color in color_examples.items():
+            ws.cell(row=row, column=1).fill = PatternFill(start_color=color, end_color=color, fill_type="solid")
+        
+        # Set column widths
+        ws.column_dimensions['A'].width = 30
+        ws.column_dimensions['B'].width = 50
+        ws.column_dimensions['C'].width = 40
+        ws.column_dimensions['D'].width = 30
+    
+    def _create_summary_sheet(self, writer, df: pd.DataFrame):
+        """
+        Create summary statistics sheet with data quality metrics.
+        
+        Args:
+            writer: pandas ExcelWriter object
+            df: Original DataFrame with all data
+        """
+        summary_data = []
+        
+        # Title
+        summary_data.extend([
+            ["SUMMARY STATISTICS", "", ""],
+            ["", "", ""],
+        ])
+        
+        # Overall counts
+        total_records = len(df)
+        total_facilities = df['facility_name'].nunique() if 'facility_name' in df.columns else 0
+        total_permits = df['permit_number'].nunique() if 'permit_number' in df.columns else 0
+        
+        summary_data.extend([
+            ["OVERALL METRICS", "", ""],
+            ["Total Generator Records", total_records, ""],
+            ["Unique Facilities", total_facilities, ""],
+            ["Unique Permits", total_permits, ""],
+            ["", "", ""],
+        ])
+        
+        # Data quality breakdown
+        if 'data_quality_severity' in df.columns:
+            severity_counts = df['data_quality_severity'].value_counts()
+            
+            summary_data.extend([
+                ["DATA QUALITY BREAKDOWN", "", ""],
+                ["Severity Level", "Count", "Percentage"],
+                ["🔴 Critical (Missing Data)", severity_counts.get('critical', 0), 
+                 f"{severity_counts.get('critical', 0) / total_records * 100:.1f}%"],
+                ["⚡ Warning (Unusual Values)", severity_counts.get('warning', 0),
+                 f"{severity_counts.get('warning', 0) / total_records * 100:.1f}%"],
+                ["✓ OK (No Issues)", severity_counts.get('ok', 0),
+                 f"{severity_counts.get('ok', 0) / total_records * 100:.1f}%"],
+                ["", "", ""],
+            ])
+        
+        # Missing field analysis - only truly missing fields
+        summary_data.extend([
+            ["MISSING CRITICAL FIELDS", "", ""],
+            ["Field", "Missing Count", "Percentage"],
+        ])
+        
+        # Check for missing capacity (ANY capacity field is OK)
+        has_any_capacity = df.apply(lambda row: any([
+            pd.notna(row.get('rated_capacity_kw')),
+            pd.notna(row.get('rated_capacity_hp')),
+            pd.notna(row.get('rated_capacity_bhp')),
+            pd.notna(row.get('rated_capacity_mmbtu_per_hr'))
+        ]), axis=1)
+        missing_capacity = (~has_any_capacity).sum()
+        summary_data.append(["Any Capacity Field", missing_capacity, f"{missing_capacity / total_records * 100:.1f}%"])
+        
+        summary_data.append(["", "", ""])
+        
+        # Calculated values summary
+        calc_cols = ['calculated_bhp', 'calculated_hp', 'calculated_kw', 'calculated_mmbtu_per_hr']
+        summary_data.extend([
+            ["CALCULATED VALUES SUMMARY", "", ""],
+            ["Capacity Type", "Calculated Count", "Percentage"],
+        ])
+        
+        for col in calc_cols:
+            if col in df.columns:
+                calc_count = df[col].sum()
+                pct = calc_count / total_records * 100
+                field_name = col.replace('calculated_', '').upper()
+                summary_data.append([field_name, calc_count, f"{pct:.1f}%"])
+        
+        # Write to Excel
+        df_summary = pd.DataFrame(summary_data)
+        df_summary.to_excel(writer, sheet_name='Summary Statistics', index=False, header=False)
+        
+        # Apply styling
+        wb = writer.book
+        ws = wb['Summary Statistics']
+        
+        # Style title
+        ws.merge_cells('A1:C1')
+        title_cell = ws['A1']
+        title_cell.font = Font(bold=True, size=14, color="1F4E78")
+        title_cell.alignment = Alignment(horizontal="center", vertical="center")
+        
+        # Style section headers
+        section_rows = [3, 9, 18, 27]
+        for row in section_rows:
+            cell = ws.cell(row=row, column=1)
+            cell.font = Font(bold=True, size=11, color="1F4E78")
+            cell.fill = PatternFill(start_color="E8F4F8", end_color="E8F4F8", fill_type="solid")
+        
+        # Set column widths
+        ws.column_dimensions['A'].width = 40
+        ws.column_dimensions['B'].width = 20
+        ws.column_dimensions['C'].width = 20
+    
+    def _get_version(self) -> str:
+        """Get toolkit version."""
+        return "1.0.0"  # Could read from package metadata
+
