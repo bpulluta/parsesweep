@@ -34,6 +34,8 @@ openpyxl = ">=3.1.5,<4"
 # Visualization dependencies for map generation
 folium = ">=0.15.0,<1"
 geopy = ">=2.4.0,<3"
+pytest = ">=8.4.2,<9"
+pytest-cov = ">=7.0.0,<8"
 
 # PyPI-only dependencies
 [pypi-dependencies]
