@@ -1,0 +1,10 @@
+permit_number,facility_state,source_file,make,model,rated_capacity_bhp,rated_capacity_hp,rated_capacity_kw,rated_capacity_mmbtu_per_hr,notes,spec_sheet_name,source_link
+P0135915,OH,3012805.json,CAT,3516C,3350,3350,2500,8.53,Corresponds to the generators maximum / standby rating at 60 Hz,,
+P0137726,OH,3728574.json,Clarke,JU6H-UFDO,268,268,200,0.68,The JU6H-UFDO series engines are used exclusively to drive fire pumps for emergency standby service.,Clarke-ju6h-ufads0-usa.pdf,https://clarkefire.com/docs/default-source/legacy-products/ul-fm---usa/ju6h-ufads0-usa.pdf?sfvrsn=63db2813_2
+P0137726,OH,3728574.json,Kohler,350REOZD,563,563,350,1.19,"This corresponds to the 350REOZD diesel generator set operating at 60 Hz, 480 V, 0.8 power factor (Standby duty rating).",,
+P0137726,OH,3805340.json,Kohler,350REOZD,563,563,350,1.19,"This corresponds to the 350REOZD diesel generator set operating at 60 Hz, 480 V, 0.8 power factor (Standby duty rating).",,
+PCP230001,NJ,560106_PCP230001_34407315.json,Bloom Energy,ES-5,11327,11327,8450,29,,,
+21080031,IL,031440AUU_21080031_IL_Final_Permit.json,Aggreko,"(1,667 kWm Engine)",2795,2795,2000,17.6,,,
+APC-2003/0284-OPERATION (Amendment 3)(SM)(MACT),DE,APC-2003_0284-OPERATION (AMENDMENT 03) _G_JP MORGAN CHASE - 4001 GOVERNOR PRINTZ BLVD __G_ -FOIA_ RELEASABLE.json,Atlantic Detroit Diesel,2000 DSEB,2682,2682,2000,17.6,,,
+APC-2003/0285-OPERATION(SM)(NSPS)(MACT)-Amendment 5,DE,APC-2003_0285-OPERATION (AMENDMENT 03) _G_JP MORGAN CHASE - BEAR CHRISTIANA ROAD __G_ -FOIA_ RELEASABLE           Last Mod by_ Uni.json,Atlantic Detroit Diesel,2000 DSEB,2682,2682,2000,17.6,,,
+APC-2003/0285-OPERATION(SM)(NSPS)(MACT)-Amendment 5,DE,APC-2003_0285-OPERATION (AMENDMENT 03) _G_JP MORGAN CHASE - BEAR CHRISTIANA ROAD __G_ -FOIA_ RELEASABLE           Last Mod by_ Uni.json,Detroit Diesel,2000-XC6DT2,2682,2682,2000,17.6,,,
