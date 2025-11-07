@@ -10,9 +10,10 @@ from collections import defaultdict
 class ExtractionCleaner:
     """Cleans and organizes extracted permit data."""
     
-    def __init__(self, extracted_dir: Path, output_dir: Path):
+    def __init__(self, extracted_dir: Path, output_dir: Path, dedup_strategy: str = "most_recent_highest_capacity"):
         self.extracted_dir = Path(extracted_dir)
         self.output_dir = Path(output_dir)
+        self.dedup_strategy = dedup_strategy
         
         # Output subdirectories (no raw copy - source is already raw)
         self.cleaned_dir = self.output_dir
@@ -27,11 +28,14 @@ class ExtractionCleaner:
             "final_cleaned_files": 0,
             "true_duplicates_found": 0,
             "duplicate_files_removed": 0,
+            "facilities_before_dedup": 0,
+            "facilities_after_dedup": 0,
         }
         
         # Tracking for reports
         self.zero_gen_files = []
         self.permit_versions = []
+        self.duplicate_groups = []
         self.errors = []
     
     def setup_directories(self):
@@ -200,14 +204,132 @@ class ExtractionCleaner:
         # Different generators - keep all
         return False, None, files
     
+    def apply_smart_deduplication(
+        self, permit_groups: dict[str, list[dict]]
+    ) -> dict[str, dict]:
+        """
+        Apply smart deduplication using PermitDeduplicator.
+        
+        This considers:
+        - Facility ID matches
+        - Address similarity (fuzzy matching for OCR errors)
+        - Permit dates (keep most recent)
+        - Generator counts and capacity
+        
+        Args:
+            permit_groups: Dictionary of permit_number -> list of file_info dicts
+            
+        Returns:
+            Dictionary mapping file paths to file info for files to keep
+        """
+        from ..data.deduplicator import PermitDeduplicator
+        
+        # Convert file_info dicts to permit dicts for deduplicator
+        all_permits = []
+        file_info_map = {}  # Map permit data back to file_info
+        
+        for permit_number, files in permit_groups.items():
+            for file_info in files:
+                if file_info["generator_count"] == 0:
+                    continue  # Skip zero-generator files
+                
+                # Extract data needed for deduplication
+                permit_data = file_info["data"]
+                permit_details = permit_data.get("data", {}).get("permitDetails", {})
+                
+                permit_dict = {
+                    "permit_number": permit_number,
+                    "facility_name": permit_details.get("facilityName", "Unknown"),
+                    "facility_id": permit_details.get("stateFacilityID", ""),
+                    "address_raw": permit_details.get("facilityAddress", ""),
+                    "county": permit_details.get("facilityCounty", ""),
+                    "state": file_info["state"],
+                    "generator_count": file_info["generator_count"],
+                    "permit_date": permit_details.get("permitIssuanceDate", ""),
+                    "permit_expiration": permit_details.get("permitExpirationDate", None),
+                    "total_capacity_kw": sum(
+                        (gen.get("ratedCapacityKW") or 0) * (gen.get("numGenerators") or 1)
+                        for gen in permit_data.get("data", {}).get("generatorSets", [])
+                        if gen.get("ratedCapacityKW")
+                    ),
+                    "source_file": file_info["source_file"],
+                    "_file_path": str(file_info["path"]),  # Keep track of file path
+                }
+                
+                all_permits.append(permit_dict)
+                file_info_map[str(file_info["path"])] = file_info
+        
+        self.stats["facilities_before_dedup"] = len(all_permits)
+        
+        # Apply deduplication
+        deduplicator = PermitDeduplicator(strategy=self.dedup_strategy)
+        deduplicated_permits = deduplicator.deduplicate_permits(all_permits)
+        
+        self.stats["facilities_after_dedup"] = len(deduplicated_permits)
+        
+        # Generate deduplication report
+        dedup_report = deduplicator.get_deduplication_report(
+            all_permits, deduplicated_permits
+        )
+        
+        # Track which files were removed
+        kept_paths = {p["_file_path"] for p in deduplicated_permits}
+        removed_permits = [p for p in all_permits if p["_file_path"] not in kept_paths]
+        
+        # Store duplicate groups for reporting
+        self.duplicate_groups = []
+        for removed in removed_permits:
+            # Find which kept permit this was a duplicate of
+            for kept in deduplicated_permits:
+                dedup = deduplicator.are_same_facility(removed, kept)
+                if dedup:
+                    self.duplicate_groups.append({
+                        "removed_file": Path(removed["_file_path"]).name,
+                        "kept_file": Path(kept["_file_path"]).name,
+                        "facility_name": removed["facility_name"],
+                        "address": removed["address_raw"][:60],
+                        "reason": f"Same facility - kept {self.dedup_strategy}",
+                    })
+                    break
+        
+        # Return file_info dicts for files to keep
+        files_to_keep = {}
+        for permit in deduplicated_permits:
+            file_path = permit["_file_path"]
+            files_to_keep[file_path] = file_info_map[file_path]
+        
+        return files_to_keep, dedup_report
+    
     def create_cleaned_dataset(
-        self, permit_groups: dict, deduplicate: bool = False
+        self, permit_groups: dict, deduplicate: bool = False, smart_dedup: bool = False
     ):
         """Create cleaned dataset with ALL files that have generators."""
         cleaned_count = 0
         files_to_keep = set()
         versioned_permits = set()
         
+        # Option 1: Smart deduplication (new sophisticated approach)
+        if smart_dedup:
+            files_to_keep_dict, dedup_report = self.apply_smart_deduplication(permit_groups)
+            
+            # Copy files that passed deduplication
+            for file_path, file_info in files_to_keep_dict.items():
+                src = Path(file_path)
+                dest_state_dir = self.cleaned_dir / file_info["state"]
+                dest_state_dir.mkdir(exist_ok=True)
+                dest = dest_state_dir / src.name
+                
+                shutil.copy2(src, dest)
+                cleaned_count += 1
+            
+            self.stats["final_cleaned_files"] = cleaned_count
+            self.stats["duplicate_files_removed"] = (
+                dedup_report["removed_count"]
+            )
+            
+            return
+        
+        # Option 2: Old simple deduplication (generator reference matching)
         # Build set of files to keep based on deduplication decisions
         if deduplicate and self.permit_versions:
             for version_group in self.permit_versions:
@@ -260,9 +382,11 @@ class ExtractionCleaner:
             "consolidation_date": timestamp,
             "input_directory": str(self.extracted_dir),
             "output_directory": str(self.output_dir),
+            "deduplication_strategy": self.dedup_strategy,
             "statistics": self.stats,
             "zero_generator_files_count": len(self.zero_gen_files),
             "permit_version_groups_count": len(self.permit_versions),
+            "duplicate_groups_count": len(self.duplicate_groups),
             "errors_count": len(self.errors)
         }
         
@@ -303,6 +427,20 @@ class ExtractionCleaner:
         ) as f:
             json.dump(versions_report, f, indent=2)
         
+        # Duplicate groups report (for smart deduplication)
+        if self.duplicate_groups:
+            duplicates_report = {
+                "total_duplicates_removed": len(self.duplicate_groups),
+                "deduplication_strategy": self.dedup_strategy,
+                "description": f"Facilities identified as duplicates using {self.dedup_strategy} strategy",
+                "duplicate_groups": self.duplicate_groups
+            }
+            
+            with open(
+                self.reports_dir / "duplicates_removed.json", "w", encoding="utf-8"
+            ) as f:
+                json.dump(duplicates_report, f, indent=2)
+        
         # Errors report (if any)
         if self.errors:
             with open(
@@ -310,21 +448,26 @@ class ExtractionCleaner:
             ) as f:
                 json.dump({"errors": self.errors}, f, indent=2)
     
-    def clean(self, deduplicate: bool = False) -> dict:
+    def clean(self, deduplicate: bool = False, smart_dedup: bool = False) -> dict:
         """Run the full cleaning process and return stats."""
         # Collect all files
         permit_groups = self.collect_all_files()
         
-        # Identify permit versions (with optional deduplication)
-        self.permit_versions = self.identify_permit_versions(
-            permit_groups, deduplicate=deduplicate
-        )
+        # Identify permit versions (with optional simple deduplication)
+        if not smart_dedup:
+            self.permit_versions = self.identify_permit_versions(
+                permit_groups, deduplicate=deduplicate
+            )
         
         # Setup directories
         self.setup_directories()
         
         # Create cleaned dataset (respecting deduplication if enabled)
-        self.create_cleaned_dataset(permit_groups, deduplicate=deduplicate)
+        self.create_cleaned_dataset(
+            permit_groups, 
+            deduplicate=deduplicate,
+            smart_dedup=smart_dedup
+        )
         
         # Generate reports
         self.generate_reports()

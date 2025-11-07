@@ -1013,8 +1013,12 @@ def visualize(input_dir: str, output: Optional[str], state: Optional[str],
 @click.argument('input_dir', type=click.Path(exists=True))
 @click.option('--output', '-o', type=click.Path(), help='Output directory (default: data/cleaned)')
 @click.option('--dry-run', is_flag=True, help='Preview what would be done without writing files')
-@click.option('--deduplicate', is_flag=True, help='Remove true duplicates (same generators, keep newest)')
-def clean(input_dir: str, output: Optional[str], dry_run: bool, deduplicate: bool):
+@click.option('--deduplicate', is_flag=True, help='Remove true duplicates (old simple method: same generator refs)')
+@click.option('--smart-dedup', is_flag=True, help='Apply intelligent deduplication (considers address, dates, capacity)')
+@click.option('--dedup-strategy', type=click.Choice(['most_recent_highest_capacity', 'highest_capacity', 'most_recent']),
+              default='most_recent_highest_capacity', show_default=True,
+              help='Strategy for smart deduplication')
+def clean(input_dir: str, output: Optional[str], dry_run: bool, deduplicate: bool, smart_dedup: bool, dedup_strategy: str):
     """
     Clean extracted permit data by removing zero-generator files and duplicates.
     
@@ -1024,22 +1028,29 @@ def clean(input_dir: str, output: Optional[str], dry_run: bool, deduplicate: boo
       • reports/ - Detailed reports on what was removed/kept
     
     By default, all versions of permits are preserved (they may represent different
-    amendments). Use --deduplicate to intelligently remove true duplicates (files
-    with identical generator reference numbers).
+    amendments). Use --deduplicate for simple duplicate removal (matching generator IDs)
+    or --smart-dedup for intelligent deduplication that handles:
+      - OCR errors in addresses (0 vs O, 1 vs l)
+      - Same facility with multiple permits (keeps most recent or highest capacity)
+      - Address variations and typos
+      - Facility ID matching
     
     \b
     EXAMPLES:
         # Clean extracted data (preserve all versions)
         permit-toolkit clean data/extracted
         
-        # Clean and remove true duplicates
-        permit-toolkit clean data/extracted --deduplicate
+        # Smart deduplication (RECOMMENDED for Ohio/Illinois)
+        permit-toolkit clean data/extracted --smart-dedup
+        
+        # Smart dedup with custom strategy
+        permit-toolkit clean data/extracted --smart-dedup --dedup-strategy highest_capacity
         
         # Preview without making changes
-        permit-toolkit clean data/extracted --dry-run
+        permit-toolkit clean data/extracted --dry-run --smart-dedup
         
         # Specify custom output directory
-        permit-toolkit clean data/extracted --output data/my_clean_data
+        permit-toolkit clean data/extracted --output data/my_clean_data --smart-dedup
     
     \b
     OUTPUT STRUCTURE:
@@ -1050,14 +1061,20 @@ def clean(input_dir: str, output: Optional[str], dry_run: bool, deduplicate: boo
           └── reports/          # JSON reports + summary
     
     \b
+    DEDUPLICATION STRATEGIES:
+        • most_recent_highest_capacity: Keep most recent permit; if same date, keep highest capacity (DEFAULT)
+        • highest_capacity: Always keep the permit with highest total generator capacity
+        • most_recent: Always keep the permit with most recent issue date
+    
+    \b
     WHAT GETS REMOVED:
         • Files with 0 generators
-        • True duplicates (with --deduplicate flag)
+        • True duplicates (with --deduplicate or --smart-dedup)
     
     \b
     WHAT GETS KEPT:
         • All files with generators (by default, all versions preserved)
-        • With --deduplicate: only newest version of true duplicates
+        • With --smart-dedup: best version per facility based on strategy
         • Original files in data/extracted/ remain untouched
     """
     # Setup paths
@@ -1069,26 +1086,32 @@ def clean(input_dir: str, output: Optional[str], dry_run: bool, deduplicate: boo
     print(f"{BOLD}{BLUE}│{RESET} {BOLD}{'DATA CLEANING':^76}{RESET} {BOLD}{BLUE}│{RESET}")
     print(f"{BOLD}{BLUE}└{'─' * 78}┘{RESET}\n")
     
-    print(f"  {DIM}Mode{RESET}      {'DRY RUN' if dry_run else 'LIVE'}")
-    print(f"  {DIM}Input{RESET}     {input_dir}")
-    print(f"  {DIM}Output{RESET}    {output_dir}\n")
+    dedup_mode = "Smart Deduplication" if smart_dedup else "Simple" if deduplicate else "None"
+    print(f"  {DIM}Mode{RESET}           {'DRY RUN - ' if dry_run else ''}{dedup_mode}")
+    if smart_dedup:
+        print(f"  {DIM}Strategy{RESET}       {dedup_strategy}")
+    print(f"  {DIM}Input{RESET}          {input_dir}")
+    print(f"  {DIM}Output{RESET}         {output_dir}\n")
     
     print(f"{DIM}{'─' * 80}{RESET}\n")
     
-    # Create cleaner
-    cleaner = ExtractionCleaner(input_dir, output_dir)
+    # Create cleaner with strategy
+    cleaner = ExtractionCleaner(input_dir, output_dir, dedup_strategy=dedup_strategy)
     
     # Collect files
     print(f"  {CYAN}→{RESET} Collecting extraction files...")
     permit_groups = cleaner.collect_all_files()
     print(f"  {GREEN}✓{RESET} Found {cleaner.stats['total_files']} files across {len(permit_groups)} permit numbers\n")
     
-    # Identify versions
-    print(f"  {CYAN}→{RESET} Identifying permit versions...")
-    cleaner.permit_versions = cleaner.identify_permit_versions(permit_groups, deduplicate=deduplicate)
-    print(f"  {GREEN}✓{RESET} Found {cleaner.stats['permit_version_groups']} permits with multiple versions")
+    # Identify versions (only if not using smart dedup)
+    if not smart_dedup:
+        print(f"  {CYAN}→{RESET} Identifying permit versions...")
+        cleaner.permit_versions = cleaner.identify_permit_versions(permit_groups, deduplicate=deduplicate)
+        print(f"  {GREEN}✓{RESET} Found {cleaner.stats['permit_version_groups']} permits with multiple versions")
+    
     print(f"  {GREEN}✓{RESET} Found {cleaner.stats['zero_generator_files']} files with 0 generators")
-    if deduplicate and cleaner.stats.get('true_duplicates_found', 0) > 0:
+    
+    if deduplicate and not smart_dedup and cleaner.stats.get('true_duplicates_found', 0) > 0:
         print(f"  {GREEN}✓{RESET} Identified {cleaner.stats['true_duplicates_found']} true duplicate(s)")
     print()
     
@@ -1098,12 +1121,12 @@ def clean(input_dir: str, output: Optional[str], dry_run: bool, deduplicate: boo
             for f in files if f["generator_count"] > 0
         )
         removed_text = ""
-        if deduplicate and cleaner.stats.get('duplicate_files_removed', 0) > 0:
+        if (deduplicate or smart_dedup) and cleaner.stats.get('duplicate_files_removed', 0) > 0:
             removed = cleaner.stats['duplicate_files_removed']
             removed_text = f" ({removed} duplicates would be removed)"
         print(f"  {YELLOW}⚠{RESET}  DRY RUN: Would create:")
         print(f"     • cleaned/: {files_with_gens}{removed_text} files")
-        print(f"     • reports/: 4 report files\n")
+        print(f"     • reports/: 4-5 report files\n")
         print(f"{DIM}{'─' * 80}{RESET}\n")
         return
     
@@ -1115,10 +1138,19 @@ def clean(input_dir: str, output: Optional[str], dry_run: bool, deduplicate: boo
     print_success("Created output directories")
     print()
     
+    if smart_dedup:
+        print(f"  {CYAN}→{RESET} Applying smart deduplication ({dedup_strategy})...")
     print(f"  {CYAN}→{RESET} Creating cleaned dataset...")
-    cleaner.create_cleaned_dataset(permit_groups, deduplicate=deduplicate)
+    cleaner.create_cleaned_dataset(permit_groups, deduplicate=deduplicate, smart_dedup=smart_dedup)
     print_success(f"Created cleaned dataset with {cleaner.stats['final_cleaned_files']} files")
-    if deduplicate and cleaner.stats.get('duplicate_files_removed', 0) > 0:
+    
+    if smart_dedup:
+        before = cleaner.stats.get('facilities_before_dedup', 0)
+        after = cleaner.stats.get('facilities_after_dedup', 0)
+        removed = before - after
+        if removed > 0:
+            print(f"  {DIM}Removed {removed} duplicates via smart deduplication ({removed/before*100:.1f}%){RESET}")
+    elif deduplicate and cleaner.stats.get('duplicate_files_removed', 0) > 0:
         print(f"  {DIM}Removed {cleaner.stats['duplicate_files_removed']} duplicate file(s){RESET}")
     print()
     
@@ -1138,20 +1170,33 @@ def clean(input_dir: str, output: Optional[str], dry_run: bool, deduplicate: boo
     print(f"    Total Files      {cleaner.stats['total_files']}")
     print(f"    With Generators  {cleaner.stats['files_with_generators']}")
     print(f"    Zero Generators  {cleaner.stats['zero_generator_files']}")
-    print(f"    Version Groups   {cleaner.stats['permit_version_groups']}")
+    if not smart_dedup:
+        print(f"    Version Groups   {cleaner.stats['permit_version_groups']}")
     
     print(f"  {BOLD}Output{RESET}")
     print(f"    Cleaned Files    {cleaner.stats['final_cleaned_files']}")
-    if deduplicate:
+    if smart_dedup:
+        before = cleaner.stats.get('facilities_before_dedup', 0)
+        after = cleaner.stats.get('facilities_after_dedup', 0)
+        removed = before - after
+        if removed > 0:
+            print(f"    Duplicates       {removed} removed ({removed/before*100:.1f}%)")
+            print(f"    Strategy         {dedup_strategy}")
+    elif deduplicate:
         dup_removed = cleaner.stats.get('duplicate_files_removed', 0)
         if dup_removed > 0:
             print(f"    Duplicates       {dup_removed} removed")
-    print(f"    Reports          {len(list((output_dir / 'reports').glob('*.json'))) + 1}")
+    
+    report_count = len(list((output_dir / 'reports').glob('*.json')))
+    print(f"    Reports          {report_count}")
     
     print(f"\n  {BOLD}Performance{RESET}")
     print(f"    Processing Time  {processing_time:.1f}s")
     
     print(f"\n  Output → {output_dir}")
-    print(f"\n  {DIM}💡 Review reports/permit_versions.json for version details{RESET}")
+    if smart_dedup and removed > 0:
+        print(f"\n  {DIM}💡 Review reports/duplicates_removed.json for deduplication details{RESET}")
+    elif not smart_dedup:
+        print(f"\n  {DIM}💡 Review reports/permit_versions.json for version details{RESET}")
     print(f"\n{DIM}{'─' * 80}{RESET}\n")
 
