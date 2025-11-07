@@ -32,7 +32,7 @@ class FacilityMapper:
         Initialize the mapper.
         
         Args:
-            data_dir: Root directory containing extracted data
+            data_dir: Root directory containing extracted or cleaned data
             cache_file: Optional path to geocoding cache file
         """
         self.data_dir = data_dir
@@ -229,7 +229,9 @@ class FacilityMapper:
             facility_name = permit_details.get('facilityName') or 'Unknown Facility'
             facility_address = permit_details.get('facilityAddress') or ''
             facility_county = permit_details.get('facilityCounty') or 'Unknown'
+            facility_id = permit_details.get('stateFacilityID') or ''
             permit_date = permit_details.get('permitIssuanceDate') or 'Unknown'
+            permit_expiration = permit_details.get('permitExpirationDate') or None
             generator_count = data.get('generator_count', 0)
             
             # Calculate total capacity from generator sets
@@ -251,11 +253,13 @@ class FacilityMapper:
             return {
                 'permit_number': permit_number,
                 'facility_name': facility_name,
+                'facility_id': facility_id,
                 'address_raw': facility_address,
                 'county': facility_county,
                 'state': state,
                 'generator_count': generator_count,
                 'permit_date': permit_date,
+                'permit_expiration': permit_expiration,
                 'total_capacity_kw': total_capacity_kw,
                 'source_file': data.get('source_file', json_file.name)
             }
@@ -312,7 +316,8 @@ class FacilityMapper:
                 if result is not None:
                     facilities.append(result)
         
-        return pd.DataFrame(facilities)
+        df = pd.DataFrame(facilities)
+        return df
     
     def geocode_facilities(self, df: pd.DataFrame, show_progress: bool = True) -> pd.DataFrame:
         """
@@ -507,35 +512,42 @@ class FacilityMapper:
                 return 'darkgreen'
         
         # Add markers
+        # Add markers with clean, professional styling
         for _, row in df_mapped.iterrows():
-            # Create popup content
+            is_county_level = not row.get('geocoding_success', False)
+            
+            # Clean popup with location precision at top
             popup_html = f"""
-            <div style="font-family: Arial; min-width: 250px;">
-                <h4 style="margin: 0 0 10px 0; color: #2c3e50;">{row['facility_name']}</h4>
-                <table style="width: 100%; font-size: 12px;">
-                    <tr><td><b>Permit Number:</b></td><td>{row['permit_number']}</td></tr>
-                    <tr><td><b>Generators:</b></td><td>{row['generator_count']}</td></tr>
-                    <tr><td><b>Total Capacity:</b></td><td>{row['total_capacity_kw']:,.0f} kW</td></tr>
-                    <tr><td><b>County:</b></td><td>{row['county']}</td></tr>
-                    <tr><td><b>State:</b></td><td>{row['state']}</td></tr>
-                    <tr><td><b>Permit Date:</b></td><td>{row['permit_date']}</td></tr>
-                    <tr><td colspan="2" style="padding-top: 8px;"><i>Address: {row['address_raw'][:100]}{"..." if len(row['address_raw']) > 100 else ""}</i></td></tr>
-                    <tr><td colspan="2" style="padding-top: 4px; font-size: 10px; color: #7f8c8d;">
-                        {"⚠️ Geocoded to county center" if not row['geocoding_success'] else "✓ Precise location"}
-                    </td></tr>
+            <div style="font-family: Arial; min-width: 300px;">
+                <div style="background: {"#fff3e0" if is_county_level else "#e8f5e9"}; 
+                            border-left: 4px solid {"#ff9800" if is_county_level else "#4caf50"}; 
+                            padding: 8px; margin: -10px -10px 12px -10px; font-size: 11px; font-weight: 600;">
+                    {"📍 APPROXIMATE: County-level location" if is_county_level else "✓ EXACT: Geocoded address"}
+                </div>
+                <h4 style="margin: 0 0 12px 0; color: #2c3e50;">{row['facility_name']}</h4>
+                <table style="width: 100%; font-size: 13px; line-height: 1.6;">
+                    <tr><td style="color: #666; padding: 4px 0;"><b>Capacity:</b></td>
+                        <td style="text-align: right; font-weight: 600;">{row['total_capacity_kw'] / 1000:.1f} MW</td></tr>
+                    <tr><td style="color: #666; padding: 4px 0;"><b>Generators:</b></td>
+                        <td style="text-align: right;">{row['generator_count']}</td></tr>
+                    <tr><td style="color: #666; padding: 4px 0;"><b>Permit:</b></td>
+                        <td style="text-align: right; font-size: 11px;">{row['permit_number']}</td></tr>
+                    <tr><td style="color: #666; padding: 4px 0;"><b>Location:</b></td>
+                        <td style="text-align: right;">{row['county']}, {row['state']}</td></tr>
+                    <tr><td style="color: #666; padding: 4px 0;"><b>Permit Date:</b></td>
+                        <td style="text-align: right;">{row['permit_date']}</td></tr>
                 </table>
             </div>
             """
             
-            # Create tooltip (hover text)
-            tooltip_text = f"{row['facility_name']}<br>{row['generator_count']} generators"
+            tooltip = f"{row['facility_name']}: {row['total_capacity_kw'] / 1000:.1f} MW"
             
-            # Add marker
+            # Single unified marker style
             folium.CircleMarker(
                 location=[row['latitude'], row['longitude']],
-                radius=8 + (row['generator_count'] / 10),  # Size based on generator count
-                popup=folium.Popup(popup_html, max_width=300),
-                tooltip=tooltip_text,
+                radius=8 + (row['generator_count'] / 10),
+                popup=folium.Popup(popup_html, max_width=320),
+                tooltip=tooltip,
                 color=get_color(row['generator_count']),
                 fill=True,
                 fillColor=get_color(row['generator_count']),
@@ -543,22 +555,26 @@ class FacilityMapper:
                 weight=2
             ).add_to(marker_cluster)
         
-        # Add legend with updated colors
+        # Clean, simple legend
         legend_html = """
         <div style="position: fixed; 
+```
                     bottom: 50px; right: 50px; 
-                    width: 200px; height: auto; 
+                    width: 230px; height: auto; 
                     background-color: white; 
                     border:2px solid grey; 
                     z-index:9999; 
-                    font-size:14px;
-                    padding: 10px;
+                    font-size:13px;
+                    padding: 12px;
                     border-radius: 5px;">
-            <h4 style="margin-top: 0;">Generator Count</h4>
-            <p style="margin: 5px 0;"><span style="color: darkred;">●</span> 50+ generators</p>
-            <p style="margin: 5px 0;"><span style="color: darkorange;">●</span> 20-49 generators</p>
-            <p style="margin: 5px 0;"><span style="color: blue;">●</span> 10-19 generators</p>
-            <p style="margin: 5px 0;"><span style="color: darkgreen;">●</span> < 10 generators</p>
+            <h4 style="margin: 0 0 10px 0; font-size: 14px;">Capacity</h4>
+            <p style="margin: 6px 0;"><span style="color: #a71d2a; font-size: 18px;">●</span> 50+ generators</p>
+            <p style="margin: 6px 0;"><span style="color: #f57c00; font-size: 18px;">●</span> 20-49 generators</p>
+            <p style="margin: 6px 0;"><span style="color: #0288d1; font-size: 18px;">●</span> 10-19 generators</p>
+            <p style="margin: 6px 0;"><span style="color: #388e3c; font-size: 18px;">●</span> &lt; 10 generators</p>
+            <div style="margin-top: 10px; padding-top: 8px; border-top: 1px solid #ddd; font-size: 11px; color: #666;">
+                Click marker for details
+            </div>
         </div>
         """
         m.get_root().html.add_child(folium.Element(legend_html))
@@ -626,6 +642,7 @@ class FacilityMapper:
         for _, row in df_mapped.iterrows():
             # Professional color scheme based on total capacity (MW)
             capacity_mw = row['total_capacity_kw'] / 1000
+            is_county_level = not row.get('geocoding_success', False)
             
             # Color thresholds based on capacity
             if capacity_mw >= 50:  # 50+ MW
@@ -646,7 +663,12 @@ class FacilityMapper:
                 category = 'Low (<10 MW)'
             
             popup_html = f"""
-            <div style="font-family: 'Helvetica Neue', Arial, sans-serif; min-width: 280px; font-size: 13px;">
+            <div style="font-family: 'Helvetica Neue', Arial, sans-serif; min-width: 300px; font-size: 13px;">
+                <div style="background: {"#fff3e0" if is_county_level else "#e8f5e9"}; 
+                            border-left: 4px solid {"#ff9800" if is_county_level else "#4caf50"}; 
+                            padding: 10px; margin: -10px -10px 12px -10px; font-size: 12px; font-weight: 600;">
+                    {"📍 APPROXIMATE: County-level location" if is_county_level else "✓ EXACT: Geocoded address"}
+                </div>
                 <div style="border-bottom: 3px solid {base_color}; padding-bottom: 8px; margin-bottom: 10px;">
                     <div style="font-weight: 600; font-size: 14px; color: #212121;">{row['facility_name']}</div>
                     <div style="color: #757575; font-size: 12px; margin-top: 2px;">Permit {row['permit_number']}</div>
@@ -658,7 +680,7 @@ class FacilityMapper:
                     </tr>
                     <tr>
                         <td style="color: #616161; padding: 4px 0;">Capacity:</td>
-                        <td style="text-align: right; font-weight: 600;">{row['total_capacity_kw']/1000:.0f} MW</td>
+                        <td style="text-align: right; font-weight: 600;">{row['total_capacity_kw'] / 1000:.0f} MW</td>
                     </tr>
                     <tr style="border-top: 1px solid #e0e0e0;">
                         <td style="color: #616161; padding: 8px 0 4px 0;">County:</td>
@@ -708,7 +730,7 @@ class FacilityMapper:
         # Get map HTML
         map_html = map_obj._repr_html_()
         
-        # Build data table rows - SORTED BY CAPACITY
+        # Build data table rows - SORTED BY CAPACITY - with more comprehensive data
         table_rows = ""
         for _, row in df_mapped.sort_values('total_capacity_kw', ascending=False).iterrows():
             # Use the same color scheme for consistency (based on capacity)
@@ -726,15 +748,24 @@ class FacilityMapper:
                 badge_color = '#388e3c'
                 border_color = '#1b5e20'
             
+            # Location precision indicator
+            is_county_level = not row.get('geocoding_success', False)
+            location_icon = "📍" if is_county_level else "✓"
+            location_title = "County-level location" if is_county_level else "Exact address"
+            
+            # Get address, truncate if too long
+            address = row['address_raw']
+            address_display = address[:60] + "..." if len(address) > 60 else address
+            
             table_rows += f"""
             <tr>
-                <td><b>{row['facility_name']}</b></td>
+                <td><b>{row['facility_name']}</b><br><small style="color: #757575;">{address_display}</small></td>
                 <td>{row['permit_number']}</td>
-                <td>{row['generator_count']}</td>
-                <td><span class="badge" style="background-color: {badge_color}; border: 2px solid {border_color};">{capacity_mw:.0f} MW</span></td>
-                <td>{row['county']}</td>
-                <td>{row['state']}</td>
+                <td style="text-align: center;">{row['generator_count']}</td>
+                <td><span class="badge" style="background-color: {badge_color}; border: 2px solid {border_color};">{capacity_mw:.1f} MW</span></td>
+                <td>{row['county']}, {row['state']}</td>
                 <td>{row['permit_date']}</td>
+                <td style="text-align: center;" title="{location_title}">{location_icon}</td>
             </tr>
             """
         
@@ -778,6 +809,30 @@ class FacilityMapper:
             background: #ffffff;
             color: #212121;
             line-height: 1.5;
+        }}
+        
+        .cui-banner {{
+            background: linear-gradient(135deg, #c62828 0%, #8b0000 100%);
+            color: white;
+            text-align: center;
+            padding: 20px;
+            font-weight: 900;
+            font-size: 32px;
+            letter-spacing: 4px;
+            border-bottom: 5px solid #5c0000;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+            position: sticky;
+            top: 0;
+            z-index: 10000;
+            font-family: 'Arial Black', Arial, sans-serif;
+        }}
+        
+        .cui-subtext {{
+            font-size: 14px;
+            font-weight: 600;
+            letter-spacing: 2px;
+            margin-top: 6px;
+            opacity: 0.95;
         }}
         
         .container {{
@@ -979,6 +1034,11 @@ class FacilityMapper:
     </style>
 </head>
 <body>
+    <div class="cui-banner">
+        CUI//CRIT
+        <div class="cui-subtext">CONTROLLED UNCLASSIFIED INFORMATION // CRITICAL INFRASTRUCTURE</div>
+    </div>
+    
     <div class="container">
         <div class="header">
             <div class="header-content">
@@ -1048,16 +1108,20 @@ class FacilityMapper:
         
         <div class="section">
             <h2 class="section-title">Facility Details</h2>
+            <div style="margin-bottom: 12px; padding: 10px 12px; background: #f5f5f5; border-left: 3px solid #666; font-size: 12px; color: #555;">
+                <b>Note:</b> Some locations are approximate (county-level). Click map markers or check the "Loc" column for precision. 
+                <b>✓</b> = exact address, <b>📍</b> = county-level.
+            </div>
             <table>
                 <thead>
                     <tr>
-                        <th>Facility Name</th>
-                        <th>Permit</th>
-                        <th>Generators</th>
+                        <th>Facility Name & Address</th>
+                        <th>Permit #</th>
+                        <th style="text-align: center;">Generators</th>
                         <th>Capacity</th>
-                        <th>County</th>
-                        <th>State</th>
+                        <th>Location</th>
                         <th>Permit Date</th>
+                        <th style="text-align: center;" title="Location Precision">Loc</th>
                     </tr>
                 </thead>
                 <tbody>
