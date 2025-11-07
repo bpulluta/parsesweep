@@ -1010,6 +1010,177 @@ def visualize(input_dir: str, output: Optional[str], state: Optional[str],
 
 
 @click.command()
+@click.argument('excel_file', type=click.Path(exists=True))
+@click.option('--output', '-o', type=click.Path(), help='Output HTML file path (default: data/visualizations/permit_map_from_excel.html)')
+@click.option('--title', help='Map title (default: "Permit Map - PJM Territory")')
+@click.option('--cache', type=click.Path(), help='Geocoding cache file (default: data/geocoding_cache.json)')
+def visualize_excel(excel_file: str, output: Optional[str], title: Optional[str], cache: Optional[str]):
+    """
+    Generate interactive HTML map from consolidated Excel file.
+    
+    This command reads a consolidated Excel file (like PermitData_PJM_v4.xlsx),
+    aggregates generators by facility, geocodes addresses, and creates an
+    interactive map visualization showing:
+      • Facility locations (geocoded from addresses)
+      • Generator counts (visualized with color and size)
+      • Total capacity per facility
+      • Interactive tooltips and popups
+    
+    Unlike the 'visualize' command which reads from JSON files, this command
+    works directly with Excel files for easier data visualization.
+    
+    \b
+    Examples:
+        # Visualize data from Excel file
+        $ permit-toolkit visualize-excel data/compiled/PermitData_PJM_v4.xlsx
+        
+        # Custom output and title
+        $ permit-toolkit visualize-excel data/compiled/PermitData_PJM_v4.xlsx \\
+            --output maps/my_map.html \\
+            --title "Data Centers - PJM Region"
+        
+        # Use custom geocoding cache
+        $ permit-toolkit visualize-excel data/compiled/PermitData_PJM_v4.xlsx \\
+            --cache data/my_cache.json
+    
+    \b
+    OUTPUT:
+        • Interactive HTML dashboard with:
+          - CUI//CRIT banner and NREL branding
+          - Summary statistics (facilities, generators, capacity)
+          - Color-coded markers (by capacity)
+          - Marker clustering for performance
+          - Detailed facility table (sortable)
+          - State-by-state breakdown
+        • Geocoding results cached for future runs
+    
+    \b
+    GEOCODING:
+        • Addresses are geocoded using Nominatim (OpenStreetMap)
+        • Results are cached to speed up subsequent runs
+        • Fallback to county-level coordinates for failed addresses
+        • Rate-limited to respect API usage limits
+    """
+    import pandas as pd
+    from pathlib import Path
+    import sys
+    
+    # Import the visualization tools
+    from permit_toolkit.visualization import FacilityMapper
+    
+    print(f"\n{BOLD}{BLUE}📍 Generating Dashboard from Excel File{RESET}\n")
+    print(f"{DIM}{'─' * 80}{RESET}\n")
+    
+    excel_path = Path(excel_file)
+    
+    # Set defaults
+    if not output:
+        output = "data/visualizations/permit_map_from_excel.html"
+    if not title:
+        title = "Permit Map - PJM Territory"
+    if not cache:
+        cache = "data/geocoding_cache.json"
+    
+    output_path = Path(output)
+    cache_path = Path(cache)
+    
+    print(f"  {DIM}Excel File{RESET}     {excel_path}")
+    print(f"  {DIM}Output{RESET}         {output_path}")
+    print(f"  {DIM}Title{RESET}          {title}")
+    print(f"  {DIM}Cache{RESET}          {cache_path}\n")
+    
+    print(f"{DIM}{'─' * 80}{RESET}\n")
+    
+    try:
+        # Load data
+        print(f"{CYAN}📥 Loading Excel data...{RESET}")
+        df = pd.read_excel(excel_path)
+        print(f"  ✓ Loaded {len(df)} rows with {len(df.columns)} columns\n")
+        
+        # IMPORTANT: Each row in the Excel represents a generator type at a facility
+        # - num_generators = how many of this generator type
+        # - rated_capacity_kw = capacity of ONE unit of this type
+        # So total capacity = num_generators * rated_capacity_kw for each row
+        
+        # Calculate total capacity for each row
+        print(f"{CYAN}📊 Calculating total capacities...{RESET}")
+        df['total_capacity_per_row'] = df['num_generators'] * df['rated_capacity_kw']
+        
+        # Aggregate by facility
+        print(f"{CYAN}📊 Aggregating by facility...{RESET}")
+        # Group by facility identifiers (excluding permit_number and facility_county to avoid NaN issues)
+        facility_df = df.groupby(['facility_name', 'facility_address', 'facility_state']).agg({
+            'permit_number': 'first',  # Take first permit number
+            'facility_county': 'first',  # Take first non-null county if available
+            'num_generators': 'sum',  # Total generators at facility
+            'total_capacity_per_row': 'sum',  # Total capacity (already multiplied)
+            'permit_issuance_date': 'first'
+        }).reset_index()
+        
+        facility_df = facility_df.rename(columns={
+            'facility_address': 'address_raw',
+            'facility_county': 'county',
+            'facility_state': 'state',
+            'num_generators': 'generator_count',
+            'total_capacity_per_row': 'total_capacity_kw',
+            'permit_issuance_date': 'permit_date'
+        })
+        
+        print(f"  ✓ Aggregated to {len(facility_df)} unique facilities\n")
+        
+        # Initialize FacilityMapper for geocoding
+        print(f"{CYAN}🌍 Geocoding facilities...{RESET}")
+        print(f"  {DIM}(This may take a while for large datasets){RESET}\n")
+        
+        mapper = FacilityMapper(excel_path.parent, cache_file=cache_path)
+        geocoded_df = mapper.geocode_facilities(facility_df, show_progress=True)
+        
+        successful = geocoded_df['latitude'].notna().sum()
+        success_rate = (successful / len(geocoded_df) * 100) if len(geocoded_df) > 0 else 0
+        print(f"\n  ✓ Geocoded {successful}/{len(geocoded_df)} facilities ({success_rate:.1f}%)\n")
+        
+        # Generate dashboard using FacilityMapper's create_dashboard method
+        print(f"{CYAN}� Creating interactive dashboard...{RESET}")
+        mapper.create_dashboard(geocoded_df, output_path, title=title)
+        
+        # Generate summary stats
+        summary = mapper.generate_summary_stats(geocoded_df)
+        
+        print(f"\n{GREEN}✅ Dashboard generated successfully!{RESET}\n")
+        print(f"{DIM}{'─' * 80}{RESET}\n")
+        
+        # Print summary
+        print(f"{BOLD}Summary{RESET}")
+        print(f"  {BOLD}Facilities{RESET}")
+        print(f"    Total            {summary['total_facilities']}")
+        print(f"    Mapped           {GREEN}{summary['facilities_mapped']}{RESET}")
+        print(f"    States           {summary['states']}")
+        print(f"    Counties         {summary['counties']}")
+        print()
+        print(f"  {BOLD}Generators{RESET}")
+        print(f"    Total Count      {MAGENTA}{summary['total_generators']}{RESET}")
+        print(f"    Total Capacity   {summary['total_capacity_mw']:,.1f} MW")
+        print(f"    Avg per Facility {summary['avg_generators_per_facility']:.1f}")
+        print()
+        print(f"  {BOLD}Output{RESET}")
+        print(f"    {GREEN}{output_path}{RESET}")
+        print(f"    {DIM}Open in browser to view interactive dashboard{RESET}")
+        print()
+        
+        if summary['geocoding_success_rate'] < 90:
+            print(f"{YELLOW}⚠️  Note:{RESET} Some facilities were geocoded to county centers")
+            print(f"    due to missing or incomplete addresses.\n")
+        
+    except Exception as e:
+        print_error("Failed to generate dashboard", str(e))
+        import traceback
+        print(f"\n{DIM}{traceback.format_exc()}{RESET}")
+        sys.exit(1)
+    
+    print(f"{DIM}{'─' * 80}{RESET}\n")
+
+
+@click.command()
 @click.argument('input_dir', type=click.Path(exists=True))
 @click.option('--output', '-o', type=click.Path(), help='Output directory (default: data/cleaned)')
 @click.option('--dry-run', is_flag=True, help='Preview what would be done without writing files')

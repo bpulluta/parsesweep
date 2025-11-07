@@ -149,7 +149,9 @@ class FacilityMapper:
             city_part = None
             for i, part in enumerate(parts[1:], 1):
                 # Look for a part that's not the county and not a state
-                if county.replace(' County', '').replace(' county', '') not in part and \
+                # Handle None county
+                county_match = county and (county.replace(' County', '').replace(' county', '') not in part)
+                if county_match and \
                    not re.match(r'^[A-Z]{2}$', part.strip()) and \
                    not part.strip().isdigit():
                     city_part = part
@@ -157,15 +159,23 @@ class FacilityMapper:
             
             if city_part:
                 return f"{street_address}, {city_part}, {state}"
-            else:
+            elif county:
                 return f"{street_address}, {county}, {state}"
+            else:
+                return f"{street_address}, {state}"
         else:
             # No clear street address, try using the first part with county
             cleaned = parts[0] if parts else address
-            # If it's just descriptive text, use county
+            # If it's just descriptive text, use county if available
             if len(cleaned) < 5 or not any(c.isdigit() for c in cleaned):
-                return f"{county}, {state}"
-            return f"{cleaned}, {county}, {state}"
+                if county:
+                    return f"{county}, {state}"
+                else:
+                    return state
+            if county:
+                return f"{cleaned}, {county}, {state}"
+            else:
+                return f"{cleaned}, {state}"
     
     def _geocode_address(self, address: str, retry_count: int = 2, skip_rate_limit: bool = False) -> Optional[Tuple[float, float]]:
         """
