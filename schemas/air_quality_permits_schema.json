@@ -218,7 +218,7 @@
                 "type": "null"
               }
             ],
-            "description": "Rated electrical output in kilowatts as a number (e.g., 2500, 600, 2000). Extract value without units. If range given, use typical/nominal value if indicated, otherwise use smallest. Do not convert from HP/BHP. Leave null if not stated."
+            "description": "Rated electrical output in kilowatts as a number (e.g., 2500, 600, 2000). Extract value without units. If stated in megawatts (MW), convert to kW (×1000) and extract the number. If range given, use typical/nominal value if indicated, otherwise use smallest. Do not convert from HP/BHP. Leave null if not stated."
           },
           "ratedCapacityBHP": {
             "anyOf": [
