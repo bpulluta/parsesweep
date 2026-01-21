@@ -3,9 +3,9 @@ requires = ["setuptools>=68.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "permit-toolkit"
+name = "streamline-extract"
 version = "0.1.0"
-description = "Hybrid extraction toolkit for air quality permits using OpenAI + LangExtract"
+description = "StreamlineExtract: Hybrid extraction toolkit for air quality permits using OpenAI + LangExtract"
 readme = "README.md"
 requires-python = ">=3.9"
 license = {text = "MIT"}
@@ -64,9 +64,9 @@ docs = [
 permit-toolkit = "permit_toolkit.cli.main:main"
 
 [project.urls]
-Homepage = "https://github.com/NREL/backupgensprint"
-Repository = "https://github.com/NREL/backupgensprint"
-Issues = "https://github.com/NREL/backupgensprint/issues"
+Homepage = "https://github.com/bpulluta/StreamlineExtract"
+Repository = "https://github.com/bpulluta/StreamlineExtract"
+Issues = "https://github.com/bpulluta/StreamlineExtract/issues"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
