@@ -10,7 +10,7 @@ from pathlib import Path
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 
-WORKSPACE_ROOT = Path("/Users/bpulluta/backupgensprint")
+WORKSPACE_ROOT = Path("/Users/bpulluta/StreamlineExtract")
 SCHEMA_FILE = WORKSPACE_ROOT / "schemas" / "air_quality_permits_schema.json"
 
 

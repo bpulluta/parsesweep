@@ -1,4 +1,4 @@
-# Air Quality Permit Toolkit
+# StreamlineExtract
 
 > **User-friendly tool for extracting structured data from air quality permits using AI**
 
@@ -36,8 +36,8 @@ curl -fsSL https://pixi.sh/install.sh | bash
 # Windows users: iwr -useb https://pixi.sh/install.ps1 | iex
 
 # Clone the project
-git clone https://github.com/NREL/backupgensprint.git
-cd backupgensprint
+git clone https://github.com/bpulluta/StreamlineExtract.git
+cd StreamlineExtract
 
 # Install everything automatically
 pixi install
@@ -363,7 +363,7 @@ cat validation/aqtoolkit/Virginia/11790_DC_Permit.json
 ## 🏗️ Project Structure
 
 ```
-backupgensprint/
+StreamlineExtract/
 ├── permits/              # Put your PDF permits here
 │   ├── Virginia/
 │   ├── Illinois/
@@ -514,7 +514,7 @@ MIT License - see [LICENSE](LICENSE) file.
 
 ## 🙏 Credits
 
-Developed by the NREL COMPASS team for backup generator analysis.
+Developed for streamlined air quality permit data extraction and analysis.
 
 **Contributors:**
 - Data extraction framework
@@ -535,8 +535,8 @@ For questions or issues, please open a GitHub issue.
 ```bash
 # Setup (one time)
 curl -fsSL https://pixi.sh/install.sh | bash
-git clone https://github.com/NREL/backupgensprint.git
-cd backupgensprint
+git clone https://github.com/bpulluta/StreamlineExtract.git
+cd StreamlineExtract
 pixi install
 echo "OPENAI_API_KEY=sk-your-key" > .env
 
