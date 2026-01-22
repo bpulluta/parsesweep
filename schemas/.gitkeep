@@ -1,0 +1,5 @@
+# Extraction schemas are stored here
+# See existing schemas for examples:
+# - geothermal_ordinance_schema.json
+# - utility_tariff_schema.json
+# - air_quality_permits_schema.json

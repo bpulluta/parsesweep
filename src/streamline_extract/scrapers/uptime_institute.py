@@ -18,7 +18,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.chrome.options import Options
 
-from permit_toolkit.scrapers.base import BaseScraper
+from streamline_extract.scrapers.base import BaseScraper
 
 logger = logging.getLogger(__name__)
 

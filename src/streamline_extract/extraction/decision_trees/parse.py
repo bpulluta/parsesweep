@@ -6,7 +6,7 @@ import logging
 from elm.ords.llm.calling import BaseLLMCaller, ChatLLMCaller
 from elm.ords.utilities import llm_response_as_json
 from elm.ords.extraction.tree import AsyncDecisionTree
-from permit_toolkit.extraction.decision_trees.graphs import (
+from streamline_extract.extraction.decision_trees.graphs import (
     setup_graph_permit_num,
     setup_graph_permit_issue_date,
     setup_graph_permit_expiration_date,
@@ -59,11 +59,10 @@ logger = logging.getLogger(__name__)
 
 
 DEFAULT_SYSTEM_MESSAGE = (
-    "You are an expert in air quality permits, especially for emergency "
-    "standby generators at data centers. Answer strictly based on the "
-    "information contained in the provided permit documents and any linked "
-    "official references; do not speculate or rely on unsupported "
-    "assumptions."
+    "You are an expert in document analysis and data extraction. "
+    "Answer strictly based on the information contained in the provided "
+    "documents and any linked official references; do not speculate or "
+    "rely on unsupported assumptions."
 )
 
 

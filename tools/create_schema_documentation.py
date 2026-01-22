@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Create a styled Excel documentation file from the air quality permits schema.
+Create a styled Excel documentation file from the extraction schema.
 Shows field names and descriptions in an easy-to-read format.
 """
 

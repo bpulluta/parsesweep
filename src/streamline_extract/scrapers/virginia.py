@@ -1,7 +1,7 @@
 """
-Virginia DEQ Air Quality Permit Scraper
+Virginia DEQ Document Scraper
 
-Downloads air quality permits for data centers from Virginia DEQ website.
+Downloads documents for data centers from Virginia DEQ website.
 Implements the BaseScraper interface for consistency with other state scrapers.
 """
 
@@ -18,17 +18,17 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.chrome.options import Options
 
-from permit_toolkit.scrapers.base import BaseScraper
+from streamline_extract.scrapers.base import BaseScraper
 
 logger = logging.getLogger(__name__)
 
 
 class VirginiaScraper(BaseScraper):
     """
-    Scraper for Virginia DEQ data center air quality permits.
+    Scraper for Virginia DEQ data center documents.
     
     Features:
-    - Downloads all permit versions with smart naming
+    - Downloads all document versions with smart naming
     - Distinguishes between latest and historical versions
     - Resume capability (skips existing files)
     - Generates download manifest with metadata

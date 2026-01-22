@@ -1,7 +1,7 @@
-"""Extraction module for permit data extraction."""
+"""Extraction module for document data extraction."""
 
 from .pdf_utils import extract_text_from_pdf
-from .permit_extractor import PermitExtractor, ExtractionResult
+from .document_extractor import DocumentExtractor, ExtractionResult
 import json
 from pathlib import Path
 
@@ -13,7 +13,7 @@ def load_schema(schema_path: Path) -> dict:
 
 
 __all__ = [
-    "PermitExtractor",
+    "DocumentExtractor",
     "ExtractionResult",
     "extract_text_from_pdf",
     "load_schema",

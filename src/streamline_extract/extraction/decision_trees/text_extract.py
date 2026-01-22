@@ -6,27 +6,27 @@ from functools import cached_property
 
 from elm.ords.llm.calling import LLMCaller
 
-from permit_toolkit import PACKAGE_ROOT
+from streamline_extract import PACKAGE_ROOT
 
 
 logger = logging.getLogger(__name__)
 
 
-PERMIT_TEXT_EXTRACTION_SYSTEM_MESSAGE = """Verbatim excerpt extractor for air quality permits
+PERMIT_TEXT_EXTRACTION_SYSTEM_MESSAGE = """Verbatim excerpt extractor for documents
 
 Role
-- You are a verbatim text extractor. Given a JSON extraction schema and the full text of an air quality permit, return only the exact text excerpts from the permit that are relevant to the schema. Do not perform any data extraction or interpretation.
+- You are a verbatim text extractor. Given a JSON extraction schema and the full text of a document, return only the exact text excerpts from the document that are relevant to the schema. Do not perform any data extraction or interpretation.
 
 Core rules
-- Output only text copied verbatim from the input permit. No paraphrasing, rewriting, summarizing, or explanation.
+- Output only text copied verbatim from the input document. No paraphrasing, rewriting, summarizing, or explanation.
 - Preserve original wording, spelling, capitalization, punctuation, spacing, line breaks, and structure (including tables as monospaced text).
 - Do not add to or modify anything: no labels, keys, headings, quotes, brackets, ellipses, highlights, annotations, comments, or metadata. Do not translate.
 - Do not output JSON or field/value pairs. Do not infer or normalize units, numbers, or dates. Do not fix typos.
-- If multiple excerpts are returned, place them in the same order they appear in the permit. Use a single blank line between excerpts. Do not add any other separators.
+- If multiple excerpts are returned, place them in the same order they appear in the document. Use a single blank line between excerpts. Do not add any other separators.
 
 Relevance and completeness
 - Include every passage that could supply information for any field in the provided JSON schema.
-- Priority domain rule — backup generators: Always include all passages, tables, rules, etc. relevant to backup generators, including synonyms such as emergency/standby generators, emergency engines, diesel/natural gas gensets, RICE, compression ignition spark-ignition engines, or similar terms. Capture specifications (make/model, rated kW/HP, displacement), fuel type and limits (e.g., sulfur content), emission/operating limits and applicability thresholds, hours of operation (including emergency vs. maintenance/testing), start-up/shutdown, non-routine use conditions, definitions and exemptions, control equipment, stack parameters, monitoring/testing methods and frequency, recordkeeping/reporting/notification requirements, calculation methods and emission factors, cross-references/incorporations by reference, tables/attachments, and condition/section numbers/headers needed for interpretation. Do not omit relevant backup-generator content for appearing redundant; if identical text is duplicated verbatim, include one instance unless different context adds meaning.
+- Capture all relevant passages, tables, specifications, requirements, etc. that match the schema fields. Include specifications, limits, conditions, definitions, exemptions, requirements, cross-references, tables, attachments, and section numbers/headers needed for interpretation. Do not omit relevant content for appearing redundant; if identical text is duplicated verbatim, include one instance unless different context adds meaning.
 - Capture the minimal span that preserves full meaning and usability for extraction, including necessary context such as:
   - Units, thresholds, ranges, limits, qualifiers, conditions, exceptions, and footnotes linked to the value.
   - Condition numbers, section headers, table headers/row labels that are required to interpret values.
@@ -51,11 +51,11 @@ PERMIT_TEXT_EXTRACTION_PROMPT = """You are given two inputs:
 {json_schema}
 
 
-# Air quality permit full text #
+# Document full text #
 
 {full_permit_text}
 
-Task: Return only verbatim excerpts from the permit that are relevant for an extraction task using the JSON schema. Do not perform extraction or interpretation. Preserve original wording and formatting. Use minimal spans that retain full meaning (including units, limits, qualifiers, section/condition numbers, table headers/labels, and any linked footnotes or references). Order excerpts as they appear in the permit, separated by a single blank line. Do not add any text, labels, or JSON. If nothing is relevant, return an empty output.
+Task: Return only verbatim excerpts from the document that are relevant for an extraction task using the JSON schema. Do not perform extraction or interpretation. Preserve original wording and formatting. Use minimal spans that retain full meaning (including units, limits, qualifiers, section/condition numbers, table headers/labels, and any linked footnotes or references). Order excerpts as they appear in the document, separated by a single blank line. Do not add any text, labels, or JSON. If nothing is relevant, return an empty output.
 """
 
 

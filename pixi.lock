@@ -9232,39 +9232,6 @@ packages:
   - pkg:pypi/pdftotext?source=hash-mapping
   size: 18667
   timestamp: 1733578385597
-- pypi: ./
-  name: permit-toolkit
-  version: 0.1.0
-  sha256: cfc0d8171870899f24b708b8279f0e27167f17bb80056ceb5ce49a8dd9e1e1dc
-  requires_dist:
-  - pandas>=2.0.0
-  - numpy>=1.24.0
-  - requests>=2.31.0
-  - beautifulsoup4>=4.12.0
-  - lxml>=4.9.0
-  - selenium>=4.15.0
-  - pymupdf4llm>=0.0.5
-  - pymupdf>=1.23.0
-  - pypdf>=3.17.0
-  - openai>=1.0.0
-  - langextract>=1.0.0
-  - pydantic>=2.5.0
-  - jsonschema>=4.20.0
-  - tqdm>=4.66.0
-  - python-dotenv>=1.0.0
-  - pyyaml>=6.0.1
-  - click>=8.1.0
-  - langchain-text-splitters>=1.0.0,<2
-  - nrel-compass>=0.10.0,<0.11
-  - pytest>=7.4.0 ; extra == 'dev'
-  - pytest-cov>=4.1.0 ; extra == 'dev'
-  - black>=23.0.0 ; extra == 'dev'
-  - ruff>=0.1.0 ; extra == 'dev'
-  - mypy>=1.7.0 ; extra == 'dev'
-  - mkdocs>=1.5.0 ; extra == 'docs'
-  - mkdocs-material>=9.4.0 ; extra == 'docs'
-  requires_python: '>=3.9'
-  editable: true
 - conda: https://conda.anaconda.org/conda-forge/noarch/pexpect-4.9.0-pyhd8ed1ab_1.conda
   sha256: 202af1de83b585d36445dc1fda94266697341994d1a3328fabde4989e1b3d07a
   md5: d0d408b1f18883a944376da5cf8101ea
@@ -11606,6 +11573,39 @@ packages:
   - pkg:pypi/stack-data?source=hash-mapping
   size: 26988
   timestamp: 1733569565672
+- pypi: ./
+  name: streamline-extract
+  version: 0.1.0
+  sha256: c60d3643e3319d5608e5531c06bdf6009c59ab3cf539c013910dc1fe4fffb445
+  requires_dist:
+  - pandas>=2.0.0
+  - numpy>=1.24.0
+  - requests>=2.31.0
+  - beautifulsoup4>=4.12.0
+  - lxml>=4.9.0
+  - selenium>=4.15.0
+  - pymupdf4llm>=0.0.5
+  - pymupdf>=1.23.0
+  - pypdf>=3.17.0
+  - openai>=1.0.0
+  - langextract>=1.0.0
+  - pydantic>=2.5.0
+  - jsonschema>=4.20.0
+  - tqdm>=4.66.0
+  - python-dotenv>=1.0.0
+  - pyyaml>=6.0.1
+  - click>=8.1.0
+  - langchain-text-splitters>=1.0.0,<2
+  - nrel-compass>=0.10.0,<0.11
+  - pytest>=7.4.0 ; extra == 'dev'
+  - pytest-cov>=4.1.0 ; extra == 'dev'
+  - black>=23.0.0 ; extra == 'dev'
+  - ruff>=0.1.0 ; extra == 'dev'
+  - mypy>=1.7.0 ; extra == 'dev'
+  - mkdocs>=1.5.0 ; extra == 'docs'
+  - mkdocs-material>=9.4.0 ; extra == 'docs'
+  requires_python: '>=3.9'
+  editable: true
 - pypi: https://files.pythonhosted.org/packages/40/44/4a5f08c96eb108af5cb50b41f76142f0afa346dfa99d5296fe7202a11854/tabulate-0.9.0-py3-none-any.whl
   name: tabulate
   version: 0.9.0

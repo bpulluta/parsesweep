@@ -1,0 +1,179 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Geothermal Electricity Ordinance Extraction Schema",
+  "description": "Extract regulatory requirements from geothermal electricity ordinances. EXTRACTION SCOPE: Only geothermal ELECTRICITY (geothermal power plants, geothermal production/injection wells for electricity generation, commercial geothermal energy facilities). EXCLUDE: geothermal heat pumps (GHP), residential geothermal HVAC, direct-use geothermal heating/cooling, solar power, wind power, and all other non-geothermal renewable energy sources.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["jurisdiction", "requirements", "document_applicability"],
+  "properties": {
+    "document_applicability": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["applies_to_geothermal_electricity", "summary"],
+      "properties": {
+        "applies_to_geothermal_electricity": {
+          "type": "boolean",
+          "description": "True if ordinance regulates geothermal ELECTRICITY generation (geothermal power plants, geothermal wells for electricity production). False if only GHP, residential heating, solar, wind, or other non-geothermal energy."
+        },
+        "summary": {
+          "type": "string",
+          "description": "Brief summary: What sections apply to geothermal electricity, or why document was excluded. Examples: 'Extracted Chapter 10 provisions for commercial geothermal power production', 'Document addresses only solar/wind energy - excluded', 'Document only covers residential GHP systems - excluded'."
+        }
+      }
+    },
+    "jurisdiction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["state", "county"],
+      "properties": {
+        "state": {
+          "type": "string",
+          "description": "State name exactly as written in document (e.g., 'California', 'Nevada', 'Colorado')."
+        },
+        "county": {
+          "type": "string",
+          "description": "County name exactly as written (e.g., 'Imperial County', 'Chaffee County'). Do not remove 'County' suffix."
+        },
+        "ordinance_code": {
+          "type": ["string", "null"],
+          "description": "Ordinance number/code exactly as written (e.g., 'Chapter 26.138', 'Resolution 2013-33', 'Division 17'). Leave null if not stated."
+        }
+      }
+    },
+    "requirements": {
+      "type": "array",
+      "description": "Array of distinct GEOTHERMAL ELECTRICITY requirements ONLY. DO NOT extract requirements for solar power, wind power, biomass, or other non-geothermal energy sources - SKIP THOSE ENTIRELY. Each unique geothermal requirement = one entry. Extract exactly as stated - do not infer or combine unless explicitly stated together in ordinance. FOR SETBACKS: If text states '40 feet from street, 15 feet from property line', create TWO separate entries with different targets. CORRECT: target='Street/road right-of-way', value=40. INCORRECT: target='Power plant'.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["type", "details"],
+        "properties": {
+          "type": {
+            "type": "string",
+            "description": "High-level requirement category.",
+            "enum": [
+              "Setback",
+              "Noise limit",
+              "Height limit",
+              "Lot size minimum",
+              "Fencing required",
+              "Visual screening",
+              "Working hours",
+              "Operating hours",
+              "Decommissioning",
+              "Bond",
+              "Insurance",
+              "Monitoring required",
+              "Environmental study",
+              "Permit required",
+              "Public process",
+              "Road standards",
+              "Emissions limit",
+              "Waste management",
+              "Well abandonment",
+              "Well standards",
+              "Fluid management",
+              "Safety equipment",
+              "Signage required",
+              "Water use limit",
+              "Reclamation",
+              "Other"
+            ]
+          },
+          "subtype": {
+            "type": ["string", "null"],
+            "description": "Specific subcategory for additional detail. Examples: 'Drilling operations', 'Power plant operations', 'Production well', 'Injection well', 'Exploration phase'. Leave null if not applicable.",
+            "enum": [
+              null,
+              "Drilling operations",
+              "Power plant operations",
+              "Well testing",
+              "Construction activities",
+              "Production well",
+              "Injection well",
+              "Exploration well",
+              "Exploration phase",
+              "Production phase",
+              "Ongoing operations",
+              "Performance bond",
+              "Decommissioning bond",
+              "Liability insurance",
+              "Seismic monitoring",
+              "Water quality monitoring",
+              "Air quality monitoring",
+              "Subsidence monitoring",
+              "Drilling waste",
+              "Production waste",
+              "Public hearing",
+              "Public notification"
+            ]
+          },
+          "target": {
+            "type": ["string", "null"],
+            "description": "CRITICAL FOR SETBACKS: Specify what the distance is measured FROM (the reference point). Examples: setback FROM 'Residence', FROM 'Property line', FROM 'Rivers/streams'. For NON-SETBACK requirements: what the requirement applies TO (e.g., 'All facilities', 'Production wells'). NEVER use 'Power plant' as setback target - identify the actual feature being set back FROM.",
+            "enum": [
+              null,
+              "Property line",
+              "Road",
+              "Street/road right-of-way",
+              "Irrigation canal",
+              "Rivers/streams/wetlands",
+              "Residence",
+              "Occupied building",
+              "School",
+              "Hospital",
+              "Public building",
+              "Water source",
+              "Well",
+              "Wetland",
+              "Archaeological site",
+              "Production well",
+              "Injection well",
+              "All wells",
+              "Power plant",
+              "All facilities",
+              "Drilling equipment",
+              "Production equipment",
+              "All operations",
+              "Other structure"
+            ]
+          },
+          "value": {
+            "type": ["number", "string", "null"],
+            "description": "Numeric requirement exactly as stated (e.g., 300, 1320, 65, 7.5) or time range (e.g., '7 a.m. to 7 p.m.', '24 hours'). Extract numbers without units. For yes/no requirements, use null and describe in details field. Examples: '1,320 feet' → 1320; '65 dBA' → 65; '$10,000' → 10000.",
+            "examples": [300, 1320, 65, "7 a.m. to 7 p.m.", 10000, null]
+          },
+          "unit": {
+            "type": ["string", "null"],
+            "description": "Unit of measurement exactly as written in ordinance (e.g., 'feet', 'dBA', 'acres', 'days'). Leave null if no unit or for yes/no requirements.",
+            "enum": [
+              null,
+              "feet",
+              "meters",
+              "dBA",
+              "dB",
+              "acres",
+              "MW",
+              "days",
+              "calendar days",
+              "hours",
+              "years",
+              "percent",
+              "dollars",
+              "$/well",
+              "$/acre"
+            ]
+          },
+          "details": {
+            "type": "string",
+            "description": "Complete requirement text extracted verbatim from ordinance. Include all conditions, exceptions, qualifications exactly as written. This is the authoritative source - preserve exact legal language. Do NOT paraphrase or summarize."
+          },
+          "section": {
+            "type": ["string", "null"],
+            "description": "Ordinance section reference exactly as cited (e.g., '§ 91703.01 G', 'Section 10-404(2)(c)', 'Chapter 26.138.050'). If same requirement appears in multiple sections, list all separated by commas. Leave null only if ordinance has no section numbering."
+          }
+        }
+      }
+    }
+  }
+}

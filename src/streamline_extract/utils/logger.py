@@ -210,7 +210,7 @@ class ProductionLogger:
             self.warning(msg)
 
 
-def get_logger(name: str = "permit_toolkit", 
+def get_logger(name: str = "streamline_extract", 
                log_file: Optional[Path] = None,
                verbose: bool = False) -> ProductionLogger:
     """
