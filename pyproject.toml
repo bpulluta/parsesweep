@@ -5,14 +5,14 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "streamline-extract"
 version = "0.1.0"
-description = "StreamlineExtract: Hybrid extraction toolkit for air quality permits using OpenAI + LangExtract"
+description = "StreamlineExtract: AI-powered toolkit for extracting structured data from PDF documents using OpenAI + LangExtract"
 readme = "README.md"
 requires-python = ">=3.9"
 license = {text = "MIT"}
 authors = [
     {name = "NREL Team", email = "contact@nrel.gov"}
 ]
-keywords = ["air quality", "permits", "data extraction", "LLM", "backup generators", "hybrid extraction"]
+keywords = ["document extraction", "pdf extraction", "data extraction", "LLM", "AI extraction", "structured data"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Science/Research",
@@ -61,7 +61,7 @@ docs = [
 ]
 
 [project.scripts]
-permit-toolkit = "permit_toolkit.cli.main:main"
+streamline-extract = "streamline_extract.cli.main:main"
 
 [project.urls]
 Homepage = "https://github.com/bpulluta/StreamlineExtract"
@@ -73,7 +73,7 @@ package-dir = {"" = "src"}
 
 [tool.setuptools.packages.find]
 where = ["src"]
-include = ["permit_toolkit*"]
+include = ["streamline_extract*"]
 
 [tool.black]
 line-length = 100
@@ -189,4 +189,4 @@ testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
-addopts = "-v --cov=permit_toolkit --cov-report=term-missing"
+addopts = "-v --cov=streamline_extract --cov-report=term-missing"

@@ -23,11 +23,11 @@ from elm.ords.services.usage import UsageTracker
 from elm.web.file_loader import AsyncLocalFileLoader
 from elm.utilities.parse import read_pdf  # , read_pdf_ocr
 
-from permit_toolkit.extraction.pdf_utils import extract_text_from_pdf
-from permit_toolkit.extraction.decision_trees.parse import (
+from streamline_extract.extraction.pdf_utils import extract_text_from_pdf
+from streamline_extract.extraction.decision_trees.parse import (
     StructuredOrdinanceParser,
 )
-from permit_toolkit.extraction.decision_trees.text_extract import (
+from streamline_extract.extraction.decision_trees.text_extract import (
     PermitTextExtractor,
 )
 
@@ -82,7 +82,7 @@ def dtree_extract(input_dir, output, model, verbose):
     output.mkdir(parents=True, exist_ok=True)
 
     elm_logger = init_logger("elm", log_level="DEBUG" if verbose else "INFO")
-    init_logger("permit_toolkit", log_level="DEBUG" if verbose else "INFO")
+    init_logger("streamline_extract", log_level="DEBUG" if verbose else "INFO")
 
     if verbose:
         today = time.strftime("%Y-%m-%d_%H_%M_%S")

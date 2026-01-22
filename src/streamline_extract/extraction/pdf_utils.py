@@ -50,33 +50,52 @@ def _extract_with_ocr(pdf_path: Path) -> str:
         return ""
     
     try:
+        import sys
+        import os
+        import subprocess
+        from io import StringIO
+        from contextlib import redirect_stderr, redirect_stdout
+        
         text = ""
         with pymupdf.open(str(pdf_path)) as doc:
             page_count = len(doc)
             logger.info(f"🔍 Performing OCR on {page_count} pages (image-based PDF detected)...")
             
-            for page_num in range(page_count):
-                page = doc[page_num]
-                # Try OCR with PyMuPDF (uses Tesseract if available)
-                try:
-                    # get_textpage_ocr requires tesseract to be installed
-                    tp = page.get_textpage_ocr()
-                    if tp:
-                        page_text = page.get_text(textpage=tp)
-                        text += page_text + "\n"
-                        logger.debug(f"  OCR page {page_num + 1}/{page_count}: {len(page_text)} chars")
-                except AttributeError:
-                    # Older PyMuPDF versions or Tesseract not available
-                    logger.warning(f"OCR not available - PyMuPDF {pymupdf.__version__} may need Tesseract")
-                    break
-                except Exception as e:
-                    logger.warning(f"OCR failed for page {page_num + 1}: {e}")
-                    continue
+            # Completely suppress Tesseract stderr warnings
+            # Redirect both Python stderr and system-level stderr
+            null_device = open(os.devnull, 'w')
+            old_stderr = os.dup(2)
+            os.dup2(null_device.fileno(), 2)
+            
+            try:
+                for page_num in range(page_count):
+                    page = doc[page_num]
+                    # Try OCR with PyMuPDF (uses Tesseract if available)
+                    try:
+                        # get_textpage_ocr requires tesseract to be installed
+                        tp = page.get_textpage_ocr()
+                        if tp:
+                            page_text = page.get_text(textpage=tp)
+                            text += page_text + "\n"
+                            logger.debug(f"  OCR page {page_num + 1}/{page_count}: {len(page_text)} chars")
+                    except AttributeError:
+                        # Older PyMuPDF versions or Tesseract not available
+                        logger.warning(f"OCR not available - PyMuPDF {pymupdf.__version__} may need Tesseract installation")
+                        break
+                    except Exception as e:
+                        # Skip pages that fail OCR (common with poor quality scans)
+                        logger.debug(f"OCR skipped for page {page_num + 1}: {str(e)[:100]}")
+                        continue
+            finally:
+                # Restore system stderr
+                os.dup2(old_stderr, 2)
+                os.close(old_stderr)
+                null_device.close()
         
         if text:
             logger.info(f"✓ OCR extraction completed: {len(text):,} characters from {page_count} pages")
         else:
-            logger.warning("OCR extraction yielded no text")
+            logger.warning("OCR extraction yielded no text - PDF may have poor quality scans")
         
         return text
         

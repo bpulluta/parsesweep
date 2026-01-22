@@ -1,4 +1,4 @@
-"""CLI commands for permit toolkit."""
+"""CLI commands for StreamlineExtract toolkit."""
 
 import json
 import logging
@@ -11,11 +11,10 @@ from typing import Optional, List, Tuple
 import click
 from dotenv import load_dotenv
 
-from permit_toolkit.utils.config import get_config
-from permit_toolkit.extraction import PermitExtractor, load_schema
-from permit_toolkit.extraction.pdf_utils import extract_text_from_pdf
-from permit_toolkit.consolidation import PermitConsolidator
-from permit_toolkit.consolidation.cleaner import ExtractionCleaner
+from streamline_extract.utils.config import get_config
+from streamline_extract.extraction import DocumentExtractor, load_schema
+from streamline_extract.extraction.pdf_utils import extract_text_from_pdf
+from streamline_extract.consolidation.cleaner import ExtractionCleaner
 
 
 # ANSI color codes for consistent styling
@@ -104,44 +103,49 @@ def validate_path_structure(path: Path, expected_content: str = "PDFs") -> Tuple
 @click.command()
 @click.argument('path', type=click.Path())
 @click.option('--output', '-o', type=click.Path(), help='Output directory (auto-detected if not specified)')
-@click.option('--state', help='State name (auto-detected from path if not specified)')
+@click.option('--schema', '-s', type=click.Path(exists=True), help='Path to JSON schema file (auto-detects from path if not specified)')
+@click.option('--state', help='State/category name (auto-detected from path if not specified)')
 @click.option('--model', default='gpt-4o-mini', show_default=True, help='AI model: gpt-4o-mini (fast) or gpt-4o (accurate)')
 @click.option('--enable-qa-qc', is_flag=True, help='Enable detailed validation (slower, adds traceability)')
 @click.option('--use-azure', is_flag=True, help='Use Azure OpenAI (requires AZURE_OPENAI_API_KEY)')
 @click.option('--limit', '-n', type=int, help='Process only first N files')
 @click.option('--skip-existing/--reprocess', default=True, show_default=True, help='Skip files already processed')
-def extract(path: str, output: Optional[str], state: Optional[str],
+def extract(path: str, output: Optional[str], schema: Optional[str], state: Optional[str],
             model: str, enable_qa_qc: bool, use_azure: bool, limit: Optional[int],
             skip_existing: bool):
     """
-    Extract structured data from permit PDF files.
+    Extract structured data from PDF documents.
     
-    This command reads air quality permits (PDF format) and extracts structured
-    information about backup generators, emissions limits, and facility details.
+    This command reads PDF documents and extracts structured information
+    based on a JSON schema. Works with any document type (permits, ordinances, regulations, etc.).
     
     The output will be saved as JSON files in a parallel folder structure.
-    For example: permits/Virginia/ → extracted/Virginia/
+    For example: documents/Category/ → extracted/Category/
     
     \b
     EXAMPLES:
-        # Extract a single permit file
-        permit-toolkit extract permits/Virginia/11790_DC_Permit.pdf
+        # Extract using default schema (air quality permits)
+        streamline-extract extract documents/Category/doc1.pdf
         
-        # Extract all permits in a directory
-        permit-toolkit extract permits/Virginia
+        # Extract with a specific schema (e.g., geothermal ordinances)
+        streamline-extract extract documents/Ordinances --schema schemas/geothermal_ordinance_schema.json
         
-        # Extract just the first 5 permits (useful for testing)
-        permit-toolkit extract permits/Virginia -n 5
+        # Extract all documents in a directory
+        streamline-extract extract documents/Category
+        
+        # Extract just the first 5 documents (useful for testing)
+        streamline-extract extract documents/Category -n 5
         
         # Use Azure OpenAI (if you have Azure credits)
-        permit-toolkit extract permits/Illinois --use-azure
+        streamline-extract extract documents/Category --use-azure
         
         # Reprocess files that were already extracted
-        permit-toolkit extract permits/Virginia --reprocess
+        streamline-extract extract documents/Category --reprocess
     
     \b
     REQUIREMENTS:
         • PDF files in the specified directory
+        • JSON schema file (uses default air quality schema if not specified)
         • OpenAI API key in .env file (OPENAI_API_KEY=sk-...)
         • Or Azure OpenAI credentials (if using --use-azure)
     """
@@ -190,39 +194,31 @@ def extract(path: str, output: Optional[str], state: Optional[str],
     else:
         state = state or path.parent.name
     
-    # Setup output directory - parallel folder structure for clean pipeline
-    # Examples: 
-    #   validation/permits/Virginia/ → validation/extracted/Virginia/
-    #   data/permits/Illinois/ → data/extracted/Illinois/
-    #   validation/permits/ → validation/extracted/permits/
+    # Setup output directory - CLEAN parallel structure
+    # documents/category/ → extracted/category/
     if output:
-        # User specified output - use it
         output_dir = Path(output)
     elif is_dir:
-        # Directory input: replace 'permits' with 'extracted' in path
-        # This maintains the same depth and structure
+        # Replace 'documents' with 'extracted' at project root level
         parts = list(path.parts)
-        if 'permits' in parts:
-            # Replace first occurrence of 'permits' with 'extracted'
-            idx = parts.index('permits')
+        if 'documents' in parts:
+            idx = parts.index('documents')
             parts[idx] = 'extracted'
             output_dir = Path(*parts)
         else:
-            # Fallback: create parallel 'extracted' folder
-            parent = path.parent
-            output_dir = parent / 'extracted' / path.name
+            # Fallback: create in project root extracted/
+            project_root = Path.cwd()
+            output_dir = project_root / 'extracted' / path.name
     else:
-        # Single file: same logic but for parent directory
+        # Single file: parent directory logic
         parts = list(path.parent.parts)
-        if 'permits' in parts:
-            idx = parts.index('permits')
+        if 'documents' in parts:
+            idx = parts.index('documents')
             parts[idx] = 'extracted'
             output_dir = Path(*parts)
         else:
-            # Fallback
-            grandparent = path.parent.parent
-            folder_name = path.parent.name
-            output_dir = grandparent / 'extracted' / folder_name
+            project_root = Path.cwd()
+            output_dir = project_root / 'extracted' / path.parent.name
     
     output_dir.mkdir(parents=True, exist_ok=True)
     
@@ -257,7 +253,7 @@ def extract(path: str, output: Optional[str], state: Optional[str],
                     subdir_pdfs = sorted(subdir.glob("*.pdf"))
                     if subdir_pdfs:
                         import subprocess
-                        cmd = ['pixi', 'run', 'permit-toolkit', 'extract', str(subdir)]
+                        cmd = ['pixi', 'run', 'streamline-extract', 'extract', str(subdir)]
                         if use_azure:
                             cmd.append('--use-azure')
                         if enable_qa_qc:
@@ -280,8 +276,7 @@ def extract(path: str, output: Optional[str], state: Optional[str],
                 [
                     "Make sure your PDF files have the .pdf extension",
                     "Check if PDFs are in a subdirectory",
-                    f"Use 'ls {path}' to see what's in this folder",
-                    "PDFs should be air quality permits for backup generators"
+                    f"Use 'ls {path}' to see what's in this folder"
                 ]
             )
             sys.exit(1)
@@ -300,7 +295,7 @@ def extract(path: str, output: Optional[str], state: Optional[str],
         if not path.suffix.lower() == '.pdf':
             print_error(
                 f"File is not a PDF: {path.name}",
-                "This tool only works with PDF files containing air quality permits.",
+                "This tool only works with PDF files.",
                 [
                     "Make sure the file has a .pdf extension",
                     "Check if you specified the correct file path"
@@ -319,7 +314,7 @@ def extract(path: str, output: Optional[str], state: Optional[str],
     
     # Header with clean visual separation
     print(f"\n{BOLD}{BLUE}┌{'─' * 78}┐{RESET}")
-    print(f"{BOLD}{BLUE}│{RESET} {BOLD}{'AIR QUALITY PERMIT EXTRACTION':^76}{RESET} {BOLD}{BLUE}│{RESET}")
+    print(f"{BOLD}{BLUE}│{RESET} {BOLD}{'DOCUMENT EXTRACTION':^76}{RESET} {BOLD}{BLUE}│{RESET}")
     print(f"{BOLD}{BLUE}└{'─' * 78}┘{RESET}")
     
     # Configuration table with colors
@@ -349,8 +344,40 @@ def extract(path: str, output: Optional[str], state: Optional[str],
     print(f"  {DIM}QA/QC{RESET}     {qa_status}")
     print(f"  {DIM}Files{RESET}     {BOLD}{len(pdf_files)}{RESET} PDF{'s' if len(pdf_files) != 1 else ''}")
     
-    # Initialize extractor
-    schema = load_schema(config.default_schema)
+    # Load schema - auto-detect or use specified
+    if schema:
+        # User provided explicit schema path
+        schema_path = Path(schema)
+        loaded_schema = load_schema(schema_path)
+        print(f"  {DIM}Schema{RESET}    {schema_path.name}")
+    else:
+        # Auto-detect schema based on folder name/path
+        schema_path = None
+        schema_candidates = config.schema_dir.glob("*.json")
+        
+        # Try to match schema name with path keywords
+        path_lower = str(path).lower()
+        matched_schema = None
+        
+        for candidate in schema_candidates:
+            candidate_name_lower = candidate.stem.lower()
+            # Check if path contains schema keywords
+            if any(keyword in path_lower for keyword in ['geothermal', 'ordinance']) and 'geothermal' in candidate_name_lower:
+                matched_schema = candidate
+                break
+            elif any(keyword in path_lower for keyword in ['permit', 'air_quality', 'generator']) and 'permit' in candidate_name_lower:
+                matched_schema = candidate
+                break
+        
+        if matched_schema:
+            schema_path = matched_schema
+            loaded_schema = load_schema(schema_path)
+            print(f"  {DIM}Schema{RESET}    {CYAN}{schema_path.name}{RESET} {DIM}(auto-detected){RESET}")
+        else:
+            # Fall back to default
+            schema_path = config.default_schema
+            loaded_schema = load_schema(schema_path)
+            print(f"  {DIM}Schema{RESET}    {schema_path.name} {DIM}(default){RESET}")
     
     # Track the actual model being used for output
     actual_model = model
@@ -377,14 +404,14 @@ def extract(path: str, output: Optional[str], state: Optional[str],
             api_version=azure_version,
             azure_endpoint=azure_endpoint
         )
-        extractor = PermitExtractor(api_key=azure_key, model=deployment_name)
+        extractor = DocumentExtractor(api_key=azure_key, model=deployment_name)
         extractor.client = azure_client
     else:
         if not config.openai_api_key:
             print("❌ OPENAI_API_KEY not found")
             print(f"   Create .env file at: {config.project_root / '.env'}")
             return
-        extractor = PermitExtractor(api_key=config.openai_api_key, model=model)
+        extractor = DocumentExtractor(api_key=config.openai_api_key, model=model)
     
     # Processing section
     print(f"\n{DIM}{'─' * 80}{RESET}")
@@ -408,12 +435,24 @@ def extract(path: str, output: Optional[str], state: Optional[str],
         try:
             # Extract
             text = extract_text_from_pdf(pdf_path)
-            result = extractor.extract(text, schema, enable_qa_qc=enable_qa_qc)
+            result = extractor.extract(text, loaded_schema, enable_qa_qc=enable_qa_qc)
             
-            # Count total generators (sum across all generator sets)
-            generator_sets = result.data.get('generatorSets', [])
-            num_gens = sum(gen_set.get('numGenerators', 0) or 0 for gen_set in generator_sets)
-            permit_num = result.data.get('permitDetails', {}).get('permitNumber', 'N/A')
+            # Determine schema type and extract summary info
+            if 'ordinanceRequirements' in result.data:
+                # Geothermal/ordinance schema
+                requirements = result.data.get('ordinanceRequirements', [])
+                num_items = len(requirements)
+                jurisdiction = result.data.get('jurisdictionDetails', {})
+                identifier = f"{jurisdiction.get('state', 'Unknown')}-{jurisdiction.get('county', 'Unknown')}"
+                item_label = "requirements"
+                identifier_label = "Jurisdiction"
+            else:
+                # Air quality/permit schema (default)
+                generator_sets = result.data.get('generatorSets', [])
+                num_items = sum(gen_set.get('numGenerators', 0) or 0 for gen_set in generator_sets)
+                identifier = result.data.get('permitDetails', {}).get('permitNumber', 'N/A')
+                item_label = "generators"
+                identifier_label = "Permit"
             
             output_data = {
                 'source_file': pdf_path.name,
@@ -424,8 +463,8 @@ def extract(path: str, output: Optional[str], state: Optional[str],
                 'cost_usd': result.cost,
                 'processing_time_sec': result.processing_time,
                 'completeness_score': result.completeness_score,
-                'generator_count': num_gens,
-                'permit_number': permit_num,
+                'item_count': num_items,
+                'identifier': identifier,
                 'data': result.data,
                 'validation_notes': result.validation_notes
             }
@@ -437,8 +476,8 @@ def extract(path: str, output: Optional[str], state: Optional[str],
             # Track results
             results.append({
                 'file': pdf_path.name,
-                'permit': permit_num,
-                'generators': num_gens,
+                'identifier': identifier,
+                'items': num_items,
                 'cost': result.cost,
                 'time': result.processing_time,
                 'success': True
@@ -447,11 +486,11 @@ def extract(path: str, output: Optional[str], state: Optional[str],
             total_time += result.processing_time
             
             # Success message with compact format and colors
-            gen_text = f"{GREEN}{num_gens}{RESET} generators"
-            permit_text = f"Permit {CYAN}{permit_num}{RESET}"
+            item_text = f"{GREEN}{num_items}{RESET} {item_label}"
+            id_text = f"{identifier_label} {CYAN}{identifier}{RESET}"
             cost_text = f"{MAGENTA}${result.cost:.4f}{RESET}"
             time_text = f"{DIM}{result.processing_time:.1f}s{RESET}"
-            print(f"     {GREEN}✓{RESET} {gen_text}  {DIM}•{RESET}  {permit_text}  {DIM}•{RESET}  {cost_text}  {DIM}•{RESET}  {time_text}")
+            print(f"     {GREEN}✓{RESET} {item_text}  {DIM}•{RESET}  {id_text}  {DIM}•{RESET}  {cost_text}  {DIM}•{RESET}  {time_text}")
             
         except Exception as e:
             results.append({
@@ -490,10 +529,14 @@ def extract(path: str, output: Optional[str], state: Optional[str],
         print(f"    {DIM}Total{RESET}        {total_time:.1f}s")
         print(f"    {DIM}Per file{RESET}     {avg_time:.1f}s")
         
-        # Generator count
-        total_gens = sum(r.get('generators', 0) or 0 for r in successful)
-        print(f"\n  {BOLD}Generators{RESET}")
-        print(f"    {DIM}Extracted{RESET}    {GREEN}{total_gens}{RESET}")
+        # Item count (generators or requirements depending on schema)
+        total_items = sum(r.get('items', 0) or 0 for r in successful)
+        if total_items > 0:
+            # Determine label based on first successful result
+            first_result = successful[0]
+            if 'items' in first_result:
+                print(f"\n  {BOLD}Items Extracted{RESET}")
+                print(f"    {DIM}Total{RESET}        {GREEN}{total_items}{RESET}")
     
     # Output location reminder - make it very prominent
     print(f"\n  {BOLD}{GREEN}✓ Results saved to:{RESET}")
@@ -509,7 +552,7 @@ def validate(extraction_file: str, verbose: bool):
     Validate an extraction result against the schema.
     
     Example:
-        permit-toolkit validate data/extracted/Virginia/11790_DC_Permit.json
+        streamline-extract validate data/extracted/Virginia/11790_DC_Permit.json
     """
     # Setup logging
     log_level = logging.DEBUG if verbose else logging.INFO
@@ -620,16 +663,16 @@ def consolidate(input_dir: str, output: Optional[str], state: Optional[str], for
     \b
     EXAMPLES:
         # Consolidate all extractions in a directory
-        permit-toolkit consolidate extracted/Virginia
+        streamline-extract consolidate extracted/Category
         
         # Consolidate and save to Excel
-        permit-toolkit consolidate extracted/Illinois --format excel
+        streamline-extract consolidate extracted/Category --format excel
         
         # Custom output location
-        permit-toolkit consolidate extracted/Virginia -o my_data.csv
+        streamline-extract consolidate extracted/Category -o my_data.csv
         
-        # Consolidate mixed states, filter for one state
-        permit-toolkit consolidate extracted --state Virginia
+        # Consolidate mixed categories, filter for one
+        streamline-extract consolidate extracted --state Category
     
     \b
     REQUIREMENTS:
@@ -657,7 +700,7 @@ def consolidate(input_dir: str, output: Optional[str], state: Optional[str], for
                 "Run 'extract' command first to create extracted JSON files",
                 "Check the path spelling and try again",
                 f"Current directory: {Path.cwd()}",
-                "Example: permit-toolkit consolidate extracted/Virginia"
+                "Example: streamline-extract consolidate extracted/Virginia"
             ]
         )
         sys.exit(1)
@@ -668,7 +711,7 @@ def consolidate(input_dir: str, output: Optional[str], state: Optional[str], for
             "Please provide a directory containing extracted JSON files.",
             [
                 "Use the path to a folder, not a single file",
-                "Example: permit-toolkit consolidate extracted/Virginia"
+                "Example: streamline-extract consolidate extracted/Virginia"
             ]
         )
         sys.exit(1)
@@ -754,8 +797,8 @@ def consolidate(input_dir: str, output: Optional[str], state: Optional[str], for
             "This directory doesn't contain any extracted permit data." + (f" (filtering for state: {state})" if state else ""),
             [
                 "Run the 'extract' command first to process PDF permits",
-                "Example: permit-toolkit extract permits/Virginia",
-                "Then consolidate: permit-toolkit consolidate extracted/Virginia",
+                "Example: streamline-extract extract documents/Category",
+                "Then consolidate: streamline-extract consolidate extracted/Category",
                 "Check that you're using the correct directory path"
             ]
         )
@@ -888,16 +931,16 @@ def clean(input_dir: str, output: Optional[str], dry_run: bool, deduplicate: boo
     \b
     EXAMPLES:
         # Clean extracted data (preserve all versions)
-        permit-toolkit clean data/extracted
+        streamline-extract clean data/extracted
         
         # Clean and remove true duplicates
-        permit-toolkit clean data/extracted --deduplicate
+        streamline-extract clean data/extracted --deduplicate
         
         # Preview without making changes
-        permit-toolkit clean data/extracted --dry-run
+        streamline-extract clean data/extracted --dry-run
         
         # Specify custom output directory
-        permit-toolkit clean data/extracted --output data/my_clean_data
+        streamline-extract clean data/extracted --output data/my_clean_data
     
     \b
     OUTPUT STRUCTURE:
@@ -1012,4 +1055,120 @@ def clean(input_dir: str, output: Optional[str], dry_run: bool, deduplicate: boo
     print(f"\n  Output → {output_dir}")
     print(f"\n  {DIM}💡 Review reports/permit_versions.json for version details{RESET}")
     print(f"\n{DIM}{'─' * 80}{RESET}\n")
+
+
+@click.command()
+@click.argument('extracted_dir', type=click.Path(exists=True))
+@click.option('--output', '-o', type=click.Path(), help='Output directory (auto-detected if not specified)')
+def consolidate(extracted_dir: str, output: Optional[str]):
+    """
+    Consolidate extracted JSON files into clean Excel/CSV output.
+    
+    Works with ANY schema type - automatically detects structure and creates
+    clean, readable output with intelligent deduplication.
+    
+    \b
+    EXAMPLES:
+        # Consolidate geothermal ordinances
+        streamline-extract consolidate extracted/geothermal_ordinances
+        
+        # Consolidate utility tariffs
+        streamline-extract consolidate extracted/tariffs
+        
+        # Specify custom output directory
+        streamline-extract consolidate extracted/data --output my_analysis/
+    
+    \b
+    OUTPUT:
+        • Clean Excel file with auto-sized columns
+        • CSV file for data analysis
+        • Automatic deduplication of identical entries
+    """
+    from streamline_extract.consolidation.consolidator import Consolidator
+    
+    input_dir = Path(extracted_dir)
+    
+    # Set up output directory - CLEAN structure
+    # extracted/category/ → consolidated/category/
+    if output:
+        output_dir = Path(output)
+    else:
+        parts = list(input_dir.parts)
+        if 'extracted' in parts:
+            idx = parts.index('extracted')
+            parts[idx] = 'consolidated'
+            output_dir = Path(*parts)
+        else:
+            project_root = Path.cwd()
+            output_dir = project_root / 'consolidated' / input_dir.name
+    
+    output_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Header
+    print(f"\n{BOLD}{BLUE}┌{'─' * 78}┐{RESET}")
+    print(f"{BOLD}{BLUE}│{RESET} {BOLD}{'CONSOLIDATION':^76}{RESET} {BOLD}{BLUE}│{RESET}")
+    print(f"{BOLD}{BLUE}└{'─' * 78}┘{RESET}\n")
+    
+    print(f"  {DIM}Input{RESET}     {input_dir}")
+    print(f"  {DIM}Output{RESET}    {BOLD}{output_dir}{RESET}\n")
+    print(f"{DIM}{'─' * 80}{RESET}\n")
+    
+    # Consolidate
+    print(f"  {CYAN}→{RESET} Analyzing schema structure...")
+    consolidator = Consolidator()
+    
+    try:
+        df, schema_info = consolidator.consolidate_from_directory(input_dir)
+        
+        if df.empty:
+            print(f"\n  {YELLOW}⚠{RESET} No data found to consolidate")
+            return
+        
+        print(f"  {GREEN}✓{RESET} Schema detected: {CYAN}{schema_info['type']}{RESET}")
+        print(f"  {DIM}  Main entity: {schema_info['main_array_key']}{RESET}")
+        print(f"\n  {CYAN}→{RESET} Creating outputs...")
+        
+        # Generate output filename
+        base_name = input_dir.name.replace('_', '-')
+        
+        # Save CSV
+        csv_path = output_dir / f"{base_name}.csv"
+        consolidator.save_csv(df, csv_path)
+        print(f"  {GREEN}✓{RESET} CSV saved ({len(df)} rows)")
+        
+        # Save Excel
+        excel_path = output_dir / f"{base_name}.xlsx"
+        consolidator.save_excel(df, excel_path)
+        print(f"  {GREEN}✓{RESET} Excel saved (clean formatting, auto-sized columns)")
+        
+        # Summary
+        print(f"\n{DIM}{'─' * 80}{RESET}")
+        print(f"\n  {BOLD}{'SUMMARY':^76}{RESET}\n")
+        print(f"{DIM}{'─' * 80}{RESET}\n")
+        
+        print(f"  {BOLD}Data{RESET}")
+        print(f"    {DIM}Schema Type{RESET}   {schema_info['type']}")
+        print(f"    {DIM}Records{RESET}       {len(df)}")
+        print(f"    {DIM}Columns{RESET}       {len(df.columns)}")
+        
+        # Category breakdown
+        if schema_info.get('category_field'):
+            category_display = ''.join([' ' + c if c.isupper() else c for c in schema_info.get('category_field', '')]).strip().title()
+            if category_display and category_display in df.columns:
+                top_categories = df[category_display].value_counts().head(5)
+                if not top_categories.empty:
+                    print(f"\n  {BOLD}Top {category_display}s{RESET}")
+                    for cat, count in top_categories.items():
+                        print(f"    {DIM}•{RESET} {cat}: {GREEN}{count}{RESET}")
+        
+        print(f"\n  {BOLD}{GREEN}✓ Output Location{RESET}")
+        print(f"    {BOLD}{excel_path.absolute()}{RESET}")
+        print(f"\n{DIM}{'─' * 80}{RESET}\n")
+        
+    except Exception as e:
+        print(f"\n  {RED}✗{RESET} Error: {str(e)}")
+        if '--verbose' in sys.argv or '-v' in sys.argv:
+            import traceback
+            traceback.print_exc()
+        sys.exit(1)
 

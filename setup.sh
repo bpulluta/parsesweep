@@ -1,5 +1,5 @@
 #!/bin/bash
-# Setup script for permit-toolkit
+# Setup script for StreamlineExtract
 
 set -e
 
@@ -52,7 +52,7 @@ pip install --upgrade pip > /dev/null
 
 # Install package in editable mode
 echo ""
-echo "Installing permit-toolkit..."
+echo "Installing streamline-extract..."
 pip install -e . > /dev/null
 echo "✓ Package installed"
 
@@ -132,7 +132,7 @@ echo "=================================="
 echo ""
 echo "Next steps:"
 echo "1. Edit .env and add your OPENAI_API_KEY"
-echo "2. Try the CLI: permit-toolkit --help"
+echo "2. Try the CLI: streamline-extract --help"
 echo "3. Run an example: python examples/basic_usage.py"
 echo ""
 echo "To activate the virtual environment in the future:"

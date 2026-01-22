@@ -1,4 +1,4 @@
-"""Configuration management for the permit toolkit."""
+"""Configuration management for the StreamlineExtract toolkit."""
 
 import os
 from pathlib import Path

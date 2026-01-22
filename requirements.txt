@@ -1,4 +1,4 @@
-# Air Quality Permit Toolkit - Core Dependencies
+# StreamlineExtract - Core Dependencies
 # Python >= 3.9 required
 
 # Core Data Processing

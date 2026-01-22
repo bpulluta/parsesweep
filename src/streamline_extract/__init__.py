@@ -1,13 +1,13 @@
 """
-Air Quality Permit Toolkit
+StreamlineExtract
 
-A production-ready toolkit for extracting structured data from air quality permits
-using state-of-the-art LLMs. Supports multi-state permit formats, intelligent 
-deduplication, and automated data consolidation.
+AI-powered toolkit for extracting structured data from PDF documents using 
+state-of-the-art LLMs. Supports customizable schemas, intelligent deduplication, 
+and automated data consolidation for any document type.
 
 Features:
 - Hybrid LLM extraction (OpenAI + optional LangExtract)
-- Cross-state compatibility (Virginia, Illinois, extensible)
+- Customizable schemas for any document type
 - Smart deduplication and error handling
 - Modern CLI with progress tracking
 - CSV/Excel export for analysis
