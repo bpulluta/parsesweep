@@ -462,13 +462,15 @@ def extract(path: str, output: Optional[str], schema: Optional[str], state: Opti
         deployment_name = azure_model if azure_model else model
         actual_model = deployment_name  # Track actual model for output
         
-        azure_client = AzureOpenAI(
+        # Initialize extractor with Azure parameters
+        extractor = DocumentExtractor(
             api_key=azure_key,
-            api_version=azure_version,
-            azure_endpoint=azure_endpoint
+            model=deployment_name,
+            max_context_chars=max_context,
+            use_azure=True,
+            azure_endpoint=azure_endpoint,
+            azure_api_version=azure_version,
         )
-        extractor = DocumentExtractor(api_key=azure_key, model=deployment_name, max_context_chars=max_context)
-        extractor.client = azure_client
     else:
         if not config.openai_api_key:
             print("❌ OPENAI_API_KEY not found")
