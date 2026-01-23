@@ -7,14 +7,12 @@ from .document_utils import (
     SUPPORTED_EXTENSIONS
 )
 from .document_extractor import DocumentExtractor, ExtractionResult
-import json
-from pathlib import Path
-
-
-def load_schema(schema_path: Path) -> dict:
-    """Load JSON schema from file."""
-    with open(schema_path, 'r') as f:
-        return json.load(f)
+from .schema_utils import (
+    load_schema,
+    validate_schema,
+    get_schema_fields,
+    get_required_fields,
+)
 
 
 __all__ = [
@@ -25,4 +23,7 @@ __all__ = [
     "is_supported_document",
     "SUPPORTED_EXTENSIONS",
     "load_schema",
+    "validate_schema",
+    "get_schema_fields",
+    "get_required_fields",
 ]
