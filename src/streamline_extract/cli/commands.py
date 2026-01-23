@@ -14,6 +14,11 @@ from dotenv import load_dotenv
 from streamline_extract.utils.config import get_config
 from streamline_extract.extraction import DocumentExtractor, load_schema
 from streamline_extract.extraction.pdf_utils import extract_text_from_pdf
+from streamline_extract.extraction.document_utils import (
+    extract_text_from_document,
+    is_supported_document,
+    SUPPORTED_EXTENSIONS
+)
 from streamline_extract.consolidation.cleaner import ExtractionCleaner
 from streamline_extract.consolidation.consolidator import Consolidator
 
@@ -280,26 +285,33 @@ def extract(path: str, output: Optional[str], schema: Optional[str], state: Opti
     DIM = '\033[2m'
     RESET = '\033[0m'
     
-    # Get PDF files - support recursive discovery
+    # Get document files - support all formats (PDF, DOCX, TXT, XLSX, CSV)
     if is_dir:
-        # First try direct PDFs in this directory
-        pdf_files = sorted(path.glob("*.pdf"))
+        # Find all supported document types in this directory
+        doc_files = []
+        for ext in SUPPORTED_EXTENSIONS:
+            doc_files.extend(sorted(path.glob(f"*{ext}")))
+        doc_files = sorted(doc_files)  # Sort all files together
         
-        # If no PDFs found, look for subdirectories (e.g., state folders)
-        if not pdf_files:
+        # If no documents found, look for subdirectories (e.g., state folders)
+        if not doc_files:
             subdirs = [d for d in path.iterdir() if d.is_dir() and not d.name.startswith('.')]
             if subdirs:
                 # Found subdirectories - process each one recursively
-                print(f"\n{BOLD}📁 Found {len(subdirs)} subfolder(s) with permits{RESET}")
+                print(f"\n{BOLD}📁 Found {len(subdirs)} subfolder(s) with documents{RESET}")
                 for subdir in subdirs:
-                    subdir_pdfs = sorted(subdir.glob("*.pdf"))
-                    if subdir_pdfs:
-                        print(f"  → {subdir.name}: {len(subdir_pdfs)} PDF(s)")
+                    subdir_docs = []
+                    for ext in SUPPORTED_EXTENSIONS:
+                        subdir_docs.extend(subdir.glob(f"*{ext}"))
+                    if subdir_docs:
+                        print(f"  → {subdir.name}: {len(subdir_docs)} document(s)")
                 
                 # Call extract for each subdirectory
                 for subdir in subdirs:
-                    subdir_pdfs = sorted(subdir.glob("*.pdf"))
-                    if subdir_pdfs:
+                    subdir_docs = []
+                    for ext in SUPPORTED_EXTENSIONS:
+                        subdir_docs.extend(subdir.glob(f"*{ext}"))
+                    if subdir_docs:
                         import subprocess
                         cmd = ['pixi', 'run', 'streamline-extract', 'extract', str(subdir)]
                         if use_azure:
@@ -316,44 +328,46 @@ def extract(path: str, output: Optional[str], schema: Optional[str], state: Opti
                         subprocess.run(cmd)
                 return
         
-        # Check if we found any PDFs at all
-        if not pdf_files and not subdirs:
+        # Check if we found any documents at all
+        if not doc_files and not subdirs:
+            supported_exts = ', '.join(sorted(SUPPORTED_EXTENSIONS))
             print_error(
-                f"No PDF files found in: {path}",
-                "The directory exists but doesn't contain any PDF files.",
+                f"No supported documents found in: {path}",
+                f"The directory exists but doesn't contain any supported document files.",
                 [
-                    "Make sure your PDF files have the .pdf extension",
-                    "Check if PDFs are in a subdirectory",
+                    f"Supported formats: {supported_exts}",
+                    "Check if documents are in a subdirectory",
                     f"Use 'ls {path}' to see what's in this folder"
                 ]
             )
             sys.exit(1)
         
         if limit:
-            pdf_files = pdf_files[:limit]
+            doc_files = doc_files[:limit]
         if skip_existing:
-            original_count = len(pdf_files)
-            pdf_files = [p for p in pdf_files if not (output_dir / f"{p.stem}.json").exists()]
-            skipped = original_count - len(pdf_files)
-            if skipped > 0 and len(pdf_files) > 0:
+            original_count = len(doc_files)
+            doc_files = [p for p in doc_files if not (output_dir / f"{p.stem}.json").exists()]
+            skipped = original_count - len(doc_files)
+            if skipped > 0 and len(doc_files) > 0:
                 print(f"\n{CYAN}ℹ{RESET}  Skipping {skipped} already processed file{'s' if skipped != 1 else ''}")
                 print(f"   {DIM}(use --reprocess to extract them again){RESET}")
     else:
         # Single file
-        if not path.suffix.lower() == '.pdf':
+        if not is_supported_document(path):
+            supported_exts = ', '.join(sorted(SUPPORTED_EXTENSIONS))
             print_error(
-                f"File is not a PDF: {path.name}",
-                "This tool only works with PDF files.",
+                f"Unsupported file format: {path.name}",
+                f"This tool works with: {supported_exts}",
                 [
-                    "Make sure the file has a .pdf extension",
+                    "Make sure the file has a supported extension",
                     "Check if you specified the correct file path"
                 ]
             )
             sys.exit(1)
-        pdf_files = [path]
+        doc_files = [path]
     
     # Final validation - check if we have files to process
-    if not pdf_files:
+    if not doc_files:
         if is_dir:
             print(f"\n{GREEN}✓{RESET} All {original_count} file(s) already processed!")
             print(f"  {DIM}Output directory: {output_dir}{RESET}")
@@ -391,7 +405,7 @@ def extract(path: str, output: Optional[str], schema: Optional[str], state: Opti
     
     qa_status = f"{GREEN}Enabled{RESET}" if enable_qa_qc else f"{DIM}Disabled{RESET}"
     print(f"  {DIM}QA/QC{RESET}     {qa_status}")
-    print(f"  {DIM}Files{RESET}     {BOLD}{len(pdf_files)}{RESET} PDF{'s' if len(pdf_files) != 1 else ''}")
+    print(f"  {DIM}Files{RESET}     {BOLD}{len(doc_files)}{RESET} document{'s' if len(doc_files) != 1 else ''}")
     
     # Load schema - auto-detect or use specified
     if schema:
@@ -469,21 +483,21 @@ def extract(path: str, output: Optional[str], schema: Optional[str], state: Opti
     total_cost = 0.0
     total_time = 0.0
     
-    for i, pdf_path in enumerate(pdf_files, 1):
+    for i, doc_path in enumerate(doc_files, 1):
         # Progress indicator with cleaner format
-        if len(pdf_files) > 1:
-            pct = (i - 1) / len(pdf_files)
+        if len(doc_files) > 1:
+            pct = (i - 1) / len(doc_files)
             bar_len = 30
             filled = int(bar_len * pct)
             bar = f"{GREEN}{'█' * filled}{RESET}{DIM}{'░' * (bar_len - filled)}{RESET}"
-            status = f"{CYAN}[{i}/{len(pdf_files)}]{RESET}"
-            print(f"\n  {status} {bar} {pdf_path.name}")
+            status = f"{CYAN}[{i}/{len(doc_files)}]{RESET}"
+            print(f"\n  {status} {bar} {doc_path.name}")
         else:
-            print(f"\n  {CYAN}→{RESET} {pdf_path.name}")
+            print(f"\n  {CYAN}→{RESET} {doc_path.name}")
         
         try:
-            # Extract
-            text = extract_text_from_pdf(pdf_path)
+            # Extract text from document (supports PDF, DOCX, TXT, XLSX, CSV)
+            text = extract_text_from_document(doc_path)
             result = extractor.extract(text, loaded_schema, enable_qa_qc=enable_qa_qc)
             
             # Determine schema type and extract summary info
@@ -512,7 +526,7 @@ def extract(path: str, output: Optional[str], schema: Optional[str], state: Opti
                 identifier_label = "Permit"
             
             output_data = {
-                'source_file': pdf_path.name,
+                'source_file': doc_path.name,
                 'extraction_date': time.strftime('%Y-%m-%d %H:%M:%S'),
                 'state': state,
                 'model': actual_model,  # Use actual model name (Azure deployment or OpenAI model)
@@ -526,13 +540,13 @@ def extract(path: str, output: Optional[str], schema: Optional[str], state: Opti
                 'validation_notes': result.validation_notes
             }
             
-            output_file = output_dir / f"{pdf_path.stem}.json"
+            output_file = output_dir / f"{doc_path.stem}.json"
             with open(output_file, 'w') as f:
                 json.dump(output_data, f, indent=2)
             
             # Track results
             results.append({
-                'file': pdf_path.name,
+                'file': doc_path.name,
                 'identifier': identifier,
                 'items': num_items,
                 'cost': result.cost,
@@ -551,7 +565,7 @@ def extract(path: str, output: Optional[str], schema: Optional[str], state: Opti
             
         except Exception as e:
             results.append({
-                'file': pdf_path.name,
+                'file': doc_path.name,
                 'success': False,
                 'error': str(e)
             })
