@@ -574,10 +574,15 @@ def extract(path: str, output: Optional[str], schema: Optional[str], state: Opti
             
             # Success message with compact format and colors
             item_text = f"{GREEN}{num_items}{RESET} {item_label}"
-            id_text = f"{identifier_label} {CYAN}{identifier}{RESET}"
             cost_text = f"{MAGENTA}${result.cost:.4f}{RESET}"
             time_text = f"{DIM}{result.processing_time:.1f}s{RESET}"
-            print(f"     {GREEN}✓{RESET} {item_text}  {DIM}•{RESET}  {id_text}  {DIM}•{RESET}  {cost_text}  {DIM}•{RESET}  {time_text}")
+            
+            # Only show identifier if it's meaningful (not N/A)
+            if identifier != "N/A":
+                id_text = f"{identifier_label} {CYAN}{identifier}{RESET}"
+                print(f"     {GREEN}✓{RESET} {item_text}  {DIM}•{RESET}  {id_text}  {DIM}•{RESET}  {cost_text}  {DIM}•{RESET}  {time_text}")
+            else:
+                print(f"     {GREEN}✓{RESET} {item_text}  {DIM}•{RESET}  {cost_text}  {DIM}•{RESET}  {time_text}")
             
         except Exception as e:
             results.append({
