@@ -659,11 +659,7 @@ Status: Active""",
                                 f"⚠️ WARNING: {array_name}[{idx}].{field} contains multiple options: '{value}'"
                             )
         
-        if warnings:
-            logger.warning(f"Sanity checks found {len(warnings)} issues")
-        else:
-            logger.info("✓ All sanity checks passed")
-        
+        # Don't log warnings - they're stored in validation_notes for later review if needed
         return warnings
 
     def generate_visualization(
