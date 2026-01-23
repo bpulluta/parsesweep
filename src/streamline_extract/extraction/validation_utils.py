@@ -1,5 +1,7 @@
 """
-Utilities for saving and visualizing QA/QC validation reports.
+Universal utilities for saving and visualizing QA/QC validation reports.
+
+Works with any document type and schema.
 """
 
 import json
@@ -16,7 +18,7 @@ logger = logging.getLogger(__name__)
 def save_validation_report(
     report: ValidationReport,
     output_dir: Path,
-    permit_number: str
+    entity_id: str
 ) -> Path:
     """
     Save validation report as JSON file.
@@ -24,7 +26,7 @@ def save_validation_report(
     Args:
         report: ValidationReport object
         output_dir: Directory to save report
-        permit_number: Permit identifier
+        entity_id: Entity identifier (document ID, jurisdiction, etc.)
         
     Returns:
         Path to saved report file
@@ -32,11 +34,11 @@ def save_validation_report(
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     
-    report_path = output_dir / f"{permit_number}_validation_report.json"
+    report_path = output_dir / f"{entity_id}_validation_report.json"
     
     # Convert report to dictionary
     report_dict = {
-        "permit_number": report.permit_number,
+        "entity_identifier": report.entity_identifier,
         "timestamp": datetime.now().isoformat(),
         "overall_confidence": report.overall_confidence,
         "validation_summary": {
@@ -71,7 +73,7 @@ def save_validation_report(
 def generate_validation_summary_html(
     report: ValidationReport,
     output_dir: Path,
-    permit_number: str
+    entity_id: str
 ) -> Path:
     """
     Generate human-readable HTML summary of validation report.
@@ -79,7 +81,7 @@ def generate_validation_summary_html(
     Args:
         report: ValidationReport object
         output_dir: Directory to save HTML
-        permit_number: Permit identifier
+        entity_id: Entity identifier (document ID, jurisdiction, etc.)
         
     Returns:
         Path to saved HTML file
@@ -87,13 +89,13 @@ def generate_validation_summary_html(
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     
-    html_path = output_dir / f"{permit_number}_validation_summary.html"
+    html_path = output_dir / f"{entity_id}_validation_summary.html"
     
     # Generate HTML
     html = f"""<!DOCTYPE html>
 <html>
 <head>
-    <title>QA/QC Validation Report - Permit {permit_number}</title>
+    <title>QA/QC Validation Report - {entity_id}</title>
     <style>
         body {{
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -215,7 +217,7 @@ def generate_validation_summary_html(
 <body>
     <div class="header">
         <h1>QA/QC Validation Report</h1>
-        <div class="subtitle">Permit {permit_number} - {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}</div>
+        <div class="subtitle">{entity_id} - {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}</div>
     </div>
     
     <div class="summary-cards">
@@ -293,37 +295,54 @@ def generate_validation_summary_html(
 def compare_with_ground_truth(
     extracted_data: Dict[str, Any],
     ground_truth: Dict[str, Any],
-    permit_number: str
+    entity_id: str
 ) -> Dict[str, Any]:
     """
     Compare extracted data with ground truth for accuracy assessment.
     
     Args:
-        extracted_data: Extracted permit data
+        extracted_data: Extracted document data
         ground_truth: Known correct values
-        permit_number: Permit identifier
+        entity_id: Entity identifier (document ID, jurisdiction, etc.)
         
     Returns:
         Comparison results with accuracy metrics
     """
     comparison = {
-        "permit_number": permit_number,
+        "entity_identifier": entity_id,
         "accuracy_metrics": {},
         "field_comparisons": []
     }
     
-    # Compare generator sets
-    extracted_gens = extracted_data.get('generatorSets', [])
-    truth_gens = ground_truth.get('generatorSets', [])
+    # Find main array field dynamically (works with any schema)
+    main_array_key = None
+    for key, value in extracted_data.items():
+        if isinstance(value, list) and value and isinstance(value[0], dict):
+            main_array_key = key
+            break
+    
+    if not main_array_key:
+        # No array data to compare
+        comparison["accuracy_metrics"] = {
+            "total_fields": 0,
+            "correct_fields": 0,
+            "accuracy": 0,
+            "error_rate": 0
+        }
+        return comparison
+    
+    # Compare items in main array
+    extracted_items = extracted_data.get(main_array_key, [])
+    truth_items = ground_truth.get(main_array_key, [])
     
     matches = 0
     total = 0
     
-    for i, (ext_gen, truth_gen) in enumerate(zip(extracted_gens, truth_gens)):
-        for field in truth_gen.keys():
+    for i, (ext_item, truth_item) in enumerate(zip(extracted_items, truth_items)):
+        for field in truth_item.keys():
             total += 1
-            ext_val = ext_gen.get(field)
-            truth_val = truth_gen.get(field)
+            ext_val = ext_item.get(field)
+            truth_val = truth_item.get(field)
             
             # Compare with tolerance for numbers
             if isinstance(truth_val, (int, float)) and isinstance(ext_val, (int, float)):
@@ -335,7 +354,7 @@ def compare_with_ground_truth(
                 matches += 1
             
             comparison["field_comparisons"].append({
-                "generator_index": i,
+                "item_index": i,
                 "field": field,
                 "extracted": ext_val,
                 "ground_truth": truth_val,

@@ -1,9 +1,11 @@
 """
-QA/QC validation layer using LangExtract for extraction accuracy.
+Universal QA/QC validation layer using LangExtract for extraction accuracy.
 
 This module provides cross-validation between OpenAI structured extraction
 and LangExtract targeted extraction, with confidence scoring and automated
 error detection for critical fields.
+
+Fully domain-agnostic - works with any document type and schema.
 """
 
 import logging
@@ -28,7 +30,7 @@ class FieldValidation:
 @dataclass
 class ValidationReport:
     """Complete validation report for a document extraction."""
-    entity_identifier: str  # Generic identifier (permit number, jurisdiction, tariff ID, etc.)
+    entity_identifier: str  # Universal identifier (e.g., document ID, jurisdiction, tariff ID, entity name)
     overall_confidence: float
     total_fields: int
     fields_validated: int
@@ -41,12 +43,12 @@ class ValidationReport:
 
 class QAQCValidator:
     """
-    Cross-validation engine for document extraction QA/QC.
+    Universal cross-validation engine for document extraction QA/QC.
     
     Compares OpenAI and LangExtract results, applies confidence-based
     overrides, and generates traceability reports.
     
-    Works with any schema - no hardcoded field names.
+    Fully schema-agnostic - dynamically detects fields and entities from any schema.
     """
     
     # Thresholds
@@ -293,14 +295,20 @@ class QAQCValidator:
     def _validate_context_fields(
         self, openai_details: dict[str, Any], langextract_details: dict[str, Any]
     ) -> list[FieldValidation]:
-        """Validate context/metadata fields."""
+        """
+        Validate context/metadata fields dynamically.
+        
+        Detects and validates top-level scalar fields (strings, numbers)
+        which are typically identifier/metadata fields.
+        """
         validations = []
         
-        for field in ['permitNumber', 'facilityName', 'facilityCounty']:
-            if field in openai_details:
+        # Dynamically detect context fields (non-list, non-dict values at top level)
+        for field, value in openai_details.items():
+            if isinstance(value, (str, int, float, bool)) and value is not None:
                 validation = self._validate_field(
-                    field_path=f'permitDetails.{field}',
-                    openai_value=openai_details[field],
+                    field_path=field,
+                    openai_value=value,
                     langextract_value=langextract_details.get(field),
                     source_citation=langextract_details.get(f'{field}_citation')
                 )

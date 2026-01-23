@@ -1,11 +1,11 @@
 """
-Production document extractor for structured data extraction.
+Universal document extractor for structured data extraction.
 
 Architecture:
-1. OpenAI Structured - Fast, accurate extraction with schema-driven extraction
+1. OpenAI Structured - Fast, accurate extraction with schema-driven parsing
 2. LangExtract QA/QC - Validates results and adds source citations for traceability
 
-Supports multiple document types: permits, ordinances, regulations, compliance documents, etc.
+Supports any document type with a defined JSON schema - fully domain-agnostic.
 
 Cost: ~$0.002-0.004 per document (varies by length and model)
 Accuracy: 90%+ on validation set
@@ -40,13 +40,13 @@ class ExtractionResult:
 
 class DocumentExtractor:
     """
-    Production document extractor with traceability and configurable context.
+    Universal document extractor with traceability and configurable context.
 
     Two-stage approach:
     1. OpenAI Structured: Fast extraction with schema-driven parsing
     2. LangExtract QA/QC: Validates critical fields and adds citations
     
-    Supports extraction from permits, ordinances, regulations, and other structured documents.
+    Works with any document type and JSON schema - fully domain-agnostic.
     """
 
     def __init__(
