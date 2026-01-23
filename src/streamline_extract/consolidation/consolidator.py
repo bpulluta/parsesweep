@@ -1,15 +1,13 @@
 #!/usr/bin/env python3
 """
-Universal Consolidator - Works with ANY schema type.
+Universal Consolidator - Works with ANY schema automatically.
 
-Automatically detects schema structure and creates clean, consolidated output.
-Schema-agnostic design for maximum flexibility.
+Clean, simple, and intelligent. No configuration needed.
 """
 import json
 import pandas as pd
 from pathlib import Path
-from datetime import datetime
-from typing import List, Dict, Any, Optional, Tuple
+from typing import List, Dict, Any, Tuple
 from openpyxl import load_workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
@@ -17,13 +15,15 @@ from openpyxl.utils import get_column_letter
 
 class Consolidator:
     """
-    Schema-agnostic consolidator that works with any document extraction schema.
+    Universal consolidator that automatically handles any extraction schema.
     
-    Automatically:
-    - Detects schema structure (nested arrays, key fields)
-    - Flattens hierarchical data into tables
-    - Deduplicates entries with intelligent heuristics
-    - Creates clean, readable Excel and CSV output
+    Simply point it at extracted JSON files and it:
+    - Detects schema structure automatically
+    - Intelligently flattens nested data for spreadsheets
+    - Creates readable, analysis-ready output
+    - Handles both simple and complex nested structures
+    
+    No configuration required - just works.
     """
     
     def __init__(self):
@@ -72,9 +72,31 @@ class Consolidator:
             # Extract main array items
             main_array = data.get(self.schema_info['main_array_key'], [])
             
-            for item in main_array:
-                row = {**context, **self._flatten_item(item)}
-                rows.append(row)
+            # Check if items have a nested array that should be flattened
+            # Pattern: parent_array → nested_array (e.g., rate_schedules → charges)
+            nested_array_key = None
+            if main_array and isinstance(main_array[0], dict):
+                # Find first array field in the item (if any)
+                for key, value in main_array[0].items():
+                    if isinstance(value, list) and value and isinstance(value[0], dict):
+                        nested_array_key = key
+                        break
+            
+            if nested_array_key:
+                # Flatten: one row per nested item with parent context
+                for parent_item in main_array:
+                    nested_items = parent_item.pop(nested_array_key, [])
+                    parent_context = self._flatten_item(parent_item)
+                    
+                    for nested_item in nested_items:
+                        nested_row = self._flatten_item(nested_item)
+                        row = {**context, **parent_context, **nested_row}
+                        rows.append(row)
+            else:
+                # Standard: one row per main array item
+                for item in main_array:
+                    row = {**context, **self._flatten_item(item)}
+                    rows.append(row)
         
         # Create DataFrame and deduplicate
         df = pd.DataFrame(rows)
@@ -179,240 +201,279 @@ class Consolidator:
         return context
     
     def _flatten_item(self, item: Dict) -> Dict:
-        """Flatten a single item, handling nested structures."""
+        """
+        Intelligently flatten a data item for spreadsheet output.
+        
+        Automatically chooses the best representation for nested structures:
+        - Simple values → direct columns
+        - Nested objects → flattened columns
+        - Arrays of primitives → comma-separated
+        - Arrays of objects → smart expansion or summary
+        """
         flattened = {}
         
         for key, value in item.items():
-            # Convert camelCase to Title Case
-            display_key = ''.join([' ' + c if c.isupper() else c for c in key]).strip().title()
+            column_name = self._make_column_name(key)
             
-            if isinstance(value, dict):
-                # Flatten nested dict
-                for nested_key, nested_value in value.items():
-                    nested_display = ''.join([' ' + c if c.isupper() else c for c in nested_key]).strip().title()
-                    flattened[f"{display_key} - {nested_display}"] = nested_value
+            if value is None or (isinstance(value, str) and not value.strip()):
+                flattened[column_name] = ''
+            elif isinstance(value, dict):
+                # Nested object - flatten it
+                for nested_key, nested_val in value.items():
+                    nested_col = self._make_column_name(f"{key}_{nested_key}")
+                    flattened[nested_col] = nested_val
             elif isinstance(value, list):
-                # Convert list to comma-separated string
-                flattened[display_key] = ', '.join(str(v) for v in value)
+                flattened.update(self._handle_array(column_name, value))
             else:
-                flattened[display_key] = value
+                flattened[column_name] = value
         
         return flattened
     
+    def _make_column_name(self, name: str) -> str:
+        """Convert any naming style to clean Title Case."""
+        # Handle camelCase and snake_case
+        name = name.replace('_', ' ')
+        name = ''.join([' ' + c if c.isupper() else c for c in name]).strip()
+        return ' '.join(word.capitalize() for word in name.split())
+    
+    def _handle_array(self, key: str, items: List) -> Dict:
+        """
+        Intelligently handle array data based on its structure.
+        
+        Decision logic:
+        - Empty → empty string
+        - Simple values → comma-separated
+        - Few objects (<8) with few fields (<8) → expand to columns
+        - Many/complex objects → readable summary
+        """
+        if not items:
+            return {key: ''}
+        
+        # Simple array (strings, numbers)
+        if not isinstance(items[0], dict):
+            return {key: ', '.join(str(x) for x in items)}
+        
+        # Complex array (objects)
+        return self._handle_object_array(key, items)
+    
+    def _handle_object_array(self, key: str, items: List[Dict]) -> Dict:
+        """
+        Smart handling of arrays of objects.
+        
+        Universal decision logic:
+        - Small, consistent arrays → expand to columns (good for analysis)
+        - Large or inconsistent arrays → readable summary (good for context)
+        
+        Works for any domain: tariffs, permits, requirements, etc.
+        """
+        num_items = len(items)
+        
+        if num_items == 0:
+            return {key: ''}
+        
+        # Check field consistency across items
+        first_keys = set(items[0].keys())
+        all_same_structure = all(set(item.keys()) == first_keys for item in items)
+        num_fields = len(first_keys)
+        
+        # Decision: expand if small & consistent (good for structured data analysis)
+        # This naturally works for charges, fees, tiers, components, etc.
+        should_expand = (
+            num_items <= 15 and  # Not too many rows
+            num_fields <= 20 and  # Not too many columns  
+            all_same_structure  # Consistent structure
+        )
+        
+        if should_expand:
+            return self._expand_to_columns(key, items)
+        else:
+            return {key: self._summarize_objects(items)}
+    
+    def _expand_to_columns(self, parent_key: str, items: List[Dict]) -> Dict:
+        """
+        Expand array of objects into structured columns for analysis.
+        
+        Automatically creates clean column names by:
+        1. Grouping items by their type/category field
+        2. Adding distinguishing context (season, period, tier, etc.)
+        3. Expanding each item's fields into separate columns
+        
+        Works for any data: charges, requirements, fees, tiers, etc.
+        """
+        result = {}
+        
+        # Find grouping field
+        type_fields = ['type', 'charge_type', 'category', 'fee_type', 'name']
+        group_key = next((f for f in type_fields if f in items[0]), None)
+        
+        if group_key:
+            # Group by type and expand with context
+            groups = {}
+            for item in items:
+                group_val = str(item.get(group_key, 'Other'))
+                if group_val not in groups:
+                    groups[group_val] = []
+                groups[group_val].append(item)
+            
+            for group_name, group_items in groups.items():
+                # Clean group name for columns
+                group_clean = self._make_column_name(group_name)
+                
+                for idx, obj in enumerate(group_items):
+                    # Determine suffix based on distinguishing features
+                    suffix = self._get_item_suffix(obj, idx, len(group_items))
+                    
+                    # Create columns for important fields
+                    for field, value in obj.items():
+                        if field == group_key or value is None:
+                            continue
+                        
+                        # Skip verbose/redundant fields in column expansion
+                        skip_fields = ['details', 'description', 'charge_description', 
+                                      'conditions', 'notes', 'comments']
+                        if field in skip_fields:
+                            continue
+                        
+                        field_clean = self._make_column_name(field)
+                        col_name = f"{parent_key} {group_clean}{suffix} {field_clean}"
+                        result[col_name] = value
+        else:
+            # No grouping - number sequentially
+            for idx, obj in enumerate(items, 1):
+                for field, value in obj.items():
+                    if value is not None and field not in ['details', 'description']:
+                        col_name = f"{parent_key} {idx} {self._make_column_name(field)}"
+                        result[col_name] = value
+        
+        return result
+    
+    def _get_item_suffix(self, obj: Dict, idx: int, total: int) -> str:
+        """
+        Generate suffix to distinguish items with same type.
+        
+        Looks for common distinguishing fields in order:
+        - season, time_period, tier, period
+        Falls back to numbering if no distinguisher found.
+        """
+        if total == 1:
+            return ""
+        
+        # Try to find distinguishing characteristic
+        distinguishing_fields = [
+            ('season', obj.get('season')),
+            ('time_period', obj.get('time_period')),
+            ('tier', obj.get('tier')),
+            ('period', obj.get('period'))
+        ]
+        
+        for field_name, value in distinguishing_fields:
+            if value and str(value).lower() not in ['none', 'null', 'year-round', '']:
+                return f" {self._make_column_name(str(value))}"
+        
+        # Fall back to numbering
+        return f" {idx + 1}"
+    
+    def _summarize_objects(self, items: List[Dict]) -> str:
+        """
+        Create readable summary when array is too large to expand.
+        
+        Builds concise "Type: Value Unit" format from common field patterns.
+        Automatically detects type, value, unit, and contextual fields.
+        """
+        summaries = []
+        
+        for item in items:
+            # Try to identify key information
+            type_val = self._find_value(item, ['type', 'charge_type', 'category', 'name'])
+            value_val = self._find_value(item, ['rate', 'value', 'amount', 'cost'])
+            unit_val = self._find_value(item, ['unit', 'units'])
+            season_val = self._find_value(item, ['season', 'period'])
+            
+            # Build summary
+            if type_val:
+                summary = str(type_val)
+                if season_val and str(season_val).lower() != 'year-round':
+                    summary += f" ({season_val})"
+                if value_val is not None:
+                    summary += f": {value_val}"
+                    if unit_val:
+                        summary += f" {unit_val}"
+                summaries.append(summary)
+        
+        return '; '.join(summaries) if summaries else str(items)
+    
+    def _find_value(self, obj: Dict, possible_keys: List[str]) -> Any:
+        """Find first non-null value from list of possible keys."""
+        for key in possible_keys:
+            if key in obj and obj[key] is not None:
+                return obj[key]
+        return None
+    
     def _deduplicate_rows(self, df: pd.DataFrame) -> pd.DataFrame:
         """
-        Intelligently deduplicate rows.
+        Remove duplicate rows using all columns except metadata.
         
-        Strategy:
-        1. Standard deduplication: exact duplicates based on key columns
-        2. Value-based deduplication is disabled to preserve separate requirements
+        Only removes rows that are truly identical in all identifying fields.
+        Excludes metadata columns (Notes, section references, etc.) from comparison.
         """
         if df.empty:
             return df
         
-        # Add a notes column if it doesn't exist
         if 'Notes' not in df.columns:
             df['Notes'] = ''
         
-        # PASS 1: Standard deduplication (exact duplicates)
-        df, removed_standard = self._deduplicate_standard(df)
+        # Exclude metadata/non-identifying columns from duplicate detection
+        # These are added by consolidator or are references, not identifying data
+        exclude_cols = [col for col in df.columns 
+                       if any(kw in col.lower() for kw in 
+                             ['notes', 'section', 'location', 'tariff location'])]
         
-        # PASS 2: Value-based deduplication - DISABLED for now to preserve data
-        # df, removed_value_based = self._deduplicate_by_value(df)
-        removed_value_based = 0
+        # Use all other columns for duplicate detection
+        compare_cols = [col for col in df.columns if col not in exclude_cols]
         
-        total_removed = removed_standard + removed_value_based
-        if total_removed > 0:
-            print(f"  ✓ Removed {total_removed} duplicate entries")
+        if not compare_cols:
+            print("  ✓ No duplicates found")
+            return df
+        
+        # Find exact duplicates (all compare columns must match)
+        duplicates = df[df.duplicated(subset=compare_cols, keep=False)]
+        if duplicates.empty:
+            print("  ✓ No duplicates found")
+            return df
+        
+        # Process each duplicate group
+        rows_to_drop = []
+        for _, group in duplicates.groupby(compare_cols, dropna=False):
+            if len(group) <= 1:
+                continue
+            
+            indices = group.index.tolist()
+            
+            # Keep the most complete row (most non-null values)
+            completeness = group.apply(
+                lambda row: sum(1 for v in row if pd.notna(v) and str(v).strip()), 
+                axis=1
+            )
+            keep_idx = completeness.idxmax()
+            drop_indices = [idx for idx in indices if idx != keep_idx]
+            
+            rows_to_drop.extend(drop_indices)
+            
+            # Add note to kept row
+            note = f"Merged {len(drop_indices)} duplicate(s)"
+            current_note = df.at[keep_idx, 'Notes']
+            df.at[keep_idx, 'Notes'] = f"{current_note}; {note}" if current_note else note
+        
+        # Remove duplicates
+        df = df.drop(index=rows_to_drop)
+        
+        if rows_to_drop:
+            print(f"  ✓ Removed {len(rows_to_drop)} duplicate entries")
         else:
             print("  ✓ No duplicates found")
         
         return df
     
-    def _deduplicate_standard(self, df: pd.DataFrame) -> tuple[pd.DataFrame, int]:
-        """Standard deduplication based on key columns."""
-        # Identify key columns for deduplication
-        # CRITICAL: Must include category/type to distinguish different requirements
-        # Example: "Setback from residence" vs "Setback from school" both have value=1320 feet
-        # but are DIFFERENT requirements
-        key_cols = []
-        for col in df.columns:
-            col_lower = col.lower()
-            # Include: jurisdiction (state/county), category/type, applies_to, value, unit
-            # This ensures we only merge truly identical requirements
-            if any(keyword in col_lower for keyword in ['state', 'county', 'city', 'jurisdiction', 'category', 'type', 'applies_to', 'value', 'unit']):
-                key_cols.append(col)
-        
-        if not key_cols:
-            return df, 0
-        
-        # Find duplicates
-        duplicates_mask = df.duplicated(subset=key_cols, keep=False)
-        
-        if not duplicates_mask.any():
-            return df, 0
-        
-        # Process duplicates
-        duplicate_groups = df[duplicates_mask].groupby(key_cols, dropna=False)
-        rows_to_drop = []
-        
-        for group_keys, group_df in duplicate_groups:
-            indices = group_df.index.tolist()
-            
-            # Check if they're exactly identical
-            if group_df.drop(columns=['Notes'], errors='ignore').drop_duplicates().shape[0] == 1:
-                # Exact duplicates - keep first, drop others
-                keep_idx = indices[0]
-                rows_to_drop.extend(indices[1:])
-                df.at[keep_idx, 'Notes'] = self._append_note(
-                    df.at[keep_idx, 'Notes'], 
-                    f"Duplicate entry removed ({len(indices)-1} identical)"
-                )
-            else:
-                # Near-duplicates - keep the most complete
-                scores = group_df.apply(lambda row: sum(pd.notna(v) and str(v).strip() != '' for v in row), axis=1)
-                best_idx = scores.idxmax()
-                rows_to_drop.extend([idx for idx in indices if idx != best_idx])
-                df.at[best_idx, 'Notes'] = self._append_note(
-                    df.at[best_idx, 'Notes'],
-                    f"Similar entries merged ({len(indices)-1} variants)"
-                )
-        
-        # Drop duplicates
-        df = df.drop(index=rows_to_drop)
-        return df, len(rows_to_drop)
-    
-    def _deduplicate_by_value(self, df: pd.DataFrame) -> tuple[pd.DataFrame, int]:
-        """
-        Deduplicate based on jurisdiction + value, even if different requirement types.
-        This catches cases like 'Operating hours' vs 'Working hours' with same value.
-        Only merges on specific meaningful values (numbers, time ranges), not generic values like 'Yes'.
-        """
-        # Find jurisdiction and value columns
-        jurisdiction_cols = []
-        value_col = None
-        type_col = None
-        section_col = None
-        details_col = None
-        
-        for col in df.columns:
-            col_lower = col.lower()
-            if 'state' in col_lower or 'county' in col_lower or 'jurisdiction' in col_lower:
-                jurisdiction_cols.append(col)
-            elif col_lower == 'value' or 'value' in col_lower:
-                value_col = col
-            elif 'requirement_type' in col_lower or col_lower == 'requirement_type':
-                type_col = col
-            elif 'section' in col_lower:
-                section_col = col
-            elif 'details' in col_lower:
-                details_col = col
-        
-        if not jurisdiction_cols or not value_col:
-            return df, 0
-        
-        # Filter out rows with generic values that shouldn't be deduplicated
-        generic_values = {'Yes', 'yes', 'No', 'no', 'Required', 'required', 'Conditional', 'conditional', 
-                         'Permitted', 'permitted', 'Allowed', 'allowed', 'Prohibited', 'prohibited'}
-        
-        # Only consider rows with specific numeric or time-based values for deduplication
-        meaningful_mask = df[value_col].apply(
-            lambda v: pd.notna(v) and 
-            str(v).strip() not in generic_values and 
-            str(v).strip() != '' and
-            (isinstance(v, (int, float)) or  # numeric values
-             'a.m.' in str(v).lower() or 'p.m.' in str(v).lower() or  # time ranges
-             'feet' in str(v).lower() or 'meter' in str(v).lower() or  # distance values
-             str(v).replace(',', '').replace('.', '').replace('-', '').replace(':', '').isdigit())  # numeric strings
-        )
-        
-        df_to_dedup = df[meaningful_mask]
-        
-        if df_to_dedup.empty:
-            return df, 0
-        
-        # Find rows with same jurisdiction + same value
-        dedup_cols = jurisdiction_cols + [value_col]
-        duplicates_mask = df_to_dedup.duplicated(subset=dedup_cols, keep=False)
-        
-        if not duplicates_mask.any():
-            return df, 0
-        
-        # Process value-based duplicates
-        duplicate_groups = df[duplicates_mask].groupby(dedup_cols, dropna=False)
-        rows_to_drop = []
-        
-        for group_keys, group_df in duplicate_groups:
-            if len(group_df) == 1:
-                continue
-                
-            indices = group_df.index.tolist()
-            
-            # Prefer certain types over others (e.g., 'Working hours' over 'Operating hours')
-            preferred_types = ['Working hours', 'Setback', 'Noise limits', 'Permit required']
-            
-            # Find best entry to keep
-            best_idx = None
-            if type_col and type_col in group_df.columns:
-                # First try to find preferred type
-                for pref_type in preferred_types:
-                    matching = group_df[group_df[type_col] == pref_type]
-                    if not matching.empty:
-                        best_idx = matching.index[0]
-                        break
-            
-            # If no preferred type found, use completeness score
-            if best_idx is None:
-                scores = group_df.apply(lambda row: sum(pd.notna(v) and str(v).strip() != '' for v in row), axis=1)
-                best_idx = scores.idxmax()
-            
-            # Merge details and sections from all entries
-            if details_col and details_col in df.columns:
-                combined_details = []
-                seen_details = set()
-                for idx in indices:
-                    detail = df.at[idx, details_col]
-                    if pd.notna(detail) and str(detail).strip():
-                        detail_str = str(detail).strip()
-                        if detail_str not in seen_details:
-                            combined_details.append(detail_str)
-                            seen_details.add(detail_str)
-                
-                if combined_details and len(combined_details) > 1:
-                    df.at[best_idx, details_col] = ' | '.join(combined_details)
-            
-            # Merge sections
-            if section_col and section_col in df.columns:
-                combined_sections = []
-                seen_sections = set()
-                for idx in indices:
-                    section = df.at[idx, section_col]
-                    if pd.notna(section) and str(section).strip():
-                        section_str = str(section).strip()
-                        if section_str not in seen_sections:
-                            combined_sections.append(section_str)
-                            seen_sections.add(section_str)
-                
-                if combined_sections:
-                    df.at[best_idx, section_col] = ', '.join(combined_sections)
-            
-            # Drop other entries
-            rows_to_drop.extend([idx for idx in indices if idx != best_idx])
-            df.at[best_idx, 'Notes'] = self._append_note(
-                df.at[best_idx, 'Notes'],
-                f"Merged {len(indices)-1} entries with same value"
-            )
-        
-        # Drop duplicates
-        df = df.drop(index=rows_to_drop)
-        return df, len(rows_to_drop)
-    
-    def _append_note(self, existing_note: Any, new_note: str) -> str:
-        """Append a note to existing notes."""
-        existing = str(existing_note) if pd.notna(existing_note) and str(existing_note).strip() else ""
-        if existing:
-            return f"{existing}; {new_note}"
-        return new_note
     
     def save_excel(self, df: pd.DataFrame, output_path: Path):
         """
