@@ -1,10 +1,14 @@
 # StreamlineExtract
 
-AI-powered PDF extraction that transforms any document into structured spreadsheets.
+**Universal document extraction system powered by AI.**
 
-## Quick Start
+Extract structured data from any document type (PDF, DOCX, TXT, XLSX, CSV) into JSON, then consolidate to Excel/CSV.
 
-**1. Install**
+---
+
+## 🚀 Quick Start
+
+### 1. Install
 
 ```bash
 curl -fsSL https://pixi.sh/install.sh | bash
@@ -13,138 +17,169 @@ cd StreamlineExtract
 pixi install
 ```
 
-**2. Add API Key**
+### 2. Configure API Credentials
 
-Create `.env` file with your Azure OpenAI credentials:
+Create a `.env` file:
 
 ```bash
-AZURE_OPENAI_API_KEY=your-key-here
-AZURE_OPENAI_API_VERSION=2025-04-01-preview
+# Option 1: Azure OpenAI (Recommended)
+AZURE_OPENAI_API_KEY=your-key
 AZURE_OPENAI_ENDPOINT=https://your-endpoint.openai.azure.com/
-AZURE_OPENAI_MODEL=your-model-name
+AZURE_OPENAI_MODEL=gpt-4o-mini
+
+# Option 2: OpenAI
+OPENAI_API_KEY=sk-your-key
 ```
 
-**3. Create Your Schema**
-
-Copy `schemas/schema_template.json` and customize for your documents:
-
-```json
-{
-  "metadata": {
-    "documentType": "permit",
-    "jurisdiction": "string"
-  },
-  "extractedData": [
-    {
-      "id": "string",
-      "category": "string",
-      "description": "string",
-      "value": "string"
-    }
-  ]
-}
-```
-
-**4. Run Extraction**
+### 3. Extract Documents
 
 ```bash
-# Extract PDFs → JSON
-pixi run streamline-extract extract documents/your_folder
+# Extract from documents → JSON
+pixi run streamline-extract extract documents/your_folder/
 
-# Consolidate JSON → Excel  
-pixi run streamline-extract consolidate extracted/your_folder
-
-# View results
-open consolidated/your_folder/*.xlsx
+# Consolidate JSON → Excel/CSV
+pixi run streamline-extract consolidate extracted/your_folder/
 ```
 
-## Examples
+---
 
-**Example 1: Extract permit data**
+## 📖 Usage Examples
+
+### Geothermal Ordinances
 
 ```bash
-# 1. Create schema: schemas/permits.json
-# 2. Add PDFs: documents/permits/*.pdf
-# 3. Extract
-pixi run streamline-extract extract documents/permits --schema schemas/permits.json
-
-# 4. Consolidate
-pixi run streamline-extract consolidate extracted/permits
-
-# Output: Beautiful Excel with color-coded data, summaries, and legends
+pixi run streamline-extract extract documents/geothermal_ordinances/
+pixi run streamline-extract consolidate extracted/geothermal_ordinances/
 ```
 
-**Example 2: Extract rate tariffs**
+### Electricity Tariffs
 
 ```bash
-# Use example schema
-cp schemas/examples/utility_tariff_schema.json schemas/tariffs.json
-
-# Extract
-pixi run streamline-extract extract documents/tariffs --schema schemas/tariffs.json
-
-# Consolidate
-pixi run streamline-extract consolidate extracted/tariffs
+pixi run streamline-extract extract documents/tariffs/ \
+  --schema schemas/electricity_tariff_schema.json \
+  --max-context 1400000
+  
+pixi run streamline-extract consolidate extracted/tariffs/
 ```
 
-**Example 3: Test with sample data**
+### Custom Schema
 
 ```bash
-# Use geothermal ordinance example
-cp schemas/examples/geothermal_ordinance_schema.json schemas/geothermal.json
-
-# Extract (limit to 3 files for testing)
-pixi run streamline-extract extract documents/geothermal --schema schemas/geothermal.json --limit 3
-
-# Consolidate
-pixi run streamline-extract consolidate extracted/geothermal
+# 1. Create your schema in schemas/my_schema.json
+# 2. Extract with custom schema
+pixi run streamline-extract extract documents/my_docs/ \
+  --schema schemas/my_schema.json \
+  --output extracted/my_docs/
 ```
 
-## Options
+---
+
+## 🎯 Key Features
+
+- **Universal Extraction** - Works with PDF, DOCX, TXT, XLSX, CSV
+- **Schema-Driven** - Define what to extract with JSON schemas
+- **Auto-Detection** - Automatically selects schema based on document path
+- **Smart Consolidation** - Deduplicates and merges into clean Excel/CSV
+- **Production Ready** - Cost tracking, logging, error handling
+
+---
+
+## 📁 Project Structure
+
+```
+documents/          # Input documents
+  ├── geothermal_ordinances/
+  └── tariffs/
+  
+schemas/            # JSON extraction schemas
+  ├── geothermal_ordinance_schema_streamlined.json
+  └── electricity_tariff_schema.json
+  
+extracted/          # JSON extraction results (auto-generated)
+consolidated/       # Excel/CSV outputs (auto-generated)
+```
+
+---
+
+## ⚙️ Common Options
 
 ```bash
-# Test with few files
---limit 3
+# Limit number of files (for testing)
+--limit 5
 
-# Use specific model
---model your-azure-model-name
+# Custom schema
+--schema path/to/schema.json
 
 # Custom output directory
---output /path/to/output
+--output path/to/output/
 
-# Get help
-pixi run streamline-extract --help
-pixi run streamline-extract extract --help
-pixi run streamline-extract consolidate --help
+# Increase context window for large docs
+--max-context 1400000
+
+# Enable QA/QC validation
+--enable-qa-qc
+
+# Reprocess already extracted files
+--reprocess
 ```
 
-## Folder Structure
+---
 
-```
-documents/      → Your PDFs (organized by category)
-schemas/        → Your custom extraction schemas
-extracted/      → JSON outputs (auto-generated)
-consolidated/   → Excel outputs (auto-generated)
-```
+## 📊 Output Format
 
-## Output
+### Extraction Output
+- Individual JSON files in `extracted/` directory
+- One JSON per document with structured data
+- Metadata includes costs, completeness scores
 
-Each consolidation creates a 3-sheet Excel workbook:
+### Consolidation Output
+- Excel workbook (`.xlsx`) with auto-sized columns
+- CSV file (`.csv`) for easy data import
+- Automatic deduplication of identical entries
+- Clean, analysis-ready format
 
-- **Data** - All extracted data, color-coded by category
-- **Summary** - Statistics, coverage, quality metrics
-- **Legend** - Color codes and field descriptions
+---
 
-## Schema Examples
+## 🔧 Supported Document Types
 
-See `schemas/examples/` for complete examples:
+| Format | Extension | Notes |
+|--------|-----------|-------|
+| PDF | `.pdf` | Includes OCR for scanned docs |
+| Word | `.docx`, `.doc` | Full text extraction |
+| Text | `.txt` | Plain text |
+| Excel | `.xlsx` | Tabular data |
+| CSV | `.csv` | Comma-separated values |
 
-- Air quality permits
-- Geothermal ordinances
-- Utility rate tariffs
+---
 
-Copy and modify for your use case.
+## 💡 Tips
 
-## License
+1. **Schema Auto-Detection**: Put "geothermal" or "tariff" in your document path for automatic schema selection
+2. **Large Documents**: Increase `--max-context` for complete tariff books (tested up to 1.4M chars)
+3. **Testing**: Use `--limit 3` to test extraction on a few files first
+4. **Cost Control**: Check extraction logs for API costs per document
 
-MIT License
+---
+
+## 📚 Documentation
+
+- **Schemas**: See `schemas/SCHEMA_BEST_PRACTICES.md`
+- **Examples**: Check `schemas/examples/` for sample schemas
+- **CLI Help**: Run `pixi run streamline-extract --help`
+
+---
+
+## 🔮 Roadmap
+
+- ✅ Universal document extraction
+- ✅ Multi-format support (PDF, DOCX, TXT, XLSX, CSV)
+- ✅ Smart consolidation with deduplication
+- 🚧 REST API (in development on `feature/api-development` branch)
+- 📋 Web interface
+- 📋 Batch processing dashboard
+
+---
+
+## 📄 License
+
+MIT License - See LICENSE file for details
