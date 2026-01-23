@@ -1,4 +1,8 @@
-"""Intelligent text optimization to reduce token usage while preserving data quality."""
+"""Intelligent text optimization to reduce token usage while preserving data quality.
+
+Universal optimizer that works with any document type by removing boilerplate
+while preserving data-rich content.
+"""
 
 import re
 import logging
@@ -7,18 +11,20 @@ from typing import List, Tuple
 logger = logging.getLogger(__name__)
 
 
-class PermitTextOptimizer:
+class DocumentTextOptimizer:
     """
-    Optimize permit text for extraction by removing unnecessary content.
+    Optimize document text for extraction by removing unnecessary content.
     
     Strategy: Identify and remove boilerplate, legal text, and redundant sections
-    while preserving all data-rich content (numbers, specs, emissions).
+    while preserving all data-rich content (numbers, specifications, key values).
+    
+    Fully universal - works with any document type.
     """
     
     # Patterns for sections with minimal extraction value
-    # MADE MORE CONSERVATIVE - only remove truly safe sections
+    # CONSERVATIVE - only remove truly safe sections
     BOILERPLATE_PATTERNS = [
-        # Appeal procedures (usually long and standardized, rarely contains generator data)
+        # Appeal procedures (usually long and standardized, rarely contains data)
         r'(?i)(?:right to appeal|appeal procedures)[\s\S]{0,600}?(?:administrative law judge|final decision)',
         
         # Signature blocks and footer information (safe to remove)
@@ -26,26 +32,27 @@ class PermitTextOptimizer:
     ]
     
     # REMOVED AGGRESSIVE PATTERNS:
-    # - "the permittee shall maintain" (might be near generator sections)
+    # - "shall maintain" (might be near important sections)
     # - "pursuant to/in accordance with" (often near important specs)
-    # - "monitoring/testing procedures" (could have emission context)
-    # - reporting requirements (might reference generators)
+    # - "monitoring/testing procedures" (could have important context)
+    # - reporting requirements (might reference key data)
     
     # Section headers that signal high-value content (PRESERVE THESE)
+    # NOTE: These are examples - should be customizable per schema in future
     HIGH_VALUE_SECTION_MARKERS = [
-        'emission limit', 'emission rate', 'generator', 'equipment', 
-        'source description', 'fuel', 'capacity', 'horsepower', 'kilowatt',
-        'nox', 'co ', 'voc', 'pm10', 'pm2.5', 'so2', 'particulate',
+        'limit', 'rate', 'equipment', 'description',
+        'source', 'fuel', 'capacity', 'horsepower', 'kilowatt',
+        'specification', 'requirement', 'standard',
         'tons per year', 'lbs per hour', 'pounds per hour',
-        'permit number', 'registration', 'facility name', 'address',
-        'operating limit', 'hours per year', 'sulfur content'
+        'number', 'registration', 'name', 'address', 'identifier',
+        'operating limit', 'hours per year', 'content'
     ]
     
     # Repetitive footer/header patterns that appear on every page
     REPEATED_HEADER_FOOTER_PATTERNS = [
         r'(?i)page \d+ of \d+',
-        r'(?i)permit (?:no\.?|number):? \d+\s*(?:\n|$)',  # If repeated on every page
-        r'(?i)(?:draft|final) permit\s*(?:\n|$)',  # If repeated
+        r'(?i)(?:document|file|record) (?:no\.?|number):? \d+\s*(?:\n|$)',  # If repeated on every page
+        r'(?i)(?:draft|final) (?:version|copy)\s*(?:\n|$)',  # If repeated
         r'(?i)(?:issued|effective) (?:date|on):? [\d/\-]+\s*(?:\n|$)',  # If repeated
     ]
     
@@ -61,10 +68,10 @@ class PermitTextOptimizer:
     
     def optimize_text(self, text: str, target_chars: int = None) -> Tuple[str, dict]:
         """
-        Optimize permit text for extraction while preserving data quality.
+        Optimize document text for extraction while preserving data quality.
         
         Args:
-            text: Raw extracted PDF text
+            text: Raw extracted document text
             target_chars: Optional target character count (will use smart truncation if needed)
             
         Returns:
@@ -222,15 +229,15 @@ class PermitTextOptimizer:
         Intelligently truncate text to target length while preserving key sections.
         
         Strategy:
-        1. Identify high-value sections (emissions tables, generator specs)
-        2. Keep permit header (first 15%)
+        1. Identify high-value sections (data tables, specifications)
+        2. Keep document header (first 20%)
         3. Prioritize sections with numbers and technical terms
         4. Keep minimal context from other sections
         """
         if len(text) <= target_chars:
             return text
         
-        # Always keep the first part (permit details, facility info)
+        # Always keep the first part (document details, entity info)
         header_size = int(target_chars * 0.20)  # 20% for header
         header = text[:header_size]
         
@@ -286,26 +293,26 @@ class PermitTextOptimizer:
         section_lower = section.lower()
         score = 0.0
         
-        # Numeric content (emissions, capacities)
+        # Numeric content (values, measurements, quantities)
         numeric_density = len(re.findall(r'\d+\.?\d*', section)) / max(len(section), 1)
         score += min(numeric_density * 100, 0.4)  # Up to 0.4 points
         
-        # High-value keywords
+        # High-value keywords (from HIGH_VALUE_SECTION_MARKERS)
         keyword_count = sum(
             1 for marker in self.HIGH_VALUE_SECTION_MARKERS 
             if marker in section_lower
         )
         score += min(keyword_count * 0.1, 0.3)  # Up to 0.3 points
         
-        # Presence of units (strong signal for data)
-        units = ['lbs/hr', 'tons/yr', 'kw', 'bhp', 'ppm', 'hours per year', '%']
+        # Presence of units (strong signal for quantitative data)
+        units = ['per', '/', 'hours', 'kw', 'hp', '%', 'rate']
         unit_count = sum(1 for unit in units if unit in section_lower)
         score += min(unit_count * 0.1, 0.2)  # Up to 0.2 points
         
-        # Technical terms (generator makes/models)
-        tech_terms = ['caterpillar', 'cummins', 'kohler', 'generac', 'diesel', 'natural gas']
-        tech_count = sum(1 for term in tech_terms if term in section_lower)
-        score += min(tech_count * 0.05, 0.1)  # Up to 0.1 points
+        # Structured data indicators (tables, lists)
+        structure_indicators = [':', '|', '\t', 'table', 'schedule']
+        structure_count = sum(1 for indicator in structure_indicators if indicator in section_lower)
+        score += min(structure_count * 0.05, 0.1)  # Up to 0.1 points
         
         return min(score, 1.0)
     

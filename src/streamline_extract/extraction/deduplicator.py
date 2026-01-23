@@ -1,4 +1,8 @@
-"""Document deduplication to avoid processing duplicate permits."""
+"""Universal document deduplication to avoid processing duplicate files.
+
+Works with any document type by detecting duplicates via file hash,
+content fingerprinting, and configurable ID extraction.
+"""
 
 import hashlib
 import json
@@ -12,12 +16,12 @@ logger = logging.getLogger(__name__)
 
 class DocumentDeduplicator:
     """
-    Detect and skip duplicate or near-duplicate permit documents.
+    Detect and skip duplicate or near-duplicate documents.
     
     Uses multiple strategies:
     1. File hash for exact duplicates
-    2. Content fingerprint for near-duplicates
-    3. Permit number extraction for same-permit different versions
+    2. Content fingerprint for near-duplicates (fuzzy matching)
+    3. Document ID extraction for same-document different versions
     """
     
     def __init__(self, cache_dir: Optional[Path] = None):
@@ -30,7 +34,7 @@ class DocumentDeduplicator:
         self.cache_dir = cache_dir
         self.seen_hashes: Set[str] = set()
         self.seen_fingerprints: Set[str] = set()
-        self.seen_permits: Dict[str, str] = {}  # permit_number -> file_path
+        self.seen_document_ids: Dict[str, str] = {}  # document_id -> file_path
         
         if cache_dir:
             cache_dir.mkdir(parents=True, exist_ok=True)
@@ -64,11 +68,11 @@ class DocumentDeduplicator:
                 logger.info(f"⏭️  Skipping near-duplicate (same content): {pdf_path.name}")
                 return True, "content_duplicate"
             
-            # Check 3: Same permit number (draft vs final, revised versions)
-            permit_number = self._extract_permit_number(text_content)
-            if permit_number:
-                if permit_number in self.seen_permits:
-                    existing_file = self.seen_permits[permit_number]
+            # Check 3: Same document ID (draft vs final, revised versions)
+            document_id = self._extract_document_id(text_content)
+            if document_id:
+                if document_id in self.seen_document_ids:
+                    existing_file = self.seen_document_ids[document_id]
                     
                     # Decide which version to keep (prefer "final" over "draft")
                     if self._should_prefer_new_version(pdf_path, Path(existing_file)):
@@ -76,14 +80,14 @@ class DocumentDeduplicator:
                             f"📝 Replacing {existing_file} with newer version: {pdf_path.name}"
                         )
                         # Remove old from cache
-                        self._mark_as_duplicate(permit_number)
+                        self._mark_as_duplicate(document_id)
                         return False, None
                     else:
                         logger.info(
-                            f"⏭️  Skipping duplicate permit {permit_number}: {pdf_path.name} "
+                            f"⏭️  Skipping duplicate document {document_id}: {pdf_path.name} "
                             f"(already have {existing_file})"
                         )
-                        return True, "permit_duplicate"
+                        return True, "document_id_duplicate"
         
         # Not a duplicate - record it
         self.seen_hashes.add(file_hash)
@@ -92,9 +96,9 @@ class DocumentDeduplicator:
             fingerprint = self._compute_content_fingerprint(text_content)
             self.seen_fingerprints.add(fingerprint)
             
-            permit_number = self._extract_permit_number(text_content)
-            if permit_number:
-                self.seen_permits[permit_number] = str(pdf_path)
+            document_id = self._extract_document_id(text_content)
+            if document_id:
+                self.seen_document_ids[document_id] = str(pdf_path)
         
         # Save cache after each update
         if self.cache_dir:
@@ -134,40 +138,52 @@ class DocumentDeduplicator:
         
         return hashlib.sha256(fingerprint_text.encode()).hexdigest()
     
-    def _extract_permit_number(self, text: str) -> Optional[str]:
+    def _extract_document_id(self, text: str) -> Optional[str]:
         """
-        Extract permit number from text.
+        Extract document identifier from text.
         
-        Looks for common patterns like:
-        - "Permit No. 12345"
-        - "Registration No: 67890"
-        - "Permit Number 11-ABC-123"
+        Looks for common ID patterns including:
+        - "Permit No. 12345" / "Registration No: 67890"
+        - "Document Number 11-ABC-123" / "File No. 456"
+        - "Ordinance No. 2024-01" / "Tariff ID: ABC-123"
+        - Any pattern like "[Type] No./Number/ID: [AlphaNumeric]"
+        
+        Universal patterns that work across document types.
         """
         patterns = [
-            r'(?i)(?:permit|registration)\s*(?:no\.?|number|#):?\s*([A-Z0-9\-]+)',
-            r'(?i)permit\s+([A-Z]{2,}\-?\d{4,})',
-            r'(?i)registration\s+([A-Z]{2,}\-?\d{4,})',
+            # Generic document identifiers
+            r'(?i)(?:document|file|record|case)\s*(?:no\.?|number|id|#):?\s*([A-Z0-9\-\.]+)',
+            # Permits and registrations
+            r'(?i)(?:permit|registration|license)\s*(?:no\.?|number|#):?\s*([A-Z0-9\-]+)',
+            # Ordinances and regulations
+            r'(?i)(?:ordinance|regulation|code|chapter)\s*(?:no\.?|number|#):?\s*([A-Z0-9\-\.]+)',
+            # Tariffs and schedules
+            r'(?i)(?:tariff|schedule|rate)\s*(?:no\.?|number|id|#):?\s*([A-Z0-9\-\.]+)',
+            # Generic patterns (must have some structure)
+            r'(?i)(?:id|identifier)\s*(?:no\.?|number|#)?:?\s*([A-Z0-9]{2,}\-[A-Z0-9\-]+)',
+            r'(?i)(?:no\.?|number)\s+([A-Z]{2,}\-?\d{4,})',
         ]
         
         for pattern in patterns:
             match = re.search(pattern, text)
             if match:
-                permit_num = match.group(1).strip()
+                doc_id = match.group(1).strip()
                 # Clean up common artifacts
-                permit_num = permit_num.replace(' ', '').upper()
-                if len(permit_num) >= 4:  # Reasonable permit number length
-                    return permit_num
+                doc_id = doc_id.replace(' ', '').upper()
+                if len(doc_id) >= 4:  # Reasonable ID length
+                    return doc_id
         
         return None
     
     def _should_prefer_new_version(self, new_path: Path, old_path: Path) -> bool:
         """
-        Decide which version of a permit to keep.
+        Decide which version of a document to keep.
         
         Prefers:
         1. "Final" over "Draft"
-        2. "Revised" over original
+        2. "Revised"/"Amended" over original
         3. Newer date in filename
+        4. Newer file modification time
         """
         new_name = new_path.name.lower()
         old_name = old_path.name.lower()
@@ -194,11 +210,11 @@ class DocumentDeduplicator:
         # Default: keep old (conservative)
         return False
     
-    def _mark_as_duplicate(self, permit_number: str):
-        """Mark a permit as replaced by newer version."""
-        if permit_number in self.seen_permits:
-            # Remove from seen permits so new version can be added
-            del self.seen_permits[permit_number]
+    def _mark_as_duplicate(self, document_id: str):
+        """Mark a document as replaced by newer version."""
+        if document_id in self.seen_document_ids:
+            # Remove from seen documents so new version can be added
+            del self.seen_document_ids[document_id]
     
     def _load_cache(self):
         """Load deduplication cache from disk."""
@@ -214,11 +230,12 @@ class DocumentDeduplicator:
                 
                 self.seen_hashes = set(cache_data.get('hashes', []))
                 self.seen_fingerprints = set(cache_data.get('fingerprints', []))
-                self.seen_permits = cache_data.get('permits', {})
+                # Support both old and new cache format
+                self.seen_document_ids = cache_data.get('document_ids', cache_data.get('permits', {}))
                 
                 logger.info(
                     f"Loaded deduplication cache: {len(self.seen_hashes)} hashes, "
-                    f"{len(self.seen_permits)} permits"
+                    f"{len(self.seen_document_ids)} document IDs"
                 )
             except Exception as e:
                 logger.warning(f"Failed to load dedup cache: {e}")
@@ -234,7 +251,7 @@ class DocumentDeduplicator:
             cache_data = {
                 'hashes': list(self.seen_hashes),
                 'fingerprints': list(self.seen_fingerprints),
-                'permits': self.seen_permits,
+                'document_ids': self.seen_document_ids,
             }
             
             with open(cache_file, 'w') as f:
@@ -248,5 +265,5 @@ class DocumentDeduplicator:
         return {
             'unique_files': len(self.seen_hashes),
             'unique_contents': len(self.seen_fingerprints),
-            'unique_permits': len(self.seen_permits),
+            'unique_document_ids': len(self.seen_document_ids),
         }

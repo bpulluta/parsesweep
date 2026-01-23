@@ -428,7 +428,7 @@ def extract(path: str, output: Optional[str], schema: Optional[str], state: Opti
             if any(keyword in path_lower for keyword in ['geothermal', 'ordinance']) and 'geothermal' in candidate_name_lower:
                 matched_schema = candidate
                 break
-            elif any(keyword in path_lower for keyword in ['permit', 'air_quality', 'generator']) and 'permit' in candidate_name_lower:
+            elif any(keyword in path_lower for keyword in ['tariff', 'rate', 'electric']) and 'tariff' in candidate_name_lower:
                 matched_schema = candidate
                 break
         
@@ -500,30 +500,46 @@ def extract(path: str, output: Optional[str], schema: Optional[str], state: Opti
             text = extract_text_from_document(doc_path)
             result = extractor.extract(text, loaded_schema, enable_qa_qc=enable_qa_qc)
             
-            # Determine schema type and extract summary info
-            if 'ordinanceRequirements' in result.data:
-                # Old geothermal/ordinance schema
-                requirements = result.data.get('ordinanceRequirements', [])
-                num_items = len(requirements)
-                jurisdiction = result.data.get('jurisdictionDetails', {})
-                identifier = f"{jurisdiction.get('state', 'Unknown')}-{jurisdiction.get('county', 'Unknown')}"
-                item_label = "requirements"
-                identifier_label = "Jurisdiction"
-            elif 'requirements' in result.data and 'jurisdiction' in result.data:
-                # New geothermal electricity schema
-                requirements = result.data.get('requirements', [])
-                num_items = len(requirements)
-                jurisdiction = result.data.get('jurisdiction', {})
-                identifier = f"{jurisdiction.get('state', 'Unknown')}-{jurisdiction.get('county', 'Unknown')}"
-                item_label = "requirements"
-                identifier_label = "Jurisdiction"
-            else:
-                # Schema with generatorSets array (default type)
-                generator_sets = result.data.get('generatorSets', [])
-                num_items = sum(gen_set.get('numGenerators', 0) or 0 for gen_set in generator_sets)
-                identifier = result.data.get('permitDetails', {}).get('permitNumber', 'N/A')
-                item_label = "generators"
-                identifier_label = "Permit"
+            # Universal schema detection - find main array and identifier dynamically
+            num_items = 0
+            identifier = "N/A"
+            item_label = "items"
+            identifier_label = "ID"
+            
+            # Find main array field (the one with the most data)
+            main_array_key = None
+            max_items = 0
+            for key, value in result.data.items():
+                if isinstance(value, list) and value:
+                    if len(value) > max_items:
+                        max_items = len(value)
+                        main_array_key = key
+            
+            if main_array_key:
+                main_array = result.data.get(main_array_key, [])
+                num_items = len(main_array)
+                # Use a readable item label
+                item_label = main_array_key.replace('_', ' ')
+            
+            # Find identifier field dynamically
+            for key, value in result.data.items():
+                if isinstance(value, dict):
+                    # Check for common identifier fields
+                    for id_field in ['id', 'identifier', 'jurisdiction', 'number', 'name']:
+                        if id_field in value:
+                            id_val = value[id_field]
+                            if isinstance(id_val, dict):
+                                # Composite identifier (e.g., jurisdiction with state/county)
+                                parts = [str(v) for v in id_val.values() if v]
+                                identifier = '-'.join(parts) if parts else 'N/A'
+                                identifier_label = key.replace('_', ' ').title()
+                            elif id_val:
+                                identifier = str(id_val)
+                                identifier_label = key.replace('_', ' ').title()
+                            break
+                elif isinstance(value, (str, int)) and value and key.lower() in ['id', 'identifier', 'jurisdiction', 'number']:
+                    identifier = str(value)
+                    identifier_label = key.replace('_', ' ').title()
             
             output_data = {
                 'source_file': doc_path.name,
