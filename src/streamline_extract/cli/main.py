@@ -3,6 +3,13 @@
 import click
 
 from streamline_extract.cli.commands import extract, validate, consolidate
+from streamline_extract.cli.new_commands import (
+    init,
+    preview,
+    estimate,
+    validate_schema_cmd,
+    config,
+)
 
 
 @click.group()
@@ -56,9 +63,14 @@ def cli():
 
 
 # Register commands
+cli.add_command(init)
 cli.add_command(extract)
+cli.add_command(preview)
+cli.add_command(estimate)
 cli.add_command(validate)
+cli.add_command(validate_schema_cmd)
 cli.add_command(consolidate)
+cli.add_command(config)
 
 # Lazy load dtree to avoid heavy dependencies unless needed
 @cli.command(name='dtree-extract')

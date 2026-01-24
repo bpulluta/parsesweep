@@ -10,6 +10,7 @@ from typing import Optional, List, Tuple
 
 import click
 from dotenv import load_dotenv
+from rich.progress import track
 
 from streamline_extract.utils.config import get_config
 from streamline_extract.extraction import DocumentExtractor, load_schema
@@ -21,45 +22,24 @@ from streamline_extract.extraction.document_utils import (
 )
 from streamline_extract.consolidation.cleaner import ExtractionCleaner
 from streamline_extract.consolidation.consolidator import Consolidator
+from streamline_extract.cli.ui import (
+    console,
+    print_header,
+    print_error,
+    print_warning,
+    print_success,
+    print_info,
+    create_config_table,
+    create_summary_table,
+    create_extraction_progress,
+    ask_confirm,
+)
+from streamline_extract.cli.dashboard import create_live_dashboard
+from streamline_extract.cli.cost_tracker import CostTracker
 
 
-# ANSI color codes for consistent styling
-BLUE = '\033[94m'
-GREEN = '\033[92m'
-YELLOW = '\033[93m'
-RED = '\033[91m'
-CYAN = '\033[96m'
-MAGENTA = '\033[95m'
-BOLD = '\033[1m'
-DIM = '\033[2m'
-RESET = '\033[0m'
-
-
-def print_error(message: str, details: str = None, suggestions: List[str] = None):
-    """Print a user-friendly error message with optional details and suggestions."""
-    print(f"\n{RED}{BOLD}✗ Error:{RESET} {message}\n")
-    
-    if details:
-        print(f"  {DIM}{details}{RESET}\n")
-    
-    if suggestions:
-        print(f"  {BOLD}💡 Try this:{RESET}")
-        for suggestion in suggestions:
-            print(f"     • {suggestion}")
-        print()
-
-
-def print_warning(message: str, details: str = None):
-    """Print a user-friendly warning message."""
-    print(f"\n{YELLOW}{BOLD}⚠ Warning:{RESET} {message}")
-    if details:
-        print(f"  {DIM}{details}{RESET}")
-    print()
-
-
-def print_success(message: str):
-    """Print a success message."""
-    print(f"{GREEN}✓{RESET} {message}")
+# Global verbosity level (set by CLI flags)
+VERBOSITY = 'normal'  # 'quiet', 'normal', 'verbose', 'debug'
 
 
 def detect_api_provider() -> Tuple[str, bool, str]:
@@ -128,8 +108,13 @@ def validate_path_structure(path: Path, expected_content: str = "PDFs") -> Tuple
 @click.option('--limit', '-n', type=int, help='Process only first N files')
 @click.option('--skip-existing/--reprocess', default=True, show_default=True, help='Skip files already processed')
 @click.option('--max-context', type=int, default=400000, show_default=True, help='Max document characters to process (400k proven reliable)')
+@click.option('--quiet', '-q', is_flag=True, help='Minimal output (machine-readable)')
+@click.option('--verbose', '-v', is_flag=True, help='Detailed output with statistics')
+@click.option('--debug', is_flag=True, help='Debug mode with full logs')
+@click.option('--live-dashboard', is_flag=True, help='Show live dashboard during extraction')
 def extract(path: str, output: Optional[str], schema: Optional[str], state: Optional[str],
-            model: str, enable_qa_qc: bool, use_azure: Optional[bool], limit: Optional[int], skip_existing: bool, max_context: int):
+            model: str, enable_qa_qc: bool, use_azure: Optional[bool], limit: Optional[int], 
+            skip_existing: bool, max_context: int, quiet: bool, verbose: bool, debug: bool, live_dashboard: bool):
     """
     Extract structured data from PDF documents.
     
@@ -166,6 +151,17 @@ def extract(path: str, output: Optional[str], schema: Optional[str], state: Opti
         • OpenAI API key in .env file (OPENAI_API_KEY=sk-...)
         • Or Azure OpenAI credentials (if using --use-azure)
     """
+    # Set global verbosity
+    global VERBOSITY
+    if quiet:
+        VERBOSITY = 'quiet'
+    elif debug:
+        VERBOSITY = 'debug'
+    elif verbose:
+        VERBOSITY = 'verbose'
+    else:
+        VERBOSITY = 'normal'
+    
     # Load environment variables from .env file
     load_dotenv()
     
@@ -275,16 +271,6 @@ def extract(path: str, output: Optional[str], schema: Optional[str], state: Opti
     
     output_dir.mkdir(parents=True, exist_ok=True)
     
-    # ANSI color codes - define early for use throughout function
-    BLUE = '\033[94m'
-    GREEN = '\033[92m'
-    YELLOW = '\033[93m'
-    CYAN = '\033[96m'
-    MAGENTA = '\033[95m'
-    BOLD = '\033[1m'
-    DIM = '\033[2m'
-    RESET = '\033[0m'
-    
     # Get document files - support all formats (PDF, DOCX, TXT, XLSX, CSV)
     if is_dir:
         # Find all supported document types in this directory
@@ -298,13 +284,14 @@ def extract(path: str, output: Optional[str], schema: Optional[str], state: Opti
             subdirs = [d for d in path.iterdir() if d.is_dir() and not d.name.startswith('.')]
             if subdirs:
                 # Found subdirectories - process each one recursively
-                print(f"\n{BOLD}📁 Found {len(subdirs)} subfolder(s) with documents{RESET}")
-                for subdir in subdirs:
-                    subdir_docs = []
-                    for ext in SUPPORTED_EXTENSIONS:
-                        subdir_docs.extend(subdir.glob(f"*{ext}"))
-                    if subdir_docs:
-                        print(f"  → {subdir.name}: {len(subdir_docs)} document(s)")
+                if VERBOSITY != 'quiet':
+                    console.print(f"\n[bold]📁 Found {len(subdirs)} subfolder(s) with documents[/bold]")
+                    for subdir in subdirs:
+                        subdir_docs = []
+                        for ext in SUPPORTED_EXTENSIONS:
+                            subdir_docs.extend(subdir.glob(f"*{ext}"))
+                        if subdir_docs:
+                            console.print(f"  → {subdir.name}: {len(subdir_docs)} document(s)")
                 
                 # Call extract for each subdirectory
                 for subdir in subdirs:
@@ -348,9 +335,8 @@ def extract(path: str, output: Optional[str], schema: Optional[str], state: Opti
             original_count = len(doc_files)
             doc_files = [p for p in doc_files if not (output_dir / f"{p.stem}.json").exists()]
             skipped = original_count - len(doc_files)
-            if skipped > 0 and len(doc_files) > 0:
-                print(f"\n{CYAN}ℹ{RESET}  Skipping {skipped} already processed file{'s' if skipped != 1 else ''}")
-                print(f"   {DIM}(use --reprocess to extract them again){RESET}")
+            if skipped > 0 and len(doc_files) > 0 and VERBOSITY != 'quiet':
+                print_info(f"Skipping {skipped} already processed file{'s' if skipped != 1 else ''} (use --reprocess to extract again)")
     else:
         # Single file
         if not is_supported_document(path):
@@ -368,51 +354,47 @@ def extract(path: str, output: Optional[str], schema: Optional[str], state: Opti
     
     # Final validation - check if we have files to process
     if not doc_files:
-        if is_dir:
-            print(f"\n{GREEN}✓{RESET} All {original_count} file(s) already processed!")
-            print(f"  {DIM}Output directory: {output_dir}{RESET}")
-            print(f"\n  {DIM}Use --reprocess to extract them again{RESET}\n")
+        if is_dir and VERBOSITY != 'quiet':
+            print_success(f"All {original_count} file(s) already processed!")
+            console.print(f"[dim]Output directory: {output_dir}[/dim]")
+            console.print(f"[dim]Use --reprocess to extract them again[/dim]\n")
         return
     
-    # Header with clean visual separation
-    print(f"\n{BOLD}{BLUE}┌{'─' * 78}┐{RESET}")
-    print(f"{BOLD}{BLUE}│{RESET} {BOLD}{'DOCUMENT EXTRACTION':^76}{RESET} {BOLD}{BLUE}│{RESET}")
-    print(f"{BOLD}{BLUE}└{'─' * 78}┘{RESET}")
-    
-    # Configuration table with colors
-    print(f"\n  {BOLD}Configuration{RESET}")
-    print(f"  {DIM}{'─' * 76}{RESET}")
-    print(f"  {DIM}State{RESET}     {CYAN}{state}{RESET}")
-    print(f"  {DIM}Input{RESET}     {path}")
-    
-    # Make output location very prominent
-    print(f"\n  {BOLD}{GREEN}📁 Output Location{RESET}")
-    print(f"  {DIM}{'─' * 76}{RESET}")
-    print(f"  {BOLD}{output_dir.absolute()}{RESET}")
-    print(f"  {DIM}(extracted JSONs will be saved here){RESET}")
-    
-    # Display model info
-    print(f"\n  {BOLD}Extraction Settings{RESET}")
-    print(f"  {DIM}{'─' * 76}{RESET}")
+    # Display header and configuration
+    if VERBOSITY != 'quiet':
+        print_header("DOCUMENT EXTRACTION")
+        
+        # Build configuration display
+        config_info = {
+            "State": state,
+            "Input": str(path),
+            "Files": f"{len(doc_files)} document{'s' if len(doc_files) != 1 else ''}",
+        }
+        
+    # Determine provider and model info
     if use_azure:
         azure_model = os.environ.get('AZURE_OPENAI_MODEL')
         display_model = azure_model if azure_model else model
-        print(f"  {DIM}Model{RESET}     {display_model}")
-        print(f"  {DIM}Provider{RESET}  {MAGENTA}Azure OpenAI{RESET} {DIM}(auto-detected){RESET}")
+        provider_name = "Azure OpenAI"
+        model_display = display_model
     else:
-        print(f"  {DIM}Model{RESET}     {model}")
-        print(f"  {DIM}Provider{RESET}  OpenAI {DIM}(auto-detected){RESET}")
+        provider_name = "OpenAI"
+        model_display = model
     
-    qa_status = f"{GREEN}Enabled{RESET}" if enable_qa_qc else f"{DIM}Disabled{RESET}"
-    print(f"  {DIM}QA/QC{RESET}     {qa_status}")
-    print(f"  {DIM}Files{RESET}     {BOLD}{len(doc_files)}{RESET} document{'s' if len(doc_files) != 1 else ''}")
+    # Add model/provider info to config
+    if VERBOSITY != 'quiet':
+        config_info["Model"] = model_display
+        config_info["Provider"] = provider_name
+        config_info["QA/QC"] = "Enabled" if enable_qa_qc else "Disabled"
+        config_info["Output"] = str(output_dir.absolute())
     
     # Load schema - auto-detect or use specified
     if schema:
         # User provided explicit schema path
         schema_path = Path(schema)
         loaded_schema = load_schema(schema_path)
-        print(f"  {DIM}Schema{RESET}    {schema_path.name}")
+        if VERBOSITY != 'quiet':
+            config_info["Schema"] = schema_path.name
     else:
         # Auto-detect schema based on folder name/path
         schema_path = None
@@ -435,12 +417,50 @@ def extract(path: str, output: Optional[str], schema: Optional[str], state: Opti
         if matched_schema:
             schema_path = matched_schema
             loaded_schema = load_schema(schema_path)
-            print(f"  {DIM}Schema{RESET}    {CYAN}{schema_path.name}{RESET} {DIM}(auto-detected){RESET}")
+            if VERBOSITY != 'quiet':
+                config_info["Schema"] = f"{schema_path.name} (auto-detected)"
         else:
             # Fall back to default
             schema_path = config.default_schema
             loaded_schema = load_schema(schema_path)
-            print(f"  {DIM}Schema{RESET}    {schema_path.name} {DIM}(default){RESET}")
+            if VERBOSITY != 'quiet':
+                config_info["Schema"] = f"{schema_path.name} (default)"
+    
+    # Display configuration table
+    if VERBOSITY != 'quiet':
+        table = create_config_table("Configuration", config_info)
+        console.print(table)
+        console.print()
+    
+    # Cost estimation and confirmation for large batches
+    if len(doc_files) > 10 and VERBOSITY != 'quiet':
+        # Quick estimation
+        sample_size = min(3, len(doc_files))
+        total_chars = 0
+        for doc in doc_files[:sample_size]:
+            try:
+                text = extract_text_from_document(doc)
+                total_chars += len(text)
+            except Exception:
+                pass
+        
+        if total_chars > 0:
+            avg_chars = total_chars / sample_size
+            estimated_total_chars = avg_chars * len(doc_files)
+            estimated_tokens = int(estimated_total_chars / 4)
+            
+            # Rough cost estimate (gpt-4o-mini rates)
+            input_cost = (estimated_tokens / 1_000_000) * 0.15
+            output_cost = (estimated_tokens * 0.1 / 1_000_000) * 0.60
+            total_est_cost = input_cost + output_cost
+            
+            if total_est_cost > 1.0:  # Threshold for confirmation
+                console.print(f"\n[yellow]⚠ Cost Estimate:[/yellow] ${total_est_cost:.2f}")
+                console.print(f"[dim]  Processing {len(doc_files)} documents with ~{estimated_tokens:,} tokens[/dim]\n")
+                
+                if not ask_confirm("Proceed with extraction?", default=True):
+                    console.print("[yellow]Operation cancelled[/yellow]\n")
+                    return
     
     # Track the actual model being used for output
     actual_model = model
@@ -454,8 +474,10 @@ def extract(path: str, output: Optional[str], schema: Optional[str], state: Opti
         azure_model = os.environ.get('AZURE_OPENAI_MODEL')
         
         if not azure_key or not azure_endpoint:
-            print("❌ Azure OpenAI credentials not found")
-            print("   Required: AZURE_OPENAI_API_KEY, AZURE_OPENAI_ENDPOINT")
+            print_error(
+                "Azure OpenAI credentials not found",
+                "Required: AZURE_OPENAI_API_KEY, AZURE_OPENAI_ENDPOINT"
+            )
             return
         
         # Use Azure deployment name if configured, otherwise use the model parameter
@@ -473,195 +495,256 @@ def extract(path: str, output: Optional[str], schema: Optional[str], state: Opti
         )
     else:
         if not config.openai_api_key:
-            print("❌ OPENAI_API_KEY not found")
+            print_error(
+                "OPENAI_API_KEY not found",
+                f"Create .env file at: {config.project_root / '.env'}"
+            )
             print(f"   Create .env file at: {config.project_root / '.env'}")
             return
         extractor = DocumentExtractor(api_key=config.openai_api_key, model=model, max_context_chars=max_context)
     
     # Processing section
-    print(f"\n{DIM}{'─' * 80}{RESET}")
+    if VERBOSITY == 'normal' or VERBOSITY == 'verbose':
+        console.print("[dim]" + "─" * 80 + "[/dim]")
+        console.print()
     
     results = []
     total_cost = 0.0
     total_time = 0.0
     
-    for i, doc_path in enumerate(doc_files, 1):
-        # Progress indicator with cleaner format
-        if len(doc_files) > 1:
-            pct = (i - 1) / len(doc_files)
-            bar_len = 30
-            filled = int(bar_len * pct)
-            bar = f"{GREEN}{'█' * filled}{RESET}{DIM}{'░' * (bar_len - filled)}{RESET}"
-            status = f"{CYAN}[{i}/{len(doc_files)}]{RESET}"
-            print(f"\n  {status} {bar} {doc_path.name}")
-        else:
-            print(f"\n  {CYAN}→{RESET} {doc_path.name}")
+    # Use live dashboard for multiple files if requested
+    if len(doc_files) > 3 and live_dashboard and VERBOSITY != 'quiet':
+        live, dashboard = create_live_dashboard(len(doc_files), actual_model)
         
-        try:
-            # Extract text from document (supports PDF, DOCX, TXT, XLSX, CSV)
-            text = extract_text_from_document(doc_path)
-            result = extractor.extract(text, loaded_schema, enable_qa_qc=enable_qa_qc)
-            
-            # Universal schema detection - find main array and identifier dynamically
-            num_items = 0
-            identifier = "N/A"
-            item_label = "items"
-            identifier_label = "ID"
-            
-            # Find main array field (the one with the most data)
-            main_array_key = None
-            max_items = 0
-            for key, value in result.data.items():
-                if isinstance(value, list) and value:
-                    if len(value) > max_items:
-                        max_items = len(value)
-                        main_array_key = key
-            
-            if main_array_key:
-                main_array = result.data.get(main_array_key, [])
-                num_items = len(main_array)
-                # Use a readable item label
-                item_label = main_array_key.replace('_', ' ')
-            
-            # Find identifier field dynamically
-            for key, value in result.data.items():
-                if isinstance(value, dict):
-                    # Check for common identifier fields
-                    for id_field in ['id', 'identifier', 'jurisdiction', 'number', 'name']:
-                        if id_field in value:
-                            id_val = value[id_field]
-                            if isinstance(id_val, dict):
-                                # Composite identifier (e.g., jurisdiction with state/county)
-                                parts = [str(v) for v in id_val.values() if v]
-                                identifier = '-'.join(parts) if parts else 'N/A'
-                                identifier_label = key.replace('_', ' ').title()
-                            elif id_val:
-                                identifier = str(id_val)
-                                identifier_label = key.replace('_', ' ').title()
-                            break
-                elif isinstance(value, (str, int)) and value and key.lower() in ['id', 'identifier', 'jurisdiction', 'number']:
-                    identifier = str(value)
-                    identifier_label = key.replace('_', ' ').title()
-            
-            output_data = {
-                'source_file': doc_path.name,
-                'extraction_date': time.strftime('%Y-%m-%d %H:%M:%S'),
-                'state': state,
-                'model': actual_model,  # Use actual model name (Azure deployment or OpenAI model)
-                'qa_qc_enabled': enable_qa_qc,
-                'cost_usd': result.cost,
-                'processing_time_sec': result.processing_time,
-                'completeness_score': result.completeness_score,
-                'item_count': num_items,
-                'identifier': identifier,
-                'data': result.data,
-                'validation_notes': result.validation_notes
-            }
-            
-            output_file = output_dir / f"{doc_path.stem}.json"
-            with open(output_file, 'w') as f:
-                json.dump(output_data, f, indent=2)
-            
-            # Track results
-            results.append({
-                'file': doc_path.name,
-                'identifier': identifier,
-                'items': num_items,
-                'cost': result.cost,
-                'time': result.processing_time,
-                'success': True
-            })
-            total_cost += result.cost
-            total_time += result.processing_time
-            
-            # Success message with compact format and colors
-            item_text = f"{GREEN}{num_items}{RESET} {item_label}"
-            cost_text = f"{MAGENTA}${result.cost:.4f}{RESET}"
-            time_text = f"{DIM}{result.processing_time:.1f}s{RESET}"
-            
-            # Only show identifier if it's meaningful (not N/A)
-            if identifier != "N/A":
-                id_text = f"{identifier_label} {CYAN}{identifier}{RESET}"
-                print(f"     {GREEN}✓{RESET} {item_text}  {DIM}•{RESET}  {id_text}  {DIM}•{RESET}  {cost_text}  {DIM}•{RESET}  {time_text}")
-            else:
-                print(f"     {GREEN}✓{RESET} {item_text}  {DIM}•{RESET}  {cost_text}  {DIM}•{RESET}  {time_text}")
-            
-        except Exception as e:
-            results.append({
-                'file': doc_path.name,
-                'success': False,
-                'error': str(e)
-            })
-            error_msg = str(e)[:60]
-            print(f"     {YELLOW}✗{RESET} {DIM}Error: {error_msg}{RESET}")
+        with live:
+            for doc_path in doc_files:
+                dashboard.start_document(doc_path.name)
+                
+                try:
+                    # Extract text from document
+                    text = extract_text_from_document(doc_path)
+                    result = extractor.extract(text, loaded_schema, enable_qa_qc=enable_qa_qc)
+                    
+                    # Save result
+                    num_items = _extract_and_save_result(doc_path, result, output_dir, state, actual_model, enable_qa_qc)
+                    
+                    # Update dashboard
+                    dashboard.complete_document(
+                        doc_path.name,
+                        success=True,
+                        cost=result.cost,
+                        input_tokens=0,  # Would need to track from extractor
+                        output_tokens=0
+                    )
+                    
+                    # Track results
+                    results.append({
+                        'file': doc_path.name,
+                        'items': num_items,
+                        'cost': result.cost,
+                        'time': result.processing_time,
+                        'success': True
+                    })
+                    total_cost += result.cost
+                    total_time += result.processing_time
+                    
+                except Exception as e:
+                    dashboard.complete_document(doc_path.name, success=False)
+                    results.append({
+                        'file': doc_path.name,
+                        'success': False,
+                        'error': str(e)
+                    })
     
-    # Summary with clean table format
-    print(f"\n{DIM}{'─' * 80}{RESET}")
-    print(f"\n  {BOLD}{'SUMMARY':^76}{RESET}")
-    print(f"\n{DIM}{'─' * 80}{RESET}")
-    
-    successful = [r for r in results if r.get('success')]
-    failed = [r for r in results if not r.get('success')]
-    
-    # Results overview
-    print(f"\n  {BOLD}Results{RESET}")
-    print(f"    {DIM}Processed{RESET}    {len(results)} file{'s' if len(results) != 1 else ''}")
-    print(f"    {DIM}Successful{RESET}   {GREEN}{len(successful)}{RESET}")
-    if failed:
-        print(f"    {DIM}Failed{RESET}       {YELLOW}{len(failed)}{RESET}")
-    
-    if successful:
-        # Cost metrics
-        avg_cost = total_cost / len(successful)
-        print(f"\n  {BOLD}Cost{RESET}")
-        print(f"    {DIM}Total{RESET}        {MAGENTA}${total_cost:.4f}{RESET}")
-        print(f"    {DIM}Per file{RESET}     {MAGENTA}${avg_cost:.4f}{RESET}")
+    # Use progress bar for multiple files, simple output for single file
+    elif len(doc_files) > 1 and VERBOSITY != 'quiet':
+        progress = create_extraction_progress()
+        task = progress.add_task(f"Extracting {len(doc_files)} documents...", total=len(doc_files))
         
-        # Time metrics
-        avg_time = total_time / len(successful)
-        print(f"\n  {BOLD}Time{RESET}")
-        print(f"    {DIM}Total{RESET}        {total_time:.1f}s")
-        print(f"    {DIM}Per file{RESET}     {avg_time:.1f}s")
-        
-        # Item count (generators or requirements depending on schema)
-        total_items = sum(r.get('items', 0) or 0 for r in successful)
-        if total_items > 0:
-            # Determine label based on first successful result
-            first_result = successful[0]
-            if 'items' in first_result:
-                print(f"\n  {BOLD}Items Extracted{RESET}")
-                print(f"    {DIM}Total{RESET}        {GREEN}{total_items}{RESET}")
+        with progress:
+            for doc_path in doc_files:
+                try:
+                    # Extract text from document (supports PDF, DOCX, TXT, XLSX, CSV)
+                    text = extract_text_from_document(doc_path)
+                    result = extractor.extract(text, loaded_schema, enable_qa_qc=enable_qa_qc)
+                    
+                    # Save result
+                    num_items = _extract_and_save_result(doc_path, result, output_dir, state, actual_model, enable_qa_qc)
+                    
+                    # Track results
+                    results.append({
+                        'file': doc_path.name,
+                        'items': num_items,
+                        'cost': result.cost,
+                        'time': result.processing_time,
+                        'success': True
+                    })
+                    total_cost += result.cost
+                    total_time += result.processing_time
+                    
+                except Exception as e:
+                    results.append({
+                        'file': doc_path.name,
+                        'success': False,
+                        'error': str(e)
+                    })
+                
+                progress.update(task, advance=1)
+    else:
+        # Single file or quiet mode
+        for doc_path in doc_files:
+            if VERBOSITY == 'verbose' or VERBOSITY == 'normal':
+                console.print()
+                console.print(f"[cyan]→[/cyan] {doc_path.name}")
+            
+            try:
+                # Extract text from document (supports PDF, DOCX, TXT, XLSX, CSV)
+                text = extract_text_from_document(doc_path)
+                result = extractor.extract(text, loaded_schema, enable_qa_qc=enable_qa_qc)
+                
+                # Save result
+                num_items = _extract_and_save_result(doc_path, result, output_dir, state, actual_model, enable_qa_qc)
+                
+                # Track results
+                results.append({
+                    'file': doc_path.name,
+                    'items': num_items,
+                    'cost': result.cost,
+                    'time': result.processing_time,
+                    'success': True
+                })
+                total_cost += result.cost
+                total_time += result.processing_time
+                
+                if VERBOSITY == 'verbose' or VERBOSITY == 'normal':
+                    console.print(f"  [green]✓[/green] {num_items} items • [magenta]${result.cost:.4f}[/magenta] • [dim]{result.processing_time:.1f}s[/dim]")
+                
+            except Exception as e:
+                results.append({
+                    'file': doc_path.name,
+                    'success': False,
+                    'error': str(e)
+                })
+                if VERBOSITY != 'quiet':
+                    console.print(f"  [yellow]✗[/yellow] [dim]Error: {str(e)[:60]}[/dim]")
     
-    # Output location reminder - make it very prominent
-    print(f"\n  {BOLD}{GREEN}✓ Results saved to:{RESET}")
-    print(f"    {BOLD}{output_dir.absolute()}{RESET}")
-    print(f"\n{DIM}{'─' * 80}{RESET}\n")
+    # Summary
+    if VERBOSITY != 'quiet':
+        successful = [r for r in results if r.get('success')]
+        failed = [r for r in results if not r.get('success')]
+        
+        summary_stats = {
+            "Processed": f"{len(results)} file{'s' if len(results) != 1 else ''}",
+            "Successful": f"[green]{len(successful)}[/green]",
+        }
+        
+        if failed:
+            summary_stats["Failed"] = f"[yellow]{len(failed)}[/yellow]"
+        
+        if successful:
+            avg_cost = total_cost / len(successful)
+            avg_time = total_time / len(successful)
+            summary_stats["Total Cost"] = f"[magenta]${total_cost:.4f}[/magenta]"
+            summary_stats["Avg Cost/File"] = f"[magenta]${avg_cost:.4f}[/magenta]"
+            summary_stats["Total Time"] = f"{total_time:.1f}s"
+            summary_stats["Avg Time/File"] = f"{avg_time:.1f}s"
+            
+            total_items = sum(r.get('items', 0) or 0 for r in successful)
+            if total_items > 0:
+                summary_stats["Total Items"] = f"[green]{total_items}[/green]"
+        
+        console.print()
+        table = create_summary_table("Extraction Summary", summary_stats)
+        console.print(table)
+        
+        console.print()
+        console.print(f"[bold green]✓ Results saved to:[/bold green]")
+        console.print(f"  [bold]{output_dir.absolute()}[/bold]")
+        console.print()
+
+
+def _extract_and_save_result(doc_path: Path, result, output_dir: Path, state: str, model: str, qa_qc_enabled: bool) -> int:
+    """Helper to extract items count and save result to JSON."""
+    # Universal schema detection - find main array and identifier dynamically
+    num_items = 0
+    identifier = "N/A"
+    
+    # Find main array field (the one with the most data)
+    main_array_key = None
+    max_items = 0
+    for key, value in result.data.items():
+        if isinstance(value, list) and value:
+            if len(value) > max_items:
+                max_items = len(value)
+                main_array_key = key
+    
+    if main_array_key:
+        main_array = result.data.get(main_array_key, [])
+        num_items = len(main_array)
+    
+    # Find identifier field dynamically
+    for key, value in result.data.items():
+        if isinstance(value, dict):
+            for id_field in ['id', 'identifier', 'jurisdiction', 'number', 'name']:
+                if id_field in value:
+                    id_val = value[id_field]
+                    if isinstance(id_val, dict):
+                        parts = [str(v) for v in id_val.values() if v]
+                        identifier = '-'.join(parts) if parts else 'N/A'
+                    elif id_val:
+                        identifier = str(id_val)
+                    break
+        elif isinstance(value, (str, int)) and value and key.lower() in ['id', 'identifier', 'jurisdiction', 'number']:
+            identifier = str(value)
+    
+    output_data = {
+        'source_file': doc_path.name,
+        'extraction_date': time.strftime('%Y-%m-%d %H:%M:%S'),
+        'state': state,
+        'model': model,
+        'qa_qc_enabled': qa_qc_enabled,
+        'cost_usd': result.cost,
+        'processing_time_sec': result.processing_time,
+        'completeness_score': result.completeness_score,
+        'item_count': num_items,
+        'identifier': identifier,
+        'data': result.data,
+        'validation_notes': result.validation_notes
+    }
+    
+    output_file = output_dir / f"{doc_path.stem}.json"
+    with open(output_file, 'w') as f:
+        json.dump(output_data, f, indent=2)
+    
+    return num_items
 
 
 @click.command()
 @click.argument('extraction_file', type=click.Path(exists=True))
 @click.option('--verbose', '-v', is_flag=True, help='Enable verbose logging')
-def validate(extraction_file: str, verbose: bool):
+@click.option('--show-data', is_flag=True, help='Display extracted data with syntax highlighting')
+def validate(extraction_file: str, verbose: bool, show_data: bool):
     """
     Validate an extraction result against the schema.
     
-    Example:
-        streamline-extract validate data/extracted/Virginia/11790_DC_Permit.json
+    \b
+    EXAMPLES:
+        streamline-extract validate extracted/data/doc.json
+        streamline-extract validate extracted/data/doc.json --show-data
     """
-    # Setup logging
-    log_level = logging.DEBUG if verbose else logging.INFO
-    logging.basicConfig(level=log_level, format='%(message)s')
-    
-    print(f"\n{'='*80}")
-    print("VALIDATION")
-    print(f"{'='*80}\n")
+    from streamline_extract.cli.ui import display_json
     
     extraction_file = Path(extraction_file)
-    print(f"File: {extraction_file.name}")
+    
+    print_header(f"Validation: {extraction_file.name}")
     
     # Load extraction
-    with open(extraction_file) as f:
-        data = json.load(f)
+    try:
+        with open(extraction_file) as f:
+            data = json.load(f)
+    except json.JSONDecodeError as e:
+        print_error("Invalid JSON file", str(e))
+        return
     
     # Load schema
     config = get_config()
@@ -672,69 +755,33 @@ def validate(extraction_file: str, verbose: bool):
     
     try:
         json_validate(instance=data.get('data', data), schema=schema)
-        print("✓ Schema validation passed")
+        print_success("Schema validation passed")
     except ValidationError as e:
-        print(f"✗ Schema validation failed: {e.message}")
+        print_error("Schema validation failed", e.message)
         sys.exit(1)
     
-    # Check data quality
-    permit_data = data.get('data', data)
-    generators = permit_data.get('generatorSets', [])
-    
-    print(f"\n{'─'*80}")
-    print("Extraction Quality")
-    print(f"{'─'*80}\n")
-    
-    # Use metadata if available (new format)
-    if 'quality' in data:
-        quality = data['quality']
-        print(f"Generator Count:    {quality['generator_count']}")
-        print(f"Completeness Score: {quality['completeness_score']:.1%}")
-        print(f"Fields Extracted:   {quality['fields_extracted']}")
-        print(f"Fields Missing:     {quality['fields_missing']}")
-        print(f"Has Permit Details: {'Yes' if quality['has_permit_details'] else 'No'}")
-        print(f"Has Generators:     {'Yes' if quality['has_generators'] else 'No'}")
-        print(f"Has Emissions Data: {'Yes' if quality['has_emissions_data'] else 'No'}")
-    else:
-        # Fallback for old format
-        print(f"Generator Sets: {len(generators)}")
+    # Display metadata
+    if verbose or show_data:
+        metadata = {
+            "Source File": data.get('source_file', 'N/A'),
+            "Extraction Date": data.get('extraction_date', 'N/A'),
+            "Model": data.get('model', 'N/A'),
+            "Cost": f"${data.get('cost_usd', 0):.4f}",
+            "Processing Time": f"{data.get('processing_time_sec', 0):.1f}s",
+            "Item Count": str(data.get('item_count', 0)),
+        }
         
-        if generators:
-            # Check completeness
-            complete_count = sum(
-                1 for g in generators
-                if g.get('make') and g.get('model') and g.get('fuelType')
-            )
-            print(f"Complete Records: {complete_count}/{len(generators)} "
-                       f"({complete_count/len(generators)*100:.1f}%)")
-            
-            # Check for emissions data
-            with_emissions = sum(
-                1 for g in generators
-                if any(g.get(k) for k in ['noxEmissionLimitLbsHr', 'coEmissionLimitLbsHr', 'vocEmissionLimitLbsHr'])
-            )
-            print(f"With Emissions: {with_emissions}/{len(generators)} "
-                       f"({with_emissions/len(generators)*100:.1f}%)")
+        console.print()
+        table = create_config_table("Extraction Metadata", metadata)
+        console.print(table)
     
-    # Check metadata
-    if 'cost' in data:
-        if isinstance(data['cost'], dict):
-            print(f"\nExtraction Cost: ${data['cost']['total_usd']:.4f}")
-            print(f"  OpenAI:        ${data['cost']['openai_usd']:.4f}")
-            if 'langextract_usd' in data['cost']:
-                print(f"  LangExtract:   ${data['cost']['langextract_usd']:.4f}")
-        else:
-            print(f"\nExtraction Cost: ${data['cost']:.4f}")
+    # Show extracted data with syntax highlighting
+    if show_data and 'data' in data:
+        console.print()
+        from streamline_extract.cli.ui import display_json
+        display_json(data['data'], title="Extracted Data")
     
-    if 'timing' in data:
-        print(f"Processing Time: {data['timing']['total_sec']:.2f}s")
-        print(f"  OpenAI:        {data['timing']['openai_sec']:.2f}s")
-        print(f"  LangExtract:   {data['timing']['langextract_sec']:.2f}s")
-    elif 'processing_time_sec' in data:
-        print(f"Processing Time: {data['processing_time_sec']:.2f}s")
-    
-    print("\n✓ Validation complete!\n")
-    print(f"{'='*80}\n")
+    console.print()
 
 
 @click.command()
@@ -783,28 +830,31 @@ def consolidate(extracted_dir: str, output: Optional[str]):
     output_dir.mkdir(parents=True, exist_ok=True)
     
     # Header
-    print(f"\n{BOLD}{BLUE}┌{'─' * 78}┐{RESET}")
-    print(f"{BOLD}{BLUE}│{RESET} {BOLD}{'CONSOLIDATION':^76}{RESET} {BOLD}{BLUE}│{RESET}")
-    print(f"{BOLD}{BLUE}└{'─' * 78}┘{RESET}\n")
+    print_header("CONSOLIDATION")
     
-    print(f"  {DIM}Input{RESET}     {input_dir}")
-    print(f"  {DIM}Output{RESET}    {BOLD}{output_dir}{RESET}\n")
-    print(f"{DIM}{'─' * 80}{RESET}\n")
+    config_info = {
+        "Input": str(input_dir),
+        "Output": str(output_dir)
+    }
+    table = create_config_table("", config_info)
+    console.print(table)
+    console.print()
     
     # Consolidate
-    print(f"  {CYAN}→{RESET} Analyzing schema structure...")
+    console.print("[cyan]→[/cyan] Analyzing schema structure...")
     consolidator = Consolidator()
     
     try:
         df, schema_info = consolidator.consolidate_from_directory(input_dir)
         
         if df.empty:
-            print(f"\n  {YELLOW}⚠{RESET} No data found to consolidate")
+            print_warning("No data found to consolidate")
             return
         
-        print(f"  {GREEN}✓{RESET} Schema detected: {CYAN}{schema_info['type']}{RESET}")
-        print(f"  {DIM}  Main entity: {schema_info['main_array_key']}{RESET}")
-        print(f"\n  {CYAN}→{RESET} Creating outputs...")
+        print_success(f"Schema detected: [cyan]{schema_info['type']}[/cyan]")
+        console.print(f"  [dim]Main entity: {schema_info['main_array_key']}[/dim]\n")
+        
+        console.print("[cyan]→[/cyan] Creating outputs...")
         
         # Generate output filename
         base_name = input_dir.name.replace('_', '-')
@@ -812,22 +862,19 @@ def consolidate(extracted_dir: str, output: Optional[str]):
         # Save CSV
         csv_path = output_dir / f"{base_name}.csv"
         consolidator.save_csv(df, csv_path)
-        print(f"  {GREEN}✓{RESET} CSV saved ({len(df)} rows)")
+        print_success(f"CSV saved ({len(df)} rows)")
         
         # Save Excel
         excel_path = output_dir / f"{base_name}.xlsx"
         consolidator.save_excel(df, excel_path)
-        print(f"  {GREEN}✓{RESET} Excel saved (clean formatting, auto-sized columns)")
+        print_success("Excel saved (clean formatting, auto-sized columns)")
         
         # Summary
-        print(f"\n{DIM}{'─' * 80}{RESET}")
-        print(f"\n  {BOLD}{'SUMMARY':^76}{RESET}\n")
-        print(f"{DIM}{'─' * 80}{RESET}\n")
-        
-        print(f"  {BOLD}Data{RESET}")
-        print(f"    {DIM}Schema Type{RESET}   {schema_info['type']}")
-        print(f"    {DIM}Records{RESET}       {len(df)}")
-        print(f"    {DIM}Columns{RESET}       {len(df.columns)}")
+        summary_stats = {
+            "Schema Type": schema_info['type'],
+            "Records": str(len(df)),
+            "Columns": str(len(df.columns)),
+        }
         
         # Category breakdown
         if schema_info.get('category_field'):
@@ -835,16 +882,18 @@ def consolidate(extracted_dir: str, output: Optional[str]):
             if category_display and category_display in df.columns:
                 top_categories = df[category_display].value_counts().head(5)
                 if not top_categories.empty:
-                    print(f"\n  {BOLD}Top {category_display}s{RESET}")
-                    for cat, count in top_categories.items():
-                        print(f"    {DIM}•{RESET} {cat}: {GREEN}{count}{RESET}")
+                    top_cat_str = ", ".join([f"{cat} ({count})" for cat, count in list(top_categories.items())[:3]])
+                    summary_stats[f"Top {category_display}s"] = top_cat_str
         
-        print(f"\n  {BOLD}{GREEN}✓ Output Location{RESET}")
-        print(f"    {BOLD}{excel_path.absolute()}{RESET}")
-        print(f"\n{DIM}{'─' * 80}{RESET}\n")
+        console.print()
+        table = create_summary_table("Consolidation Summary", summary_stats)
+        console.print(table)
+        
+        console.print(f"\n[bold green]✓ Output Location[/bold green]")
+        console.print(f"  [bold]{excel_path.absolute()}[/bold]\n")
         
     except Exception as e:
-        print(f"\n  {RED}✗{RESET} Error: {str(e)}")
+        print_error("Consolidation failed", str(e))
         if '--verbose' in sys.argv or '-v' in sys.argv:
             import traceback
             traceback.print_exc()
