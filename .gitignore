@@ -87,11 +87,10 @@ temp/
 # ─────────────────────────────────────────────────────────
 !documents/.gitkeep
 !schemas/.gitkeep
-data/cleaned/
-data/compiled/
-04_jurisdiction_validated/
 documents/
 validation/
 scripts/
 
 tests/
+REFACTORING_PLAN.md
+DEVELOPMENT.md
