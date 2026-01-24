@@ -79,6 +79,10 @@ class Consolidator:
             # Extract main array items
             main_array = data.get(self.schema_info['main_array_key'], [])
             
+            # Filter out invalid items (e.g., strings instead of dicts)
+            if main_array:
+                main_array = [item for item in main_array if isinstance(item, dict)]
+            
             # Check if items have a nested array that should be flattened
             # Pattern: parent_array → nested_array (e.g., rate_schedules → charges)
             nested_array_key = None
