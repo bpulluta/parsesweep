@@ -484,6 +484,16 @@ def extract(path: str, output: Optional[str], schema: Optional[str], state: Opti
         deployment_name = azure_model if azure_model else model
         actual_model = deployment_name  # Track actual model for output
         
+        # Create schema metadata if available
+        schema_metadata = None
+        if schema_path:
+            try:
+                from streamline_extract.utils.schema_metadata import SchemaMetadata
+                schema_metadata = SchemaMetadata(schema_path)
+            except Exception as e:
+                if VERBOSITY == 'verbose':
+                    console.print(f"[dim yellow]Could not load schema metadata: {e}[/dim yellow]")
+        
         # Initialize extractor with Azure parameters
         extractor = DocumentExtractor(
             api_key=azure_key,
@@ -492,6 +502,7 @@ def extract(path: str, output: Optional[str], schema: Optional[str], state: Opti
             use_azure=True,
             azure_endpoint=azure_endpoint,
             azure_api_version=azure_version,
+            schema_metadata=schema_metadata,
         )
     else:
         if not config.openai_api_key:
@@ -501,7 +512,23 @@ def extract(path: str, output: Optional[str], schema: Optional[str], state: Opti
             )
             print(f"   Create .env file at: {config.project_root / '.env'}")
             return
-        extractor = DocumentExtractor(api_key=config.openai_api_key, model=model, max_context_chars=max_context)
+        
+        # Create schema metadata if available
+        schema_metadata = None
+        if schema_path:
+            try:
+                from streamline_extract.utils.schema_metadata import SchemaMetadata
+                schema_metadata = SchemaMetadata(schema_path)
+            except Exception as e:
+                if VERBOSITY == 'verbose':
+                    console.print(f"[dim yellow]Could not load schema metadata: {e}[/dim yellow]")
+        
+        extractor = DocumentExtractor(
+            api_key=config.openai_api_key,
+            model=model,
+            max_context_chars=max_context,
+            schema_metadata=schema_metadata
+        )
     
     # Processing section
     if VERBOSITY == 'normal' or VERBOSITY == 'verbose':
@@ -813,6 +840,9 @@ def consolidate(extracted_dir: str, output: Optional[str]):
     """
     input_dir = Path(extracted_dir)
     
+    # Load config
+    config = get_config()
+    
     # Set up output directory - CLEAN structure
     # extracted/category/ → consolidated/category/
     if output:
@@ -840,9 +870,49 @@ def consolidate(extracted_dir: str, output: Optional[str]):
     console.print(table)
     console.print()
     
+    # Try to find and load schema metadata (required in v2.0+)
+    schema_metadata = None
+    # Auto-detect schema based on folder name/path
+    schema_candidates = config.schema_dir.glob("*.json")
+    path_lower = str(input_dir).lower()
+    matched_schema = None
+    
+    for candidate in schema_candidates:
+        candidate_name_lower = candidate.stem.lower()
+        # Check if path contains schema keywords
+        if any(keyword in path_lower for keyword in ['geothermal', 'ordinance']) and 'geothermal' in candidate_name_lower:
+            matched_schema = candidate
+            break
+        elif any(keyword in path_lower for keyword in ['tariff', 'rate', 'electric']) and 'tariff' in candidate_name_lower:
+            matched_schema = candidate
+            break
+        elif any(keyword in path_lower for keyword in ['permit', 'air_quality', 'aq']) and 'permit' in candidate_name_lower:
+            matched_schema = candidate
+            break
+    
+    if matched_schema:
+        try:
+            from streamline_extract.utils.schema_metadata import SchemaMetadata
+            schema_metadata = SchemaMetadata(matched_schema)
+            console.print(f"[dim]Using schema metadata from {matched_schema.name}[/dim]")
+        except Exception as e:
+            print_error(
+                "Schema validation failed",
+                f"Schema {matched_schema.name} is missing required metadata: {e}"
+            )
+            return
+    else:
+        print_error(
+            "No schema found for consolidation",
+            "StreamlineExtract v2.0+ requires a schema with $metadata.\\n"
+            f"Could not auto-detect schema for: {input_dir}\\n"
+            f"Available schemas in {config.schema_dir}: {[s.name for s in config.schema_dir.glob('*.json')]}"
+        )
+        return
+    
     # Consolidate
     console.print("[cyan]→[/cyan] Analyzing schema structure...")
-    consolidator = Consolidator()
+    consolidator = Consolidator(schema_metadata=schema_metadata)
     
     try:
         df, schema_info = consolidator.consolidate_from_directory(input_dir)

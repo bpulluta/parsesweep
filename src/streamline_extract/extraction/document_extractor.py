@@ -69,6 +69,7 @@ class DocumentExtractor:
         use_azure: bool = False,
         azure_endpoint: str = None,
         azure_api_version: str = None,
+        schema_metadata=None,
     ):
         """
         Initialize document extractor.
@@ -83,11 +84,13 @@ class DocumentExtractor:
             use_azure: Use Azure OpenAI instead of OpenAI
             azure_endpoint: Azure OpenAI endpoint URL (required if use_azure=True)
             azure_api_version: Azure API version (required if use_azure=True)
+            schema_metadata: Optional SchemaMetadata for metadata-driven processing
         """
         self.api_key = api_key
         self.model = model
         self.max_context_chars = max_context_chars
         self.use_azure = use_azure
+        self.schema_metadata = schema_metadata
         
         # Initialize OpenAI client
         self.client = OpenAIClient(
@@ -171,17 +174,10 @@ class DocumentExtractor:
                 text, openai_result["data"]
             )
 
-            # Get entity identifier for validation report (works with any schema)
-            entity_identifier = "unknown"
-            for key, value in openai_result["data"].items():
-                if isinstance(value, dict):
-                    # Try common identifier fields
-                    for id_field in ["permitNumber", "id", "identifier", "name", "jurisdiction"]:
-                        if id_field in value and value[id_field]:
-                            entity_identifier = str(value[id_field])
-                            break
-                    if entity_identifier != "unknown":
-                        break
+            # Get entity identifier using schema metadata (required in v2.0+)
+            entity_identifier = self.schema_metadata.extract_identifier_from_data(
+                openai_result["data"]
+            )
 
             # Run cross-validation and get detailed report
             if qa_result.get("extraction_result"):
@@ -538,8 +534,7 @@ Status: Active""",
             )
 
             return jsonl_path
-
+        
         except Exception as e:
             logger.error("  ✗ Failed to generate visualization: %s", e)
             return None
-

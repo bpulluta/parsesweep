@@ -5,17 +5,42 @@ Row deduplication for consolidated data.
 Intelligently removes truly duplicate rows while preserving unique data.
 """
 import pandas as pd
-from typing import List
+from typing import List, Optional
+import logging
+
+from ..utils.exceptions import SchemaMetadataError
+
+logger = logging.getLogger(__name__)
 
 
 class Deduplicator:
     """
     Remove duplicate rows from consolidated data.
     
+    Uses schema metadata to intelligently identify which fields to
+    ignore during deduplication (v2.0+ requires metadata).
+    
     Intelligently identifies and removes rows that are truly identical
     in all identifying fields, while excluding metadata columns from
     comparison and preserving the most complete row from each duplicate group.
     """
+    
+    def __init__(self, schema_metadata):
+        """
+        Initialize deduplicator.
+        
+        Args:
+            schema_metadata: SchemaMetadata instance (required in v2.0+)
+            
+        Raises:
+            SchemaMetadataError: If schema_metadata is not provided
+        """
+        if not schema_metadata:
+            raise SchemaMetadataError(
+                "Deduplicator requires schema metadata.\n"
+                "Schema metadata is required as of StreamlineExtract v2.0."
+            )
+        self.schema_metadata = schema_metadata
     
     def deduplicate(self, df: pd.DataFrame) -> pd.DataFrame:
         """
@@ -75,15 +100,23 @@ class Deduplicator:
         """
         Identify metadata columns that should be excluded from duplicate detection.
         
+        Uses schema metadata (required in v2.0+).
+        
         Args:
             df: DataFrame to analyze
             
         Returns:
             List of column names that are metadata
         """
-        exclude_cols = [col for col in df.columns 
-                       if any(kw in col.lower() for kw in 
-                             ['notes', 'section', 'location', 'tariff location'])]
+        # Use metadata-specified ignore fields (required in v2.0+)
+        ignore_fields = set(self.schema_metadata.get_deduplication_ignore_fields())
+        
+        # Match column names (case-insensitive)
+        exclude_cols = [
+            col for col in df.columns
+            if any(field.lower() in col.lower() for field in ignore_fields)
+        ]
+        
         return exclude_cols
     
     def _process_duplicate_groups(

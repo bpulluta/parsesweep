@@ -1,5 +1,51 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
+  "$metadata": {
+    "domain": "Energy - Utility Tariffs",
+    "version": "1.0.0",
+    "description": "Extract rate schedules and charges from utility tariff documents",
+    "extraction": {
+      "main_data_array": "rate_schedules",
+      "context_objects": ["utility_info", "document_applicability"],
+      "identifier_fields": ["utility_info.utility_name", "utility_info.state"],
+      "display_name_template": "{utility_name} ({state})",
+      "document_type": "Utility Tariff"
+    },
+    "consolidation": {
+      "deduplication": {
+        "key_fields": ["rate_name", "charge_type", "season", "time_period"],
+        "ignore_fields": ["notes", "tariff_location", "extracted_text"],
+        "strategy": "latest",
+        "comparison_mode": "exact"
+      },
+      "output": {
+        "default_format": "excel",
+        "column_order": [
+          "utility_name",
+          "state",
+          "rate_name",
+          "charge_type",
+          "rate",
+          "unit",
+          "season",
+          "time_period"
+        ],
+        "freeze_columns": 2,
+        "auto_width": true
+      }
+    },
+    "validation": {
+      "required_fields": ["utility_info", "rate_schedules"],
+      "quality_checks": [
+        {
+          "field": "rate",
+          "type": "numeric",
+          "message": "Rate should be numeric when applicable"
+        }
+      ],
+      "completeness_threshold": 0.8
+    }
+  },
   "title": "Electric Utility Rate Tariff Extraction Schema - Hierarchical",
   "description": "Extract rate schedules with charges hierarchically, then consolidate to flat format. SCOPE: Residential, commercial, and industrial electric rates. EXCLUDE: Gas, water, telecommunications, fee schedules.",
   "type": "object",
