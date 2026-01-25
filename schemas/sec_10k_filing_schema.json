@@ -1,0 +1,187 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$metadata": {
+    "domain": "Financial - SEC Filings",
+    "version": "1.0.0",
+    "description": "Extract financial data from 10-K annual reports",
+    "extraction": {
+      "main_data_array": "financial_statements",
+      "context_objects": ["company_info", "filing_metadata"],
+      "identifier_fields": ["company_info.cik", "filing_metadata.fiscal_year"],
+      "display_name_template": "{company_name} - FY{fiscal_year}",
+      "document_type": "SEC 10-K Filing"
+    },
+    "consolidation": {
+      "deduplication": {
+        "key_fields": ["company_info.cik", "fiscal_year", "statement_type"],
+        "ignore_fields": ["filing_date", "acceptanceDateTime", "notes"],
+        "strategy": "latest",
+        "comparison_mode": "exact"
+      },
+      "output": {
+        "default_format": "excel",
+        "column_order": [
+          "company_name",
+          "ticker",
+          "cik",
+          "fiscal_year",
+          "statement_type",
+          "revenue",
+          "net_income",
+          "total_assets"
+        ],
+        "freeze_columns": 3,
+        "auto_width": true
+      }
+    },
+    "validation": {
+      "required_fields": ["company_info", "financial_statements"],
+      "quality_checks": [
+        {
+          "field": "revenue",
+          "type": "numeric",
+          "range": [0, null],
+          "message": "Revenue must be non-negative"
+        },
+        {
+          "field": "filing_date",
+          "type": "date",
+          "format": "YYYY-MM-DD",
+          "message": "Filing date must be valid date in YYYY-MM-DD format"
+        }
+      ],
+      "completeness_threshold": 0.8
+    }
+  },
+  "title": "SEC 10-K Filing Extraction Schema",
+  "description": "Extract structured financial data from SEC 10-K annual reports. SCOPE: Income statements, balance sheets, cash flow statements. EXCLUDE: Footnotes, management discussion, risk factors.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["company_info", "filing_metadata", "financial_statements"],
+  "properties": {
+    "company_info": {
+      "type": "object",
+      "description": "Company identification and context",
+      "additionalProperties": false,
+      "required": ["cik", "company_name"],
+      "properties": {
+        "cik": {
+          "type": "string",
+          "description": "Central Index Key (CIK) - unique SEC identifier"
+        },
+        "company_name": {
+          "type": "string",
+          "description": "Official company name exactly as written"
+        },
+        "ticker": {
+          "type": ["string", "null"],
+          "description": "Stock ticker symbol. Null if not publicly traded."
+        },
+        "business_description": {
+          "type": ["string", "null"],
+          "description": "Brief description of business. Null if not provided."
+        }
+      }
+    },
+    "filing_metadata": {
+      "type": "object",
+      "description": "Filing context and dates",
+      "additionalProperties": false,
+      "required": ["fiscal_year"],
+      "properties": {
+        "fiscal_year": {
+          "type": "integer",
+          "description": "Fiscal year end (e.g., 2023)"
+        },
+        "filing_date": {
+          "type": ["string", "null"],
+          "description": "Date filed with SEC in YYYY-MM-DD format. Null if not stated."
+        },
+        "period_end": {
+          "type": ["string", "null"],
+          "description": "Fiscal year end date in YYYY-MM-DD format. Null if not stated."
+        },
+        "form_type": {
+          "type": ["string", "null"],
+          "description": "Form type (e.g., '10-K', '10-K/A'). Null if not stated."
+        }
+      }
+    },
+    "financial_statements": {
+      "type": "array",
+      "description": "Financial statement line items. One entry per statement type (Income Statement, Balance Sheet, Cash Flow).",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["statement_type"],
+        "properties": {
+          "statement_type": {
+            "type": "string",
+            "description": "Type of financial statement",
+            "enum": [
+              "Income Statement",
+              "Balance Sheet",
+              "Cash Flow Statement"
+            ]
+          },
+          "revenue": {
+            "type": ["number", "null"],
+            "description": "Total revenue/sales in dollars. Null if not applicable."
+          },
+          "cost_of_revenue": {
+            "type": ["number", "null"],
+            "description": "Cost of goods sold in dollars. Null if not applicable."
+          },
+          "gross_profit": {
+            "type": ["number", "null"],
+            "description": "Gross profit in dollars. Null if not applicable."
+          },
+          "operating_expenses": {
+            "type": ["number", "null"],
+            "description": "Total operating expenses in dollars. Null if not applicable."
+          },
+          "operating_income": {
+            "type": ["number", "null"],
+            "description": "Operating income in dollars. Null if not applicable."
+          },
+          "net_income": {
+            "type": ["number", "null"],
+            "description": "Net income/loss in dollars. Null if not applicable."
+          },
+          "total_assets": {
+            "type": ["number", "null"],
+            "description": "Total assets in dollars. Null if not applicable."
+          },
+          "total_liabilities": {
+            "type": ["number", "null"],
+            "description": "Total liabilities in dollars. Null if not applicable."
+          },
+          "shareholders_equity": {
+            "type": ["number", "null"],
+            "description": "Total shareholders' equity in dollars. Null if not applicable."
+          },
+          "operating_cash_flow": {
+            "type": ["number", "null"],
+            "description": "Cash flow from operations in dollars. Null if not applicable."
+          },
+          "investing_cash_flow": {
+            "type": ["number", "null"],
+            "description": "Cash flow from investing in dollars. Null if not applicable."
+          },
+          "financing_cash_flow": {
+            "type": ["number", "null"],
+            "description": "Cash flow from financing in dollars. Null if not applicable."
+          },
+          "earnings_per_share": {
+            "type": ["number", "null"],
+            "description": "Basic earnings per share. Null if not applicable."
+          },
+          "notes": {
+            "type": ["string", "null"],
+            "description": "Additional context or notes. Null if none."
+          }
+        }
+      }
+    }
+  }
+}

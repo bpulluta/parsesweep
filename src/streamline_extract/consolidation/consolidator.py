@@ -13,6 +13,7 @@ from .data_flattener import DataFlattener
 from .deduplicator import Deduplicator
 from .excel_formatter import ExcelFormatter
 from .csv_exporter import CsvExporter
+from ..utils.exceptions import SchemaMetadataError
 
 
 class Consolidator:
@@ -28,11 +29,27 @@ class Consolidator:
     No configuration required - just works.
     """
     
-    def __init__(self):
+    def __init__(self, schema_metadata):
+        """
+        Initialize consolidator.
+        
+        Args:
+            schema_metadata: SchemaMetadata instance (required in v2.0+)
+            
+        Raises:
+            SchemaMetadataError: If schema_metadata is not provided
+        """
+        if not schema_metadata:
+            raise SchemaMetadataError(
+                "Consolidator requires schema metadata.\n"
+                "Schema metadata is required as of StreamlineExtract v2.0."
+            )
+        
         self.schema_info = None
-        self.detector = SchemaDetector()
+        self.schema_metadata = schema_metadata
+        self.detector = SchemaDetector(schema_metadata=schema_metadata)
         self.flattener = DataFlattener()
-        self.deduplicator = Deduplicator()
+        self.deduplicator = Deduplicator(schema_metadata=schema_metadata)
         self.excel_formatter = ExcelFormatter()
         self.csv_exporter = CsvExporter()
     

@@ -5,14 +5,38 @@ import shutil
 from pathlib import Path
 from datetime import datetime
 from collections import defaultdict
+from typing import Optional
+import logging
+
+from ..utils.exceptions import SchemaMetadataError
+
+logger = logging.getLogger(__name__)
 
 
 class ExtractionCleaner:
     """Cleans and organizes extracted document data."""
     
-    def __init__(self, extracted_dir: Path, output_dir: Path):
+    def __init__(self, extracted_dir: Path, output_dir: Path, schema_metadata):
+        """
+        Initialize cleaner.
+        
+        Args:
+            extracted_dir: Directory containing extraction files
+            output_dir: Output directory for cleaned files
+            schema_metadata: SchemaMetadata instance (required in v2.0+)
+            
+        Raises:
+            SchemaMetadataError: If schema_metadata is not provided
+        """
+        if not schema_metadata:
+            raise SchemaMetadataError(
+                "ExtractionCleaner requires schema metadata.\n"
+                "Schema metadata is required as of StreamlineExtract v2.0."
+            )
+        
         self.extracted_dir = Path(extracted_dir)
         self.output_dir = Path(output_dir)
+        self.schema_metadata = schema_metadata
         
         # Output subdirectories (no raw copy - source is already raw)
         self.cleaned_dir = self.output_dir
@@ -70,9 +94,11 @@ class ExtractionCleaner:
                 
                 self.stats["total_files"] += 1
                 
-                # Get entity identifier (permit_number, jurisdiction, tariff_id, etc.)
-                entity_id = data.get("identifier", data.get("permit_number", "UNKNOWN"))
-                item_count = data.get("item_count", data.get("generator_count", 0))
+                # Get entity identifier using schema metadata (required)
+                entity_id = self.schema_metadata.extract_identifier_from_data(data)
+                
+                # Detect item count using metadata
+                item_count = self._detect_item_count(data)
                 
                 file_info = {
                     "path": json_file,
@@ -335,3 +361,17 @@ class ExtractionCleaner:
         self.generate_reports()
         
         return self.stats
+    
+    def _detect_item_count(self, data: dict) -> int:
+        """
+        Detect item count from extraction data using schema metadata.
+        
+        Args:
+            data: Extraction data dictionary
+            
+        Returns:
+            Number of items in main data array
+        """
+        # Use metadata to find main array (required in v2.0+)
+        main_array = self.schema_metadata.extract_main_data_array(data)
+        return len(main_array)

@@ -1,0 +1,168 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$metadata": {
+    "domain": "Academic - Journal Articles",
+    "version": "1.0.0",
+    "description": "Extract structured data from scientific journal articles",
+    "extraction": {
+      "main_data_array": "findings",
+      "context_objects": ["article_metadata", "authors"],
+      "identifier_fields": ["article_metadata.doi"],
+      "display_name_template": "{title} ({year})",
+      "document_type": "Journal Article"
+    },
+    "consolidation": {
+      "deduplication": {
+        "key_fields": ["article_metadata.doi"],
+        "ignore_fields": ["access_date", "download_count", "notes"],
+        "strategy": "latest",
+        "comparison_mode": "exact"
+      },
+      "output": {
+        "default_format": "excel",
+        "column_order": [
+          "title",
+          "journal",
+          "year",
+          "doi",
+          "authors_list",
+          "abstract"
+        ],
+        "freeze_columns": 1,
+        "auto_width": true
+      }
+    },
+    "validation": {
+      "required_fields": ["article_metadata"],
+      "quality_checks": [
+        {
+          "field": "year",
+          "type": "numeric",
+          "range": [1900, 2100],
+          "message": "Publication year must be between 1900 and 2100"
+        }
+      ],
+      "completeness_threshold": 0.7
+    }
+  },
+  "title": "Journal Article Extraction Schema",
+  "description": "Extract metadata and findings from scientific journal articles. SCOPE: Peer-reviewed research papers. EXCLUDE: Conference papers, preprints, editorials, book chapters.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["article_metadata"],
+  "properties": {
+    "article_metadata": {
+      "type": "object",
+      "description": "Publication metadata and identification",
+      "additionalProperties": false,
+      "required": ["title"],
+      "properties": {
+        "title": {
+          "type": "string",
+          "description": "Article title exactly as written"
+        },
+        "doi": {
+          "type": ["string", "null"],
+          "description": "Digital Object Identifier. Null if not available."
+        },
+        "pmid": {
+          "type": ["string", "null"],
+          "description": "PubMed ID for medical articles. Null if not applicable."
+        },
+        "journal": {
+          "type": ["string", "null"],
+          "description": "Journal name exactly as written. Null if not stated."
+        },
+        "year": {
+          "type": ["integer", "null"],
+          "description": "Publication year (e.g., 2023). Null if not stated."
+        },
+        "volume": {
+          "type": ["string", "null"],
+          "description": "Volume number exactly as written. Null if not stated."
+        },
+        "issue": {
+          "type": ["string", "null"],
+          "description": "Issue number exactly as written. Null if not stated."
+        },
+        "pages": {
+          "type": ["string", "null"],
+          "description": "Page range exactly as written (e.g., '123-145'). Null if not stated."
+        },
+        "abstract": {
+          "type": ["string", "null"],
+          "description": "Article abstract. Null if not provided."
+        },
+        "keywords": {
+          "type": ["array", "null"],
+          "description": "Author-provided keywords. Null if none.",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "authors": {
+      "type": "array",
+      "description": "Article authors in order of appearance. One entry per author.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name"],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Author name exactly as written"
+          },
+          "affiliation": {
+            "type": ["string", "null"],
+            "description": "Author's institutional affiliation. Null if not provided."
+          },
+          "email": {
+            "type": ["string", "null"],
+            "description": "Author's email address. Null if not provided."
+          },
+          "orcid": {
+            "type": ["string", "null"],
+            "description": "ORCID identifier. Null if not provided."
+          }
+        }
+      }
+    },
+    "findings": {
+      "type": "array",
+      "description": "Key research findings or results. One entry per major finding.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["finding"],
+        "properties": {
+          "finding": {
+            "type": "string",
+            "description": "Description of the finding or result"
+          },
+          "methodology": {
+            "type": ["string", "null"],
+            "description": "Method used to obtain this finding. Null if not specified."
+          },
+          "statistical_significance": {
+            "type": ["string", "null"],
+            "description": "P-value or statistical significance measure. Null if not applicable."
+          },
+          "sample_size": {
+            "type": ["integer", "null"],
+            "description": "Sample size for this finding. Null if not stated."
+          },
+          "notes": {
+            "type": ["string", "null"],
+            "description": "Additional context or limitations. Null if none."
+          }
+        }
+      }
+    },
+    "research_domain": {
+      "type": ["string", "null"],
+      "description": "Research field or domain (e.g., 'Neuroscience', 'Climate Science'). Null if not identifiable."
+    }
+  }
+}

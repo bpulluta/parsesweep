@@ -1,5 +1,49 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
+  "$metadata": {
+    "domain": "Energy - Geothermal Regulations",
+    "version": "1.0.0",
+    "description": "Extract regulatory requirements from geothermal ordinances",
+    "extraction": {
+      "main_data_array": "requirements",
+      "context_objects": ["jurisdiction", "document_applicability"],
+      "identifier_fields": ["jurisdiction.state", "jurisdiction.county"],
+      "display_name_template": "{county}, {state}",
+      "document_type": "Geothermal Ordinance"
+    },
+    "consolidation": {
+      "deduplication": {
+        "key_fields": ["category", "details"],
+        "ignore_fields": ["notes", "section_number", "extracted_text"],
+        "strategy": "latest",
+        "comparison_mode": "fuzzy"
+      },
+      "output": {
+        "default_format": "excel",
+        "column_order": [
+          "state",
+          "county",
+          "category",
+          "details",
+          "numeric_value",
+          "unit"
+        ],
+        "freeze_columns": 2,
+        "auto_width": true
+      }
+    },
+    "validation": {
+      "required_fields": ["jurisdiction", "requirements", "document_applicability"],
+      "quality_checks": [
+        {
+          "field": "document_applicability.applies_to_geothermal_electricity",
+          "type": "boolean",
+          "message": "Must verify document applicability"
+        }
+      ],
+      "completeness_threshold": 0.7
+    }
+  },
   "title": "Geothermal Electricity Ordinance Extraction Schema",
   "description": "Regulatory requirements for geothermal electricity generation facilities. SCOPE: Geothermal power plants, geothermal production/injection wells for electricity, commercial geothermal energy facilities. EXCLUDE: Geothermal heat pumps (GHP), residential HVAC, direct-use heating/cooling, solar power, wind power, biomass, and other non-geothermal energy technologies. CRITICAL: When extracting from multi-technology renewable energy ordinances, DO NOT extract requirements that apply to solar, wind, biomass, or other technologies. ONLY extract provisions that explicitly mention geothermal or that clearly apply to geothermal based on context.",
   "type": "object",

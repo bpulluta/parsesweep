@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "streamline-extract"
-version = "0.1.0"
-description = "StreamlineExtract: AI-powered toolkit for extracting structured data from PDF documents using OpenAI + LangExtract"
+version = "2.0.0"
+description = "StreamlineExtract: Universal document extraction system - extract structured data from ANY document type using schemas + LLMs"
 readme = "README.md"
 requires-python = ">=3.9"
 license = {text = "MIT"}
@@ -189,4 +189,4 @@ testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
-addopts = "-v --cov=streamline_extract --cov-report=term-missing"
+addopts = "-v"
