@@ -14,6 +14,7 @@ from rich.progress import (
     TimeElapsedColumn,
     TimeRemainingColumn,
     TaskProgressColumn,
+    MofNCompleteColumn,
 )
 from rich.prompt import Prompt, Confirm
 from rich.syntax import Syntax
@@ -80,6 +81,7 @@ def create_extraction_progress() -> Progress:
         TextColumn("[bold blue]{task.description}"),
         BarColumn(),
         TaskProgressColumn(),
+        MofNCompleteColumn(),
         TextColumn("•"),
         TimeElapsedColumn(),
         TextColumn("•"),
