@@ -3,6 +3,8 @@
 ## Project Overview
 StreamlineExtract is a universal document extraction system that uses LLMs to extract structured data from documents (PDFs, DOCX, TXT, XLSX, CSV) into JSON, then consolidates into Excel/CSV.
 
+**Version 2.0+**: All schemas MUST include `$metadata` section. No heuristic fallbacks.
+
 ## Package Manager
 **ALWAYS use `pixi` for running commands, NOT pip or python directly.**
 
@@ -125,13 +127,35 @@ pixi run streamline-extract extract documents/tariffs/ \
 
 ## Schema Information
 
+**v2.0+ REQUIREMENT: All schemas MUST include $metadata section:**
+```json
+{
+  "$metadata": {
+    "extraction": {
+      "main_data_array": "your_array_key",
+      "identifier_fields": ["path.to.id"],
+      "context_objects": ["metadata_object"]
+    },
+    "consolidation": {
+      "deduplication": {
+        "key_fields": ["unique_fields"],
+        "ignore_fields": ["notes", "timestamp"]
+      }
+    }
+  }
+}
+```
+
 **Auto-detection:**
 - Schema is auto-detected based on document path keywords
-- `geothermal` in path → geothermal_ordinance_schema_streamlined.json
+- `geothermal` in path → geothermal_ordinance_schema.json
 - `tariff` in path → electricity_tariff_schema.json
+- `permit` or `aq` in path → air_quality_permits_schema.json
 
 **Custom schema:**
 - Use `--schema path/to/schema.json` to override
+- Schema MUST have valid $metadata or extraction will fail
+- See `schemas/SCHEMA_BEST_PRACTICES.md` for examples
 
 ## API Configuration
 
@@ -160,6 +184,12 @@ OPENAI_API_KEY=sk-your-key
 - Check file extensions are supported (.pdf, .docx, .txt, .xlsx, .csv)
 - Verify path exists and contains files
 
+**"Schema missing required $metadata section" (v2.0+):**
+- All schemas MUST have $metadata with `main_data_array` and `identifier_fields`
+- Update old schemas following examples in schemas/ directory
+- See `schemas/SCHEMA_BEST_PRACTICES.md` for migration guide
+- Use production schemas as templates: air_quality_permits_schema.json, electricity_tariff_schema.json, geothermal_ordinance_schema.json
+
 **"Schema not found":**
 - Use `--schema` to specify explicit schema path
 - Check schemas/ directory for available schemas
@@ -167,3 +197,53 @@ OPENAI_API_KEY=sk-your-key
 **Large document timeout:**
 - Increase `--max-context` for very long documents
 - Default 400k chars is proven reliable for most documents
+
+## Creating New Schemas (v2.0+)
+
+**REQUIRED $metadata structure:**
+1. `extraction.main_data_array` - Key for the array of items to extract
+2. `extraction.identifier_fields` - Fields used to identify each document
+3. `extraction.context_objects` - Metadata objects (optional but recommended)
+4. `consolidation.deduplication.key_fields` - Fields for deduplication
+
+**Steps:**
+1. Copy an existing schema from schemas/ as a template
+2. Modify the properties to match your document structure
+3. Update the $metadata section with correct field paths
+4. Validate: `pixi run streamline-extract validate-schema schemas/your_schema.json`
+5. Test on 1-2 documents before full batch
+
+**Example minimal valid schema:**
+```json
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$metadata": {
+    "domain": "Your Domain",
+    "version": "1.0.0",
+    "extraction": {
+      "main_data_array": "items",
+      "identifier_fields": ["metadata.id"],
+      "context_objects": ["metadata"]
+    },
+    "consolidation": {
+      "deduplication": {
+        "key_fields": ["name", "type"],
+        "ignore_fields": ["notes"]
+      }
+    }
+  },
+  "type": "object",
+  "properties": {
+    "metadata": {
+      "type": "object",
+      "properties": {
+        "id": {"type": "string"}
+      }
+    },
+    "items": {
+      "type": "array",
+      "items": {"type": "object"}
+    }
+  }
+}
+```
