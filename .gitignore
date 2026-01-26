@@ -83,21 +83,10 @@ temp/
 
 
 # ─────────────────────────────────────────────────────────────
-# Keep Empty Folders
+# Data Directories (Contains Large Files - Not Version Controlled)
 # ─────────────────────────────────────────────────────────
-!documents/.gitkeep
-!schemas/.gitkeep
+# User documents, validation data, and outputs should not be tracked
 documents/
 validation/
 scripts/
-
 tests/
-REFACTORING_PLAN.md
-DEVELOPMENT.md
-CLI_IMPROVEMENTS.md
-EXAMPLES.md
-PHASE_3_4_COMPLETION.md
-SCALABILITY_REFACTORING.md
-PROGRESS_UPDATE_2026-01-24.md
-.gitignore
-TEST_REPORT_2026-01-24.md
