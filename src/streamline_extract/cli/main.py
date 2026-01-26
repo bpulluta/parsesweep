@@ -1,9 +1,15 @@
-"""Command-line interface for StreamlineExtract."""
+"""
+Command-line interface for StreamlineExtract.
+
+Organizes commands into two categories:
+1. Core workflow (commands.py): process, validate, consolidate
+2. Utilities (utils_commands.py): init, preview, estimate, config, validate-schema
+"""
 
 import click
 
-from streamline_extract.cli.commands import extract, validate, consolidate
-from streamline_extract.cli.new_commands import (
+from streamline_extract.cli.commands import process, validate, consolidate
+from streamline_extract.cli.utils_commands import (
     init,
     preview,
     estimate,
@@ -18,7 +24,7 @@ def cli():
     """
     📄 StreamlineExtract
     
-    AI-powered extraction of structured data from PDF documents.
+    AI-powered extraction of structured data from documents.
     
     This tool helps you convert any PDF document into structured data
     that can be analyzed in spreadsheets or databases.
@@ -26,27 +32,27 @@ def cli():
     \b
     QUICK START:
         1. Put your PDF documents in a folder (e.g., documents/Category/)
-        2. Extract the data: streamline-extract extract documents/Category
-        3. Consolidate into a spreadsheet: streamline-extract consolidate extracted/Category
+        2. Process the data: streamline-extract process documents/Category
+        3. Consolidate into a spreadsheet: streamline-extract consolidate processed/Category
         4. Open the CSV file in Excel or Google Sheets!
     
     \b
     COMMON WORKFLOWS:
     
-        Extract a single document:
-        $ streamline-extract extract documents/Category/doc1.pdf
+        Process a single document:
+        $ streamline-extract process documents/Category/doc1.pdf
         
-        Extract all documents in a folder:
-        $ streamline-extract extract documents/Category
+        Process all documents in a folder:
+        $ streamline-extract process documents/Category
         
         Test with just 5 documents first:
-        $ streamline-extract extract documents/Category -n 5
+        $ streamline-extract process documents/Category -n 5
         
-        Consolidate extracted data into a spreadsheet:
-        $ streamline-extract consolidate extracted/Category
+        Consolidate processed data into a spreadsheet:
+        $ streamline-extract consolidate processed/Category
         
         Get Excel format output:
-        $ streamline-extract consolidate extracted/Category --format excel
+        $ streamline-extract consolidate processed/Category --format excel
     
     \b
     REQUIREMENTS:
@@ -56,7 +62,7 @@ def cli():
     
     \b
     NEED HELP?
-        • See command help: streamline-extract extract --help
+        • See command help: streamline-extract process --help
         • Documentation: https://github.com/bpulluta/StreamlineExtract
         • Issues: Create an issue on GitHub
     """
@@ -64,7 +70,7 @@ def cli():
 
 # Register commands
 cli.add_command(init)
-cli.add_command(extract)
+cli.add_command(process)
 cli.add_command(preview)
 cli.add_command(estimate)
 cli.add_command(validate)

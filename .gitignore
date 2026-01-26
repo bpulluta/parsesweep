@@ -55,7 +55,7 @@ Thumbs.db
 # ─────────────────────────────────────────────────────────
 # Output Files (can be regenerated)
 # ─────────────────────────────────────────────────────────
-extracted/
+processed/
 consolidated/
 data/
 outputs/
