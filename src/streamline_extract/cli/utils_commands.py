@@ -377,7 +377,7 @@ def estimate(documents_path: str, workers: int):
     # Confirmation prompt
     console.print()
     if ask_confirm("Proceed with extraction?", default=False):
-        console.print(f"\n[green]Run:[/green] [cyan]streamline-extract extract {docs_path}[/cyan]\n")
+        console.print(f"\n[green]Run:[/green] [cyan]streamline-extract process {docs_path}[/cyan]\n")
     else:
         console.print("[yellow]Operation cancelled[/yellow]\n")
 

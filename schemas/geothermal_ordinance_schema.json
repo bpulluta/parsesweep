@@ -12,6 +12,10 @@
       "document_type": "Geothermal Ordinance"
     },
     "consolidation": {
+      "normalization": {
+        "state_field": "State",
+        "description": "State names automatically normalized to 2-letter abbreviations (e.g., Utah→UT, New York→NY) during consolidation for consistent data analysis"
+      },
       "deduplication": {
         "key_fields": ["category", "specific_subject", "value", "condition"],
         "ignore_fields": ["notes", "section_number", "extracted_text"],
@@ -106,15 +110,15 @@
         },
         "date_adopted": {
           "type": ["string", "null"],
-          "description": "Date the ordinance was adopted/enacted/passed by the legislative body, exactly as written in the document (e.g., 'May 17, 2013', 'October 6, 2015', '10/6/2015'). Look for phrases like 'adopted on', 'enacted on', 'passed on', or dates in resolution headers. Null if not stated."
+          "description": "Date the ordinance was adopted/enacted/passed by the legislative body in YYYY-MM-DD format. Convert from any source format (e.g., 'May 17, 2013' → '2013-05-17', 'October 6, 2015' → '2015-10-06', '10/6/2015' → '2015-10-06'). Look for phrases like 'adopted on', 'enacted on', 'passed on', or dates in resolution headers. If year-only (e.g., '2015'), use 'YYYY-01-01' format. For descriptive dates (e.g., 'upon approval'), keep original text. Null if not stated."
         },
         "date_effective": {
           "type": ["string", "null"],
-          "description": "Date the ordinance became effective/applicable law, exactly as written in the document. This may differ from adoption date. Look for phrases like 'effective date', 'shall become effective on', 'in effect as of'. Null if not stated."
+          "description": "Date the ordinance became effective/applicable law in YYYY-MM-DD format. Convert from any source format to YYYY-MM-DD. This may differ from adoption date. Look for phrases like 'effective date', 'shall become effective on', 'in effect as of'. For descriptive effective dates (e.g., 'immediately upon adoption', 'upon Board approval'), keep original text as-is rather than converting. Null if not stated."
         },
         "date_last_amended": {
           "type": ["string", "null"],
-          "description": "Date of the most recent amendment to the ordinance, exactly as written in the document. Look for phrases like 'amended on', 'as amended', 'last revised'. Null if not stated or if no amendments."
+          "description": "Date of the most recent amendment to the ordinance in YYYY-MM-DD format. Convert from any source format (e.g., '1-29-2013' → '2013-01-29', 'January 29, 2013' → '2013-01-29'). Look for phrases like 'amended on', 'as amended', 'last revised'. Null if not stated or if no amendments."
         },
         "supersedes": {
           "type": ["string", "null"],

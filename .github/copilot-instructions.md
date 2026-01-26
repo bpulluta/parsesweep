@@ -5,6 +5,18 @@ StreamlineExtract is a universal document extraction system that uses LLMs to ex
 
 **Version 2.0+**: All schemas MUST include `$metadata` section. No heuristic fallbacks.
 
+## Documentation Policy
+
+**Repository Documentation:**
+- Main README.md in root (project overview, quick start)
+- schemas/ directory documentation (SCHEMA_BEST_PRACTICES.md)
+- .github/copilot-instructions.md (this file)
+
+**DO NOT commit:**
+- Detailed implementation docs, migration guides, progress reports
+- These should go in archive/ directory (gitignored) or issue tracker
+- Keep repo focused on user-facing docs and schema guidance
+
 ## Package Manager
 **ALWAYS use `pixi` for running commands, NOT pip or python directly.**
 
