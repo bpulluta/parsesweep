@@ -36,7 +36,7 @@ StreamlineExtract uses AI to extract structured data from documents and consolid
 - [Configuration](#configuration)
 - [Usage](#usage)
   - [Complete Workflow Example](#complete-workflow-example)
-  - [Extract Command](#extract-command)
+  - [Process Command](#process-command)
   - [Consolidate Command](#consolidate-command)
   - [Helper Commands](#helper-commands)
 - [Schemas](#schemas)
@@ -65,12 +65,12 @@ pixi run streamline-extract init
 # → Creates .env file with your credentials
 
 # 4. Extract data from documents to JSON
-pixi run streamline-extract extract documents/your_folder/
+pixi run streamline-extract process documents/your_folder/
 # → Automatically detects document type and schema
-# → Extracts structured data to extracted/your_folder/*.json
+# → Extracts structured data to processed/your_folder/*.json
 
 # 5. Consolidate JSON files to Excel/CSV
-pixi run streamline-extract consolidate extracted/your_folder/
+pixi run streamline-extract consolidate processed/your_folder/
 # → Merges all JSON files with smart deduplication
 # → Outputs to consolidated/your_folder/output.xlsx and .csv
 ```
@@ -172,15 +172,15 @@ pixi run streamline-extract estimate documents/tariffs/
 # → Shows: 15 documents, ~$2.50 estimated cost, ~5 minutes
 
 # 2. Extract data from documents
-pixi run streamline-extract extract documents/tariffs/ --live-dashboard
+pixi run streamline-extract process documents/tariffs/ --live-dashboard
 # → Processes each document with real-time progress
-# → Outputs: extracted/tariffs/doc1.json, doc2.json, ...
+# → Outputs: processed/tariffs/doc1.json, doc2.json, ...
 
 # 3. Review extracted data (optional)
-cat extracted/tariffs/sample_doc.json | head -50
+cat processed/tariffs/sample_doc.json | head -50
 
 # 4. Consolidate all JSON files
-pixi run streamline-extract consolidate extracted/tariffs/
+pixi run streamline-extract consolidate processed/tariffs/
 # → Merges all JSONs with smart deduplication
 # → Outputs: 
 #   - consolidated/tariffs/tariffs_consolidated.xlsx
@@ -190,16 +190,16 @@ pixi run streamline-extract consolidate extracted/tariffs/
 open consolidated/tariffs/tariffs_consolidated.xlsx
 ```
 
-### Extract Command
+### Process Command
 
-Extract structured data from documents to JSON files.
+Process documents and extract structured data to JSON files.
 
 **What it does:** Reads documents, sends content to AI with your schema, saves structured JSON responses.
 
 #### Basic Usage
 
 ```bash
-pixi run streamline-extract extract <input_directory>
+pixi run streamline-extract process <input_directory>
 ```
 
 #### Options
@@ -207,7 +207,7 @@ pixi run streamline-extract extract <input_directory>
 | Option | Description | Default |
 |--------|-------------|---------|
 | `--schema PATH` | Custom schema file | Auto-detected |
-| `--output PATH` | Output directory | `extracted/<input_name>/` |
+| `--output PATH` | Output directory | `processed/<input_name>/` |
 | `--max-context N` | Max characters per document | 400000 |
 | `--limit N` | Process only N files | All files |
 | `--enable-qa-qc` | Enable quality checks | Disabled |
@@ -221,19 +221,19 @@ pixi run streamline-extract extract <input_directory>
 
 ```bash
 # Basic extraction
-pixi run streamline-extract extract documents/contracts/
+pixi run streamline-extract process documents/contracts/
 
 # With custom schema
-pixi run streamline-extract extract documents/tariffs/ \
+pixi run streamline-extract process documents/tariffs/ \
   --schema schemas/electricity_tariff_schema.json
 
 # Large documents with live dashboard
-pixi run streamline-extract extract documents/reports/ \
+pixi run streamline-extract process documents/reports/ \
   --max-context 1400000 \
   --live-dashboard
 
 # Test run (limit to 3 files)
-pixi run streamline-extract extract documents/test/ --limit 3
+pixi run streamline-extract process documents/test/ --limit 3
 ```
 
 ### Consolidate Command
@@ -263,10 +263,10 @@ pixi run streamline-extract consolidate <extracted_directory>
 
 ```bash
 # Basic consolidation
-pixi run streamline-extract consolidate extracted/contracts/
+pixi run streamline-extract consolidate processed/contracts/
 
 # Custom output location
-pixi run streamline-extract consolidate extracted/tariffs/ \
+pixi run streamline-extract consolidate processed/tariffs/ \
   --output analysis/2026/tariffs/
 ```
 
@@ -395,15 +395,15 @@ StreamlineExtract automatically selects the right schema based on keywords in yo
 **Example:**
 ```bash
 # Automatically uses geothermal_ordinance_schema.json
-pixi run streamline-extract extract documents/geothermal_regulations/
+pixi run streamline-extract process documents/geothermal_regulations/
 
 # Automatically uses electricity_tariff_schema.json
-pixi run streamline-extract extract documents/utility_tariffs_2025/
+pixi run streamline-extract process documents/utility_tariffs_2025/
 ```
 
 To override auto-detection, use `--schema` flag:
 ```bash
-pixi run streamline-extract extract documents/my_docs/ \
+pixi run streamline-extract process documents/my_docs/ \
   --schema schemas/custom_schema.json
 ```
 
@@ -428,7 +428,7 @@ pixi run streamline-extract extract documents/my_docs/ \
 
 5. **Test on sample documents**:
    ```bash
-   pixi run streamline-extract extract documents/sample/ \
+   pixi run streamline-extract process documents/sample/ \
      --schema schemas/my_schema.json \
      --limit 2
    ```
@@ -443,10 +443,10 @@ See `schemas/SCHEMA_BEST_PRACTICES.md` for detailed guidance.
 
 ```bash
 # Extract requirements from municipal ordinances
-pixi run streamline-extract extract documents/geothermal_ordinances/
+pixi run streamline-extract process documents/geothermal_ordinances/
 
 # Consolidate to Excel
-pixi run streamline-extract consolidate extracted/geothermal_ordinances/
+pixi run streamline-extract consolidate processed/geothermal_ordinances/
 ```
 
 **Output**: Spreadsheet with jurisdiction, requirements, depth limits, setbacks, etc.
@@ -455,12 +455,12 @@ pixi run streamline-extract consolidate extracted/geothermal_ordinances/
 
 ```bash
 # Extract rate schedules from tariff documents
-pixi run streamline-extract extract documents/tariffs/ \
+pixi run streamline-extract process documents/tariffs/ \
   --schema schemas/electricity_tariff_schema.json \
   --max-context 1400000
 
 # Consolidate
-pixi run streamline-extract consolidate extracted/tariffs/
+pixi run streamline-extract consolidate processed/tariffs/
 ```
 
 **Output**: Spreadsheet with utilities, rate schedules, charges, demand rates, etc.
@@ -469,10 +469,10 @@ pixi run streamline-extract consolidate extracted/tariffs/
 
 ```bash
 # Extract generator specifications from permits
-pixi run streamline-extract extract documents/aq_permits/
+pixi run streamline-extract process documents/aq_permits/
 
 # Consolidate
-pixi run streamline-extract consolidate extracted/aq_permits/
+pixi run streamline-extract consolidate processed/aq_permits/
 ```
 
 **Output**: Spreadsheet with facilities, generators, capacities, emissions, etc.
@@ -490,19 +490,19 @@ cp schemas/journal_article_schema.json schemas/contracts.json
 pixi run streamline-extract validate-schema schemas/contracts.json
 
 # 4. Extract with custom schema
-pixi run streamline-extract extract documents/contracts/ \
+pixi run streamline-extract process documents/contracts/ \
   --schema schemas/contracts.json \
   --limit 2
 
 # 5. Review output
-cat extracted/contracts/*.json
+cat processed/contracts/*.json
 
 # 6. Process full batch
-pixi run streamline-extract extract documents/contracts/ \
+pixi run streamline-extract process documents/contracts/ \
   --schema schemas/contracts.json
 
 # 7. Consolidate
-pixi run streamline-extract consolidate extracted/contracts/
+pixi run streamline-extract consolidate processed/contracts/
 ```
 
 ---
@@ -521,7 +521,7 @@ pixi run streamline-extract --version
 pixi run streamline-extract config
 
 # 3. Test with a single file
-pixi run streamline-extract extract documents/test/ --limit 1 --verbose
+pixi run streamline-extract process documents/test/ --limit 1 --verbose
 ```
 
 ### Common Issues by Category
@@ -568,12 +568,12 @@ find documents/your_folder/ -type f
 **Solution**:
 ```bash
 # Explicitly specify schema
-pixi run streamline-extract extract documents/folder/ \
+pixi run streamline-extract process documents/folder/ \
   --schema schemas/your_schema.json
 
 # Or add keyword to path for auto-detection
 mv documents/folder documents/tariff_folder
-pixi run streamline-extract extract documents/tariff_folder/
+pixi run streamline-extract process documents/tariff_folder/
 ```
 
 #### Performance Issues
@@ -585,11 +585,11 @@ pixi run streamline-extract extract documents/tariff_folder/
 **Solution**:
 ```bash
 # Increase character limit
-pixi run streamline-extract extract documents/large_docs/ \
+pixi run streamline-extract process documents/large_docs/ \
   --max-context 1400000
 
 # For very large documents (tested up to 1.4M characters)
-pixi run streamline-extract extract documents/tariff_books/ \
+pixi run streamline-extract process documents/tariff_books/ \
   --max-context 1400000 \
   --live-dashboard
 ```
@@ -674,7 +674,7 @@ A: No! All commands are CLI-based. You only need to know basic terminal commands
 A: Yes, if you use the OpenAI-compatible API. Set `OPENAI_API_KEY` and `OPENAI_BASE_URL` in your `.env` file.
 
 **Q: How do I process documents larger than 400k characters?**  
-A: Use `--max-context` flag: `pixi run streamline-extract extract docs/ --max-context 1400000` (tested up to 1.4M characters).
+A: Use `--max-context` flag: `pixi run streamline-extract process docs/ --max-context 1400000` (tested up to 1.4M characters).
 
 **Q: Can I customize the output format?**  
 A: The consolidation outputs both Excel and CSV by default. You can further process these files with your preferred tools.
@@ -728,7 +728,7 @@ StreamlineExtract/
 ├── schemas/               # JSON schemas for extraction
 ├── tests/                 # Test suite
 ├── documents/             # Sample input documents (not in repo)
-├── extracted/             # Extraction output (auto-generated)
+├── processed/             # Extraction output (auto-generated)
 ├── consolidated/          # Final output (auto-generated)
 └── pixi.toml             # Dependencies and environment
 ```

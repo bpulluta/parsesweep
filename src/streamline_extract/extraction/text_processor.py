@@ -29,12 +29,13 @@ class TextProcessor:
         Returns:
             Tuple of (optimized_text, was_truncated)
         """
-        was_truncated = len(text) > self.max_chars
+        original_length = len(text)
+        was_truncated = original_length > self.max_chars
 
         if was_truncated:
             text = text[: self.max_chars]
             logger.warning(
-                f"Document truncated: {len(text):,} chars -> {self.max_chars:,} chars. "
+                f"Document truncated: {original_length:,} chars -> {self.max_chars:,} chars. "
                 f"Consider increasing max_context_chars if critical info is at end of document."
             )
 

@@ -1,4 +1,15 @@
-"""New CLI commands for StreamlineExtract (Phase 2)."""
+"""
+Utility CLI commands for StreamlineExtract.
+
+This module contains helper and setup commands:
+- init: Interactive project setup wizard
+- preview: Preview document before processing
+- estimate: Estimate cost and time for batch processing
+- validate_schema: Validate JSON schema files
+- config: Show current configuration
+
+For core workflow commands (process, consolidate), see commands.py
+"""
 
 import json
 import os
@@ -109,11 +120,11 @@ def init():
     
     project_root = Path.cwd()
     docs_dir = project_root / 'documents' / doc_type
-    extracted_dir = project_root / 'extracted' / doc_type
+    processed_dir = project_root / 'processed' / doc_type
     consolidated_dir = project_root / 'consolidated' / doc_type
     
     docs_dir.mkdir(parents=True, exist_ok=True)
-    extracted_dir.mkdir(parents=True, exist_ok=True)
+    processed_dir.mkdir(parents=True, exist_ok=True)
     consolidated_dir.mkdir(parents=True, exist_ok=True)
     
     print_success("Created directory structure:")
@@ -146,8 +157,8 @@ def init():
     print_success("Setup complete! 🎉")
     console.print("\n[bold]Next steps:[/bold]")
     console.print(f"  1. Add your documents to: [cyan]{docs_dir}[/cyan]")
-    console.print(f"  2. Run extraction: [green]streamline-extract extract {docs_dir}[/green]")
-    console.print(f"  3. Consolidate results: [green]streamline-extract consolidate {extracted_dir}[/green]")
+    console.print(f"  2. Run extraction: [green]streamline-extract process {docs_dir}[/green]")
+    console.print(f"  3. Consolidate results: [green]streamline-extract consolidate {processed_dir}[/green]")
     console.print()
 
 
@@ -255,7 +266,7 @@ def preview(document_path: str):
         console.print(f"[dim]{sample}...[/dim]\n")
         
         console.print("[bold green]Ready to extract?[/bold green]")
-        console.print(f"Run: [cyan]streamline-extract extract {doc_path}[/cyan]\n")
+        console.print(f"Run: [cyan]streamline-extract process {doc_path}[/cyan]\n")
         
     except Exception as e:
         print_error("Failed to analyze document", str(e))

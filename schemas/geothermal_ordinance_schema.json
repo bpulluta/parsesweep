@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$metadata": {
     "domain": "Energy - Geothermal Regulations",
-    "version": "1.0.0",
+    "version": "2.0.0",
     "description": "Extract regulatory requirements from geothermal ordinances",
     "extraction": {
       "main_data_array": "requirements",
@@ -13,7 +13,7 @@
     },
     "consolidation": {
       "deduplication": {
-        "key_fields": ["category", "details"],
+        "key_fields": ["category", "specific_subject", "value", "condition"],
         "ignore_fields": ["notes", "section_number", "extracted_text"],
         "strategy": "latest",
         "comparison_mode": "fuzzy"
@@ -23,12 +23,18 @@
         "column_order": [
           "state",
           "county",
+          "ordinance_code",
           "category",
+          "specific_subject",
+          "applies_to",
+          "value",
+          "value_type",
+          "unit",
+          "condition",
           "details",
-          "numeric_value",
-          "unit"
+          "section"
         ],
-        "freeze_columns": 2,
+        "freeze_columns": 3,
         "auto_width": true
       }
     },
@@ -98,7 +104,7 @@
     },
     "requirements": {
       "type": "array",
-      "description": "Regulatory requirements applicable to geothermal electricity facilities. One entry per unique requirement. CRITICAL FILTERING: DO NOT add any requirement to this array if it mentions 'solar', 'wind', 'biomass', or other non-geothermal technologies in the ordinance text. Before adding each requirement, verify that it applies specifically to geothermal (not general 'renewable energy'). If uncertain whether a requirement is geothermal-specific, DO NOT extract it.",
+      "description": "Regulatory requirements applicable to geothermal electricity facilities. CRITICAL EXTRACTION RULES: (1) ONE-TO-MANY RULE: When a single regulation applies to multiple subjects/boundaries/entities, create SEPARATE rows for each. Example: 'Setback from property lines, roads, and water bodies shall be 100 feet' → Create 3 rows with different specific_subject values but same value. (2) ALTERNATIVE VALUES RULE: When a regulation offers multiple options (either/or scenarios), create separate rows for each option, marking each with value_type='alternative_option'. Example: '$50k per well OR $150k blanket bond' → 2 rows with different specific_subject and value fields. (3) CRITICAL FILTERING: DO NOT extract requirements mentioning 'solar', 'wind', 'biomass', or other non-geothermal technologies. Verify each requirement applies specifically to geothermal.",
       "items": {
         "type": "object",
         "additionalProperties": false,
@@ -106,25 +112,15 @@
         "properties": {
           "category": {
             "type": "string",
-            "description": "Type of regulatory requirement. Use clear, descriptive language based on the ordinance text. For setbacks, use pattern 'Setback from [what]' (e.g., 'Setback from residence', 'Setback from airport'). For other requirements, describe what is regulated (e.g., 'Noise limit during drilling', 'Height limit for power plant'). The examples below are common patterns - adapt them to match the actual ordinance language.",
+            "description": "Broad type of regulatory requirement. Use general, reusable categories. For setbacks, use 'Setback' (not 'Setback from X' - that goes in specific_subject). For limits, use 'Height limit', 'Noise limit', etc. The category should be generic enough that similar requirements across jurisdictions share the same category value, enabling cross-jurisdiction comparison.",
             "examples": [
-              "Setback from residence",
-              "Setback from property line",
-              "Setback from school",
-              "Setback from hospital",
-              "Setback from airport",
-              "Setback from waterway",
-              "Setback from well",
-              "Noise limit during drilling",
-              "Noise limit during operations",
-              "Noise limit at property line",
+              "Setback",
+              "Noise limit",
               "Height limit",
-              "Height limit for structures",
               "Lot size minimum",
               "Fencing required",
               "Visual screening required",
               "Working hours restricted",
-              "Working hours during construction",
               "Operating hours",
               "Decommissioning required",
               "Performance bond required",
@@ -140,6 +136,30 @@
               "Safety equipment required",
               "Signage required",
               "Reclamation required"
+            ]
+          },
+          "specific_subject": {
+            "type": ["string", "null"],
+            "description": "The specific target, boundary, scope, or condition that this requirement applies to. This field enables creating multiple rows from a single regulation. EXAMPLES: For setbacks → 'from property line', 'from public road right-of-way', 'from residential structures', 'from water bodies'. For bonds → 'per well', 'blanket bond for all wells'. For height limits → 'cooling tower', 'wellhead structure', 'transmission tower'. For noise limits → 'at property line', 'at nearest residence'. For time-based requirements → 'during construction', 'during operations', 'daytime hours', 'nighttime hours'. RULE: When one regulation mentions multiple subjects (e.g., 'setback from property lines, roads, and tanks'), create separate rows with different specific_subject values ('from property line', 'from public road right-of-way', 'from tanks containing flammable liquids'). Set to null if the requirement has no specific sub-categorization.",
+            "examples": [
+              "from property line",
+              "from public road right-of-way",
+              "from residential structures",
+              "from water bodies",
+              "from wells",
+              "from schools",
+              "from hospitals",
+              "per well",
+              "blanket bond for all wells",
+              "cooling tower",
+              "wellhead structure",
+              "at property line",
+              "at nearest residence",
+              "during construction",
+              "during operations",
+              "daytime hours",
+              "nighttime hours",
+              null
             ]
           },
           "applies_to": {
@@ -166,27 +186,46 @@
           },
           "value": {
             "type": ["number", "string", "null"],
-            "description": "The primary quantifiable value extracted from the requirement. EXTRACTION RULES: (1) For numeric requirements → Extract the number without units (e.g., '1320 feet' → 1320). (2) For time ranges → Extract the full range as string (e.g., '7 a.m. to 7 p.m.' or '7 AM - 7 PM'). (3) For yes/no requirements → Extract 'Yes' if requirement exists, describe the answer if it's a specific value (e.g., 'Required', 'Mandatory', 'Not permitted'). (4) For decimal values → Preserve as number or string (0.5). (5) Only use null if the requirement is pure procedural text with no extractable quantifiable element. REMEMBER: This field enables quantitative analysis - extract the KEY value that makes the requirement measurable/comparable across jurisdictions.",
+            "description": "The primary quantifiable value extracted from the requirement. EXTRACTION RULES: (1) FIXED NUMBERS: For simple numeric requirements, extract the number without units (e.g., '1320 feet' → 1320, value_type='fixed_number'). (2) FORMULAS: For calculated values, extract the complete formula as a string (e.g., '1.5 times the total height of its tallest cooling tower or highest structure', value_type='formula'). Do NOT attempt to calculate or simplify formulas. (3) RANGES: For ranges, extract as string (e.g., '100-500 feet', '7 a.m. to 7 p.m.', value_type='range'). (4) YES/NO: Extract 'Required', 'Mandatory', 'Prohibited', 'Not permitted' as appropriate. (5) ALTERNATIVES: When regulation offers either/or options, create separate rows with different values and value_type='alternative_option'. (6) Use null only if the requirement is pure procedural text with no extractable quantifiable element.",
             "examples": [
               1320,
               100,
               65,
               0.5,
+              "1.5 times the total height of its tallest cooling tower or highest structure",
+              "2 times the height but not less than 500 feet",
+              "100-500",
               "7 a.m. to 7 p.m.",
               "7 AM - 7 PM",
-              "Yes",
               "Required",
               "Mandatory",
+              "Prohibited",
               "Not permitted",
               50000,
+              150000,
               "24 hours a day",
               "one year",
               null
             ]
           },
+          "value_type": {
+            "type": ["string", "null"],
+            "description": "Categorizes how the value should be interpreted. TYPES: 'fixed_number' = simple numeric value (default, can be null); 'formula' = calculated value with variables (e.g., '2x height'); 'range' = min-max or time range; 'alternative_option' = one of multiple either/or choices in the regulation; 'tiered' = value varies by facility size/capacity/other factor; 'minimum' = explicitly a floor; 'maximum' = explicitly a ceiling. USE CASES: (1) Set to 'formula' when value contains calculations like 'X times Y' or 'X% of Y'. (2) Set to 'alternative_option' when the regulation says 'either X or Y' - create separate rows for each option. (3) Set to 'tiered' when requirements vary by conditions (pair with 'condition' field). (4) Set to null or 'fixed_number' for straightforward numeric values.",
+            "enum": ["fixed_number", "formula", "range", "alternative_option", "tiered", "minimum", "maximum", null],
+            "examples": [
+              "fixed_number",
+              "formula",
+              "range",
+              "alternative_option",
+              "tiered",
+              "minimum",
+              "maximum",
+              null
+            ]
+          },
           "unit": {
             "type": ["string", "null"],
-            "description": "Unit of measurement SPELLED OUT in full words - NEVER use symbols or abbreviations unless standard. EXTRACTION RULES: (1) For distances → Use 'feet' not \"'\" or \"′\", 'meters' not 'm', 'mile' not 'mi'. (2) For noise → Use 'dBA' (standard abbreviation OK). (3) For area → Use 'acres' or 'square feet' spelled out. (4) For currency → Use 'USD' or '$' as written. (5) For time periods → Spell out (e.g., 'days', 'calendar days', 'years'). (6) Use null if: value is null, value is yes/no, or value is a time range. CRITICAL: If document shows \"'\", \"′\", or \"ft\" → extract as 'feet'. If document shows '\"' or \"″\" → extract as 'inches'.",
+            "description": "Unit of measurement SPELLED OUT in full words - NEVER use symbols or abbreviations unless standard. EXTRACTION RULES: (1) For distances → Use 'feet' not \"'\" or \"′\", 'meters' not 'm', 'mile' not 'mi'. (2) For noise → Use 'dBA' (standard abbreviation OK). (3) For area → Use 'acres' or 'square feet' spelled out. (4) For currency → Use 'USD' or '$' as written. (5) For time periods → Spell out (e.g., 'days', 'calendar days', 'years'). (6) Use null if: value is null, value is yes/no, value is a time range, or value_type is 'formula' (formula expressions include their own units). CRITICAL: If document shows \"'\", \"′\", or \"ft\" → extract as 'feet'. If document shows '\"' or \"″\" → extract as 'inches'.",
             "examples": [
               "feet",
               "meters",
@@ -201,6 +240,27 @@
               "USD",
               "$",
               "$/well",
+              null
+            ]
+          },
+          "condition": {
+            "type": ["string", "null"],
+            "description": "Additional qualifying conditions that modify when or how the requirement applies. Captures temporal, spatial, capacity-based, or other contextual constraints. EXAMPLES: Temporal → 'during daytime hours (7 AM - 7 PM)', 'during construction phase', 'during nighttime hours'. Capacity-based → 'for facilities exceeding 25 MW', 'for first 10 MW of capacity', 'if total site area exceeds 100 acres'. Spatial → 'when located within 1 mile of residential areas', 'except in industrial zones', 'in agricultural districts'. Equipment-specific → 'during drilling operations', 'while turbines are operating'. Alternative scopes → 'for each well drilled or abandoned well re-entered', 'for any number of wells drilled or re-entered'. RULE: Use this field to capture the qualifying context that distinguishes otherwise similar requirements. For tiered or alternative_option value_type, this field should specify the tier/option criteria. Set to null if the requirement has no additional conditions.",
+            "examples": [
+              "during daytime hours (7 AM - 7 PM)",
+              "during nighttime hours",
+              "during construction phase",
+              "during operations",
+              "for facilities exceeding 25 MW",
+              "for facilities under 10 MW",
+              "for first 10 MW of capacity",
+              "when located within 1 mile of residential areas",
+              "except in industrial zones",
+              "in agricultural districts",
+              "during drilling operations",
+              "for each well drilled or abandoned well re-entered",
+              "for any number of wells drilled or re-entered",
+              "if total site area exceeds 100 acres",
               null
             ]
           },

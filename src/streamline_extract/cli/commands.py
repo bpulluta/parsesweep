@@ -1,4 +1,13 @@
-"""CLI commands for StreamlineExtract toolkit."""
+"""
+Core workflow CLI commands for StreamlineExtract.
+
+This module contains the main data processing pipeline commands:
+- process: Extract structured data from documents to JSON
+- validate: Validate extraction results against schema
+- consolidate: Merge JSON files into Excel/CSV
+
+For utility commands (init, preview, estimate, etc.), see utils_commands.py
+"""
 
 import json
 import logging
@@ -112,37 +121,37 @@ def validate_path_structure(path: Path, expected_content: str = "PDFs") -> Tuple
 @click.option('--verbose', '-v', is_flag=True, help='Detailed output with statistics')
 @click.option('--debug', is_flag=True, help='Debug mode with full logs')
 @click.option('--live-dashboard', is_flag=True, help='Show live dashboard during extraction')
-def extract(path: str, output: Optional[str], schema: Optional[str], state: Optional[str],
+def process(path: str, output: Optional[str], schema: Optional[str], state: Optional[str],
             model: str, enable_qa_qc: bool, use_azure: Optional[bool], limit: Optional[int], 
             skip_existing: bool, max_context: int, quiet: bool, verbose: bool, debug: bool, live_dashboard: bool):
     """
-    Extract structured data from PDF documents.
+    Process documents and extract structured data.
     
     This command reads PDF documents and extracts structured information
     based on a JSON schema. Works with any document type (permits, ordinances, regulations, etc.).
     
     The output will be saved as JSON files in a parallel folder structure.
-    For example: documents/Category/ → extracted/Category/
+    For example: documents/Category/ → processed/Category/
     
     \b
     EXAMPLES:
-        # Extract using default schema
-        streamline-extract extract documents/Category/doc1.pdf
+        # Process using default schema
+        streamline-extract process documents/Category/doc1.pdf
         
-        # Extract with a specific schema (e.g., geothermal ordinances)
-        streamline-extract extract documents/Ordinances --schema schemas/geothermal_ordinance_schema.json
+        # Process with a specific schema (e.g., geothermal ordinances)
+        streamline-extract process documents/Ordinances --schema schemas/geothermal_ordinance_schema.json
         
-        # Extract all documents in a directory
-        streamline-extract extract documents/Category
+        # Process all documents in a directory
+        streamline-extract process documents/Category
         
-        # Extract just the first 5 documents (useful for testing)
-        streamline-extract extract documents/Category -n 5
+        # Process just the first 5 documents (useful for testing)
+        streamline-extract process documents/Category -n 5
         
         # Use Azure OpenAI (if you have Azure credits)
-        streamline-extract extract documents/Category --use-azure
+        streamline-extract process documents/Category --use-azure
         
-        # Reprocess files that were already extracted
-        streamline-extract extract documents/Category --reprocess
+        # Reprocess files that were already processed
+        streamline-extract process documents/Category --reprocess
     
     \b
     REQUIREMENTS:
@@ -244,30 +253,30 @@ def extract(path: str, output: Optional[str], schema: Optional[str], state: Opti
         state = state or path.parent.name
     
     # Setup output directory - CLEAN parallel structure
-    # documents/category/ → extracted/category/
+    # documents/category/ → processed/category/
     if output:
         output_dir = Path(output)
     elif is_dir:
-        # Replace 'documents' with 'extracted' at project root level
+        # Replace 'documents' with 'processed' at project root level
         parts = list(path.parts)
         if 'documents' in parts:
             idx = parts.index('documents')
-            parts[idx] = 'extracted'
+            parts[idx] = 'processed'
             output_dir = Path(*parts)
         else:
-            # Fallback: create in project root extracted/
+            # Fallback: create in project root processed/
             project_root = Path.cwd()
-            output_dir = project_root / 'extracted' / path.name
+            output_dir = project_root / 'processed' / path.name
     else:
         # Single file: parent directory logic
         parts = list(path.parent.parts)
         if 'documents' in parts:
             idx = parts.index('documents')
-            parts[idx] = 'extracted'
+            parts[idx] = 'processed'
             output_dir = Path(*parts)
         else:
             project_root = Path.cwd()
-            output_dir = project_root / 'extracted' / path.parent.name
+            output_dir = project_root / 'processed' / path.parent.name
     
     output_dir.mkdir(parents=True, exist_ok=True)
     
@@ -756,8 +765,8 @@ def validate(extraction_file: str, verbose: bool, show_data: bool):
     
     \b
     EXAMPLES:
-        streamline-extract validate extracted/data/doc.json
-        streamline-extract validate extracted/data/doc.json --show-data
+        streamline-extract validate processed/data/doc.json
+        streamline-extract validate processed/data/doc.json --show-data
     """
     from streamline_extract.cli.ui import display_json
     
@@ -824,13 +833,13 @@ def consolidate(extracted_dir: str, output: Optional[str]):
     \b
     EXAMPLES:
         # Consolidate geothermal ordinances
-        streamline-extract consolidate extracted/geothermal_ordinances
+        streamline-extract consolidate processed/geothermal_ordinances
         
         # Consolidate utility tariffs
-        streamline-extract consolidate extracted/tariffs
+        streamline-extract consolidate processed/tariffs
         
         # Specify custom output directory
-        streamline-extract consolidate extracted/data --output my_analysis/
+        streamline-extract consolidate processed/data --output my_analysis/
     
     \b
     OUTPUT:
@@ -844,13 +853,13 @@ def consolidate(extracted_dir: str, output: Optional[str]):
     config = get_config()
     
     # Set up output directory - CLEAN structure
-    # extracted/category/ → consolidated/category/
+    # processed/category/ → consolidated/category/
     if output:
         output_dir = Path(output)
     else:
         parts = list(input_dir.parts)
-        if 'extracted' in parts:
-            idx = parts.index('extracted')
+        if 'processed' in parts:
+            idx = parts.index('processed')
             parts[idx] = 'consolidated'
             output_dir = Path(*parts)
         else:

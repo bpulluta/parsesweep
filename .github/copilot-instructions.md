@@ -10,21 +10,21 @@ StreamlineExtract is a universal document extraction system that uses LLMs to ex
 
 ## Standard Commands
 
-### Document Extraction
+### Document Processing
 
-**Basic extraction (single file or directory):**
+**Basic processing (single file or directory):**
 ```bash
-pixi run streamline-extract extract documents/path/
+pixi run streamline-extract process documents/path/
 ```
 
 **Geothermal ordinances extraction:**
 ```bash
-pixi run streamline-extract extract documents/geothermal_ordinances/
+pixi run streamline-extract process documents/geothermal_ordinances/
 ```
 
 **Tariff extraction (with custom schema and max context):**
 ```bash
-pixi run streamline-extract extract documents/tariffs/ --schema schemas/electricity_tariff_schema.json --output extracted/tariffs --max-context 1400000
+pixi run streamline-extract process documents/tariffs/ --schema schemas/electricity_tariff_schema.json --output processed/tariffs --max-context 1400000
 ```
 
 **Key options:**
@@ -39,13 +39,13 @@ pixi run streamline-extract extract documents/tariffs/ --schema schemas/electric
 
 **Consolidate extracted JSONs to Excel/CSV:**
 ```bash
-pixi run streamline-extract consolidate extracted/geothermal_ordinances
-pixi run streamline-extract consolidate extracted/tariffs
+pixi run streamline-extract consolidate processed/geothermal_ordinances
+pixi run streamline-extract consolidate processed/tariffs
 ```
 
 **With custom output:**
 ```bash
-pixi run streamline-extract consolidate extracted/data --output my_analysis/
+pixi run streamline-extract consolidate processed/data --output my_analysis/
 ```
 
 **Outputs:**
@@ -82,7 +82,7 @@ StreamlineExtract/
 ├── schemas/                # JSON schemas
 │   ├── electricity_tariff_schema.json
 │   └── geothermal_ordinance_schema_streamlined.json
-├── extracted/              # Raw JSON extractions
+├── processed/              # Raw JSON extractions
 │   ├── geothermal_ordinances/
 │   └── tariffs/
 ├── consolidated/           # Final Excel/CSV outputs
@@ -104,24 +104,24 @@ StreamlineExtract/
 
 ## Common Workflows
 
-### Full Pipeline (Extract → Consolidate)
+### Full Pipeline (Process → Consolidate)
 ```bash
 # 1. Clear old data (optional)
-rm -rf extracted/category/* consolidated/category/*
+rm -rf processed/category/* consolidated/category/*
 
-# 2. Extract
-pixi run streamline-extract extract documents/category/
+# 2. Process documents
+pixi run streamline-extract process documents/category/
 
 # 3. Consolidate
-pixi run streamline-extract consolidate extracted/category/
+pixi run streamline-extract consolidate processed/category/
 ```
 
 ### Large Document Processing
 For documents like complete tariff books:
 ```bash
-pixi run streamline-extract extract documents/tariffs/ \
+pixi run streamline-extract process documents/tariffs/ \
   --schema schemas/electricity_tariff_schema.json \
-  --output extracted/tariffs \
+  --output processed/tariffs \
   --max-context 1400000
 ```
 
