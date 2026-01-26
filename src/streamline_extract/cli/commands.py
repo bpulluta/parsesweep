@@ -171,6 +171,16 @@ def process(path: str, output: Optional[str], schema: Optional[str], state: Opti
     else:
         VERBOSITY = 'normal'
     
+    # Configure logging level based on verbosity
+    if VERBOSITY == 'quiet':
+        logging.basicConfig(level=logging.ERROR, format='%(message)s')
+    elif VERBOSITY == 'debug':
+        logging.basicConfig(level=logging.DEBUG, format='%(levelname)s: %(message)s')
+    elif VERBOSITY == 'verbose':
+        logging.basicConfig(level=logging.INFO, format='%(message)s')
+    else:  # normal
+        logging.basicConfig(level=logging.WARNING, format='%(message)s')
+    
     # Load environment variables from .env file
     load_dotenv()
     
@@ -373,10 +383,15 @@ def process(path: str, output: Optional[str], schema: Optional[str], state: Opti
     if VERBOSITY != 'quiet':
         print_header("DOCUMENT EXTRACTION")
         
-        # Build configuration display
+        # Build configuration display - use relative paths where possible
+        try:
+            rel_input = path.relative_to(Path.cwd())
+            input_display = str(rel_input)
+        except ValueError:
+            input_display = str(path)
+        
         config_info = {
-            "State": state,
-            "Input": str(path),
+            "Input": input_display,
             "Files": f"{len(doc_files)} document{'s' if len(doc_files) != 1 else ''}",
         }
         
@@ -395,7 +410,13 @@ def process(path: str, output: Optional[str], schema: Optional[str], state: Opti
         config_info["Model"] = model_display
         config_info["Provider"] = provider_name
         config_info["QA/QC"] = "Enabled" if enable_qa_qc else "Disabled"
-        config_info["Output"] = str(output_dir.absolute())
+        
+        # Show relative path for output
+        try:
+            rel_output = output_dir.relative_to(Path.cwd())
+            config_info["Output"] = str(rel_output)
+        except ValueError:
+            config_info["Output"] = str(output_dir)
     
     # Load schema - auto-detect or use specified
     if schema:
@@ -595,10 +616,15 @@ def process(path: str, output: Optional[str], schema: Optional[str], state: Opti
     # Use progress bar for multiple files, simple output for single file
     elif len(doc_files) > 1 and VERBOSITY != 'quiet':
         progress = create_extraction_progress()
-        task = progress.add_task(f"Extracting {len(doc_files)} documents...", total=len(doc_files))
+        # Start with first document name instead of generic "Extracting..." message
+        task = progress.add_task(doc_files[0].name, total=len(doc_files))
         
         with progress:
-            for doc_path in doc_files:
+            for idx, doc_path in enumerate(doc_files):
+                # Update progress description to show current document (skip first since already set)
+                if idx > 0:
+                    progress.update(task, description=doc_path.name)
+                
                 try:
                     # Extract text from document (supports PDF, DOCX, TXT, XLSX, CSV)
                     text = extract_text_from_document(doc_path)

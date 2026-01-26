@@ -23,6 +23,9 @@
         "column_order": [
           "utility_name",
           "state",
+          "tariff_book_name",
+          "effective_date",
+          "revision_date",
           "rate_name",
           "charge_type",
           "rate",
@@ -88,6 +91,22 @@
         "tariff_book_name": {
           "type": ["string", "null"],
           "description": "Tariff book name exactly as written (e.g., 'COLO. PUC No. 8 Electric'). Null if not specified."
+        },
+        "effective_date": {
+          "type": ["string", "null"],
+          "description": "Date this tariff became effective/applicable, exactly as written in the document (e.g., 'January 1, 2024', '01/01/2024', 'Effective 1-1-24'). Look for phrases like 'effective date', 'effective as of', 'rates effective'. Null if not stated."
+        },
+        "revision_date": {
+          "type": ["string", "null"],
+          "description": "Date of the most recent revision to this tariff book, exactly as written. Look for phrases like 'revised', 'last updated', 'revision date'. Null if not stated."
+        },
+        "filing_date": {
+          "type": ["string", "null"],
+          "description": "Date filed with regulatory authority, exactly as written. Look for phrases like 'filed on', 'date filed', 'filing date'. Null if not stated."
+        },
+        "supersedes": {
+          "type": ["string", "null"],
+          "description": "Previous tariff book or sheet that this replaces, exactly as written (e.g., 'Supersedes Sheet No. 45', 'Replaces COLO. PUC No. 7'). Null if not stated."
         },
         "service_area": {
           "type": ["string", "null"],

@@ -349,6 +349,111 @@ Use the same fields across all items in an array.
 ]
 ```
 
+---
+
+## Temporal Metadata Best Practices
+
+**Why it matters:** Most documents have a critical time dimension - when they were enacted, when they're effective, when they expire. Without temporal metadata, you can't determine if data is current, track changes over time, or perform temporal analysis.
+
+### Common Temporal Fields by Document Type
+
+| Document Type | Critical Temporal Fields |
+|---------------|--------------------------|
+| **Ordinances/Regulations** | `date_adopted`, `date_effective`, `date_last_amended`, `supersedes` |
+| **Permits** | `permit_issuance_date`, `permit_expiration_date`, `renewal_date` |
+| **Tariffs/Rate Schedules** | `effective_date`, `revision_date`, `filing_date`, `supersedes` |
+| **Journal Articles** | `publication_date`, `received_date`, `revised_date`, `accepted_date` |
+| **Financial Filings** | `filing_date`, `fiscal_year_end`, `period_start`, `period_end` |
+| **Contracts** | `execution_date`, `effective_date`, `expiration_date`, `renewal_date` |
+
+### Design Recommendations
+
+**1. Place in context objects** - Temporal fields typically describe the document, not individual data items, so include them in context objects (metadata, jurisdiction, utility_info, etc.)
+
+**2. Allow as-written formats** - Documents use varied date formats. Capture exactly as written for accuracy:
+```json
+"date_adopted": {
+  "type": ["string", "null"],
+  "description": "Date adopted, exactly as written (e.g., 'May 17, 2013', '10/6/2015')"
+}
+```
+
+**3. Make fields nullable** - Not all documents state all dates explicitly:
+```json
+"type": ["string", "null"],
+"description": "... Null if not stated."
+```
+
+**4. Include in column_order** - Place temporal fields early in Excel output for visibility:
+```json
+"column_order": [
+  "utility_name",
+  "state",
+  "effective_date",
+  "revision_date",
+  "rate_name",
+  ...
+]
+```
+
+**5. Provide extraction guidance** - Help the LLM find temporal information:
+```json
+"description": "Date the ordinance became effective, exactly as written. Look for phrases like 'effective date', 'shall become effective on', 'in effect as of'. Null if not stated."
+```
+
+### Example: Ordinance Schema
+
+```json
+{
+  "jurisdiction": {
+    "type": "object",
+    "properties": {
+      "state": {"type": "string"},
+      "county": {"type": "string"},
+      "ordinance_code": {"type": ["string", "null"]},
+      "date_adopted": {
+        "type": ["string", "null"],
+        "description": "Date adopted by legislative body, exactly as written (e.g., 'May 17, 2013'). Look for 'adopted on', 'enacted on', 'passed on'. Null if not stated."
+      },
+      "date_effective": {
+        "type": ["string", "null"],
+        "description": "Date became law, exactly as written. Look for 'effective date', 'shall become effective on'. Null if not stated."
+      },
+      "date_last_amended": {
+        "type": ["string", "null"],
+        "description": "Most recent amendment date. Look for 'amended on', 'as amended', 'last revised'. Null if not stated."
+      },
+      "supersedes": {
+        "type": ["string", "null"],
+        "description": "Previous ordinance this replaces. Look for 'replaces', 'supersedes', 'repeals and replaces'. Null if not stated."
+      }
+    }
+  }
+}
+```
+
+### When to Use Structured vs As-Written Dates
+
+**Structured (YYYY-MM-DD):**
+- ✅ When dates are consistently formatted in source documents
+- ✅ When downstream analysis requires date arithmetic
+- ✅ For permits, filings with standardized formats
+- Example: `"permit_issuance_date": "2024-01-15"`
+
+**As-Written:**
+- ✅ When date formats vary widely across documents
+- ✅ When preserving exact source text is important
+- ✅ For ordinances, legal documents with varied formats
+- Example: `"date_adopted": "May 17, 2013"`
+
+**Hybrid Approach:**
+```json
+"effective_date_raw": "January 1st, 2024",
+"effective_date_normalized": "2024-01-01"
+```
+
+---
+
 ### For Qualitative/Contextual Data
 
 **Goal:** Readable summaries
