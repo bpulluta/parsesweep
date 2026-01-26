@@ -17,7 +17,7 @@
         "description": "State names automatically normalized to 2-letter abbreviations (e.g., California→CA, New York→NY) during consolidation for consistent data analysis"
       },
       "deduplication": {
-        "key_fields": ["rate_name", "charge_type", "season", "time_period"],
+        "key_fields": ["rate_name", "charge_type", "charge_description", "season", "time_period"],
         "ignore_fields": ["notes", "tariff_location", "extracted_text"],
         "strategy": "latest",
         "comparison_mode": "exact"
