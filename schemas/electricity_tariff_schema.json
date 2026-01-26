@@ -12,6 +12,10 @@
       "document_type": "Utility Tariff"
     },
     "consolidation": {
+      "normalization": {
+        "state_field": "State",
+        "description": "State names automatically normalized to 2-letter abbreviations (e.g., California→CA, New York→NY) during consolidation for consistent data analysis"
+      },
       "deduplication": {
         "key_fields": ["rate_name", "charge_type", "season", "time_period"],
         "ignore_fields": ["notes", "tariff_location", "extracted_text"],
@@ -94,15 +98,15 @@
         },
         "effective_date": {
           "type": ["string", "null"],
-          "description": "Date this tariff became effective/applicable, exactly as written in the document (e.g., 'January 1, 2024', '01/01/2024', 'Effective 1-1-24'). Look for phrases like 'effective date', 'effective as of', 'rates effective'. Null if not stated."
+          "description": "Date this tariff became effective/applicable in YYYY-MM-DD format. Convert from any source format (e.g., 'January 1, 2024' → '2024-01-01', '01/01/2024' → '2024-01-01', 'Effective 1-1-24' → '2024-01-01'). Look for phrases like 'effective date', 'effective as of', 'rates effective'. Null if not stated."
         },
         "revision_date": {
           "type": ["string", "null"],
-          "description": "Date of the most recent revision to this tariff book, exactly as written. Look for phrases like 'revised', 'last updated', 'revision date'. Null if not stated."
+          "description": "Date of the most recent revision to this tariff book in YYYY-MM-DD format. Convert from any source format to YYYY-MM-DD. Look for phrases like 'revised', 'last updated', 'revision date'. Null if not stated."
         },
         "filing_date": {
           "type": ["string", "null"],
-          "description": "Date filed with regulatory authority, exactly as written. Look for phrases like 'filed on', 'date filed', 'filing date'. Null if not stated."
+          "description": "Date filed with regulatory authority in YYYY-MM-DD format. Convert from any source format to YYYY-MM-DD. Look for phrases like 'filed on', 'date filed', 'filing date'. Null if not stated."
         },
         "supersedes": {
           "type": ["string", "null"],

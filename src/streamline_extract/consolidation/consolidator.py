@@ -14,6 +14,7 @@ from .deduplicator import Deduplicator
 from .excel_formatter import ExcelFormatter
 from .csv_exporter import CsvExporter
 from ..utils.exceptions import SchemaMetadataError
+from ..utils.normalizers import normalize_state_column
 
 
 class Consolidator:
@@ -129,6 +130,10 @@ class Consolidator:
         # Create DataFrame and deduplicate
         df = pd.DataFrame(rows)
         df = self.flattener.normalize_units(df)
+        
+        # Normalize state names to 2-letter abbreviations for consistency
+        normalize_state_column(df, "State")
+        
         df = self.deduplicator.deduplicate(df)
         
         return df, self.schema_info

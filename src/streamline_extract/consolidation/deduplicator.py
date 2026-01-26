@@ -44,10 +44,11 @@ class Deduplicator:
     
     def deduplicate(self, df: pd.DataFrame) -> pd.DataFrame:
         """
-        Remove duplicate rows using all columns except metadata.
+        Remove duplicate rows using key_fields from schema metadata.
         
-        Only removes rows that are truly identical in all identifying fields.
-        Excludes metadata columns (Notes, section references, etc.) from comparison.
+        Uses schema-defined key_fields to identify duplicates. Two rows are
+        duplicates if they match on all key_fields, regardless of differences
+        in other fields (like State formatting, Section references, etc.).
         
         Args:
             df: DataFrame to deduplicate
@@ -56,7 +57,7 @@ class Deduplicator:
             DataFrame with duplicates removed
             
         Example:
-            >>> dedup = Deduplicator()
+            >>> dedup = Deduplicator(schema_metadata)
             >>> clean_df = dedup.deduplicate(df)
         """
         if df.empty:
@@ -66,15 +67,18 @@ class Deduplicator:
         if 'Notes' not in df.columns:
             df['Notes'] = ''
         
-        # Exclude metadata/non-identifying columns from duplicate detection
-        # These are added by consolidator or are references, not identifying data
-        exclude_cols = self._get_metadata_columns(df)
+        # Get key fields from schema metadata (v2.0+ requirement)
+        key_fields = self.schema_metadata.get_deduplication_key_fields()
         
-        # Use all other columns for duplicate detection
-        compare_cols = [col for col in df.columns if col not in exclude_cols]
+        if not key_fields:
+            print("  ⚠ No key_fields defined in schema - skipping deduplication")
+            return df
+        
+        # Map schema key_fields to actual DataFrame columns (case-insensitive)
+        compare_cols = self._map_key_fields_to_columns(df, key_fields)
         
         if not compare_cols:
-            print("  ✓ No duplicates found")
+            print(f"  ⚠ None of the key_fields {key_fields} found in DataFrame - skipping deduplication")
             return df
         
         # Find exact duplicates (all compare columns must match)
@@ -95,6 +99,46 @@ class Deduplicator:
             print("  ✓ No duplicates found")
         
         return df
+    
+    def _map_key_fields_to_columns(self, df: pd.DataFrame, key_fields: List[str]) -> List[str]:
+        """
+        Map schema key_fields to actual DataFrame columns.
+        
+        Handles case variations and common naming patterns.
+        For nested fields like "jurisdiction.state", looks for "State" column.
+        Handles transformations like "specific_subject" -> "Specific Subject".
+        
+        Args:
+            df: DataFrame to map columns from
+            key_fields: Key field names from schema
+            
+        Returns:
+            List of actual DataFrame column names that match key_fields
+        """
+        mapped_cols = []
+        
+        for key_field in key_fields:
+            # Handle nested field names (e.g., "jurisdiction.state" -> "state")
+            field_name = key_field.split('.')[-1]
+            
+            # Normalize field name for comparison:
+            # Convert snake_case to space-separated: "specific_subject" -> "specific subject"
+            normalized_field = field_name.replace('_', ' ').lower()
+            
+            # Find matching column (case-insensitive, with/without underscores)
+            matching_col = None
+            for col in df.columns:
+                normalized_col = col.replace('_', ' ').lower()
+                if normalized_col == normalized_field:
+                    matching_col = col
+                    break
+            
+            if matching_col:
+                mapped_cols.append(matching_col)
+            else:
+                logger.warning(f"Key field '{key_field}' not found in DataFrame columns")
+        
+        return mapped_cols
     
     def _get_metadata_columns(self, df: pd.DataFrame) -> List[str]:
         """
