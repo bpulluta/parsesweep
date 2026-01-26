@@ -11,6 +11,7 @@ from typing import List, Dict, Any, Tuple
 from .schema_detector import SchemaDetector
 from .data_flattener import DataFlattener
 from .deduplicator import Deduplicator
+from .document_deduplicator import DocumentDeduplicator
 from .excel_formatter import ExcelFormatter
 from .csv_exporter import CsvExporter
 from ..utils.exceptions import SchemaMetadataError
@@ -51,6 +52,7 @@ class Consolidator:
         self.detector = SchemaDetector(schema_metadata=schema_metadata)
         self.flattener = DataFlattener()
         self.deduplicator = Deduplicator(schema_metadata=schema_metadata)
+        self.document_deduplicator = DocumentDeduplicator(schema_metadata=schema_metadata)
         self.excel_formatter = ExcelFormatter()
         self.csv_exporter = CsvExporter()
     
@@ -134,6 +136,10 @@ class Consolidator:
         # Normalize state names to 2-letter abbreviations for consistency
         normalize_state_column(df, "State")
         
+        # Document-level deduplication (removes duplicate extractions of same ordinance)
+        df = self.document_deduplicator.deduplicate_documents(df)
+        
+        # Row-level deduplication (removes duplicate requirements within documents)
         df = self.deduplicator.deduplicate(df)
         
         return df, self.schema_info
