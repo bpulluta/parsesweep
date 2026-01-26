@@ -24,6 +24,10 @@
           "state",
           "county",
           "ordinance_code",
+          "date_adopted",
+          "date_effective",
+          "date_last_amended",
+          "supersedes",
           "category",
           "specific_subject",
           "applies_to",
@@ -99,6 +103,22 @@
         "ordinance_code": {
           "type": ["string", "null"],
           "description": "Ordinance number/code/title exactly as written. Null if not stated."
+        },
+        "date_adopted": {
+          "type": ["string", "null"],
+          "description": "Date the ordinance was adopted/enacted/passed by the legislative body, exactly as written in the document (e.g., 'May 17, 2013', 'October 6, 2015', '10/6/2015'). Look for phrases like 'adopted on', 'enacted on', 'passed on', or dates in resolution headers. Null if not stated."
+        },
+        "date_effective": {
+          "type": ["string", "null"],
+          "description": "Date the ordinance became effective/applicable law, exactly as written in the document. This may differ from adoption date. Look for phrases like 'effective date', 'shall become effective on', 'in effect as of'. Null if not stated."
+        },
+        "date_last_amended": {
+          "type": ["string", "null"],
+          "description": "Date of the most recent amendment to the ordinance, exactly as written in the document. Look for phrases like 'amended on', 'as amended', 'last revised'. Null if not stated or if no amendments."
+        },
+        "supersedes": {
+          "type": ["string", "null"],
+          "description": "Previous ordinance/resolution that this ordinance replaces or supersedes, exactly as written. Look for phrases like 'replaces', 'supersedes', 'repeals and replaces'. Null if not stated."
         }
       }
     },

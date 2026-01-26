@@ -73,9 +73,29 @@
           "type": ["string", "null"],
           "description": "Journal name exactly as written. Null if not stated."
         },
+        "publication_date": {
+          "type": ["string", "null"],
+          "description": "Complete publication date if available, exactly as written (e.g., 'March 15, 2023', '2023-03-15'). More precise than year alone. Null if only year is available or not stated."
+        },
         "year": {
           "type": ["integer", "null"],
           "description": "Publication year (e.g., 2023). Null if not stated."
+        },
+        "received_date": {
+          "type": ["string", "null"],
+          "description": "Date manuscript was received by journal, exactly as written. Often appears in article metadata. Null if not stated."
+        },
+        "revised_date": {
+          "type": ["string", "null"],
+          "description": "Date of last revision, exactly as written. Null if not stated."
+        },
+        "accepted_date": {
+          "type": ["string", "null"],
+          "description": "Date manuscript was accepted for publication, exactly as written. Null if not stated."
+        },
+        "online_publication_date": {
+          "type": ["string", "null"],
+          "description": "Date published online (may differ from print publication), exactly as written. Null if not stated."
         },
         "volume": {
           "type": ["string", "null"],

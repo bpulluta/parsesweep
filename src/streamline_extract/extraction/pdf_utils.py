@@ -251,15 +251,15 @@ def extract_text_from_pdf(
     # If text extraction yielded very little content, try OCR
     if len(text.strip()) < 500:  # Less than 500 chars indicates image-based PDF
         logger.warning(
-            f"Very little text extracted ({len(text)} chars), attempting OCR..."
+            f"Very little text extracted from {pdf_path.name} ({len(text)} chars), attempting OCR..."
         )
         ocr_text = _extract_with_ocr(pdf_path)
         if ocr_text and len(ocr_text) > len(text):
-            logger.info("✓ OCR extraction successful, using OCR text")
+            logger.info(f"✓ OCR extraction successful for {pdf_path.name}, using OCR text")
             text = ocr_text
         elif not ocr_text:
             logger.warning(
-                "⚠️ OCR extraction failed - PDF may be image-based without searchable text"
+                f"⚠️ OCR extraction failed for {pdf_path.name} - PDF may be image-based without searchable text"
             )
 
     # Apply basic OCR error corrections for common issues

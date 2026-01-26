@@ -34,7 +34,7 @@ class TextProcessor:
 
         if was_truncated:
             text = text[: self.max_chars]
-            logger.warning(
+            logger.info(
                 f"Document truncated: {original_length:,} chars -> {self.max_chars:,} chars. "
                 f"Consider increasing max_context_chars if critical info is at end of document."
             )
