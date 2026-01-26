@@ -218,6 +218,35 @@ OPENAI_API_KEY=sk-your-key
 3. `extraction.context_objects` - Metadata objects (optional but recommended)
 4. `consolidation.deduplication.key_fields` - Fields for deduplication
 
+**CRITICAL: Defining key_fields for deduplication**
+
+The `key_fields` must include ALL fields that make an item truly unique. If two items differ in ANY meaningful field value, they should NOT be treated as duplicates.
+
+**Common mistake**: Using too few key_fields, causing distinct items to merge incorrectly.
+
+Example - Tariff charges:
+```
+❌ WRONG: ["rate_name", "charge_type"]
+   Problem: Merges "Service and Facility Charge" + "Production Meter Charge" 
+            (both are "Customer charge" type)
+
+✅ CORRECT: ["rate_name", "charge_type", "charge_description", "season", "time_period"]
+   Each charge is uniquely identified by its description, season, and time period
+```
+
+**Guidelines for choosing key_fields:**
+1. Include ALL descriptive fields that distinguish items
+2. Exclude only: timestamps, notes, source metadata, extracted text
+3. Include: identifiers, names, descriptions, classifications, conditions
+4. Test with real data: check if items with different values are being merged
+5. When in doubt, include more fields (safer than losing data)
+
+**Verification command:**
+```bash
+# After consolidation, check for unexpected "Merged N duplicate(s)" notes
+pixi run python -c "import pandas as pd; df = pd.read_csv('output.csv'); print(df[df['Notes'].str.contains('Merged', na=False)])"
+```
+
 **Steps:**
 1. Copy an existing schema from schemas/ as a template
 2. Modify the properties to match your document structure
