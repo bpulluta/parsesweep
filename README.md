@@ -18,10 +18,14 @@ StreamlineExtract uses AI to extract structured data from documents and consolid
 
 ### 💡 Perfect For
 
-- Extracting regulations from municipal ordinances
-- Parsing utility tariff schedules into comparable formats
-- Consolidating permit data from government documents
-- Analyzing contracts, reports, or research papers at scale
+Transforming any unstructured documents into structured data:
+- **Comparative analysis** - Extract consistent data from hundreds of similar documents
+- **Batch processing** - Handle large document collections at scale
+- **Data extraction** - Pull specific information from varying formats and structures  
+- **Research & compliance** - Systematically capture data for analysis
+- **Legacy digitization** - Convert paper-based archives into databases
+
+Works with any document type: regulations, contracts, research papers, permits, invoices, tariffs, reports, filings, and more. Just define your data structure, and let AI handle the extraction.
 
 **Version**: 2.0  
 **Requirements**: Python 3.12+, pixi package manager  
