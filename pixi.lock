@@ -11603,7 +11603,7 @@ packages:
 - pypi: ./
   name: streamline-extract
   version: 2.0.0
-  sha256: 3cdd6bf6ce2843b40bb06e56a0e6b9932736cf7c4e213f1b6feac7b5e7af50b0
+  sha256: c194369818b8e4d3b96aa6f93bcf2b5f61da29c1e725a977d0a5dade40c6dbbf
   requires_dist:
   - pandas>=2.0.0
   - numpy>=1.24.0

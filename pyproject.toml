@@ -190,3 +190,7 @@ python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
 addopts = "-v"
+filterwarnings = [
+    "ignore::DeprecationWarning:.*importlib._bootstrap.*",
+    "ignore:builtin type.*has no __module__ attribute:DeprecationWarning",
+]

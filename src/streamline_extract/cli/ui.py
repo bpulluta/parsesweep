@@ -92,7 +92,8 @@ def create_extraction_progress() -> Progress:
 
 def create_config_table(title: str, config: Dict[str, Any]) -> Table:
     """Create a styled configuration table."""
-    table = Table(title=title, show_header=False, box=None, padding=(0, 2))
+    display_title = f"📄 {title}" if title else ""
+    table = Table(title=display_title, show_header=False, box=None, padding=(0, 2))
     table.add_column("Key", style="dim", no_wrap=True)
     table.add_column("Value")
     
