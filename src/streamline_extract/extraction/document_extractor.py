@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Dict, Any, List, Optional
 from dataclasses import dataclass
 
-from .openai_client import OpenAIClient
+from .llm_client import LLMClient
 from .text_processor import TextProcessor
 from .qa_qc import QAQCValidator, ValidationReport
 
@@ -55,7 +55,7 @@ class DocumentExtractor:
         >>> print(f"Confidence: {result.completeness_score:.0%}")
     
     Architecture:
-        - OpenAIClient: Handles all API calls (OpenAI/Azure)
+        - LLMClient: Handles all API calls via LiteLLM (100+ providers)
         - TextProcessor: Optimizes text and normalizes output
         - QAQCValidator: Cross-validates and improves accuracy
     """
@@ -66,37 +66,34 @@ class DocumentExtractor:
         model: str = "gpt-4o-mini",
         enable_qa_qc_overrides: bool = True,
         max_context_chars: int = 400000,
-        use_azure: bool = False,
+        schema_metadata=None,
+        provider: str = None,
         azure_endpoint: str = None,
         azure_api_version: str = None,
-        schema_metadata=None,
     ):
         """
         Initialize document extractor.
         
         Args:
-            api_key: OpenAI or Azure API key
+            api_key: API key for the LLM provider
             model: Model to use (default: gpt-4o-mini)
             enable_qa_qc_overrides: Enable QA/QC validation overrides
-            max_context_chars: Maximum characters to extract from document (default: 400000).
-                             Proven reliable for fast processing. Increase with --max-context
-                             for very long documents if willing to wait longer.
-            use_azure: Use Azure OpenAI instead of OpenAI
-            azure_endpoint: Azure OpenAI endpoint URL (required if use_azure=True)
-            azure_api_version: Azure API version (required if use_azure=True)
+            max_context_chars: Maximum characters to extract from document (default: 400000)
             schema_metadata: Optional SchemaMetadata for metadata-driven processing
+            provider: LLM provider ("openai", "azure", "anthropic", "gemini", etc.)
+            azure_endpoint: Azure OpenAI endpoint URL (for Azure provider)
+            azure_api_version: Azure API version (for Azure provider)
         """
         self.api_key = api_key
         self.model = model
         self.max_context_chars = max_context_chars
-        self.use_azure = use_azure
         self.schema_metadata = schema_metadata
         
-        # Initialize OpenAI client
-        self.client = OpenAIClient(
+        # Initialize LLM client with multi-provider support
+        self.client = LLMClient(
             api_key=api_key,
             model=model,
-            use_azure=use_azure,
+            provider=provider,
             azure_endpoint=azure_endpoint,
             azure_api_version=azure_api_version,
         )
@@ -243,9 +240,9 @@ class DocumentExtractor:
         self, text: str, schema: Dict[str, Any]
     ) -> Dict[str, Any]:
         """
-        Extract using OpenAI structured outputs.
+        Extract using LLM structured outputs.
         
-        Delegates to OpenAIClient for API calls and TextProcessor for optimization.
+        Delegates to LLMClient for API calls and TextProcessor for optimization.
         
         Args:
             text: Document text to extract from
@@ -257,7 +254,7 @@ class DocumentExtractor:
         # Use text processor to optimize text for extraction
         text_excerpt, _ = self.processor.optimize(text)
 
-        # Use OpenAI client for extraction
+        # Use LLM client for extraction
         result = self.client.extract(text_excerpt, schema)
         
         # Ensure all schema fields are present (fill missing with null)

@@ -26,6 +26,7 @@ from streamline_extract.extraction.document_utils import (
     is_supported_document,
     SUPPORTED_EXTENSIONS
 )
+from streamline_extract.utils.model_pricing import get_model_pricing
 from streamline_extract.cli.ui import (
     console,
     print_header,
@@ -275,7 +276,8 @@ def preview(document_path: str):
 @click.command()
 @click.argument('documents_path', type=click.Path(exists=True))
 @click.option('--workers', '-w', type=int, default=4, help='Number of parallel workers')
-def estimate(documents_path: str, workers: int):
+@click.option('--pages-csv', type=click.Path(exists=True), default=None, help='CSV file mapping documents to page ranges')
+def estimate(documents_path: str, workers: int, pages_csv: str):
     """
     Estimate cost and time for batch document extraction.
     
@@ -286,6 +288,7 @@ def estimate(documents_path: str, workers: int):
     EXAMPLES:
         streamline-extract estimate documents/tariffs/
         streamline-extract estimate documents/permits/ --workers 8
+        streamline-extract estimate documents/tariffs/ --pages-csv config/tariffs/page_ranges.csv
     """
     docs_path = Path(documents_path)
     
@@ -317,13 +320,35 @@ def estimate(documents_path: str, workers: int):
     
     console.print(f"[dim]Analyzing {len(doc_files)} document(s)...[/dim]\n")
     
+    # Load page ranges if provided
+    page_range_map = {}
+    if pages_csv:
+        from streamline_extract.utils.page_range import load_pages_csv
+        try:
+            page_mappings = load_pages_csv(Path(pages_csv))
+            
+            # Match file names from doc_files to mappings
+            for doc in doc_files:
+                # Try exact match first
+                if str(doc) in page_mappings:
+                    page_range_map[doc] = page_mappings[str(doc)]
+                elif doc.name in page_mappings:
+                    page_range_map[doc] = page_mappings[doc.name]
+            
+            mapped_count = sum(1 for v in page_range_map.values() if v is not None)
+            console.print(f"[dim]Loaded page ranges for {mapped_count} file(s) from CSV[/dim]\n")
+        except Exception as e:
+            print_error(f"Failed to load page ranges CSV: {e}")
+            return
+    
     # Analyze first few files to estimate average
     sample_size = min(5, len(doc_files))
     total_chars = 0
     
     for doc in doc_files[:sample_size]:
         try:
-            text = extract_text_from_document(doc)
+            page_range = page_range_map.get(doc) if pages_csv else None
+            text = extract_text_from_document(doc, page_range=page_range)
             total_chars += len(text)
         except Exception:
             pass
@@ -337,10 +362,18 @@ def estimate(documents_path: str, workers: int):
     estimated_total_chars = avg_chars * len(doc_files)
     estimated_tokens = int(estimated_total_chars / 4)
     
-    # Cost calculation (gpt-4o-mini rates)
-    input_cost = (estimated_tokens / 1_000_000) * 0.15
+    # Get current model pricing from config
+    config = get_config()
+    model_name = config.llm_config.get('model', 'gpt-4o-mini')
+    provider = config.llm_config.get('provider', 'openai')
+    
+    # Get pricing for the configured model (returns tuple: input_cost, output_cost per 1M tokens)
+    input_cost_per_1m, output_cost_per_1m = get_model_pricing(model_name)
+    
+    # Cost calculation using model-specific rates
+    input_cost = (estimated_tokens / 1_000_000) * input_cost_per_1m
     output_tokens = estimated_tokens * 0.1
-    output_cost = (output_tokens / 1_000_000) * 0.60
+    output_cost = (output_tokens / 1_000_000) * output_cost_per_1m
     total_cost = input_cost + output_cost
     
     # Time calculation (assuming 100 tokens/sec with workers)
@@ -349,19 +382,27 @@ def estimate(documents_path: str, workers: int):
     
     # Display analysis
     console.print("[bold]Document Analysis[/bold]")
-    doc_table = create_config_table("", {
+    doc_info = {
         "Total Documents": str(len(doc_files)),
         "Sample Analyzed": f"{sample_size} files",
         "Avg Characters/Doc": f"{avg_chars:,.0f}",
         "Estimated Total Tokens": f"~{estimated_tokens:,}",
-    })
+    }
+    
+    # Add page range info if applicable
+    if pages_csv and page_range_map:
+        files_with_ranges = sum(1 for v in page_range_map.values() if v is not None)
+        if files_with_ranges > 0:
+            doc_info["Page Ranges"] = f"{files_with_ranges} file(s) with specific ranges"
+    
+    doc_table = create_config_table("", doc_info)
     console.print(doc_table)
     
     # Display cost breakdown
-    console.print("\n[bold]Cost Breakdown (gpt-4o-mini)[/bold]")
+    console.print(f"\n[bold]Cost Breakdown ({model_name})[/bold]")
     cost_table = create_config_table("", {
-        "Input Tokens": f"~{estimated_tokens:,} @ $0.15/1M",
-        "Output Tokens": f"~{int(output_tokens):,} @ $0.60/1M",
+        "Input Tokens": f"~{estimated_tokens:,} @ ${input_cost_per_1m:.2f}/1M",
+        "Output Tokens": f"~{int(output_tokens):,} @ ${output_cost_per_1m:.2f}/1M",
         "Total Estimated Cost": f"[magenta bold]${total_cost:.2f}[/magenta bold]",
     })
     console.print(cost_table)

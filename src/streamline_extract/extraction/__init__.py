@@ -7,6 +7,7 @@ from .document_utils import (
     SUPPORTED_EXTENSIONS
 )
 from .document_extractor import DocumentExtractor, ExtractionResult
+from .llm_client import LLMClient
 from .schema_utils import (
     load_schema,
     validate_schema,
@@ -18,6 +19,7 @@ from .schema_utils import (
 __all__ = [
     "DocumentExtractor",
     "ExtractionResult",
+    "LLMClient",
     "extract_text_from_pdf",
     "extract_text_from_document",
     "is_supported_document",
