@@ -19,11 +19,10 @@ from typing import Optional, List, Tuple
 
 import click
 from dotenv import load_dotenv
-from rich.progress import track
+from rich.logging import RichHandler
 
 from streamline_extract.utils.config import get_config
 from streamline_extract.extraction import DocumentExtractor, load_schema
-from streamline_extract.extraction.pdf_utils import extract_text_from_pdf
 from streamline_extract.extraction.document_utils import (
     extract_text_from_document,
     is_supported_document,
@@ -44,11 +43,52 @@ from streamline_extract.cli.ui import (
     ask_confirm,
 )
 from streamline_extract.cli.dashboard import create_live_dashboard
-from streamline_extract.cli.cost_tracker import CostTracker
 
 
 # Global verbosity level (set by CLI flags)
 VERBOSITY = 'normal'  # 'quiet', 'normal', 'verbose', 'debug'
+
+
+def configure_logging(verbosity: str) -> None:
+    """
+    Configure logging with RichHandler for clean integration with Rich UI components.
+    
+    RichHandler ensures log messages don't interfere with progress bars and other
+    Rich Live displays. This function removes any existing handlers to ensure clean
+    state regardless of prior logging configuration.
+    
+    Args:
+        verbosity: One of 'quiet', 'normal', 'verbose', 'debug'
+    """
+    # Get root logger and clear any existing handlers
+    root_logger = logging.getLogger()
+    root_logger.handlers.clear()
+    
+    # Configure based on verbosity level
+    if verbosity == 'quiet':
+        level = logging.ERROR
+        show_level = False
+        show_path = False
+    elif verbosity == 'debug':
+        level = logging.DEBUG
+        show_level = True
+        show_path = True
+    else:  # 'normal' or 'verbose'
+        level = logging.WARNING
+        show_level = False
+        show_path = False
+    
+    # Create and add RichHandler
+    handler = RichHandler(
+        console=console,
+        show_time=False,
+        show_level=show_level,
+        show_path=show_path,
+        markup=True
+    )
+    handler.setLevel(level)
+    root_logger.addHandler(handler)
+    root_logger.setLevel(level)
 
 
 def detect_api_provider() -> Tuple[str, bool, str]:
@@ -82,28 +122,6 @@ def detect_api_provider() -> Tuple[str, bool, str]:
         "  OPENAI_API_KEY=sk-your-key-here"
     )
     return None, False, error
-
-
-def validate_path_structure(path: Path, expected_content: str = "PDFs") -> Tuple[bool, str]:
-    """
-    Validate that a path exists and contains expected content.
-    
-    Returns:
-        Tuple of (is_valid, error_message)
-    """
-    if not path.exists():
-        return False, f"Path does not exist: {path}"
-    
-    if not path.is_dir():
-        # Single file is okay for some operations
-        return True, None
-    
-    # Check if directory is empty
-    contents = list(path.iterdir())
-    if not contents:
-        return False, f"Directory is empty: {path}"
-    
-    return True, None
 
 
 @click.command()
@@ -171,17 +189,8 @@ def process(path: str, output: Optional[str], schema: Optional[str], category: O
     else:
         VERBOSITY = 'normal'
     
-    # Configure logging level based on verbosity
-    if VERBOSITY == 'quiet':
-        logging.basicConfig(level=logging.ERROR, format='%(message)s')
-    elif VERBOSITY == 'debug':
-        logging.basicConfig(level=logging.DEBUG, format='%(levelname)s: %(message)s')
-    elif VERBOSITY == 'verbose':
-        # Use WARNING level to avoid logger.info() messages that interfere with progress bars
-        # Verbose mode shows detailed results, but not intermediate extraction logs
-        logging.basicConfig(level=logging.WARNING, format='%(message)s')
-    else:  # normal
-        logging.basicConfig(level=logging.WARNING, format='%(message)s')
+    # Configure logging with RichHandler for clean integration with progress bars
+    configure_logging(VERBOSITY)
     
     # Load environment variables from .env file
     load_dotenv()
@@ -991,15 +1000,8 @@ def consolidate(extracted_dir: str, schema: Optional[str], output: Optional[str]
     else:
         VERBOSITY = 'normal'
     
-    # Configure logging level based on verbosity
-    if VERBOSITY == 'quiet':
-        logging.basicConfig(level=logging.ERROR, format='%(message)s')
-    elif VERBOSITY == 'debug':
-        logging.basicConfig(level=logging.DEBUG, format='%(levelname)s: %(message)s')
-    elif VERBOSITY == 'verbose':
-        logging.basicConfig(level=logging.WARNING, format='%(message)s')
-    else:  # normal
-        logging.basicConfig(level=logging.WARNING, format='%(message)s')
+    # Configure logging with RichHandler for clean integration with UI
+    configure_logging(VERBOSITY)
     
     input_dir = Path(extracted_dir)
     
