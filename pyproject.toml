@@ -44,7 +44,6 @@ dependencies = [
     "pyyaml>=6.0.1",
     "click>=8.1.0",
     "langchain-text-splitters>=1.0.0,<2",
-    "nrel-compass>=0.10.0,<0.11",
 ]
 
 [project.optional-dependencies]

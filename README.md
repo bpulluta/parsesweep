@@ -100,6 +100,8 @@ pixi run streamline-extract consolidate processed/examples/ \
 
 ### Install Steps
 
+#### Option 1: Using pixi (Recommended)
+
 ```bash
 # 1. Install pixi (takes ~30 seconds)
 curl -fsSL https://pixi.sh/install.sh | bash
@@ -117,6 +119,35 @@ pixi install
 pixi run streamline-extract --version
 # Should output: streamline-extract, version 2.0.1
 ```
+
+#### Option 2: Using pip (Traditional Python)
+
+```bash
+# 1. Clone repository
+git clone https://github.com/bpulluta/StreamlineExtract.git
+cd StreamlineExtract
+
+# 2. Create virtual environment (Python 3.9+ required)
+python3 -m venv .venv
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+
+# 3. Install package
+pip install -e .
+
+# 4. Install system dependencies (macOS with Homebrew)
+brew install poppler tesseract
+
+# Or on Ubuntu/Debian:
+# sudo apt-get install poppler-utils tesseract-ocr
+```
+
+✅ **Verify installation:**
+```bash
+streamline-extract --version
+# Should output: streamline-extract, version 2.0.1
+```
+
+> **Note:** When using pip, replace `pixi run streamline-extract` with just `streamline-extract` in all commands below.
 
 ---
 
