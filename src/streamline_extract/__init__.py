@@ -13,7 +13,7 @@ Features:
 - CSV/Excel export for analysis
 """
 
-__version__ = "2.0.0"
+__version__ = "2.0.1"
 __author__ = "NREL Team"
 __license__ = "MIT"
 

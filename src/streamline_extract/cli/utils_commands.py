@@ -266,7 +266,7 @@ def preview(document_path: str):
         console.print(f"[dim]{sample}...[/dim]\n")
         
         console.print("[bold green]Ready to extract?[/bold green]")
-        console.print(f"Run: [cyan]streamline-extract process {doc_path}[/cyan]\n")
+        console.print(f"Run: [cyan]streamline-extract process {doc_path} --schema schemas/example_utility_rate_schema.json[/cyan]\n")
         
     except Exception as e:
         print_error("Failed to analyze document", str(e))
@@ -377,7 +377,7 @@ def estimate(documents_path: str, workers: int):
     # Confirmation prompt
     console.print()
     if ask_confirm("Proceed with extraction?", default=False):
-        console.print(f"\n[green]Run:[/green] [cyan]streamline-extract process {docs_path}[/cyan]\n")
+        console.print(f"\n[green]Run:[/green] [cyan]streamline-extract process {docs_path} --schema schemas/example_utility_rate_schema.json[/cyan]\n")
     else:
         console.print("[yellow]Operation cancelled[/yellow]\n")
 

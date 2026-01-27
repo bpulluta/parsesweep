@@ -109,8 +109,8 @@ def validate_path_structure(path: Path, expected_content: str = "PDFs") -> Tuple
 @click.command()
 @click.argument('path', type=click.Path())
 @click.option('--output', '-o', type=click.Path(), help='Output directory (auto-detected if not specified)')
-@click.option('--schema', '-s', type=click.Path(exists=True), help='Path to JSON schema file (auto-detects from path if not specified)')
-@click.option('--state', help='State/category name (auto-detected from path if not specified)')
+@click.option('--schema', '-s', type=click.Path(exists=True), required=True, help='Path to JSON schema file (REQUIRED)')
+@click.option('--category', help='Category name (auto-detected from path if not specified)')
 @click.option('--model', default='gpt-4o-mini', show_default=True, help='AI model: gpt-4o-mini (fast) or gpt-4o (accurate)')
 @click.option('--enable-qa-qc', is_flag=True, help='Enable detailed validation (slower, adds traceability)')
 @click.option('--use-azure', is_flag=True, default=None, help='Force Azure OpenAI (auto-detects from .env if not specified)')
@@ -123,7 +123,7 @@ def validate_path_structure(path: Path, expected_content: str = "PDFs") -> Tuple
 @click.option('--live-dashboard', is_flag=True, help='Show live dashboard during extraction')
 @click.option('--pages', type=str, default=None, help='Page range to extract (e.g., "615-759" or "100:200"). Only for single PDF files.')
 @click.option('--pages-csv', type=click.Path(exists=True), default=None, help='CSV file mapping documents to page ranges (columns: file_path,start_page,end_page)')
-def process(path: str, output: Optional[str], schema: Optional[str], state: Optional[str],
+def process(path: str, output: Optional[str], schema: Optional[str], category: Optional[str],
             model: str, enable_qa_qc: bool, use_azure: Optional[bool], limit: Optional[int], 
             skip_existing: bool, max_context: int, quiet: bool, verbose: bool, debug: bool, live_dashboard: bool,
             pages: Optional[str], pages_csv: Optional[str]):
@@ -138,31 +138,25 @@ def process(path: str, output: Optional[str], schema: Optional[str], state: Opti
     
     \b
     EXAMPLES:
-        # Process using default schema
-        streamline-extract process documents/Category/doc1.pdf
+        # Process tariffs
+        streamline-extract process documents/tariffs/ --schema schemas/proprietary/electricity_tariff_schema.json
         
-        # Process with example schema
-        streamline-extract process documents/examples/ --schema schemas/example_utility_rate_schema.json
+        # Process geothermal ordinances
+        streamline-extract process documents/geothermal_ordinances/ --schema schemas/proprietary/geothermal_ordinance_schema.json
         
-        # Process all documents in a directory
-        streamline-extract process documents/Category
+        # Process with page ranges
+        streamline-extract process documents/tariffs/ --schema schemas/proprietary/electricity_tariff_schema.json --pages-csv config/tariffs/page_ranges.csv
         
         # Process just the first 5 documents (useful for testing)
-        streamline-extract process documents/Category -n 5
-        
-        # Extract only specific pages from a PDF (great for large documents!)
-        streamline-extract process documents/tariff.pdf --pages 615-759
-        
-        # Use Azure OpenAI (if you have Azure credits)
-        streamline-extract process documents/Category --use-azure
+        streamline-extract process documents/tariffs/ --schema schemas/proprietary/electricity_tariff_schema.json -n 5
         
         # Reprocess files that were already processed
-        streamline-extract process documents/Category --reprocess
+        streamline-extract process documents/tariffs/ --schema schemas/proprietary/electricity_tariff_schema.json --reprocess
     
     \b
     REQUIREMENTS:
         • PDF files in the specified directory
-        • JSON schema file (uses default schema if not specified)
+        • JSON schema file (--schema flag is REQUIRED)
         • OpenAI API key in .env file (OPENAI_API_KEY=sk-...)
         • Or Azure OpenAI credentials (if using --use-azure)
     """
@@ -264,11 +258,11 @@ def process(path: str, output: Optional[str], schema: Optional[str], state: Opti
     # Determine if single file or directory
     is_dir = path.is_dir()
     
-    # Infer state from path
+    # Determine category from path for metadata
     if is_dir:
-        state = state or path.name
+        category = path.name
     else:
-        state = state or path.parent.name
+        category = path.parent.name
     
     # Setup output directory - CLEAN parallel structure
     # documents/category/ → processed/category/
@@ -500,10 +494,26 @@ def process(path: str, output: Optional[str], schema: Optional[str], state: Opti
             if files_with_ranges == 1 and len(doc_files) == 1:
                 # Single file with specific pages
                 start, end = list(page_range_map.values())[0]
-                config_info["Pages"] = f"{start}-{end}"
+                if pages_csv:
+                    # Show CSV source
+                    try:
+                        csv_rel = Path(pages_csv).relative_to(Path.cwd())
+                        config_info["Pages"] = f"{csv_rel} ({start}-{end})"
+                    except ValueError:
+                        config_info["Pages"] = f"{pages_csv} ({start}-{end})"
+                else:
+                    config_info["Pages"] = f"{start}-{end}"
             elif files_with_ranges > 0:
                 # Multiple files with ranges from CSV
-                config_info["Pages"] = f"{files_with_ranges} file(s) with ranges, {len(doc_files) - files_with_ranges} full"
+                summary = f"{files_with_ranges} file(s) with ranges, {len(doc_files) - files_with_ranges} full"
+                if pages_csv:
+                    try:
+                        csv_rel = Path(pages_csv).relative_to(Path.cwd())
+                        config_info["Pages"] = f"{csv_rel} ({summary})"
+                    except ValueError:
+                        config_info["Pages"] = f"{pages_csv} ({summary})"
+                else:
+                    config_info["Pages"] = summary
             else:
                 config_info["Pages"] = "All pages"
         else:
@@ -516,22 +526,16 @@ def process(path: str, output: Optional[str], schema: Optional[str], state: Opti
         except ValueError:
             config_info["Output"] = str(output_dir)
     
-    # Load schema - auto-detect or use specified
-    if schema:
-        # User provided explicit schema path
-        schema_path = Path(schema)
-        loaded_schema = load_schema(schema_path)
-        if VERBOSITY != 'quiet':
-            config_info["Schema"] = schema_path.name
-    else:
-        # Use example schema as default
-        schema_path = config.default_schema
-        loaded_schema = load_schema(schema_path)
-        if VERBOSITY != 'quiet':
-            config_info["Schema"] = f"{schema_path.name} (default example)"
-            console.print("[yellow]⚠[/yellow]  No schema specified. Using example schema.")
-            console.print("[dim]   For production use, specify your schema with --schema flag.[/dim]")
-            console.print()
+    # Load schema (enforced as required by Click)
+    schema_path = Path(schema)
+    loaded_schema = load_schema(schema_path)
+    if VERBOSITY != 'quiet':
+        # Show relative path for clarity
+        try:
+            schema_rel = schema_path.relative_to(Path.cwd())
+            config_info["Schema"] = str(schema_rel)
+        except ValueError:
+            config_info["Schema"] = str(schema_path)
     
     # Display configuration table
     if VERBOSITY != 'quiet':
@@ -661,7 +665,7 @@ def process(path: str, output: Optional[str], schema: Optional[str], state: Opti
                     result = extractor.extract(text, loaded_schema, enable_qa_qc=enable_qa_qc)
                     
                     # Save result
-                    num_items = _extract_and_save_result(doc_path, result, output_dir, state, actual_model, enable_qa_qc)
+                    num_items = _extract_and_save_result(doc_path, result, output_dir, category, actual_model, enable_qa_qc)
                     
                     # Update dashboard
                     dashboard.complete_document(
@@ -722,7 +726,7 @@ def process(path: str, output: Optional[str], schema: Optional[str], state: Opti
                     result = extractor.extract(text, loaded_schema, enable_qa_qc=enable_qa_qc)
                     
                     # Save result
-                    num_items = _extract_and_save_result(doc_path, result, output_dir, state, actual_model, enable_qa_qc)
+                    num_items = _extract_and_save_result(doc_path, result, output_dir, category, actual_model, enable_qa_qc)
                     
                     # Track results
                     results.append({
@@ -764,7 +768,7 @@ def process(path: str, output: Optional[str], schema: Optional[str], state: Opti
                 result = extractor.extract(text, loaded_schema, enable_qa_qc=enable_qa_qc)
                 
                 # Save result
-                num_items = _extract_and_save_result(doc_path, result, output_dir, state, actual_model, enable_qa_qc)
+                num_items = _extract_and_save_result(doc_path, result, output_dir, category, actual_model, enable_qa_qc)
                 
                 # Track results
                 results.append({
@@ -824,7 +828,7 @@ def process(path: str, output: Optional[str], schema: Optional[str], state: Opti
         console.print()
 
 
-def _extract_and_save_result(doc_path: Path, result, output_dir: Path, state: str, model: str, qa_qc_enabled: bool) -> int:
+def _extract_and_save_result(doc_path: Path, result, output_dir: Path, category: str, model: str, qa_qc_enabled: bool) -> int:
     """Helper to extract items count and save result to JSON."""
     # Universal schema detection - find main array and identifier dynamically
     num_items = 0
@@ -861,7 +865,7 @@ def _extract_and_save_result(doc_path: Path, result, output_dir: Path, state: st
     output_data = {
         'source_file': doc_path.name,
         'extraction_date': time.strftime('%Y-%m-%d %H:%M:%S'),
-        'state': state,
+        'category': category,
         'model': model,
         'qa_qc_enabled': qa_qc_enabled,
         'cost_usd': result.cost,
@@ -947,11 +951,12 @@ def validate(extraction_file: str, verbose: bool, show_data: bool):
 
 @click.command()
 @click.argument('extracted_dir', type=click.Path(exists=True))
+@click.option('--schema', '-s', type=click.Path(exists=True), required=True, help='Path to JSON schema file (REQUIRED - same as used for extraction)')
 @click.option('--output', '-o', type=click.Path(), help='Output directory (auto-detected if not specified)')
 @click.option('--quiet', '-q', is_flag=True, help='Minimal output (machine-readable)')
 @click.option('--verbose', '-v', is_flag=True, help='Detailed output with statistics')
 @click.option('--debug', is_flag=True, help='Debug mode with full logs')
-def consolidate(extracted_dir: str, output: Optional[str], quiet: bool, verbose: bool, debug: bool):
+def consolidate(extracted_dir: str, schema: Optional[str], output: Optional[str], quiet: bool, verbose: bool, debug: bool):
     """
     Consolidate extracted JSON files into clean Excel/CSV output.
     
@@ -960,14 +965,14 @@ def consolidate(extracted_dir: str, output: Optional[str], quiet: bool, verbose:
     
     \b
     EXAMPLES:
-        # Consolidate extracted data
-        streamline-extract consolidate processed/examples/
+        # Consolidate utility tariffs (specify same schema used for extraction)
+        streamline-extract consolidate processed/tariffs --schema schemas/proprietary/electricity_tariff_schema.json
         
-        # Consolidate utility tariffs
-        streamline-extract consolidate processed/tariffs
+        # Consolidate geothermal ordinances
+        streamline-extract consolidate processed/geothermal_ordinances --schema schemas/proprietary/geothermal_ordinance_schema.json
         
         # Specify custom output directory
-        streamline-extract consolidate processed/data --output my_analysis/
+        streamline-extract consolidate processed/data --schema schemas/your_schema.json --output my_analysis/
     
     \b
     OUTPUT:
@@ -1025,33 +1030,29 @@ def consolidate(extracted_dir: str, output: Optional[str], quiet: bool, verbose:
             "Input": str(input_dir),
             "Output": str(output_dir)
         }
+        
+        # Add schema to config after it's determined (will add after schema loading)
         table = create_config_table("", config_info)
         console.print(table)
-        console.print()
     
-    # Try to find schema - check processed directory first, then fall back to default
-    schema_metadata = None
-    matched_schema = config.default_schema  # Default to example schema
-    
-    # Check if there are any JSON files in the processed directory (schema saved during extraction)
-    json_files = list(input_dir.glob("*.json"))
-    if json_files:
-        # Use first JSON as schema (typically saved during extraction)
-        for jf in json_files:
-            if jf.stem != "schema":  # Skip if it's just named "schema.json"
-                continue
-            matched_schema = jf
-            if VERBOSITY != 'quiet':
-                console.print(f"[dim]Using schema from processed directory: {matched_schema.name}[/dim]")
-            break
-    
-    if matched_schema == config.default_schema and VERBOSITY != 'quiet':
-        console.print(f"[yellow]⚠[/yellow]  Using default example schema: {matched_schema.name}")
-        console.print("[dim]   For production use, process with --schema to save schema metadata.[/dim]")
+    # Load schema (enforced as required by Click)
+    matched_schema = Path(schema)
     
     try:
         from streamline_extract.utils.schema_metadata import SchemaMetadata
         schema_metadata = SchemaMetadata(matched_schema)
+        
+        # Add schema to config display after successful load
+        if VERBOSITY != 'quiet':
+            # Show relative path for schema
+            try:
+                schema_rel = matched_schema.relative_to(Path.cwd())
+                schema_display = str(schema_rel)
+            except ValueError:
+                schema_display = str(matched_schema)
+            
+            console.print(f"  [bold]Schema[/bold]      {schema_display}")
+            console.print()
     except Exception as e:
         print_error(
             "Schema validation failed",

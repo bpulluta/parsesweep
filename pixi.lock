@@ -11602,8 +11602,8 @@ packages:
   timestamp: 1733569565672
 - pypi: ./
   name: streamline-extract
-  version: 2.0.0
-  sha256: c194369818b8e4d3b96aa6f93bcf2b5f61da29c1e725a977d0a5dade40c6dbbf
+  version: 2.0.1
+  sha256: fbd9b2a275f9a8be69e9ac6595f4e9d81b42ac832eca3fc33aefd17b46d42526
   requires_dist:
   - pandas>=2.0.0
   - numpy>=1.24.0
