@@ -299,6 +299,85 @@ small_doc.pdf,,
 ```
 Empty start/end means extract full document.
 
+---
+
+### ⚡ Processing Large Documents - Page Range Optimization
+
+**Problem**: When extracting from large documents (200+ pages), important details at the end of sections (like ADJUSTMENTS, footnotes, or appendices) may be lost due to context window limitations.
+
+**Solution**: Break large documents into focused page ranges for optimal extraction quality.
+
+#### 📊 Recommended Settings
+
+> **Sweet Spot: 50-100 pages per extraction**
+> - ✅ Captures complete sections including end-matter
+> - ✅ Maintains 100% data capture rate
+> - ✅ Cost-effective: $0.04-0.06 per extraction
+> - ✅ Processing time: 3-5 minutes
+>
+> **Max Context: `--max-context 600000`**
+> - ✅ Optimal for 50-100 page ranges
+> - ❌ No benefit to increasing beyond 600k
+
+#### Example: Breaking a Large Tariff (340 pages)
+
+**⚠️ Current Limitation**: CSV only supports **one page range per file**. If the same file appears multiple times with different ranges, only the last entry is kept.
+
+**For multiple sections from one file**, process separately then combine:
+
+```bash
+# Step 1: Extract each section to separate directories
+# Residential rates (pages 30-130)
+pixi run streamline-extract process documents/tariffs/tariff_book.pdf \
+  --schema schemas/example_utility_rate_schema.json \
+  --pages 30-130 \
+  --output processed/tariffs/residential/ \
+  --max-context 600000
+
+# Commercial rates (pages 131-230)
+pixi run streamline-extract process documents/tariffs/tariff_book.pdf \
+  --schema schemas/example_utility_rate_schema.json \
+  --pages 131-230 \
+  --output processed/tariffs/commercial/ \
+  --max-context 600000
+
+# Industrial rates (pages 231-330)
+pixi run streamline-extract process documents/tariffs/tariff_book.pdf \
+  --schema schemas/example_utility_rate_schema.json \
+  --pages 231-330 \
+  --output processed/tariffs/industrial/ \
+  --max-context 600000
+
+# Step 2: Combine all JSON files into one directory with unique names
+mkdir -p processed/tariffs_all
+cp processed/tariffs/residential/*.json processed/tariffs_all/tariff_residential.json
+cp processed/tariffs/commercial/*.json processed/tariffs_all/tariff_commercial.json
+cp processed/tariffs/industrial/*.json processed/tariffs_all/tariff_industrial.json
+
+# Step 3: Consolidate
+pixi run streamline-extract consolidate processed/tariffs_all/ \
+  --schema schemas/example_utility_rate_schema.json
+```
+
+**Why separate directories?** Extracting the same source file multiple times creates JSONs with identical names - they'd overwrite each other in the same directory.
+
+**CSV is best for**: Processing **different files**, each with their own page range:
+
+**config/tariffs/page_ranges.csv:**
+```csv
+file_path,start_page,end_page
+utility1_tariff.pdf,615,650
+utility2_tariff.pdf,100,200
+utility3_tariff.pdf,50,150
+```
+
+```bash
+pixi run streamline-extract process documents/tariffs/ \
+  --schema schemas/example_utility_rate_schema.json \
+  --pages-csv config/tariffs/page_ranges.csv
+```
+---
+
 ### Consolidate Command
 
 Merge extracted JSON files into Excel and CSV formats.
@@ -333,7 +412,7 @@ pixi run streamline-extract consolidate processed/contracts/ \
 
 # Custom output location
 pixi run streamline-extract consolidate processed/tariffs/ \
-  --schema schemas/proprietary/electricity_tariff_schema.json \
+  --schema schemas/electricity_tariff_schema.json \
   --output analysis/2026/tariffs/
 ```
 
@@ -444,29 +523,22 @@ Schemas define what data to extract from documents. Version 2.0 requires all sch
 **Public Example Schema:**
 - `schemas/example_utility_rate_schema.json` - Example schema for testing and general use
 
-**Production Schemas** (in `schemas/proprietary/`):
-- `geothermal_ordinance_schema.json` - Municipal geothermal regulations
-- `electricity_tariff_schema.json` - Utility rate schedules
-- `air_quality_permits_schema.json` - Generator permits
-- `journal_article_schema.json` - Academic papers
-- `sec_10k_filing_schema.json` - SEC financial filings
-
 ### Schema Auto-Detection
 
 StreamlineExtract automatically selects schemas based on keywords in your document path:
 
 | Keyword in Path | Schema Selected | Use Case |
 |-----------------|----------------|----------|
-| `geothermal` | `schemas/proprietary/geothermal_ordinance_schema.json` | Municipal regulations |
-| `tariff` | `schemas/proprietary/electricity_tariff_schema.json` | Utility rate schedules |
-| `permit`, `aq` | `schemas/proprietary/air_quality_permits_schema.json` | Environmental permits |
+| `geothermal` | `schemas/geothermal_ordinance_schema.json` | Municipal regulations |
+| `tariff` | `schemas/electricity_tariff_schema.json` | Utility rate schedules |
+| `permit`, `aq` | `schemas/air_quality_permits_schema.json` | Environmental permits |
 
 **Example:**
 ```bash
-# Automatically uses schemas/proprietary/geothermal_ordinance_schema.json
+# Automatically uses schemas/geothermal_ordinance_schema.json
 pixi run streamline-extract process documents/geothermal_regulations/
 
-# Automatically uses schemas/proprietary/electricity_tariff_schema.json
+# Automatically uses schemas/electricity_tariff_schema.json
 pixi run streamline-extract process documents/utility_tariffs_2025/
 
 # Use the public example schema for general testing
@@ -512,18 +584,18 @@ See `schemas/SCHEMA_BEST_PRACTICES.md` for detailed guidance.
 
 ## Examples
 
-> **Note**: These examples use production schemas in `schemas/proprietary/` for specific document types. For general use or testing, use the public example schema: `--schema schemas/example_utility_rate_schema.json`
+> **Note**: These examples use production schemas in `schemas/` for specific document types. For general use or testing, use the public example schema: `--schema schemas/example_utility_rate_schema.json`
 
 ### Geothermal Ordinances
 
 ```bash
 # Extract requirements from municipal ordinances
 pixi run streamline-extract process documents/geothermal_ordinances/ \
-  --schema schemas/proprietary/geothermal_ordinance_schema.json
+  --schema schemas/geothermal_ordinance_schema.json
 
 # Consolidate to Excel
 pixi run streamline-extract consolidate processed/geothermal_ordinances/ \
-  --schema schemas/proprietary/geothermal_ordinance_schema.json
+  --schema schemas/geothermal_ordinance_schema.json
 ```
 
 **Output**: Spreadsheet with jurisdiction, requirements, depth limits, setbacks, etc.
@@ -533,12 +605,12 @@ pixi run streamline-extract consolidate processed/geothermal_ordinances/ \
 ```bash
 # Extract rate schedules from tariff documents
 pixi run streamline-extract process documents/tariffs/ \
-  --schema schemas/proprietary/electricity_tariff_schema.json \
+  --schema schemas/electricity_tariff_schema.json \
   --max-context 1400000
 
 # Consolidate
 pixi run streamline-extract consolidate processed/tariffs/ \
-  --schema schemas/proprietary/electricity_tariff_schema.json
+  --schema schemas/electricity_tariff_schema.json
 ```
 
 **Output**: Spreadsheet with utilities, rate schedules, charges, demand rates, etc.
@@ -548,11 +620,11 @@ pixi run streamline-extract consolidate processed/tariffs/ \
 ```bash
 # Extract generator specifications from permits
 pixi run streamline-extract process documents/aq_permits/ \
-  --schema schemas/proprietary/air_quality_permits_schema.json
+  --schema schemas/air_quality_permits_schema.json
 
 # Consolidate
 pixi run streamline-extract consolidate processed/aq_permits/ \
-  --schema schemas/proprietary/air_quality_permits_schema.json
+  --schema schemas/air_quality_permits_schema.json
 ```
 
 **Output**: Spreadsheet with facilities, generators, capacities, emissions, etc.
