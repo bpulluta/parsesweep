@@ -61,6 +61,15 @@ data/
 outputs/
 
 # ─────────────────────────────────────────────────────────
+# Proprietary Schemas & Documents (Intellectual Property)
+# ─────────────────────────────────────────────────────────
+schemas/proprietary/
+documents/aq_permits/
+documents/geothermal_ordinances/
+documents/tariffs/
+.github/
+
+# ─────────────────────────────────────────────────────────
 # Archive & Old Code (for reference only)
 # ─────────────────────────────────────────────────────────
 archive/

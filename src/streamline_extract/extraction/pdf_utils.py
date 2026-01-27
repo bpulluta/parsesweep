@@ -2,7 +2,7 @@
 
 import logging
 from pathlib import Path
-from typing import Dict, Any
+from typing import Dict, Any, Optional, Tuple
 import json
 
 try:
@@ -109,9 +109,8 @@ def _validate_extraction_quality(text: str, pdf_path: Path) -> bool:
     Validate extraction quality to detect truncation or corruption.
 
     Heuristics:
-    1. Minimum character threshold (permits are typically multi-page with substantial text)
-    2. Key permit terms present (generator, engine, emission, etc.)
-    3. Content-to-page ratio check (if available)
+    1. Minimum character threshold (multi-page documents should have substantial text)
+    2. Content-to-page ratio check (detect image-heavy PDFs with poor OCR)
 
     Args:
         text: Extracted text
@@ -121,24 +120,16 @@ def _validate_extraction_quality(text: str, pdf_path: Path) -> bool:
         True if extraction quality is acceptable, False otherwise
     """
     # Check 1: Minimum length threshold
-    # Permits are typically 10+ pages with 1000+ chars/page
-    # 5000 chars is conservative minimum for multi-page permit
-    if len(text) < 5000:
+    # Most multi-page documents have at least 1000 chars/page
+    # 3000 chars is conservative minimum for reasonable content
+    if len(text) < 3000:
         logger.debug(
-            f"Extraction too short: {len(text)} chars (expected >5000)"
+            f"Extraction too short: {len(text)} chars (expected >3000)"
         )
         return False
 
-    # Check 2: Key permit terms presence
-    # Any legitimate permit should contain most of these terms
-    key_terms = ["generator", "engine", "emission", "permit", "equipment"]
-    terms_found = sum(1 for term in key_terms if term.lower() in text.lower())
-    if terms_found < 3:
-        logger.debug(f"Key terms missing: only {terms_found}/5 found")
-        return False
-
-    # Check 3: Page count vs content ratio
-    # If PDF has many pages but very little text, something went wrong
+    # Check 2: Page count vs content ratio
+    # If PDF has many pages but very little text, OCR likely failed
     try:
         if PYMUPDF_AVAILABLE:
             with pymupdf.open(str(pdf_path)) as doc:
@@ -146,6 +137,7 @@ def _validate_extraction_quality(text: str, pdf_path: Path) -> bool:
                 chars_per_page = (
                     len(text) / page_count if page_count > 0 else 0
                 )
+                # Warn if average is less than 100 chars/page (likely images without OCR)
                 if page_count > 5 and chars_per_page < 100:
                     logger.debug(
                         f"Low content density: {chars_per_page:.0f} chars/page for {page_count} pages"
@@ -158,7 +150,7 @@ def _validate_extraction_quality(text: str, pdf_path: Path) -> bool:
 
 
 def extract_text_from_pdf(
-    pdf_path: Path, prefer_markdown: bool = False
+    pdf_path: Path, prefer_markdown: bool = False, page_range: Optional[tuple] = None
 ) -> str:
     """
     Extract text from a PDF file with adaptive method selection.
@@ -174,6 +166,7 @@ def extract_text_from_pdf(
     Args:
         pdf_path: Path to the PDF file
         prefer_markdown: If True, try PyMuPDF4LLM first for table preservation
+        page_range: Optional tuple (start_page, end_page) to extract only specific pages (1-indexed)
 
     Returns:
         Extracted text string (markdown or plain text depending on method)
@@ -205,11 +198,25 @@ def extract_text_from_pdf(
         try:
             with pymupdf.open(str(pdf_path)) as doc:
                 page_count = len(doc)
-                for page_num in range(page_count):
+                
+                # Determine page range
+                if page_range:
+                    start_page, end_page = page_range
+                    # Convert to 0-indexed and validate
+                    start_page = max(0, start_page - 1)  # Convert 1-indexed to 0-indexed
+                    end_page = min(page_count, end_page)  # Ensure within bounds
+                    pages_to_extract = range(start_page, end_page)
+                    logger.debug(f"Extracting pages {start_page+1}-{end_page} from {pdf_path.name}")
+                else:
+                    pages_to_extract = range(page_count)
+                    logger.debug(f"Extracting all {page_count} pages from {pdf_path.name}")
+                
+                for page_num in pages_to_extract:
                     text += doc[page_num].get_text() + "\n"
-            logger.debug(
-                f"Extracted {page_count} pages using PyMuPDF from {pdf_path.name}"
-            )
+                    
+                logger.debug(
+                    f"Extracted {len(pages_to_extract)} pages using PyMuPDF from {pdf_path.name}"
+                )
         except Exception as e:
             logger.error(
                 f"Error extracting text with PyMuPDF from {pdf_path}: {e}"
@@ -349,7 +356,7 @@ def _cleanup_ocr_errors(text: str) -> str:
         text = re.sub(pattern, replacement, text, flags=re.IGNORECASE)
 
     # ========================================================================
-    # RULE 7: Domain dictionary (permit-specific terms that need exact fixes)
+    # RULE 7: Domain dictionary (common text correction patterns)
     # ========================================================================
     # Keep small dictionary for edge cases that don't fit general rules
     domain_terms = {
@@ -420,54 +427,3 @@ def load_schema(schema_path: Path) -> Dict[str, Any]:
     with open(schema_path, "r") as f:
         return json.load(f)
 
-
-def create_empty_result() -> Dict[str, Any]:
-    """
-    Create an empty extraction result matching the schema.
-
-    Returns:
-        Empty result dictionary
-    """
-    return {
-        "permitDetails": {
-            "permitNumber": None,
-            "permitIssuanceDate": None,
-            "permitExpirationDate": None,
-            "facilityName": None,
-            "facilityAddress": None,
-            "facilityCounty": None,
-        },
-        "generatorSets": [],
-        "complianceRequirements": [],
-        "recordKeepingRequirements": [],
-        "notifications": [],
-    }
-
-
-def validate_extraction(result: Dict[str, Any]) -> list[str]:
-    """
-    Validate extraction results and return warnings.
-
-    Args:
-        result: Extraction result dictionary
-
-    Returns:
-        List of validation warnings
-    """
-    warnings = []
-
-    permit_details = result.get("permitDetails", {})
-    if not permit_details.get("permitNumber"):
-        warnings.append("Missing permit number")
-
-    generator_sets = result.get("generatorSets", [])
-    if not generator_sets:
-        warnings.append("No generator sets extracted")
-    else:
-        for i, gen in enumerate(generator_sets):
-            if not gen.get("ratedCapacityKW"):
-                warnings.append(f"Generator {i + 1} missing capacity (kW)")
-            if not gen.get("fuelType"):
-                warnings.append(f"Generator {i + 1} missing fuel type")
-
-    return warnings

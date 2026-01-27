@@ -2,7 +2,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
-[![Version](https://img.shields.io/badge/version-2.0.0-green.svg)](https://github.com/bpulluta/StreamlineExtract/releases)
+[![Version](https://img.shields.io/badge/version-2.0.1-green.svg)](https://github.com/bpulluta/StreamlineExtract/releases)
 
 **Transform unstructured documents into structured data in minutes, not hours.**
 
@@ -27,9 +27,28 @@ Transforming any unstructured documents into structured data:
 
 Works with any document type: regulations, contracts, research papers, permits, invoices, tariffs, reports, filings, and more. Just define your data structure, and let AI handle the extraction.
 
-**Version**: 2.0  
+**Version**: 2.0.1  
 **Requirements**: Python 3.12+, pixi package manager  
 **Supported Formats**: PDF, DOCX, DOC, TXT, XLSX, CSV
+
+---
+
+## What's New in 2.0.1
+
+🎯 **Page Range Extraction** - Extract only specific pages from large PDFs
+- `--pages 615-759` for single files
+- `--pages-csv file.csv` for batch processing with different ranges per file
+- Perfect for massive tariff books or reports where you only need specific sections
+- Saves time and API costs by extracting only what you need
+
+🔧 **Improved Quality Validation** - Better detection of extraction issues
+- Relaxed validation thresholds for broader document types
+- Better OCR failure detection for image-heavy PDFs
+
+📦 **Example Schema & Document** - Get started immediately
+- `schemas/example_utility_rate_schema.json` - Simple working example
+- `documents/examples/sample_utility_rate.txt` - Test document included
+- Perfect for learning and testing before building your own schemas
 
 ---
 
@@ -212,6 +231,8 @@ pixi run streamline-extract process <input_directory>
 |--------|-------------|---------|
 | `--schema PATH` | Custom schema file | Auto-detected |
 | `--output PATH` | Output directory | `processed/<input_name>/` |
+| `--pages RANGE` | Page range for single PDF (e.g., "615-759") | All pages |
+| `--pages-csv PATH` | CSV with per-file page ranges | None |
 | `--max-context N` | Max characters per document | 400000 |
 | `--limit N` | Process only N files | All files |
 | `--enable-qa-qc` | Enable quality checks | Disabled |
@@ -231,6 +252,16 @@ pixi run streamline-extract process documents/contracts/
 pixi run streamline-extract process documents/tariffs/ \
   --schema schemas/electricity_tariff_schema.json
 
+# Extract only specific pages from a large PDF (NEW in 2.0.1!)
+pixi run streamline-extract process documents/tariff_book.pdf \
+  --pages 615-759 \
+  --schema schemas/my_schema.json
+
+# Batch processing with different page ranges per file
+pixi run streamline-extract process documents/tariffs/ \
+  --pages-csv page_ranges.csv \
+  --schema schemas/my_schema.json
+
 # Large documents with live dashboard
 pixi run streamline-extract process documents/reports/ \
   --max-context 1400000 \
@@ -239,6 +270,15 @@ pixi run streamline-extract process documents/reports/ \
 # Test run (limit to 3 files)
 pixi run streamline-extract process documents/test/ --limit 3
 ```
+
+**CSV format for `--pages-csv`:**
+```csv
+file_path,start_page,end_page
+tariff1.pdf,615,759
+tariff2.pdf,400,550
+small_doc.pdf,,
+```
+Empty start/end means extract full document.
 
 ### Consolidate Command
 

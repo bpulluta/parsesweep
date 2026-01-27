@@ -121,9 +121,12 @@ def validate_path_structure(path: Path, expected_content: str = "PDFs") -> Tuple
 @click.option('--verbose', '-v', is_flag=True, help='Detailed output with statistics')
 @click.option('--debug', is_flag=True, help='Debug mode with full logs')
 @click.option('--live-dashboard', is_flag=True, help='Show live dashboard during extraction')
+@click.option('--pages', type=str, default=None, help='Page range to extract (e.g., "615-759" or "100:200"). Only for single PDF files.')
+@click.option('--pages-csv', type=click.Path(exists=True), default=None, help='CSV file mapping documents to page ranges (columns: file_path,start_page,end_page)')
 def process(path: str, output: Optional[str], schema: Optional[str], state: Optional[str],
             model: str, enable_qa_qc: bool, use_azure: Optional[bool], limit: Optional[int], 
-            skip_existing: bool, max_context: int, quiet: bool, verbose: bool, debug: bool, live_dashboard: bool):
+            skip_existing: bool, max_context: int, quiet: bool, verbose: bool, debug: bool, live_dashboard: bool,
+            pages: Optional[str], pages_csv: Optional[str]):
     """
     Process documents and extract structured data.
     
@@ -138,14 +141,17 @@ def process(path: str, output: Optional[str], schema: Optional[str], state: Opti
         # Process using default schema
         streamline-extract process documents/Category/doc1.pdf
         
-        # Process with a specific schema (e.g., geothermal ordinances)
-        streamline-extract process documents/Ordinances --schema schemas/geothermal_ordinance_schema.json
+        # Process with example schema
+        streamline-extract process documents/examples/ --schema schemas/example_utility_rate_schema.json
         
         # Process all documents in a directory
         streamline-extract process documents/Category
         
         # Process just the first 5 documents (useful for testing)
         streamline-extract process documents/Category -n 5
+        
+        # Extract only specific pages from a PDF (great for large documents!)
+        streamline-extract process documents/tariff.pdf --pages 615-759
         
         # Use Azure OpenAI (if you have Azure credits)
         streamline-extract process documents/Category --use-azure
@@ -177,7 +183,9 @@ def process(path: str, output: Optional[str], schema: Optional[str], state: Opti
     elif VERBOSITY == 'debug':
         logging.basicConfig(level=logging.DEBUG, format='%(levelname)s: %(message)s')
     elif VERBOSITY == 'verbose':
-        logging.basicConfig(level=logging.INFO, format='%(message)s')
+        # Use WARNING level to avoid logger.info() messages that interfere with progress bars
+        # Verbose mode shows detailed results, but not intermediate extraction logs
+        logging.basicConfig(level=logging.WARNING, format='%(message)s')
     else:  # normal
         logging.basicConfig(level=logging.WARNING, format='%(message)s')
     
@@ -371,6 +379,80 @@ def process(path: str, output: Optional[str], schema: Optional[str], state: Opti
             sys.exit(1)
         doc_files = [path]
     
+    # Handle page range specifications
+    from streamline_extract.utils.page_range import parse_page_range, load_pages_csv
+    
+    page_range_map = {}  # Maps file paths to (start, end) tuples
+    
+    if pages_csv:
+        # Load page ranges from CSV file
+        try:
+            page_mappings = load_pages_csv(Path(pages_csv))
+            
+            # Match file names from doc_files to mappings
+            for doc in doc_files:
+                # Try exact match first
+                if str(doc) in page_mappings:
+                    page_range_map[doc] = page_mappings[str(doc)]
+                elif doc.name in page_mappings:
+                    page_range_map[doc] = page_mappings[doc.name]
+            
+            if VERBOSITY != 'quiet':
+                mapped_count = sum(1 for v in page_range_map.values() if v is not None)
+                console.print(f"[dim]Loaded page ranges for {mapped_count} file(s) from CSV[/dim]")
+        
+        except Exception as e:
+            print_error(
+                "Invalid page ranges CSV",
+                str(e),
+                [
+                    "CSV format should be:",
+                    "  file_path,start_page,end_page",
+                    "  tariff1.pdf,615,759",
+                    "  tariff2.pdf,400,550"
+                ]
+            )
+            sys.exit(1)
+    
+    elif pages:
+        # Single file with page range
+        if len(doc_files) > 1:
+            print_error(
+                "--pages flag only works with single file",
+                f"You specified --pages but selected {len(doc_files)} files",
+                [
+                    "Use --pages only when processing a single PDF",
+                    "For multiple files, use --pages-csv instead"
+                ]
+            )
+            sys.exit(1)
+        
+        if doc_files[0].suffix.lower() != '.pdf':
+            print_error(
+                "--pages only works with PDF files",
+                f"File {doc_files[0].name} is not a PDF",
+                ["Page ranges are only supported for PDF documents"]
+            )
+            sys.exit(1)
+        
+        try:
+            page_range_tuple = parse_page_range(pages)
+            page_range_map[doc_files[0]] = page_range_tuple
+            
+            if VERBOSITY != 'quiet':
+                console.print(f"[dim]Extracting pages {page_range_tuple[0]}-{page_range_tuple[1]} only[/dim]")
+        
+        except ValueError as e:
+            print_error(
+                "Invalid page range format",
+                str(e),
+                [
+                    "Use format like: --pages 615-759",
+                    "Or with colons: --pages 100:200"
+                ]
+            )
+            sys.exit(1)
+    
     # Final validation - check if we have files to process
     if not doc_files:
         if is_dir and VERBOSITY != 'quiet':
@@ -411,6 +493,22 @@ def process(path: str, output: Optional[str], schema: Optional[str], state: Opti
         config_info["Provider"] = provider_name
         config_info["QA/QC"] = "Enabled" if enable_qa_qc else "Disabled"
         
+        # Show page range status
+        if page_range_map:
+            # Count how many files have page ranges
+            files_with_ranges = sum(1 for v in page_range_map.values() if v is not None)
+            if files_with_ranges == 1 and len(doc_files) == 1:
+                # Single file with specific pages
+                start, end = list(page_range_map.values())[0]
+                config_info["Pages"] = f"{start}-{end}"
+            elif files_with_ranges > 0:
+                # Multiple files with ranges from CSV
+                config_info["Pages"] = f"{files_with_ranges} file(s) with ranges, {len(doc_files) - files_with_ranges} full"
+            else:
+                config_info["Pages"] = "All pages"
+        else:
+            config_info["Pages"] = "All pages"
+        
         # Show relative path for output
         try:
             rel_output = output_dir.relative_to(Path.cwd())
@@ -426,35 +524,14 @@ def process(path: str, output: Optional[str], schema: Optional[str], state: Opti
         if VERBOSITY != 'quiet':
             config_info["Schema"] = schema_path.name
     else:
-        # Auto-detect schema based on folder name/path
-        schema_path = None
-        schema_candidates = config.schema_dir.glob("*.json")
-        
-        # Try to match schema name with path keywords
-        path_lower = str(path).lower()
-        matched_schema = None
-        
-        for candidate in schema_candidates:
-            candidate_name_lower = candidate.stem.lower()
-            # Check if path contains schema keywords
-            if any(keyword in path_lower for keyword in ['geothermal', 'ordinance']) and 'geothermal' in candidate_name_lower:
-                matched_schema = candidate
-                break
-            elif any(keyword in path_lower for keyword in ['tariff', 'rate', 'electric']) and 'tariff' in candidate_name_lower:
-                matched_schema = candidate
-                break
-        
-        if matched_schema:
-            schema_path = matched_schema
-            loaded_schema = load_schema(schema_path)
-            if VERBOSITY != 'quiet':
-                config_info["Schema"] = f"{schema_path.name} (auto-detected)"
-        else:
-            # Fall back to default
-            schema_path = config.default_schema
-            loaded_schema = load_schema(schema_path)
-            if VERBOSITY != 'quiet':
-                config_info["Schema"] = f"{schema_path.name} (default)"
+        # Use example schema as default
+        schema_path = config.default_schema
+        loaded_schema = load_schema(schema_path)
+        if VERBOSITY != 'quiet':
+            config_info["Schema"] = f"{schema_path.name} (default example)"
+            console.print("[yellow]⚠[/yellow]  No schema specified. Using example schema.")
+            console.print("[dim]   For production use, specify your schema with --schema flag.[/dim]")
+            console.print()
     
     # Display configuration table
     if VERBOSITY != 'quiet':
@@ -469,7 +546,9 @@ def process(path: str, output: Optional[str], schema: Optional[str], state: Opti
         total_chars = 0
         for doc in doc_files[:sample_size]:
             try:
-                text = extract_text_from_document(doc)
+                # Use page range for estimation if specified
+                page_range = page_range_map.get(doc)
+                text = extract_text_from_document(doc, page_range=page_range)
                 total_chars += len(text)
             except Exception:
                 pass
@@ -617,17 +696,30 @@ def process(path: str, output: Optional[str], schema: Optional[str], state: Opti
     elif len(doc_files) > 1 and VERBOSITY != 'quiet':
         progress = create_extraction_progress()
         # Start with first document name instead of generic "Extracting..." message
-        task = progress.add_task(doc_files[0].name, total=len(doc_files))
+        first_doc = doc_files[0]
+        first_desc = first_doc.name
+        # Show page range in progress bar if specified
+        if first_doc in page_range_map and page_range_map[first_doc] is not None:
+            start, end = page_range_map[first_doc]
+            first_desc += f" [dim](pages {start}-{end})[/dim]"
+        
+        task = progress.add_task(first_desc, total=len(doc_files))
         
         with progress:
             for idx, doc_path in enumerate(doc_files):
                 # Update progress description to show current document (skip first since already set)
                 if idx > 0:
-                    progress.update(task, description=doc_path.name)
+                    desc = doc_path.name
+                    if doc_path in page_range_map and page_range_map[doc_path] is not None:
+                        start, end = page_range_map[doc_path]
+                        desc += f" [dim](pages {start}-{end})[/dim]"
+                    progress.update(task, description=desc)
                 
                 try:
                     # Extract text from document (supports PDF, DOCX, TXT, XLSX, CSV)
-                    text = extract_text_from_document(doc_path)
+                    # Use page range if specified for this file
+                    page_range = page_range_map.get(doc_path)
+                    text = extract_text_from_document(doc_path, page_range=page_range)
                     result = extractor.extract(text, loaded_schema, enable_qa_qc=enable_qa_qc)
                     
                     # Save result
@@ -657,11 +749,19 @@ def process(path: str, output: Optional[str], schema: Optional[str], state: Opti
         for doc_path in doc_files:
             if VERBOSITY == 'verbose' or VERBOSITY == 'normal':
                 console.print()
-                console.print(f"[cyan]→[/cyan] {doc_path.name}")
+                # Show page range if specified
+                page_range = page_range_map.get(doc_path)
+                if page_range is not None:
+                    start, end = page_range
+                    console.print(f"[cyan]→[/cyan] {doc_path.name} [dim](pages {start}-{end})[/dim]")
+                else:
+                    console.print(f"[cyan]→[/cyan] {doc_path.name}")
             
             try:
                 # Extract text from document (supports PDF, DOCX, TXT, XLSX, CSV)
-                text = extract_text_from_document(doc_path)
+                # Use page range if specified for this file
+                page_range = page_range_map.get(doc_path)
+                text = extract_text_from_document(doc_path, page_range=page_range)
                 result = extractor.extract(text, loaded_schema, enable_qa_qc=enable_qa_qc)
                 
                 # Save result
@@ -858,8 +958,8 @@ def consolidate(extracted_dir: str, output: Optional[str]):
     
     \b
     EXAMPLES:
-        # Consolidate geothermal ordinances
-        streamline-extract consolidate processed/geothermal_ordinances
+        # Consolidate extracted data
+        streamline-extract consolidate processed/examples/
         
         # Consolidate utility tariffs
         streamline-extract consolidate processed/tariffs
@@ -905,43 +1005,34 @@ def consolidate(extracted_dir: str, output: Optional[str]):
     console.print(table)
     console.print()
     
-    # Try to find and load schema metadata (required in v2.0+)
+    # Try to find schema - check processed directory first, then fall back to default
     schema_metadata = None
-    # Auto-detect schema based on folder name/path
-    schema_candidates = config.schema_dir.glob("*.json")
-    path_lower = str(input_dir).lower()
-    matched_schema = None
+    matched_schema = config.default_schema  # Default to example schema
     
-    for candidate in schema_candidates:
-        candidate_name_lower = candidate.stem.lower()
-        # Check if path contains schema keywords
-        if any(keyword in path_lower for keyword in ['geothermal', 'ordinance']) and 'geothermal' in candidate_name_lower:
-            matched_schema = candidate
-            break
-        elif any(keyword in path_lower for keyword in ['tariff', 'rate', 'electric']) and 'tariff' in candidate_name_lower:
-            matched_schema = candidate
-            break
-        elif any(keyword in path_lower for keyword in ['permit', 'air_quality', 'aq']) and 'permit' in candidate_name_lower:
-            matched_schema = candidate
+    # Check if there are any JSON files in the processed directory (schema saved during extraction)
+    json_files = list(input_dir.glob("*.json"))
+    if json_files:
+        # Use first JSON as schema (typically saved during extraction)
+        for jf in json_files:
+            if jf.stem != "schema":  # Skip if it's just named "schema.json"
+                continue
+            matched_schema = jf
+            console.print(f"[dim]Using schema from processed directory: {matched_schema.name}[/dim]")
             break
     
-    if matched_schema:
-        try:
-            from streamline_extract.utils.schema_metadata import SchemaMetadata
-            schema_metadata = SchemaMetadata(matched_schema)
-            console.print(f"[dim]Using schema metadata from {matched_schema.name}[/dim]")
-        except Exception as e:
-            print_error(
-                "Schema validation failed",
-                f"Schema {matched_schema.name} is missing required metadata: {e}"
-            )
-            return
-    else:
+    if matched_schema == config.default_schema:
+        console.print(f"[yellow]⚠[/yellow]  Using default example schema: {matched_schema.name}")
+        console.print("[dim]   For production use, process with --schema to save schema metadata.[/dim]")
+    
+    try:
+        from streamline_extract.utils.schema_metadata import SchemaMetadata
+        schema_metadata = SchemaMetadata(matched_schema)
+    except Exception as e:
         print_error(
-            "No schema found for consolidation",
-            "StreamlineExtract v2.0+ requires a schema with $metadata.\\n"
-            f"Could not auto-detect schema for: {input_dir}\\n"
-            f"Available schemas in {config.schema_dir}: {[s.name for s in config.schema_dir.glob('*.json')]}"
+            "Schema validation failed",
+            f"Schema {matched_schema.name} is missing required $metadata section: {e}\\n"
+            "StreamlineExtract v2.0+ requires schemas with $metadata.\\n"
+            "See schemas/SCHEMA_BEST_PRACTICES.md for examples."
         )
         return
     

@@ -23,7 +23,7 @@ def is_supported_document(file_path: Path) -> bool:
     return file_path.suffix.lower() in SUPPORTED_EXTENSIONS
 
 
-def extract_text_from_document(file_path: Path) -> str:
+def extract_text_from_document(file_path: Path, page_range: Optional[tuple] = None) -> str:
     """
     Extract text from any supported document format.
     
@@ -31,6 +31,7 @@ def extract_text_from_document(file_path: Path) -> str:
     
     Args:
         file_path: Path to the document
+        page_range: Optional tuple (start_page, end_page) for PDF files only (1-indexed)
         
     Returns:
         Extracted text content
@@ -45,7 +46,7 @@ def extract_text_from_document(file_path: Path) -> str:
     ext = file_path.suffix.lower()
     
     if ext == '.pdf':
-        return _extract_from_pdf(file_path)
+        return _extract_from_pdf(file_path, page_range)
     elif ext in {'.docx', '.doc'}:
         return _extract_from_docx(file_path)
     elif ext == '.txt':
@@ -61,10 +62,10 @@ def extract_text_from_document(file_path: Path) -> str:
         )
 
 
-def _extract_from_pdf(pdf_path: Path) -> str:
+def _extract_from_pdf(pdf_path: Path, page_range: Optional[tuple] = None) -> str:
     """Extract text from PDF using existing pdf_utils."""
     from .pdf_utils import extract_text_from_pdf
-    return extract_text_from_pdf(pdf_path)
+    return extract_text_from_pdf(pdf_path, page_range=page_range)
 
 
 def _extract_from_docx(docx_path: Path) -> str:
