@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "streamline-extract"
-version = "2.0.0"
+version = "2.0.1"
 description = "StreamlineExtract: Universal document extraction system - extract structured data from ANY document type using schemas + LLMs"
 readme = "README.md"
 requires-python = ">=3.9"

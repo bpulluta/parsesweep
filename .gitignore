@@ -67,6 +67,9 @@ schemas/proprietary/
 documents/aq_permits/
 documents/geothermal_ordinances/
 documents/tariffs/
+config/aq_permits/
+config/geothermal_ordinances/
+config/tariffs/
 .github/
 
 # ─────────────────────────────────────────────────────────

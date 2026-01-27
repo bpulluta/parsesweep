@@ -19,7 +19,7 @@ from streamline_extract.cli.utils_commands import (
 
 
 @click.group()
-@click.version_option(version="2.0.0", prog_name="streamline-extract")
+@click.version_option(version="2.0.1", prog_name="streamline-extract")
 def cli():
     """
     📄 StreamlineExtract
