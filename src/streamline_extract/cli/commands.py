@@ -619,7 +619,6 @@ def process(path: str, output: Optional[str], schema: Optional[str], state: Opti
                 "OPENAI_API_KEY not found",
                 f"Create .env file at: {config.project_root / '.env'}"
             )
-            print(f"   Create .env file at: {config.project_root / '.env'}")
             return
         
         # Create schema metadata if available
@@ -949,7 +948,10 @@ def validate(extraction_file: str, verbose: bool, show_data: bool):
 @click.command()
 @click.argument('extracted_dir', type=click.Path(exists=True))
 @click.option('--output', '-o', type=click.Path(), help='Output directory (auto-detected if not specified)')
-def consolidate(extracted_dir: str, output: Optional[str]):
+@click.option('--quiet', '-q', is_flag=True, help='Minimal output (machine-readable)')
+@click.option('--verbose', '-v', is_flag=True, help='Detailed output with statistics')
+@click.option('--debug', is_flag=True, help='Debug mode with full logs')
+def consolidate(extracted_dir: str, output: Optional[str], quiet: bool, verbose: bool, debug: bool):
     """
     Consolidate extracted JSON files into clean Excel/CSV output.
     
@@ -973,6 +975,27 @@ def consolidate(extracted_dir: str, output: Optional[str]):
         • CSV file for data analysis
         • Automatic deduplication of identical entries
     """
+    # Set global verbosity
+    global VERBOSITY
+    if quiet:
+        VERBOSITY = 'quiet'
+    elif debug:
+        VERBOSITY = 'debug'
+    elif verbose:
+        VERBOSITY = 'verbose'
+    else:
+        VERBOSITY = 'normal'
+    
+    # Configure logging level based on verbosity
+    if VERBOSITY == 'quiet':
+        logging.basicConfig(level=logging.ERROR, format='%(message)s')
+    elif VERBOSITY == 'debug':
+        logging.basicConfig(level=logging.DEBUG, format='%(levelname)s: %(message)s')
+    elif VERBOSITY == 'verbose':
+        logging.basicConfig(level=logging.WARNING, format='%(message)s')
+    else:  # normal
+        logging.basicConfig(level=logging.WARNING, format='%(message)s')
+    
     input_dir = Path(extracted_dir)
     
     # Load config
@@ -995,15 +1018,16 @@ def consolidate(extracted_dir: str, output: Optional[str]):
     output_dir.mkdir(parents=True, exist_ok=True)
     
     # Header
-    print_header("CONSOLIDATION")
-    
-    config_info = {
-        "Input": str(input_dir),
-        "Output": str(output_dir)
-    }
-    table = create_config_table("", config_info)
-    console.print(table)
-    console.print()
+    if VERBOSITY != 'quiet':
+        print_header("CONSOLIDATION")
+        
+        config_info = {
+            "Input": str(input_dir),
+            "Output": str(output_dir)
+        }
+        table = create_config_table("", config_info)
+        console.print(table)
+        console.print()
     
     # Try to find schema - check processed directory first, then fall back to default
     schema_metadata = None
@@ -1017,10 +1041,11 @@ def consolidate(extracted_dir: str, output: Optional[str]):
             if jf.stem != "schema":  # Skip if it's just named "schema.json"
                 continue
             matched_schema = jf
-            console.print(f"[dim]Using schema from processed directory: {matched_schema.name}[/dim]")
+            if VERBOSITY != 'quiet':
+                console.print(f"[dim]Using schema from processed directory: {matched_schema.name}[/dim]")
             break
     
-    if matched_schema == config.default_schema:
+    if matched_schema == config.default_schema and VERBOSITY != 'quiet':
         console.print(f"[yellow]⚠[/yellow]  Using default example schema: {matched_schema.name}")
         console.print("[dim]   For production use, process with --schema to save schema metadata.[/dim]")
     
@@ -1037,8 +1062,13 @@ def consolidate(extracted_dir: str, output: Optional[str]):
         return
     
     # Consolidate
-    console.print("[cyan]→[/cyan] Analyzing schema structure...")
-    consolidator = Consolidator(schema_metadata=schema_metadata)
+    if VERBOSITY != 'quiet':
+        console.print("[cyan]→[/cyan] Analyzing schema structure...")
+    consolidator = Consolidator(
+        schema_metadata=schema_metadata, 
+        verbose=(VERBOSITY == 'verbose' or VERBOSITY == 'debug'),
+        debug=(VERBOSITY == 'debug')
+    )
     
     try:
         df, schema_info = consolidator.consolidate_from_directory(input_dir)
@@ -1047,10 +1077,11 @@ def consolidate(extracted_dir: str, output: Optional[str]):
             print_warning("No data found to consolidate")
             return
         
-        print_success(f"Schema detected: [cyan]{schema_info['type']}[/cyan]")
-        console.print(f"  [dim]Main entity: {schema_info['main_array_key']}[/dim]\n")
-        
-        console.print("[cyan]→[/cyan] Creating outputs...")
+        if VERBOSITY != 'quiet':
+            print_success(f"Schema detected: [cyan]{schema_info['type']}[/cyan]")
+            console.print(f"  [dim]Main entity: {schema_info['main_array_key']}[/dim]\n")
+            
+            console.print("[cyan]→[/cyan] Creating outputs...")
         
         # Generate output filename
         base_name = input_dir.name.replace('_', '-')
@@ -1058,39 +1089,53 @@ def consolidate(extracted_dir: str, output: Optional[str]):
         # Save CSV
         csv_path = output_dir / f"{base_name}.csv"
         consolidator.save_csv(df, csv_path)
-        print_success(f"CSV saved ({len(df)} rows)")
+        csv_size_mb = csv_path.stat().st_size / (1024 * 1024)
+        
+        if VERBOSITY == 'verbose' or VERBOSITY == 'debug':
+            print_success(f"CSV saved: {csv_path.name} ({csv_size_mb:.2f} MB, {len(df)} rows)")
+        elif VERBOSITY != 'quiet':
+            print_success(f"CSV saved ({len(df)} rows)")
         
         # Save Excel
         excel_path = output_dir / f"{base_name}.xlsx"
         consolidator.save_excel(df, excel_path)
-        print_success("Excel saved (clean formatting, auto-sized columns)")
+        excel_size_mb = excel_path.stat().st_size / (1024 * 1024)
+        
+        if VERBOSITY == 'verbose' or VERBOSITY == 'debug':
+            print_success(f"Excel saved: {excel_path.name} ({excel_size_mb:.2f} MB, {len(df)} rows)")
+        elif VERBOSITY != 'quiet':
+            print_success("Excel saved (clean formatting, auto-sized columns)")
         
         # Summary
-        summary_stats = {
-            "Schema Type": schema_info['type'],
-            "Records": str(len(df)),
-            "Columns": str(len(df.columns)),
-        }
-        
-        # Category breakdown
-        if schema_info.get('category_field'):
-            category_display = ''.join([' ' + c if c.isupper() else c for c in schema_info.get('category_field', '')]).strip().title()
-            if category_display and category_display in df.columns:
-                top_categories = df[category_display].value_counts().head(5)
-                if not top_categories.empty:
-                    top_cat_str = ", ".join([f"{cat} ({count})" for cat, count in list(top_categories.items())[:3]])
-                    summary_stats[f"Top {category_display}s"] = top_cat_str
-        
-        console.print()
-        table = create_summary_table("Consolidation Summary", summary_stats)
-        console.print(table)
-        
-        console.print(f"\n[bold green]✓ Output Location[/bold green]")
-        console.print(f"  [bold]{excel_path.absolute()}[/bold]\n")
+        if VERBOSITY != 'quiet':
+            summary_stats = {
+                "Schema Type": schema_info['type'],
+                "Records": str(len(df)),
+                "Columns": str(len(df.columns)),
+            }
+            
+            # Category breakdown
+            if schema_info.get('category_field'):
+                category_display = ''.join([' ' + c if c.isupper() else c for c in schema_info.get('category_field', '')]).strip().title()
+                if category_display and category_display in df.columns:
+                    top_categories = df[category_display].value_counts().head(5)
+                    if not top_categories.empty:
+                        top_cat_str = ", ".join([f"{cat} ({count})" for cat, count in list(top_categories.items())[:3]])
+                        summary_stats[f"Top {category_display}s"] = top_cat_str
+            
+            console.print()
+            table = create_summary_table("Consolidation Summary", summary_stats)
+            console.print(table)
+            
+            console.print(f"\n[bold green]✓ Output Location[/bold green]")
+            console.print(f"  [bold]{excel_path.absolute()}[/bold]\n")
+        else:
+            # Quiet mode - just print the path
+            console.print(str(excel_path.absolute()))
         
     except Exception as e:
         print_error("Consolidation failed", str(e))
-        if '--verbose' in sys.argv or '-v' in sys.argv:
+        if VERBOSITY == 'debug':
             import traceback
             traceback.print_exc()
         sys.exit(1)
