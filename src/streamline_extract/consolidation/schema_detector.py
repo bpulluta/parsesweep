@@ -88,11 +88,30 @@ class SchemaDetector:
         """
         context = {}
         
+        # Get excluded fields from schema metadata
+        exclude_fields = self._get_exclude_fields()
+        
         for id_field_key in schema_info['id_fields']:
             id_obj = data.get(id_field_key, {})
             for k, v in id_obj.items():
+                # Skip excluded fields
+                if k in exclude_fields:
+                    continue
+                
                 # Convert camelCase to Title Case with spaces
                 display_name = ''.join([' ' + c if c.isupper() else c for c in k]).strip().title()
                 context[display_name] = v
         
         return context
+    
+    def _get_exclude_fields(self) -> List[str]:
+        """
+        Get list of field names to exclude from consolidated output.
+        
+        Returns:
+            List of field names (in snake_case) to exclude
+        """
+        metadata = self.schema_metadata.metadata
+        if 'consolidation' in metadata and 'output' in metadata['consolidation']:
+            return metadata['consolidation']['output'].get('exclude_fields', [])
+        return []
