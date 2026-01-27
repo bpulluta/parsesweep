@@ -31,37 +31,38 @@ def cli():
     
     \b
     QUICK START:
-        1. Put your PDF documents in a folder (e.g., documents/Category/)
-        2. Process the data: streamline-extract process documents/Category
-        3. Consolidate into a spreadsheet: streamline-extract consolidate processed/Category
-        4. Open the CSV file in Excel or Google Sheets!
+        1. Put your documents in a folder (e.g., documents/Category/)
+        2. Process with your schema: 
+           streamline-extract process documents/Category --schema schemas/your_schema.json
+        3. Consolidate into spreadsheet: 
+           streamline-extract consolidate processed/Category --schema schemas/your_schema.json
+        4. Open the CSV or Excel file!
     
     \b
     COMMON WORKFLOWS:
     
-        Process a single document:
-        $ streamline-extract process documents/Category/doc1.pdf
+        Process with a custom schema (REQUIRED for production):
+        $ streamline-extract process documents/Category --schema schemas/your_schema.json
         
-        Process all documents in a folder:
-        $ streamline-extract process documents/Category
+        Process a single document:
+        $ streamline-extract process documents/Category/doc1.pdf --schema schemas/your_schema.json
         
         Test with just 5 documents first:
-        $ streamline-extract process documents/Category -n 5
+        $ streamline-extract process documents/Category --schema schemas/your_schema.json -n 5
         
-        Consolidate processed data into a spreadsheet:
-        $ streamline-extract consolidate processed/Category
-        
-        Get Excel format output:
-        $ streamline-extract consolidate processed/Category --format excel
+        Consolidate processed data (use same schema):
+        $ streamline-extract consolidate processed/Category --schema schemas/your_schema.json
     
     \b
     REQUIREMENTS:
         • Python 3.9 or later
-        • OpenAI API key (add to .env file: OPENAI_API_KEY=sk-...)
-        • PDF documents to process
+        • Azure OpenAI or OpenAI API key (run: streamline-extract init)
+        • JSON schema defining your data structure
+        • Documents to process (PDF, DOCX, TXT, XLSX, CSV)
     
     \b
     NEED HELP?
+        • Initialize setup: streamline-extract init
         • See command help: streamline-extract process --help
         • Documentation: https://github.com/bpulluta/StreamlineExtract
         • Issues: Create an issue on GitHub
