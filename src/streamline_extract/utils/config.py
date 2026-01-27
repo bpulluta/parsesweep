@@ -37,7 +37,7 @@ class Config:
         
         # Schema path
         self.schema_dir = self.project_root / "schemas"
-        self.default_schema = self.schema_dir / "air_quality_permits_schema.json"
+        self.default_schema = self.schema_dir / "example_utility_rate_schema.json"
         
         # API configuration
         self.openai_api_key = self._load_api_key()

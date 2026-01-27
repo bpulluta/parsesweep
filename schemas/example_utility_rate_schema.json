@@ -1,0 +1,75 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$metadata": {
+    "domain": "Example - Utility Rates",
+    "version": "1.0.0",
+    "description": "Simplified example schema for utility rate extraction",
+    "extraction": {
+      "main_data_array": "rates",
+      "context_objects": ["utility_info"],
+      "identifier_fields": ["utility_info.utility_name"],
+      "document_type": "Utility Rate Document"
+    },
+    "consolidation": {
+      "deduplication": {
+        "key_fields": ["rate_name", "customer_class"],
+        "ignore_fields": ["notes"]
+      }
+    }
+  },
+  "title": "Example Utility Rate Extraction Schema",
+  "description": "A simplified example schema demonstrating how to extract utility rate information from documents. This schema extracts basic rate structures including rate names, customer classes, and pricing tiers.",
+  "type": "object",
+  "required": ["utility_info", "rates"],
+  "properties": {
+    "utility_info": {
+      "type": "object",
+      "description": "Basic utility information that applies to all rates",
+      "required": ["utility_name"],
+      "properties": {
+        "utility_name": {
+          "type": "string",
+          "description": "Name of the utility company"
+        },
+        "state": {
+          "type": "string",
+          "description": "State where utility operates"
+        },
+        "effective_date": {
+          "type": "string",
+          "description": "When these rates became effective"
+        }
+      }
+    },
+    "rates": {
+      "type": "array",
+      "description": "Array of rate schedules extracted from the document",
+      "items": {
+        "type": "object",
+        "required": ["rate_name", "customer_class"],
+        "properties": {
+          "rate_name": {
+            "type": "string",
+            "description": "Name of the rate schedule (e.g., 'Residential Basic', 'Commercial Standard')"
+          },
+          "customer_class": {
+            "type": "string",
+            "description": "Type of customer (e.g., 'Residential', 'Commercial', 'Industrial')"
+          },
+          "energy_charge": {
+            "type": "number",
+            "description": "Cost per kWh in dollars"
+          },
+          "monthly_fee": {
+            "type": "number",
+            "description": "Fixed monthly charge in dollars"
+          },
+          "notes": {
+            "type": "string",
+            "description": "Additional information about this rate"
+          }
+        }
+      }
+    }
+  }
+}

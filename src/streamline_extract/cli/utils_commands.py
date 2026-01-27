@@ -394,7 +394,7 @@ def validate_schema_cmd(schema_path: str):
     \b
     EXAMPLES:
         streamline-extract validate-schema schemas/my_schema.json
-        streamline-extract validate-schema schemas/tariff_schema.json
+        streamline-extract validate-schema schemas/example_utility_rate_schema.json
     """
     schema_file = Path(schema_path)
     
