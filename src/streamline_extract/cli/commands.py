@@ -129,20 +129,20 @@ def detect_api_provider() -> Tuple[str, bool, str]:
 @click.option('--output', '-o', type=click.Path(), help='Output directory (auto-detected if not specified)')
 @click.option('--schema', '-s', type=click.Path(exists=True), required=True, help='Path to JSON schema file (REQUIRED)')
 @click.option('--category', help='Category name (auto-detected from path if not specified)')
-@click.option('--model', default='gpt-4o-mini', show_default=True, help='AI model: gpt-4o-mini (fast) or gpt-4o (accurate)')
+@click.option('--model', default='gpt-4o-mini', show_default=True, help='AI model (e.g., gpt-4o-mini, claude-3.5-sonnet, gemini-1.5-pro)')
+@click.option('--provider', type=click.Choice(['openai', 'azure', 'anthropic', 'gemini', 'auto'], case_sensitive=False), default='auto', show_default=True, help='LLM provider (auto-detects from .env)')
 @click.option('--enable-qa-qc', is_flag=True, help='Enable detailed validation (slower, adds traceability)')
-@click.option('--use-azure', is_flag=True, default=None, help='Force Azure OpenAI (auto-detects from .env if not specified)')
 @click.option('--limit', '-n', type=int, help='Process only first N files')
 @click.option('--skip-existing/--reprocess', default=True, show_default=True, help='Skip files already processed')
-@click.option('--max-context', type=int, default=400000, show_default=True, help='Max document characters to process (400k proven reliable)')
+@click.option('--max-context', type=int, default=400000, show_default=True, help='Max document characters to process')
 @click.option('--quiet', '-q', is_flag=True, help='Minimal output (machine-readable)')
 @click.option('--verbose', '-v', is_flag=True, help='Detailed output with statistics')
 @click.option('--debug', is_flag=True, help='Debug mode with full logs')
 @click.option('--live-dashboard', is_flag=True, help='Show live dashboard during extraction')
-@click.option('--pages', type=str, default=None, help='Page range to extract (e.g., "615-759" or "100:200"). Only for single PDF files.')
-@click.option('--pages-csv', type=click.Path(exists=True), default=None, help='CSV file mapping documents to page ranges (columns: file_path,start_page,end_page)')
+@click.option('--pages', type=str, default=None, help='Page range to extract (e.g., "615-759"). Only for single PDF files.')
+@click.option('--pages-csv', type=click.Path(exists=True), default=None, help='CSV file mapping documents to page ranges')
 def process(path: str, output: Optional[str], schema: Optional[str], category: Optional[str],
-            model: str, enable_qa_qc: bool, use_azure: Optional[bool], limit: Optional[int], 
+            model: str, provider: str, enable_qa_qc: bool, limit: Optional[int], 
             skip_existing: bool, max_context: int, quiet: bool, verbose: bool, debug: bool, live_dashboard: bool,
             pages: Optional[str], pages_csv: Optional[str]):
     """
@@ -151,32 +151,45 @@ def process(path: str, output: Optional[str], schema: Optional[str], category: O
     This command reads PDF documents and extracts structured information
     based on a JSON schema. Works with any document type (permits, ordinances, regulations, etc.).
     
+    Supports multiple LLM providers: OpenAI, Azure OpenAI, Claude, Gemini, and more.
+    See docs/MODEL_COSTS.md for cost comparison and model selection guidance.
+    
     The output will be saved as JSON files in a parallel folder structure.
     For example: documents/Category/ → processed/Category/
     
     \b
     EXAMPLES:
-        # Process tariffs
+        # Process with default model (gpt-4o-mini)
         streamline-extract process documents/tariffs/ --schema schemas/proprietary/electricity_tariff_schema.json
         
-        # Process geothermal ordinances
-        streamline-extract process documents/geothermal_ordinances/ --schema schemas/proprietary/geothermal_ordinance_schema.json
+        # Use Claude for high-quality extraction
+        streamline-extract process documents/tariffs/ --schema schemas/proprietary/electricity_tariff_schema.json --model claude-3.5-sonnet
+        
+        # Use Gemini for budget-friendly processing
+        streamline-extract process documents/tariffs/ --schema schemas/proprietary/electricity_tariff_schema.json --model gemini-1.5-flash
+        
+        # Use Azure OpenAI
+        streamline-extract process documents/tariffs/ --schema schemas/proprietary/electricity_tariff_schema.json --provider azure
         
         # Process with page ranges
         streamline-extract process documents/tariffs/ --schema schemas/proprietary/electricity_tariff_schema.json --pages-csv config/tariffs/page_ranges.csv
         
-        # Process just the first 5 documents (useful for testing)
+        # Test with first 5 documents
         streamline-extract process documents/tariffs/ --schema schemas/proprietary/electricity_tariff_schema.json -n 5
+    
+    \b
+    SUPPORTED MODELS:
+        OpenAI:     gpt-4o, gpt-4o-mini (default), gpt-4.1, gpt-5
+        Claude:     claude-3.5-sonnet, claude-opus-4.5, claude-haiku-4.5
+        Gemini:     gemini-1.5-pro, gemini-1.5-flash, gemini-3-pro
         
-        # Reprocess files that were already processed
-        streamline-extract process documents/tariffs/ --schema schemas/proprietary/electricity_tariff_schema.json --reprocess
+        See docs/MODEL_COSTS.md for detailed cost comparison.
     
     \b
     REQUIREMENTS:
-        • PDF files in the specified directory
+        • Documents in the specified directory
         • JSON schema file (--schema flag is REQUIRED)
-        • OpenAI API key in .env file (OPENAI_API_KEY=sk-...)
-        • Or Azure OpenAI credentials (if using --use-azure)
+        • API key in .env file for your chosen provider
     """
     # Set global verbosity
     global VERBOSITY
@@ -209,58 +222,7 @@ def process(path: str, output: Optional[str], schema: Optional[str], category: O
         )
         sys.exit(1)
     
-    # Auto-detect API provider or use forced option
-    if use_azure is None:
-        # Auto-detect from .env
-        provider, is_valid, error_msg = detect_api_provider()
-        if not is_valid:
-            print_error(
-                "No API credentials found",
-                "API credentials are required to extract data.",
-                [
-                    "Create a .env file in your project root",
-                    "Add one of the following:",
-                    "",
-                    "Azure OpenAI (recommended):",
-                    "  AZURE_OPENAI_API_KEY=your-key",
-                    "  AZURE_OPENAI_ENDPOINT=https://your-endpoint.openai.azure.com/",
-                    "  AZURE_OPENAI_MODEL=your-model-name",
-                    "",
-                    "OR OpenAI:",
-                    "  OPENAI_API_KEY=sk-your-key-here"
-                ]
-            )
-            sys.exit(1)
-        use_azure = (provider == 'azure')
-    else:
-        # User explicitly requested a provider
-        if use_azure:
-            required_keys = ['AZURE_OPENAI_API_KEY', 'AZURE_OPENAI_ENDPOINT']
-            missing = [key for key in required_keys if not os.getenv(key)]
-            if missing:
-                print_error(
-                    "Azure OpenAI credentials not found",
-                    f"You specified --use-azure but missing: {', '.join(missing)}",
-                    [
-                        "Add to your .env file:",
-                        "  AZURE_OPENAI_API_KEY=your-key",
-                        "  AZURE_OPENAI_ENDPOINT=https://your-endpoint.openai.azure.com/"
-                    ]
-                )
-                sys.exit(1)
-        else:
-            if not os.getenv('OPENAI_API_KEY'):
-                print_error(
-                    "OpenAI API key not found",
-                    "OPENAI_API_KEY is required",
-                    [
-                        "Add to your .env file:",
-                        "  OPENAI_API_KEY=sk-your-key-here",
-                        "Get a key from: https://platform.openai.com/api-keys"
-                    ]
-                )
-                sys.exit(1)
-    
+    # Load configuration
     config = get_config()
     path = Path(path)
     
@@ -331,8 +293,6 @@ def process(path: str, output: Optional[str], schema: Optional[str], category: O
                     if subdir_docs:
                         import subprocess
                         cmd = ['pixi', 'run', 'streamline-extract', 'extract', str(subdir)]
-                        if use_azure:
-                            cmd.append('--use-azure')
                         if enable_qa_qc:
                             cmd.append('--enable-qa-qc')
                         if not skip_existing:
@@ -480,15 +440,9 @@ def process(path: str, output: Optional[str], schema: Optional[str], category: O
             "Files": f"{len(doc_files)} document{'s' if len(doc_files) != 1 else ''}",
         }
         
-    # Determine provider and model info
-    if use_azure:
-        azure_model = os.environ.get('AZURE_OPENAI_MODEL')
-        display_model = azure_model if azure_model else model
-        provider_name = "Azure OpenAI"
-        model_display = display_model
-    else:
-        provider_name = "OpenAI"
-        model_display = model
+    # Determine provider and model info from config
+    provider_name = config.llm_config.get('provider', 'unknown').title()
+    model_display = config.llm_config.get('model', model)
     
     # Add model/provider info to config
     if VERBOSITY != 'quiet':
@@ -584,72 +538,45 @@ def process(path: str, output: Optional[str], schema: Optional[str], category: O
                     console.print("[yellow]Operation cancelled[/yellow]\n")
                     return
     
-    # Track the actual model being used for output
-    actual_model = model
+    # Load configuration
+    config = get_config()
     
-    if use_azure:
-        from openai import AzureOpenAI
-        
-        azure_key = os.environ.get('AZURE_OPENAI_API_KEY')
-        azure_endpoint = os.environ.get('AZURE_OPENAI_ENDPOINT')
-        azure_version = os.environ.get('AZURE_OPENAI_API_VERSION', '2025-04-01-preview')
-        azure_model = os.environ.get('AZURE_OPENAI_MODEL')
-        
-        if not azure_key or not azure_endpoint:
-            print_error(
-                "Azure OpenAI credentials not found",
-                "Required: AZURE_OPENAI_API_KEY, AZURE_OPENAI_ENDPOINT"
-            )
-            return
-        
-        # Use Azure deployment name if configured, otherwise use the model parameter
-        deployment_name = azure_model if azure_model else model
-        actual_model = deployment_name  # Track actual model for output
-        
-        # Create schema metadata if available
-        schema_metadata = None
-        if schema_path:
-            try:
-                from streamline_extract.utils.schema_metadata import SchemaMetadata
-                schema_metadata = SchemaMetadata(schema_path)
-            except Exception as e:
-                if VERBOSITY == 'verbose':
-                    console.print(f"[dim yellow]Could not load schema metadata: {e}[/dim yellow]")
-        
-        # Initialize extractor with Azure parameters
-        extractor = DocumentExtractor(
-            api_key=azure_key,
-            model=deployment_name,
-            max_context_chars=max_context,
-            use_azure=True,
-            azure_endpoint=azure_endpoint,
-            azure_api_version=azure_version,
-            schema_metadata=schema_metadata,
+    # Determine provider from CLI flag or auto-detect from environment
+    if provider == 'auto':
+        provider = config.llm_config.get('provider', 'openai')
+    
+    # Get API credentials
+    api_key = config.llm_config.get('api_key')
+    if not api_key:
+        print_error(
+            f"{provider.upper()} API key not found",
+            f"Configure {provider.upper()}_API_KEY in .env file"
         )
-    else:
-        if not config.openai_api_key:
-            print_error(
-                "OPENAI_API_KEY not found",
-                f"Create .env file at: {config.project_root / '.env'}"
-            )
-            return
-        
-        # Create schema metadata if available
-        schema_metadata = None
-        if schema_path:
-            try:
-                from streamline_extract.utils.schema_metadata import SchemaMetadata
-                schema_metadata = SchemaMetadata(schema_path)
-            except Exception as e:
-                if VERBOSITY == 'verbose':
-                    console.print(f"[dim yellow]Could not load schema metadata: {e}[/dim yellow]")
-        
-        extractor = DocumentExtractor(
-            api_key=config.openai_api_key,
-            model=model,
-            max_context_chars=max_context,
-            schema_metadata=schema_metadata
-        )
+        return
+    
+    # Track the actual model being used for output
+    actual_model = config.llm_config.get('model', model) if provider != 'openai' else model
+    
+    # Create schema metadata if available
+    schema_metadata = None
+    if schema_path:
+        try:
+            from streamline_extract.utils.schema_metadata import SchemaMetadata
+            schema_metadata = SchemaMetadata(schema_path)
+        except Exception as e:
+            if VERBOSITY == 'verbose':
+                console.print(f"[dim yellow]Could not load schema metadata: {e}[/dim yellow]")
+    
+    # Initialize extractor with clean configuration
+    extractor = DocumentExtractor(
+        api_key=api_key,
+        model=actual_model,
+        max_context_chars=max_context,
+        schema_metadata=schema_metadata,
+        provider=provider,
+        azure_endpoint=config.llm_config.get('azure_endpoint'),
+        azure_api_version=config.llm_config.get('azure_api_version'),
+    )
     
     # Processing section
     if VERBOSITY == 'normal' or VERBOSITY == 'verbose':

@@ -41,6 +41,7 @@ pymupdf = ">=1.23.0"
 pypdf = ">=3.17.0"
 langextract = ">=1.0.0"
 selenium = ">=4.15.0"  # Moved to PyPI for better cross-platform support
+litellm = ">=1.52.0"  # Unified LLM interface for OpenAI, Claude, Gemini, etc.
 streamline-extract = { path = ".", editable = true}
 
 [environments]
