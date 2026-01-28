@@ -63,7 +63,7 @@ outputs/
 # ─────────────────────────────────────────────────────────
 # Proprietary Schemas & Documents (Intellectual Property)
 # ─────────────────────────────────────────────────────────
-schemas/proprietary/
+schemas/personal/
 documents/aq_permits/
 documents/geothermal_ordinances/
 documents/tariffs/
