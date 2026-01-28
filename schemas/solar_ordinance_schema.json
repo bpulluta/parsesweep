@@ -1,0 +1,314 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$metadata": {
+    "domain": "Energy - Solar Regulations",
+    "version": "2.0.0",
+    "description": "Extract regulatory requirements from solar ordinances for utility-scale and commercial solar energy facilities",
+    "extraction": {
+      "main_data_array": "requirements",
+      "context_objects": ["jurisdiction", "document_applicability"],
+      "identifier_fields": ["jurisdiction.state", "jurisdiction.county"],
+      "display_name_template": "{county}, {state}",
+      "document_type": "Solar Ordinance"
+    },
+    "consolidation": {
+      "normalization": {
+        "state_field": "State",
+        "description": "State names automatically normalized to 2-letter abbreviations (e.g., Utah→UT, New York→NY) during consolidation for consistent data analysis"
+      },
+      "deduplication": {
+        "key_fields": ["feature", "specific_subject", "value", "units", "condition", "value_type"],
+        "ignore_fields": ["details"],
+        "merge_fields": ["applies_to"],
+        "strategy": "latest",
+        "comparison_mode": "fuzzy",
+        "filter_empty_rows": true
+      },
+      "output": {
+        "default_format": "excel",
+        "exclude_fields": [
+          "applies_to_solar",
+          "extraction_approach",
+          "relevant_sections"
+        ],
+        "column_order": [
+          "state",
+          "county",
+          "subdivision",
+          "jurisdiction_type",
+          "year",
+          "feature",
+          "specific_subject",
+          "applies_to",
+          "value",
+          "value_type",
+          "units",
+          "condition",
+          "details",
+          "notes"
+        ],
+        "freeze_columns": 2,
+        "auto_width": true,
+        "merge_separator": "; "
+      }
+    },
+    "validation": {
+      "required_fields": ["jurisdiction", "requirements", "document_applicability"],
+      "quality_checks": [
+        {
+          "field": "document_applicability.applies_to_solar",
+          "type": "boolean",
+          "message": "Must verify document applicability to solar energy"
+        }
+      ],
+      "completeness_threshold": 0.7
+    }
+  },
+  "title": "Solar Energy Ordinance Extraction Schema",
+  "description": "Regulatory requirements for solar photovoltaic energy generation facilities. SCOPE: Utility-scale solar farms, commercial solar installations, ground-mounted solar arrays, solar energy generation facilities. EXCLUDE: Wind energy, geothermal energy, biomass, battery storage, and other non-solar technologies. ALSO EXCLUDE: Small residential rooftop solar exemptions UNLESS the document regulates commercial/utility-scale solar. CRITICAL FILTERING: When extracting from multi-technology renewable energy ordinances, DO NOT extract requirements that apply to wind, geothermal, biomass, or other technologies. ONLY extract provisions that explicitly mention 'solar', 'photovoltaic', 'PV', 'solar panels', 'solar arrays', 'solar facilities', or that clearly apply to solar based on context (e.g., 'glare from reflective surfaces' in a solar-specific section).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["jurisdiction", "requirements", "document_applicability"],
+  "properties": {
+    "document_applicability": {
+      "type": "object",
+      "description": "Scope verification and filtering transparency for solar energy ordinances.",
+      "additionalProperties": false,
+      "required": ["applies_to_solar", "extraction_approach"],
+      "properties": {
+        "applies_to_solar": {
+          "type": "boolean",
+          "description": "Does this document contain provisions regulating solar photovoltaic energy generation facilities (utility-scale or commercial solar)? Set to true ONLY if the document regulates commercial/utility-scale solar installations. Set to false if document only covers residential rooftop solar exemptions, or if document covers only other technologies (wind, geothermal, etc.)."
+        },
+        "extraction_approach": {
+          "type": "string",
+          "description": "Document which sections were extracted (solar-related) and which were excluded (other technologies/uses). IMPORTANT: If document is a zoning code that lists solar as a permitted/conditional use in certain zones, extract ONLY: (1) The solar use classification itself, (2) Zone-specific requirements (setbacks, lot size, height limits, etc.) from zones where solar is allowed. EXCLUDE: Requirements for other land uses (residential, wind energy, geothermal, battery storage) even if on the same page. For multi-technology renewable energy ordinances, ONLY extract sections that explicitly mention solar/photovoltaic/PV - DO NOT extract general 'renewable energy' sections that could apply to all technologies. Use format: 'Extracted [sections]; Excluded [sections]'",
+          "examples": [
+            "Extracted Article 5 Section 5.3 (Solar Energy Systems); Excluded Section 5.4 (Wind Energy), Section 5.5 (Geothermal)",
+            "Extracted Division 8 (Commercial Solar Facilities); Excluded general zoning provisions and residential solar exemptions",
+            "Extracted Table of Uses (Solar Energy Facility classification) and A-1 zone site development standards (applicable to solar); Excluded R-1 residential standards, wind turbine regulations",
+            "No utility-scale solar provisions found; Excluded all sections (document covers only residential rooftop solar exemptions)",
+            "Extracted Section 10-404 (Solar Energy Overlay District); Excluded Section 10-405 (Wind Energy), Section 10-406 (Battery Storage)"
+          ]
+        },
+        "relevant_sections": {
+          "type": ["string", "null"],
+          "description": "Ordinance sections regulating solar energy facilities, cited exactly as written (e.g., 'Article 5 Section 5.3', 'Section 10-404 Solar Energy Overlay District'). Null if none."
+        }
+      }
+    },
+    "jurisdiction": {
+      "type": "object",
+      "description": "Geographic and regulatory context for the solar ordinance.",
+      "additionalProperties": false,
+      "required": ["state", "county"],
+      "properties": {
+        "state": {
+          "type": "string",
+          "description": "State name exactly as written in document (full name, not abbreviation)."
+        },
+        "county": {
+          "type": "string",
+          "description": "County name exactly as written (keep 'County' suffix if present, omit if not present)."
+        },
+        "subdivision": {
+          "type": ["string", "null"],
+          "description": "If the ordinance applies to a specific city, town, township, or other subdivision within the county, extract the subdivision name exactly as written. Set to null if the ordinance applies county-wide. Examples: 'Springfield Township', 'City of Phoenix', null for county-wide ordinances."
+        },
+        "jurisdiction_type": {
+          "type": ["string", "null"],
+          "description": "Type of jurisdiction. Common values: 'County', 'City', 'Township', 'Town', 'Village', 'Borough'. Extract exactly as specified in the document. If not explicitly stated, use 'County' for county ordinances, or null if unclear.",
+          "examples": ["County", "City", "Township", "Town", "Village", "Borough", null]
+        },
+        "year": {
+          "type": ["integer", "null"],
+          "description": "Year the ordinance was adopted, amended, or became effective. Extract as 4-digit integer (e.g., 2020, 2018). Look for adoption dates, effective dates, or 'last amended' dates in the document. If multiple dates are present, use the most recent. If only a descriptive date is given (e.g., 'upon approval'), set to null. Null if no year can be determined."
+        }
+      }
+    },
+    "requirements": {
+      "type": "array",
+      "description": "Regulatory requirements applicable to solar energy facilities. CRITICAL EXTRACTION RULES: (1) ONE-TO-MANY RULE FOR FACILITY TYPES: When a single regulation mentions multiple facility types (roof-mounted vs ground-mounted, solar garden vs solar farm, commercial vs utility-scale), create SEPARATE rows for each facility type with different 'applies_to' values. (2) ONE-TO-MANY RULE FOR SPECIFIC SUBJECTS: When a single regulation mentions multiple dimensional aspects (e.g., 'minimum lot size of 20 acres with minimum width of 150 feet and depth of 250 feet'), create SEPARATE rows with different 'specific_subject' values (total area, minimum width, minimum depth). (3) TIERED VALUES RULE: When a regulation has different values for different conditions (e.g., 'minimum lot size is 5 acres for duplexes, 10 acres for solar farms'), create SEPARATE rows with different 'condition' values and mark value_type='tiered'. (4) ALTERNATIVE VALUES RULE: When a regulation offers either/or options, create separate rows marked with value_type='alternative_option'. (5) EXTRACT ONLY FEATURES WITH ACTUAL DATA: Only create rows for features that are explicitly mentioned or regulated in the ordinance. DO NOT create placeholder rows for features that are not mentioned. If a feature has no data, do not include it in the output. (6) PARTICIPATING VS NON-PARTICIPATING: Always create separate rows for 'structures (participating)' vs 'structures (non-participating)' and 'property line (participating)' vs 'property line (non-participating)' ONLY IF they are mentioned in the ordinance. (7) CRITICAL FILTERING: DO NOT extract requirements mentioning 'wind', 'geothermal', 'biomass', 'battery', or other non-solar technologies. ONLY extract solar-specific provisions.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["feature"],
+        "properties": {
+          "feature": {
+            "type": "string",
+            "description": "The specific regulatory feature or requirement category. Use EXACTLY these standardized feature names to match the ground truth data format. REQUIRED FEATURES (extract if mentioned in ordinance, leave empty if not): SETBACKS: 'structures (participating)' = setback from structures on host property, 'property line (participating)' = setback from property lines of host property, 'structures (non-participating)' = setback from structures on adjacent non-participating properties, 'property line (non-participating)' = setback from property lines of adjacent non-participating properties, 'roads' = setback from roads/streets/highways, 'railroads' = setback from railroad tracks/rights-of-way, 'transmission' = setback from transmission lines/utility corridors, 'water' = setback from water bodies/wetlands/streams. PHYSICAL CONSTRAINTS: 'maximum height' = height limit for solar panels/structures, 'maximum project size' = maximum facility size/capacity, 'minimum lot size' = minimum parcel/lot size required, 'maximum lot size' = maximum parcel/lot size allowed, 'density' = density restrictions, 'coverage' = lot coverage percentage or area coverage limits. OPERATIONAL: 'noise' = noise limits or restrictions, 'glare' = anti-glare requirements or reflectivity limits, 'visual impact' = visual screening/buffering requirements. REGULATORY: 'moratorium' = moratorium status or temporary bans, 'decommissioning' = decommissioning/removal requirements. ZONING: 'primary use districts' = zoning districts where solar is a primary permitted use, 'special use districts' = zoning districts where solar requires special/conditional use permit, 'accessory use districts' = zoning districts where solar is allowed as accessory use. CRITICAL: Use these EXACT feature names for consistency.",
+            "enum": [
+              "structures (participating)",
+              "property line (participating)",
+              "structures (non-participating)",
+              "property line (non-participating)",
+              "roads",
+              "railroads",
+              "transmission",
+              "water",
+              "noise",
+              "maximum height",
+              "maximum project size",
+              "minimum lot size",
+              "maximum lot size",
+              "density",
+              "coverage",
+              "moratorium",
+              "decommissioning",
+              "glare",
+              "visual impact",
+              "primary use districts",
+              "special use districts",
+              "accessory use districts",
+              "year"
+            ]
+          },
+          "specific_subject": {
+            "type": ["string", "null"],
+            "description": "The specific aspect, dimension, or target that distinguishes this instance of the requirement from others in the same feature category. CRITICAL: This field makes each row unique within its feature category and clarifies WHAT is being measured or regulated. EXAMPLES BY FEATURE: (1) Setbacks (structures/property line/roads/etc.) → Usually null since the feature itself is specific, BUT use if needed to distinguish parts: 'from centerline', 'from right-of-way edge'. (2) Minimum/Maximum lot size → 'total area', 'minimum width', 'minimum depth', 'separation distance between facilities', 'frontage'. (3) Maximum height → 'panel height at maximum tilt', 'panel height above existing roof', 'inverter structures', 'fencing'. (4) Coverage → 'panel coverage', 'vegetative cover required', 'impervious surface limit', 'lot coverage maximum'. (5) Density → 'panels per acre', 'facilities per township'. (6) Decommissioning → 'timeline for removal', 'financial security amount', 'restoration requirements'. (7) Visual impact → 'screening height', 'buffer width', 'vegetative buffer density'. RULE: When one regulation mentions multiple dimensional aspects (e.g., 'SEOD must be 20 acres minimum with width of 150 feet and depth of 250 feet'), create separate rows with different specific_subject values (total area, minimum width, minimum depth). Set to null if the feature itself is sufficiently specific and doesn't need further subdivision.",
+            "examples": [
+              "total area",
+              "minimum width",
+              "minimum depth",
+              "minimum frontage",
+              "separation distance between facilities",
+              "separation distance from other uses",
+              "panel height at maximum tilt",
+              "maximum height above existing roof",
+              "inverter structures",
+              "fencing height",
+              "panel coverage",
+              "vegetative cover required",
+              "impervious surface limit",
+              "lot coverage maximum",
+              "screening height",
+              "buffer width",
+              "timeline for removal",
+              "financial security amount",
+              "from centerline",
+              "from right-of-way edge",
+              null
+            ]
+          },
+          "applies_to": {
+            "type": ["string", "null"],
+            "description": "What type of solar facility or equipment this requirement regulates. Use this field to distinguish between different facility types, mounting configurations, or scales that have different requirements. CRITICAL: When a single regulation mentions multiple facility types with different requirements, create SEPARATE rows with different applies_to values. Set to null if the requirement applies universally to all solar facilities. IMPORTANT: Use the actual terminology from the ordinance when possible. NOTE: During consolidation, if identical requirements apply to multiple facility types (same feature, value, units, condition), they will be merged into a single row with all facility types listed and separated by semicolons (e.g., 'CCR; RL-1; RL-5'). This reduces redundancy while preserving complete information.",
+            "examples": [
+              "Ground-mounted solar systems",
+              "Roof-mounted solar systems",
+              "Building-mounted solar systems",
+              "Pole-mounted solar systems",
+              "Solar garden",
+              "Solar farm",
+              "Commercial solar energy facility",
+              "Utility-scale solar facility",
+              "Solar photovoltaic facility",
+              "Solar energy systems",
+              "Solar panels",
+              "Inverters and transformers",
+              "First solar system on parcel",
+              "Additional solar systems on same parcel",
+              "Solar facilities less than 10 acres",
+              "Solar facilities exceeding 25 MW",
+              "All solar facilities",
+              null
+            ]
+          },
+          "value": {
+            "type": ["number", "string", "null"],
+            "description": "The primary quantifiable value extracted from the requirement. EXTRACTION RULES: (1) FIXED NUMBERS: For simple numeric requirements, extract the number WITHOUT units (e.g., '100 feet' → 100, '20 acres' → 20, '40%' → 40). (2) FORMULAS: For calculated values, extract the complete formula as a string (e.g., 'maximum building height + 5 feet', '1.5 times panel height'). Do NOT attempt to calculate formulas. (3) RANGES: For ranges, extract as string (e.g., '100-500', '7 AM - 7 PM'). (4) TEXT: For text-based requirements like zoning districts or qualitative descriptions, extract as string (e.g., 'A-1; I-1; I-2' for allowed zones, 'Required' for mandatory requirements, 'Prohibited' for bans). (5) ALTERNATIVES: When regulation offers either/or options, create separate rows with different values and value_type='alternative_option'. (6) EMPTY: Set to null if the feature is mentioned but no specific value is given, or if the feature is not addressed in the ordinance. IMPORTANT: The value should be the KEY extractable element - detailed regulatory text goes in 'details' field.",
+            "examples": [
+              100,
+              50,
+              20,
+              40,
+              150,
+              8,
+              5,
+              "maximum building height + 5 feet",
+              "1.5 times panel height",
+              "100-500",
+              "7 AM - 7 PM",
+              "A-1; I-1; I-2",
+              "RL-20",
+              "AG with an approved Interim Use permit",
+              "Required",
+              "Mandatory",
+              "Prohibited",
+              2020,
+              2022,
+              null
+            ]
+          },
+          "value_type": {
+            "type": ["string", "null"],
+            "description": "Categorizes how the value should be interpreted. TYPES: 'fixed_number' = simple numeric value (default, can be null); 'formula' = calculated value with variables (e.g., 'building height + X feet', 'X times panel height'); 'range' = min-max or time range; 'alternative_option' = one of multiple either/or choices in the regulation; 'tiered' = value varies by facility size/type/capacity/other factor; 'minimum' = explicitly a floor; 'maximum' = explicitly a ceiling. USE CASES: (1) Set to 'formula' when value contains calculations. (2) Set to 'alternative_option' when the regulation says 'either X or Y' - create separate rows for each option. (3) Set to 'tiered' when requirements vary by conditions (pair with 'condition' field). (4) Set to 'range' for value ranges. (5) Set to null or 'fixed_number' for straightforward numeric values.",
+            "enum": ["fixed_number", "formula", "range", "alternative_option", "tiered", "minimum", "maximum", null],
+            "examples": [
+              "fixed_number",
+              "formula",
+              "range",
+              "alternative_option",
+              "tiered",
+              "minimum",
+              "maximum",
+              null
+            ]
+          },
+          "units": {
+            "type": ["string", "null"],
+            "description": "Unit of measurement SPELLED OUT in full words. EXTRACTION RULES: (1) For distances → Use 'feet' (not 'ft' or \"'\"), 'meters' (not 'm'), 'miles' (not 'mi'). (2) For area → Use 'acres' or 'square feet' spelled out (not 'ac' or 'sq ft'). (3) For percentages → Use '%' symbol. (4) For capacity → Use 'MW', 'kW' as standard abbreviations. (5) For noise → Use 'dBA' or 'dB' as standard. (6) Set to null if: value is null, value is text/zoning districts, value is yes/no, value_type is 'formula' (formulas include their own units in the value field), or no units apply. CRITICAL: Match the units format from the ground truth CSV - prefer spelled-out words over abbreviations for distance/area.",
+            "examples": [
+              "feet",
+              "meters",
+              "acres",
+              "square feet",
+              "%",
+              "MW",
+              "kW",
+              "dBA",
+              null
+            ]
+          },
+          "condition": {
+            "type": ["string", "null"],
+            "description": "Additional qualifying conditions that modify WHEN or UNDER WHAT CIRCUMSTANCES the requirement applies. This is separate from 'specific_subject' which describes WHAT is being measured. EXAMPLES: Size-based triggers → 'for facilities less than 10 acres', 'for facilities exceeding 25 MW', 'if total project area exceeds 100 acres'. Facility-type based → 'for solar gardens', 'for solar farms', 'for utility-scale facilities'. Position-based → 'for first system on parcel', 'for additional systems on same parcel'. Temporal → 'during construction phase', 'during operations', 'after 12 months of inactivity'. Conditional exceptions → 'unless soundproofing is provided', 'if screening is not provided', 'except in industrial zones'. RULE: Use this field to capture qualifying circumstances that trigger different requirement values. For tiered value_type, this field should specify the tier criteria. CRITICAL: Don't confuse with 'specific_subject' - condition is about qualifying circumstances, specific_subject is about what aspect is being regulated. Set to null if the requirement has no conditional triggers.",
+            "examples": [
+              "for solar garden",
+              "for solar farm",
+              "for facilities less than 10 acres",
+              "for facilities exceeding 25 MW",
+              "for duplexes",
+              "for first system on parcel",
+              "for additional systems on same parcel",
+              "from centerline of State/County roads",
+              "from adjacent public street right-of-way",
+              "from residential use",
+              "from classified lakes, rivers or streams",
+              "unless screening is provided",
+              "if located within residential zoning district",
+              "during construction phase",
+              null
+            ]
+          },
+          "details": {
+            "type": ["string", "null"],
+            "description": "Complete requirement text verbatim from the ordinance, OR additional context, conditions, and qualifications. This field captures the full regulatory language including exceptions, conditions, and clarifications. EXTRACTION RULE: If the requirement is simple and fully captured by feature/applies_to/value/units/condition, this can be a concise summary or null. If the requirement has complex conditions, exceptions, or qualifying language, extract the FULL TEXT verbatim from the ordinance to preserve complete regulatory context. NOTE: This field is renamed from 'notes' to 'details' to avoid conflicts with system-generated deduplication notes during consolidation.",
+            "examples": [
+              "Setbacks: Shall meet the minimum zoning setbacks for the zoning district in which located. Solar facilities with panels located at least one hundred fifty (150) feet from an adjacent public street right-of-way, residentially zoned property, or residential use shall not require screening.",
+              "Roof mounted systems shall not exceed the maximum building height of the zoning district in which located and shall not extend more than 5 feet above the highest point of the existing roof.",
+              "Ground mounted systems shall not exceed 8 feet in height.",
+              "Lot Coverage: The surface area of a ground-mounted system, regardless of the mounted angle, shall be calculated as part of the overall lot coverage for the zoning district in which located.",
+              "Solar facilities are to be equipped with a nonreflective finish/coating",
+              "Sound barriers shall be required for noise mitigation around all inverter and transformer skid pads.",
+              "135 feet from the centerline of State/County roads for the first commercial solar energy system on any single parcel and 735 feet from the centerline of State/County roads for any additional commercial solar energy system on the same parcel",
+              "Minimum parcel size. Except as otherwise set forth herein, the minimum parcel size that may be used to locate the RL-District 5 Feature is one [1] acre",
+              "Duplexes may only be located on parcels of at least two (2) acres",
+              null
+            ]
+          }
+        }
+      }
+    }
+  }
+}
