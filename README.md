@@ -85,6 +85,59 @@ pixi run streamline-extract consolidate processed/examples/ \
 
 ---
 
+## Project Structure
+
+StreamlineExtract organizes your work into a simple folder structure:
+
+```
+StreamlineExtract/
+│
+├── documents/              # 📂 Put your source documents here
+│   └── my_category/
+│       ├── document1.pdf
+│       └── document2.pdf
+│
+├── schemas/                # 📋 JSON schemas define what to extract
+│   ├── personal/          # ← Put YOUR schemas here (gitignored)
+│   │   └── my_schema.json
+│   └── example_utility_rate_schema.json
+│
+│
+│         pixi run streamline-extract process documents/my_category/
+│                --schema schemas/personal/my_schema.json
+│                                 │
+│                                 ▼
+│
+├── processed/              # 🔄 Extracted JSON files (auto-created)
+│   └── my_category/
+│       ├── document1.json
+│       └── document2.json
+│
+│
+│         pixi run streamline-extract consolidate processed/my_category/
+│                --schema schemas/personal/my_schema.json
+│                                 │
+│                                 ▼
+│
+└── consolidated/           # ✅ Final Excel/CSV output (auto-created)
+    └── my_category/
+        ├── consolidated_output.xlsx
+        └── consolidated_output.csv
+```
+
+**Workflow:**
+1. Put documents in `documents/your_category/`
+2. Create schema in `schemas/personal/your_schema.json`
+3. Run `process` → Creates `processed/your_category/*.json`
+4. Run `consolidate` → Creates `consolidated/your_category/*.xlsx|csv`
+
+**Pro Tips:**
+- **Use `schemas/personal/`** for your custom schemas (this folder is gitignored to prevent accidentally committing schemas)
+- The same category name flows through: `documents/X/` → `processed/X/` → `consolidated/X/`
+- `processed/` and `consolidated/` folders are created automatically
+
+---
+
 ## Installation
 
 ### Prerequisites
