@@ -8,7 +8,7 @@ Organizes commands into two categories:
 
 import click
 
-from streamline_extract.cli.commands import process, validate, consolidate
+from streamline_extract.cli.commands import process, validate, consolidate, compare
 from streamline_extract.cli.utils_commands import (
     init,
     preview,
@@ -77,6 +77,7 @@ cli.add_command(estimate)
 cli.add_command(validate)
 cli.add_command(validate_schema_cmd)
 cli.add_command(consolidate)
+cli.add_command(compare)
 cli.add_command(config)
 
 # Lazy load dtree to avoid heavy dependencies unless needed

@@ -64,6 +64,7 @@ outputs/
 # Proprietary Schemas & Documents (Intellectual Property)
 # ─────────────────────────────────────────────────────────
 schemas/personal/
+schemas/qaqc/
 documents/aq_permits/
 documents/geothermal_ordinances/
 documents/tariffs/
@@ -102,3 +103,4 @@ documents/
 validation/
 scripts/
 docs/
+tools/

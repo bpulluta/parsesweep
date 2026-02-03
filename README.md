@@ -43,6 +43,7 @@ Works with any document type: regulations, contracts, research papers, permits, 
   - [Process Command](#process-command)
   - [Consolidate Command](#consolidate-command)
   - [Helper Commands](#helper-commands)
+  - [QA/QC Multi-Model Validation](#qaqc-multi-model-validation)
 - [Schemas](#schemas)
 - [Examples](#examples)
 - [Troubleshooting](#troubleshooting)
@@ -82,6 +83,25 @@ pixi run streamline-extract consolidate processed/examples/ \
 ```
 
 **That's it!** You now have structured data ready for analysis.
+
+---
+
+## Project Structure
+
+StreamlineExtract organizes your work into a simple folder structure:
+
+![StreamlineExtract Architecture](src/streamline_extract/img/image.png)
+
+**Workflow:**
+1. Put documents in `documents/topic/`
+2. Create schema in `schemas/personal/your_schema.json`
+3. Run `process` → Creates `processed/topic/*.json`
+4. Run `consolidate` → Creates `consolidated/topic/*.xlsx|csv`
+
+**Pro Tips:**
+- **Use `schemas/personal/`** for your custom schemas (this folder is gitignored to prevent accidentally committing schemas)
+- The same category name flows through: `documents/X/` → `processed/X/` → `consolidated/X/`
+- `processed/` and `consolidated/` folders are created automatically
 
 ---
 
@@ -457,6 +477,53 @@ pixi run streamline-extract config
 ```
 
 Displays current API and path configurations.
+
+---
+
+### QA/QC Multi-Model Validation
+
+Validate extractions by running multiple AI models and comparing their outputs. This helps identify potential extraction errors and increases confidence in your data.
+
+#### Why Use QA/QC?
+
+- **Catch Errors**: Different models may interpret ambiguous text differently
+- **Increase Confidence**: When models agree, you can trust the extraction
+- **Identify Edge Cases**: Disagreements highlight areas needing human review
+
+#### Basic Workflow
+
+```bash
+# Step 1: Run extraction with QA/QC enabled (runs 2+ models)
+pixi run streamline-extract process documents/examples/ \
+  --schema schemas/example_utility_rate_schema.json \
+  --enable-qa-qc
+
+# Step 2: Review comparison reports
+# Each document gets: model1.json, model2.json, comparison_report.xlsx
+
+# Step 3: Regenerate reports (if needed, no re-extraction)
+pixi run streamline-extract compare processed/examples/qa_qc \
+  --schema schemas/example_utility_rate_schema.json
+```
+
+#### QA/QC Outputs
+
+For each document, QA/QC creates a subdirectory with:
+
+| File | Description |
+|------|-------------|
+| `model1.json` | Extraction from primary model (e.g., gpt-4.1) |
+| `model2.json` | Extraction from secondary model (e.g., gpt-4o-mini) |
+| `comparison_report.xlsx` | Color-coded comparison (green=agree, red=differ, gray=missing) |
+| `comparison_report.csv` | Same comparison in CSV format |
+
+#### Understanding the Reports
+
+The comparison reports show one row per extracted item:
+
+- **Status = AGREE**: Both models extracted the same value ✅
+- **Status = DIFFER**: Models disagree - needs human review ⚠️
+- **Status = ONLY model1**: Only one model found this item 🔍
 
 ---
 

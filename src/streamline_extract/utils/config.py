@@ -128,13 +128,6 @@ class Config:
         logger.warning(f"Could not detect project root, using: {current}")
         return current
     
-    def _load_api_key(self) -> Optional[str]:
-        """
-        DEPRECATED: Load OpenAI API key from environment or .env file.
-        Use _load_llm_config() instead for multi-provider support.
-        """
-        return self.llm_config.get('api_key')
-    
     def setup_directories(self):
         """Create necessary directories if they don't exist."""
         directories = [

@@ -103,116 +103,84 @@ class SchemaMetadata:
     
     # --- Extraction Metadata ---
     
-    def get_main_data_array(self) -> Optional[str]:
+    def get_main_data_array(self) -> str:
         """Get the key containing the main data array."""
-        if self.metadata:
-            return self.metadata.get("extraction", {}).get("main_data_array")
-        return None
+        return self.metadata.get("extraction", {}).get("main_data_array")
     
     def get_context_objects(self) -> List[str]:
         """Get keys containing context/metadata objects."""
-        if self.metadata:
-            return self.metadata.get("extraction", {}).get("context_objects", [])
-        return []
+        return self.metadata.get("extraction", {}).get("context_objects", [])
     
     def get_identifier_fields(self) -> List[str]:
         """Get field paths that serve as identifiers."""
-        if self.metadata:
-            return self.metadata.get("extraction", {}).get("identifier_fields", [])
-        return []
+        return self.metadata.get("extraction", {}).get("identifier_fields", [])
     
     def get_display_name_template(self) -> Optional[str]:
         """Get template for generating display names."""
-        if self.metadata:
-            return self.metadata.get("extraction", {}).get("display_name_template")
-        return None
+        return self.metadata.get("extraction", {}).get("display_name_template")
     
     def get_document_type(self) -> str:
         """Get human-readable document type."""
-        if self.metadata:
-            return self.metadata.get("extraction", {}).get("document_type", "Document")
-        return "Document"
+        return self.metadata.get("extraction", {}).get("document_type", "Document")
     
     # --- Consolidation Metadata ---
     
     def get_deduplication_key_fields(self) -> List[str]:
         """Get fields that define uniqueness for deduplication."""
-        if self.metadata:
-            dedup = self.metadata.get("consolidation", {}).get("deduplication", {})
-            return dedup.get("key_fields", [])
-        return []
+        dedup = self.metadata.get("consolidation", {}).get("deduplication", {})
+        return dedup.get("key_fields", [])
     
     def get_deduplication_ignore_fields(self) -> List[str]:
         """Get fields to ignore during deduplication comparison."""
-        if self.metadata:
-            dedup = self.metadata.get("consolidation", {}).get("deduplication", {})
-            return dedup.get("ignore_fields", [])
-        return []
+        dedup = self.metadata.get("consolidation", {}).get("deduplication", {})
+        return dedup.get("ignore_fields", [])
     
     def get_deduplication_strategy(self) -> str:
         """Get deduplication strategy (latest, earliest, merge)."""
-        if self.metadata:
-            dedup = self.metadata.get("consolidation", {}).get("deduplication", {})
-            return dedup.get("strategy", "latest")
-        return "latest"
+        dedup = self.metadata.get("consolidation", {}).get("deduplication", {})
+        return dedup.get("strategy", "latest")
     
     def get_comparison_mode(self) -> str:
         """Get comparison mode for deduplication (exact, fuzzy)."""
-        if self.metadata:
-            dedup = self.metadata.get("consolidation", {}).get("deduplication", {})
-            return dedup.get("comparison_mode", "exact")
-        return "exact"
+        dedup = self.metadata.get("consolidation", {}).get("deduplication", {})
+        return dedup.get("comparison_mode", "exact")
     
     def get_output_format(self) -> str:
         """Get default output format."""
-        if self.metadata:
-            output = self.metadata.get("consolidation", {}).get("output", {})
-            return output.get("default_format", "excel")
-        return "excel"
+        output = self.metadata.get("consolidation", {}).get("output", {})
+        return output.get("default_format", "excel")
     
     def get_column_order(self) -> List[str]:
         """Get preferred column order for output."""
-        if self.metadata:
-            output = self.metadata.get("consolidation", {}).get("output", {})
-            return output.get("column_order", [])
-        return []
+        output = self.metadata.get("consolidation", {}).get("output", {})
+        return output.get("column_order", [])
     
     def get_freeze_columns(self) -> int:
         """Get number of columns to freeze in Excel output."""
-        if self.metadata:
-            output = self.metadata.get("consolidation", {}).get("output", {})
-            return output.get("freeze_columns", 0)
-        return 0
+        output = self.metadata.get("consolidation", {}).get("output", {})
+        return output.get("freeze_columns", 0)
     
     def get_auto_width(self) -> bool:
         """Get whether to auto-size columns in Excel output."""
-        if self.metadata:
-            output = self.metadata.get("consolidation", {}).get("output", {})
-            return output.get("auto_width", True)
-        return True
+        output = self.metadata.get("consolidation", {}).get("output", {})
+        return output.get("auto_width", True)
     
     # --- Validation Metadata ---
     
     def get_required_fields(self) -> List[str]:
         """Get fields that must be present in extraction."""
-        if self.metadata:
-            validation = self.metadata.get("validation", {})
-            return validation.get("required_fields", [])
-        return []
+        validation = self.metadata.get("validation", {})
+        return validation.get("required_fields", [])
     
     def get_quality_checks(self) -> List[Dict[str, Any]]:
         """Get custom quality validation rules."""
-        if self.metadata:
-            validation = self.metadata.get("validation", {})
-            return validation.get("quality_checks", [])
-        return []
+        validation = self.metadata.get("validation", {})
+        return validation.get("quality_checks", [])
     
     def get_completeness_threshold(self) -> float:
         """Get minimum completeness score (0.0-1.0)."""
-        if self.metadata:
-            validation = self.metadata.get("validation", {})
-            return validation.get("completeness_threshold", 0.7)
-        return 0.7
+        validation = self.metadata.get("validation", {})
+        return validation.get("completeness_threshold", 0.7)
     
     # --- Helper Methods ---
     
@@ -345,18 +313,65 @@ class SchemaMetadata:
     
     def get_domain(self) -> str:
         """Get domain/category from metadata."""
-        if self.metadata:
-            return self.metadata.get("domain", "Unknown")
-        return "Unknown"
+        return self.metadata.get("domain", "Unknown")
     
     def get_version(self) -> str:
         """Get schema version from metadata."""
-        if self.metadata:
-            return self.metadata.get("version", "1.0.0")
-        return "1.0.0"
+        return self.metadata.get("version", "1.0.0")
     
     def get_description(self) -> str:
         """Get schema description from metadata."""
-        if self.metadata:
-            return self.metadata.get("description", "")
-        return ""
+        return self.metadata.get("description", "")
+    
+    # --- QA/QC Metadata ---
+    
+    def get_qa_qc_match_fields(self) -> List[str]:
+        """
+        Get fields to use for matching items across models in QA/QC.
+        
+        Falls back to deduplication key_fields if not specified.
+        """
+        qa_qc = self.metadata.get("qa_qc", {})
+        match_fields = qa_qc.get("record_matching", {}).get("key_fields")
+        if match_fields:
+            return match_fields
+        # Fallback to deduplication key_fields
+        return self.get_deduplication_key_fields()
+    
+    def get_qa_qc_compare_fields(self) -> List[str]:
+        """
+        Get fields to compare for agreement in QA/QC.
+        
+        Returns primary_fields from qa_qc.comparison, or ["value"] as default.
+        """
+        qa_qc = self.metadata.get("qa_qc", {})
+        compare_fields = qa_qc.get("comparison", {}).get("primary_fields")
+        if compare_fields:
+            return compare_fields
+        # Default to "value" field
+        return ["value"]
+
+    def get_expected_requirements(self) -> list[str]:
+        """
+        Get expected requirements for completeness validation.
+        
+        Returns list of expected requirement_type strings:
+        ["setback__property_line_ft", "setback__residence_ft", ...]
+        
+        Returns empty list if not specified.
+        """
+        qa_qc = self.metadata.get("qa_qc", {})
+        return qa_qc.get("expected_requirements", [])
+
+    def get_expected_count_range(self) -> tuple:
+        """
+        Get expected count range for items per document.
+        
+        Returns (min_count, max_count) tuple.
+        Defaults to (1, 100) if not specified.
+        """
+        qa_qc = self.metadata.get("qa_qc", {})
+        count_range = qa_qc.get("expected_count_range", [1, 100])
+        if isinstance(count_range, list) and len(count_range) >= 2:
+            return (count_range[0], count_range[1])
+        return (1, 100)
