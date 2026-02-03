@@ -131,7 +131,7 @@ def detect_api_provider() -> Tuple[str, bool, str]:
 @click.option('--category', help='Category name (auto-detected from path if not specified)')
 @click.option('--model', default='gpt-4o-mini', show_default=True, help='AI model (e.g., gpt-4o-mini, claude-3.5-sonnet, gemini-1.5-pro)')
 @click.option('--provider', type=click.Choice(['openai', 'azure', 'anthropic', 'gemini', 'auto'], case_sensitive=False), default='auto', show_default=True, help='LLM provider (auto-detects from .env)')
-@click.option('--enable-qa-qc', is_flag=True, help='Enable detailed validation (slower, adds traceability)')
+@click.option('--enable-qa-qc', is_flag=True, help='Enable multi-model QA/QC validation')
 @click.option('--limit', '-n', type=int, help='Process only first N files')
 @click.option('--skip-existing/--reprocess', default=True, show_default=True, help='Skip files already processed')
 @click.option('--max-context', type=int, default=400000, show_default=True, help='Max document characters to process')
@@ -557,6 +557,27 @@ def process(path: str, output: Optional[str], schema: Optional[str], category: O
     # Track the actual model being used for output
     actual_model = config.llm_config.get('model', model) if provider != 'openai' else model
     
+    # ========================================================================
+    # QA/QC Multi-Model Extraction Mode
+    # ========================================================================
+    if enable_qa_qc:
+        _run_qa_qc_extraction(
+            doc_files=doc_files,
+            loaded_schema=loaded_schema,
+            output_dir=output_dir,
+            api_key=api_key,
+            provider=provider,
+            config=config,
+            max_context=max_context,
+            page_range_map=page_range_map,
+            verbosity=VERBOSITY,
+        )
+        return
+    
+    # ========================================================================
+    # Normal Single-Model Extraction Mode
+    # ========================================================================
+    
     # Create schema metadata if available
     schema_metadata = None
     if schema_path:
@@ -598,7 +619,7 @@ def process(path: str, output: Optional[str], schema: Optional[str], category: O
                 try:
                     # Extract text from document
                     text = extract_text_from_document(doc_path)
-                    result = extractor.extract(text, loaded_schema, enable_qa_qc=enable_qa_qc)
+                    result = extractor.extract(text, loaded_schema)
                     
                     # Save result
                     num_items = _extract_and_save_result(doc_path, result, output_dir, category, actual_model, enable_qa_qc)
@@ -659,7 +680,7 @@ def process(path: str, output: Optional[str], schema: Optional[str], category: O
                     # Use page range if specified for this file
                     page_range = page_range_map.get(doc_path)
                     text = extract_text_from_document(doc_path, page_range=page_range)
-                    result = extractor.extract(text, loaded_schema, enable_qa_qc=enable_qa_qc)
+                    result = extractor.extract(text, loaded_schema)
                     
                     # Save result
                     num_items = _extract_and_save_result(doc_path, result, output_dir, category, actual_model, enable_qa_qc)
@@ -701,7 +722,7 @@ def process(path: str, output: Optional[str], schema: Optional[str], category: O
                 # Use page range if specified for this file
                 page_range = page_range_map.get(doc_path)
                 text = extract_text_from_document(doc_path, page_range=page_range)
-                result = extractor.extract(text, loaded_schema, enable_qa_qc=enable_qa_qc)
+                result = extractor.extract(text, loaded_schema)
                 
                 # Save result
                 num_items = _extract_and_save_result(doc_path, result, output_dir, category, actual_model, enable_qa_qc)
@@ -761,6 +782,162 @@ def process(path: str, output: Optional[str], schema: Optional[str], category: O
         console.print()
         console.print(f"[bold green]✓ Results saved to:[/bold green]")
         console.print(f"  [bold]{output_dir.absolute()}[/bold]")
+        console.print()
+
+
+def _run_qa_qc_extraction(
+    doc_files: List[Path],
+    loaded_schema: dict,
+    output_dir: Path,
+    api_key: str,
+    provider: str,
+    config,
+    max_context: int,
+    page_range_map: dict,
+    verbosity: str,
+) -> None:
+    """
+    Run QA/QC multi-model extraction for documents.
+    
+    This function handles the --enable-qa-qc flag by:
+    1. Auto-detecting models from environment
+    2. Confirming with user (Nx cost warning)
+    3. Running extraction with multiple models
+    4. Saving outputs to processed/qa_qc/{doc_name}/
+    """
+    from streamline_extract.qa_qc import ModelDetector, run_multi_model_extraction
+    from streamline_extract.extraction.document_utils import extract_text_from_document
+    
+    # Get QA/QC models from environment
+    try:
+        qa_models = ModelDetector.get_qa_models()
+        qa_provider = ModelDetector.get_provider()
+    except ValueError as e:
+        print_error(
+            "QA/QC Configuration Error",
+            str(e),
+            [
+                "Set QAQC_MODELS in .env with 2+ comma-separated models",
+                "Example: QAQC_MODELS=gpt-4o,gpt-4-turbo,gpt-3.5-turbo",
+                "Or leave empty to use default models for your provider"
+            ]
+        )
+        return
+    
+    # Show QA/QC configuration
+    if verbosity != 'quiet':
+        console.print()
+        console.print("[bold cyan]━━━ QA/QC Multi-Model Validation Mode ━━━[/bold cyan]")
+        console.print(f"  Provider: [bold]{qa_provider.upper()}[/bold]")
+        console.print(f"  Models: [bold]{', '.join(qa_models)}[/bold]")
+        console.print(f"  Documents: [bold]{len(doc_files)}[/bold]")
+        console.print()
+        console.print(f"[yellow]⚠ Cost Warning:[/yellow] This will run [bold]{len(qa_models)}x[/bold] extractions per document")
+        console.print(f"[dim]  Total API calls: {len(doc_files)} docs × {len(qa_models)} models = {len(doc_files) * len(qa_models)} extractions[/dim]")
+        console.print()
+        
+        if not ask_confirm("Proceed with QA/QC extraction?", default=True):
+            console.print("[yellow]Operation cancelled[/yellow]\n")
+            return
+    
+    # Process each document with multi-model extraction
+    results = []
+    total_cost = 0.0
+    total_time = 0.0
+    
+    if verbosity != 'quiet':
+        console.print()
+        console.print("[dim]" + "─" * 80 + "[/dim]")
+        console.print()
+    
+    for doc_idx, doc_path in enumerate(doc_files, 1):
+        if verbosity != 'quiet':
+            console.print(f"[cyan][{doc_idx}/{len(doc_files)}][/cyan] {doc_path.name}")
+        
+        try:
+            # Extract text from document (respecting page ranges)
+            page_range = page_range_map.get(doc_path)
+            text = extract_text_from_document(doc_path, page_range=page_range)
+            
+            if verbosity == 'verbose':
+                console.print(f"  [dim]Extracted {len(text):,} characters[/dim]")
+            
+            # Run multi-model extraction
+            model_results = run_multi_model_extraction(
+                doc_text=text,
+                doc_name=doc_path.stem,
+                schema=loaded_schema,
+                models=qa_models,
+                output_dir=output_dir,
+                api_key=api_key,
+                provider=qa_provider,
+                azure_endpoint=config.llm_config.get('azure_endpoint'),
+                azure_api_version=config.llm_config.get('azure_api_version'),
+                max_context_chars=max_context,
+            )
+            
+            # Calculate totals for this document
+            doc_cost = sum(r.cost for r in model_results.values())
+            doc_time = sum(r.processing_time for r in model_results.values())
+            successful = sum(1 for r in model_results.values() if r.success)
+            
+            total_cost += doc_cost
+            total_time += doc_time
+            
+            results.append({
+                'file': doc_path.name,
+                'success': True,
+                'models_successful': successful,
+                'models_total': len(qa_models),
+                'cost': doc_cost,
+                'time': doc_time,
+            })
+            
+            if verbosity != 'quiet':
+                status = "[green]✓[/green]" if successful == len(qa_models) else "[yellow]⚠[/yellow]"
+                console.print(f"  {status} {successful}/{len(qa_models)} models • [magenta]${doc_cost:.4f}[/magenta] • [dim]{doc_time:.1f}s[/dim]")
+            
+        except Exception as e:
+            results.append({
+                'file': doc_path.name,
+                'success': False,
+                'error': str(e),
+            })
+            if verbosity != 'quiet':
+                console.print(f"  [red]✗[/red] Error: {str(e)[:60]}")
+    
+    # Summary
+    if verbosity != 'quiet':
+        console.print()
+        console.print("[dim]" + "─" * 80 + "[/dim]")
+        console.print()
+        
+        successful_docs = [r for r in results if r.get('success')]
+        failed_docs = [r for r in results if not r.get('success')]
+        
+        summary_stats = {
+            "Documents Processed": f"{len(results)}",
+            "Successful": f"[green]{len(successful_docs)}[/green]",
+        }
+        
+        if failed_docs:
+            summary_stats["Failed"] = f"[red]{len(failed_docs)}[/red]"
+        
+        summary_stats["Models Used"] = f"{len(qa_models)} ({', '.join(qa_models[:3])}{'...' if len(qa_models) > 3 else ''})"
+        summary_stats["Total API Calls"] = f"{len(successful_docs) * len(qa_models)}"
+        summary_stats["Total Cost"] = f"[magenta]${total_cost:.4f}[/magenta]"
+        summary_stats["Total Time"] = f"{total_time:.1f}s"
+        
+        table = create_summary_table("QA/QC Extraction Summary", summary_stats)
+        console.print(table)
+        
+        # Output location
+        qa_qc_output = output_dir / "qa_qc"
+        console.print()
+        console.print(f"[bold green]✓ QA/QC outputs saved to:[/bold green]")
+        console.print(f"  [bold]{qa_qc_output.absolute()}[/bold]")
+        console.print()
+        console.print("[dim]Next step: Run comparison engine to analyze model differences (Phase 3)[/dim]")
         console.print()
 
 
@@ -1070,3 +1247,193 @@ def consolidate(extracted_dir: str, schema: Optional[str], output: Optional[str]
             traceback.print_exc()
         sys.exit(1)
 
+
+@click.command()
+@click.argument('qa_qc_path', type=click.Path(exists=True))
+@click.option('--schema', '-s', type=click.Path(exists=True), required=True, help='Path to QA/QC schema file (REQUIRED)')
+@click.option('--quiet', '-q', is_flag=True, help='Minimal output')
+@click.option('--verbose', '-v', is_flag=True, help='Detailed output')
+def compare(qa_qc_path: str, schema: str, quiet: bool, verbose: bool):
+    """
+    Generate comparison reports from existing QA/QC extractions.
+    
+    This command compares outputs from multiple models that were previously
+    extracted with --enable-qa-qc, without re-running the expensive extractions.
+    
+    \b
+    EXAMPLES:
+        # Generate comparison reports for all documents
+        streamline-extract compare processed/qa_qc_test/qa_qc --schema schemas/qaqc/geothermal_qaqc.json
+        
+        # Compare specific document folder
+        streamline-extract compare processed/qa_qc_test/qa_qc/Chaffee\\ County --schema schemas/qaqc/geothermal_qaqc.json
+    
+    \b
+    OUTPUT (per document):
+        • comparison_report.xlsx - Color-coded Excel with agreement analysis
+        • comparison_report.csv - Plain CSV for data analysis
+    
+    \b
+    WORKFLOW:
+        1. Run extraction with QA/QC: streamline-extract process docs/ --schema schema.json --enable-qa-qc
+        2. Generate/update reports: streamline-extract compare processed/docs/qa_qc --schema schema.json
+    """
+    from streamline_extract.qa_qc import ComparisonEngine, ReportGenerator
+    from streamline_extract.utils.schema_metadata import SchemaMetadata
+    
+    qa_qc_path = Path(qa_qc_path)
+    schema_path = Path(schema)
+    
+    # Set verbosity
+    if quiet:
+        verbosity = 'quiet'
+    elif verbose:
+        verbosity = 'verbose'
+    else:
+        verbosity = 'normal'
+    
+    # Load schema metadata
+    try:
+        schema_metadata = SchemaMetadata(schema_path)
+    except Exception as e:
+        print_error("Failed to load schema", str(e))
+        sys.exit(1)
+    
+    # Display header
+    if verbosity != 'quiet':
+        print_header("QA/QC COMPARISON REPORT")
+        
+        config_info = {
+            "Input": str(qa_qc_path),
+            "Schema": str(schema_path),
+            "Match Fields": ", ".join(schema_metadata.get_qa_qc_match_fields()),
+            "Compare Fields": ", ".join(schema_metadata.get_qa_qc_compare_fields()),
+        }
+        table = create_config_table("Configuration", config_info)
+        console.print(table)
+        console.print()
+    
+    # Create comparison engine and report generator
+    engine = ComparisonEngine(schema_metadata)
+    report_gen = ReportGenerator()
+    
+    # Find document directories to process
+    # If path is a document directory (contains .json files), process just that one
+    # Otherwise, process all subdirectories
+    doc_dirs = []
+    json_files_in_path = list(qa_qc_path.glob('*.json'))
+    
+    if json_files_in_path and any(f.name != 'metadata.json' for f in json_files_in_path):
+        # This is a single document directory
+        doc_dirs = [qa_qc_path]
+    else:
+        # This is a parent directory containing document subdirectories
+        doc_dirs = [d for d in sorted(qa_qc_path.iterdir()) if d.is_dir()]
+    
+    if not doc_dirs:
+        print_error(
+            "No QA/QC outputs found",
+            f"No document directories found in {qa_qc_path}",
+            ["Run extraction with --enable-qa-qc first", "Check the path is correct"]
+        )
+        sys.exit(1)
+    
+    # Process each document directory
+    results = []
+    
+    if verbosity != 'quiet':
+        console.print("[dim]" + "─" * 60 + "[/dim]")
+        console.print()
+    
+    for doc_dir in doc_dirs:
+        # Find model output files
+        model_files = {}
+        for f in doc_dir.glob('*.json'):
+            if f.name == 'metadata.json':
+                continue
+            model_name = f.stem
+            model_files[model_name] = f
+        
+        if len(model_files) < 2:
+            if verbosity != 'quiet':
+                console.print(f"[yellow]⚠[/yellow] Skipping {doc_dir.name}: needs at least 2 model outputs")
+            continue
+        
+        # Run comparison
+        try:
+            result = engine.compare_outputs(model_files, doc_dir.name)
+            
+            # Generate reports
+            excel_path, csv_path = report_gen.generate_report(result, doc_dir)
+            
+            results.append({
+                'name': doc_dir.name,
+                'success': True,
+                'models': result.models,
+                'items_per_model': result.summary.get('items_per_model', {}),
+                'full_agreement_pct': result.summary.get('full_agreement_pct', 0),
+                'needs_review_count': result.summary.get('needs_review_count', 0),
+                'total_comparisons': result.summary.get('total_comparisons', 0),
+            })
+            
+            if verbosity != 'quiet':
+                agreement_pct = result.summary.get('full_agreement_pct', 0)
+                needs_review = result.summary.get('needs_review_count', 0)
+                total = result.summary.get('total_comparisons', 0)
+                
+                # Color code based on agreement
+                if agreement_pct >= 80:
+                    status = "[green]✓[/green]"
+                elif agreement_pct >= 50:
+                    status = "[yellow]⚠[/yellow]"
+                else:
+                    status = "[red]![/red]"
+                
+                console.print(f"{status} {doc_dir.name}")
+                console.print(f"    Agreement: [bold]{agreement_pct:.1f}%[/bold] ({total - needs_review}/{total} fields)")
+                console.print(f"    Needs review: {needs_review} field(s)")
+                console.print()
+                
+        except Exception as e:
+            results.append({
+                'name': doc_dir.name,
+                'success': False,
+                'error': str(e),
+            })
+            if verbosity != 'quiet':
+                console.print(f"[red]✗[/red] {doc_dir.name}: {str(e)[:50]}")
+    
+    # Summary
+    if verbosity != 'quiet':
+        console.print("[dim]" + "─" * 60 + "[/dim]")
+        console.print()
+        
+        successful = [r for r in results if r.get('success')]
+        failed = [r for r in results if not r.get('success')]
+        
+        if successful:
+            avg_agreement = sum(r['full_agreement_pct'] for r in successful) / len(successful)
+            total_reviews = sum(r['needs_review_count'] for r in successful)
+            
+            summary_stats = {
+                "Documents Compared": str(len(successful)),
+                "Average Agreement": f"{avg_agreement:.1f}%",
+                "Total Fields Needing Review": str(total_reviews),
+            }
+            
+            if failed:
+                summary_stats["Failed"] = f"[red]{len(failed)}[/red]"
+            
+            table = create_summary_table("Comparison Summary", summary_stats)
+            console.print(table)
+            console.print()
+            
+            print_success(f"Reports saved to: {qa_qc_path}")
+            console.print("[dim]  Files: comparison_report.xlsx, comparison_report.csv[/dim]")
+            console.print()
+        else:
+            print_warning("No documents were successfully compared")
+    else:
+        # Quiet mode - just print success count
+        successful = len([r for r in results if r.get('success')])
+        console.print(f"{successful} documents compared")

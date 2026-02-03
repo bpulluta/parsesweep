@@ -107,6 +107,29 @@ ERROR: Schema missing required $metadata section
         }
       ],
       "completeness_threshold": 0.8
+    },
+    
+    "qa_qc": {
+      "comparison": {
+        "primary_fields": ["rate", "amount", "unit"],
+        "secondary_fields": ["rate_name", "charge_type", "season"],
+        "field_types": {
+          "rate": "numeric",
+          "amount": "numeric",
+          "unit": "text_normalized",
+          "rate_name": "text_exact",
+          "charge_type": "text_exact",
+          "season": "text_exact"
+        },
+        "numeric_tolerance": 0.0,
+        "fuzzy_threshold": 0.85
+      },
+      "record_matching": {
+        "key_fields": ["rate_name", "charge_type"],
+        "fuzzy_match": true,
+        "match_threshold": 0.8
+      },
+      "ignore_fields": ["notes", "details"]
     }
   }
 }
@@ -128,6 +151,26 @@ ERROR: Schema missing required $metadata section
 | `consolidation.deduplication.ignore_fields` | Fields to ignore when deduplicating | `["notes", "timestamp"]` |
 | `domain` | Category for organization | `"Environmental - Air Quality"` |
 | `version` | Schema version (semver) | `"2.1.0"` |
+
+### Optional: QA/QC Configuration
+
+The `qa_qc` section configures multi-model comparison behavior (used with `--enable-qa-qc`):
+
+| Field | Purpose | Example |
+|-------|---------|---------|
+| `comparison.primary_fields` | Critical fields for accuracy | `["value", "unit"]` |
+| `comparison.secondary_fields` | Important classification fields | `["category", "type"]` |
+| `comparison.field_types` | How to compare each field | `{"value": "numeric"}` |
+| `record_matching.key_fields` | Fields to match records across models | `["category", "name"]` |
+| `ignore_fields` | Fields to skip during comparison | `["notes", "details"]` |
+
+**Field Type Options:**
+| Type | Description |
+|------|-------------|
+| `numeric` | Compare only numeric content (extract numbers from text) |
+| `text_exact` | Exact string match |
+| `text_normalized` | Normalize before comparing (e.g., "feet" = "ft") |
+| `text_fuzzy` | Similarity matching with threshold |
 
 **JSONPath Notation**: Use dot notation for nested fields: `"parent.child.field"`
 

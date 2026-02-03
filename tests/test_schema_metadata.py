@@ -385,3 +385,84 @@ class TestEdgeCases:
         # In v2.0, schema with missing identifier_fields should raise error
         with pytest.raises(SchemaMetadataError, match="identifier_fields"):
             SchemaMetadata(schema_path)
+
+
+# --- Phase 8: Tests for Expected Requirements Methods ---
+
+class TestExpectedRequirementsMethods:
+    """Test Phase 8 expected requirements functionality with compound keys."""
+    
+    @pytest.fixture
+    def temp_schema_with_qaqc(self, tmp_path):
+        """Create schema with full QA/QC metadata using compound key approach."""
+        schema = {
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "$metadata": {
+                "extraction": {
+                    "main_data_array": "key_requirements",
+                    "context_objects": ["document_info"],
+                    "identifier_fields": ["document_info.state"]
+                },
+                "consolidation": {
+                    "deduplication": {
+                        "key_fields": ["requirement_type"],
+                        "ignore_fields": []
+                    }
+                },
+                "qa_qc": {
+                    "record_matching": {
+                        "key_fields": ["requirement_type"]
+                    },
+                    "comparison": {
+                        "primary_fields": ["value", "unit"]
+                    },
+                    "expected_requirements": [
+                        "setback__property_line_ft",
+                        "setback__residence_ft",
+                        "noise__at_property_line_dba"
+                    ],
+                    "expected_count_range": [6, 20]
+                }
+            },
+            "type": "object",
+            "properties": {}
+        }
+        
+        schema_path = tmp_path / "qaqc_schema.json"
+        with open(schema_path, 'w') as f:
+            json.dump(schema, f)
+        
+        return schema_path
+
+    def test_get_expected_requirements(self, temp_schema_with_qaqc):
+        """Test getting expected requirements as compound key strings."""
+        meta = SchemaMetadata(temp_schema_with_qaqc)
+        expected = meta.get_expected_requirements()
+        
+        assert len(expected) == 3
+        assert "setback__property_line_ft" in expected
+        assert "setback__residence_ft" in expected
+        assert "noise__at_property_line_dba" in expected
+
+    def test_get_expected_requirements_empty_when_not_specified(self, temp_schema_with_metadata):
+        """Test expected requirements returns empty list when not specified."""
+        meta = SchemaMetadata(temp_schema_with_metadata)
+        expected = meta.get_expected_requirements()
+        
+        assert expected == []
+
+    def test_get_expected_count_range(self, temp_schema_with_qaqc):
+        """Test getting expected count range."""
+        meta = SchemaMetadata(temp_schema_with_qaqc)
+        min_count, max_count = meta.get_expected_count_range()
+        
+        assert min_count == 6
+        assert max_count == 20
+
+    def test_get_expected_count_range_default(self, temp_schema_with_metadata):
+        """Test expected count range returns default when not specified."""
+        meta = SchemaMetadata(temp_schema_with_metadata)
+        min_count, max_count = meta.get_expected_count_range()
+        
+        assert min_count == 1
+        assert max_count == 100

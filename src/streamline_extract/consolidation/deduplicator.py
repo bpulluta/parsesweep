@@ -9,6 +9,7 @@ from typing import List, Optional
 import logging
 
 from ..utils.exceptions import SchemaMetadataError
+from ..utils.item_matcher import map_key_fields_to_columns
 
 logger = logging.getLogger(__name__)
 
@@ -78,7 +79,7 @@ class Deduplicator:
             return df
         
         # Map schema key_fields to actual DataFrame columns (case-insensitive)
-        compare_cols = self._map_key_fields_to_columns(df, key_fields)
+        compare_cols = map_key_fields_to_columns(df, key_fields)
         
         if not compare_cols:
             print(f"  ⚠ None of the key_fields {key_fields} found in DataFrame - skipping deduplication")
@@ -96,46 +97,6 @@ class Deduplicator:
             print("  ✓ No duplicates found")
         
         return df
-    
-    def _map_key_fields_to_columns(self, df: pd.DataFrame, key_fields: List[str]) -> List[str]:
-        """
-        Map schema key_fields to actual DataFrame columns.
-        
-        Handles case variations and common naming patterns.
-        For nested fields like "jurisdiction.state", looks for "State" column.
-        Handles transformations like "specific_subject" -> "Specific Subject".
-        
-        Args:
-            df: DataFrame to map columns from
-            key_fields: Key field names from schema
-            
-        Returns:
-            List of actual DataFrame column names that match key_fields
-        """
-        mapped_cols = []
-        
-        for key_field in key_fields:
-            # Handle nested field names (e.g., "jurisdiction.state" -> "state")
-            field_name = key_field.split('.')[-1]
-            
-            # Normalize field name for comparison:
-            # Convert snake_case to space-separated: "specific_subject" -> "specific subject"
-            normalized_field = field_name.replace('_', ' ').lower()
-            
-            # Find matching column (case-insensitive, with/without underscores)
-            matching_col = None
-            for col in df.columns:
-                normalized_col = col.replace('_', ' ').lower()
-                if normalized_col == normalized_field:
-                    matching_col = col
-                    break
-            
-            if matching_col:
-                mapped_cols.append(matching_col)
-            else:
-                logger.warning(f"Key field '{key_field}' not found in DataFrame columns")
-        
-        return mapped_cols
     
     def _get_metadata_columns(self, df: pd.DataFrame) -> List[str]:
         """
