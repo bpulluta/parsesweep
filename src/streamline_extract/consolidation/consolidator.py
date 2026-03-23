@@ -64,11 +64,15 @@ class Consolidator:
     def consolidate_from_directory(self, json_dir: Path) -> Tuple[pd.DataFrame, Dict]:
         """
         Load all JSON files and consolidate into DataFrame.
+        Searches recursively through nested subdirectories.
         
         Returns:
             Tuple of (DataFrame, schema_info dict)
         """
+        # First try direct children, then search recursively for nested structures
         json_files = list(json_dir.glob("*.json"))
+        if not json_files:
+            json_files = list(json_dir.rglob("*.json"))
         if not json_files:
             print(f"No JSON files found in {json_dir}")
             return pd.DataFrame(), {}
@@ -190,8 +194,32 @@ class Consolidator:
             print(f"  Column dtypes:")
             for col, dtype in df.dtypes.items():
                 print(f"    {col}: {dtype}")
-        
+
+        # Apply schema-driven column exclusion (optional)
+        df = self._apply_exclude_fields(df)
+
         return df, self.schema_info
+    
+    def _apply_exclude_fields(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Remove columns specified in schema output.exclude_fields.
+        
+        This is schema-driven and universal - any schema can specify columns to hide.
+        """
+        exclude_fields = self.schema_metadata.metadata.get("consolidation", {}).get("output", {}).get("exclude_fields", [])
+        
+        if not exclude_fields:
+            return df
+        
+        # Only drop fields that actually exist in the DataFrame
+        cols_to_drop = [col for col in exclude_fields if col in df.columns]
+        
+        if cols_to_drop:
+            if self.verbose:
+                print(f"\n🚫 Excluding {len(cols_to_drop)} column(s): {', '.join(cols_to_drop)}")
+            df = df.drop(columns=cols_to_drop)
+        
+        return df
     
     def save_excel(self, df: pd.DataFrame, output_path: Path):
         """Save DataFrame to Excel with professional formatting."""

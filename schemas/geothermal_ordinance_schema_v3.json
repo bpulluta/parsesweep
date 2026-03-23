@@ -1,0 +1,407 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$metadata": {
+    "domain": "Energy - Geothermal Regulations",
+    "version": "3.0.0",
+    "description": "Extract regulatory requirements from geothermal ordinances with stakeholder-aligned categories for setbacks, permitting, drilling hours, noise, visual impacts, seismic monitoring, bonds, prohibitions, and more.",
+    "extraction": {
+      "main_data_array": "requirements",
+      "context_objects": ["jurisdiction", "document_applicability"],
+      "identifier_fields": ["jurisdiction.state", "jurisdiction.county"],
+      "display_name_template": "{county}, {state}",
+      "document_type": "Geothermal Ordinance"
+    },
+    "consolidation": {
+      "normalization": {
+        "state_field": "State",
+        "description": "State names automatically normalized to 2-letter abbreviations (e.g., Utah→UT, New York→NY) during consolidation for consistent data analysis"
+      },
+      "deduplication": {
+        "key_fields": ["category", "facility_type", "specific_subject", "value", "unit", "section"],
+        "ignore_fields": ["notes", "condition", "details"],
+        "strategy": "latest",
+        "comparison_mode": "fuzzy"
+      },
+      "output": {
+        "default_format": "excel",
+        "exclude_fields": [
+          "applies_to_geothermal_electricity",
+          "extraction_approach",
+          "relevant_sections",
+          "Date_Adopted",
+          "Date_Effective",
+          "Date_Last_Amended",
+          "Supersedes",
+          "Subdivision",
+          "Category",
+          "Facility Type",
+          "Specific Subject",
+          "Value Type",
+          "Applies To",
+          "Condition",
+          "Details",
+          "Notes"
+        ],
+        "column_renames": {
+          "State": "state",
+          "County": "county",
+          "Ordinance_Code": "ordinance_code",
+          "Date_Adopted": "date_adopted",
+          "Date_Effective": "date_effective",
+          "Date_Last_Amended": "date_last_amended",
+          "Supersedes": "supersedes",
+          "Category": "category",
+          "Facility Type": "facility_type",
+          "Specific Subject": "specific_subject",
+          "Value": "value",
+          "Value Type": "value_type",
+          "Unit": "units",
+          "Condition": "condition",
+          "Applies To": "applies_to",
+          "Details": "summary",
+          "Section": "section"
+        },
+        "column_order": [
+          "county",
+          "state",
+          "subdivision",
+          "jurisdiction_type",
+          "FIPS",
+          "feature",
+          "value",
+          "units",
+          "adder",
+          "min_dist",
+          "max_dist",
+          "summary",
+          "ord_year",
+          "section",
+          "source"
+        ],
+        "freeze_columns": 3,
+        "auto_width": true
+      }
+    },
+    "qa_qc": {
+      "record_matching": {
+        "key_fields": ["category", "facility_type", "specific_subject"]
+      },
+      "comparison": {
+        "primary_fields": ["value", "unit"]
+      }
+    },
+    "validation": {
+      "required_fields": ["jurisdiction", "requirements", "document_applicability"],
+      "quality_checks": [
+        {
+          "field": "document_applicability.applies_to_geothermal_electricity",
+          "type": "boolean",
+          "message": "Must verify document applicability"
+        }
+      ],
+      "completeness_threshold": 0.7
+    }
+  },
+  "title": "Geothermal Ordinance Extraction Schema v3",
+  "description": "Regulatory requirements for geothermal energy facilities. SCOPE: Geothermal power plants, geothermal exploration wells, production/injection wells, gen-tie (generation-tie) lines, and commercial geothermal energy infrastructure. EXCLUDE: Geothermal heat pumps (GHP), residential HVAC, direct-use heating/cooling, solar power, wind power, biomass, and other non-geothermal energy technologies. CRITICAL: When extracting from multi-technology renewable energy ordinances, DO NOT extract requirements that apply to solar, wind, biomass, or other technologies. ONLY extract provisions that explicitly mention geothermal or that clearly apply to geothermal based on context.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["jurisdiction", "requirements", "document_applicability"],
+  "properties": {
+    "document_applicability": {
+      "type": "object",
+      "description": "Scope verification and filtering transparency.",
+      "additionalProperties": false,
+      "required": ["applies_to_geothermal_electricity", "extraction_approach"],
+      "properties": {
+        "applies_to_geothermal_electricity": {
+          "type": "boolean",
+          "description": "Does this document contain provisions regulating geothermal energy facilities (exploration, drilling, power plants, gen-tie lines)?"
+        },
+        "extraction_approach": {
+          "type": "string",
+          "description": "Document which sections were extracted (geothermal-related) and which were excluded (other technologies/uses). IMPORTANT: If document is a zoning code that lists geothermal as a permitted/conditional use in certain zones, extract ONLY: (1) The geothermal use classification itself, (2) Zone-specific requirements (setbacks, lot size, etc.) from zones where geothermal is allowed. EXCLUDE: Requirements for other land uses (residential, guest houses, manufactured homes, accessory buildings) even if on the same page. For multi-technology renewable energy ordinances, ONLY extract sections that explicitly mention geothermal - DO NOT extract general 'renewable energy' sections that apply to all technologies including solar/wind/biomass. Use format: 'Extracted [sections]; Excluded [sections]'",
+          "examples": [
+            "Extracted Article N.G Sections 6-3N-1 through 6-3N-12 (geothermal); Excluded Section 6-4-12G (solar), Section 6-3C-2 (residential GHP)",
+            "Extracted Division 17 (commercial geothermal); Excluded general zoning provisions",
+            "Extracted Table of Uses (geothermal power plant classification) and I-A zone site development standards (applicable to geothermal); Excluded R4K residential standards, guest house regulations, manufactured home definitions",
+            "No geothermal electricity provisions found; Excluded all sections (document covers only solar and wind)"
+          ]
+        },
+        "relevant_sections": {
+          "type": ["string", "null"],
+          "description": "Ordinance sections regulating geothermal energy facilities, cited exactly as written (e.g., 'Article N.G Sections 6-3N-1 through 6-3N-12'). Null if none."
+        }
+      }
+    },
+    "jurisdiction": {
+      "type": "object",
+      "description": "Geographic, regulatory, and temporal context. IMPORTANT: Capture ALL dates - stakeholder analysis requires knowing when ordinances were enacted and last modified.",
+      "additionalProperties": false,
+      "required": ["state", "county"],
+      "properties": {
+        "state": {
+          "type": "string",
+          "description": "State name exactly as written in document."
+        },
+        "county": {
+          "type": "string",
+          "description": "County name exactly as written (keep 'County' suffix if present)."
+        },
+        "ordinance_code": {
+          "type": ["string", "null"],
+          "description": "Ordinance number/code/title exactly as written. Null if not stated."
+        },
+        "date_adopted": {
+          "type": ["string", "null"],
+          "description": "Date the ordinance was adopted/enacted/passed by the legislative body in YYYY-MM-DD format. Convert from any source format (e.g., 'May 17, 2013' → '2013-05-17', 'October 6, 2015' → '2015-10-06'). Look for phrases like 'adopted on', 'enacted on', 'passed on', or dates in resolution headers. If year-only (e.g., '2015'), use 'YYYY-01-01' format. For descriptive dates (e.g., 'upon approval'), keep original text. Null if not stated."
+        },
+        "date_effective": {
+          "type": ["string", "null"],
+          "description": "Date the ordinance became effective/applicable law in YYYY-MM-DD format. Convert from any source format to YYYY-MM-DD. Look for phrases like 'effective date', 'shall become effective on', 'in effect as of'. For descriptive effective dates (e.g., 'immediately upon adoption'), keep original text as-is. Null if not stated."
+        },
+        "date_last_amended": {
+          "type": ["string", "null"],
+          "description": "Date of the most recent amendment to the ordinance in YYYY-MM-DD format. Convert from any source format. Look for phrases like 'amended on', 'as amended', 'last revised'. Null if not stated or if no amendments."
+        },
+        "supersedes": {
+          "type": ["string", "null"],
+          "description": "Previous ordinance/resolution that this ordinance replaces or supersedes, exactly as written. Null if not stated."
+        },
+        "subdivision": {
+          "type": ["string", "null"],
+          "description": "Subdivision or municipality within the county if specified. Leave null if not stated."
+        },
+        "jurisdiction_type": {
+          "type": ["string", "null"],
+          "description": "Jurisdiction type (e.g., County, City, Township) if stated. Leave null if not stated."
+        },
+        "FIPS": {
+          "type": ["string", "null"],
+          "description": "FIPS code if stated in source material. Leave null if not stated."
+        },
+        "ord_year": {
+          "type": ["string", "null"],
+          "description": "Ordinance year (YYYY). Use the year from the ordinance adoption/effective date if stated."
+        }
+      }
+    },
+    "requirements": {
+      "type": "array",
+      "description": "Regulatory requirements applicable to geothermal energy facilities, organized into stakeholder-priority categories.\n\nCRITICAL EXTRACTION RULES:\n\n(1) ONE-TO-MANY RULE: When a single regulation applies to multiple subjects/boundaries/entities, create SEPARATE rows for each. Example: 'Setback from property lines, roads, and water bodies shall be 100 feet' → Create 3 rows with different specific_subject values.\n\n(2) FACILITY TYPE DIFFERENTIATION: When an ordinance specifies different requirements for exploration/drilling vs power plants vs gen-tie lines, create SEPARATE rows with the appropriate facility_type. If the ordinance does not differentiate, use 'All facilities'.\n\n(3) ALTERNATIVE VALUES RULE: When a regulation offers multiple options (either/or), create separate rows for each option with value_type='alternative_option'.\n\n(4) BUNDLED CRITERIA RULE: When a section lists multiple distinct requirements, extract EACH as a SEPARATE row with the appropriate category.\n\n(5) CRITICAL FILTERING: DO NOT extract requirements mentioning 'solar', 'wind', 'biomass', or other non-geothermal technologies.\n\n(6) PRIORITY CATEGORIES: The following categories are HIGH PRIORITY for stakeholder analysis. If the ordinance addresses them, they MUST be extracted:\n   - Setbacks (all 11 boundary types)\n   - Drilling hours\n   - Noise limits\n   - Height limits\n   - Lot size minimum\n   - Fencing\n   - Color requirements\n   - Lighting requirements\n   - Visual impact assessment\n   - Seismic monitoring\n   - Permitted use districts\n   - Permit requirements (CUP, zoning, other)\n   - Bond requirements\n   - Decommissioning\n   - Prohibitions (moratoriums, bans)",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["category", "details"],
+        "properties": {
+          "category": {
+            "type": "string",
+            "description": "The regulatory category this requirement belongs to. MUST use one of the standardized values below for cross-jurisdiction comparison. Use 'Other' only for relevant requirements that do not fit any defined category.\n\nCATEGORY DEFINITIONS:\n• Setback — Distance requirements between geothermal facilities and boundaries/features. Use specific_subject for the target (e.g., 'from property line', 'from school').\n• Drilling hours — When drilling operations are permitted or restricted. Distinct from general construction working hours.\n• Working hours — Non-drilling work hour restrictions (site preparation, equipment delivery, pipe racking, construction).\n• Noise limit — Decibel or sound level limits at various measurement points or for various activities.\n• Height limit — Maximum height for drilling rigs, structures, cooling towers, transmission towers.\n• Lot size minimum — Minimum acreage or square footage required for geothermal facilities.\n• Fencing — Security fencing requirements: height, material, specifications.\n• Color requirement — Color/finish specifications for equipment, structures, or facilities for visual blending.\n• Lighting requirement — Lighting standards: shielding, direction, intensity, dark-sky compliance.\n• Visual impact assessment — Requirements for visual impact studies, viewshed analysis, visual screening, landscaping buffers.\n• Seismic monitoring — Baseline seismic surveys, ongoing monitoring plans, induced seismicity protocols, reporting requirements.\n• Permitted use district — Zoning districts where geothermal is allowed (by right, conditional use, special exception). Use value for zone name/code.\n• Permit requirement — Required permits: Conditional Use Permit (CUP), zoning permit, special use permit, county permits, public hearing requirements.\n• Bond requirement — Financial assurance: reclamation bonds, performance bonds, surety bonds, insurance requirements. Use specific_subject for bond type.\n• Decommissioning — Facility removal, site restoration, well plugging, timeline, restoration standards.\n• Prohibition — Moratoriums, outright bans, fracking bans, temporary suspensions. Include scope and duration.\n• Other — Requirements relevant to geothermal but not fitting above categories (e.g., waste disposal, water monitoring, road standards, signage, safety equipment, dust control, emergency planning).",
+            "enum": [
+              "Setback",
+              "Drilling hours",
+              "Working hours",
+              "Noise limit",
+              "Height limit",
+              "Lot size minimum",
+              "Fencing",
+              "Color requirement",
+              "Lighting requirement",
+              "Visual impact assessment",
+              "Seismic monitoring",
+              "Permitted use district",
+              "Permit requirement",
+              "Bond requirement",
+              "Decommissioning",
+              "Prohibition",
+              "Other"
+            ]
+          },
+          "facility_type": {
+            "type": ["string", "null"],
+            "description": "What type of geothermal facility or infrastructure this requirement applies to. CRITICAL for setback analysis — stakeholder needs to compare setbacks for drilling vs power plants vs gen-tie lines separately. Use 'All facilities' when the ordinance does not differentiate. Use null only if truly unspecifiable.",
+            "enum": [
+              "Exploration/drilling",
+              "Production/injection well",
+              "Power plant",
+              "Gen-tie line",
+              "Pipeline",
+              "Transmission infrastructure",
+              "All facilities",
+              null
+            ],
+            "examples": [
+              "Exploration/drilling",
+              "Production/injection well",
+              "Power plant",
+              "Gen-tie line",
+              "Pipeline",
+              "Transmission infrastructure",
+              "All facilities",
+              null
+            ]
+          },
+          "specific_subject": {
+            "type": ["string", "null"],
+            "description": "The specific target, boundary, activity, or scope that distinguishes this instance of the requirement from others in the same category. This field makes each row unique within its category.\n\nSTANDARDIZED VALUES BY CATEGORY:\n\n(1) Setback — Use these standardized setback targets:\n   • 'from structures/residential zones' — setback from occupied buildings, residential areas, dwellings\n   • 'from property line' — setback from parcel/lot boundary\n   • 'from public road' — setback from road right-of-way, public highway\n   • 'from railroad' — setback from railroad right-of-way, rail line\n   • 'from existing transmission line' — setback from existing power/transmission lines\n   • 'from water body' — setback from rivers, streams, lakes, waterways, irrigation canals\n   • 'from combustible tank' — setback from fuel tanks, propane tanks, flammable storage\n   • 'from domestic well' — setback from domestic/residential water wells\n   • 'from active fault' — setback from known active fault lines\n   • 'from school' — setback from schools, school grounds\n   • 'from hospital' — setback from hospitals, medical facilities\n   • Use descriptive text for other setback targets not listed above\n\n(2) Drilling hours — 'general drilling', 'well testing/venting', 'emergency operations'\n(3) Working hours — 'site preparation', 'equipment delivery and removal', 'drill pipe racking', 'construction'\n(4) Noise limit — 'at property line', 'at nearest residence', 'drilling operations', 'plant operations', 'construction', 'continuous sound', 'intermittent sound'\n(5) Height limit — 'drilling rig', 'cooling tower', 'wellhead structure', 'permanent structure', 'transmission tower'\n(6) Permit requirement — 'Conditional Use Permit', 'Zoning Permit', 'Special Use Permit', 'County Permit', 'Building Permit', 'Public hearing'\n(7) Bond requirement — 'per well bond', 'blanket bond', 'reclamation bond', 'performance bond', 'liability insurance'\n(8) Permitted use district — 'by right', 'conditional use', 'special exception'\n(9) Prohibition — 'moratorium', 'permanent ban', 'fracking ban', 'temporary suspension'\n(10) Decommissioning — 'facility removal', 'site restoration', 'well plugging', 'timeline', 'financial assurance'\n\nSet to null only if the requirement truly has no sub-categorization.",
+            "examples": [
+              "from structures/residential zones",
+              "from property line",
+              "from public road",
+              "from railroad",
+              "from existing transmission line",
+              "from water body",
+              "from combustible tank",
+              "from domestic well",
+              "from active fault",
+              "from school",
+              "from hospital",
+              "general drilling",
+              "well testing/venting",
+              "site preparation",
+              "equipment delivery and removal",
+              "at property line",
+              "at nearest residence",
+              "drilling rig",
+              "cooling tower",
+              "Conditional Use Permit",
+              "Zoning Permit",
+              "per well bond",
+              "blanket bond",
+              "by right",
+              "conditional use",
+              "moratorium",
+              "permanent ban",
+              "fracking ban",
+              "facility removal",
+              "site restoration",
+              null
+            ]
+          },
+          "applies_to": {
+            "type": ["string", "null"],
+            "description": "Zone-specific or operational context for this requirement. Use this field to capture: (1) Zoning district context when geothermal is allowed in specific zones (e.g., 'in I-A Industrial zone', 'in A-20 Agricultural zone'). (2) Operational context beyond facility_type (e.g., 'during nighttime operations', 'for new facilities only'). Set to null if no zone or special operational context applies.",
+            "examples": [
+              "in I-A Industrial zone",
+              "in A-20 Agricultural zone",
+              "in M-2 Heavy Industrial zone",
+              "in Agricultural Exclusive zone",
+              "outside Urban Growth Boundary",
+              "within Geothermal Overlay District",
+              "for new facilities only",
+              "for existing nonconforming facilities",
+              null
+            ]
+          },
+          "value": {
+            "type": ["number", "string", "null"],
+            "description": "The primary quantifiable value extracted from the requirement.\n\nEXTRACTION RULES:\n(1) FIXED NUMBERS: For simple numeric requirements, extract the number without units (e.g., '1320 feet' → 1320).\n(2) FORMULAS: For calculated values, extract the complete formula as a string (e.g., '1.5 times the height of the tallest structure').\n(3) RANGES: For ranges, extract as string (e.g., '100-500', '7 a.m. to 7 p.m.').\n(4) YES/NO: Extract 'Required', 'Mandatory', 'Prohibited', 'Not permitted', 'Banned' as appropriate.\n(5) ZONE NAMES: For Permitted use district, extract the zone code/name (e.g., 'I-A', 'A-20', 'M-2 Heavy Industrial').\n(6) ALTERNATIVES: When regulation offers either/or options, create separate rows.\n(7) Use null only if requirement is pure procedural text with no extractable value.",
+            "examples": [
+              1320,
+              100,
+              300,
+              500,
+              65,
+              0.5,
+              "1.5 times the total height of its tallest structure",
+              "2 times the height but not less than 500 feet",
+              "100-500",
+              "7 a.m. to 7 p.m.",
+              "24 hours a day",
+              "Required",
+              "Mandatory",
+              "Prohibited",
+              "Banned",
+              "Not permitted",
+              "I-A",
+              "A-20",
+              "M-2 Heavy Industrial",
+              50000,
+              150000,
+              "one year",
+              null
+            ]
+          },
+          "value_type": {
+            "type": ["string", "null"],
+            "description": "Categorizes how the value should be interpreted.\n\nTYPES:\n• 'fixed_number' — simple numeric value\n• 'formula' — calculated value with variables (e.g., '2x height')\n• 'range' — min-max or time range\n• 'alternative_option' — one of multiple either/or choices\n• 'tiered' — value varies by facility size/capacity/condition\n• 'minimum' — explicitly a floor\n• 'maximum' — explicitly a ceiling\n• null — for non-numeric values like 'Required', 'Prohibited', zone names",
+            "enum": ["fixed_number", "formula", "range", "alternative_option", "tiered", "minimum", "maximum", null]
+          },
+          "unit": {
+            "type": ["string", "null"],
+            "description": "Unit of measurement SPELLED OUT in full words. EXTRACTION RULES: (1) Distances → 'feet' not \"'\" or 'ft', 'meters' not 'm', 'miles' not 'mi'. (2) Noise → 'dBA' (standard abbreviation OK). (3) Area → 'acres' or 'square feet' spelled out. (4) Currency → 'USD' or '$' as written. (5) Time → 'days', 'calendar days', 'years' spelled out. (6) Use null if: value is null, value is yes/no/required/prohibited, value is a time range, value_type is 'formula', or value is a zone name.",
+            "examples": [
+              "feet",
+              "meters",
+              "miles",
+              "dBA",
+              "acres",
+              "square feet",
+              "MW",
+              "days",
+              "calendar days",
+              "years",
+              "USD",
+              "$",
+              "$/well",
+              null
+            ]
+          },
+          "condition": {
+            "type": ["string", "null"],
+            "description": "Additional qualifying conditions that modify when or how the requirement applies. Captures temporal, spatial, capacity-based, or other contextual constraints.\n\nEXAMPLES:\n• Temporal: 'during daytime hours', 'during construction phase', 'during nighttime'\n• Capacity: 'for facilities exceeding 25 MW', 'for wells deeper than 5000 feet'\n• Spatial: 'when located within 1 mile of residential areas', 'except in industrial zones'\n• Equipment: 'during drilling operations', 'during well testing'\n• Alternatives: 'for each well drilled', 'for any number of wells'\n• Exceptions: 'except in case of emergencies', 'unless soundproofing is provided'\n\nSet to null if the requirement has no additional conditions.",
+            "examples": [
+              "except in case of emergencies",
+              "unless soundproofing is provided",
+              "during construction phase",
+              "during operations",
+              "for facilities exceeding 25 MW",
+              "when located within 1 mile of residential areas",
+              "except in industrial zones",
+              "for each well drilled or abandoned well re-entered",
+              "for any number of wells drilled or re-entered",
+              "where soundproofing is not provided",
+              null
+            ]
+          },
+          "details": {
+            "type": "string",
+            "description": "Complete requirement text verbatim from the ordinance. Include all conditions, exceptions, qualifications, and contextual language. Copy the full legal text exactly as written — this preserves the complete regulatory language for stakeholder review."
+          },
+          "section": {
+            "type": ["string", "null"],
+            "description": "Ordinance section reference as cited in document (e.g., '6-3N-10-1C', 'Section 10-404(2)(c)'). Null if no section numbering."
+          },
+          "feature": {
+            "type": ["string", "null"],
+            "description": "Stakeholder export field. Use the most specific subject/target for this requirement (e.g., 'property line', 'roads', 'noise', 'maximum height'). Prefer the same content as specific_subject, simplified if needed."
+          },
+          "units": {
+            "type": ["string", "null"],
+            "description": "Stakeholder export field. Duplicate unit in plain words (e.g., 'feet', 'dBA'). Leave null if no unit."
+          },
+          "summary": {
+            "type": ["string", "null"],
+            "description": "Stakeholder export field. Short summary of the requirement. Can reuse details if no shorter summary is possible."
+          },
+          "source": {
+            "type": ["string", "null"],
+            "description": "Stakeholder export field. Source URL or citation if present in the document. Leave null if not stated."
+          },
+          "adder": {
+            "type": ["string", "null"],
+            "description": "Stakeholder export field. Additional modifier value if explicitly specified. Leave null if not stated."
+          },
+          "min_dist": {
+            "type": ["number", "string", "null"],
+            "description": "Stakeholder export field. Minimum numeric distance when a range is stated (e.g., 100-500). Leave null if not applicable."
+          },
+          "max_dist": {
+            "type": ["number", "string", "null"],
+            "description": "Stakeholder export field. Maximum numeric distance when a range is stated (e.g., 100-500). Leave null if not applicable."
+          }
+        }
+      }
+    }
+  }
+}

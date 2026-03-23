@@ -264,49 +264,50 @@ def process(path: str, output: Optional[str], schema: Optional[str], category: O
     output_dir.mkdir(parents=True, exist_ok=True)
     
     # Get document files - support all formats (PDF, DOCX, TXT, XLSX, CSV)
+    # Tracks per-file output directories for nested folder structures
+    file_output_dirs = {}  # Maps doc_path -> its specific output directory
+    
     if is_dir:
-        # Find all supported document types in this directory
+        # Find all supported document types in this directory (non-recursive first)
         doc_files = []
         for ext in SUPPORTED_EXTENSIONS:
             doc_files.extend(sorted(path.glob(f"*{ext}")))
-        doc_files = sorted(doc_files)  # Sort all files together
+        doc_files = sorted(doc_files)
         
-        # If no documents found, look for subdirectories (e.g., state folders)
+        # If no documents found directly, search recursively in subdirectories
         if not doc_files:
-            subdirs = [d for d in path.iterdir() if d.is_dir() and not d.name.startswith('.')]
-            if subdirs:
-                # Found subdirectories - process each one recursively
-                if VERBOSITY != 'quiet':
-                    console.print(f"\n[bold]📁 Found {len(subdirs)} subfolder(s) with documents[/bold]")
-                    for subdir in subdirs:
-                        subdir_docs = []
-                        for ext in SUPPORTED_EXTENSIONS:
-                            subdir_docs.extend(subdir.glob(f"*{ext}"))
-                        if subdir_docs:
-                            console.print(f"  → {subdir.name}: {len(subdir_docs)} document(s)")
-                
-                # Call extract for each subdirectory
-                for subdir in subdirs:
-                    subdir_docs = []
-                    for ext in SUPPORTED_EXTENSIONS:
-                        subdir_docs.extend(subdir.glob(f"*{ext}"))
-                    if subdir_docs:
-                        import subprocess
-                        cmd = ['pixi', 'run', 'streamline-extract', 'extract', str(subdir)]
-                        if enable_qa_qc:
-                            cmd.append('--enable-qa-qc')
-                        if not skip_existing:
-                            cmd.append('--reprocess')
-                        if limit:
-                            cmd.extend(['-n', str(limit)])
-                        if model != 'gpt-4o-mini':
-                            cmd.extend(['--model', model])
-                        
-                        subprocess.run(cmd)
-                return
+            for ext in SUPPORTED_EXTENSIONS:
+                doc_files.extend(sorted(path.rglob(f"*{ext}")))
+            doc_files = sorted(doc_files)
+            
+            if doc_files and VERBOSITY != 'quiet':
+                # Show subfolder summary
+                subdirs_found = set()
+                for doc in doc_files:
+                    try:
+                        rel = doc.relative_to(path)
+                        if len(rel.parts) > 1:
+                            subdirs_found.add(rel.parts[0])
+                    except ValueError:
+                        pass
+                if subdirs_found:
+                    console.print(f"\n[bold]📁 Found {len(doc_files)} document(s) across {len(subdirs_found)} subfolder(s)[/bold]")
+                    # Show per-subfolder counts
+                    for sdir in sorted(subdirs_found):
+                        sdir_docs = [d for d in doc_files if d.relative_to(path).parts[0] == sdir]
+                        console.print(f"  → {sdir}: {len(sdir_docs)} document(s)")
+        
+        # Build per-file output directory mapping (mirrors input structure)
+        for doc in doc_files:
+            try:
+                rel_parent = doc.parent.relative_to(path)
+                file_output_dirs[doc] = output_dir / rel_parent
+            except ValueError:
+                file_output_dirs[doc] = output_dir
+            file_output_dirs[doc].mkdir(parents=True, exist_ok=True)
         
         # Check if we found any documents at all
-        if not doc_files and not subdirs:
+        if not doc_files:
             supported_exts = ', '.join(sorted(SUPPORTED_EXTENSIONS))
             print_error(
                 f"No supported documents found in: {path}",
@@ -323,7 +324,7 @@ def process(path: str, output: Optional[str], schema: Optional[str], category: O
             doc_files = doc_files[:limit]
         if skip_existing:
             original_count = len(doc_files)
-            doc_files = [p for p in doc_files if not (output_dir / f"{p.stem}.json").exists()]
+            doc_files = [p for p in doc_files if not (file_output_dirs.get(p, output_dir) / f"{p.stem}.json").exists()]
             skipped = original_count - len(doc_files)
             if skipped > 0 and len(doc_files) > 0 and VERBOSITY != 'quiet':
                 print_info(f"Skipping {skipped} already processed file{'s' if skipped != 1 else ''} (use --reprocess to extract again)")
@@ -621,8 +622,9 @@ def process(path: str, output: Optional[str], schema: Optional[str], category: O
                     text = extract_text_from_document(doc_path)
                     result = extractor.extract(text, loaded_schema)
                     
-                    # Save result
-                    num_items = _extract_and_save_result(doc_path, result, output_dir, category, actual_model, enable_qa_qc)
+                    # Save result (use per-file output dir for nested structures)
+                    doc_output_dir = file_output_dirs.get(doc_path, output_dir)
+                    num_items = _extract_and_save_result(doc_path, result, doc_output_dir, category, actual_model, enable_qa_qc)
                     
                     # Update dashboard
                     dashboard.complete_document(
@@ -682,8 +684,9 @@ def process(path: str, output: Optional[str], schema: Optional[str], category: O
                     text = extract_text_from_document(doc_path, page_range=page_range)
                     result = extractor.extract(text, loaded_schema)
                     
-                    # Save result
-                    num_items = _extract_and_save_result(doc_path, result, output_dir, category, actual_model, enable_qa_qc)
+                    # Save result (use per-file output dir for nested structures)
+                    doc_output_dir = file_output_dirs.get(doc_path, output_dir)
+                    num_items = _extract_and_save_result(doc_path, result, doc_output_dir, category, actual_model, enable_qa_qc)
                     
                     # Track results
                     results.append({
@@ -724,8 +727,9 @@ def process(path: str, output: Optional[str], schema: Optional[str], category: O
                 text = extract_text_from_document(doc_path, page_range=page_range)
                 result = extractor.extract(text, loaded_schema)
                 
-                # Save result
-                num_items = _extract_and_save_result(doc_path, result, output_dir, category, actual_model, enable_qa_qc)
+                # Save result (use per-file output dir for nested structures)
+                doc_output_dir = file_output_dirs.get(doc_path, output_dir)
+                num_items = _extract_and_save_result(doc_path, result, doc_output_dir, category, actual_model, enable_qa_qc)
                 
                 # Track results
                 results.append({
