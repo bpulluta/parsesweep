@@ -328,15 +328,16 @@ class SchemaMetadata:
     def get_qa_qc_match_fields(self) -> List[str]:
         """
         Get fields to use for matching items across models in QA/QC.
-        
-        Falls back to deduplication key_fields if not specified.
         """
         qa_qc = self.metadata.get("qa_qc", {})
         match_fields = qa_qc.get("record_matching", {}).get("key_fields")
-        if match_fields:
-            return match_fields
-        # Fallback to deduplication key_fields
-        return self.get_deduplication_key_fields()
+        if not match_fields:
+            raise SchemaMetadataError(
+                "Schema metadata missing required QA/QC field: qa_qc.record_matching.key_fields\n"
+                "This field is required for canonical QA/QC record matching.",
+                schema_path=str(self.schema_path)
+            )
+        return match_fields
     
     def get_qa_qc_compare_fields(self) -> List[str]:
         """

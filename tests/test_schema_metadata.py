@@ -466,3 +466,10 @@ class TestExpectedRequirementsMethods:
         
         assert min_count == 1
         assert max_count == 100
+
+    def test_get_qa_qc_match_fields_requires_explicit_config(self, temp_schema_with_metadata):
+        """QA/QC match fields must be explicitly configured in qa_qc.record_matching.key_fields."""
+        meta = SchemaMetadata(temp_schema_with_metadata)
+
+        with pytest.raises(SchemaMetadataError, match=r"qa_qc\.record_matching\.key_fields"):
+            meta.get_qa_qc_match_fields()

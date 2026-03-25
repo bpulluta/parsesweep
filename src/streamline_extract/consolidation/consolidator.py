@@ -77,13 +77,19 @@ class Consolidator:
             print(f"No JSON files found in {json_dir}")
             return pd.DataFrame(), {}
         
-        # Analyze first file to understand schema structure
-        with open(json_files[0]) as f:
-            sample_data = json.load(f)
-        
-        # Handle wrapped extraction results
-        if "data" in sample_data and isinstance(sample_data["data"], dict):
-            sample_data = sample_data["data"]
+        # Analyze first canonical extraction-record file to understand schema structure.
+        sample_data = None
+        for sample_file in sorted(json_files):
+            with open(sample_file) as f:
+                loaded = json.load(f)
+            if isinstance(loaded, dict) and isinstance(loaded.get("payload"), dict):
+                sample_data = loaded["payload"]
+                break
+
+        if sample_data is None:
+            if self.verbose:
+                print(f"No canonical extraction-record files found in {json_dir}")
+            return pd.DataFrame(), {}
         
         # Detect schema type and structure
         self.schema_info = self.detector.detect_structure(sample_data)
@@ -117,14 +123,18 @@ class Consolidator:
                 print(f"\n[DEBUG] Processing file {idx}/{self.file_count}: {json_file.name}")
             
             with open(json_file) as f:
-                data = json.load(f)
+                raw_data = json.load(f)
             
-            # Handle wrapped extraction
-            if "data" in data and isinstance(data["data"], dict):
-                data = data["data"]
+            # Canonical extraction-record contract stores extractable data in payload.
+            if "payload" in raw_data and isinstance(raw_data["payload"], dict):
+                data = raw_data["payload"]
+                context_source = data
+            else:
+                continue
             
             # Extract identifier/context fields
-            context = self.detector.extract_context(data, self.schema_info)
+            context = self.detector.extract_context(context_source, self.schema_info)
+            context.update(self._extract_lineage_context(raw_data))
             
             # Extract main array items
             main_array = data.get(self.schema_info['main_array_key'], [])
@@ -199,6 +209,24 @@ class Consolidator:
         df = self._apply_exclude_fields(df)
 
         return df, self.schema_info
+
+    def _extract_lineage_context(self, raw_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Extract lineage context fields from extraction wrappers for consolidated outputs."""
+        context: Dict[str, Any] = {}
+
+        lineage = raw_data.get("lineage") if isinstance(raw_data.get("lineage"), dict) else None
+        if not lineage:
+            return context
+
+        run_id = lineage.get("run_id")
+        artifact_id = lineage.get("artifact_id")
+
+        if run_id:
+            context["Run Id"] = run_id
+        if artifact_id:
+            context["Artifact Id"] = artifact_id
+
+        return context
     
     def _apply_exclude_fields(self, df: pd.DataFrame) -> pd.DataFrame:
         """

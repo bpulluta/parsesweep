@@ -467,7 +467,11 @@ class ComparisonEngine:
             if path and Path(path).exists():
                 try:
                     with open(path) as f:
-                        outputs[model] = json.load(f)
+                        loaded = json.load(f)
+                        if isinstance(loaded, dict) and isinstance(loaded.get("payload"), dict):
+                            outputs[model] = loaded["payload"]
+                        else:
+                            outputs[model] = loaded
                 except Exception as e:
                     logger.error(f"Failed to load {model}: {e}")
         return outputs
@@ -608,19 +612,12 @@ class ComparisonEngine:
         
         results = {}
         for model, items in item_arrays.items():
-            # Create index of extracted items by match fields (requirement_type)
-            # Match fields should be ["requirement_type"] for compound key schema
+            # Create index of extracted items by canonical requirement_type key.
             extracted_keys = set()
             for item in items:
-                # For compound keys, the key is just the requirement_type value
-                if len(self.match_fields) == 1:
-                    key = item.get(self.match_fields[0])
-                    if key:
-                        extracted_keys.add(key)
-                else:
-                    # Multiple match fields (legacy) - create tuple
-                    key_parts = tuple(item.get(f) for f in self.match_fields)
-                    extracted_keys.add(key_parts)
+                key = item.get(self.match_fields[0])
+                if key:
+                    extracted_keys.add(key)
             
             # Check which expected requirements were found
             # expected_requirements is now a list of strings like ["setback__property_line_ft", ...]

@@ -10,12 +10,14 @@ For utility commands (init, preview, estimate, etc.), see utils_commands.py
 """
 
 import json
+import hashlib
 import logging
 import os
 import sys
 import time
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional, List, Tuple
+from typing import Optional, List, Tuple, Dict, Any
 
 import click
 from dotenv import load_dotenv
@@ -43,6 +45,7 @@ from streamline_extract.cli.ui import (
     ask_confirm,
 )
 from streamline_extract.cli.dashboard import create_live_dashboard
+from streamline_extract.core import compile_runtime_artifact, ArtifactCompilerError
 
 
 # Global verbosity level (set by CLI flags)
@@ -122,6 +125,130 @@ def detect_api_provider() -> Tuple[str, bool, str]:
         "  OPENAI_API_KEY=sk-your-key-here"
     )
     return None, False, error
+
+
+def _resolve_runtime_artifact(
+    category: Optional[str],
+    schema_path: Path,
+    profile_name: str = 'default',
+    *,
+    repo_root: Optional[Path] = None,
+    domain_packs_dir: Optional[Path] = None,
+    profiles_dir: Optional[Path] = None,
+) -> Optional[Dict[str, Any]]:
+    """Resolve a compiled runtime artifact for lineage emission when available."""
+    root = repo_root or Path(__file__).resolve().parents[3]
+    packs_root = domain_packs_dir or (root / 'schemas/domain_packs')
+    profiles_root = profiles_dir or (root / 'schemas/profiles')
+
+    if not packs_root.exists() or not profiles_root.exists():
+        return None
+
+    candidate_pack_refs: List[str] = []
+    if category:
+        candidate_pack_refs.append(category)
+    candidate_pack_refs.append(schema_path.stem)
+
+    seen = set()
+    for pack_ref in candidate_pack_refs:
+        if pack_ref in seen:
+            continue
+        seen.add(pack_ref)
+
+        try:
+            return compile_runtime_artifact(
+                pack_ref,
+                profile_name,
+                repo_root=root,
+                domain_packs_dir=packs_root,
+                profiles_dir=profiles_root,
+            )
+        except ArtifactCompilerError:
+            continue
+
+    return None
+
+
+def _generate_run_id(
+    *,
+    schema_path: Path,
+    provider: str,
+    model: str,
+    enable_qa_qc: bool,
+    doc_files: List[Path],
+    artifact_id: Optional[str],
+) -> str:
+    """Generate a deterministic run identifier for lineage joins."""
+    seed = {
+        'schema': schema_path.as_posix(),
+        'provider': provider,
+        'model': model,
+        'mode': 'qa_qc' if enable_qa_qc else 'single_model',
+        'documents': sorted(path.as_posix() for path in doc_files),
+        'artifact_id': artifact_id,
+    }
+    canonical = json.dumps(seed, sort_keys=True, separators=(",", ":"))
+    digest = hashlib.sha256(canonical.encode('utf-8')).hexdigest()
+    return f"run://{digest[:16]}"
+
+
+def _build_run_manifest(
+    *,
+    run_id: str,
+    mode: str,
+    schema_path: Path,
+    provider: str,
+    model: str,
+    runtime_artifact: Optional[Dict[str, Any]],
+    doc_files: List[Path],
+    successful_output_paths: List[Path],
+    started_at: str,
+    finished_at: str,
+    total_processed: int,
+    successful_count: int,
+    failed_count: int,
+) -> Dict[str, Any]:
+    """Build a deterministic run manifest payload for process executions."""
+    lineage = (runtime_artifact or {}).get('lineage') or {}
+    return {
+        'manifest_version': '1.0.0',
+        'run_id': run_id,
+        'mode': mode,
+        'lineage': {
+            'artifact_id': (runtime_artifact or {}).get('artifact_id') or 'artifact://runtime/unresolved',
+            'profile_id': lineage.get('profile_id') or 'default',
+            'schema_id': schema_path.as_posix(),
+            'provider': provider,
+            'model': model,
+        },
+        'documents': sorted(path.as_posix() for path in doc_files),
+        'outputs': {
+            'records': sorted(path.as_posix() for path in successful_output_paths),
+        },
+        'timing': {
+            'started_at': started_at,
+            'finished_at': finished_at,
+        },
+        'status': {
+            'total_processed': total_processed,
+            'successful': successful_count,
+            'failed': failed_count,
+            'result': 'success' if failed_count == 0 else 'partial_failure',
+        },
+    }
+
+
+def _write_run_manifest(output_dir: Path, run_id: str, manifest: Dict[str, Any]) -> Path:
+    """Persist a run manifest in the run_manifests output folder."""
+    manifest_dir = output_dir / 'run_manifests'
+    manifest_dir.mkdir(parents=True, exist_ok=True)
+    run_suffix = run_id.replace('run://', '')
+    manifest_path = manifest_dir / f"{run_suffix}.manifest.json"
+    manifest_path.write_text(
+        json.dumps(manifest, indent=2, sort_keys=True) + "\n",
+        encoding='utf-8',
+    )
+    return manifest_path
 
 
 @click.command()
@@ -493,6 +620,7 @@ def process(path: str, output: Optional[str], schema: Optional[str], category: O
     # Load schema (enforced as required by Click)
     schema_path = Path(schema)
     loaded_schema = load_schema(schema_path)
+    runtime_artifact = _resolve_runtime_artifact(category, schema_path)
     if VERBOSITY != 'quiet':
         # Show relative path for clarity
         try:
@@ -500,6 +628,9 @@ def process(path: str, output: Optional[str], schema: Optional[str], category: O
             config_info["Schema"] = str(schema_rel)
         except ValueError:
             config_info["Schema"] = str(schema_path)
+
+        if runtime_artifact:
+            config_info["Artifact"] = runtime_artifact['artifact_id']
     
     # Display configuration table
     if VERBOSITY != 'quiet':
@@ -557,6 +688,15 @@ def process(path: str, output: Optional[str], schema: Optional[str], category: O
     
     # Track the actual model being used for output
     actual_model = config.llm_config.get('model', model) if provider != 'openai' else model
+    run_id = _generate_run_id(
+        schema_path=schema_path,
+        provider=provider,
+        model=actual_model,
+        enable_qa_qc=enable_qa_qc,
+        doc_files=doc_files,
+        artifact_id=runtime_artifact.get('artifact_id') if runtime_artifact else None,
+    )
+    run_started_at = datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
     
     # ========================================================================
     # QA/QC Multi-Model Extraction Mode
@@ -572,6 +712,8 @@ def process(path: str, output: Optional[str], schema: Optional[str], category: O
             max_context=max_context,
             page_range_map=page_range_map,
             verbosity=VERBOSITY,
+            runtime_artifact=runtime_artifact,
+            run_id=run_id,
         )
         return
     
@@ -624,7 +766,18 @@ def process(path: str, output: Optional[str], schema: Optional[str], category: O
                     
                     # Save result (use per-file output dir for nested structures)
                     doc_output_dir = file_output_dirs.get(doc_path, output_dir)
-                    num_items = _extract_and_save_result(doc_path, result, doc_output_dir, category, actual_model, enable_qa_qc)
+                    num_items = _extract_and_save_result(
+                        doc_path,
+                        result,
+                        doc_output_dir,
+                        category,
+                        actual_model,
+                        enable_qa_qc,
+                        runtime_artifact=runtime_artifact,
+                        run_id=run_id,
+                        provider=provider,
+                        schema_id=loaded_schema.get('$id'),
+                    )
                     
                     # Update dashboard
                     dashboard.complete_document(
@@ -641,6 +794,7 @@ def process(path: str, output: Optional[str], schema: Optional[str], category: O
                         'items': num_items,
                         'cost': result.cost,
                         'time': result.processing_time,
+                        'output_path': (doc_output_dir / f"{doc_path.stem}.json").as_posix(),
                         'success': True
                     })
                     total_cost += result.cost
@@ -686,7 +840,18 @@ def process(path: str, output: Optional[str], schema: Optional[str], category: O
                     
                     # Save result (use per-file output dir for nested structures)
                     doc_output_dir = file_output_dirs.get(doc_path, output_dir)
-                    num_items = _extract_and_save_result(doc_path, result, doc_output_dir, category, actual_model, enable_qa_qc)
+                    num_items = _extract_and_save_result(
+                        doc_path,
+                        result,
+                        doc_output_dir,
+                        category,
+                        actual_model,
+                        enable_qa_qc,
+                        runtime_artifact=runtime_artifact,
+                        run_id=run_id,
+                        provider=provider,
+                        schema_id=loaded_schema.get('$id'),
+                    )
                     
                     # Track results
                     results.append({
@@ -694,6 +859,7 @@ def process(path: str, output: Optional[str], schema: Optional[str], category: O
                         'items': num_items,
                         'cost': result.cost,
                         'time': result.processing_time,
+                        'output_path': (doc_output_dir / f"{doc_path.stem}.json").as_posix(),
                         'success': True
                     })
                     total_cost += result.cost
@@ -729,7 +895,18 @@ def process(path: str, output: Optional[str], schema: Optional[str], category: O
                 
                 # Save result (use per-file output dir for nested structures)
                 doc_output_dir = file_output_dirs.get(doc_path, output_dir)
-                num_items = _extract_and_save_result(doc_path, result, doc_output_dir, category, actual_model, enable_qa_qc)
+                num_items = _extract_and_save_result(
+                    doc_path,
+                    result,
+                    doc_output_dir,
+                    category,
+                    actual_model,
+                    enable_qa_qc,
+                    runtime_artifact=runtime_artifact,
+                    run_id=run_id,
+                    provider=provider,
+                    schema_id=loaded_schema.get('$id'),
+                )
                 
                 # Track results
                 results.append({
@@ -737,6 +914,7 @@ def process(path: str, output: Optional[str], schema: Optional[str], category: O
                     'items': num_items,
                     'cost': result.cost,
                     'time': result.processing_time,
+                    'output_path': (doc_output_dir / f"{doc_path.stem}.json").as_posix(),
                     'success': True
                 })
                 total_cost += result.cost
@@ -753,12 +931,36 @@ def process(path: str, output: Optional[str], schema: Optional[str], category: O
                 })
                 if VERBOSITY != 'quiet':
                     console.print(f"  [yellow]✗[/yellow] [dim]Error: {str(e)[:60]}[/dim]")
+
+    run_finished_at = datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
+    successful = [r for r in results if r.get('success')]
+    failed = [r for r in results if not r.get('success')]
+    successful_output_paths = [Path(r['output_path']) for r in successful if r.get('output_path')]
+    try:
+        run_manifest = _build_run_manifest(
+            run_id=run_id,
+            mode='single_model',
+            schema_path=schema_path,
+            provider=provider,
+            model=actual_model,
+            runtime_artifact=runtime_artifact,
+            doc_files=doc_files,
+            successful_output_paths=successful_output_paths,
+            started_at=run_started_at,
+            finished_at=run_finished_at,
+            total_processed=len(results),
+            successful_count=len(successful),
+            failed_count=len(failed),
+        )
+        manifest_path = _write_run_manifest(output_dir, run_id, run_manifest)
+        if VERBOSITY == 'verbose':
+            console.print(f"[dim]Run manifest: {manifest_path.as_posix()}[/dim]")
+    except Exception as exc:
+        if VERBOSITY != 'quiet':
+            print_warning(f"Run manifest write failed: {exc}")
     
     # Summary
     if VERBOSITY != 'quiet':
-        successful = [r for r in results if r.get('success')]
-        failed = [r for r in results if not r.get('success')]
-        
         summary_stats = {
             "Processed": f"{len(results)} file{'s' if len(results) != 1 else ''}",
             "Successful": f"[green]{len(successful)}[/green]",
@@ -799,6 +1001,8 @@ def _run_qa_qc_extraction(
     max_context: int,
     page_range_map: dict,
     verbosity: str,
+    runtime_artifact: Optional[Dict[str, Any]] = None,
+    run_id: Optional[str] = None,
 ) -> None:
     """
     Run QA/QC multi-model extraction for documents.
@@ -878,6 +1082,8 @@ def _run_qa_qc_extraction(
                 azure_endpoint=config.llm_config.get('azure_endpoint'),
                 azure_api_version=config.llm_config.get('azure_api_version'),
                 max_context_chars=max_context,
+                runtime_artifact=runtime_artifact,
+                run_id=run_id,
             )
             
             # Calculate totals for this document
@@ -945,7 +1151,18 @@ def _run_qa_qc_extraction(
         console.print()
 
 
-def _extract_and_save_result(doc_path: Path, result, output_dir: Path, category: str, model: str, qa_qc_enabled: bool) -> int:
+def _extract_and_save_result(
+    doc_path: Path,
+    result,
+    output_dir: Path,
+    category: str,
+    model: str,
+    qa_qc_enabled: bool,
+    runtime_artifact: Optional[Dict[str, Any]] = None,
+    run_id: Optional[str] = None,
+    provider: Optional[str] = None,
+    schema_id: Optional[str] = None,
+) -> int:
     """Helper to extract items count and save result to JSON."""
     # Universal schema detection - find main array and identifier dynamically
     num_items = 0
@@ -979,19 +1196,38 @@ def _extract_and_save_result(doc_path: Path, result, output_dir: Path, category:
         elif isinstance(value, (str, int)) and value and key.lower() in ['id', 'identifier', 'jurisdiction', 'number']:
             identifier = str(value)
     
-    output_data = {
-        'source_file': doc_path.name,
-        'extraction_date': time.strftime('%Y-%m-%d %H:%M:%S'),
-        'category': category,
+    extracted_at = datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
+
+    lineage = {
+        'artifact_id': (runtime_artifact or {}).get('artifact_id') or 'artifact://runtime/unresolved',
+        'profile_id': ((runtime_artifact or {}).get('lineage') or {}).get('profile_id') or 'default',
+        'run_id': run_id or f"run://{doc_path.stem}",
         'model': model,
-        'qa_qc_enabled': qa_qc_enabled,
-        'cost_usd': result.cost,
-        'processing_time_sec': result.processing_time,
-        'completeness_score': result.completeness_score,
-        'item_count': num_items,
-        'identifier': identifier,
-        'data': result.data,
-        'validation_notes': result.validation_notes
+        'provider': provider or 'unknown',
+        'schema_id': schema_id,
+        'extracted_at': extracted_at,
+    }
+
+    output_data = {
+        'record_id': f"record://{lineage['run_id'].replace('run://', '')}/{doc_path.stem}",
+        'contract_version': '1.0.0',
+        'document': {
+            'source_document_id': identifier if identifier != 'N/A' else doc_path.stem,
+            'source_path': doc_path.as_posix(),
+            'source_filename': doc_path.name,
+        },
+        'lineage': lineage,
+        'payload': result.data,
+        'quality': {
+            'overall_confidence': result.completeness_score,
+            'warnings': result.validation_notes or [],
+        },
+        'processing_metrics': {
+            'duration_seconds': result.processing_time,
+            'cost_usd': result.cost,
+            'input_tokens': None,
+            'output_tokens': None,
+        },
     }
     
     output_file = output_dir / f"{doc_path.stem}.json"
@@ -1036,7 +1272,10 @@ def validate(extraction_file: str, verbose: bool, show_data: bool):
     from jsonschema import validate as json_validate, ValidationError
     
     try:
-        json_validate(instance=data.get('data', data), schema=schema)
+        payload = data.get('payload')
+        if not isinstance(payload, dict):
+            raise ValidationError("Extraction file must use canonical extraction-record format with a 'payload' object")
+        json_validate(instance=payload, schema=schema)
         print_success("Schema validation passed")
     except ValidationError as e:
         print_error("Schema validation failed", e.message)
@@ -1044,13 +1283,25 @@ def validate(extraction_file: str, verbose: bool, show_data: bool):
     
     # Display metadata
     if verbose or show_data:
+        payload = data.get('payload', {})
+        if not isinstance(payload, dict):
+            payload = {}
+
+        if 'item_count' in data:
+            item_count = data.get('item_count', 0)
+        else:
+            item_count = 0
+            for value in payload.values():
+                if isinstance(value, list):
+                    item_count = max(item_count, len(value))
+
         metadata = {
-            "Source File": data.get('source_file', 'N/A'),
-            "Extraction Date": data.get('extraction_date', 'N/A'),
-            "Model": data.get('model', 'N/A'),
-            "Cost": f"${data.get('cost_usd', 0):.4f}",
-            "Processing Time": f"{data.get('processing_time_sec', 0):.1f}s",
-            "Item Count": str(data.get('item_count', 0)),
+            "Source File": data.get('document', {}).get('source_filename', 'N/A'),
+            "Extraction Date": data.get('lineage', {}).get('extracted_at', 'N/A'),
+            "Model": data.get('lineage', {}).get('model', 'N/A'),
+            "Cost": f"${data.get('processing_metrics', {}).get('cost_usd', 0):.4f}",
+            "Processing Time": f"{data.get('processing_metrics', {}).get('duration_seconds', 0):.1f}s",
+            "Item Count": str(item_count),
         }
         
         console.print()
@@ -1058,10 +1309,10 @@ def validate(extraction_file: str, verbose: bool, show_data: bool):
         console.print(table)
     
     # Show extracted data with syntax highlighting
-    if show_data and 'data' in data:
+    if show_data and 'payload' in data:
         console.print()
         from streamline_extract.cli.ui import display_json
-        display_json(data['data'], title="Extracted Data")
+        display_json(data.get('payload'), title="Extracted Data")
     
     console.print()
 
