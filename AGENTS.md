@@ -9,6 +9,7 @@ These instructions keep modernization work consistent across new chat sessions.
 - Prefer code and architecture cleanup over preserving legacy pathways.
 
 ## Session Bootstrap (run at start of modernization work)
+0. Run `/modernization-kickoff` if available.
 1. Read these files first:
    - `modernization/plans/AUDIT_MASTER_PLAN_MODULAR_EXTRACTION_FOUNDATION.md`
    - `modernization/tracking/IMPLEMENTATION_CHECKLIST.md`
