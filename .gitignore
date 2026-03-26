@@ -103,3 +103,4 @@ documents/
 validation/
 tools/
 output*/
+.github/prompts/resume-web-acquisition.prompt.md

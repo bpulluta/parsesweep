@@ -1,0 +1,28 @@
+SOLAR ENERGY SYSTEM REGULATIONS
+Chapter 12: Solar Development and Permitting
+
+Solar Ordinance Purpose
+This ordinance establishes standards for solar energy system development to promote
+renewable energy while protecting community aesthetics and environment.
+
+Solar System Types
+1. Rooftop Solar: Photovoltaic or thermal systems on building roofs
+2. Ground-Mounted Solar: Arrays on undeveloped land
+3. Utility-Scale Solar: Commercial facilities generating power for grid
+
+Solar Permit Requirements
+All solar installations >5 kW require a solar energy permit from the planning department.
+Solar permits must be issued within 30 days of complete application.
+
+Building-Integrated Photovoltaics (BIPV)
+Solar systems integrated into building materials and structures are permitted
+on residential properties without separate solar permitting in some cases.
+
+Design Standards for Solar Arrays
+- Setback requirements: minimum 10 feet from property lines
+- Height restrictions: 20 feet maximum for ground-mounted systems
+- Color specifications: Non-reflective surfaces required
+
+Interconnection Standards
+All solar systems must comply with solar interconnection standards and local utility
+requirements for grid connection and solar net metering agreements.

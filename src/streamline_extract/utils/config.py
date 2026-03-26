@@ -131,7 +131,7 @@ class Config:
     def setup_directories(self):
         """Create necessary directories if they don't exist."""
         directories = [
-            self.data_dir,
+            self.data_root,
             self.permits_dir,
             self.extracted_dir,
             self.outputs_dir,
@@ -158,11 +158,13 @@ class Config:
         return self.data_root / state / "reports"
     
     def __repr__(self) -> str:
+        has_api_key = bool(self.llm_config.get('api_key'))
         return (
             f"Config(\n"
             f"  project_root={self.project_root},\n"
-            f"  data_dir={self.data_dir},\n"
-            f"  api_key={'***' if self.openai_api_key else 'NOT SET'}\n"
+            f"  data_root={self.data_root},\n"
+            f"  provider={self.llm_config.get('provider')},\n"
+            f"  api_key={'***' if has_api_key else 'NOT SET'}\n"
             f")"
         )
 
