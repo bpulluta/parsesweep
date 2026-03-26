@@ -259,7 +259,7 @@ def _build_qaqc_scaffold(schema_metadata: SchemaMetadata) -> Optional[Dict[str, 
         'enabled': True,
         'mode': 'quantitative',
         'comparison_approach': 'numeric_only',
-        'record_matching': {'key_fields': key_fields},
+        'record_matching': {'key_fields': deepcopy(key_fields)},
         'comparison': {'primary_fields': quantitative_fields},
     }
     if projection is not None:
@@ -269,7 +269,7 @@ def _build_qaqc_scaffold(schema_metadata: SchemaMetadata) -> Optional[Dict[str, 
         'enabled': False,
         'mode': 'qualitative',
         'comparison_approach': 'text_review',
-        'record_matching': {'key_fields': key_fields},
+        'record_matching': {'key_fields': deepcopy(key_fields)},
         'comparison': {'primary_fields': qualitative_fields or quantitative_fields[:1]},
     }
     if projection is not None:
@@ -341,6 +341,316 @@ def _profile_tier_names() -> list[str]:
 
 def _profile_filename(profile_name: str) -> str:
     return f'{profile_name}.profile.json'
+
+
+def _prune_schema_for_starter(node: Any) -> Any:
+    if isinstance(node, dict):
+        pruned: Dict[str, Any] = {}
+        for key, value in node.items():
+            if key in {'examples', 'enum', 'default'}:
+                continue
+            pruned[key] = _prune_schema_for_starter(value)
+        return pruned
+    if isinstance(node, list):
+        return [_prune_schema_for_starter(value) for value in node]
+    return deepcopy(node)
+
+
+def _main_array_item_schema(schema_data: Dict[str, Any]) -> Dict[str, Any]:
+    metadata = schema_data.get('$metadata') or {}
+    extraction = metadata.get('extraction') or {}
+    main_data_array = extraction.get('main_data_array')
+    if not isinstance(main_data_array, str) or not main_data_array:
+        raise ArtifactCompilerError('Reference schema is missing $metadata.extraction.main_data_array')
+
+    main_array_schema = _schema_properties(schema_data).get(main_data_array)
+    if not isinstance(main_array_schema, dict):
+        raise ArtifactCompilerError(f'Reference schema is missing properties.{main_data_array}')
+
+    item_schema = _schema_array_items(main_array_schema)
+    if not isinstance(item_schema, dict) or 'object' not in _schema_type_options(item_schema):
+        raise ArtifactCompilerError(
+            f'Reference schema properties.{main_data_array}.items must be an object schema'
+        )
+    return item_schema
+
+
+def _available_main_array_fields(schema_data: Dict[str, Any]) -> list[str]:
+    return list(_schema_properties(_main_array_item_schema(schema_data)).keys())
+
+
+def _apply_main_array_field_selection(
+    schema_data: Dict[str, Any],
+    selected_fields: list[str],
+) -> Dict[str, Any]:
+    item_schema = _main_array_item_schema(schema_data)
+    item_properties = _schema_properties(item_schema)
+    if not selected_fields:
+        raise ArtifactCompilerError('Starter schema field selection cannot be empty')
+
+    unknown_fields = [field_name for field_name in selected_fields if field_name not in item_properties]
+    if unknown_fields:
+        raise ArtifactCompilerError(
+            'Unknown starter fields requested: ' + ', '.join(unknown_fields)
+        )
+
+    item_schema['properties'] = {
+        field_name: deepcopy(item_properties[field_name])
+        for field_name in selected_fields
+    }
+
+    required_fields = item_schema.get('required')
+    if isinstance(required_fields, list):
+        filtered_required = [field_name for field_name in required_fields if field_name in selected_fields]
+        if filtered_required:
+            item_schema['required'] = filtered_required
+        else:
+            item_schema.pop('required', None)
+
+    metadata = schema_data.get('$metadata') or {}
+    consolidation = metadata.get('consolidation') or {}
+    deduplication = consolidation.get('deduplication') or {}
+    if deduplication:
+        key_fields = [
+            field_name for field_name in deduplication.get('key_fields', [])
+            if field_name in selected_fields
+        ]
+        ignore_fields = [
+            field_name for field_name in deduplication.get('ignore_fields', [])
+            if field_name in selected_fields
+        ]
+
+        if key_fields:
+            deduplication['key_fields'] = key_fields
+        else:
+            deduplication.pop('key_fields', None)
+
+        if ignore_fields:
+            deduplication['ignore_fields'] = ignore_fields
+        else:
+            deduplication.pop('ignore_fields', None)
+
+        if not deduplication:
+            consolidation.pop('deduplication', None)
+        if not consolidation:
+            metadata.pop('consolidation', None)
+
+    return schema_data
+
+
+def _build_schema_starter_from_reference(
+    reference_schema_path: Path,
+    *,
+    schema_name: str,
+    domain_name: Optional[str],
+    document_type: Optional[str],
+    include_fields: Optional[list[str]] = None,
+) -> Dict[str, Any]:
+    reference_schema = json.loads(reference_schema_path.read_text(encoding='utf-8'))
+    starter_schema = _prune_schema_for_starter(reference_schema)
+
+    reference_metadata = reference_schema.get('$metadata') or {}
+    reference_extraction = reference_metadata.get('extraction') or {}
+    reference_consolidation = reference_metadata.get('consolidation') or {}
+    reference_deduplication = reference_consolidation.get('deduplication') or {}
+
+    resolved_document_type = (
+        document_type
+        or reference_extraction.get('document_type')
+        or starter_schema.get('title')
+        or schema_name.replace('_', ' ').title()
+    )
+    resolved_domain_name = (
+        domain_name
+        or reference_metadata.get('domain')
+        or resolved_document_type
+    )
+
+    starter_metadata: Dict[str, Any] = {
+        'domain': resolved_domain_name,
+        'version': '0.1.0',
+        'description': f'Lean starter schema for {resolved_document_type}.',
+        'extraction': {
+            'main_data_array': reference_extraction.get('main_data_array'),
+            'context_objects': reference_extraction.get('context_objects', []),
+            'identifier_fields': reference_extraction.get('identifier_fields', []),
+            'display_name_template': reference_extraction.get('display_name_template'),
+            'document_type': resolved_document_type,
+        },
+    }
+
+    deduplication: Dict[str, Any] = {}
+    if reference_deduplication.get('key_fields'):
+        deduplication['key_fields'] = deepcopy(reference_deduplication['key_fields'])
+    if reference_deduplication.get('ignore_fields'):
+        deduplication['ignore_fields'] = deepcopy(reference_deduplication['ignore_fields'])
+    if deduplication:
+        starter_metadata['consolidation'] = {'deduplication': deduplication}
+
+    starter_schema['$metadata'] = starter_metadata
+    starter_schema['title'] = f'{resolved_document_type} Starter Schema'
+    starter_schema['description'] = (
+        f'Lean starter schema for {resolved_document_type}. Expand field detail and '
+        'runtime presentation only after the first extraction pass.'
+    )
+
+    if include_fields is not None:
+        starter_schema = _apply_main_array_field_selection(starter_schema, include_fields)
+
+    return starter_schema
+
+
+def _write_schema_starter(schema_path: Path, schema_data: Dict[str, Any], force: bool) -> None:
+    if schema_path.exists() and not force:
+        raise ArtifactCompilerError(f'Schema already exists: {schema_path.as_posix()}')
+
+    schema_path.parent.mkdir(parents=True, exist_ok=True)
+    schema_path.write_text(json.dumps(schema_data, indent=2) + '\n', encoding='utf-8')
+
+
+def _default_schema_output_path(repo_root: Path, schema_name: str) -> Path:
+    return repo_root / 'schemas' / 'personal' / f'{schema_name}_schema.json'
+
+
+@click.command('init-domain-schema')
+@click.option('--interactive', is_flag=True, help='Prompt for missing starter-schema values')
+@click.option('--name', 'schema_name', help='Base schema name (used for the output file)')
+@click.option('--reference-schema', type=click.Path(exists=True), help='Existing schema file used as the closest reference for a lean starter')
+@click.option('--domain', 'domain_name', help='Override the metadata domain label')
+@click.option('--document-type', help='Override the human-readable document type')
+@click.option('--include-field', 'include_fields', multiple=True, help='Limit the starter schema to these main-array item fields; repeat the option to keep multiple fields')
+@click.option('--output', type=click.Path(dir_okay=False), help='Output schema path (defaults to schemas/personal/<name>_schema.json)')
+@click.option('--force', is_flag=True, help='Overwrite an existing schema file if it already exists')
+@click.option('--report-format', type=click.Choice(['text', 'json']), default='text', show_default=True, help='Output format for scaffold results')
+def init_domain_schema_cmd(
+    interactive: bool,
+    schema_name: Optional[str],
+    reference_schema: Optional[str],
+    domain_name: Optional[str],
+    document_type: Optional[str],
+    include_fields: tuple[str, ...],
+    output: Optional[str],
+    force: bool,
+    report_format: str,
+):
+    """
+    Create a lean starter schema for a new domain.
+
+    This command is the documents-first entry point for greenfield onboarding.
+    It derives a compact starter schema from the closest existing reference schema,
+    preserving only the minimal extraction contract and core row shape needed for
+    the first smoke extraction pass.
+    """
+    repo_root = _cli_repo_root()
+
+    try:
+        if interactive and report_format == 'json':
+            raise ArtifactCompilerError('--interactive only supports text output; omit --report-format json')
+
+        if interactive:
+            console.print('[bold]Interactive Domain Schema Setup[/bold]')
+            console.print('Answer the prompts to create a lean starter schema.\n')
+
+        if interactive and not schema_name:
+            schema_name = click.prompt('Schema name')
+        if interactive and not reference_schema:
+            reference_schema = click.prompt('Reference schema path', type=click.Path(exists=True))
+        if interactive and document_type is None:
+            if click.confirm('Override the reference document type?', default=False):
+                document_type = click.prompt('Document type')
+        if interactive and domain_name is None:
+            if click.confirm('Override the reference domain label?', default=False):
+                domain_name = click.prompt('Domain label')
+
+        if not schema_name:
+            raise ArtifactCompilerError('init-domain-schema requires --name unless --interactive is used')
+        if not reference_schema:
+            raise ArtifactCompilerError('init-domain-schema requires --reference-schema unless --interactive is used')
+
+        output_path = Path(output).resolve() if output else _default_schema_output_path(repo_root, schema_name)
+        reference_schema_path = Path(reference_schema).resolve()
+        selected_fields = list(include_fields)
+
+        schema_data = _build_schema_starter_from_reference(
+            reference_schema_path,
+            schema_name=schema_name,
+            domain_name=domain_name,
+            document_type=document_type,
+            include_fields=selected_fields or None,
+        )
+        _write_schema_starter(output_path, schema_data, force=force)
+
+        main_item_fields = _available_main_array_fields(schema_data)
+        result = {
+            'status': 'ready',
+            'created': {
+                'schema_name': schema_name,
+                'schema_path': output_path.as_posix(),
+                'reference_schema': reference_schema_path.as_posix(),
+                'domain': schema_data['$metadata']['domain'],
+                'document_type': schema_data['$metadata']['extraction']['document_type'],
+                'main_data_array': schema_data['$metadata']['extraction']['main_data_array'],
+                'identifier_fields': schema_data['$metadata']['extraction']['identifier_fields'],
+                'selected_fields': main_item_fields,
+                'interactive': interactive,
+                'force': force,
+            },
+            'next_steps': [
+                {
+                    'title': 'Validate starter schema',
+                    'command': f'pixi run streamline-extract validate-schema {_display_cli_path(output_path, repo_root)}',
+                },
+                {
+                    'title': 'Scaffold runtime pack and config',
+                    'command': (
+                        'pixi run streamline-extract init-domain-pack '
+                        f'--name {schema_name.replace("_schema", "")} '
+                        f'--schema {_display_cli_path(output_path, repo_root)} '
+                        '--with-workspace --with-config'
+                    ),
+                },
+            ],
+        }
+
+        if report_format == 'json':
+            click.echo(json.dumps(result, indent=2))
+            return
+
+        print_header('Init Domain Schema')
+        print_success('Lean starter schema created')
+        console.print(create_config_table('', {
+            'Schema Name': schema_name,
+            'Schema Path': output_path.as_posix(),
+            'Reference Schema': reference_schema_path.as_posix(),
+            'Domain': schema_data['$metadata']['domain'],
+            'Document Type': schema_data['$metadata']['extraction']['document_type'],
+            'Main Data Array': schema_data['$metadata']['extraction']['main_data_array'],
+            'Selected Fields': ', '.join(main_item_fields),
+        }))
+        console.print('\n[bold]Next Steps[/bold]')
+        for index, step in enumerate(result['next_steps'], start=1):
+            console.print(f'{index}. {step["title"]}')
+            console.print(f'   {step["command"]}', soft_wrap=True)
+        console.print()
+    except ArtifactCompilerError as exc:
+        error_report = {
+            'status': 'error',
+            'error': {
+                'category': 'domain_schema_init',
+                'message': str(exc),
+            },
+            'target': {
+                'schema_name': schema_name,
+                'reference_schema': reference_schema,
+                'output': output,
+            },
+        }
+        if report_format == 'json':
+            click.echo(json.dumps(error_report, indent=2))
+        else:
+            print_header('Init Domain Schema')
+            print_error('Schema scaffold failed', str(exc))
+        raise click.exceptions.Exit(1)
 
 
 def _build_pack_scaffold(pack_name: str, schema_path: Path, document_type: str, repo_root: Path) -> Dict[str, Any]:
@@ -493,6 +803,10 @@ def _create_sample_asset_skeleton(
 
 def _suggest_page_ranges_filename(document_type: str) -> str:
     normalized = document_type.strip().lower()
+    if 'solar' in normalized or 'photovoltaic' in normalized or 'pv' in normalized:
+        return 'solar_ordinance.pdf'
+    if 'geothermal' in normalized:
+        return 'geothermal_ordinance.pdf'
     if 'tariff' in normalized or 'rate' in normalized:
         return 'utility_tariff.pdf'
     if 'permit' in normalized:
@@ -518,6 +832,7 @@ def _build_scaffold_process_command(
     document_type: str,
     template_mode: str = 'recommended',
     enable_qaqc: bool = False,
+    qaqc_lane: Optional[str] = None,
 ) -> str:
     command_parts = [
         'pixi run streamline-extract process',
@@ -532,6 +847,8 @@ def _build_scaffold_process_command(
         command_parts.append(f'--pages-csv {page_ranges_ref}')
     if enable_qaqc:
         command_parts.append('--enable-qa-qc')
+        if qaqc_lane:
+            command_parts.append(f'--qaqc-lane {qaqc_lane}')
 
     return ' '.join(command_parts)
 
@@ -580,6 +897,10 @@ def _config_readme_content(
                 f'2. Run: pixi run streamline-extract compare processed/{category_name}/qa_qc '
                 f'--schema {schema_ref}'
             ),
+            (
+                f'3. Optional qualitative review: pixi run streamline-extract compare processed/{category_name}/qa_qc '
+                f'--schema {schema_ref} --qaqc-lane qualitative'
+            ),
         ])
 
     return (
@@ -594,11 +915,21 @@ def _config_readme_content(
     )
 
 
-def _page_ranges_csv_content(document_type: str) -> str:
-    return (
-        "file_path,start_page,end_page\n"
-        f"{_suggest_page_ranges_filename(document_type)},,\n"
-    )
+def _page_ranges_csv_content(document_type: str, *, documents_dir: Optional[Path] = None) -> str:
+    rows = ['file_path,start_page,end_page']
+
+    if documents_dir is not None and documents_dir.exists():
+        source_files = sorted(
+            path.name
+            for path in documents_dir.iterdir()
+            if path.is_file() and is_supported_document(path)
+        )
+        if source_files:
+            rows.extend(f'{file_name},,' for file_name in source_files)
+            return '\n'.join(rows) + '\n'
+
+    rows.append(f'{_suggest_page_ranges_filename(document_type)},,')
+    return '\n'.join(rows) + '\n'
 
 
 def _write_text_file(path: Path, content: str, force: bool) -> None:
@@ -610,6 +941,7 @@ def _write_text_file(path: Path, content: str, force: bool) -> None:
 
 
 def _create_config_skeleton(
+    repo_root: Path,
     config_root: Path,
     category_name: str,
     *,
@@ -637,7 +969,14 @@ def _create_config_skeleton(
         ),
         force=force,
     )
-    _write_text_file(page_ranges_path, _page_ranges_csv_content(document_type), force=force)
+    _write_text_file(
+        page_ranges_path,
+        _page_ranges_csv_content(
+            document_type,
+            documents_dir=repo_root / 'documents' / category_name,
+        ),
+        force=force,
+    )
 
     return [
         category_root.as_posix(),
@@ -728,6 +1067,13 @@ def _build_onboarding_next_steps(
                 'command': (
                     'pixi run streamline-extract compare '
                     f'{processed_dir}/qa_qc --schema {schema_ref}'
+                ),
+            },
+            {
+                'title': 'Optional qualitative QA/QC review',
+                'command': (
+                    'pixi run streamline-extract compare '
+                    f'{processed_dir}/qa_qc --schema {schema_ref} --qaqc-lane qualitative'
                 ),
             },
         ])
@@ -860,15 +1206,21 @@ def _resolve_init_domain_pack_inputs(
     if interactive and not create_config:
         create_config = click.confirm('Create config/<domain>/ starter files?', default=True)
 
+    if interactive and not create_sample_assets:
+        create_sample_assets = click.confirm(
+            'Create placeholder sample source-document assets under documents/<domain>/?',
+            default=False,
+        )
+
     if interactive and template_mode is None:
         template_mode = click.prompt(
             'Template mode',
             type=click.Choice(['recommended', 'minimal'], case_sensitive=False),
-            default='recommended',
+            default='minimal',
             show_choices=True,
         ).lower()
 
-    template_mode = template_mode or 'recommended'
+    template_mode = template_mode or 'minimal'
 
     if interactive and output_root is None:
         output_root = _resolve_scaffold_root_input(
@@ -1337,26 +1689,37 @@ def validate_schema_cmd(schema_path: str):
     
     if '$metadata' in schema:
         metadata = schema['$metadata']
+        extraction_metadata = metadata.get('extraction') if isinstance(metadata.get('extraction'), dict) else {}
+        consolidation_metadata = metadata.get('consolidation') if isinstance(metadata.get('consolidation'), dict) else {}
+        deduplication_metadata = (
+            consolidation_metadata.get('deduplication')
+            if isinstance(consolidation_metadata.get('deduplication'), dict)
+            else {}
+        )
         print_success("Has $metadata section")
         
-        if 'identifier_fields' in metadata:
-            id_fields = metadata['identifier_fields']
+        if extraction_metadata.get('identifier_fields'):
+            id_fields = extraction_metadata['identifier_fields']
             console.print(f"  [dim]Identifier fields: {', '.join(id_fields)}[/dim]")
         else:
-            warnings.append("$metadata missing 'identifier_fields' (recommended for deduplication)")
+            warnings.append("$metadata.extraction missing 'identifier_fields' (required for runtime document identification)")
         
-        if 'main_data_array' in metadata:
-            main_array = metadata['main_data_array']
+        if extraction_metadata.get('main_data_array'):
+            main_array = extraction_metadata['main_data_array']
             console.print(f"  [dim]Main data array: {main_array}[/dim]")
         else:
-            warnings.append("$metadata missing 'main_data_array' (recommended for consolidation)")
+            warnings.append("$metadata.extraction missing 'main_data_array' (required for extraction row generation)")
         
-        if 'deduplication' in metadata:
-            console.print(f"  [dim]Deduplication configured[/dim]")
+        if deduplication_metadata:
+            key_fields = deduplication_metadata.get('key_fields') or []
+            if isinstance(key_fields, list) and key_fields:
+                console.print(f"  [dim]Deduplication key fields: {', '.join(key_fields)}[/dim]")
+            else:
+                console.print(f"  [dim]Deduplication configured[/dim]")
         else:
-            console.print(f"  [dim]No deduplication config (optional)[/dim]")
+            console.print(f"  [dim]No deduplication config (optional in starter schemas)[/dim]")
     else:
-        warnings.append("Missing $metadata section (recommended for better consolidation)")
+        issues.append("Missing $metadata section (required for the modernized runtime)")
     
     # Summary
     console.print("\n" + "="*80)
@@ -1635,6 +1998,7 @@ def init_domain_pack_cmd(
             )
         if create_config:
             created_config_paths = _create_config_skeleton(
+                repo_root,
                 target_config_root,
                 _workspace_category_name(pack_name),
                 document_type=scaffold['document_type'],

@@ -13,6 +13,7 @@ from streamline_extract.cli.commands import (
     _extract_and_save_result,
     _format_runtime_artifact_summary,
     _generate_run_id,
+    _run_qa_qc_extraction,
     _resolve_consolidation_output_formats,
     _resolve_runtime_artifact,
     _should_fail_on_suspicious,
@@ -120,7 +121,7 @@ def test_resolve_runtime_artifact_uses_repo_assets_and_selected_profile() -> Non
 def test_resolve_runtime_artifact_matches_pack_from_schema_path() -> None:
     resolved = _resolve_runtime_artifact(
         category=None,
-        schema_path=REPO_ROOT / 'schemas/geothermal_ordinance_schema_v3.json',
+        schema_path=REPO_ROOT / 'schemas/personal/geothermal_ordinance_schema.json',
         repo_root=REPO_ROOT,
     )
 
@@ -249,6 +250,35 @@ def test_validate_runtime_cli_json_reports_ready_for_air_quality_repo_pack() -> 
     payload = json.loads(result.output)
     assert payload['status'] == 'ready'
     assert payload['resolved']['pack_name'] == 'aq_permits'
+    assert payload['resolved']['profile_name'] == 'default'
+    assert {check['name'] for check in payload['checks']} >= {
+        'context_object_paths',
+        'identifier_field_paths',
+        'consolidation_paths',
+        'qaqc_lane_paths',
+    }
+
+
+def test_validate_runtime_cli_json_reports_ready_for_solar_repo_pack() -> None:
+    runner = CliRunner()
+
+    result = runner.invoke(
+        cli,
+        [
+            'validate-runtime',
+            '--schema',
+            str(REPO_ROOT / 'schemas/personal/solar_ordinance_schema.json'),
+            '--profile',
+            'default',
+            '--report-format',
+            'json',
+        ],
+    )
+
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    assert payload['status'] == 'ready'
+    assert payload['resolved']['pack_name'] == 'solar'
     assert payload['resolved']['profile_name'] == 'default'
     assert {check['name'] for check in payload['checks']} >= {
         'context_object_paths',
@@ -618,6 +648,234 @@ def test_init_domain_pack_cli_creates_pack_and_validates_runtime(tmp_path) -> No
     assert 'default_format: excel' in pack_text
 
 
+def test_init_domain_schema_cli_creates_lean_starter_from_reference(tmp_path) -> None:
+    reference_schema_path = tmp_path / 'reference_schema.json'
+    _write_json(
+        reference_schema_path,
+        {
+            '$schema': 'http://json-schema.org/draft-07/schema#',
+            '$metadata': {
+                'domain': 'Reference Domain',
+                'version': '3.4.5',
+                'description': 'Detailed reference schema.',
+                'extraction': {
+                    'main_data_array': 'items',
+                    'identifier_fields': ['jurisdiction.county', 'jurisdiction.state'],
+                    'context_objects': ['jurisdiction'],
+                    'display_name_template': '{jurisdiction.county}',
+                    'document_type': 'Reference Permit',
+                    'normalization': {'trim_strings': True},
+                },
+                'consolidation': {
+                    'deduplication': {
+                        'key_fields': ['category', 'citation'],
+                        'ignore_fields': ['notes'],
+                        'strategy': 'smart',
+                    }
+                },
+                'output': {'default_format': 'excel'},
+                'validation': {'require_units': True},
+            },
+            'title': 'Reference Schema',
+            'description': 'Verbose reference schema.',
+            'type': 'object',
+            'properties': {
+                'jurisdiction': {
+                    'type': 'object',
+                    'properties': {
+                        'county': {'type': 'string', 'default': 'Ada'},
+                        'state': {'type': 'string', 'enum': ['ID', 'WA']},
+                    },
+                },
+                'items': {
+                    'type': 'array',
+                    'items': {
+                        'type': 'object',
+                        'properties': {
+                            'category': {'type': 'string', 'examples': ['setback']},
+                            'citation': {'type': 'string'},
+                            'value': {'type': 'string', 'default': '100'},
+                        },
+                    },
+                },
+            },
+        },
+    )
+
+    runner = CliRunner()
+    output_path = tmp_path / 'schemas/personal/starter_domain_schema.json'
+    result = runner.invoke(
+        cli,
+        [
+            'init-domain-schema',
+            '--name',
+            'starter_domain',
+            '--reference-schema',
+            str(reference_schema_path),
+            '--domain',
+            'Starter Domain',
+            '--document-type',
+            'Starter Permit',
+            '--output',
+            str(output_path),
+            '--report-format',
+            'json',
+        ],
+    )
+
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    assert payload['status'] == 'ready'
+    assert payload['created']['schema_name'] == 'starter_domain'
+    assert payload['created']['main_data_array'] == 'items'
+    assert payload['created']['identifier_fields'] == ['jurisdiction.county', 'jurisdiction.state']
+
+    starter_schema = json.loads(output_path.read_text(encoding='utf-8'))
+    metadata = starter_schema['$metadata']
+    assert metadata['domain'] == 'Starter Domain'
+    assert metadata['version'] == '0.1.0'
+    assert metadata['extraction']['document_type'] == 'Starter Permit'
+    assert metadata['consolidation']['deduplication'] == {
+        'key_fields': ['category', 'citation'],
+        'ignore_fields': ['notes'],
+    }
+    assert 'normalization' not in metadata['extraction']
+    assert 'output' not in metadata
+    assert 'validation' not in metadata
+    assert 'strategy' not in metadata['consolidation']['deduplication']
+    assert starter_schema['title'] == 'Starter Permit Starter Schema'
+    assert 'examples' not in json.dumps(starter_schema)
+    assert 'enum' not in json.dumps(starter_schema)
+    assert 'default' not in json.dumps(starter_schema)
+
+
+def test_init_domain_schema_cli_starter_feeds_init_domain_pack(tmp_path) -> None:
+    runner = CliRunner()
+    starter_schema_path = tmp_path / 'schemas/personal/solar_starter_schema.json'
+
+    starter_result = runner.invoke(
+        cli,
+        [
+            'init-domain-schema',
+            '--name',
+            'solar_starter',
+            '--reference-schema',
+            str(REPO_ROOT / 'schemas/personal/solar_ordinance_schema.json'),
+            '--output',
+            str(starter_schema_path),
+            '--report-format',
+            'json',
+        ],
+    )
+
+    assert starter_result.exit_code == 0
+    starter_payload = json.loads(starter_result.output)
+    assert starter_payload['status'] == 'ready'
+
+    pack_result = runner.invoke(
+        cli,
+        [
+            'init-domain-pack',
+            '--name',
+            'solar_starter_runtime',
+            '--schema',
+            str(starter_schema_path),
+            '--output-root',
+            str(tmp_path / 'domain_packs'),
+            '--report-format',
+            'json',
+        ],
+    )
+
+    assert pack_result.exit_code == 0
+    pack_payload = json.loads(pack_result.output)
+    assert pack_payload['status'] == 'ready'
+    assert pack_payload['readiness']['status'] == 'ready'
+    pack_path = Path(pack_payload['created']['pack_path'])
+    pack_text = pack_path.read_text(encoding='utf-8')
+    assert 'name: solar_starter_runtime' in pack_text
+    assert str(starter_schema_path) in pack_text
+
+
+def test_init_domain_schema_cli_can_limit_main_array_fields(tmp_path) -> None:
+    reference_schema_path = tmp_path / 'reference_schema.json'
+    _write_json(
+        reference_schema_path,
+        {
+            '$schema': 'http://json-schema.org/draft-07/schema#',
+            '$metadata': {
+                'domain': 'Reference Domain',
+                'version': '1.0.0',
+                'extraction': {
+                    'main_data_array': 'requirements',
+                    'identifier_fields': ['jurisdiction.county'],
+                    'context_objects': ['jurisdiction'],
+                    'document_type': 'Reference Ordinance',
+                },
+                'consolidation': {
+                    'deduplication': {
+                        'key_fields': ['feature', 'citation'],
+                        'ignore_fields': ['notes'],
+                    }
+                },
+            },
+            'type': 'object',
+            'properties': {
+                'jurisdiction': {
+                    'type': 'object',
+                    'properties': {'county': {'type': 'string'}},
+                },
+                'requirements': {
+                    'type': 'array',
+                    'items': {
+                        'type': 'object',
+                        'required': ['feature', 'citation', 'value'],
+                        'properties': {
+                            'feature': {'type': 'string'},
+                            'citation': {'type': 'string'},
+                            'value': {'type': 'string'},
+                            'units': {'type': 'string'},
+                            'notes': {'type': 'string'},
+                        },
+                    },
+                },
+            },
+        },
+    )
+
+    runner = CliRunner()
+    output_path = tmp_path / 'schemas/personal/trimmed_schema.json'
+    result = runner.invoke(
+        cli,
+        [
+            'init-domain-schema',
+            '--name',
+            'trimmed_domain',
+            '--reference-schema',
+            str(reference_schema_path),
+            '--include-field',
+            'feature',
+            '--include-field',
+            'value',
+            '--output',
+            str(output_path),
+            '--report-format',
+            'json',
+        ],
+    )
+
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    assert payload['created']['selected_fields'] == ['feature', 'value']
+
+    starter_schema = json.loads(output_path.read_text(encoding='utf-8'))
+    requirement_properties = starter_schema['properties']['requirements']['items']['properties']
+    assert list(requirement_properties.keys()) == ['feature', 'value']
+    assert starter_schema['properties']['requirements']['items']['required'] == ['feature', 'value']
+    assert starter_schema['$metadata']['consolidation']['deduplication']['key_fields'] == ['feature']
+    assert 'ignore_fields' not in starter_schema['$metadata']['consolidation']['deduplication']
+
+
 def test_init_domain_pack_cli_scaffolds_flat_qaqc_and_consolidation(tmp_path) -> None:
     runner = CliRunner()
 
@@ -978,7 +1236,7 @@ def test_init_domain_pack_cli_can_scaffold_sample_assets(tmp_path, monkeypatch) 
     assert 'Document Type: Utility Tariff' in readme_text
     assert 'Supported extensions:' in readme_text
     assert 'config/sample_domain/page_ranges.csv' in readme_text
-    assert '--max-context 1400000' in readme_text
+    assert '--max-context 1400000' not in readme_text
     assert 'file_name,notes' in manifest_text
     assert 'utility_tariff.pdf' in manifest_text
 
@@ -1059,9 +1317,10 @@ def test_init_domain_pack_cli_can_scaffold_config_files(tmp_path) -> None:
     assert 'documents/config_domain/' in readme_path.read_text(encoding='utf-8')
     assert 'file_path,start_page,end_page' in csv_path.read_text(encoding='utf-8')
     assert 'utility_tariff.pdf' in csv_path.read_text(encoding='utf-8')
-    assert '--max-context 1400000' in readme_path.read_text(encoding='utf-8')
-    assert '--enable-qa-qc' in readme_path.read_text(encoding='utf-8')
-    assert 'processed/config_domain/qa_qc' in readme_path.read_text(encoding='utf-8')
+    assert '--max-context 1400000' not in readme_path.read_text(encoding='utf-8')
+    assert '--enable-qa-qc' not in readme_path.read_text(encoding='utf-8')
+    assert 'processed/config_domain/qa_qc' not in readme_path.read_text(encoding='utf-8')
+    assert '--qaqc-lane qualitative' not in readme_path.read_text(encoding='utf-8')
 
     next_steps = payload['next_steps']
     step_titles = [step['title'] for step in next_steps]
@@ -1070,8 +1329,6 @@ def test_init_domain_pack_cli_can_scaffold_config_files(tmp_path) -> None:
         'Validate runtime seam',
         'Process documents',
         'Consolidate extracted records',
-        'Optional multi-model QA/QC run',
-        'Generate QA/QC comparison reports',
     ]
     assert next_steps[0]['detail'] == 'Place source files under documents/config_domain/ before the first run.'
     assert next_steps[1]['command'].startswith('pixi run streamline-extract validate-runtime --pack ')
@@ -1080,23 +1337,10 @@ def test_init_domain_pack_cli_can_scaffold_config_files(tmp_path) -> None:
         'pixi run streamline-extract process documents/config_domain/ '
         '--schema schemas/personal/electricity_tariff_schema.json '
         f'--profile {payload["created"]["profile_path"]} '
-        '--max-context 1400000 '
         f'--pages-csv {(tmp_path / "config/config_domain/page_ranges.csv").as_posix()}'
     )
     assert next_steps[3]['command'] == (
         'pixi run streamline-extract consolidate processed/config_domain '
-        '--schema schemas/personal/electricity_tariff_schema.json'
-    )
-    assert next_steps[4]['command'] == (
-        'pixi run streamline-extract process documents/config_domain/ '
-        '--schema schemas/personal/electricity_tariff_schema.json '
-        f'--profile {payload["created"]["profile_path"]} '
-        '--max-context 1400000 '
-        f'--pages-csv {(tmp_path / "config/config_domain/page_ranges.csv").as_posix()} '
-        '--enable-qa-qc'
-    )
-    assert next_steps[5]['command'] == (
-        'pixi run streamline-extract compare processed/config_domain/qa_qc '
         '--schema schemas/personal/electricity_tariff_schema.json'
     )
 
@@ -1134,8 +1378,136 @@ def test_init_domain_pack_cli_scaffolds_domain_aware_config_content(tmp_path) ->
     assert 'Domain: Energy - Geothermal Regulations' in readme_path.read_text(encoding='utf-8')
     assert 'schemas/personal/geothermal_ordinance_schema.json' in readme_path.read_text(encoding='utf-8')
     assert 'geothermal_ordinance.pdf' in csv_path.read_text(encoding='utf-8')
-    assert 'Optional QA/QC workflow:' in readme_path.read_text(encoding='utf-8')
-    assert 'processed/geo_domain/qa_qc' in readme_path.read_text(encoding='utf-8')
+    assert 'Optional QA/QC workflow:' not in readme_path.read_text(encoding='utf-8')
+    assert 'processed/geo_domain/qa_qc' not in readme_path.read_text(encoding='utf-8')
+    assert '--qaqc-lane qualitative' not in readme_path.read_text(encoding='utf-8')
+
+
+def test_init_domain_pack_cli_scaffolds_solar_domain_aware_config_content(tmp_path) -> None:
+    runner = CliRunner()
+
+    result = runner.invoke(
+        cli,
+        [
+            'init-domain-pack',
+            '--name',
+            'solar_domain',
+            '--schema',
+            str(REPO_ROOT / 'schemas/personal/solar_ordinance_schema.json'),
+            '--output-root',
+            str(tmp_path / 'domain_packs'),
+            '--with-config',
+            '--config-root',
+            str(tmp_path / 'config'),
+            '--report-format',
+            'json',
+        ],
+    )
+
+    assert result.exit_code == 0
+    readme_path = tmp_path / 'config/solar_domain/README.md'
+    csv_path = tmp_path / 'config/solar_domain/page_ranges.csv'
+    assert 'Document Type: Solar Ordinance' in readme_path.read_text(encoding='utf-8')
+    assert 'Domain: Energy - Solar Regulations' in readme_path.read_text(encoding='utf-8')
+    assert 'schemas/personal/solar_ordinance_schema.json' in readme_path.read_text(encoding='utf-8')
+    assert 'solar_ordinance.pdf' in csv_path.read_text(encoding='utf-8')
+    assert '--qaqc-lane qualitative' not in readme_path.read_text(encoding='utf-8')
+
+
+def test_init_domain_pack_cli_prefills_page_ranges_from_existing_documents(tmp_path, monkeypatch) -> None:
+    runner = CliRunner()
+    repo_root = tmp_path
+    documents_dir = repo_root / 'documents' / 'existing_docs_domain'
+    documents_dir.mkdir(parents=True, exist_ok=True)
+    _write_file(documents_dir / 'alpha.pdf', '')
+    _write_file(documents_dir / 'beta.docx', '')
+    _write_file(documents_dir / 'notes.md', '')
+
+    monkeypatch.setattr('streamline_extract.cli.utils_commands._cli_repo_root', lambda: repo_root)
+    monkeypatch.setattr(
+        'streamline_extract.cli.utils_commands.build_runtime_readiness_report',
+        lambda **_: {
+            'status': 'ready',
+            'resolved': {
+                'pack_name': 'existing_docs_domain',
+                'profile_name': 'default',
+                'artifact_id': 'artifact://tests/existing-docs-domain',
+                'schema_path': str(REPO_ROOT / 'schemas/personal/solar_ordinance_schema.json'),
+                'schema_file_path': str(REPO_ROOT / 'schemas/personal/solar_ordinance_schema.json'),
+                'main_data_array': 'requirements',
+                'identifier_fields': ['jurisdiction.state', 'jurisdiction.county'],
+                'pack_path': str(tmp_path / 'domain_packs/existing_docs_domain/pack.yaml'),
+                'profile_path': str(tmp_path / 'profiles/default.profile.json'),
+                'enabled_module_ids': ['value_semantics_classifier'],
+            },
+            'checks': [],
+        },
+    )
+
+    result = runner.invoke(
+        cli,
+        [
+            'init-domain-pack',
+            '--name',
+            'existing_docs_domain',
+            '--schema',
+            str(REPO_ROOT / 'schemas/personal/solar_ordinance_schema.json'),
+            '--output-root',
+            str(tmp_path / 'domain_packs'),
+            '--with-config',
+            '--config-root',
+            str(tmp_path / 'config'),
+            '--report-format',
+            'json',
+        ],
+    )
+
+    assert result.exit_code == 0
+    csv_path = tmp_path / 'config/existing_docs_domain/page_ranges.csv'
+    assert csv_path.read_text(encoding='utf-8') == (
+        'file_path,start_page,end_page\n'
+        'alpha.pdf,,\n'
+        'beta.docx,,\n'
+    )
+
+
+def test_validate_schema_cli_reports_nested_metadata_fields_correctly(tmp_path) -> None:
+    schema_path = tmp_path / 'nested_metadata_schema.json'
+    _write_file(
+        schema_path,
+        json.dumps(
+            {
+                '$schema': 'http://json-schema.org/draft-07/schema#',
+                '$metadata': {
+                    'extraction': {
+                        'main_data_array': 'items',
+                        'identifier_fields': ['jurisdiction.state', 'jurisdiction.county'],
+                    },
+                    'consolidation': {
+                        'deduplication': {
+                            'key_fields': ['name'],
+                        }
+                    },
+                },
+                'type': 'object',
+                'properties': {
+                    'jurisdiction': {'type': 'object'},
+                    'items': {'type': 'array'},
+                },
+            },
+            indent=2,
+        ),
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(cli, ['validate-schema', str(schema_path)])
+
+    assert result.exit_code == 0
+    assert 'Identifier fields: jurisdiction.state, jurisdiction.county' in result.output
+    assert 'Main data array: items' in result.output
+    assert 'Deduplication key fields: name' in result.output
+    assert "$metadata.extraction missing 'identifier_fields'" not in result.output
+    assert "$metadata.extraction missing 'main_data_array'" not in result.output
 
 
 def test_init_domain_pack_cli_text_output_includes_next_steps(tmp_path) -> None:
@@ -1165,9 +1537,57 @@ def test_init_domain_pack_cli_text_output_includes_next_steps(tmp_path) -> None:
     assert '--schema schemas/personal/geothermal_ordinance_schema.json --profile default --pages-csv' in result.output
     assert str(tmp_path / 'config/guided_domain/page_ranges.csv') in result.output
     assert 'pixi run streamline-extract consolidate processed/guided_domain --schema schemas/personal/geothermal_ordinance_schema.json' in result.output
-    assert 'Optional multi-model QA/QC run' in result.output
-    assert '--enable-qa-qc' in result.output
-    assert 'pixi run streamline-extract compare processed/guided_domain/qa_qc --schema schemas/personal/geothermal_ordinance_schema.json' in result.output
+    assert 'Optional multi-model QA/QC run' not in result.output
+    assert '--enable-qa-qc' not in result.output
+    assert 'processed/guided_domain/qa_qc' not in result.output
+
+
+def test_run_qaqc_extraction_prints_compare_command_with_selected_lane(tmp_path, monkeypatch, capsys) -> None:
+    document_path = tmp_path / 'documents' / 'qa_doc.pdf'
+    document_path.parent.mkdir(parents=True, exist_ok=True)
+    document_path.write_text('placeholder', encoding='utf-8')
+
+    class _DummyConfig:
+        llm_config = {'azure_endpoint': None, 'azure_api_version': None}
+
+    class _DummyResult:
+        def __init__(self, cost: float, processing_time: float, success: bool = True):
+            self.cost = cost
+            self.processing_time = processing_time
+            self.success = success
+
+    monkeypatch.setattr('streamline_extract.qa_qc.ModelDetector.get_qa_models', lambda: ['model-a', 'model-b'])
+    monkeypatch.setattr('streamline_extract.qa_qc.ModelDetector.get_provider', lambda: 'openai')
+    monkeypatch.setattr('streamline_extract.extraction.document_utils.extract_text_from_document', lambda *args, **kwargs: 'doc text')
+    monkeypatch.setattr(
+        'streamline_extract.qa_qc.run_multi_model_extraction',
+        lambda **kwargs: {
+            'model-a': _DummyResult(cost=0.1, processing_time=1.0),
+            'model-b': _DummyResult(cost=0.2, processing_time=1.5),
+        },
+    )
+    monkeypatch.setattr('streamline_extract.cli.commands.ask_confirm', lambda *args, **kwargs: True)
+
+    _run_qa_qc_extraction(
+        doc_files=[document_path],
+        loaded_schema={'type': 'object'},
+        schema_path=REPO_ROOT / 'schemas/personal/geothermal_ordinance_schema.json',
+        output_dir=tmp_path / 'processed',
+        api_key='test-key',
+        provider='openai',
+        config=_DummyConfig(),
+        max_context=400000,
+        page_range_map={},
+        verbosity='normal',
+        runtime_artifact=None,
+        run_id='run://test',
+        qaqc_lane='qualitative',
+    )
+
+    captured = capsys.readouterr().out
+    assert 'QA/QC Lane: qualitative' in captured
+    assert 'pixi run streamline-extract compare' in captured
+    assert '--qaqc-lane qualitative' in captured
 
 
 def test_init_domain_pack_cli_interactive_mode_prompts_for_missing_inputs(tmp_path) -> None:
@@ -1190,6 +1610,7 @@ def test_init_domain_pack_cli_interactive_mode_prompts_for_missing_inputs(tmp_pa
             'sandbox\n'
             'n\n'
             'y\n'
+            'n\n'
             'recommended\n'
             f'{output_root.as_posix()}\n'
             f'{profiles_root.as_posix()}\n'
@@ -1207,6 +1628,43 @@ def test_init_domain_pack_cli_interactive_mode_prompts_for_missing_inputs(tmp_pa
     assert '--max-context 1400000' in config_root.joinpath('interactive_domain/README.md').read_text(encoding='utf-8')
     assert str(output_root) in result.output
     assert str(profiles_root) in result.output
+
+
+def test_init_domain_pack_cli_defaults_to_minimal_template_mode(tmp_path) -> None:
+    runner = CliRunner()
+
+    result = runner.invoke(
+        cli,
+        [
+            'init-domain-pack',
+            '--name',
+            'default_minimal_domain',
+            '--schema',
+            str(REPO_ROOT / 'schemas/personal/electricity_tariff_schema.json'),
+            '--output-root',
+            str(tmp_path / 'domain_packs'),
+            '--with-config',
+            '--config-root',
+            str(tmp_path / 'config'),
+            '--report-format',
+            'json',
+        ],
+    )
+
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    assert payload['created']['template_mode'] == 'minimal'
+    assert [step['title'] for step in payload['next_steps']] == [
+        'Add source documents',
+        'Validate runtime seam',
+        'Process documents',
+        'Consolidate extracted records',
+    ]
+
+    readme_text = (tmp_path / 'config/default_minimal_domain/README.md').read_text(encoding='utf-8')
+    assert 'Recommended flags:' not in readme_text
+    assert 'Optional QA/QC workflow:' not in readme_text
+    assert '--max-context 1400000' not in readme_text
 
 
 def test_init_domain_pack_cli_interactive_mode_uses_default_roots_when_prompted(tmp_path, monkeypatch) -> None:
@@ -1242,6 +1700,7 @@ def test_init_domain_pack_cli_interactive_mode_uses_default_roots_when_prompted(
             'none\n'
             'n\n'
             'y\n'
+            'n\n'
             '\n'
             '\n'
             '\n'
@@ -1294,6 +1753,7 @@ def test_init_domain_pack_cli_interactive_mode_can_confirm_overwrite(tmp_path) -
             'sandbox\n'
             'n\n'
             'y\n'
+            'n\n'
             'recommended\n'
             f'{output_root.as_posix()}\n'
             f'{profiles_root.as_posix()}\n'
@@ -1368,6 +1828,7 @@ def test_init_domain_pack_cli_interactive_mode_can_select_minimal_template(tmp_p
             'none\n'
             'n\n'
             'y\n'
+            'n\n'
             'minimal\n'
             f'{(tmp_path / "domain_packs").as_posix()}\n'
             f'{(tmp_path / "config").as_posix()}\n'
@@ -1397,6 +1858,7 @@ def test_init_domain_pack_cli_interactive_mode_can_cancel_overwrite(tmp_path) ->
             'none\n'
             'n\n'
             'n\n'
+            'n\n'
             'recommended\n'
             f'{output_root.as_posix()}\n'
             'n\n'
@@ -1406,6 +1868,56 @@ def test_init_domain_pack_cli_interactive_mode_can_cancel_overwrite(tmp_path) ->
     assert result.exit_code == 1
     assert 'Interactive onboarding cancelled because scaffold targets already exist' in result.output
     assert output_root.joinpath('overwrite_domain/pack.yaml').read_text(encoding='utf-8') == 'name: old\n'
+
+
+def test_init_domain_pack_cli_interactive_mode_can_enable_sample_assets(tmp_path, monkeypatch) -> None:
+    runner = CliRunner()
+    output_root = tmp_path / 'domain_packs'
+    config_root = tmp_path / 'config'
+    monkeypatch.setattr('streamline_extract.cli.utils_commands._cli_repo_root', lambda: tmp_path)
+    monkeypatch.setattr(
+        'streamline_extract.cli.utils_commands.build_runtime_readiness_report',
+        lambda **_: {
+            'status': 'ready',
+            'resolved': {
+                'pack_name': 'interactive_assets',
+                'profile_name': 'default',
+                'artifact_id': 'artifact://tests/interactive-assets',
+                'schema_path': str(REPO_ROOT / 'schemas/personal/electricity_tariff_schema.json'),
+                'schema_file_path': str(REPO_ROOT / 'schemas/personal/electricity_tariff_schema.json'),
+                'main_data_array': 'rate_schedules',
+                'identifier_fields': ['utility_info.utility_name', 'utility_info.state'],
+                'pack_path': str(output_root / 'interactive_assets/pack.yaml'),
+                'profile_path': str(tmp_path / 'schemas/profiles/default.profile.json'),
+                'enabled_module_ids': ['value_semantics_classifier'],
+            },
+            'checks': [],
+        },
+    )
+
+    result = runner.invoke(
+        cli,
+        ['init-domain-pack', '--interactive'],
+        input=(
+            'interactive_assets\n'
+            f'{(REPO_ROOT / "schemas/personal/electricity_tariff_schema.json").as_posix()}\n'
+            'n\n'
+            'none\n'
+            'n\n'
+            'y\n'
+            'y\n'
+            'recommended\n'
+            f'{output_root.as_posix()}\n'
+            f'{config_root.as_posix()}\n'
+        ),
+    )
+
+    assert result.exit_code == 0
+    assert 'Sample asset scaffold created' in result.output
+    assert 'Sample Assets' in result.output
+    assert (tmp_path / 'documents/interactive_assets/README.md').exists()
+    assert (tmp_path / 'documents/interactive_assets/sample_manifest.csv').exists()
+    assert (tmp_path / 'config/interactive_assets/page_ranges.csv').exists()
 
 
 def test_init_domain_pack_cli_config_scaffold_requires_force_to_overwrite(tmp_path) -> None:
@@ -1610,7 +2122,7 @@ def test_consolidate_cli_uses_runtime_pack_default_format_for_geothermal(tmp_pat
             'consolidate',
             str(extracted_dir),
             '--schema',
-            str(REPO_ROOT / 'schemas/geothermal_ordinance_schema.json'),
+            str(REPO_ROOT / 'schemas/personal/geothermal_ordinance_schema.json'),
             '--output',
             str(output_dir),
             '--quiet',
@@ -2031,14 +2543,6 @@ def test_consolidate_cli_dry_run_json_report_can_fail_on_suspicious_threshold(tm
     ('schema_relative_path', 'expected_match_fields'),
     [
         (
-            'schemas/geothermal_ordinance_schema.json',
-            ['category', 'facility_type', 'specific_subject'],
-        ),
-        (
-            'schemas/geothermal_ordinance_schema_v3.json',
-            ['category', 'facility_type', 'specific_subject'],
-        ),
-        (
             'schemas/personal/geothermal_ordinance_schema.json',
             ['category', 'facility_type', 'specific_subject'],
         ),
@@ -2071,6 +2575,151 @@ def test_geothermal_runtime_qaqc_config_does_not_require_schema_block(
     assert config['lane_name'] == 'quantitative'
     assert config['match_fields'] == expected_match_fields
     assert config['compare_fields'] == ['value', 'unit']
+
+
+def test_geothermal_runtime_qaqc_config_can_select_qualitative_lane() -> None:
+    schema_path = REPO_ROOT / 'schemas/personal/geothermal_ordinance_schema.json'
+    schema_metadata = SchemaMetadata(schema_path)
+
+    runtime_artifact = _resolve_runtime_artifact(
+        category=None,
+        schema_path=schema_path,
+        repo_root=REPO_ROOT,
+    )
+
+    assert runtime_artifact is not None
+
+    config = resolve_qaqc_runtime_config(
+        schema_metadata,
+        runtime_artifact=runtime_artifact,
+        preferred_lane='qualitative',
+    )
+
+    assert config['source'] == 'runtime_artifact'
+    assert config['lane_name'] == 'qualitative'
+    assert config['mode'] == 'qualitative'
+    assert config['comparison_approach'] == 'text_review'
+    assert config['match_fields'] == ['category', 'facility_type', 'specific_subject']
+    assert config['compare_fields'] == ['details']
+
+
+def test_compare_cli_can_run_with_qualitative_lane(tmp_path, monkeypatch) -> None:
+    runner = CliRunner()
+    qa_qc_root = tmp_path / 'qa_qc' / 'Test County'
+    qa_qc_root.mkdir(parents=True, exist_ok=True)
+    _write_json(
+        qa_qc_root / 'gpt-4o.json',
+        {
+            'requirements': [
+                {
+                    'category': 'Permit required',
+                    'facility_type': 'General',
+                    'specific_subject': 'Commercial Use',
+                    'details': 'Permit required before operations begin',
+                }
+            ]
+        },
+    )
+    _write_json(
+        qa_qc_root / 'gpt-4.1.json',
+        {
+            'requirements': [
+                {
+                    'category': 'Permit required',
+                    'facility_type': 'General',
+                    'specific_subject': 'Commercial Use',
+                    'details': 'Permit required before drilling begins',
+                }
+            ]
+        },
+    )
+    monkeypatch.setattr(
+        'streamline_extract.qa_qc.report_generator.ReportGenerator.generate_report',
+        lambda self, result, doc_dir: (doc_dir / 'comparison_report.xlsx', doc_dir / 'comparison_report.csv'),
+    )
+
+    result = runner.invoke(
+        cli,
+        [
+            'compare',
+            str(tmp_path / 'qa_qc'),
+            '--schema',
+            str(REPO_ROOT / 'schemas/personal/geothermal_ordinance_schema.json'),
+            '--qaqc-lane',
+            'qualitative',
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert 'Requested QA/QC Lane' in result.output
+    assert 'qualitative' in result.output
+    assert 'Comparison Approach' in result.output
+    assert 'text_review' in result.output
+    assert 'Qualitative advisory gate' in result.output
+    assert 'FAIL' in result.output
+
+
+def test_compare_cli_ignores_comparison_summary_artifact(tmp_path, monkeypatch) -> None:
+    runner = CliRunner()
+    qa_qc_root = tmp_path / 'qa_qc' / 'Test County'
+    qa_qc_root.mkdir(parents=True, exist_ok=True)
+    _write_json(
+        qa_qc_root / 'gpt-4o.json',
+        {
+            'requirements': [
+                {
+                    'category': 'Permit required',
+                    'facility_type': 'General',
+                    'specific_subject': 'Commercial Use',
+                    'details': 'Permit required before operations begin',
+                }
+            ]
+        },
+    )
+    _write_json(
+        qa_qc_root / 'gpt-4.1.json',
+        {
+            'requirements': [
+                {
+                    'category': 'Permit required',
+                    'facility_type': 'General',
+                    'specific_subject': 'Commercial Use',
+                    'details': 'Permit required before drilling begins',
+                }
+            ]
+        },
+    )
+    _write_json(
+        qa_qc_root / 'comparison_summary.json',
+        {
+            'document_name': 'Test County',
+            'summary': {
+                'qualitative_advisory_gate': {
+                    'status': 'pass',
+                }
+            },
+        },
+    )
+    monkeypatch.setattr(
+        'streamline_extract.qa_qc.report_generator.ReportGenerator.generate_report',
+        lambda self, result, doc_dir: (doc_dir / 'comparison_report.xlsx', doc_dir / 'comparison_report.csv'),
+    )
+
+    result = runner.invoke(
+        cli,
+        [
+            'compare',
+            str(tmp_path / 'qa_qc'),
+            '--schema',
+            str(REPO_ROOT / 'schemas/personal/geothermal_ordinance_schema.json'),
+            '--qaqc-lane',
+            'qualitative',
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert 'comparison_summary' not in result.output
+    assert 'Needs review: 1 field(s)' in result.output
 
 
 def test_extract_and_save_result_includes_lineage_fields(tmp_path) -> None:

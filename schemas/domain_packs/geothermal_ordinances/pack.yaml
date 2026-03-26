@@ -2,8 +2,6 @@ name: geothermal_ordinances
 version: 1.1.0
 schema_path: schemas/personal/geothermal_ordinance_schema.json
 schema_aliases:
-  - schemas/geothermal_ordinance_schema.json
-  - schemas/geothermal_ordinance_schema_v3.json
   - schemas/personal/geothermal_ordinance_schema.json
 document_type: Geothermal Ordinance
 consolidation:

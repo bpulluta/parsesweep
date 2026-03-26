@@ -271,6 +271,46 @@ def test_collect_benchmark_metrics_computes_qaqc_signal_quality(tmp_path) -> Non
     assert metrics["qaqc_signal_quality"] == 50.0
 
 
+def test_collect_benchmark_metrics_computes_qaqc_qualitative_pass_rate(tmp_path) -> None:
+    _write_json(
+        tmp_path / "processed/qa_qc/test-doc-pass/comparison_summary.json",
+        {
+            "document_name": "test-doc-pass",
+            "summary": {
+                "qualitative_advisory_gate": {
+                    "mode": "advisory",
+                    "status": "pass",
+                    "aligned_pct": 100.0,
+                    "missing_item_pct": 0.0,
+                }
+            },
+        },
+    )
+    _write_json(
+        tmp_path / "processed/qa_qc/test-doc-warn/comparison_summary.json",
+        {
+            "document_name": "test-doc-warn",
+            "summary": {
+                "qualitative_advisory_gate": {
+                    "mode": "advisory",
+                    "status": "warn",
+                    "aligned_pct": 60.0,
+                    "missing_item_pct": 10.0,
+                }
+            },
+        },
+    )
+
+    metrics = collect_benchmark_metrics(
+        tmp_path / "processed/qa_qc",
+        repo_root=tmp_path,
+    )
+
+    assert metrics["scored_qaqc_qualitative_reports"] == 2
+    assert metrics["qaqc_qualitative_gate_counts"] == {"pass": 1, "warn": 1}
+    assert metrics["qaqc_qualitative_pass_rate"] == 50.0
+
+
 def test_collect_benchmark_metrics_computes_consolidation_correctness(tmp_path) -> None:
     schema_path = tmp_path / "schemas/test_schema.json"
     _write_json(
@@ -350,6 +390,7 @@ def test_evaluate_benchmark_gates_returns_pass_fail_summary() -> None:
     metrics = {
         "extraction_parity": 98.0,
         "qaqc_signal_quality": 97.0,
+        "qaqc_qualitative_pass_rate": 100.0,
         "consolidation_correctness": 99.6,
         "failure_rate": 0.05,
         "average_document_duration_seconds": 8.0,
@@ -361,6 +402,7 @@ def test_evaluate_benchmark_gates_returns_pass_fail_summary() -> None:
         metrics,
         min_extraction_parity=97.0,
         min_qaqc_signal_quality=96.0,
+        min_qaqc_qualitative_pass_rate=100.0,
         min_consolidation_correctness=99.5,
         max_failure_rate=0.10,
         max_average_seconds_per_document=10.0,
@@ -376,6 +418,7 @@ def test_evaluate_benchmark_gates_detects_failures() -> None:
     metrics = {
         "extraction_parity": 92.0,
         "qaqc_signal_quality": 90.0,
+        "qaqc_qualitative_pass_rate": 50.0,
         "consolidation_correctness": 95.0,
         "failure_rate": 0.20,
         "average_document_duration_seconds": 12.0,
@@ -387,6 +430,7 @@ def test_evaluate_benchmark_gates_detects_failures() -> None:
         metrics,
         min_extraction_parity=97.0,
         min_qaqc_signal_quality=96.0,
+        min_qaqc_qualitative_pass_rate=100.0,
         min_consolidation_correctness=99.5,
         max_failure_rate=0.10,
         max_average_seconds_per_document=10.0,
@@ -397,6 +441,7 @@ def test_evaluate_benchmark_gates_detects_failures() -> None:
     assert gate_result["overall_passed"] is False
     assert gate_result["gates"]["min_extraction_parity"]["passed"] is False
     assert gate_result["gates"]["min_qaqc_signal_quality"]["passed"] is False
+    assert gate_result["gates"]["min_qaqc_qualitative_pass_rate"]["passed"] is False
     assert gate_result["gates"]["min_consolidation_correctness"]["passed"] is False
     assert gate_result["gates"]["max_failure_rate"]["passed"] is False
     assert gate_result["gates"]["max_average_seconds_per_document"]["passed"] is False
@@ -599,7 +644,7 @@ def test_benchmark_cli_writes_and_reuses_snapshot(tmp_path) -> None:
         },
     )
 
-    snapshot_path = tmp_path / "modernization/tracking/baseline_snapshot.json"
+    snapshot_path = tmp_path / "benchmarking/tracking/baseline_snapshot.json"
     runner = CliRunner()
 
     write_result = runner.invoke(
@@ -638,6 +683,134 @@ def test_benchmark_cli_writes_and_reuses_snapshot(tmp_path) -> None:
     assert compare_result.exit_code == 0
     assert '"baseline_comparison"' in compare_result.output
     assert '"throughput_delta_percent": 0.0' in compare_result.output
+
+
+def test_benchmark_cli_loads_gate_profile_with_relative_paths(tmp_path) -> None:
+    _write_json(
+        tmp_path / "processed/tariffs/doc-a.json",
+        {
+            "quality": {"errors": []},
+            "processing_metrics": {"duration_seconds": 5.0, "cost_usd": 0.10},
+        },
+    )
+    _write_json(
+        tmp_path / "processed/run_manifests/sample.manifest.json",
+        {
+            "timing": {
+                "started_at": "2026-03-25T10:00:00Z",
+                "finished_at": "2026-03-25T10:01:00Z",
+            },
+            "status": {
+                "total_processed": 1,
+                "successful": 1,
+                "failed": 0,
+            },
+            "errors": {
+                "total_errors": 0,
+                "by_category": {},
+            },
+            "outputs": {
+                "records": ["processed/tariffs/doc-a.json"]
+            },
+        },
+    )
+    profile_path = tmp_path / "benchmarking/tracking/benchmark_profile.json"
+    _write_json(
+        profile_path,
+        {
+            "path": "../../processed",
+            "max_failure_rate": 0.0,
+            "max_average_seconds_per_document": 10.0,
+            "max_total_errors": 0,
+        },
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(
+        cli,
+        [
+            "benchmark",
+            "--gate-profile",
+            str(profile_path),
+            "--quiet",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert '"overall_passed": true' in result.output
+    assert '"max_average_seconds_per_document"' in result.output
+
+
+def test_benchmark_cli_flags_override_gate_profile_thresholds(tmp_path) -> None:
+    _write_json(
+        tmp_path / "processed/tariffs/doc-a.json",
+        {
+            "quality": {"errors": []},
+            "processing_metrics": {"duration_seconds": 5.0, "cost_usd": 0.10},
+        },
+    )
+    _write_json(
+        tmp_path / "processed/run_manifests/sample.manifest.json",
+        {
+            "timing": {
+                "started_at": "2026-03-25T10:00:00Z",
+                "finished_at": "2026-03-25T10:01:00Z",
+            },
+            "status": {
+                "total_processed": 1,
+                "successful": 1,
+                "failed": 0,
+            },
+            "errors": {
+                "total_errors": 0,
+                "by_category": {},
+            },
+            "outputs": {
+                "records": ["processed/tariffs/doc-a.json"]
+            },
+        },
+    )
+    profile_path = tmp_path / "benchmarking/tracking/benchmark_profile.json"
+    _write_json(
+        profile_path,
+        {
+            "path": "../../processed",
+            "max_average_seconds_per_document": 10.0,
+        },
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(
+        cli,
+        [
+            "benchmark",
+            "--gate-profile",
+            str(profile_path),
+            "--max-average-seconds-per-document",
+            "4",
+        ],
+    )
+
+    assert result.exit_code == 1
+    assert "Benchmark gates failed" in result.output
+
+
+def test_benchmark_cli_requires_path_when_profile_has_none(tmp_path) -> None:
+    profile_path = tmp_path / "benchmarking/tracking/benchmark_profile.json"
+    _write_json(profile_path, {"max_average_seconds_per_document": 10.0})
+
+    runner = CliRunner()
+    result = runner.invoke(
+        cli,
+        [
+            "benchmark",
+            "--gate-profile",
+            str(profile_path),
+        ],
+    )
+
+    assert result.exit_code != 0
+    assert "requires PATH or --gate-profile with a path entry" in result.output
 
 
 def test_benchmark_cli_reports_extraction_parity_in_quiet_mode(tmp_path) -> None:
@@ -761,6 +934,39 @@ def test_benchmark_cli_reports_qaqc_signal_quality_in_quiet_mode(tmp_path) -> No
     assert result.exit_code == 0
     assert '"qaqc_signal_quality": 100.0' in result.output
     assert '"min_qaqc_signal_quality"' in result.output
+
+
+def test_benchmark_cli_reports_qaqc_qualitative_pass_rate_in_quiet_mode(tmp_path) -> None:
+    _write_json(
+        tmp_path / "processed/qa_qc/test-doc/comparison_summary.json",
+        {
+            "document_name": "test-doc",
+            "summary": {
+                "qualitative_advisory_gate": {
+                    "mode": "advisory",
+                    "status": "pass",
+                    "aligned_pct": 100.0,
+                    "missing_item_pct": 0.0,
+                }
+            },
+        },
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(
+        cli,
+        [
+            "benchmark",
+            str(tmp_path / "processed/qa_qc"),
+            "--min-qaqc-qualitative-pass-rate",
+            "100",
+            "--quiet",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert '"qaqc_qualitative_pass_rate": 100.0' in result.output
+    assert '"min_qaqc_qualitative_pass_rate"' in result.output
 
 
 def test_benchmark_cli_reports_consolidation_correctness_in_quiet_mode(tmp_path) -> None:

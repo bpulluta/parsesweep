@@ -76,6 +76,28 @@ class TestReportGenerator:
             document_name="Test Document",
             models=["gpt-4.1", "gpt-5"],
             summary={
+                "qaqc_lane": "qualitative",
+                "qaqc_mode": "qualitative",
+                "comparison_approach": "text_review",
+                "review_category_counts": {"aligned": 1, "missing_item": 1, "scope_variant": 1, "text_difference": 1},
+                "qualitative_mismatch_breakdown": {
+                    "missing_item_by_category": [{"label": "Setback", "count": 1}],
+                    "scope_variant_by_category": [{"label": "Other", "count": 1}],
+                    "text_difference_by_category": [{"label": "Permit required", "count": 1}],
+                    "top_missing_requirements": [{"label": "Setback | Residential", "count": 1}],
+                    "top_scope_variant_requirements": [{"label": "Other | Pipeline | pipeline siting and configuration", "count": 1}],
+                    "top_text_difference_requirements": [{"label": "Permit required | Commercial Use", "count": 1}],
+                },
+                "qualitative_advisory_gate": {
+                    "mode": "advisory",
+                    "status": "warn",
+                    "aligned_pct": 33.3,
+                    "missing_item_pct": 33.3,
+                    "dominant_category": "aligned",
+                    "evaluated_comparisons": 3,
+                    "excluded_scope_variants": 1,
+                    "recommended_action": "Inspect text differences before relying on this run.",
+                },
                 "total_items_per_model": {"gpt-4.1": 10, "gpt-5": 8},
                 "total_comparisons": 5,
                 "full_agreement_count": 2,
@@ -104,6 +126,20 @@ class TestReportGenerator:
             assert csv_path.exists()
             assert excel_path.name == "comparison_report.xlsx"
             assert csv_path.name == "comparison_report.csv"
+            assert (output_dir / "comparison_summary.json").exists()
+
+    def test_generate_report_writes_machine_readable_summary(self, generator, sample_comparison_result):
+        """Generate a stable JSON summary alongside report artifacts."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output_dir = Path(tmpdir)
+
+            generator.generate_report(sample_comparison_result, output_dir)
+
+            summary_payload = json.loads((output_dir / "comparison_summary.json").read_text(encoding="utf-8"))
+
+            assert summary_payload["document_name"] == "Test Document"
+            assert summary_payload["summary"]["qaqc_lane"] == "qualitative"
+            assert summary_payload["summary"]["qualitative_advisory_gate"]["status"] == "warn"
 
     def test_generate_report_creates_output_dir(self, generator, sample_comparison_result):
         """Test that generate_report creates output directory if it doesn't exist."""
@@ -137,6 +173,9 @@ class TestReportGenerator:
             
             # Should have Requirement column (compound key format)
             assert "Requirement" in df.columns
+            assert "QA/QC Lane" in df.columns
+            assert "Comparison Approach" in df.columns
+            assert "Review Category" in df.columns
 
     def test_csv_contains_agreement_info(self, generator, sample_comparison_result):
         """Test that CSV contains agreement info in new format."""
@@ -153,6 +192,19 @@ class TestReportGenerator:
             assert "Agreement" in df.columns
             assert "Notes" in df.columns
             assert "Status" in df.columns
+            assert "QA/QC Lane" in df.columns
+            assert "Comparison Approach" in df.columns
+            assert "Review Category" in df.columns
+
+            assert set(df["QA/QC Lane"].dropna()) == {"qualitative"}
+            assert set(df["Comparison Approach"].dropna()) == {"text_review"}
+            assert set(df["Review Category"].dropna()) <= {
+                "aligned",
+                "missing_item",
+                "scope_variant",
+                "text_difference",
+                "value_difference",
+            }
             
             # Check that Status has valid values
             valid_statuses = ["AGREE", "DIFFER", "PARTIAL"]
@@ -199,8 +251,137 @@ class TestBuildSummaryDf:
         metrics = df["Metric"].tolist()
         assert "Document" in metrics
         assert "Models" in metrics
+        assert "QA/QC Lane" in metrics
+        assert "QA/QC Mode" in metrics
+        assert "Comparison Approach" in metrics
         assert "Total Comparisons" in metrics
         assert "Full Agreement %" in metrics
+
+    def test_build_summary_df_includes_qaqc_metadata(self, generator):
+        """Summary sheet should expose lane and comparison metadata for qualitative runs."""
+        result = ComparisonResult(
+            document_name="Qualitative Report",
+            models=["model_a", "model_b"],
+            summary={
+                "qaqc_lane": "qualitative",
+                "qaqc_mode": "qualitative",
+                "comparison_approach": "text_review",
+                "review_category_counts": {"text_difference": 1},
+                "qualitative_mismatch_breakdown": {
+                    "missing_item_by_category": [{"label": "setback", "count": 1}],
+                    "scope_variant_by_category": [{"label": "other", "count": 1}],
+                    "text_difference_by_category": [{"label": "permit required", "count": 1}],
+                    "top_missing_requirements": [{"label": "setback | residential", "count": 1}],
+                    "top_scope_variant_requirements": [{"label": "other | pipeline | pipeline siting and configuration", "count": 1}],
+                    "top_text_difference_requirements": [{"label": "permit required | commercial use", "count": 1}],
+                },
+                "qualitative_advisory_gate": {
+                    "mode": "advisory",
+                    "status": "fail",
+                    "aligned_pct": 0.0,
+                    "missing_item_pct": 0.0,
+                    "dominant_category": "text_difference",
+                    "evaluated_comparisons": 1,
+                    "excluded_scope_variants": 1,
+                    "recommended_action": "Treat this run as not ready for qualitative benchmark gating.",
+                },
+                "total_items_per_model": {"model_a": 1, "model_b": 1},
+                "total_comparisons": 1,
+                "full_agreement_count": 0,
+                "full_agreement_pct": 0.0,
+                "needs_review_count": 1,
+                "needs_review_pct": 100.0,
+                "context_comparisons": 0,
+                "context_agreement_pct": 0.0,
+                "item_comparisons": 1,
+                "item_agreement_pct": 0.0,
+            },
+            context_comparisons=[],
+            item_comparisons=[],
+        )
+
+        df = generator._build_summary_df(result)
+        values = dict(zip(df["Metric"], df["Value"]))
+        assert values["QA/QC Lane"] == "qualitative"
+        assert values["QA/QC Mode"] == "qualitative"
+        assert values["Comparison Approach"] == "text_review"
+        assert values["Review Category: text_difference"] == 1
+        assert values["Qualitative Gate Mode"] == "advisory"
+        assert values["Qualitative Gate Status"] == "fail"
+        assert values["Qualitative Aligned %"] == "0.0%"
+        assert values["Qualitative Dominant Category"] == "text_difference"
+        assert values["Qualitative Evaluated Comparisons"] == 1
+        assert values["Qualitative Excluded Scope Variants"] == 1
+        assert values["Top Missing-Item Categories"] == "setback: 1"
+        assert values["Top Scope-Variant Categories"] == "other: 1"
+        assert values["Top Text-Difference Categories"] == "permit required: 1"
+
+
+class TestQualitativeReportLabels:
+    @pytest.fixture
+    def generator(self):
+        return ReportGenerator()
+
+    def test_item_centric_df_includes_qualitative_labels(self, generator):
+        result = ComparisonResult(
+            document_name="Qualitative Doc",
+            models=["gpt-4.1", "gpt-5"],
+            summary={
+                "qaqc_lane": "qualitative",
+                "qaqc_mode": "qualitative",
+                "comparison_approach": "text_review",
+            },
+            context_comparisons=[],
+            item_comparisons=[
+                FieldComparison(
+                    item_id="Permit required | Commercial Use",
+                    field_path="details",
+                    model_values={
+                        "gpt-4.1": "Permit required before operations begin",
+                        "gpt-5": "Permit required before drilling begins",
+                    },
+                    agreement_score="1/2",
+                    needs_review=True,
+                    notes="2 different values",
+                )
+            ],
+        )
+
+        df = generator._build_item_centric_df(result)
+        assert "QA/QC Lane" in df.columns
+        assert "Comparison Approach" in df.columns
+        assert "Review Category" in df.columns
+        assert df["QA/QC Lane"].iloc[0] == "qualitative"
+        assert df["Comparison Approach"].iloc[0] == "text_review"
+        assert df["Review Category"].iloc[0] == "text_difference"
+
+    def test_item_centric_df_marks_scope_variant_rows(self, generator):
+        result = ComparisonResult(
+            document_name="Qualitative Scope Variant Doc",
+            models=["gpt-4.1", "gpt-5"],
+            summary={
+                "qaqc_lane": "qualitative",
+                "qaqc_mode": "qualitative",
+                "comparison_approach": "text_review",
+            },
+            context_comparisons=[],
+            item_comparisons=[
+                FieldComparison(
+                    item_id="Other | Pipeline | pipeline siting and configuration",
+                    field_path="_item_presence",
+                    model_values={
+                        "gpt-4.1": None,
+                        "gpt-5": "PRESENT",
+                    },
+                    agreement_score="1/2",
+                    needs_review=True,
+                    notes="Item not extracted by: gpt-4.1",
+                )
+            ],
+        )
+
+        df = generator._build_item_centric_df(result)
+        assert df["Review Category"].iloc[0] == "scope_variant"
 
 
 class TestBuildComparisonDf:
