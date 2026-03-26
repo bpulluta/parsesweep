@@ -111,7 +111,4 @@ class SchemaDetector:
         Returns:
             List of field names (in snake_case) to exclude
         """
-        metadata = self.schema_metadata.metadata
-        if 'consolidation' in metadata and 'output' in metadata['consolidation']:
-            return metadata['consolidation']['output'].get('exclude_fields', [])
-        return []
+        return self.schema_metadata.get_output_exclude_fields()

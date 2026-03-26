@@ -36,6 +36,9 @@ Works with any document type: regulations, contracts, research papers, permits, 
 ## Table of Contents
 
 - [Quick Start](#quick-start)
+- [Architecture](#architecture)
+- [Documentation Map](#documentation-map)
+- [New Domain Onboarding](#new-domain-onboarding)
 - [Installation](#installation)
 - [Configuration](#configuration)
 - [Usage](#usage)
@@ -83,6 +86,132 @@ pixi run streamline-extract consolidate processed/examples/ \
 ```
 
 **That's it!** You now have structured data ready for analysis.
+
+---
+
+## Architecture
+
+StreamlineExtract operates on one contract-first runtime.
+
+Core design rules:
+- One active runtime path for `process`, `compare`, and `consolidate`
+- One schema contract with required `$metadata` for extraction and consolidation behavior
+- One optional runtime-pack layer for reusable domain behavior such as QA/QC lanes and presentation defaults
+- One optional profile layer for environment-specific runtime settings
+- One lineage model so outputs and reports can be traced back to the runtime artifact used to produce them
+
+Use this ownership split when deciding where changes belong:
+
+| Surface | Owns |
+|---------|------|
+| Schema | extraction row shape, field descriptions, identifiers, deduplication keys |
+| Pack | reusable domain runtime behavior, QA/QC defaults, consolidation presentation |
+| Profile | environment/runtime tuning |
+
+The normal progression is:
+1. Start with a lean schema.
+2. Validate it on 1-2 representative documents.
+3. Add a pack only when multiple runs need shared runtime behavior.
+4. Add profile overrides only when environments actually differ.
+
+This keeps onboarding simple for a new domain while preserving a clean path to larger, more configurable deployments.
+
+---
+
+## Documentation Map
+
+Use the active docs for current operating guidance:
+
+- `README.md`: product overview, architecture baseline, core workflows, onboarding entry points
+- `schemas/SCHEMA_BEST_PRACTICES.md`: schema authoring, deduplication, and schema-versus-pack guidance
+- `.github/copilot-instructions.md`: repository-specific Copilot operating instructions and standard commands
+- `config/README.md`: runtime config layout and page-range conventions
+
+If a document describes migration, phased implementation planning, release-gate bookkeeping, or retired implementation work, it should stay out of the tracked repo surface. Keep that material in a local ignored archive or in the issue tracker instead.
+
+---
+
+## New Domain Onboarding
+
+When you are starting from raw source documents only, use the current runtime in this order:
+
+1. Inspect 1-3 representative documents under `documents/<domain>/`.
+2. Create a lean first-pass schema under `schemas/personal/`.
+```bash
+pixi run streamline-extract init-domain-schema \
+  --name your_domain \
+  --reference-schema schemas/personal/geothermal_ordinance_schema.json
+```
+If you already know the first few fields you want, trim the starter immediately:
+```bash
+pixi run streamline-extract init-domain-schema \
+  --name your_domain \
+  --reference-schema schemas/personal/geothermal_ordinance_schema.json \
+  --include-field feature \
+  --include-field value \
+  --include-field units
+```
+3. Keep that first pass small:
+   - include only the required `$metadata.extraction` fields, the required top-level objects, and a compact `requirements` row shape
+   - model only the 4-8 highest-value fields you actually need for the first smoke extraction
+   - delay rich examples, long enum lists, and output presentation tuning until after the first extraction works
+4. Use the closest existing schema and `schemas/SCHEMA_BEST_PRACTICES.md` as reference material, not as something to copy wholesale.
+  - `init-domain-schema` strips schema clutter so the starter focuses on extraction contract and row shape.
+  - `--include-field` lets you keep only the first-pass fields you actually want to extract.
+  - keep schema responsibility to extraction contract + minimal dedup semantics
+  - keep pack responsibility to runtime modules, QA/QC behavior, and environment-specific runtime config
+5. Validate the schema:
+```bash
+pixi run streamline-extract validate-schema schemas/personal/your_domain_schema.json
+```
+6. Scaffold the runtime pack, config, and workspace folders:
+```bash
+pixi run streamline-extract init-domain-pack \
+  --name your_domain \
+  --schema schemas/personal/your_domain_schema.json \
+  --with-workspace \
+  --with-config
+```
+   - by default this scaffold now emits the minimal core workflow only
+   - use `--template-mode recommended` only when you explicitly want the extra QA/QC-oriented guidance
+7. Validate the runtime seam:
+```bash
+pixi run streamline-extract validate-runtime \
+  --pack schemas/domain_packs/your_domain/pack.yaml \
+  --profile default
+```
+8. Process 1-2 documents first, then consolidate and inspect the output.
+9. Iterate on the schema, page ranges, and QA/QC review until the extraction quality is acceptable.
+
+What a lean first-pass schema should feel like:
+- `jurisdiction`
+- `document_applicability`
+- `requirements[]` with only the core fields you need to compare across documents
+
+Do not try to encode every edge case in the first version. Production schemas become detailed through iteration, not at the starting line.
+
+Starter references that work well today:
+- solar: `schemas/personal/solar_ordinance_schema.json`
+- geothermal: `schemas/personal/geothermal_ordinance_schema.json`
+- air quality: `schemas/personal/air_quality_permits_schema.json`
+- tariffs: `schemas/personal/electricity_tariff_schema.json`
+
+Solar example:
+```bash
+pixi run streamline-extract init-domain-schema \
+  --name solar \
+  --reference-schema schemas/personal/solar_ordinance_schema.json
+
+pixi run streamline-extract process documents/solar/ \
+  --schema schemas/personal/solar_ordinance_schema.json \
+  --profile default \
+  --pages-csv config/solar/page_ranges.csv
+
+pixi run streamline-extract consolidate processed/solar \
+  --schema schemas/personal/solar_ordinance_schema.json
+```
+
+If you want Copilot to drive this workflow, use the workspace prompt `/greenfield-domain` and point it at the document folder you want to bootstrap.
 
 ---
 
@@ -139,35 +268,6 @@ pixi install
 pixi run streamline-extract --version
 # Should output: streamline-extract, version 2.0.1
 ```
-
-#### Option 2: Using pip (Traditional Python)
-
-```bash
-# 1. Clone repository
-git clone https://github.com/bpulluta/StreamlineExtract.git
-cd StreamlineExtract
-
-# 2. Create virtual environment (Python 3.9+ required)
-python3 -m venv .venv
-source .venv/bin/activate  # On Windows: .venv\Scripts\activate
-
-# 3. Install package
-pip install -e .
-
-# 4. Install system dependencies (macOS with Homebrew)
-brew install poppler tesseract
-
-# Or on Ubuntu/Debian:
-# sudo apt-get install poppler-utils tesseract-ocr
-```
-
-✅ **Verify installation:**
-```bash
-streamline-extract --version
-# Should output: streamline-extract, version 2.0.1
-```
-
-> **Note:** When using pip, replace `pixi run streamline-extract` with just `streamline-extract` in all commands below.
 
 ---
 
@@ -596,13 +696,13 @@ StreamlineExtract automatically selects schemas based on keywords in your docume
 
 | Keyword in Path | Schema Selected | Use Case |
 |-----------------|----------------|----------|
-| `geothermal` | `schemas/geothermal_ordinance_schema.json` | Municipal regulations |
+| `geothermal` | `schemas/personal/geothermal_ordinance_schema.json` | Municipal regulations |
 | `tariff` | `schemas/electricity_tariff_schema.json` | Utility rate schedules |
 | `permit`, `aq` | `schemas/air_quality_permits_schema.json` | Environmental permits |
 
 **Example:**
 ```bash
-# Automatically uses schemas/geothermal_ordinance_schema.json
+# Automatically uses schemas/personal/geothermal_ordinance_schema.json
 pixi run streamline-extract process documents/geothermal_regulations/
 
 # Automatically uses schemas/electricity_tariff_schema.json
@@ -647,6 +747,63 @@ pixi run streamline-extract process documents/my_docs/ \
 
 See `schemas/SCHEMA_BEST_PRACTICES.md` for detailed guidance.
 
+### Understanding Schemas, Packs, and Profiles
+
+When you author a new extraction setup, start with the schema. Add a pack only when you need reusable runtime behavior across a domain.
+
+- `Schema JSON`: The file you author directly. It defines what data to extract, which array becomes spreadsheet rows, how documents are identified, and which fields define deduplication.
+- `Pack YAML`: Optional runtime config for a domain. Use it when you want reusable QA/QC lanes, consolidation output settings, schema aliases, or other shared behavior that should not clutter the schema itself.
+- `Profile`: Runtime environment selection such as `default`, `dev`, `staging`, or `prod`. Most schema authors can stay on `default` unless they intentionally need environment-specific behavior.
+
+Rule of thumb:
+
+- Start with a schema only.
+- Add a pack when you need shared output shaping or QA/QC behavior.
+- Leave profiles alone unless you have a deployment reason to change them.
+
+### Quick Schema Iteration
+
+Use a small repeatable loop while authoring a schema so you can add fields, adjust descriptions, and catch extraction problems quickly without re-running a full corpus.
+
+```bash
+# 1. Validate the schema structure
+pixi run streamline-extract validate-schema schemas/my_schema.json
+
+# 2. Run a tiny extraction sample
+pixi run streamline-extract process documents/sample/ \
+  --schema schemas/my_schema.json \
+  -n 2 \
+  --reprocess
+
+# 3. Consolidate the sample output
+pixi run streamline-extract consolidate processed/sample/ \
+  --schema schemas/my_schema.json \
+  --verbose
+
+# 4. Preview deduplication before writing spreadsheets
+pixi run streamline-extract consolidate processed/sample/ \
+  --schema schemas/my_schema.json \
+  --dry-run \
+  --report-format json \
+  --fail-on-suspicious high
+
+# 5. Review extracted JSON + consolidated spreadsheet, then iterate
+```
+
+What to look for on each pass:
+
+- `main_data_array` produced the rows you expected
+- `identifier_fields` identify the document cleanly
+- new fields are populated consistently
+- `key_fields` do not merge distinct records accidentally
+- dry-run output does not report suspicious duplicate groups with conflicting non-key values
+- high-severity suspicious groups are resolved before you trust the schema on a full batch
+- consolidation output columns make sense for analysis
+
+When a matching pack exists, `--verbose` output now shows the resolved runtime artifact so you can tell whether pack-owned QA/QC or consolidation settings are active.
+
+Use `--dry-run --report-format json --fail-on-suspicious high` when you want the schema iteration loop to stop automatically on likely data-loss merges. High severity now comes from both conflict names and schema-declared numeric or unit-like fields, so vague column names can still be flagged correctly.
+
 ---
 
 ## Examples
@@ -658,11 +815,11 @@ See `schemas/SCHEMA_BEST_PRACTICES.md` for detailed guidance.
 ```bash
 # Extract requirements from municipal ordinances
 pixi run streamline-extract process documents/geothermal_ordinances/ \
-  --schema schemas/geothermal_ordinance_schema.json
+  --schema schemas/personal/geothermal_ordinance_schema.json
 
 # Consolidate to Excel
 pixi run streamline-extract consolidate processed/geothermal_ordinances/ \
-  --schema schemas/geothermal_ordinance_schema.json
+  --schema schemas/personal/geothermal_ordinance_schema.json
 ```
 
 **Output**: Spreadsheet with jurisdiction, requirements, depth limits, setbacks, etc.

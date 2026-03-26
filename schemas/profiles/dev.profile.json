@@ -1,0 +1,13 @@
+{
+  "profile_id": "dev",
+  "environment": "dev",
+  "runtime": {
+    "emit_lineage": true,
+    "emit_run_manifests": true,
+    "strict_contracts": true,
+    "debug_logging": true
+  },
+  "llm": {
+    "provider_strategy": "auto"
+  }
+}

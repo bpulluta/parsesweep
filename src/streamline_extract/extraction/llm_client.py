@@ -13,12 +13,13 @@ No legacy fallbacks - requires LiteLLM to be installed.
 import json
 import logging
 import os
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 
 import litellm
 from litellm import completion, completion_cost
 
 from streamline_extract.utils.model_pricing import get_pricing
+from streamline_extract.utils.exceptions import ExtractionError
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +31,14 @@ class LLMClient:
     Uses LiteLLM for unified interface across all providers.
     Automatically tracks costs and handles provider-specific parameters.
     """
+
+    MODEL_CONTEXT_WINDOWS = {
+        "azure/compassop-gpt-4.1-mini": 300000,
+        "compassop-gpt-4.1-mini": 300000,
+        "gpt-4.1-mini": 300000,
+    }
+
+    CONTEXT_RESPONSE_RESERVE_TOKENS = 4096
     
     def __init__(
         self,
@@ -169,6 +178,8 @@ class LLMClient:
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt},
         ]
+
+        self._validate_context_budget(messages)
         
         # Check if this is a reasoning model (doesn't support temperature/response_format)
         is_reasoning_model = any(
@@ -193,7 +204,7 @@ class LLMClient:
             # Validate response
             if not response.choices or not response.choices[0].message.content:
                 logger.error(f"Empty response from API (model={self.model})")
-                return {"data": {}, "cost": 0.0}
+                raise ExtractionError(f"Empty response from provider={self.provider}, model={self.model}")
             
             # Parse JSON response
             content = response.choices[0].message.content
@@ -227,11 +238,42 @@ class LLMClient:
         except json.JSONDecodeError as e:
             logger.error(f"Failed to parse JSON response: {e}")
             logger.debug(f"Response content: {content[:500]}...")
-            return {"data": {}, "cost": 0.0}
+            raise ExtractionError(f"Failed to parse JSON response from provider={self.provider}, model={self.model}: {e}") from e
         
         except Exception as e:
             logger.exception(f"LLM extraction failed (provider={self.provider}, model={self.model})")
-            return {"data": {}, "cost": 0.0}
+            raise ExtractionError(str(e)) from e
+
+    def _get_context_window_tokens(self) -> Optional[int]:
+        """Return the configured context window for known models."""
+        for candidate in (self.model, self.raw_model):
+            if candidate in self.MODEL_CONTEXT_WINDOWS:
+                return self.MODEL_CONTEXT_WINDOWS[candidate]
+        return None
+
+    def _estimate_message_tokens(self, messages: List[Dict[str, str]]) -> int:
+        """Estimate prompt token usage conservatively from message content."""
+        content_tokens = sum((len(message.get("content", "")) + 3) // 4 for message in messages)
+        per_message_overhead = 16 * len(messages)
+        return content_tokens + per_message_overhead
+
+    def _validate_context_budget(self, messages: List[Dict[str, str]]) -> None:
+        """Fail fast when the estimated request exceeds a known model context window."""
+        context_window = self._get_context_window_tokens()
+        if context_window is None:
+            return
+
+        estimated_prompt_tokens = self._estimate_message_tokens(messages)
+        estimated_total_tokens = estimated_prompt_tokens + self.CONTEXT_RESPONSE_RESERVE_TOKENS
+        if estimated_total_tokens <= context_window:
+            return
+
+        raise ExtractionError(
+            "context_window_exceeded: estimated request size "
+            f"{estimated_prompt_tokens} prompt tokens + {self.CONTEXT_RESPONSE_RESERVE_TOKENS} reserved output tokens "
+            f"exceeds model context window {context_window} for provider={self.provider}, model={self.model}. "
+            "Reduce max_context_chars or use page ranges/chunking for large documents."
+        )
     
     def _build_extraction_prompt(self, text: str, schema: Dict[str, Any]) -> str:
         """Build the extraction prompt with schema and document text."""

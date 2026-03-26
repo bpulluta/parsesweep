@@ -8,8 +8,8 @@ This directory contains configuration files for document processing, organized b
 config/
 ├── tariffs/
 │   └── page_ranges.csv      # Page range specifications for tariff documents
-└── examples/
-    └── page_ranges.csv      # Page range specifications for example documents
+└── solar/
+    └── page_ranges.csv      # Optional page range specifications for solar documents
 ```
 
 ## Page Ranges CSV Format

@@ -201,9 +201,11 @@ class TestRunMultiModelExtraction:
         # Verify file content
         with open(output_dir / "gpt-4o.json") as f:
             data = json.load(f)
-            assert "_qaqc_metadata" in data
-            assert data["_qaqc_metadata"]["model"] == "gpt-4o"
-            assert "items" in data
+            assert data["contract_version"] == "1.0.0"
+            assert data["lineage"]["model"] == "gpt-4o"
+            assert data["quality"]["errors"] == []
+            assert "payload" in data
+            assert "items" in data["payload"]
     
     @patch("streamline_extract.extraction.DocumentExtractor")
     def test_metadata_file_saved(
@@ -239,6 +241,100 @@ class TestRunMultiModelExtraction:
             assert "summary" in metadata
             assert metadata["summary"]["total_models"] == 2
             assert metadata["summary"]["successful"] == 2
+
+    @patch("streamline_extract.extraction.DocumentExtractor")
+    def test_runtime_artifact_written_to_model_output_metadata(
+        self, mock_extractor_class, sample_schema, sample_text, mock_extraction_result, tmp_path
+    ):
+        """Test that runtime artifact lineage is included in per-model extraction record."""
+        mock_extractor = MagicMock()
+        mock_extractor.extract.return_value = mock_extraction_result
+        mock_extractor_class.return_value = mock_extractor
+
+        runtime_artifact = {
+            "artifact_id": "artifact://runtime/abc123def4567890",
+            "contract_versions": {
+                "extraction_record": "1.0.0",
+                "modules_catalog": "1.0.0",
+            },
+            "lineage": {
+                "artifact_id": "artifact://runtime/abc123def4567890",
+                "profile_id": "default",
+                "pack_name": "tariffs",
+                "pack_version": "1.0.0",
+                "compiled_at": "2026-03-24T12:00:00Z",
+            },
+        }
+
+        run_multi_model_extraction(
+            doc_text=sample_text,
+            doc_name="test_doc",
+            schema=sample_schema,
+            models=["gpt-4o"],
+            output_dir=tmp_path,
+            api_key="test-key",
+            provider="openai",
+            runtime_artifact=runtime_artifact,
+            run_id="run://abc123def4567890",
+        )
+
+        output_path = tmp_path / "qa_qc" / "test_doc" / "gpt-4o.json"
+        with open(output_path) as f:
+            data = json.load(f)
+
+        assert data["contract_version"] == "1.0.0"
+        assert data["lineage"]["run_id"] == "run://abc123def4567890"
+        assert data["lineage"]["artifact_id"] == runtime_artifact["artifact_id"]
+        assert data["lineage"]["profile_id"] == "default"
+        assert data["lineage"]["provider"] == "openai"
+        assert data["payload"]["items"][0]["name"] == "Item 1"
+        assert data["processing_metrics"]["cost_usd"] == mock_extraction_result.cost
+
+    @patch("streamline_extract.extraction.DocumentExtractor")
+    def test_runtime_artifact_written_to_run_metadata(
+        self, mock_extractor_class, sample_schema, sample_text, mock_extraction_result, tmp_path
+    ):
+        """Test that runtime artifact lineage is included in metadata.json."""
+        mock_extractor = MagicMock()
+        mock_extractor.extract.return_value = mock_extraction_result
+        mock_extractor_class.return_value = mock_extractor
+
+        runtime_artifact = {
+            "artifact_id": "artifact://runtime/abc123def4567890",
+            "contract_versions": {
+                "extraction_record": "1.0.0",
+                "modules_catalog": "1.0.0",
+            },
+            "lineage": {
+                "artifact_id": "artifact://runtime/abc123def4567890",
+                "profile_id": "default",
+                "pack_name": "tariffs",
+                "pack_version": "1.0.0",
+                "compiled_at": "2026-03-24T12:00:00Z",
+            },
+        }
+
+        run_multi_model_extraction(
+            doc_text=sample_text,
+            doc_name="test_doc",
+            schema=sample_schema,
+            models=["gpt-4o", "gpt-3.5-turbo"],
+            output_dir=tmp_path,
+            api_key="test-key",
+            provider="openai",
+            runtime_artifact=runtime_artifact,
+            run_id="run://abc123def4567890",
+        )
+
+        metadata_path = tmp_path / "qa_qc" / "test_doc" / "metadata.json"
+        with open(metadata_path) as f:
+            metadata = json.load(f)
+
+        assert metadata["run_id"] == "run://abc123def4567890"
+        assert metadata["artifact_id"] == runtime_artifact["artifact_id"]
+        assert metadata["lineage"]["profile_id"] == "default"
+        assert metadata["lineage"]["run_id"] == "run://abc123def4567890"
+        assert metadata["contract_versions"]["extraction_record"] == "1.0.0"
     
     @patch("streamline_extract.extraction.DocumentExtractor")
     def test_partial_failure(
@@ -276,6 +372,9 @@ class TestRunMultiModelExtraction:
             assert metadata["status"] == "partial"
             assert metadata["summary"]["successful"] == 1
             assert metadata["summary"]["failed"] == 1
+            assert metadata["summary"]["total_errors"] == 1
+            assert metadata["errors"]["by_category"] == {"internal": 1}
+            assert metadata["model_errors"]["gpt-nonexistent"]["code"] == "unexpected_processing_error"
     
     @patch("streamline_extract.extraction.DocumentExtractor")
     def test_azure_provider_config(

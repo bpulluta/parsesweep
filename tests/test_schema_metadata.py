@@ -154,11 +154,52 @@ class TestConsolidationMetadata:
         """Test getting output format."""
         meta = SchemaMetadata(temp_schema_with_metadata)
         assert meta.get_output_format() == "excel"
+
+    def test_get_output_exclude_fields(self, temp_schema_with_metadata):
+        """Test getting output exclude fields."""
+        schema = json.loads(temp_schema_with_metadata.read_text())
+        schema["$metadata"]["consolidation"]["output"]["exclude_fields"] = ["notes", "details"]
+        temp_schema_with_metadata.write_text(json.dumps(schema), encoding="utf-8")
+
+        meta = SchemaMetadata(temp_schema_with_metadata)
+        assert meta.get_output_exclude_fields() == ["notes", "details"]
     
     def test_get_column_order(self, temp_schema_with_metadata):
         """Test getting column order."""
         meta = SchemaMetadata(temp_schema_with_metadata)
         assert meta.get_column_order() == ["id", "name", "value"]
+
+    def test_get_column_renames(self, temp_schema_with_metadata):
+        """Test getting output column rename mapping."""
+        schema = json.loads(temp_schema_with_metadata.read_text())
+        schema["$metadata"]["consolidation"]["output"]["column_renames"] = {"Name": "charge_name"}
+        temp_schema_with_metadata.write_text(json.dumps(schema), encoding="utf-8")
+
+        meta = SchemaMetadata(temp_schema_with_metadata)
+        assert meta.get_column_renames() == {"Name": "charge_name"}
+
+    def test_metadata_overrides_merge_consolidation_output(self, temp_schema_with_metadata):
+        """Runtime metadata overrides should replace schema-owned consolidation settings."""
+        meta = SchemaMetadata(
+            temp_schema_with_metadata,
+            metadata_overrides={
+                "consolidation": {
+                    "output": {
+                        "exclude_fields": ["runtime_only"],
+                        "default_format": "csv",
+                        "column_renames": {"Name": "charge_name"},
+                    },
+                    "deduplication": {
+                        "comparison_mode": "exact",
+                    },
+                }
+            },
+        )
+
+        assert meta.get_output_exclude_fields() == ["runtime_only"]
+        assert meta.get_output_format() == "csv"
+        assert meta.get_column_renames() == {"Name": "charge_name"}
+        assert meta.get_comparison_mode() == "exact"
 
 
 class TestValidationMetadata:
@@ -466,3 +507,10 @@ class TestExpectedRequirementsMethods:
         
         assert min_count == 1
         assert max_count == 100
+
+    def test_get_qa_qc_match_fields_requires_explicit_config(self, temp_schema_with_metadata):
+        """QA/QC match fields must be explicitly configured in qa_qc.record_matching.key_fields."""
+        meta = SchemaMetadata(temp_schema_with_metadata)
+
+        with pytest.raises(SchemaMetadataError, match=r"qa_qc\.record_matching\.key_fields"):
+            meta.get_qa_qc_match_fields()
