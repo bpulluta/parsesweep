@@ -8,12 +8,15 @@ Organizes commands into two categories:
 
 import click
 
-from streamline_extract.cli.commands import process, validate, consolidate, compare
+from streamline_extract.cli.commands import process, validate, consolidate, compare, benchmark
 from streamline_extract.cli.utils_commands import (
     init,
+    init_domain_schema_cmd,
+    init_domain_pack_cmd,
     preview,
     estimate,
     validate_schema_cmd,
+    validate_runtime_cmd,
     config,
 )
 
@@ -71,22 +74,18 @@ def cli():
 
 # Register commands
 cli.add_command(init)
+cli.add_command(init_domain_schema_cmd)
+cli.add_command(init_domain_pack_cmd)
 cli.add_command(process)
 cli.add_command(preview)
 cli.add_command(estimate)
 cli.add_command(validate)
 cli.add_command(validate_schema_cmd)
+cli.add_command(validate_runtime_cmd)
 cli.add_command(consolidate)
 cli.add_command(compare)
+cli.add_command(benchmark)
 cli.add_command(config)
-
-# Lazy load dtree to avoid heavy dependencies unless needed
-@cli.command(name='dtree-extract')
-@click.pass_context
-def dtree_extract_wrapper(ctx, *args, **kwargs):
-    """Extract using decision trees (lazy loaded to avoid heavy imports)."""
-    from streamline_extract.cli.dtree import dtree_extract
-    ctx.invoke(dtree_extract, *args, **kwargs)
 
 
 def main():

@@ -35,6 +35,7 @@ Color Coding:
 Status: Phase 4 - COMPLETED
 """
 
+import json
 import logging
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
@@ -90,6 +91,7 @@ class ReportGenerator:
         
         excel_path = output_dir / "comparison_report.xlsx"
         csv_path = output_dir / "comparison_report.csv"
+        summary_path = output_dir / "comparison_summary.json"
         
         # Generate Excel with formatting
         self._generate_excel(comparison_result, excel_path)
@@ -98,8 +100,23 @@ class ReportGenerator:
         # Generate CSV - now item-centric format
         self._generate_item_centric_csv(comparison_result, csv_path)
         logger.info(f"Generated CSV report: {csv_path}")
+
+        self._write_summary_json(comparison_result, summary_path)
+        logger.info(f"Generated summary report: {summary_path}")
         
         return excel_path, csv_path
+
+    def _write_summary_json(self, result: ComparisonResult, output_path: Path) -> None:
+        """Persist a machine-readable comparison summary for benchmark gating."""
+        payload = {
+            "document_name": result.document_name,
+            "models": result.models,
+            "summary": result.summary,
+        }
+        output_path.write_text(
+            json.dumps(payload, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
 
     def _generate_excel(self, result: ComparisonResult, output_path: Path) -> None:
         """
@@ -140,6 +157,9 @@ class ReportGenerator:
         rows = [
             {"Metric": "Document", "Value": result.document_name},
             {"Metric": "Models", "Value": ", ".join(result.models)},
+            {"Metric": "QA/QC Lane", "Value": summary.get("qaqc_lane") or "schema fallback"},
+            {"Metric": "QA/QC Mode", "Value": summary.get("qaqc_mode") or "schema_metadata"},
+            {"Metric": "Comparison Approach", "Value": summary.get("comparison_approach") or "numeric_only"},
         ]
         
         # Add items per model
@@ -159,6 +179,46 @@ class ReportGenerator:
             {"Metric": "Item Comparisons", "Value": summary.get("item_comparisons", 0)},
             {"Metric": "Item Agreement %", "Value": f"{summary.get('item_agreement_pct', 0):.1f}%"},
         ])
+
+        review_category_counts = summary.get("review_category_counts") or {}
+        if review_category_counts:
+            rows.extend([
+                {"Metric": "", "Value": ""},
+                {"Metric": "--- Review Categories ---", "Value": ""},
+            ])
+            for category_name, count in sorted(review_category_counts.items()):
+                rows.append({
+                    "Metric": f"Review Category: {category_name}",
+                    "Value": count,
+                })
+
+        qualitative_gate = summary.get("qualitative_advisory_gate") or {}
+        if qualitative_gate:
+            rows.extend([
+                {"Metric": "", "Value": ""},
+                {"Metric": "--- Qualitative Advisory Gate ---", "Value": ""},
+                {"Metric": "Qualitative Gate Mode", "Value": qualitative_gate.get("mode", "advisory")},
+                {"Metric": "Qualitative Gate Status", "Value": qualitative_gate.get("status", "not_applicable")},
+                {"Metric": "Qualitative Aligned %", "Value": f"{qualitative_gate.get('aligned_pct', 0):.1f}%"},
+                {"Metric": "Qualitative Missing Item %", "Value": f"{qualitative_gate.get('missing_item_pct', 0):.1f}%"},
+                {"Metric": "Qualitative Dominant Category", "Value": qualitative_gate.get("dominant_category", "none")},
+                {"Metric": "Qualitative Evaluated Comparisons", "Value": qualitative_gate.get("evaluated_comparisons", 0)},
+                {"Metric": "Qualitative Excluded Scope Variants", "Value": qualitative_gate.get("excluded_scope_variants", 0)},
+                {"Metric": "Qualitative Recommended Action", "Value": qualitative_gate.get("recommended_action", "")},
+            ])
+
+        qualitative_breakdown = summary.get("qualitative_mismatch_breakdown") or {}
+        if qualitative_breakdown:
+            rows.extend([
+                {"Metric": "", "Value": ""},
+                {"Metric": "--- Qualitative Mismatch Breakdown ---", "Value": ""},
+            ])
+            self._append_breakdown_rows(rows, "Top Missing-Item Categories", qualitative_breakdown.get("missing_item_by_category") or [])
+            self._append_breakdown_rows(rows, "Top Scope-Variant Categories", qualitative_breakdown.get("scope_variant_by_category") or [])
+            self._append_breakdown_rows(rows, "Top Text-Difference Categories", qualitative_breakdown.get("text_difference_by_category") or [])
+            self._append_breakdown_rows(rows, "Top Missing Requirements", qualitative_breakdown.get("top_missing_requirements") or [])
+            self._append_breakdown_rows(rows, "Top Scope-Variant Requirements", qualitative_breakdown.get("top_scope_variant_requirements") or [])
+            self._append_breakdown_rows(rows, "Top Text-Difference Requirements", qualitative_breakdown.get("top_text_difference_requirements") or [])
         
         # Phase 8: Add potential duplicates count
         potential_duplicates_count = summary.get("potential_duplicates_count", 0)
@@ -185,6 +245,19 @@ class ReportGenerator:
                     })
         
         return pd.DataFrame(rows)
+
+    def _append_breakdown_rows(
+        self,
+        rows: List[Dict[str, Any]],
+        metric_name: str,
+        entries: List[Dict[str, Any]],
+    ) -> None:
+        """Append a compact qualitative mismatch breakdown row when entries exist."""
+        if not entries:
+            return
+
+        value = ", ".join(f"{entry.get('label')}: {entry.get('count')}" for entry in entries)
+        rows.append({"Metric": metric_name, "Value": value})
 
     def _build_comparison_df(
         self, 
@@ -405,6 +478,8 @@ class ReportGenerator:
         # Build item-centric rows
         rows = []
         models = result.models
+        lane_name = result.summary.get("qaqc_lane") or "schema fallback"
+        comparison_approach = result.summary.get("comparison_approach") or "numeric_only"
         
         # Shorten model names for display (e.g., "compassop-gpt-5" -> "gpt-5")
         short_names = {}
@@ -431,16 +506,28 @@ class ReportGenerator:
             model_sources = {}
             for model in models:
                 fields = model_fields[model]
-                value = fields.get("value", "")
-                unit = fields.get("unit", "")
                 source_text = fields.get("source_text", "")
-                
-                if value is None or value == "":
-                    model_displays[model] = "-"
-                elif unit and unit not in ["", None]:
-                    model_displays[model] = f"{value} {unit}"
+
+                if comparison_approach == "text_review":
+                    qualitative_values = [
+                        str(value)
+                        for field_name, value in fields.items()
+                        if field_name != "source_text" and value not in ["", None]
+                    ]
+                    if qualitative_values:
+                        model_displays[model] = " | ".join(qualitative_values)
+                    else:
+                        model_displays[model] = "-"
                 else:
-                    model_displays[model] = str(value)
+                    value = fields.get("value", "")
+                    unit = fields.get("unit", "")
+
+                    if value is None or value == "":
+                        model_displays[model] = "-"
+                    elif unit and unit not in ["", None]:
+                        model_displays[model] = f"{value} {unit}"
+                    else:
+                        model_displays[model] = str(value)
                 
                 # Truncate source_text for display (80 chars max)
                 if source_text and source_text not in ["", None]:
@@ -483,10 +570,20 @@ class ReportGenerator:
                 notes = f"Not in: {', '.join(missing_names)}"
             elif not all_values_match:
                 notes = "Values differ"
+
+            review_category = self._determine_review_category(
+                status=status,
+                comparison_approach=comparison_approach,
+                requirement=requirement,
+                notes=notes,
+            )
             
             row = {
                 "Status": status,
                 "Requirement": requirement,
+                "QA/QC Lane": lane_name,
+                "Comparison Approach": comparison_approach,
+                "Review Category": review_category,
             }
             
             # Add model value columns with shortened names
@@ -513,6 +610,60 @@ class ReportGenerator:
         ))
         
         return pd.DataFrame(rows)
+
+    def _determine_review_category(self, *, status: str, comparison_approach: str, requirement: str, notes: str) -> str:
+        """Map report rows to a stable review category without changing benchmark-facing status."""
+        if status == "AGREE":
+            return "aligned"
+        if status.startswith("ONLY"):
+            if comparison_approach == "text_review" and self._is_scope_variant_requirement(requirement, notes):
+                return "scope_variant"
+            return "missing_item"
+        if status == "PARTIAL":
+            return "missing_item"
+        if status == "DIFFER":
+            if comparison_approach == "text_review":
+                return "text_difference"
+            return "value_difference"
+        return "review_required"
+
+    def _is_scope_variant_requirement(self, requirement: str, notes: str) -> bool:
+        """Mirror the comparison-engine qualitative scope-variant rules for report rows."""
+        if "not in:" not in (notes or "").lower():
+            return False
+
+        parts = [part.strip().lower() for part in requirement.split("|")]
+        while len(parts) < 3:
+            parts.append("")
+        category_label, facility_label, subject_label = parts[:3]
+
+        if (category_label, subject_label) in {
+            ("decommissioning", "financial assurance"),
+            ("decommissioning", "facility removal"),
+            ("decommissioning", "well plugging"),
+            ("lighting requirement", "faa part 77 marking and lighting"),
+            ("permit requirement", "all necessary permits"),
+            ("permitted use district", "conditional use"),
+        }:
+            return True
+
+        if category_label == "noise limit" and facility_label == "power plant" and subject_label == "plant operations":
+            return True
+
+        if category_label == "other" and subject_label in {
+            "emergency response/action plan",
+            "insurance",
+            "radio/television interference",
+            "roads and parking",
+            "dust control",
+            "identification/informational signage",
+            "double-walled pipes across public waters",
+            "pipeline siting and configuration",
+            "electric transmission line siting",
+        }:
+            return True
+
+        return False
 
     def _apply_formatting_item_centric(self, excel_path: Path, num_models: int) -> None:
         """

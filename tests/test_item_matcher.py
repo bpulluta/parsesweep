@@ -5,6 +5,8 @@ Unit tests for item_matcher utilities.
 Tests the extracted item matching logic used by both consolidation
 and QA/QC comparison.
 """
+import logging
+
 import pytest
 import pandas as pd
 from streamline_extract.utils.item_matcher import (
@@ -202,6 +204,18 @@ class TestMapKeyFieldsToColumns:
         df = pd.DataFrame(columns=["Rate Name", "Charge Type"])
         mapped = map_key_fields_to_columns(df, ["rate_name", "charge_type"])
         assert mapped == ["Rate Name", "Charge Type"]
+
+    def test_camel_case_to_space(self):
+        """Test camelCase schema fields against spaced column names."""
+        df = pd.DataFrame(columns=["Reference Number", "Make"])
+        mapped = map_key_fields_to_columns(df, ["referenceNumber", "make"])
+        assert mapped == ["Reference Number", "Make"]
+
+    def test_initialism_columns_are_collapsed(self):
+        """Test split-initialism column names against compact schema fields."""
+        df = pd.DataFrame(columns=["Rated Capacity K W", "Facility State"])
+        mapped = map_key_fields_to_columns(df, ["ratedCapacityKW", "facilityState"])
+        assert mapped == ["Rated Capacity K W", "Facility State"]
     
     def test_nested_field_extraction(self):
         """Test extraction of last part from nested field."""
@@ -215,6 +229,15 @@ class TestMapKeyFieldsToColumns:
         mapped = map_key_fields_to_columns(df, ["State", "Missing"])
         # Only State should be mapped
         assert mapped == ["State"]
+
+    def test_missing_fields_can_skip_warning(self, caplog):
+        """Test that missing-field warnings can be suppressed for comparison-only callers."""
+        df = pd.DataFrame(columns=["State"])
+        with caplog.at_level(logging.WARNING):
+            mapped = map_key_fields_to_columns(df, ["State", "Missing"], warn_on_missing=False)
+
+        assert mapped == ["State"]
+        assert "Key field 'Missing' not found in DataFrame columns" not in caplog.text
     
     def test_empty_dataframe(self):
         """Test with empty DataFrame."""

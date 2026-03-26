@@ -58,6 +58,7 @@ Thumbs.db
 processed/
 consolidated/
 data/
+output/
 outputs/
 
 # ─────────────────────────────────────────────────────────
@@ -71,7 +72,6 @@ documents/tariffs/
 config/aq_permits/
 config/geothermal_ordinances/
 config/tariffs/
-.github/
 
 # ─────────────────────────────────────────────────────────
 # Archive & Old Code (for reference only)
@@ -95,12 +95,11 @@ temp/
 .ipynb_checkpoints/
 
 
-# ─────────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────
 # Data Directories (Contains Large Files - Not Version Controlled)
 # ─────────────────────────────────────────────────────────
-# User documents, validation data, and outputs should not be tracked
+# User documents, validation data, and generated outputs should not be tracked
 documents/
 validation/
-scripts/
-docs/
 tools/
+output*/

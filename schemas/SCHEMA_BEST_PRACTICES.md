@@ -9,6 +9,81 @@ StreamlineExtract v2.0+ uses a metadata-driven architecture where:
 
 Design schemas to match how you want to analyze the data.
 
+For authoring, use this mental model:
+
+- `Schema`: Your primary authoring surface. Start here for fields, descriptions, examples, row shape, identifiers, and deduplication keys.
+- `Pack`: Optional runtime config for a domain. Use it when multiple runs should share QA/QC lanes, consolidation presentation, or schema aliases.
+- `Profile`: Optional environment selection. Most schema authors should use `default` and ignore profiles until they need environment-specific runtime behavior.
+
+---
+
+## Authoring Workflow
+
+### Start With the Schema
+
+Most new extraction setups should begin with a schema only. That keeps iteration fast and local to one file.
+
+Add a pack later if you need any of the following:
+
+- shared QA/QC lanes for a domain
+- shared consolidation output settings such as column order or renames
+- multiple schema paths that should resolve to the same runtime behavior
+- domain-level runtime modules or overrides you do not want repeated across schemas
+
+If none of those apply yet, keep the schema focused on extraction structure and validation.
+
+### Fast Iteration Loop
+
+Use a short loop while evolving a schema:
+
+```bash
+# 1. Validate schema structure
+pixi run streamline-extract validate-schema schemas/my_schema.json
+
+# 2. Extract a tiny sample
+pixi run streamline-extract process documents/sample/ \
+  --schema schemas/my_schema.json \
+  -n 2 \
+  --reprocess
+
+# 3. Consolidate the sample
+pixi run streamline-extract consolidate processed/sample/ \
+  --schema schemas/my_schema.json \
+  --verbose
+
+# 4. Preview deduplication before writing outputs
+pixi run streamline-extract consolidate processed/sample/ \
+  --schema schemas/my_schema.json \
+  --dry-run \
+  --report-format json \
+  --fail-on-suspicious high
+```
+
+Review after each pass:
+
+- Did `main_data_array` create the right rows?
+- Did `identifier_fields` identify the document correctly?
+- Did your new fields extract consistently?
+- Do `key_fields` keep distinct records separate?
+- Does the dry-run dedup report show any merges you did not intend?
+- Does the dry-run dedup report flag suspicious groups where non-key values disagree?
+- Are any suspicious groups ranked `high` severity because numeric or unit fields disagree?
+- Should the iteration loop fail automatically until those `high` severity groups are resolved?
+- If a pack exists, did verbose output show the runtime artifact you expected?
+
+The severity ranking is schema-aware: fields declared as numeric in your schema can be ranked `high` severity even if the flattened column name is not obviously numeric.
+
+This loop is the safest way to add fields and tune descriptions without re-running a full batch.
+
+### Do You Need a `pack.yaml`?
+
+Use this decision rule:
+
+- `No`: You are still defining fields, examples, descriptions, identifiers, or deduplication keys for one schema.
+- `Yes`: You want reusable runtime QA/QC behavior, reusable consolidation presentation, or one domain pack to cover multiple schema aliases.
+
+Keep authoring friction low by delaying `pack.yaml` until you actually need shared runtime behavior.
+
 ---
 
 ## 🔴 Required: The `$metadata` Section
@@ -60,6 +135,8 @@ ERROR: Schema missing required $metadata section
 ```
 
 ### Complete `$metadata` Structure
+
+This example shows the full metadata surface. In a pack-backed domain, some runtime-owned behavior may move out of the schema and into `schemas/domain_packs/<domain>/pack.yaml` so the schema stays easier to edit.
 
 ```json
 {
@@ -733,7 +810,7 @@ Reference these working schemas in the `schemas/` directory:
 - **Good for:** Utility rate analysis
 
 ### Geothermal Ordinances
-- **File:** `geothermal_ordinance_schema.json`
+- **File:** `personal/geothermal_ordinance_schema.json`
 - **Pattern:** Requirements-based
 - **Main array:** `requirements`
 - **Good for:** Regulatory compliance
