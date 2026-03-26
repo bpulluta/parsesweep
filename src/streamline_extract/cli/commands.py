@@ -55,6 +55,16 @@ from streamline_extract.utils.error_taxonomy import build_error_record, normaliz
 # Global verbosity level (set by CLI flags)
 VERBOSITY = 'normal'  # 'quiet', 'normal', 'verbose', 'debug'
 
+_BENCHMARK_PROFILE_PATH_FIELDS = {
+    'path',
+    'extraction_baseline_dir',
+    'qaqc_baseline_dir',
+    'consolidation_baseline_dir',
+    'consolidation_schema',
+    'baseline_snapshot',
+    'write_snapshot',
+}
+
 
 def configure_logging(verbosity: str) -> None:
     """
@@ -117,7 +127,7 @@ def detect_api_provider() -> Tuple[str, bool, str]:
     openai_key = os.getenv('OPENAI_API_KEY')
     if openai_key:
         return 'openai', True, None
-    
+
     # No credentials found
     error = (
         "No API credentials found in .env file.\n\n"
@@ -129,6 +139,30 @@ def detect_api_provider() -> Tuple[str, bool, str]:
         "  OPENAI_API_KEY=sk-your-key-here"
     )
     return None, False, error
+
+
+def _load_benchmark_gate_profile(profile_path: Path) -> Dict[str, Any]:
+    """Load a benchmark gate profile and resolve relative paths against the profile location."""
+    try:
+        profile = json.loads(profile_path.read_text(encoding='utf-8'))
+    except json.JSONDecodeError as exc:
+        raise click.UsageError(f'Invalid benchmark gate profile JSON: {profile_path}: {exc}') from exc
+
+    if not isinstance(profile, dict):
+        raise click.UsageError(f'Benchmark gate profile must be a JSON object: {profile_path}')
+
+    resolved: Dict[str, Any] = {}
+    for key, value in profile.items():
+        if key in _BENCHMARK_PROFILE_PATH_FIELDS and value is not None:
+            resolved[key] = Path(value) if Path(value).is_absolute() else (profile_path.parent / value)
+        else:
+            resolved[key] = value
+    return resolved
+
+
+def _coalesce_benchmark_option(cli_value: Any, profile: Dict[str, Any], key: str) -> Any:
+    """Prefer an explicit CLI value, then fall back to the loaded benchmark profile."""
+    return cli_value if cli_value is not None else profile.get(key)
 
 
 def _resolve_runtime_artifact(
@@ -377,6 +411,7 @@ def _write_run_manifest(output_dir: Path, run_id: str, manifest: Dict[str, Any])
 @click.option('--provider', type=click.Choice(['openai', 'azure', 'anthropic', 'gemini', 'auto'], case_sensitive=False), default='auto', show_default=True, help='LLM provider (auto-detects from .env)')
 @click.option('--profile', 'profile_name', default='default', show_default=True, help='Runtime profile to compile into artifact lineage (for example: default, dev, staging, prod)')
 @click.option('--enable-qa-qc', is_flag=True, help='Enable multi-model QA/QC validation')
+@click.option('--qaqc-lane', type=str, default=None, help='Optional QA/QC lane name to use in the follow-up compare workflow when --enable-qa-qc is used')
 @click.option('--limit', '-n', type=int, help='Process only first N files')
 @click.option('--skip-existing/--reprocess', default=True, show_default=True, help='Skip files already processed')
 @click.option('--max-context', type=int, default=400000, show_default=True, help='Max document characters to process')
@@ -387,7 +422,7 @@ def _write_run_manifest(output_dir: Path, run_id: str, manifest: Dict[str, Any])
 @click.option('--pages', type=str, default=None, help='Page range to extract (e.g., "615-759"). Only for single PDF files.')
 @click.option('--pages-csv', type=click.Path(exists=True), default=None, help='CSV file mapping documents to page ranges')
 def process(path: str, output: Optional[str], schema: Optional[str], category: Optional[str],
-            model: str, provider: str, profile_name: str, enable_qa_qc: bool, limit: Optional[int], 
+            model: str, provider: str, profile_name: str, enable_qa_qc: bool, qaqc_lane: Optional[str], limit: Optional[int], 
             skip_existing: bool, max_context: int, quiet: bool, verbose: bool, debug: bool, live_dashboard: bool,
             pages: Optional[str], pages_csv: Optional[str]):
     """
@@ -829,6 +864,7 @@ def process(path: str, output: Optional[str], schema: Optional[str], category: O
         _run_qa_qc_extraction(
             doc_files=doc_files,
             loaded_schema=loaded_schema,
+            schema_path=schema_path,
             output_dir=output_dir,
             api_key=api_key,
             provider=provider,
@@ -838,6 +874,7 @@ def process(path: str, output: Optional[str], schema: Optional[str], category: O
             verbosity=VERBOSITY,
             runtime_artifact=runtime_artifact,
             run_id=run_id,
+            qaqc_lane=qaqc_lane,
         )
         return
     
@@ -1171,6 +1208,7 @@ def process(path: str, output: Optional[str], schema: Optional[str], category: O
 def _run_qa_qc_extraction(
     doc_files: List[Path],
     loaded_schema: dict,
+    schema_path: Path,
     output_dir: Path,
     api_key: str,
     provider: str,
@@ -1180,6 +1218,7 @@ def _run_qa_qc_extraction(
     verbosity: str,
     runtime_artifact: Optional[Dict[str, Any]] = None,
     run_id: Optional[str] = None,
+    qaqc_lane: Optional[str] = None,
 ) -> None:
     """
     Run QA/QC multi-model extraction for documents.
@@ -1216,6 +1255,7 @@ def _run_qa_qc_extraction(
         console.print(f"  Provider: [bold]{qa_provider.upper()}[/bold]")
         console.print(f"  Models: [bold]{', '.join(qa_models)}[/bold]")
         console.print(f"  Documents: [bold]{len(doc_files)}[/bold]")
+        console.print(f"  QA/QC Lane: [bold]{qaqc_lane or 'default'}[/bold]")
         console.print()
         console.print(f"[yellow]⚠ Cost Warning:[/yellow] This will run [bold]{len(qa_models)}x[/bold] extractions per document")
         console.print(f"[dim]  Total API calls: {len(doc_files)} docs × {len(qa_models)} models = {len(doc_files) * len(qa_models)} extractions[/dim]")
@@ -1324,7 +1364,14 @@ def _run_qa_qc_extraction(
         console.print(f"[bold green]✓ QA/QC outputs saved to:[/bold green]")
         console.print(f"  [bold]{qa_qc_output.absolute()}[/bold]")
         console.print()
-        console.print("[dim]Next step: Run comparison engine to analyze model differences (Phase 3)[/dim]")
+        compare_command = (
+            'pixi run streamline-extract compare '
+            f'{qa_qc_output.as_posix()} --schema {schema_path.as_posix()}'
+        )
+        if qaqc_lane:
+            compare_command += f' --qaqc-lane {qaqc_lane}'
+        console.print('[dim]Next step: run the comparison workflow:[/dim]')
+        console.print(f'[dim]  {compare_command}[/dim]')
         console.print()
 
 
@@ -1836,9 +1883,10 @@ def consolidate(extracted_dir: str, schema: Optional[str], output: Optional[str]
 @click.command()
 @click.argument('qa_qc_path', type=click.Path(exists=True))
 @click.option('--schema', '-s', type=click.Path(exists=True), required=True, help='Path to QA/QC schema file (REQUIRED)')
+@click.option('--qaqc-lane', type=str, default=None, help='Optional runtime QA/QC lane name to compare, including disabled evaluation lanes such as qualitative')
 @click.option('--quiet', '-q', is_flag=True, help='Minimal output')
 @click.option('--verbose', '-v', is_flag=True, help='Detailed output')
-def compare(qa_qc_path: str, schema: str, quiet: bool, verbose: bool):
+def compare(qa_qc_path: str, schema: str, qaqc_lane: Optional[str], quiet: bool, verbose: bool):
     """
     Generate comparison reports from existing QA/QC extractions.
     
@@ -1885,6 +1933,7 @@ def compare(qa_qc_path: str, schema: str, quiet: bool, verbose: bool):
         qa_qc_config = resolve_qaqc_runtime_config(
             schema_metadata,
             runtime_artifact=runtime_artifact,
+            preferred_lane=qaqc_lane,
         )
     except Exception as e:
         print_error("Failed to load schema", str(e))
@@ -1899,7 +1948,9 @@ def compare(qa_qc_path: str, schema: str, quiet: bool, verbose: bool):
             "Schema": str(schema_path),
             "Runtime": _format_runtime_artifact_summary(runtime_artifact),
             "QA/QC Config": qa_qc_config["source"],
+            "Requested QA/QC Lane": qaqc_lane or "(default resolution)",
             "QA/QC Lane": qa_qc_config.get("lane_name") or "schema fallback",
+            "Comparison Approach": qa_qc_config.get("comparison_approach") or "numeric_only",
             "Match Fields": ", ".join(qa_qc_config["match_fields"]),
             "Compare Fields": ", ".join(qa_qc_config["compare_fields"]),
         }
@@ -1917,7 +1968,9 @@ def compare(qa_qc_path: str, schema: str, quiet: bool, verbose: bool):
     doc_dirs = []
     json_files_in_path = list(qa_qc_path.glob('*.json'))
     
-    if json_files_in_path and any(f.name != 'metadata.json' for f in json_files_in_path):
+    ignored_qaqc_json_files = {'metadata.json', 'comparison_summary.json'}
+
+    if json_files_in_path and any(f.name not in ignored_qaqc_json_files for f in json_files_in_path):
         # This is a single document directory
         doc_dirs = [qa_qc_path]
     else:
@@ -1943,7 +1996,7 @@ def compare(qa_qc_path: str, schema: str, quiet: bool, verbose: bool):
         # Find model output files
         model_files = {}
         for f in doc_dir.glob('*.json'):
-            if f.name == 'metadata.json':
+            if f.name in ignored_qaqc_json_files:
                 continue
             model_name = f.stem
             model_files[model_name] = f
@@ -1968,6 +2021,7 @@ def compare(qa_qc_path: str, schema: str, quiet: bool, verbose: bool):
                 'full_agreement_pct': result.summary.get('full_agreement_pct', 0),
                 'needs_review_count': result.summary.get('needs_review_count', 0),
                 'total_comparisons': result.summary.get('total_comparisons', 0),
+                'qualitative_gate': result.summary.get('qualitative_advisory_gate'),
             })
             
             if verbosity != 'quiet':
@@ -1986,6 +2040,39 @@ def compare(qa_qc_path: str, schema: str, quiet: bool, verbose: bool):
                 console.print(f"{status} {doc_dir.name}")
                 console.print(f"    Agreement: [bold]{agreement_pct:.1f}%[/bold] ({total - needs_review}/{total} fields)")
                 console.print(f"    Needs review: {needs_review} field(s)")
+                qualitative_gate = result.summary.get('qualitative_advisory_gate') or {}
+                if qualitative_gate:
+                    gate_status = str(qualitative_gate.get('status', 'not_applicable')).upper()
+                    aligned_pct = float(qualitative_gate.get('aligned_pct', 0.0))
+                    missing_pct = float(qualitative_gate.get('missing_item_pct', 0.0))
+                    excluded_scope_variants = int(qualitative_gate.get('excluded_scope_variants', 0) or 0)
+                    console.print(
+                        f"    Qualitative advisory gate: [bold]{gate_status}[/bold] "
+                        f"({aligned_pct:.1f}% aligned, {missing_pct:.1f}% missing items)"
+                    )
+                    if excluded_scope_variants:
+                        console.print(
+                            f"    Excluded scope variants: {excluded_scope_variants} auxiliary row(s)"
+                        )
+                qualitative_breakdown = result.summary.get('qualitative_mismatch_breakdown') or {}
+                missing_categories = qualitative_breakdown.get('missing_item_by_category') or []
+                scope_variant_categories = qualitative_breakdown.get('scope_variant_by_category') or []
+                text_categories = qualitative_breakdown.get('text_difference_by_category') or []
+                if missing_categories:
+                    summary_text = ", ".join(
+                        f"{entry.get('label')} ({entry.get('count')})" for entry in missing_categories[:3]
+                    )
+                    console.print(f"    Top missing-item categories: {summary_text}")
+                if scope_variant_categories:
+                    summary_text = ", ".join(
+                        f"{entry.get('label')} ({entry.get('count')})" for entry in scope_variant_categories[:3]
+                    )
+                    console.print(f"    Top scope-variant categories: {summary_text}")
+                if text_categories:
+                    summary_text = ", ".join(
+                        f"{entry.get('label')} ({entry.get('count')})" for entry in text_categories[:3]
+                    )
+                    console.print(f"    Top text-difference categories: {summary_text}")
                 console.print()
                 
         except Exception as e:
@@ -2014,6 +2101,18 @@ def compare(qa_qc_path: str, schema: str, quiet: bool, verbose: bool):
                 "Average Agreement": f"{avg_agreement:.1f}%",
                 "Total Fields Needing Review": str(total_reviews),
             }
+
+            qualitative_gates = [
+                r.get('qualitative_gate') for r in successful if r.get('qualitative_gate')
+            ]
+            if qualitative_gates:
+                gate_counts = {}
+                for gate in qualitative_gates:
+                    gate_status = str(gate.get('status', 'not_applicable')).upper()
+                    gate_counts[gate_status] = gate_counts.get(gate_status, 0) + 1
+                summary_stats["Qualitative Gates"] = ", ".join(
+                    f"{status}: {count}" for status, count in sorted(gate_counts.items())
+                )
             
             if failed:
                 summary_stats["Failed"] = f"[red]{len(failed)}[/red]"
@@ -2034,16 +2133,18 @@ def compare(qa_qc_path: str, schema: str, quiet: bool, verbose: bool):
 
 
 @click.command(name='benchmark')
-@click.argument('path', type=click.Path(exists=True))
+@click.argument('path', required=False, type=click.Path(path_type=Path))
+@click.option('--gate-profile', type=click.Path(exists=True, dir_okay=False, path_type=Path), default=None, help='JSON file containing benchmark input paths and gate thresholds for reproducible release evaluation.')
 @click.option('--extraction-baseline-dir', type=click.Path(exists=True, file_okay=False, path_type=Path), default=None, help='Directory containing expected extraction JSON records for parity scoring. Files should mirror benchmark output relative paths or record filenames.')
 @click.option('--qaqc-baseline-dir', type=click.Path(exists=True, file_okay=False, path_type=Path), default=None, help='Directory containing expected QA/QC comparison_report.csv files for signal-quality scoring. Files should mirror benchmark document-folder relative paths.')
 @click.option('--consolidation-baseline-dir', type=click.Path(exists=True, file_okay=False, path_type=Path), default=None, help='Directory containing expected consolidated CSV outputs for row-correctness scoring. Files should mirror benchmark CSV relative paths or filenames.')
 @click.option('--consolidation-schema', type=click.Path(exists=True, dir_okay=False, path_type=Path), default=None, help='Schema used to generate consolidated outputs. Required for consolidation correctness scoring.')
-@click.option('--baseline-snapshot', type=click.Path(exists=True), default=None, help='Path to a saved benchmark snapshot used for median throughput/cost delta comparison.')
-@click.option('--write-snapshot', type=click.Path(), default=None, help='Write the current benchmark metrics to a snapshot JSON file.')
+@click.option('--baseline-snapshot', type=click.Path(exists=True, dir_okay=False, path_type=Path), default=None, help='Path to a saved benchmark snapshot used for median throughput/cost delta comparison.')
+@click.option('--write-snapshot', type=click.Path(dir_okay=False, path_type=Path), default=None, help='Write the current benchmark metrics to a snapshot JSON file.')
 @click.option('--snapshot-label', type=str, default=None, help='Optional label to store in a written benchmark snapshot.')
 @click.option('--min-extraction-parity', type=float, default=None, help='Minimum required extraction parity percentage (0-100) when expected extraction records are provided.')
 @click.option('--min-qaqc-signal-quality', type=float, default=None, help='Minimum required QA/QC signal quality percentage (0-100) when expected comparison reports are provided.')
+@click.option('--min-qaqc-qualitative-pass-rate', type=float, default=None, help='Minimum required percentage (0-100) of qualitative QA/QC comparison summaries whose advisory gate status is pass.')
 @click.option('--min-consolidation-correctness', type=float, default=None, help='Minimum required consolidation correctness percentage (0-100) when expected consolidated CSVs are provided.')
 @click.option('--max-failure-rate', type=float, default=None, help='Maximum allowed failed-document rate (0-1).')
 @click.option('--max-average-seconds-per-document', type=float, default=None, help='Maximum allowed average processing seconds per document.')
@@ -2054,16 +2155,18 @@ def compare(qa_qc_path: str, schema: str, quiet: bool, verbose: bool):
 @click.option('--quiet', '-q', is_flag=True, help='Minimal output (machine-readable)')
 @click.option('--verbose', '-v', is_flag=True, help='Detailed output')
 def benchmark(
-    path: str,
+    path: Optional[Path],
+    gate_profile: Optional[Path],
     extraction_baseline_dir: Optional[Path],
     qaqc_baseline_dir: Optional[Path],
     consolidation_baseline_dir: Optional[Path],
     consolidation_schema: Optional[Path],
-    baseline_snapshot: Optional[str],
-    write_snapshot: Optional[str],
+    baseline_snapshot: Optional[Path],
+    write_snapshot: Optional[Path],
     snapshot_label: Optional[str],
     min_extraction_parity: Optional[float],
     min_qaqc_signal_quality: Optional[float],
+    min_qaqc_qualitative_pass_rate: Optional[float],
     min_consolidation_correctness: Optional[float],
     max_failure_rate: Optional[float],
     max_average_seconds_per_document: Optional[float],
@@ -2075,7 +2178,33 @@ def benchmark(
     verbose: bool,
 ):
     """Build a performance profile from run manifests and evaluate benchmark gates."""
-    benchmark_path = Path(path)
+    profile_values = _load_benchmark_gate_profile(gate_profile) if gate_profile is not None else {}
+
+    benchmark_path = _coalesce_benchmark_option(path, profile_values, 'path')
+    extraction_baseline_dir = _coalesce_benchmark_option(extraction_baseline_dir, profile_values, 'extraction_baseline_dir')
+    qaqc_baseline_dir = _coalesce_benchmark_option(qaqc_baseline_dir, profile_values, 'qaqc_baseline_dir')
+    consolidation_baseline_dir = _coalesce_benchmark_option(consolidation_baseline_dir, profile_values, 'consolidation_baseline_dir')
+    consolidation_schema = _coalesce_benchmark_option(consolidation_schema, profile_values, 'consolidation_schema')
+    baseline_snapshot = _coalesce_benchmark_option(baseline_snapshot, profile_values, 'baseline_snapshot')
+    write_snapshot = _coalesce_benchmark_option(write_snapshot, profile_values, 'write_snapshot')
+    snapshot_label = _coalesce_benchmark_option(snapshot_label, profile_values, 'snapshot_label')
+    min_extraction_parity = _coalesce_benchmark_option(min_extraction_parity, profile_values, 'min_extraction_parity')
+    min_qaqc_signal_quality = _coalesce_benchmark_option(min_qaqc_signal_quality, profile_values, 'min_qaqc_signal_quality')
+    min_qaqc_qualitative_pass_rate = _coalesce_benchmark_option(min_qaqc_qualitative_pass_rate, profile_values, 'min_qaqc_qualitative_pass_rate')
+    min_consolidation_correctness = _coalesce_benchmark_option(min_consolidation_correctness, profile_values, 'min_consolidation_correctness')
+    max_failure_rate = _coalesce_benchmark_option(max_failure_rate, profile_values, 'max_failure_rate')
+    max_average_seconds_per_document = _coalesce_benchmark_option(max_average_seconds_per_document, profile_values, 'max_average_seconds_per_document')
+    min_documents_per_minute = _coalesce_benchmark_option(min_documents_per_minute, profile_values, 'min_documents_per_minute')
+    max_total_errors = _coalesce_benchmark_option(max_total_errors, profile_values, 'max_total_errors')
+    max_throughput_delta_percent = _coalesce_benchmark_option(max_throughput_delta_percent, profile_values, 'max_throughput_delta_percent')
+    max_cost_delta_percent = _coalesce_benchmark_option(max_cost_delta_percent, profile_values, 'max_cost_delta_percent')
+
+    if benchmark_path is None:
+        raise click.UsageError('benchmark requires PATH or --gate-profile with a path entry')
+    benchmark_path = Path(benchmark_path)
+    if not benchmark_path.exists():
+        raise click.UsageError(f'Benchmark path not found: {benchmark_path}')
+
     if min_extraction_parity is not None and extraction_baseline_dir is None:
         raise click.UsageError('--min-extraction-parity requires --extraction-baseline-dir')
     if min_qaqc_signal_quality is not None and qaqc_baseline_dir is None:
@@ -2113,6 +2242,7 @@ def benchmark(
         metrics,
         min_extraction_parity=min_extraction_parity,
         min_qaqc_signal_quality=min_qaqc_signal_quality,
+        min_qaqc_qualitative_pass_rate=min_qaqc_qualitative_pass_rate,
         min_consolidation_correctness=min_consolidation_correctness,
         max_failure_rate=max_failure_rate,
         max_average_seconds_per_document=max_average_seconds_per_document,
@@ -2146,12 +2276,15 @@ def benchmark(
         'Run Manifests': str(metrics['manifest_count']),
         'Documents': str(metrics['total_documents']),
     }
+    if gate_profile is not None:
+        config_info['Gate Profile'] = str(gate_profile)
     console.print(create_config_table('Benchmark Input', config_info))
     console.print()
 
     summary_stats = {
         'Extraction Parity': f"{metrics['extraction_parity']:.2f}%" if metrics['extraction_parity'] is not None else 'N/A',
         'QA/QC Signal Quality': f"{metrics['qaqc_signal_quality']:.2f}%" if metrics['qaqc_signal_quality'] is not None else 'N/A',
+        'QA/QC Qualitative Pass Rate': f"{metrics['qaqc_qualitative_pass_rate']:.2f}%" if metrics['qaqc_qualitative_pass_rate'] is not None else 'N/A',
         'Consolidation Correctness': f"{metrics['consolidation_correctness']:.2f}%" if metrics['consolidation_correctness'] is not None else 'N/A',
         'Successful Documents': str(metrics['successful_documents']),
         'Failed Documents': str(metrics['failed_documents']),
@@ -2181,6 +2314,10 @@ def benchmark(
     if verbose and metrics['error_categories']:
         console.print()
         console.print(create_summary_table('Error Categories', metrics['error_categories']))
+
+    if verbose and metrics['qaqc_qualitative_gate_counts']:
+        console.print()
+        console.print(create_summary_table('QA/QC Qualitative Gates', metrics['qaqc_qualitative_gate_counts']))
 
     if snapshot_path is not None:
         console.print()

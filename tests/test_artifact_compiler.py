@@ -186,22 +186,12 @@ def test_compile_runtime_artifact_exposes_tariff_qaqc_projection() -> None:
     assert projection["parent_fields"] == ["rate_name", "is_rider", "sector"]
 
 
-def test_resolve_pack_ref_for_schema_uses_primary_and_alias_paths() -> None:
-    current = resolve_pack_ref_for_schema(
-        REPO_ROOT / "schemas/geothermal_ordinance_schema_v3.json",
-        repo_root=REPO_ROOT,
-    )
-    legacy = resolve_pack_ref_for_schema(
-        REPO_ROOT / "schemas/geothermal_ordinance_schema.json",
-        repo_root=REPO_ROOT,
-    )
+def test_resolve_pack_ref_for_schema_uses_primary_schema_path() -> None:
     production = resolve_pack_ref_for_schema(
         REPO_ROOT / "schemas/personal/geothermal_ordinance_schema.json",
         repo_root=REPO_ROOT,
     )
 
-    assert current == "geothermal_ordinances"
-    assert legacy == "geothermal_ordinances"
     assert production == "geothermal_ordinances"
 
 

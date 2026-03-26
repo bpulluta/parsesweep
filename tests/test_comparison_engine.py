@@ -229,6 +229,737 @@ class TestComparisonEngine:
             "parent_fields": ["rate_name"],
         }
 
+    def test_resolve_qaqc_runtime_config_can_select_disabled_qualitative_lane(self):
+        """Explicit lane selection should allow evaluating a disabled qualitative lane."""
+        mock = MagicMock()
+        mock.get_qa_qc_match_fields.side_effect = AssertionError("schema fallback should not be used")
+        mock.get_qa_qc_compare_fields.side_effect = AssertionError("schema fallback should not be used")
+
+        config = resolve_qaqc_runtime_config(
+            mock,
+            runtime_artifact={
+                "resolved": {
+                    "pack": {
+                        "qaqc": {
+                            "default_lane": "quantitative",
+                            "lanes": {
+                                "quantitative": {
+                                    "enabled": True,
+                                    "mode": "quantitative",
+                                    "comparison_approach": "numeric_only",
+                                    "record_matching": {"key_fields": ["category"]},
+                                    "comparison": {"primary_fields": ["value"]},
+                                },
+                                "qualitative": {
+                                    "enabled": False,
+                                    "mode": "qualitative",
+                                    "comparison_approach": "text_review",
+                                    "record_matching": {"key_fields": ["category"]},
+                                    "comparison": {"primary_fields": ["details"]},
+                                },
+                            },
+                        }
+                    }
+                }
+            },
+            preferred_lane="qualitative",
+        )
+
+        assert config["source"] == "runtime_artifact"
+        assert config["lane_name"] == "qualitative"
+        assert config["mode"] == "qualitative"
+        assert config["comparison_approach"] == "text_review"
+        assert config["match_fields"] == ["category"]
+        assert config["compare_fields"] == ["details"]
+
+    def test_compare_outputs_text_review_compares_configured_text_fields(self, temp_dir):
+        """Qualitative text-review lanes should compare configured text fields instead of skipping them."""
+        mock = MagicMock()
+        mock.get_main_data_array.return_value = "requirements"
+        mock.get_identifier_fields.return_value = []
+        mock.get_context_objects.return_value = []
+        mock.get_expected_requirements.return_value = []
+
+        model_a = {
+            "requirements": [
+                {
+                    "category": "Permit required",
+                    "specific_subject": "Commercial Use",
+                    "details": "Permit required before operations begin",
+                }
+            ]
+        }
+        model_b = {
+            "requirements": [
+                {
+                    "category": "Permit required",
+                    "specific_subject": "Commercial Use",
+                    "details": "Permit required before drilling begins",
+                }
+            ]
+        }
+
+        path_a = temp_dir / "gpt-4o.json"
+        path_b = temp_dir / "gpt-4.1.json"
+        path_a.write_text(json.dumps(model_a))
+        path_b.write_text(json.dumps(model_b))
+
+        engine = ComparisonEngine(
+            mock,
+            qa_qc_config={
+                "source": "runtime_artifact",
+                "lane_name": "qualitative",
+                "mode": "qualitative",
+                "comparison_approach": "text_review",
+                "match_fields": ["category", "specific_subject"],
+                "compare_fields": ["details"],
+            },
+        )
+        result = engine.compare_outputs(
+            output_files={"gpt-4o": path_a, "gpt-4.1": path_b},
+            document_name="Qualitative Doc",
+        )
+
+        details_comparison = next(
+            (fc for fc in result.item_comparisons if fc.field_path == "details"),
+            None,
+        )
+        assert details_comparison is not None
+        assert details_comparison.agreement_score == "1/2"
+        assert details_comparison.needs_review is True
+        assert result.summary["comparison_approach"] == "text_review"
+        assert result.summary["qaqc_lane"] == "qualitative"
+        assert result.summary["review_category_counts"] == {"text_difference": 1}
+        breakdown = result.summary["qualitative_mismatch_breakdown"]
+        assert breakdown["text_difference_by_category"] == [{"label": "permit required", "count": 1}]
+        assert breakdown["top_text_difference_requirements"] == [
+            {"label": "permit required | commercial use", "count": 1}
+        ]
+
+        gate = result.summary["qualitative_advisory_gate"]
+        assert gate["mode"] == "advisory"
+        assert gate["status"] == "fail"
+        assert gate["aligned_pct"] == 0.0
+        assert gate["missing_item_pct"] == 0.0
+
+    def test_qualitative_advisory_gate_passes_for_mostly_aligned_results(self, temp_dir):
+        mock = MagicMock()
+        mock.get_main_data_array.return_value = "requirements"
+        mock.get_identifier_fields.return_value = ["category", "specific_subject"]
+        mock.get_context_objects.return_value = []
+        mock.get_expected_requirements.return_value = []
+
+        model_a = {
+            "requirements": [
+                {"category": "Permit", "specific_subject": "A", "details": "same"},
+                {"category": "Permit", "specific_subject": "B", "details": "same"},
+                {"category": "Permit", "specific_subject": "C", "details": "same"},
+                {"category": "Permit", "specific_subject": "D", "details": "same"},
+                {"category": "Permit", "specific_subject": "E", "details": "different a"},
+            ]
+        }
+        model_b = {
+            "requirements": [
+                {"category": "Permit", "specific_subject": "A", "details": "same"},
+                {"category": "Permit", "specific_subject": "B", "details": "same"},
+                {"category": "Permit", "specific_subject": "C", "details": "same"},
+                {"category": "Permit", "specific_subject": "D", "details": "same"},
+                {"category": "Permit", "specific_subject": "E", "details": "different b"},
+            ]
+        }
+
+        path_a = temp_dir / "gpt-4o.json"
+        path_b = temp_dir / "gpt-4.1.json"
+        path_a.write_text(json.dumps(model_a))
+        path_b.write_text(json.dumps(model_b))
+
+        engine = ComparisonEngine(
+            mock,
+            qa_qc_config={
+                "source": "runtime_artifact",
+                "lane_name": "qualitative",
+                "mode": "qualitative",
+                "comparison_approach": "text_review",
+                "match_fields": ["category", "specific_subject"],
+                "compare_fields": ["details"],
+            },
+        )
+        result = engine.compare_outputs(
+            output_files={"gpt-4o": path_a, "gpt-4.1": path_b},
+            document_name="Qualitative Pass Doc",
+        )
+
+        gate = result.summary["qualitative_advisory_gate"]
+        assert result.summary["review_category_counts"] == {"aligned": 4, "text_difference": 1}
+        assert gate["status"] == "pass"
+        assert gate["aligned_pct"] == 80.0
+
+    def test_qualitative_advisory_gate_warns_for_moderate_divergence(self, temp_dir):
+        mock = MagicMock()
+        mock.get_main_data_array.return_value = "requirements"
+        mock.get_identifier_fields.return_value = ["category", "specific_subject"]
+        mock.get_context_objects.return_value = []
+        mock.get_expected_requirements.return_value = []
+
+        model_a = {
+            "requirements": [
+                {"category": "Permit", "specific_subject": "A", "details": "same"},
+                {"category": "Permit", "specific_subject": "B", "details": "same"},
+                {"category": "Permit", "specific_subject": "C", "details": "different a"},
+                {"category": "Permit", "specific_subject": "D", "details": "different a"},
+            ]
+        }
+        model_b = {
+            "requirements": [
+                {"category": "Permit", "specific_subject": "A", "details": "same"},
+                {"category": "Permit", "specific_subject": "B", "details": "same"},
+                {"category": "Permit", "specific_subject": "C", "details": "different b"},
+                {"category": "Permit", "specific_subject": "D", "details": "different b"},
+            ]
+        }
+
+        path_a = temp_dir / "gpt-4o.json"
+        path_b = temp_dir / "gpt-4.1.json"
+        path_a.write_text(json.dumps(model_a))
+        path_b.write_text(json.dumps(model_b))
+
+        engine = ComparisonEngine(
+            mock,
+            qa_qc_config={
+                "source": "runtime_artifact",
+                "lane_name": "qualitative",
+                "mode": "qualitative",
+                "comparison_approach": "text_review",
+                "match_fields": ["category", "specific_subject"],
+                "compare_fields": ["details"],
+            },
+        )
+        result = engine.compare_outputs(
+            output_files={"gpt-4o": path_a, "gpt-4.1": path_b},
+            document_name="Qualitative Warn Doc",
+        )
+
+        gate = result.summary["qualitative_advisory_gate"]
+        assert result.summary["review_category_counts"] == {"aligned": 2, "text_difference": 2}
+        assert gate["status"] == "warn"
+        assert gate["aligned_pct"] == 50.0
+
+    def test_qualitative_advisory_gate_fails_for_missing_item_heavy_results(self, temp_dir):
+        mock = MagicMock()
+        mock.get_main_data_array.return_value = "requirements"
+        mock.get_identifier_fields.return_value = ["category", "specific_subject"]
+        mock.get_context_objects.return_value = []
+        mock.get_expected_requirements.return_value = []
+
+        model_a = {
+            "requirements": [
+                {"category": "Permit", "specific_subject": "A", "details": "same"},
+                {"category": "Permit", "specific_subject": "B", "details": "same"},
+                {"category": "Permit", "specific_subject": "C", "details": "same"},
+                {"category": "Permit", "specific_subject": "D", "details": "same"},
+            ]
+        }
+        model_b = {
+            "requirements": [
+                {"category": "Permit", "specific_subject": "A", "details": "same"},
+                {"category": "Permit", "specific_subject": "B", "details": "same"},
+            ]
+        }
+
+        path_a = temp_dir / "gpt-4o.json"
+        path_b = temp_dir / "gpt-4.1.json"
+        path_a.write_text(json.dumps(model_a))
+        path_b.write_text(json.dumps(model_b))
+
+        engine = ComparisonEngine(
+            mock,
+            qa_qc_config={
+                "source": "runtime_artifact",
+                "lane_name": "qualitative",
+                "mode": "qualitative",
+                "comparison_approach": "text_review",
+                "match_fields": ["category", "specific_subject"],
+                "compare_fields": ["details"],
+            },
+        )
+        result = engine.compare_outputs(
+            output_files={"gpt-4o": path_a, "gpt-4.1": path_b},
+            document_name="Qualitative Missing Doc",
+        )
+
+        gate = result.summary["qualitative_advisory_gate"]
+        assert result.summary["review_category_counts"] == {"aligned": 2, "missing_item": 2}
+        breakdown = result.summary["qualitative_mismatch_breakdown"]
+        assert breakdown["missing_item_by_category"] == [{"label": "permit", "count": 2}]
+        assert breakdown["top_missing_requirements"] == [
+            {"label": "permit | c", "count": 1},
+            {"label": "permit | d", "count": 1},
+        ]
+        assert gate["status"] == "fail"
+        assert gate["aligned_pct"] == 50.0
+        assert gate["missing_item_pct"] == 50.0
+
+    def test_qualitative_scope_variants_are_excluded_from_gate_math(self, temp_dir):
+        mock = MagicMock()
+        mock.get_main_data_array.return_value = "requirements"
+        mock.get_identifier_fields.return_value = ["category", "facility_type", "specific_subject"]
+        mock.get_context_objects.return_value = []
+        mock.get_expected_requirements.return_value = []
+
+        model_a = {
+            "requirements": [
+                {"category": "Permit", "facility_type": "All facilities", "specific_subject": "A", "details": "same"},
+                {"category": "Permit", "facility_type": "All facilities", "specific_subject": "B", "details": "same"},
+                {"category": "Permit", "facility_type": "All facilities", "specific_subject": "C", "details": "same"},
+                {"category": "Permit", "facility_type": "All facilities", "specific_subject": "D", "details": "same"},
+                {"category": "Other", "facility_type": "Pipeline", "specific_subject": "pipeline siting and configuration", "details": "Use shared rights-of-way where feasible."},
+            ]
+        }
+        model_b = {
+            "requirements": [
+                {"category": "Permit", "facility_type": "All facilities", "specific_subject": "A", "details": "same"},
+                {"category": "Permit", "facility_type": "All facilities", "specific_subject": "B", "details": "same"},
+                {"category": "Permit", "facility_type": "All facilities", "specific_subject": "C", "details": "same"},
+                {"category": "Permit", "facility_type": "All facilities", "specific_subject": "D", "details": "same"},
+            ]
+        }
+
+        path_a = temp_dir / "gpt-4o.json"
+        path_b = temp_dir / "gpt-4.1.json"
+        path_a.write_text(json.dumps(model_a))
+        path_b.write_text(json.dumps(model_b))
+
+        engine = ComparisonEngine(
+            mock,
+            qa_qc_config={
+                "source": "runtime_artifact",
+                "lane_name": "qualitative",
+                "mode": "qualitative",
+                "comparison_approach": "text_review",
+                "match_fields": ["category", "facility_type", "specific_subject"],
+                "compare_fields": ["details"],
+            },
+        )
+        result = engine.compare_outputs(
+            output_files={"gpt-4o": path_a, "gpt-4.1": path_b},
+            document_name="Qualitative Scope Variant Doc",
+        )
+
+        assert result.summary["review_category_counts"] == {"aligned": 4, "scope_variant": 1}
+        breakdown = result.summary["qualitative_mismatch_breakdown"]
+        assert breakdown["scope_variant_by_category"] == [{"label": "other", "count": 1}]
+        assert breakdown["top_scope_variant_requirements"] == [
+            {"label": "other | pipeline | pipeline siting and configuration", "count": 1}
+        ]
+
+        gate = result.summary["qualitative_advisory_gate"]
+        assert gate["status"] == "pass"
+        assert gate["aligned_pct"] == 100.0
+        assert gate["missing_item_pct"] == 0.0
+        assert gate["evaluated_comparisons"] == 4
+        assert gate["excluded_scope_variants"] == 1
+
+    def test_text_review_fallback_matches_identical_details_despite_key_differences(self, temp_dir):
+        mock = MagicMock()
+        mock.get_main_data_array.return_value = "requirements"
+        mock.get_identifier_fields.return_value = ["category", "facility_type", "specific_subject"]
+        mock.get_context_objects.return_value = []
+        mock.get_expected_requirements.return_value = []
+
+        shared_text = "Lights should be directed or shielded to confine direct rays to the Project site."
+        model_a = {
+            "requirements": [
+                {
+                    "category": "Lighting requirement",
+                    "facility_type": "All facilities",
+                    "specific_subject": None,
+                    "details": shared_text,
+                }
+            ]
+        }
+        model_b = {
+            "requirements": [
+                {
+                    "category": "Lighting requirement",
+                    "facility_type": "Exploration/drilling",
+                    "specific_subject": None,
+                    "details": shared_text,
+                }
+            ]
+        }
+
+        path_a = temp_dir / "gpt-4o.json"
+        path_b = temp_dir / "gpt-4.1.json"
+        path_a.write_text(json.dumps(model_a))
+        path_b.write_text(json.dumps(model_b))
+
+        engine = ComparisonEngine(
+            mock,
+            qa_qc_config={
+                "source": "runtime_artifact",
+                "lane_name": "qualitative",
+                "mode": "qualitative",
+                "comparison_approach": "text_review",
+                "match_fields": ["category", "facility_type", "specific_subject"],
+                "compare_fields": ["details"],
+            },
+        )
+        result = engine.compare_outputs(
+            output_files={"gpt-4o": path_a, "gpt-4.1": path_b},
+            document_name="Qualitative Fallback Doc",
+        )
+
+        details_comparison = next(
+            (fc for fc in result.item_comparisons if fc.field_path == "details"),
+            None,
+        )
+        assert details_comparison is not None
+        assert details_comparison.agreement_score == "2/2"
+        assert details_comparison.needs_review is False
+        assert result.summary["review_category_counts"] == {"aligned": 1}
+
+        gate = result.summary["qualitative_advisory_gate"]
+        assert gate["status"] == "pass"
+        assert gate["missing_item_pct"] == 0.0
+
+    def test_text_review_collapses_same_model_duplicates_before_fallback_matching(self, temp_dir):
+        mock = MagicMock()
+        mock.get_main_data_array.return_value = "requirements"
+        mock.get_identifier_fields.return_value = ["category", "facility_type", "specific_subject"]
+        mock.get_context_objects.return_value = []
+        mock.get_expected_requirements.return_value = []
+
+        shared_text = "Shrubs, trees, and ground cover shall be planted and maintained."
+        model_a = {
+            "requirements": [
+                {
+                    "category": "Visual impact assessment",
+                    "facility_type": "All facilities",
+                    "specific_subject": None,
+                    "details": shared_text,
+                },
+                {
+                    "category": "Visual impact assessment",
+                    "facility_type": "Power plant",
+                    "specific_subject": None,
+                    "details": shared_text,
+                },
+            ]
+        }
+        model_b = {
+            "requirements": [
+                {
+                    "category": "Visual impact assessment",
+                    "facility_type": "All facilities",
+                    "specific_subject": "landscaping",
+                    "details": shared_text,
+                }
+            ]
+        }
+
+        path_a = temp_dir / "gpt-4o.json"
+        path_b = temp_dir / "gpt-4.1.json"
+        path_a.write_text(json.dumps(model_a))
+        path_b.write_text(json.dumps(model_b))
+
+        engine = ComparisonEngine(
+            mock,
+            qa_qc_config={
+                "source": "runtime_artifact",
+                "lane_name": "qualitative",
+                "mode": "qualitative",
+                "comparison_approach": "text_review",
+                "match_fields": ["category", "facility_type", "specific_subject"],
+                "compare_fields": ["details"],
+            },
+        )
+        result = engine.compare_outputs(
+            output_files={"gpt-4o": path_a, "gpt-4.1": path_b},
+            document_name="Qualitative Duplicate Collapse Doc",
+        )
+
+        details_comparisons = [
+            fc for fc in result.item_comparisons if fc.field_path == "details"
+        ]
+        assert len(details_comparisons) == 1
+        assert details_comparisons[0].agreement_score == "2/2"
+        assert details_comparisons[0].needs_review is False
+        assert result.summary["review_category_counts"] == {"aligned": 1}
+
+    def test_text_review_absorbs_unique_subsumed_missing_item(self, temp_dir):
+        mock = MagicMock()
+        mock.get_main_data_array.return_value = "requirements"
+        mock.get_identifier_fields.return_value = ["category", "facility_type", "specific_subject"]
+        mock.get_context_objects.return_value = []
+        mock.get_expected_requirements.return_value = []
+
+        model_a = {
+            "requirements": [
+                {
+                    "category": "Setback",
+                    "facility_type": "Production/injection well",
+                    "specific_subject": "from structures/residential zones",
+                    "details": "Residence 300 feet. Any other permanent structure/development 300 feet.",
+                }
+            ]
+        }
+        model_b = {
+            "requirements": [
+                {
+                    "category": "Setback",
+                    "facility_type": "Production/injection well",
+                    "specific_subject": "from structures/residential zones",
+                    "details": "Residence 300 feet.",
+                },
+                {
+                    "category": "Setback",
+                    "facility_type": "Production/injection well",
+                    "specific_subject": "from any other permanent structure/development",
+                    "details": "Any other permanent structure/development 300 feet.",
+                },
+            ]
+        }
+
+        path_a = temp_dir / "gpt-4o.json"
+        path_b = temp_dir / "gpt-4.1.json"
+        path_a.write_text(json.dumps(model_a))
+        path_b.write_text(json.dumps(model_b))
+
+        engine = ComparisonEngine(
+            mock,
+            qa_qc_config={
+                "source": "runtime_artifact",
+                "lane_name": "qualitative",
+                "mode": "qualitative",
+                "comparison_approach": "text_review",
+                "match_fields": ["category", "facility_type", "specific_subject"],
+                "compare_fields": ["details"],
+            },
+        )
+        result = engine.compare_outputs(
+            output_files={"gpt-4o": path_a, "gpt-4.1": path_b},
+            document_name="Qualitative Subsumed Item Doc",
+        )
+
+        assert result.summary["review_category_counts"] == {"text_difference": 1}
+        assert result.summary["qualitative_mismatch_breakdown"]["missing_item_by_category"] == []
+
+    def test_text_review_merges_duplicate_keys_within_same_model(self, temp_dir):
+        mock = MagicMock()
+        mock.get_main_data_array.return_value = "requirements"
+        mock.get_identifier_fields.return_value = ["category", "facility_type", "specific_subject"]
+        mock.get_context_objects.return_value = []
+        mock.get_expected_requirements.return_value = []
+
+        model_a = {
+            "requirements": [
+                {
+                    "category": "Noise limit",
+                    "facility_type": "Exploration/drilling",
+                    "specific_subject": "drilling operations",
+                    "details": "Each operator shall limit drilling noise to CNEL 65 dB(A).",
+                },
+                {
+                    "category": "Noise limit",
+                    "facility_type": "Exploration/drilling",
+                    "specific_subject": "drilling operations",
+                    "details": "Impulse noises such as sudden steam venting shall be controlled by mufflers.",
+                },
+            ]
+        }
+        model_b = {
+            "requirements": [
+                {
+                    "category": "Noise limit",
+                    "facility_type": "Exploration/drilling",
+                    "specific_subject": "drilling operations",
+                    "details": "Each operator shall limit drilling noise to CNEL 65 dB(A). Impulse noises such as sudden steam venting shall be controlled by mufflers.",
+                }
+            ]
+        }
+
+        path_a = temp_dir / "gpt-4o.json"
+        path_b = temp_dir / "gpt-4.1.json"
+        path_a.write_text(json.dumps(model_a))
+        path_b.write_text(json.dumps(model_b))
+
+        engine = ComparisonEngine(
+            mock,
+            qa_qc_config={
+                "source": "runtime_artifact",
+                "lane_name": "qualitative",
+                "mode": "qualitative",
+                "comparison_approach": "text_review",
+                "match_fields": ["category", "facility_type", "specific_subject"],
+                "compare_fields": ["details"],
+            },
+        )
+        result = engine.compare_outputs(
+            output_files={"gpt-4o": path_a, "gpt-4.1": path_b},
+            document_name="Qualitative Duplicate Key Merge Doc",
+        )
+
+        assert result.summary["review_category_counts"] == {"aligned": 1}
+
+    def test_text_review_absorbs_decommissioning_procedural_detail(self, temp_dir):
+        mock = MagicMock()
+        mock.get_main_data_array.return_value = "requirements"
+        mock.get_identifier_fields.return_value = ["category", "facility_type", "specific_subject"]
+        mock.get_context_objects.return_value = []
+        mock.get_expected_requirements.return_value = []
+
+        model_a = {
+            "requirements": [
+                {
+                    "category": "Decommissioning",
+                    "facility_type": "All facilities",
+                    "specific_subject": "facility removal",
+                    "details": "When the operation of the permitted Project has ceased, all facilities on the site shall be secured until an alternative use is found for the facilities, or they are dismantled and removed.",
+                }
+            ]
+        }
+        model_b = {
+            "requirements": [
+                {
+                    "category": "Decommissioning",
+                    "facility_type": "Exploration/drilling",
+                    "specific_subject": "facility removal",
+                    "details": "Drilling operations shall be diligently pursued until each well is completed or abandoned. All drilling equipment, including derrick, shall be removed from the premises as soon as practicable after completion of any well.",
+                }
+            ]
+        }
+
+        path_a = temp_dir / "gpt-4o.json"
+        path_b = temp_dir / "gpt-4.1.json"
+        path_a.write_text(json.dumps(model_a))
+        path_b.write_text(json.dumps(model_b))
+
+        engine = ComparisonEngine(
+            mock,
+            qa_qc_config={
+                "source": "runtime_artifact",
+                "lane_name": "qualitative",
+                "mode": "qualitative",
+                "comparison_approach": "text_review",
+                "match_fields": ["category", "facility_type", "specific_subject"],
+                "compare_fields": ["details"],
+            },
+        )
+        result = engine.compare_outputs(
+            output_files={"gpt-4o": path_a, "gpt-4.1": path_b},
+            document_name="Qualitative Decommissioning Absorption Doc",
+        )
+
+        assert result.summary["review_category_counts"] == {"scope_variant": 1}
+
+    def test_text_review_absorbs_parking_detail_into_roads_and_parking(self, temp_dir):
+        mock = MagicMock()
+        mock.get_main_data_array.return_value = "requirements"
+        mock.get_identifier_fields.return_value = ["category", "facility_type", "specific_subject"]
+        mock.get_context_objects.return_value = []
+        mock.get_expected_requirements.return_value = []
+
+        model_a = {
+            "requirements": [
+                {
+                    "category": "Other",
+                    "facility_type": "All facilities",
+                    "specific_subject": "roads and parking",
+                    "details": "All proposed on-site roads and parking areas shall be improved to County standards. On-site parking shall be provided for all employees, customers, or clients.",
+                }
+            ]
+        }
+        model_b = {
+            "requirements": [
+                {
+                    "category": "Other",
+                    "facility_type": "Exploration/drilling",
+                    "specific_subject": "parking",
+                    "details": "A minimum of five off-street parking spaces, to County standards, shall be provided for each well site.",
+                }
+            ]
+        }
+
+        path_a = temp_dir / "gpt-4o.json"
+        path_b = temp_dir / "gpt-4.1.json"
+        path_a.write_text(json.dumps(model_a))
+        path_b.write_text(json.dumps(model_b))
+
+        engine = ComparisonEngine(
+            mock,
+            qa_qc_config={
+                "source": "runtime_artifact",
+                "lane_name": "qualitative",
+                "mode": "qualitative",
+                "comparison_approach": "text_review",
+                "match_fields": ["category", "facility_type", "specific_subject"],
+                "compare_fields": ["details"],
+            },
+        )
+        result = engine.compare_outputs(
+            output_files={"gpt-4o": path_a, "gpt-4.1": path_b},
+            document_name="Qualitative Parking Absorption Doc",
+        )
+
+        assert result.summary["review_category_counts"] == {"scope_variant": 1}
+
+    def test_text_review_keeps_missing_item_when_subsumption_is_ambiguous(self, temp_dir):
+        mock = MagicMock()
+        mock.get_main_data_array.return_value = "requirements"
+        mock.get_identifier_fields.return_value = ["category", "facility_type", "specific_subject"]
+        mock.get_context_objects.return_value = []
+        mock.get_expected_requirements.return_value = []
+
+        model_a = {
+            "requirements": [
+                {
+                    "category": "Other",
+                    "facility_type": "All facilities",
+                    "specific_subject": "roads",
+                    "details": "Road standards and parking requirements apply.",
+                },
+                {
+                    "category": "Other",
+                    "facility_type": "All facilities",
+                    "specific_subject": "parking",
+                    "details": "Parking requirements apply and roads must meet County standards.",
+                },
+            ]
+        }
+        model_b = {
+            "requirements": [
+                {
+                    "category": "Other",
+                    "facility_type": "All facilities",
+                    "specific_subject": "roads and parking",
+                    "details": "Road standards apply and parking requirements must be met.",
+                }
+            ]
+        }
+
+        path_a = temp_dir / "gpt-4o.json"
+        path_b = temp_dir / "gpt-4.1.json"
+        path_a.write_text(json.dumps(model_a))
+        path_b.write_text(json.dumps(model_b))
+
+        engine = ComparisonEngine(
+            mock,
+            qa_qc_config={
+                "source": "runtime_artifact",
+                "lane_name": "qualitative",
+                "mode": "qualitative",
+                "comparison_approach": "text_review",
+                "match_fields": ["category", "facility_type", "specific_subject"],
+                "compare_fields": ["details"],
+            },
+        )
+        result = engine.compare_outputs(
+            output_files={"gpt-4o": path_a, "gpt-4.1": path_b},
+            document_name="Qualitative Ambiguous Subsumption Doc",
+        )
+
+        assert result.summary["review_category_counts"] == {"scope_variant": 1}
+
     def test_compare_numeric_values_agree(self, mock_schema_metadata, temp_dir):
         """Test comparison with numeric values that agree."""
         model_a_data = {

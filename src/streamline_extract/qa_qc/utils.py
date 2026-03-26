@@ -22,6 +22,7 @@ logger = logging.getLogger(__name__)
 def resolve_qaqc_runtime_config(
     schema_metadata,
     runtime_artifact: Optional[Dict[str, Any]] = None,
+    preferred_lane: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Resolve active QA/QC config from the runtime artifact, falling back to schema metadata."""
     pack_qaqc = ((runtime_artifact or {}).get("resolved") or {}).get("pack", {}).get("qaqc")
@@ -31,12 +32,22 @@ def resolve_qaqc_runtime_config(
         lane_name = pack_qaqc.get("default_lane")
         lane_config = None
 
-        if lane_name and isinstance(lanes.get(lane_name), dict):
+        if preferred_lane:
+            candidate = lanes.get(preferred_lane)
+            if not isinstance(candidate, dict):
+                available_lanes = ", ".join(sorted(lanes)) or "none"
+                raise ValueError(
+                    f"Requested QA/QC lane '{preferred_lane}' is not defined in the runtime pack; available lanes: {available_lanes}"
+                )
+            lane_name = preferred_lane
+            lane_config = candidate
+
+        if lane_config is None and lane_name and isinstance(lanes.get(lane_name), dict):
             candidate = lanes[lane_name]
             if candidate.get("enabled", True):
                 lane_config = candidate
 
-        if lane_config is None:
+        if lane_config is None and not preferred_lane:
             for candidate_name, candidate in lanes.items():
                 if isinstance(candidate, dict) and candidate.get("enabled", False):
                     lane_name = candidate_name

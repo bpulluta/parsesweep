@@ -1,32 +1,26 @@
 # StreamlineExtract Agent Operating Instructions
 
 ## Purpose
-These instructions keep modernization work consistent across new chat sessions.
+These instructions keep work aligned with the accepted StreamlineExtract production baseline.
 
 ## Default Operating Mode
-- Treat this repository as a clean-slate modernization effort for enterprise-scale extraction.
-- Do not prioritize backward compatibility unless explicitly requested by the user.
-- Prefer code and architecture cleanup over preserving legacy pathways.
-
-## Session Bootstrap (run at start of modernization work)
-0. Run `/modernization-kickoff` if available.
-1. Read these files first:
-   - `modernization/plans/AUDIT_MASTER_PLAN_MODULAR_EXTRACTION_FOUNDATION.md`
-   - `modernization/tracking/IMPLEMENTATION_CHECKLIST.md`
-   - `modernization/tracking/MODERNIZATION_CHANGELOG.md`
-   - `modernization/decisions/ADR-0001-clean-slate-modernization.md`
-2. Summarize current phase, open checklist items, and latest changelog entries.
-3. Propose the next smallest implementation slice with test gates.
+- Treat the contract-first runtime as the source of truth for this repository.
+- Do not reintroduce legacy pathways, compatibility layers, or retired architecture unless explicitly requested by the user.
+- Prefer runtime hardening, repo hygiene, and user-facing workflow quality over feature expansion.
 
 ## Working Rules
-- Always work in a feature branch for modernization tasks.
+- Always work in a feature branch for substantive repo changes.
 - Keep changes phase-gated and test-first.
-- Record major decisions as ADRs in `modernization/decisions/`.
-- Update checklist and changelog in the same change set as implementation work.
+- Record major decisions in stable user-relevant docs only when they materially affect architecture or operating policy.
 - Use `pixi` for repo commands.
 
-## Completion Criteria for Any Modernization Task
+## Repository Focus
+- The active repo surface should reflect the current production runtime only.
+- Keep implementation plans, deprecated experiments, release bookkeeping, and retired helpers out of the tracked repo surface.
+- If private historical reference is needed, keep it in an ignored local archive rather than in tracked docs.
+- Keep `.github/` and `.agents/` customizations only while they actively help current runtime or onboarding work.
+
+## Completion Criteria for Any Production-System Task
 - Code change is implemented or docs/task state is updated.
 - Relevant tests are run (or blocker is clearly documented).
-- `modernization/tracking/IMPLEMENTATION_CHECKLIST.md` status is updated.
-- `modernization/tracking/MODERNIZATION_CHANGELOG.md` has a dated entry.
+- Active user-facing docs and instructions stay consistent with the current runtime surface.

@@ -73,6 +73,18 @@ def _find_qaqc_report_paths(path: Path) -> List[Path]:
     return sorted(path.rglob("comparison_report.csv"))
 
 
+def _find_qaqc_summary_paths(path: Path) -> List[Path]:
+    if path.is_file():
+        return [path] if path.name == "comparison_summary.json" else []
+    return sorted(path.rglob("comparison_summary.json"))
+
+
+def _load_qaqc_qualitative_gate(summary_path: Path) -> Optional[Dict[str, Any]]:
+    summary = _load_json(summary_path)
+    gate = summary.get("summary", {}).get("qualitative_advisory_gate")
+    return gate if isinstance(gate, dict) else None
+
+
 def _resolve_expected_qaqc_report_path(actual_report_path: Path, benchmark_path: Path, expected_dir: Path) -> Path:
     try:
         relative_path = actual_report_path.relative_to(benchmark_path)
@@ -218,6 +230,8 @@ def collect_benchmark_metrics(
     total_actual_qaqc_items = 0
     total_correct_qaqc_items = 0
     scored_qaqc_reports = 0
+    qualitative_gate_counts: Dict[str, int] = {}
+    scored_qaqc_qualitative_reports = 0
     total_expected_rows = 0
     total_actual_rows = 0
     total_correct_rows = 0
@@ -322,6 +336,15 @@ def collect_benchmark_metrics(
             )
             scored_qaqc_reports += 1
 
+    for summary_path in _find_qaqc_summary_paths(path):
+        qualitative_gate = _load_qaqc_qualitative_gate(summary_path)
+        if not qualitative_gate:
+            continue
+
+        gate_status = str(qualitative_gate.get("status") or "not_applicable").strip().lower()
+        qualitative_gate_counts[gate_status] = qualitative_gate_counts.get(gate_status, 0) + 1
+        scored_qaqc_qualitative_reports += 1
+
     if consolidation_baseline_dir is not None:
         if consolidation_schema_path is None:
             raise ValueError("consolidation_schema_path is required when consolidation_baseline_dir is provided")
@@ -396,6 +419,11 @@ def collect_benchmark_metrics(
     qaqc_signal_quality = None
     if qaqc_baseline_dir is not None:
         qaqc_signal_quality = 0.0 if total_expected_qaqc_items == 0 else (total_correct_qaqc_items / total_expected_qaqc_items) * 100.0
+    qaqc_qualitative_pass_rate = None
+    if scored_qaqc_qualitative_reports > 0:
+        qaqc_qualitative_pass_rate = (
+            qualitative_gate_counts.get("pass", 0) / scored_qaqc_qualitative_reports
+        ) * 100.0
     consolidation_correctness = None
     if consolidation_baseline_dir is not None:
         consolidation_correctness = 0.0 if total_expected_rows == 0 else (total_correct_rows / total_expected_rows) * 100.0
@@ -426,6 +454,9 @@ def collect_benchmark_metrics(
         "actual_qaqc_items": total_actual_qaqc_items,
         "scored_qaqc_reports": scored_qaqc_reports,
         "qaqc_signal_quality": qaqc_signal_quality,
+        "scored_qaqc_qualitative_reports": scored_qaqc_qualitative_reports,
+        "qaqc_qualitative_gate_counts": dict(sorted(qualitative_gate_counts.items())),
+        "qaqc_qualitative_pass_rate": qaqc_qualitative_pass_rate,
         "correct_rows": total_correct_rows,
         "expected_rows": total_expected_rows,
         "actual_rows": total_actual_rows,
@@ -494,6 +525,7 @@ def evaluate_benchmark_gates(
     *,
     min_extraction_parity: Optional[float] = None,
     min_qaqc_signal_quality: Optional[float] = None,
+    min_qaqc_qualitative_pass_rate: Optional[float] = None,
     min_consolidation_correctness: Optional[float] = None,
     max_failure_rate: Optional[float] = None,
     max_average_seconds_per_document: Optional[float] = None,
@@ -520,6 +552,14 @@ def evaluate_benchmark_gates(
             "threshold": min_qaqc_signal_quality,
             "actual": actual,
             "passed": actual is not None and actual >= min_qaqc_signal_quality,
+        }
+
+    if min_qaqc_qualitative_pass_rate is not None:
+        actual = metrics.get("qaqc_qualitative_pass_rate")
+        gates["min_qaqc_qualitative_pass_rate"] = {
+            "threshold": min_qaqc_qualitative_pass_rate,
+            "actual": actual,
+            "passed": actual is not None and actual >= min_qaqc_qualitative_pass_rate,
         }
 
     if min_consolidation_correctness is not None:

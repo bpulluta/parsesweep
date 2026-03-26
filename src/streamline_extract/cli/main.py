@@ -11,6 +11,7 @@ import click
 from streamline_extract.cli.commands import process, validate, consolidate, compare, benchmark
 from streamline_extract.cli.utils_commands import (
     init,
+    init_domain_schema_cmd,
     init_domain_pack_cmd,
     preview,
     estimate,
@@ -73,6 +74,7 @@ def cli():
 
 # Register commands
 cli.add_command(init)
+cli.add_command(init_domain_schema_cmd)
 cli.add_command(init_domain_pack_cmd)
 cli.add_command(process)
 cli.add_command(preview)
