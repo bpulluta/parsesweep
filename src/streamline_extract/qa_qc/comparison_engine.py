@@ -35,6 +35,7 @@ from typing import Any, Dict, List, Optional, Tuple
 # Import shared utilities
 from ..utils.item_matcher import create_item_index, get_nested_value
 from ..utils.value_normalizer import normalize_value, is_numeric_value
+from .utils import resolve_qaqc_runtime_config
 
 logger = logging.getLogger(__name__)
 
@@ -97,11 +98,11 @@ class ComparisonResult:
 
 class ComparisonEngine:
     """
-    Compare outputs from multiple models - SCHEMA-DRIVEN.
+    Compare outputs from multiple models using schema metadata plus runtime QA/QC config.
     
-    Uses schema $metadata.qa_qc configuration:
-    - record_matching.key_fields: Fields to use for matching items
-    - comparison.primary_fields: Fields to compare for agreement
+    Uses resolved QA/QC configuration:
+    - runtime artifact pack lanes when available
+    - schema $metadata.qa_qc as a fallback
     
     Why schema-driven?
     - Different domains have different field names
@@ -109,7 +110,7 @@ class ComparisonEngine:
     - User can configure per schema
     """
 
-    def __init__(self, schema_metadata):
+    def __init__(self, schema_metadata, qa_qc_config: Optional[Dict[str, Any]] = None):
         """
         Initialize with schema metadata.
         
@@ -119,10 +120,15 @@ class ComparisonEngine:
         self.schema_metadata = schema_metadata
         self.main_data_array = schema_metadata.get_main_data_array()
         self.identifier_fields = schema_metadata.get_identifier_fields()
-        
-        # Get match and compare fields from schema qa_qc config
-        self.match_fields = schema_metadata.get_qa_qc_match_fields()
-        self.compare_fields = set(schema_metadata.get_qa_qc_compare_fields())
+        self.qa_qc_config = qa_qc_config or resolve_qaqc_runtime_config(schema_metadata)
+
+        self.match_fields = list(self.qa_qc_config["match_fields"])
+        self.compare_fields = set(self.qa_qc_config["compare_fields"])
+        self.comparison_approach = self.qa_qc_config.get("comparison_approach", "numeric_only")
+        self.config_source = self.qa_qc_config.get("source", "schema_metadata")
+        self.lane_name = self.qa_qc_config.get("lane_name")
+        self.lane_mode = self.qa_qc_config.get("mode", "schema_metadata")
+        self.projection = self.qa_qc_config.get("projection") or None
         
         logger.debug(f"ComparisonEngine: main_data_array={self.main_data_array}")
         logger.debug(f"ComparisonEngine: match_fields={self.match_fields}")
@@ -416,7 +422,10 @@ class ComparisonEngine:
         
         summary = {
             # Comparison approach
-            "comparison_approach": "numeric_only",
+            "comparison_approach": self.comparison_approach,
+            "qaqc_config_source": self.config_source,
+            "qaqc_lane": self.lane_name,
+            "qaqc_mode": self.lane_mode,
             "skipped_non_numeric": context_skipped + item_skipped,
             
             # Item counts per model
@@ -480,9 +489,53 @@ class ComparisonEngine:
         """Extract main data arrays."""
         arrays = {}
         for model, output in outputs.items():
+            if self.projection:
+                arrays[model] = self._project_item_array(output)
+                continue
+
             items = output.get(self.main_data_array, [])
             arrays[model] = items if isinstance(items, list) else []
         return arrays
+
+    def _project_item_array(self, output: dict) -> List[dict]:
+        """Project nested extraction structures into comparison rows when configured."""
+        if not isinstance(self.projection, dict):
+            return []
+
+        if self.projection.get("type") != "nested_array_items":
+            logger.warning("Unsupported QA/QC projection type: %s", self.projection.get("type"))
+            return []
+
+        source_array_name = self.projection.get("source_array") or self.main_data_array
+        nested_array_name = self.projection.get("nested_array")
+        if not nested_array_name:
+            return []
+
+        parent_fields = self.projection.get("parent_fields") or []
+        nested_items = output.get(source_array_name, [])
+        if not isinstance(nested_items, list):
+            return []
+
+        projected: List[dict] = []
+        for parent_item in nested_items:
+            if not isinstance(parent_item, dict):
+                continue
+
+            child_items = parent_item.get(nested_array_name, [])
+            if not isinstance(child_items, list):
+                continue
+
+            parent_projection = {
+                field_name: parent_item.get(field_name)
+                for field_name in parent_fields
+            }
+
+            for child_item in child_items:
+                if not isinstance(child_item, dict):
+                    continue
+                projected.append({**parent_projection, **child_item})
+
+        return projected
 
     def _build_indexes(self, item_arrays: Dict[str, List[dict]]) -> Dict[str, Dict[Tuple, dict]]:
         """Build item indexes for matching."""

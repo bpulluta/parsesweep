@@ -18,76 +18,7 @@
       },
       "deduplication": {
         "key_fields": ["category", "facility_type", "specific_subject", "value", "unit", "section"],
-        "ignore_fields": ["notes", "condition", "details"],
-        "strategy": "latest",
-        "comparison_mode": "fuzzy"
-      },
-      "output": {
-        "default_format": "excel",
-        "exclude_fields": [
-          "applies_to_geothermal_electricity",
-          "extraction_approach",
-          "relevant_sections",
-          "Date_Adopted",
-          "Date_Effective",
-          "Date_Last_Amended",
-          "Supersedes",
-          "Subdivision",
-          "Category",
-          "Facility Type",
-          "Specific Subject",
-          "Value Type",
-          "Applies To",
-          "Condition",
-          "Details",
-          "Notes"
-        ],
-        "column_renames": {
-          "State": "state",
-          "County": "county",
-          "Ordinance_Code": "ordinance_code",
-          "Date_Adopted": "date_adopted",
-          "Date_Effective": "date_effective",
-          "Date_Last_Amended": "date_last_amended",
-          "Supersedes": "supersedes",
-          "Category": "category",
-          "Facility Type": "facility_type",
-          "Specific Subject": "specific_subject",
-          "Value": "value",
-          "Value Type": "value_type",
-          "Unit": "units",
-          "Condition": "condition",
-          "Applies To": "applies_to",
-          "Details": "summary",
-          "Section": "section"
-        },
-        "column_order": [
-          "county",
-          "state",
-          "subdivision",
-          "jurisdiction_type",
-          "FIPS",
-          "feature",
-          "value",
-          "units",
-          "adder",
-          "min_dist",
-          "max_dist",
-          "summary",
-          "ord_year",
-          "section",
-          "source"
-        ],
-        "freeze_columns": 3,
-        "auto_width": true
-      }
-    },
-    "qa_qc": {
-      "record_matching": {
-        "key_fields": ["category", "facility_type", "specific_subject"]
-      },
-      "comparison": {
-        "primary_fields": ["value", "unit"]
+        "ignore_fields": ["notes", "condition", "details"]
       }
     },
     "validation": {

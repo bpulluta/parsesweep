@@ -25,13 +25,21 @@ class ExcelFormatter:
     - Clean borders throughout
     """
     
-    def save(self, df: pd.DataFrame, output_path: Path):
+    def save(
+        self,
+        df: pd.DataFrame,
+        output_path: Path,
+        freeze_columns: int = 0,
+        auto_width: bool = True,
+    ):
         """
         Save DataFrame to professionally formatted Excel file.
         
         Args:
             df: DataFrame to export
             output_path: Path for output Excel file
+            freeze_columns: Number of leading columns to freeze
+            auto_width: Whether to auto-size columns
             
         Example:
             >>> formatter = ExcelFormatter()
@@ -51,8 +59,9 @@ class ExcelFormatter:
         self._apply_header_style(ws)
         center_aligned_cols = self._identify_center_aligned_columns(df, ws)
         self._apply_data_row_styles(ws, center_aligned_cols)
-        self._apply_column_widths(ws, center_aligned_cols)
-        self._freeze_header(ws)
+        if auto_width:
+            self._apply_column_widths(ws, center_aligned_cols)
+        self._freeze_header(ws, freeze_columns)
         
         # Save
         wb.save(output_path)
@@ -175,9 +184,11 @@ class ExcelFormatter:
         for row in range(2, ws.max_row + 1):
             ws.row_dimensions[row].height = None  # Auto-height
     
-    def _freeze_header(self, ws):
-        """Freeze the header row for scrolling."""
-        ws.freeze_panes = "A2"
+    def _freeze_header(self, ws, freeze_columns: int = 0):
+        """Freeze the header row and an optional number of leading columns."""
+        freeze_columns = max(freeze_columns, 0)
+        freeze_column_letter = get_column_letter(freeze_columns + 1)
+        ws.freeze_panes = f"{freeze_column_letter}2"
     
     def _get_thin_border(self) -> Border:
         """Get standard thin border style."""

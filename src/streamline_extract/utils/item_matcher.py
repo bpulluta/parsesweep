@@ -21,6 +21,30 @@ STOP_WORDS = frozenset([
 ])
 
 
+def _normalize_field_name_for_matching(value: str) -> str:
+    """Normalize schema field names and DataFrame columns to a shared token form."""
+    spaced = re.sub(r'([A-Z]+)([A-Z][a-z])', r'\1 \2', value)
+    spaced = re.sub(r'([a-z0-9])([A-Z])', r'\1 \2', spaced)
+    spaced = re.sub(r'[_\-]+', ' ', spaced)
+
+    collapsed_tokens = []
+    pending_initialism = []
+    for token in spaced.lower().split():
+        if len(token) == 1 and token.isalpha():
+            pending_initialism.append(token)
+            continue
+
+        if pending_initialism:
+            collapsed_tokens.append(''.join(pending_initialism))
+            pending_initialism = []
+        collapsed_tokens.append(token)
+
+    if pending_initialism:
+        collapsed_tokens.append(''.join(pending_initialism))
+
+    return ' '.join(collapsed_tokens)
+
+
 def extract_key_tokens(text: str) -> Set[str]:
     """
     Extract key tokens from text for fuzzy matching.
@@ -208,7 +232,9 @@ def create_item_index(
 
 def map_key_fields_to_columns(
     df: pd.DataFrame, 
-    key_fields: List[str]
+    key_fields: List[str],
+    *,
+    warn_on_missing: bool = True,
 ) -> List[str]:
     """
     Map schema key_fields to actual DataFrame columns.
@@ -222,6 +248,7 @@ def map_key_fields_to_columns(
     Args:
         df: DataFrame to map columns from
         key_fields: Key field names from schema (dot-notation paths)
+        warn_on_missing: Whether to log a warning for each unmapped key field
         
     Returns:
         List of actual DataFrame column names that match key_fields
@@ -237,21 +264,19 @@ def map_key_fields_to_columns(
         # Handle nested field names (e.g., "jurisdiction.state" -> "state")
         field_name = key_field.split('.')[-1]
         
-        # Normalize field name for comparison:
-        # Convert snake_case to space-separated: "specific_subject" -> "specific subject"
-        normalized_field = field_name.replace('_', ' ').lower()
+        normalized_field = _normalize_field_name_for_matching(field_name)
         
         # Find matching column (case-insensitive, with/without underscores)
         matching_col = None
         for col in df.columns:
-            normalized_col = col.replace('_', ' ').lower()
+            normalized_col = _normalize_field_name_for_matching(col)
             if normalized_col == normalized_field:
                 matching_col = col
                 break
         
         if matching_col:
             mapped_cols.append(matching_col)
-        else:
+        elif warn_on_missing:
             logger.warning(f"Key field '{key_field}' not found in DataFrame columns")
     
     return mapped_cols

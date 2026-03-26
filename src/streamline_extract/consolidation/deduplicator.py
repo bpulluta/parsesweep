@@ -5,13 +5,59 @@ Row deduplication for consolidated data.
 Intelligently removes truly duplicate rows while preserving unique data.
 """
 import pandas as pd
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 import logging
 
 from ..utils.exceptions import SchemaMetadataError
 from ..utils.item_matcher import map_key_fields_to_columns
 
 logger = logging.getLogger(__name__)
+
+
+PROVENANCE_COLUMNS = frozenset(
+    {
+        'Run Id',
+        'Artifact Id',
+        'Error Count',
+        'Error Categories',
+        'Error Messages',
+        'Notes',
+    }
+)
+
+HIGH_SEVERITY_TOKENS = frozenset(
+    {
+        "value",
+        "unit",
+        "amount",
+        "rate",
+        "cost",
+        "price",
+        "capacity",
+        "limit",
+        "minimum",
+        "maximum",
+        "fee",
+        "charge",
+        "quantity",
+        "output",
+    }
+)
+
+MEDIUM_SEVERITY_TOKENS = frozenset(
+    {
+        "category",
+        "type",
+        "subject",
+        "classification",
+        "period",
+        "season",
+        "term",
+        "description",
+        "details",
+        "section",
+    }
+)
 
 
 class Deduplicator:
@@ -42,6 +88,7 @@ class Deduplicator:
                 "Schema metadata is required as of StreamlineExtract v2.0."
             )
         self.schema_metadata = schema_metadata
+        self.field_severity_hints = schema_metadata.get_consolidation_field_severity_hints()
     
     def deduplicate(self, df: pd.DataFrame) -> pd.DataFrame:
         """
@@ -86,7 +133,8 @@ class Deduplicator:
             return df
         
         # Find duplicates using fuzzy matching logic
-        rows_to_drop = self._find_and_process_fuzzy_duplicates(df, compare_cols)
+        duplicate_groups = self._collect_duplicate_groups(df, compare_cols)
+        rows_to_drop = self._apply_duplicate_groups(df, duplicate_groups)
         
         # Remove duplicates
         df = df.drop(index=rows_to_drop)
@@ -97,6 +145,179 @@ class Deduplicator:
             print("  ✓ No duplicates found")
         
         return df
+
+    def preview_deduplication(self, df: pd.DataFrame) -> Dict[str, Any]:
+        """Preview deduplication effects without mutating or writing outputs."""
+        preview_df = df.copy(deep=True)
+        if 'Notes' not in preview_df.columns:
+            preview_df['Notes'] = ''
+
+        key_fields = self.schema_metadata.get_deduplication_key_fields()
+        if not key_fields:
+            return {
+                'key_fields': [],
+                'compare_columns': [],
+                'duplicate_groups': [],
+                'duplicates_removed': 0,
+                'warnings': ['No key_fields defined in schema metadata'],
+            }
+
+        compare_cols = map_key_fields_to_columns(preview_df, key_fields)
+        if not compare_cols:
+            return {
+                'key_fields': key_fields,
+                'compare_columns': [],
+                'duplicate_groups': [],
+                'duplicates_removed': 0,
+                'warnings': [
+                    f"None of the key_fields {key_fields} were found in the consolidated rows"
+                ],
+            }
+
+        duplicate_groups = self._collect_duplicate_groups(preview_df, compare_cols)
+        duplicates_removed = sum(len(group['drop_indices']) for group in duplicate_groups)
+        excluded_columns = self._get_preview_excluded_columns(preview_df, compare_cols)
+        suspicious_groups = []
+        severity_counts = {"high": 0, "medium": 0, "low": 0}
+
+        preview_groups = []
+        for group in duplicate_groups:
+            conflicts = self._collect_conflicting_columns(
+                preview_df,
+                group['duplicate_indices'],
+                excluded_columns,
+            )
+            severity = self._classify_conflict_severity(conflicts.keys())
+            group_preview = {
+                'keep_index': group['keep_idx'],
+                'drop_indices': list(group['drop_indices']),
+                'merged_count': len(group['drop_indices']),
+                'note': group['note'],
+                'sample_values': {},
+                'suspicious': bool(conflicts),
+                'severity': severity,
+                'conflicting_columns': list(conflicts.keys()),
+                'conflicts': conflicts,
+            }
+            for col in compare_cols:
+                if col in preview_df.columns:
+                    group_preview['sample_values'][col] = preview_df.at[group['keep_idx'], col]
+            preview_groups.append(group_preview)
+
+            if conflicts:
+                severity_counts[severity] += 1
+                suspicious_groups.append(
+                    {
+                        'keep_index': group['keep_idx'],
+                        'drop_indices': list(group['drop_indices']),
+                        'severity': severity,
+                        'conflicting_columns': list(conflicts.keys()),
+                        'conflicts': conflicts,
+                    }
+                )
+
+        warnings = []
+        if suspicious_groups:
+            warnings.append(
+                'Potentially unsafe deduplication: '
+                f"{len(suspicious_groups)} duplicate group(s) matched on key_fields but disagree on other populated columns"
+            )
+
+        return {
+            'key_fields': key_fields,
+            'compare_columns': compare_cols,
+            'duplicate_groups': preview_groups,
+            'duplicates_removed': duplicates_removed,
+            'warnings': warnings,
+            'suspicious_groups': suspicious_groups,
+            'suspicious_groups_count': len(suspicious_groups),
+            'suspicious_groups_by_severity': severity_counts,
+        }
+
+    def _classify_conflict_severity(self, conflicting_columns) -> str:
+        """Rank suspicious conflicts so schema authors can prioritize fixes."""
+        schema_derived_severity = self._classify_schema_derived_severity(conflicting_columns)
+        if schema_derived_severity:
+            return schema_derived_severity
+
+        normalized_columns = {
+            column.lower().replace("_", " ")
+            for column in conflicting_columns
+        }
+
+        if any(
+            any(token in column for token in HIGH_SEVERITY_TOKENS)
+            for column in normalized_columns
+        ):
+            return "high"
+
+        if any(
+            any(token in column for token in MEDIUM_SEVERITY_TOKENS)
+            for column in normalized_columns
+        ):
+            return "medium"
+
+        return "low"
+
+    def _classify_schema_derived_severity(self, conflicting_columns) -> Optional[str]:
+        """Use schema field definitions to rank conflicts before falling back to name heuristics."""
+        severity_order = {"low": 0, "medium": 1, "high": 2}
+        highest_severity: Optional[str] = None
+
+        for column in conflicting_columns:
+            normalized_column = column.lower().replace(" ", "_")
+            hinted_severity = self.field_severity_hints.get(normalized_column)
+            if hinted_severity is None:
+                continue
+
+            if highest_severity is None or severity_order[hinted_severity] > severity_order[highest_severity]:
+                highest_severity = hinted_severity
+
+        return highest_severity
+
+    def _get_preview_excluded_columns(self, df: pd.DataFrame, compare_cols: List[str]) -> set[str]:
+        """Return columns that should not trigger suspicious dedup warnings."""
+        excluded_columns = set(compare_cols)
+        excluded_columns.update(PROVENANCE_COLUMNS)
+        excluded_columns.update(self._get_metadata_columns(df))
+
+        identifier_fields = self.schema_metadata.get_identifier_fields()
+        excluded_columns.update(
+            map_key_fields_to_columns(df, identifier_fields, warn_on_missing=False)
+        )
+        return excluded_columns
+
+    def _collect_conflicting_columns(
+        self,
+        df: pd.DataFrame,
+        row_indices: List[int],
+        excluded_columns: set[str],
+    ) -> Dict[str, List[str]]:
+        """Find populated non-key columns whose values disagree across a duplicate group."""
+        conflicts: Dict[str, List[str]] = {}
+
+        for column in df.columns:
+            if column in excluded_columns:
+                continue
+
+            values = []
+            seen = set()
+            for row_index in row_indices:
+                raw_value = df.at[row_index, column]
+                if pd.isna(raw_value):
+                    continue
+
+                value = str(raw_value).strip()
+                if not value or value in seen:
+                    continue
+
+                seen.add(value)
+                values.append(value)
+
+            if len(values) > 1:
+                conflicts[column] = values[:3]
+
+        return conflicts
     
     def _get_metadata_columns(self, df: pd.DataFrame) -> List[str]:
         """
@@ -121,11 +342,11 @@ class Deduplicator:
         
         return exclude_cols
     
-    def _find_and_process_fuzzy_duplicates(
+    def _collect_duplicate_groups(
         self, 
         df: pd.DataFrame, 
         compare_cols: List[str]
-    ) -> List[int]:
+    ) -> List[Dict[str, Any]]:
         """
         Find and process duplicates using fuzzy matching logic.
         
@@ -145,8 +366,8 @@ class Deduplicator:
         Returns:
             List of row indices to drop
         """
-        rows_to_drop = []
         checked = set()
+        duplicate_groups: List[Dict[str, Any]] = []
         
         # Optional fields that support fuzzy matching (empty = wildcard)
         optional_fuzzy_fields = {'Condition', 'Applies To', 'Applies_To'}
@@ -216,15 +437,38 @@ class Deduplicator:
                     keep_idx = max(completeness, key=completeness.get)
                     drop_indices = [idx for idx in duplicate_group if idx != keep_idx]
                     
-                    rows_to_drop.extend(drop_indices)
-                    
-                    # Generate detailed merge note
                     note = self._generate_merge_note(
                         df, keep_idx, duplicate_group, required_cols, fuzzy_cols
                     )
-                    current_note = df.at[keep_idx, 'Notes']
-                    df.at[keep_idx, 'Notes'] = f"{current_note}; {note}" if current_note else note
+                    duplicate_groups.append(
+                        {
+                            'keep_idx': keep_idx,
+                            'drop_indices': drop_indices,
+                            'duplicate_indices': duplicate_group,
+                            'required_cols': required_cols,
+                            'fuzzy_cols': fuzzy_cols,
+                            'note': note,
+                        }
+                    )
         
+        return duplicate_groups
+
+    def _apply_duplicate_groups(
+        self,
+        df: pd.DataFrame,
+        duplicate_groups: List[Dict[str, Any]],
+    ) -> List[int]:
+        """Apply duplicate groups to a DataFrame, annotating kept rows and returning dropped indices."""
+        rows_to_drop: List[int] = []
+        for group in duplicate_groups:
+            keep_idx = group['keep_idx']
+            drop_indices = group['drop_indices']
+            note = group['note']
+
+            rows_to_drop.extend(drop_indices)
+            current_note = df.at[keep_idx, 'Notes']
+            df.at[keep_idx, 'Notes'] = f"{current_note}; {note}" if current_note else note
+
         return rows_to_drop
     
     def _generate_merge_note(

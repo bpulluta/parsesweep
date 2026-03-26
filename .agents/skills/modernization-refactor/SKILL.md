@@ -1,7 +1,7 @@
 ---
 name: modernization-refactor
 description: "Use when planning or executing StreamlineExtract modernization, clean-slate refactor phases, architecture hardening, migration gate reviews, checklist tracking, ADR updates, or when starting a new chat and needing full modernization context fast."
----
+--- 
 
 # Modernization Refactor Skill
 

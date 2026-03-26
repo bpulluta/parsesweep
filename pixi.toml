@@ -5,10 +5,6 @@ name = "streamline-extract"
 platforms = ["win-64", "osx-arm64", "osx-64", "linux-64"]
 version = "2.0.1"
 
-[tasks]
-scrape-uptime = "python scripts/scrape_uptime_awards.py"
-scrape-uptime-test = "python scripts/scrape_uptime_awards.py --test"
-
 [dependencies]
 poppler = ">=24.8.0,<25"
 python = ">=3.9,<3.13"

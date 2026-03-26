@@ -17,6 +17,7 @@ from streamline_extract.qa_qc.comparison_engine import (
     ComparisonResult,
     FieldComparison,
 )
+from streamline_extract.qa_qc.utils import resolve_qaqc_runtime_config
 
 
 class TestFieldComparison:
@@ -126,6 +127,107 @@ class TestComparisonEngine:
         # Compare fields come from schema
         assert "price" in engine.compare_fields
         assert "quantity" in engine.compare_fields
+
+    def test_runtime_qaqc_config_overrides_schema_metadata(self):
+        """Runtime QA/QC lane config should replace schema-level compare config when provided."""
+        mock = MagicMock()
+        mock.get_main_data_array.return_value = "items"
+        mock.get_identifier_fields.return_value = []
+        mock.get_context_objects.return_value = []
+        mock.get_qa_qc_match_fields.side_effect = AssertionError("schema QA/QC config should not be used")
+        mock.get_qa_qc_compare_fields.side_effect = AssertionError("schema QA/QC config should not be used")
+
+        engine = ComparisonEngine(
+            mock,
+            qa_qc_config={
+                "source": "runtime_artifact",
+                "lane_name": "quantitative",
+                "mode": "quantitative",
+                "comparison_approach": "numeric_only",
+                "match_fields": ["category", "facility_type", "specific_subject"],
+                "compare_fields": ["value", "unit"],
+            },
+        )
+
+        assert engine.match_fields == ["category", "facility_type", "specific_subject"]
+        assert engine.compare_fields == {"value", "unit"}
+        assert engine.config_source == "runtime_artifact"
+        assert engine.lane_name == "quantitative"
+
+    def test_resolve_qaqc_runtime_config_uses_runtime_artifact_lane(self):
+        """Runtime QA/QC config resolution should prefer the compiled pack lane."""
+        mock = MagicMock()
+        mock.get_qa_qc_match_fields.side_effect = AssertionError("schema fallback should not be used")
+        mock.get_qa_qc_compare_fields.side_effect = AssertionError("schema fallback should not be used")
+
+        config = resolve_qaqc_runtime_config(
+            mock,
+            runtime_artifact={
+                "resolved": {
+                    "pack": {
+                        "qaqc": {
+                            "default_lane": "quantitative",
+                            "lanes": {
+                                "quantitative": {
+                                    "enabled": True,
+                                    "mode": "quantitative",
+                                    "comparison_approach": "numeric_only",
+                                    "record_matching": {"key_fields": ["referenceNumber", "make", "model"]},
+                                    "comparison": {"primary_fields": ["ratedCapacityKW", "operatingHoursPerUnitLimit"]},
+                                }
+                            },
+                        }
+                    }
+                }
+            },
+        )
+
+        assert config["source"] == "runtime_artifact"
+        assert config["lane_name"] == "quantitative"
+        assert config["match_fields"] == ["referenceNumber", "make", "model"]
+        assert config["compare_fields"] == ["ratedCapacityKW", "operatingHoursPerUnitLimit"]
+        assert config["projection"] is None
+
+    def test_resolve_qaqc_runtime_config_includes_projection(self):
+        """Runtime QA/QC config should preserve projection metadata when configured."""
+        mock = MagicMock()
+        mock.get_qa_qc_match_fields.side_effect = AssertionError("schema fallback should not be used")
+        mock.get_qa_qc_compare_fields.side_effect = AssertionError("schema fallback should not be used")
+
+        config = resolve_qaqc_runtime_config(
+            mock,
+            runtime_artifact={
+                "resolved": {
+                    "pack": {
+                        "qaqc": {
+                            "default_lane": "quantitative",
+                            "lanes": {
+                                "quantitative": {
+                                    "enabled": True,
+                                    "mode": "quantitative",
+                                    "comparison_approach": "numeric_only",
+                                    "projection": {
+                                        "type": "nested_array_items",
+                                        "source_array": "rate_schedules",
+                                        "nested_array": "charges",
+                                        "parent_fields": ["rate_name"],
+                                    },
+                                    "record_matching": {"key_fields": ["rate_name", "charge_type"]},
+                                    "comparison": {"primary_fields": ["rate", "unit"]},
+                                }
+                            },
+                        }
+                    }
+                }
+            },
+        )
+
+        assert config["projection"] == {
+            "type": "nested_array_items",
+            "source_array": "rate_schedules",
+            "nested_array": "charges",
+            "parent_fields": ["rate_name"],
+        }
 
     def test_compare_numeric_values_agree(self, mock_schema_metadata, temp_dir):
         """Test comparison with numeric values that agree."""
@@ -411,8 +513,45 @@ class TestComparisonEngine:
         
         # Check summary structure
         assert result.summary["comparison_approach"] == "numeric_only"
+        assert result.summary["qaqc_config_source"] == "schema_metadata"
+        assert result.summary["qaqc_lane"] is None
         assert "skipped_non_numeric" in result.summary
         assert "items_per_model" in result.summary
+
+    def test_summary_includes_runtime_lane_metadata(self, mock_schema_metadata, temp_dir):
+        """Runtime QA/QC lane metadata should flow into comparison summaries."""
+        model_a_data = {"requirements": [
+            {"category": "A", "specific_subject": "x", "section": "1", "value": 100}
+        ]}
+        model_b_data = {"requirements": [
+            {"category": "A", "specific_subject": "x", "section": "1", "value": 100}
+        ]}
+
+        path_a = temp_dir / "model_a.json"
+        path_b = temp_dir / "model_b.json"
+        path_a.write_text(json.dumps(model_a_data))
+        path_b.write_text(json.dumps(model_b_data))
+
+        mock_schema_metadata.get_context_objects.return_value = []
+        engine = ComparisonEngine(
+            mock_schema_metadata,
+            qa_qc_config={
+                "source": "runtime_artifact",
+                "lane_name": "quantitative",
+                "mode": "quantitative",
+                "comparison_approach": "numeric_only",
+                "match_fields": ["category", "specific_subject"],
+                "compare_fields": ["value"],
+            },
+        )
+        result = engine.compare_outputs(
+            output_files={"model_a": path_a, "model_b": path_b},
+            document_name="test_doc"
+        )
+
+        assert result.summary["qaqc_config_source"] == "runtime_artifact"
+        assert result.summary["qaqc_lane"] == "quantitative"
+        assert result.summary["qaqc_mode"] == "quantitative"
 
 
 class TestComparisonEngineIntegration:
@@ -514,6 +653,95 @@ class TestComparisonEngineIntegration:
         
         # Text fields (category, section, "Required" value, etc.) should be skipped
         assert result.summary["skipped_non_numeric"] > 0
+
+    def test_tariff_nested_charge_projection_comparison(self, temp_qa_qc_dir):
+        """Tariff QA/QC projection should flatten nested charges into compareable items."""
+        mock = MagicMock()
+        mock.get_main_data_array.return_value = "rate_schedules"
+        mock.get_identifier_fields.return_value = ["utility_info.utility_name"]
+        mock.get_context_objects.return_value = ["utility_info"]
+        mock.get_expected_requirements.return_value = []
+        mock.get_expected_count_range.return_value = (1, 100)
+
+        model_a = {
+            "utility_info": {"utility_name": "Metro Electric", "state": "CO"},
+            "rate_schedules": [
+                {
+                    "rate_name": "Schedule R",
+                    "is_rider": False,
+                    "sector": "Residential",
+                    "charges": [
+                        {
+                            "charge_type": "Energy charge",
+                            "charge_description": "All kilowatt-hours",
+                            "rate": 0.12,
+                            "unit": "$/kWh",
+                            "season": "Summer",
+                            "time_period": "On-Peak",
+                            "extracted_text": "Energy charge 0.12",
+                        }
+                    ],
+                }
+            ],
+        }
+        model_b = {
+            "utility_info": {"utility_name": "Metro Electric", "state": "CO"},
+            "rate_schedules": [
+                {
+                    "rate_name": "Schedule R",
+                    "is_rider": False,
+                    "sector": "Residential",
+                    "charges": [
+                        {
+                            "charge_type": "Energy charge",
+                            "charge_description": "All kilowatt-hours",
+                            "rate": 0.15,
+                            "unit": "$/kWh",
+                            "season": "Summer",
+                            "time_period": "On-Peak",
+                            "extracted_text": "Energy charge 0.15",
+                        }
+                    ],
+                }
+            ],
+        }
+
+        path_a = temp_qa_qc_dir / "gpt-4o.json"
+        path_b = temp_qa_qc_dir / "gpt-4.1.json"
+        path_a.write_text(json.dumps(model_a))
+        path_b.write_text(json.dumps(model_b))
+
+        engine = ComparisonEngine(
+            mock,
+            qa_qc_config={
+                "source": "runtime_artifact",
+                "lane_name": "quantitative",
+                "mode": "quantitative",
+                "comparison_approach": "numeric_only",
+                "projection": {
+                    "type": "nested_array_items",
+                    "source_array": "rate_schedules",
+                    "nested_array": "charges",
+                    "parent_fields": ["rate_name", "is_rider", "sector"],
+                },
+                "match_fields": ["rate_name", "charge_type", "charge_description", "season", "time_period"],
+                "compare_fields": ["rate", "unit"],
+            },
+        )
+        result = engine.compare_outputs(
+            output_files={"gpt-4o": path_a, "gpt-4.1": path_b},
+            document_name="Tariff Doc",
+        )
+
+        assert result.summary["items_per_model"] == {"gpt-4o": 1, "gpt-4.1": 1}
+        rate_comparison = next(
+            (fc for fc in result.item_comparisons if fc.field_path == "rate"),
+            None,
+        )
+        assert rate_comparison is not None
+        assert rate_comparison.agreement_score == "1/2"
+        assert rate_comparison.needs_review is True
+        assert "schedule r" in rate_comparison.item_id
 
 
 # --- Phase 8: Tests for Potential Duplicate Detection and Completeness ---

@@ -129,6 +129,51 @@
           "items": {
             "type": "string"
           }
+        },
+        "errors": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["stage", "category", "code", "message", "retryable", "source"],
+            "properties": {
+              "stage": {
+                "type": "string",
+                "minLength": 1
+              },
+              "category": {
+                "type": "string",
+                "minLength": 1
+              },
+              "code": {
+                "type": "string",
+                "minLength": 1
+              },
+              "message": {
+                "type": "string",
+                "minLength": 1
+              },
+              "retryable": {
+                "type": "boolean"
+              },
+              "source": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "document_path": {
+                    "type": ["string", "null"]
+                  },
+                  "model": {
+                    "type": ["string", "null"]
+                  },
+                  "provider": {
+                    "type": ["string", "null"]
+                  }
+                },
+                "required": ["document_path", "model", "provider"]
+              }
+            }
+          }
         }
       },
       "required": ["warnings"]

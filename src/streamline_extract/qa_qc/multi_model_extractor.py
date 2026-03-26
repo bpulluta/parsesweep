@@ -38,6 +38,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from .utils import sanitize_model_name
+from streamline_extract.utils.error_taxonomy import build_error_record, normalize_error_records, summarize_error_records
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +54,7 @@ class ModelExtractionResult:
     cost: float
     processing_time: float
     error: Optional[str] = None
+    error_details: Optional[Dict[str, Any]] = None
 
 
 def run_multi_model_extraction(
@@ -151,6 +153,9 @@ def run_multi_model_extraction(
                 "quality": {
                     "overall_confidence": result.completeness_score,
                     "warnings": result.validation_notes or [],
+                    "errors": normalize_error_records(
+                        getattr(result, "processing_errors", None) or getattr(result, "errors", None)
+                    ),
                 },
                 "processing_metrics": {
                     "duration_seconds": result.processing_time,
@@ -183,6 +188,13 @@ def run_multi_model_extraction(
         except Exception as e:
             processing_time = time.time() - model_start
             error_msg = str(e)
+            error_details = build_error_record(
+                e,
+                stage="qa_qc",
+                document_path=doc_name,
+                model=model,
+                provider=provider,
+            )
             
             results[model] = ModelExtractionResult(
                 model=model,
@@ -192,6 +204,7 @@ def run_multi_model_extraction(
                 cost=0.0,
                 processing_time=processing_time,
                 error=error_msg,
+                error_details=error_details,
             )
             
             logger.error(f"✗ {model} failed: {error_msg}")
@@ -200,6 +213,9 @@ def run_multi_model_extraction(
     total_time = time.time() - total_start
     total_cost = sum(r.cost for r in results.values())
     successful = sum(1 for r in results.values() if r.success)
+    error_summary = summarize_error_records(
+        r.error_details for r in results.values() if r.error_details is not None
+    )
     
     # Save metadata
     metadata = {
@@ -219,9 +235,16 @@ def run_multi_model_extraction(
             "total_models": len(models),
             "successful": successful,
             "failed": len(models) - successful,
+            "total_errors": error_summary["total_errors"],
             "total_cost": total_cost,
             "total_time": total_time,
         },
+        "model_errors": {
+            model: result.error_details
+            for model, result in sorted(results.items())
+            if result.error_details is not None
+        },
+        "errors": error_summary,
         "results": {
             model: {
                 "success": r.success,
@@ -229,6 +252,7 @@ def run_multi_model_extraction(
                 "cost": r.cost,
                 "processing_time": r.processing_time,
                 "error": r.error,
+                "error_details": r.error_details,
             }
             for model, r in results.items()
         },
@@ -244,45 +268,3 @@ def run_multi_model_extraction(
     )
     
     return results
-
-
-def save_metadata(
-    output_dir: Path,
-    models: List[str],
-    document_name: str,
-    extra_info: Optional[dict] = None,
-) -> Path:
-    """
-    Save QA/QC run metadata alongside extractions.
-
-    Args:
-        output_dir: Directory to save metadata
-        models: List of models used
-        document_name: Name of the document processed
-        extra_info: Optional additional metadata
-
-    Returns:
-        Path to the saved metadata file
-        
-    Status: Phase 2 - Not Yet Implemented
-    """
-    output_dir = Path(output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
-    
-    metadata = {
-        "timestamp": datetime.now().isoformat(),
-        "document": document_name,
-        "models": models,
-        "version": "2.0.0",
-        "status": "pending",  # Will be updated after extraction
-    }
-    
-    if extra_info:
-        metadata.update(extra_info)
-    
-    metadata_path = output_dir / "metadata.json"
-    with open(metadata_path, "w") as f:
-        json.dump(metadata, f, indent=2)
-    
-    logger.info(f"Saved QA/QC metadata to {metadata_path}")
-    return metadata_path

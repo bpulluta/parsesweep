@@ -3,10 +3,7 @@ Core workflow CLI commands for StreamlineExtract.
 
 This module contains the main data processing pipeline commands:
 - process: Extract structured data from documents to JSON
-- validate: Validate extraction results against schema
 - consolidate: Merge JSON files into Excel/CSV
-
-For utility commands (init, preview, estimate, etc.), see utils_commands.py
 """
 
 import json
@@ -30,7 +27,6 @@ from streamline_extract.extraction.document_utils import (
     is_supported_document,
     SUPPORTED_EXTENSIONS
 )
-from streamline_extract.consolidation.cleaner import ExtractionCleaner
 from streamline_extract.consolidation.consolidator import Consolidator
 from streamline_extract.cli.ui import (
     console,
@@ -45,7 +41,15 @@ from streamline_extract.cli.ui import (
     ask_confirm,
 )
 from streamline_extract.cli.dashboard import create_live_dashboard
-from streamline_extract.core import compile_runtime_artifact, ArtifactCompilerError
+from streamline_extract.benchmarking import (
+    collect_benchmark_metrics,
+    compare_benchmark_to_baseline,
+    evaluate_benchmark_gates,
+    load_benchmark_snapshot,
+    write_benchmark_snapshot,
+)
+from streamline_extract.core import compile_runtime_artifact, resolve_pack_ref_for_schema, ArtifactCompilerError
+from streamline_extract.utils.error_taxonomy import build_error_record, normalize_error_records, summarize_error_records
 
 
 # Global verbosity level (set by CLI flags)
@@ -148,6 +152,13 @@ def _resolve_runtime_artifact(
     if category:
         candidate_pack_refs.append(category)
     candidate_pack_refs.append(schema_path.stem)
+    resolved_pack_ref = resolve_pack_ref_for_schema(
+        schema_path,
+        repo_root=root,
+        domain_packs_dir=packs_root,
+    )
+    if resolved_pack_ref:
+        candidate_pack_refs.append(resolved_pack_ref)
 
     seen = set()
     for pack_ref in candidate_pack_refs:
@@ -167,6 +178,67 @@ def _resolve_runtime_artifact(
             continue
 
     return None
+
+
+def _format_runtime_artifact_summary(
+    runtime_artifact: Optional[Dict[str, Any]],
+) -> str:
+    """Return a concise user-facing summary of the resolved runtime artifact."""
+    if not runtime_artifact:
+        return "schema-only (no pack/profile runtime artifact resolved)"
+
+    lineage = runtime_artifact.get('lineage') or {}
+    pack_name = lineage.get('pack_name') or runtime_artifact.get('pack_name') or 'unknown-pack'
+    profile_name = lineage.get('profile_id') or runtime_artifact.get('profile_name') or 'default'
+    artifact_id = runtime_artifact.get('artifact_id') or lineage.get('artifact_id') or 'artifact://runtime/unresolved'
+    artifact_suffix = artifact_id.rsplit('/', 1)[-1]
+    return f"pack={pack_name}, profile={profile_name}, artifact={artifact_suffix}"
+
+
+def _build_dedup_preview_report(
+    *,
+    schema_info: Dict[str, Any],
+    dedup_preview: Dict[str, Any],
+    rows_before_dedup: int,
+) -> Dict[str, Any]:
+    """Build a stable dry-run report payload for machine-readable output."""
+    return {
+        'schema_type': schema_info['type'],
+        'main_array_key': schema_info['main_array_key'],
+        'rows_before_dedup': rows_before_dedup,
+        'rows_after_dedup': rows_before_dedup - dedup_preview['duplicates_removed'],
+        'duplicates_removed': dedup_preview['duplicates_removed'],
+        'key_fields': dedup_preview['key_fields'],
+        'compare_columns': dedup_preview['compare_columns'],
+        'warnings': dedup_preview.get('warnings') or [],
+        'suspicious_groups_count': dedup_preview.get('suspicious_groups_count', 0),
+        'suspicious_groups_by_severity': dedup_preview.get('suspicious_groups_by_severity') or {
+            'high': 0,
+            'medium': 0,
+            'low': 0,
+        },
+        'suspicious_groups': dedup_preview.get('suspicious_groups') or [],
+        'duplicate_groups': dedup_preview['duplicate_groups'],
+    }
+
+
+def _should_fail_on_suspicious(
+    preview_report: Dict[str, Any],
+    threshold: str,
+) -> bool:
+    """Return whether suspicious-group counts meet or exceed the requested threshold."""
+    if threshold == 'none':
+        return False
+
+    severity_counts = preview_report.get('suspicious_groups_by_severity') or {}
+    if threshold == 'high':
+        return severity_counts.get('high', 0) > 0
+    if threshold == 'medium':
+        return severity_counts.get('high', 0) > 0 or severity_counts.get('medium', 0) > 0
+    if threshold == 'low':
+        return preview_report.get('suspicious_groups_count', 0) > 0
+
+    return False
 
 
 def _generate_run_id(
@@ -192,6 +264,44 @@ def _generate_run_id(
     return f"run://{digest[:16]}"
 
 
+def _context_budget_suggestions_for_process(
+    *,
+    error_record: Dict[str, Any],
+    schema_path: Path,
+    document_path: Path,
+    repo_root: Optional[Path] = None,
+) -> Optional[List[str]]:
+    """Return actionable CLI suggestions for context-budget failures."""
+    if error_record.get('code') != 'context_window_exceeded':
+        return None
+
+    resolved_repo_root = repo_root or Path(__file__).resolve().parents[3]
+    suggestions = [
+        'Rerun with a smaller input scope using --pages START-END for a single PDF or --pages-csv for a batch.',
+        'For large documents, start with the most relevant 25-100 pages instead of a whole-document run and reduce --max-context further if needed.',
+    ]
+
+    try:
+        relative_document_path = document_path.resolve().relative_to(resolved_repo_root.resolve())
+    except ValueError:
+        relative_document_path = document_path
+
+    path_parts = relative_document_path.parts
+    if len(path_parts) >= 3 and path_parts[0] == 'documents':
+        config_path = resolved_repo_root / 'config' / path_parts[1] / 'page_ranges.csv'
+        if config_path.exists():
+            try:
+                display_path = config_path.resolve().relative_to(resolved_repo_root.resolve()).as_posix()
+            except ValueError:
+                display_path = config_path.as_posix()
+            suggestions.insert(
+                1,
+                f'If this document set already has a repo page-range config, rerun with --pages-csv {display_path}.',
+            )
+
+    return suggestions
+
+
 def _build_run_manifest(
     *,
     run_id: str,
@@ -207,9 +317,15 @@ def _build_run_manifest(
     total_processed: int,
     successful_count: int,
     failed_count: int,
+    failed_results: Optional[List[Dict[str, Any]]] = None,
 ) -> Dict[str, Any]:
     """Build a deterministic run manifest payload for process executions."""
     lineage = (runtime_artifact or {}).get('lineage') or {}
+    manifest_errors = summarize_error_records(
+        error
+        for result in (failed_results or [])
+        for error in result.get('errors', [])
+    )
     return {
         'manifest_version': '1.0.0',
         'run_id': run_id,
@@ -235,6 +351,7 @@ def _build_run_manifest(
             'failed': failed_count,
             'result': 'success' if failed_count == 0 else 'partial_failure',
         },
+        'errors': manifest_errors,
     }
 
 
@@ -258,6 +375,7 @@ def _write_run_manifest(output_dir: Path, run_id: str, manifest: Dict[str, Any])
 @click.option('--category', help='Category name (auto-detected from path if not specified)')
 @click.option('--model', default='gpt-4o-mini', show_default=True, help='AI model (e.g., gpt-4o-mini, claude-3.5-sonnet, gemini-1.5-pro)')
 @click.option('--provider', type=click.Choice(['openai', 'azure', 'anthropic', 'gemini', 'auto'], case_sensitive=False), default='auto', show_default=True, help='LLM provider (auto-detects from .env)')
+@click.option('--profile', 'profile_name', default='default', show_default=True, help='Runtime profile to compile into artifact lineage (for example: default, dev, staging, prod)')
 @click.option('--enable-qa-qc', is_flag=True, help='Enable multi-model QA/QC validation')
 @click.option('--limit', '-n', type=int, help='Process only first N files')
 @click.option('--skip-existing/--reprocess', default=True, show_default=True, help='Skip files already processed')
@@ -269,7 +387,7 @@ def _write_run_manifest(output_dir: Path, run_id: str, manifest: Dict[str, Any])
 @click.option('--pages', type=str, default=None, help='Page range to extract (e.g., "615-759"). Only for single PDF files.')
 @click.option('--pages-csv', type=click.Path(exists=True), default=None, help='CSV file mapping documents to page ranges')
 def process(path: str, output: Optional[str], schema: Optional[str], category: Optional[str],
-            model: str, provider: str, enable_qa_qc: bool, limit: Optional[int], 
+            model: str, provider: str, profile_name: str, enable_qa_qc: bool, limit: Optional[int], 
             skip_existing: bool, max_context: int, quiet: bool, verbose: bool, debug: bool, live_dashboard: bool,
             pages: Optional[str], pages_csv: Optional[str]):
     """
@@ -286,23 +404,26 @@ def process(path: str, output: Optional[str], schema: Optional[str], category: O
     
     \b
     EXAMPLES:
-        # Process with default model (gpt-4o-mini)
-        streamline-extract process documents/tariffs/ --schema schemas/proprietary/electricity_tariff_schema.json
+        # Process with the production tariff schema
+        streamline-extract process documents/tariffs/ --schema schemas/personal/electricity_tariff_schema.json
         
         # Use Claude for high-quality extraction
-        streamline-extract process documents/tariffs/ --schema schemas/proprietary/electricity_tariff_schema.json --model claude-3.5-sonnet
+        streamline-extract process documents/tariffs/ --schema schemas/personal/electricity_tariff_schema.json --model claude-3.5-sonnet
         
         # Use Gemini for budget-friendly processing
-        streamline-extract process documents/tariffs/ --schema schemas/proprietary/electricity_tariff_schema.json --model gemini-1.5-flash
+        streamline-extract process documents/tariffs/ --schema schemas/personal/electricity_tariff_schema.json --model gemini-1.5-flash
         
         # Use Azure OpenAI
-        streamline-extract process documents/tariffs/ --schema schemas/proprietary/electricity_tariff_schema.json --provider azure
+        streamline-extract process documents/tariffs/ --schema schemas/personal/electricity_tariff_schema.json --provider azure
+
+        # Use the production runtime profile for artifact lineage
+        streamline-extract process documents/tariffs/ --schema schemas/personal/electricity_tariff_schema.json --profile prod
         
         # Process with page ranges
-        streamline-extract process documents/tariffs/ --schema schemas/proprietary/electricity_tariff_schema.json --pages-csv config/tariffs/page_ranges.csv
+        streamline-extract process documents/tariffs/ --schema schemas/personal/electricity_tariff_schema.json --pages-csv config/tariffs/page_ranges.csv
         
         # Test with first 5 documents
-        streamline-extract process documents/tariffs/ --schema schemas/proprietary/electricity_tariff_schema.json -n 5
+        streamline-extract process documents/tariffs/ --schema schemas/personal/electricity_tariff_schema.json -n 5
     
     \b
     SUPPORTED MODELS:
@@ -620,7 +741,7 @@ def process(path: str, output: Optional[str], schema: Optional[str], category: O
     # Load schema (enforced as required by Click)
     schema_path = Path(schema)
     loaded_schema = load_schema(schema_path)
-    runtime_artifact = _resolve_runtime_artifact(category, schema_path)
+    runtime_artifact = _resolve_runtime_artifact(category, schema_path, profile_name=profile_name)
     if VERBOSITY != 'quiet':
         # Show relative path for clarity
         try:
@@ -631,6 +752,9 @@ def process(path: str, output: Optional[str], schema: Optional[str], category: O
 
         if runtime_artifact:
             config_info["Artifact"] = runtime_artifact['artifact_id']
+            config_info["Profile"] = runtime_artifact['lineage']['profile_id']
+        else:
+            config_info["Profile"] = profile_name
     
     # Display configuration table
     if VERBOSITY != 'quiet':
@@ -801,11 +925,25 @@ def process(path: str, output: Optional[str], schema: Optional[str], category: O
                     total_time += result.processing_time
                     
                 except Exception as e:
+                    error_record = build_error_record(
+                        e,
+                        stage='process',
+                        document_path=doc_path.as_posix(),
+                        model=actual_model,
+                        provider=provider,
+                    )
+                    suggestions = _context_budget_suggestions_for_process(
+                        error_record=error_record,
+                        schema_path=schema_path,
+                        document_path=doc_path,
+                    )
                     dashboard.complete_document(doc_path.name, success=False)
                     results.append({
                         'file': doc_path.name,
                         'success': False,
-                        'error': str(e)
+                        'error': str(e),
+                        'errors': [error_record],
+                        'suggestions': suggestions,
                     })
     
     # Use progress bar for multiple files, simple output for single file
@@ -866,10 +1004,24 @@ def process(path: str, output: Optional[str], schema: Optional[str], category: O
                     total_time += result.processing_time
                     
                 except Exception as e:
+                    error_record = build_error_record(
+                        e,
+                        stage='process',
+                        document_path=doc_path.as_posix(),
+                        model=actual_model,
+                        provider=provider,
+                    )
+                    suggestions = _context_budget_suggestions_for_process(
+                        error_record=error_record,
+                        schema_path=schema_path,
+                        document_path=doc_path,
+                    )
                     results.append({
                         'file': doc_path.name,
                         'success': False,
-                        'error': str(e)
+                        'error': str(e),
+                        'errors': [error_record],
+                        'suggestions': suggestions,
                     })
                 
                 progress.update(task, advance=1)
@@ -924,10 +1076,24 @@ def process(path: str, output: Optional[str], schema: Optional[str], category: O
                     console.print(f"  [green]✓[/green] {num_items} items • [magenta]${result.cost:.4f}[/magenta] • [dim]{result.processing_time:.1f}s[/dim]")
                 
             except Exception as e:
+                error_record = build_error_record(
+                    e,
+                    stage='process',
+                    document_path=doc_path.as_posix(),
+                    model=actual_model,
+                    provider=provider,
+                )
+                suggestions = _context_budget_suggestions_for_process(
+                    error_record=error_record,
+                    schema_path=schema_path,
+                    document_path=doc_path,
+                )
                 results.append({
                     'file': doc_path.name,
                     'success': False,
-                    'error': str(e)
+                    'error': str(e),
+                    'errors': [error_record],
+                    'suggestions': suggestions,
                 })
                 if VERBOSITY != 'quiet':
                     console.print(f"  [yellow]✗[/yellow] [dim]Error: {str(e)[:60]}[/dim]")
@@ -951,6 +1117,7 @@ def process(path: str, output: Optional[str], schema: Optional[str], category: O
             total_processed=len(results),
             successful_count=len(successful),
             failed_count=len(failed),
+            failed_results=failed,
         )
         manifest_path = _write_run_manifest(output_dir, run_id, run_manifest)
         if VERBOSITY == 'verbose':
@@ -984,6 +1151,16 @@ def process(path: str, output: Optional[str], schema: Optional[str], category: O
         console.print()
         table = create_summary_table("Extraction Summary", summary_stats)
         console.print(table)
+
+        suggestion_failures = [failure for failure in failed if failure.get('suggestions')]
+        if suggestion_failures:
+            console.print()
+            for failure in suggestion_failures[:3]:
+                print_error(
+                    f"Processing failed for {failure['file']}",
+                    failure.get('error'),
+                    failure.get('suggestions'),
+                )
         
         console.print()
         console.print(f"[bold green]✓ Results saved to:[/bold green]")
@@ -1221,6 +1398,9 @@ def _extract_and_save_result(
         'quality': {
             'overall_confidence': result.completeness_score,
             'warnings': result.validation_notes or [],
+            'errors': normalize_error_records(
+                getattr(result, 'processing_errors', None) or getattr(result, 'errors', None)
+            ),
         },
         'processing_metrics': {
             'duration_seconds': result.processing_time,
@@ -1235,6 +1415,39 @@ def _extract_and_save_result(
         json.dump(output_data, f, indent=2)
     
     return num_items
+
+
+def _resolve_consolidation_output_formats(
+    metadata_overrides: Optional[Dict[str, Any]] = None,
+) -> List[str]:
+    """Resolve which consolidation outputs to emit.
+
+    Runtime pack overrides are the only source that currently changes output
+    selection. Schema-owned `default_format` remains non-authoritative so
+    existing domains keep emitting both files until they explicitly opt in at
+    the runtime-pack layer.
+    """
+    output_config = (
+        ((metadata_overrides or {}).get("consolidation") or {}).get("output") or {}
+    )
+    requested_format = output_config.get("default_format")
+
+    if requested_format is None:
+        return ["csv", "excel"]
+
+    normalized_format = str(requested_format).strip().lower()
+    if normalized_format == "excel":
+        return ["excel"]
+    if normalized_format == "csv":
+        return ["csv"]
+    if normalized_format in {"both", "all"}:
+        return ["csv", "excel"]
+
+    logging.getLogger(__name__).warning(
+        "Unsupported consolidation output format '%s'; falling back to csv+excel",
+        requested_format,
+    )
+    return ["csv", "excel"]
 
 
 @click.command()
@@ -1321,10 +1534,13 @@ def validate(extraction_file: str, verbose: bool, show_data: bool):
 @click.argument('extracted_dir', type=click.Path(exists=True))
 @click.option('--schema', '-s', type=click.Path(exists=True), required=True, help='Path to JSON schema file (REQUIRED - same as used for extraction)')
 @click.option('--output', '-o', type=click.Path(), help='Output directory (auto-detected if not specified)')
+@click.option('--dry-run', is_flag=True, help='Preview consolidation and deduplication without writing output files')
+@click.option('--report-format', type=click.Choice(['text', 'json'], case_sensitive=False), default='text', show_default=True, help='Dry-run preview output format')
+@click.option('--fail-on-suspicious', type=click.Choice(['none', 'high', 'medium', 'low'], case_sensitive=False), default='none', show_default=True, help='With --dry-run, exit non-zero when suspicious duplicate groups meet this severity threshold')
 @click.option('--quiet', '-q', is_flag=True, help='Minimal output (machine-readable)')
 @click.option('--verbose', '-v', is_flag=True, help='Detailed output with statistics')
 @click.option('--debug', is_flag=True, help='Debug mode with full logs')
-def consolidate(extracted_dir: str, schema: Optional[str], output: Optional[str], quiet: bool, verbose: bool, debug: bool):
+def consolidate(extracted_dir: str, schema: Optional[str], output: Optional[str], dry_run: bool, report_format: str, fail_on_suspicious: str, quiet: bool, verbose: bool, debug: bool):
     """
     Consolidate extracted JSON files into clean Excel/CSV output.
     
@@ -1334,10 +1550,10 @@ def consolidate(extracted_dir: str, schema: Optional[str], output: Optional[str]
     \b
     EXAMPLES:
         # Consolidate utility tariffs (specify same schema used for extraction)
-        streamline-extract consolidate processed/tariffs --schema schemas/proprietary/electricity_tariff_schema.json
+        streamline-extract consolidate processed/tariffs --schema schemas/personal/electricity_tariff_schema.json
         
         # Consolidate geothermal ordinances
-        streamline-extract consolidate processed/geothermal_ordinances --schema schemas/proprietary/geothermal_ordinance_schema.json
+        streamline-extract consolidate processed/geothermal_ordinances --schema schemas/personal/geothermal_ordinance_schema.json
         
         # Specify custom output directory
         streamline-extract consolidate processed/data --schema schemas/your_schema.json --output my_analysis/
@@ -1363,6 +1579,14 @@ def consolidate(extracted_dir: str, schema: Optional[str], output: Optional[str]
     configure_logging(VERBOSITY)
     
     input_dir = Path(extracted_dir)
+    emit_json_report = dry_run and report_format.lower() == 'json'
+
+    if fail_on_suspicious != 'none' and not dry_run:
+        print_error(
+            'Invalid option combination',
+            '--fail-on-suspicious only applies with --dry-run',
+        )
+        sys.exit(1)
     
     # Load config
     config = get_config()
@@ -1384,7 +1608,7 @@ def consolidate(extracted_dir: str, schema: Optional[str], output: Optional[str]
     output_dir.mkdir(parents=True, exist_ok=True)
     
     # Header
-    if VERBOSITY != 'quiet':
+    if VERBOSITY != 'quiet' and not emit_json_report:
         print_header("CONSOLIDATION")
         
         config_info = {
@@ -1401,10 +1625,17 @@ def consolidate(extracted_dir: str, schema: Optional[str], output: Optional[str]
     
     try:
         from streamline_extract.utils.schema_metadata import SchemaMetadata
-        schema_metadata = SchemaMetadata(matched_schema)
+        runtime_artifact = _resolve_runtime_artifact(None, matched_schema)
+        metadata_overrides = {}
+        if runtime_artifact:
+            pack_consolidation = ((runtime_artifact.get('resolved') or {}).get('pack') or {}).get('consolidation')
+            if isinstance(pack_consolidation, dict):
+                metadata_overrides['consolidation'] = pack_consolidation
+
+        schema_metadata = SchemaMetadata(matched_schema, metadata_overrides=metadata_overrides or None)
         
         # Add schema to config display after successful load
-        if VERBOSITY != 'quiet':
+        if VERBOSITY != 'quiet' and not emit_json_report:
             # Show relative path for schema
             try:
                 schema_rel = matched_schema.relative_to(Path.cwd())
@@ -1413,6 +1644,11 @@ def consolidate(extracted_dir: str, schema: Optional[str], output: Optional[str]
                 schema_display = str(matched_schema)
             
             console.print(f"  [bold]Schema[/bold]      {schema_display}")
+            console.print(
+                f"  [bold]Runtime[/bold]     {_format_runtime_artifact_summary(runtime_artifact)}"
+            )
+            if metadata_overrides:
+                console.print("  [bold]Overrides[/bold]   pack-owned consolidation config active")
             console.print()
     except Exception as e:
         print_error(
@@ -1424,7 +1660,7 @@ def consolidate(extracted_dir: str, schema: Optional[str], output: Optional[str]
         return
     
     # Consolidate
-    if VERBOSITY != 'quiet':
+    if VERBOSITY != 'quiet' and not emit_json_report:
         console.print("[cyan]→[/cyan] Analyzing schema structure...")
     consolidator = Consolidator(
         schema_metadata=schema_metadata, 
@@ -1433,40 +1669,130 @@ def consolidate(extracted_dir: str, schema: Optional[str], output: Optional[str]
     )
     
     try:
-        df, schema_info = consolidator.consolidate_from_directory(input_dir)
+        df, schema_info = consolidator.consolidate_from_directory(
+            input_dir,
+            apply_deduplication=not dry_run,
+        )
         
         if df.empty:
             print_warning("No data found to consolidate")
             return
         
-        if VERBOSITY != 'quiet':
+        if VERBOSITY != 'quiet' and not emit_json_report:
             print_success(f"Schema detected: [cyan]{schema_info['type']}[/cyan]")
             console.print(f"  [dim]Main entity: {schema_info['main_array_key']}[/dim]\n")
-            
+
+        if dry_run:
+            dedup_preview = consolidator.deduplicator.preview_deduplication(df)
+            preview_report = _build_dedup_preview_report(
+                schema_info=schema_info,
+                dedup_preview=dedup_preview,
+                rows_before_dedup=len(df),
+            )
+            preview_report['fail_on_suspicious'] = fail_on_suspicious
+            preview_report['would_fail_on_suspicious'] = _should_fail_on_suspicious(
+                preview_report,
+                fail_on_suspicious,
+            )
+
+            if emit_json_report or VERBOSITY == 'quiet':
+                click.echo(json.dumps(preview_report, indent=2, sort_keys=True))
+            else:
+                console.print("[cyan]→[/cyan] Previewing deduplication...")
+                preview_stats = {
+                    'Schema Type': preview_report['schema_type'],
+                    'Rows Before Dedup': str(preview_report['rows_before_dedup']),
+                    'Rows After Dedup': str(preview_report['rows_after_dedup']),
+                    'Duplicates Removed': str(preview_report['duplicates_removed']),
+                    'Suspicious Groups': str(preview_report['suspicious_groups_count']),
+                    'Severity Mix': ', '.join(
+                        f"{severity}={count}"
+                        for severity, count in preview_report['suspicious_groups_by_severity'].items()
+                        if count > 0
+                    ) or 'none',
+                    'Fail Threshold': preview_report['fail_on_suspicious'],
+                    'Key Fields': ', '.join(preview_report['key_fields']) or 'none',
+                    'Compare Columns': ', '.join(preview_report['compare_columns']) or 'none',
+                }
+                table = create_summary_table('Deduplication Preview', preview_stats)
+                console.print()
+                console.print(table)
+
+                warnings = preview_report['warnings']
+                for warning in warnings:
+                    print_warning(warning)
+
+                for index, group in enumerate(preview_report['duplicate_groups'][:5], start=1):
+                    sample_values = ', '.join(
+                        f"{field}={value}"
+                        for field, value in group['sample_values'].items()
+                        if value not in (None, '')
+                    ) or 'no populated key values'
+                    group_label = f"Preview {index}"
+                    if group.get('suspicious'):
+                        group_label += f" [suspicious:{group.get('severity', 'low')}]"
+                    console.print(
+                        f"  [yellow]{group_label}[/yellow] keep row {group['keep_index']} | "
+                        f"drop {group['drop_indices']} | {sample_values}"
+                    )
+                    console.print(f"    [dim]{group['note']}[/dim]")
+                    if group.get('conflicting_columns'):
+                        console.print(
+                            f"    [red]Conflicts:[/red] {', '.join(group['conflicting_columns'])}"
+                        )
+
+                if len(preview_report['duplicate_groups']) > 5:
+                    console.print(
+                        f"  [dim]... {len(preview_report['duplicate_groups']) - 5} more duplicate group(s) omitted[/dim]"
+                    )
+
+                console.print()
+                print_info('Dry run complete - no CSV/Excel files were written')
+
+            if preview_report['would_fail_on_suspicious']:
+                if not emit_json_report and VERBOSITY != 'quiet':
+                    print_error(
+                        'Suspicious deduplication threshold exceeded',
+                        f"Dry-run found suspicious groups at or above '{fail_on_suspicious}' severity",
+                    )
+                sys.exit(2)
+            return
+
+        if VERBOSITY != 'quiet':
             console.print("[cyan]→[/cyan] Creating outputs...")
         
         # Generate output filename
         base_name = input_dir.name.replace('_', '-')
-        
-        # Save CSV
-        csv_path = output_dir / f"{base_name}.csv"
-        consolidator.save_csv(df, csv_path)
-        csv_size_mb = csv_path.stat().st_size / (1024 * 1024)
-        
-        if VERBOSITY == 'verbose' or VERBOSITY == 'debug':
-            print_success(f"CSV saved: {csv_path.name} ({csv_size_mb:.2f} MB, {len(df)} rows)")
-        elif VERBOSITY != 'quiet':
-            print_success(f"CSV saved ({len(df)} rows)")
-        
-        # Save Excel
-        excel_path = output_dir / f"{base_name}.xlsx"
-        consolidator.save_excel(df, excel_path)
-        excel_size_mb = excel_path.stat().st_size / (1024 * 1024)
-        
-        if VERBOSITY == 'verbose' or VERBOSITY == 'debug':
-            print_success(f"Excel saved: {excel_path.name} ({excel_size_mb:.2f} MB, {len(df)} rows)")
-        elif VERBOSITY != 'quiet':
-            print_success("Excel saved (clean formatting, auto-sized columns)")
+        output_formats = _resolve_consolidation_output_formats(
+            metadata_overrides or None
+        )
+        emitted_paths: List[Path] = []
+
+        if "csv" in output_formats:
+            csv_path = output_dir / f"{base_name}.csv"
+            consolidator.save_csv(df, csv_path)
+            emitted_paths.append(csv_path)
+            csv_size_mb = csv_path.stat().st_size / (1024 * 1024)
+
+            if VERBOSITY == 'verbose' or VERBOSITY == 'debug':
+                print_success(
+                    f"CSV saved: {csv_path.name} ({csv_size_mb:.2f} MB, {len(df)} rows)"
+                )
+            elif VERBOSITY != 'quiet':
+                print_success(f"CSV saved ({len(df)} rows)")
+
+        if "excel" in output_formats:
+            excel_path = output_dir / f"{base_name}.xlsx"
+            consolidator.save_excel(df, excel_path)
+            emitted_paths.append(excel_path)
+            excel_size_mb = excel_path.stat().st_size / (1024 * 1024)
+
+            if VERBOSITY == 'verbose' or VERBOSITY == 'debug':
+                print_success(
+                    f"Excel saved: {excel_path.name} ({excel_size_mb:.2f} MB, {len(df)} rows)"
+                )
+            elif VERBOSITY != 'quiet':
+                print_success("Excel saved (clean formatting, auto-sized columns)")
         
         # Summary
         if VERBOSITY != 'quiet':
@@ -1474,6 +1800,7 @@ def consolidate(extracted_dir: str, schema: Optional[str], output: Optional[str]
                 "Schema Type": schema_info['type'],
                 "Records": str(len(df)),
                 "Columns": str(len(df.columns)),
+                "Outputs": ", ".join(output_formats),
             }
             
             # Category breakdown
@@ -1490,10 +1817,13 @@ def consolidate(extracted_dir: str, schema: Optional[str], output: Optional[str]
             console.print(table)
             
             console.print(f"\n[bold green]✓ Output Location[/bold green]")
-            console.print(f"  [bold]{excel_path.absolute()}[/bold]\n")
+            for emitted_path in emitted_paths:
+                console.print(f"  [bold]{emitted_path.absolute()}[/bold]")
+            console.print()
         else:
-            # Quiet mode - just print the path
-            console.print(str(excel_path.absolute()))
+            # Quiet mode - print emitted output path(s)
+            for emitted_path in emitted_paths:
+                console.print(str(emitted_path.absolute()))
         
     except Exception as e:
         print_error("Consolidation failed", str(e))
@@ -1518,10 +1848,10 @@ def compare(qa_qc_path: str, schema: str, quiet: bool, verbose: bool):
     \b
     EXAMPLES:
         # Generate comparison reports for all documents
-        streamline-extract compare processed/qa_qc_test/qa_qc --schema schemas/qaqc/geothermal_qaqc.json
+        streamline-extract compare processed/qa_qc_test/qa_qc --schema schemas/personal/geothermal_ordinance_schema.json
         
         # Compare specific document folder
-        streamline-extract compare processed/qa_qc_test/qa_qc/Chaffee\\ County --schema schemas/qaqc/geothermal_qaqc.json
+        streamline-extract compare "processed/qa_qc_test/qa_qc/Chaffee County Colorado" --schema schemas/personal/geothermal_ordinance_schema.json
     
     \b
     OUTPUT (per document):
@@ -1534,6 +1864,7 @@ def compare(qa_qc_path: str, schema: str, quiet: bool, verbose: bool):
         2. Generate/update reports: streamline-extract compare processed/docs/qa_qc --schema schema.json
     """
     from streamline_extract.qa_qc import ComparisonEngine, ReportGenerator
+    from streamline_extract.qa_qc.utils import resolve_qaqc_runtime_config
     from streamline_extract.utils.schema_metadata import SchemaMetadata
     
     qa_qc_path = Path(qa_qc_path)
@@ -1550,6 +1881,11 @@ def compare(qa_qc_path: str, schema: str, quiet: bool, verbose: bool):
     # Load schema metadata
     try:
         schema_metadata = SchemaMetadata(schema_path)
+        runtime_artifact = _resolve_runtime_artifact(None, schema_path)
+        qa_qc_config = resolve_qaqc_runtime_config(
+            schema_metadata,
+            runtime_artifact=runtime_artifact,
+        )
     except Exception as e:
         print_error("Failed to load schema", str(e))
         sys.exit(1)
@@ -1561,15 +1897,18 @@ def compare(qa_qc_path: str, schema: str, quiet: bool, verbose: bool):
         config_info = {
             "Input": str(qa_qc_path),
             "Schema": str(schema_path),
-            "Match Fields": ", ".join(schema_metadata.get_qa_qc_match_fields()),
-            "Compare Fields": ", ".join(schema_metadata.get_qa_qc_compare_fields()),
+            "Runtime": _format_runtime_artifact_summary(runtime_artifact),
+            "QA/QC Config": qa_qc_config["source"],
+            "QA/QC Lane": qa_qc_config.get("lane_name") or "schema fallback",
+            "Match Fields": ", ".join(qa_qc_config["match_fields"]),
+            "Compare Fields": ", ".join(qa_qc_config["compare_fields"]),
         }
         table = create_config_table("Configuration", config_info)
         console.print(table)
         console.print()
     
     # Create comparison engine and report generator
-    engine = ComparisonEngine(schema_metadata)
+    engine = ComparisonEngine(schema_metadata, qa_qc_config=qa_qc_config)
     report_gen = ReportGenerator()
     
     # Find document directories to process
@@ -1692,3 +2031,175 @@ def compare(qa_qc_path: str, schema: str, quiet: bool, verbose: bool):
         # Quiet mode - just print success count
         successful = len([r for r in results if r.get('success')])
         console.print(f"{successful} documents compared")
+
+
+@click.command(name='benchmark')
+@click.argument('path', type=click.Path(exists=True))
+@click.option('--extraction-baseline-dir', type=click.Path(exists=True, file_okay=False, path_type=Path), default=None, help='Directory containing expected extraction JSON records for parity scoring. Files should mirror benchmark output relative paths or record filenames.')
+@click.option('--qaqc-baseline-dir', type=click.Path(exists=True, file_okay=False, path_type=Path), default=None, help='Directory containing expected QA/QC comparison_report.csv files for signal-quality scoring. Files should mirror benchmark document-folder relative paths.')
+@click.option('--consolidation-baseline-dir', type=click.Path(exists=True, file_okay=False, path_type=Path), default=None, help='Directory containing expected consolidated CSV outputs for row-correctness scoring. Files should mirror benchmark CSV relative paths or filenames.')
+@click.option('--consolidation-schema', type=click.Path(exists=True, dir_okay=False, path_type=Path), default=None, help='Schema used to generate consolidated outputs. Required for consolidation correctness scoring.')
+@click.option('--baseline-snapshot', type=click.Path(exists=True), default=None, help='Path to a saved benchmark snapshot used for median throughput/cost delta comparison.')
+@click.option('--write-snapshot', type=click.Path(), default=None, help='Write the current benchmark metrics to a snapshot JSON file.')
+@click.option('--snapshot-label', type=str, default=None, help='Optional label to store in a written benchmark snapshot.')
+@click.option('--min-extraction-parity', type=float, default=None, help='Minimum required extraction parity percentage (0-100) when expected extraction records are provided.')
+@click.option('--min-qaqc-signal-quality', type=float, default=None, help='Minimum required QA/QC signal quality percentage (0-100) when expected comparison reports are provided.')
+@click.option('--min-consolidation-correctness', type=float, default=None, help='Minimum required consolidation correctness percentage (0-100) when expected consolidated CSVs are provided.')
+@click.option('--max-failure-rate', type=float, default=None, help='Maximum allowed failed-document rate (0-1).')
+@click.option('--max-average-seconds-per-document', type=float, default=None, help='Maximum allowed average processing seconds per document.')
+@click.option('--min-documents-per-minute', type=float, default=None, help='Minimum required successful document throughput.')
+@click.option('--max-total-errors', type=int, default=None, help='Maximum allowed total structured errors across manifests.')
+@click.option('--max-throughput-delta-percent', type=float, default=None, help='Maximum allowed median time-per-document increase versus the baseline snapshot.')
+@click.option('--max-cost-delta-percent', type=float, default=None, help='Maximum allowed median cost-per-document increase versus the baseline snapshot.')
+@click.option('--quiet', '-q', is_flag=True, help='Minimal output (machine-readable)')
+@click.option('--verbose', '-v', is_flag=True, help='Detailed output')
+def benchmark(
+    path: str,
+    extraction_baseline_dir: Optional[Path],
+    qaqc_baseline_dir: Optional[Path],
+    consolidation_baseline_dir: Optional[Path],
+    consolidation_schema: Optional[Path],
+    baseline_snapshot: Optional[str],
+    write_snapshot: Optional[str],
+    snapshot_label: Optional[str],
+    min_extraction_parity: Optional[float],
+    min_qaqc_signal_quality: Optional[float],
+    min_consolidation_correctness: Optional[float],
+    max_failure_rate: Optional[float],
+    max_average_seconds_per_document: Optional[float],
+    min_documents_per_minute: Optional[float],
+    max_total_errors: Optional[int],
+    max_throughput_delta_percent: Optional[float],
+    max_cost_delta_percent: Optional[float],
+    quiet: bool,
+    verbose: bool,
+):
+    """Build a performance profile from run manifests and evaluate benchmark gates."""
+    benchmark_path = Path(path)
+    if min_extraction_parity is not None and extraction_baseline_dir is None:
+        raise click.UsageError('--min-extraction-parity requires --extraction-baseline-dir')
+    if min_qaqc_signal_quality is not None and qaqc_baseline_dir is None:
+        raise click.UsageError('--min-qaqc-signal-quality requires --qaqc-baseline-dir')
+    if min_consolidation_correctness is not None and consolidation_baseline_dir is None:
+        raise click.UsageError('--min-consolidation-correctness requires --consolidation-baseline-dir')
+    if consolidation_baseline_dir is not None and consolidation_schema is None:
+        raise click.UsageError('--consolidation-baseline-dir requires --consolidation-schema')
+
+    metrics = collect_benchmark_metrics(
+        benchmark_path,
+        repo_root=Path.cwd(),
+        extraction_baseline_dir=extraction_baseline_dir,
+        qaqc_baseline_dir=qaqc_baseline_dir,
+        consolidation_baseline_dir=consolidation_baseline_dir,
+        consolidation_schema_path=consolidation_schema,
+    )
+    baseline_comparison = None
+    if baseline_snapshot:
+        baseline_comparison = compare_benchmark_to_baseline(
+            metrics,
+            load_benchmark_snapshot(Path(baseline_snapshot)),
+        )
+
+    snapshot_path = None
+    if write_snapshot:
+        snapshot_path = write_benchmark_snapshot(
+            Path(write_snapshot),
+            metrics=metrics,
+            source_path=benchmark_path,
+            label=snapshot_label,
+        )
+
+    gate_result = evaluate_benchmark_gates(
+        metrics,
+        min_extraction_parity=min_extraction_parity,
+        min_qaqc_signal_quality=min_qaqc_signal_quality,
+        min_consolidation_correctness=min_consolidation_correctness,
+        max_failure_rate=max_failure_rate,
+        max_average_seconds_per_document=max_average_seconds_per_document,
+        min_documents_per_minute=min_documents_per_minute,
+        max_total_errors=max_total_errors,
+        max_throughput_delta_percent=max_throughput_delta_percent,
+        max_cost_delta_percent=max_cost_delta_percent,
+        baseline_comparison=baseline_comparison,
+    )
+
+    if quiet:
+        console.print(
+            json.dumps(
+                {
+                    'metrics': metrics,
+                    'baseline_comparison': baseline_comparison,
+                    'gates': gate_result,
+                    'snapshot_path': None if snapshot_path is None else snapshot_path.as_posix(),
+                },
+                indent=2,
+                sort_keys=True,
+            )
+        )
+        if gate_result['overall_passed'] is False:
+            sys.exit(1)
+        return
+
+    print_header('PERFORMANCE BENCHMARK')
+    config_info = {
+        'Input': str(benchmark_path),
+        'Run Manifests': str(metrics['manifest_count']),
+        'Documents': str(metrics['total_documents']),
+    }
+    console.print(create_config_table('Benchmark Input', config_info))
+    console.print()
+
+    summary_stats = {
+        'Extraction Parity': f"{metrics['extraction_parity']:.2f}%" if metrics['extraction_parity'] is not None else 'N/A',
+        'QA/QC Signal Quality': f"{metrics['qaqc_signal_quality']:.2f}%" if metrics['qaqc_signal_quality'] is not None else 'N/A',
+        'Consolidation Correctness': f"{metrics['consolidation_correctness']:.2f}%" if metrics['consolidation_correctness'] is not None else 'N/A',
+        'Successful Documents': str(metrics['successful_documents']),
+        'Failed Documents': str(metrics['failed_documents']),
+        'Failure Rate': f"{(metrics['failure_rate'] or 0.0) * 100:.1f}%",
+        'Total Run Time': f"{metrics['total_run_duration_seconds']:.1f}s",
+        'Average Doc Time': f"{metrics['average_document_duration_seconds']:.2f}s" if metrics['average_document_duration_seconds'] is not None else 'N/A',
+        'Median Doc Time': f"{metrics['median_document_duration_seconds']:.2f}s" if metrics['median_document_duration_seconds'] is not None else 'N/A',
+        'Max Doc Time': f"{metrics['max_document_duration_seconds']:.2f}s" if metrics['max_document_duration_seconds'] is not None else 'N/A',
+        'Throughput': f"{metrics['throughput_documents_per_minute']:.2f} docs/min" if metrics['throughput_documents_per_minute'] is not None else 'N/A',
+        'Average Doc Cost': f"${metrics['average_document_cost_usd']:.4f}" if metrics['average_document_cost_usd'] is not None else 'N/A',
+        'Median Doc Cost': f"${metrics['median_document_cost_usd']:.4f}" if metrics['median_document_cost_usd'] is not None else 'N/A',
+        'Total Errors': str(metrics['total_errors']),
+    }
+    console.print(create_summary_table('Performance Profile', summary_stats))
+
+    if baseline_comparison is not None:
+        console.print()
+        baseline_stats = {
+            'Baseline Label': baseline_comparison['baseline_label'] or 'N/A',
+            'Baseline Median Doc Time': f"{baseline_comparison['baseline_median_document_duration_seconds']:.2f}s" if baseline_comparison['baseline_median_document_duration_seconds'] is not None else 'N/A',
+            'Baseline Median Doc Cost': f"${baseline_comparison['baseline_median_document_cost_usd']:.4f}" if baseline_comparison['baseline_median_document_cost_usd'] is not None else 'N/A',
+            'Throughput Delta': f"{baseline_comparison['throughput_delta_percent']:+.2f}%" if baseline_comparison['throughput_delta_percent'] is not None else 'N/A',
+            'Cost Delta': f"{baseline_comparison['cost_delta_percent']:+.2f}%" if baseline_comparison['cost_delta_percent'] is not None else 'N/A',
+        }
+        console.print(create_summary_table('Baseline Comparison', baseline_stats))
+
+    if verbose and metrics['error_categories']:
+        console.print()
+        console.print(create_summary_table('Error Categories', metrics['error_categories']))
+
+    if snapshot_path is not None:
+        console.print()
+        print_info(f'Snapshot written to: {snapshot_path}')
+
+    if gate_result['gates']:
+        console.print()
+        gate_stats = {}
+        for gate_name, gate in gate_result['gates'].items():
+            actual = gate['actual']
+            threshold = gate['threshold']
+            gate_stats[gate_name] = f"{'PASS' if gate['passed'] else 'FAIL'} (actual={actual}, threshold={threshold})"
+        console.print(create_summary_table('Benchmark Gates', gate_stats))
+        console.print()
+        if gate_result['overall_passed']:
+            print_success('Benchmark gates passed')
+        else:
+            print_warning('Benchmark gates failed')
+            sys.exit(1)
+    else:
+        console.print()
+        print_info('No thresholds supplied; reported metrics only')

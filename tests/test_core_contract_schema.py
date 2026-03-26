@@ -46,6 +46,7 @@ def _sample_record() -> dict:
         "quality": {
             "overall_confidence": 0.92,
             "warnings": [],
+            "errors": [],
         },
         "processing_metrics": {
             "duration_seconds": 3.2,
@@ -118,6 +119,30 @@ def test_contract_accepts_valid_sample_record() -> None:
     errors = sorted(validator.iter_errors(sample), key=lambda item: list(item.path))
 
     assert not errors, "Expected sample extraction record to satisfy contract schema"
+
+
+def test_contract_accepts_structured_quality_errors() -> None:
+    schema = _load_contract_schema()
+    sample = _sample_record()
+    sample["quality"]["errors"] = [
+        {
+            "stage": "process",
+            "category": "document_processing",
+            "code": "document_extraction_failed",
+            "message": "OCR text quality degraded",
+            "retryable": False,
+            "source": {
+                "document_path": "documents/tariffs/electric-tariff.pdf",
+                "model": "compassop-gpt-4.1-mini",
+                "provider": "azure",
+            },
+        }
+    ]
+
+    validator = Draft7Validator(schema)
+    errors = sorted(validator.iter_errors(sample), key=lambda item: list(item.path))
+
+    assert not errors, "Expected sample extraction record with structured errors to satisfy contract schema"
 
 
 def test_modules_catalog_contract_has_required_metadata_fields() -> None:
