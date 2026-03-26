@@ -129,3 +129,38 @@ Use this section format for each gate run.
 - Gate decision: PASS or FAIL
 - Evidence paths:
 - Follow-up actions:
+
+## Gate Records
+
+### 2026-03-25 Phase 3 Gate Record
+- Date: 2026-03-25
+- Branch: `phase1-artifact-compiler-slice`
+- Phase: Phase 3, Enterprise Hardening
+- Extraction parity: `100.0%`
+	Evidence scope: AQ smoke extraction parity from `output/phase3_manifest_smoke/aq_permits` plus remediated tariff extraction parity from `output/phase3_manifest_range_remediated/tariffs`
+- QA/QC signal quality: `100.0%`
+	Evidence scope: four geothermal QA/QC fixture reports under `processed/qa_qc_test/qa_qc`
+- Consolidation correctness: `100.0%`
+	Evidence scope: AQ, geothermal, and tariff consolidated CSV outputs under `consolidated/aq_permits`, `consolidated/geothermal_ordinances`, and `consolidated/tariffs`
+- Failure rate: `0.0%`
+	Evidence scope: tracked benchmark runs against `output/phase3_manifest_smoke/aq_permits`, `output/phase3_manifest_smoke/tariffs`, and `output/phase3_manifest_range_remediated/tariffs`
+- Throughput delta (%): `+0.0%`
+- Cost delta (%): `+0.0%`
+- Gate decision: PASS on the current tracked seeded evidence set
+- Evidence paths:
+	- `modernization/tracking/phase3_aq_permits_smoke_baseline_snapshot.json`
+	- `modernization/tracking/phase3_tariffs_smoke_baseline_snapshot.json`
+	- `modernization/tracking/phase3_tariffs_range_remediated_baseline_snapshot.json`
+	- `modernization/tracking/expected/phase3_extraction/aq_permits/`
+	- `modernization/tracking/expected/phase3_extraction/tariffs/`
+	- `modernization/tracking/expected/phase3_qaqc/qa_qc_test/`
+	- `modernization/tracking/expected/phase3_consolidated/aq_permits/`
+	- `modernization/tracking/expected/phase3_consolidated/geothermal_ordinances/`
+	- `modernization/tracking/expected/phase3_consolidated/tariffs/`
+	- `output/phase3_manifest_smoke/aq_permits/run_manifests/c4e8a88522234ceb.manifest.json`
+	- `output/phase3_manifest_smoke/tariffs/run_manifests/b3a75b5e4a786518.manifest.json`
+	- `output/phase3_manifest_range_remediated/tariffs/run_manifests/cae816ea3fc8e003.manifest.json`
+- Follow-up actions:
+	- maintainer must accept the seeded expected artifacts as temporary release goldens or replace them with reviewed benchmark truth
+	- maintainer must decide whether broader corpus coverage is required before release signoff
+	- final release decision must still be recorded in `modernization/tracking/MODERNIZATION_CHANGELOG.md`

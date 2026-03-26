@@ -29,6 +29,7 @@ def test_build_run_manifest_sorts_documents_and_output_records() -> None:
         total_processed=2,
         successful_count=2,
         failed_count=0,
+        failed_results=[],
     )
 
     assert manifest["manifest_version"] == "1.0.0"
@@ -46,6 +47,51 @@ def test_build_run_manifest_sorts_documents_and_output_records() -> None:
         "processed/tariffs/b.json",
     ]
     assert manifest["status"]["result"] == "success"
+    assert manifest["errors"]["total_errors"] == 0
+    assert manifest["errors"]["by_category"] == {}
+
+
+def test_build_run_manifest_summarizes_failed_error_records() -> None:
+    manifest = _build_run_manifest(
+        run_id="run://deterministic1234",
+        mode="single_model",
+        schema_path=Path("schemas/personal/electricity_tariff_schema.json"),
+        provider="azure",
+        model="gpt-5",
+        runtime_artifact=None,
+        doc_files=[Path("documents/tariffs/a.pdf")],
+        successful_output_paths=[],
+        started_at="2026-03-25T10:00:00Z",
+        finished_at="2026-03-25T10:00:03Z",
+        total_processed=1,
+        successful_count=0,
+        failed_count=1,
+        failed_results=[
+            {
+                "file": "a.pdf",
+                "success": False,
+                "errors": [
+                    {
+                        "stage": "process",
+                        "category": "document_processing",
+                        "code": "document_extraction_failed",
+                        "message": "Failed to extract from PDF",
+                        "retryable": False,
+                        "source": {
+                            "document_path": "documents/tariffs/a.pdf",
+                            "model": "gpt-5",
+                            "provider": "azure",
+                        },
+                    }
+                ],
+            }
+        ],
+    )
+
+    assert manifest["status"]["result"] == "partial_failure"
+    assert manifest["errors"]["total_errors"] == 1
+    assert manifest["errors"]["by_category"] == {"document_processing": 1}
+    assert manifest["errors"]["by_code"] == {"document_extraction_failed": 1}
 
 
 def test_write_run_manifest_persists_expected_file(tmp_path) -> None:

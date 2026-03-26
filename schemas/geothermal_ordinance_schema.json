@@ -18,45 +18,7 @@
       },
       "deduplication": {
         "key_fields": ["category", "specific_subject", "applies_to", "value", "unit", "section"],
-        "ignore_fields": ["notes", "condition", "details"],
-        "strategy": "latest",
-        "comparison_mode": "fuzzy"
-      },
-      "output": {
-        "default_format": "excel",
-        "exclude_fields": [
-          "applies_to_geothermal_electricity",
-          "extraction_approach",
-          "relevant_sections"
-        ],
-        "column_order": [
-          "state",
-          "county",
-          "ordinance_code",
-          "date_adopted",
-          "date_effective",
-          "date_last_amended",
-          "supersedes",
-          "category",
-          "specific_subject",
-          "applies_to",
-          "value",
-          "value_type",
-          "unit",
-          "condition",
-          "details",
-          "section"
-        ],
-        "freeze_columns": 3,
-        "auto_width": true
-      }
-    },
-    "qa_qc": {
-      "record_matching": {
-        "key_fields": ["category", "applies_to"]
-      },
-      "comparison": {
-        "primary_fields": ["value", "unit"]
+        "ignore_fields": ["notes", "condition", "details"]
       }
     },
     "validation": {

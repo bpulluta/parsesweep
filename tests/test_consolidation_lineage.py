@@ -3,7 +3,11 @@
 import json
 from pathlib import Path
 
+import pandas as pd
+from openpyxl import load_workbook
+
 from streamline_extract.consolidation.consolidator import Consolidator
+from streamline_extract.consolidation.deduplicator import Deduplicator
 from streamline_extract.utils.schema_metadata import SchemaMetadata
 
 
@@ -146,6 +150,23 @@ def test_consolidation_supports_extraction_record_payload_lineage(tmp_path) -> N
                 "provider": "azure",
                 "extracted_at": "2026-03-24T00:00:00Z",
             },
+            "quality": {
+                "warnings": [],
+                "errors": [
+                    {
+                        "stage": "process",
+                        "category": "document_processing",
+                        "code": "document_extraction_failed",
+                        "message": "OCR text quality degraded",
+                        "retryable": False,
+                        "source": {
+                            "document_path": "documents/contracts/doc-1.pdf",
+                            "model": "gpt-5",
+                            "provider": "azure",
+                        },
+                    }
+                ],
+            },
             "payload": {
                 "metadata": {"id": "T-3", "jurisdiction": "Example Borough"},
                 "items": [{"name": "Charge C", "value": 30}],
@@ -164,6 +185,9 @@ def test_consolidation_supports_extraction_record_payload_lineage(tmp_path) -> N
     assert "Artifact_Id" not in df.columns
     assert df.iloc[0]["Run Id"] == "run://deterministic3333"
     assert df.iloc[0]["Artifact Id"] == "artifact://runtime/ghi789"
+    assert df.iloc[0]["Error Count"] == 1
+    assert df.iloc[0]["Error Categories"] == "document_processing"
+    assert "OCR text quality degraded" in df.iloc[0]["Error Messages"]
     assert df.iloc[0]["Jurisdiction"] == "Example Borough"
 
 
@@ -213,3 +237,236 @@ def test_consolidation_skips_non_record_metadata_files(tmp_path) -> None:
     assert df.iloc[0]["Run Id"] == "run://deterministic4444"
     assert df.iloc[0]["Artifact Id"] == "artifact://runtime/jkl012"
     assert df.iloc[0]["Jurisdiction"] == "Example Parish"
+
+
+def test_consolidation_exclude_fields_can_come_from_runtime_overrides(tmp_path) -> None:
+    schema_path = tmp_path / "schema.json"
+    _write_schema(schema_path)
+
+    extracted_dir = tmp_path / "processed/contracts"
+    _write_json(
+        extracted_dir / "record-2.json",
+        {
+            "record_id": "record-2",
+            "contract_version": "1.0.0",
+            "document": {
+                "source_document_id": "doc-2",
+                "source_path": "documents/contracts/doc-2.pdf",
+                "source_filename": "doc-2.pdf",
+            },
+            "lineage": {
+                "artifact_id": "artifact://runtime/mno345",
+                "profile_id": "default",
+                "run_id": "run://deterministic5555",
+                "model": "gpt-5",
+                "provider": "azure",
+                "extracted_at": "2026-03-24T00:00:00Z",
+            },
+            "payload": {
+                "metadata": {"id": "T-5", "jurisdiction": "Example District", "internal_note": "drop me"},
+                "items": [{"name": "Charge E", "value": 50}],
+            },
+        },
+    )
+
+    schema_metadata = SchemaMetadata(
+        schema_path,
+        metadata_overrides={
+            "consolidation": {
+                "output": {
+                    "exclude_fields": ["internal_note"],
+                }
+            }
+        },
+    )
+    consolidator = Consolidator(schema_metadata=schema_metadata, verbose=False, debug=False)
+    df, _ = consolidator.consolidate_from_directory(extracted_dir)
+
+    assert not df.empty
+    assert "Internal Note" not in df.columns
+    assert df.iloc[0]["Jurisdiction"] == "Example District"
+
+
+def test_consolidation_output_overrides_apply_to_saved_exports(tmp_path) -> None:
+    """Runtime output overrides should shape saved CSV and Excel exports."""
+    schema_path = tmp_path / "schema.json"
+    _write_schema(schema_path)
+
+    schema_metadata = SchemaMetadata(
+        schema_path,
+        metadata_overrides={
+            "consolidation": {
+                "output": {
+                    "column_renames": {
+                        "Jurisdiction": "county",
+                        "Run Id": "run_id",
+                        "Name": "charge_name",
+                        "Value": "amount",
+                    },
+                    "column_order": [
+                        "county",
+                        "run_id",
+                        "charge_name",
+                        "amount",
+                    ],
+                    "freeze_columns": 3,
+                    "auto_width": False,
+                }
+            }
+        },
+    )
+    consolidator = Consolidator(
+        schema_metadata=schema_metadata,
+        verbose=False,
+        debug=False,
+    )
+
+    export_frame = pd.DataFrame(
+        [
+            {
+                "Jurisdiction": "Example District",
+                "Run Id": "run://deterministic6666",
+                "Name": "Charge F",
+                "Value": 60,
+                "Artifact Id": "artifact://runtime/pqr678",
+            }
+        ]
+    )
+
+    csv_path = tmp_path / "output.csv"
+    excel_path = tmp_path / "output.xlsx"
+    consolidator.save_csv(export_frame, csv_path)
+    consolidator.save_excel(export_frame, excel_path)
+
+    csv_headers = (
+        csv_path.read_text(encoding="utf-8").splitlines()[0].split(",")
+    )
+    assert csv_headers == [
+        "county",
+        "run_id",
+        "charge_name",
+        "amount",
+        "Artifact Id",
+    ]
+
+    workbook = load_workbook(excel_path)
+    worksheet = workbook["Data"]
+    excel_headers = [cell.value for cell in worksheet[1]]
+    assert excel_headers == [
+        "county",
+        "run_id",
+        "charge_name",
+        "amount",
+        "Artifact Id",
+    ]
+    assert worksheet.freeze_panes == "D2"
+
+
+def test_preview_deduplication_flags_conflicting_non_key_values_as_suspicious(tmp_path) -> None:
+    schema_path = tmp_path / "schema.json"
+    _write_schema(schema_path)
+
+    schema_metadata = SchemaMetadata(schema_path)
+    deduplicator = Deduplicator(schema_metadata=schema_metadata)
+    df = pd.DataFrame(
+        [
+            {
+                "Jurisdiction": "Example Borough",
+                "Id": "doc-1",
+                "Name": "Charge A",
+                "Value": 10,
+                "Run Id": "run://1",
+                "Notes": "first copy",
+            },
+            {
+                "Jurisdiction": "Example Borough",
+                "Id": "doc-2",
+                "Name": "Charge A",
+                "Value": 12,
+                "Run Id": "run://2",
+                "Notes": "second copy",
+            },
+        ]
+    )
+
+    preview = deduplicator.preview_deduplication(df)
+
+    assert preview["duplicates_removed"] == 1
+    assert preview["suspicious_groups_count"] == 1
+    assert preview["suspicious_groups_by_severity"] == {"high": 1, "medium": 0, "low": 0}
+    assert len(preview["warnings"]) == 1
+    assert preview["duplicate_groups"][0]["suspicious"] is True
+    assert preview["duplicate_groups"][0]["severity"] == "high"
+    assert preview["duplicate_groups"][0]["conflicting_columns"] == ["Value"]
+    assert preview["suspicious_groups"][0]["severity"] == "high"
+    assert preview["suspicious_groups"][0]["conflicting_columns"] == ["Value"]
+
+
+def test_preview_deduplication_uses_schema_numeric_fields_for_high_severity(tmp_path) -> None:
+    schema_path = tmp_path / "schema.json"
+    _write_json(
+        schema_path,
+        {
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "$metadata": {
+                "domain": "Test",
+                "version": "1.0.0",
+                "extraction": {
+                    "main_data_array": "items",
+                    "context_objects": ["metadata"],
+                    "identifier_fields": ["metadata.id"],
+                    "document_type": "Test Document",
+                },
+                "consolidation": {
+                    "deduplication": {
+                        "key_fields": ["name"],
+                        "ignore_fields": ["notes"],
+                    }
+                },
+            },
+            "type": "object",
+            "properties": {
+                "metadata": {"type": "object"},
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "name": {"type": "string"},
+                            "distance_measure": {"type": "number"},
+                        },
+                    },
+                },
+            },
+        },
+    )
+
+    schema_metadata = SchemaMetadata(schema_path)
+    deduplicator = Deduplicator(schema_metadata=schema_metadata)
+    df = pd.DataFrame(
+        [
+            {
+                "Jurisdiction": "Example Borough",
+                "Id": "doc-1",
+                "Name": "Charge A",
+                "Distance Measure": 10,
+                "Run Id": "run://1",
+                "Notes": "first copy",
+            },
+            {
+                "Jurisdiction": "Example Borough",
+                "Id": "doc-2",
+                "Name": "Charge A",
+                "Distance Measure": 12,
+                "Run Id": "run://2",
+                "Notes": "second copy",
+            },
+        ]
+    )
+
+    preview = deduplicator.preview_deduplication(df)
+
+    assert preview["duplicates_removed"] == 1
+    assert preview["duplicate_groups"][0]["conflicting_columns"] == ["Distance Measure"]
+    assert preview["duplicate_groups"][0]["severity"] == "high"
+    assert preview["suspicious_groups_by_severity"] == {"high": 1, "medium": 0, "low": 0}

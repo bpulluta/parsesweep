@@ -203,6 +203,7 @@ class TestRunMultiModelExtraction:
             data = json.load(f)
             assert data["contract_version"] == "1.0.0"
             assert data["lineage"]["model"] == "gpt-4o"
+            assert data["quality"]["errors"] == []
             assert "payload" in data
             assert "items" in data["payload"]
     
@@ -371,6 +372,9 @@ class TestRunMultiModelExtraction:
             assert metadata["status"] == "partial"
             assert metadata["summary"]["successful"] == 1
             assert metadata["summary"]["failed"] == 1
+            assert metadata["summary"]["total_errors"] == 1
+            assert metadata["errors"]["by_category"] == {"internal": 1}
+            assert metadata["model_errors"]["gpt-nonexistent"]["code"] == "unexpected_processing_error"
     
     @patch("streamline_extract.extraction.DocumentExtractor")
     def test_azure_provider_config(

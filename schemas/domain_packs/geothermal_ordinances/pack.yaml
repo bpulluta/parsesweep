@@ -1,0 +1,105 @@
+name: geothermal_ordinances
+version: 1.1.0
+schema_path: schemas/personal/geothermal_ordinance_schema.json
+schema_aliases:
+  - schemas/geothermal_ordinance_schema.json
+  - schemas/geothermal_ordinance_schema_v3.json
+  - schemas/personal/geothermal_ordinance_schema.json
+document_type: Geothermal Ordinance
+consolidation:
+  deduplication:
+    strategy: latest
+    comparison_mode: fuzzy
+  output:
+    default_format: excel
+    exclude_fields:
+      - Applies To Geothermal Electricity
+      - Extraction Approach
+      - Relevant Sections
+      - Date Adopted
+      - Date Effective
+      - Date Last Amended
+      - Supersedes
+      - Value Type
+      - Condition
+    column_renames:
+      State: state
+      County: county
+      Ordinance Code: ordinance_code
+      Date Adopted: date_adopted
+      Date Effective: date_effective
+      Date Last Amended: date_last_amended
+      Supersedes: supersedes
+      Category: category
+      Facility Type: facility_type
+      Specific Subject: specific_subject
+      Value: value
+      Value Type: value_type
+      Unit: units
+      Condition: condition
+      Applies To: applies_to
+      Details: summary
+      Section: section
+    column_order:
+      - county
+      - state
+      - ordinance_code
+      - category
+      - facility_type
+      - specific_subject
+      - applies_to
+      - value
+      - units
+      - section
+      - summary
+    freeze_columns: 3
+    auto_width: true
+qaqc:
+  default_lane: quantitative
+  lanes:
+    quantitative:
+      enabled: true
+      mode: quantitative
+      comparison_approach: numeric_only
+      record_matching:
+        key_fields:
+          - category
+          - facility_type
+          - specific_subject
+      comparison:
+        primary_fields:
+          - value
+          - unit
+    qualitative:
+      enabled: false
+      mode: qualitative
+      comparison_approach: text_review
+      record_matching:
+        key_fields:
+          - category
+          - facility_type
+          - specific_subject
+      comparison:
+        primary_fields:
+          - details
+modules:
+  - module_id: value_semantics_classifier
+    name: Value Semantics Classifier
+    version: 1.0.0
+    kind: classifier
+    enabled: true
+  - module_id: eligibility_policy_engine
+    name: Eligibility Policy Engine
+    version: 1.0.0
+    kind: policy
+    enabled: true
+  - module_id: lane_projector
+    name: Lane Projector
+    version: 1.0.0
+    kind: projector
+    enabled: true
+  - module_id: consolidation_mapper
+    name: Consolidation Mapper
+    version: 1.0.0
+    kind: mapper
+    enabled: true

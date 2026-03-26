@@ -23,15 +23,15 @@
 
 ## Phase 3: Enterprise Hardening
 - [x] Implement deterministic run manifests
-- [ ] Implement error taxonomy and handling policy
-- [ ] Execute performance and scale benchmarks
-- [ ] Clean deprecated modules/docs/scripts
-- [ ] Finalize release checklist and runbook
+- [x] Implement error taxonomy and handling policy (structured process errors now include generic context-budget recovery guidance in the CLI, with repo page-range config hints when available)
+- [x] Execute performance and scale benchmarks (manifest-backed reruns completed for AQ smoke, tariff smoke, and remediated large-tariff evidence on 2026-03-25; broader release decision remains pending under the Phase 3 release checklist)
+- [x] Clean deprecated modules/docs/scripts (tracked `scripts/` surface is reduced to three validated retained utilities: `create_validation_comparison.py`, `migrate_field_names.py`, and `update_validation_spreadsheet.py`; active CLI/docs references were remediated to remove deleted QA/QC script and missing schema-path examples)
+- [x] Finalize release checklist and runbook
 
 ## Phase 4: Controlled Expansion
-- [ ] Evaluate deeper qualitative QA/QC
-- [ ] Add environment profile tiering if needed
-- [ ] Improve domain onboarding automation
+- [ ] Evaluate deeper qualitative QA/QC (quantitative lane modularization landed; qualitative lane still disabled)
+- [x] Add environment profile tiering if needed
+- [ ] Improve domain onboarding automation (runtime validation, `init-domain-pack`, schema-derived starter `qaqc`/`consolidation` blocks, optional profile scaffolding, one-command profile tiering, workspace folder scaffolding, schema-aware config starter scaffolding, machine-readable guided next-step commands, schema-aware QA/QC/process guidance, guided interactive prompting for core onboarding choices, interactive custom-root prompting, interactive overwrite confirmation, lightweight template-mode selection, and optional sample document asset scaffolding landed; a fully interactive end-to-end onboarding flow remains open)
 
 ## Exit Criteria Tracking
 - [ ] All mandatory quality gates pass

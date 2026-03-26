@@ -596,13 +596,13 @@ StreamlineExtract automatically selects schemas based on keywords in your docume
 
 | Keyword in Path | Schema Selected | Use Case |
 |-----------------|----------------|----------|
-| `geothermal` | `schemas/geothermal_ordinance_schema.json` | Municipal regulations |
+| `geothermal` | `schemas/personal/geothermal_ordinance_schema.json` | Municipal regulations |
 | `tariff` | `schemas/electricity_tariff_schema.json` | Utility rate schedules |
 | `permit`, `aq` | `schemas/air_quality_permits_schema.json` | Environmental permits |
 
 **Example:**
 ```bash
-# Automatically uses schemas/geothermal_ordinance_schema.json
+# Automatically uses schemas/personal/geothermal_ordinance_schema.json
 pixi run streamline-extract process documents/geothermal_regulations/
 
 # Automatically uses schemas/electricity_tariff_schema.json
@@ -647,6 +647,63 @@ pixi run streamline-extract process documents/my_docs/ \
 
 See `schemas/SCHEMA_BEST_PRACTICES.md` for detailed guidance.
 
+### Understanding Schemas, Packs, and Profiles
+
+When you author a new extraction setup, start with the schema. Add a pack only when you need reusable runtime behavior across a domain.
+
+- `Schema JSON`: The file you author directly. It defines what data to extract, which array becomes spreadsheet rows, how documents are identified, and which fields define deduplication.
+- `Pack YAML`: Optional runtime config for a domain. Use it when you want reusable QA/QC lanes, consolidation output settings, schema aliases, or other shared behavior that should not clutter the schema itself.
+- `Profile`: Runtime environment selection such as `default`, `dev`, `staging`, or `prod`. Most schema authors can stay on `default` unless they intentionally need environment-specific behavior.
+
+Rule of thumb:
+
+- Start with a schema only.
+- Add a pack when you need shared output shaping or QA/QC behavior.
+- Leave profiles alone unless you have a deployment reason to change them.
+
+### Quick Schema Iteration
+
+Use a small repeatable loop while authoring a schema so you can add fields, adjust descriptions, and catch extraction problems quickly without re-running a full corpus.
+
+```bash
+# 1. Validate the schema structure
+pixi run streamline-extract validate-schema schemas/my_schema.json
+
+# 2. Run a tiny extraction sample
+pixi run streamline-extract process documents/sample/ \
+  --schema schemas/my_schema.json \
+  -n 2 \
+  --reprocess
+
+# 3. Consolidate the sample output
+pixi run streamline-extract consolidate processed/sample/ \
+  --schema schemas/my_schema.json \
+  --verbose
+
+# 4. Preview deduplication before writing spreadsheets
+pixi run streamline-extract consolidate processed/sample/ \
+  --schema schemas/my_schema.json \
+  --dry-run \
+  --report-format json \
+  --fail-on-suspicious high
+
+# 5. Review extracted JSON + consolidated spreadsheet, then iterate
+```
+
+What to look for on each pass:
+
+- `main_data_array` produced the rows you expected
+- `identifier_fields` identify the document cleanly
+- new fields are populated consistently
+- `key_fields` do not merge distinct records accidentally
+- dry-run output does not report suspicious duplicate groups with conflicting non-key values
+- high-severity suspicious groups are resolved before you trust the schema on a full batch
+- consolidation output columns make sense for analysis
+
+When a matching pack exists, `--verbose` output now shows the resolved runtime artifact so you can tell whether pack-owned QA/QC or consolidation settings are active.
+
+Use `--dry-run --report-format json --fail-on-suspicious high` when you want the schema iteration loop to stop automatically on likely data-loss merges. High severity now comes from both conflict names and schema-declared numeric or unit-like fields, so vague column names can still be flagged correctly.
+
 ---
 
 ## Examples
@@ -658,11 +715,11 @@ See `schemas/SCHEMA_BEST_PRACTICES.md` for detailed guidance.
 ```bash
 # Extract requirements from municipal ordinances
 pixi run streamline-extract process documents/geothermal_ordinances/ \
-  --schema schemas/geothermal_ordinance_schema.json
+  --schema schemas/personal/geothermal_ordinance_schema.json
 
 # Consolidate to Excel
 pixi run streamline-extract consolidate processed/geothermal_ordinances/ \
-  --schema schemas/geothermal_ordinance_schema.json
+  --schema schemas/personal/geothermal_ordinance_schema.json
 ```
 
 **Output**: Spreadsheet with jurisdiction, requirements, depth limits, setbacks, etc.

@@ -1,0 +1,12 @@
+{
+  "profile_id": "default",
+  "environment": "default",
+  "runtime": {
+    "emit_lineage": true,
+    "emit_run_manifests": true,
+    "strict_contracts": true
+  },
+  "llm": {
+    "provider_strategy": "auto"
+  }
+}

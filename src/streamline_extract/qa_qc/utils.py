@@ -14,9 +14,58 @@ This file contains QA/QC-specific utilities.
 import json
 import logging
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
+
+
+def resolve_qaqc_runtime_config(
+    schema_metadata,
+    runtime_artifact: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """Resolve active QA/QC config from the runtime artifact, falling back to schema metadata."""
+    pack_qaqc = ((runtime_artifact or {}).get("resolved") or {}).get("pack", {}).get("qaqc")
+
+    if isinstance(pack_qaqc, dict):
+        lanes = pack_qaqc.get("lanes") or {}
+        lane_name = pack_qaqc.get("default_lane")
+        lane_config = None
+
+        if lane_name and isinstance(lanes.get(lane_name), dict):
+            candidate = lanes[lane_name]
+            if candidate.get("enabled", True):
+                lane_config = candidate
+
+        if lane_config is None:
+            for candidate_name, candidate in lanes.items():
+                if isinstance(candidate, dict) and candidate.get("enabled", False):
+                    lane_name = candidate_name
+                    lane_config = candidate
+                    break
+
+        if lane_config is not None:
+            match_fields = lane_config.get("record_matching", {}).get("key_fields")
+            compare_fields = lane_config.get("comparison", {}).get("primary_fields")
+
+            return {
+                "source": "runtime_artifact",
+                "lane_name": lane_name,
+                "mode": lane_config.get("mode", lane_name or "runtime"),
+                "comparison_approach": lane_config.get("comparison_approach", "numeric_only"),
+                "match_fields": list(match_fields or schema_metadata.get_qa_qc_match_fields()),
+                "compare_fields": list(compare_fields or schema_metadata.get_qa_qc_compare_fields()),
+                "projection": lane_config.get("projection"),
+            }
+
+    return {
+        "source": "schema_metadata",
+        "lane_name": None,
+        "mode": "schema_metadata",
+        "comparison_approach": "numeric_only",
+        "match_fields": list(schema_metadata.get_qa_qc_match_fields()),
+        "compare_fields": list(schema_metadata.get_qa_qc_compare_fields()),
+        "projection": None,
+    }
 
 
 def find_companion_qaqc_schema(production_schema_path: Path) -> Tuple[Optional[Path], Optional[dict]]:

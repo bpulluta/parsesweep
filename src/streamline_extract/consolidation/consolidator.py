@@ -61,7 +61,12 @@ class Consolidator:
         self.excel_formatter = ExcelFormatter()
         self.csv_exporter = CsvExporter()
     
-    def consolidate_from_directory(self, json_dir: Path) -> Tuple[pd.DataFrame, Dict]:
+    def consolidate_from_directory(
+        self,
+        json_dir: Path,
+        *,
+        apply_deduplication: bool = True,
+    ) -> Tuple[pd.DataFrame, Dict]:
         """
         Load all JSON files and consolidate into DataFrame.
         Searches recursively through nested subdirectories.
@@ -189,13 +194,15 @@ class Consolidator:
         self.total_items = len(df)
         
         # Row-level deduplication (schema-driven, universal)
-        df_before = len(df)
-        df = self.deduplicator.deduplicate(df)
-        self.duplicates_removed = df_before - len(df)
-        
-        if self.verbose and self.duplicates_removed > 0:
-            key_fields = self.schema_metadata.metadata.get('consolidation', {}).get('deduplication', {}).get('key_fields', [])
-            print(f"\n🔄 Removed {self.duplicates_removed} duplicate(s) based on key fields: {key_fields}")
+        self.duplicates_removed = 0
+        if apply_deduplication:
+            df_before = len(df)
+            df = self.deduplicator.deduplicate(df)
+            self.duplicates_removed = df_before - len(df)
+            
+            if self.verbose and self.duplicates_removed > 0:
+                key_fields = self.schema_metadata.metadata.get('consolidation', {}).get('deduplication', {}).get('key_fields', [])
+                print(f"\n🔄 Removed {self.duplicates_removed} duplicate(s) based on key fields: {key_fields}")
         
         if self.debug:
             print(f"\n[DEBUG] DataFrame info:")
@@ -226,6 +233,17 @@ class Consolidator:
         if artifact_id:
             context["Artifact Id"] = artifact_id
 
+        quality = raw_data.get("quality") if isinstance(raw_data.get("quality"), dict) else {}
+        errors = quality.get("errors") if isinstance(quality.get("errors"), list) else []
+        if errors:
+            context["Error Count"] = len(errors)
+            context["Error Categories"] = "; ".join(
+                sorted({error.get("category", "internal") for error in errors if isinstance(error, dict)})
+            )
+            context["Error Messages"] = " | ".join(
+                error.get("message", "Unknown error") for error in errors if isinstance(error, dict)
+            )
+
         return context
     
     def _apply_exclude_fields(self, df: pd.DataFrame) -> pd.DataFrame:
@@ -234,7 +252,7 @@ class Consolidator:
         
         This is schema-driven and universal - any schema can specify columns to hide.
         """
-        exclude_fields = self.schema_metadata.metadata.get("consolidation", {}).get("output", {}).get("exclude_fields", [])
+        exclude_fields = self.schema_metadata.get_output_exclude_fields()
         
         if not exclude_fields:
             return df
@@ -248,11 +266,36 @@ class Consolidator:
             df = df.drop(columns=cols_to_drop)
         
         return df
+
+    def _prepare_output_dataframe(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Apply schema-driven output shaping before saving exports."""
+        prepared_df = df.copy()
+
+        column_renames = self.schema_metadata.get_column_renames()
+        if column_renames:
+            prepared_df = prepared_df.rename(
+                columns={column: renamed for column, renamed in column_renames.items() if column in prepared_df.columns}
+            )
+
+        column_order = self.schema_metadata.get_column_order()
+        if column_order:
+            ordered_columns = [column for column in column_order if column in prepared_df.columns]
+            remaining_columns = [column for column in prepared_df.columns if column not in ordered_columns]
+            prepared_df = prepared_df[ordered_columns + remaining_columns]
+
+        return prepared_df
     
     def save_excel(self, df: pd.DataFrame, output_path: Path):
         """Save DataFrame to Excel with professional formatting."""
-        self.excel_formatter.save(df, output_path)
+        prepared_df = self._prepare_output_dataframe(df)
+        self.excel_formatter.save(
+            prepared_df,
+            output_path,
+            freeze_columns=self.schema_metadata.get_freeze_columns(),
+            auto_width=self.schema_metadata.get_auto_width(),
+        )
     
     def save_csv(self, df: pd.DataFrame, output_path: Path):
         """Save DataFrame to CSV."""
-        self.csv_exporter.save(df, output_path)
+        prepared_df = self._prepare_output_dataframe(df)
+        self.csv_exporter.save(prepared_df, output_path)
