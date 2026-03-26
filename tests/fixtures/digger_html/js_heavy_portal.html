@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Document Portal - JS Rendered Content</title>
+    <script>
+        // Simulate JS-rendered content that wouldn't be visible to simple HTTP parsing
+        document.addEventListener('DOMContentLoaded', function() {
+            // This JS would render additional content in a real browser
+            const container = document.getElementById('dynamic-docs');
+            // In a real page, this would pull from an API and render links
+        });
+    </script>
+</head>
+<body>
+    <h1>County Document Portal</h1>
+    
+    <!-- Static content visible to any HTTP client -->
+    <h2>Available Documents</h2>
+    <div id="static-docs">
+        <ul>
+            <li><a href="https://portal.county.gov/docs/geothermal-ordinance.pdf">Geothermal Ordinance</a></li>
+            <li><a href="https://portal.county.gov/docs/solar-regulations.pdf">Solar Regulations</a></li>
+        </ul>
+    </div>
+    
+    <!-- Content that would require JS rendering to discover -->
+    <div id="dynamic-docs" data-api="https://api.county.gov/documents">
+        <!-- This div would be populated by JavaScript in a real browser -->
+        <!-- Contains links like:
+            <a href="https://portal.county.gov/docs/53007-ordinance.pdf">Chapter 10 Ordinance</a>
+        -->
+    </div>
+    
+    <!-- Fallback content for non-JS clients (what we can actually find) -->
+    <noscript>
+        <p>JavaScript is required to view all documents. <a href="https://portal.county.gov/docs/all-documents.csv">Download CSV of all documents</a></p>
+    </noscript>
+    
+    <!-- Additional static links -->
+    <h2>Code Sections</h2>
+    <ul>
+        <li><a href="https://portal.county.gov/codes/ch10-geothermal.pdf">Chapter 10 - Geothermal</a></li>
+        <li><a href="https://cms2.revize.com/revize/county-planning/ordinance/2024-update.pdf">2024 Update</a></li>
+        <li><a href="https://cms2.revize.com/revize/county-planning/permits/53007.pdf">Permit 53007</a></li>
+    </ul>
+</body>
+</html>

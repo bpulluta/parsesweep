@@ -6,10 +6,12 @@ This module contains the main data processing pipeline commands:
 - consolidate: Merge JSON files into Excel/CSV
 """
 
+import csv
 import json
 import hashlib
 import logging
 import os
+import re
 import sys
 import time
 from datetime import datetime, timezone
@@ -17,6 +19,7 @@ from pathlib import Path
 from typing import Optional, List, Tuple, Dict, Any
 
 import click
+from click.core import ParameterSource
 from dotenv import load_dotenv
 from rich.logging import RichHandler
 
@@ -28,6 +31,7 @@ from streamline_extract.extraction.document_utils import (
     SUPPORTED_EXTENSIONS
 )
 from streamline_extract.consolidation.consolidator import Consolidator
+from streamline_extract.acquisition import AcquisitionEngine, AcquisitionRequest
 from streamline_extract.cli.ui import (
     console,
     print_header,
@@ -49,6 +53,7 @@ from streamline_extract.benchmarking import (
     write_benchmark_snapshot,
 )
 from streamline_extract.core import compile_runtime_artifact, resolve_pack_ref_for_schema, ArtifactCompilerError
+from streamline_extract.config import RuntimeConfigError, load_runtime_config_file, resolve_command_config
 from streamline_extract.utils.error_taxonomy import build_error_record, normalize_error_records, summarize_error_records
 
 
@@ -64,6 +69,51 @@ _BENCHMARK_PROFILE_PATH_FIELDS = {
     'baseline_snapshot',
     'write_snapshot',
 }
+
+
+def _explicit_cli_overrides(param_names: List[str]) -> Dict[str, Any]:
+    """Return only values that were explicitly provided on the command line."""
+    ctx = click.get_current_context(silent=True)
+    if ctx is None:
+        return {}
+
+    overrides: Dict[str, Any] = {}
+    for name in param_names:
+        if ctx.get_parameter_source(name) == ParameterSource.COMMANDLINE:
+            overrides[name] = ctx.params.get(name)
+    return overrides
+
+
+def _print_effective_config(command_name: str, resolved_values: Dict[str, Any]) -> None:
+    """Print resolved runtime config values and their source layer."""
+    sources = resolved_values.get('_config_sources', {})
+    display = {
+        key: f"{value} [dim]({sources.get(key, 'default')})[/dim]"
+        for key, value in resolved_values.items()
+        if not key.startswith('_')
+    }
+    print_header(f"{command_name.upper()} EFFECTIVE CONFIG")
+    console.print(create_config_table('', display))
+
+
+def _resolve_runtime_command_inputs(
+    *,
+    command_name: str,
+    config_path: Optional[str],
+    strict: bool,
+    cli_values: Dict[str, Any],
+) -> Dict[str, Any]:
+    """Load and resolve command inputs from config files and CLI overrides."""
+    config_data = None
+    if config_path:
+        config_data = load_runtime_config_file(Path(config_path))
+
+    return resolve_command_config(
+        command=command_name,
+        cli_values=cli_values,
+        config_data=config_data,
+        strict=strict,
+    )
 
 
 def configure_logging(verbosity: str) -> None:
@@ -403,9 +453,13 @@ def _write_run_manifest(output_dir: Path, run_id: str, manifest: Dict[str, Any])
 
 
 @click.command()
-@click.argument('path', type=click.Path())
+@click.argument('path', type=click.Path(), required=False)
+@click.option('--config', 'config_path', type=click.Path(exists=True), default=None, help='Path to runtime config file (.yaml/.yml/.json)')
+@click.option('--show-effective-config', is_flag=True, help='Print resolved command inputs with source attribution and continue')
+@click.option('--validate-config', 'validate_config_only', is_flag=True, help='Validate resolved command inputs and exit without processing')
+@click.option('--config-strict', is_flag=True, help='Fail on unknown keys in runtime config sections')
 @click.option('--output', '-o', type=click.Path(), help='Output directory (auto-detected if not specified)')
-@click.option('--schema', '-s', type=click.Path(exists=True), required=True, help='Path to JSON schema file (REQUIRED)')
+@click.option('--schema', '-s', type=click.Path(exists=True), required=False, help='Path to JSON schema file (required unless provided in --config)')
 @click.option('--category', help='Category name (auto-detected from path if not specified)')
 @click.option('--model', default='gpt-4o-mini', show_default=True, help='AI model (e.g., gpt-4o-mini, claude-3.5-sonnet, gemini-1.5-pro)')
 @click.option('--provider', type=click.Choice(['openai', 'azure', 'anthropic', 'gemini', 'auto'], case_sensitive=False), default='auto', show_default=True, help='LLM provider (auto-detects from .env)')
@@ -421,10 +475,18 @@ def _write_run_manifest(output_dir: Path, run_id: str, manifest: Dict[str, Any])
 @click.option('--live-dashboard', is_flag=True, help='Show live dashboard during extraction')
 @click.option('--pages', type=str, default=None, help='Page range to extract (e.g., "615-759"). Only for single PDF files.')
 @click.option('--pages-csv', type=click.Path(exists=True), default=None, help='CSV file mapping documents to page ranges')
-def process(path: str, output: Optional[str], schema: Optional[str], category: Optional[str],
-            model: str, provider: str, profile_name: str, enable_qa_qc: bool, qaqc_lane: Optional[str], limit: Optional[int], 
+@click.option('--from-index', 'from_index', type=click.Path(exists=True), default=None,
+              help='Load acquired files from a download_index.csv (bypasses PATH argument)')
+@click.option('--filter-state', 'filter_state', type=str, default=None,
+              help='With --from-index: keep only files where source_state matches (e.g., ca)')
+@click.option('--filter-jurisdiction', 'filter_jurisdiction', type=str, default=None,
+              help='With --from-index: keep only files where source_jurisdiction matches (e.g., imperial-county)')
+def process(path: Optional[str], config_path: Optional[str], show_effective_config: bool, validate_config_only: bool, config_strict: bool,
+            output: Optional[str], schema: Optional[str], category: Optional[str],
+            model: str, provider: str, profile_name: str, enable_qa_qc: bool, qaqc_lane: Optional[str], limit: Optional[int],
             skip_existing: bool, max_context: int, quiet: bool, verbose: bool, debug: bool, live_dashboard: bool,
-            pages: Optional[str], pages_csv: Optional[str]):
+            pages: Optional[str], pages_csv: Optional[str],
+            from_index: Optional[str] = None, filter_state: Optional[str] = None, filter_jurisdiction: Optional[str] = None):
     """
     Process documents and extract structured data.
     
@@ -487,12 +549,98 @@ def process(path: str, output: Optional[str], schema: Optional[str], category: O
     
     # Configure logging with RichHandler for clean integration with progress bars
     configure_logging(VERBOSITY)
+    load_dotenv()
     
     # Load environment variables from .env file
     load_dotenv()
     
+    cli_overrides = _explicit_cli_overrides([
+        'path', 'schema', 'output', 'pages_csv', 'pages', 'profile_name', 'provider', 'model',
+        'limit', 'skip_existing', 'max_context', 'enable_qa_qc', 'qaqc_lane', 'live_dashboard'
+    ])
+
+    # When --from-index is provided with no explicit path, read the CSV early to inject
+    # a valid path so the config resolver's required-path check does not fail.
+    _from_index_data: dict = {}
+    if from_index and 'path' not in cli_overrides:
+        try:
+            _fi_path = Path(from_index)
+            with _fi_path.open(encoding='utf-8', newline='') as _fi_handle:
+                _fi_rows = list(csv.DictReader(_fi_handle))
+            _fi_downloaded = [r for r in _fi_rows if r.get('status') == 'downloaded']
+            if filter_state:
+                _fi_state_key = filter_state.lower().strip()
+                _fi_downloaded = [
+                    r for r in _fi_downloaded
+                    if (r.get('source_state') or '').lower() == _fi_state_key
+                ]
+            if filter_jurisdiction:
+                _fi_jur_key = re.sub(r'[^a-z0-9]+', '-', filter_jurisdiction.lower()).strip('-')
+                _fi_downloaded = [
+                    r for r in _fi_downloaded
+                    if (r.get('source_jurisdiction') or '').lower() == _fi_jur_key
+                ]
+            if _fi_downloaded:
+                _fi_existing = [
+                    Path(r['path']) for r in _fi_downloaded
+                    if r.get('path') and Path(r['path']).exists()
+                ]
+                _from_index_data = {
+                    'doc_files': _fi_existing,
+                    'domain': _fi_downloaded[0].get('domain', 'acquired'),
+                }
+                if _fi_existing:
+                    cli_overrides['path'] = str(_fi_existing[0].parent)
+        except Exception as _fi_exc:
+            print_warning(f'Could not pre-read download index: {_fi_exc}')
+
+    try:
+        resolved_inputs = _resolve_runtime_command_inputs(
+            command_name='process',
+            config_path=config_path,
+            strict=config_strict,
+            cli_values=cli_overrides,
+        )
+    except RuntimeConfigError as exc:
+        print_error('Runtime config resolution failed', str(exc))
+        sys.exit(1)
+
+    warnings = resolved_inputs.get('_config_warnings', [])
+    for warning in warnings:
+        if VERBOSITY != 'quiet':
+            print_warning(warning)
+
+    if show_effective_config and VERBOSITY != 'quiet':
+        _print_effective_config('process', resolved_inputs)
+        console.print()
+
+    if validate_config_only:
+        if VERBOSITY == 'quiet':
+            click.echo(json.dumps({
+                'command': 'process',
+                'status': 'valid',
+                'resolved': {k: v for k, v in resolved_inputs.items() if not k.startswith('_')},
+            }, indent=2, sort_keys=True))
+        else:
+            print_success('Runtime config validation passed for process command')
+        return
+
+    path = Path(resolved_inputs['path'])
+    schema = resolved_inputs['schema']
+    output = resolved_inputs.get('output', output)
+    pages_csv = resolved_inputs.get('pages_csv', pages_csv)
+    pages = resolved_inputs.get('pages', pages)
+    profile_name = resolved_inputs.get('profile_name', profile_name)
+    provider = resolved_inputs.get('provider', provider)
+    model = resolved_inputs.get('model', model)
+    limit = resolved_inputs.get('limit', limit)
+    skip_existing = resolved_inputs.get('skip_existing', skip_existing)
+    max_context = resolved_inputs.get('max_context', max_context)
+    enable_qa_qc = resolved_inputs.get('enable_qa_qc', enable_qa_qc)
+    qaqc_lane = resolved_inputs.get('qaqc_lane', qaqc_lane)
+    live_dashboard = resolved_inputs.get('live_dashboard', live_dashboard)
+
     # Validate path exists
-    path = Path(path)
     if not path.exists():
         print_error(
             f"Path not found: {path}",
@@ -625,7 +773,37 @@ def process(path: str, output: Optional[str], schema: Optional[str], category: O
             )
             sys.exit(1)
         doc_files = [path]
-    
+
+    # --from-index: override doc_files with files listed in the acquisition CSV.
+    # This wires the acquire → process pipeline without any manual path wrangling.
+    if from_index and _from_index_data.get('doc_files'):
+        doc_files = _from_index_data['doc_files']
+        if limit:
+            doc_files = doc_files[:limit]
+        # Override output dir to processed/<domain>/ unless explicitly set
+        if not output:
+            output_dir = Path('processed') / _from_index_data['domain']
+            output_dir.mkdir(parents=True, exist_ok=True)
+            category = _from_index_data['domain']
+        # Rebuild file_output_dirs for the --from-index files
+        file_output_dirs = {}
+        for doc in doc_files:
+            file_output_dirs[doc] = output_dir
+        if skip_existing:
+            original_count = len(doc_files)
+            doc_files = [
+                p for p in doc_files
+                if not (file_output_dirs.get(p, output_dir) / f'{p.stem}.json').exists()
+            ]
+            skipped = original_count - len(doc_files)
+            if skipped > 0 and VERBOSITY != 'quiet':
+                print_info(f'Skipping {skipped} already processed file{"s" if skipped != 1 else ""} (use --reprocess to extract again)')
+        if not doc_files:
+            print_error('No new files to process from download index', 'All acquired files have already been processed. Use --reprocess to extract again.')
+            sys.exit(0)
+        if VERBOSITY != 'quiet':
+            print_info(f'From-index mode: {len(doc_files)} file(s) loaded from {from_index}')
+
     # Handle page range specifications
     from streamline_extract.utils.page_range import parse_page_range, load_pages_csv
     
@@ -773,8 +951,11 @@ def process(path: str, output: Optional[str], schema: Optional[str], category: O
         except ValueError:
             config_info["Output"] = str(output_dir)
     
-    # Load schema (enforced as required by Click)
+    # Load schema (required via CLI or runtime config)
     schema_path = Path(schema)
+    if not schema_path.exists():
+        print_error('Schema not found', schema_path.as_posix())
+        sys.exit(1)
     loaded_schema = load_schema(schema_path)
     runtime_artifact = _resolve_runtime_artifact(category, schema_path, profile_name=profile_name)
     if VERBOSITY != 'quiet':
@@ -1578,8 +1759,228 @@ def validate(extraction_file: str, verbose: bool, show_data: bool):
 
 
 @click.command()
-@click.argument('extracted_dir', type=click.Path(exists=True))
-@click.option('--schema', '-s', type=click.Path(exists=True), required=True, help='Path to JSON schema file (REQUIRED - same as used for extraction)')
+@click.argument('target', required=False)
+@click.option('--config', 'config_path', type=click.Path(exists=True), default=None, help='Path to runtime config file (.yaml/.yml/.json)')
+@click.option('--show-effective-config', is_flag=True, help='Print resolved command inputs with source attribution and continue')
+@click.option('--validate-config', 'validate_config_only', is_flag=True, help='Validate resolved command inputs and exit without running acquisition')
+@click.option('--config-strict', is_flag=True, help='Fail on unknown keys in runtime config sections')
+@click.option('--domain', type=str, default=None, help='Domain key for acquisition output structure')
+@click.option('--seed-url', 'seed_urls', multiple=True, help='Seed URL for discovery (repeatable)')
+@click.option('--query', type=str, default=None, help='Discovery query hint for seeker stage')
+@click.option('--state', type=str, default=None, help='Optional state hint used for jurisdiction-based output organization (for example: CA, Colorado)')
+@click.option('--jurisdiction', type=str, default=None, help='Optional jurisdiction hint used for output organization (for example: Imperial County)')
+@click.option('--partition-mode', type=click.Choice(['auto', 'jurisdiction', 'host'], case_sensitive=False), default=None, help='Download organization mode: auto prefers jurisdiction when available, else host')
+@click.option('--digger-provider', type=str, default=None, help='Digger provider (for example: seed_only, http, crawlee_playwright)')
+@click.option('--enable-serpapi/--disable-serpapi', default=None, help='Enable optional SerpApi seeker provider')
+@click.option('--max-concurrent-downloads', type=int, default=None, help='Maximum parallel downloads during acquire runs')
+@click.option('--min-request-interval-ms', type=int, default=None, help='Minimum delay between outbound acquisition requests in milliseconds')
+@click.option('--output-documents', type=click.Path(), default=None, help='Directory for acquired documents (defaults to run-scoped deterministic path)')
+@click.option('--output-manifest', type=click.Path(), default=None, help='Path to acquisition manifest JSON (defaults to run-scoped deterministic path)')
+@click.option('--dry-run', is_flag=True, help='Discover and emit manifest scaffold without downloads')
+@click.option('--quiet', '-q', is_flag=True, help='Minimal output')
+@click.option('--verbose', '-v', is_flag=True, help='Detailed output')
+@click.option('--debug', is_flag=True, help='Debug output with diagnostic context')
+def acquire(
+    target: Optional[str],
+    config_path: Optional[str],
+    show_effective_config: bool,
+    validate_config_only: bool,
+    config_strict: bool,
+    domain: Optional[str],
+    seed_urls: tuple[str, ...],
+    query: Optional[str],
+    state: Optional[str],
+    jurisdiction: Optional[str],
+    partition_mode: Optional[str],
+    digger_provider: Optional[str],
+    enable_serpapi: Optional[bool],
+    max_concurrent_downloads: Optional[int],
+    min_request_interval_ms: Optional[int],
+    output_documents: Optional[str],
+    output_manifest: Optional[str],
+    dry_run: bool,
+    quiet: bool,
+    verbose: bool,
+    debug: bool,
+):
+    """Acquire source documents from web targets (scaffold entrypoint)."""
+    global VERBOSITY
+    if quiet:
+        VERBOSITY = 'quiet'
+    elif debug:
+        VERBOSITY = 'debug'
+    elif verbose:
+        VERBOSITY = 'verbose'
+    else:
+        VERBOSITY = 'normal'
+
+    configure_logging(VERBOSITY)
+
+    cli_overrides = _explicit_cli_overrides([
+        'domain', 'seed_urls', 'query', 'state', 'jurisdiction', 'partition_mode', 'digger_provider', 'enable_serpapi', 'max_concurrent_downloads', 'min_request_interval_ms', 'output_documents', 'output_manifest', 'dry_run'
+    ])
+
+    try:
+        resolved_inputs = _resolve_runtime_command_inputs(
+            command_name='acquire',
+            config_path=config_path,
+            strict=config_strict,
+            cli_values=cli_overrides,
+        )
+    except RuntimeConfigError as exc:
+        print_error('Runtime config resolution failed', str(exc))
+        sys.exit(1)
+
+    warnings = resolved_inputs.get('_config_warnings', [])
+    for warning in warnings:
+        if VERBOSITY != 'quiet':
+            print_warning(warning)
+
+    if show_effective_config and VERBOSITY != 'quiet':
+        _print_effective_config('acquire', resolved_inputs)
+        console.print()
+
+    if validate_config_only:
+        if VERBOSITY == 'quiet':
+            click.echo(json.dumps({
+                'command': 'acquire',
+                'status': 'valid',
+                'resolved': {k: v for k, v in resolved_inputs.items() if not k.startswith('_')},
+            }, indent=2, sort_keys=True))
+        else:
+            print_success('Runtime config validation passed for acquire command')
+        return
+
+    resolved_domain = resolved_inputs.get('domain') or domain or target or 'default'
+    resolved_seed_urls = list(resolved_inputs.get('seed_urls') or seed_urls)
+    resolved_query = resolved_inputs.get('query', query)
+    resolved_state = resolved_inputs.get('state', state)
+    resolved_jurisdiction = resolved_inputs.get('jurisdiction', jurisdiction)
+    resolved_partition_mode = (resolved_inputs.get('partition_mode', partition_mode) or 'auto').lower()
+    resolved_digger_provider = (resolved_inputs.get('digger_provider', digger_provider) or 'seed_only').strip().lower()
+    resolved_topology_mode = resolved_inputs.get('topology_mode')
+    resolved_enable_serpapi = bool(resolved_inputs.get('enable_serpapi', enable_serpapi or False))
+    resolved_hub_pages = resolved_inputs.get('hub_pages') or None
+    resolved_allowed_domains = resolved_inputs.get('allowed_domains') or None
+    resolved_targets = resolved_inputs.get('targets') or None
+    resolved_query_templates = resolved_inputs.get('query_templates') or None
+    resolved_query_families = resolved_inputs.get('query_families') or None
+    resolved_use_query_family = resolved_inputs.get('use_query_family')
+    resolved_seeker_max_results = int(resolved_inputs.get('seeker_max_results', 10) or 10)
+    resolved_include_url_patterns = resolved_inputs.get('include_url_patterns') or None
+    resolved_include_link_text_patterns = resolved_inputs.get('include_link_text_patterns') or None
+    resolved_index_page_mode = resolved_inputs.get('index_page_mode') or None
+    resolved_index_links = resolved_inputs.get('index_links') or None
+    resolved_max_depth = resolved_inputs.get('max_depth')
+    resolved_max_pages = resolved_inputs.get('max_pages')
+    resolved_max_files = resolved_inputs.get('max_files')
+    resolved_timeout_seconds = resolved_inputs.get('timeout_seconds')
+    resolved_retry_max_attempts = int(resolved_inputs.get('retry_max_attempts', 3) or 3)
+    resolved_retry_initial_backoff_seconds = float(resolved_inputs.get('retry_initial_backoff_seconds', 1.0) or 1.0)
+    resolved_retry_max_backoff_seconds = float(resolved_inputs.get('retry_max_backoff_seconds', 8.0) or 8.0)
+    resolved_max_concurrent_downloads = int(resolved_inputs.get('max_concurrent_downloads', max_concurrent_downloads or 2) or 2)
+    resolved_min_request_interval_ms = int(resolved_inputs.get('min_request_interval_ms', min_request_interval_ms or 0) or 0)
+
+    if not resolved_seed_urls and not resolved_query and not resolved_targets:
+        print_error(
+            'Acquisition input missing',
+            'Provide at least one --seed-url, --query, or acquisition.targets entry in config.',
+        )
+        sys.exit(1)
+
+    resolved_output_documents = resolved_inputs.get('output_documents') or output_documents
+    resolved_output_manifest = resolved_inputs.get('output_manifest') or output_manifest
+
+    documents_dir = Path(resolved_output_documents) if resolved_output_documents else None
+    manifest_path = Path(resolved_output_manifest) if resolved_output_manifest else None
+
+    if VERBOSITY != 'quiet':
+        print_header('ACQUISITION')
+        config_info = {
+            'Domain': resolved_domain,
+            'Seeds': str(len(resolved_seed_urls)),
+            'Query': resolved_query or '(none)',
+            'State': resolved_state or '(none)',
+            'Jurisdiction': resolved_jurisdiction or '(none)',
+            'Partition Mode': resolved_partition_mode,
+            'Digger Provider': resolved_digger_provider,
+            'Topology': resolved_topology_mode or '(default)',
+            'Hub Pages': str(len(resolved_hub_pages or [])),
+            'Targets': str(len(resolved_targets or [])),
+            'Seeker': 'serpapi' if resolved_enable_serpapi else 'seed-only',
+            'Max Concurrent Downloads': str(max(1, resolved_max_concurrent_downloads)),
+            'Min Request Interval (ms)': str(max(0, resolved_min_request_interval_ms)),
+            'Documents Output': str(documents_dir) if documents_dir else '(auto: run-scoped)',
+            'Manifest': str(manifest_path) if manifest_path else '(auto: run-scoped)',
+            'Mode': 'dry-run' if dry_run else 'run',
+        }
+        console.print(create_config_table('', config_info))
+        console.print()
+
+    request = AcquisitionRequest(
+        domain=resolved_domain,
+        seed_urls=resolved_seed_urls,
+        query=resolved_query,
+        enable_serpapi=resolved_enable_serpapi,
+        output_documents=documents_dir,
+        output_manifest=manifest_path,
+        dry_run=dry_run,
+        state=resolved_state,
+        jurisdiction=resolved_jurisdiction,
+        partition_mode=resolved_partition_mode,
+        digger_provider=resolved_digger_provider,
+        topology_mode=resolved_topology_mode,
+        hub_pages=resolved_hub_pages,
+        allowed_domains=resolved_allowed_domains,
+        targets=resolved_targets,
+        query_templates=resolved_query_templates,
+        query_families=resolved_query_families,
+        use_query_family=resolved_use_query_family,
+        seeker_max_results=max(1, resolved_seeker_max_results),
+        include_url_patterns=resolved_include_url_patterns,
+        include_link_text_patterns=resolved_include_link_text_patterns,
+        index_page_mode=resolved_index_page_mode,
+        index_links=resolved_index_links,
+        max_depth=resolved_max_depth,
+        max_pages=resolved_max_pages,
+        max_files=resolved_max_files,
+        timeout_seconds=resolved_timeout_seconds,
+        retry_max_attempts=resolved_retry_max_attempts,
+        retry_initial_backoff_seconds=resolved_retry_initial_backoff_seconds,
+        retry_max_backoff_seconds=resolved_retry_max_backoff_seconds,
+        max_concurrent_downloads=max(1, resolved_max_concurrent_downloads),
+        min_request_interval_ms=max(0, resolved_min_request_interval_ms),
+    )
+
+    try:
+        result = AcquisitionEngine().run(request)
+    except Exception as exc:
+        print_error('Acquisition failed', str(exc))
+        if VERBOSITY == 'debug':
+            import traceback
+
+            traceback.print_exc()
+        sys.exit(1)
+
+    if VERBOSITY == 'quiet':
+        click.echo(str(result.manifest_path))
+        return
+
+    print_success(f"Acquisition scaffold complete (run_id={result.run_id})")
+    print_info(f"Manifest: {result.manifest_path}")
+    print_info(f"Documents directory: {result.documents_dir}")
+    if result.download_index_path is not None:
+        print_info(f"Download index CSV: {result.download_index_path}")
+    print_info('Acquisition manifest emitted with seeker/scaffold candidates for this run.')
+
+
+@click.command()
+@click.argument('extracted_dir', type=click.Path(exists=True), required=False)
+@click.option('--config', 'config_path', type=click.Path(exists=True), default=None, help='Path to runtime config file (.yaml/.yml/.json)')
+@click.option('--show-effective-config', is_flag=True, help='Print resolved command inputs with source attribution and continue')
+@click.option('--validate-config', 'validate_config_only', is_flag=True, help='Validate resolved command inputs and exit without consolidating')
+@click.option('--config-strict', is_flag=True, help='Fail on unknown keys in runtime config sections')
+@click.option('--schema', '-s', type=click.Path(exists=True), required=False, help='Path to JSON schema file (required unless provided in --config)')
 @click.option('--output', '-o', type=click.Path(), help='Output directory (auto-detected if not specified)')
 @click.option('--dry-run', is_flag=True, help='Preview consolidation and deduplication without writing output files')
 @click.option('--report-format', type=click.Choice(['text', 'json'], case_sensitive=False), default='text', show_default=True, help='Dry-run preview output format')
@@ -1587,7 +1988,8 @@ def validate(extraction_file: str, verbose: bool, show_data: bool):
 @click.option('--quiet', '-q', is_flag=True, help='Minimal output (machine-readable)')
 @click.option('--verbose', '-v', is_flag=True, help='Detailed output with statistics')
 @click.option('--debug', is_flag=True, help='Debug mode with full logs')
-def consolidate(extracted_dir: str, schema: Optional[str], output: Optional[str], dry_run: bool, report_format: str, fail_on_suspicious: str, quiet: bool, verbose: bool, debug: bool):
+def consolidate(extracted_dir: Optional[str], config_path: Optional[str], show_effective_config: bool, validate_config_only: bool, config_strict: bool,
+                schema: Optional[str], output: Optional[str], dry_run: bool, report_format: str, fail_on_suspicious: str, quiet: bool, verbose: bool, debug: bool):
     """
     Consolidate extracted JSON files into clean Excel/CSV output.
     
@@ -1625,7 +2027,52 @@ def consolidate(extracted_dir: str, schema: Optional[str], output: Optional[str]
     # Configure logging with RichHandler for clean integration with UI
     configure_logging(VERBOSITY)
     
+    cli_overrides = _explicit_cli_overrides([
+        'extracted_dir', 'schema', 'output', 'dry_run', 'report_format', 'fail_on_suspicious'
+    ])
+
+    try:
+        resolved_inputs = _resolve_runtime_command_inputs(
+            command_name='consolidate',
+            config_path=config_path,
+            strict=config_strict,
+            cli_values=cli_overrides,
+        )
+    except RuntimeConfigError as exc:
+        print_error('Runtime config resolution failed', str(exc))
+        sys.exit(1)
+
+    warnings = resolved_inputs.get('_config_warnings', [])
+    for warning in warnings:
+        if VERBOSITY != 'quiet':
+            print_warning(warning)
+
+    if show_effective_config and VERBOSITY != 'quiet':
+        _print_effective_config('consolidate', resolved_inputs)
+        console.print()
+
+    if validate_config_only:
+        if VERBOSITY == 'quiet':
+            click.echo(json.dumps({
+                'command': 'consolidate',
+                'status': 'valid',
+                'resolved': {k: v for k, v in resolved_inputs.items() if not k.startswith('_')},
+            }, indent=2, sort_keys=True))
+        else:
+            print_success('Runtime config validation passed for consolidate command')
+        return
+
+    extracted_dir = resolved_inputs['extracted_dir']
+    schema = resolved_inputs['schema']
+    output = resolved_inputs.get('output', output)
+    dry_run = resolved_inputs.get('dry_run', dry_run)
+    report_format = resolved_inputs.get('report_format', report_format)
+    fail_on_suspicious = resolved_inputs.get('fail_on_suspicious', fail_on_suspicious)
+
     input_dir = Path(extracted_dir)
+    if not input_dir.exists():
+        print_error('Input directory not found', input_dir.as_posix())
+        sys.exit(1)
     emit_json_report = dry_run and report_format.lower() == 'json'
 
     if fail_on_suspicious != 'none' and not dry_run:
@@ -1669,6 +2116,9 @@ def consolidate(extracted_dir: str, schema: Optional[str], output: Optional[str]
     
     # Load schema (enforced as required by Click)
     matched_schema = Path(schema)
+    if not matched_schema.exists():
+        print_error('Schema not found', matched_schema.as_posix())
+        sys.exit(1)
     
     try:
         from streamline_extract.utils.schema_metadata import SchemaMetadata

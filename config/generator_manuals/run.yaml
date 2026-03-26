@@ -1,0 +1,33 @@
+domain: generator_manuals
+
+acquisition:
+  topology:
+    mode: distributed
+  targets:
+    - manufacturer: Generac
+      power_class_kw: "200-300"
+      query: "Generac industrial generator manual pdf"
+    - manufacturer: John Deere
+      power_class_kw: "200-300"
+      query: "John Deere generator operator manual pdf"
+  query_families:
+    generator_similar_power:
+      - "{manufacturer} {power_class_kw} kW generator spec pdf"
+      - "{manufacturer} generator {power_class_kw} kW manual pdf"
+  seeker:
+    provider: serpapi
+    use_query_family: generator_similar_power
+    max_results: 6
+  runtime:
+    min_request_interval_ms: 200
+    max_concurrent_downloads: 2
+
+processing:
+  input_dir: documents/generator_manuals
+  schema: schemas/personal/generator_manuals_schema.json
+  output_dir: processed/generator_manuals
+
+consolidation:
+  input_dir: processed/generator_manuals
+  schema: schemas/personal/generator_manuals_schema.json
+  output_dir: consolidated/generator_manuals

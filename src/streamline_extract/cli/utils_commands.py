@@ -22,6 +22,7 @@ from dotenv import load_dotenv
 import yaml
 
 from streamline_extract.core import ArtifactCompilerError, build_runtime_readiness_report
+from streamline_extract.config import VARIABLE_CATALOG
 from streamline_extract.utils.config import get_config
 from streamline_extract.utils.schema_metadata import SchemaMetadata
 from streamline_extract.extraction import load_schema
@@ -2127,7 +2128,9 @@ def init_domain_pack_cmd(
 
 
 @click.command()
-def config():
+@click.option('--show-runtime-catalog', is_flag=True, help='Display runtime variable catalog grouped by required/optional/advanced')
+@click.option('--format', 'output_format', type=click.Choice(['text', 'json'], case_sensitive=False), default='text', show_default=True, help='Output format for catalog rendering')
+def config(show_runtime_catalog: bool, output_format: str):
     """
     Show current configuration.
     
@@ -2136,7 +2139,12 @@ def config():
     \b
     EXAMPLE:
         streamline-extract config
+        streamline-extract config --show-runtime-catalog
     """
+    if show_runtime_catalog and output_format == 'json':
+        click.echo(json.dumps(VARIABLE_CATALOG, indent=2, sort_keys=True))
+        return
+
     load_dotenv()
     
     print_header("Configuration")
@@ -2172,5 +2180,25 @@ def config():
         console.print("\n[bold]Available Schemas[/bold]")
         for schema in schemas:
             console.print(f"  • {schema.name}")
+
+    if show_runtime_catalog:
+        console.print("\n[bold]Runtime Variable Catalog[/bold]")
+        for section_name in ('processing', 'consolidation', 'acquisition'):
+            entries = VARIABLE_CATALOG.get(section_name, [])
+            if not entries:
+                continue
+
+            console.print(f"\n[bold]{section_name.title()}[/bold]")
+            grouped = {'required': [], 'optional': [], 'advanced': []}
+            for entry in entries:
+                grouped.setdefault(entry.get('level', 'optional'), []).append(entry)
+
+            for level in ('required', 'optional', 'advanced'):
+                level_entries = grouped.get(level) or []
+                if not level_entries:
+                    continue
+                console.print(f"  [bold]{level.title()}[/bold]")
+                for entry in level_entries:
+                    console.print(f"    • {entry['name']}: [dim]{entry['description']}[/dim]")
     
     console.print()

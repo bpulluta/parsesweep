@@ -1,0 +1,30 @@
+RATE SCHEDULE AND TARIFF INFORMATION
+
+Schedule: Residential Rate Tariff
+Utility: Mountain Valley Electric Cooperative
+Effective Date: January 1, 2024
+
+Residential Electricity Tariff Structure
+
+Service and Facility Charge: $12.50/month
+  Customer charge for meter and billing services
+
+Energy Charge:
+  Summer (June-September): $0.1245/kWh
+  Winter (October-May): $0.1089/kWh
+  Shoulder (Spring/Fall): $0.1150/kWh
+
+Demand Charge (for customers with greater than 25 kW demand):
+  Only applicable to commercial customers in certain rate tariff schedules
+
+Fuel and Purchased Power:
+  Summer: $0.0345/kWh
+  Winter: $0.0256/kWh
+
+Adjustment Factors:
+  Power factor adjustment: Applied when power factor falls below 0.95 lagging
+  Seasonal rate adjustments apply to all electricity tariff rates
+
+Minimum Monthly Bill: $15.00
+
+This tariff is subject to regulatory approval and may be modified by the Public Utilities Commission.

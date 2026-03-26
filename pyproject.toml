@@ -47,6 +47,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+acquisition = [
+  "google-search-results>=2.4.2",
+]
 dev = [
     "pytest>=7.4.0",
     "pytest-cov>=4.1.0",
