@@ -185,3 +185,34 @@ acquisition:
         assert resolved["state"] == "California"
         assert resolved["jurisdiction"] == "Imperial County"
         assert resolved["partition_mode"] == "jurisdiction"
+
+
+def test_acquire_validate_config_accepts_policy_fields(tmp_path):
+        config_path = tmp_path / "run.yaml"
+        config_path.write_text(
+                """
+domain: geothermal_ordinances
+acquisition:
+    seeds:
+        - https://example.org/docs
+    policy:
+        robots_mode: warn
+        tos_mode: enforce
+        acknowledged_tos_domains:
+            - example.org
+""",
+                encoding="utf-8",
+        )
+
+        runner = CliRunner()
+        result = runner.invoke(
+                cli,
+                ["acquire", "--config", str(config_path), "--validate-config", "-q"],
+        )
+
+        assert result.exit_code == 0
+        payload = json.loads(result.output)
+        resolved = payload["resolved"]
+        assert resolved["robots_policy_mode"] == "warn"
+        assert resolved["tos_policy_mode"] == "enforce"
+        assert resolved["acknowledged_tos_domains"] == ["example.org"]

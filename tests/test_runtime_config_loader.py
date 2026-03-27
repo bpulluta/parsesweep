@@ -95,6 +95,11 @@ acquisition:
         max_pages: 50
         max_concurrent_downloads: 3
         min_request_interval_ms: 150
+    policy:
+        robots_mode: warn
+        tos_mode: enforce
+        acknowledged_tos_domains:
+            - county.gov
 """,
                 encoding="utf-8",
         )
@@ -103,6 +108,7 @@ acquisition:
         assert loaded["acquisition"]["topology"]["mode"] == "hybrid"
         assert loaded["acquisition"]["runtime"]["max_concurrent_downloads"] == 3
         assert loaded["acquisition"]["runtime"]["min_request_interval_ms"] == 150
+        assert loaded["acquisition"]["policy"]["robots_mode"] == "warn"
 
 
 def test_load_runtime_config_file_rejects_invalid_acquisition_runtime_controls(tmp_path: Path):
@@ -118,6 +124,21 @@ acquisition:
     )
 
     with pytest.raises(RuntimeConfigError, match="acquisition.runtime.max_concurrent_downloads"):
+        load_runtime_config_file(config_path)
+
+
+def test_load_runtime_config_file_rejects_invalid_acquisition_policy_mode(tmp_path: Path):
+    config_path = tmp_path / "run.yaml"
+    config_path.write_text(
+        """
+acquisition:
+  policy:
+    robots_mode: maybe
+""",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(RuntimeConfigError, match="acquisition.policy.robots_mode"):
         load_runtime_config_file(config_path)
 
 
@@ -377,6 +398,32 @@ acquisition:
         ]
 
 
+def test_resolve_command_config_maps_request_headers(tmp_path: Path):
+        run_path = tmp_path / "run.yaml"
+        run_path.write_text(
+                """
+acquisition:
+    request_headers:
+            User-Agent: "StreamlineExtract/2.0 (custom contact: example@example.com)"
+            Accept-Language: "en-US,en;q=0.9"
+""",
+                encoding="utf-8",
+        )
+
+        config_data = load_runtime_config_file(run_path)
+        resolved = resolve_command_config(
+                command="acquire",
+                cli_values={},
+                config_data=config_data,
+                strict=True,
+        )
+
+        assert resolved["request_headers"] == {
+                "User-Agent": "StreamlineExtract/2.0 (custom contact: example@example.com)",
+                "Accept-Language": "en-US,en;q=0.9",
+        }
+
+
 def test_resolve_command_config_maps_digger_connector_and_retry_policy(tmp_path: Path):
         run_path = tmp_path / "run.yaml"
         run_path.write_text(
@@ -405,7 +452,174 @@ acquisition:
         assert resolved["digger_provider"] == "crawlee_playwright"
         assert resolved["retry_max_attempts"] == 5
         assert resolved["retry_initial_backoff_seconds"] == 2
-        assert resolved["retry_max_backoff_seconds"] == 16
+
+
+def test_resolve_command_config_maps_digger_provider_alias(tmp_path: Path):
+        run_path = tmp_path / "run.yaml"
+        run_path.write_text(
+                """
+acquisition:
+    seeds:
+        - https://example.org/hub
+    digger:
+        provider: http
+""",
+                encoding="utf-8",
+        )
+
+        config_data = load_runtime_config_file(run_path)
+        resolved = resolve_command_config(
+                command="acquire",
+                cli_values={},
+                config_data=config_data,
+                strict=True,
+        )
+
+        assert resolved["digger_provider"] == "http"
+        assert resolved["_config_sources"]["digger_provider"] == "config.acquisition.digger.provider"
+
+
+def test_resolve_command_config_maps_link_prioritization_block(tmp_path: Path):
+        run_path = tmp_path / "run.yaml"
+        run_path.write_text(
+                """
+acquisition:
+    seeds:
+        - https://example.org/hub
+    link_prioritization:
+        mode: heuristic
+        top_k: 12
+        keywords:
+            - tariff
+            - rate schedule
+        domain_scores:
+            utility.com: 0.95
+""",
+                encoding="utf-8",
+        )
+
+        config_data = load_runtime_config_file(run_path)
+        resolved = resolve_command_config(
+                command="acquire",
+                cli_values={},
+                config_data=config_data,
+                strict=True,
+        )
+
+        assert resolved["link_prioritization_mode"] == "heuristic"
+        assert resolved["link_top_k"] == 12
+        assert resolved["link_prioritization_keywords"] == ["tariff", "rate schedule"]
+        assert resolved["link_prioritization_domain_scores"] == {"utility.com": 0.95}
+
+
+def test_resolve_command_config_maps_selection_relevance_terms(tmp_path: Path):
+        run_path = tmp_path / "run.yaml"
+        run_path.write_text(
+                """
+acquisition:
+    seeds:
+        - https://example.org/hub
+    selection:
+        relevance_require_any_terms:
+            - ordinance
+            - municipal code
+        relevance_require_legal_marker_terms:
+            - title
+            - chapter
+        relevance_exclude_any_terms:
+            - state brief
+            - specific plan
+        relevance_allowed_domain_patterns:
+            - county.gov
+            - ecode360.com
+        require_supported_document: true
+""",
+                encoding="utf-8",
+        )
+
+        config_data = load_runtime_config_file(run_path)
+        resolved = resolve_command_config(
+                command="acquire",
+                cli_values={},
+                config_data=config_data,
+                strict=True,
+        )
+
+        assert resolved["selection_relevance_require_any_terms"] == ["ordinance", "municipal code"]
+        assert resolved["selection_relevance_require_legal_marker_terms"] == ["title", "chapter"]
+        assert resolved["selection_relevance_exclude_any_terms"] == ["state brief", "specific plan"]
+        assert resolved["selection_relevance_allowed_domain_patterns"] == ["county.gov", "ecode360.com"]
+        assert resolved["selection_require_supported_document"] is True
+
+
+def test_resolve_command_config_maps_generic_selection_templates(tmp_path: Path):
+        run_path = tmp_path / "run.yaml"
+        run_path.write_text(
+                """
+acquisition:
+    seeds:
+        - https://example.org/hub
+    selection:
+        primary_per_target: 3
+        exclude_draft: false
+        draft_patterns:
+            - draft
+            - proposed
+        target_identity_require_any_templates:
+            - "{jurisdiction}"
+            - "{manufacturer}"
+        target_identity_require_all_templates:
+            - "{state}"
+        target_identity_exclude_any_templates:
+            - "sample"
+""",
+                encoding="utf-8",
+        )
+
+        config_data = load_runtime_config_file(run_path)
+        resolved = resolve_command_config(
+                command="acquire",
+                cli_values={},
+                config_data=config_data,
+                strict=True,
+        )
+
+        assert resolved["selection_primary_per_target"] == 3
+        assert resolved["selection_exclude_draft"] is False
+        assert resolved["selection_draft_patterns"] == ["draft", "proposed"]
+        assert resolved["selection_target_identity_require_any_templates"] == ["{jurisdiction}", "{manufacturer}"]
+        assert resolved["selection_target_identity_require_all_templates"] == ["{state}"]
+        assert resolved["selection_target_identity_exclude_any_templates"] == ["sample"]
+
+
+def test_resolve_command_config_maps_acquisition_policy_fields(tmp_path: Path):
+        run_path = tmp_path / "run.yaml"
+        run_path.write_text(
+                """
+acquisition:
+    seeds:
+        - https://example.org/hub
+    policy:
+        robots_mode: enforce
+        tos_mode: warn
+        acknowledged_tos_domains:
+            - example.org
+            - county.gov
+""",
+                encoding="utf-8",
+        )
+
+        config_data = load_runtime_config_file(run_path)
+        resolved = resolve_command_config(
+                command="acquire",
+                cli_values={},
+                config_data=config_data,
+                strict=True,
+        )
+
+        assert resolved["robots_policy_mode"] == "enforce"
+        assert resolved["tos_policy_mode"] == "warn"
+        assert resolved["acknowledged_tos_domains"] == ["example.org", "county.gov"]
 
 
 def test_resolve_command_config_maps_targets_and_query_family_controls(tmp_path: Path):

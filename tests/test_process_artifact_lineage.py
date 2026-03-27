@@ -797,6 +797,61 @@ def test_init_domain_schema_cli_starter_feeds_init_domain_pack(tmp_path) -> None
     assert str(starter_schema_path) in pack_text
 
 
+def test_init_domain_schema_cli_does_not_inherit_reference_domain_labels(tmp_path) -> None:
+    runner = CliRunner()
+    starter_schema_path = tmp_path / 'schemas/personal/sec_filings_schema.json'
+
+    starter_result = runner.invoke(
+        cli,
+        [
+            'init-domain-schema',
+            '--name',
+            'sec_filings',
+            '--reference-schema',
+            str(REPO_ROOT / 'schemas/personal/geothermal_ordinance_schema.json'),
+            '--output',
+            str(starter_schema_path),
+            '--report-format',
+            'json',
+        ],
+    )
+
+    assert starter_result.exit_code == 0
+    starter_schema = json.loads(starter_schema_path.read_text(encoding='utf-8'))
+    assert starter_schema['$metadata']['domain'] == 'Sec Filings'
+    assert starter_schema['$metadata']['extraction']['document_type'] == 'Sec Filings'
+    assert starter_schema['title'] == 'Sec Filings Starter Schema'
+
+    pack_result = runner.invoke(
+        cli,
+        [
+            'init-domain-pack',
+            '--name',
+            'sec_filings',
+            '--schema',
+            str(starter_schema_path),
+            '--output-root',
+            str(tmp_path / 'domain_packs'),
+            '--with-config',
+            '--config-root',
+            str(tmp_path / 'config'),
+            '--report-format',
+            'json',
+        ],
+    )
+
+    assert pack_result.exit_code == 0
+    pack_path = tmp_path / 'domain_packs/sec_filings/pack.yaml'
+    readme_path = tmp_path / 'config/sec_filings/README.md'
+    csv_path = tmp_path / 'config/sec_filings/page_ranges.csv'
+    assert 'document_type: Sec Filings' in pack_path.read_text(encoding='utf-8')
+    assert 'Document Type: Sec Filings' in readme_path.read_text(encoding='utf-8')
+    assert 'Domain: Sec Filings' in readme_path.read_text(encoding='utf-8')
+    assert 'Geothermal Ordinance' not in readme_path.read_text(encoding='utf-8')
+    assert 'Energy - Geothermal Regulations' not in readme_path.read_text(encoding='utf-8')
+    assert 'sec_filing.html' in csv_path.read_text(encoding='utf-8')
+
+
 def test_init_domain_schema_cli_can_limit_main_array_fields(tmp_path) -> None:
     reference_schema_path = tmp_path / 'reference_schema.json'
     _write_json(
@@ -1305,18 +1360,24 @@ def test_init_domain_pack_cli_can_scaffold_config_files(tmp_path) -> None:
     assert result.exit_code == 0
     payload = json.loads(result.output)
     assert payload['status'] == 'ready'
-    assert len(payload['created']['config_paths']) == 3
+    assert len(payload['created']['config_paths']) == 4
 
     readme_path = tmp_path / 'config/config_domain/README.md'
     csv_path = tmp_path / 'config/config_domain/page_ranges.csv'
+    run_config_path = tmp_path / 'config/config_domain/run.yaml'
     assert readme_path.exists()
     assert csv_path.exists()
+    assert run_config_path.exists()
     assert '# config_domain Configuration' in readme_path.read_text(encoding='utf-8')
     assert 'Document Type: Utility Tariff' in readme_path.read_text(encoding='utf-8')
     assert 'Domain: Energy - Utility Tariffs' in readme_path.read_text(encoding='utf-8')
+    assert 'run.yaml: Starter runtime config for acquire/process/consolidate commands' in readme_path.read_text(encoding='utf-8')
     assert 'documents/config_domain/' in readme_path.read_text(encoding='utf-8')
     assert 'file_path,start_page,end_page' in csv_path.read_text(encoding='utf-8')
     assert 'utility_tariff.pdf' in csv_path.read_text(encoding='utf-8')
+    assert 'processing:' in run_config_path.read_text(encoding='utf-8')
+    assert 'consolidation:' in run_config_path.read_text(encoding='utf-8')
+    assert 'schemas/personal/electricity_tariff_schema.json' in run_config_path.read_text(encoding='utf-8')
     assert '--max-context 1400000' not in readme_path.read_text(encoding='utf-8')
     assert '--enable-qa-qc' not in readme_path.read_text(encoding='utf-8')
     assert 'processed/config_domain/qa_qc' not in readme_path.read_text(encoding='utf-8')
@@ -1374,10 +1435,12 @@ def test_init_domain_pack_cli_scaffolds_domain_aware_config_content(tmp_path) ->
     assert result.exit_code == 0
     readme_path = tmp_path / 'config/geo_domain/README.md'
     csv_path = tmp_path / 'config/geo_domain/page_ranges.csv'
+    run_config_path = tmp_path / 'config/geo_domain/run.yaml'
     assert 'Document Type: Geothermal Ordinance' in readme_path.read_text(encoding='utf-8')
     assert 'Domain: Energy - Geothermal Regulations' in readme_path.read_text(encoding='utf-8')
     assert 'schemas/personal/geothermal_ordinance_schema.json' in readme_path.read_text(encoding='utf-8')
     assert 'geothermal_ordinance.pdf' in csv_path.read_text(encoding='utf-8')
+    assert 'schemas/personal/geothermal_ordinance_schema.json' in run_config_path.read_text(encoding='utf-8')
     assert 'Optional QA/QC workflow:' not in readme_path.read_text(encoding='utf-8')
     assert 'processed/geo_domain/qa_qc' not in readme_path.read_text(encoding='utf-8')
     assert '--qaqc-lane qualitative' not in readme_path.read_text(encoding='utf-8')
@@ -1407,10 +1470,12 @@ def test_init_domain_pack_cli_scaffolds_solar_domain_aware_config_content(tmp_pa
     assert result.exit_code == 0
     readme_path = tmp_path / 'config/solar_domain/README.md'
     csv_path = tmp_path / 'config/solar_domain/page_ranges.csv'
+    run_config_path = tmp_path / 'config/solar_domain/run.yaml'
     assert 'Document Type: Solar Ordinance' in readme_path.read_text(encoding='utf-8')
     assert 'Domain: Energy - Solar Regulations' in readme_path.read_text(encoding='utf-8')
     assert 'schemas/personal/solar_ordinance_schema.json' in readme_path.read_text(encoding='utf-8')
     assert 'solar_ordinance.pdf' in csv_path.read_text(encoding='utf-8')
+    assert 'schemas/personal/solar_ordinance_schema.json' in run_config_path.read_text(encoding='utf-8')
     assert '--qaqc-lane qualitative' not in readme_path.read_text(encoding='utf-8')
 
 
@@ -1918,6 +1983,7 @@ def test_init_domain_pack_cli_interactive_mode_can_enable_sample_assets(tmp_path
     assert (tmp_path / 'documents/interactive_assets/README.md').exists()
     assert (tmp_path / 'documents/interactive_assets/sample_manifest.csv').exists()
     assert (tmp_path / 'config/interactive_assets/page_ranges.csv').exists()
+    assert (tmp_path / 'config/interactive_assets/run.yaml').exists()
 
 
 def test_init_domain_pack_cli_config_scaffold_requires_force_to_overwrite(tmp_path) -> None:

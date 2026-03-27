@@ -254,8 +254,132 @@ def test_engine_run_skips_unsupported_content_type_for_non_dry_run(tmp_path: Pat
 
     assert payload["error_summary"]["total_errors"] == 0
     assert len(payload["downloads"]) == 1
-    assert payload["downloads"][0]["status"] == "skipped_unsupported_type"
-    assert list((tmp_path / "docs").glob("*")) == []
+    assert payload["downloads"][0]["status"] == "downloaded"
+    assert payload["downloads"][0]["path"].endswith(".html")
+
+
+def test_engine_run_download_stage_skips_rejected_discovered_candidates(tmp_path: Path, monkeypatch):
+    class FakeResponse:
+        def __init__(self, url: str):
+            self.url = url
+            self.headers = {"Content-Type": "application/pdf"}
+
+        def raise_for_status(self):
+            return None
+
+        def iter_content(self, chunk_size: int = 65536):
+            yield b"%PDF-1.4\n"
+            yield b"downloaded"
+
+    def fake_resolve_serpapi_state(_request: AcquisitionRequest):
+        return ({"provider": "serpapi", "enabled": True, "available": True}, [], [])
+
+    def fake_run_seeker(_request, _state, notes, errors):
+        return (
+            [
+                AcquisitionCandidate(
+                    url="https://example.org/rejected.pdf",
+                    source="serpapi_google",
+                    score=CandidateScore(url_signal=0.1, anchor_signal=0.0, content_signal=0.0, trust_signal=0.1),
+                ),
+                AcquisitionCandidate(
+                    url="https://example.org/review.pdf",
+                    source="serpapi_google",
+                    score=CandidateScore(url_signal=1.0, anchor_signal=1.0, content_signal=0.0, trust_signal=1.0),
+                ),
+            ],
+            notes,
+            errors,
+            [
+                {"url": "https://example.org/rejected.pdf", "confidence": 0.1},
+                {"url": "https://example.org/review.pdf", "confidence": 0.6},
+            ],
+            [],
+        )
+
+    monkeypatch.setattr("requests.get", lambda url, **kwargs: FakeResponse(url))
+    monkeypatch.setattr(AcquisitionEngine, "_resolve_serpapi_state", staticmethod(fake_resolve_serpapi_state))
+    monkeypatch.setattr(AcquisitionEngine, "_run_seeker", staticmethod(fake_run_seeker))
+
+    engine = AcquisitionEngine()
+    request = AcquisitionRequest(
+        domain="geothermal_ordinances",
+        seed_urls=[],
+        query="geothermal ordinance",
+        enable_serpapi=True,
+        output_documents=tmp_path / "docs",
+        output_manifest=tmp_path / "manifest.json",
+        dry_run=False,
+    )
+
+    result = engine.run(request)
+    payload = json.loads(result.manifest_path.read_text(encoding="utf-8"))
+
+    assert payload["candidate_summary"]["total"] == 2
+    assert len(payload["downloads"]) == 1
+    assert payload["downloads"][0]["url"] == "https://example.org/review.pdf"
+    assert any("Download simplification skipped 1 rejected discovered candidate" in note for note in payload["notes"])
+
+
+def test_engine_run_download_stage_preserves_rejected_when_no_better_discovered_candidates(tmp_path: Path, monkeypatch):
+    class FakeResponse:
+        def __init__(self, url: str):
+            self.url = url
+            self.headers = {"Content-Type": "application/pdf"}
+
+        def raise_for_status(self):
+            return None
+
+        def iter_content(self, chunk_size: int = 65536):
+            yield b"%PDF-1.4\n"
+            yield b"downloaded"
+
+    def fake_resolve_serpapi_state(_request: AcquisitionRequest):
+        return ({"provider": "serpapi", "enabled": True, "available": True}, [], [])
+
+    def fake_run_seeker(_request, _state, notes, errors):
+        return (
+            [
+                AcquisitionCandidate(
+                    url="https://example.org/ordinance-a.pdf",
+                    source="serpapi_google",
+                    score=CandidateScore(url_signal=0.1, anchor_signal=0.0, content_signal=0.0, trust_signal=0.1),
+                ),
+                AcquisitionCandidate(
+                    url="https://example.org/ordinance-b.pdf",
+                    source="serpapi_google",
+                    score=CandidateScore(url_signal=0.1, anchor_signal=0.0, content_signal=0.0, trust_signal=0.1),
+                ),
+            ],
+            notes,
+            errors,
+            [
+                {"url": "https://example.org/ordinance-a.pdf", "confidence": 0.1},
+                {"url": "https://example.org/ordinance-b.pdf", "confidence": 0.1},
+            ],
+            [],
+        )
+
+    monkeypatch.setattr("requests.get", lambda url, **kwargs: FakeResponse(url))
+    monkeypatch.setattr(AcquisitionEngine, "_resolve_serpapi_state", staticmethod(fake_resolve_serpapi_state))
+    monkeypatch.setattr(AcquisitionEngine, "_run_seeker", staticmethod(fake_run_seeker))
+
+    engine = AcquisitionEngine()
+    request = AcquisitionRequest(
+        domain="geothermal_ordinances",
+        seed_urls=[],
+        query="geothermal ordinance",
+        enable_serpapi=True,
+        output_documents=tmp_path / "docs",
+        output_manifest=tmp_path / "manifest.json",
+        dry_run=False,
+    )
+
+    result = engine.run(request)
+    payload = json.loads(result.manifest_path.read_text(encoding="utf-8"))
+
+    assert len(payload["downloads"]) == 2
+    assert any("All discovered candidates scored as rejected" in note for note in payload["notes"])
 
 
 def test_engine_run_retries_transient_download_failure_then_succeeds(tmp_path: Path, monkeypatch):
@@ -340,6 +464,86 @@ def test_engine_run_includes_rate_limit_and_concurrency_constraints(tmp_path: Pa
     assert any("Download throughput controls:" in note for note in payload["notes"])
 
 
+def test_engine_run_enforces_tos_acknowledgement_for_downloads(tmp_path: Path, monkeypatch):
+    request_urls: list[str] = []
+
+    def fake_get(url: str, *args, **kwargs):
+        request_urls.append(url)
+        raise AssertionError("download request should not be attempted when ToS policy blocks it")
+
+    monkeypatch.setattr("requests.get", fake_get)
+
+    engine = AcquisitionEngine()
+    request = AcquisitionRequest(
+        domain="geothermal_ordinances",
+        seed_urls=["https://example.org/docs/policy-test.pdf"],
+        query=None,
+        enable_serpapi=False,
+        output_documents=tmp_path / "docs",
+        output_manifest=tmp_path / "manifest.json",
+        dry_run=False,
+        tos_policy_mode="enforce",
+    )
+
+    result = engine.run(request)
+    payload = json.loads(result.manifest_path.read_text(encoding="utf-8"))
+
+    assert payload["downloads"][0]["status"] == "skipped_tos_unacknowledged"
+    assert payload["downloads"][0]["policy_blocking_code"] == "tos_unacknowledged"
+    assert payload["constraints"]["policy"]["tos_policy_mode"] == "enforce"
+    assert request_urls == []
+    assert any("missing ToS acknowledgement" in note for note in payload["notes"])
+
+
+def test_engine_run_enforces_robots_policy_for_downloads(tmp_path: Path, monkeypatch):
+    class FakeResponse:
+        def __init__(self, url: str):
+            self.url = url
+            self.headers = {"Content-Type": "text/plain"}
+            if url.endswith("/robots.txt"):
+                self.status_code = 200
+                self.text = "User-agent: *\nDisallow: /docs/"
+            else:
+                self.status_code = 200
+                self.text = ""
+
+        def raise_for_status(self):
+            return None
+
+        def iter_content(self, chunk_size: int = 65536):
+            yield b"blocked"
+
+    request_urls: list[str] = []
+
+    def fake_get(url: str, *args, **kwargs):
+        request_urls.append(url)
+        return FakeResponse(url)
+
+    monkeypatch.setattr("requests.get", fake_get)
+
+    engine = AcquisitionEngine()
+    request = AcquisitionRequest(
+        domain="geothermal_ordinances",
+        seed_urls=["https://example.org/docs/blocked.pdf"],
+        query=None,
+        enable_serpapi=False,
+        output_documents=tmp_path / "docs",
+        output_manifest=tmp_path / "manifest.json",
+        dry_run=False,
+        robots_policy_mode="enforce",
+        tos_policy_mode="ignore",
+    )
+
+    result = engine.run(request)
+    payload = json.loads(result.manifest_path.read_text(encoding="utf-8"))
+
+    assert payload["downloads"][0]["status"] == "skipped_robots_disallowed"
+    assert payload["downloads"][0]["policy_blocking_code"] == "robots_disallowed"
+    assert payload["constraints"]["policy"]["robots_policy_mode"] == "enforce"
+    assert request_urls == ["https://example.org/robots.txt"]
+    assert any("robots.txt disallow rules" in note for note in payload["notes"])
+
+
 def test_engine_run_applies_request_rate_limiter_for_downloads(tmp_path: Path, monkeypatch):
     class FakeResponse:
         def __init__(self, url: str):
@@ -380,6 +584,51 @@ def test_engine_run_applies_request_rate_limiter_for_downloads(tmp_path: Path, m
 
     assert sleep_calls
     assert all(call > 0 for call in sleep_calls)
+
+
+def test_engine_run_uses_configured_request_headers_for_downloads(tmp_path: Path, monkeypatch):
+    captured_headers: list[dict[str, str]] = []
+
+    class FakeResponse:
+        def __init__(self):
+            self.url = "https://example.org/docs/test-filing.html"
+            self.headers = {"Content-Type": "text/html; charset=utf-8"}
+
+        def raise_for_status(self):
+            return None
+
+        def iter_content(self, chunk_size: int = 65536):
+            yield b"<html><body><h1>Apple filing summary</h1></body></html>"
+
+    def fake_get(url: str, **kwargs):
+        captured_headers.append(dict(kwargs.get("headers") or {}))
+        return FakeResponse()
+
+    monkeypatch.setattr("requests.get", fake_get)
+
+    engine = AcquisitionEngine()
+    request = AcquisitionRequest(
+        domain="apple_sec_filings",
+        seed_urls=["https://example.org/docs/test-filing.html"],
+        query=None,
+        enable_serpapi=False,
+        output_documents=tmp_path / "docs",
+        output_manifest=tmp_path / "manifest.json",
+        dry_run=False,
+        request_headers={
+            "User-Agent": "StreamlineExtract/2.0 (Apple SEC validation; contact: example@example.com)",
+            "Accept-Language": "en-US,en;q=0.9",
+        },
+    )
+
+    result = engine.run(request)
+    payload = json.loads(result.manifest_path.read_text(encoding="utf-8"))
+
+    assert payload["downloads"][0]["status"] == "downloaded"
+    assert payload["downloads"][0]["path"].endswith(".html")
+    assert captured_headers
+    assert captured_headers[0]["User-Agent"].startswith("StreamlineExtract/2.0 (Apple SEC validation")
+    assert captured_headers[0]["Accept-Language"] == "en-US,en;q=0.9"
 
 
 def test_engine_run_routes_centralized_topology_via_http_digger_live_hub_page(tmp_path: Path, monkeypatch):
@@ -619,6 +868,13 @@ def test_engine_run_routes_centralized_topology_through_hub_sweep(tmp_path: Path
     assert payload["lineage"]["routing"]["hub_page_count"] == 1
     assert payload["lineage"]["routing"]["index_link_count"] == 2
     assert payload["lineage"]["routing"]["discovery_modes"] == ["centralized_index_sweep"]
+    centralized_metrics = payload["stage_summaries"]["acceptance_metrics"]["centralized_page_sweep"]
+    assert centralized_metrics["applicable"] is True
+    assert centralized_metrics["measurement_mode"] == "fixture_index_links"
+    assert centralized_metrics["qualifying_link_count"] == 1
+    assert centralized_metrics["recovered_link_count"] == 1
+    assert centralized_metrics["recovery_rate"] == 1.0
+    assert centralized_metrics["meets_fixture_gate"] is True
     assert any(
         note == "Centralized routing staged 1 candidate(s) through hub sweep."
         for note in payload["notes"]
@@ -708,6 +964,12 @@ def test_engine_run_routes_hybrid_topology_with_centralized_then_distributed(tmp
     assert payload["lineage"]["routing"]["distributed_candidate_count"] == 1
     assert payload["lineage"]["routing"]["final_candidate_count"] == 2
     assert len(payload["lineage"]["routing"]["stages"]) == 2
+    hybrid_metrics = payload["stage_summaries"]["acceptance_metrics"]["hybrid_mixed_source_resolution"]
+    assert hybrid_metrics["applicable"] is True
+    assert hybrid_metrics["centralized_candidate_count"] == 1
+    assert hybrid_metrics["distributed_candidate_count"] == 1
+    assert hybrid_metrics["both_paths_resolved"] is True
+    assert hybrid_metrics["meets_fixture_gate"] is True
     assert any(
         note == "Hybrid routing produced 2 candidate(s) after centralized-plus-distributed sequencing."
         for note in payload["notes"]
@@ -820,3 +1082,359 @@ def test_engine_run_records_targeted_query_constraints(tmp_path: Path):
     assert payload["constraints"]["query_template_count"] == 1
     assert payload["constraints"]["query_family_count"] == 1
     assert payload["constraints"]["use_query_family"] == "generator_similar_power"
+
+
+# ---------------------------------------------------------------------------
+# Observability field tests
+# ---------------------------------------------------------------------------
+
+
+def test_manifest_to_dict_includes_observability_keys():
+    """to_dict() must always emit timing, stage_summaries, and candidate_summary."""
+    manifest = AcquisitionManifest(
+        run_id="acq-obs-test",
+        status="scaffold",
+        started_at="2026-03-26T00:00:00+00:00",
+        input={"domain": "test"},
+    )
+    payload = manifest.to_dict()
+    assert "timing" in payload
+    assert "stage_summaries" in payload
+    assert "candidate_summary" in payload
+
+
+def test_engine_run_emits_timing_fields(tmp_path: Path):
+    """Manifest must include started_at, completed_at, and elapsed_seconds >= 0."""
+    engine = AcquisitionEngine()
+    request = AcquisitionRequest(
+        domain="geothermal_ordinances",
+        seed_urls=["https://example.org/seed-a"],
+        query="geothermal ordinance",
+        enable_serpapi=False,
+        output_documents=tmp_path / "docs",
+        output_manifest=tmp_path / "manifest.json",
+        dry_run=True,
+    )
+
+    result = engine.run(request)
+    payload = json.loads(result.manifest_path.read_text(encoding="utf-8"))
+
+    timing = payload["timing"]
+    assert "started_at" in timing
+    assert "completed_at" in timing
+    assert "elapsed_seconds" in timing
+    assert timing["elapsed_seconds"] >= 0.0
+    assert timing["completed_at"] >= timing["started_at"]
+
+
+def test_engine_run_emits_stage_summaries_seeker_section(tmp_path: Path):
+    """stage_summaries.seeker must reflect provider, counts, and prioritization config."""
+    engine = AcquisitionEngine()
+    request = AcquisitionRequest(
+        domain="geothermal_ordinances",
+        seed_urls=["https://example.org/seed-a", "https://example.org/seed-b"],
+        query="geothermal ordinance",
+        enable_serpapi=False,
+        output_documents=tmp_path / "docs",
+        output_manifest=tmp_path / "manifest.json",
+        dry_run=True,
+        link_prioritization_mode="heuristic",
+        link_top_k=3,
+    )
+
+    result = engine.run(request)
+    payload = json.loads(result.manifest_path.read_text(encoding="utf-8"))
+
+    seeker = payload["stage_summaries"]["seeker"]
+    assert seeker["enabled"] is False
+    assert isinstance(seeker["candidates_discovered"], int)
+    assert isinstance(seeker["candidates_after_prioritization"], int)
+    assert seeker["link_prioritization_mode"] == "heuristic"
+    assert seeker["link_top_k"] == 3
+
+
+def test_engine_run_seeker_applies_prioritization_and_emits_lineage(tmp_path: Path, monkeypatch):
+    """Seeker results should be ranked and capped before manifest emission."""
+
+    class FakeSerpApiSeeker:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+
+        def discover(self, seeker_input):
+            return [
+                {
+                    "url": "https://amazon.com/generator-accessory-catalog.pdf",
+                    "source": "serpapi_google",
+                    "title": "Shopping catalog",
+                    "snippet": "Accessory catalog",
+                    "reasons": ["shopping_source"],
+                },
+                {
+                    "url": "https://generac.com/manuals/250kw-installation-manual.pdf",
+                    "source": "serpapi_google",
+                    "title": "Generac 250kW Installation Manual",
+                    "snippet": "Industrial generator installation manual",
+                    "reasons": ["manufacturer_manual"],
+                },
+                {
+                    "url": "https://example.com/files/250kw-generator-spec.pdf",
+                    "source": "serpapi_google",
+                    "title": "Generator spec",
+                    "snippet": "250kW generator specifications",
+                    "reasons": ["spec_sheet"],
+                },
+                {
+                    "url": "https://reddit.com/r/generators/comments/abc123/250kw_manual.pdf",
+                    "source": "serpapi_google",
+                    "title": "Forum thread",
+                    "snippet": "User discussion",
+                    "reasons": ["forum_thread"],
+                },
+            ]
+
+    def fake_resolve_serpapi_state(_request: AcquisitionRequest):
+        return ({"provider": "serpapi", "enabled": True, "available": True}, [], [])
+
+    monkeypatch.setattr(
+        AcquisitionEngine,
+        "_resolve_serpapi_state",
+        staticmethod(fake_resolve_serpapi_state),
+    )
+    monkeypatch.setattr(
+        "streamline_extract.acquisition.connectors.serpapi_seeker.SerpApiSeeker",
+        FakeSerpApiSeeker,
+    )
+
+    engine = AcquisitionEngine()
+    request = AcquisitionRequest(
+        domain="generator_manuals",
+        seed_urls=[],
+        query="250kW generator manual",
+        enable_serpapi=True,
+        output_documents=tmp_path / "docs",
+        output_manifest=tmp_path / "manifest.json",
+        dry_run=True,
+        link_prioritization_mode="heuristic",
+        link_top_k=2,
+        link_prioritization_keywords=["manual", "installation", "spec"],
+        power_range_kw=[200, 300],
+        selection_primary_per_target=4,
+    )
+
+    result = engine.run(request)
+    payload = json.loads(result.manifest_path.read_text(encoding="utf-8"))
+
+    assert [candidate["url"] for candidate in payload["candidates"]] == [
+        "https://generac.com/manuals/250kw-installation-manual.pdf",
+        "https://example.com/files/250kw-generator-spec.pdf",
+    ]
+    assert payload["stage_summaries"]["seeker"]["enabled"] is True
+    assert payload["stage_summaries"]["seeker"]["candidates_discovered"] == 4
+    assert payload["stage_summaries"]["seeker"]["candidates_after_prioritization"] == 2
+    assert payload["lineage"]["link_prioritization"]["mode"] == "heuristic"
+    assert payload["lineage"]["link_prioritization"]["top_k"] == 2
+    assert len(payload["lineage"]["link_prioritization"]["candidates"]) == 4
+    assert sorted(
+        candidate["original_rank"]
+        for candidate in payload["lineage"]["link_prioritization"]["candidates"]
+    ) == [0, 1, 2, 3]
+    assert any(
+        "Link prioritizer (heuristic) ranked 4 candidate(s)"
+        in note
+        for note in payload["notes"]
+    )
+
+
+def test_engine_run_emits_unknown_target_acceptance_metrics(tmp_path: Path, monkeypatch):
+    class FakeSerpApiSeeker:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+
+        def discover(self, seeker_input):
+            template_context = seeker_input.extra_params.get("template_context") or {}
+            jurisdiction = template_context.get("jurisdiction")
+            if jurisdiction == "Imperial County":
+                return [
+                    {
+                        "url": "https://imperialcounty.gov/geothermal-ordinance.pdf",
+                        "source": "serpapi_google",
+                        "title": "Imperial County Geothermal Ordinance",
+                        "snippet": "County geothermal ordinance pdf",
+                        "reasons": ["county_ordinance"],
+                    }
+                ]
+            return []
+
+    def fake_resolve_serpapi_state(_request: AcquisitionRequest):
+        return ({"provider": "serpapi", "enabled": True, "available": True}, [], [])
+
+    monkeypatch.setattr(
+        AcquisitionEngine,
+        "_resolve_serpapi_state",
+        staticmethod(fake_resolve_serpapi_state),
+    )
+    monkeypatch.setattr(
+        "streamline_extract.acquisition.connectors.serpapi_seeker.SerpApiSeeker",
+        FakeSerpApiSeeker,
+    )
+
+    engine = AcquisitionEngine()
+    request = AcquisitionRequest(
+        domain="geothermal_ordinances",
+        seed_urls=[],
+        query="geothermal ordinance pdf",
+        enable_serpapi=True,
+        output_documents=tmp_path / "docs",
+        output_manifest=tmp_path / "manifest.json",
+        dry_run=True,
+        targets=[
+            {"jurisdiction": "Imperial County", "state": "California"},
+            {"jurisdiction": "Mono County", "state": "California"},
+        ],
+        query_templates=["{jurisdiction} {state} geothermal ordinance pdf"],
+        link_prioritization_mode="off",
+    )
+
+    result = engine.run(request)
+    payload = json.loads(result.manifest_path.read_text(encoding="utf-8"))
+
+    unknown_target_metrics = payload["stage_summaries"]["acceptance_metrics"]["unknown_target_discovery"]
+    assert unknown_target_metrics["applicable"] is True
+    assert unknown_target_metrics["measurement_mode"] == "target_matrix"
+    assert unknown_target_metrics["target_count"] == 2
+    assert unknown_target_metrics["targets_with_staged_candidates"] == 1
+    assert unknown_target_metrics["success_rate"] == 0.5
+    assert unknown_target_metrics["meets_fixture_gate"] is False
+    assert len(unknown_target_metrics["targets"]) == 2
+
+
+def test_engine_run_emits_stage_summaries_routing_section(tmp_path: Path):
+    """stage_summaries.routing must reflect mode, applied flag, and candidate flow counts."""
+    engine = AcquisitionEngine()
+    request = AcquisitionRequest(
+        domain="geothermal_ordinances",
+        seed_urls=[
+            "https://county.gov/ordinance.pdf",
+            "https://external.org/other.pdf",
+        ],
+        query="geothermal ordinance",
+        enable_serpapi=False,
+        output_documents=tmp_path / "docs",
+        output_manifest=tmp_path / "manifest.json",
+        dry_run=True,
+        topology_mode="distributed",
+        allowed_domains=["county.gov"],
+        include_url_patterns=[r"\.pdf$"],
+    )
+
+    result = engine.run(request)
+    payload = json.loads(result.manifest_path.read_text(encoding="utf-8"))
+
+    routing = payload["stage_summaries"]["routing"]
+    assert routing["mode"] == "distributed"
+    assert routing["applied"] is True
+    assert isinstance(routing["candidates_in"], int)
+    assert isinstance(routing["candidates_out"], int)
+    assert routing["candidates_out"] <= routing["candidates_in"]
+
+
+def test_engine_run_emits_stage_summaries_downloads_section_dry_run(tmp_path: Path):
+    """In dry-run mode, downloads stage_summary must report zero totals."""
+    engine = AcquisitionEngine()
+    request = AcquisitionRequest(
+        domain="geothermal_ordinances",
+        seed_urls=["https://example.org/seed-a"],
+        query=None,
+        enable_serpapi=False,
+        output_documents=tmp_path / "docs",
+        output_manifest=tmp_path / "manifest.json",
+        dry_run=True,
+    )
+
+    result = engine.run(request)
+    payload = json.loads(result.manifest_path.read_text(encoding="utf-8"))
+
+    downloads = payload["stage_summaries"]["downloads"]
+    assert downloads["total"] == 0
+    assert downloads["downloaded"] == 0
+    assert downloads["failed"] == 0
+    assert downloads["total_bytes"] == 0
+
+
+def test_engine_run_emits_candidate_summary_by_acceptance_class(tmp_path: Path):
+    """candidate_summary must aggregate by acceptance class and source."""
+    engine = AcquisitionEngine()
+    request = AcquisitionRequest(
+        domain="geothermal_ordinances",
+        seed_urls=[
+            "https://example.org/seed-a",
+            "https://example.org/seed-b",
+            "https://example.org/seed-c",
+        ],
+        query=None,
+        enable_serpapi=False,
+        output_documents=tmp_path / "docs",
+        output_manifest=tmp_path / "manifest.json",
+        dry_run=True,
+    )
+
+    result = engine.run(request)
+    payload = json.loads(result.manifest_path.read_text(encoding="utf-8"))
+
+    summary = payload["candidate_summary"]
+    assert summary["total"] == 3
+    assert isinstance(summary["by_acceptance_class"], dict)
+    assert isinstance(summary["by_source"], dict)
+    # All seed_url candidates must appear under seed_url source key
+    assert summary["by_source"].get("seed_url", 0) == 3
+    # All acceptance classes must be valid
+    for cls in summary["by_acceptance_class"]:
+        assert cls in {"accepted", "needs_review", "rejected"}
+
+
+def test_build_download_summary_aggregates_status_counts():
+    """_build_download_summary must correctly bucket status counts and total bytes."""
+    records = [
+        {"status": "downloaded", "bytes": 1024},
+        {"status": "downloaded", "bytes": 2048},
+        {"status": "skipped_unsupported_type", "bytes": None},
+        {"status": "failed", "bytes": None},
+        {"status": "skipped_policy", "bytes": None},
+    ]
+    summary = AcquisitionEngine._build_download_summary(records)
+
+    assert summary["total"] == 5
+    assert summary["downloaded"] == 2
+    assert summary["failed"] == 1
+    assert summary["skipped"] == 2
+    assert summary["total_bytes"] == 3072
+    assert summary["by_status"]["downloaded"] == 2
+    assert summary["by_status"]["failed"] == 1
+
+
+def test_build_candidate_summary_counts_by_acceptance_class_and_source():
+    """_build_candidate_summary must correctly count by class and source."""
+    candidates = [
+        AcquisitionCandidate(
+            url="https://a.com/doc.pdf",
+            source="serpapi_google",
+            score=CandidateScore(url_signal=1.0, trust_signal=1.0),
+        ),
+        AcquisitionCandidate(
+            url="https://b.com/doc.pdf",
+            source="serpapi_google",
+            score=CandidateScore(url_signal=0.0, trust_signal=0.0),
+        ),
+        AcquisitionCandidate(
+            url="https://c.com/doc.pdf",
+            source="seed_url",
+            score=CandidateScore(url_signal=0.5, trust_signal=0.5),
+        ),
+    ]
+    summary = AcquisitionEngine._build_candidate_summary(candidates)
+
+    assert summary["total"] == 3
+    assert summary["by_source"]["serpapi_google"] == 2
+    assert summary["by_source"]["seed_url"] == 1
+    total_class_count = sum(summary["by_acceptance_class"].values())
+    assert total_class_count == 3

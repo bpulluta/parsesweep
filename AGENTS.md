@@ -14,6 +14,10 @@ These instructions keep work aligned with the accepted StreamlineExtract product
 - Record major decisions in stable user-relevant docs only when they materially affect architecture or operating policy.
 - Use `pixi` for repo commands.
 
+## Common Pitfall Warning
+- Avoid tool flows that hang on "Reading changed files" when simple terminal commands are sufficient.
+- Prefer terminal Git commands for quick status/diff checks (`git status --short`, `git diff --name-only`) to keep runs fast and predictable.
+
 ## Repository Focus
 - The active repo surface should reflect the current production runtime only.
 - Keep implementation plans, deprecated experiments, release bookkeeping, and retired helpers out of the tracked repo surface.

@@ -172,6 +172,16 @@ VARIABLE_CATALOG: dict[str, list[dict[str, str]]] = {
             "level": "advanced",
             "description": "Minimum delay between outbound acquisition requests in milliseconds.",
         },
+        {
+            "name": "policy.robots_mode",
+            "level": "advanced",
+            "description": "Robots policy mode for target-site requests: ignore, warn, or enforce.",
+        },
+        {
+            "name": "policy.tos_mode",
+            "level": "advanced",
+            "description": "Terms acknowledgement mode for target-site requests: ignore, warn, or enforce.",
+        },
     ],
 }
 
@@ -198,6 +208,7 @@ _ALLOWED_SECTION_FIELDS = {
         "query_families",
         "allowed_domains",
         "targets",
+        "targets_csv",
         "hub_pages",
         "pipeline",
         "topology",
@@ -215,6 +226,9 @@ _ALLOWED_SECTION_FIELDS = {
         "routing",
         "scoring",
         "retry_policy",
+        "link_prioritization",
+        "selection",
+        "policy",
         "request_headers",
         "dry_run",
     },
@@ -268,11 +282,101 @@ _ACQUISITION_OBJECT_FIELDS = {
     "routing",
     "scoring",
     "retry_policy",
+    "link_prioritization",
+    "selection",
+    "policy",
     "request_headers",
 }
 
+_ALLOWED_POLICY_MODES = {"ignore", "warn", "enforce"}
+
 _SECTION_NAMES = ("acquisition", "processing", "consolidation")
 _CONFIG_SUFFIXES = (".yaml", ".yml", ".json")
+
+
+def _load_targets_from_csv(csv_path: Path) -> list[dict[str, Any]]:
+    """
+    Load targets from a CSV file.
+    
+    Args:
+        csv_path: Path to CSV file with headers as target field names
+        
+    Returns:
+        List of target dictionaries
+        
+    Raises:
+        RuntimeConfigError: If CSV cannot be read or parsed
+    """
+    if not csv_path.exists():
+        msg = f"Targets CSV file not found: {csv_path.as_posix()}"
+        raise RuntimeConfigError(msg)
+    
+    try:
+        import csv
+        
+        targets: list[dict[str, Any]] = []
+        with open(csv_path, 'r', encoding='utf-8') as f:
+            reader = csv.DictReader(f)
+            if reader.fieldnames is None:
+                raise RuntimeConfigError(f"CSV file is empty: {csv_path.as_posix()}")
+            
+            for row_num, row in enumerate(reader, start=2):  # start=2 because row 1 is headers
+                # Convert empty strings to None for optional fields
+                target = {
+                    key: (None if value == "" else value)
+                    for key, value in row.items()
+                }
+                targets.append(target)
+        
+        return targets
+    except RuntimeConfigError:
+        raise
+    except Exception as e:
+        msg = f"Failed to load targets CSV: {csv_path.as_posix()}: {e}"
+        raise RuntimeConfigError(msg) from e
+
+
+def _process_targets_with_csv_support(
+    acquisition: dict[str, Any],
+    config_dir: Path,
+) -> None:
+    """
+    Process targets field to support CSV file references.
+    
+    If acquisition.targets_csv is specified, load targets from that CSV file
+    and merge with any inline targets in acquisition.targets.
+    
+    Modifies acquisition dict in-place.
+    
+    Args:
+        acquisition: Acquisition section of config dict
+        config_dir: Directory containing the config file (for resolving relative paths)
+        
+    Raises:
+        RuntimeConfigError: If CSV loading fails
+    """
+    targets_csv = acquisition.get("targets_csv")
+    if targets_csv is None:
+        return
+    
+    # Resolve CSV path (relative to config directory)
+    if isinstance(targets_csv, str):
+        csv_path = Path(targets_csv)
+        if not csv_path.is_absolute():
+            csv_path = config_dir / csv_path
+        
+        csv_targets = _load_targets_from_csv(csv_path)
+        
+        # Merge CSV targets with inline targets
+        existing_targets = acquisition.get("targets") or []
+        if not isinstance(existing_targets, list):
+            existing_targets = []
+        
+        # Combine: CSV targets first, then inline targets (inline takes precedence if duplicated)
+        acquisition["targets"] = csv_targets + existing_targets
+    
+    # Remove the targets_csv field after processing
+    acquisition.pop("targets_csv", None)
 
 
 def _validate_acquisition_section_schema(acquisition: dict[str, Any]) -> None:
@@ -325,6 +429,35 @@ def _validate_acquisition_section_schema(acquisition: dict[str, Any]) -> None:
             if not isinstance(min_request_interval_ms, int) or min_request_interval_ms < 0:
                 raise RuntimeConfigError(
                     "'acquisition.runtime.min_request_interval_ms' must be an integer >= 0"
+                )
+
+    request_headers = acquisition.get("request_headers")
+    if request_headers is not None:
+        if not isinstance(request_headers, dict):
+            raise RuntimeConfigError("'acquisition.request_headers' must be an object")
+        for key, value in request_headers.items():
+            if not isinstance(key, str) or not key.strip() or not isinstance(value, str) or not value.strip():
+                raise RuntimeConfigError(
+                    "'acquisition.request_headers' must map non-empty string keys to non-empty string values"
+                )
+
+    policy = acquisition.get("policy")
+    if isinstance(policy, dict):
+        for field_name in ("robots_mode", "tos_mode"):
+            mode = policy.get(field_name)
+            if mode is not None and mode not in _ALLOWED_POLICY_MODES:
+                allowed = ", ".join(sorted(_ALLOWED_POLICY_MODES))
+                raise RuntimeConfigError(
+                    f"'acquisition.policy.{field_name}' must be one of: {allowed}"
+                )
+
+        acknowledged_domains = policy.get("acknowledged_tos_domains")
+        if acknowledged_domains is not None:
+            if not isinstance(acknowledged_domains, list) or not all(
+                isinstance(item, str) and item.strip() for item in acknowledged_domains
+            ):
+                raise RuntimeConfigError(
+                    "'acquisition.policy.acknowledged_tos_domains' must be an array of non-empty strings"
                 )
 
 
@@ -469,6 +602,8 @@ def load_runtime_config_file(config_path: Path) -> dict[str, Any]:
         if not isinstance(acquisition, dict):
             msg = "'acquisition' section must be an object in runtime config"
             raise RuntimeConfigError(msg)
+        # Process targets_csv if specified (must happen before validation)
+        _process_targets_with_csv_support(acquisition, config_path.parent)
         _validate_acquisition_section_schema(acquisition)
 
     return config_data
@@ -582,6 +717,10 @@ def _merge_config_fields(
             merged["allowed_domains"] = section.get("allowed_domains")
             sources["allowed_domains"] = "config.acquisition.allowed_domains"
 
+        if "request_headers" in section:
+            merged["request_headers"] = section.get("request_headers")
+            sources["request_headers"] = "config.acquisition.request_headers"
+
         discovery_rules = section.get("discovery_rules")
         if isinstance(discovery_rules, dict):
             if "include_url_patterns" in discovery_rules:
@@ -616,6 +755,18 @@ def _merge_config_fields(
             if "max_backoff_seconds" in retry_policy:
                 merged["retry_max_backoff_seconds"] = retry_policy.get("max_backoff_seconds")
                 sources["retry_max_backoff_seconds"] = "config.acquisition.retry_policy.max_backoff_seconds"
+
+        policy_config = section.get("policy")
+        if isinstance(policy_config, dict):
+            if "robots_mode" in policy_config:
+                merged["robots_policy_mode"] = policy_config.get("robots_mode")
+                sources["robots_policy_mode"] = "config.acquisition.policy.robots_mode"
+            if "tos_mode" in policy_config:
+                merged["tos_policy_mode"] = policy_config.get("tos_mode")
+                sources["tos_policy_mode"] = "config.acquisition.policy.tos_mode"
+            if "acknowledged_tos_domains" in policy_config:
+                merged["acknowledged_tos_domains"] = policy_config.get("acknowledged_tos_domains")
+                sources["acknowledged_tos_domains"] = "config.acquisition.policy.acknowledged_tos_domains"
 
         output_config = section.get("output")
         if isinstance(output_config, dict):
@@ -659,6 +810,9 @@ def _merge_config_fields(
 
         digger_config = section.get("digger")
         if isinstance(digger_config, dict):
+            if "provider" in digger_config:
+                merged["digger_provider"] = digger_config.get("provider")
+                sources["digger_provider"] = "config.acquisition.digger.provider"
             if "connector" in digger_config:
                 merged["digger_provider"] = digger_config.get("connector")
                 sources["digger_provider"] = "config.acquisition.digger.connector"
@@ -686,6 +840,57 @@ def _merge_config_fields(
             if "index_links" in routing_config:
                 merged["index_links"] = routing_config.get("index_links")
                 sources["index_links"] = "config.acquisition.routing.index_links"
+
+        link_prioritization = section.get("link_prioritization")
+        if isinstance(link_prioritization, dict):
+            if "mode" in link_prioritization:
+                merged["link_prioritization_mode"] = link_prioritization.get("mode")
+                sources["link_prioritization_mode"] = "config.acquisition.link_prioritization.mode"
+            if "top_k" in link_prioritization:
+                merged["link_top_k"] = link_prioritization.get("top_k")
+                sources["link_top_k"] = "config.acquisition.link_prioritization.top_k"
+            if "keywords" in link_prioritization:
+                merged["link_prioritization_keywords"] = link_prioritization.get("keywords")
+                sources["link_prioritization_keywords"] = "config.acquisition.link_prioritization.keywords"
+            if "domain_scores" in link_prioritization:
+                merged["link_prioritization_domain_scores"] = link_prioritization.get("domain_scores")
+                sources["link_prioritization_domain_scores"] = "config.acquisition.link_prioritization.domain_scores"
+
+        selection = section.get("selection")
+        if isinstance(selection, dict):
+            if "primary_per_target" in selection:
+                merged["selection_primary_per_target"] = selection.get("primary_per_target")
+                sources["selection_primary_per_target"] = "config.acquisition.selection.primary_per_target"
+            if "exclude_draft" in selection:
+                merged["selection_exclude_draft"] = selection.get("exclude_draft")
+                sources["selection_exclude_draft"] = "config.acquisition.selection.exclude_draft"
+            if "draft_patterns" in selection:
+                merged["selection_draft_patterns"] = selection.get("draft_patterns")
+                sources["selection_draft_patterns"] = "config.acquisition.selection.draft_patterns"
+            if "relevance_require_any_terms" in selection:
+                merged["selection_relevance_require_any_terms"] = selection.get("relevance_require_any_terms")
+                sources["selection_relevance_require_any_terms"] = "config.acquisition.selection.relevance_require_any_terms"
+            if "relevance_require_legal_marker_terms" in selection:
+                merged["selection_relevance_require_legal_marker_terms"] = selection.get("relevance_require_legal_marker_terms")
+                sources["selection_relevance_require_legal_marker_terms"] = "config.acquisition.selection.relevance_require_legal_marker_terms"
+            if "relevance_exclude_any_terms" in selection:
+                merged["selection_relevance_exclude_any_terms"] = selection.get("relevance_exclude_any_terms")
+                sources["selection_relevance_exclude_any_terms"] = "config.acquisition.selection.relevance_exclude_any_terms"
+            if "relevance_allowed_domain_patterns" in selection:
+                merged["selection_relevance_allowed_domain_patterns"] = selection.get("relevance_allowed_domain_patterns")
+                sources["selection_relevance_allowed_domain_patterns"] = "config.acquisition.selection.relevance_allowed_domain_patterns"
+            if "require_supported_document" in selection:
+                merged["selection_require_supported_document"] = selection.get("require_supported_document")
+                sources["selection_require_supported_document"] = "config.acquisition.selection.require_supported_document"
+            if "target_identity_require_any_templates" in selection:
+                merged["selection_target_identity_require_any_templates"] = selection.get("target_identity_require_any_templates")
+                sources["selection_target_identity_require_any_templates"] = "config.acquisition.selection.target_identity_require_any_templates"
+            if "target_identity_require_all_templates" in selection:
+                merged["selection_target_identity_require_all_templates"] = selection.get("target_identity_require_all_templates")
+                sources["selection_target_identity_require_all_templates"] = "config.acquisition.selection.target_identity_require_all_templates"
+            if "target_identity_exclude_any_templates" in selection:
+                merged["selection_target_identity_exclude_any_templates"] = selection.get("target_identity_exclude_any_templates")
+                sources["selection_target_identity_exclude_any_templates"] = "config.acquisition.selection.target_identity_exclude_any_templates"
 
     for cli_key, value in cli_values.items():
         if value is not None:

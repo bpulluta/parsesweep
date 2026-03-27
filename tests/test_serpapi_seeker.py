@@ -13,6 +13,11 @@ from streamline_extract.acquisition.connectors import SerpApiSeeker, SeekerInput
 class TestSerpApiSeekerConnector:
     """Test SerpApi seeker with mocked SerpApi payloads."""
 
+    @pytest.fixture(autouse=True)
+    def _force_ssl_verify_true_for_mocked_client_tests(self, monkeypatch):
+        """Keep existing mocked Client-based tests deterministic unless overridden."""
+        monkeypatch.setenv("SERPAPI_SSL_VERIFY", "true")
+
     @pytest.fixture
     def mock_serpapi_response_geothermal(self) -> dict:
         """Mock SerpApi response for a geothermal ordinance query."""
@@ -185,6 +190,35 @@ class TestSerpApiSeekerConnector:
 
                 assert len(candidates) == 3
                 assert candidates[0]["url"] == "https://www.chaffeecounty.org/documents/53007.pdf"
+                call_kwargs = mock_get.call_args.kwargs
+                assert call_kwargs["verify"] is False
+
+    def test_discover_defaults_to_http_fallback_when_ssl_verify_unset(
+        self,
+        mock_serpapi_response_geothermal,
+    ):
+        """When SSL verify env vars are unset, default behavior uses verify=False."""
+        with patch("requests.get") as mock_get:
+            mock_response = MagicMock()
+            mock_response.raise_for_status.return_value = None
+            mock_response.json.return_value = mock_serpapi_response_geothermal
+            mock_get.return_value = mock_response
+
+            with patch.dict(
+                os.environ,
+                {
+                    "SERPAPI_API_KEY": "test-api-key",
+                },
+                clear=True,
+            ):
+                seeker = SerpApiSeeker()
+                seeker_input = SeekerInput(
+                    query="Chaffee County Colorado geothermal ordinance",
+                    max_results=10,
+                )
+                candidates = seeker.discover(seeker_input)
+
+                assert len(candidates) == 3
                 call_kwargs = mock_get.call_args.kwargs
                 assert call_kwargs["verify"] is False
 

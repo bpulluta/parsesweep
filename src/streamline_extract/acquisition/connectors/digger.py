@@ -263,7 +263,8 @@ class _AnchorExtractor(HTMLParser):
 class HttpDiggerConnector(BaseDiggerConnector):
     """HTTP-based digger provider for real discovery from live hub/seed pages."""
 
-    _DOCUMENT_EXTENSIONS = {".pdf", ".doc", ".docx", ".txt", ".xlsx", ".csv"}
+    _DEFAULT_REQUEST_HEADERS = {"User-Agent": "StreamlineExtract/2.0 (+acquisition)"}
+    _DOCUMENT_EXTENSIONS = {".pdf", ".doc", ".docx", ".txt", ".xlsx", ".csv", ".html", ".htm"}
     _USER_AGENT = "StreamlineExtract/2.0 (+acquisition)"
 
     @staticmethod
@@ -294,6 +295,18 @@ class HttpDiggerConnector(BaseDiggerConnector):
             max(0.0, initial_backoff),
             max(0.0, max_backoff),
         )
+
+    @classmethod
+    def _resolve_request_headers(cls, extra_params: dict[str, object] | None) -> dict[str, str]:
+        headers = dict(cls._DEFAULT_REQUEST_HEADERS)
+        raw_headers = extra_params.get("request_headers") if isinstance(extra_params, dict) else None
+        if isinstance(raw_headers, dict):
+            for key, value in raw_headers.items():
+                normalized_key = str(key or '').strip()
+                normalized_value = str(value or '').strip()
+                if normalized_key and normalized_value:
+                    headers[normalized_key] = normalized_value
+        return headers
 
     @staticmethod
     def _is_transient_error(exc: BaseException) -> bool:
@@ -330,6 +343,7 @@ class HttpDiggerConnector(BaseDiggerConnector):
         url: str,
         timeout_seconds: int,
         ssl_verify: bool,
+        request_headers: dict[str, str],
         retry_config: tuple[int, float, float],
     ) -> tuple[str, int]:
         try:
@@ -347,7 +361,7 @@ class HttpDiggerConnector(BaseDiggerConnector):
                     timeout=max(1, timeout_seconds),
                     allow_redirects=True,
                     verify=ssl_verify,
-                    headers={"User-Agent": self._USER_AGENT},
+                    headers=request_headers,
                 )
                 response.raise_for_status()
                 content_type = str((response.headers or {}).get("Content-Type") or "").lower()
@@ -411,6 +425,7 @@ class HttpDiggerConnector(BaseDiggerConnector):
         timeout_seconds: int,
         ssl_verify: bool,
         retry_config: tuple[int, float, float],
+        request_headers: dict[str, str],
         max_pages: int,
         max_files: int,
     ) -> tuple[list[DiggerArtifact], int]:
@@ -442,6 +457,7 @@ class HttpDiggerConnector(BaseDiggerConnector):
                         url=page_url,
                         timeout_seconds=timeout_seconds,
                         ssl_verify=ssl_verify,
+                        request_headers=request_headers,
                         retry_config=retry_config,
                     )
                 except Exception:
@@ -492,6 +508,7 @@ class HttpDiggerConnector(BaseDiggerConnector):
         timeout_seconds: int,
         ssl_verify: bool,
         retry_config: tuple[int, float, float],
+        request_headers: dict[str, str],
         max_depth: int,
         max_pages: int,
         max_files: int,
@@ -537,6 +554,7 @@ class HttpDiggerConnector(BaseDiggerConnector):
                     url=current_url,
                     timeout_seconds=timeout_seconds,
                     ssl_verify=ssl_verify,
+                    request_headers=request_headers,
                     retry_config=retry_config,
                 )
             except Exception:
@@ -593,6 +611,7 @@ class HttpDiggerConnector(BaseDiggerConnector):
 
         ssl_verify = bool(extra_params.get("ssl_verify", True))
         retry_config = self._resolve_retry_config(extra_params)
+        request_headers = self._resolve_request_headers(extra_params)
 
         index_page_mode = extra_params.get("index_page_mode") if isinstance(extra_params, dict) else None
         sweep_enabled = (
@@ -610,6 +629,7 @@ class HttpDiggerConnector(BaseDiggerConnector):
                 timeout_seconds=effective_timeout_seconds,
                 ssl_verify=ssl_verify,
                 retry_config=retry_config,
+                request_headers=request_headers,
                 max_pages=effective_max_pages,
                 max_files=effective_max_files,
             )
@@ -619,6 +639,7 @@ class HttpDiggerConnector(BaseDiggerConnector):
                 timeout_seconds=effective_timeout_seconds,
                 ssl_verify=ssl_verify,
                 retry_config=retry_config,
+                request_headers=request_headers,
                 max_depth=effective_max_depth,
                 max_pages=effective_max_pages,
                 max_files=effective_max_files,
