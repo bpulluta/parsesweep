@@ -1774,6 +1774,9 @@ def validate(extraction_file: str, verbose: bool, show_data: bool):
 @click.option('--enable-serpapi/--disable-serpapi', default=None, help='Enable optional SerpApi seeker provider')
 @click.option('--max-concurrent-downloads', type=int, default=None, help='Maximum parallel downloads during acquire runs')
 @click.option('--min-request-interval-ms', type=int, default=None, help='Minimum delay between outbound acquisition requests in milliseconds')
+@click.option('--robots-policy-mode', type=click.Choice(['ignore', 'warn', 'enforce'], case_sensitive=False), default=None, help='Robots policy mode for target-site requests')
+@click.option('--tos-policy-mode', type=click.Choice(['ignore', 'warn', 'enforce'], case_sensitive=False), default=None, help='Terms acknowledgement mode for target-site requests')
+@click.option('--acknowledge-tos-domain', 'acknowledged_tos_domains', multiple=True, help='Host or parent domain acknowledged for target-site terms checks (repeatable)')
 @click.option('--output-documents', type=click.Path(), default=None, help='Directory for acquired documents (defaults to run-scoped deterministic path)')
 @click.option('--output-manifest', type=click.Path(), default=None, help='Path to acquisition manifest JSON (defaults to run-scoped deterministic path)')
 @click.option('--dry-run', is_flag=True, help='Discover and emit manifest scaffold without downloads')
@@ -1796,6 +1799,9 @@ def acquire(
     enable_serpapi: Optional[bool],
     max_concurrent_downloads: Optional[int],
     min_request_interval_ms: Optional[int],
+    robots_policy_mode: Optional[str],
+    tos_policy_mode: Optional[str],
+    acknowledged_tos_domains: tuple[str, ...],
     output_documents: Optional[str],
     output_manifest: Optional[str],
     dry_run: bool,
@@ -1817,7 +1823,7 @@ def acquire(
     configure_logging(VERBOSITY)
 
     cli_overrides = _explicit_cli_overrides([
-        'domain', 'seed_urls', 'query', 'state', 'jurisdiction', 'partition_mode', 'digger_provider', 'enable_serpapi', 'max_concurrent_downloads', 'min_request_interval_ms', 'output_documents', 'output_manifest', 'dry_run'
+        'domain', 'seed_urls', 'query', 'state', 'jurisdiction', 'partition_mode', 'digger_provider', 'enable_serpapi', 'max_concurrent_downloads', 'min_request_interval_ms', 'robots_policy_mode', 'tos_policy_mode', 'acknowledged_tos_domains', 'output_documents', 'output_manifest', 'dry_run'
     ])
 
     try:
@@ -1867,6 +1873,22 @@ def acquire(
     resolved_query_families = resolved_inputs.get('query_families') or None
     resolved_use_query_family = resolved_inputs.get('use_query_family')
     resolved_seeker_max_results = int(resolved_inputs.get('seeker_max_results', 10) or 10)
+    resolved_link_prioritization_mode = str(resolved_inputs.get('link_prioritization_mode', 'heuristic') or 'heuristic').lower()
+    resolved_link_top_k = int(resolved_inputs.get('link_top_k', 5) or 5)
+    resolved_link_prioritization_keywords = resolved_inputs.get('link_prioritization_keywords') or None
+    resolved_link_prioritization_domain_scores = resolved_inputs.get('link_prioritization_domain_scores') or None
+    resolved_power_range_kw = resolved_inputs.get('power_range_kw') or None
+    resolved_selection_primary_per_target = int(resolved_inputs.get('selection_primary_per_target', 1) or 1)
+    resolved_selection_exclude_draft = bool(resolved_inputs.get('selection_exclude_draft', True))
+    resolved_selection_draft_patterns = resolved_inputs.get('selection_draft_patterns') or None
+    resolved_selection_relevance_require_any_terms = resolved_inputs.get('selection_relevance_require_any_terms') or None
+    resolved_selection_relevance_require_legal_marker_terms = resolved_inputs.get('selection_relevance_require_legal_marker_terms') or None
+    resolved_selection_relevance_exclude_any_terms = resolved_inputs.get('selection_relevance_exclude_any_terms') or None
+    resolved_selection_relevance_allowed_domain_patterns = resolved_inputs.get('selection_relevance_allowed_domain_patterns') or None
+    resolved_selection_require_supported_document = bool(resolved_inputs.get('selection_require_supported_document', True))
+    resolved_selection_target_identity_require_any_templates = resolved_inputs.get('selection_target_identity_require_any_templates') or None
+    resolved_selection_target_identity_require_all_templates = resolved_inputs.get('selection_target_identity_require_all_templates') or None
+    resolved_selection_target_identity_exclude_any_templates = resolved_inputs.get('selection_target_identity_exclude_any_templates') or None
     resolved_include_url_patterns = resolved_inputs.get('include_url_patterns') or None
     resolved_include_link_text_patterns = resolved_inputs.get('include_link_text_patterns') or None
     resolved_index_page_mode = resolved_inputs.get('index_page_mode') or None
@@ -1880,6 +1902,9 @@ def acquire(
     resolved_retry_max_backoff_seconds = float(resolved_inputs.get('retry_max_backoff_seconds', 8.0) or 8.0)
     resolved_max_concurrent_downloads = int(resolved_inputs.get('max_concurrent_downloads', max_concurrent_downloads or 2) or 2)
     resolved_min_request_interval_ms = int(resolved_inputs.get('min_request_interval_ms', min_request_interval_ms or 0) or 0)
+    resolved_robots_policy_mode = str(resolved_inputs.get('robots_policy_mode', robots_policy_mode or 'ignore') or 'ignore').lower()
+    resolved_tos_policy_mode = str(resolved_inputs.get('tos_policy_mode', tos_policy_mode or 'ignore') or 'ignore').lower()
+    resolved_acknowledged_tos_domains = list(resolved_inputs.get('acknowledged_tos_domains') or acknowledged_tos_domains or [])
 
     if not resolved_seed_urls and not resolved_query and not resolved_targets:
         print_error(
@@ -1896,24 +1921,37 @@ def acquire(
 
     if VERBOSITY != 'quiet':
         print_header('ACQUISITION')
-        config_info = {
-            'Domain': resolved_domain,
-            'Seeds': str(len(resolved_seed_urls)),
-            'Query': resolved_query or '(none)',
-            'State': resolved_state or '(none)',
-            'Jurisdiction': resolved_jurisdiction or '(none)',
-            'Partition Mode': resolved_partition_mode,
-            'Digger Provider': resolved_digger_provider,
-            'Topology': resolved_topology_mode or '(default)',
-            'Hub Pages': str(len(resolved_hub_pages or [])),
-            'Targets': str(len(resolved_targets or [])),
-            'Seeker': 'serpapi' if resolved_enable_serpapi else 'seed-only',
-            'Max Concurrent Downloads': str(max(1, resolved_max_concurrent_downloads)),
-            'Min Request Interval (ms)': str(max(0, resolved_min_request_interval_ms)),
-            'Documents Output': str(documents_dir) if documents_dir else '(auto: run-scoped)',
-            'Manifest': str(manifest_path) if manifest_path else '(auto: run-scoped)',
-            'Mode': 'dry-run' if dry_run else 'run',
-        }
+        if VERBOSITY in {'verbose', 'debug'}:
+            config_info = {
+                'Domain': resolved_domain,
+                'Seeds': str(len(resolved_seed_urls)),
+                'Query': resolved_query or '(none)',
+                'State': resolved_state or '(none)',
+                'Jurisdiction': resolved_jurisdiction or '(none)',
+                'Partition Mode': resolved_partition_mode,
+                'Digger Provider': resolved_digger_provider,
+                'Topology': resolved_topology_mode or '(default)',
+                'Hub Pages': str(len(resolved_hub_pages or [])),
+                'Targets': str(len(resolved_targets or [])),
+                'Seeker': 'serpapi' if resolved_enable_serpapi else 'seed-only',
+                'Max Concurrent Downloads': str(max(1, resolved_max_concurrent_downloads)),
+                'Min Request Interval (ms)': str(max(0, resolved_min_request_interval_ms)),
+                'Robots Policy': resolved_robots_policy_mode,
+                'ToS Policy': resolved_tos_policy_mode,
+                'Acknowledged ToS Domains': str(len(resolved_acknowledged_tos_domains)),
+                'Documents Output': str(documents_dir) if documents_dir else '(auto: run-scoped)',
+                'Manifest': str(manifest_path) if manifest_path else '(auto: run-scoped)',
+                'Mode': 'dry-run' if dry_run else 'run',
+            }
+        else:
+            config_info = {
+                'Domain': resolved_domain,
+                'Input': f"seeds={len(resolved_seed_urls)}, targets={len(resolved_targets or [])}, query={'yes' if resolved_query else 'no'}",
+                'Seeker': 'serpapi' if resolved_enable_serpapi else 'seed-only',
+                'Topology': resolved_topology_mode or '(default)',
+                'Documents Output': str(documents_dir) if documents_dir else '(auto: run-scoped)',
+                'Mode': 'dry-run' if dry_run else 'run',
+            }
         console.print(create_config_table('', config_info))
         console.print()
 
@@ -1937,6 +1975,22 @@ def acquire(
         query_families=resolved_query_families,
         use_query_family=resolved_use_query_family,
         seeker_max_results=max(1, resolved_seeker_max_results),
+        link_prioritization_mode=resolved_link_prioritization_mode,
+        link_top_k=max(1, resolved_link_top_k),
+        link_prioritization_keywords=resolved_link_prioritization_keywords,
+        link_prioritization_domain_scores=resolved_link_prioritization_domain_scores,
+        power_range_kw=resolved_power_range_kw,
+        selection_primary_per_target=max(1, resolved_selection_primary_per_target),
+        selection_exclude_draft=resolved_selection_exclude_draft,
+        selection_draft_patterns=resolved_selection_draft_patterns,
+        selection_relevance_require_any_terms=resolved_selection_relevance_require_any_terms,
+        selection_relevance_require_legal_marker_terms=resolved_selection_relevance_require_legal_marker_terms,
+        selection_relevance_exclude_any_terms=resolved_selection_relevance_exclude_any_terms,
+        selection_relevance_allowed_domain_patterns=resolved_selection_relevance_allowed_domain_patterns,
+        selection_require_supported_document=resolved_selection_require_supported_document,
+        selection_target_identity_require_any_templates=resolved_selection_target_identity_require_any_templates,
+        selection_target_identity_require_all_templates=resolved_selection_target_identity_require_all_templates,
+        selection_target_identity_exclude_any_templates=resolved_selection_target_identity_exclude_any_templates,
         include_url_patterns=resolved_include_url_patterns,
         include_link_text_patterns=resolved_include_link_text_patterns,
         index_page_mode=resolved_index_page_mode,
@@ -1950,6 +2004,9 @@ def acquire(
         retry_max_backoff_seconds=resolved_retry_max_backoff_seconds,
         max_concurrent_downloads=max(1, resolved_max_concurrent_downloads),
         min_request_interval_ms=max(0, resolved_min_request_interval_ms),
+        robots_policy_mode=resolved_robots_policy_mode,
+        tos_policy_mode=resolved_tos_policy_mode,
+        acknowledged_tos_domains=resolved_acknowledged_tos_domains or None,
     )
 
     try:

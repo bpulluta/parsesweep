@@ -45,6 +45,7 @@ Works with any document type: regulations, contracts, research papers, permits, 
   - [Complete Workflow Example](#complete-workflow-example)
   - [Process Command](#process-command)
   - [Consolidate Command](#consolidate-command)
+  - [Acquire Command](#acquire-command)
   - [Helper Commands](#helper-commands)
   - [QA/QC Multi-Model Validation](#qaqc-multi-model-validation)
 - [Schemas](#schemas)
@@ -124,8 +125,9 @@ Use the active docs for current operating guidance:
 
 - `README.md`: product overview, architecture baseline, core workflows, onboarding entry points
 - `schemas/SCHEMA_BEST_PRACTICES.md`: schema authoring, deduplication, and schema-versus-pack guidance
-- `.github/copilot-instructions.md`: repository-specific Copilot operating instructions and standard commands
 - `config/README.md`: runtime config layout and page-range conventions
+- `.github/copilot-instructions.md`: repository-specific Copilot operating instructions and standard commands
+- `CONTRIBUTING_ACQUISITION.md`: extending seeker/digger connectors, testing patterns, and configuration
 
 If a document describes migration, phased implementation planning, release-gate bookkeeping, or retired implementation work, it should stay out of the tracked repo surface. Keep that material in a local ignored archive or in the issue tracker instead.
 
@@ -496,6 +498,169 @@ pixi run streamline-extract process documents/tariffs/ \
   --schema schemas/example_utility_rate_schema.json \
   --pages-csv config/tariffs/page_ranges.csv
 ```
+---
+
+### Acquire Command
+
+Discover and download source documents from the web before extraction.
+
+**What it does:** Queries web search (via SerpApi) or crawls seed URLs to find candidate documents matching your domain and schema keywords, downloads the accepted files into `documents/<domain>/acquired/`, and emits a manifest and download index for traceability.
+
+The `acquire` command is an optional pre-processing stage. After it runs, point `process` at the downloaded files and continue normally.
+
+#### Basic Usage
+
+```bash
+# Dry-run: discover candidates without downloading
+pixi run streamline-extract acquire \
+  --domain generator_manuals \
+  --seed-url "https://generac.com/products/industrial" \
+  --dry-run
+
+# Live run: discover and download
+pixi run streamline-extract acquire \
+  --domain generator_manuals \
+  --seed-url "https://generac.com/products/industrial" \
+  --query "Generac 250kW industrial generator manual pdf"
+
+# From a config file (recommended for repeatable runs)
+pixi run streamline-extract acquire --config config/generator_manuals/run.yaml
+```
+
+#### Options
+
+| Option | Description | Default |
+|--------|-------------|----------|
+| `--domain NAME` | Domain key for output organization | Required |
+| `--config PATH` | Runtime config YAML file | None |
+| `--seed-url URL` | Starting URL (repeatable) | None |
+| `--query TEXT` | Search query or intent keywords | None |
+| `--enable-serpapi` | Use SerpApi for web search discovery | Disabled |
+| `--topology` | Routing mode: `distributed`, `centralized`, `hybrid` | Default |
+| `--output-documents PATH` | Override documents output directory | `documents/<domain>/acquired/` |
+| `--output-manifest PATH` | Override manifest path | `output/acquisition/<domain>/runs/<id>/manifest.json` |
+| `--dry-run` | Discover candidates but skip downloads | Off |
+| `--partition-mode MODE` | `jurisdiction`, `host`, or `auto` | `auto` |
+| `--state TEXT` | State hint for jurisdiction partitioning | None |
+| `--jurisdiction TEXT` | Jurisdiction hint for partitioning | None |
+| `--max-depth N` | Maximum crawl depth | 2 |
+| `--max-pages N` | Maximum pages to crawl per seed | 50 |
+| `--max-files N` | Maximum files to download | 20 |
+| `--timeout-seconds N` | Crawl timeout | 30 |
+| `--robots-policy-mode MODE` | `ignore`, `warn`, or `enforce` | `ignore` |
+| `--tos-policy-mode MODE` | `ignore`, `warn`, or `enforce` | `ignore` |
+| `--validate-config` | Validate config file and exit | Off |
+| `--show-effective-config` | Print resolved inputs with source attribution | Off |
+| `--dry-run` | Discover candidates without downloading | Off |
+| `--verbose`, `-v` | Detailed output | Normal |
+| `--quiet`, `-q` | Minimal output | Normal |
+
+#### Requirements for SerpApi
+
+Set one of the following environment variables before using `--enable-serpapi`:
+
+```bash
+export SERPAPI_API_KEY=your-key-here
+# OR
+export SERPAPI_KEY=your-key-here
+```
+
+Optional SSL override if your environment uses TLS interception:
+```bash
+export SERPAPI_SSL_VERIFY=false
+```
+
+#### Full Pipeline: Acquire → Process → Consolidate
+
+```bash
+# 1. Discover and download documents
+pixi run streamline-extract acquire --config config/generator_manuals/run.yaml
+
+# 2. Inspect download index to confirm files
+cat output/acquisition/generator_manuals/runs/<run_id>/download_index.csv
+
+# 3. Process the acquired documents
+pixi run streamline-extract process \
+  documents/generator_manuals/acquired/ \
+  --schema schemas/personal/generator_manuals_schema.json
+
+# 4. Consolidate to Excel
+pixi run streamline-extract consolidate \
+  processed/generator_manuals/ \
+  --schema schemas/personal/generator_manuals_schema.json
+```
+
+#### Config File Pattern
+
+Place acquisition config in `config/<domain>/run.yaml`. This keeps repeatable run inputs separate from the extraction schema:
+
+```yaml
+domain: generator_manuals
+
+acquisition:
+  topology:
+    mode: distributed
+  targets:
+    - manufacturer: Generac
+      power_class_kw: "200-300"
+      query: "Generac industrial generator manual pdf"
+    - manufacturer: John Deere
+      power_class_kw: "200-300"
+      query: "John Deere generator operator manual pdf"
+  query_families:
+    generator_similar_power:
+      - "{manufacturer} {power_class_kw} kW generator spec pdf"
+      - "{manufacturer} generator {power_class_kw} kW manual pdf"
+  seeker:
+    provider: serpapi
+    use_query_family: generator_similar_power
+    max_results: 6
+    link_prioritization_mode: heuristic   # heuristic | off
+    link_top_k: 5                          # top candidates to surface
+    link_prioritization_keywords:          # optional domain-specific keywords
+      - manual
+      - operator
+      - installation
+    power_range_kw: [200, 300]             # optional: bonus for in-range kW in URL
+  runtime:
+    min_request_interval_ms: 200
+    max_concurrent_downloads: 2
+    robots_policy_mode: ignore
+    tos_policy_mode: ignore
+
+processing:
+  input_dir: documents/generator_manuals
+  schema: schemas/personal/generator_manuals_schema.json
+  output_dir: processed/generator_manuals
+
+consolidation:
+  input_dir: processed/generator_manuals
+  schema: schemas/personal/generator_manuals_schema.json
+  output_dir: consolidated/generator_manuals
+```
+
+#### Acquisition Outputs
+
+Each run writes to run-scoped deterministic paths:
+
+```
+documents/<domain>/acquired/runs/<run_id>/
+    by_jurisdiction/<state>/<jurisdiction>/   # when partition mode = jurisdiction
+    by_host/<source-host>/                    # when partition mode = host
+
+output/acquisition/<domain>/runs/<run_id>/
+    manifest.json       # full run record with timing, stage summaries, lineage
+    download_index.csv  # machine-readable file list for downstream automation
+```
+
+The manifest includes:
+- `timing`: `started_at`, `completed_at`, `elapsed_seconds`
+- `stage_summaries.seeker`: candidates discovered, after prioritization, prioritization config
+- `stage_summaries.routing`: mode, applied, candidates-in vs. candidates-out
+- `stage_summaries.downloads`: total, downloaded, skipped, failed, total_bytes
+- `candidate_summary`: total and breakdown by acceptance class (accepted/needs_review/rejected) and source
+- `lineage.link_prioritization`: full ranked list of all candidates with heuristic scores (for audit)
+
 ---
 
 ### Consolidate Command
@@ -1133,6 +1298,18 @@ StreamlineExtract/
    - Describe what your changes do
    - Reference any related issues
    - Ensure tests pass
+
+### Extending the Acquisition Pipeline (Seeker/Digger Connectors)
+
+For detailed guidance on implementing new discovery connectors and contributing to the web acquisition stage:
+
+**See [`CONTRIBUTING_ACQUISITION.md`](CONTRIBUTING_ACQUISITION.md)** — Complete guide covering:
+- Connector architecture and base interfaces
+- Step-by-step implementation of custom seeker connectors
+- Step-by-step implementation of custom digger connectors
+- Testing patterns and best practices
+- Configuration and environment setup
+- Working examples and troubleshooting
 
 ### Adding a New Schema
 

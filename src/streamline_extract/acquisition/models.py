@@ -98,6 +98,10 @@ class AcquisitionManifest:
     error_summary: dict[str, Any] = field(default_factory=dict)
     notes: list[str] = field(default_factory=list)
     manifest_version: str = "1.0.0"
+    # Observability fields
+    timing: dict[str, Any] = field(default_factory=dict)
+    stage_summaries: dict[str, Any] = field(default_factory=dict)
+    candidate_summary: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -105,8 +109,11 @@ class AcquisitionManifest:
             "run_id": self.run_id,
             "status": self.status,
             "started_at": self.started_at,
+            "timing": self.timing,
             "input": self.input,
             "constraints": self.constraints,
+            "stage_summaries": self.stage_summaries,
+            "candidate_summary": self.candidate_summary,
             "lineage": self.lineage,
             "candidates": [candidate.to_dict() for candidate in self.candidates],
             "downloads": self.downloads,

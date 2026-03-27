@@ -1,5 +1,6 @@
 """Universal document text extraction for multiple file formats."""
 
+from html.parser import HTMLParser
 import logging
 from pathlib import Path
 from typing import Dict, Any, Optional
@@ -7,7 +8,72 @@ from typing import Dict, Any, Optional
 logger = logging.getLogger(__name__)
 
 # Supported file extensions
-SUPPORTED_EXTENSIONS = {'.pdf', '.docx', '.txt', '.xlsx', '.csv', '.doc'}
+SUPPORTED_EXTENSIONS = {'.pdf', '.docx', '.txt', '.xlsx', '.csv', '.doc', '.html', '.htm'}
+
+
+class _HTMLTextExtractor(HTMLParser):
+    """Convert HTML content into readable plain text."""
+
+    _BLOCK_TAGS = {
+        'address', 'article', 'aside', 'blockquote', 'br', 'caption', 'dd', 'div',
+        'dl', 'dt', 'figcaption', 'figure', 'footer', 'form', 'h1', 'h2', 'h3',
+        'h4', 'h5', 'h6', 'header', 'hr', 'li', 'main', 'nav', 'ol', 'p', 'pre',
+        'section', 'table', 'tbody', 'td', 'tfoot', 'th', 'thead', 'tr', 'ul',
+    }
+    _SKIP_TAGS = {'script', 'style', 'noscript'}
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._chunks: list[str] = []
+        self._skip_depth = 0
+
+    def handle_starttag(self, tag: str, attrs) -> None:
+        normalized = tag.lower()
+        if normalized in self._SKIP_TAGS:
+            self._skip_depth += 1
+            return
+        if self._skip_depth == 0 and normalized in self._BLOCK_TAGS:
+            self._chunks.append('\n')
+
+    def handle_endtag(self, tag: str) -> None:
+        normalized = tag.lower()
+        if normalized in self._SKIP_TAGS and self._skip_depth > 0:
+            self._skip_depth -= 1
+            return
+        if self._skip_depth == 0 and normalized in self._BLOCK_TAGS:
+            self._chunks.append('\n')
+
+    def handle_data(self, data: str) -> None:
+        if self._skip_depth > 0:
+            return
+        text = data.strip()
+        if text:
+            self._chunks.append(text)
+
+    def get_text(self) -> str:
+        lines: list[str] = []
+        current_parts: list[str] = []
+        for chunk in self._chunks:
+            if chunk == '\n':
+                if current_parts:
+                    lines.append(' '.join(current_parts))
+                    current_parts = []
+                elif lines and lines[-1] != '':
+                    lines.append('')
+                continue
+            current_parts.append(chunk)
+
+        if current_parts:
+            lines.append(' '.join(current_parts))
+
+        collapsed: list[str] = []
+        for line in lines:
+            cleaned = ' '.join(line.split())
+            if cleaned:
+                collapsed.append(cleaned)
+            elif collapsed and collapsed[-1] != '':
+                collapsed.append('')
+        return '\n'.join(collapsed).strip()
 
 
 def is_supported_document(file_path: Path) -> bool:
@@ -27,7 +93,7 @@ def extract_text_from_document(file_path: Path, page_range: Optional[tuple] = No
     """
     Extract text from any supported document format.
     
-    Supports: PDF, DOCX, TXT, XLSX, CSV, DOC
+    Supports: PDF, DOCX, TXT, XLSX, CSV, DOC, HTML
     
     Args:
         file_path: Path to the document
@@ -55,6 +121,8 @@ def extract_text_from_document(file_path: Path, page_range: Optional[tuple] = No
         return _extract_from_xlsx(file_path)
     elif ext == '.csv':
         return _extract_from_csv(file_path)
+    elif ext in {'.html', '.htm'}:
+        return _extract_from_html(file_path)
     else:
         raise ValueError(
             f"Unsupported file format: {ext}. "
@@ -220,3 +288,25 @@ def _extract_from_csv(csv_path: Path) -> str:
         
     except Exception as e:
         raise RuntimeError(f"Failed to extract from CSV {csv_path.name}: {e}")
+
+
+def _extract_from_html(html_path: Path) -> str:
+    """Extract readable text from HTML/HTM files."""
+    try:
+        raw_html = html_path.read_text(encoding='utf-8')
+    except UnicodeDecodeError:
+        try:
+            raw_html = html_path.read_text(encoding='latin-1')
+        except Exception as e:
+            raise RuntimeError(f"Failed to decode HTML {html_path.name}: {e}") from e
+    except Exception as e:
+        raise RuntimeError(f"Failed to read HTML {html_path.name}: {e}") from e
+
+    try:
+        parser = _HTMLTextExtractor()
+        parser.feed(raw_html)
+        text = parser.get_text()
+        logger.info(f"✓ Extracted {len(text):,} characters from HTML: {html_path.name}")
+        return text
+    except Exception as e:
+        raise RuntimeError(f"Failed to extract from HTML {html_path.name}: {e}") from e

@@ -35,7 +35,7 @@ class SerpApiSeeker(BaseSeekerConnector):
                      If not provided, falls back to SERPAPI_API_KEY or SERPAPI_KEY.
             ssl_verify: Optional override for TLS verification behavior.
                         If omitted, defaults to env-driven value from
-                        SERPAPI_SSL_VERIFY / STREAMLINE_EXTRACT_SSL_VERIFY (default: true).
+                        SERPAPI_SSL_VERIFY / STREAMLINE_EXTRACT_SSL_VERIFY (default: false).
         """
         self.api_key = api_key or os.getenv("SERPAPI_API_KEY") or os.getenv("SERPAPI_KEY")
         self.ssl_verify = self._resolve_ssl_verify(ssl_verify)
@@ -113,7 +113,7 @@ class SerpApiSeeker(BaseSeekerConnector):
         raw_value = (
             os.getenv("SERPAPI_SSL_VERIFY")
             or os.getenv("STREAMLINE_EXTRACT_SSL_VERIFY")
-            or "true"
+            or "false"
         )
         normalized = str(raw_value).strip().lower()
         return normalized not in {"0", "false", "no", "off"}

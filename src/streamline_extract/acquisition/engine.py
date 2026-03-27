@@ -11,13 +11,18 @@ import re
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from collections import Counter
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import unquote, urlparse
 
 from .connectors import DiggerInput, resolve_digger_connector
+from .connectors.digger import NullDiggerConnector
+from .candidate_selector import CandidateSelector
+from .link_prioritizer import LinkPrioritizer
 from .models import AcquisitionCandidate, AcquisitionManifest, CandidateScore
+from .policies import AcquisitionPolicyEvaluator
 from streamline_extract.utils.error_taxonomy import (
     build_error_record,
     normalize_error_records,
@@ -56,11 +61,33 @@ class AcquisitionRequest:
     retry_max_backoff_seconds: float = 8.0
     max_concurrent_downloads: int = 2
     min_request_interval_ms: int = 0
+    request_headers: dict[str, str] | None = None
+    robots_policy_mode: str = "ignore"
+    tos_policy_mode: str = "ignore"
+    acknowledged_tos_domains: list[str] | None = None
     targets: list[dict[str, object]] | None = None
     query_templates: list[str] | None = None
     query_families: dict[str, list[str]] | None = None
     use_query_family: str | None = None
     seeker_max_results: int = 10
+    # Link prioritization
+    link_prioritization_mode: str = "heuristic"
+    link_top_k: int = 5
+    link_prioritization_keywords: list[str] | None = None
+    link_prioritization_domain_scores: dict[str, float] | None = None
+    power_range_kw: list[float] | None = None
+    # Per-target candidate selection
+    selection_primary_per_target: int = 1
+    selection_exclude_draft: bool = True
+    selection_draft_patterns: list[str] | None = None
+    selection_relevance_require_any_terms: list[str] | None = None
+    selection_relevance_require_legal_marker_terms: list[str] | None = None
+    selection_relevance_exclude_any_terms: list[str] | None = None
+    selection_relevance_allowed_domain_patterns: list[str] | None = None
+    selection_require_supported_document: bool = True
+    selection_target_identity_require_any_templates: list[str] | None = None
+    selection_target_identity_require_all_templates: list[str] | None = None
+    selection_target_identity_exclude_any_templates: list[str] | None = None
 
 
 @dataclass(slots=True)
@@ -99,12 +126,17 @@ class _RequestRateLimiter:
 class AcquisitionEngine:
     """Initial acquisition engine that emits deterministic scaffold artifacts."""
 
-    _SUPPORTED_EXTENSIONS = {".pdf", ".doc", ".docx", ".txt", ".xlsx", ".csv"}
+    def __init__(self) -> None:
+        self._policy_evaluator = AcquisitionPolicyEvaluator()
+
+    _DEFAULT_REQUEST_HEADERS = {"User-Agent": "StreamlineExtract/2.0 (+acquisition)"}
+    _SUPPORTED_EXTENSIONS = {".pdf", ".doc", ".docx", ".txt", ".xlsx", ".csv", ".html", ".htm"}
     _MIME_EXTENSION_MAP = {
         "application/pdf": ".pdf",
         "application/msword": ".doc",
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document": ".docx",
         "text/plain": ".txt",
+        "text/html": ".html",
         "text/csv": ".csv",
         "application/csv": ".csv",
         "application/vnd.ms-excel": ".xlsx",
@@ -262,6 +294,53 @@ class AcquisitionEngine:
         return deduped, normalize_error_records(error_records)
 
     @staticmethod
+    def _has_discovery_inputs(request: AcquisitionRequest) -> bool:
+        """Return whether request includes query-driven discovery inputs."""
+        return bool(
+            request.query
+            or request.targets
+            or request.query_templates
+            or request.query_families
+            or request.use_query_family
+        )
+
+    @staticmethod
+    def _append_discovery_gap_diagnostics(
+        *,
+        request: AcquisitionRequest,
+        candidates: list[AcquisitionCandidate],
+        normalized_seed_urls: list[str],
+        errors: list[dict[str, object]],
+        notes: list[str],
+    ) -> tuple[list[dict[str, object]], list[str]]:
+        """Emit explicit diagnostics when configured discovery yields no candidates."""
+        if not AcquisitionEngine._has_discovery_inputs(request):
+            return errors, notes
+        if candidates or normalized_seed_urls:
+            return errors, notes
+
+        updated_errors = normalize_error_records(
+            [
+                *errors,
+                build_error_record(
+                    RuntimeError(
+                        "No discovery candidates were produced from query/target inputs. "
+                        "Enable a seeker provider (for example SerpApi with a valid key) "
+                        "or provide seed URLs."
+                    ),
+                    stage="acquisition.discovery",
+                    provider=("serpapi" if request.enable_serpapi else "seed_only"),
+                ),
+            ]
+        )
+        updated_notes = [
+            *notes,
+            "Discovery produced zero candidates from query/target inputs; "
+            "configure seeker credentials or add seed URLs.",
+        ]
+        return updated_errors, updated_notes
+
+    @staticmethod
     def _resolve_serpapi_state(
         request: AcquisitionRequest,
     ) -> tuple[dict[str, object], list[dict[str, object]], list[str]]:
@@ -319,10 +398,16 @@ class AcquisitionEngine:
         seeker_state: dict[str, object],
         current_notes: list[str],
         current_errors: list[dict[str, object]],
-    ) -> tuple[list[AcquisitionCandidate], list[str], list[dict[str, object]]]:
+    ) -> tuple[
+        list[AcquisitionCandidate],
+        list[str],
+        list[dict[str, object]],
+        list[dict[str, object]],
+        list[dict[str, object]],
+    ]:
         """Call SerpApi seeker and return discovered candidates."""
         if not seeker_state.get("enabled") or not seeker_state.get("available"):
-            return [], current_notes, current_errors
+            return [], current_notes, current_errors, [], []
 
         notes = list(current_notes)
         errors = list(current_errors)
@@ -330,6 +415,7 @@ class AcquisitionEngine:
         try:
             from .connectors.serpapi_seeker import SerpApiSeeker
             from .connectors.base import SeekerInput
+            from .candidate_selector import CandidateSelector
 
             seeker = SerpApiSeeker(
                 retry_max_attempts=request.retry_max_attempts,
@@ -338,9 +424,10 @@ class AcquisitionEngine:
                 min_request_interval_seconds=max(0.0, float(request.min_request_interval_ms) / 1000.0),
             )
             seeker_inputs = AcquisitionEngine._build_seeker_inputs(request)
-            raw_candidates: list[dict[str, object]] = []
+            # Collect results per-target so selection can be applied independently
+            raw_candidates_by_target: list[list[dict[str, object]]] = []
             for seeker_input in seeker_inputs:
-                raw_candidates.extend(seeker.discover(seeker_input))
+                raw_candidates_by_target.append(seeker.discover(seeker_input))
         except Exception as exc:
             errors.append(
                 build_error_record(
@@ -349,30 +436,88 @@ class AcquisitionEngine:
                     provider="serpapi",
                 )
             )
-            return [], notes, normalize_error_records(errors)
+            return [], notes, normalize_error_records(errors), [], []
 
-        candidates: list[AcquisitionCandidate] = []
-        for raw in raw_candidates:
+        def _to_candidate(raw: dict[str, object]) -> AcquisitionCandidate | None:
             url = raw.get("url")
             if not url:
-                continue
-            score = CandidateScore(
-                url_signal=0.5,
-                anchor_signal=0.1,
-                content_signal=0.0,
-                trust_signal=0.4,
-            )
-            candidates.append(
-                AcquisitionCandidate(
-                    url=url,
-                    source=raw.get("source", "serpapi_google"),
-                    score=score,
-                    reasons=list(raw.get("reasons") or []),
-                )
+                return None
+            return AcquisitionCandidate(
+                url=url,
+                source=raw.get("source", "serpapi_google"),
+                score=CandidateScore(
+                    url_signal=0.5,
+                    anchor_signal=0.1,
+                    content_signal=0.0,
+                    trust_signal=0.4,
+                ),
+                reasons=list(raw.get("reasons") or []),
             )
 
-        notes.append(f"SerpApi seeker returned {len(candidates)} candidate(s).")
-        return candidates, notes, normalize_error_records(errors)
+        candidates_by_target: list[list[AcquisitionCandidate]] = [
+            [c for raw in raws if (c := _to_candidate(raw)) is not None]
+            for raws in raw_candidates_by_target
+        ]
+        total_discovered = sum(len(g) for g in candidates_by_target)
+        notes.append(
+            f"SerpApi seeker returned {total_discovered} candidate(s) across "
+            f"{len(candidates_by_target)} target(s)."
+        )
+
+        # ---------------------------------------------------------------
+        # Per-target selection (draft filter + recency)
+        # ---------------------------------------------------------------
+        primary_per_target = max(1, int(request.selection_primary_per_target or 1))
+        selector = CandidateSelector(
+            exclude_draft=request.selection_exclude_draft,
+            draft_patterns=request.selection_draft_patterns or None,
+            relevance_require_any_terms=request.selection_relevance_require_any_terms or None,
+            relevance_require_legal_marker_terms=request.selection_relevance_require_legal_marker_terms or None,
+            relevance_exclude_any_terms=request.selection_relevance_exclude_any_terms or None,
+            relevance_allowed_domain_patterns=request.selection_relevance_allowed_domain_patterns or None,
+            require_supported_document=bool(request.selection_require_supported_document),
+            target_identity_require_any_templates=request.selection_target_identity_require_any_templates or None,
+            target_identity_require_all_templates=request.selection_target_identity_require_all_templates or None,
+            target_identity_exclude_any_templates=request.selection_target_identity_exclude_any_templates or None,
+        )
+        candidates, selection_notes, target_selection_metrics = selector.select(
+            candidates_by_target,
+            primary_per_target=primary_per_target,
+            target_contexts=request.targets or None,
+            include_metrics=True,
+        )
+        notes.extend(selection_notes)
+        notes.append(
+            f"Per-target selection (primary_per_target={primary_per_target}) "
+            f"reduced {total_discovered} candidate(s) to {len(candidates)}."
+        )
+
+        # ---------------------------------------------------------------
+        # Global heuristic prioritization (ranking + optional top-K cap)
+        # ---------------------------------------------------------------
+        prioritizer_lineage: list[dict[str, object]] = []
+        mode = (request.link_prioritization_mode or "heuristic").lower()
+        if mode != "off" and candidates:
+            power_range: tuple[float, float] | None = None
+            if request.power_range_kw and len(request.power_range_kw) >= 2:
+                power_range = (float(request.power_range_kw[0]), float(request.power_range_kw[1]))
+            effective_top_k: int | None = max(1, int(request.link_top_k)) if request.link_top_k else 5
+            if len(candidates) <= (effective_top_k or 0):
+                effective_top_k = None  # no additional cap needed
+            prioritizer = LinkPrioritizer(
+                keywords=request.link_prioritization_keywords,
+                domain_authority_overrides=request.link_prioritization_domain_scores,
+                top_k=effective_top_k,
+                power_range_kw=power_range,
+            )
+            ranked_candidates, prioritizer_lineage = prioritizer.prioritize(candidates)
+            notes.append(
+                f"Link prioritizer ({mode}) ranked {len(candidates)} candidate(s) "
+                f"\u2192 top-{len(ranked_candidates)} surfaced."
+            )
+            candidates = ranked_candidates
+
+        return candidates, notes, normalize_error_records(errors), prioritizer_lineage, target_selection_metrics
 
     @staticmethod
     def _target_template_context(target: dict[str, object]) -> dict[str, str]:
@@ -510,12 +655,117 @@ class AcquisitionEngine:
             "max_backoff_seconds": max(0.0, float(request.retry_max_backoff_seconds)),
         }
 
+    @classmethod
+    def _resolve_request_headers(cls, request: AcquisitionRequest) -> dict[str, str]:
+        headers = dict(cls._DEFAULT_REQUEST_HEADERS)
+        for key, value in (request.request_headers or {}).items():
+            normalized_key = str(key or '').strip()
+            normalized_value = str(value or '').strip()
+            if normalized_key and normalized_value:
+                headers[normalized_key] = normalized_value
+        return headers
+
+    @staticmethod
+    def _policy_status_from_blocking_code(blocking_code: str | None) -> str:
+        if blocking_code == "robots_disallowed":
+            return "skipped_robots_disallowed"
+        if blocking_code == "robots_unavailable":
+            return "skipped_robots_unavailable"
+        if blocking_code == "tos_unacknowledged":
+            return "skipped_tos_unacknowledged"
+        return "skipped_policy"
+
+    @staticmethod
+    def _policy_note_templates() -> dict[str, str]:
+        return {
+            "robots_disallowed": "robots.txt disallow rules",
+            "robots_unavailable": "unevaluable robots.txt rules",
+            "tos_unacknowledged": "missing ToS acknowledgement",
+        }
+
+    def _evaluate_request_policy(
+        self,
+        *,
+        url: str,
+        request: AcquisitionRequest,
+        ssl_verify: bool,
+    ):
+        return self._policy_evaluator.evaluate(
+            url=url,
+            ssl_verify=ssl_verify,
+            request_headers=self._resolve_request_headers(request),
+            robots_policy_mode=request.robots_policy_mode,
+            tos_policy_mode=request.tos_policy_mode,
+            acknowledged_tos_domains=request.acknowledged_tos_domains,
+        )
+
+    def _build_policy_notes(
+        self,
+        *,
+        stage_name: str,
+        blocked_counts: Counter[str],
+        warning_counts: Counter[str],
+        request: AcquisitionRequest,
+    ) -> list[str]:
+        notes: list[str] = []
+        labels = self._policy_note_templates()
+
+        for code, count in sorted(blocked_counts.items()):
+            if count <= 0:
+                continue
+            notes.append(
+                f"{stage_name} policy enforcement skipped {count} URL(s) due to {labels.get(code, code)}."
+            )
+
+        for code, count in sorted(warning_counts.items()):
+            if count <= 0:
+                continue
+            mode = request.robots_policy_mode if code.startswith("robots_") else request.tos_policy_mode
+            notes.append(
+                f"{stage_name} policy warnings: {count} URL(s) proceeded despite {labels.get(code, code)} because mode={mode}."
+            )
+
+        return notes
+
+    def _filter_urls_for_policy(
+        self,
+        *,
+        urls: list[str],
+        request: AcquisitionRequest,
+        ssl_verify: bool,
+        stage_name: str,
+    ) -> tuple[list[str], list[str]]:
+        allowed_urls: list[str] = []
+        blocked_counts: Counter[str] = Counter()
+        warning_counts: Counter[str] = Counter()
+
+        for url in urls:
+            policy_result = self._evaluate_request_policy(
+                url=url,
+                request=request,
+                ssl_verify=ssl_verify,
+            )
+            if policy_result.allowed:
+                allowed_urls.append(url)
+            if policy_result.blocking_code:
+                blocked_counts[policy_result.blocking_code] += 1
+            for code in policy_result.warning_codes:
+                warning_counts[code] += 1
+
+        return allowed_urls, self._build_policy_notes(
+            stage_name=stage_name,
+            blocked_counts=blocked_counts,
+            warning_counts=warning_counts,
+            request=request,
+        )
+
     def _download_with_retry(
         self,
         *,
         url: str,
         ssl_verify: bool,
         retry_policy: dict[str, float | int],
+        request_headers: dict[str, str],
         rate_limiter: _RequestRateLimiter | None = None,
     ):
         try:
@@ -538,6 +788,7 @@ class AcquisitionEngine:
                     timeout=60,
                     stream=True,
                     verify=ssl_verify,
+                    headers=request_headers,
                 )
                 response.raise_for_status()
                 return response, attempt
@@ -567,16 +818,30 @@ class AcquisitionEngine:
         ssl_verify: bool,
         retry_policy: dict[str, float | int],
         rate_limiter: _RequestRateLimiter | None,
-    ) -> tuple[int, dict[str, object], dict[str, object] | None, bool]:
+    ) -> tuple[int, dict[str, object], dict[str, object] | None, bool, list[str]]:
         url = candidate.url
         if not isinstance(url, str) or not re.match(r"^https?://", url, flags=re.IGNORECASE):
-            return idx, {"url": url, "status": "skipped_invalid_url"}, None, False
+            return idx, {"url": url, "status": "skipped_invalid_url"}, None, False, []
+
+        policy_result = self._evaluate_request_policy(
+            url=url,
+            request=request,
+            ssl_verify=ssl_verify,
+        )
+        if not policy_result.allowed:
+            return idx, {
+                "url": url,
+                "status": self._policy_status_from_blocking_code(policy_result.blocking_code),
+                "policy_blocking_code": policy_result.blocking_code,
+                "policy_reason": "; ".join(policy_result.messages),
+            }, None, False, list(policy_result.warning_codes)
 
         try:
             response, attempt_count = self._download_with_retry(
                 url=url,
                 ssl_verify=ssl_verify,
                 retry_policy=retry_policy,
+                request_headers=self._resolve_request_headers(request),
                 rate_limiter=rate_limiter,
             )
 
@@ -589,7 +854,22 @@ class AcquisitionEngine:
                     "final_url": final_url,
                     "status": "skipped_unsupported_type",
                     "mime_type": mime_type,
-                }, None, False
+                    "policy_warning_codes": list(policy_result.warning_codes),
+                }, None, False, list(policy_result.warning_codes)
+
+            passed_final_url_guard, reject_code = self._passes_final_url_selection_guard(
+                final_url=final_url,
+                request=request,
+            )
+            if not passed_final_url_guard:
+                return idx, {
+                    "url": url,
+                    "final_url": final_url,
+                    "status": "skipped_non_legal_document",
+                    "reason": reject_code,
+                    "mime_type": mime_type,
+                    "policy_warning_codes": list(policy_result.warning_codes),
+                }, None, False, list(policy_result.warning_codes)
 
             partition_mode, partition_meta, partition_dir = self._resolve_partition_dir(
                 documents_dir=documents_dir,
@@ -625,8 +905,9 @@ class AcquisitionEngine:
                 "relative_path": target_path.relative_to(documents_dir).as_posix(),
                 "bytes": bytes_written,
                 "attempt_count": attempt_count,
+                "policy_warning_codes": list(policy_result.warning_codes),
                 **partition_meta,
-            }, None, True
+            }, None, True, list(policy_result.warning_codes)
         except Exception as exc:
             error = build_error_record(
                 exc,
@@ -638,11 +919,12 @@ class AcquisitionEngine:
                 "url": url,
                 "status": "failed",
                 "error": str(exc),
-            }, error, False
+                "policy_warning_codes": list(policy_result.warning_codes),
+            }, error, False, list(policy_result.warning_codes)
 
     @staticmethod
     def _downloads_ssl_verify() -> bool:
-        raw_value = os.getenv("ACQUISITION_SSL_VERIFY") or os.getenv("STREAMLINE_EXTRACT_SSL_VERIFY") or "true"
+        raw_value = os.getenv("ACQUISITION_SSL_VERIFY") or os.getenv("STREAMLINE_EXTRACT_SSL_VERIFY") or "false"
         return str(raw_value).strip().lower() not in {"0", "false", "no", "off"}
 
     @staticmethod
@@ -671,6 +953,46 @@ class AcquisitionEngine:
         if not sanitized_stem:
             sanitized_stem = f"candidate-{index:03d}"
         return f"{sanitized_stem}{ext}"
+
+    @staticmethod
+    def _normalize_url_text(url: str) -> str:
+        return re.sub(r"[_\-/]", " ", url or "").lower()
+
+    @staticmethod
+    def _url_host(url: str) -> str:
+        try:
+            return (urlparse(url).hostname or "").lower()
+        except Exception:
+            return ""
+
+    @classmethod
+    def _passes_final_url_selection_guard(
+        cls,
+        *,
+        final_url: str,
+        request: AcquisitionRequest,
+    ) -> tuple[bool, str | None]:
+        """Validate final redirect URL against selection relevance constraints."""
+        text = cls._normalize_url_text(final_url)
+        host = cls._url_host(final_url)
+
+        allowed_domains = list(request.selection_relevance_allowed_domain_patterns or [])
+        if allowed_domains and not any(str(pattern).lower() in host for pattern in allowed_domains):
+            return False, "final_url_domain_not_allowed"
+
+        exclude_terms = list(request.selection_relevance_exclude_any_terms or [])
+        if any(str(term).lower() in text for term in exclude_terms):
+            return False, "final_url_matches_excluded_term"
+
+        require_terms = list(request.selection_relevance_require_any_terms or [])
+        if require_terms and not any(str(term).lower() in text for term in require_terms):
+            return False, "final_url_missing_required_term"
+
+        marker_terms = list(request.selection_relevance_require_legal_marker_terms or [])
+        if marker_terms and not any(str(term).lower() in text for term in marker_terms):
+            return False, "final_url_missing_legal_marker"
+
+        return True, None
 
     @staticmethod
     def _host_partition_dir(documents_dir: Path, url: str) -> tuple[str, Path]:
@@ -819,6 +1141,8 @@ class AcquisitionEngine:
         downloads: list[dict[str, object]] = []
         errors: list[dict[str, object]] = []
         downloaded_count = 0
+        blocked_counts: Counter[str] = Counter()
+        warning_counts: Counter[str] = Counter()
         max_concurrent_downloads = max(1, int(request.max_concurrent_downloads))
         rate_limiter = _RequestRateLimiter(request.min_request_interval_ms)
         staged_candidates = list(candidates[:max_downloads])
@@ -839,16 +1163,21 @@ class AcquisitionEngine:
                     )
                 )
 
-            completed: list[tuple[int, dict[str, object], dict[str, object] | None, bool]] = []
+            completed: list[tuple[int, dict[str, object], dict[str, object] | None, bool, list[str]]] = []
             for future in as_completed(futures):
                 completed.append(future.result())
 
-        for _, download_record, maybe_error, was_downloaded in sorted(completed, key=lambda item: item[0]):
+        for _, download_record, maybe_error, was_downloaded, policy_warning_codes in sorted(completed, key=lambda item: item[0]):
             downloads.append(download_record)
             if maybe_error is not None:
                 errors.append(maybe_error)
             if was_downloaded:
                 downloaded_count += 1
+            blocking_code = download_record.get("policy_blocking_code")
+            if isinstance(blocking_code, str) and blocking_code:
+                blocked_counts[blocking_code] += 1
+            for code in policy_warning_codes:
+                warning_counts[code] += 1
 
         notes = [
             f"Download stage completed: {downloaded_count} file(s) saved from {len(candidates)} candidate(s)."
@@ -866,7 +1195,318 @@ class AcquisitionEngine:
             f"max_concurrent_downloads={max_concurrent_downloads}, "
             f"min_request_interval_ms={max(0, int(request.min_request_interval_ms))}."
         )
+        notes.extend(
+            self._build_policy_notes(
+                stage_name="Download",
+                blocked_counts=blocked_counts,
+                warning_counts=warning_counts,
+                request=request,
+            )
+        )
         return downloads, normalize_error_records(errors), notes
+
+    @staticmethod
+    def _apply_post_routing_selection_filters(
+        *,
+        request: AcquisitionRequest,
+        candidates: list[AcquisitionCandidate],
+    ) -> tuple[list[AcquisitionCandidate], list[str]]:
+        """Re-apply selection eligibility after routing introduces new URLs.
+
+        Routing connectors can discover URLs that were not present in seeker output.
+        This stage ensures routed URLs still obey draft/relevance/domain/document
+        constraints before download.
+        """
+        if not candidates:
+            return candidates, []
+
+        selector = CandidateSelector(
+            exclude_draft=request.selection_exclude_draft,
+            draft_patterns=request.selection_draft_patterns or None,
+            relevance_require_any_terms=request.selection_relevance_require_any_terms or None,
+            relevance_require_legal_marker_terms=request.selection_relevance_require_legal_marker_terms or None,
+            relevance_exclude_any_terms=request.selection_relevance_exclude_any_terms or None,
+            relevance_allowed_domain_patterns=request.selection_relevance_allowed_domain_patterns or None,
+            require_supported_document=bool(request.selection_require_supported_document),
+            target_identity_require_any_templates=request.selection_target_identity_require_any_templates or None,
+            target_identity_require_all_templates=request.selection_target_identity_require_all_templates or None,
+            target_identity_exclude_any_templates=request.selection_target_identity_exclude_any_templates or None,
+        )
+        filtered, filter_notes = selector.select(
+            [candidates],
+            primary_per_target=max(1, len(candidates)),
+        )
+        notes: list[str] = [
+            f"Post-routing selection eligibility reduced {len(candidates)} candidate(s) to {len(filtered)}."
+        ]
+        notes.extend([f"Post-routing {n}" for n in filter_notes])
+        return filtered, notes
+
+    @staticmethod
+    def _filter_candidates_for_download(
+        candidates: list[AcquisitionCandidate],
+    ) -> tuple[list[AcquisitionCandidate], list[str]]:
+        """Keep downloads focused on viable discovered candidates.
+
+        Simplification rule:
+        - Always honor explicit seed URLs provided by the user.
+        - For discovered candidates, skip low-confidence rejected items by default.
+        """
+        if not candidates:
+            return [], []
+
+        discovered = [c for c in candidates if c.source != "seed_url"]
+        has_viable_discovered = any(
+            c.score.acceptance_class() != "rejected" for c in discovered
+        )
+
+        filtered: list[AcquisitionCandidate] = []
+        rejected_skipped = 0
+        for candidate in candidates:
+            if candidate.source == "seed_url":
+                filtered.append(candidate)
+                continue
+
+            if (
+                has_viable_discovered
+                and candidate.score.acceptance_class() == "rejected"
+            ):
+                rejected_skipped += 1
+                continue
+            filtered.append(candidate)
+
+        notes: list[str] = []
+        if rejected_skipped:
+            notes.append(
+                "Download simplification skipped "
+                f"{rejected_skipped} rejected discovered candidate(s); "
+                "accepted/review discovered candidates were available."
+            )
+        elif discovered and not has_viable_discovered:
+            notes.append(
+                "All discovered candidates scored as rejected; preserving them "
+                "to avoid recall loss in strict domains."
+            )
+        if not filtered and candidates:
+            notes.append(
+                "No candidates met the default download quality bar; "
+                "run ended with discovery-only outputs."
+            )
+        return filtered, notes
+
+    # ------------------------------------------------------------------
+    # Observability helpers
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _build_candidate_summary(
+        candidates: list[AcquisitionCandidate],
+    ) -> dict[str, object]:
+        """Count candidates by acceptance class and source for the manifest."""
+        by_class: dict[str, int] = {}
+        by_source: dict[str, int] = {}
+        for candidate in candidates:
+            cls = candidate.score.acceptance_class()
+            by_class[cls] = by_class.get(cls, 0) + 1
+            src = candidate.source or "unknown"
+            by_source[src] = by_source.get(src, 0) + 1
+        return {
+            "total": len(candidates),
+            "by_acceptance_class": by_class,
+            "by_source": by_source,
+        }
+
+    @staticmethod
+    def _build_download_summary(
+        download_records: list[dict[str, object]],
+    ) -> dict[str, object]:
+        """Aggregate download outcomes and byte counts from download records."""
+        counts: dict[str, int] = {}
+        total_bytes = 0
+        for record in download_records:
+            status = str(record.get("status") or "unknown")
+            counts[status] = counts.get(status, 0) + 1
+            if status == "downloaded":
+                total_bytes += int(record.get("bytes") or 0)
+        return {
+            "total": len(download_records),
+            "downloaded": counts.get("downloaded", 0),
+            "skipped": sum(v for k, v in counts.items() if k.startswith("skipped")),
+            "failed": counts.get("failed", 0),
+            "total_bytes": total_bytes,
+            "by_status": counts,
+        }
+
+    @staticmethod
+    def _candidate_has_reason(candidate: AcquisitionCandidate, reason: str) -> bool:
+        return any(note == reason for note in (candidate.reasons or []))
+
+    @staticmethod
+    def _qualifying_index_fixture_urls(request: AcquisitionRequest) -> list[str]:
+        qualifying_urls: list[str] = []
+        seen_urls: set[str] = set()
+
+        for raw_link in request.index_links or []:
+            if isinstance(raw_link, str):
+                url = raw_link
+                link_text = ""
+            elif isinstance(raw_link, dict):
+                url = str(raw_link.get("url") or "")
+                link_text = str(raw_link.get("text") or "")
+            else:
+                continue
+
+            if not url.lower().startswith(("http://", "https://")):
+                continue
+            if not NullDiggerConnector._matches_include_patterns(
+                url=url,
+                link_text=link_text,
+                include_url_patterns=request.include_url_patterns,
+                include_link_text_patterns=request.include_link_text_patterns,
+            ):
+                continue
+            if not NullDiggerConnector._matches_allowed_domain(url, request.allowed_domains):
+                continue
+            if url in seen_urls:
+                continue
+            seen_urls.add(url)
+            qualifying_urls.append(url)
+
+        return qualifying_urls
+
+    @staticmethod
+    def _build_unknown_target_metrics(
+        *,
+        request: AcquisitionRequest,
+        seeker_state: dict[str, object],
+        target_selection_metrics: list[dict[str, object]],
+    ) -> dict[str, object]:
+        if not seeker_state.get("enabled"):
+            return {
+                "applicable": False,
+                "reason": "seeker_disabled",
+            }
+
+        target_count = len(target_selection_metrics)
+        if target_count == 0:
+            return {
+                "applicable": False,
+                "reason": "no_target_queries",
+            }
+
+        targets_with_staged_candidates = sum(
+            1
+            for metric in target_selection_metrics
+            if int(metric.get("selected_candidates") or 0) > 0
+        )
+        success_rate = targets_with_staged_candidates / target_count if target_count else None
+        threshold = 0.80
+
+        return {
+            "applicable": True,
+            "measurement_mode": "target_matrix" if request.targets else "single_query",
+            "target_count": target_count,
+            "targets_with_staged_candidates": targets_with_staged_candidates,
+            "success_rate": round(success_rate, 4) if success_rate is not None else None,
+            "gate_threshold": threshold,
+            "meets_fixture_gate": bool(success_rate is not None and success_rate >= threshold),
+            "targets": target_selection_metrics,
+        }
+
+    def _build_centralized_page_sweep_metrics(
+        self,
+        *,
+        request: AcquisitionRequest,
+        candidates: list[AcquisitionCandidate],
+    ) -> dict[str, object]:
+        if request.topology_mode not in {"centralized", "hybrid"}:
+            return {
+                "applicable": False,
+                "reason": "topology_not_centralized",
+            }
+
+        qualifying_urls = self._qualifying_index_fixture_urls(request)
+        centralized_urls = {
+            candidate.url
+            for candidate in candidates
+            if self._candidate_has_reason(candidate, "Routed via centralized hub sweep")
+        }
+
+        recovered_link_count = sum(1 for url in qualifying_urls if url in centralized_urls)
+        recovery_rate = (
+            recovered_link_count / len(qualifying_urls)
+            if qualifying_urls
+            else None
+        )
+        threshold = 0.95
+
+        return {
+            "applicable": True,
+            "measurement_mode": "fixture_index_links" if request.index_links else "live_hub_pages",
+            "hub_page_count": len(request.hub_pages or []),
+            "qualifying_link_count": len(qualifying_urls),
+            "recovered_link_count": recovered_link_count,
+            "recovery_rate": round(recovery_rate, 4) if recovery_rate is not None else None,
+            "gate_threshold": threshold,
+            "meets_fixture_gate": bool(recovery_rate is not None and recovery_rate >= threshold),
+        }
+
+    def _build_hybrid_mixed_source_metrics(
+        self,
+        *,
+        request: AcquisitionRequest,
+        candidates: list[AcquisitionCandidate],
+    ) -> dict[str, object]:
+        if request.topology_mode != "hybrid":
+            return {
+                "applicable": False,
+                "reason": "topology_not_hybrid",
+            }
+
+        centralized_count = sum(
+            1
+            for candidate in candidates
+            if self._candidate_has_reason(candidate, "Routed via centralized hub sweep")
+        )
+        distributed_count = sum(
+            1
+            for candidate in candidates
+            if self._candidate_has_reason(candidate, "Routed via distributed digger path")
+        )
+        both_paths_resolved = centralized_count > 0 and distributed_count > 0
+
+        return {
+            "applicable": True,
+            "centralized_candidate_count": centralized_count,
+            "distributed_candidate_count": distributed_count,
+            "both_paths_resolved": both_paths_resolved,
+            "gate_threshold": "both_paths_required",
+            "meets_fixture_gate": both_paths_resolved,
+        }
+
+    def _build_acceptance_metrics(
+        self,
+        *,
+        request: AcquisitionRequest,
+        seeker_state: dict[str, object],
+        target_selection_metrics: list[dict[str, object]],
+        candidates: list[AcquisitionCandidate],
+    ) -> dict[str, object]:
+        return {
+            "unknown_target_discovery": self._build_unknown_target_metrics(
+                request=request,
+                seeker_state=seeker_state,
+                target_selection_metrics=target_selection_metrics,
+            ),
+            "centralized_page_sweep": self._build_centralized_page_sweep_metrics(
+                request=request,
+                candidates=candidates,
+            ),
+            "hybrid_mixed_source_resolution": self._build_hybrid_mixed_source_metrics(
+                request=request,
+                candidates=candidates,
+            ),
+        }
 
     @staticmethod
     def _copy_candidate_with_reason(
@@ -924,6 +1564,11 @@ class AcquisitionEngine:
             "initial_backoff_seconds": max(0.0, float(request.retry_initial_backoff_seconds)),
             "max_backoff_seconds": max(0.0, float(request.retry_max_backoff_seconds)),
         }
+        constraints["policy"] = {
+            "robots_policy_mode": request.robots_policy_mode,
+            "tos_policy_mode": request.tos_policy_mode,
+            "acknowledged_tos_domains": list(request.acknowledged_tos_domains or []),
+        }
         if request.targets:
             constraints["target_count"] = len(request.targets)
         if request.use_query_family:
@@ -932,6 +1577,12 @@ class AcquisitionEngine:
             constraints["query_template_count"] = len(request.query_templates)
         if request.query_families:
             constraints["query_family_count"] = len(request.query_families)
+        constraints["link_prioritization"] = {
+            "mode": request.link_prioritization_mode,
+            "top_k": request.link_top_k,
+            "keywords": list(request.link_prioritization_keywords or []),
+            "power_range_kw": list(request.power_range_kw) if request.power_range_kw else None,
+        }
 
         return constraints
 
@@ -953,11 +1604,23 @@ class AcquisitionEngine:
             notes.append("Distributed routing skipped because no candidates were available.")
             return candidates, errors, notes, routing_state
 
+        ssl_verify = self._downloads_ssl_verify()
+        filtered_seed_urls, policy_notes = self._filter_urls_for_policy(
+            urls=[candidate.url for candidate in candidates],
+            request=request,
+            ssl_verify=ssl_verify,
+            stage_name="Routing",
+        )
+        notes.extend(policy_notes)
+        if not filtered_seed_urls:
+            notes.append("Distributed routing skipped because policy controls filtered all routing URLs.")
+            return candidates, errors, notes, routing_state
+
         try:
             connector = resolve_digger_connector(request.digger_provider)
             artifacts = connector.discover(
                 DiggerInput(
-                    seed_urls=[candidate.url for candidate in candidates],
+                    seed_urls=filtered_seed_urls,
                     max_depth=request.max_depth or 2,
                     max_pages=request.max_pages or 50,
                     max_files=request.max_files or 20,
@@ -966,7 +1629,8 @@ class AcquisitionEngine:
                     include_url_patterns=request.include_url_patterns,
                     include_link_text_patterns=request.include_link_text_patterns,
                     extra_params={
-                        "ssl_verify": self._downloads_ssl_verify(),
+                        "ssl_verify": ssl_verify,
+                        "request_headers": self._resolve_request_headers(request),
                         "retry": self._resolve_retry_policy(request),
                     },
                 )
@@ -1055,6 +1719,18 @@ class AcquisitionEngine:
             notes.append("Centralized routing skipped because no hub pages or candidates were available.")
             return candidates, errors, notes, routing_state
 
+        ssl_verify = self._downloads_ssl_verify()
+        filtered_seed_urls, policy_notes = self._filter_urls_for_policy(
+            urls=seed_urls,
+            request=request,
+            ssl_verify=ssl_verify,
+            stage_name="Routing",
+        )
+        notes.extend(policy_notes)
+        if not filtered_seed_urls:
+            notes.append("Centralized routing skipped because policy controls filtered all hub pages or routing URLs.")
+            return candidates, errors, notes, routing_state
+
         index_page_mode = {
             "enabled": True,
             "collect_all_matching_links": True,
@@ -1072,7 +1748,7 @@ class AcquisitionEngine:
             connector = resolve_digger_connector(request.digger_provider)
             artifacts = connector.discover(
                 DiggerInput(
-                    seed_urls=seed_urls,
+                    seed_urls=filtered_seed_urls,
                     max_depth=request.max_depth or 2,
                     max_pages=request.max_pages or 50,
                     max_files=request.max_files or 20,
@@ -1082,7 +1758,8 @@ class AcquisitionEngine:
                     include_link_text_patterns=request.include_link_text_patterns,
                     extra_params={
                         **extra_params,
-                        "ssl_verify": self._downloads_ssl_verify(),
+                        "ssl_verify": ssl_verify,
+                        "request_headers": self._resolve_request_headers(request),
                         "retry": self._resolve_retry_policy(request),
                     },
                 )
@@ -1291,18 +1968,38 @@ class AcquisitionEngine:
         all_errors = normalize_error_records([*seed_errors, *seeker_errors])
 
         # Run seeker discovery when SerpApi is enabled and healthy (no init errors).
+        prioritizer_lineage: list[dict[str, object]] = []
+        target_selection_metrics: list[dict[str, object]] = []
+        seeker_raw_count = 0
         if seeker_errors:
             seeker_candidates: list[AcquisitionCandidate] = []
         else:
-            seeker_candidates, seeker_notes, all_errors = self._run_seeker(
+            (
+                seeker_candidates,
+                seeker_notes,
+                all_errors,
+                prioritizer_lineage,
+                target_selection_metrics,
+            ) = self._run_seeker(
                 request, seeker_state, seeker_notes, all_errors
             )
+            seeker_raw_count = len(prioritizer_lineage) if prioritizer_lineage else len(seeker_candidates)
 
         # Prefer seeker candidates; fall back to scaffold seeds if seeker yields nothing.
         if seeker_candidates:
             candidates = seeker_candidates
         else:
             candidates = self._scaffold_candidates(normalized_seed_urls)
+
+        all_errors, seeker_notes = self._append_discovery_gap_diagnostics(
+            request=request,
+            candidates=candidates,
+            normalized_seed_urls=normalized_seed_urls,
+            errors=all_errors,
+            notes=seeker_notes,
+        )
+
+        candidates_after_seeker = len(candidates)
 
         routing_notes: list[str] = []
         routing_state: dict[str, object] = {
@@ -1328,6 +2025,16 @@ class AcquisitionEngine:
             )
             all_errors = normalize_error_records([*all_errors, *routing_errors])
 
+        # Routing may surface newly discovered URLs; enforce selection eligibility again.
+        if candidates and seeker_candidates:
+            candidates, post_routing_filter_notes = self._apply_post_routing_selection_filters(
+                request=request,
+                candidates=candidates,
+            )
+            routing_notes.extend(post_routing_filter_notes)
+
+        candidates_after_routing = len(candidates)
+
         documents_dir.mkdir(parents=True, exist_ok=True)
         manifest_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -1335,11 +2042,16 @@ class AcquisitionEngine:
         download_index_path: Path | None = None
         download_notes: list[str] = []
         if not request.dry_run and candidates:
-            download_records, download_errors, download_notes = self._download_candidates(
-                request=request,
-                candidates=candidates,
-                documents_dir=documents_dir,
-            )
+            candidates_for_download, gating_notes = self._filter_candidates_for_download(candidates)
+            download_notes.extend(gating_notes)
+            download_errors: list[dict[str, object]] = []
+            if candidates_for_download:
+                download_records, download_errors, stage_download_notes = self._download_candidates(
+                    request=request,
+                    candidates=candidates_for_download,
+                    documents_dir=documents_dir,
+                )
+                download_notes.extend(stage_download_notes)
             all_errors = normalize_error_records([*all_errors, *download_errors])
             download_index_path = self._write_download_index(
                 request=request,
@@ -1354,6 +2066,9 @@ class AcquisitionEngine:
         base_status = "scaffold_dry_run" if request.dry_run else "scaffold"
         status = f"{base_status}_with_errors" if all_errors else base_status
 
+        completed_at = datetime.now(timezone.utc)
+        elapsed_seconds = round((completed_at - started_at).total_seconds(), 3)
+
         manifest = AcquisitionManifest(
             run_id=run_id,
             status=status,
@@ -1366,12 +2081,46 @@ class AcquisitionEngine:
                 "dry_run": request.dry_run,
             },
             constraints=self._build_constraints(request),
+            timing={
+                "started_at": started_at.isoformat(),
+                "completed_at": completed_at.isoformat(),
+                "elapsed_seconds": elapsed_seconds,
+            },
+            stage_summaries={
+                "seeker": {
+                    "provider": seeker_state.get("provider", "seed_only"),
+                    "enabled": bool(seeker_state.get("enabled")),
+                    "candidates_discovered": seeker_raw_count,
+                    "candidates_after_prioritization": candidates_after_seeker,
+                    "link_prioritization_mode": request.link_prioritization_mode,
+                    "link_top_k": request.link_top_k,
+                },
+                "routing": {
+                    "mode": request.topology_mode or "default",
+                    "applied": bool(routing_state.get("applied")),
+                    "candidates_in": candidates_after_seeker,
+                    "candidates_out": candidates_after_routing,
+                },
+                "downloads": self._build_download_summary(download_records),
+                "acceptance_metrics": self._build_acceptance_metrics(
+                    request=request,
+                    seeker_state=seeker_state,
+                    target_selection_metrics=target_selection_metrics,
+                    candidates=candidates,
+                ),
+            },
+            candidate_summary=self._build_candidate_summary(candidates),
             lineage={
                 "run_id": run_id,
                 "documents_dir": documents_dir.as_posix(),
                 "manifest_path": manifest_path.as_posix(),
                 "seeker": seeker_state,
                 "routing": routing_state,
+                "link_prioritization": {
+                    "mode": request.link_prioritization_mode,
+                    "top_k": request.link_top_k,
+                    "candidates": prioritizer_lineage,
+                } if prioritizer_lineage else {"mode": request.link_prioritization_mode, "top_k": request.link_top_k, "candidates": []},
                 "download_index_csv": (
                     download_index_path.as_posix()
                     if download_index_path is not None

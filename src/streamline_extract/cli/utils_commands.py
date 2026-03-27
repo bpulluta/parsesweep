@@ -86,6 +86,10 @@ def _display_cli_reference(reference: str, repo_root: Path) -> str:
     return reference
 
 
+def _humanize_domain_name(name: str) -> str:
+    return name.replace('_', ' ').replace('-', ' ').strip().title()
+
+
 def _default_pack_modules() -> list[dict[str, Any]]:
     return [
         {
@@ -454,16 +458,17 @@ def _build_schema_starter_from_reference(
     reference_extraction = reference_metadata.get('extraction') or {}
     reference_consolidation = reference_metadata.get('consolidation') or {}
     reference_deduplication = reference_consolidation.get('deduplication') or {}
+    inferred_label = _humanize_domain_name(schema_name)
 
     resolved_document_type = (
         document_type
-        or reference_extraction.get('document_type')
+        or inferred_label
         or starter_schema.get('title')
-        or schema_name.replace('_', ' ').title()
+        or inferred_label
     )
     resolved_domain_name = (
         domain_name
-        or reference_metadata.get('domain')
+        or inferred_label
         or resolved_document_type
     )
 
@@ -804,6 +809,8 @@ def _create_sample_asset_skeleton(
 
 def _suggest_page_ranges_filename(document_type: str) -> str:
     normalized = document_type.strip().lower()
+    if 'filing' in normalized or '10-k' in normalized or '10-q' in normalized or '8-k' in normalized:
+        return 'sec_filing.html'
     if 'solar' in normalized or 'photovoltaic' in normalized or 'pv' in normalized:
         return 'solar_ordinance.pdf'
     if 'geothermal' in normalized:
@@ -861,6 +868,7 @@ def _config_readme_content(
     domain_name: str,
     schema_ref: str,
     page_ranges_ref: str,
+    run_config_ref: str,
     has_qaqc: bool,
     template_mode: str,
 ) -> str:
@@ -875,6 +883,13 @@ def _config_readme_content(
         (
             f'4. Run: pixi run streamline-extract consolidate processed/{category_name} '
             f'--schema {schema_ref}'
+        ),
+        (
+            f'5. Optional config-based workflow: pixi run streamline-extract process --config {run_config_ref} '
+            f'--pages-csv {page_ranges_ref}'
+        ),
+        (
+            f'6. Optional config-based consolidation: pixi run streamline-extract consolidate --config {run_config_ref}'
         ),
     ]
 
@@ -910,10 +925,32 @@ def _config_readme_content(
         f"Domain: {domain_name}\n\n"
         "This directory contains configuration files for the domain onboarding scaffold.\n\n"
         "Files:\n"
-        "- page_ranges.csv: Optional page-range overrides for document processing\n\n"
+        "- page_ranges.csv: Optional page-range overrides for document processing\n"
+        "- run.yaml: Starter runtime config for acquire/process/consolidate commands\n\n"
         + "\n".join(workflow_lines)
         + "\n"
     )
+
+
+def _config_run_yaml_content(
+    category_name: str,
+    *,
+    schema_ref: str,
+) -> str:
+    run_config = {
+        'domain': category_name,
+        'processing': {
+            'input_dir': f'documents/{category_name}',
+            'schema': schema_ref,
+            'output_dir': f'processed/{category_name}',
+        },
+        'consolidation': {
+            'input_dir': f'processed/{category_name}',
+            'schema': schema_ref,
+            'output_dir': f'consolidated/{category_name}',
+        },
+    }
+    return yaml.safe_dump(run_config, sort_keys=False, allow_unicode=False)
 
 
 def _page_ranges_csv_content(document_type: str, *, documents_dir: Optional[Path] = None) -> str:
@@ -956,6 +993,7 @@ def _create_config_skeleton(
     category_root = config_root / category_name
     readme_path = category_root / 'README.md'
     page_ranges_path = category_root / 'page_ranges.csv'
+    run_config_path = category_root / 'run.yaml'
 
     _write_text_file(
         readme_path,
@@ -964,7 +1002,8 @@ def _create_config_skeleton(
             document_type=document_type,
             domain_name=domain_name,
             schema_ref=schema_ref,
-            page_ranges_ref=page_ranges_path.as_posix(),
+            page_ranges_ref=_display_cli_path(page_ranges_path, repo_root),
+            run_config_ref=_display_cli_path(run_config_path, repo_root),
             has_qaqc=has_qaqc,
             template_mode=template_mode,
         ),
@@ -978,11 +1017,20 @@ def _create_config_skeleton(
         ),
         force=force,
     )
+    _write_text_file(
+        run_config_path,
+        _config_run_yaml_content(
+            category_name,
+            schema_ref=schema_ref,
+        ),
+        force=force,
+    )
 
     return [
         category_root.as_posix(),
         readme_path.as_posix(),
         page_ranges_path.as_posix(),
+        run_config_path.as_posix(),
     ]
 
 
@@ -1118,7 +1166,7 @@ def _collect_existing_scaffold_targets(
 
     if create_config:
         category_root = config_root / category_name
-        for scaffold_path in (category_root / 'README.md', category_root / 'page_ranges.csv'):
+        for scaffold_path in (category_root / 'README.md', category_root / 'page_ranges.csv', category_root / 'run.yaml'):
             if scaffold_path.exists():
                 existing_paths.append(scaffold_path)
 
