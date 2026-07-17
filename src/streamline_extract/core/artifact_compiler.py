@@ -19,7 +19,9 @@ class ArtifactCompilerError(ValueError):
     """Raised when pack/profile resolution or compilation fails."""
 
 
-def _build_readiness_check(name: str, status: str, detail: str) -> Dict[str, str]:
+def _build_readiness_check(
+    name: str, status: str, detail: str
+) -> Dict[str, str]:
     """Build a stable runtime-readiness check record."""
     return {
         "name": name,
@@ -35,7 +37,9 @@ def _canonical_schema_refs(schema_path: Path, repo_root: Path) -> set[str]:
     refs.add(schema_path.as_posix())
     refs.add(schema_path.name)
 
-    absolute_path = schema_path if schema_path.is_absolute() else (repo_root / schema_path)
+    absolute_path = (
+        schema_path if schema_path.is_absolute() else (repo_root / schema_path)
+    )
     refs.add(absolute_path.as_posix())
 
     try:
@@ -59,7 +63,9 @@ def _load_yaml_file(path: Path) -> Dict[str, Any]:
     if loaded is None:
         return {}
     if not isinstance(loaded, dict):
-        raise ArtifactCompilerError(f"Pack file must contain an object: {path}")
+        raise ArtifactCompilerError(
+            f"Pack file must contain an object: {path}"
+        )
     return loaded
 
 
@@ -68,7 +74,9 @@ def _load_json_file(path: Path) -> Dict[str, Any]:
         loaded = json.load(handle)
 
     if not isinstance(loaded, dict):
-        raise ArtifactCompilerError(f"Profile file must contain an object: {path}")
+        raise ArtifactCompilerError(
+            f"Profile file must contain an object: {path}"
+        )
     return loaded
 
 
@@ -181,7 +189,9 @@ def _contract_versions(repo_root: Path) -> Dict[str, str]:
     }
 
 
-def _pack_identity(pack_data: Dict[str, Any], fallback: str) -> Tuple[str, str]:
+def _pack_identity(
+    pack_data: Dict[str, Any], fallback: str
+) -> Tuple[str, str]:
     pack_name = pack_data.get("name") or pack_data.get("pack_name") or fallback
     pack_version = pack_data.get("version") or pack_data.get("pack_version")
 
@@ -252,7 +262,9 @@ def _schema_properties(schema_node: Dict[str, Any]) -> Dict[str, Any]:
     return {}
 
 
-def _schema_array_items(schema_node: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+def _schema_array_items(
+    schema_node: Dict[str, Any],
+) -> Optional[Dict[str, Any]]:
     items = schema_node.get("items")
     if isinstance(items, dict):
         return items
@@ -269,7 +281,9 @@ def _schema_array_items(schema_node: Dict[str, Any]) -> Optional[Dict[str, Any]]
     return None
 
 
-def _resolve_schema_path_node(schema_root: Dict[str, Any], field_path: str) -> Dict[str, Any]:
+def _resolve_schema_path_node(
+    schema_root: Dict[str, Any], field_path: str
+) -> Dict[str, Any]:
     current_node = schema_root
 
     for segment in field_path.split("."):
@@ -321,7 +335,9 @@ def _validate_qaqc_lane_against_schema(
     projection = lane_config.get("projection")
     field_root = item_schema
     projection_parent_fields: set[str] = set()
-    projection_child_properties: Dict[str, Any] = _schema_properties(item_schema)
+    projection_child_properties: Dict[str, Any] = _schema_properties(
+        item_schema
+    )
 
     if isinstance(projection, dict):
         projection_type = projection.get("type")
@@ -338,7 +354,9 @@ def _validate_qaqc_lane_against_schema(
                 f"QA/QC lane '{lane_name}' must define projection.nested_array for runtime validation"
             )
 
-        source_array_node = _resolve_schema_path_node(schema_root, str(source_array))
+        source_array_node = _resolve_schema_path_node(
+            schema_root, str(source_array)
+        )
         if not _schema_has_type(source_array_node, "array"):
             raise ArtifactCompilerError(
                 f"QA/QC lane '{lane_name}' projection source_array must resolve to an array: {source_array}"
@@ -350,7 +368,9 @@ def _validate_qaqc_lane_against_schema(
                 f"QA/QC lane '{lane_name}' projection source_array must declare item schema: {source_array}"
             )
 
-        nested_array_node = _resolve_schema_path_node(parent_item_schema, str(nested_array))
+        nested_array_node = _resolve_schema_path_node(
+            parent_item_schema, str(nested_array)
+        )
         if not _schema_has_type(nested_array_node, "array"):
             raise ArtifactCompilerError(
                 f"QA/QC lane '{lane_name}' projection nested_array must resolve to an array: {nested_array}"
@@ -373,7 +393,10 @@ def _validate_qaqc_lane_against_schema(
     comparison = lane_config.get("comparison") or {}
 
     for field_group_name, field_names in (
-        ("record_matching.key_fields", record_matching.get("key_fields") or []),
+        (
+            "record_matching.key_fields",
+            record_matching.get("key_fields") or [],
+        ),
         ("comparison.primary_fields", comparison.get("primary_fields") or []),
     ):
         for field_name in field_names:
@@ -399,12 +422,18 @@ def _context_column_name(field_name: str) -> str:
     return DataFlattener().make_column_name(field_name)
 
 
-def _find_nested_object_array_field(schema_node: Dict[str, Any]) -> Optional[Tuple[str, Dict[str, Any]]]:
+def _find_nested_object_array_field(
+    schema_node: Dict[str, Any],
+) -> Optional[Tuple[str, Dict[str, Any]]]:
     for field_name, field_schema in _schema_properties(schema_node).items():
-        if not isinstance(field_schema, dict) or not _schema_has_type(field_schema, "array"):
+        if not isinstance(field_schema, dict) or not _schema_has_type(
+            field_schema, "array"
+        ):
             continue
         item_schema = _schema_array_items(field_schema)
-        if isinstance(item_schema, dict) and _schema_has_type(item_schema, "object"):
+        if isinstance(item_schema, dict) and _schema_has_type(
+            item_schema, "object"
+        ):
             return field_name, item_schema
     return None
 
@@ -466,11 +495,17 @@ def _validate_consolidation_config_against_schema(
     if nested_object_array is not None:
         _, child_item_schema = nested_object_array
         row_field_nodes = [main_item_schema, child_item_schema]
-        row_columns = _collect_flattened_columns(main_item_schema, flattener=flattener)
-        row_columns.update(_collect_flattened_columns(child_item_schema, flattener=flattener))
+        row_columns = _collect_flattened_columns(
+            main_item_schema, flattener=flattener
+        )
+        row_columns.update(
+            _collect_flattened_columns(child_item_schema, flattener=flattener)
+        )
     else:
         row_field_nodes = [main_item_schema]
-        row_columns = _collect_flattened_columns(main_item_schema, flattener=flattener)
+        row_columns = _collect_flattened_columns(
+            main_item_schema, flattener=flattener
+        )
 
     for context_object in schema_metadata.get_context_objects():
         context_node = _resolve_schema_path_node(schema_root, context_object)
@@ -502,27 +537,39 @@ def _validate_consolidation_config_against_schema(
                 )
             continue
 
-        if not any(key_field in _schema_properties(candidate_root) for candidate_root in row_field_nodes):
+        if not any(
+            key_field in _schema_properties(candidate_root)
+            for candidate_root in row_field_nodes
+        ):
             raise ArtifactCompilerError(
                 "Consolidation deduplication field could not be resolved against the schema: "
                 f"{key_field}"
             )
 
     strategy = deduplication.get("strategy")
-    if strategy is not None and str(strategy) not in {"latest", "earliest", "merge"}:
+    if strategy is not None and str(strategy) not in {
+        "latest",
+        "earliest",
+        "merge",
+    }:
         raise ArtifactCompilerError(
             f"Unsupported consolidation deduplication strategy for runtime validation: {strategy}"
         )
 
     comparison_mode = deduplication.get("comparison_mode")
-    if comparison_mode is not None and str(comparison_mode) not in {"exact", "fuzzy"}:
+    if comparison_mode is not None and str(comparison_mode) not in {
+        "exact",
+        "fuzzy",
+    }:
         raise ArtifactCompilerError(
             f"Unsupported consolidation comparison_mode for runtime validation: {comparison_mode}"
         )
 
     output_config = consolidation_config.get("output") or {}
     default_format = output_config.get("default_format")
-    if default_format is not None and str(default_format).strip().lower() not in {"excel", "csv", "both", "all"}:
+    if default_format is not None and str(
+        default_format
+    ).strip().lower() not in {"excel", "csv", "both", "all"}:
         raise ArtifactCompilerError(
             f"Unsupported consolidation output.default_format for runtime validation: {default_format}"
         )
@@ -561,7 +608,9 @@ def _validate_consolidation_config_against_schema(
             )
 
     freeze_columns = output_config.get("freeze_columns")
-    if freeze_columns is not None and (not isinstance(freeze_columns, int) or freeze_columns < 0):
+    if freeze_columns is not None and (
+        not isinstance(freeze_columns, int) or freeze_columns < 0
+    ):
         raise ArtifactCompilerError(
             f"Consolidation output.freeze_columns must be a non-negative integer for runtime validation: {freeze_columns}"
         )
@@ -594,7 +643,9 @@ def compile_runtime_artifact(
     profile_data = _load_json_file(profile_path)
     contract_versions = _contract_versions(root)
 
-    pack_name, pack_version = _pack_identity(pack_data, fallback=pack_path.stem)
+    pack_name, pack_version = _pack_identity(
+        pack_data, fallback=pack_path.stem
+    )
     profile_name = _profile_identity(profile_data, fallback=profile_path.stem)
 
     identity_seed = {
@@ -651,7 +702,9 @@ def build_runtime_readiness_report(
         )
 
     root = repo_root or _project_root()
-    normalized_schema_path = Path(schema_path) if schema_path is not None else None
+    normalized_schema_path = (
+        Path(schema_path) if schema_path is not None else None
+    )
     resolved_pack_ref = pack_ref
 
     if normalized_schema_path is not None:
@@ -679,11 +732,19 @@ def build_runtime_readiness_report(
     schema_ref = pack_data.get("schema_path")
     runtime_config = profile_data.get("runtime")
     resolved_schema_file = None
-    enabled_module_ids = [
-        str(module.get("module_id") or module.get("name") or "unknown-module")
-        for module in modules
-        if isinstance(module, dict) and module.get("enabled", True)
-    ] if isinstance(modules, list) else []
+    enabled_module_ids = (
+        [
+            str(
+                module.get("module_id")
+                or module.get("name")
+                or "unknown-module"
+            )
+            for module in modules
+            if isinstance(module, dict) and module.get("enabled", True)
+        ]
+        if isinstance(modules, list)
+        else []
+    )
 
     checks = []
 
@@ -760,7 +821,9 @@ def build_runtime_readiness_report(
     )
 
     for context_object in context_objects:
-        context_node = _resolve_schema_path_node(schema_metadata.schema, context_object)
+        context_node = _resolve_schema_path_node(
+            schema_metadata.schema, context_object
+        )
         if not _schema_has_type(context_node, "object"):
             raise ArtifactCompilerError(
                 "Schema context object must resolve to an object node for runtime validation: "
@@ -786,7 +849,11 @@ def build_runtime_readiness_report(
         )
     )
 
-    consolidation_config = pack_data.get("consolidation") if isinstance(pack_data.get("consolidation"), dict) else None
+    consolidation_config = (
+        pack_data.get("consolidation")
+        if isinstance(pack_data.get("consolidation"), dict)
+        else None
+    )
     if consolidation_config:
         _validate_consolidation_config_against_schema(
             consolidation_config,
@@ -837,7 +904,9 @@ def build_runtime_readiness_report(
     )
 
     contract_versions = artifact.get("contract_versions") or {}
-    if not contract_versions.get("extraction_record") or not contract_versions.get("modules_catalog"):
+    if not contract_versions.get(
+        "extraction_record"
+    ) or not contract_versions.get("modules_catalog"):
         raise ArtifactCompilerError(
             "Compiled runtime artifact is missing required core contract versions"
         )
@@ -849,8 +918,16 @@ def build_runtime_readiness_report(
         )
     )
 
-    qaqc_lanes = (((pack_data.get("qaqc") or {}).get("lanes")) or {}) if isinstance(pack_data.get("qaqc"), dict) else {}
-    default_lane = ((pack_data.get("qaqc") or {}).get("default_lane")) if isinstance(pack_data.get("qaqc"), dict) else None
+    qaqc_lanes = (
+        (((pack_data.get("qaqc") or {}).get("lanes")) or {})
+        if isinstance(pack_data.get("qaqc"), dict)
+        else {}
+    )
+    default_lane = (
+        ((pack_data.get("qaqc") or {}).get("default_lane"))
+        if isinstance(pack_data.get("qaqc"), dict)
+        else None
+    )
     if qaqc_lanes:
         if default_lane and default_lane not in qaqc_lanes:
             raise ArtifactCompilerError(
@@ -895,7 +972,9 @@ def build_runtime_readiness_report(
     return {
         "status": "ready",
         "target": {
-            "schema_path": normalized_schema_path.as_posix() if normalized_schema_path is not None else None,
+            "schema_path": normalized_schema_path.as_posix()
+            if normalized_schema_path is not None
+            else None,
             "pack_ref": pack_ref,
             "profile_ref": profile_ref,
         },

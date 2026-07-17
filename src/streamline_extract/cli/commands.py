@@ -514,6 +514,35 @@ def _write_run_manifest(
     return manifest_path
 
 
+def _resolve_schema_ref(schema_path: Path) -> Path:
+    """Resolve a schema reference, unwrapping a domain pack to its JSON schema.
+
+    If ``schema_path`` is a domain pack (``*.yaml``/``*.yml`` with a
+    ``schema_path`` key), return the JSON schema it declares (resolved relative
+    to the repo root or the pack's own directory). Otherwise return the path
+    unchanged so a direct JSON schema still works.
+    """
+    if schema_path.suffix.lower() not in {".yaml", ".yml"}:
+        return schema_path
+    try:
+        import yaml
+
+        data = yaml.safe_load(schema_path.read_text(encoding="utf-8")) or {}
+    except Exception:  # noqa: BLE001 - fall through to a clear "not found" error
+        return schema_path
+    declared = data.get("schema_path")
+    if not declared:
+        return schema_path
+    declared_path = Path(declared)
+    if declared_path.is_absolute() and declared_path.exists():
+        return declared_path
+    for base in (Path.cwd(), schema_path.parent):
+        candidate = base / declared
+        if candidate.exists():
+            return candidate
+    return declared_path
+
+
 @click.command()
 @click.argument("path", type=click.Path(), required=False)
 @click.option(
@@ -889,29 +918,33 @@ def process(
 
     # Setup output directory - CLEAN parallel structure
     # documents/category/ → processed/category/
+    # output/acquisition/<domain>/.../curated → processed/<domain>/
+    def _acquisition_domain(p: Path) -> Optional[str]:
+        """Return <domain> if p is under output/acquisition/<domain>/..."""
+        resolved_parts = list(p.resolve().parts)
+        if "acquisition" in resolved_parts:
+            i = resolved_parts.index("acquisition")
+            if i + 1 < len(resolved_parts):
+                return resolved_parts[i + 1]
+        return None
+
     if output:
         output_dir = Path(output)
-    elif is_dir:
-        # Replace 'documents' with 'processed' at project root level
-        parts = list(path.parts)
-        if "documents" in parts:
-            idx = parts.index("documents")
-            parts[idx] = "processed"
-            output_dir = Path(*parts)
-        else:
-            # Fallback: create in project root processed/
-            project_root = Path.cwd()
-            output_dir = project_root / "processed" / path.name
     else:
-        # Single file: parent directory logic
-        parts = list(path.parent.parts)
-        if "documents" in parts:
-            idx = parts.index("documents")
-            parts[idx] = "processed"
-            output_dir = Path(*parts)
+        probe = path if is_dir else path.parent
+        acq_domain = _acquisition_domain(probe)
+        if acq_domain:
+            # Curated acquisition output → processed/<domain>/
+            output_dir = Path.cwd() / "processed" / acq_domain
         else:
-            project_root = Path.cwd()
-            output_dir = project_root / "processed" / path.parent.name
+            parts = list(probe.parts)
+            if "documents" in parts:
+                idx = parts.index("documents")
+                parts[idx] = "processed"
+                output_dir = Path(*parts)
+            else:
+                # Fallback: create in project root processed/
+                output_dir = Path.cwd() / "processed" / probe.name
 
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -919,18 +952,22 @@ def process(
     # Tracks per-file output directories for nested folder structures
     file_output_dirs = {}  # Maps doc_path -> its specific output directory
 
+    def _not_sidecar(p: Path) -> bool:
+        """Exclude hidden helper dirs (e.g. .text/ OCR cache, .review/)."""
+        return not any(part.startswith(".") for part in p.relative_to(path).parts)
+
     if is_dir:
         # Find all supported document types in this directory (non-recursive first)
         doc_files = []
         for ext in SUPPORTED_EXTENSIONS:
             doc_files.extend(sorted(path.glob(f"*{ext}")))
-        doc_files = sorted(doc_files)
+        doc_files = sorted(f for f in doc_files if _not_sidecar(f))
 
         # If no documents found directly, search recursively in subdirectories
         if not doc_files:
             for ext in SUPPORTED_EXTENSIONS:
                 doc_files.extend(sorted(path.rglob(f"*{ext}")))
-            doc_files = sorted(doc_files)
+            doc_files = sorted(f for f in doc_files if _not_sidecar(f))
 
             if doc_files and VERBOSITY != "quiet":
                 # Show subfolder summary
@@ -1209,8 +1246,11 @@ def process(
         except ValueError:
             config_info["Output"] = str(output_dir)
 
-    # Load schema (required via CLI or runtime config)
-    schema_path = Path(schema)
+    # Load schema (required via CLI or runtime config). A domain pack
+    # (``pack.yaml``) may be referenced instead of a JSON schema — resolve it to
+    # the schema it declares so configs can point at packs (which also carry
+    # QA/QC lanes) rather than duplicating the schema path.
+    schema_path = _resolve_schema_ref(Path(schema))
     if not schema_path.exists():
         print_error("Schema not found", schema_path.as_posix())
         sys.exit(1)
@@ -2655,14 +2695,173 @@ def acquire(
         click.echo(str(result.manifest_path))
         return
 
-    print_success(f"Acquisition scaffold complete (run_id={result.run_id})")
-    print_info(f"Manifest: {result.manifest_path}")
-    print_info(f"Documents directory: {result.documents_dir}")
-    if result.download_index_path is not None:
-        print_info(f"Download index CSV: {result.download_index_path}")
-    print_info(
-        "Acquisition manifest emitted with seeker/scaffold candidates for this run."
+    print_success(f"Acquisition complete (run_id={result.run_id})")
+    print_info(f"Run folder: {result.manifest_path.parent}")
+    print_info(f"All downloads: {result.documents_dir}")
+    if result.curated_dir is not None:
+        print_success(
+            f"Curated {result.curated_count} document(s) → {result.curated_dir}"
+        )
+    if result.review_index_path is not None:
+        print_info(
+            f"Review/adjust picks: edit {result.review_index_path}, "
+            "then run `streamline-extract curate`"
+        )
+
+
+@click.command()
+@click.argument("target", required=False)
+@click.option(
+    "--config",
+    "config_path",
+    type=click.Path(exists=True),
+    default=None,
+    help="Path to runtime config file (.yaml/.yml/.json) — used to locate the domain's latest run",
+)
+@click.option(
+    "--run",
+    "run_dir_opt",
+    type=click.Path(exists=True, file_okay=False),
+    default=None,
+    help="Path to a specific run directory (defaults to the domain's latest/)",
+)
+@click.option("--quiet", is_flag=True, help="Minimal output")
+@click.option("--verbose", is_flag=True, help="Detailed output")
+@click.option("--debug", is_flag=True, help="Debug output with tracebacks")
+def curate(
+    target: Optional[str],
+    config_path: Optional[str],
+    run_dir_opt: Optional[str],
+    quiet: bool,
+    verbose: bool,
+    debug: bool,
+):
+    """Rebuild a run's curated/ set from human edits in review.csv.
+
+    After an acquisition run, open ``review.csv`` in the run folder and set the
+    ``human_decision`` column to ``keep`` or ``reject`` for any file the LLM got
+    wrong (blank = accept the LLM's call). Then run this command to re-materialize
+    ``curated/`` accordingly. Idempotent.
+    """
+    global VERBOSITY
+    if quiet:
+        VERBOSITY = "quiet"
+    elif debug:
+        VERBOSITY = "debug"
+    elif verbose:
+        VERBOSITY = "verbose"
+    else:
+        VERBOSITY = "normal"
+    configure_logging(VERBOSITY)
+
+    # Resolve the run directory: explicit --run wins, else the domain's latest/.
+    run_dir: Optional[Path] = None
+    if run_dir_opt:
+        run_dir = Path(run_dir_opt)
+    else:
+        domain = target
+        if not domain and config_path:
+            try:
+                resolved = _resolve_runtime_command_inputs(
+                    command_name="acquire",
+                    config_path=config_path,
+                    strict=False,
+                    cli_values={},
+                )
+                domain = resolved.get("domain")
+            except RuntimeConfigError:
+                domain = None
+        if not domain:
+            print_error(
+                "Could not determine which run to curate",
+                "Pass --config <run.yaml>, a domain name, or --run <dir>.",
+            )
+            sys.exit(1)
+        latest = Path("output") / "acquisition" / str(domain) / "latest"
+        if not latest.exists():
+            print_error(
+                "No latest run found for domain",
+                f"Expected {latest.as_posix()} (run `acquire` first).",
+            )
+            sys.exit(1)
+        run_dir = latest.resolve()
+
+    review_csv = run_dir / "review.csv"
+    documents_dir = run_dir / "documents"
+    if not review_csv.exists():
+        print_error(
+            "review.csv not found in run",
+            f"Expected {review_csv.as_posix()}.",
+        )
+        sys.exit(1)
+
+    # Read the human-edited ledger and compute the effective keep set.
+    with review_csv.open(encoding="utf-8", newline="") as handle:
+        rows = list(csv.DictReader(handle))
+
+    def _truthy(value: Optional[str]) -> bool:
+        return str(value or "").strip().lower() in {"true", "1", "yes", "keep"}
+
+    records: list[dict[str, object]] = []
+    kept = overridden = 0
+    for row in rows:
+        decision = str(row.get("human_decision") or "").strip().lower()
+        llm_keep = _truthy(row.get("llm_selected"))
+        if decision in {"keep", "reject"}:
+            effective = decision == "keep"
+            if effective != llm_keep:
+                overridden += 1
+        else:
+            effective = llm_keep
+        if effective:
+            kept += 1
+        records.append(
+            {
+                "path": row.get("path"),
+                "relative_path": row.get("relative_path"),
+                "review_selected": effective,
+            }
+        )
+        _update_review_sidecar(row)
+
+    curated_dir, count = AcquisitionEngine._materialize_curated(
+        documents_dir=documents_dir,
+        download_records=records,
     )
+
+    if VERBOSITY == "quiet":
+        click.echo(curated_dir.as_posix())
+        return
+    print_success(
+        f"Curated {count} document(s) → {curated_dir}"
+        + (f" ({overridden} human override(s))" if overridden else "")
+    )
+
+
+def _update_review_sidecar(row: dict) -> None:
+    """Write human_decision/notes from a review.csv row into its .review JSON."""
+    path_str = row.get("path")
+    if not path_str:
+        return
+    src = Path(str(path_str))
+    sidecar = src.parent / ".review" / f"{src.stem}.json"
+    if not sidecar.exists():
+        return
+    try:
+        payload = json.loads(sidecar.read_text(encoding="utf-8"))
+    except Exception:  # noqa: BLE001 - ignore unreadable sidecar
+        return
+    payload.setdefault("human", {})
+    payload["human"]["decision"] = (
+        str(row.get("human_decision") or "").strip() or None
+    )
+    payload["human"]["notes"] = (
+        str(row.get("human_notes") or "").strip() or None
+    )
+    try:
+        sidecar.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    except OSError:
+        return
 
 
 @click.command()

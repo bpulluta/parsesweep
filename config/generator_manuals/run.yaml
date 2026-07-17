@@ -42,7 +42,9 @@ acquisition:
     max_concurrent_downloads: 2
 
 processing:
-  input_dir: documents/generator_manuals
+  # Curated set from the latest acquire run (all downloads when no
+  # document_review is configured for this domain).
+  input_dir: output/acquisition/generator_manuals/latest/curated
   schema: schemas/personal/generator_manuals_schema.json
   output_dir: processed/generator_manuals
 

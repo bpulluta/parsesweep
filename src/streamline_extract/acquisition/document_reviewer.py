@@ -73,13 +73,19 @@ class DocumentReviewer:
             azure_endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")
             if not model and azure_key and azure_endpoint:
                 model = os.getenv("AZURE_OPENAI_MODEL") or "gpt-4o-mini"
+                # api_key must be passed explicitly: LLMClient only wires up
+                # AZURE_API_BASE/version when an api_key is supplied, otherwise
+                # litellm sees api_base=None and fails.
                 kwargs = {
+                    "api_key": azure_key,
                     "provider": "azure",
                     "azure_endpoint": azure_endpoint,
                     "azure_api_version": os.getenv(
                         "AZURE_OPENAI_API_VERSION"
                     ),
                 }
+            else:
+                kwargs = {"api_key": os.getenv("OPENAI_API_KEY")}
             self._client = LLMClient(model=model or "gpt-4o-mini", **kwargs)
         return self._client
 
@@ -146,7 +152,7 @@ class DocumentReviewer:
             key = str(meta.get("label") or record.get("target_label") or "_")
             groups.setdefault(key, []).append(record)
 
-        promoted = 0
+        selected = 0
         graded = 0
         for records in groups.values():
             for record in records:
@@ -172,33 +178,47 @@ class DocumentReviewer:
                     record.get("review_is_primary")
                 )
                 record["review_selected"] = keep
-                if keep and self._action == "move":
-                    self._promote(record)
-                    promoted += 1
+                if keep:
+                    selected += 1
+                # Files are NOT moved: everything stays in place under
+                # documents/ and the engine materializes the selected set into
+                # curated/. A per-file sidecar records the verdict so a human
+                # can see the reasoning (and override) in context.
+                self._write_sidecar(record)
 
         notes.append(
             f"Document review: graded {graded} file(s), "
-            f"promoted {promoted} to reviewed/ (keep_top={self._keep_top}, "
-            f"action={self._action})."
+            f"selected {selected} primary document(s) "
+            f"(keep_top={self._keep_top})."
         )
         return downloads, notes
 
     @staticmethod
-    def _promote(record: dict[str, Any]) -> None:
-        """Move a selected file into a ``reviewed/`` subfolder in place."""
-        src = Path(str(record.get("path")))
-        if not src.exists():
+    def _write_sidecar(record: dict[str, Any]) -> None:
+        """Write ``.review/<stem>.json`` next to a graded file (best-effort)."""
+        if "review_relevance" not in record:
             return
-        reviewed_dir = src.parent / "reviewed"
-        reviewed_dir.mkdir(parents=True, exist_ok=True)
-        dest = reviewed_dir / src.name
+        src = Path(str(record.get("path") or ""))
+        if not src.name:
+            return
+        import json
+
+        review_dir = src.parent / ".review"
+        payload = {
+            "file": src.name,
+            "llm": {
+                "is_primary": record.get("review_is_primary"),
+                "relevance": record.get("review_relevance"),
+                "doc_kind": record.get("review_doc_kind"),
+                "reason": record.get("review_reason"),
+                "selected": record.get("review_selected"),
+            },
+            "human": {"decision": None, "notes": None},
+        }
         try:
-            src.rename(dest)
+            review_dir.mkdir(parents=True, exist_ok=True)
+            (review_dir / f"{src.stem}.json").write_text(
+                json.dumps(payload, indent=2), encoding="utf-8"
+            )
         except OSError:
             return
-        record["path"] = dest.as_posix()
-        rel = record.get("relative_path")
-        if isinstance(rel, str) and rel:
-            record["relative_path"] = str(
-                Path(rel).parent / "reviewed" / src.name
-            )

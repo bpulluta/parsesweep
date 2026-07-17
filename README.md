@@ -46,6 +46,7 @@ Works with any document type: regulations, contracts, research papers, permits, 
   - [Process Command](#process-command)
   - [Consolidate Command](#consolidate-command)
   - [Acquire Command](#acquire-command)
+  - [Curate Command](#curate-command)
   - [Helper Commands](#helper-commands)
   - [QA/QC Multi-Model Validation](#qaqc-multi-model-validation)
 - [Schemas](#schemas)
@@ -502,11 +503,16 @@ pixi run streamline-extract process documents/tariffs/ \
 
 ### Acquire Command
 
-Discover and download source documents from the web before extraction.
+Discover, download, and curate source documents from the web before extraction.
 
-**What it does:** Queries web search (via SerpApi) or crawls seed URLs to find candidate documents matching your domain and schema keywords, downloads the accepted files into `documents/<domain>/acquired/`, and emits a manifest and download index for traceability.
+**What it does:** Queries web search (via SerpApi) or crawls seed URLs to find candidate documents for each target, downloads the accepted files, then **grades every download with an LLM** against a plain-language description of the document you actually want and promotes the best one(s) per target into a `curated/` set. Everything for a run lives in **one self-contained folder** under `output/acquisition/<domain>/runs/<run_id>/`, with a `latest` pointer so downstream steps never need to know the run id.
 
-The `acquire` command is an optional pre-processing stage. After it runs, point `process` at the downloaded files and continue normally.
+Key properties:
+- **Recall-first + LLM curation:** acquisition favors finding the governing document; the LLM reviewer handles precision, so presentations, drafts, notices, and tangential reports stay out of `curated/`.
+- **OCR once, reuse everywhere:** scanned/image PDFs are OCR'd a single time and the text is cached next to the file (`.text/`); the extraction stage reuses it instead of re-OCRing. Native-text PDFs are always read fresh (no flattened cache) so table structure is preserved.
+- **Human-in-the-loop:** every download is written to an editable `review.csv`; correct any wrong calls and run [`curate`](#curate-command) to rebuild `curated/`.
+
+The `acquire` command is an optional pre-processing stage. After it runs, point `process` at `output/acquisition/<domain>/latest/curated` and continue normally.
 
 #### Basic Usage
 
@@ -537,7 +543,7 @@ pixi run streamline-extract acquire --config config/generator_manuals/run.yaml
 | `--query TEXT` | Search query or intent keywords | None |
 | `--enable-serpapi` | Use SerpApi for web search discovery | Disabled |
 | `--topology` | Routing mode: `distributed`, `centralized`, `hybrid` | Default |
-| `--output-documents PATH` | Override documents output directory | `documents/<domain>/acquired/` |
+| `--output-documents PATH` | Override documents output directory | `output/acquisition/<domain>/runs/<id>/documents/` |
 | `--output-manifest PATH` | Override manifest path | `output/acquisition/<domain>/runs/<id>/manifest.json` |
 | `--dry-run` | Discover candidates but skip downloads | Off |
 | `--partition-mode MODE` | `jurisdiction`, `host`, or `auto` | `auto` |
@@ -570,25 +576,26 @@ Optional SSL override if your environment uses TLS interception:
 export SERPAPI_SSL_VERIFY=false
 ```
 
-#### Full Pipeline: Acquire → Process → Consolidate
+#### Full Pipeline: Acquire → (Review) → Process → Consolidate
 
 ```bash
-# 1. Discover and download documents
+# 1. Discover, download, and LLM-curate documents
 pixi run streamline-extract acquire --config config/generator_manuals/run.yaml
 
-# 2. Inspect download index to confirm files
-cat output/acquisition/generator_manuals/runs/<run_id>/download_index.csv
+# 2. (Optional) Review the LLM's picks and correct any mistakes:
+#    open the run's review.csv, set human_decision = keep/reject, then:
+pixi run streamline-extract curate --config config/generator_manuals/run.yaml
 
-# 3. Process the acquired documents
-pixi run streamline-extract process \
-  documents/generator_manuals/acquired/ \
-  --schema schemas/personal/generator_manuals_schema.json
+# 3. Process the curated set (config input_dir points at latest/curated)
+pixi run streamline-extract process --config config/generator_manuals/run.yaml
 
 # 4. Consolidate to Excel
-pixi run streamline-extract consolidate \
-  processed/generator_manuals/ \
-  --schema schemas/personal/generator_manuals_schema.json
+pixi run streamline-extract consolidate --config config/generator_manuals/run.yaml
 ```
+
+Because the config's `processing.input_dir` points at
+`output/acquisition/<domain>/latest/curated`, steps 3–4 always consume the
+curated (LLM-reviewed + human-approved) set of the most recent run.
 
 #### Config File Pattern
 
@@ -622,6 +629,11 @@ acquisition:
       "generac.com": 0.2
       "cummins.com": 0.2
     # top_k: 5                             # optional global cap; omit for no cap
+  document_review:                         # LLM curation of downloads (optional)
+    document_description: >-               # plain-language target for the reviewer
+      the manufacturer's official operator/installation manual for this
+      generator — not a spec sheet, brochure, or parts list
+    keep_top: 1                            # primaries to promote per target
   runtime:
     min_request_interval_ms: 200
     max_concurrent_downloads: 2
@@ -629,7 +641,8 @@ acquisition:
     tos_policy_mode: ignore
 
 processing:
-  input_dir: documents/generator_manuals
+  # Consume only the curated set from the latest acquire run.
+  input_dir: output/acquisition/generator_manuals/latest/curated
   schema: schemas/personal/generator_manuals_schema.json
   output_dir: processed/generator_manuals
 
@@ -641,17 +654,25 @@ consolidation:
 
 #### Acquisition Outputs
 
-Each run writes to run-scoped deterministic paths:
+Each run is one self-contained, run-scoped folder, with a `latest` pointer to the most recent run that produced downloads:
 
 ```
-documents/<domain>/acquired/runs/<run_id>/
-    by_jurisdiction/<state>/<jurisdiction>/   # when partition mode = jurisdiction
-    by_host/<source-host>/                    # when partition mode = host
-
-output/acquisition/<domain>/runs/<run_id>/
-    manifest.json       # full run record with timing, stage summaries, lineage
-    download_index.csv  # machine-readable file list for downstream automation
+output/acquisition/<domain>/
+    checkpoint.json                 # domain-level resume state
+    latest -> runs/<run_id>         # symlink to the current run
+    runs/<run_id>/
+        manifest.json               # full run record: timing, stage summaries, lineage
+        download_index.csv          # machine-readable file list (+ review columns)
+        review.csv                  # human-editable curation ledger (see Curate)
+        documents/                  # ALL downloads (recall set)
+            <partition>/<file>.pdf
+            <partition>/.text/<file>.txt    # cached OCR text (scanned PDFs only)
+            <partition>/.review/<file>.json # per-file LLM verdict + human override
+        curated/                    # final selected docs only → downstream input
+            <partition>/<file>.pdf
 ```
+
+`<partition>` is `by_state_jurisdiction/<state>/<jurisdiction>/`, `by_host/<source-host>/`, or a custom `partition_by`, per config.
 
 The manifest includes:
 - `timing`: `started_at`, `completed_at`, `elapsed_seconds`
@@ -659,7 +680,27 @@ The manifest includes:
 - `stage_summaries.routing`: mode, applied, candidates-in vs. candidates-out
 - `stage_summaries.downloads`: total, downloaded, skipped, failed, total_bytes
 - `candidate_summary`: total and breakdown by acceptance class (accepted/needs_review/rejected) and source
-- `lineage.link_prioritization`: full ranked list of all candidates with heuristic scores (for audit)
+- `lineage`: `documents_dir`, `download_index_csv`, `review_index_csv`, `curated_dir`, `curated_count`, and the full ranked candidate list (for audit)
+
+---
+
+### Curate Command
+
+Rebuild a run's `curated/` set from human edits in `review.csv`. Use this when the LLM reviewer picked the wrong document (or missed one) for a target.
+
+**Workflow:**
+
+1. Run `acquire` — it writes `review.csv` in the run folder (one row per download, sorted by target then LLM relevance) with the LLM's verdict and blank `human_decision` / `human_notes` columns.
+2. Open `output/acquisition/<domain>/latest/review.csv` and set `human_decision` to `keep` or `reject` for any file the LLM got wrong. Leave it blank to accept the LLM's call.
+3. Re-materialize the curated set:
+
+```bash
+pixi run streamline-extract curate --config config/<domain>/run.yaml
+# or target a specific run directly:
+pixi run streamline-extract curate --run output/acquisition/<domain>/runs/<run_id>
+```
+
+`curate` is idempotent: it rebuilds `curated/` from `review.csv` (human overrides take precedence over the LLM), carries the OCR text cache along, and records your decisions back into the `.review/*.json` sidecars.
 
 ---
 

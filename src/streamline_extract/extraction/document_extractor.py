@@ -41,15 +41,15 @@ class DocumentExtractor:
     Architecture:
     1. LLM Structured Extraction: Fast extraction with schema-driven parsing
     2. Multi-Model QA/QC: Validates via multiple models (run separately with --enable-qa-qc)
-    
+
     Works with any document type and JSON schema - fully domain-agnostic.
-    
+
     Simple usage:
         >>> extractor = DocumentExtractor(api_key="sk-...")
         >>> result = extractor.extract(text, schema)
         >>> print(f"Extracted: {result.data}")
         >>> print(f"Confidence: {result.completeness_score:.0%}")
-    
+
     Architecture:
         - LLMClient: Handles all API calls via LiteLLM (100+ providers)
         - TextProcessor: Optimizes text and normalizes output
@@ -67,7 +67,7 @@ class DocumentExtractor:
     ):
         """
         Initialize document extractor.
-        
+
         Args:
             api_key: API key for the LLM provider
             model: Model to use (default: gpt-4o-mini)
@@ -81,7 +81,7 @@ class DocumentExtractor:
         self.model = model
         self.max_context_chars = max_context_chars
         self.schema_metadata = schema_metadata
-        
+
         # Initialize LLM client with multi-provider support
         self.client = LLMClient(
             api_key=api_key,
@@ -94,16 +94,14 @@ class DocumentExtractor:
         # Initialize text processor
         self.processor = TextProcessor(max_chars=max_context_chars)
 
-    def extract(
-        self, text: str, schema: Dict[str, Any]
-    ) -> ExtractionResult:
+    def extract(self, text: str, schema: Dict[str, Any]) -> ExtractionResult:
         """
         Extract structured data from document.
-        
+
         This method orchestrates:
         1. LLM Structured Extraction - Fast, schema-driven parsing
         2. Post-processing - Normalization and sanity checks
-        
+
         For multi-model QA/QC validation, use the CLI with --enable-qa-qc flag.
 
         Args:
@@ -118,7 +116,7 @@ class DocumentExtractor:
                 - processing_time: Total time in seconds
                 - validation_notes: List of warnings/insights
                 - validation_report: Reserved for future use
-        
+
         Example:
             >>> result = extractor.extract(pdf_text, tariff_schema)
             >>> if result.completeness_score > 0.8:
@@ -159,20 +157,18 @@ class DocumentExtractor:
             validation_report=validation_report,
         )
 
-
-
     def _extract_with_openai(
         self, text: str, schema: Dict[str, Any]
     ) -> Dict[str, Any]:
         """
         Extract using LLM structured outputs.
-        
+
         Delegates to LLMClient for API calls and TextProcessor for optimization.
-        
+
         Args:
             text: Document text to extract from
             schema: JSON schema for validation
-        
+
         Returns:
             Dict with 'data' (extracted info) and 'cost' (API cost in USD)
         """
@@ -181,9 +177,11 @@ class DocumentExtractor:
 
         # Use LLM client for extraction
         result = self.client.extract(text_excerpt, schema)
-        
+
         # Ensure all schema fields are present (fill missing with null)
         if result["data"]:
-            result["data"] = self.processor.normalize_with_schema(result["data"], schema)
-        
+            result["data"] = self.processor.normalize_with_schema(
+                result["data"], schema
+            )
+
         return result

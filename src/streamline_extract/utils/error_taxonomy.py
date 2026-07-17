@@ -70,7 +70,11 @@ def build_error_record(
         category = "input_validation"
         code = "invalid_input"
     elif isinstance(exc, RuntimeError):
-        if "decode" in lowered_message or "extract from" in lowered_message or "ocr" in lowered_message:
+        if (
+            "decode" in lowered_message
+            or "extract from" in lowered_message
+            or "ocr" in lowered_message
+        ):
             category = "document_processing"
             code = "document_extraction_failed"
         else:
@@ -91,13 +95,19 @@ def build_error_record(
     }
 
 
-def normalize_error_records(errors: Optional[Iterable[Dict[str, Any]]]) -> List[Dict[str, Any]]:
+def normalize_error_records(
+    errors: Optional[Iterable[Dict[str, Any]]],
+) -> List[Dict[str, Any]]:
     """Return a deterministic list of canonical error records."""
     normalized: List[Dict[str, Any]] = []
     for error in errors or []:
         if not isinstance(error, dict):
             continue
-        source = error.get("source") if isinstance(error.get("source"), dict) else {}
+        source = (
+            error.get("source")
+            if isinstance(error.get("source"), dict)
+            else {}
+        )
         normalized.append(
             {
                 "stage": error.get("stage") or "unknown",
@@ -125,14 +135,18 @@ def normalize_error_records(errors: Optional[Iterable[Dict[str, Any]]]) -> List[
     )
 
 
-def summarize_error_records(errors: Optional[Iterable[Dict[str, Any]]]) -> Dict[str, Any]:
+def summarize_error_records(
+    errors: Optional[Iterable[Dict[str, Any]]],
+) -> Dict[str, Any]:
     """Aggregate deterministic error totals for manifests and metadata."""
     records = normalize_error_records(errors)
     by_category: Dict[str, int] = {}
     by_code: Dict[str, int] = {}
 
     for error in records:
-        by_category[error["category"]] = by_category.get(error["category"], 0) + 1
+        by_category[error["category"]] = (
+            by_category.get(error["category"], 0) + 1
+        )
         by_code[error["code"]] = by_code.get(error["code"], 0) + 1
 
     return {

@@ -38,33 +38,72 @@ class ContentSampler:
     MAX_SAMPLE_CHARS = 10000  # Sample first N chars
     MIN_EXTRACTION_LENGTH = 50  # Require at least 50 chars of meaningful text
 
+    _SAMPLE_PAGES = 5  # Pages to sample for classification/review
+
     @staticmethod
-    def _extract_text_from_pdf(file_path: str) -> str:
-        """Extract text from PDF file."""
+    def _ocr_pdf_fallback(file_path: str) -> str:
+        """OCR an image-based PDF via the extraction pipeline's proven path.
+
+        Scanned PDFs yield no embedded text, so a plain extract returns nothing
+        and the document is silently dropped from review. Delegate to
+        ``extract_text_from_document`` (plain extraction + Tesseract OCR
+        fallback) which also writes the full text to the shared ``.text/`` cache,
+        so this expensive OCR is done once and reused by the extraction stage.
+        """
+        try:
+            from pathlib import Path
+
+            from ..extraction.document_utils import extract_text_from_document
+
+            return extract_text_from_document(Path(file_path)) or ""
+        except Exception:  # noqa: BLE001 - OCR unavailable, caller handles empty
+            return ""
+
+    @classmethod
+    def _extract_text_from_pdf(cls, file_path: str) -> str:
+        """Extract text from PDF file, with OCR fallback for scanned PDFs."""
+        # Prefer the shared full-text cache: if the extraction stage (or a prior
+        # review) already extracted/OCR'd this file, reuse it instead of redoing.
+        try:
+            from pathlib import Path
+
+            from ..extraction.document_utils import read_text_cache
+
+            cached = read_text_cache(Path(file_path))
+            if cached is not None:
+                return cached
+        except Exception:  # noqa: BLE001 - cache is optional
+            pass
+
+        max_pages = cls._SAMPLE_PAGES
+        text = ""
         try:
             import pdftotext
 
             with open(file_path, "rb") as f:
                 pdf = pdftotext.PDF(f)
-                # Extract first N pages to limit context
-                max_pages = min(5, len(pdf))
-                text = "\n".join(pdf[:max_pages])
-                return text
+                text = "\n".join(pdf[: min(max_pages, len(pdf))])
         except Exception as e:
             # Fallback to PyMuPDF if pdftotext fails
             try:
                 import fitz
 
                 doc = fitz.open(file_path)
-                text = ""
-                for page_num in range(min(5, len(doc))):
-                    page = doc[page_num]
-                    text += page.get_text() + "\n"
-                return text
+                text = "".join(
+                    doc[page_num].get_text() + "\n"
+                    for page_num in range(min(max_pages, len(doc)))
+                )
             except Exception as fallback_e:
                 raise ValueError(
                     f"Failed to extract PDF text: {e}, fallback error: {fallback_e}"
                 )
+
+        # Image-based (scanned) PDF: no embedded text → OCR fallback.
+        if len(text.strip()) < cls.MIN_EXTRACTION_LENGTH:
+            ocr_text = cls._ocr_pdf_fallback(file_path)
+            if len(ocr_text.strip()) > len(text.strip()):
+                return ocr_text
+        return text
 
     @staticmethod
     def _extract_text_from_docx(file_path: str) -> str:

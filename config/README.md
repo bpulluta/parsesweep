@@ -227,7 +227,7 @@ These are documented with examples in
 | `query_context_aliases` | Coalesce alias → first non-empty target field for query templates. |
 | `browser_mode` | Download via headless Chrome for bot-protected sites (Akamai); needs Selenium + Chrome. |
 | `document_classifier` | Cheap keyword check; `action: warn` (flag) or `filter`. |
-| `document_review` | LLM grades files and promotes the primary one(s) to a `reviewed/` subfolder. |
+| `document_review` | LLM grades each download and selects the primary one(s) per target into `curated/` (see [Curate](../README.md#curate-command)); writes an editable `review.csv`. |
 | `partition_by` | Output layout `by_<f1>/<v1>/<v2>/…` from target-metadata fields. |
 
 ### `runtime` Settings
@@ -253,17 +253,28 @@ These are documented with examples in
 
 ### Acquisition Outputs
 
-Each non-dry run writes to deterministic, run-scoped paths:
+Each non-dry run is one self-contained, run-scoped folder, with a `latest`
+pointer to the most recent run that produced downloads:
 
 ```text
-documents/<domain>/acquired/runs/<run_id>/
-    by_jurisdiction/<state>/<jurisdiction>/   # partition_mode=jurisdiction
-    by_host/<source-host>/                    # partition_mode=host (default fallback)
-
-output/acquisition/<domain>/runs/<run_id>/
-    manifest.json       # full run record
-    download_index.csv  # machine-readable file list
+output/acquisition/<domain>/
+    checkpoint.json                 # domain-level resume state
+    latest -> runs/<run_id>         # symlink to the current run
+    runs/<run_id>/
+        manifest.json               # full run record
+        download_index.csv          # machine-readable file list (+ review cols)
+        review.csv                  # human-editable curation ledger
+        documents/                  # ALL downloads (recall set)
+            <partition>/<file>          # by_state_jurisdiction / by_host / by_<fields>
+            <partition>/.text/          # cached OCR text (scanned PDFs only)
+            <partition>/.review/        # per-file LLM verdict + human override
+        curated/                    # final selected docs only -> downstream input
+            <partition>/<file>
 ```
+
+Downstream `process` consumes `output/acquisition/<domain>/latest/curated`.
+Edit `review.csv` (`human_decision` = `keep`/`reject`) and run
+`streamline-extract curate` to rebuild `curated/`.
 
 **`manifest.json` observability sections:**
 - `timing`: `started_at`, `completed_at`, `elapsed_seconds`
@@ -271,9 +282,11 @@ output/acquisition/<domain>/runs/<run_id>/
 - `stage_summaries.routing`: mode, applied, candidates-in/out
 - `stage_summaries.downloads`: downloaded, skipped, failed, total_bytes
 - `candidate_summary`: total, by acceptance class (accepted/needs_review/rejected), by source
-- `lineage.link_prioritization.candidates`: full ranked list with per-candidate heuristic scores
+- `lineage`: `documents_dir`, `download_index_csv`, `review_index_csv`, `curated_dir`, `curated_count`, ranked candidates
 
-**`download_index.csv` columns:** `run_id`, `domain`, `partition_mode`, `source_state`, `source_jurisdiction`, `source_host`, `status`, `url`, `final_url`, `mime_type`, `bytes`, `relative_path`, `path`, `error`
+**`download_index.csv` columns:** `run_id`, `domain`, `partition_mode`, `source_state`, `source_jurisdiction`, `source_host`, `status`, `url`, `final_url`, `mime_type`, `bytes`, `relative_path`, `path`, `review_selected`, `review_is_primary`, `review_relevance`, `review_doc_kind`, `error`, `target_metadata`
+
+**`review.csv` columns (human-editable):** `target`, `partition`, `state`, `jurisdiction`, `doc_kind`, `relevance`, `llm_is_primary`, `llm_selected`, `human_decision`, `human_notes`, `llm_reason`, `relative_path`, `path`
 
 ### Policy Design Decision
 
@@ -433,15 +446,18 @@ ACQUISITION_SSL_VERIFY=false pixi run streamline-extract acquire --domain <domai
 
 ### Acquisition Output Organization (Scalable Layout)
 
-For non-dry `acquire` runs, outputs are run-scoped and partitioned by strategy:
+For non-dry `acquire` runs, outputs are run-scoped and partitioned by strategy
+under the single run folder (see [Acquisition Outputs](#acquisition-outputs)):
 
 ```text
-documents/<domain>/acquired/runs/<run_id>/
-    by_jurisdiction/<state>/<jurisdiction>/...   # when partition mode resolves to jurisdiction
-    by_host/<source-host>/...                    # host fallback/default for generic web sources
-
-output/acquisition/<domain>/runs/<run_id>/manifest.json
-output/acquisition/<domain>/runs/<run_id>/download_index.csv
+output/acquisition/<domain>/runs/<run_id>/
+    documents/
+        by_state_jurisdiction/<state>/<jurisdiction>/...  # jurisdiction partitioning
+        by_host/<source-host>/...                         # host fallback/default
+    curated/                                              # same layout, selected docs
+    manifest.json
+    download_index.csv
+    review.csv
 ```
 
 Manifest download records include:
