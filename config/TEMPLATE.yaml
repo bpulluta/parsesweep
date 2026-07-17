@@ -157,14 +157,27 @@ acquisition:
 
   # -- Post-download classification --------------------------------------------
 
-  # OPTIONAL. After download, read each file and check it is the expected
-  # document type (catches meeting minutes / research papers that pass URL
-  # filters). action: warn = annotate only; filter = mark rejected_classifier.
+  # OPTIONAL. Cheap keyword check: after download, read each file and confirm
+  # it looks like the expected document type (catches meeting minutes /
+  # research papers that pass URL filters). action: warn = annotate only;
+  # filter = mark rejected_classifier.
   # document_classifier:
   #   required_keywords: ["ordinance", "chapter", "section"]
   #   nice_to_have_keywords: ["geothermal", "heat pump"]
   #   min_required_matches: 1
   #   action: warn
+
+  # OPTIONAL (LLM). Grade each downloaded file against a plain description of
+  # the document you want, then promote the best one(s) into a reviewed/
+  # subfolder — so large runs need no manual review. Needs an LLM API key.
+  # action: move = relocate primaries to reviewed/; flag = annotate only.
+  # document_review:
+  #   document_description: >-
+  #     the enacted ordinance/code that governs X — not a draft, presentation,
+  #     staff report, or news item
+  #   keep_top: 1
+  #   action: move
+  #   # model: gpt-4o-mini      # optional; defaults to the extraction model
 
   # -- Output partitioning -----------------------------------------------------
 
