@@ -7,7 +7,11 @@ from .base import (
     DiggerInput,
     SeekerInput,
 )
-from .digger import HttpDiggerConnector, NullDiggerConnector, resolve_digger_connector
+from .digger import (
+    HttpDiggerConnector,
+    NullDiggerConnector,
+    resolve_digger_connector,
+)
 from .serpapi_seeker import SerpApiSeeker
 
 __all__ = [

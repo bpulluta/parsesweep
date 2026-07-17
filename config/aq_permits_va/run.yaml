@@ -1,0 +1,53 @@
+# Virginia Title V air-quality permits (browser crawl)
+#
+# The DEQ site is behind Akamai edge bot-protection, which 403s any non-browser
+# HTTP client (requests, curl) — even with transplanted cookies (Akamai also
+# fingerprints TLS). The permit links are DNN "showpublisheddocument" URLs with
+# no file extension. So this config:
+#   - seeds the public index page,
+#   - crawls it with a real headless Chrome (digger.provider: selenium),
+#   - treats showpublisheddocument links as documents (include_url_patterns),
+#   - downloads each PDF THROUGH the browser (browser_mode: true).
+#
+# Nothing here is VA-specific in code — any bot-protected, extension-less
+# document site works by changing the seed URL + include_url_patterns.
+#
+# Requires Selenium + Google Chrome.
+#   streamline-extract acquire --config config/aq_permits_va/run.yaml
+
+domain: aq_permits_va
+
+acquisition:
+  seeds:
+    - "https://www.deq.virginia.gov/news-info/shortcuts/permits/air/issued-title-v-permits"
+
+  follow_links: true          # crawl the index (distributed topology)
+  browser_mode: true          # real browser for crawl + download (Akamai)
+
+  digger:
+    provider: selenium
+    allowed_domains: ["deq.virginia.gov"]
+    discovery_rules:
+      # Permit links carry no .pdf extension; match the DNN document path.
+      include_url_patterns: ["showpublisheddocument"]
+
+  runtime:
+    max_depth: 1              # index page -> permit links
+    max_pages: 3
+    max_files: 5             # a few permits, to test
+    min_request_interval_ms: 1000
+
+  document_classifier:
+    required_keywords: ["permit", "emission", "title v"]
+    min_required_matches: 1
+    action: warn
+
+processing:
+  input_dir: documents/aq_permits_va/acquired
+  schema: schemas/domain_packs/aq_permits/pack.yaml
+  output_dir: processed/aq_permits_va
+
+consolidation:
+  input_dir: processed/aq_permits_va
+  schema: schemas/domain_packs/aq_permits/pack.yaml
+  output_dir: consolidated/aq_permits_va

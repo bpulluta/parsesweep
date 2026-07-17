@@ -23,7 +23,9 @@ class AcquisitionPolicyEvaluator:
     DEFAULT_USER_AGENT = "StreamlineExtract/2.0 (+acquisition)"
 
     def __init__(self) -> None:
-        self._robots_cache: dict[tuple[str, str, bool], tuple[RobotFileParser | None, str | None]] = {}
+        self._robots_cache: dict[
+            tuple[str, str, bool], tuple[RobotFileParser | None, str | None]
+        ] = {}
 
     @staticmethod
     def _normalize_mode(mode: str | None) -> str:
@@ -62,7 +64,11 @@ class AcquisitionPolicyEvaluator:
         if not parsed.scheme or not parsed.netloc:
             return None, "invalid URL for robots evaluation"
 
-        cache_key = (parsed.scheme.lower(), parsed.netloc.lower(), bool(ssl_verify))
+        cache_key = (
+            parsed.scheme.lower(),
+            parsed.netloc.lower(),
+            bool(ssl_verify),
+        )
         if cache_key in self._robots_cache:
             return self._robots_cache[cache_key]
 
@@ -81,7 +87,8 @@ class AcquisitionPolicyEvaluator:
                 timeout=15,
                 allow_redirects=True,
                 verify=ssl_verify,
-                headers=request_headers or {"User-Agent": self.DEFAULT_USER_AGENT},
+                headers=request_headers
+                or {"User-Agent": self.DEFAULT_USER_AGENT},
             )
             status_code = int(getattr(response, "status_code", 200) or 200)
             if status_code == 404:
@@ -117,8 +124,12 @@ class AcquisitionPolicyEvaluator:
         host = (parsed.hostname or "").strip().lower()
 
         normalized_tos_mode = self._normalize_mode(tos_policy_mode)
-        normalized_ack_domains = self._normalize_domains(acknowledged_tos_domains)
-        if normalized_tos_mode != "ignore" and not self._host_matches_domains(host, normalized_ack_domains):
+        normalized_ack_domains = self._normalize_domains(
+            acknowledged_tos_domains
+        )
+        if normalized_tos_mode != "ignore" and not self._host_matches_domains(
+            host, normalized_ack_domains
+        ):
             message = f"Terms acknowledgement missing for host '{host or 'unknown-host'}'."
             if normalized_tos_mode == "enforce":
                 result.allowed = False
@@ -151,7 +162,9 @@ class AcquisitionPolicyEvaluator:
             result.messages.append(message)
             return result
 
-        user_agent = (request_headers or {}).get("User-Agent") or self.DEFAULT_USER_AGENT
+        user_agent = (request_headers or {}).get(
+            "User-Agent"
+        ) or self.DEFAULT_USER_AGENT
         if parser.can_fetch(user_agent, url):
             return result
 

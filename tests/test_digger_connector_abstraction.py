@@ -229,9 +229,16 @@ class TestDiggerConnectorAbstraction:
         connector = resolve_digger_connector("http")
         assert isinstance(connector, HttpDiggerConnector)
 
-    def test_resolve_digger_connector_accepts_crawlee_alias(self):
-        connector = resolve_digger_connector("crawlee_playwright")
-        assert isinstance(connector, HttpDiggerConnector)
+    def test_resolve_digger_connector_browser_aliases(self):
+        # Browser-provider names resolve to the Selenium (real-browser) digger,
+        # not the requests-based HTTP one.
+        from streamline_extract.acquisition.connectors.digger import (
+            SeleniumDiggerConnector,
+        )
+
+        for name in ("crawlee_playwright", "selenium", "browser", "chrome"):
+            connector = resolve_digger_connector(name)
+            assert isinstance(connector, SeleniumDiggerConnector)
 
     def test_resolve_digger_connector_rejects_unknown_provider(self):
         with pytest.raises(ValueError, match="Unsupported digger provider"):

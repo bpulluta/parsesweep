@@ -7,6 +7,7 @@ import re
 import time
 from urllib.parse import urljoin, urlparse
 
+from ..constants import DOWNLOADABLE_EXTENSIONS
 from .base import BaseDiggerConnector, DiggerArtifact, DiggerInput
 
 
@@ -23,13 +24,21 @@ class NullDiggerConnector(BaseDiggerConnector):
         return max(minimum, int(value))
 
     @staticmethod
-    def _effective_item_limit(candidate_urls: list[str], digger_input: DiggerInput) -> int:
-        max_pages = NullDiggerConnector._normalize_budget(digger_input.max_pages)
-        max_files = NullDiggerConnector._normalize_budget(digger_input.max_files)
+    def _effective_item_limit(
+        candidate_urls: list[str], digger_input: DiggerInput
+    ) -> int:
+        max_pages = NullDiggerConnector._normalize_budget(
+            digger_input.max_pages
+        )
+        max_files = NullDiggerConnector._normalize_budget(
+            digger_input.max_files
+        )
         return min(len(candidate_urls), max_pages, max_files)
 
     @staticmethod
-    def _matches_allowed_domain(url: str, allowed_domains: list[str] | None) -> bool:
+    def _matches_allowed_domain(
+        url: str, allowed_domains: list[str] | None
+    ) -> bool:
         """Return True if the URL's host is within any entry in allowed_domains.
 
         Matching rules:
@@ -53,7 +62,9 @@ class NullDiggerConnector(BaseDiggerConnector):
         return False
 
     @staticmethod
-    def _matches_file_filter(url: str, include_url_patterns: list[str] | None) -> bool:
+    def _matches_file_filter(
+        url: str, include_url_patterns: list[str] | None
+    ) -> bool:
         """Return True if the URL matches any of the include_url_patterns.
 
         If include_url_patterns is None or empty, all URLs pass.
@@ -96,7 +107,9 @@ class NullDiggerConnector(BaseDiggerConnector):
         return url_match and text_match
 
     @staticmethod
-    def _resolve_candidate_urls(digger_input: DiggerInput) -> tuple[list[str], str]:
+    def _resolve_candidate_urls(
+        digger_input: DiggerInput,
+    ) -> tuple[list[str], str]:
         extra_params = (
             digger_input.extra_params
             if isinstance(digger_input.extra_params, dict)
@@ -115,7 +128,8 @@ class NullDiggerConnector(BaseDiggerConnector):
         if not (mode_enabled and collect_all_matching_links):
             # Not in sweep mode: apply domain allowlist and file filter to seeds.
             filtered = [
-                u for u in digger_input.seed_urls
+                u
+                for u in digger_input.seed_urls
                 if NullDiggerConnector._matches_allowed_domain(
                     u, digger_input.allowed_domains
                 )
@@ -166,7 +180,8 @@ class NullDiggerConnector(BaseDiggerConnector):
                 deduped.append(url)
             # Apply domain allowlist to sweep candidates.
             allowed = [
-                u for u in deduped
+                u
+                for u in deduped
                 if NullDiggerConnector._matches_allowed_domain(
                     u, digger_input.allowed_domains
                 )
@@ -177,9 +192,14 @@ class NullDiggerConnector(BaseDiggerConnector):
         seed_candidates = digger_input.seed_urls
         # Apply domain allowlist and file filter to seed fallback.
         seed_candidates = [
-            u for u in seed_candidates
-            if NullDiggerConnector._matches_allowed_domain(u, digger_input.allowed_domains)
-            and NullDiggerConnector._matches_file_filter(u, digger_input.include_url_patterns)
+            u
+            for u in seed_candidates
+            if NullDiggerConnector._matches_allowed_domain(
+                u, digger_input.allowed_domains
+            )
+            and NullDiggerConnector._matches_file_filter(
+                u, digger_input.include_url_patterns
+            )
         ]
         return seed_candidates, "seed_only"
 
@@ -187,8 +207,12 @@ class NullDiggerConnector(BaseDiggerConnector):
         effective_max_depth = self._normalize_budget(digger_input.max_depth)
         effective_max_pages = self._normalize_budget(digger_input.max_pages)
         effective_max_files = self._normalize_budget(digger_input.max_files)
-        effective_timeout_seconds = self._normalize_budget(digger_input.timeout_seconds)
-        candidate_urls, discovery_mode = self._resolve_candidate_urls(digger_input)
+        effective_timeout_seconds = self._normalize_budget(
+            digger_input.timeout_seconds
+        )
+        candidate_urls, discovery_mode = self._resolve_candidate_urls(
+            digger_input
+        )
         item_limit = self._effective_item_limit(candidate_urls, digger_input)
 
         started_at = time.monotonic()
@@ -232,7 +256,9 @@ class _AnchorExtractor(HTMLParser):
         self._current_text_parts: list[str] = []
         self.links: list[tuple[str, str]] = []
 
-    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+    def handle_starttag(
+        self, tag: str, attrs: list[tuple[str, str | None]]
+    ) -> None:
         if tag.lower() != "a":
             return
         href = ""
@@ -253,7 +279,9 @@ class _AnchorExtractor(HTMLParser):
     def handle_endtag(self, tag: str) -> None:
         if tag.lower() != "a" or not self._in_anchor or not self._current_href:
             return
-        text = " ".join(part.strip() for part in self._current_text_parts if part.strip())
+        text = " ".join(
+            part.strip() for part in self._current_text_parts if part.strip()
+        )
         self.links.append((self._current_href, text))
         self._in_anchor = False
         self._current_href = None
@@ -263,8 +291,9 @@ class _AnchorExtractor(HTMLParser):
 class HttpDiggerConnector(BaseDiggerConnector):
     """HTTP-based digger provider for real discovery from live hub/seed pages."""
 
-    _DEFAULT_REQUEST_HEADERS = {"User-Agent": "StreamlineExtract/2.0 (+acquisition)"}
-    _DOCUMENT_EXTENSIONS = {".pdf", ".doc", ".docx", ".txt", ".xlsx", ".csv", ".html", ".htm"}
+    _DEFAULT_REQUEST_HEADERS = {
+        "User-Agent": "StreamlineExtract/2.0 (+acquisition)"
+    }
     _USER_AGENT = "StreamlineExtract/2.0 (+acquisition)"
 
     @staticmethod
@@ -278,16 +307,22 @@ class HttpDiggerConnector(BaseDiggerConnector):
     @classmethod
     def _is_document_url(cls, url: str) -> bool:
         suffix = (urlparse(url).path and urlparse(url).path.lower()) or ""
-        return any(suffix.endswith(ext) for ext in cls._DOCUMENT_EXTENSIONS)
+        return any(suffix.endswith(ext) for ext in DOWNLOADABLE_EXTENSIONS)
 
     @staticmethod
-    def _resolve_retry_config(extra_params: dict[str, object] | None) -> tuple[int, float, float]:
+    def _resolve_retry_config(
+        extra_params: dict[str, object] | None,
+    ) -> tuple[int, float, float]:
         retry_cfg = {}
-        if isinstance(extra_params, dict) and isinstance(extra_params.get("retry"), dict):
+        if isinstance(extra_params, dict) and isinstance(
+            extra_params.get("retry"), dict
+        ):
             retry_cfg = extra_params.get("retry") or {}
 
         max_attempts = int(retry_cfg.get("max_attempts", 3) or 3)
-        initial_backoff = float(retry_cfg.get("initial_backoff_seconds", 1.0) or 1.0)
+        initial_backoff = float(
+            retry_cfg.get("initial_backoff_seconds", 1.0) or 1.0
+        )
         max_backoff = float(retry_cfg.get("max_backoff_seconds", 8.0) or 8.0)
 
         return (
@@ -297,13 +332,19 @@ class HttpDiggerConnector(BaseDiggerConnector):
         )
 
     @classmethod
-    def _resolve_request_headers(cls, extra_params: dict[str, object] | None) -> dict[str, str]:
+    def _resolve_request_headers(
+        cls, extra_params: dict[str, object] | None
+    ) -> dict[str, str]:
         headers = dict(cls._DEFAULT_REQUEST_HEADERS)
-        raw_headers = extra_params.get("request_headers") if isinstance(extra_params, dict) else None
+        raw_headers = (
+            extra_params.get("request_headers")
+            if isinstance(extra_params, dict)
+            else None
+        )
         if isinstance(raw_headers, dict):
             for key, value in raw_headers.items():
-                normalized_key = str(key or '').strip()
-                normalized_value = str(value or '').strip()
+                normalized_key = str(key or "").strip()
+                normalized_value = str(value or "").strip()
                 if normalized_key and normalized_value:
                     headers[normalized_key] = normalized_value
         return headers
@@ -329,7 +370,9 @@ class HttpDiggerConnector(BaseDiggerConnector):
         return any(marker in message for marker in markers)
 
     @staticmethod
-    def _backoff_for_attempt(*, attempt: int, initial_backoff: float, max_backoff: float) -> float:
+    def _backoff_for_attempt(
+        *, attempt: int, initial_backoff: float, max_backoff: float
+    ) -> float:
         if attempt <= 1:
             return 0.0
         wait = initial_backoff * (2 ** (attempt - 2))
@@ -349,7 +392,9 @@ class HttpDiggerConnector(BaseDiggerConnector):
         try:
             import requests
         except ImportError as exc:
-            raise RuntimeError("requests dependency is required for HTTP digger provider") from exc
+            raise RuntimeError(
+                "requests dependency is required for HTTP digger provider"
+            ) from exc
 
         max_attempts, initial_backoff, max_backoff = retry_config
         last_exc: BaseException | None = None
@@ -364,13 +409,17 @@ class HttpDiggerConnector(BaseDiggerConnector):
                     headers=request_headers,
                 )
                 response.raise_for_status()
-                content_type = str((response.headers or {}).get("Content-Type") or "").lower()
+                content_type = str(
+                    (response.headers or {}).get("Content-Type") or ""
+                ).lower()
                 if "html" not in content_type and "text/" not in content_type:
                     return "", attempt
                 return response.text or "", attempt
             except Exception as exc:
                 last_exc = exc
-                if attempt >= max_attempts or not self._is_transient_error(exc):
+                if attempt >= max_attempts or not self._is_transient_error(
+                    exc
+                ):
                     raise
                 delay = self._backoff_for_attempt(
                     attempt=attempt + 1,
@@ -405,7 +454,9 @@ class HttpDiggerConnector(BaseDiggerConnector):
         digger_input: DiggerInput,
         require_document_match: bool,
     ) -> bool:
-        if not NullDiggerConnector._matches_allowed_domain(url, digger_input.allowed_domains):
+        if not NullDiggerConnector._matches_allowed_domain(
+            url, digger_input.allowed_domains
+        ):
             return False
 
         if require_document_match:
@@ -429,7 +480,11 @@ class HttpDiggerConnector(BaseDiggerConnector):
         max_pages: int,
         max_files: int,
     ) -> tuple[list[DiggerArtifact], int]:
-        extra_params = digger_input.extra_params if isinstance(digger_input.extra_params, dict) else {}
+        extra_params = (
+            digger_input.extra_params
+            if isinstance(digger_input.extra_params, dict)
+            else {}
+        )
         raw_links = extra_params.get("index_links")
         seed_pages = list(digger_input.seed_urls)
 
@@ -464,7 +519,9 @@ class HttpDiggerConnector(BaseDiggerConnector):
                     continue
                 pages_fetched += 1
                 if html_text:
-                    candidate_links.extend(self._extract_links(html_text, page_url))
+                    candidate_links.extend(
+                        self._extract_links(html_text, page_url)
+                    )
 
         artifacts: list[DiggerArtifact] = []
         seen_urls: set[str] = set()
@@ -513,14 +570,21 @@ class HttpDiggerConnector(BaseDiggerConnector):
         max_pages: int,
         max_files: int,
     ) -> tuple[list[DiggerArtifact], int]:
-        queue: list[tuple[str, int]] = [(url, 0) for url in digger_input.seed_urls]
+        # Each queue item carries its originating seed URL so discovered
+        # child documents can be attributed back to the target that seeded
+        # the crawl (target provenance for distributed/crawl domains).
+        queue: list[tuple[str, int, str]] = [
+            (url, 0, url) for url in digger_input.seed_urls
+        ]
         visited: set[str] = set()
         seen_artifacts: set[str] = set()
         artifacts: list[DiggerArtifact] = []
         pages_fetched = 0
 
-        while queue and pages_fetched < max_pages and len(artifacts) < max_files:
-            current_url, depth = queue.pop(0)
+        while (
+            queue and pages_fetched < max_pages and len(artifacts) < max_files
+        ):
+            current_url, depth, origin_seed = queue.pop(0)
             if current_url in visited:
                 continue
             visited.add(current_url)
@@ -529,19 +593,25 @@ class HttpDiggerConnector(BaseDiggerConnector):
                 continue
 
             if self._is_document_url(current_url):
-                if self._passes_filters(
-                    url=current_url,
-                    link_text="",
-                    digger_input=digger_input,
-                    require_document_match=True,
-                ) and current_url not in seen_artifacts:
+                if (
+                    self._passes_filters(
+                        url=current_url,
+                        link_text="",
+                        digger_input=digger_input,
+                        require_document_match=True,
+                    )
+                    and current_url not in seen_artifacts
+                ):
                     seen_artifacts.add(current_url)
                     artifacts.append(
                         DiggerArtifact(
                             url=current_url,
                             source="http_digger",
                             status="seed_staged",
-                            metadata={"discovery_mode": "distributed_http"},
+                            metadata={
+                                "discovery_mode": "distributed_http",
+                                "source_seed": origin_seed,
+                            },
                         )
                     )
                 continue
@@ -567,7 +637,9 @@ class HttpDiggerConnector(BaseDiggerConnector):
             for link in self._extract_links(html_text, current_url):
                 url = link["url"]
                 link_text = link["text"]
-                if not NullDiggerConnector._matches_allowed_domain(url, digger_input.allowed_domains):
+                if not NullDiggerConnector._matches_allowed_domain(
+                    url, digger_input.allowed_domains
+                ):
                     continue
 
                 if self._is_document_url(url):
@@ -589,6 +661,7 @@ class HttpDiggerConnector(BaseDiggerConnector):
                             metadata={
                                 "discovery_mode": "distributed_http",
                                 "link_text": link_text,
+                                "source_seed": origin_seed,
                             },
                         )
                     )
@@ -597,7 +670,7 @@ class HttpDiggerConnector(BaseDiggerConnector):
                     continue
 
                 if depth + 1 < max_depth and url not in visited:
-                    queue.append((url, depth + 1))
+                    queue.append((url, depth + 1, origin_seed))
 
         return artifacts, pages_fetched
 
@@ -606,21 +679,35 @@ class HttpDiggerConnector(BaseDiggerConnector):
         effective_max_depth = self._normalize_budget(digger_input.max_depth)
         effective_max_pages = self._normalize_budget(digger_input.max_pages)
         effective_max_files = self._normalize_budget(digger_input.max_files)
-        effective_timeout_seconds = self._normalize_budget(digger_input.timeout_seconds)
-        extra_params = digger_input.extra_params if isinstance(digger_input.extra_params, dict) else {}
+        effective_timeout_seconds = self._normalize_budget(
+            digger_input.timeout_seconds
+        )
+        extra_params = (
+            digger_input.extra_params
+            if isinstance(digger_input.extra_params, dict)
+            else {}
+        )
 
         ssl_verify = bool(extra_params.get("ssl_verify", True))
         retry_config = self._resolve_retry_config(extra_params)
         request_headers = self._resolve_request_headers(extra_params)
 
-        index_page_mode = extra_params.get("index_page_mode") if isinstance(extra_params, dict) else None
+        index_page_mode = (
+            extra_params.get("index_page_mode")
+            if isinstance(extra_params, dict)
+            else None
+        )
         sweep_enabled = (
             isinstance(index_page_mode, dict)
             and bool(index_page_mode.get("enabled"))
             and bool(index_page_mode.get("collect_all_matching_links"))
         )
 
-        if effective_timeout_seconds <= 0 or effective_max_pages <= 0 or effective_max_files <= 0:
+        if (
+            effective_timeout_seconds <= 0
+            or effective_max_pages <= 0
+            or effective_max_files <= 0
+        ):
             return []
 
         if sweep_enabled:
@@ -666,24 +753,138 @@ class HttpDiggerConnector(BaseDiggerConnector):
             "http",
             "requests",
             "basic_crawl",
-            "crawlee",
-            "crawlee_playwright",
         }
 
 
-def resolve_digger_connector(provider: str | None = None) -> BaseDiggerConnector:
+class SeleniumDiggerConnector(BaseDiggerConnector):
+    """Browser-based digger for bot-protected sites (Akamai/Cloudflare).
+
+    Drives a real headless Chrome (via :mod:`..browser`) to crawl pages that
+    reject requests-based clients at the edge, extracting document links with
+    the same filtering the HTTP digger uses (including extension-less links via
+    ``include_url_patterns``). Discovered artifacts carry ``source_seed``
+    provenance. Downloads for these sites must also go through the browser
+    (``browser_mode: true``) since edge managers fingerprint the TLS layer.
+    """
+
+    _PROVIDERS = {
+        "selenium",
+        "browser",
+        "chrome",
+        "crawlee",
+        "crawlee_playwright",
+        "playwright",
+    }
+
+    def supports_provider(self, provider: str) -> bool:
+        return provider.lower() in self._PROVIDERS
+
+    def discover(self, digger_input: DiggerInput) -> list[DiggerArtifact]:
+        from ..browser import BrowserSession
+
+        max_depth = max(0, int(digger_input.max_depth))
+        max_pages = max(0, int(digger_input.max_pages))
+        max_files = max(0, int(digger_input.max_files))
+        if max_pages <= 0 or max_files <= 0:
+            return []
+
+        artifacts: list[DiggerArtifact] = []
+        seen: set[str] = set()
+        visited: set[str] = set()
+        pages_fetched = 0
+
+        def _stage_document(url: str, seed: str, mode: str) -> None:
+            if url in seen:
+                return
+            if not HttpDiggerConnector._passes_filters(
+                url=url,
+                link_text="",
+                digger_input=digger_input,
+                require_document_match=True,
+            ):
+                return
+            seen.add(url)
+            artifacts.append(
+                DiggerArtifact(
+                    url=url,
+                    source="selenium_digger",
+                    status=mode,
+                    metadata={
+                        "discovery_mode": "browser",
+                        "source_seed": seed,
+                    },
+                )
+            )
+
+        def _is_doc_link(url: str) -> bool:
+            # A link is a document if it has a document extension OR matches a
+            # configured include pattern (e.g. "showpublisheddocument" for DNN
+            # sites whose permit links carry no file extension).
+            if HttpDiggerConnector._is_document_url(url):
+                return True
+            patterns = digger_input.include_url_patterns or []
+            lowered = url.lower()
+            return any(str(p).lower() in lowered for p in patterns)
+
+        with BrowserSession() as browser:
+            queue: list[tuple[str, int, str]] = [
+                (url, 0, url) for url in digger_input.seed_urls
+            ]
+            while (
+                queue
+                and pages_fetched < max_pages
+                and len(artifacts) < max_files
+            ):
+                current_url, depth, seed = queue.pop(0)
+                if current_url in visited:
+                    continue
+                visited.add(current_url)
+                if not HttpDiggerConnector._is_http_url(current_url):
+                    continue
+
+                if _is_doc_link(current_url):
+                    _stage_document(current_url, seed, "seed_staged")
+                    continue
+                if depth >= max_depth:
+                    continue
+
+                try:
+                    browser.fetch_html(current_url)
+                except Exception:  # noqa: BLE001 - skip unreachable page
+                    continue
+                pages_fetched += 1
+
+                for link in browser.current_links():
+                    url = link["url"]
+                    if not NullDiggerConnector._matches_allowed_domain(
+                        url, digger_input.allowed_domains
+                    ):
+                        continue
+                    if _is_doc_link(url):
+                        _stage_document(url, seed, "link_discovered")
+                        if len(artifacts) >= max_files:
+                            break
+                    elif depth + 1 < max_depth and url not in visited:
+                        queue.append((url, depth + 1, seed))
+        return artifacts
+
+
+def resolve_digger_connector(
+    provider: str | None = None,
+) -> BaseDiggerConnector:
     """Resolve digger connector by provider name."""
     normalized = (provider or "null").strip().lower()
 
-    connector = NullDiggerConnector()
-    if connector.supports_provider(normalized):
-        return connector
-
-    http_connector = HttpDiggerConnector()
-    if http_connector.supports_provider(normalized):
-        return http_connector
+    for connector in (
+        NullDiggerConnector(),
+        HttpDiggerConnector(),
+        SeleniumDiggerConnector(),
+    ):
+        if connector.supports_provider(normalized):
+            return connector
 
     raise ValueError(
-        f"Unsupported digger provider '{provider}'. "
-        "Supported providers: null, seed_only, none, http, requests, basic_crawl, crawlee, crawlee_playwright."
+        f"Unsupported digger provider '{provider}'. Supported providers: "
+        "null, seed_only, none, http, requests, basic_crawl, "
+        "selenium, browser, chrome, crawlee, crawlee_playwright, playwright."
     )
