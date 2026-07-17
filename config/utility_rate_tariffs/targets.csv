@@ -1,4 +1,3 @@
 label,address,state,utility_name,service_class,query
-"Woodhaven Queens NY - Residential","Woodhaven, Queens, NY 11421",ny,Con Edison,residential,"site:coned.com residential electric rate tariff schedule filetype:pdf"
-"Aurora CO - Residential","19389 E 59th Dr, Aurora, CO 80019",co,Xcel Energy,residential,"site:xcelenergy.com colorado residential electric rate tariff filetype:pdf"
-"Shaker Heights OH - Residential","3382 Kenmore Rd, Shaker Heights, OH 44122",oh,Ohio Edison,residential,"site:firstenergycorp.com ohio edison electric service tariff filetype:pdf"
+Aurora CO - Residential,"19389 E 59th Dr, Aurora, CO 80019",co,Xcel Energy,residential,site:xcelenergy.com colorado residential electric rate tariff book filetype:pdf 2026
+Queens NY - Residential,,NY,Con Edison,residential,site:coned.com ny residential electric rate tariff book filetype:pdf 2026

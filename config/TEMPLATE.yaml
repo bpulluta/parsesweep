@@ -168,15 +168,15 @@ acquisition:
   #   action: warn
 
   # OPTIONAL (LLM). Grade each downloaded file against a plain description of
-  # the document you want, then promote the best one(s) into a reviewed/
-  # subfolder — so large runs need no manual review. Needs an LLM API key.
-  # action: move = relocate primaries to reviewed/; flag = annotate only.
+  # the document you want, then select the best one(s) per target into the run's
+  # curated/ set — so large runs need no manual review. Needs an LLM API key.
+  # Files are never moved; the picks are hardlinked into curated/ and a
+  # human-editable review.csv is written (edit + run `curate` to override).
   # document_review:
   #   document_description: >-
   #     the enacted ordinance/code that governs X — not a draft, presentation,
   #     staff report, or news item
   #   keep_top: 1
-  #   action: move
   #   # model: gpt-4o-mini      # optional; defaults to the extraction model
 
   # -- Output partitioning -----------------------------------------------------
@@ -209,13 +209,19 @@ acquisition:
 # Extracts structured data from downloaded documents using an LLM.
 
 processing:
-  # REQUIRED. Path to downloaded documents (output of acquisition step).
-  input_dir: documents/my_domain/acquired
+  # REQUIRED. Path to documents to extract. When using acquisition, point at the
+  # curated set of the latest run (LLM-reviewed + human-approved).
+  input_dir: output/acquisition/my_domain/latest/curated
 
   # REQUIRED. Schema that defines what fields to extract.
   # Use a domain pack (schemas/domain_packs/<name>/pack.yaml) or a
   # custom JSON schema (schemas/personal/<name>.json).
   schema: schemas/domain_packs/my_domain/pack.yaml
+
+  # OPTIONAL. For large documents (e.g. tariff books), target specific pages so
+  # extraction reaches the relevant tables instead of overflowing the context.
+  # Keyed by file name; leave a file out to extract it in full.
+  # pages_csv: config/my_domain/page_ranges.csv
 
   # OPTIONAL.
   output_dir: processed/my_domain

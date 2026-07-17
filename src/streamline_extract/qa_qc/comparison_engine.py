@@ -10,10 +10,10 @@ Phase 8 adds: Potential duplicate detection and completeness metrics.
 Usage:
     from streamline_extract.qa_qc.comparison_engine import ComparisonEngine
     from streamline_extract.utils.schema_metadata import SchemaMetadata
-    
+
     schema_metadata = SchemaMetadata(schema_path)
     engine = ComparisonEngine(schema_metadata)
-    
+
     result = engine.compare_outputs(
         output_files={"gpt-4.1": path1, "gpt-4o": path2},
         document_name="austin_energy"
@@ -32,7 +32,12 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 # Import shared utilities
-from ..utils.item_matcher import create_item_index, extract_key_tokens, get_nested_value, normalize_for_matching
+from ..utils.item_matcher import (
+    create_item_index,
+    extract_key_tokens,
+    get_nested_value,
+    normalize_for_matching,
+)
 from ..utils.value_normalizer import normalize_value, is_numeric_value
 from .utils import resolve_qaqc_runtime_config
 
@@ -42,7 +47,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class FieldComparison:
     """Represents comparison of a single field across models."""
-    
+
     item_id: str
     field_path: str
     model_values: Dict[str, Any]  # {model_name: value}
@@ -55,11 +60,12 @@ class FieldComparison:
 class PotentialDuplicate:
     """
     Represents items that might be the same data with different keys.
-    
+
     Example: gpt-5 has time__reclamation_deadline_days=60
              gpt-4.1 has time__permit_validity_days=60
     Same value extracted with different requirement_type - likely same source data.
     """
+
     value: Any
     unit: str
     items: List[Tuple[str, dict]]  # [(model_name, item_dict), ...]
@@ -69,6 +75,7 @@ class PotentialDuplicate:
 @dataclass
 class CompletenessResult:
     """Completeness metrics for a single model's extraction."""
+
     model: str
     items_extracted: int
     expected_found: int
@@ -80,15 +87,17 @@ class CompletenessResult:
 @dataclass
 class ComparisonResult:
     """Full comparison result for a document."""
-    
+
     document_name: str
     models: List[str]
     summary: Dict[str, Any] = field(default_factory=dict)
     context_comparisons: List[FieldComparison] = field(default_factory=list)
     item_comparisons: List[FieldComparison] = field(default_factory=list)
-    potential_duplicates: List[PotentialDuplicate] = field(default_factory=list)
+    potential_duplicates: List[PotentialDuplicate] = field(
+        default_factory=list
+    )
     completeness: Dict[str, CompletenessResult] = field(default_factory=dict)
-    
+
     @property
     def field_comparisons(self) -> List[FieldComparison]:
         """All field comparisons (context + items combined)."""
@@ -98,38 +107,46 @@ class ComparisonResult:
 class ComparisonEngine:
     """
     Compare outputs from multiple models using schema metadata plus runtime QA/QC config.
-    
+
     Uses resolved QA/QC configuration:
     - runtime artifact pack lanes when available
     - schema $metadata.qa_qc as a fallback
-    
+
     Why schema-driven?
     - Different domains have different field names
     - No hardcoded assumptions about field semantics
     - User can configure per schema
     """
 
-    def __init__(self, schema_metadata, qa_qc_config: Optional[Dict[str, Any]] = None):
+    def __init__(
+        self, schema_metadata, qa_qc_config: Optional[Dict[str, Any]] = None
+    ):
         """
         Initialize with schema metadata.
-        
+
         Args:
             schema_metadata: SchemaMetadata instance
         """
         self.schema_metadata = schema_metadata
         self.main_data_array = schema_metadata.get_main_data_array()
         self.identifier_fields = schema_metadata.get_identifier_fields()
-        self.qa_qc_config = qa_qc_config or resolve_qaqc_runtime_config(schema_metadata)
+        self.qa_qc_config = qa_qc_config or resolve_qaqc_runtime_config(
+            schema_metadata
+        )
 
         self.match_fields = list(self.qa_qc_config["match_fields"])
         self.compare_fields = set(self.qa_qc_config["compare_fields"])
-        self.comparison_approach = self.qa_qc_config.get("comparison_approach", "numeric_only")
+        self.comparison_approach = self.qa_qc_config.get(
+            "comparison_approach", "numeric_only"
+        )
         self.config_source = self.qa_qc_config.get("source", "schema_metadata")
         self.lane_name = self.qa_qc_config.get("lane_name")
         self.lane_mode = self.qa_qc_config.get("mode", "schema_metadata")
         self.projection = self.qa_qc_config.get("projection") or None
-        
-        logger.debug(f"ComparisonEngine: main_data_array={self.main_data_array}")
+
+        logger.debug(
+            f"ComparisonEngine: main_data_array={self.main_data_array}"
+        )
         logger.debug(f"ComparisonEngine: match_fields={self.match_fields}")
         logger.debug(f"ComparisonEngine: compare_fields={self.compare_fields}")
 
@@ -151,28 +168,32 @@ class ComparisonEngine:
         """
         # Load outputs
         outputs = self._load_outputs(output_files)
-        
+
         if len(outputs) < 2:
-            logger.warning(f"Only {len(outputs)} valid outputs, need 2+ for comparison")
+            logger.warning(
+                f"Only {len(outputs)} valid outputs, need 2+ for comparison"
+            )
             return ComparisonResult(
                 document_name=document_name,
                 models=list(outputs.keys()),
                 summary={"error": "Need at least 2 valid outputs"},
             )
-        
+
         models = list(outputs.keys())
-        
+
         # Track statistics
         context_skipped = 0
         item_skipped = 0
-        
+
         # 1. Compare context objects (numeric fields only)
         context_comparisons = []
         for ctx_name in self.schema_metadata.get_context_objects():
-            comps, skipped = self._compare_context_object(ctx_name, outputs, models)
+            comps, skipped = self._compare_context_object(
+                ctx_name, outputs, models
+            )
             context_comparisons.extend(comps)
             context_skipped += skipped
-        
+
         # 2. Compare main data array items
         item_arrays = self._extract_item_arrays(outputs)
         item_arrays = self._collapse_text_review_duplicates(item_arrays)
@@ -181,20 +202,22 @@ class ComparisonEngine:
         indexes = self._apply_text_review_fallback_matches(indexes, models)
         indexes = self._absorb_text_review_subsumed_items(indexes, models)
         all_keys = self._collect_all_keys(indexes)
-        
+
         item_comparisons = []
         for key in sorted(all_keys, key=str):
             items = {m: indexes[m].get(key) for m in models}
             comps, skipped = self._compare_item_fields(key, items, models)
             item_comparisons.extend(comps)
             item_skipped += skipped
-        
+
         # 3. Detect potential duplicates (Phase 8)
-        potential_duplicates = self._detect_potential_duplicates(indexes, models)
-        
+        potential_duplicates = self._detect_potential_duplicates(
+            indexes, models
+        )
+
         # 4. Calculate completeness (Phase 8)
         completeness = self._calculate_completeness(item_arrays, models)
-        
+
         # 5. Calculate summary
         summary = self._calculate_summary(
             context_comparisons,
@@ -204,9 +227,9 @@ class ComparisonEngine:
             context_skipped,
             item_skipped,
             potential_duplicates,
-            completeness
+            completeness,
         )
-        
+
         return ComparisonResult(
             document_name=document_name,
             models=models,
@@ -214,35 +237,32 @@ class ComparisonEngine:
             context_comparisons=context_comparisons,
             item_comparisons=item_comparisons,
             potential_duplicates=potential_duplicates,
-            completeness=completeness
+            completeness=completeness,
         )
 
     def _compare_context_object(
-        self,
-        ctx_name: str,
-        outputs: Dict[str, dict],
-        models: List[str]
+        self, ctx_name: str, outputs: Dict[str, dict], models: List[str]
     ) -> Tuple[List[FieldComparison], int]:
         """Compare a context object across models (numeric only)."""
         comparisons = []
         skipped = 0
-        
+
         # Get context from each model
         ctx_values = {m: outputs[m].get(ctx_name, {}) for m in models}
-        
+
         # Collect all fields
         all_fields = set()
         for ctx in ctx_values.values():
             if isinstance(ctx, dict):
                 all_fields.update(self._get_flat_fields(ctx))
-        
+
         # Compare each field (numeric only)
         for field_path in sorted(all_fields):
             # Skip internal fields
-            if field_path.startswith('_'):
+            if field_path.startswith("_"):
                 skipped += 1
                 continue
-            
+
             # Get values from each model
             model_values = {}
             for model in models:
@@ -251,63 +271,65 @@ class ComparisonEngine:
                     model_values[model] = get_nested_value(ctx, field_path)
                 else:
                     model_values[model] = None
-            
+
             # For context objects, skip all comparisons (mostly text metadata)
             # Context like jurisdiction, document_applicability are informational
             skipped += 1
             continue
-        
+
         return comparisons, skipped
 
     def _compare_item_fields(
         self,
         item_key: Tuple,
         items: Dict[str, Optional[dict]],
-        models: List[str]
+        models: List[str],
     ) -> Tuple[List[FieldComparison], int]:
         """Compare fields for one item across models (numeric only)."""
         comparisons = []
         skipped = 0
-        
+
         # Create readable item ID
         item_id = self._format_item_id(item_key, items)
-        
+
         # Check which models have this item
         missing = [m for m in models if not items.get(m)]
         present = [m for m in models if items.get(m)]
-        
+
         # If NO models have this item, skip entirely
         if not present:
             return comparisons, skipped
-        
+
         # Get all fields from present items
         all_fields = set()
         for m in present:
             all_fields.update(self._get_flat_fields(items[m]))
-        
+
         # Compare each field using the active QA/QC comparison approach.
         for field_path in sorted(all_fields):
             # Skip internal fields
-            if field_path.startswith('_'):
+            if field_path.startswith("_"):
                 skipped += 1
                 continue
-            
+
             # Get field name (last part of path)
-            field_name = field_path.split('.')[-1].lower()
-            
+            field_name = field_path.split(".")[-1].lower()
+
             # Only compare fields specified in schema qa_qc.comparison.primary_fields
             if field_name not in self.compare_fields:
                 skipped += 1
                 continue
-            
+
             # Get values - show actual value for present items, None for missing
             model_values = {}
             for model in models:
                 if items.get(model):
-                    model_values[model] = get_nested_value(items[model], field_path)
+                    model_values[model] = get_nested_value(
+                        items[model], field_path
+                    )
                 else:
                     model_values[model] = None  # Model doesn't have this item
-            
+
             # For missing items, always include the comparison to show which model
             # extracted the item. Otherwise, filter based on the active comparison approach.
             if missing:
@@ -321,21 +343,23 @@ class ComparisonEngine:
                     pass
                 else:
                     has_numeric = any(
-                        is_numeric_value(v) for v in model_values.values() if v is not None
+                        is_numeric_value(v)
+                        for v in model_values.values()
+                        if v is not None
                     )
                     if not has_numeric:
                         skipped += 1
                         continue
-            
+
             comparison = self._create_comparison(
                 item_id=item_id,
                 field_path=field_path,
                 model_values=model_values,
                 models=models,
-                missing_models=missing  # Pass info about which models are missing this item
+                missing_models=missing,  # Pass info about which models are missing this item
             )
             comparisons.append(comparison)
-        
+
         return comparisons, skipped
 
     def _create_comparison(
@@ -344,19 +368,19 @@ class ComparisonEngine:
         field_path: str,
         model_values: Dict[str, Any],
         models: List[str],
-        missing_models: List[str] = None
+        missing_models: List[str] = None,
     ) -> FieldComparison:
         """Create a FieldComparison with agreement calculation."""
         missing_models = missing_models or []
-        
+
         # Normalize values for comparison
         normalized = {m: normalize_value(v) for m, v in model_values.items()}
-        
+
         # Count agreement
         agreement_count = self._count_agreement(normalized)
         agreement_score = f"{agreement_count}/{len(models)}"
         needs_review = agreement_count < len(models)
-        
+
         # Generate notes - prioritize explaining WHY there's disagreement
         notes = ""
         if needs_review:
@@ -365,20 +389,22 @@ class ComparisonEngine:
                 notes = f"Item not extracted by: {', '.join(missing_models)}"
             else:
                 # Item exists in all models but values differ
-                unique = set(str(v) for v in normalized.values() if v is not None)
+                unique = set(
+                    str(v) for v in normalized.values() if v is not None
+                )
                 if len(unique) > 1:
                     notes = f"{len(unique)} different values"
                 elif any(v is None for v in normalized.values()):
                     empty = [m for m, v in normalized.items() if v is None]
                     notes = f"Empty in: {', '.join(empty)}"
-        
+
         return FieldComparison(
             item_id=item_id,
             field_path=field_path,
             model_values=model_values,
             agreement_score=agreement_score,
             needs_review=needs_review,
-            notes=notes
+            notes=notes,
         )
 
     def _count_agreement(self, model_values: Dict[str, Any]) -> int:
@@ -386,11 +412,11 @@ class ComparisonEngine:
         values = list(model_values.values())
         if not values:
             return 0
-        
+
         # Treat None as a valid value for agreement
         sentinel = "__NONE__"
         normalized = [sentinel if v is None else v for v in values]
-        
+
         most_common = max(set(normalized), key=normalized.count)
         return normalized.count(most_common)
 
@@ -403,26 +429,28 @@ class ComparisonEngine:
         context_skipped: int,
         item_skipped: int,
         potential_duplicates: List[PotentialDuplicate] = None,
-        completeness: Dict[str, 'CompletenessResult'] = None
+        completeness: Dict[str, "CompletenessResult"] = None,
     ) -> Dict[str, Any]:
         """Calculate summary statistics."""
         potential_duplicates = potential_duplicates or []
         completeness = completeness or {}
-        
+
         # Count agreements
         context_agree = sum(
-            1 for c in context_comparisons
+            1
+            for c in context_comparisons
             if c.agreement_score == f"{num_models}/{num_models}"
         )
         item_agree = sum(
-            1 for c in item_comparisons
+            1
+            for c in item_comparisons
             if c.agreement_score == f"{num_models}/{num_models}"
         )
-        
+
         total = len(context_comparisons) + len(item_comparisons)
         full_agree = context_agree + item_agree
         needs_review = total - full_agree
-        
+
         summary = {
             # Comparison approach
             "comparison_approach": self.comparison_approach,
@@ -430,56 +458,72 @@ class ComparisonEngine:
             "qaqc_lane": self.lane_name,
             "qaqc_mode": self.lane_mode,
             "skipped_non_numeric": context_skipped + item_skipped,
-            
             # Item counts per model
-            "items_per_model": {m: len(items) for m, items in item_arrays.items()},
-            
+            "items_per_model": {
+                m: len(items) for m, items in item_arrays.items()
+            },
             # Overall stats
             "total_comparisons": total,
             "full_agreement_count": full_agree,
-            "full_agreement_pct": round(full_agree / total * 100, 1) if total else 0.0,
+            "full_agreement_pct": round(full_agree / total * 100, 1)
+            if total
+            else 0.0,
             "needs_review_count": needs_review,
-            "needs_review_pct": round(needs_review / total * 100, 1) if total else 0.0,
-            
+            "needs_review_pct": round(needs_review / total * 100, 1)
+            if total
+            else 0.0,
             # Context breakdown
             "context_comparisons": len(context_comparisons),
             "context_agreement_pct": round(
                 context_agree / len(context_comparisons) * 100, 1
-            ) if context_comparisons else 0.0,
-            
+            )
+            if context_comparisons
+            else 0.0,
             # Item breakdown
             "item_comparisons": len(item_comparisons),
             "item_agreement_pct": round(
                 item_agree / len(item_comparisons) * 100, 1
-            ) if item_comparisons else 0.0,
-            "review_category_counts": self._calculate_review_category_counts(item_comparisons),
-            
+            )
+            if item_comparisons
+            else 0.0,
+            "review_category_counts": self._calculate_review_category_counts(
+                item_comparisons
+            ),
             # Phase 8: Potential duplicates
             "potential_duplicates_count": len(potential_duplicates),
-            
             # Phase 8: Completeness per model
             "completeness_per_model": {
                 model: {
                     "items_extracted": result.items_extracted,
                     "expected_found": result.expected_found,
                     "expected_total": result.expected_total,
-                    "completeness_score": round(result.completeness_score * 100, 1)
+                    "completeness_score": round(
+                        result.completeness_score * 100, 1
+                    ),
                 }
                 for model, result in completeness.items()
-            } if completeness else {}
+            }
+            if completeness
+            else {},
         }
 
-        qualitative_breakdown = self._build_qualitative_mismatch_breakdown(item_comparisons)
+        qualitative_breakdown = self._build_qualitative_mismatch_breakdown(
+            item_comparisons
+        )
         if qualitative_breakdown is not None:
             summary["qualitative_mismatch_breakdown"] = qualitative_breakdown
 
-        qualitative_gate = self._build_qualitative_advisory_gate(summary["review_category_counts"])
+        qualitative_gate = self._build_qualitative_advisory_gate(
+            summary["review_category_counts"]
+        )
         if qualitative_gate is not None:
             summary["qualitative_advisory_gate"] = qualitative_gate
-        
+
         return summary
 
-    def _calculate_review_category_counts(self, item_comparisons: List[FieldComparison]) -> Dict[str, int]:
+    def _calculate_review_category_counts(
+        self, item_comparisons: List[FieldComparison]
+    ) -> Dict[str, int]:
         """Compute stable review categories for report-layer policy labeling."""
         counts: Dict[str, int] = {
             "aligned": 0,
@@ -501,7 +545,10 @@ class ComparisonEngine:
 
         notes_lower = (comparison.notes or "").lower()
         if "item not extracted by" in notes_lower:
-            if self.comparison_approach == "text_review" and self._is_text_review_scope_variant(comparison.item_id):
+            if (
+                self.comparison_approach == "text_review"
+                and self._is_text_review_scope_variant(comparison.item_id)
+            ):
                 return "scope_variant"
             return "missing_item"
 
@@ -522,7 +569,9 @@ class ComparisonEngine:
             for key, value in review_category_counts.items()
             if key != "scope_variant"
         }
-        excluded_scope_variants = review_category_counts.get("scope_variant", 0)
+        excluded_scope_variants = review_category_counts.get(
+            "scope_variant", 0
+        )
         total = sum(evaluated_counts.values())
         if total <= 0:
             return {
@@ -547,24 +596,16 @@ class ComparisonEngine:
 
         if aligned_pct >= 80.0 and missing_pct <= 10.0:
             status = "pass"
-            recommended_action = (
-                "Qualitative review is mostly aligned; spot-check flagged differences before benchmark gating."
-            )
+            recommended_action = "Qualitative review is mostly aligned; spot-check flagged differences before benchmark gating."
         elif aligned_pct >= 50.0 and missing_pct <= 25.0:
             status = "warn"
-            recommended_action = (
-                "Qualitative review shows moderate divergence; inspect text differences before relying on this run."
-            )
+            recommended_action = "Qualitative review shows moderate divergence; inspect text differences before relying on this run."
         else:
             status = "fail"
-            recommended_action = (
-                "Qualitative review divergence is high; treat this run as not ready for qualitative benchmark gating."
-            )
+            recommended_action = "Qualitative review divergence is high; treat this run as not ready for qualitative benchmark gating."
 
         if excluded_scope_variants > 0:
-            recommended_action = (
-                f"{recommended_action} {excluded_scope_variants} auxiliary scope-variant row(s) were excluded from gate math."
-            )
+            recommended_action = f"{recommended_action} {excluded_scope_variants} auxiliary scope-variant row(s) were excluded from gate math."
 
         return {
             "mode": "advisory",
@@ -597,7 +638,9 @@ class ComparisonEngine:
             if review_category == "aligned":
                 continue
 
-            category_label, requirement_label = self._extract_requirement_labels(comparison.item_id)
+            category_label, requirement_label = (
+                self._extract_requirement_labels(comparison.item_id)
+            )
             if review_category == "missing_item":
                 missing_item_by_category[category_label] += 1
                 missing_item_requirements[requirement_label] += 1
@@ -609,12 +652,24 @@ class ComparisonEngine:
                 text_difference_requirements[requirement_label] += 1
 
         return {
-            "missing_item_by_category": self._serialize_counter(missing_item_by_category),
-            "scope_variant_by_category": self._serialize_counter(scope_variant_by_category),
-            "text_difference_by_category": self._serialize_counter(text_difference_by_category),
-            "top_missing_requirements": self._serialize_counter(missing_item_requirements),
-            "top_scope_variant_requirements": self._serialize_counter(scope_variant_requirements),
-            "top_text_difference_requirements": self._serialize_counter(text_difference_requirements),
+            "missing_item_by_category": self._serialize_counter(
+                missing_item_by_category
+            ),
+            "scope_variant_by_category": self._serialize_counter(
+                scope_variant_by_category
+            ),
+            "text_difference_by_category": self._serialize_counter(
+                text_difference_by_category
+            ),
+            "top_missing_requirements": self._serialize_counter(
+                missing_item_requirements
+            ),
+            "top_scope_variant_requirements": self._serialize_counter(
+                scope_variant_requirements
+            ),
+            "top_text_difference_requirements": self._serialize_counter(
+                text_difference_requirements
+            ),
         }
 
     def _extract_requirement_labels(self, item_id: str) -> Tuple[str, str]:
@@ -626,7 +681,9 @@ class ComparisonEngine:
 
     def _is_text_review_scope_variant(self, item_id: str) -> bool:
         """Identify narrow qualitative-only auxiliary rows that should not drive gate failure."""
-        category_label, facility_label, subject_label = self._extract_requirement_triplet(item_id)
+        category_label, facility_label, subject_label = (
+            self._extract_requirement_triplet(item_id)
+        )
 
         if (category_label, subject_label) in {
             ("decommissioning", "financial assurance"),
@@ -639,7 +696,10 @@ class ComparisonEngine:
             return True
 
         if category_label == "noise limit":
-            return facility_label == "power plant" and subject_label == "plant operations"
+            return (
+                facility_label == "power plant"
+                and subject_label == "plant operations"
+            )
 
         if category_label == "other" and subject_label in {
             "emergency response/action plan",
@@ -656,18 +716,27 @@ class ComparisonEngine:
 
         return False
 
-    def _extract_requirement_triplet(self, item_id: str) -> Tuple[str, str, str]:
+    def _extract_requirement_triplet(
+        self, item_id: str
+    ) -> Tuple[str, str, str]:
         """Return normalized category/facility/subject labels from a readable requirement id."""
-        parts = [self._normalize_match_label(part) or "" for part in item_id.split("|")]
+        parts = [
+            self._normalize_match_label(part) or ""
+            for part in item_id.split("|")
+        ]
         while len(parts) < 3:
             parts.append("")
         return parts[0], parts[1], parts[2]
 
-    def _serialize_counter(self, counts: Counter[str], limit: int = 5) -> List[Dict[str, Any]]:
+    def _serialize_counter(
+        self, counts: Counter[str], limit: int = 5
+    ) -> List[Dict[str, Any]]:
         """Return deterministic top-N counter rows for reports and machine-readable output."""
         return [
             {"label": label, "count": count}
-            for label, count in sorted(counts.items(), key=lambda item: (-item[1], item[0]))[:limit]
+            for label, count in sorted(
+                counts.items(), key=lambda item: (-item[1], item[0])
+            )[:limit]
         ]
 
     # --- Helper Methods ---
@@ -680,7 +749,9 @@ class ComparisonEngine:
                 try:
                     with open(path) as f:
                         loaded = json.load(f)
-                        if isinstance(loaded, dict) and isinstance(loaded.get("payload"), dict):
+                        if isinstance(loaded, dict) and isinstance(
+                            loaded.get("payload"), dict
+                        ):
                             outputs[model] = loaded["payload"]
                         else:
                             outputs[model] = loaded
@@ -688,7 +759,9 @@ class ComparisonEngine:
                     logger.error(f"Failed to load {model}: {e}")
         return outputs
 
-    def _extract_item_arrays(self, outputs: Dict[str, dict]) -> Dict[str, List[dict]]:
+    def _extract_item_arrays(
+        self, outputs: Dict[str, dict]
+    ) -> Dict[str, List[dict]]:
         """Extract main data arrays."""
         arrays = {}
         for model, output in outputs.items():
@@ -706,10 +779,15 @@ class ComparisonEngine:
             return []
 
         if self.projection.get("type") != "nested_array_items":
-            logger.warning("Unsupported QA/QC projection type: %s", self.projection.get("type"))
+            logger.warning(
+                "Unsupported QA/QC projection type: %s",
+                self.projection.get("type"),
+            )
             return []
 
-        source_array_name = self.projection.get("source_array") or self.main_data_array
+        source_array_name = (
+            self.projection.get("source_array") or self.main_data_array
+        )
         nested_array_name = self.projection.get("nested_array")
         if not nested_array_name:
             return []
@@ -740,7 +818,9 @@ class ComparisonEngine:
 
         return projected
 
-    def _build_indexes(self, item_arrays: Dict[str, List[dict]]) -> Dict[str, Dict[Tuple, dict]]:
+    def _build_indexes(
+        self, item_arrays: Dict[str, List[dict]]
+    ) -> Dict[str, Dict[Tuple, dict]]:
         """Build item indexes for matching."""
         return {
             model: create_item_index(items, self.match_fields)
@@ -785,19 +865,28 @@ class ComparisonEngine:
             group_order: List[Tuple] = []
 
             for item in items:
-                item_key = tuple(get_nested_value(item, field_path) for field_path in self.match_fields)
+                item_key = tuple(
+                    get_nested_value(item, field_path)
+                    for field_path in self.match_fields
+                )
                 if item_key not in grouped_items:
                     grouped_items[item_key] = dict(item)
                     group_order.append(item_key)
                     continue
 
-                grouped_items[item_key] = self._merge_text_review_items(grouped_items[item_key], item)
+                grouped_items[item_key] = self._merge_text_review_items(
+                    grouped_items[item_key], item
+                )
 
-            merged_arrays[model] = [grouped_items[item_key] for item_key in group_order]
+            merged_arrays[model] = [
+                grouped_items[item_key] for item_key in group_order
+            ]
 
         return merged_arrays
 
-    def _merge_text_review_items(self, base_item: dict, extra_item: dict) -> dict:
+    def _merge_text_review_items(
+        self, base_item: dict, extra_item: dict
+    ) -> dict:
         """Merge duplicate-key qualitative rows by concatenating distinct compare-field text."""
         merged_item = dict(base_item)
         for field_path in sorted(self.compare_fields):
@@ -808,7 +897,9 @@ class ComparisonEngine:
             )
         return merged_item
 
-    def _merge_text_review_values(self, base_value: Any, extra_value: Any) -> Any:
+    def _merge_text_review_values(
+        self, base_value: Any, extra_value: Any
+    ) -> Any:
         """Concatenate distinct qualitative text fragments while preserving order."""
         fragments: List[str] = []
         seen_normalized: set[str] = set()
@@ -836,10 +927,14 @@ class ComparisonEngine:
             return indexes
 
         all_keys = self._collect_all_keys(indexes)
-        unmatched_groups: Dict[Tuple, List[Tuple[str, Tuple, dict]]] = defaultdict(list)
+        unmatched_groups: Dict[Tuple, List[Tuple[str, Tuple, dict]]] = (
+            defaultdict(list)
+        )
 
         for key in all_keys:
-            models_with_key = [model for model in models if key in indexes[model]]
+            models_with_key = [
+                model for model in models if key in indexes[model]
+            ]
             if len(models_with_key) != 1:
                 continue
 
@@ -883,13 +978,17 @@ class ComparisonEngine:
 
         keys_to_remove: List[Tuple[str, Tuple]] = []
         for key in unmatched_keys:
-            source_models = [model for model in models if key in indexes[model]]
+            source_models = [
+                model for model in models if key in indexes[model]
+            ]
             if len(source_models) != 1:
                 continue
 
             source_model = source_models[0]
             source_item = indexes[source_model][key]
-            if not self._has_text_review_subsumption(indexes, models, source_model, source_item):
+            if not self._has_text_review_subsumption(
+                indexes, models, source_model, source_item
+            ):
                 continue
 
             keys_to_remove.append((source_model, key))
@@ -908,7 +1007,9 @@ class ComparisonEngine:
     ) -> bool:
         """Return true when each opposing model has a unique broader same-category qualitative row."""
         source_category = self._normalize_match_label(
-            get_nested_value(source_item, self.match_fields[0]) if self.match_fields else None
+            get_nested_value(source_item, self.match_fields[0])
+            if self.match_fields
+            else None
         )
         source_text = self._build_text_review_raw_text(source_item)
         source_tokens = self._build_text_review_token_set(source_item)
@@ -923,11 +1024,15 @@ class ComparisonEngine:
             candidates = []
             for candidate in indexes[model].values():
                 candidate_category = self._normalize_match_label(
-                    get_nested_value(candidate, self.match_fields[0]) if self.match_fields else None
+                    get_nested_value(candidate, self.match_fields[0])
+                    if self.match_fields
+                    else None
                 )
                 if candidate_category != source_category:
                     continue
-                if not self._text_review_item_subsumes(candidate, source_item, source_text, source_tokens):
+                if not self._text_review_item_subsumes(
+                    candidate, source_item, source_text, source_tokens
+                ):
                     continue
                 candidates.append(candidate)
 
@@ -951,7 +1056,9 @@ class ComparisonEngine:
             return False
         if candidate_text == source_text:
             return False
-        if self._matches_text_review_hierarchical_rule(candidate, source_item, source_text, source_tokens):
+        if self._matches_text_review_hierarchical_rule(
+            candidate, source_item, source_text, source_tokens
+        ):
             return True
         if len(candidate_tokens) <= len(source_tokens):
             return False
@@ -968,16 +1075,24 @@ class ComparisonEngine:
     ) -> bool:
         """Handle safe qualitative parent-child coverage patterns."""
         candidate_category = self._normalize_match_label(
-            get_nested_value(candidate, self.match_fields[0]) if self.match_fields else None
+            get_nested_value(candidate, self.match_fields[0])
+            if self.match_fields
+            else None
         )
         candidate_facility = self._normalize_match_label(
-            get_nested_value(candidate, self.match_fields[1]) if len(self.match_fields) > 1 else None
+            get_nested_value(candidate, self.match_fields[1])
+            if len(self.match_fields) > 1
+            else None
         )
         candidate_subject = self._normalize_match_label(
-            get_nested_value(candidate, self.match_fields[2]) if len(self.match_fields) > 2 else None
+            get_nested_value(candidate, self.match_fields[2])
+            if len(self.match_fields) > 2
+            else None
         )
         source_subject = self._normalize_match_label(
-            get_nested_value(source_item, self.match_fields[2]) if len(self.match_fields) > 2 else None
+            get_nested_value(source_item, self.match_fields[2])
+            if len(self.match_fields) > 2
+            else None
         )
 
         procedural_prefixes = (
@@ -989,17 +1104,32 @@ class ComparisonEngine:
         )
         parking_markers = {"parking", "spaces", "roads"}
 
-        if candidate_category == "decommissioning" and candidate_facility == "all facilities":
-            if any(source_text.startswith(prefix) for prefix in procedural_prefixes):
+        if (
+            candidate_category == "decommissioning"
+            and candidate_facility == "all facilities"
+        ):
+            if any(
+                source_text.startswith(prefix)
+                for prefix in procedural_prefixes
+            ):
                 return True
 
-        if candidate_category == "other" and candidate_subject == "roads and parking":
-            if source_subject == "parking" and "parking" in source_tokens and parking_markers.intersection(source_tokens):
+        if (
+            candidate_category == "other"
+            and candidate_subject == "roads and parking"
+        ):
+            if (
+                source_subject == "parking"
+                and "parking" in source_tokens
+                and parking_markers.intersection(source_tokens)
+            ):
                 return True
 
         return False
 
-    def _build_text_review_signature(self, item: Optional[dict]) -> Optional[str]:
+    def _build_text_review_signature(
+        self, item: Optional[dict]
+    ) -> Optional[str]:
         """Build a normalized text signature for qualitative fallback matching."""
         if not isinstance(item, dict):
             return None
@@ -1022,7 +1152,9 @@ class ComparisonEngine:
             return None
         return "||".join(signature_parts)
 
-    def _build_text_review_raw_text(self, item: Optional[dict]) -> Optional[str]:
+    def _build_text_review_raw_text(
+        self, item: Optional[dict]
+    ) -> Optional[str]:
         """Build a normalized joined text string for qualitative overlap checks."""
         if not isinstance(item, dict):
             return None
@@ -1045,7 +1177,9 @@ class ComparisonEngine:
             return set()
         return extract_key_tokens(raw_text)
 
-    def _build_text_review_dedupe_signature(self, item: Optional[dict]) -> Optional[str]:
+    def _build_text_review_dedupe_signature(
+        self, item: Optional[dict]
+    ) -> Optional[str]:
         """Build a per-model duplicate signature for qualitative comparisons."""
         text_signature = self._build_text_review_signature(item)
         if text_signature is None:
@@ -1055,7 +1189,9 @@ class ComparisonEngine:
             return text_signature
 
         category_value = get_nested_value(item, self.match_fields[0])
-        normalized_category = normalize_for_matching(category_value) if category_value else None
+        normalized_category = (
+            normalize_for_matching(category_value) if category_value else None
+        )
         if not normalized_category:
             return text_signature
 
@@ -1077,14 +1213,21 @@ class ComparisonEngine:
             return normalized or None
         return str(value).strip().lower() or None
 
-    def _format_item_id(self, item_key: Tuple, items: Dict[str, Optional[dict]]) -> str:
+    def _format_item_id(
+        self, item_key: Tuple, items: Dict[str, Optional[dict]]
+    ) -> str:
         """Build a readable item identifier, including fallback text-review matches."""
         if item_key and item_key[0] == "__text_review__":
             for item in items.values():
                 if not item:
                     continue
-                match_values = [get_nested_value(item, field_path) for field_path in self.match_fields]
-                return " | ".join(str(value) if value else "N/A" for value in match_values)
+                match_values = [
+                    get_nested_value(item, field_path)
+                    for field_path in self.match_fields
+                ]
+                return " | ".join(
+                    str(value) if value else "N/A" for value in match_values
+                )
             return "text review match"
 
         return " | ".join(str(v) if v else "N/A" for v in item_key)
@@ -1110,30 +1253,28 @@ class ComparisonEngine:
     # --- Phase 8: Potential Duplicate Detection ---
 
     def _detect_potential_duplicates(
-        self,
-        indexes: Dict[str, Dict[Tuple, dict]],
-        models: List[str]
+        self, indexes: Dict[str, Dict[Tuple, dict]], models: List[str]
     ) -> List[PotentialDuplicate]:
         """
         Detect items that might be the same data with different keys.
-        
+
         Finds ONLY items (items unique to one model) that have the same
         (value, unit) combination as ONLY items from other models.
-        
+
         Example: gpt-5 has time_limit.reclamation_period=60days
                  gpt-4.1 has time_limit.drilling_operations=60days
         These might be the same source data, categorized differently.
-        
+
         Args:
             indexes: Dict mapping model -> {key_tuple: item_dict}
             models: List of model names
-            
+
         Returns:
             List of PotentialDuplicate instances
         """
         # First, find all keys and which models have them
         all_keys = self._collect_all_keys(indexes)
-        
+
         # Identify ONLY items (present in exactly one model)
         only_items: Dict[str, List[Tuple[Tuple, dict]]] = defaultdict(list)
         for key in all_keys:
@@ -1142,17 +1283,19 @@ class ComparisonEngine:
                 model = models_with_key[0]
                 item = indexes[model][key]
                 only_items[model].append((key, item))
-        
+
         # Group ONLY items by (value, unit)
-        value_groups: Dict[Tuple, List[Tuple[str, Tuple, dict]]] = defaultdict(list)
+        value_groups: Dict[Tuple, List[Tuple[str, Tuple, dict]]] = defaultdict(
+            list
+        )
         for model, items in only_items.items():
             for key, item in items:
-                value = item.get('value')
-                unit = item.get('unit', '')
+                value = item.get("value")
+                unit = item.get("unit", "")
                 if value is not None:
                     group_key = (value, unit)
                     value_groups[group_key].append((model, key, item))
-        
+
         # Find groups with items from different models
         duplicates = []
         for (value, unit), group in value_groups.items():
@@ -1160,40 +1303,42 @@ class ComparisonEngine:
             if len(models_in_group) > 1:
                 # Same value/unit from different models with different keys
                 items_list = [(model, item) for model, _, item in group]
-                duplicates.append(PotentialDuplicate(
-                    value=value,
-                    unit=unit or "N/A",
-                    items=items_list,
-                    reason="Same value extracted with different requirement_type"
-                ))
-        
+                duplicates.append(
+                    PotentialDuplicate(
+                        value=value,
+                        unit=unit or "N/A",
+                        items=items_list,
+                        reason="Same value extracted with different requirement_type",
+                    )
+                )
+
         if duplicates:
             logger.info(f"Found {len(duplicates)} potential duplicate(s)")
-        
+
         return duplicates
 
     # --- Phase 8: Completeness Calculation ---
 
     def _calculate_completeness(
-        self,
-        item_arrays: Dict[str, List[dict]],
-        models: List[str]
+        self, item_arrays: Dict[str, List[dict]], models: List[str]
     ) -> Dict[str, CompletenessResult]:
         """
         Calculate completeness metrics for each model.
-        
+
         Compares extracted items against expected requirements from schema.
-        
+
         Args:
             item_arrays: Dict mapping model -> list of extracted items
             models: List of model names
-            
+
         Returns:
             Dict mapping model -> CompletenessResult
         """
-        expected_requirements = self.schema_metadata.get_expected_requirements()
+        expected_requirements = (
+            self.schema_metadata.get_expected_requirements()
+        )
         expected_total = len(expected_requirements)
-        
+
         if not expected_requirements:
             # No expected requirements configured - return basic stats
             return {
@@ -1203,11 +1348,11 @@ class ComparisonEngine:
                     expected_found=0,
                     expected_total=0,
                     completeness_score=1.0,  # No requirements = 100% complete
-                    missing_expected=[]
+                    missing_expected=[],
                 )
                 for model, items in item_arrays.items()
             }
-        
+
         results = {}
         for model, items in item_arrays.items():
             # Create index of extracted items by canonical requirement_type key.
@@ -1216,7 +1361,7 @@ class ComparisonEngine:
                 key = item.get(self.match_fields[0])
                 if key:
                     extracted_keys.add(key)
-            
+
             # Check which expected requirements were found
             # expected_requirements is now a list of strings like ["setback__property_line_ft", ...]
             found_count = 0
@@ -1226,21 +1371,23 @@ class ComparisonEngine:
                     found_count += 1
                 else:
                     missing.append(expected)
-            
-            completeness_score = found_count / expected_total if expected_total > 0 else 1.0
-            
+
+            completeness_score = (
+                found_count / expected_total if expected_total > 0 else 1.0
+            )
+
             results[model] = CompletenessResult(
                 model=model,
                 items_extracted=len(items),
                 expected_found=found_count,
                 expected_total=expected_total,
                 completeness_score=completeness_score,
-                missing_expected=missing
+                missing_expected=missing,
             )
-            
+
             logger.debug(
                 f"{model}: {found_count}/{expected_total} expected items found "
                 f"({completeness_score:.1%} completeness)"
             )
-        
+
         return results

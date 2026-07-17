@@ -119,6 +119,9 @@ class AcquisitionResult:
     documents_dir: Path
     dry_run: bool
     download_index_path: Path | None = None
+    review_index_path: Path | None = None
+    curated_dir: Path | None = None
+    curated_count: int = 0
 
 
 class _RequestRateLimiter:
@@ -235,28 +238,24 @@ class AcquisitionEngine:
         request: AcquisitionRequest,
         run_id: str,
     ) -> tuple[Path, Path]:
+        # Everything for a run lives under one self-contained directory:
+        #   output/acquisition/<domain>/runs/<run_id>/
+        #     manifest.json, download_index.csv, review.csv
+        #     documents/   (all downloads)
+        #     curated/     (final selected docs)
+        run_dir = (
+            Path("output") / "acquisition" / request.domain / "runs" / run_id
+        )
+
         if request.output_documents is not None:
             documents_dir = request.output_documents
         else:
-            documents_dir = (
-                Path("documents")
-                / request.domain
-                / "acquired"
-                / "runs"
-                / run_id
-            )
+            documents_dir = run_dir / "documents"
 
         if request.output_manifest is not None:
             manifest_path = request.output_manifest
         else:
-            manifest_path = (
-                Path("output")
-                / "acquisition"
-                / request.domain
-                / "runs"
-                / run_id
-                / "manifest.json"
-            )
+            manifest_path = run_dir / "manifest.json"
         return documents_dir, manifest_path
 
     @staticmethod
@@ -2422,6 +2421,10 @@ class AcquisitionEngine:
             "bytes",
             "relative_path",
             "path",
+            "review_selected",
+            "review_is_primary",
+            "review_relevance",
+            "review_doc_kind",
             "error",
             "target_metadata",
         ]
@@ -2452,6 +2455,10 @@ class AcquisitionEngine:
                         "bytes": record.get("bytes"),
                         "relative_path": record.get("relative_path"),
                         "path": record.get("path"),
+                        "review_selected": record.get("review_selected"),
+                        "review_is_primary": record.get("review_is_primary"),
+                        "review_relevance": record.get("review_relevance"),
+                        "review_doc_kind": record.get("review_doc_kind"),
                         "error": record.get("error"),
                         "target_metadata": (
                             json.dumps(raw_meta) if raw_meta else None
@@ -2459,6 +2466,164 @@ class AcquisitionEngine:
                     }
                 )
         return index_path
+
+    @staticmethod
+    def _write_review_index(
+        *,
+        request: AcquisitionRequest,
+        download_records: list[dict[str, object]],
+        run_dir: Path,
+    ) -> Path:
+        """Write the human-editable review ledger (``review.csv``).
+
+        One row per downloaded file with the LLM's verdict and two blank
+        columns — ``human_decision`` (``keep``/``reject``) and ``human_notes`` —
+        for a person to override the automated curation. ``curate`` re-reads this
+        file to rebuild ``curated/``. Rows are ordered so each target's most
+        relevant candidates sort to the top for quick scanning.
+        """
+        review_path = run_dir / "review.csv"
+        fieldnames = [
+            "target",
+            "partition",
+            "state",
+            "jurisdiction",
+            "doc_kind",
+            "relevance",
+            "llm_is_primary",
+            "llm_selected",
+            "human_decision",
+            "human_notes",
+            "llm_reason",
+            "relative_path",
+            "path",
+        ]
+        rows = [
+            r
+            for r in download_records
+            if r.get("status") == "downloaded" and r.get("path")
+        ]
+        rows.sort(
+            key=lambda r: (
+                str(r.get("target_label") or ""),
+                -float(r.get("review_relevance") or 0.0),
+            )
+        )
+        with review_path.open("w", newline="", encoding="utf-8") as handle:
+            writer = csv.DictWriter(handle, fieldnames=fieldnames)
+            writer.writeheader()
+            for record in rows:
+                rel = record.get("relative_path") or ""
+                partition = (
+                    str(rel).rsplit("/", 1)[0] if "/" in str(rel) else ""
+                )
+                writer.writerow(
+                    {
+                        "target": record.get("target_label"),
+                        "partition": partition,
+                        "state": record.get("source_state"),
+                        "jurisdiction": record.get("source_jurisdiction"),
+                        "doc_kind": record.get("review_doc_kind"),
+                        "relevance": record.get("review_relevance"),
+                        "llm_is_primary": record.get("review_is_primary"),
+                        "llm_selected": record.get("review_selected"),
+                        "human_decision": "",
+                        "human_notes": "",
+                        "llm_reason": record.get("review_reason"),
+                        "relative_path": rel,
+                        "path": record.get("path"),
+                    }
+                )
+        return review_path
+
+    @staticmethod
+    def _materialize_curated(
+        *,
+        documents_dir: Path,
+        download_records: list[dict[str, object]],
+    ) -> tuple[Path, int]:
+        """Populate ``curated/`` with the final-selected documents.
+
+        Mirrors each selected file's partition layout under a sibling
+        ``curated/`` directory using hardlinks (falling back to copies across
+        filesystems), so downstream ``process`` can consume only the curated set
+        without duplicating storage. Returns ``(curated_dir, count)``.
+
+        Selection rule: when LLM review ran (any record carries
+        ``review_selected``), curate only the selected primaries. When no review
+        was configured, curate every successfully-downloaded file — so domains
+        without ``document_review`` still get a populated curated set.
+        """
+        import shutil
+
+        curated_dir = documents_dir.parent / "curated"
+        # Rebuild from scratch so the curated set always reflects the current
+        # decisions (no stale files from a previous run/curate pass).
+        if curated_dir.exists():
+            shutil.rmtree(curated_dir, ignore_errors=True)
+
+        review_ran = any(
+            "review_selected" in record for record in download_records
+        )
+
+        def _is_curated(record: dict[str, object]) -> bool:
+            if review_ran:
+                return bool(record.get("review_selected"))
+            return record.get("status") == "downloaded"
+
+        def _link(src_file: Path, dest_file: Path) -> None:
+            dest_file.parent.mkdir(parents=True, exist_ok=True)
+            if dest_file.exists():
+                dest_file.unlink()
+            try:
+                dest_file.hardlink_to(src_file)
+            except (OSError, AttributeError):
+                shutil.copy2(src_file, dest_file)
+
+        count = 0
+        for record in download_records:
+            if not _is_curated(record):
+                continue
+            src = Path(str(record.get("path") or ""))
+            rel = record.get("relative_path")
+            if not src.exists() or not rel:
+                continue
+            dest = curated_dir / str(rel)
+            try:
+                _link(src, dest)
+                # Carry over the cached extracted/OCR text so the extraction
+                # stage reading from curated/ reuses it instead of re-OCRing.
+                for suffix in (".txt", ".meta.json"):
+                    cache_src = src.parent / ".text" / f"{src.stem}{suffix}"
+                    if cache_src.exists():
+                        _link(cache_src, dest.parent / ".text" / cache_src.name)
+                count += 1
+            except OSError:
+                continue
+        return curated_dir, count
+
+    @staticmethod
+    def _refresh_latest_pointer(run_dir: Path) -> None:
+        """Point ``<domain>/latest`` at this run (symlink, txt fallback)."""
+        import os
+
+        domain_dir = run_dir.parent.parent  # .../<domain>/runs/<id> -> <domain>
+        link_path = domain_dir / "latest"
+        target = Path("runs") / run_dir.name  # relative for portability
+        try:
+            tmp = domain_dir / ".latest.tmp"
+            if tmp.exists() or tmp.is_symlink():
+                tmp.unlink()
+            os.symlink(target, tmp, target_is_directory=True)
+            os.replace(tmp, link_path)
+        except OSError:
+            # Filesystems without symlink support: leave a text pointer instead.
+            try:
+                (domain_dir / "latest.txt").write_text(
+                    run_dir.name + "\n", encoding="utf-8"
+                )
+            except OSError:
+                pass
 
     # ------------------------------------------------------------------
     # Checkpointing helpers
@@ -2724,6 +2889,9 @@ class AcquisitionEngine:
 
         download_records: list[dict[str, object]] = []
         download_index_path: Path | None = None
+        review_index_path: Path | None = None
+        curated_dir: Path | None = None
+        curated_count = 0
         download_notes: list[str] = []
         if not request.dry_run and candidates:
             candidates_for_download, gating_notes = (
@@ -2798,6 +2966,26 @@ class AcquisitionEngine:
                 manifest_path=manifest_path,
                 download_records=download_records,
             )
+            # Materialize the curated set and the human-editable review ledger,
+            # so a run yields one self-contained folder: documents/ (everything),
+            # curated/ (final picks), review.csv (adjust + re-curate).
+            if download_records:
+                curated_dir, curated_count = self._materialize_curated(
+                    documents_dir=documents_dir,
+                    download_records=download_records,
+                )
+                review_index_path = self._write_review_index(
+                    request=request,
+                    download_records=download_records,
+                    run_dir=manifest_path.parent,
+                )
+                download_notes.append(
+                    f"Curated {curated_count} document(s) → "
+                    f"{curated_dir.as_posix()}"
+                )
+                download_notes.append(
+                    f"Review ledger written: {review_index_path.as_posix()}"
+                )
             download_notes.append(
                 f"Download index written: {download_index_path.as_posix()}"
             )
@@ -2871,6 +3059,17 @@ class AcquisitionEngine:
                     if download_index_path is not None
                     else None
                 ),
+                "review_index_csv": (
+                    review_index_path.as_posix()
+                    if review_index_path is not None
+                    else None
+                ),
+                "curated_dir": (
+                    curated_dir.as_posix()
+                    if curated_dir is not None
+                    else None
+                ),
+                "curated_count": curated_count,
             },
             candidates=candidates,
             downloads=download_records,
@@ -2887,10 +3086,24 @@ class AcquisitionEngine:
             encoding="utf-8",
         )
 
+        # Point <domain>/latest at this run so downstream steps and humans can
+        # address "the current run" without knowing the timestamped run_id. Skip
+        # runs that produced no downloads (e.g. everything checkpoint-skipped),
+        # so `latest` keeps pointing at the last run that actually has documents.
+        if (
+            not request.dry_run
+            and request.output_manifest is None
+            and download_records
+        ):
+            self._refresh_latest_pointer(manifest_path.parent)
+
         return AcquisitionResult(
             run_id=run_id,
             manifest_path=manifest_path,
             documents_dir=documents_dir,
             dry_run=request.dry_run,
             download_index_path=download_index_path,
+            review_index_path=review_index_path,
+            curated_dir=curated_dir,
+            curated_count=curated_count,
         )

@@ -4,7 +4,7 @@ from .pdf_utils import extract_text_from_pdf
 from .document_utils import (
     extract_text_from_document,
     is_supported_document,
-    SUPPORTED_EXTENSIONS
+    SUPPORTED_EXTENSIONS,
 )
 from .document_extractor import DocumentExtractor, ExtractionResult
 from .llm_client import LLMClient

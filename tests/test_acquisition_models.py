@@ -90,7 +90,14 @@ def test_engine_run_uses_deterministic_default_paths_and_lineage():
     payload = json.loads(result.manifest_path.read_text(encoding="utf-8"))
 
     assert re.match(r"^acq-geothermal-ordinances-\d{8}T\d{6}Z-[0-9a-f]{8}$", result.run_id)
-    assert result.documents_dir.as_posix().endswith(f"/runs/{result.run_id}")
+    # Each run is one self-contained folder: documents/ lives under the run dir.
+    assert result.documents_dir.as_posix().endswith(
+        f"/runs/{result.run_id}/documents"
+    )
+    assert (
+        result.manifest_path.parent.as_posix()
+        == result.documents_dir.parent.as_posix()
+    )
     assert payload["lineage"]["run_id"] == result.run_id
     assert payload["lineage"]["documents_dir"] == result.documents_dir.as_posix()
     assert payload["lineage"]["manifest_path"] == result.manifest_path.as_posix()

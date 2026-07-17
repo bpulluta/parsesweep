@@ -16,6 +16,7 @@ from streamline_extract.cli.commands import (
     _run_qa_qc_extraction,
     _resolve_consolidation_output_formats,
     _resolve_runtime_artifact,
+    _resolve_schema_ref,
     _should_fail_on_suspicious,
 )
 from streamline_extract.cli.main import cli
@@ -35,6 +36,31 @@ def _write_file(path: Path, content: str) -> None:
 def _write_json(path: Path, content: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(content, indent=2), encoding='utf-8')
+
+
+def test_resolve_schema_ref_passes_json_through(tmp_path) -> None:
+    schema = tmp_path / 'schema.json'
+    _write_json(schema, {'type': 'object'})
+    assert _resolve_schema_ref(schema) == schema
+
+
+def test_resolve_schema_ref_unwraps_domain_pack(tmp_path, monkeypatch) -> None:
+    schema = tmp_path / 'schemas' / 'my_schema.json'
+    _write_json(schema, {'type': 'object'})
+    pack = tmp_path / 'schemas' / 'domain_packs' / 'x' / 'pack.yaml'
+    _write_file(pack, 'name: x\nschema_path: schemas/my_schema.json\n')
+    # schema_path in a pack is repo-root-relative; resolve from cwd.
+    monkeypatch.chdir(tmp_path)
+    assert _resolve_schema_ref(pack) == (tmp_path / 'schemas' / 'my_schema.json')
+
+
+def test_resolve_schema_ref_unwraps_relative_to_pack_dir(tmp_path) -> None:
+    pack_dir = tmp_path / 'domain_packs' / 'x'
+    schema = pack_dir / 'nested.json'
+    _write_json(schema, {'type': 'object'})
+    pack = pack_dir / 'pack.yaml'
+    _write_file(pack, 'name: x\nschema_path: nested.json\n')
+    assert _resolve_schema_ref(pack) == schema
 
 
 def test_resolve_runtime_artifact_returns_none_without_pack_or_profile_dirs(tmp_path) -> None:

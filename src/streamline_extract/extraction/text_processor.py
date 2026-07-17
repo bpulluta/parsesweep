@@ -46,7 +46,7 @@ class TextProcessor:
     ) -> Dict[str, Any]:
         """
         Ensure all schema fields are present in extracted data, filling missing fields with null.
-        
+
         This prevents data loss when OpenAI omits optional fields.
         Works generically with any schema structure.
 
@@ -71,7 +71,9 @@ class TextProcessor:
 
             elif prop_schema.get("type") == "array" and prop_name in data:
                 # This is an array field (e.g., requirements, items, rates)
-                item_schema = prop_schema.get("items", {}).get("properties", {})
+                item_schema = prop_schema.get("items", {}).get(
+                    "properties", {}
+                )
                 for item in data.get(prop_name, []):
                     if isinstance(item, dict):
                         for field in item_schema.keys():
@@ -147,11 +149,6 @@ class TextProcessor:
                 if not isinstance(item, dict):
                     continue
 
-                item_id = item.get(
-                    "referenceNumber",
-                    item.get("id", item.get("feature", f"item_{idx}")),
-                )
-
                 for field, value in item.items():
                     if isinstance(value, str):
                         if " or " in value.lower() or " / " in value:
@@ -214,7 +211,10 @@ class TextProcessor:
                             for v in item.values()
                             if v not in [None, "", [], {}]
                         )
-                        if item_fields > 0 and populated_fields / item_fields >= 0.5:
+                        if (
+                            item_fields > 0
+                            and populated_fields / item_fields >= 0.5
+                        ):
                             complete_items += 1
 
         # Score item completeness

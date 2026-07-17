@@ -1,11 +1,13 @@
-"""Tests for the LLM document reviewer (grading orchestration + promotion).
+"""Tests for the LLM document reviewer (grading orchestration + selection).
 
-The live LLM call is stubbed; these verify per-target ranking, promotion into
-a ``reviewed/`` subfolder (move mode), flag-only mode, and graceful skips.
+The live LLM call is stubbed; these verify per-target ranking, in-place
+selection (files are NOT moved — the engine materializes curated/ separately),
+per-file ``.review`` sidecars, and graceful skips.
 """
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from streamline_extract.acquisition.document_reviewer import DocumentReviewer
@@ -29,8 +31,8 @@ def _stub_grades(reviewer: DocumentReviewer, grades: dict[str, dict]) -> None:
     reviewer._grade = lambda p: grades.get(Path(p).name)  # type: ignore[method-assign]
 
 
-class TestReviewPromotion:
-    def test_primary_moved_to_reviewed_subfolder(self, tmp_path: Path):
+class TestReviewSelection:
+    def test_primary_selected_in_place_with_sidecar(self, tmp_path: Path):
         ordinance = _record(tmp_path, "ordinance.pdf", "County A")
         deck = _record(tmp_path, "slides.pdf", "County A")
         reviewer = DocumentReviewer(
@@ -56,9 +58,18 @@ class TestReviewPromotion:
         downloads, notes = reviewer.review([ordinance, deck], [])
 
         assert ordinance["review_selected"] is True
-        assert "reviewed/ordinance.pdf" in ordinance["path"]
-        assert (tmp_path / "reviewed" / "ordinance.pdf").exists()
-        # non-primary stays put
+        # Files are NOT moved — they stay in place; curated/ is built by engine.
+        assert ordinance["path"] == (tmp_path / "ordinance.pdf").as_posix()
+        assert (tmp_path / "ordinance.pdf").exists()
+        assert "reviewed" not in ordinance["path"]
+        # A per-file review sidecar captures the verdict for human review.
+        sidecar = tmp_path / ".review" / "ordinance.json"
+        assert sidecar.exists()
+        payload = json.loads(sidecar.read_text(encoding="utf-8"))
+        assert payload["llm"]["is_primary"] is True
+        assert payload["llm"]["selected"] is True
+        assert payload["human"]["decision"] is None
+        # non-primary stays put and is not selected
         assert deck.get("review_selected") is False
         assert (tmp_path / "slides.pdf").exists()
         assert any("Document review" in n for n in notes)

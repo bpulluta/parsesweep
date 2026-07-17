@@ -10,13 +10,13 @@ Version: 2.0.0 (New implementation replacing old LangExtract-based QA/QC)
 
 Usage:
     from streamline_extract.qa_qc import ModelDetector, run_multi_model_extraction
-    
+
     # Get models for QA/QC (auto-detects from environment or uses defaults)
     models = ModelDetector.get_qa_models()
-    
+
     # Get current provider
     provider = ModelDetector.get_provider()
-    
+
     # Run multi-model extraction (Phase 2)
     results = run_multi_model_extraction(
         doc_text="...",
@@ -37,8 +37,15 @@ Submodules:
 """
 
 from .model_detector import ModelDetector
-from .multi_model_extractor import run_multi_model_extraction, ModelExtractionResult
-from .comparison_engine import ComparisonEngine, ComparisonResult, FieldComparison
+from .multi_model_extractor import (
+    run_multi_model_extraction,
+    ModelExtractionResult,
+)
+from .comparison_engine import (
+    ComparisonEngine,
+    ComparisonResult,
+    FieldComparison,
+)
 from .report_generator import ReportGenerator
 from .utils import find_companion_qaqc_schema
 

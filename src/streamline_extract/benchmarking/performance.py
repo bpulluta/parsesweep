@@ -38,7 +38,9 @@ def _find_manifest_paths(path: Path) -> List[Path]:
     return sorted(path.rglob("*.manifest.json"))
 
 
-def _resolve_record_path(record_ref: str, manifest_path: Path, repo_root: Path) -> Path:
+def _resolve_record_path(
+    record_ref: str, manifest_path: Path, repo_root: Path
+) -> Path:
     record_path = Path(record_ref)
     if record_path.is_absolute():
         return record_path
@@ -51,7 +53,9 @@ def _resolve_record_path(record_ref: str, manifest_path: Path, repo_root: Path) 
     return repo_root / record_path
 
 
-def _resolve_expected_record_path(actual_record_path: Path, benchmark_path: Path, expected_dir: Path) -> Path:
+def _resolve_expected_record_path(
+    actual_record_path: Path, benchmark_path: Path, expected_dir: Path
+) -> Path:
     try:
         relative_path = actual_record_path.relative_to(benchmark_path)
         candidate = expected_dir / relative_path
@@ -79,13 +83,17 @@ def _find_qaqc_summary_paths(path: Path) -> List[Path]:
     return sorted(path.rglob("comparison_summary.json"))
 
 
-def _load_qaqc_qualitative_gate(summary_path: Path) -> Optional[Dict[str, Any]]:
+def _load_qaqc_qualitative_gate(
+    summary_path: Path,
+) -> Optional[Dict[str, Any]]:
     summary = _load_json(summary_path)
     gate = summary.get("summary", {}).get("qualitative_advisory_gate")
     return gate if isinstance(gate, dict) else None
 
 
-def _resolve_expected_qaqc_report_path(actual_report_path: Path, benchmark_path: Path, expected_dir: Path) -> Path:
+def _resolve_expected_qaqc_report_path(
+    actual_report_path: Path, benchmark_path: Path, expected_dir: Path
+) -> Path:
     try:
         relative_path = actual_report_path.relative_to(benchmark_path)
         candidate = expected_dir / relative_path
@@ -94,7 +102,9 @@ def _resolve_expected_qaqc_report_path(actual_report_path: Path, benchmark_path:
     except ValueError:
         pass
 
-    fallback = expected_dir / actual_report_path.parent.name / actual_report_path.name
+    fallback = (
+        expected_dir / actual_report_path.parent.name / actual_report_path.name
+    )
     if fallback.exists():
         return fallback
 
@@ -104,12 +114,18 @@ def _resolve_expected_qaqc_report_path(actual_report_path: Path, benchmark_path:
 def _load_qaqc_status_index(report_path: Path) -> Dict[str, str]:
     with report_path.open("r", encoding="utf-8", newline="") as handle:
         reader = csv.DictReader(handle)
-        if reader.fieldnames is None or "Requirement" not in reader.fieldnames or "Status" not in reader.fieldnames:
+        if (
+            reader.fieldnames is None
+            or "Requirement" not in reader.fieldnames
+            or "Status" not in reader.fieldnames
+        ):
             raise ValueError(
                 f"QA/QC comparison report missing required columns Requirement/Status: {report_path}"
             )
         return {
-            (row.get("Requirement") or "").strip(): (row.get("Status") or "").strip()
+            (row.get("Requirement") or "").strip(): (
+                row.get("Status") or ""
+            ).strip()
             for row in reader
             if (row.get("Requirement") or "").strip()
         }
@@ -118,10 +134,16 @@ def _load_qaqc_status_index(report_path: Path) -> Dict[str, str]:
 def _find_consolidated_csv_paths(path: Path) -> List[Path]:
     if path.is_file():
         return [path] if path.suffix.lower() == ".csv" else []
-    return sorted(candidate for candidate in path.rglob("*.csv") if candidate.name != "comparison_report.csv")
+    return sorted(
+        candidate
+        for candidate in path.rglob("*.csv")
+        if candidate.name != "comparison_report.csv"
+    )
 
 
-def _resolve_expected_consolidated_path(actual_csv_path: Path, benchmark_path: Path, expected_dir: Path) -> Path:
+def _resolve_expected_consolidated_path(
+    actual_csv_path: Path, benchmark_path: Path, expected_dir: Path
+) -> Path:
     try:
         relative_path = actual_csv_path.relative_to(benchmark_path)
         candidate = expected_dir / relative_path
@@ -165,7 +187,11 @@ def _build_consolidated_row_signatures(
         )
 
     normalized_df = normalized_df.fillna("")
-    normalized_df = normalized_df.sort_values(by=mapped_key_columns + [col for col in compare_columns if col not in mapped_key_columns], kind="stable")
+    normalized_df = normalized_df.sort_values(
+        by=mapped_key_columns
+        + [col for col in compare_columns if col not in mapped_key_columns],
+        kind="stable",
+    )
 
     signatures = []
     for _, row in normalized_df.iterrows():
@@ -188,7 +214,9 @@ def _extract_record_payload(record: Dict[str, Any]) -> Dict[str, Any]:
     return record
 
 
-def _resolve_schema_path(record: Dict[str, Any], repo_root: Path) -> Optional[Path]:
+def _resolve_schema_path(
+    record: Dict[str, Any], repo_root: Path
+) -> Optional[Path]:
     schema_id = record.get("lineage", {}).get("schema_id")
     if not schema_id:
         return None
@@ -246,15 +274,21 @@ def collect_benchmark_metrics(
         started_at = _parse_timestamp(timing.get("started_at"))
         finished_at = _parse_timestamp(timing.get("finished_at"))
         if started_at and finished_at:
-            total_run_duration += max((finished_at - started_at).total_seconds(), 0.0)
+            total_run_duration += max(
+                (finished_at - started_at).total_seconds(), 0.0
+            )
 
         total_documents += int(status.get("total_processed", 0) or 0)
         total_successful += int(status.get("successful", 0) or 0)
         total_failed += int(status.get("failed", 0) or 0)
         total_errors += int(errors.get("total_errors", 0) or 0)
 
-        for category, count in sorted((errors.get("by_category") or {}).items()):
-            error_categories[category] = error_categories.get(category, 0) + int(count)
+        for category, count in sorted(
+            (errors.get("by_category") or {}).items()
+        ):
+            error_categories[category] = error_categories.get(
+                category, 0
+            ) + int(count)
 
         for record_ref in manifest.get("outputs", {}).get("records", []):
             record_path = _resolve_record_path(record_ref, manifest_path, root)
@@ -273,20 +307,28 @@ def collect_benchmark_metrics(
             if isinstance(cost, (int, float)):
                 record_costs.append(float(cost))
 
-            errors_list = quality.get("errors") if isinstance(quality.get("errors"), list) else []
+            errors_list = (
+                quality.get("errors")
+                if isinstance(quality.get("errors"), list)
+                else []
+            )
             record_error_counts.append(len(errors_list))
 
             if extraction_baseline_dir is None:
                 continue
 
-            expected_record_path = _resolve_expected_record_path(record_path, benchmark_root, extraction_baseline_dir)
+            expected_record_path = _resolve_expected_record_path(
+                record_path, benchmark_root, extraction_baseline_dir
+            )
             if not expected_record_path.exists():
                 raise FileNotFoundError(
                     f"Expected extraction baseline record not found for {record_path.name}: {expected_record_path}"
                 )
 
             expected_record = _load_json(expected_record_path)
-            schema_path = _resolve_schema_path(record, root) or _resolve_schema_path(expected_record, root)
+            schema_path = _resolve_schema_path(
+                record, root
+            ) or _resolve_schema_path(expected_record, root)
             if schema_path is None or not schema_path.exists():
                 raise FileNotFoundError(
                     f"Schema path required for extraction parity scoring was not found for {record_path.name}: {schema_path}"
@@ -309,16 +351,22 @@ def collect_benchmark_metrics(
 
             total_actual_items += len(actual_index)
             total_expected_items += len(expected_index)
-            total_correct_items += len(set(actual_index).intersection(expected_index))
+            total_correct_items += len(
+                set(actual_index).intersection(expected_index)
+            )
             scored_records += 1
 
     if qaqc_baseline_dir is not None:
         report_paths = _find_qaqc_report_paths(path)
         if not report_paths:
-            raise FileNotFoundError(f"No QA/QC comparison_report.csv files found under {path}")
+            raise FileNotFoundError(
+                f"No QA/QC comparison_report.csv files found under {path}"
+            )
 
         for report_path in report_paths:
-            expected_report_path = _resolve_expected_qaqc_report_path(report_path, benchmark_root, qaqc_baseline_dir)
+            expected_report_path = _resolve_expected_qaqc_report_path(
+                report_path, benchmark_root, qaqc_baseline_dir
+            )
             if not expected_report_path.exists():
                 raise FileNotFoundError(
                     f"Expected QA/QC baseline report not found for {report_path.parent.name}: {expected_report_path}"
@@ -341,23 +389,38 @@ def collect_benchmark_metrics(
         if not qualitative_gate:
             continue
 
-        gate_status = str(qualitative_gate.get("status") or "not_applicable").strip().lower()
-        qualitative_gate_counts[gate_status] = qualitative_gate_counts.get(gate_status, 0) + 1
+        gate_status = (
+            str(qualitative_gate.get("status") or "not_applicable")
+            .strip()
+            .lower()
+        )
+        qualitative_gate_counts[gate_status] = (
+            qualitative_gate_counts.get(gate_status, 0) + 1
+        )
         scored_qaqc_qualitative_reports += 1
 
     if consolidation_baseline_dir is not None:
         if consolidation_schema_path is None:
-            raise ValueError("consolidation_schema_path is required when consolidation_baseline_dir is provided")
+            raise ValueError(
+                "consolidation_schema_path is required when consolidation_baseline_dir is provided"
+            )
 
         schema_metadata = SchemaMetadata(consolidation_schema_path)
-        ignore_fields = {field.lower() for field in schema_metadata.get_deduplication_ignore_fields()}
+        ignore_fields = {
+            field.lower()
+            for field in schema_metadata.get_deduplication_ignore_fields()
+        }
 
         csv_paths = _find_consolidated_csv_paths(path)
         if not csv_paths:
-            raise FileNotFoundError(f"No consolidated CSV files found under {path}")
+            raise FileNotFoundError(
+                f"No consolidated CSV files found under {path}"
+            )
 
         for csv_path in csv_paths:
-            expected_csv_path = _resolve_expected_consolidated_path(csv_path, benchmark_root, consolidation_baseline_dir)
+            expected_csv_path = _resolve_expected_consolidated_path(
+                csv_path, benchmark_root, consolidation_baseline_dir
+            )
             if not expected_csv_path.exists():
                 raise FileNotFoundError(
                     f"Expected consolidated baseline CSV not found for {csv_path.name}: {expected_csv_path}"
@@ -367,8 +430,10 @@ def collect_benchmark_metrics(
             expected_df = pd.read_csv(expected_csv_path)
 
             common_columns = [
-                column for column in actual_df.columns
-                if column in expected_df.columns and column.lower() not in ignore_fields
+                column
+                for column in actual_df.columns
+                if column in expected_df.columns
+                and column.lower() not in ignore_fields
             ]
             if not common_columns:
                 raise ValueError(
@@ -399,34 +464,61 @@ def collect_benchmark_metrics(
             total_correct_rows += correct_rows
             scored_consolidated_files += 1
 
-    average_doc_duration = sum(record_durations) / len(record_durations) if record_durations else None
-    average_doc_cost = sum(record_costs) / len(record_costs) if record_costs else None
-    median_doc_duration = median(record_durations) if record_durations else None
+    average_doc_duration = (
+        sum(record_durations) / len(record_durations)
+        if record_durations
+        else None
+    )
+    average_doc_cost = (
+        sum(record_costs) / len(record_costs) if record_costs else None
+    )
+    median_doc_duration = (
+        median(record_durations) if record_durations else None
+    )
     median_doc_cost = median(record_costs) if record_costs else None
     max_doc_duration = max(record_durations) if record_durations else None
     throughput_docs_per_minute = None
     if total_run_duration > 0 and total_successful > 0:
-        throughput_docs_per_minute = total_successful / (total_run_duration / 60.0)
+        throughput_docs_per_minute = total_successful / (
+            total_run_duration / 60.0
+        )
 
     failure_rate = None
     if total_documents > 0:
         failure_rate = total_failed / total_documents
 
-    average_record_errors = sum(record_error_counts) / len(record_error_counts) if record_error_counts else 0.0
+    average_record_errors = (
+        sum(record_error_counts) / len(record_error_counts)
+        if record_error_counts
+        else 0.0
+    )
     extraction_parity = None
     if extraction_baseline_dir is not None:
-        extraction_parity = 0.0 if total_expected_items == 0 else (total_correct_items / total_expected_items) * 100.0
+        extraction_parity = (
+            0.0
+            if total_expected_items == 0
+            else (total_correct_items / total_expected_items) * 100.0
+        )
     qaqc_signal_quality = None
     if qaqc_baseline_dir is not None:
-        qaqc_signal_quality = 0.0 if total_expected_qaqc_items == 0 else (total_correct_qaqc_items / total_expected_qaqc_items) * 100.0
+        qaqc_signal_quality = (
+            0.0
+            if total_expected_qaqc_items == 0
+            else (total_correct_qaqc_items / total_expected_qaqc_items) * 100.0
+        )
     qaqc_qualitative_pass_rate = None
     if scored_qaqc_qualitative_reports > 0:
         qaqc_qualitative_pass_rate = (
-            qualitative_gate_counts.get("pass", 0) / scored_qaqc_qualitative_reports
+            qualitative_gate_counts.get("pass", 0)
+            / scored_qaqc_qualitative_reports
         ) * 100.0
     consolidation_correctness = None
     if consolidation_baseline_dir is not None:
-        consolidation_correctness = 0.0 if total_expected_rows == 0 else (total_correct_rows / total_expected_rows) * 100.0
+        consolidation_correctness = (
+            0.0
+            if total_expected_rows == 0
+            else (total_correct_rows / total_expected_rows) * 100.0
+        )
 
     return {
         "manifest_count": len(manifest_paths),
@@ -455,7 +547,9 @@ def collect_benchmark_metrics(
         "scored_qaqc_reports": scored_qaqc_reports,
         "qaqc_signal_quality": qaqc_signal_quality,
         "scored_qaqc_qualitative_reports": scored_qaqc_qualitative_reports,
-        "qaqc_qualitative_gate_counts": dict(sorted(qualitative_gate_counts.items())),
+        "qaqc_qualitative_gate_counts": dict(
+            sorted(qualitative_gate_counts.items())
+        ),
         "qaqc_qualitative_pass_rate": qaqc_qualitative_pass_rate,
         "correct_rows": total_correct_rows,
         "expected_rows": total_expected_rows,
@@ -481,7 +575,9 @@ def write_benchmark_snapshot(
         "metrics": metrics,
     }
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(snapshot, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    path.write_text(
+        json.dumps(snapshot, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
     return path
 
 
@@ -497,17 +593,41 @@ def compare_benchmark_to_baseline(
     """Compute rubric-aligned benchmark deltas against a baseline snapshot."""
     baseline_metrics = baseline_snapshot.get("metrics", {})
     current_median_duration = metrics.get("median_document_duration_seconds")
-    baseline_median_duration = baseline_metrics.get("median_document_duration_seconds")
+    baseline_median_duration = baseline_metrics.get(
+        "median_document_duration_seconds"
+    )
     current_median_cost = metrics.get("median_document_cost_usd")
     baseline_median_cost = baseline_metrics.get("median_document_cost_usd")
 
     throughput_delta = None
-    if isinstance(current_median_duration, (int, float)) and isinstance(baseline_median_duration, (int, float)) and baseline_median_duration > 0:
-        throughput_delta = round(((current_median_duration - baseline_median_duration) / baseline_median_duration) * 100.0, 6)
+    if (
+        isinstance(current_median_duration, (int, float))
+        and isinstance(baseline_median_duration, (int, float))
+        and baseline_median_duration > 0
+    ):
+        throughput_delta = round(
+            (
+                (current_median_duration - baseline_median_duration)
+                / baseline_median_duration
+            )
+            * 100.0,
+            6,
+        )
 
     cost_delta = None
-    if isinstance(current_median_cost, (int, float)) and isinstance(baseline_median_cost, (int, float)) and baseline_median_cost > 0:
-        cost_delta = round(((current_median_cost - baseline_median_cost) / baseline_median_cost) * 100.0, 6)
+    if (
+        isinstance(current_median_cost, (int, float))
+        and isinstance(baseline_median_cost, (int, float))
+        and baseline_median_cost > 0
+    ):
+        cost_delta = round(
+            (
+                (current_median_cost - baseline_median_cost)
+                / baseline_median_cost
+            )
+            * 100.0,
+            6,
+        )
 
     return {
         "baseline_label": baseline_snapshot.get("label"),
@@ -559,7 +679,8 @@ def evaluate_benchmark_gates(
         gates["min_qaqc_qualitative_pass_rate"] = {
             "threshold": min_qaqc_qualitative_pass_rate,
             "actual": actual,
-            "passed": actual is not None and actual >= min_qaqc_qualitative_pass_rate,
+            "passed": actual is not None
+            and actual >= min_qaqc_qualitative_pass_rate,
         }
 
     if min_consolidation_correctness is not None:
@@ -567,7 +688,8 @@ def evaluate_benchmark_gates(
         gates["min_consolidation_correctness"] = {
             "threshold": min_consolidation_correctness,
             "actual": actual,
-            "passed": actual is not None and actual >= min_consolidation_correctness,
+            "passed": actual is not None
+            and actual >= min_consolidation_correctness,
         }
 
     if max_failure_rate is not None:
@@ -583,7 +705,8 @@ def evaluate_benchmark_gates(
         gates["max_average_seconds_per_document"] = {
             "threshold": max_average_seconds_per_document,
             "actual": actual,
-            "passed": actual is not None and actual <= max_average_seconds_per_document,
+            "passed": actual is not None
+            and actual <= max_average_seconds_per_document,
         }
 
     if min_documents_per_minute is not None:
@@ -591,7 +714,8 @@ def evaluate_benchmark_gates(
         gates["min_documents_per_minute"] = {
             "threshold": min_documents_per_minute,
             "actual": actual,
-            "passed": actual is not None and actual >= min_documents_per_minute,
+            "passed": actual is not None
+            and actual >= min_documents_per_minute,
         }
 
     if max_total_errors is not None:
@@ -603,15 +727,24 @@ def evaluate_benchmark_gates(
         }
 
     if max_throughput_delta_percent is not None:
-        actual = None if baseline_comparison is None else baseline_comparison.get("throughput_delta_percent")
+        actual = (
+            None
+            if baseline_comparison is None
+            else baseline_comparison.get("throughput_delta_percent")
+        )
         gates["max_throughput_delta_percent"] = {
             "threshold": max_throughput_delta_percent,
             "actual": actual,
-            "passed": actual is not None and actual <= max_throughput_delta_percent,
+            "passed": actual is not None
+            and actual <= max_throughput_delta_percent,
         }
 
     if max_cost_delta_percent is not None:
-        actual = None if baseline_comparison is None else baseline_comparison.get("cost_delta_percent")
+        actual = (
+            None
+            if baseline_comparison is None
+            else baseline_comparison.get("cost_delta_percent")
+        )
         gates["max_cost_delta_percent"] = {
             "threshold": max_cost_delta_percent,
             "actual": actual,

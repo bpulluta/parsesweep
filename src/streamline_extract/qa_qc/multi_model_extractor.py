@@ -8,7 +8,7 @@ This module is part of Phase 2 of the QA/QC Multi-Model Implementation Plan.
 
 Usage:
     from streamline_extract.qa_qc.multi_model_extractor import run_multi_model_extraction
-    
+
     output_files = run_multi_model_extraction(
         doc_text="Full document text...",
         doc_name="austin_energy_tariff",
@@ -38,7 +38,11 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from .utils import sanitize_model_name
-from streamline_extract.utils.error_taxonomy import build_error_record, normalize_error_records, summarize_error_records
+from streamline_extract.utils.error_taxonomy import (
+    build_error_record,
+    normalize_error_records,
+    summarize_error_records,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -46,7 +50,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class ModelExtractionResult:
     """Result from a single model extraction."""
-    
+
     model: str
     success: bool
     output_path: Optional[Path]
@@ -93,23 +97,25 @@ def run_multi_model_extraction(
     """
     # Import here to avoid circular imports
     from streamline_extract.extraction import DocumentExtractor
-    
+
     # Create output directory for this document
     doc_output_dir = Path(output_dir) / "qa_qc" / doc_name
     doc_output_dir.mkdir(parents=True, exist_ok=True)
-    
+
     results: Dict[str, ModelExtractionResult] = {}
     total_start = time.time()
-    
-    logger.info(f"Starting multi-model extraction with {len(models)} models: {models}")
-    
+
+    logger.info(
+        f"Starting multi-model extraction with {len(models)} models: {models}"
+    )
+
     for model in models:
         model_start = time.time()
         safe_model_name = sanitize_model_name(model)
         output_path = doc_output_dir / f"{safe_model_name}.json"
-        
+
         logger.info(f"Running extraction with {model}...")
-        
+
         try:
             # Create a new extractor for this model
             extractor = DocumentExtractor(
@@ -120,18 +126,24 @@ def run_multi_model_extraction(
                 azure_endpoint=azure_endpoint,
                 azure_api_version=azure_api_version,
             )
-            
+
             # Run extraction
             result = extractor.extract(
                 text=doc_text,
                 schema=schema,
             )
 
-            extracted_at = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+            extracted_at = (
+                datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+            )
             schema_id = schema.get("$id") if isinstance(schema, dict) else None
             lineage = {
-                "artifact_id": (runtime_artifact or {}).get("artifact_id") or "artifact://runtime/unresolved",
-                "profile_id": ((runtime_artifact or {}).get("lineage") or {}).get("profile_id") or "default",
+                "artifact_id": (runtime_artifact or {}).get("artifact_id")
+                or "artifact://runtime/unresolved",
+                "profile_id": (
+                    (runtime_artifact or {}).get("lineage") or {}
+                ).get("profile_id")
+                or "default",
                 "run_id": run_id or f"run://{doc_name}",
                 "model": model,
                 "provider": provider,
@@ -154,7 +166,8 @@ def run_multi_model_extraction(
                     "overall_confidence": result.completeness_score,
                     "warnings": result.validation_notes or [],
                     "errors": normalize_error_records(
-                        getattr(result, "processing_errors", None) or getattr(result, "errors", None)
+                        getattr(result, "processing_errors", None)
+                        or getattr(result, "errors", None)
                     ),
                 },
                 "processing_metrics": {
@@ -164,13 +177,13 @@ def run_multi_model_extraction(
                     "output_tokens": None,
                 },
             }
-            
+
             # Save result to JSON file
             with open(output_path, "w") as f:
                 json.dump(output_data, f, indent=2)
-            
+
             processing_time = time.time() - model_start
-            
+
             results[model] = ModelExtractionResult(
                 model=model,
                 success=True,
@@ -179,12 +192,12 @@ def run_multi_model_extraction(
                 cost=result.cost,
                 processing_time=processing_time,
             )
-            
+
             logger.info(
                 f"✓ {model} completed: {output_path.name} "
                 f"(${result.cost:.4f}, {processing_time:.1f}s)"
             )
-            
+
         except Exception as e:
             processing_time = time.time() - model_start
             error_msg = str(e)
@@ -195,7 +208,7 @@ def run_multi_model_extraction(
                 model=model,
                 provider=provider,
             )
-            
+
             results[model] = ModelExtractionResult(
                 model=model,
                 success=False,
@@ -206,17 +219,19 @@ def run_multi_model_extraction(
                 error=error_msg,
                 error_details=error_details,
             )
-            
+
             logger.error(f"✗ {model} failed: {error_msg}")
-    
+
     # Calculate totals
     total_time = time.time() - total_start
     total_cost = sum(r.cost for r in results.values())
     successful = sum(1 for r in results.values() if r.success)
     error_summary = summarize_error_records(
-        r.error_details for r in results.values() if r.error_details is not None
+        r.error_details
+        for r in results.values()
+        if r.error_details is not None
     )
-    
+
     # Save metadata
     metadata = {
         "timestamp": datetime.now().isoformat(),
@@ -224,12 +239,18 @@ def run_multi_model_extraction(
         "models": models,
         "version": "2.0.0",
         "run_id": run_id,
-        "artifact_id": runtime_artifact.get("artifact_id") if runtime_artifact else None,
+        "artifact_id": runtime_artifact.get("artifact_id")
+        if runtime_artifact
+        else None,
         "lineage": {
             **runtime_artifact.get("lineage", {}),
             "run_id": run_id,
-        } if runtime_artifact else None,
-        "contract_versions": runtime_artifact.get("contract_versions") if runtime_artifact else None,
+        }
+        if runtime_artifact
+        else None,
+        "contract_versions": runtime_artifact.get("contract_versions")
+        if runtime_artifact
+        else None,
         "status": "completed" if successful == len(models) else "partial",
         "summary": {
             "total_models": len(models),
@@ -257,14 +278,14 @@ def run_multi_model_extraction(
             for model, r in results.items()
         },
     }
-    
+
     metadata_path = doc_output_dir / "metadata.json"
     with open(metadata_path, "w") as f:
         json.dump(metadata, f, indent=2)
-    
+
     logger.info(
         f"Multi-model extraction complete: {successful}/{len(models)} models, "
         f"${total_cost:.4f} total, {total_time:.1f}s"
     )
-    
+
     return results

@@ -43,8 +43,7 @@ acquisition:
   # If the fallback produces wrong-state results, add the proven query to
   # the `query` column of targets.csv instead.
   queries:
-    - "{utility_name} {state} residential electric rate tariff filetype:pdf"
-    - "{address} electric rate tariff"
+    - "{utility_name} {state} residential electric rate tariff filetype:pdf 2026"
 
   search:
     provider: serpapi
@@ -75,10 +74,27 @@ acquisition:
     min_required_matches: 2
     action: warn
 
+  # LLM curation: grade each downloaded file and select the primary tariff
+  # book into the run's curated/ set so runs need no manual triage.
+  document_review:
+    document_description: >-
+      the utility's authoritative residential electric rate tariff / rate
+      schedule book filed with the state commission — not a rate-change notice,
+      brochure, rebate/incentive flyer, press release, or bill-insert
+    keep_top: 1
+    action: move
+
 processing:
-  input_dir: documents/utility_rate_tariffs/acquired
+  # Consume only the curated (LLM-reviewed + human-approved) set from the latest
+  # acquire run. Edit the run's review.csv and re-run `curate` to change this set.
+  input_dir: output/acquisition/utility_rate_tariffs/latest/curated
   schema: schemas/domain_packs/tariffs/pack.yaml
   output_dir: processed/utility_rate_tariffs
+  # Tariff books are large (hundreds of pages); extracting the whole document
+  # overflows the model context before it reaches the rate tables. Point each
+  # curated file at its residential rate-schedule pages (human- or LLM-derived).
+  # Files not listed here are extracted in full.
+  pages_csv: config/utility_rate_tariffs/page_ranges.csv
 
 consolidation:
   input_dir: processed/utility_rate_tariffs
