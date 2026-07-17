@@ -2498,6 +2498,9 @@ def acquire(
     resolved_document_classifier = (
         resolved_inputs.get("document_classifier") or None
     )
+    resolved_document_review = (
+        resolved_inputs.get("document_review") or None
+    )
     resolved_query_context_aliases = (
         resolved_inputs.get("query_context_aliases") or None
     )
@@ -2616,6 +2619,7 @@ def acquire(
         selection_target_identity_require_all_templates=resolved_selection_target_identity_require_all_templates,
         selection_target_identity_exclude_any_templates=resolved_selection_target_identity_exclude_any_templates,
         document_classifier=resolved_document_classifier,
+        document_review=resolved_document_review,
         query_context_aliases=resolved_query_context_aliases,
         partition_by=resolved_partition_by,
         browser_mode=resolved_browser_mode,

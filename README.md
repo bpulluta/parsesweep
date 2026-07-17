@@ -615,13 +615,13 @@ acquisition:
     provider: serpapi
     use_query_family: generator_similar_power
     max_results: 6
-    link_prioritization_mode: heuristic   # heuristic | off
-    link_top_k: 5                          # top candidates to surface
-    link_prioritization_keywords:          # optional domain-specific keywords
-      - manual
-      - operator
-      - installation
-    power_range_kw: [200, 300]             # optional: bonus for in-range kW in URL
+  link_prioritization:                     # ranking (own block, not under seeker)
+    mode: heuristic                        # heuristic | off
+    keywords: [manual, operator, installation]   # domain-specific boosts
+    domain_scores:                         # soft authority boosts (not a filter)
+      "generac.com": 0.2
+      "cummins.com": 0.2
+    # top_k: 5                             # optional global cap; omit for no cap
   runtime:
     min_request_interval_ms: 200
     max_concurrent_downloads: 2

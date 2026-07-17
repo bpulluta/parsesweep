@@ -98,8 +98,9 @@ class AcquisitionRequest:
     selection_target_identity_require_any_templates: list[str] | None = None
     selection_target_identity_require_all_templates: list[str] | None = None
     selection_target_identity_exclude_any_templates: list[str] | None = None
-    # Post-download document classification
+    # Post-download document classification (keyword) + LLM review (curation)
     document_classifier: dict[str, object] | None = None
+    document_review: dict[str, object] | None = None
     # Query-template context aliases (coalesce first non-empty source field)
     query_context_aliases: dict[str, list[str]] | None = None
     # Output partitioning by target-metadata fields (generic, domain-neutral)
@@ -2561,6 +2562,39 @@ class AcquisitionEngine:
         )
         return downloads, notes
 
+    @staticmethod
+    def _run_document_review(
+        downloads: list[dict[str, object]],
+        review_cfg: dict[str, object],
+        notes: list[str],
+    ) -> tuple[list[dict[str, object]], list[str]]:
+        """LLM-grade downloaded files and promote the primary one(s).
+
+        Best-effort curation: annotates records with ``review_*`` fields and,
+        in ``move`` mode, relocates the top file(s) per target into a
+        ``reviewed/`` subfolder. Never fails the run if the LLM is unavailable.
+        """
+        description = str(review_cfg.get("document_description") or "").strip()
+        if not description:
+            notes.append(
+                "Document review skipped (no document_description configured)."
+            )
+            return downloads, notes
+
+        from .document_reviewer import DocumentReviewer
+
+        reviewer = DocumentReviewer(
+            document_description=description,
+            model=(str(review_cfg["model"]) if review_cfg.get("model") else None),
+            keep_top=int(review_cfg.get("keep_top", 1) or 1),
+            action=str(review_cfg.get("action", "move")),
+        )
+        try:
+            return reviewer.review(downloads, notes)
+        except Exception as exc:  # noqa: BLE001 - review is best-effort
+            notes.append(f"Document review error (skipped): {exc}")
+            return downloads, notes
+
     def run(self, request: AcquisitionRequest) -> AcquisitionResult:
         started_at = datetime.now(timezone.utc)
         run_id = self._build_run_id(request, started_at)
@@ -2715,6 +2749,15 @@ class AcquisitionEngine:
                     download_records, download_notes = (
                         self._run_post_download_classifier(
                             download_records, classifier_cfg, download_notes
+                        )
+                    )
+
+                # LLM document review/curation (optional, per-domain config).
+                review_cfg = getattr(request, "document_review", None)
+                if review_cfg and download_records:
+                    download_records, download_notes = (
+                        self._run_document_review(
+                            download_records, review_cfg, download_notes
                         )
                     )
 

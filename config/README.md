@@ -127,39 +127,43 @@ acquisition:
 | `use_query_family` | string | — | Name of query family to render against each target. |
 | `fallback_to_seed_only` | bool | `true` | Fall back to seed-only if SerpApi is unavailable. |
 | `link_prioritization_mode` | string | `heuristic` | Candidate ranking mode: `heuristic` or `off`. |
-| `link_top_k` | int | `5` | Number of top-ranked candidates to surface for download. |
+| `link_top_k` | int | `0` | Global cap on ranked candidates. `0` = no cap (recommended); per-target `max_per_target` controls recall. Set > 0 only to hard-cap total downloads. |
 | `link_prioritization_keywords` | list | — | Domain-specific keywords that boost matching URLs. |
-| `link_prioritization_domain_scores` | dict | — | Extra `{domain_substring: score}` authority overrides. |
-| `power_range_kw` | list | — | `[min_kw, max_kw]` — bonus for URLs with in-range kW values. |
+| `link_prioritization_domain_scores` | dict | — | `{domain_substring: score}` soft authority boosts. |
+
+Configure these via the `link_prioritization:` block (`mode`, `top_k`,
+`keywords`, `domain_scores`) — see the example below.
 
 #### Link Prioritization explained
 
-When `link_prioritization_mode: heuristic` (the default), every candidate returned by SerpApi is scored before download using four signals:
+When `link_prioritization.mode: heuristic` (the default), every candidate is
+scored before download using these signals:
 
 | Signal | Weight | What it measures |
 |--------|--------|-----------------|
 | `file_type` | 35% | URL extension: PDF/DOCX/XLSX = positive; shopping/image = negative |
-| `domain_authority` | 25% | Manufacturer / government domains = positive; forums / shopping = negative |
+| `domain_authority` | 25% | Built-in defaults: `.gov`/`.edu` = positive, forums/marketplaces = negative. Domain-specific boosts come from config (`link_prioritization.domain_scores`, or `selection.relevance_allowed_domain_patterns` as a soft boost). |
 | `keyword` | 25% | Presence of `link_prioritization_keywords` + built-in doc-path keywords in URL and anchor |
-| `power_class` | 15% | Numeric kW/kVA value in URL: in-range = +0.15; out-of-range = -0.10 |
 
-`link_top_k` controls how many ranked candidates proceed to download. All candidates are preserved in `manifest.lineage.link_prioritization` for audit. Set `link_prioritization_mode: off` to disable ranking and pass all raw candidates through.
+Ranking sets download *order*; it no longer caps by default. `link_top_k: 0`
+(the default) means per-target `selection.max_per_target` is the sole recall
+control — the prior default of `5` silently dropped valid documents across
+targets. Set `link_top_k` > 0 only for a deliberate global cap. All candidates
+are preserved in `manifest.lineage.link_prioritization` for audit. Set
+`link_prioritization_mode: off` to disable ranking entirely.
 
 ```yaml
-# Example: generator domain with power-range filtering
+# Example: generator domain with power-range bonus
 acquisition:
   seeker:
     provider: serpapi
     max_results: 6
     use_query_family: generator_similar_power
-    link_prioritization_mode: heuristic
-    link_top_k: 5
-    link_prioritization_keywords:
-      - manual
-      - operator
-      - installation
-      - spec
-    power_range_kw: [200, 300]
+  link_prioritization:                 # own block, not under seeker
+    mode: heuristic
+    keywords: [manual, operator, installation, spec]
+    domain_scores: {"generac.com": 0.2, "cummins.com": 0.2}
+    # top_k: 5                         # optional global cap; omit for no cap
 ```
 
 ### `selection` Settings
@@ -178,8 +182,8 @@ Design rule:
 | `draft_patterns` | list | Terms that indicate draft or non-final documents. |
 | `relevance_require_any_terms` | list | Candidate must match at least one of these terms. |
 | `relevance_require_legal_marker_terms` | list | Extra marker terms for domains that need legal/code signals. |
-| `relevance_exclude_any_terms` | list | Terms that disqualify candidates. |
-| `relevance_allowed_domain_patterns` | list | Generic host-pattern filter for trustworthy sources. |
+| `relevance_exclude_any_terms` | list | Terms that disqualify candidates (and the download-time URL guard). |
+| `relevance_allowed_domain_patterns` | list | Preferred host patterns. **Soft trust boost only** (ranking) — no longer a hard filter, so off-list sources are still kept. |
 | `require_supported_document` | bool | Require a currently supported document extension/type. |
 | `target_identity_require_any_templates` | list | Template-driven identity hints. Candidate must match at least one rendered token. |
 | `target_identity_require_all_templates` | list | Template-driven identity hints. Candidate must match all rendered tokens. |
@@ -205,6 +209,26 @@ acquisition:
 ```
 
 This keeps the runtime extensible across any domain while leaving the actual policy choices in the domain config, where they belong.
+
+> **Recall-first guidance:** prefer targeted `queries` + light `exclude` terms
+> over long `relevance_require_any_terms`/`allowed_domain_patterns` lists — the
+> latter tend to reject the real document. Move precision to
+> `document_classifier` (keyword) and `document_review` (LLM), which flag or
+> curate after download.
+
+### Newer acquisition keys
+
+These are documented with examples in
+[TEMPLATE.yaml](TEMPLATE.yaml); in brief:
+
+| Key | Purpose |
+|-----|---------|
+| `targets` (object with `source:`) | Generate targets automatically: `dataset` (one per row) or `cross_product` (e.g. counties × doc-types). |
+| `query_context_aliases` | Coalesce alias → first non-empty target field for query templates. |
+| `browser_mode` | Download via headless Chrome for bot-protected sites (Akamai); needs Selenium + Chrome. |
+| `document_classifier` | Cheap keyword check; `action: warn` (flag) or `filter`. |
+| `document_review` | LLM grades files and promotes the primary one(s) to a `reviewed/` subfolder. |
+| `partition_by` | Output layout `by_<f1>/<v1>/<v2>/…` from target-metadata fields. |
 
 ### `runtime` Settings
 
@@ -306,13 +330,13 @@ acquisition:
     provider: serpapi
     use_query_family: generator_similar_power
     max_results: 6
-    link_prioritization_mode: heuristic
-    link_top_k: 5
-    link_prioritization_keywords:
-      - manual
-      - operator
-      - installation
-    power_range_kw: [200, 300]
+  link_prioritization:                 # own block, not under seeker
+    mode: heuristic
+    keywords: [manual, operator, installation]
+    domain_scores:                     # soft authority boosts (not a filter)
+      "generac.com": 0.2
+      "cummins.com": 0.2
+    # top_k: 5                         # optional global cap; omit for no cap
   runtime:
     min_request_interval_ms: 200
     max_concurrent_downloads: 2

@@ -238,6 +238,7 @@ _ALLOWED_SECTION_FIELDS = {
         "request_headers",
         "dry_run",
         "document_classifier",
+        "document_review",
         "query_context_aliases",
         "partition_by",
         "browser_mode",
@@ -299,6 +300,7 @@ _ACQUISITION_OBJECT_FIELDS = {
     "policy",
     "request_headers",
     "document_classifier",
+    "document_review",
 }
 
 _ALLOWED_POLICY_MODES = {"ignore", "warn", "enforce"}
@@ -1067,6 +1069,10 @@ def _merge_acquisition_fields(
     if isinstance(classifier, dict):
         _set(merged, sources, "document_classifier", classifier,
              "config.acquisition.document_classifier")
+    review = section.get("document_review")
+    if isinstance(review, dict):
+        _set(merged, sources, "document_review", review,
+             "config.acquisition.document_review")
     aliases = section.get("query_context_aliases")
     if isinstance(aliases, dict):
         _set(merged, sources, "query_context_aliases", aliases,
