@@ -96,6 +96,18 @@ processing:
   # Files not listed here are extracted in full.
   pages_csv: config/utility_rate_tariffs/page_ranges.csv
 
+  # OPTIONAL. For large files WITHOUT a manual range above, auto-locate the
+  # rate-schedule pages (cheap keyword scan → one LLM confirmation, cached in
+  # .pages/). Manual page_ranges.csv always wins.
+  page_targeting:
+    enabled: true
+    section_description: >-
+      the residential electric rate schedules / service classification tables
+      showing the per-kWh energy charges, monthly customer charge, and other
+      rate components — not the table of contents, definitions, or riders
+    trigger_chars: 200000
+    max_selected_pages: 30
+
 consolidation:
   input_dir: processed/utility_rate_tariffs
   schema: schemas/domain_packs/tariffs/pack.yaml

@@ -223,6 +223,17 @@ processing:
   # Keyed by file name; leave a file out to extract it in full.
   # pages_csv: config/my_domain/page_ranges.csv
 
+  # OPTIONAL (LLM). Auto-locate the pages holding a described section for large
+  # files that have no manual range above (cheap keyword scan -> one LLM
+  # confirmation, cached in .pages/). Manual page_ranges.csv always wins.
+  # page_targeting:
+  #   enabled: true
+  #   section_description: >-
+  #     the section you want extracted — e.g. the residential rate schedules
+  #     showing per-kWh charges and the monthly customer charge
+  #   trigger_chars: 200000       # only run when the document exceeds this size
+  #   max_selected_pages: 30
+
   # OPTIONAL.
   output_dir: processed/my_domain
 

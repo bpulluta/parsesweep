@@ -51,6 +51,14 @@ VARIABLE_CATALOG: dict[str, list[dict[str, str]]] = {
             "description": "Single-file page range (for example: 10-35).",
         },
         {
+            "name": "page_targeting",
+            "level": "optional",
+            "description": (
+                "LLM-assisted page selection for large documents "
+                "(enabled, section_description, trigger_chars, ...)."
+            ),
+        },
+        {
             "name": "profile",
             "level": "optional",
             "description": "Runtime profile id used for artifact lineage.",
@@ -250,6 +258,7 @@ _ALLOWED_SECTION_FIELDS = {
         "output_dir",
         "pages_csv",
         "pages",
+        "page_targeting",
         "profile",
         "provider",
         "model",
@@ -1108,6 +1117,7 @@ _FIELD_MAP: dict[str, str] = {
     "schema": "schema",
     "pages_csv": "pages_csv",
     "pages": "pages",
+    "page_targeting": "page_targeting",
     "profile_name": "profile",
     "provider": "provider",
     "model": "model",
