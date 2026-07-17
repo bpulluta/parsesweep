@@ -543,6 +543,57 @@ def _resolve_schema_ref(schema_path: Path) -> Path:
     return declared_path
 
 
+def _apply_page_targeting(
+    *,
+    doc_files: list,
+    page_range_map: dict,
+    config: dict,
+) -> None:
+    """Fill page_range_map for large PDFs via LLM-assisted page targeting.
+
+    Only touches PDFs that are large (full text exceeds ``trigger_chars``) and
+    have no manual range yet — manual page_ranges.csv / --pages always win.
+    Best-effort: any locator failure leaves the file for full extraction.
+    """
+    from streamline_extract.extraction.page_locator import PageLocator
+    from streamline_extract.extraction.pdf_utils import extract_pages_text
+
+    description = str(config.get("section_description") or "").strip()
+    if not description:
+        print_warning(
+            "page_targeting.enabled is set but section_description is missing; "
+            "skipping page targeting."
+        )
+        return
+
+    trigger_chars = int(config.get("trigger_chars", 200_000) or 200_000)
+    locator = PageLocator(
+        description,
+        model=config.get("model"),
+        trigger_chars=trigger_chars,
+        max_selected_pages=int(config.get("max_selected_pages", 30) or 30),
+        keywords=config.get("keywords"),
+    )
+
+    for doc in doc_files:
+        if doc.suffix.lower() != ".pdf":
+            continue
+        if page_range_map.get(doc) is not None:
+            continue  # manual range wins
+        pages = extract_pages_text(doc)
+        if not pages:
+            continue
+        if sum(len(p) for p in pages) <= trigger_chars:
+            continue  # small enough to extract in full
+        rng = locator.locate(doc, pages=pages)
+        if rng:
+            page_range_map[doc] = rng
+            if VERBOSITY != "quiet":
+                print_info(
+                    f"Page targeting: {doc.name} → pages {rng[0]}-{rng[1]}"
+                )
+
+
 @click.command()
 @click.argument("path", type=click.Path(), required=False)
 @click.option(
@@ -1171,6 +1222,17 @@ def process(
             )
             sys.exit(1)
 
+    # LLM-assisted page targeting (optional). For large PDFs with no manual page
+    # range, auto-locate the pages holding the described section so extraction
+    # targets them instead of overflowing the context. Manual ranges always win.
+    page_targeting = resolved_inputs.get("page_targeting")
+    if isinstance(page_targeting, dict) and page_targeting.get("enabled"):
+        _apply_page_targeting(
+            doc_files=doc_files,
+            page_range_map=page_range_map,
+            config=page_targeting,
+        )
+
     # Final validation - check if we have files to process
     if not doc_files:
         if is_dir and VERBOSITY != "quiet":
@@ -1417,8 +1479,11 @@ def process(
                 dashboard.start_document(doc_path.name)
 
                 try:
-                    # Extract text from document
-                    text = extract_text_from_document(doc_path)
+                    # Extract text from document (honor page ranges/targeting)
+                    page_range = page_range_map.get(doc_path)
+                    text = extract_text_from_document(
+                        doc_path, page_range=page_range
+                    )
                     result = extractor.extract(text, loaded_schema)
 
                     # Save result (use per-file output dir for nested structures)

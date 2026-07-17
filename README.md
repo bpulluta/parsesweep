@@ -499,6 +499,36 @@ pixi run streamline-extract process documents/tariffs/ \
   --schema schemas/example_utility_rate_schema.json \
   --pages-csv config/tariffs/page_ranges.csv
 ```
+
+#### 🎯 Automatic page targeting (optional, LLM-assisted)
+
+When you *don't* have hand-derived page numbers, `process` can find the right
+pages itself. Add a `page_targeting` block to the `processing` config: for any
+large PDF **without** a manual range, it runs a cheap keyword scan to shortlist
+candidate pages, then one LLM call to confirm the exact range, and extracts only
+those pages. Manual `page_ranges.csv` / `--pages` always take precedence.
+
+```yaml
+processing:
+  input_dir: output/acquisition/utility_rate_tariffs/latest/curated
+  schema: schemas/domain_packs/tariffs/pack.yaml
+  pages_csv: config/utility_rate_tariffs/page_ranges.csv   # optional; wins where present
+  page_targeting:
+    enabled: true
+    section_description: >-
+      the residential electric rate schedules showing per-kWh energy charges,
+      monthly customer charge, and other rate components
+    trigger_chars: 200000       # only run when the document exceeds this size
+    max_selected_pages: 30
+    # keywords: [rate schedule, residential, per kwh]   # optional heuristic boosts
+    # model: gpt-4o-mini                                 # optional cheaper locator model
+```
+
+The discovered range is cached in a `.pages/<name>.json` sidecar next to the
+file (keyed on the file and the section description), so the locator LLM call
+happens once and is reused on re-runs. On any failure it falls back to
+full-document extraction.
+
 ---
 
 ### Acquire Command
