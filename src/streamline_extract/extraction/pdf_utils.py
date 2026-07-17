@@ -305,6 +305,24 @@ def extract_text_from_pdf(
     return text
 
 
+def extract_pages_text(pdf_path: Path) -> list[str]:
+    """Return the plain text of each page as a list (index 0 = page 1).
+
+    Used by page targeting to score/locate the pages that hold a target section
+    without loading the whole document into the extraction context. Best-effort:
+    returns an empty list if PyMuPDF is unavailable or the file can't be opened.
+    """
+    if not PYMUPDF_AVAILABLE:
+        logger.warning("PyMuPDF not available; cannot read per-page text")
+        return []
+    try:
+        with pymupdf.open(str(pdf_path)) as doc:
+            return [page.get_text() or "" for page in doc]
+    except Exception as e:  # noqa: BLE001 - caller falls back to full extraction
+        logger.error(f"Error reading per-page text from {pdf_path}: {e}")
+        return []
+
+
 def _cleanup_ocr_errors(text: str) -> str:
     """
     Fix common OCR errors using scalable rule-based approach.
