@@ -19,7 +19,7 @@ class SeekerInput:
 class BaseSeekerConnector(ABC):
     """
     Abstract interface for search discovery (seeker stage).
-    
+
     Implementations discover candidate URLs from a query.
     Results are normalized to AcquisitionCandidate model.
     """
@@ -28,7 +28,7 @@ class BaseSeekerConnector(ABC):
     def discover(self, seeker_input: SeekerInput) -> list[dict[str, Any]]:
         """
         Discover candidate URLs from a query.
-        
+
         Returns list of normalized candidates with:
         {
             "url": str,
@@ -37,7 +37,7 @@ class BaseSeekerConnector(ABC):
             "snippet": str | None,
             "reasons": list[str],
         }
-        
+
         Raises:
             RuntimeError: If provider is unavailable or API key is missing.
             ValueError: If query is invalid.

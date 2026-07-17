@@ -276,16 +276,14 @@ class TestPerTargetSelection:
         selected, _ = sel.select([[reason_only, url_marker]], primary_per_target=1)
         assert selected == [url_marker]
 
-    def test_relevance_allowed_domain_patterns_filters_non_authoritative_hosts(self):
-        sel = CandidateSelector(
-            exclude_draft=False,
-            relevance_allowed_domain_patterns=["county.gov", "ecode360.com"],
-        )
+    def test_allowed_domain_no_longer_hard_filters_in_selector(self):
+        # Recall-first: allowed-domain preference is now a soft ranking boost in
+        # the prioritizer, not a hard reject in the selector. An off-list host
+        # must NOT be dropped here.
+        sel = CandidateSelector(exclude_draft=False)
         off_host = _candidate("https://example.com/ordinance-title-9.pdf")
-        on_host = _candidate("https://library.ecode360.com/12345/documents/ordinance-title-9.pdf")
-        selected, notes = sel.select([[off_host, on_host]], primary_per_target=1)
-        assert selected == [on_host]
-        assert any("relevance filter excluded" in n for n in notes)
+        selected, _notes = sel.select([[off_host]], primary_per_target=1)
+        assert selected == [off_host]
 
     def test_require_supported_document_excludes_non_file_urls(self):
         sel = CandidateSelector(exclude_draft=False, require_supported_document=True)

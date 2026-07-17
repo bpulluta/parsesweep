@@ -13,7 +13,7 @@ from .base import BaseSeekerConnector, SeekerInput
 class SerpApiSeeker(BaseSeekerConnector):
     """
     SerpApi-based seeker connector for Google Search discovery.
-    
+
     Normalizes SerpApi organic search results to acquisition candidates.
     Handles API key management and error scenarios gracefully.
     """
@@ -29,7 +29,7 @@ class SerpApiSeeker(BaseSeekerConnector):
     ):
         """
         Initialize SerpApi seeker connector.
-        
+
         Args:
             api_key: Optional override for SERPAPI_API_KEY env var.
                      If not provided, falls back to SERPAPI_API_KEY or SERPAPI_KEY.
@@ -37,12 +37,20 @@ class SerpApiSeeker(BaseSeekerConnector):
                         If omitted, defaults to env-driven value from
                         SERPAPI_SSL_VERIFY / STREAMLINE_EXTRACT_SSL_VERIFY (default: false).
         """
-        self.api_key = api_key or os.getenv("SERPAPI_API_KEY") or os.getenv("SERPAPI_KEY")
+        self.api_key = (
+            api_key or os.getenv("SERPAPI_API_KEY") or os.getenv("SERPAPI_KEY")
+        )
         self.ssl_verify = self._resolve_ssl_verify(ssl_verify)
         self.retry_max_attempts = max(1, int(retry_max_attempts))
-        self.retry_initial_backoff_seconds = max(0.0, float(retry_initial_backoff_seconds))
-        self.retry_max_backoff_seconds = max(0.0, float(retry_max_backoff_seconds))
-        self.min_request_interval_seconds = max(0.0, float(min_request_interval_seconds))
+        self.retry_initial_backoff_seconds = max(
+            0.0, float(retry_initial_backoff_seconds)
+        )
+        self.retry_max_backoff_seconds = max(
+            0.0, float(retry_max_backoff_seconds)
+        )
+        self.min_request_interval_seconds = max(
+            0.0, float(min_request_interval_seconds)
+        )
         self._last_request_monotonic = 0.0
         self._ensure_prepared()
 
@@ -85,7 +93,9 @@ class SerpApiSeeker(BaseSeekerConnector):
             return max(0.0, wait)
         return min(wait, self.retry_max_backoff_seconds)
 
-    def _execute_search_with_retry(self, search_callable, params: dict[str, Any]) -> dict[str, Any]:
+    def _execute_search_with_retry(
+        self, search_callable, params: dict[str, Any]
+    ) -> dict[str, Any]:
         last_exc: BaseException | None = None
 
         for attempt in range(1, self.retry_max_attempts + 1):
@@ -94,7 +104,10 @@ class SerpApiSeeker(BaseSeekerConnector):
                 return search_callable(params)
             except Exception as exc:
                 last_exc = exc
-                if attempt >= self.retry_max_attempts or not self._is_transient_search_error(exc):
+                if (
+                    attempt >= self.retry_max_attempts
+                    or not self._is_transient_search_error(exc)
+                ):
                     raise
                 delay = self._backoff_for_attempt(attempt + 1)
                 if delay > 0:
@@ -136,15 +149,15 @@ class SerpApiSeeker(BaseSeekerConnector):
     def discover(self, seeker_input: SeekerInput) -> list[dict[str, Any]]:
         """
         Execute search query against Google via SerpApi.
-        
+
         Normalizes organic search results to acquisition candidates.
-        
+
         Args:
             seeker_input: Query and constraints
-            
+
         Returns:
             List of normalized candidate dictionaries with url, source, title, snippet.
-            
+
         Raises:
             ValueError: If query is empty or invalid.
             RuntimeError: If SerpApi API call fails.
@@ -159,7 +172,9 @@ class SerpApiSeeker(BaseSeekerConnector):
                     if value is not None
                 }
 
-        rendered_queries = self._resolve_search_queries(seeker_input, template_context)
+        rendered_queries = self._resolve_search_queries(
+            seeker_input, template_context
+        )
         if not rendered_queries:
             raise ValueError(
                 "Seeker query cannot be resolved. Provide --query or query family templates."
@@ -171,8 +186,12 @@ class SerpApiSeeker(BaseSeekerConnector):
         seen_urls: set[str] = set()
         for rendered_query in rendered_queries:
             try:
-                params = self._build_search_params(seeker_input, rendered_query)
-                results = self._execute_search_with_retry(search_callable, params)
+                params = self._build_search_params(
+                    seeker_input, rendered_query
+                )
+                results = self._execute_search_with_retry(
+                    search_callable, params
+                )
             except Exception as exc:
                 sanitized_message = self._sanitize_error_message(str(exc))
                 raise RuntimeError(
@@ -193,7 +212,12 @@ class SerpApiSeeker(BaseSeekerConnector):
     def _sanitize_error_message(self, message: str) -> str:
         """Redact SerpApi credentials from exception text before surfacing it."""
         sanitized = str(message)
-        sanitized = re.sub(r"([?&]api_key=)[^&\s')]+", r"\1<redacted>", sanitized, flags=re.IGNORECASE)
+        sanitized = re.sub(
+            r"([?&]api_key=)[^&\s')]+",
+            r"\1<redacted>",
+            sanitized,
+            flags=re.IGNORECASE,
+        )
         if self.api_key:
             sanitized = sanitized.replace(self.api_key, "<redacted>")
         return sanitized
@@ -224,7 +248,9 @@ class SerpApiSeeker(BaseSeekerConnector):
                 "SerpApi seeker requires optional 'serpapi' dependency."
             ) from exc
 
-        def _search_with_google_search(params: dict[str, Any]) -> dict[str, Any]:
+        def _search_with_google_search(
+            params: dict[str, Any],
+        ) -> dict[str, Any]:
             request_params = dict(params)
             request_params["api_key"] = self.api_key
             return GoogleSearch(request_params).get_dict()
@@ -236,7 +262,9 @@ class SerpApiSeeker(BaseSeekerConnector):
         try:
             import requests
         except ImportError as exc:
-            raise RuntimeError("requests dependency is required for SerpApi HTTP fallback") from exc
+            raise RuntimeError(
+                "requests dependency is required for SerpApi HTTP fallback"
+            ) from exc
 
         request_params = dict(params)
         request_params["api_key"] = self.api_key
@@ -257,7 +285,9 @@ class SerpApiSeeker(BaseSeekerConnector):
     ) -> dict[str, Any]:
         """Build SerpApi search parameters."""
         params = {
-            "q": rendered_query if rendered_query is not None else seeker_input.query,
+            "q": rendered_query
+            if rendered_query is not None
+            else seeker_input.query,
             "engine": "google",
             "num": seeker_input.max_results,
         }
@@ -322,12 +352,16 @@ class SerpApiSeeker(BaseSeekerConnector):
         )
 
         if raw_query:
-            rendered = SerpApiSeeker._render_query_template(raw_query, template_context)
+            rendered = SerpApiSeeker._render_query_template(
+                raw_query, template_context
+            )
             if rendered:
                 return [rendered]
 
         templates_to_try: list[str] = []
-        use_query_family = str(extra_params.get("use_query_family") or "").strip()
+        use_query_family = str(
+            extra_params.get("use_query_family") or ""
+        ).strip()
         query_families = extra_params.get("query_families")
         if use_query_family and isinstance(query_families, dict):
             family_templates = query_families.get(use_query_family)
@@ -349,7 +383,9 @@ class SerpApiSeeker(BaseSeekerConnector):
 
         for template in templates_to_try:
             try:
-                rendered = SerpApiSeeker._render_query_template(template, template_context)
+                rendered = SerpApiSeeker._render_query_template(
+                    template, template_context
+                )
             except ValueError:
                 # Skip templates that require missing hints and continue with broader fallback.
                 continue
@@ -373,7 +409,7 @@ class SerpApiSeeker(BaseSeekerConnector):
     ) -> list[dict[str, Any]]:
         """
         Normalize SerpApi organic results to acquisition candidate format.
-        
+
         Extracts organic results ensuring proper URL validation.
         Tracks source and reasoning for scoring stage.
         """
@@ -392,7 +428,7 @@ class SerpApiSeeker(BaseSeekerConnector):
                 f"SerpApi result rank {idx + 1} for query '{query}'",
             ]
             if snippet and len(snippet) > 0:
-                reasons.append(f"Snippet match detected")
+                reasons.append("Snippet match detected")
 
             candidate = {
                 "url": url,

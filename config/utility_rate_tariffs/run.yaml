@@ -1,0 +1,86 @@
+# Utility Rate Tariff Acquisition
+#
+# Finds and downloads residential electric rate tariff documents
+# for addresses mapped to their utility providers.
+#
+# Required env:  SERPAPI_API_KEY
+# Usage:
+#   streamline-extract acquire --config config/utility_rate_tariffs/run.yaml --dry-run
+#   streamline-extract acquire --config config/utility_rate_tariffs/run.yaml
+#
+# HOW TO ADD A NEW ADDRESS
+# ─────────────────────────
+# 1. Open targets.csv and add a row.
+#
+# 2. In the `query` column, write the Google search that finds the tariff PDF.
+#
+#    IMPORTANT: Address-only queries like "aurora, co 80019 electric rate tariff .pdf"
+#    work in YOUR browser because Google personalizes results by your location.
+#    This tool searches from a neutral IP, so location context is lost.
+#
+#    Queries that work WITHOUT location personalization:
+#
+#      site:xcelenergy.com colorado residential electric rate tariff filetype:pdf
+#      site:firstenergycorp.com ohio edison electric service tariff filetype:pdf
+#      xcel energy colorado residential rate schedule 2025 filetype:pdf
+#      ohio edison electric tariff service OH 2025 filetype:pdf
+#
+#    The pattern that works best: site:<utility-domain.com> + state name + tariff keywords
+#
+# 3. Leave `query` blank to fall back to the template queries below, which
+#    are constructed from the other columns (utility_name, state, address).
+#
+# NOTE: The engine does not resolve utility from address automatically.
+# Look up the serving utility and supply it in utility_name.
+
+domain: utility_rate_tariffs
+
+acquisition:
+  targets_csv: targets.csv
+
+  # Fallback query templates — used only for rows where `query` is blank.
+  # {utility_name}, {state}, and {address} are injected from targets.csv columns.
+  # If the fallback produces wrong-state results, add the proven query to
+  # the `query` column of targets.csv instead.
+  queries:
+    - "{utility_name} {state} residential electric rate tariff filetype:pdf"
+    - "{address} electric rate tariff"
+
+  search:
+    provider: serpapi
+    max_results: 10
+
+  selection:
+    max_per_target: 2
+    require_any:
+      - "tariff"
+      - "rate"
+      - "schedule"
+    exclude:
+      - "news"
+      - "blog"
+      - "press release"
+      - "rebate"
+      - "incentive"
+      - "program"
+
+  follow_links: false
+  request_delay_ms: 500
+
+  # Flag any downloaded file that doesn't clearly read like an actual tariff
+  # book (e.g. a rate-change notice or brochure) so a human can review it.
+  document_classifier:
+    required_keywords: ["tariff", "rate", "schedule", "service classification"]
+    nice_to_have_keywords: ["residential", "kwh", "monthly charge"]
+    min_required_matches: 2
+    action: warn
+
+processing:
+  input_dir: documents/utility_rate_tariffs/acquired
+  schema: schemas/domain_packs/tariffs/pack.yaml
+  output_dir: processed/utility_rate_tariffs
+
+consolidation:
+  input_dir: processed/utility_rate_tariffs
+  schema: schemas/domain_packs/tariffs/pack.yaml
+  output_dir: consolidated/utility_rate_tariffs

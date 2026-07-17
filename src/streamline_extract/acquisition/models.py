@@ -66,6 +66,7 @@ class AcquisitionCandidate:
     extension: str | None = None
     canonical_url: str | None = None
     content_hash: str | None = None
+    target_metadata: dict[str, Any] | None = field(default=None)
 
     def to_dict(self) -> dict[str, Any]:
         effective_status = self.status or self.score.acceptance_class()
@@ -115,7 +116,9 @@ class AcquisitionManifest:
             "stage_summaries": self.stage_summaries,
             "candidate_summary": self.candidate_summary,
             "lineage": self.lineage,
-            "candidates": [candidate.to_dict() for candidate in self.candidates],
+            "candidates": [
+                candidate.to_dict() for candidate in self.candidates
+            ],
             "downloads": self.downloads,
             "errors": self.errors,
             "error_summary": self.error_summary,

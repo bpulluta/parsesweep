@@ -40,27 +40,19 @@ _FILE_TYPE_SCORES: dict[str, float] = {
     ".exe": -0.30,
 }
 
-# Domain pattern → authority adjustment (additive, clamped later)
+# Domain pattern → authority adjustment (additive, clamped later).
 # Patterns are lowercased substring matches against the netloc.
+#
+# These are DOMAIN-NEUTRAL defaults only: official-source boosts (.gov/.edu)
+# and universally low-value sources (forums / marketplaces) for document
+# acquisition. Domain-specific authority (e.g. manufacturer or vendor sites)
+# belongs in that domain's config via `link_prioritization.domain_scores`,
+# which is applied identically alongside these defaults.
 _DOMAIN_AUTHORITY_PATTERNS: list[tuple[str, float]] = [
-    # Manufacturer / official document sources → positive
-    ("generac.com", 0.20),
-    ("johndeere.com", 0.20),
-    ("caterpillar.com", 0.20),
-    ("cat.com", 0.20),
-    ("cummins.com", 0.20),
-    ("kohlerpower.com", 0.20),
-    ("sdmo.com", 0.20),
-    ("aggreko.com", 0.20),
-    # Government and official sources
+    # Government and official sources → positive
     (".gov", 0.15),
     (".edu", 0.10),
-    # Generic quality signals
-    ("manuals.co", 0.10),
-    ("manualslib.com", 0.10),
-    ("manualsdir.com", 0.08),
-    ("manualmachine.com", 0.08),
-    # Forums and shopping → negative
+    # Forums and marketplaces → negative
     ("ebay.com", -0.20),
     ("amazon.com", -0.15),
     ("etsy.com", -0.20),
@@ -74,28 +66,19 @@ _DOMAIN_AUTHORITY_PATTERNS: list[tuple[str, float]] = [
 
 # Power-class URL patterns: match numeric kW values in URL path
 # e.g. "200kw", "200-kw", "250kva" etc.
-_POWER_CLASS_URL_RE = re.compile(r"\b(\d{2,4})\s*[-_]?\s*k[wv][aA]?\b", re.IGNORECASE)
+_POWER_CLASS_URL_RE = re.compile(
+    r"\b(\d{2,4})\s*[-_]?\s*k[wv][aA]?\b", re.IGNORECASE
+)
 
-# Keywords that suggest a URL is a manual / spec sheet
+# Generic, domain-neutral "this path looks like a document" keywords used only
+# when a domain supplies no `link_prioritization.keywords` of its own. Domain
+# vocabulary (e.g. manual/spec/datasheet, or ordinance/permit/tariff) belongs
+# in that domain's config, where it is merged with these defaults.
 _DOCUMENT_PATH_KEYWORDS: list[str] = [
-    "manual",
-    "spec",
-    "datasheet",
-    "data-sheet",
-    "installation",
-    "operator",
-    "service",
-    "technical",
-    "product",
-    "guide",
-    "download",
     "document",
-    "ordinance",
-    "permit",
-    "tariff",
-    "rate",
-    "schedule",
-    "code",
+    "download",
+    "guide",
+    "report",
 ]
 
 # Shopping-page path keywords → negative signal
@@ -192,7 +175,9 @@ class LinkPrioritizer:
         top_k: int | None = 5,
         power_range_kw: tuple[float, float] | None = None,
     ) -> None:
-        self._keywords: list[str] = [k.lower().strip() for k in (keywords or []) if k.strip()]
+        self._keywords: list[str] = [
+            k.lower().strip() for k in (keywords or []) if k.strip()
+        ]
         self._authority_extra: list[tuple[str, float]] = list(
             (k.lower(), float(v))
             for k, v in (domain_authority_overrides or {}).items()
@@ -241,26 +226,54 @@ class LinkPrioritizer:
             )
 
         # Stable sort: highest confidence first; ties preserve original order
-        prioritized.sort(key=lambda p: p.priority_score.confidence, reverse=True)
+        prioritized.sort(
+            key=lambda p: p.priority_score.confidence, reverse=True
+        )
 
         # Build lineage before slicing
         lineage = [p.to_lineage_dict() for p in prioritized]
 
         # Slice top-K
-        top_slice = prioritized if self._top_k is None else prioritized[: self._top_k]
+        top_slice = (
+            prioritized if self._top_k is None else prioritized[: self._top_k]
+        )
 
-        # Propagate heuristic signals back into candidate's CandidateScore
+        # Propagate heuristic signals back into candidate's CandidateScore.
+        # Ranking order is driven by priority_score.confidence (above), so
+        # this only affects the downstream acceptance/observability score.
         ranked_top_k: list[AcquisitionCandidate] = []
         for pc in top_slice:
             c = pc.candidate
-            # Blend heuristic url_signal into the existing score
-            blended_url_signal = max(0.0, min(1.0, pc.priority_score.file_type_score + pc.priority_score.keyword_score * 0.5))
-            blended_anchor_signal = max(0.0, min(1.0, abs(pc.priority_score.domain_authority_score)))
+            # Take the stronger of the candidate's baseline url_signal (e.g. a
+            # seeker result's inherent confidence) or the heuristic file-type +
+            # keyword signal, so prioritization refines rather than discards the
+            # base. Ranking is unaffected (it uses priority_score).
+            blended_url_signal = max(
+                0.0,
+                min(
+                    1.0,
+                    max(
+                        c.score.url_signal,
+                        pc.priority_score.file_type_score
+                        + pc.priority_score.keyword_score * 0.5,
+                    ),
+                ),
+            )
+            blended_anchor_signal = max(
+                0.0, min(1.0, abs(pc.priority_score.domain_authority_score))
+            )
             updated_score = CandidateScore(
                 url_signal=blended_url_signal,
                 anchor_signal=blended_anchor_signal,
                 content_signal=c.score.content_signal,
-                trust_signal=max(0.0, min(1.0, c.score.trust_signal + pc.priority_score.domain_authority_score * 0.5)),
+                trust_signal=max(
+                    0.0,
+                    min(
+                        1.0,
+                        c.score.trust_signal
+                        + pc.priority_score.domain_authority_score * 0.5,
+                    ),
+                ),
                 weights=c.score.weights,
             )
             updated_reasons = list(c.reasons) + pc.priority_reasons
@@ -275,6 +288,7 @@ class LinkPrioritizer:
                     extension=c.extension,
                     canonical_url=c.canonical_url,
                     content_hash=c.content_hash,
+                    target_metadata=c.target_metadata,
                 )
             )
 
@@ -334,7 +348,9 @@ class LinkPrioritizer:
         for ext_hint, score in _FILE_TYPE_SCORES.items():
             if ext_hint.lstrip(".") in anchor:
                 if score > 0:
-                    reasons.append(f"file_type:anchor_hint={ext_hint} (+{score:.2f})")
+                    reasons.append(
+                        f"file_type:anchor_hint={ext_hint} (+{score:.2f})"
+                    )
                 return score
 
         # Check for shopping path → negative signal
@@ -345,9 +361,7 @@ class LinkPrioritizer:
 
         return 0.0
 
-    def _score_domain_authority(
-        self, url: str, reasons: list[str]
-    ) -> float:
+    def _score_domain_authority(self, url: str, reasons: list[str]) -> float:
         """Return domain authority adjustment, clamped to [-0.5, 0.5]."""
         try:
             netloc = urlparse(url).netloc.lower()
@@ -393,6 +407,7 @@ class LinkPrioritizer:
 
         # Log-scale: 1 hit → ~0.3; 3 hits → ~0.6; 6+ hits → ~0.9
         import math
+
         score = min(1.0, 0.3 * math.log1p(hit_count) / math.log1p(1))
         reasons.append(f"keywords:{hit_count}_match(s) (+{score:.2f})")
         return round(score, 4)
@@ -422,10 +437,14 @@ class LinkPrioritizer:
         lo, hi = self._power_range_kw
         in_range = any(lo <= v <= hi for v in values)
         if in_range:
-            reasons.append(f"power_class:kw_in_range[{lo},{hi}]={values} (+0.15)")
+            reasons.append(
+                f"power_class:kw_in_range[{lo},{hi}]={values} (+0.15)"
+            )
             return 0.15
         else:
-            reasons.append(f"power_class:kw_out_of_range[{lo},{hi}]={values} (-0.10)")
+            reasons.append(
+                f"power_class:kw_out_of_range[{lo},{hi}]={values} (-0.10)"
+            )
             return -0.10
 
     @staticmethod

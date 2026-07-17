@@ -18,6 +18,25 @@ acquisition:
     provider: serpapi
     use_query_family: generator_similar_power
     max_results: 6
+  # Domain-specific ranking signals (kept in config, not hard-coded in code).
+  link_prioritization:
+    keywords:
+      - manual
+      - spec
+      - datasheet
+      - operator
+      - installation
+      - service
+      - technical
+    domain_scores:
+      "generac.com": 0.20
+      "johndeere.com": 0.20
+      "caterpillar.com": 0.20
+      "cat.com": 0.20
+      "cummins.com": 0.20
+      "kohlerpower.com": 0.20
+      "sdmo.com": 0.20
+      "aggreko.com": 0.20
   runtime:
     min_request_interval_ms: 200
     max_concurrent_downloads: 2

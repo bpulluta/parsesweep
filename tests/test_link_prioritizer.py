@@ -79,7 +79,11 @@ class TestDomainAuthorityScoring:
     """Domain authority: manufacturer/gov domains rank above forums/shopping."""
 
     def test_manufacturer_domain_scores_higher_than_forum(self):
-        p = _prioritizer(top_k=None)
+        # Domain-specific authority is now supplied via config overrides
+        # (domain_authority_overrides), not hard-coded in the prioritizer.
+        p = _prioritizer(
+            domain_authority_overrides={"generac.com": 0.20}, top_k=None
+        )
         forum = _candidate("https://reddit.com/r/generators/pdf")
         mfr = _candidate("https://generac.com/docs/manual.pdf")
         ranked, _ = p.prioritize([forum, mfr])

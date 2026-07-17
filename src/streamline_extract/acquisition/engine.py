@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 import csv
 import hashlib
@@ -12,7 +13,7 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from collections import Counter
-from dataclasses import dataclass
+from dataclasses import dataclass, replace as dataclass_replace
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import unquote, urlparse
@@ -20,8 +21,17 @@ from urllib.parse import unquote, urlparse
 from .connectors import DiggerInput, resolve_digger_connector
 from .connectors.digger import NullDiggerConnector
 from .candidate_selector import CandidateSelector
+from .constants import (
+    DEFAULT_QUERY_CONTEXT_ALIASES,
+    DOWNLOADABLE_EXTENSIONS,
+    MIME_TO_EXTENSION,
+    ROUTE_REASON_CENTRALIZED,
+    ROUTE_REASON_DISTRIBUTED,
+    SEEKER_ONLY_SCORE_WEIGHTS,
+)
 from .link_prioritizer import LinkPrioritizer
 from .models import AcquisitionCandidate, AcquisitionManifest, CandidateScore
+from .urls import normalize_url_text, url_host
 from .policies import AcquisitionPolicyEvaluator
 from streamline_extract.utils.error_taxonomy import (
     build_error_record,
@@ -72,7 +82,7 @@ class AcquisitionRequest:
     seeker_max_results: int = 10
     # Link prioritization
     link_prioritization_mode: str = "heuristic"
-    link_top_k: int = 5
+    link_top_k: int = 0  # 0 = rank only, no global cap (per-target controls recall)
     link_prioritization_keywords: list[str] | None = None
     link_prioritization_domain_scores: dict[str, float] | None = None
     power_range_kw: list[float] | None = None
@@ -88,6 +98,15 @@ class AcquisitionRequest:
     selection_target_identity_require_any_templates: list[str] | None = None
     selection_target_identity_require_all_templates: list[str] | None = None
     selection_target_identity_exclude_any_templates: list[str] | None = None
+    # Post-download document classification
+    document_classifier: dict[str, object] | None = None
+    # Query-template context aliases (coalesce first non-empty source field)
+    query_context_aliases: dict[str, list[str]] | None = None
+    # Output partitioning by target-metadata fields (generic, domain-neutral)
+    partition_by: list[str] | None = None
+    # Use a real browser to clear bot-manager challenges (Akamai/Cloudflare)
+    # for downloads on protected sites.
+    browser_mode: bool = False
 
 
 @dataclass(slots=True)
@@ -129,19 +148,12 @@ class AcquisitionEngine:
     def __init__(self) -> None:
         self._policy_evaluator = AcquisitionPolicyEvaluator()
 
-    _DEFAULT_REQUEST_HEADERS = {"User-Agent": "StreamlineExtract/2.0 (+acquisition)"}
-    _SUPPORTED_EXTENSIONS = {".pdf", ".doc", ".docx", ".txt", ".xlsx", ".csv", ".html", ".htm"}
-    _MIME_EXTENSION_MAP = {
-        "application/pdf": ".pdf",
-        "application/msword": ".doc",
-        "application/vnd.openxmlformats-officedocument.wordprocessingml.document": ".docx",
-        "text/plain": ".txt",
-        "text/html": ".html",
-        "text/csv": ".csv",
-        "application/csv": ".csv",
-        "application/vnd.ms-excel": ".xlsx",
-        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": ".xlsx",
+    _DEFAULT_REQUEST_HEADERS = {
+        "User-Agent": "StreamlineExtract/2.0 (+acquisition)"
     }
+    # File-type sets / MIME map are centralized in constants.py.
+    _SUPPORTED_EXTENSIONS = DOWNLOADABLE_EXTENSIONS
+    _MIME_EXTENSION_MAP = MIME_TO_EXTENSION
     _STATE_ALIASES = {
         "alabama": "al",
         "alaska": "ak",
@@ -200,7 +212,9 @@ class AcquisitionEngine:
         slug = re.sub(r"[^a-z0-9]+", "-", domain.lower()).strip("-")
         return slug or "default"
 
-    def _build_run_id(self, request: AcquisitionRequest, started_at: datetime) -> str:
+    def _build_run_id(
+        self, request: AcquisitionRequest, started_at: datetime
+    ) -> str:
         timestamp = started_at.strftime("%Y%m%dT%H%M%SZ")
         fingerprint_basis = "|".join(
             [
@@ -223,7 +237,13 @@ class AcquisitionEngine:
         if request.output_documents is not None:
             documents_dir = request.output_documents
         else:
-            documents_dir = Path("documents") / request.domain / "acquired" / "runs" / run_id
+            documents_dir = (
+                Path("documents")
+                / request.domain
+                / "acquired"
+                / "runs"
+                / run_id
+            )
 
         if request.output_manifest is not None:
             manifest_path = request.output_manifest
@@ -239,7 +259,9 @@ class AcquisitionEngine:
         return documents_dir, manifest_path
 
     @staticmethod
-    def _scaffold_candidates(seed_urls: list[str]) -> list[AcquisitionCandidate]:
+    def _scaffold_candidates(
+        seed_urls: list[str],
+    ) -> list[AcquisitionCandidate]:
         candidates: list[AcquisitionCandidate] = []
         for seed_url in seed_urls:
             score = CandidateScore(
@@ -259,7 +281,9 @@ class AcquisitionEngine:
         return candidates
 
     @staticmethod
-    def _normalize_seed_urls(seed_urls: list[str]) -> tuple[list[str], list[dict[str, object]]]:
+    def _normalize_seed_urls(
+        seed_urls: list[str],
+    ) -> tuple[list[str], list[dict[str, object]]]:
         valid_seed_urls: list[str] = []
         error_records: list[dict[str, object]] = []
 
@@ -271,7 +295,9 @@ class AcquisitionEngine:
                 if not seed:
                     raise ValueError("Seed URL must not be empty")
                 if not re.match(r"^https?://", seed, flags=re.IGNORECASE):
-                    raise ValueError(f"Seed URL must start with http:// or https://: {seed}")
+                    raise ValueError(
+                        f"Seed URL must start with http:// or https://: {seed}"
+                    )
                 valid_seed_urls.append(seed)
             except Exception as exc:
                 error_records.append(
@@ -329,7 +355,9 @@ class AcquisitionEngine:
                         "or provide seed URLs."
                     ),
                     stage="acquisition.discovery",
-                    provider=("serpapi" if request.enable_serpapi else "seed_only"),
+                    provider=(
+                        "serpapi" if request.enable_serpapi else "seed_only"
+                    ),
                 ),
             ]
         )
@@ -393,6 +421,33 @@ class AcquisitionEngine:
         )
 
     @staticmethod
+    def _build_selector(request: AcquisitionRequest) -> CandidateSelector:
+        """Construct a CandidateSelector from request selection settings.
+
+        Shared by seeker-stage selection and post-routing re-selection so the
+        two never drift apart.
+        """
+        return CandidateSelector(
+            exclude_draft=request.selection_exclude_draft,
+            draft_patterns=request.selection_draft_patterns or None,
+            relevance_require_any_terms=request.selection_relevance_require_any_terms
+            or None,
+            relevance_require_legal_marker_terms=request.selection_relevance_require_legal_marker_terms
+            or None,
+            relevance_exclude_any_terms=request.selection_relevance_exclude_any_terms
+            or None,
+            require_supported_document=bool(
+                request.selection_require_supported_document
+            ),
+            target_identity_require_any_templates=request.selection_target_identity_require_any_templates
+            or None,
+            target_identity_require_all_templates=request.selection_target_identity_require_all_templates
+            or None,
+            target_identity_exclude_any_templates=request.selection_target_identity_exclude_any_templates
+            or None,
+        )
+
+    @staticmethod
     def _run_seeker(
         request: AcquisitionRequest,
         seeker_state: dict[str, object],
@@ -406,7 +461,9 @@ class AcquisitionEngine:
         list[dict[str, object]],
     ]:
         """Call SerpApi seeker and return discovered candidates."""
-        if not seeker_state.get("enabled") or not seeker_state.get("available"):
+        if not seeker_state.get("enabled") or not seeker_state.get(
+            "available"
+        ):
             return [], current_notes, current_errors, [], []
 
         notes = list(current_notes)
@@ -414,14 +471,14 @@ class AcquisitionEngine:
 
         try:
             from .connectors.serpapi_seeker import SerpApiSeeker
-            from .connectors.base import SeekerInput
-            from .candidate_selector import CandidateSelector
 
             seeker = SerpApiSeeker(
                 retry_max_attempts=request.retry_max_attempts,
                 retry_initial_backoff_seconds=request.retry_initial_backoff_seconds,
                 retry_max_backoff_seconds=request.retry_max_backoff_seconds,
-                min_request_interval_seconds=max(0.0, float(request.min_request_interval_ms) / 1000.0),
+                min_request_interval_seconds=max(
+                    0.0, float(request.min_request_interval_ms) / 1000.0
+                ),
             )
             seeker_inputs = AcquisitionEngine._build_seeker_inputs(request)
             # Collect results per-target so selection can be applied independently
@@ -438,7 +495,9 @@ class AcquisitionEngine:
             )
             return [], notes, normalize_error_records(errors), [], []
 
-        def _to_candidate(raw: dict[str, object]) -> AcquisitionCandidate | None:
+        def _to_candidate(
+            raw: dict[str, object],
+        ) -> AcquisitionCandidate | None:
             url = raw.get("url")
             if not url:
                 return None
@@ -450,6 +509,7 @@ class AcquisitionEngine:
                     anchor_signal=0.1,
                     content_signal=0.0,
                     trust_signal=0.4,
+                    weights=dict(SEEKER_ONLY_SCORE_WEIGHTS),
                 ),
                 reasons=list(raw.get("reasons") or []),
             )
@@ -467,24 +527,17 @@ class AcquisitionEngine:
         # ---------------------------------------------------------------
         # Per-target selection (draft filter + recency)
         # ---------------------------------------------------------------
-        primary_per_target = max(1, int(request.selection_primary_per_target or 1))
-        selector = CandidateSelector(
-            exclude_draft=request.selection_exclude_draft,
-            draft_patterns=request.selection_draft_patterns or None,
-            relevance_require_any_terms=request.selection_relevance_require_any_terms or None,
-            relevance_require_legal_marker_terms=request.selection_relevance_require_legal_marker_terms or None,
-            relevance_exclude_any_terms=request.selection_relevance_exclude_any_terms or None,
-            relevance_allowed_domain_patterns=request.selection_relevance_allowed_domain_patterns or None,
-            require_supported_document=bool(request.selection_require_supported_document),
-            target_identity_require_any_templates=request.selection_target_identity_require_any_templates or None,
-            target_identity_require_all_templates=request.selection_target_identity_require_all_templates or None,
-            target_identity_exclude_any_templates=request.selection_target_identity_exclude_any_templates or None,
+        primary_per_target = max(
+            1, int(request.selection_primary_per_target or 1)
         )
-        candidates, selection_notes, target_selection_metrics = selector.select(
-            candidates_by_target,
-            primary_per_target=primary_per_target,
-            target_contexts=request.targets or None,
-            include_metrics=True,
+        selector = AcquisitionEngine._build_selector(request)
+        candidates, selection_notes, target_selection_metrics = (
+            selector.select(
+                candidates_by_target,
+                primary_per_target=primary_per_target,
+                target_contexts=request.targets or None,
+                include_metrics=True,
+            )
         )
         notes.extend(selection_notes)
         notes.append(
@@ -500,27 +553,57 @@ class AcquisitionEngine:
         if mode != "off" and candidates:
             power_range: tuple[float, float] | None = None
             if request.power_range_kw and len(request.power_range_kw) >= 2:
-                power_range = (float(request.power_range_kw[0]), float(request.power_range_kw[1]))
-            effective_top_k: int | None = max(1, int(request.link_top_k)) if request.link_top_k else 5
-            if len(candidates) <= (effective_top_k or 0):
+                power_range = (
+                    float(request.power_range_kw[0]),
+                    float(request.power_range_kw[1]),
+                )
+            # Rank for ordering, but only apply a global cap when the config
+            # explicitly sets link_top_k. Otherwise per-target selection
+            # (max_per_target) is the sole recall control — a hidden global cap
+            # was silently dropping valid documents.
+            top_k_setting = int(request.link_top_k or 0)
+            effective_top_k: int | None = (
+                max(1, top_k_setting) if top_k_setting > 0 else None
+            )
+            if effective_top_k and len(candidates) <= effective_top_k:
                 effective_top_k = None  # no additional cap needed
+            # allowed-domain patterns are a SOFT trust boost (ranking), never a
+            # hard filter — preferred domains rank higher without excluding others.
+            domain_scores = dict(
+                request.link_prioritization_domain_scores or {}
+            )
+            for pattern in (
+                request.selection_relevance_allowed_domain_patterns or []
+            ):
+                domain_scores.setdefault(str(pattern), 0.15)
             prioritizer = LinkPrioritizer(
                 keywords=request.link_prioritization_keywords,
-                domain_authority_overrides=request.link_prioritization_domain_scores,
+                domain_authority_overrides=domain_scores or None,
                 top_k=effective_top_k,
                 power_range_kw=power_range,
             )
-            ranked_candidates, prioritizer_lineage = prioritizer.prioritize(candidates)
+            ranked_candidates, prioritizer_lineage = prioritizer.prioritize(
+                candidates
+            )
             notes.append(
                 f"Link prioritizer ({mode}) ranked {len(candidates)} candidate(s) "
                 f"\u2192 top-{len(ranked_candidates)} surfaced."
             )
             candidates = ranked_candidates
 
-        return candidates, notes, normalize_error_records(errors), prioritizer_lineage, target_selection_metrics
+        return (
+            candidates,
+            notes,
+            normalize_error_records(errors),
+            prioritizer_lineage,
+            target_selection_metrics,
+        )
 
     @staticmethod
-    def _target_template_context(target: dict[str, object]) -> dict[str, str]:
+    def _target_template_context(
+        target: dict[str, object],
+        aliases: dict[str, list[str]] | None = None,
+    ) -> dict[str, str]:
         context: dict[str, str] = {}
         for key, value in target.items():
             if value is None:
@@ -537,14 +620,27 @@ class AcquisitionEngine:
                     if text:
                         context[str(key)] = text
                         singular_key = str(key)
-                        if singular_key.endswith("s") and len(singular_key) > 1:
+                        if (
+                            singular_key.endswith("s")
+                            and len(singular_key) > 1
+                        ):
                             context[singular_key[:-1]] = text
 
-        if "utility_or_jurisdiction" not in context:
-            if context.get("jurisdiction"):
-                context["utility_or_jurisdiction"] = context["jurisdiction"]
-            elif context.get("manufacturer"):
-                context["utility_or_jurisdiction"] = context["manufacturer"]
+        # Coalesce aliases: an alias resolves to the first non-empty source
+        # field. Config-driven; defaults preserve legacy behavior.
+        effective_aliases = (
+            aliases
+            if aliases is not None
+            else DEFAULT_QUERY_CONTEXT_ALIASES
+        )
+        for alias, sources in effective_aliases.items():
+            if context.get(alias):
+                continue
+            for source_field in sources:
+                resolved = context.get(source_field)
+                if resolved:
+                    context[alias] = resolved
+                    break
 
         return context
 
@@ -567,9 +663,15 @@ class AcquisitionEngine:
             for target in targets:
                 if not isinstance(target, dict):
                     continue
-                target_query = str(target.get("query") or request.query or "").strip()
+                target_query = str(
+                    target.get("query") or request.query or ""
+                ).strip()
                 extra_params = dict(base_extra)
-                extra_params["template_context"] = AcquisitionEngine._target_template_context(target)
+                extra_params["template_context"] = (
+                    AcquisitionEngine._target_template_context(
+                        target, request.query_context_aliases
+                    )
+                )
                 inputs.append(
                     SeekerInput(
                         query=target_query,
@@ -648,19 +750,27 @@ class AcquisitionEngine:
         return min(wait, max_backoff_seconds)
 
     @staticmethod
-    def _resolve_retry_policy(request: AcquisitionRequest) -> dict[str, float | int]:
+    def _resolve_retry_policy(
+        request: AcquisitionRequest,
+    ) -> dict[str, float | int]:
         return {
             "max_attempts": max(1, int(request.retry_max_attempts)),
-            "initial_backoff_seconds": max(0.0, float(request.retry_initial_backoff_seconds)),
-            "max_backoff_seconds": max(0.0, float(request.retry_max_backoff_seconds)),
+            "initial_backoff_seconds": max(
+                0.0, float(request.retry_initial_backoff_seconds)
+            ),
+            "max_backoff_seconds": max(
+                0.0, float(request.retry_max_backoff_seconds)
+            ),
         }
 
     @classmethod
-    def _resolve_request_headers(cls, request: AcquisitionRequest) -> dict[str, str]:
+    def _resolve_request_headers(
+        cls, request: AcquisitionRequest
+    ) -> dict[str, str]:
         headers = dict(cls._DEFAULT_REQUEST_HEADERS)
         for key, value in (request.request_headers or {}).items():
-            normalized_key = str(key or '').strip()
-            normalized_value = str(value or '').strip()
+            normalized_key = str(key or "").strip()
+            normalized_value = str(value or "").strip()
             if normalized_key and normalized_value:
                 headers[normalized_key] = normalized_value
         return headers
@@ -720,7 +830,11 @@ class AcquisitionEngine:
         for code, count in sorted(warning_counts.items()):
             if count <= 0:
                 continue
-            mode = request.robots_policy_mode if code.startswith("robots_") else request.tos_policy_mode
+            mode = (
+                request.robots_policy_mode
+                if code.startswith("robots_")
+                else request.tos_policy_mode
+            )
             notes.append(
                 f"{stage_name} policy warnings: {count} URL(s) proceeded despite {labels.get(code, code)} because mode={mode}."
             )
@@ -771,10 +885,14 @@ class AcquisitionEngine:
         try:
             import requests
         except ImportError as exc:
-            raise RuntimeError("requests dependency is required for acquisition downloads") from exc
+            raise RuntimeError(
+                "requests dependency is required for acquisition downloads"
+            ) from exc
 
         max_attempts = int(retry_policy["max_attempts"])
-        initial_backoff_seconds = float(retry_policy["initial_backoff_seconds"])
+        initial_backoff_seconds = float(
+            retry_policy["initial_backoff_seconds"]
+        )
         max_backoff_seconds = float(retry_policy["max_backoff_seconds"])
 
         last_exc: BaseException | None = None
@@ -794,7 +912,10 @@ class AcquisitionEngine:
                 return response, attempt
             except Exception as exc:
                 last_exc = exc
-                if attempt >= max_attempts or not self._is_transient_network_error(exc):
+                if (
+                    attempt >= max_attempts
+                    or not self._is_transient_network_error(exc)
+                ):
                     raise
                 delay = self._retry_backoff_for_attempt(
                     attempt=attempt + 1,
@@ -818,10 +939,21 @@ class AcquisitionEngine:
         ssl_verify: bool,
         retry_policy: dict[str, float | int],
         rate_limiter: _RequestRateLimiter | None,
-    ) -> tuple[int, dict[str, object], dict[str, object] | None, bool, list[str]]:
+        browser: object | None = None,
+    ) -> tuple[
+        int, dict[str, object], dict[str, object] | None, bool, list[str]
+    ]:
         url = candidate.url
-        if not isinstance(url, str) or not re.match(r"^https?://", url, flags=re.IGNORECASE):
-            return idx, {"url": url, "status": "skipped_invalid_url"}, None, False, []
+        if not isinstance(url, str) or not re.match(
+            r"^https?://", url, flags=re.IGNORECASE
+        ):
+            return (
+                idx,
+                {"url": url, "status": "skipped_invalid_url"},
+                None,
+                False,
+                [],
+            )
 
         policy_result = self._evaluate_request_policy(
             url=url,
@@ -829,52 +961,97 @@ class AcquisitionEngine:
             ssl_verify=ssl_verify,
         )
         if not policy_result.allowed:
-            return idx, {
-                "url": url,
-                "status": self._policy_status_from_blocking_code(policy_result.blocking_code),
-                "policy_blocking_code": policy_result.blocking_code,
-                "policy_reason": "; ".join(policy_result.messages),
-            }, None, False, list(policy_result.warning_codes)
+            return (
+                idx,
+                {
+                    "url": url,
+                    "status": self._policy_status_from_blocking_code(
+                        policy_result.blocking_code
+                    ),
+                    "policy_blocking_code": policy_result.blocking_code,
+                    "policy_reason": "; ".join(policy_result.messages),
+                },
+                None,
+                False,
+                list(policy_result.warning_codes),
+            )
 
         try:
-            response, attempt_count = self._download_with_retry(
-                url=url,
-                ssl_verify=ssl_verify,
-                retry_policy=retry_policy,
-                request_headers=self._resolve_request_headers(request),
-                rate_limiter=rate_limiter,
+            if browser is not None:
+                # Fetch through the real browser (bypasses Akamai TLS checks).
+                if rate_limiter is not None:
+                    rate_limiter.wait()
+                content, mime_type = browser.download_bytes(url)
+                final_url = url
+                attempt_count = 1
+
+                def _chunks(_c: bytes = content) -> object:
+                    return [_c]
+            else:
+                response, attempt_count = self._download_with_retry(
+                    url=url,
+                    ssl_verify=ssl_verify,
+                    retry_policy=retry_policy,
+                    request_headers=self._resolve_request_headers(request),
+                    rate_limiter=rate_limiter,
+                )
+                final_url = response.url or url
+                mime_type = (response.headers or {}).get("Content-Type")
+
+                def _chunks(_r: object = response) -> object:
+                    return _r.iter_content(chunk_size=65536)
+
+            extension = self._infer_extension_from_url_or_mime(
+                final_url, mime_type
             )
-
-            final_url = response.url or url
-            mime_type = (response.headers or {}).get("Content-Type")
-            extension = self._infer_extension_from_url_or_mime(final_url, mime_type)
             if extension is None:
-                return idx, {
-                    "url": url,
-                    "final_url": final_url,
-                    "status": "skipped_unsupported_type",
-                    "mime_type": mime_type,
-                    "policy_warning_codes": list(policy_result.warning_codes),
-                }, None, False, list(policy_result.warning_codes)
+                return (
+                    idx,
+                    {
+                        "url": url,
+                        "final_url": final_url,
+                        "status": "skipped_unsupported_type",
+                        "mime_type": mime_type,
+                        "policy_warning_codes": list(
+                            policy_result.warning_codes
+                        ),
+                    },
+                    None,
+                    False,
+                    list(policy_result.warning_codes),
+                )
 
-            passed_final_url_guard, reject_code = self._passes_final_url_selection_guard(
-                final_url=final_url,
-                request=request,
+            passed_final_url_guard, reject_code = (
+                self._passes_final_url_selection_guard(
+                    final_url=final_url,
+                    request=request,
+                )
             )
             if not passed_final_url_guard:
-                return idx, {
-                    "url": url,
-                    "final_url": final_url,
-                    "status": "skipped_non_legal_document",
-                    "reason": reject_code,
-                    "mime_type": mime_type,
-                    "policy_warning_codes": list(policy_result.warning_codes),
-                }, None, False, list(policy_result.warning_codes)
+                return (
+                    idx,
+                    {
+                        "url": url,
+                        "final_url": final_url,
+                        "status": "skipped_non_legal_document",
+                        "reason": reject_code,
+                        "mime_type": mime_type,
+                        "policy_warning_codes": list(
+                            policy_result.warning_codes
+                        ),
+                    },
+                    None,
+                    False,
+                    list(policy_result.warning_codes),
+                )
 
-            partition_mode, partition_meta, partition_dir = self._resolve_partition_dir(
-                documents_dir=documents_dir,
-                url=final_url,
-                request=request,
+            partition_mode, partition_meta, partition_dir = (
+                self._resolve_partition_dir(
+                    documents_dir=documents_dir,
+                    url=final_url,
+                    request=request,
+                    target_metadata=candidate.target_metadata,
+                )
             )
             partition_dir.mkdir(parents=True, exist_ok=True)
             filename = self._safe_filename(final_url, extension, idx)
@@ -885,7 +1062,7 @@ class AcquisitionEngine:
                 try:
                     bytes_written = 0
                     with target_path.open("xb") as handle:
-                        for chunk in response.iter_content(chunk_size=65536):
+                        for chunk in _chunks():
                             if not chunk:
                                 continue
                             handle.write(chunk)
@@ -893,21 +1070,36 @@ class AcquisitionEngine:
                     break
                 except FileExistsError:
                     suffix += 1
-                    target_path = partition_dir / f"{Path(filename).stem}-{suffix}{extension}"
+                    target_path = (
+                        partition_dir
+                        / f"{Path(filename).stem}-{suffix}{extension}"
+                    )
 
-            return idx, {
-                "url": url,
-                "final_url": final_url,
-                "partition_mode": partition_mode,
-                "status": "downloaded",
-                "mime_type": mime_type,
-                "path": target_path.as_posix(),
-                "relative_path": target_path.relative_to(documents_dir).as_posix(),
-                "bytes": bytes_written,
-                "attempt_count": attempt_count,
-                "policy_warning_codes": list(policy_result.warning_codes),
-                **partition_meta,
-            }, None, True, list(policy_result.warning_codes)
+            return (
+                idx,
+                {
+                    "url": url,
+                    "final_url": final_url,
+                    "partition_mode": partition_mode,
+                    "status": "downloaded",
+                    "mime_type": mime_type,
+                    "path": target_path.as_posix(),
+                    "relative_path": target_path.relative_to(
+                        documents_dir
+                    ).as_posix(),
+                    "bytes": bytes_written,
+                    "attempt_count": attempt_count,
+                    "policy_warning_codes": list(policy_result.warning_codes),
+                    "target_label": (
+                        candidate.target_metadata or {}
+                    ).get("label"),
+                    "target_metadata": candidate.target_metadata,
+                    **partition_meta,
+                },
+                None,
+                True,
+                list(policy_result.warning_codes),
+            )
         except Exception as exc:
             error = build_error_record(
                 exc,
@@ -915,20 +1107,37 @@ class AcquisitionEngine:
                 document_path=url,
                 provider="http",
             )
-            return idx, {
-                "url": url,
-                "status": "failed",
-                "error": str(exc),
-                "policy_warning_codes": list(policy_result.warning_codes),
-            }, error, False, list(policy_result.warning_codes)
+            return (
+                idx,
+                {
+                    "url": url,
+                    "status": "failed",
+                    "error": str(exc),
+                    "policy_warning_codes": list(policy_result.warning_codes),
+                },
+                error,
+                False,
+                list(policy_result.warning_codes),
+            )
 
     @staticmethod
     def _downloads_ssl_verify() -> bool:
-        raw_value = os.getenv("ACQUISITION_SSL_VERIFY") or os.getenv("STREAMLINE_EXTRACT_SSL_VERIFY") or "false"
-        return str(raw_value).strip().lower() not in {"0", "false", "no", "off"}
+        raw_value = (
+            os.getenv("ACQUISITION_SSL_VERIFY")
+            or os.getenv("STREAMLINE_EXTRACT_SSL_VERIFY")
+            or "false"
+        )
+        return str(raw_value).strip().lower() not in {
+            "0",
+            "false",
+            "no",
+            "off",
+        }
 
     @staticmethod
-    def _infer_extension_from_url_or_mime(url: str, mime_type: str | None) -> str | None:
+    def _infer_extension_from_url_or_mime(
+        url: str, mime_type: str | None
+    ) -> str | None:
         parsed = urlparse(url)
         suffix = Path(parsed.path).suffix.lower()
         if suffix in AcquisitionEngine._SUPPORTED_EXTENSIONS:
@@ -954,16 +1163,8 @@ class AcquisitionEngine:
             sanitized_stem = f"candidate-{index:03d}"
         return f"{sanitized_stem}{ext}"
 
-    @staticmethod
-    def _normalize_url_text(url: str) -> str:
-        return re.sub(r"[_\-/]", " ", url or "").lower()
-
-    @staticmethod
-    def _url_host(url: str) -> str:
-        try:
-            return (urlparse(url).hostname or "").lower()
-        except Exception:
-            return ""
+    _normalize_url_text = staticmethod(normalize_url_text)
+    _url_host = staticmethod(url_host)
 
     @classmethod
     def _passes_final_url_selection_guard(
@@ -972,26 +1173,21 @@ class AcquisitionEngine:
         final_url: str,
         request: AcquisitionRequest,
     ) -> tuple[bool, str | None]:
-        """Validate final redirect URL against selection relevance constraints."""
+        """Post-redirect junk guard: reject only on high-confidence excludes.
+
+        Recall-first: the pre-download selector already applied any configured
+        relevance rules against the candidate's full context. Re-applying
+        require/allowed-domain gates to the bare final-URL string caused valid
+        documents to be dropped (their filename lacks the keywords). Precision
+        now lives downstream in the document classifier, so this guard only
+        rejects a final URL that positively matches an *exclude* term.
+        """
         text = cls._normalize_url_text(final_url)
-        host = cls._url_host(final_url)
-
-        allowed_domains = list(request.selection_relevance_allowed_domain_patterns or [])
-        if allowed_domains and not any(str(pattern).lower() in host for pattern in allowed_domains):
-            return False, "final_url_domain_not_allowed"
-
-        exclude_terms = list(request.selection_relevance_exclude_any_terms or [])
+        exclude_terms = list(
+            request.selection_relevance_exclude_any_terms or []
+        )
         if any(str(term).lower() in text for term in exclude_terms):
             return False, "final_url_matches_excluded_term"
-
-        require_terms = list(request.selection_relevance_require_any_terms or [])
-        if require_terms and not any(str(term).lower() in text for term in require_terms):
-            return False, "final_url_missing_required_term"
-
-        marker_terms = list(request.selection_relevance_require_legal_marker_terms or [])
-        if marker_terms and not any(str(term).lower() in text for term in marker_terms):
-            return False, "final_url_missing_legal_marker"
-
         return True, None
 
     @staticmethod
@@ -1021,7 +1217,9 @@ class AcquisitionEngine:
         return cls._STATE_ALIASES.get(normalized) or cls._slug(normalized)
 
     @classmethod
-    def _infer_jurisdiction_from_query(cls, query: str | None) -> tuple[str | None, str | None]:
+    def _infer_jurisdiction_from_query(
+        cls, query: str | None
+    ) -> tuple[str | None, str | None]:
         if not query:
             return None, None
 
@@ -1034,7 +1232,9 @@ class AcquisitionEngine:
             query_clean,
             flags=re.IGNORECASE,
         )
-        jurisdiction = jurisdiction_match.group(1).strip() if jurisdiction_match else None
+        jurisdiction = (
+            jurisdiction_match.group(1).strip() if jurisdiction_match else None
+        )
 
         lower_query = query_clean.lower()
         state_key: str | None = None
@@ -1060,9 +1260,39 @@ class AcquisitionEngine:
         jurisdiction: str | None,
     ) -> tuple[str, str, Path]:
         state_key = cls._normalize_state_key(state) or "unknown-state"
-        jurisdiction_key = cls._slug(jurisdiction or "unknown-jurisdiction") or "unknown-jurisdiction"
-        partition_dir = documents_dir / "by_jurisdiction" / state_key / jurisdiction_key
+        jurisdiction_key = (
+            cls._slug(jurisdiction or "unknown-jurisdiction")
+            or "unknown-jurisdiction"
+        )
+        partition_dir = (
+            documents_dir / "by_jurisdiction" / state_key / jurisdiction_key
+        )
         return state_key, jurisdiction_key, partition_dir
+
+    @classmethod
+    def _generic_partition_dir(
+        cls,
+        documents_dir: Path,
+        *,
+        fields: list[str],
+        target_metadata: dict[str, object] | None,
+    ) -> tuple[dict[str, str], Path]:
+        """Partition by arbitrary target-metadata fields (domain-neutral).
+
+        Produces ``by_<field1>/<value1>/<value2>/...`` and emits a
+        ``source_<field>`` metadata entry per field. Missing values fall back
+        to ``unknown-<field>``.
+        """
+        meta = target_metadata or {}
+        partition_dir = documents_dir / ("by_" + "_".join(fields))
+        source_meta: dict[str, str] = {}
+        for field_name in fields:
+            raw = meta.get(field_name)
+            value_key = cls._slug(str(raw)) if raw else f"unknown-{field_name}"
+            value_key = value_key or f"unknown-{field_name}"
+            source_meta[f"source_{field_name}"] = value_key
+            partition_dir = partition_dir / value_key
+        return source_meta, partition_dir
 
     @classmethod
     def _resolve_partition_dir(
@@ -1071,19 +1301,37 @@ class AcquisitionEngine:
         documents_dir: Path,
         url: str,
         request: AcquisitionRequest,
+        target_metadata: dict[str, object] | None = None,
     ) -> tuple[str, dict[str, str], Path]:
-        requested_mode = (request.partition_mode or "auto").strip().lower()
-        mode = requested_mode if requested_mode in {"auto", "jurisdiction", "host"} else "auto"
+        # Generic, config-driven partitioning takes precedence when set.
+        if request.partition_by:
+            source_meta, partition_dir = cls._generic_partition_dir(
+                documents_dir,
+                fields=list(request.partition_by),
+                target_metadata=target_metadata,
+            )
+            return ("fields", source_meta, partition_dir)
 
-        inferred_jurisdiction, inferred_state = cls._infer_jurisdiction_from_query(request.query)
+        requested_mode = (request.partition_mode or "auto").strip().lower()
+        mode = (
+            requested_mode
+            if requested_mode in {"auto", "jurisdiction", "host"}
+            else "auto"
+        )
+
+        inferred_jurisdiction, inferred_state = (
+            cls._infer_jurisdiction_from_query(request.query)
+        )
         jurisdiction = request.jurisdiction or inferred_jurisdiction
         state = request.state or inferred_state
 
         if mode == "jurisdiction":
-            state_key, jurisdiction_key, partition_dir = cls._jurisdiction_partition_dir(
-                documents_dir,
-                state=state,
-                jurisdiction=jurisdiction,
+            state_key, jurisdiction_key, partition_dir = (
+                cls._jurisdiction_partition_dir(
+                    documents_dir,
+                    state=state,
+                    jurisdiction=jurisdiction,
+                )
             )
             return (
                 "jurisdiction",
@@ -1095,15 +1343,19 @@ class AcquisitionEngine:
             )
 
         if mode == "host":
-            host_key, partition_dir = cls._host_partition_dir(documents_dir, url)
+            host_key, partition_dir = cls._host_partition_dir(
+                documents_dir, url
+            )
             return ("host", {"source_host": host_key}, partition_dir)
 
         # auto mode: use jurisdiction partition when both hints exist; fallback to host.
         if jurisdiction and state:
-            state_key, jurisdiction_key, partition_dir = cls._jurisdiction_partition_dir(
-                documents_dir,
-                state=state,
-                jurisdiction=jurisdiction,
+            state_key, jurisdiction_key, partition_dir = (
+                cls._jurisdiction_partition_dir(
+                    documents_dir,
+                    state=state,
+                    jurisdiction=jurisdiction,
+                )
             )
             return (
                 "jurisdiction",
@@ -1127,10 +1379,12 @@ class AcquisitionEngine:
     ) -> tuple[list[dict[str, object]], list[dict[str, object]], list[str]]:
         """Download supported candidate files for non-dry acquisition runs."""
         try:
-            import requests
+            import requests  # noqa: F401
         except ImportError as exc:
             error = build_error_record(
-                RuntimeError("requests dependency is required for acquisition downloads"),
+                RuntimeError(
+                    "requests dependency is required for acquisition downloads"
+                ),
                 stage="acquisition.download",
                 provider="http",
             )
@@ -1143,31 +1397,79 @@ class AcquisitionEngine:
         downloaded_count = 0
         blocked_counts: Counter[str] = Counter()
         warning_counts: Counter[str] = Counter()
-        max_concurrent_downloads = max(1, int(request.max_concurrent_downloads))
+        max_concurrent_downloads = max(
+            1, int(request.max_concurrent_downloads)
+        )
         rate_limiter = _RequestRateLimiter(request.min_request_interval_ms)
         staged_candidates = list(candidates[:max_downloads])
 
-        futures = []
-        with ThreadPoolExecutor(max_workers=max_concurrent_downloads) as executor:
-            for idx, candidate in enumerate(staged_candidates, start=1):
-                futures.append(
-                    executor.submit(
-                        self._download_single_candidate,
-                        idx=idx,
-                        candidate=candidate,
-                        request=request,
-                        documents_dir=documents_dir,
-                        ssl_verify=ssl_verify,
-                        retry_policy=retry_policy,
-                        rate_limiter=rate_limiter,
+        download_notes_extra: list[str] = []
+        CompletedT = tuple[
+            int,
+            dict[str, object],
+            dict[str, object] | None,
+            bool,
+            list[str],
+        ]
+        completed: list[CompletedT] = []
+
+        # Browser mode: bot-protected sites (Akamai) block requests even with
+        # transplanted cookies (TLS fingerprinting), so files are fetched
+        # THROUGH a real browser. A single Chrome session is shared and
+        # downloads run serially (the driver is not thread-safe).
+        browser = None
+        if request.browser_mode:
+            browser, note = self._open_browser_for_download()
+            download_notes_extra.append(note)
+
+        try:
+            if browser is not None:
+                for idx, candidate in enumerate(staged_candidates, start=1):
+                    completed.append(
+                        self._download_single_candidate(
+                            idx=idx,
+                            candidate=candidate,
+                            request=request,
+                            documents_dir=documents_dir,
+                            ssl_verify=ssl_verify,
+                            retry_policy=retry_policy,
+                            rate_limiter=rate_limiter,
+                            browser=browser,
+                        )
                     )
-                )
+            else:
+                futures = []
+                with ThreadPoolExecutor(
+                    max_workers=max_concurrent_downloads
+                ) as executor:
+                    for idx, candidate in enumerate(
+                        staged_candidates, start=1
+                    ):
+                        futures.append(
+                            executor.submit(
+                                self._download_single_candidate,
+                                idx=idx,
+                                candidate=candidate,
+                                request=request,
+                                documents_dir=documents_dir,
+                                ssl_verify=ssl_verify,
+                                retry_policy=retry_policy,
+                                rate_limiter=rate_limiter,
+                            )
+                        )
+                    for future in as_completed(futures):
+                        completed.append(future.result())
+        finally:
+            if browser is not None:
+                browser.close()
 
-            completed: list[tuple[int, dict[str, object], dict[str, object] | None, bool, list[str]]] = []
-            for future in as_completed(futures):
-                completed.append(future.result())
-
-        for _, download_record, maybe_error, was_downloaded, policy_warning_codes in sorted(completed, key=lambda item: item[0]):
+        for (
+            _,
+            download_record,
+            maybe_error,
+            was_downloaded,
+            policy_warning_codes,
+        ) in sorted(completed, key=lambda item: item[0]):
             downloads.append(download_record)
             if maybe_error is not None:
                 errors.append(maybe_error)
@@ -1182,8 +1484,11 @@ class AcquisitionEngine:
         notes = [
             f"Download stage completed: {downloaded_count} file(s) saved from {len(candidates)} candidate(s)."
         ]
+        notes.extend(download_notes_extra)
         if not ssl_verify:
-            notes.append("Download SSL verification disabled via ACQUISITION_SSL_VERIFY/STREAMLINE_EXTRACT_SSL_VERIFY.")
+            notes.append(
+                "Download SSL verification disabled via ACQUISITION_SSL_VERIFY/STREAMLINE_EXTRACT_SSL_VERIFY."
+            )
         notes.append(
             "Download retry policy: "
             f"attempts={retry_policy['max_attempts']}, "
@@ -1220,18 +1525,7 @@ class AcquisitionEngine:
         if not candidates:
             return candidates, []
 
-        selector = CandidateSelector(
-            exclude_draft=request.selection_exclude_draft,
-            draft_patterns=request.selection_draft_patterns or None,
-            relevance_require_any_terms=request.selection_relevance_require_any_terms or None,
-            relevance_require_legal_marker_terms=request.selection_relevance_require_legal_marker_terms or None,
-            relevance_exclude_any_terms=request.selection_relevance_exclude_any_terms or None,
-            relevance_allowed_domain_patterns=request.selection_relevance_allowed_domain_patterns or None,
-            require_supported_document=bool(request.selection_require_supported_document),
-            target_identity_require_any_templates=request.selection_target_identity_require_any_templates or None,
-            target_identity_require_all_templates=request.selection_target_identity_require_all_templates or None,
-            target_identity_exclude_any_templates=request.selection_target_identity_exclude_any_templates or None,
-        )
+        selector = AcquisitionEngine._build_selector(request)
         filtered, filter_notes = selector.select(
             [candidates],
             primary_per_target=max(1, len(candidates)),
@@ -1331,18 +1625,24 @@ class AcquisitionEngine:
         return {
             "total": len(download_records),
             "downloaded": counts.get("downloaded", 0),
-            "skipped": sum(v for k, v in counts.items() if k.startswith("skipped")),
+            "skipped": sum(
+                v for k, v in counts.items() if k.startswith("skipped")
+            ),
             "failed": counts.get("failed", 0),
             "total_bytes": total_bytes,
             "by_status": counts,
         }
 
     @staticmethod
-    def _candidate_has_reason(candidate: AcquisitionCandidate, reason: str) -> bool:
+    def _candidate_has_reason(
+        candidate: AcquisitionCandidate, reason: str
+    ) -> bool:
         return any(note == reason for note in (candidate.reasons or []))
 
     @staticmethod
-    def _qualifying_index_fixture_urls(request: AcquisitionRequest) -> list[str]:
+    def _qualifying_index_fixture_urls(
+        request: AcquisitionRequest,
+    ) -> list[str]:
         qualifying_urls: list[str] = []
         seen_urls: set[str] = set()
 
@@ -1365,7 +1665,9 @@ class AcquisitionEngine:
                 include_link_text_patterns=request.include_link_text_patterns,
             ):
                 continue
-            if not NullDiggerConnector._matches_allowed_domain(url, request.allowed_domains):
+            if not NullDiggerConnector._matches_allowed_domain(
+                url, request.allowed_domains
+            ):
                 continue
             if url in seen_urls:
                 continue
@@ -1399,17 +1701,27 @@ class AcquisitionEngine:
             for metric in target_selection_metrics
             if int(metric.get("selected_candidates") or 0) > 0
         )
-        success_rate = targets_with_staged_candidates / target_count if target_count else None
+        success_rate = (
+            targets_with_staged_candidates / target_count
+            if target_count
+            else None
+        )
         threshold = 0.80
 
         return {
             "applicable": True,
-            "measurement_mode": "target_matrix" if request.targets else "single_query",
+            "measurement_mode": "target_matrix"
+            if request.targets
+            else "single_query",
             "target_count": target_count,
             "targets_with_staged_candidates": targets_with_staged_candidates,
-            "success_rate": round(success_rate, 4) if success_rate is not None else None,
+            "success_rate": round(success_rate, 4)
+            if success_rate is not None
+            else None,
             "gate_threshold": threshold,
-            "meets_fixture_gate": bool(success_rate is not None and success_rate >= threshold),
+            "meets_fixture_gate": bool(
+                success_rate is not None and success_rate >= threshold
+            ),
             "targets": target_selection_metrics,
         }
 
@@ -1429,10 +1741,14 @@ class AcquisitionEngine:
         centralized_urls = {
             candidate.url
             for candidate in candidates
-            if self._candidate_has_reason(candidate, "Routed via centralized hub sweep")
+            if self._candidate_has_reason(
+                candidate, ROUTE_REASON_CENTRALIZED
+            )
         }
 
-        recovered_link_count = sum(1 for url in qualifying_urls if url in centralized_urls)
+        recovered_link_count = sum(
+            1 for url in qualifying_urls if url in centralized_urls
+        )
         recovery_rate = (
             recovered_link_count / len(qualifying_urls)
             if qualifying_urls
@@ -1442,13 +1758,19 @@ class AcquisitionEngine:
 
         return {
             "applicable": True,
-            "measurement_mode": "fixture_index_links" if request.index_links else "live_hub_pages",
+            "measurement_mode": "fixture_index_links"
+            if request.index_links
+            else "live_hub_pages",
             "hub_page_count": len(request.hub_pages or []),
             "qualifying_link_count": len(qualifying_urls),
             "recovered_link_count": recovered_link_count,
-            "recovery_rate": round(recovery_rate, 4) if recovery_rate is not None else None,
+            "recovery_rate": round(recovery_rate, 4)
+            if recovery_rate is not None
+            else None,
             "gate_threshold": threshold,
-            "meets_fixture_gate": bool(recovery_rate is not None and recovery_rate >= threshold),
+            "meets_fixture_gate": bool(
+                recovery_rate is not None and recovery_rate >= threshold
+            ),
         }
 
     def _build_hybrid_mixed_source_metrics(
@@ -1466,12 +1788,16 @@ class AcquisitionEngine:
         centralized_count = sum(
             1
             for candidate in candidates
-            if self._candidate_has_reason(candidate, "Routed via centralized hub sweep")
+            if self._candidate_has_reason(
+                candidate, ROUTE_REASON_CENTRALIZED
+            )
         )
         distributed_count = sum(
             1
             for candidate in candidates
-            if self._candidate_has_reason(candidate, "Routed via distributed digger path")
+            if self._candidate_has_reason(
+                candidate, ROUTE_REASON_DISTRIBUTED
+            )
         )
         both_paths_resolved = centralized_count > 0 and distributed_count > 0
 
@@ -1509,6 +1835,47 @@ class AcquisitionEngine:
         }
 
     @staticmethod
+    @staticmethod
+    def _open_browser_for_download() -> tuple[object | None, str]:
+        """Open a shared headless-browser session for downloads, if possible.
+
+        Returns ``(session_or_None, note)``. On any failure (Selenium missing,
+        Chrome won't start) returns ``(None, reason)`` and the caller falls
+        back to the normal requests downloader.
+        """
+        try:
+            from .browser import BrowserSession, BrowserUnavailableError
+        except ImportError:
+            return None, "Browser mode requested but Selenium is not installed."
+        try:
+            session = BrowserSession()
+            session._start()  # noqa: SLF001 - own the lifecycle here
+        except BrowserUnavailableError as exc:
+            return None, f"Browser mode unavailable ({exc}); used direct HTTP."
+        return session, "Browser mode: downloading via headless Chrome."
+
+    @staticmethod
+    def _inherit_target_metadata(
+        artifact: object,
+        candidate_by_url: dict[str, AcquisitionCandidate],
+    ) -> dict[str, object] | None:
+        """Attribute a crawled artifact to the seed target that produced it.
+
+        The digger stamps ``source_seed`` on discovered artifacts; the seed
+        URL maps back to the originating candidate (and its target metadata).
+        """
+        metadata = getattr(artifact, "metadata", None)
+        if not isinstance(metadata, dict):
+            return None
+        seed_url = metadata.get("source_seed")
+        if not seed_url:
+            return None
+        seed_candidate = candidate_by_url.get(str(seed_url))
+        if seed_candidate is None:
+            return None
+        return seed_candidate.target_metadata
+
+    @staticmethod
     def _copy_candidate_with_reason(
         candidate: AcquisitionCandidate,
         reason: str,
@@ -1526,6 +1893,7 @@ class AcquisitionEngine:
             extension=candidate.extension,
             canonical_url=candidate.canonical_url,
             content_hash=candidate.content_hash,
+            target_metadata=candidate.target_metadata,
         )
 
     @staticmethod
@@ -1545,29 +1913,46 @@ class AcquisitionEngine:
         if request.include_url_patterns:
             constraints["include_url_patterns"] = request.include_url_patterns
         if request.include_link_text_patterns:
-            constraints["include_link_text_patterns"] = request.include_link_text_patterns
+            constraints["include_link_text_patterns"] = (
+                request.include_link_text_patterns
+            )
         if request.index_page_mode:
             constraints["index_page_mode"] = request.index_page_mode
         if request.index_links is not None:
             constraints["index_link_count"] = len(request.index_links)
 
-        for field_name in ("max_depth", "max_pages", "max_files", "timeout_seconds"):
+        for field_name in (
+            "max_depth",
+            "max_pages",
+            "max_files",
+            "timeout_seconds",
+        ):
             value = getattr(request, field_name)
             if value is not None:
                 constraints[field_name] = value
 
-        constraints["max_concurrent_downloads"] = max(1, int(request.max_concurrent_downloads))
-        constraints["min_request_interval_ms"] = max(0, int(request.min_request_interval_ms))
+        constraints["max_concurrent_downloads"] = max(
+            1, int(request.max_concurrent_downloads)
+        )
+        constraints["min_request_interval_ms"] = max(
+            0, int(request.min_request_interval_ms)
+        )
 
         constraints["retry_policy"] = {
             "max_attempts": max(1, int(request.retry_max_attempts)),
-            "initial_backoff_seconds": max(0.0, float(request.retry_initial_backoff_seconds)),
-            "max_backoff_seconds": max(0.0, float(request.retry_max_backoff_seconds)),
+            "initial_backoff_seconds": max(
+                0.0, float(request.retry_initial_backoff_seconds)
+            ),
+            "max_backoff_seconds": max(
+                0.0, float(request.retry_max_backoff_seconds)
+            ),
         }
         constraints["policy"] = {
             "robots_policy_mode": request.robots_policy_mode,
             "tos_policy_mode": request.tos_policy_mode,
-            "acknowledged_tos_domains": list(request.acknowledged_tos_domains or []),
+            "acknowledged_tos_domains": list(
+                request.acknowledged_tos_domains or []
+            ),
         }
         if request.targets:
             constraints["target_count"] = len(request.targets)
@@ -1581,7 +1966,9 @@ class AcquisitionEngine:
             "mode": request.link_prioritization_mode,
             "top_k": request.link_top_k,
             "keywords": list(request.link_prioritization_keywords or []),
-            "power_range_kw": list(request.power_range_kw) if request.power_range_kw else None,
+            "power_range_kw": list(request.power_range_kw)
+            if request.power_range_kw
+            else None,
         }
 
         return constraints
@@ -1591,7 +1978,12 @@ class AcquisitionEngine:
         *,
         request: AcquisitionRequest,
         candidates: list[AcquisitionCandidate],
-    ) -> tuple[list[AcquisitionCandidate], list[dict[str, object]], list[str], dict[str, object]]:
+    ) -> tuple[
+        list[AcquisitionCandidate],
+        list[dict[str, object]],
+        list[str],
+        dict[str, object],
+    ]:
         notes: list[str] = []
         errors: list[dict[str, object]] = []
         routing_state: dict[str, object] = {
@@ -1601,7 +1993,9 @@ class AcquisitionEngine:
         }
 
         if not candidates:
-            notes.append("Distributed routing skipped because no candidates were available.")
+            notes.append(
+                "Distributed routing skipped because no candidates were available."
+            )
             return candidates, errors, notes, routing_state
 
         ssl_verify = self._downloads_ssl_verify()
@@ -1613,7 +2007,9 @@ class AcquisitionEngine:
         )
         notes.extend(policy_notes)
         if not filtered_seed_urls:
-            notes.append("Distributed routing skipped because policy controls filtered all routing URLs.")
+            notes.append(
+                "Distributed routing skipped because policy controls filtered all routing URLs."
+            )
             return candidates, errors, notes, routing_state
 
         try:
@@ -1630,7 +2026,9 @@ class AcquisitionEngine:
                     include_link_text_patterns=request.include_link_text_patterns,
                     extra_params={
                         "ssl_verify": ssl_verify,
-                        "request_headers": self._resolve_request_headers(request),
+                        "request_headers": self._resolve_request_headers(
+                            request
+                        ),
                         "retry": self._resolve_retry_policy(request),
                     },
                 )
@@ -1643,8 +2041,15 @@ class AcquisitionEngine:
                     provider=request.digger_provider,
                 )
             )
-            notes.append("Distributed routing failed; falling back to unrouted candidates.")
-            return candidates, normalize_error_records(errors), notes, routing_state
+            notes.append(
+                "Distributed routing failed; falling back to unrouted candidates."
+            )
+            return (
+                candidates,
+                normalize_error_records(errors),
+                notes,
+                routing_state,
+            )
 
         discovery_modes = sorted(
             {
@@ -1662,8 +2067,15 @@ class AcquisitionEngine:
         )
 
         if not artifacts:
-            notes.append("Distributed routing produced no digger artifacts; falling back to unrouted candidates.")
-            return candidates, normalize_error_records(errors), notes, routing_state
+            notes.append(
+                "Distributed routing produced no digger artifacts; falling back to unrouted candidates."
+            )
+            return (
+                candidates,
+                normalize_error_records(errors),
+                notes,
+                routing_state,
+            )
 
         candidate_by_url: dict[str, AcquisitionCandidate] = {}
         for candidate in candidates:
@@ -1671,7 +2083,7 @@ class AcquisitionEngine:
 
         routed_candidates: list[AcquisitionCandidate] = []
         seen_urls: set[str] = set()
-        route_reason = "Routed via distributed digger path"
+        route_reason = ROUTE_REASON_DISTRIBUTED
         for artifact in artifacts:
             if artifact.url in seen_urls:
                 continue
@@ -1683,6 +2095,11 @@ class AcquisitionEngine:
                 )
                 continue
 
+            # Attribute crawled children back to the seed target that led
+            # the digger to them (target provenance for crawl domains).
+            inherited_metadata = self._inherit_target_metadata(
+                artifact, candidate_by_url
+            )
             routed_candidates.append(
                 AcquisitionCandidate(
                     url=artifact.url,
@@ -1691,20 +2108,31 @@ class AcquisitionEngine:
                     reasons=[route_reason],
                     mime_type=artifact.mime_type,
                     extension=artifact.extension,
+                    target_metadata=inherited_metadata,
                 )
             )
 
         notes.append(
             f"Distributed routing staged {len(routed_candidates)} candidate(s) through digger."
         )
-        return routed_candidates, normalize_error_records(errors), notes, routing_state
+        return (
+            routed_candidates,
+            normalize_error_records(errors),
+            notes,
+            routing_state,
+        )
 
     def _route_centralized_candidates(
         self,
         *,
         request: AcquisitionRequest,
         candidates: list[AcquisitionCandidate],
-    ) -> tuple[list[AcquisitionCandidate], list[dict[str, object]], list[str], dict[str, object]]:
+    ) -> tuple[
+        list[AcquisitionCandidate],
+        list[dict[str, object]],
+        list[str],
+        dict[str, object],
+    ]:
         notes: list[str] = []
         errors: list[dict[str, object]] = []
         routing_state: dict[str, object] = {
@@ -1716,7 +2144,9 @@ class AcquisitionEngine:
         hub_pages = list(request.hub_pages or [])
         seed_urls = hub_pages or [candidate.url for candidate in candidates]
         if not seed_urls:
-            notes.append("Centralized routing skipped because no hub pages or candidates were available.")
+            notes.append(
+                "Centralized routing skipped because no hub pages or candidates were available."
+            )
             return candidates, errors, notes, routing_state
 
         ssl_verify = self._downloads_ssl_verify()
@@ -1728,7 +2158,9 @@ class AcquisitionEngine:
         )
         notes.extend(policy_notes)
         if not filtered_seed_urls:
-            notes.append("Centralized routing skipped because policy controls filtered all hub pages or routing URLs.")
+            notes.append(
+                "Centralized routing skipped because policy controls filtered all hub pages or routing URLs."
+            )
             return candidates, errors, notes, routing_state
 
         index_page_mode = {
@@ -1759,7 +2191,9 @@ class AcquisitionEngine:
                     extra_params={
                         **extra_params,
                         "ssl_verify": ssl_verify,
-                        "request_headers": self._resolve_request_headers(request),
+                        "request_headers": self._resolve_request_headers(
+                            request
+                        ),
                         "retry": self._resolve_retry_policy(request),
                     },
                 )
@@ -1772,8 +2206,15 @@ class AcquisitionEngine:
                     provider=request.digger_provider,
                 )
             )
-            notes.append("Centralized routing failed; falling back to unrouted candidates.")
-            return candidates, normalize_error_records(errors), notes, routing_state
+            notes.append(
+                "Centralized routing failed; falling back to unrouted candidates."
+            )
+            return (
+                candidates,
+                normalize_error_records(errors),
+                notes,
+                routing_state,
+            )
 
         discovery_modes = sorted(
             {
@@ -1793,8 +2234,15 @@ class AcquisitionEngine:
         )
 
         if not artifacts:
-            notes.append("Centralized routing produced no sweep artifacts; falling back to unrouted candidates.")
-            return candidates, normalize_error_records(errors), notes, routing_state
+            notes.append(
+                "Centralized routing produced no sweep artifacts; falling back to unrouted candidates."
+            )
+            return (
+                candidates,
+                normalize_error_records(errors),
+                notes,
+                routing_state,
+            )
 
         candidate_by_url: dict[str, AcquisitionCandidate] = {}
         for candidate in candidates:
@@ -1802,7 +2250,7 @@ class AcquisitionEngine:
 
         routed_candidates: list[AcquisitionCandidate] = []
         seen_urls: set[str] = set()
-        route_reason = "Routed via centralized hub sweep"
+        route_reason = ROUTE_REASON_CENTRALIZED
         for artifact in artifacts:
             if artifact.url in seen_urls:
                 continue
@@ -1814,6 +2262,9 @@ class AcquisitionEngine:
                 )
                 continue
 
+            inherited_metadata = self._inherit_target_metadata(
+                artifact, candidate_by_url
+            )
             routed_candidates.append(
                 AcquisitionCandidate(
                     url=artifact.url,
@@ -1822,13 +2273,19 @@ class AcquisitionEngine:
                     reasons=[route_reason],
                     mime_type=artifact.mime_type,
                     extension=artifact.extension,
+                    target_metadata=inherited_metadata,
                 )
             )
 
         notes.append(
             f"Centralized routing staged {len(routed_candidates)} candidate(s) through hub sweep."
         )
-        return routed_candidates, normalize_error_records(errors), notes, routing_state
+        return (
+            routed_candidates,
+            normalize_error_records(errors),
+            notes,
+            routing_state,
+        )
 
     @staticmethod
     def _dedupe_candidates_by_url(
@@ -1848,7 +2305,12 @@ class AcquisitionEngine:
         *,
         request: AcquisitionRequest,
         candidates: list[AcquisitionCandidate],
-    ) -> tuple[list[AcquisitionCandidate], list[dict[str, object]], list[str], dict[str, object]]:
+    ) -> tuple[
+        list[AcquisitionCandidate],
+        list[dict[str, object]],
+        list[str],
+        dict[str, object],
+    ]:
         notes: list[str] = []
         errors: list[dict[str, object]] = []
         routing_state: dict[str, object] = {
@@ -1857,11 +2319,14 @@ class AcquisitionEngine:
             "stages": [],
         }
 
-        centralized_candidates, centralized_errors, centralized_notes, centralized_state = (
-            self._route_centralized_candidates(
-                request=request,
-                candidates=candidates,
-            )
+        (
+            centralized_candidates,
+            centralized_errors,
+            centralized_notes,
+            centralized_state,
+        ) = self._route_centralized_candidates(
+            request=request,
+            candidates=candidates,
         )
         errors.extend(centralized_errors)
         notes.extend(centralized_notes)
@@ -1871,17 +2336,23 @@ class AcquisitionEngine:
         if int(centralized_state.get("artifact_count") or 0) == 0:
             centralized_routed_candidates = []
 
-        centralized_urls = {candidate.url for candidate in centralized_routed_candidates}
+        centralized_urls = {
+            candidate.url for candidate in centralized_routed_candidates
+        }
         fallback_candidates = [
-            candidate for candidate in candidates
+            candidate
+            for candidate in candidates
             if candidate.url not in centralized_urls
         ]
 
-        distributed_candidates, distributed_errors, distributed_notes, distributed_state = (
-            self._route_distributed_candidates(
-                request=request,
-                candidates=fallback_candidates,
-            )
+        (
+            distributed_candidates,
+            distributed_errors,
+            distributed_notes,
+            distributed_state,
+        ) = self._route_distributed_candidates(
+            request=request,
+            candidates=fallback_candidates,
         )
         errors.extend(distributed_errors)
         notes.extend(distributed_notes)
@@ -1891,8 +2362,12 @@ class AcquisitionEngine:
         if int(distributed_state.get("artifact_count") or 0) == 0:
             distributed_routed_candidates = []
 
-        routing_state["centralized_candidate_count"] = len(centralized_routed_candidates)
-        routing_state["distributed_candidate_count"] = len(distributed_routed_candidates)
+        routing_state["centralized_candidate_count"] = len(
+            centralized_routed_candidates
+        )
+        routing_state["distributed_candidate_count"] = len(
+            distributed_routed_candidates
+        )
 
         combined_candidates = self._dedupe_candidates_by_url(
             [*centralized_routed_candidates, *distributed_routed_candidates]
@@ -1903,10 +2378,22 @@ class AcquisitionEngine:
             notes.append(
                 f"Hybrid routing produced {len(combined_candidates)} candidate(s) after centralized-plus-distributed sequencing."
             )
-            return combined_candidates, normalize_error_records(errors), notes, routing_state
+            return (
+                combined_candidates,
+                normalize_error_records(errors),
+                notes,
+                routing_state,
+            )
 
-        notes.append("Hybrid routing produced no routed candidates; falling back to unrouted candidates.")
-        return candidates, normalize_error_records(errors), notes, routing_state
+        notes.append(
+            "Hybrid routing produced no routed candidates; falling back to unrouted candidates."
+        )
+        return (
+            candidates,
+            normalize_error_records(errors),
+            notes,
+            routing_state,
+        )
 
     @staticmethod
     def _write_download_index(
@@ -1921,11 +2408,13 @@ class AcquisitionEngine:
         fieldnames = [
             "run_id",
             "domain",
+            "target_label",
             "partition_mode",
             "source_state",
             "source_jurisdiction",
             "source_host",
             "status",
+            "classification_passed",
             "url",
             "final_url",
             "mime_type",
@@ -1933,21 +2422,29 @@ class AcquisitionEngine:
             "relative_path",
             "path",
             "error",
+            "target_metadata",
         ]
 
         with index_path.open("w", newline="", encoding="utf-8") as handle:
             writer = csv.DictWriter(handle, fieldnames=fieldnames)
             writer.writeheader()
             for record in download_records:
+                raw_meta = record.get("target_metadata")
                 writer.writerow(
                     {
                         "run_id": run_id,
                         "domain": request.domain,
+                        "target_label": record.get("target_label"),
                         "partition_mode": record.get("partition_mode"),
                         "source_state": record.get("source_state"),
-                        "source_jurisdiction": record.get("source_jurisdiction"),
+                        "source_jurisdiction": record.get(
+                            "source_jurisdiction"
+                        ),
                         "source_host": record.get("source_host"),
                         "status": record.get("status"),
+                        "classification_passed": record.get(
+                            "classification_passed"
+                        ),
                         "url": record.get("url"),
                         "final_url": record.get("final_url"),
                         "mime_type": record.get("mime_type"),
@@ -1955,17 +2452,149 @@ class AcquisitionEngine:
                         "relative_path": record.get("relative_path"),
                         "path": record.get("path"),
                         "error": record.get("error"),
+                        "target_metadata": (
+                            json.dumps(raw_meta) if raw_meta else None
+                        ),
                     }
                 )
         return index_path
 
+    # ------------------------------------------------------------------
+    # Checkpointing helpers
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _target_checkpoint_key(target: dict[str, object]) -> str:
+        """Stable key for a target row used in checkpoint tracking."""
+        label = target.get("label")
+        if label:
+            return str(label)
+        return hashlib.md5(
+            json.dumps(target, sort_keys=True, default=str).encode()
+        ).hexdigest()[:12]
+
+    @staticmethod
+    def _checkpoint_path(manifest_path: Path) -> Path:
+        """Path to the domain-level checkpoint file."""
+        return manifest_path.parent.parent.parent / "checkpoint.json"
+
+    @staticmethod
+    def _load_checkpoint(path: Path) -> dict[str, dict[str, object]]:
+        """Load completed target keys from checkpoint file."""
+        if not path.exists():
+            return {}
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            return data.get("entries", {}) or {}
+        except (json.JSONDecodeError, OSError, ValueError):
+            return {}
+
+    @staticmethod
+    def _save_checkpoint_entries(
+        path: Path,
+        new_entries: dict[str, dict[str, object]],
+    ) -> None:
+        """Merge new_entries into the checkpoint file atomically."""
+        existing: dict[str, object] = {}
+        if path.exists():
+            with contextlib.suppress(json.JSONDecodeError, OSError, ValueError):
+                existing = json.loads(
+                    path.read_text(encoding="utf-8")
+                ).get("entries", {}) or {}
+        existing.update(new_entries)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            json.dumps({"version": 1, "entries": existing}, indent=2),
+            encoding="utf-8",
+        )
+
+    # ------------------------------------------------------------------
+    # Post-download document classification
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _run_post_download_classifier(
+        downloads: list[dict[str, object]],
+        classifier_cfg: dict[str, object],
+        notes: list[str],
+    ) -> tuple[list[dict[str, object]], list[str]]:
+        """Run keyword-based content classification on downloaded files.
+
+        Reads the first pages of each downloaded file and checks for
+        required_keywords.  Records that fail and have action='filter'
+        get their status changed to 'rejected_classifier'.
+        """
+        from .validators import ContentSampler
+
+        required = list(classifier_cfg.get("required_keywords") or [])
+        nice_to_have = list(
+            classifier_cfg.get("nice_to_have_keywords") or []
+        )
+        min_matches = int(classifier_cfg.get("min_required_matches", 1))
+        action = str(classifier_cfg.get("action", "warn"))
+        passed = failed = errors = 0
+        for record in downloads:
+            if record.get("status") != "downloaded":
+                continue
+            file_path = record.get("path")
+            if not file_path:
+                continue
+            try:
+                result = ContentSampler.validate_content(
+                    str(file_path), required, nice_to_have, min_matches
+                )
+                record["classification_passed"] = result.success
+                record["classification_score"] = result.confidence_score
+                if not result.success:
+                    failed += 1
+                    if action == "filter":
+                        record["status"] = "rejected_classifier"
+                else:
+                    passed += 1
+            except Exception as exc:
+                record["classification_error"] = str(exc)
+                errors += 1
+        notes.append(
+            f"Post-download classifier: {passed} passed, {failed} failed"
+            + (f", {errors} error(s)" if errors else "")
+            + f" (action={action})."
+        )
+        return downloads, notes
+
     def run(self, request: AcquisitionRequest) -> AcquisitionResult:
         started_at = datetime.now(timezone.utc)
         run_id = self._build_run_id(request, started_at)
-        documents_dir, manifest_path = self._resolve_output_paths(request, run_id)
-        normalized_seed_urls, seed_errors = self._normalize_seed_urls(request.seed_urls)
-        seeker_state, seeker_errors, seeker_notes = self._resolve_serpapi_state(request)
+        documents_dir, manifest_path = self._resolve_output_paths(
+            request, run_id
+        )
+        normalized_seed_urls, seed_errors = self._normalize_seed_urls(
+            request.seed_urls
+        )
+        seeker_state, seeker_errors, seeker_notes = (
+            self._resolve_serpapi_state(request)
+        )
         all_errors = normalize_error_records([*seed_errors, *seeker_errors])
+
+        # Checkpoint: skip targets that completed in a previous run.
+        checkpoint_path = self._checkpoint_path(manifest_path)
+        completed_checkpoint_keys = self._load_checkpoint(checkpoint_path)
+        if completed_checkpoint_keys and request.targets:
+            original_target_count = len(request.targets)
+            request = dataclass_replace(
+                request,
+                targets=[
+                    t
+                    for t in request.targets
+                    if self._target_checkpoint_key(t)
+                    not in completed_checkpoint_keys
+                ],
+            )
+            skipped_count = original_target_count - len(request.targets)
+            if skipped_count:
+                seeker_notes.append(
+                    f"Checkpoint: skipped {skipped_count} already-completed "
+                    f"target(s) (of {original_target_count} total)."
+                )
 
         # Run seeker discovery when SerpApi is enabled and healthy (no init errors).
         prioritizer_lineage: list[dict[str, object]] = []
@@ -1983,7 +2612,11 @@ class AcquisitionEngine:
             ) = self._run_seeker(
                 request, seeker_state, seeker_notes, all_errors
             )
-            seeker_raw_count = len(prioritizer_lineage) if prioritizer_lineage else len(seeker_candidates)
+            seeker_raw_count = (
+                len(prioritizer_lineage)
+                if prioritizer_lineage
+                else len(seeker_candidates)
+            )
 
         # Prefer seeker candidates; fall back to scaffold seeds if seeker yields nothing.
         if seeker_candidates:
@@ -2007,29 +2640,46 @@ class AcquisitionEngine:
             "applied": False,
         }
         if request.topology_mode == "distributed":
-            candidates, routing_errors, routing_notes, routing_state = self._route_distributed_candidates(
-                request=request,
-                candidates=candidates,
+            candidates, routing_errors, routing_notes, routing_state = (
+                self._route_distributed_candidates(
+                    request=request,
+                    candidates=candidates,
+                )
             )
-            all_errors = normalize_error_records([*all_errors, *routing_errors])
+            all_errors = normalize_error_records(
+                [*all_errors, *routing_errors]
+            )
         elif request.topology_mode == "centralized":
-            candidates, routing_errors, routing_notes, routing_state = self._route_centralized_candidates(
-                request=request,
-                candidates=candidates,
+            candidates, routing_errors, routing_notes, routing_state = (
+                self._route_centralized_candidates(
+                    request=request,
+                    candidates=candidates,
+                )
             )
-            all_errors = normalize_error_records([*all_errors, *routing_errors])
+            all_errors = normalize_error_records(
+                [*all_errors, *routing_errors]
+            )
         elif request.topology_mode == "hybrid":
-            candidates, routing_errors, routing_notes, routing_state = self._route_hybrid_candidates(
-                request=request,
-                candidates=candidates,
+            candidates, routing_errors, routing_notes, routing_state = (
+                self._route_hybrid_candidates(
+                    request=request,
+                    candidates=candidates,
+                )
             )
-            all_errors = normalize_error_records([*all_errors, *routing_errors])
+            all_errors = normalize_error_records(
+                [*all_errors, *routing_errors]
+            )
 
-        # Routing may surface newly discovered URLs; enforce selection eligibility again.
-        if candidates and seeker_candidates:
-            candidates, post_routing_filter_notes = self._apply_post_routing_selection_filters(
-                request=request,
-                candidates=candidates,
+        # Only re-check eligibility when a crawl actually introduced new URLs.
+        # For seeker-only runs this stage is redundant and would flatten the
+        # per-target selections into one group, so skip it unless routing ran.
+        routing_applied = bool(routing_state.get("applied"))
+        if candidates and seeker_candidates and routing_applied:
+            candidates, post_routing_filter_notes = (
+                self._apply_post_routing_selection_filters(
+                    request=request,
+                    candidates=candidates,
+                )
             )
             routing_notes.extend(post_routing_filter_notes)
 
@@ -2042,17 +2692,63 @@ class AcquisitionEngine:
         download_index_path: Path | None = None
         download_notes: list[str] = []
         if not request.dry_run and candidates:
-            candidates_for_download, gating_notes = self._filter_candidates_for_download(candidates)
+            candidates_for_download, gating_notes = (
+                self._filter_candidates_for_download(candidates)
+            )
             download_notes.extend(gating_notes)
             download_errors: list[dict[str, object]] = []
             if candidates_for_download:
-                download_records, download_errors, stage_download_notes = self._download_candidates(
-                    request=request,
-                    candidates=candidates_for_download,
-                    documents_dir=documents_dir,
+                download_records, download_errors, stage_download_notes = (
+                    self._download_candidates(
+                        request=request,
+                        candidates=candidates_for_download,
+                        documents_dir=documents_dir,
+                    )
                 )
                 download_notes.extend(stage_download_notes)
-            all_errors = normalize_error_records([*all_errors, *download_errors])
+
+                # Post-download classification (optional, per-domain config).
+                classifier_cfg = getattr(
+                    request, "document_classifier", None
+                )
+                if classifier_cfg and download_records:
+                    download_records, download_notes = (
+                        self._run_post_download_classifier(
+                            download_records, classifier_cfg, download_notes
+                        )
+                    )
+
+                # Checkpoint: persist completed targets for resume capability.
+                new_checkpoint_entries: dict[
+                    str, dict[str, object]
+                ] = {}
+                for _rec in download_records:
+                    _meta = _rec.get("target_metadata")
+                    if _meta and _rec.get("status") != "failed":
+                        _key = self._target_checkpoint_key(_meta)
+                        _prev = new_checkpoint_entries.get(_key, {})
+                        _prev_count = int(_prev.get("download_count", 0))
+                        new_checkpoint_entries[_key] = {
+                            "completed_at": started_at.isoformat(),
+                            "run_id": run_id,
+                            "download_count": _prev_count + (
+                                1
+                                if _rec.get("status") == "downloaded"
+                                else 0
+                            ),
+                        }
+                if new_checkpoint_entries:
+                    self._save_checkpoint_entries(
+                        checkpoint_path, new_checkpoint_entries
+                    )
+                    download_notes.append(
+                        f"Checkpoint: saved {len(new_checkpoint_entries)}"
+                        f" target(s) to {checkpoint_path.as_posix()}"
+                    )
+
+            all_errors = normalize_error_records(
+                [*all_errors, *download_errors]
+            )
             download_index_path = self._write_download_index(
                 request=request,
                 run_id=run_id,
@@ -2120,7 +2816,13 @@ class AcquisitionEngine:
                     "mode": request.link_prioritization_mode,
                     "top_k": request.link_top_k,
                     "candidates": prioritizer_lineage,
-                } if prioritizer_lineage else {"mode": request.link_prioritization_mode, "top_k": request.link_top_k, "candidates": []},
+                }
+                if prioritizer_lineage
+                else {
+                    "mode": request.link_prioritization_mode,
+                    "top_k": request.link_top_k,
+                    "candidates": [],
+                },
                 "download_index_csv": (
                     download_index_path.as_posix()
                     if download_index_path is not None

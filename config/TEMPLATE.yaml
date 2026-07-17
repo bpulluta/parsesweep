@@ -1,0 +1,230 @@
+# StreamlineExtract Domain Config Template
+#
+# Copy this file into a new folder under config/<your_domain>/run.yaml.
+# Remove sections you don't need — only `domain` and at least one
+# of acquisition/processing/consolidation is required per run.
+#
+# Three tiers are documented below:
+#   REQUIRED   — must be set for the section to work
+#   OPTIONAL   — sensible defaults apply when omitted
+#   ADVANCED   — override only when you know why
+#
+# Full reference: docs/config_reference.md
+
+# ── Global ────────────────────────────────────────────────────────────────────
+
+# REQUIRED. Slug used to name output folders and label artifacts.
+domain: my_domain
+
+
+# ── Acquisition ───────────────────────────────────────────────────────────────
+#
+# Drives web discovery. Searches SerpApi, scores candidates, downloads files.
+# Targets are rows of context injected into query templates.
+#
+# DESIGN PRINCIPLE — recall first, then flag:
+#   Keep acquire broad (good queries + light excludes) so the real document is
+#   never filtered out, and let `document_classifier` flag anything that isn't
+#   clearly the right document for human review. Aggressive allow-lists and long
+#   require-term lists tend to reject the actual files, so avoid them.
+#
+# Minimal (seeker only, no crawl):
+#
+#   acquisition:
+#     targets_csv: targets.csv
+#     queries:
+#       - "{address} rate tariff .pdf"
+#     search:
+#       provider: serpapi
+#
+# With crawl (follow links from search results):
+#
+#   acquisition:
+#     targets_csv: targets.csv
+#     queries:
+#       - "{jurisdiction} geothermal ordinance pdf"
+#     search:
+#       provider: serpapi
+#     follow_links: true
+#     selection:
+#       max_per_target: 2
+
+acquisition:
+
+  # -- Targets -----------------------------------------------------------------
+
+  # OPTIONAL. Load targets from a CSV file next to this run.yaml.
+  # Each row becomes one search; column names inject into query templates.
+  # Inline `targets` list and targets_csv can both be set — CSV rows go first.
+  targets_csv: targets.csv
+
+  # OPTIONAL. Inline targets (use instead of or alongside targets_csv).
+  # targets:
+  #   - label: "Example target"
+  #     address: "123 Main St, Denver, CO 80202"
+  #     state: co
+  #     utility_name: "Xcel Energy"
+
+  # SCALE. Generate targets automatically instead of authoring each row.
+  # `targets` may instead be an object with a `source`:
+  #
+  #   dataset      — one target per entity row from a .csv/.json file
+  #   cross_product — cartesian product of named dimensions
+  #
+  # Cross-product example (every county x every doc type):
+  # targets:
+  #   source: cross_product
+  #   dimensions:
+  #     - {name: county, dataset: data/us_counties.csv}  # columns → fields
+  #     - {name: doc_type, values: ["ordinance", "zoning code"]}
+  #   filter: {state: ["CO", "OH"]}   # optional; matches generated fields
+  #   limit: 500                      # optional cap on total targets
+  #
+  # Dataset example (one target per row):
+  # targets:
+  #   source: dataset
+  #   path: data/manufacturers.csv
+  #   limit: 100
+
+  # OPTIONAL. Query-template context aliases: an alias resolves to the first
+  # non-empty source field. Lets one template serve multiple domains.
+  # query_context_aliases:
+  #   place: ["county_name", "jurisdiction", "city"]
+
+  # -- Search queries ----------------------------------------------------------
+
+  # REQUIRED (shorthand). List of query templates for SerpApi searches.
+  # The engine runs every template per target and deduplicates results.
+  # Token syntax: {field} = required, {field?} = optional (skipped if missing).
+  queries:
+    - "{address} rate tariff .pdf"
+    - "{utility_name} residential rate schedule {state}"
+
+  # OPTIONAL. SerpApi search settings.
+  search:
+    provider: serpapi       # only supported provider right now
+    max_results: 10         # results per query template per target
+
+  # -- Crawl (follow links) ----------------------------------------------------
+
+  # OPTIONAL. Whether to follow links from search results.
+  # false (default) = direct download of search-result URLs only.
+  # true            = crawl each result page and score child links.
+  follow_links: false
+
+  # ADVANCED. Digger controls depth/breadth of the crawl (only if follow_links: true).
+  # digger:
+  #   provider: http
+  #   max_depth: 2
+  #   max_pages: 30
+  #   max_files: 15
+  #   timeout_seconds: 45
+  #   allowed_domains:
+  #     - "gov"
+  #     - "municode.com"
+
+  # ADVANCED. Score and rank crawled links before downloading.
+  # link_prioritization:
+  #   mode: heuristic
+  #   top_k: 8
+  #   keywords:
+  #     - "tariff"
+  #     - "rate schedule"
+
+  # -- Candidate selection -----------------------------------------------------
+
+  # OPTIONAL. Controls which candidates are downloaded.
+  selection:
+    max_per_target: 2             # max downloads per target row
+
+    # OPTIONAL. At least one term must appear in the candidate URL or title.
+    require_any:
+      - "tariff"
+      - "rate"
+
+    # OPTIONAL. Skip candidates matching any of these terms.
+    exclude:
+      - "news"
+      - "blog"
+      - "press release"
+
+    # ADVANCED. Skip draft/superseded documents.
+    # exclude_draft: true
+    # draft_patterns:
+    #   - "\\bdraft\\b"
+    #   - "\\bproposed\\b"
+    #   - "\\bsuperseded\\b"
+
+  # -- Post-download classification --------------------------------------------
+
+  # OPTIONAL. After download, read each file and check it is the expected
+  # document type (catches meeting minutes / research papers that pass URL
+  # filters). action: warn = annotate only; filter = mark rejected_classifier.
+  # document_classifier:
+  #   required_keywords: ["ordinance", "chapter", "section"]
+  #   nice_to_have_keywords: ["geothermal", "heat pump"]
+  #   min_required_matches: 1
+  #   action: warn
+
+  # -- Output partitioning -----------------------------------------------------
+
+  # OPTIONAL. Partition downloaded files into by_<f1>/<v1>/<v2>/... using
+  # target-metadata fields (domain-neutral). Falls back to by_host when unset.
+  # partition_by: ["state", "county_name"]
+
+  # -- Runtime -----------------------------------------------------------------
+
+  # OPTIONAL. Milliseconds between outbound requests (be polite to target sites).
+  request_delay_ms: 500
+
+  # ADVANCED. Concurrency and retry.
+  # runtime:
+  #   max_concurrent_downloads: 2
+  # retry_policy:
+  #   max_attempts: 3
+  #   initial_backoff_seconds: 1.0
+  #   max_backoff_seconds: 8.0
+
+  # ADVANCED. Crawl policy for robots.txt and ToS.
+  # policy:
+  #   robots_mode: warn       # ignore | warn | enforce
+  #   tos_mode: warn          # ignore | warn | enforce
+
+
+# ── Processing ────────────────────────────────────────────────────────────────
+#
+# Extracts structured data from downloaded documents using an LLM.
+
+processing:
+  # REQUIRED. Path to downloaded documents (output of acquisition step).
+  input_dir: documents/my_domain/acquired
+
+  # REQUIRED. Schema that defines what fields to extract.
+  # Use a domain pack (schemas/domain_packs/<name>/pack.yaml) or a
+  # custom JSON schema (schemas/personal/<name>.json).
+  schema: schemas/domain_packs/my_domain/pack.yaml
+
+  # OPTIONAL.
+  output_dir: processed/my_domain
+
+  # ADVANCED. LLM overrides — defaults come from environment.
+  # provider: anthropic    # openai | azure | anthropic | gemini | auto
+  # model: claude-opus-4-8
+  # max_context: 400000    # max characters sent per extraction call
+  # limit: 10              # process only the first N files (useful for testing)
+  # skip_existing: true    # skip files that already have output JSON
+
+
+# ── Consolidation ─────────────────────────────────────────────────────────────
+#
+# Deduplicates and merges extracted JSON records into a single CSV/Excel output.
+
+consolidation:
+  # REQUIRED. Directory of extraction JSON records (output of processing step).
+  input_dir: processed/my_domain
+
+  # REQUIRED. Same schema used during processing.
+  schema: schemas/domain_packs/my_domain/pack.yaml
+
+  # OPTIONAL.
+  output_dir: consolidated/my_domain
