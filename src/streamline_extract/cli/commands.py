@@ -543,6 +543,45 @@ def _resolve_schema_ref(schema_path: Path) -> Path:
     return declared_path
 
 
+def _slugify_value(value) -> str:
+    """Lowercase + hyphenate a value for case/format-insensitive matching."""
+    return re.sub(r"[^a-z0-9]+", "-", str(value or "").lower()).strip("-")
+
+
+def _build_index_filters(
+    filters,
+    filter_state: Optional[str] = None,
+    filter_jurisdiction: Optional[str] = None,
+) -> List[tuple]:
+    """Return ``[(column, slug_value), ...]`` for download-index row filtering.
+
+    Domain-neutral: ``--filter column=value`` filters on any
+    ``download_index.csv`` column. The legacy ``--filter-state`` /
+    ``--filter-jurisdiction`` options are thin back-compat aliases that map onto
+    the same mechanism (columns ``source_state`` / ``source_jurisdiction``), so
+    existing runs behave identically while new domains use the generic flag.
+    """
+    pairs: List[tuple] = []
+    for raw in filters or ():
+        if "=" in str(raw):
+            col, val = str(raw).split("=", 1)
+            col = col.strip()
+            if col:
+                pairs.append((col, _slugify_value(val)))
+    if filter_state:
+        pairs.append(("source_state", _slugify_value(filter_state)))
+    if filter_jurisdiction:
+        pairs.append(
+            ("source_jurisdiction", _slugify_value(filter_jurisdiction))
+        )
+    return pairs
+
+
+def _row_matches_filters(row: dict, filters: List[tuple]) -> bool:
+    """True when a CSV row matches every ``(column, slug_value)`` filter."""
+    return all(_slugify_value(row.get(col)) == val for col, val in filters)
+
+
 def _build_source_context_map(
     input_path: Optional[Path],
     from_index: Optional[str],
@@ -700,6 +739,94 @@ def _apply_page_targeting(
                 )
 
 
+def _document_progress_desc(doc_path: Path, page_range_map: dict) -> str:
+    """Build a progress-bar label for a document, with an optional page suffix."""
+    desc = doc_path.name
+    page_range = page_range_map.get(doc_path)
+    if page_range is not None:
+        start, end = page_range
+        desc += f" [dim](pages {start}-{end})[/dim]"
+    return desc
+
+
+def _process_one_document(
+    doc_path: Path,
+    *,
+    extractor,
+    loaded_schema: dict,
+    page_range_map: dict,
+    source_context_map: dict,
+    file_output_dirs: dict,
+    output_dir: Path,
+    category: str,
+    actual_model: str,
+    enable_qa_qc: bool,
+    runtime_artifact,
+    run_id,
+    provider,
+    schema_path: Path,
+    identifier_fields=None,
+) -> dict:
+    """Extract one document and persist its record.
+
+    Shared core of the three presentation loops (live dashboard / progress bar /
+    single-file). Returns a result dict describing success or failure — the exact
+    shape the run-summary and manifest aggregation consume — so each caller only
+    has to render its own UI. Never raises: any extraction error is captured into
+    a structured failure record.
+    """
+    try:
+        page_range = page_range_map.get(doc_path)
+        text = extract_text_from_document(doc_path, page_range=page_range)
+        text = _prepend_source_context(text, doc_path, source_context_map)
+        result = extractor.extract(text, loaded_schema)
+
+        doc_output_dir = file_output_dirs.get(doc_path, output_dir)
+        num_items = _extract_and_save_result(
+            doc_path,
+            result,
+            doc_output_dir,
+            category,
+            actual_model,
+            enable_qa_qc,
+            runtime_artifact=runtime_artifact,
+            run_id=run_id,
+            provider=provider,
+            schema_id=loaded_schema.get("$id"),
+            identifier_fields=identifier_fields,
+        )
+        return {
+            "file": doc_path.name,
+            "items": num_items,
+            "cost": result.cost,
+            "time": result.processing_time,
+            "input_tokens": getattr(result, "input_tokens", None),
+            "output_tokens": getattr(result, "output_tokens", None),
+            "output_path": (doc_output_dir / f"{doc_path.stem}.json").as_posix(),
+            "success": True,
+        }
+    except Exception as e:
+        error_record = build_error_record(
+            e,
+            stage="process",
+            document_path=doc_path.as_posix(),
+            model=actual_model,
+            provider=provider,
+        )
+        suggestions = _context_budget_suggestions_for_process(
+            error_record=error_record,
+            schema_path=schema_path,
+            document_path=doc_path,
+        )
+        return {
+            "file": doc_path.name,
+            "success": False,
+            "error": str(e),
+            "errors": [error_record],
+            "suggestions": suggestions,
+        }
+
+
 @click.command()
 @click.argument("path", type=click.Path(), required=False)
 @click.option(
@@ -820,18 +947,26 @@ def _apply_page_targeting(
     help="Load acquired files from a download_index.csv (bypasses PATH argument)",
 )
 @click.option(
+    "--filter",
+    "index_filters",
+    type=str,
+    multiple=True,
+    help="With --from-index: keep only rows where COLUMN matches VALUE "
+    "(format: column=value; repeatable; matches any download_index.csv column)",
+)
+@click.option(
     "--filter-state",
     "filter_state",
     type=str,
     default=None,
-    help="With --from-index: keep only files where source_state matches (e.g., ca)",
+    help="Back-compat alias for --filter source_state=VALUE",
 )
 @click.option(
     "--filter-jurisdiction",
     "filter_jurisdiction",
     type=str,
     default=None,
-    help="With --from-index: keep only files where source_jurisdiction matches (e.g., imperial-county)",
+    help="Back-compat alias for --filter source_jurisdiction=VALUE",
 )
 def process(
     path: Optional[str],
@@ -857,6 +992,7 @@ def process(
     pages: Optional[str],
     pages_csv: Optional[str],
     from_index: Optional[str] = None,
+    index_filters: tuple = (),
     filter_state: Optional[str] = None,
     filter_jurisdiction: Optional[str] = None,
 ):
@@ -874,34 +1010,30 @@ def process(
 
     \b
     EXAMPLES:
-        # Process with the production tariff schema
-        streamline-extract process documents/tariffs/ --schema schemas/personal/electricity_tariff_schema.json
+        # Process a directory against a schema (or a domain-pack pack.yaml)
+        streamline-extract process <input_dir> --schema <schema_or_pack>
 
-        # Use Claude for high-quality extraction
-        streamline-extract process documents/tariffs/ --schema schemas/personal/electricity_tariff_schema.json --model claude-3.5-sonnet
+        # Drive everything from a domain's runtime config
+        streamline-extract process --config config/<domain>/run.yaml
 
-        # Use Gemini for budget-friendly processing
-        streamline-extract process documents/tariffs/ --schema schemas/personal/electricity_tariff_schema.json --model gemini-1.5-flash
+        # Pick a specific model / provider for this run
+        streamline-extract process <input_dir> --schema <schema> --model <model_name>
+        streamline-extract process <input_dir> --schema <schema> --provider azure
 
-        # Use Azure OpenAI
-        streamline-extract process documents/tariffs/ --schema schemas/personal/electricity_tariff_schema.json --provider azure
+        # Compile artifact lineage under a named profile
+        streamline-extract process <input_dir> --schema <schema> --profile prod
 
-        # Use the production runtime profile for artifact lineage
-        streamline-extract process documents/tariffs/ --schema schemas/personal/electricity_tariff_schema.json --profile prod
+        # Restrict large PDFs to specific pages
+        streamline-extract process <input_dir> --schema <schema> --pages-csv <page_ranges.csv>
 
-        # Process with page ranges
-        streamline-extract process documents/tariffs/ --schema schemas/personal/electricity_tariff_schema.json --pages-csv config/tariffs/page_ranges.csv
-
-        # Test with first 5 documents
-        streamline-extract process documents/tariffs/ --schema schemas/personal/electricity_tariff_schema.json -n 5
+        # Test with the first 5 documents
+        streamline-extract process <input_dir> --schema <schema> -n 5
 
     \b
-    SUPPORTED MODELS:
-        OpenAI:     gpt-4o, gpt-4o-mini (default), gpt-4.1, gpt-5
-        Claude:     claude-3.5-sonnet, claude-opus-4.5, claude-haiku-4.5
-        Gemini:     gemini-1.5-pro, gemini-1.5-flash, gemini-3-pro
-
-        See docs/MODEL_COSTS.md for detailed cost comparison.
+    MODELS:
+        Any model name your provider supports (OpenAI, Azure, Claude, Gemini,
+        and more). Unset → inherit the model from your environment/.env.
+        See docs/MODEL_COSTS.md for cost comparison and model selection guidance.
 
     \b
     REQUIREMENTS:
@@ -922,7 +1054,6 @@ def process(
 
     # Configure logging with RichHandler for clean integration with progress bars
     configure_logging(VERBOSITY)
-    load_dotenv()
 
     # Load environment variables from .env file
     load_dotenv()
@@ -957,22 +1088,14 @@ def process(
             _fi_downloaded = [
                 r for r in _fi_rows if r.get("status") == "downloaded"
             ]
-            if filter_state:
-                _fi_state_key = filter_state.lower().strip()
+            _fi_filters = _build_index_filters(
+                index_filters, filter_state, filter_jurisdiction
+            )
+            if _fi_filters:
                 _fi_downloaded = [
                     r
                     for r in _fi_downloaded
-                    if (r.get("source_state") or "").lower() == _fi_state_key
-                ]
-            if filter_jurisdiction:
-                _fi_jur_key = re.sub(
-                    r"[^a-z0-9]+", "-", filter_jurisdiction.lower()
-                ).strip("-")
-                _fi_downloaded = [
-                    r
-                    for r in _fi_downloaded
-                    if (r.get("source_jurisdiction") or "").lower()
-                    == _fi_jur_key
+                    if _row_matches_filters(r, _fi_filters)
                 ]
             if _fi_downloaded:
                 _fi_existing = [
@@ -1466,9 +1589,25 @@ def process(
             estimated_total_chars = avg_chars * len(doc_files)
             estimated_tokens = int(estimated_total_chars / 4)
 
-            # Rough cost estimate (gpt-4o-mini rates)
-            input_cost = (estimated_tokens / 1_000_000) * 0.15
-            output_cost = (estimated_tokens * 0.1 / 1_000_000) * 0.60
+            # Rough cost estimate using the ACTUAL selected model's rates (from
+            # the shared pricing DB), so the confirmation gate is accurate for
+            # any provider/model — not just the default. Output is estimated at
+            # ~10% of input tokens.
+            from streamline_extract.extraction.llm_factory import (
+                resolve_model_name,
+            )
+            from streamline_extract.utils.model_pricing import (
+                get_model_pricing,
+            )
+
+            est_model = resolve_model_name(
+                resolved_inputs.get("model"),
+                models=resolved_inputs.get("models"),
+                llm_config=config.llm_config,
+            )
+            input_rate, output_rate = get_model_pricing(est_model)
+            input_cost = (estimated_tokens / 1_000_000) * input_rate
+            output_cost = (estimated_tokens * 0.1 / 1_000_000) * output_rate
             total_est_cost = input_cost + output_cost
 
             if total_est_cost > 1.0:  # Threshold for confirmation
@@ -1579,6 +1718,22 @@ def process(
                     f"[dim yellow]Could not load schema metadata: {e}[/dim yellow]"
                 )
 
+    # Identifier fields for the saved record are schema-driven (no domain terms
+    # baked into code). When the schema declares extraction.identifier_fields,
+    # use their leaf names; otherwise fall back to a neutral default list.
+    identifier_fields = None
+    if schema_metadata is not None:
+        try:
+            declared = schema_metadata.get_identifier_fields() or []
+            identifier_fields = [p.split(".")[-1] for p in declared] or None
+        except Exception:
+            identifier_fields = None
+
+    # Optional per-model context-window guard (fail fast before an over-budget
+    # request). Sourced from the top-level ``model_context_windows`` config block;
+    # no deployment names are hardcoded.
+    context_windows = resolved_inputs.get("model_context_windows") or None
+
     # Initialize extractor with clean configuration
     extractor = DocumentExtractor(
         api_key=api_key,
@@ -1588,6 +1743,7 @@ def process(
         provider=provider,
         azure_endpoint=azure_endpoint,
         azure_api_version=azure_api_version,
+        context_windows=context_windows,
     )
 
     # Processing section
@@ -1612,6 +1768,27 @@ def process(
     total_cost = 0.0
     total_time = 0.0
 
+    # One place does the actual extraction+save for a document; the three
+    # branches below differ only in how they report progress.
+    def _run(doc_path: Path) -> dict:
+        return _process_one_document(
+            doc_path,
+            extractor=extractor,
+            loaded_schema=loaded_schema,
+            page_range_map=page_range_map,
+            source_context_map=source_context_map,
+            file_output_dirs=file_output_dirs,
+            output_dir=output_dir,
+            category=category,
+            actual_model=actual_model,
+            enable_qa_qc=enable_qa_qc,
+            runtime_artifact=runtime_artifact,
+            run_id=run_id,
+            provider=provider,
+            schema_path=schema_path,
+            identifier_fields=identifier_fields,
+        )
+
     # Use live dashboard for multiple files if requested
     if len(doc_files) > 3 and live_dashboard and VERBOSITY != "quiet":
         live, dashboard = create_live_dashboard(len(doc_files), actual_model)
@@ -1619,176 +1796,46 @@ def process(
         with live:
             for doc_path in doc_files:
                 dashboard.start_document(doc_path.name)
-
-                try:
-                    # Extract text from document (honor page ranges/targeting)
-                    page_range = page_range_map.get(doc_path)
-                    text = extract_text_from_document(
-                        doc_path, page_range=page_range
-                    )
-                    text = _prepend_source_context(
-                        text, doc_path, source_context_map
-                    )
-                    result = extractor.extract(text, loaded_schema)
-
-                    # Save result (use per-file output dir for nested structures)
-                    doc_output_dir = file_output_dirs.get(doc_path, output_dir)
-                    num_items = _extract_and_save_result(
-                        doc_path,
-                        result,
-                        doc_output_dir,
-                        category,
-                        actual_model,
-                        enable_qa_qc,
-                        runtime_artifact=runtime_artifact,
-                        run_id=run_id,
-                        provider=provider,
-                        schema_id=loaded_schema.get("$id"),
-                    )
-
-                    # Update dashboard
+                res = _run(doc_path)
+                results.append(res)
+                if res["success"]:
                     dashboard.complete_document(
-                        doc_path.name,
+                        res["file"],
                         success=True,
-                        cost=result.cost,
-                        input_tokens=0,  # Would need to track from extractor
-                        output_tokens=0,
+                        cost=res["cost"],
+                        input_tokens=res.get("input_tokens") or 0,
+                        output_tokens=res.get("output_tokens") or 0,
                     )
-
-                    # Track results
-                    results.append(
-                        {
-                            "file": doc_path.name,
-                            "items": num_items,
-                            "cost": result.cost,
-                            "time": result.processing_time,
-                            "output_path": (
-                                doc_output_dir / f"{doc_path.stem}.json"
-                            ).as_posix(),
-                            "success": True,
-                        }
-                    )
-                    total_cost += result.cost
-                    total_time += result.processing_time
-
-                except Exception as e:
-                    error_record = build_error_record(
-                        e,
-                        stage="process",
-                        document_path=doc_path.as_posix(),
-                        model=actual_model,
-                        provider=provider,
-                    )
-                    suggestions = _context_budget_suggestions_for_process(
-                        error_record=error_record,
-                        schema_path=schema_path,
-                        document_path=doc_path,
-                    )
-                    dashboard.complete_document(doc_path.name, success=False)
-                    results.append(
-                        {
-                            "file": doc_path.name,
-                            "success": False,
-                            "error": str(e),
-                            "errors": [error_record],
-                            "suggestions": suggestions,
-                        }
-                    )
+                    total_cost += res["cost"]
+                    total_time += res["time"]
+                else:
+                    dashboard.complete_document(res["file"], success=False)
 
     # Use progress bar for multiple files, simple output for single file
     elif len(doc_files) > 1 and VERBOSITY != "quiet":
         progress = create_extraction_progress()
         # Start with first document name instead of generic "Extracting..." message
-        first_doc = doc_files[0]
-        first_desc = first_doc.name
-        # Show page range in progress bar if specified
-        if (
-            first_doc in page_range_map
-            and page_range_map[first_doc] is not None
-        ):
-            start, end = page_range_map[first_doc]
-            first_desc += f" [dim](pages {start}-{end})[/dim]"
-
-        task = progress.add_task(first_desc, total=len(doc_files))
+        task = progress.add_task(
+            _document_progress_desc(doc_files[0], page_range_map),
+            total=len(doc_files),
+        )
 
         with progress:
             for idx, doc_path in enumerate(doc_files):
-                # Update progress description to show current document (skip first since already set)
+                # Update description to the current document (first is already set)
                 if idx > 0:
-                    desc = doc_path.name
-                    if (
-                        doc_path in page_range_map
-                        and page_range_map[doc_path] is not None
-                    ):
-                        start, end = page_range_map[doc_path]
-                        desc += f" [dim](pages {start}-{end})[/dim]"
-                    progress.update(task, description=desc)
-
-                try:
-                    # Extract text from document (supports PDF, DOCX, TXT, XLSX, CSV)
-                    # Use page range if specified for this file
-                    page_range = page_range_map.get(doc_path)
-                    text = extract_text_from_document(
-                        doc_path, page_range=page_range
-                    )
-                    text = _prepend_source_context(
-                        text, doc_path, source_context_map
-                    )
-                    result = extractor.extract(text, loaded_schema)
-
-                    # Save result (use per-file output dir for nested structures)
-                    doc_output_dir = file_output_dirs.get(doc_path, output_dir)
-                    num_items = _extract_and_save_result(
-                        doc_path,
-                        result,
-                        doc_output_dir,
-                        category,
-                        actual_model,
-                        enable_qa_qc,
-                        runtime_artifact=runtime_artifact,
-                        run_id=run_id,
-                        provider=provider,
-                        schema_id=loaded_schema.get("$id"),
+                    progress.update(
+                        task,
+                        description=_document_progress_desc(
+                            doc_path, page_range_map
+                        ),
                     )
 
-                    # Track results
-                    results.append(
-                        {
-                            "file": doc_path.name,
-                            "items": num_items,
-                            "cost": result.cost,
-                            "time": result.processing_time,
-                            "output_path": (
-                                doc_output_dir / f"{doc_path.stem}.json"
-                            ).as_posix(),
-                            "success": True,
-                        }
-                    )
-                    total_cost += result.cost
-                    total_time += result.processing_time
-
-                except Exception as e:
-                    error_record = build_error_record(
-                        e,
-                        stage="process",
-                        document_path=doc_path.as_posix(),
-                        model=actual_model,
-                        provider=provider,
-                    )
-                    suggestions = _context_budget_suggestions_for_process(
-                        error_record=error_record,
-                        schema_path=schema_path,
-                        document_path=doc_path,
-                    )
-                    results.append(
-                        {
-                            "file": doc_path.name,
-                            "success": False,
-                            "error": str(e),
-                            "errors": [error_record],
-                            "suggestions": suggestions,
-                        }
-                    )
+                res = _run(doc_path)
+                results.append(res)
+                if res["success"]:
+                    total_cost += res["cost"]
+                    total_time += res["time"]
 
                 progress.update(task, advance=1)
     else:
@@ -1806,80 +1853,21 @@ def process(
                 else:
                     console.print(f"[cyan]→[/cyan] {doc_path.name}")
 
-            try:
-                # Extract text from document (supports PDF, DOCX, TXT, XLSX, CSV)
-                # Use page range if specified for this file
-                page_range = page_range_map.get(doc_path)
-                text = extract_text_from_document(
-                    doc_path, page_range=page_range
-                )
-                text = _prepend_source_context(
-                    text, doc_path, source_context_map
-                )
-                result = extractor.extract(text, loaded_schema)
-
-                # Save result (use per-file output dir for nested structures)
-                doc_output_dir = file_output_dirs.get(doc_path, output_dir)
-                num_items = _extract_and_save_result(
-                    doc_path,
-                    result,
-                    doc_output_dir,
-                    category,
-                    actual_model,
-                    enable_qa_qc,
-                    runtime_artifact=runtime_artifact,
-                    run_id=run_id,
-                    provider=provider,
-                    schema_id=loaded_schema.get("$id"),
-                )
-
-                # Track results
-                results.append(
-                    {
-                        "file": doc_path.name,
-                        "items": num_items,
-                        "cost": result.cost,
-                        "time": result.processing_time,
-                        "output_path": (
-                            doc_output_dir / f"{doc_path.stem}.json"
-                        ).as_posix(),
-                        "success": True,
-                    }
-                )
-                total_cost += result.cost
-                total_time += result.processing_time
-
+            res = _run(doc_path)
+            results.append(res)
+            if res["success"]:
+                total_cost += res["cost"]
+                total_time += res["time"]
                 if VERBOSITY == "verbose" or VERBOSITY == "normal":
                     console.print(
-                        f"  [green]✓[/green] {num_items} items • [magenta]${result.cost:.4f}[/magenta] • [dim]{result.processing_time:.1f}s[/dim]"
+                        f"  [green]✓[/green] {res['items']} items • "
+                        f"[magenta]${res['cost']:.4f}[/magenta] • "
+                        f"[dim]{res['time']:.1f}s[/dim]"
                     )
-
-            except Exception as e:
-                error_record = build_error_record(
-                    e,
-                    stage="process",
-                    document_path=doc_path.as_posix(),
-                    model=actual_model,
-                    provider=provider,
+            elif VERBOSITY != "quiet":
+                console.print(
+                    f"  [yellow]✗[/yellow] [dim]Error: {res['error'][:60]}[/dim]"
                 )
-                suggestions = _context_budget_suggestions_for_process(
-                    error_record=error_record,
-                    schema_path=schema_path,
-                    document_path=doc_path,
-                )
-                results.append(
-                    {
-                        "file": doc_path.name,
-                        "success": False,
-                        "error": str(e),
-                        "errors": [error_record],
-                        "suggestions": suggestions,
-                    }
-                )
-                if VERBOSITY != "quiet":
-                    console.print(
-                        f"  [yellow]✗[/yellow] [dim]Error: {str(e)[:60]}[/dim]"
-                    )
 
     run_finished_at = (
         datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
@@ -2173,11 +2161,16 @@ def _extract_and_save_result(
     run_id: Optional[str] = None,
     provider: Optional[str] = None,
     schema_id: Optional[str] = None,
+    identifier_fields: Optional[List[str]] = None,
 ) -> int:
     """Helper to extract items count and save result to JSON."""
-    # Universal schema detection - find main array and identifier dynamically
+    # Universal schema detection - find main array and identifier dynamically.
+    # Identifier field names are domain-neutral: schema-supplied when the schema
+    # declares extraction.identifier_fields, else a generic default. No domain
+    # terms (e.g. "jurisdiction") are hardcoded here.
     num_items = 0
     identifier = "N/A"
+    id_field_names = identifier_fields or ["id", "identifier", "number", "name"]
 
     # Find main array field (the one with the most data)
     main_array_key = None
@@ -2195,13 +2188,7 @@ def _extract_and_save_result(
     # Find identifier field dynamically
     for key, value in result.data.items():
         if isinstance(value, dict):
-            for id_field in [
-                "id",
-                "identifier",
-                "jurisdiction",
-                "number",
-                "name",
-            ]:
+            for id_field in id_field_names:
                 if id_field in value:
                     id_val = value[id_field]
                     if isinstance(id_val, dict):
@@ -2213,7 +2200,7 @@ def _extract_and_save_result(
         elif (
             isinstance(value, (str, int))
             and value
-            and key.lower() in ["id", "identifier", "jurisdiction", "number"]
+            and key.lower() in id_field_names
         ):
             identifier = str(value)
 
@@ -2258,8 +2245,8 @@ def _extract_and_save_result(
         "processing_metrics": {
             "duration_seconds": result.processing_time,
             "cost_usd": result.cost,
-            "input_tokens": None,
-            "output_tokens": None,
+            "input_tokens": getattr(result, "input_tokens", None),
+            "output_tokens": getattr(result, "output_tokens", None),
         },
     }
 

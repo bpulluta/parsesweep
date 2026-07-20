@@ -206,6 +206,7 @@ _SECTION_ALIASES = {
 _ALLOWED_TOP_LEVEL = {
     "domain",
     "models",
+    "model_context_windows",
     "acquisition",
     "processing",
     "consolidation",
@@ -567,17 +568,18 @@ def _validate_acquisition_section_schema(acquisition: dict[str, Any]) -> None:
 
 
 def _validate_models_block(models: Any) -> None:
-    """Validate the optional top-level ``models`` tier map.
+    """Validate the optional top-level ``models`` alias map.
 
-    Must be a mapping of non-empty tier-name strings to non-empty model-name
-    strings (e.g. ``{mini: gpt-4o-mini, standard: gpt-5}``). Tier names are
-    free-form so a domain can define whatever tiers it needs.
+    Must be a mapping of non-empty alias-name strings to non-empty model-name
+    strings (e.g. ``{fast: gpt-4o-mini, accurate: gpt-5}``). Alias names are
+    entirely user-chosen — there are no reserved names — so a domain can define
+    whatever aliases it needs and reference them from any stage's ``model:``.
     """
     if models is None:
         return
     if not isinstance(models, dict):
         raise RuntimeConfigError(
-            "'models' must be a mapping of tier-name -> model-name"
+            "'models' must be a mapping of alias-name -> model-name"
         )
     for key, value in models.items():
         if (
@@ -587,9 +589,123 @@ def _validate_models_block(models: Any) -> None:
             or not value.strip()
         ):
             raise RuntimeConfigError(
-                "'models' must map non-empty tier names to non-empty model "
+                "'models' must map non-empty alias names to non-empty model "
                 "names"
             )
+
+
+def _validate_model_context_windows_block(windows: Any) -> None:
+    """Validate the optional top-level ``model_context_windows`` map.
+
+    Maps a model/deployment name to its context window in prompt tokens, used to
+    fail fast before an over-budget extraction request. No model names are
+    hardcoded anywhere; this is the only place a window is declared. Must be a
+    mapping of non-empty strings to positive integers.
+    """
+    if windows is None:
+        return
+    if not isinstance(windows, dict):
+        raise RuntimeConfigError(
+            "'model_context_windows' must be a mapping of model-name -> "
+            "max prompt tokens (positive integer)"
+        )
+    for key, value in windows.items():
+        if not isinstance(key, str) or not key.strip():
+            raise RuntimeConfigError(
+                "'model_context_windows' keys must be non-empty model names"
+            )
+        if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+            raise RuntimeConfigError(
+                "'model_context_windows' values must be positive integers "
+                f"(got {value!r} for '{key}')"
+            )
+
+
+def _validate_processing_section_schema(processing: dict[str, Any]) -> None:
+    """Deep-validate the ``processing`` section at load time.
+
+    Mirrors ``_validate_acquisition_section_schema`` so config-supplied values
+    are checked with the same rigor as CLI flags (Click type/choice guards are
+    bypassed when a value comes from YAML). Domain-neutral: only structural
+    types and ranges are enforced.
+    """
+
+    def _require_positive_int(name: str, value: Any) -> None:
+        if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+            raise RuntimeConfigError(
+                f"processing.{name} must be a positive integer (got {value!r})"
+            )
+
+    for name in ("max_context", "limit"):
+        if name in processing and processing[name] is not None:
+            _require_positive_int(name, processing[name])
+
+    if processing.get("skip_existing") is not None and not isinstance(
+        processing["skip_existing"], bool
+    ):
+        raise RuntimeConfigError("processing.skip_existing must be a boolean")
+
+    if processing.get("live_dashboard") is not None and not isinstance(
+        processing["live_dashboard"], bool
+    ):
+        raise RuntimeConfigError("processing.live_dashboard must be a boolean")
+
+    provider = processing.get("provider")
+    if provider is not None:
+        allowed = {"openai", "azure", "anthropic", "gemini", "auto"}
+        if not isinstance(provider, str) or provider.lower() not in allowed:
+            raise RuntimeConfigError(
+                "processing.provider must be one of: "
+                + ", ".join(sorted(allowed))
+            )
+
+    for name in ("input_dir", "schema", "output_dir", "pages", "pages_csv",
+                 "model", "profile", "qaqc_lane"):
+        if name in processing and processing[name] is not None:
+            if not isinstance(processing[name], str):
+                raise RuntimeConfigError(
+                    f"processing.{name} must be a string"
+                )
+
+    page_targeting = processing.get("page_targeting")
+    if page_targeting is not None:
+        _validate_page_targeting_block(page_targeting)
+
+
+def _validate_page_targeting_block(pt: Any) -> None:
+    """Validate the optional ``processing.page_targeting`` block structure."""
+    if not isinstance(pt, dict):
+        raise RuntimeConfigError(
+            "processing.page_targeting must be an object"
+        )
+    if pt.get("enabled") is not None and not isinstance(pt["enabled"], bool):
+        raise RuntimeConfigError(
+            "processing.page_targeting.enabled must be a boolean"
+        )
+    if pt.get("section_description") is not None and not isinstance(
+        pt["section_description"], str
+    ):
+        raise RuntimeConfigError(
+            "processing.page_targeting.section_description must be a string"
+        )
+    for name in ("trigger_chars", "max_selected_pages"):
+        val = pt.get(name)
+        if val is not None:
+            if isinstance(val, bool) or not isinstance(val, int) or val <= 0:
+                raise RuntimeConfigError(
+                    f"processing.page_targeting.{name} must be a positive "
+                    f"integer (got {val!r})"
+                )
+    if pt.get("model") is not None and not isinstance(pt["model"], str):
+        raise RuntimeConfigError(
+            "processing.page_targeting.model must be a string"
+        )
+    if pt.get("keywords") is not None and not isinstance(
+        pt["keywords"], list
+    ):
+        raise RuntimeConfigError(
+            "processing.page_targeting.keywords must be a list"
+        )
 
 
 def _read_config_file(path: Path) -> dict[str, Any]:
@@ -735,6 +851,9 @@ def load_runtime_config_file(config_path: Path) -> dict[str, Any]:
         )
 
     _validate_models_block(config_data.get("models"))
+    _validate_model_context_windows_block(
+        config_data.get("model_context_windows")
+    )
 
     acquisition = config_data.get("acquisition")
     if acquisition is not None:
@@ -744,6 +863,13 @@ def load_runtime_config_file(config_path: Path) -> dict[str, Any]:
         # targets_csv must be resolved before schema validation
         _resolve_targets(acquisition, config_path.parent)
         _validate_acquisition_section_schema(acquisition)
+
+    processing = config_data.get("processing")
+    if processing is not None:
+        if not isinstance(processing, dict):
+            msg = "'processing' section must be an object in runtime config"
+            raise RuntimeConfigError(msg)
+        _validate_processing_section_schema(processing)
 
     return config_data
 
@@ -1245,11 +1371,17 @@ def resolve_command_config(
         merged["domain"] = cfg.get("domain")
         sources["domain"] = "config.domain"
 
-    # Top-level model-tiering map is available to every command (process,
-    # acquire, consolidate) so any LLM stage can resolve a tier reference.
+    # Top-level model alias map is available to every command (process,
+    # acquire, consolidate) so any LLM stage can resolve an alias reference.
     if "models" in cfg:
         merged["models"] = cfg.get("models")
         sources["models"] = "config.models"
+
+    # Top-level per-model context-window map feeds the extraction fail-fast
+    # guard; passed through untouched (no model names hardcoded in code).
+    if "model_context_windows" in cfg:
+        merged["model_context_windows"] = cfg.get("model_context_windows")
+        sources["model_context_windows"] = "config.model_context_windows"
 
     merged["_config_warnings"] = warnings
     merged["_config_sources"] = sources

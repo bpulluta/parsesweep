@@ -20,6 +20,7 @@ from litellm import completion, completion_cost
 
 from streamline_extract.utils.model_pricing import get_pricing
 from streamline_extract.utils.exceptions import ExtractionError
+from .llm_factory import detect_provider
 
 logger = logging.getLogger(__name__)
 
@@ -32,12 +33,6 @@ class LLMClient:
     Automatically tracks costs and handles provider-specific parameters.
     """
 
-    MODEL_CONTEXT_WINDOWS = {
-        "azure/compassop-gpt-4.1-mini": 300000,
-        "compassop-gpt-4.1-mini": 300000,
-        "gpt-4.1-mini": 300000,
-    }
-
     CONTEXT_RESPONSE_RESERVE_TOKENS = 4096
 
     def __init__(
@@ -47,6 +42,7 @@ class LLMClient:
         provider: str = None,
         azure_endpoint: str = None,
         azure_api_version: str = None,
+        context_windows: Optional[Dict[str, int]] = None,
     ):
         """
         Initialize LLM client.
@@ -58,9 +54,16 @@ class LLMClient:
                      If None, auto-detects from model name
             azure_endpoint: Azure OpenAI endpoint (for Azure provider)
             azure_api_version: Azure API version (for Azure provider)
+            context_windows: Optional {model-name -> max prompt tokens} map used to
+                     fail fast before an over-budget request. Domain/deployment
+                     names are NOT hardcoded — supply this from config
+                     (``model_context_windows`` in run.yaml) for deployments whose
+                     context window LiteLLM cannot infer. Unset models are not
+                     guarded.
         """
         self.raw_model = model  # Keep original for cost tracking
-        self.provider = provider or self._detect_provider(model)
+        self.context_windows = dict(context_windows or {})
+        self.provider = provider or detect_provider(model)
 
         # Format model name for LiteLLM
         self.model = self._format_model_for_litellm(model, self.provider)
@@ -78,27 +81,6 @@ class LLMClient:
         logger.info(
             f"Initialized LLM client: provider={self.provider}, model={self.model}"
         )
-
-    def _detect_provider(self, model: str) -> str:
-        """Auto-detect provider from model name."""
-        model_lower = model.lower()
-
-        if "azure/" in model_lower or "compassop-" in model_lower:
-            return "azure"
-        elif "claude" in model_lower:
-            return "anthropic"
-        elif "gemini" in model_lower or "gemma" in model_lower:
-            return "gemini"
-        elif (
-            "gpt" in model_lower or "o1" in model_lower or "o3" in model_lower
-        ):
-            return "openai"
-        elif "llama" in model_lower:
-            return "meta"
-        elif "mistral" in model_lower or "codestral" in model_lower:
-            return "mistral"
-        else:
-            return "openai"  # Default
 
     def _format_model_for_litellm(self, model: str, provider: str) -> str:
         """
@@ -238,13 +220,22 @@ class LLMClient:
                 if isinstance(value, list)
             )
 
+            usage = getattr(response, "usage", None)
+            input_tokens = getattr(usage, "prompt_tokens", None)
+            output_tokens = getattr(usage, "completion_tokens", None)
+
             logger.info(
                 f"✓ Extracted {total_items} items "
-                f"(tokens: {response.usage.prompt_tokens}+{response.usage.completion_tokens}, "
+                f"(tokens: {input_tokens}+{output_tokens}, "
                 f"cost: ${cost:.4f})"
             )
 
-            return {"data": data, "cost": cost}
+            return {
+                "data": data,
+                "cost": cost,
+                "input_tokens": input_tokens,
+                "output_tokens": output_tokens,
+            }
 
         except json.JSONDecodeError as e:
             logger.error(f"Failed to parse JSON response: {e}")
@@ -260,10 +251,15 @@ class LLMClient:
             raise ExtractionError(str(e)) from e
 
     def _get_context_window_tokens(self) -> Optional[int]:
-        """Return the configured context window for known models."""
+        """Return the configured context window (prompt tokens) for this model.
+
+        Sourced from the caller-supplied ``context_windows`` map only (populated
+        from ``model_context_windows`` in run.yaml). No model names are
+        hardcoded; models absent from the map are simply not guarded.
+        """
         for candidate in (self.model, self.raw_model):
-            if candidate in self.MODEL_CONTEXT_WINDOWS:
-                return self.MODEL_CONTEXT_WINDOWS[candidate]
+            if candidate in self.context_windows:
+                return self.context_windows[candidate]
         return None
 
     def _estimate_message_tokens(self, messages: List[Dict[str, str]]) -> int:

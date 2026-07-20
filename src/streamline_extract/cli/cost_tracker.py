@@ -4,6 +4,8 @@ from typing import Dict, Optional
 from dataclasses import dataclass, field
 from datetime import datetime
 
+from streamline_extract.utils.model_pricing import get_model_pricing
+
 
 @dataclass
 class CostTracker:
@@ -16,14 +18,6 @@ class CostTracker:
     failed_requests: int = 0
     start_time: Optional[datetime] = None
     document_costs: Dict[str, float] = field(default_factory=dict)
-
-    # Model pricing (per 1M tokens)
-    PRICING = {
-        "gpt-4o-mini": {"input": 0.15, "output": 0.60},
-        "gpt-4o": {"input": 5.00, "output": 15.00},
-        "gpt-4": {"input": 30.0, "output": 60.0},
-        "gpt-3.5-turbo": {"input": 0.50, "output": 1.50},
-    }
 
     def __post_init__(self):
         """Initialize start time."""
@@ -58,14 +52,14 @@ class CostTracker:
         self.failed_requests += 1
 
     def get_input_cost(self) -> float:
-        """Calculate total input cost."""
-        rate = self.PRICING.get(self.model, self.PRICING["gpt-4o-mini"])
-        return (self.total_input_tokens / 1_000_000) * rate["input"]
+        """Calculate total input cost (rates from the shared pricing DB)."""
+        input_rate, _ = get_model_pricing(self.model)
+        return (self.total_input_tokens / 1_000_000) * input_rate
 
     def get_output_cost(self) -> float:
-        """Calculate total output cost."""
-        rate = self.PRICING.get(self.model, self.PRICING["gpt-4o-mini"])
-        return (self.total_output_tokens / 1_000_000) * rate["output"]
+        """Calculate total output cost (rates from the shared pricing DB)."""
+        _, output_rate = get_model_pricing(self.model)
+        return (self.total_output_tokens / 1_000_000) * output_rate
 
     def get_total_cost(self) -> float:
         """Calculate total cost."""

@@ -96,14 +96,22 @@ def resolve_model_name(
     return DEFAULT_MODEL
 
 
-def _detect_provider(model: str) -> str:
-    """Detect a provider from a model name.
+def detect_provider(model: str) -> str:
+    """Detect an LLM provider from a model name (domain-neutral, best-effort).
 
-    Mirrors ``LLMClient._detect_provider`` (kept in sync deliberately) so the
-    factory can decide provider without constructing a client first.
+    This is the single source of truth for name-based provider detection; both
+    the factory and ``LLMClient`` use it, so there is only one place that maps
+    model names to providers.
+
+    Detection is heuristic and only a *fallback*: the pipeline normally sets the
+    provider explicitly (``get_config().llm_config['provider']`` is always
+    populated from the environment). Azure custom deployment names are arbitrary
+    and carry no reliable marker, so the correct signal for Azure is an explicit
+    ``provider: azure`` — not a name sniff. Only the canonical ``azure/`` prefix
+    is treated as an Azure marker here.
     """
     m = model.lower()
-    if "azure/" in m or "compassop-" in m:
+    if "azure/" in m:
         return "azure"
     if "claude" in m:
         return "anthropic"
@@ -116,6 +124,10 @@ def _detect_provider(model: str) -> str:
     if "mistral" in m or "codestral" in m:
         return "mistral"
     return "openai"
+
+
+# Backwards-compatible private alias (kept for any internal callers/tests).
+_detect_provider = detect_provider
 
 
 def resolve_llm_kwargs(
@@ -138,12 +150,12 @@ def resolve_llm_kwargs(
     )
 
     cfg_provider = cfg.get("provider")
-    target = _detect_provider(resolved_model)
+    target = detect_provider(resolved_model)
 
-    # Azure deployment names usually carry no azure/ or compassop- marker, so
-    # provider detection misreads them as "openai". When the environment is
-    # configured for Azure and the model shows no *foreign* marker, treat it as
-    # an Azure deployment.
+    # Azure deployment names usually carry no azure/ marker, so provider
+    # detection misreads them as "openai". When the environment is configured for
+    # Azure and the model shows no *foreign* marker, treat it as an Azure
+    # deployment. This — not a name sniff — is how Azure deployments are honored.
     if cfg_provider == "azure" and target in ("openai", "azure"):
         target = "azure"
 

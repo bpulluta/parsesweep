@@ -16,6 +16,19 @@
 # REQUIRED. Slug used to name output folders and label artifacts.
 domain: my_domain
 
+# OPTIONAL. Reusable model aliases with user-chosen names (no reserved names).
+# Reference an alias from any stage's `model:` instead of repeating a model name.
+# models:
+#   fast: gpt-4o-mini
+#   accurate: gpt-5
+
+# OPTIONAL. Per-model context window (in prompt tokens) used to fail fast before
+# an over-budget extraction request. Only needed for deployments whose window
+# cannot be inferred (e.g. custom Azure deployment names). Models not listed here
+# are simply not guarded. No model names are hardcoded anywhere in the code.
+# model_context_windows:
+#   my-azure-deployment-name: 300000
+
 
 # ── Acquisition ───────────────────────────────────────────────────────────────
 #

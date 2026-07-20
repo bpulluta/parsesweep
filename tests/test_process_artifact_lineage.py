@@ -2824,6 +2824,8 @@ def test_extract_and_save_result_includes_lineage_fields(tmp_path) -> None:
         processing_time=4.5,
         completeness_score=0.95,
         validation_notes=['ok'],
+        input_tokens=111,
+        output_tokens=222,
     )
 
     runtime_artifact = {
@@ -2852,6 +2854,7 @@ def test_extract_and_save_result_includes_lineage_fields(tmp_path) -> None:
         run_id='run://deterministic1234',
         provider='azure',
         schema_id='https://example.org/schema/tariffs',
+        identifier_fields=['jurisdiction'],
     )
 
     assert count == 2
@@ -2861,7 +2864,13 @@ def test_extract_and_save_result_includes_lineage_fields(tmp_path) -> None:
     assert saved['contract_version'] == '1.0.0'
     assert saved['record_id'] == 'record://deterministic1234/example'
     assert saved['document']['source_filename'] == 'example.pdf'
+    # Identifier is schema-driven: the caller-supplied identifier field
+    # ('jurisdiction') selects the source_document_id — no domain term is
+    # hardcoded in _extract_and_save_result.
     assert saved['document']['source_document_id'] == 'Example County'
+    # Token metrics now flow through from the extraction result.
+    assert saved['processing_metrics']['input_tokens'] == 111
+    assert saved['processing_metrics']['output_tokens'] == 222
     assert saved['lineage']['artifact_id'] == runtime_artifact['artifact_id']
     assert saved['lineage']['profile_id'] == 'default'
     assert saved['lineage']['run_id'] == 'run://deterministic1234'
