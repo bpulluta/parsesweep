@@ -31,6 +31,7 @@ from .constants import (
 )
 from .link_prioritizer import LinkPrioritizer
 from .models import AcquisitionCandidate, AcquisitionManifest, CandidateScore
+from .retry import compute_backoff, is_transient_error
 from .urls import normalize_url_text, url_host
 from .policies import AcquisitionPolicyEvaluator
 from streamline_extract.utils.error_taxonomy import (
@@ -108,6 +109,18 @@ class AcquisitionRequest:
     # Use a real browser to clear bot-manager challenges (Akamai/Cloudflare)
     # for downloads on protected sites.
     browser_mode: bool = False
+    # Extra SerpApi query params forwarded verbatim to the seeker (e.g.
+    # {"tbm": "nws"} for Google News, {"tbs": "qdr:y"} for recency). Enables
+    # dated-news discovery for temporal domains.
+    seeker_extra_params: dict[str, object] | None = None
+    # Model-tiering map ({tier_name: model_name}) from the top-level run.yaml
+    # ``models:`` block. Acquire-side LLM stages (document review) resolve their
+    # ``model`` tier reference against this map via ``extraction.llm_factory``.
+    models: dict[str, object] | None = None
+    # Cache SerpApi results on disk so re-running acquire during tuning does not
+    # re-pay for identical queries. TTL in minutes (0 = never expire).
+    seeker_cache: bool = False
+    seeker_cache_ttl_minutes: float = 0.0
 
 
 @dataclass(slots=True)
@@ -472,12 +485,28 @@ class AcquisitionEngine:
         try:
             from .connectors.serpapi_seeker import SerpApiSeeker
 
+            seeker_cache_dir = None
+            if getattr(request, "seeker_cache", False):
+                seeker_cache_dir = str(
+                    Path("output")
+                    / "acquisition"
+                    / request.domain
+                    / ".serpapi_cache"
+                )
             seeker = SerpApiSeeker(
                 retry_max_attempts=request.retry_max_attempts,
                 retry_initial_backoff_seconds=request.retry_initial_backoff_seconds,
                 retry_max_backoff_seconds=request.retry_max_backoff_seconds,
                 min_request_interval_seconds=max(
                     0.0, float(request.min_request_interval_ms) / 1000.0
+                ),
+                cache_dir=seeker_cache_dir,
+                cache_ttl_seconds=max(
+                    0.0,
+                    float(
+                        getattr(request, "seeker_cache_ttl_minutes", 0.0) or 0.0
+                    )
+                    * 60.0,
                 ),
             )
             seeker_inputs = AcquisitionEngine._build_seeker_inputs(request)
@@ -655,6 +684,11 @@ class AcquisitionEngine:
             base_extra["query_families"] = request.query_families
         if request.use_query_family:
             base_extra["use_query_family"] = request.use_query_family
+        if request.seeker_extra_params:
+            # Verbatim SerpApi params (e.g. tbm=nws for Google News). Nested
+            # under a reserved key so the seeker merges them into the request
+            # without confusing them with engine control keys.
+            base_extra["serpapi_params"] = dict(request.seeker_extra_params)
 
         targets = request.targets or []
         inputs: list[SeekerInput] = []
@@ -700,40 +734,7 @@ class AcquisitionEngine:
 
         return inputs
 
-    @staticmethod
-    def _is_transient_network_error(exc: BaseException) -> bool:
-        try:
-            import requests
-
-            if isinstance(
-                exc,
-                (
-                    requests.exceptions.Timeout,
-                    requests.exceptions.ConnectionError,
-                    requests.exceptions.SSLError,
-                ),
-            ):
-                return True
-        except Exception:
-            pass
-
-        lowered = str(exc).lower()
-        markers = (
-            "timeout",
-            "temporarily unavailable",
-            "try again",
-            "connection reset",
-            "connection aborted",
-            "connection refused",
-            "name resolution",
-            "dns",
-            "ssl",
-            "tls",
-            "429",
-            "503",
-            "504",
-        )
-        return any(marker in lowered for marker in markers)
+    _is_transient_network_error = staticmethod(is_transient_error)
 
     @staticmethod
     def _retry_backoff_for_attempt(
@@ -742,12 +743,11 @@ class AcquisitionEngine:
         initial_backoff_seconds: float,
         max_backoff_seconds: float,
     ) -> float:
-        if attempt <= 1:
-            return 0.0
-        wait = initial_backoff_seconds * (2 ** (attempt - 2))
-        if max_backoff_seconds <= 0:
-            return max(0.0, wait)
-        return min(wait, max_backoff_seconds)
+        return compute_backoff(
+            attempt,
+            initial_backoff_seconds=initial_backoff_seconds,
+            max_backoff_seconds=max_backoff_seconds,
+        )
 
     @staticmethod
     def _resolve_retry_policy(
@@ -1033,7 +1033,7 @@ class AcquisitionEngine:
                     {
                         "url": url,
                         "final_url": final_url,
-                        "status": "skipped_non_legal_document",
+                        "status": "skipped_selection_filter",
                         "reason": reject_code,
                         "mime_type": mime_type,
                         "policy_warning_codes": list(
@@ -1718,8 +1718,8 @@ class AcquisitionEngine:
             "success_rate": round(success_rate, 4)
             if success_rate is not None
             else None,
-            "gate_threshold": threshold,
-            "meets_fixture_gate": bool(
+            "coverage_threshold": threshold,
+            "meets_coverage_threshold": bool(
                 success_rate is not None and success_rate >= threshold
             ),
             "targets": target_selection_metrics,
@@ -1758,7 +1758,7 @@ class AcquisitionEngine:
 
         return {
             "applicable": True,
-            "measurement_mode": "fixture_index_links"
+            "measurement_mode": "seeded_index_links"
             if request.index_links
             else "live_hub_pages",
             "hub_page_count": len(request.hub_pages or []),
@@ -1767,8 +1767,8 @@ class AcquisitionEngine:
             "recovery_rate": round(recovery_rate, 4)
             if recovery_rate is not None
             else None,
-            "gate_threshold": threshold,
-            "meets_fixture_gate": bool(
+            "coverage_threshold": threshold,
+            "meets_coverage_threshold": bool(
                 recovery_rate is not None and recovery_rate >= threshold
             ),
         }
@@ -1806,8 +1806,8 @@ class AcquisitionEngine:
             "centralized_candidate_count": centralized_count,
             "distributed_candidate_count": distributed_count,
             "both_paths_resolved": both_paths_resolved,
-            "gate_threshold": "both_paths_required",
-            "meets_fixture_gate": both_paths_resolved,
+            "coverage_threshold": "both_paths_required",
+            "meets_coverage_threshold": both_paths_resolved,
         }
 
     def _build_acceptance_metrics(
@@ -1834,7 +1834,6 @@ class AcquisitionEngine:
             ),
         }
 
-    @staticmethod
     @staticmethod
     def _open_browser_for_download() -> tuple[object | None, str]:
         """Open a shared headless-browser session for downloads, if possible.
@@ -2732,6 +2731,7 @@ class AcquisitionEngine:
         downloads: list[dict[str, object]],
         review_cfg: dict[str, object],
         notes: list[str],
+        models: dict[str, object] | None = None,
     ) -> tuple[list[dict[str, object]], list[str]]:
         """LLM-grade downloaded files and promote the primary one(s).
 
@@ -2751,6 +2751,7 @@ class AcquisitionEngine:
         reviewer = DocumentReviewer(
             document_description=description,
             model=(str(review_cfg["model"]) if review_cfg.get("model") else None),
+            models={str(k): str(v) for k, v in (models or {}).items()} or None,
             keep_top=int(review_cfg.get("keep_top", 1) or 1),
             action=str(review_cfg.get("action", "move")),
         )
@@ -2900,11 +2901,17 @@ class AcquisitionEngine:
             download_notes.extend(gating_notes)
             download_errors: list[dict[str, object]] = []
             if candidates_for_download:
+                # Per-target selection (selection.max_per_target) already bounds
+                # recall; do not additionally truncate the global download set to
+                # the scaffold default of 10. Honor runtime.max_files when set,
+                # otherwise download everything selection kept.
+                download_cap = request.max_files or len(candidates_for_download)
                 download_records, download_errors, stage_download_notes = (
                     self._download_candidates(
                         request=request,
                         candidates=candidates_for_download,
                         documents_dir=documents_dir,
+                        max_downloads=download_cap,
                     )
                 )
                 download_notes.extend(stage_download_notes)
@@ -2925,7 +2932,10 @@ class AcquisitionEngine:
                 if review_cfg and download_records:
                     download_records, download_notes = (
                         self._run_document_review(
-                            download_records, review_cfg, download_notes
+                            download_records,
+                            review_cfg,
+                            download_notes,
+                            models=getattr(request, "models", None),
                         )
                     )
 

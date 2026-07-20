@@ -72,6 +72,8 @@ class PageLocator:
         section_description: str,
         *,
         model: str | None = None,
+        models: dict[str, str] | None = None,
+        default_model: str | None = None,
         trigger_chars: int = 200_000,
         max_selected_pages: int = 30,
         keywords: list[str] | None = None,
@@ -80,6 +82,8 @@ class PageLocator:
     ) -> None:
         self._description = section_description
         self._model = model
+        self._models = models
+        self._default_model = default_model
         self.trigger_chars = int(trigger_chars)
         self._max_pages = max(1, int(max_selected_pages))
         self._context = max(0, int(context_pages))
@@ -123,25 +127,15 @@ class PageLocator:
 
     def _ensure_client(self) -> Any:
         if self._client is None:
-            import os
+            # Shared model-tiering resolver — same knobs as every other LLM
+            # stage; honors the ``models:`` block across all providers.
+            from .llm_factory import build_llm_client
 
-            from .llm_client import LLMClient
-
-            model = self._model
-            kwargs: dict[str, Any] = {}
-            azure_key = os.getenv("AZURE_OPENAI_API_KEY")
-            azure_endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")
-            if not model and azure_key and azure_endpoint:
-                model = os.getenv("AZURE_OPENAI_MODEL") or "gpt-4o-mini"
-                kwargs = {
-                    "api_key": azure_key,
-                    "provider": "azure",
-                    "azure_endpoint": azure_endpoint,
-                    "azure_api_version": os.getenv("AZURE_OPENAI_API_VERSION"),
-                }
-            else:
-                kwargs = {"api_key": os.getenv("OPENAI_API_KEY")}
-            self._client = LLMClient(model=model or "gpt-4o-mini", **kwargs)
+            self._client = build_llm_client(
+                self._model,
+                models=self._models,
+                default_model=self._default_model,
+            )
         return self._client
 
     def _confirm_with_llm(

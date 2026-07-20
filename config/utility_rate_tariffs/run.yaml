@@ -35,6 +35,12 @@
 
 domain: utility_rate_tariffs
 
+# COST CONTROL (optional): each LLM stage accepts a `model:` naming the model to
+# use (else it inherits the environment-configured model). A cheaper model is
+# fine for bulk curation + page targeting; a stronger one helps extract the rate
+# tables. Set the actual model/deployment names for your provider on the stages
+# below (document_review.model / page_targeting.model / processing.model).
+
 acquisition:
   targets_csv: targets.csv
 
@@ -77,6 +83,7 @@ acquisition:
   # LLM curation: grade each downloaded file and select the primary tariff
   # book into the run's curated/ set so runs need no manual triage.
   document_review:
+    # model: <cheaper-model>   # optional: cheaper model for bulk curation
     document_description: >-
       the utility's authoritative residential electric rate tariff / rate
       schedule book filed with the state commission — not a rate-change notice,
@@ -90,6 +97,7 @@ processing:
   input_dir: output/acquisition/utility_rate_tariffs/latest/curated
   schema: schemas/domain_packs/tariffs/pack.yaml
   output_dir: processed/utility_rate_tariffs
+  # model: <stronger-model>   # optional: name the extraction model explicitly
   # Tariff books are large (hundreds of pages); extracting the whole document
   # overflows the model context before it reaches the rate tables. Point each
   # curated file at its residential rate-schedule pages (human- or LLM-derived).
@@ -101,6 +109,7 @@ processing:
   # .pages/). Manual page_ranges.csv always wins.
   page_targeting:
     enabled: true
+    # model: <cheaper-model>   # optional: cheaper model for the locator call
     section_description: >-
       the residential electric rate schedules / service classification tables
       showing the per-kWh energy charges, monthly customer charge, and other

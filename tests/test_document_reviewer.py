@@ -115,3 +115,58 @@ class TestReviewSkips:
         downloads = [{"status": "failed", "path": None}]
         out, notes = reviewer.review(downloads, [])
         assert out == downloads
+
+
+class TestReviewGradeCache:
+    def test_second_run_reuses_cached_grade_without_llm(self, tmp_path: Path):
+        rec = _record(tmp_path, "ordinance.pdf", "County A")
+        grades = {
+            "ordinance.pdf": {
+                "is_primary": True,
+                "relevance": 0.95,
+                "doc_kind": "ordinance",
+                "reason": "enacted code",
+            }
+        }
+
+        # First run: grades via the (stubbed) LLM and writes a sidecar w/ cache_key.
+        r1 = DocumentReviewer(document_description="the enacted ordinance")
+        _stub_grades(r1, grades)
+        _, notes1 = r1.review([dict(rec)], [])
+        assert any("reused from cache" in n for n in notes1)
+        sidecar = tmp_path / ".review" / "ordinance.json"
+        assert "cache_key" in json.loads(sidecar.read_text(encoding="utf-8"))
+
+        # Second run: file unchanged → grade reused, LLM must NOT be called.
+        r2 = DocumentReviewer(document_description="the enacted ordinance")
+
+        def _boom(_p):  # pragma: no cover - asserts no LLM call on cache hit
+            raise AssertionError("LLM grade should not be called on cache hit")
+
+        r2._ensure_client = lambda: object()  # type: ignore[method-assign]
+        r2._grade = _boom  # type: ignore[method-assign]
+        rec2 = dict(rec)
+        _, notes2 = r2.review([rec2], [])
+        assert rec2["review_relevance"] == 0.95
+        assert rec2.get("review_cached") is True
+        assert any("1 reused from cache" in n for n in notes2)
+
+    def test_changed_description_invalidates_cache(self, tmp_path: Path):
+        rec = _record(tmp_path, "ordinance.pdf", "County A")
+        grades = {
+            "ordinance.pdf": {
+                "is_primary": True, "relevance": 0.9,
+                "doc_kind": "ordinance", "reason": "x",
+            }
+        }
+        r1 = DocumentReviewer(document_description="desc one")
+        _stub_grades(r1, grades)
+        r1.review([dict(rec)], [])
+
+        # Different description → different cache key → must re-grade.
+        r2 = DocumentReviewer(document_description="a different description")
+        _stub_grades(r2, grades)
+        rec2 = dict(rec)
+        _, notes2 = r2.review([rec2], [])
+        assert rec2.get("review_cached") is not True
+        assert any("graded 1 file" in n for n in notes2)

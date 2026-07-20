@@ -877,11 +877,11 @@ def test_engine_run_routes_centralized_topology_through_hub_sweep(tmp_path: Path
     assert payload["lineage"]["routing"]["discovery_modes"] == ["centralized_index_sweep"]
     centralized_metrics = payload["stage_summaries"]["acceptance_metrics"]["centralized_page_sweep"]
     assert centralized_metrics["applicable"] is True
-    assert centralized_metrics["measurement_mode"] == "fixture_index_links"
+    assert centralized_metrics["measurement_mode"] == "seeded_index_links"
     assert centralized_metrics["qualifying_link_count"] == 1
     assert centralized_metrics["recovered_link_count"] == 1
     assert centralized_metrics["recovery_rate"] == 1.0
-    assert centralized_metrics["meets_fixture_gate"] is True
+    assert centralized_metrics["meets_coverage_threshold"] is True
     assert any(
         note == "Centralized routing staged 1 candidate(s) through hub sweep."
         for note in payload["notes"]
@@ -976,7 +976,7 @@ def test_engine_run_routes_hybrid_topology_with_centralized_then_distributed(tmp
     assert hybrid_metrics["centralized_candidate_count"] == 1
     assert hybrid_metrics["distributed_candidate_count"] == 1
     assert hybrid_metrics["both_paths_resolved"] is True
-    assert hybrid_metrics["meets_fixture_gate"] is True
+    assert hybrid_metrics["meets_coverage_threshold"] is True
     assert any(
         note == "Hybrid routing produced 2 candidate(s) after centralized-plus-distributed sequencing."
         for note in payload["notes"]
@@ -1311,7 +1311,7 @@ def test_engine_run_emits_unknown_target_acceptance_metrics(tmp_path: Path, monk
     assert unknown_target_metrics["target_count"] == 2
     assert unknown_target_metrics["targets_with_staged_candidates"] == 1
     assert unknown_target_metrics["success_rate"] == 0.5
-    assert unknown_target_metrics["meets_fixture_gate"] is False
+    assert unknown_target_metrics["meets_coverage_threshold"] is False
     assert len(unknown_target_metrics["targets"]) == 2
 
 
