@@ -470,3 +470,64 @@ def test_preview_deduplication_uses_schema_numeric_fields_for_high_severity(tmp_
     assert preview["duplicate_groups"][0]["conflicting_columns"] == ["Distance Measure"]
     assert preview["duplicate_groups"][0]["severity"] == "high"
     assert preview["suspicious_groups_by_severity"] == {"high": 1, "medium": 0, "low": 0}
+
+
+def _write_record_with_state(path: Path, state: str) -> None:
+    _write_json(
+        path,
+        {
+            "record_id": "r1",
+            "contract_version": "1.0.0",
+            "document": {
+                "source_document_id": "d1",
+                "source_path": "documents/x/d1.pdf",
+                "source_filename": "d1.pdf",
+            },
+            "lineage": {
+                "run_id": "run://s",
+                "artifact_id": "artifact://s",
+                "profile_id": "default",
+                "model": "gpt-5",
+                "provider": "azure",
+                "extracted_at": "2026-03-24T00:00:00Z",
+            },
+            "payload": {
+                "metadata": {"id": "T-1", "state": state},
+                "items": [{"name": "Charge A", "value": 10}],
+            },
+        },
+    )
+
+
+def test_state_normalization_default_abbreviates(tmp_path) -> None:
+    """By default (no config) a 'State' column is normalized to its abbrev."""
+    schema_path = tmp_path / "schema.json"
+    _write_schema(schema_path)
+    extracted_dir = tmp_path / "processed/tariffs"
+    _write_record_with_state(extracted_dir / "doc1.json", "Utah")
+
+    consolidator = Consolidator(
+        schema_metadata=SchemaMetadata(schema_path), verbose=False, debug=False
+    )
+    df, _ = consolidator.consolidate_from_directory(extracted_dir)
+    assert df.iloc[0]["State"] == "UT"
+
+
+def test_state_normalization_can_be_disabled_via_config(tmp_path) -> None:
+    """A non-US/non-jurisdiction domain opts out; raw values are preserved."""
+    schema_path = tmp_path / "schema.json"
+    _write_schema(schema_path)
+    extracted_dir = tmp_path / "processed/tariffs"
+    _write_record_with_state(extracted_dir / "doc1.json", "Utah")
+
+    schema_metadata = SchemaMetadata(
+        schema_path,
+        metadata_overrides={
+            "consolidation": {"normalization": {"state_column": None}}
+        },
+    )
+    consolidator = Consolidator(
+        schema_metadata=schema_metadata, verbose=False, debug=False
+    )
+    df, _ = consolidator.consolidate_from_directory(extracted_dir)
+    assert df.iloc[0]["State"] == "Utah"

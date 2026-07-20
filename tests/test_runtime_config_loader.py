@@ -769,3 +769,85 @@ def test_model_context_windows_rejects_non_positive(tmp_path: Path):
     )
     with pytest.raises(RuntimeConfigError, match="positive integer"):
         load_runtime_config_file(cfg)
+
+
+# ── consolidation.synthesis validation ──────────────────────────────
+# The synthesis block was previously an unchecked passthrough, so a mistyped
+# key (e.g. group_bye) silently produced empty output. These lock the guard.
+
+_VALID_SYNTHESIS = (
+    "consolidation:\n"
+    "  input_dir: d\n"
+    "  schema: s.json\n"
+    "  synthesis:\n"
+    "    enabled: true\n"
+    "    min_sources_for_llm: 2\n"
+    "    group_by: [entity.name]\n"
+    "    identity_fields: [entity.city]\n"
+    "    relevance_flag: applicability.on_topic\n"
+    "    citation_field: provenance.url\n"
+    "    reconcile_fields:\n"
+    "      - {field: start, evidence: ev_start}\n"
+    "      - {field: end}\n"
+    "    ordering_constraint: [start, end]\n"
+    "    narrative_fields: [status]\n"
+)
+
+
+def test_synthesis_block_accepts_valid_config(tmp_path: Path):
+    config_data = load_runtime_config_file(_write(tmp_path, _VALID_SYNTHESIS))
+    resolved = resolve_command_config(
+        command="consolidate",
+        cli_values={},
+        config_data=config_data,
+        strict=True,
+    )
+    assert resolved["synthesis"]["group_by"] == ["entity.name"]
+
+
+def test_synthesis_block_rejects_unknown_key(tmp_path: Path):
+    body = (
+        "consolidation:\n  input_dir: d\n  schema: s.json\n"
+        "  synthesis:\n    enabled: true\n    group_by: [x]\n    group_bye: [x]\n"
+    )
+    with pytest.raises(RuntimeConfigError, match="Unknown keys in 'consolidation.synthesis'"):
+        load_runtime_config_file(_write(tmp_path, body))
+
+
+def test_synthesis_enabled_requires_group_by(tmp_path: Path):
+    body = (
+        "consolidation:\n  input_dir: d\n  schema: s.json\n"
+        "  synthesis:\n    enabled: true\n"
+    )
+    with pytest.raises(RuntimeConfigError, match="group_by is required"):
+        load_runtime_config_file(_write(tmp_path, body))
+
+
+def test_synthesis_reconcile_fields_require_field_key(tmp_path: Path):
+    body = (
+        "consolidation:\n  input_dir: d\n  schema: s.json\n"
+        "  synthesis:\n    group_by: [x]\n"
+        "    reconcile_fields:\n      - {evidence: ev}\n"
+    )
+    with pytest.raises(RuntimeConfigError, match="non-empty string 'field'"):
+        load_runtime_config_file(_write(tmp_path, body))
+
+
+def test_synthesis_ordering_must_reference_reconciled_fields(tmp_path: Path):
+    body = (
+        "consolidation:\n  input_dir: d\n  schema: s.json\n"
+        "  synthesis:\n    group_by: [x]\n"
+        "    reconcile_fields:\n      - {field: start}\n"
+        "    ordering_constraint: [start, missing]\n"
+    )
+    with pytest.raises(RuntimeConfigError, match="not in reconcile_fields: missing"):
+        load_runtime_config_file(_write(tmp_path, body))
+
+
+def test_synthesis_min_sources_must_be_non_negative_int(tmp_path: Path):
+    body = (
+        "consolidation:\n  input_dir: d\n  schema: s.json\n"
+        "  synthesis:\n    group_by: [x]\n    min_sources_for_llm: -1\n"
+    )
+    with pytest.raises(RuntimeConfigError, match="min_sources_for_llm"):
+        load_runtime_config_file(_write(tmp_path, body))

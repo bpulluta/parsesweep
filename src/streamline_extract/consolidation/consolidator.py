@@ -57,7 +57,7 @@ class Consolidator:
         self.total_items = 0
         self.duplicates_removed = 0
         self.detector = SchemaDetector(schema_metadata=schema_metadata)
-        self.flattener = DataFlattener()
+        self.flattener = DataFlattener(schema_metadata=schema_metadata)
         self.deduplicator = Deduplicator(schema_metadata=schema_metadata)
         self.excel_formatter = ExcelFormatter()
         self.csv_exporter = CsvExporter()
@@ -209,8 +209,12 @@ class Consolidator:
         df = pd.DataFrame(rows)
         df = self.flattener.normalize_units(df)
 
-        # Normalize state names to 2-letter abbreviations for consistency
-        normalize_state_column(df, "State")
+        # Normalize state names to 2-letter abbreviations for consistency.
+        # Config-gated: defaults to a column named "State" (legacy behavior);
+        # a schema can point at a different column or opt out entirely.
+        state_column = self.schema_metadata.get_state_normalization_column()
+        if state_column:
+            normalize_state_column(df, state_column)
 
         # Track stats
         self.total_items = len(df)
