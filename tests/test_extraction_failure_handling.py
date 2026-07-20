@@ -36,7 +36,14 @@ def test_llm_client_raises_on_provider_exception() -> None:
 
 
 def test_llm_client_preflight_rejects_oversized_request_before_provider_call() -> None:
-    client = LLMClient(api_key="test-key", model="compassop-gpt-4.1-mini", provider="azure")
+    # Context window is now config-driven (no hardcoded deployment names): the
+    # guard fires only for models present in the supplied context_windows map.
+    client = LLMClient(
+        api_key="test-key",
+        model="my-azure-deployment",
+        provider="azure",
+        context_windows={"my-azure-deployment": 300000},
+    )
     oversized_text = "x" * 1_300_000
 
     with patch("streamline_extract.extraction.llm_client.completion") as completion_mock:
@@ -44,3 +51,17 @@ def test_llm_client_preflight_rejects_oversized_request_before_provider_call() -
             client.extract(oversized_text, {"type": "object", "properties": {}})
 
     completion_mock.assert_not_called()
+
+
+def test_llm_client_no_context_guard_when_window_unset() -> None:
+    # A model absent from context_windows is not guarded — the oversized request
+    # is allowed through to the provider (mocked) instead of failing preflight.
+    client = LLMClient(api_key="test-key", model="some-model", provider="azure")
+    oversized_text = "x" * 1_300_000
+
+    with patch("streamline_extract.extraction.llm_client.completion") as completion_mock:
+        completion_mock.side_effect = RuntimeError("reached provider")
+        with pytest.raises(ExtractionError):
+            client.extract(oversized_text, {"type": "object", "properties": {}})
+
+    completion_mock.assert_called_once()

@@ -73,15 +73,20 @@ class TestCostTracker:
         assert output_cost == 0.60
         assert total_cost == 0.75
     
-    def test_cost_calculation_gpt4(self):
-        """Test cost calculation for gpt-4."""
-        tracker = CostTracker(model="gpt-4")
+    def test_cost_calculation_uses_shared_pricing_db(self):
+        """CostTracker rates come from the single shared pricing DB.
+
+        Regression guard for the pricing consolidation: CostTracker no longer
+        carries its own private price table, so rates must match
+        ``utils.model_pricing`` for any model (here gpt-4o = $5/$15 per 1M).
+        """
+        tracker = CostTracker(model="gpt-4o")
         tracker.add_request(1_000_000, 1_000_000)
-        
-        # gpt-4: $30/1M input, $60/1M output
-        assert tracker.get_input_cost() == 30.0
-        assert tracker.get_output_cost() == 60.0
-        assert tracker.get_total_cost() == 90.0
+
+        # gpt-4o: $5.00/1M input, $15.00/1M output (from model_pricing DB)
+        assert tracker.get_input_cost() == 5.00
+        assert tracker.get_output_cost() == 15.00
+        assert tracker.get_total_cost() == 20.00
     
     def test_average_cost_per_document(self):
         """Test average cost calculation."""

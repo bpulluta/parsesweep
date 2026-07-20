@@ -32,6 +32,8 @@ class ExtractionResult:
     processing_time: float
     validation_notes: List[str]
     validation_report: Optional[Any] = None  # Optional QA/QC validation report
+    input_tokens: Optional[int] = None  # Prompt tokens (from provider usage)
+    output_tokens: Optional[int] = None  # Completion tokens (from provider usage)
 
 
 class DocumentExtractor:
@@ -64,6 +66,7 @@ class DocumentExtractor:
         provider: str = None,
         azure_endpoint: str = None,
         azure_api_version: str = None,
+        context_windows: Optional[Dict[str, int]] = None,
     ):
         """
         Initialize document extractor.
@@ -76,6 +79,9 @@ class DocumentExtractor:
             provider: LLM provider ("openai", "azure", "anthropic", "gemini", etc.)
             azure_endpoint: Azure OpenAI endpoint URL (for Azure provider)
             azure_api_version: Azure API version (for Azure provider)
+            context_windows: Optional {model-name -> max prompt tokens} map for the
+                fail-fast context-budget guard (from ``model_context_windows`` in
+                config). No model names are hardcoded.
         """
         self.api_key = api_key
         self.model = model
@@ -89,6 +95,7 @@ class DocumentExtractor:
             provider=provider,
             azure_endpoint=azure_endpoint,
             azure_api_version=azure_api_version,
+            context_windows=context_windows,
         )
 
         # Initialize text processor
@@ -125,13 +132,12 @@ class DocumentExtractor:
         start_time = time.time()
         total_cost = 0.0
         validation_notes = []
-        validation_report = None
 
         # Stage 1: LLM Structured Extraction
         logger.info("🤖 Stage 1: LLM Structured Extraction")
-        openai_result = self._extract_with_openai(text, schema)
-        total_cost += openai_result["cost"]
-        validated_data = openai_result["data"]
+        extraction = self._extract_structured(text, schema)
+        total_cost += extraction["cost"]
+        validated_data = extraction["data"]
 
         # Stage 2: Post-extraction sanity checks and normalization
         validated_data = self.processor.normalize_string_fields(validated_data)
@@ -140,13 +146,9 @@ class DocumentExtractor:
 
         processing_time = time.time() - start_time
 
-        # Use validation report confidence if available, otherwise calculate completeness
-        if validation_report:
-            completeness = validation_report.overall_confidence
-        else:
-            completeness = self.processor.calculate_completeness(
-                validated_data, validation_notes
-            )
+        completeness = self.processor.calculate_completeness(
+            validated_data, validation_notes
+        )
 
         return ExtractionResult(
             data=validated_data,
@@ -154,14 +156,16 @@ class DocumentExtractor:
             cost=total_cost,
             processing_time=processing_time,
             validation_notes=validation_notes,
-            validation_report=validation_report,
+            validation_report=None,
+            input_tokens=extraction.get("input_tokens"),
+            output_tokens=extraction.get("output_tokens"),
         )
 
-    def _extract_with_openai(
+    def _extract_structured(
         self, text: str, schema: Dict[str, Any]
     ) -> Dict[str, Any]:
         """
-        Extract using LLM structured outputs.
+        Extract using LLM structured outputs (provider-agnostic via LLMClient).
 
         Delegates to LLMClient for API calls and TextProcessor for optimization.
 
@@ -170,7 +174,7 @@ class DocumentExtractor:
             schema: JSON schema for validation
 
         Returns:
-            Dict with 'data' (extracted info) and 'cost' (API cost in USD)
+            Dict with 'data', 'cost' (USD), and 'input_tokens'/'output_tokens'
         """
         # Use text processor to optimize text for extraction
         text_excerpt, _ = self.processor.optimize(text)

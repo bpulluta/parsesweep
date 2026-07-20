@@ -91,6 +91,13 @@ acquisition:
     keep_top: 1
     action: move
 
+# OPTIONAL. Declare your extraction model's context window (prompt tokens) so a
+# whole-book run fails fast with an actionable message instead of a raw provider
+# error. Only needed for deployments whose window can't be inferred (e.g. custom
+# Azure deployment names). Key must match your configured model name.
+# model_context_windows:
+#   my-azure-deployment-name: 300000
+
 processing:
   # Consume only the curated (LLM-reviewed + human-approved) set from the latest
   # acquire run. Edit the run's review.csv and re-run `curate` to change this set.

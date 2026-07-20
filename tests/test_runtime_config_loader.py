@@ -698,3 +698,74 @@ def test_models_block_rejects_empty_model_name(tmp_path: Path):
     config_path.write_text("models:\n  fast: ''\n", encoding="utf-8")
     with pytest.raises(RuntimeConfigError, match="non-empty"):
         load_runtime_config_file(config_path)
+
+
+# ── Processing deep validator + model_context_windows (process audit) ─────────
+
+
+def _write(tmp_path: Path, body: str) -> Path:
+    p = tmp_path / "run.yaml"
+    p.write_text(body, encoding="utf-8")
+    return p
+
+
+def test_processing_validator_rejects_non_int_max_context(tmp_path: Path):
+    cfg = _write(
+        tmp_path,
+        "processing:\n  schema: s.json\n  input_dir: d\n  max_context: not-an-int\n",
+    )
+    with pytest.raises(RuntimeConfigError, match="max_context"):
+        load_runtime_config_file(cfg)
+
+
+def test_processing_validator_rejects_bad_provider(tmp_path: Path):
+    cfg = _write(
+        tmp_path,
+        "processing:\n  schema: s.json\n  input_dir: d\n  provider: bogus\n",
+    )
+    with pytest.raises(RuntimeConfigError, match="provider"):
+        load_runtime_config_file(cfg)
+
+
+def test_processing_validator_rejects_bad_page_targeting(tmp_path: Path):
+    cfg = _write(
+        tmp_path,
+        "processing:\n  schema: s.json\n  input_dir: d\n"
+        "  page_targeting:\n    trigger_chars: -5\n",
+    )
+    with pytest.raises(RuntimeConfigError, match="trigger_chars"):
+        load_runtime_config_file(cfg)
+
+
+def test_processing_validator_accepts_valid_block(tmp_path: Path):
+    cfg = _write(
+        tmp_path,
+        "processing:\n  schema: s.json\n  input_dir: d\n  max_context: 600000\n"
+        "  provider: azure\n  page_targeting:\n    enabled: true\n"
+        "    section_description: the rate tables\n    trigger_chars: 200000\n"
+        "    max_selected_pages: 30\n",
+    )
+    loaded = load_runtime_config_file(cfg)
+    assert loaded["processing"]["max_context"] == 600000
+
+
+def test_model_context_windows_validates_and_passes_through(tmp_path: Path):
+    cfg = _write(
+        tmp_path,
+        "model_context_windows:\n  my-deploy: 300000\n"
+        "processing:\n  schema: s.json\n  input_dir: d\n",
+    )
+    config_data = load_runtime_config_file(cfg)
+    resolved = resolve_command_config(
+        command="process", cli_values={}, config_data=config_data, strict=True
+    )
+    assert resolved["model_context_windows"] == {"my-deploy": 300000}
+
+
+def test_model_context_windows_rejects_non_positive(tmp_path: Path):
+    cfg = _write(
+        tmp_path,
+        "model_context_windows:\n  my-deploy: 0\n",
+    )
+    with pytest.raises(RuntimeConfigError, match="positive integer"):
+        load_runtime_config_file(cfg)
