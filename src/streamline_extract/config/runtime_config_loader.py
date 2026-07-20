@@ -708,6 +708,138 @@ def _validate_page_targeting_block(pt: Any) -> None:
         )
 
 
+_SYNTHESIS_STRING_FIELDS = (
+    "citation_field",
+    "relevance_flag",
+    "item_array",
+    "instructions",
+    "model",
+)
+_SYNTHESIS_STRING_LIST_FIELDS = (
+    "group_by",
+    "identity_fields",
+    "narrative_fields",
+    "ordering_constraint",
+)
+_ALLOWED_SYNTHESIS_KEYS = (
+    {"enabled", "min_sources_for_llm", "reconcile_fields"}
+    | set(_SYNTHESIS_STRING_FIELDS)
+    | set(_SYNTHESIS_STRING_LIST_FIELDS)
+)
+
+
+def _validate_consolidation_section_schema(
+    consolidation: dict[str, Any],
+) -> None:
+    """Deep-validate the ``consolidation`` section at load time.
+
+    Mirrors ``_validate_processing_section_schema``. Domain-neutral: only
+    structural types/shapes are enforced. The rich ``synthesis`` block was
+    previously an unchecked passthrough, so a mistyped key (e.g. ``group_bye``)
+    silently produced empty output; it is now validated.
+    """
+    synthesis = consolidation.get("synthesis")
+    if synthesis is not None:
+        _validate_synthesis_block(synthesis)
+
+
+def _validate_synthesis_block(syn: Any) -> None:
+    """Validate the optional ``consolidation.synthesis`` block structure."""
+    if not isinstance(syn, dict):
+        raise RuntimeConfigError("consolidation.synthesis must be an object")
+
+    unknown = sorted(k for k in syn if k not in _ALLOWED_SYNTHESIS_KEYS)
+    if unknown:
+        raise RuntimeConfigError(
+            "Unknown keys in 'consolidation.synthesis': "
+            + ", ".join(unknown)
+        )
+
+    if syn.get("enabled") is not None and not isinstance(
+        syn["enabled"], bool
+    ):
+        raise RuntimeConfigError(
+            "consolidation.synthesis.enabled must be a boolean"
+        )
+
+    msl = syn.get("min_sources_for_llm")
+    if msl is not None and (
+        isinstance(msl, bool) or not isinstance(msl, int) or msl < 0
+    ):
+        raise RuntimeConfigError(
+            "consolidation.synthesis.min_sources_for_llm must be a "
+            f"non-negative integer (got {msl!r})"
+        )
+
+    for name in _SYNTHESIS_STRING_FIELDS:
+        if syn.get(name) is not None and not isinstance(syn[name], str):
+            raise RuntimeConfigError(
+                f"consolidation.synthesis.{name} must be a string"
+            )
+
+    for name in _SYNTHESIS_STRING_LIST_FIELDS:
+        value = syn.get(name)
+        if value is None:
+            continue
+        if not isinstance(value, list) or not all(
+            isinstance(item, str) and item for item in value
+        ):
+            raise RuntimeConfigError(
+                f"consolidation.synthesis.{name} must be a list of "
+                "non-empty strings"
+            )
+
+    field_names = _validate_reconcile_fields(syn.get("reconcile_fields"))
+
+    # When enabled, group_by is what turns records into entity rows.
+    if syn.get("enabled") and not syn.get("group_by"):
+        raise RuntimeConfigError(
+            "consolidation.synthesis.group_by is required when synthesis is "
+            "enabled"
+        )
+
+    # Ordering constraint must reference fields that are actually reconciled.
+    ordering = syn.get("ordering_constraint") or []
+    if ordering and field_names:
+        unknown_ordered = [f for f in ordering if f not in field_names]
+        if unknown_ordered:
+            raise RuntimeConfigError(
+                "consolidation.synthesis.ordering_constraint references "
+                "field(s) not in reconcile_fields: "
+                + ", ".join(unknown_ordered)
+            )
+
+
+def _validate_reconcile_fields(reconcile_fields: Any) -> set[str]:
+    """Validate ``reconcile_fields`` and return the set of declared field names."""
+    if reconcile_fields is None:
+        return set()
+    if not isinstance(reconcile_fields, list):
+        raise RuntimeConfigError(
+            "consolidation.synthesis.reconcile_fields must be a list"
+        )
+    field_names: set[str] = set()
+    for entry in reconcile_fields:
+        if not isinstance(entry, dict):
+            raise RuntimeConfigError(
+                "each consolidation.synthesis.reconcile_fields entry must be "
+                "an object with a 'field' key"
+            )
+        field = entry.get("field")
+        if not isinstance(field, str) or not field:
+            raise RuntimeConfigError(
+                "each consolidation.synthesis.reconcile_fields entry requires "
+                "a non-empty string 'field'"
+            )
+        evidence = entry.get("evidence")
+        if evidence is not None and not isinstance(evidence, str):
+            raise RuntimeConfigError(
+                f"reconcile_fields['{field}'].evidence must be a string"
+            )
+        field_names.add(field)
+    return field_names
+
+
 def _read_config_file(path: Path) -> dict[str, Any]:
     suffix = path.suffix.lower()
     raw_text = path.read_text(encoding="utf-8")
@@ -870,6 +1002,13 @@ def load_runtime_config_file(config_path: Path) -> dict[str, Any]:
             msg = "'processing' section must be an object in runtime config"
             raise RuntimeConfigError(msg)
         _validate_processing_section_schema(processing)
+
+    consolidation = config_data.get("consolidation")
+    if consolidation is not None:
+        if not isinstance(consolidation, dict):
+            msg = "'consolidation' section must be an object in runtime config"
+            raise RuntimeConfigError(msg)
+        _validate_consolidation_section_schema(consolidation)
 
     return config_data
 

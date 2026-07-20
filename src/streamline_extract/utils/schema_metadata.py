@@ -237,6 +237,32 @@ class SchemaMetadata:
         output = self.metadata.get("consolidation", {}).get("output", {})
         return output.get("auto_width", True)
 
+    def get_flattening_config(self) -> Dict[str, Any]:
+        """Return the optional ``consolidation.flattening`` block.
+
+        Domain-neutral knobs the flattener consults to decide how arrays of
+        objects become spreadsheet columns. Every key is optional; when a key
+        is absent the flattener falls back to its documented general defaults,
+        so schemas that declare nothing keep the legacy behavior.
+        """
+        return self.metadata.get("consolidation", {}).get("flattening", {})
+
+    def get_state_normalization_column(self) -> Optional[str]:
+        """Column whose US-state names should be normalized to abbreviations.
+
+        Driven by ``consolidation.normalization.state_column``. Defaults to
+        ``"State"`` (legacy behavior: normalize a column literally named
+        ``State`` when present). Set to ``null``/``""`` in a schema to opt a
+        non-US / non-jurisdiction domain out entirely.
+        """
+        normalization = self.metadata.get("consolidation", {}).get(
+            "normalization", {}
+        )
+        if "state_column" not in normalization:
+            return "State"
+        column = normalization.get("state_column")
+        return column or None
+
     def get_consolidation_field_severity_hints(self) -> Dict[str, str]:
         """Return schema-derived severity hints for consolidated output fields."""
         hints: Dict[str, str] = {}

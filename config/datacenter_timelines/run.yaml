@@ -1,0 +1,167 @@
+# Data Center Project Timelines
+#
+# Enriches a data-center site list with project TIMELINE dates
+# (announced / construction start / expected completion / cancelled) by finding
+# news articles, press releases, permits, and filings for each site — and
+# recording the SOURCE URL each fact came from (citation_urls).
+#
+# Design notes (this domain is web-article-centric, unlike the PDF domains):
+#   - Discovery uses the SerpApi SEEKER, not the crawl digger. The HTTP crawl
+#     digger only stages URLs that end in a file extension, so it silently skips
+#     extension-less news/press URLs. The seeker downloads the article HTML
+#     directly (saved as .html, which the extractor reads).
+#   - selection.require_supported_document: false is REQUIRED so HTML pages
+#     (no .pdf/.docx extension) survive candidate selection.
+#   - No document_review here: its built-in reviewer prompt down-ranks news
+#     items, but news/press releases are our PRIMARY source. So curated/ keeps
+#     every download and precision is enforced at extraction time via the
+#     schema's is_about_query_subject relevance flag + the injected CONTEXT
+#     block (SOURCE_URL / QUERIED_SITE) that anchors each extraction to the
+#     intended project. This is the "recall first, then flag" principle.
+#
+# Required env: SERPAPI_KEY (+ Azure OpenAI for process)
+# Usage:
+#   streamline-extract acquire --config config/datacenter_timelines/run.yaml --dry-run
+#   streamline-extract acquire --config config/datacenter_timelines/run.yaml
+#   streamline-extract process --config config/datacenter_timelines/run.yaml
+#   streamline-extract consolidate --config config/datacenter_timelines/run.yaml
+
+domain: datacenter_timelines
+
+# COST CONTROL (optional): each LLM stage accepts a `model:` naming the model to
+# use (else it inherits the environment-configured model). See processing.model
+# and consolidation.synthesis.model below.
+
+acquisition:
+  # Stratified validation set: 3 sites per stage (operational / planned /
+  # construction / in_doubt / decommissioned / withdrawn) sampled from
+  # test-v1/baxtel_sites_20250915.csv, preferring notable operators.
+  targets_csv: targets_sample.csv
+
+  # SOURCE STRATEGY for ACTIVE projects — news & press narrate the lifecycle.
+  # Unlike operational colos (whose only date is a building "year built" that
+  # does NOT represent the current project), greenfield/hyperscale builds are
+  # covered by dated news: the announcement, the groundbreaking, the target
+  # completion. Organic queries surface those articles AND press releases /
+  # permit / local-government coverage that state real project dates.
+  queries:
+    - "{company_name} {city} data center announced OR \"broke ground\" OR groundbreaking"
+    - "{company_name} {city} data center construction OR completion OR online OR operational"
+    - "\"{site_name}\""
+    - "{company_name} {region} data center announcement OR timeline"
+
+  search:
+    provider: serpapi
+    max_results: 10
+    cache: true          # cache results so re-running acquire doesn't re-pay
+
+  # Seeker only — do NOT crawl (see design notes above).
+  follow_links: false
+
+  # Plain HTTP downloads run in parallel (fast). Set true only if a target's
+  # sources are bot-protected (serial through headless Chrome, much slower).
+  browser_mode: false
+
+  selection:
+    max_per_target: 6            # multiple sources per site (bounded for browser dl)
+    require_supported_document: false   # KEY: allow extension-less HTML news pages
+    # Drop facility spec/cut sheets (they carry no dates) and pure non-content
+    # pages. NOTE: data-center DIRECTORIES (baxtel, datacentermap,
+    # datacenterHawk) are deliberately NOT excluded — they are our best source
+    # of structured "Year Built" + facility history for these existing sites.
+    exclude:
+      # Facility spec / cut sheets and other static operator PDFs
+      - "cutsheet"
+      - "cut-sheet"
+      - "cut_sheet"
+      - "shipping-receiving"
+      - "spec-sheet"
+      - "datasheet"
+      # Non-content pages
+      - "/login"
+      - "/signin"
+      - "/careers"
+      - "/privacy"
+      - "/terms"
+      - "/contact"
+      - "youtube.com"
+      - "facebook.com"
+      - "twitter.com"
+      - "x.com/"
+      - "linkedin.com/company"
+      - "instagram.com"
+
+  request_delay_ms: 600
+
+processing:
+  # Curated set from the latest acquire run (all downloads — no document_review).
+  input_dir: output/acquisition/datacenter_timelines/latest/curated
+  schema: schemas/personal/datacenter_timelines_schema.json
+  output_dir: processed/datacenter_timelines
+  # Web pages are small; whole-document extraction is fine (no page targeting).
+
+consolidation:
+  input_dir: processed/datacenter_timelines
+  schema: schemas/personal/datacenter_timelines_schema.json
+  output_dir: consolidated/datacenter_timelines
+
+  # SYNTHESIS — reconcile the many per-document extraction records into ONE row
+  # per entity (conflict resolution + confidence + provenance), instead of lossy
+  # tabular dedup. This stage is DOMAIN-NEUTRAL: every key below is a path into
+  # the extraction payload and any set of fields can be reconciled. Timelines are
+  # just this configuration; the same stage reconciles permit limits, spec
+  # values, prices, etc. Runs on `consolidate` and reuses the `process` LLM.
+  synthesis:
+    enabled: true
+    # COST CONTROL. Only pay for an LLM reconciliation call when >= this many
+    # sources carry a value to reconcile. 0 sources -> null row; 1 source -> its
+    # own values (both resolved deterministically, NO API call). Reconciliation
+    # only needs the LLM when sources actually disagree. Raise to spend less.
+    min_sources_for_llm: 2
+    # Optional: name the model for reconciliation (else inherits the env model).
+    # Reconciliation is a reasoning task, so a stronger model is usually worth it.
+    # model: <stronger-model>
+    # One output row per distinct value of this entity key (payload path).
+    group_by: ["query_subject.queried_site_name"]
+    # Context fields carried onto every row (first non-empty across sources).
+    identity_fields:
+      - query_subject.queried_company
+      - query_subject.queried_city
+      - query_subject.queried_state
+    # Only reconcile records the extractor judged on-topic.
+    relevance_flag: document_applicability.is_about_query_subject
+    # The source URL for each record (becomes the citation list).
+    citation_field: source_provenance.citation_url
+    # Fields to reconcile from each item of the main_data_array, each with an
+    # optional evidence field. Generic — not limited to dates.
+    reconcile_fields:
+      - {field: date_announced, evidence: evidence_announced}
+      - {field: date_construction_start, evidence: evidence_construction_start}
+      - {field: date_expected_completion, evidence: evidence_expected_completion}
+      # Project killed BEFORE completion (withdrawn/cancelled — never built).
+      - {field: date_cancelled, evidence: evidence_cancelled}
+      # Facility retired AFTER operating (decommissioned — distinct from cancelled).
+      - {field: date_operational_end, evidence: evidence_operational_end}
+    # OPTIONAL ordering validation (omit for non-ordered domains). Enforced
+    # non-decreasing; violations are flagged deterministically, never forced.
+    # date_operational_end sits at the end: a facility is decommissioned only
+    # after it becomes operational (completion). date_cancelled is intentionally
+    # NOT in this chain — a cancelled project has no completion to precede, so
+    # it is a mutually-exclusive terminal date, not a point on the build timeline.
+    ordering_constraint:
+      - date_announced
+      - date_construction_start
+      - date_expected_completion
+      - date_operational_end
+    # OPTIONAL extra free-text outputs the LLM should produce for this domain.
+    narrative_fields:
+      - current_status
+    instructions: >-
+      These are data-center facilities. Only accept dates that describe the
+      facility's own lifecycle; never use a building 'year built' that predates
+      the current project, and never use a source's publication date. Keep
+      date_cancelled and date_operational_end mutually exclusive: use
+      date_cancelled ONLY when the project was withdrawn/scrapped BEFORE it was
+      ever operational (never built), and date_operational_end ONLY when a
+      facility that HAD been operational was later decommissioned / shut down /
+      closed / retired. A single facility should not carry both.

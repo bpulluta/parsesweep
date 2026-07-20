@@ -271,3 +271,42 @@ consolidation:
 
   # OPTIONAL.
   output_dir: consolidated/my_domain
+
+  # OPTIONAL — flattening. How arrays of objects become spreadsheet columns.
+  # Every key is optional; unset keys use general defaults, so most domains omit
+  # this block entirely. Override only when your field names differ.
+  # flattening:
+  #   type_fields: [type, category, name]     # field used to label/group items
+  #   distinguishing_fields: [tier, period]   # disambiguates sibling items
+  #   value_fields: [value, amount]           # value shown in summaries
+  #   unit_fields: [unit, units]              # unit column(s) to detect
+  #   skip_fields: [details, notes]           # omitted from expanded columns
+  #   expand_max_items: 15                     # >N items -> summarized, not columns
+  #   expand_max_fields: 20
+  #   unit_normalizations: {ft: feet, '"': inches}  # {} to disable normalization
+
+  # OPTIONAL — normalization.
+  # normalization:
+  #   state_column: State   # column of US-state names to abbreviate (UT, CA...).
+  #                         # Default "State"; set null to opt out (non-US domains).
+
+  # OPTIONAL — synthesis. Reconcile MANY per-document records into ONE row per
+  # entity using an LLM (conflict resolution + confidence + provenance) instead
+  # of lossy tabular dedup. Domain-neutral: every key below is a path into the
+  # extraction payload. Only pays for an LLM call when >= min_sources_for_llm
+  # sources carry a value to reconcile.
+  # synthesis:
+  #   enabled: true
+  #   min_sources_for_llm: 2
+  #   model: <stronger-model>            # optional; else inherits the env model
+  #   group_by: [entity.name]            # one output row per distinct value
+  #   identity_fields: [entity.city]     # context carried onto every row
+  #   relevance_flag: applicability.on_topic   # only reconcile on-topic records
+  #   citation_field: provenance.url     # source URL per record (citation list)
+  #   reconcile_fields:                  # fields to reconcile, optional evidence
+  #     - {field: start, evidence: ev_start}
+  #     - {field: end}
+  #   ordering_constraint: [start, end]  # optional: enforce non-decreasing order
+  #   narrative_fields: [status]         # optional extra free-text outputs
+  #   instructions: >-                   # optional domain guidance for the LLM
+  #     Only accept values that describe the entity itself.

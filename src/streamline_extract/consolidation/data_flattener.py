@@ -3,10 +3,52 @@
 Data flattening utilities for converting nested JSON to flat spreadsheet rows.
 
 Handles intelligent flattening of complex data structures for analysis-ready output.
+
+Domain-neutral: how arrays of objects become columns (which field labels a group,
+which fields distinguish siblings, which fields carry the value/unit, how units are
+normalized, and the expand-vs-summarize thresholds) is driven by the optional
+``consolidation.flattening`` schema block. Every knob falls back to a documented
+general default, so a schema that declares nothing keeps the legacy behavior.
 """
 
 import pandas as pd
 from typing import Dict, List, Any
+
+# --- General defaults (used when the schema declares no override) -------------
+# These are broadly useful field-name conventions, not domain rules: any schema
+# may override them via ``consolidation.flattening`` without touching code.
+DEFAULT_TYPE_FIELDS = ["type", "charge_type", "category", "fee_type", "name"]
+DEFAULT_SKIP_FIELDS = [
+    "details",
+    "description",
+    "charge_description",
+    "conditions",
+    "notes",
+    "comments",
+]
+DEFAULT_DISTINGUISHING_FIELDS = ["season", "time_period", "tier", "period"]
+DEFAULT_VALUE_FIELDS = ["rate", "value", "amount", "cost"]
+DEFAULT_UNIT_FIELDS = ["unit", "units"]
+DEFAULT_SEASON_FIELDS = ["season", "period"]
+# Values treated as "no meaningful distinguisher / not worth showing".
+DEFAULT_PLACEHOLDER_VALUES = ["none", "null", "year-round", ""]
+DEFAULT_EXPAND_MAX_ITEMS = 15
+DEFAULT_EXPAND_MAX_FIELDS = 20
+# Symbol/abbreviation → canonical unit. General measurement conveniences; extend
+# or replace per domain via ``consolidation.flattening.unit_normalizations``.
+DEFAULT_UNIT_NORMALIZATIONS = {
+    "'": "feet",
+    "′": "feet",  # Prime symbol
+    "ft": "feet",
+    "ft.": "feet",
+    '"': "inches",
+    "″": "inches",  # Double prime
+    "in": "inches",
+    "in.": "inches",
+    "dB(A)": "dBA",
+    "db(a)": "dBA",
+    "DB(A)": "dBA",
+}
 
 
 class DataFlattener:
@@ -19,6 +61,43 @@ class DataFlattener:
     - Arrays of objects → expanded columns or readable summaries
     - Automatic column naming with Title Case
     """
+
+    def __init__(self, schema_metadata=None):
+        """
+        Args:
+            schema_metadata: Optional SchemaMetadata. When provided, its
+                ``consolidation.flattening`` block overrides the module defaults.
+                When omitted (e.g. callers that only use ``make_column_name``),
+                the documented defaults apply.
+        """
+        cfg = (
+            schema_metadata.get_flattening_config() if schema_metadata else {}
+        ) or {}
+        self.type_fields = cfg.get("type_fields") or DEFAULT_TYPE_FIELDS
+        self.skip_fields = cfg.get("skip_fields") or DEFAULT_SKIP_FIELDS
+        self.distinguishing_fields = (
+            cfg.get("distinguishing_fields") or DEFAULT_DISTINGUISHING_FIELDS
+        )
+        self.value_fields = cfg.get("value_fields") or DEFAULT_VALUE_FIELDS
+        self.unit_fields = cfg.get("unit_fields") or DEFAULT_UNIT_FIELDS
+        self.season_fields = cfg.get("season_fields") or DEFAULT_SEASON_FIELDS
+        self.placeholder_values = {
+            str(v).lower()
+            for v in (
+                cfg.get("placeholder_values") or DEFAULT_PLACEHOLDER_VALUES
+            )
+        }
+        self.expand_max_items = int(
+            cfg.get("expand_max_items", DEFAULT_EXPAND_MAX_ITEMS)
+        )
+        self.expand_max_fields = int(
+            cfg.get("expand_max_fields", DEFAULT_EXPAND_MAX_FIELDS)
+        )
+        # None → use defaults; explicit {} → no normalization (opt-out).
+        unit_norm = cfg.get("unit_normalizations")
+        self.unit_normalizations = (
+            DEFAULT_UNIT_NORMALIZATIONS if unit_norm is None else unit_norm
+        )
 
     def flatten_item(self, item: Dict) -> Dict:
         """
@@ -85,7 +164,8 @@ class DataFlattener:
         Decision logic:
         - Empty → empty string
         - Simple values → comma-separated
-        - Few objects (<8) with few fields (<8) → expand to columns
+        - Few objects (< expand_max_items) with few fields (< expand_max_fields)
+          → expand to columns
         - Many/complex objects → readable summary
 
         Args:
@@ -137,8 +217,8 @@ class DataFlattener:
         # Decision: expand if small & consistent (good for structured data analysis)
         # This naturally works for charges, fees, tiers, components, etc.
         should_expand = (
-            num_items <= 15  # Not too many rows
-            and num_fields <= 20  # Not too many columns
+            num_items <= self.expand_max_items
+            and num_fields <= self.expand_max_fields
             and all_same_structure  # Consistent structure
         )
 
@@ -168,8 +248,9 @@ class DataFlattener:
         result = {}
 
         # Find grouping field
-        type_fields = ["type", "charge_type", "category", "fee_type", "name"]
-        group_key = next((f for f in type_fields if f in items[0]), None)
+        group_key = next(
+            (f for f in self.type_fields if f in items[0]), None
+        )
 
         if group_key:
             # Group by type and expand with context
@@ -194,15 +275,7 @@ class DataFlattener:
                             continue
 
                         # Skip verbose/redundant fields in column expansion
-                        skip_fields = [
-                            "details",
-                            "description",
-                            "charge_description",
-                            "conditions",
-                            "notes",
-                            "comments",
-                        ]
-                        if field in skip_fields:
+                        if field in self.skip_fields:
                             continue
 
                         field_clean = self.make_column_name(field)
@@ -214,10 +287,7 @@ class DataFlattener:
             # No grouping - number sequentially
             for idx, obj in enumerate(items, 1):
                 for field, value in obj.items():
-                    if value is not None and field not in [
-                        "details",
-                        "description",
-                    ]:
+                    if value is not None and field not in self.skip_fields:
                         col_name = f"{parent_key} {idx} {self.make_column_name(field)}"
                         result[col_name] = value
 
@@ -227,9 +297,8 @@ class DataFlattener:
         """
         Generate suffix to distinguish items with same type.
 
-        Looks for common distinguishing fields in order:
-        - season, time_period, tier, period
-        Falls back to numbering if no distinguisher found.
+        Looks for the configured distinguishing fields in order, skipping
+        placeholder values. Falls back to numbering if none is found.
 
         Args:
             obj: Object to analyze
@@ -243,20 +312,9 @@ class DataFlattener:
             return ""
 
         # Try to find distinguishing characteristic
-        distinguishing_fields = [
-            ("season", obj.get("season")),
-            ("time_period", obj.get("time_period")),
-            ("tier", obj.get("tier")),
-            ("period", obj.get("period")),
-        ]
-
-        for field_name, value in distinguishing_fields:
-            if value and str(value).lower() not in [
-                "none",
-                "null",
-                "year-round",
-                "",
-            ]:
+        for field_name in self.distinguishing_fields:
+            value = obj.get(field_name)
+            if value and str(value).lower() not in self.placeholder_values:
                 return f" {self.make_column_name(str(value))}"
 
         # Fall back to numbering
@@ -279,19 +337,18 @@ class DataFlattener:
 
         for item in items:
             # Try to identify key information
-            type_val = self.find_value(
-                item, ["type", "charge_type", "category", "name"]
-            )
-            value_val = self.find_value(
-                item, ["rate", "value", "amount", "cost"]
-            )
-            unit_val = self.find_value(item, ["unit", "units"])
-            season_val = self.find_value(item, ["season", "period"])
+            type_val = self.find_value(item, self.type_fields)
+            value_val = self.find_value(item, self.value_fields)
+            unit_val = self.find_value(item, self.unit_fields)
+            season_val = self.find_value(item, self.season_fields)
 
             # Build summary
             if type_val:
                 summary = str(type_val)
-                if season_val and str(season_val).lower() != "year-round":
+                if (
+                    season_val
+                    and str(season_val).lower() not in self.placeholder_values
+                ):
                     summary += f" ({season_val})"
                 if value_val is not None:
                     summary += f": {value_val}"
@@ -323,7 +380,9 @@ class DataFlattener:
         """
         Normalize unit values for consistency.
 
-        Converts symbols to spelled-out units for data analysis.
+        Converts symbols/abbreviations to canonical units for data analysis,
+        using the configured ``unit_normalizations`` map (general measurement
+        defaults unless the schema overrides them).
 
         Args:
             df: DataFrame with potential unit column
@@ -331,32 +390,20 @@ class DataFlattener:
         Returns:
             DataFrame with normalized units
         """
-        # Check if 'Unit' column exists
+        if not self.unit_normalizations:
+            return df
+
+        # Find a unit column by the configured unit field names.
         unit_col = None
+        unit_names = {name.lower() for name in self.unit_fields}
         for col in df.columns:
-            if col.lower() in ["unit", "units"]:
+            if col.lower() in unit_names:
                 unit_col = col
                 break
 
         if unit_col is None:
             return df
 
-        # Unit normalizations
-        normalizations = {
-            "'": "feet",
-            "\u2032": "feet",  # Prime symbol
-            "ft": "feet",
-            "ft.": "feet",
-            '"': "inches",
-            "\u2033": "inches",  # Double prime
-            "in": "inches",
-            "in.": "inches",
-            "dB(A)": "dBA",
-            "db(a)": "dBA",
-            "DB(A)": "dBA",
-        }
-
-        # Apply normalizations
-        df[unit_col] = df[unit_col].replace(normalizations)
+        df[unit_col] = df[unit_col].replace(self.unit_normalizations)
 
         return df
