@@ -1,9 +1,9 @@
 """Shared constants for the acquisition module.
 
-Single source of truth for file-type sets, MIME mapping, and the string
-literals (statuses, routing reasons) that are produced in one place and
-matched by equality in another. Centralizing these removes the historical
-duplication/drift across engine, selector, prioritizer, and connectors.
+Single source of truth for file-type sets, MIME mapping, and the routing-reason
+string literals that are produced in one place and matched by equality in
+another. Centralizing these removes the historical duplication/drift across
+engine, selector, prioritizer, and connectors.
 """
 
 from __future__ import annotations
@@ -34,18 +34,6 @@ MIME_TO_EXTENSION: dict[str, str] = {
     "application/vnd.ms-excel": ".xlsx",
     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": ".xlsx",
 }
-
-
-# ---------------------------------------------------------------------------
-# Download / run status strings (produced in engine, consumed by summaries)
-# ---------------------------------------------------------------------------
-
-STATUS_DOWNLOADED = "downloaded"
-STATUS_FAILED = "failed"
-STATUS_REJECTED_CLASSIFIER = "rejected_classifier"
-STATUS_SKIPPED_INVALID_URL = "skipped_invalid_url"
-STATUS_SKIPPED_UNSUPPORTED_TYPE = "skipped_unsupported_type"
-STATUS_SKIPPED_NON_LEGAL_DOCUMENT = "skipped_non_legal_document"
 
 
 # ---------------------------------------------------------------------------

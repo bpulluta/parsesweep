@@ -656,3 +656,45 @@ acquisition:
     assert resolved["query_families"]["generator_similar_power"][0].startswith("{manufacturer}")
     assert resolved["use_query_family"] == "generator_similar_power"
     assert resolved["seeker_max_results"] == 7
+
+
+def test_models_block_flows_to_every_command(tmp_path: Path):
+    config_path = tmp_path / "run.yaml"
+    config_path.write_text(
+        """
+domain: demo
+models:
+  fast: gpt-4o-mini
+  accurate: gpt-5
+acquisition:
+  queries: ["a"]
+processing:
+  input_dir: documents/demo
+  schema: schemas/personal/x.json
+consolidation:
+  input_dir: processed/demo
+  schema: schemas/personal/x.json
+""",
+        encoding="utf-8",
+    )
+    data = load_runtime_config_file(config_path)
+    assert data["models"] == {"fast": "gpt-4o-mini", "accurate": "gpt-5"}
+    for command in ("acquire", "process", "consolidate"):
+        merged = resolve_command_config(
+            command=command, cli_values={}, config_data=data, strict=True
+        )
+        assert merged["models"] == {"fast": "gpt-4o-mini", "accurate": "gpt-5"}
+
+
+def test_models_block_rejects_non_mapping(tmp_path: Path):
+    config_path = tmp_path / "run.yaml"
+    config_path.write_text("models:\n  - gpt-4o-mini\n", encoding="utf-8")
+    with pytest.raises(RuntimeConfigError, match="'models' must be a mapping"):
+        load_runtime_config_file(config_path)
+
+
+def test_models_block_rejects_empty_model_name(tmp_path: Path):
+    config_path = tmp_path / "run.yaml"
+    config_path.write_text("models:\n  fast: ''\n", encoding="utf-8")
+    with pytest.raises(RuntimeConfigError, match="non-empty"):
+        load_runtime_config_file(config_path)

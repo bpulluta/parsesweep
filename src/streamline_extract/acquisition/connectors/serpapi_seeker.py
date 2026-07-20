@@ -7,6 +7,7 @@ import re
 import time
 from typing import Any
 
+from ..retry import compute_backoff, is_transient_error
 from .base import BaseSeekerConnector, SeekerInput
 
 
@@ -26,6 +27,8 @@ class SerpApiSeeker(BaseSeekerConnector):
         retry_initial_backoff_seconds: float = 1.0,
         retry_max_backoff_seconds: float = 8.0,
         min_request_interval_seconds: float = 0.0,
+        cache_dir: str | None = None,
+        cache_ttl_seconds: float = 0.0,
     ):
         """
         Initialize SerpApi seeker connector.
@@ -52,6 +55,10 @@ class SerpApiSeeker(BaseSeekerConnector):
             0.0, float(min_request_interval_seconds)
         )
         self._last_request_monotonic = 0.0
+        # Optional on-disk result cache so re-running acquire during tuning does
+        # not re-pay SerpApi for identical queries. Keyed on the request params.
+        self.cache_dir = cache_dir
+        self.cache_ttl_seconds = max(0.0, float(cache_ttl_seconds))
         self._ensure_prepared()
 
     def _respect_rate_limit(self) -> None:
@@ -66,32 +73,14 @@ class SerpApiSeeker(BaseSeekerConnector):
             now = time.monotonic()
         self._last_request_monotonic = now
 
-    @staticmethod
-    def _is_transient_search_error(exc: BaseException) -> bool:
-        lowered = str(exc).lower()
-        markers = (
-            "429",
-            "rate limit",
-            "timeout",
-            "temporarily unavailable",
-            "try again",
-            "connection reset",
-            "connection aborted",
-            "connection refused",
-            "ssl",
-            "tls",
-            "503",
-            "504",
-        )
-        return any(marker in lowered for marker in markers)
+    _is_transient_search_error = staticmethod(is_transient_error)
 
     def _backoff_for_attempt(self, attempt: int) -> float:
-        if attempt <= 1:
-            return 0.0
-        wait = self.retry_initial_backoff_seconds * (2 ** (attempt - 2))
-        if self.retry_max_backoff_seconds <= 0:
-            return max(0.0, wait)
-        return min(wait, self.retry_max_backoff_seconds)
+        return compute_backoff(
+            attempt,
+            initial_backoff_seconds=self.retry_initial_backoff_seconds,
+            max_backoff_seconds=self.retry_max_backoff_seconds,
+        )
 
     def _execute_search_with_retry(
         self, search_callable, params: dict[str, Any]
@@ -189,9 +178,12 @@ class SerpApiSeeker(BaseSeekerConnector):
                 params = self._build_search_params(
                     seeker_input, rendered_query
                 )
-                results = self._execute_search_with_retry(
-                    search_callable, params
-                )
+                results = self._cache_get(params)
+                if results is None:
+                    results = self._execute_search_with_retry(
+                        search_callable, params
+                    )
+                    self._cache_put(params, results)
             except Exception as exc:
                 sanitized_message = self._sanitize_error_message(str(exc))
                 raise RuntimeError(
@@ -208,6 +200,55 @@ class SerpApiSeeker(BaseSeekerConnector):
                 deduped_candidates.append(candidate)
 
         return deduped_candidates
+
+    # -- result cache ------------------------------------------------------
+
+    def _cache_path(self, params: dict[str, Any]):
+        """Return the cache file path for a query's params, or None if disabled.
+
+        Keyed on the request params with the API key removed so the same query
+        maps to the same file across runs (and never persists a credential).
+        """
+        if not self.cache_dir:
+            return None
+        import hashlib
+        import json
+        from pathlib import Path
+
+        safe = {k: v for k, v in params.items() if k != "api_key"}
+        blob = json.dumps(safe, sort_keys=True, default=str)
+        digest = hashlib.sha256(blob.encode("utf-8")).hexdigest()[:24]
+        return Path(self.cache_dir) / f"{digest}.json"
+
+    def _cache_get(self, params: dict[str, Any]) -> dict[str, Any] | None:
+        path = self._cache_path(params)
+        if path is None or not path.exists():
+            return None
+        if self.cache_ttl_seconds > 0:
+            import time
+
+            if time.time() - path.stat().st_mtime > self.cache_ttl_seconds:
+                return None
+        try:
+            import json
+
+            return json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return None
+
+    def _cache_put(self, params: dict[str, Any], results: dict[str, Any]) -> None:
+        path = self._cache_path(params)
+        if path is None:
+            return
+        try:
+            import json
+
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(
+                json.dumps(results, default=str), encoding="utf-8"
+            )
+        except (OSError, TypeError):
+            return
 
     def _sanitize_error_message(self, message: str) -> str:
         """Redact SerpApi credentials from exception text before surfacing it."""
@@ -292,12 +333,28 @@ class SerpApiSeeker(BaseSeekerConnector):
             "num": seeker_input.max_results,
         }
 
-        # Allow extra params (e.g., location, num_pages)
+        # Engine control keys consumed by query resolution — never forward these
+        # to SerpApi.
+        control_keys = {
+            "template_context",
+            "query_templates",
+            "query_families",
+            "use_query_family",
+            "serpapi_params",
+        }
+
         if seeker_input.extra_params:
             for key, value in seeker_input.extra_params.items():
-                if key == "template_context":
+                if key in control_keys:
                     continue
                 params[key] = value
+
+            # Verbatim SerpApi params (e.g. {"tbm": "nws"} for Google News,
+            # {"tbs": "qdr:y"} for recency). Merged last so they win.
+            passthrough = seeker_input.extra_params.get("serpapi_params")
+            if isinstance(passthrough, dict):
+                for key, value in passthrough.items():
+                    params[str(key)] = value
 
         return params
 
@@ -438,6 +495,67 @@ class SerpApiSeeker(BaseSeekerConnector):
                 "reasons": reasons,
             }
             candidates.append(candidate)
+
+        # Google News (tbm=nws / engine=google_news) returns news_results, each
+        # carrying a published `date` — a high-value temporal signal. Flatten
+        # any nested `stories` and fold the date into the candidate text so it is
+        # preserved for scoring, selection, and downstream extraction.
+        candidates.extend(
+            SerpApiSeeker._normalize_news_results(serpapi_response, query)
+        )
+
+        return candidates
+
+    @staticmethod
+    def _normalize_news_results(
+        serpapi_response: dict[str, Any],
+        query: str,
+    ) -> list[dict[str, Any]]:
+        """Normalize SerpApi news_results (Google News) to candidate format."""
+        candidates: list[dict[str, Any]] = []
+        news_results = serpapi_response.get("news_results", [])
+        if not isinstance(news_results, list):
+            return candidates
+
+        # Flatten one level of nested stories (topic clusters).
+        flattened: list[dict[str, Any]] = []
+        for item in news_results:
+            if not isinstance(item, dict):
+                continue
+            stories = item.get("stories")
+            if isinstance(stories, list) and stories:
+                flattened.extend(s for s in stories if isinstance(s, dict))
+            else:
+                flattened.append(item)
+
+        for idx, result in enumerate(flattened):
+            url = result.get("link")
+            if not url or not SerpApiSeeker._is_valid_url(url):
+                continue
+
+            title = result.get("title", "")
+            snippet = result.get("snippet", "")
+            date = result.get("date")
+            source_name = result.get("source")
+            if isinstance(source_name, dict):
+                source_name = source_name.get("name")
+
+            reasons = [f"SerpApi news result rank {idx + 1} for query '{query}'"]
+            if date:
+                reasons.append(f"Published date: {date}")
+            if source_name:
+                reasons.append(f"Source: {source_name}")
+
+            candidates.append(
+                {
+                    "url": url,
+                    "source": "serpapi_google_news",
+                    "title": title or None,
+                    "snippet": snippet or None,
+                    "published_date": date or None,
+                    "reasons": reasons,
+                }
+            )
 
         return candidates
 

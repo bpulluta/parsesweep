@@ -543,11 +543,116 @@ def _resolve_schema_ref(schema_path: Path) -> Path:
     return declared_path
 
 
+def _build_source_context_map(
+    input_path: Optional[Path],
+    from_index: Optional[str],
+) -> Dict[str, Dict[str, str]]:
+    """Map each acquired document's filename to its origin URL + queried target.
+
+    Reads the acquire run's ``download_index.csv`` (which records the source
+    ``url``/``final_url`` and the ``target_metadata`` each file was found for) so
+    the process step can (1) cite the source URL for extracted facts and
+    (2) anchor extraction to the project the document was searched for, rather
+    than to unrelated content elsewhere on the page. Domain-neutral: any
+    web-acquire run benefits. Returns ``{}`` when no index can be located
+    (e.g. processing a hand-curated directory).
+    """
+    index_path: Optional[Path] = None
+
+    if from_index:
+        candidate = Path(from_index)
+        if candidate.is_file():
+            index_path = candidate
+
+    if index_path is None and input_path is not None:
+        # input_dir is typically <run>/curated or <domain>/latest/curated;
+        # download_index.csv sits at the run root. Walk up a few levels but do
+        # not wander above the acquisition tree.
+        base = input_path if input_path.is_dir() else input_path.parent
+        for up in (base, *base.parents):
+            candidate = up / "download_index.csv"
+            if candidate.is_file():
+                index_path = candidate
+                break
+            if up.name == "acquisition":
+                break
+
+    if index_path is None:
+        return {}
+
+    context_map: Dict[str, Dict[str, str]] = {}
+    try:
+        with index_path.open(encoding="utf-8", newline="") as handle:
+            for row in csv.DictReader(handle):
+                path_val = row.get("path") or row.get("relative_path")
+                if not path_val:
+                    continue
+                name = Path(path_val).name
+                meta: Dict[str, Any] = {}
+                meta_raw = row.get("target_metadata")
+                if meta_raw:
+                    try:
+                        meta = json.loads(meta_raw)
+                    except Exception:
+                        meta = {}
+                context_map[name] = {
+                    "url": (
+                        row.get("final_url") or row.get("url") or ""
+                    ).strip(),
+                    "site_name": str(
+                        meta.get("site_name")
+                        or row.get("target_label")
+                        or ""
+                    ),
+                    "company_name": str(meta.get("company_name") or ""),
+                    "city": str(meta.get("city") or ""),
+                    "state": str(meta.get("state") or ""),
+                }
+    except Exception:
+        return {}
+    return context_map
+
+
+def _prepend_source_context(
+    text: str,
+    doc_path: Path,
+    context_map: Dict[str, Dict[str, str]],
+) -> str:
+    """Prepend a CONTEXT block (source URL + queried site) to document text.
+
+    This lets schema fields copy the origin URL as a citation and anchor the
+    extraction to the intended project. No-op when the document has no acquire
+    provenance in ``context_map``.
+    """
+    info = context_map.get(doc_path.name)
+    if not info or not (info.get("url") or info.get("site_name")):
+        return text
+
+    location = ", ".join(
+        part for part in (info.get("city"), info.get("state")) if part
+    )
+    lines = [
+        "=== CONTEXT (added by StreamlineExtract; not part of the source document) ==="
+    ]
+    if info.get("url"):
+        lines.append(f"SOURCE_URL: {info['url']}")
+    if info.get("site_name"):
+        lines.append(f"QUERIED_SITE: {info['site_name']}")
+    if info.get("company_name"):
+        lines.append(f"QUERIED_COMPANY: {info['company_name']}")
+    if location:
+        lines.append(f"QUERIED_LOCATION: {location}")
+    lines.append("=== END CONTEXT ===")
+    lines.append("")
+    return "\n".join(lines) + "\n" + text
+
+
 def _apply_page_targeting(
     *,
     doc_files: list,
     page_range_map: dict,
     config: dict,
+    models: dict | None = None,
 ) -> None:
     """Fill page_range_map for large PDFs via LLM-assisted page targeting.
 
@@ -570,6 +675,7 @@ def _apply_page_targeting(
     locator = PageLocator(
         description,
         model=config.get("model"),
+        models=models,
         trigger_chars=trigger_chars,
         max_selected_pages=int(config.get("max_selected_pages", 30) or 30),
         keywords=config.get("keywords"),
@@ -1231,6 +1337,7 @@ def process(
             doc_files=doc_files,
             page_range_map=page_range_map,
             config=page_targeting,
+            models=resolved_inputs.get("models"),
         )
 
     # Final validation - check if we have files to process
@@ -1392,12 +1499,34 @@ def process(
         )
         return
 
-    # Track the actual model being used for output
-    actual_model = (
-        config.llm_config.get("model", model)
-        if provider != "openai"
-        else model
-    )
+    # Track the actual model being used for output. When a model is explicitly
+    # configured (run.yaml processing.model or --model), route it through the
+    # shared tiering resolver so it is honored for ALL providers (the legacy
+    # branch below silently discarded processing.model for non-OpenAI). When no
+    # model is specified, preserve the exact legacy env-driven behavior.
+    if "model" in resolved_inputs:
+        from streamline_extract.extraction.llm_factory import (
+            resolve_llm_kwargs,
+        )
+
+        _mk = resolve_llm_kwargs(
+            resolved_inputs["model"],
+            models=resolved_inputs.get("models"),
+            llm_config=config.llm_config,
+        )
+        actual_model = _mk["model"]
+        api_key = _mk["api_key"] or api_key
+        provider = _mk["provider"] or provider
+        azure_endpoint = _mk["azure_endpoint"]
+        azure_api_version = _mk["azure_api_version"]
+    else:
+        actual_model = (
+            config.llm_config.get("model", model)
+            if provider != "openai"
+            else model
+        )
+        azure_endpoint = config.llm_config.get("azure_endpoint")
+        azure_api_version = config.llm_config.get("azure_api_version")
     run_id = _generate_run_id(
         schema_path=schema_path,
         provider=provider,
@@ -1457,14 +1586,27 @@ def process(
         max_context_chars=max_context,
         schema_metadata=schema_metadata,
         provider=provider,
-        azure_endpoint=config.llm_config.get("azure_endpoint"),
-        azure_api_version=config.llm_config.get("azure_api_version"),
+        azure_endpoint=azure_endpoint,
+        azure_api_version=azure_api_version,
     )
 
     # Processing section
     if VERBOSITY == "normal" or VERBOSITY == "verbose":
         console.print("[dim]" + "─" * 80 + "[/dim]")
         console.print()
+
+    # Provenance: map each document to its acquire origin URL + queried target
+    # so extraction can cite the source and stay anchored to the intended
+    # project (guards against extracting dates from unrelated page content).
+    source_context_map = _build_source_context_map(
+        Path(path) if path else None, from_index
+    )
+    if source_context_map and VERBOSITY != "quiet":
+        matched = sum(1 for d in doc_files if d.name in source_context_map)
+        console.print(
+            f"[dim]Source-context: matched {matched}/{len(doc_files)} "
+            f"document(s) to acquire provenance[/dim]"
+        )
 
     results = []
     total_cost = 0.0
@@ -1483,6 +1625,9 @@ def process(
                     page_range = page_range_map.get(doc_path)
                     text = extract_text_from_document(
                         doc_path, page_range=page_range
+                    )
+                    text = _prepend_source_context(
+                        text, doc_path, source_context_map
                     )
                     result = extractor.extract(text, loaded_schema)
 
@@ -1586,6 +1731,9 @@ def process(
                     text = extract_text_from_document(
                         doc_path, page_range=page_range
                     )
+                    text = _prepend_source_context(
+                        text, doc_path, source_context_map
+                    )
                     result = extractor.extract(text, loaded_schema)
 
                     # Save result (use per-file output dir for nested structures)
@@ -1664,6 +1812,9 @@ def process(
                 page_range = page_range_map.get(doc_path)
                 text = extract_text_from_document(
                     doc_path, page_range=page_range
+                )
+                text = _prepend_source_context(
+                    text, doc_path, source_context_map
                 )
                 result = extractor.extract(text, loaded_schema)
 
@@ -2606,11 +2757,20 @@ def acquire(
     resolved_document_review = (
         resolved_inputs.get("document_review") or None
     )
+    resolved_models = resolved_inputs.get("models") or None
+    resolved_seeker_cache = bool(resolved_inputs.get("seeker_cache") or False)
+    resolved_seeker_cache_ttl_minutes = float(
+        resolved_inputs.get("seeker_cache_ttl_minutes", 0) or 0
+    )
     resolved_query_context_aliases = (
         resolved_inputs.get("query_context_aliases") or None
     )
     resolved_partition_by = resolved_inputs.get("partition_by") or None
     resolved_browser_mode = bool(resolved_inputs.get("browser_mode") or False)
+    _raw_seeker_extra = resolved_inputs.get("seeker_extra_params")
+    resolved_seeker_extra_params = (
+        dict(_raw_seeker_extra) if isinstance(_raw_seeker_extra, dict) else None
+    )
 
     if not resolved_seed_urls and not resolved_query and not resolved_targets:
         print_error(
@@ -2725,9 +2885,13 @@ def acquire(
         selection_target_identity_exclude_any_templates=resolved_selection_target_identity_exclude_any_templates,
         document_classifier=resolved_document_classifier,
         document_review=resolved_document_review,
+        models=resolved_models,
+        seeker_cache=resolved_seeker_cache,
+        seeker_cache_ttl_minutes=resolved_seeker_cache_ttl_minutes,
         query_context_aliases=resolved_query_context_aliases,
         partition_by=resolved_partition_by,
         browser_mode=resolved_browser_mode,
+        seeker_extra_params=resolved_seeker_extra_params,
         include_url_patterns=resolved_include_url_patterns,
         include_link_text_patterns=resolved_include_link_text_patterns,
         index_page_mode=resolved_index_page_mode,
@@ -3107,6 +3271,10 @@ def consolidate(
     fail_on_suspicious = resolved_inputs.get(
         "fail_on_suspicious", fail_on_suspicious
     )
+    synthesis_cfg = resolved_inputs.get("synthesis")
+    synthesis_active = (
+        isinstance(synthesis_cfg, dict) and bool(synthesis_cfg.get("enabled"))
+    )
 
     input_dir = Path(extracted_dir)
     if not input_dir.exists():
@@ -3206,10 +3374,53 @@ def consolidate(
     )
 
     try:
-        df, schema_info = consolidator.consolidate_from_directory(
-            input_dir,
-            apply_deduplication=not dry_run,
-        )
+        if synthesis_active:
+            # Config-driven per-entity LLM synthesis: reconcile many
+            # per-document records into one row per entity (conflict resolution,
+            # confidence, chronology validation) instead of tabular dedup.
+            from streamline_extract.consolidation.synthesizer import (
+                Synthesizer,
+            )
+            from streamline_extract.extraction.llm_factory import (
+                build_llm_client,
+            )
+
+            # synthesis.model (an alias or a literal model name) selects the
+            # model; falls back to the env-configured model when unset. Resolved
+            # via the shared factory so it works for every provider.
+            synth_client = build_llm_client(
+                synthesis_cfg.get("model"),
+                models=resolved_inputs.get("models"),
+            )
+            if VERBOSITY != "quiet" and not emit_json_report:
+                console.print(
+                    "[cyan]→[/cyan] Synthesizing one record per entity "
+                    f"(model={synth_client.raw_model})..."
+                )
+            synthesizer = Synthesizer(
+                schema_metadata=schema_metadata,
+                config=synthesis_cfg,
+                llm_client=synth_client,
+                verbose=(VERBOSITY in ("verbose", "debug")),
+            )
+            df = synthesizer.synthesize_from_directory(input_dir)
+            if VERBOSITY != "quiet" and not emit_json_report:
+                total_rows = synthesizer.llm_calls + synthesizer.deterministic_rows
+                console.print(
+                    f"  [dim]Synthesis: {synthesizer.llm_calls} LLM "
+                    f"reconciliation call(s), {synthesizer.deterministic_rows} "
+                    f"resolved deterministically (no API) of {total_rows} "
+                    "entities[/dim]"
+                )
+            schema_info = {
+                "type": f"Synthesized: {schema_metadata.get_main_data_array()}",
+                "main_array_key": (synthesis_cfg.get("group_by") or ["entity"])[0],
+            }
+        else:
+            df, schema_info = consolidator.consolidate_from_directory(
+                input_dir,
+                apply_deduplication=not dry_run,
+            )
 
         if df.empty:
             print_warning("No data found to consolidate")
@@ -3222,6 +3433,13 @@ def consolidate(
             console.print(
                 f"  [dim]Main entity: {schema_info['main_array_key']}[/dim]\n"
             )
+
+        if dry_run and synthesis_active:
+            print_info(
+                f"Dry run: synthesized {len(df)} entity row(s); "
+                "no files written."
+            )
+            return
 
         if dry_run:
             dedup_preview = consolidator.deduplicator.preview_deduplication(df)

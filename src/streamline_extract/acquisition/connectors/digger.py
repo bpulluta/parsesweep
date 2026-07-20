@@ -8,6 +8,8 @@ import time
 from urllib.parse import urljoin, urlparse
 
 from ..constants import DOWNLOADABLE_EXTENSIONS
+from ..retry import compute_backoff, is_transient_error
+from ..urls import url_extension
 from .base import BaseDiggerConnector, DiggerArtifact, DiggerInput
 
 
@@ -306,8 +308,9 @@ class HttpDiggerConnector(BaseDiggerConnector):
 
     @classmethod
     def _is_document_url(cls, url: str) -> bool:
-        suffix = (urlparse(url).path and urlparse(url).path.lower()) or ""
-        return any(suffix.endswith(ext) for ext in DOWNLOADABLE_EXTENSIONS)
+        # Canonical extension parser (shared with the candidate selector) so all
+        # "is this a fetchable file?" checks agree on how an extension is read.
+        return url_extension(url) in DOWNLOADABLE_EXTENSIONS
 
     @staticmethod
     def _resolve_retry_config(
@@ -349,36 +352,17 @@ class HttpDiggerConnector(BaseDiggerConnector):
                     headers[normalized_key] = normalized_value
         return headers
 
-    @staticmethod
-    def _is_transient_error(exc: BaseException) -> bool:
-        message = str(exc).lower()
-        markers = (
-            "timeout",
-            "temporarily unavailable",
-            "try again",
-            "connection reset",
-            "connection aborted",
-            "connection refused",
-            "name resolution",
-            "dns",
-            "ssl",
-            "tls",
-            "429",
-            "503",
-            "504",
-        )
-        return any(marker in message for marker in markers)
+    _is_transient_error = staticmethod(is_transient_error)
 
     @staticmethod
     def _backoff_for_attempt(
         *, attempt: int, initial_backoff: float, max_backoff: float
     ) -> float:
-        if attempt <= 1:
-            return 0.0
-        wait = initial_backoff * (2 ** (attempt - 2))
-        if max_backoff <= 0:
-            return max(0.0, wait)
-        return min(wait, max_backoff)
+        return compute_backoff(
+            attempt,
+            initial_backoff_seconds=initial_backoff,
+            max_backoff_seconds=max_backoff,
+        )
 
     def _fetch_html(
         self,

@@ -1,0 +1,71 @@
+# Industrial Pump Datasheets
+#
+# A NEW domain authored from scratch to demonstrate that a fresh vertical needs
+# only config + a schema — no code changes. Manufacturer targets drive a SerpApi
+# PDF search; downloads are LLM-graded into curated/; extraction pulls
+# quantitative pump specs.
+#
+# Required env: SERPAPI_KEY (+ Azure OpenAI for process)
+# Usage:
+#   streamline-extract acquire --config config/industrial_pump_datasheets/run.yaml --dry-run
+#   streamline-extract acquire --config config/industrial_pump_datasheets/run.yaml
+#   streamline-extract process --config config/industrial_pump_datasheets/run.yaml
+
+domain: industrial_pump_datasheets
+
+# COST CONTROL (optional): each LLM stage below accepts a `model:` naming the
+# model to use; unset stages inherit the environment-configured model. To
+# optimize cost, point bulk curation (document_review) at a cheaper/faster model
+# and use a stronger model for extraction — put the real model/deployment names
+# for your provider on the stages below.
+
+acquisition:
+  targets_csv: targets.csv
+
+  # Fallback templates for rows with a blank `query` column.
+  queries:
+    - "{manufacturer} {product_family} pump datasheet filetype:pdf"
+    - "{manufacturer} centrifugal pump technical specifications filetype:pdf"
+
+  search:
+    provider: serpapi
+    max_results: 8
+    cache: true          # don't re-pay SerpApi on re-runs while tuning
+
+  follow_links: false
+  request_delay_ms: 400
+
+  selection:
+    max_per_target: 2
+    require_any: ["pump", "flow", "head", "datasheet", "specification"]
+    exclude: ["news", "press release", "blog", "catalog request", "brochure"]
+
+  # Flag anything that doesn't read like a real datasheet for human review.
+  document_classifier:
+    required_keywords: ["pump", "flow", "head", "kw", "rpm"]
+    min_required_matches: 2
+    action: warn
+
+  # LLM curation: keep the authoritative datasheet per target.
+  document_review:
+    # model: <cheaper-model>   # optional: cheaper model for bulk curation
+    document_description: >-
+      the manufacturer's technical datasheet for the pump series, stating
+      quantitative specs (flow rate, head, motor power, dimensions) — not a
+      brochure, price list, catalog index, or marketing page
+    keep_top: 1
+    action: move
+
+  # Domain-neutral output layout: by_manufacturer/<manufacturer>/...
+  partition_by: ["manufacturer"]
+
+processing:
+  input_dir: output/acquisition/industrial_pump_datasheets/latest/curated
+  schema: schemas/personal/industrial_pump_datasheets_schema.json
+  output_dir: processed/industrial_pump_datasheets
+  # model: <stronger-model>   # optional: name the extraction model explicitly
+
+consolidation:
+  input_dir: processed/industrial_pump_datasheets
+  schema: schemas/personal/industrial_pump_datasheets_schema.json
+  output_dir: consolidated/industrial_pump_datasheets

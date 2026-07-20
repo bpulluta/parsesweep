@@ -514,3 +514,51 @@ class TestSerpApiSeekerConnector:
                 assert "snippet" in candidate
                 assert "reasons" in candidate
                 assert isinstance(candidate["reasons"], list)
+
+
+class TestSerpApiResultCache:
+    _RESPONSE = {
+        "organic_results": [
+            {"link": "https://example.gov/a.pdf", "title": "A", "snippet": "x"},
+            {"link": "https://example.gov/b.pdf", "title": "B", "snippet": "y"},
+        ]
+    }
+
+    def test_second_discover_hits_cache_no_second_api_call(self, tmp_path):
+        with patch("serpapi.Client") as mock_client_class:
+            mock_client = MagicMock()
+            mock_client.search.return_value = self._RESPONSE
+            mock_client_class.return_value = mock_client
+
+            with patch.dict(
+                os.environ,
+                {"SERPAPI_API_KEY": "test-api-key", "SERPAPI_SSL_VERIFY": "true"},
+            ):
+                seeker = SerpApiSeeker(cache_dir=str(tmp_path / "cache"))
+                si = SeekerInput(query="geothermal ordinance", max_results=10)
+
+                first = seeker.discover(si)
+                assert len(first) == 2
+                assert mock_client.search.call_count == 1
+
+                # A fresh seeker sharing the cache dir must NOT call the API.
+                seeker2 = SerpApiSeeker(cache_dir=str(tmp_path / "cache"))
+                mock_client.search.reset_mock()
+                second = seeker2.discover(si)
+                assert mock_client.search.call_count == 0
+                assert [c["url"] for c in second] == [c["url"] for c in first]
+
+    def test_no_cache_dir_means_no_persistence(self, tmp_path):
+        with patch("serpapi.Client") as mock_client_class:
+            mock_client = MagicMock()
+            mock_client.search.return_value = self._RESPONSE
+            mock_client_class.return_value = mock_client
+            with patch.dict(
+                os.environ,
+                {"SERPAPI_API_KEY": "test-api-key", "SERPAPI_SSL_VERIFY": "true"},
+            ):
+                seeker = SerpApiSeeker()  # no cache_dir
+                si = SeekerInput(query="q", max_results=10)
+                seeker.discover(si)
+                seeker.discover(si)
+                assert mock_client.search.call_count == 2

@@ -203,7 +203,13 @@ _SECTION_ALIASES = {
     "consolidation": "consolidation",
 }
 
-_ALLOWED_TOP_LEVEL = {"domain", "acquisition", "processing", "consolidation"}
+_ALLOWED_TOP_LEVEL = {
+    "domain",
+    "models",
+    "acquisition",
+    "processing",
+    "consolidation",
+}
 _ALLOWED_SECTION_FIELDS = {
     "acquisition": {
         "domain",
@@ -276,6 +282,7 @@ _ALLOWED_SECTION_FIELDS = {
         "dry_run",
         "report_format",
         "fail_on_suspicious",
+        "synthesis",
     },
 }
 
@@ -559,6 +566,32 @@ def _validate_acquisition_section_schema(acquisition: dict[str, Any]) -> None:
         _validate_acquisition_policy(policy)
 
 
+def _validate_models_block(models: Any) -> None:
+    """Validate the optional top-level ``models`` tier map.
+
+    Must be a mapping of non-empty tier-name strings to non-empty model-name
+    strings (e.g. ``{mini: gpt-4o-mini, standard: gpt-5}``). Tier names are
+    free-form so a domain can define whatever tiers it needs.
+    """
+    if models is None:
+        return
+    if not isinstance(models, dict):
+        raise RuntimeConfigError(
+            "'models' must be a mapping of tier-name -> model-name"
+        )
+    for key, value in models.items():
+        if (
+            not isinstance(key, str)
+            or not key.strip()
+            or not isinstance(value, str)
+            or not value.strip()
+        ):
+            raise RuntimeConfigError(
+                "'models' must map non-empty tier names to non-empty model "
+                "names"
+            )
+
+
 def _read_config_file(path: Path) -> dict[str, Any]:
     suffix = path.suffix.lower()
     raw_text = path.read_text(encoding="utf-8")
@@ -700,6 +733,8 @@ def load_runtime_config_file(config_path: Path) -> dict[str, Any]:
         raise RuntimeConfigError(
             "Unknown top-level config keys: " + ", ".join(sorted(unknown_top))
         )
+
+    _validate_models_block(config_data.get("models"))
 
     acquisition = config_data.get("acquisition")
     if acquisition is not None:
@@ -947,10 +982,24 @@ def _merge_acq_search(
         ("query_templates", "query_templates"),
         ("max_results_per_query", "seeker_max_results"),
         ("max_results", "seeker_max_results"),
+        ("cache", "seeker_cache"),
+        ("cache_ttl_minutes", "seeker_cache_ttl_minutes"),
     ):
         if src in cfg:
             _set(merged, sources, dst, cfg[src],
                  f"config.acquisition.search.{src}")
+
+    # Verbatim SerpApi params + the google_news convenience flag → merged into a
+    # single seeker_extra_params dict forwarded to the seeker.
+    seeker_params: dict[str, Any] = {}
+    raw_params = cfg.get("serpapi_params")
+    if isinstance(raw_params, dict):
+        seeker_params.update(raw_params)
+    if cfg.get("google_news") is True:
+        seeker_params.setdefault("tbm", "nws")
+    if seeker_params:
+        _set(merged, sources, "seeker_extra_params", seeker_params,
+             "config.acquisition.search.serpapi_params")
 
 
 def _merge_acq_seeker(
@@ -1129,6 +1178,7 @@ _FIELD_MAP: dict[str, str] = {
     "live_dashboard": "live_dashboard",
     "report_format": "report_format",
     "fail_on_suspicious": "fail_on_suspicious",
+    "synthesis": "synthesis",
 }
 
 
@@ -1194,6 +1244,12 @@ def resolve_command_config(
     if "domain" in cfg:
         merged["domain"] = cfg.get("domain")
         sources["domain"] = "config.domain"
+
+    # Top-level model-tiering map is available to every command (process,
+    # acquire, consolidate) so any LLM stage can resolve a tier reference.
+    if "models" in cfg:
+        merged["models"] = cfg.get("models")
+        sources["models"] = "config.models"
 
     merged["_config_warnings"] = warnings
     merged["_config_sources"] = sources
