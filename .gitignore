@@ -106,3 +106,5 @@ output*/
 .github/prompts/resume-web-acquisition.prompt.md
 
 test-v1/
+config/audit/
+docs/pipeline_audit/
