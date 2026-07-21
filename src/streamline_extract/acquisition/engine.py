@@ -16,6 +16,7 @@ from collections import Counter
 from dataclasses import dataclass, replace as dataclass_replace
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Callable
 from urllib.parse import unquote, urlparse
 
 from .connectors import DiggerInput, resolve_digger_connector
@@ -121,6 +122,8 @@ class AcquisitionRequest:
     # re-pay for identical queries. TTL in minutes (0 = never expire).
     seeker_cache: bool = False
     seeker_cache_ttl_minutes: float = 0.0
+    # Optional callback for human-friendly progress messages emitted by engine stages.
+    progress_callback: Callable[[str], None] | None = None
 
 
 @dataclass(slots=True)
@@ -164,6 +167,31 @@ class AcquisitionEngine:
 
     def __init__(self) -> None:
         self._policy_evaluator = AcquisitionPolicyEvaluator()
+
+    @staticmethod
+    def _emit_progress(request: AcquisitionRequest, message: str) -> None:
+        callback = getattr(request, "progress_callback", None)
+        if callback is None:
+            return
+        with contextlib.suppress(Exception):
+            callback(message)
+
+    @staticmethod
+    def _target_label(target: dict[str, object] | None, fallback_index: int) -> str:
+        if not isinstance(target, dict):
+            return f"target-{fallback_index}"
+        for key in (
+            "label",
+            "site_name",
+            "jurisdiction",
+            "county",
+            "company_name",
+            "query",
+        ):
+            value = target.get(key)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+        return f"target-{fallback_index}"
 
     _DEFAULT_REQUEST_HEADERS = {
         "User-Agent": "StreamlineExtract/2.0 (+acquisition)"
@@ -512,8 +540,25 @@ class AcquisitionEngine:
             seeker_inputs = AcquisitionEngine._build_seeker_inputs(request)
             # Collect results per-target so selection can be applied independently
             raw_candidates_by_target: list[list[dict[str, object]]] = []
-            for seeker_input in seeker_inputs:
-                raw_candidates_by_target.append(seeker.discover(seeker_input))
+            total_inputs = len(seeker_inputs)
+            for idx, seeker_input in enumerate(seeker_inputs, start=1):
+                target = (
+                    request.targets[idx - 1]
+                    if request.targets and idx - 1 < len(request.targets)
+                    else None
+                )
+                target_label = AcquisitionEngine._target_label(target, idx)
+                query_preview = (seeker_input.query or "").strip() or "(resolved from templates)"
+                AcquisitionEngine._emit_progress(
+                    request,
+                    f"seeker {idx}/{total_inputs}: searching {target_label} | query={query_preview}",
+                )
+                discovered = seeker.discover(seeker_input)
+                raw_candidates_by_target.append(discovered)
+                AcquisitionEngine._emit_progress(
+                    request,
+                    f"seeker {idx}/{total_inputs}: {target_label} -> {len(discovered)} candidate(s)",
+                )
         except Exception as exc:
             errors.append(
                 build_error_record(
@@ -1402,6 +1447,10 @@ class AcquisitionEngine:
         )
         rate_limiter = _RequestRateLimiter(request.min_request_interval_ms)
         staged_candidates = list(candidates[:max_downloads])
+        self._emit_progress(
+            request,
+            f"download: staging {len(staged_candidates)} candidate(s) for fetch",
+        )
 
         download_notes_extra: list[str] = []
         CompletedT = tuple[
@@ -1471,6 +1520,14 @@ class AcquisitionEngine:
             policy_warning_codes,
         ) in sorted(completed, key=lambda item: item[0]):
             downloads.append(download_record)
+            status = str(download_record.get("status") or "unknown")
+            url_preview = str(download_record.get("url") or "")
+            if len(url_preview) > 80:
+                url_preview = f"{url_preview[:77]}..."
+            self._emit_progress(
+                request,
+                f"download: {status} | {url_preview}",
+            )
             if maybe_error is not None:
                 errors.append(maybe_error)
             if was_downloaded:
@@ -2774,6 +2831,10 @@ class AcquisitionEngine:
             self._resolve_serpapi_state(request)
         )
         all_errors = normalize_error_records([*seed_errors, *seeker_errors])
+        self._emit_progress(
+            request,
+            f"run: acquisition started (run_id={run_id})",
+        )
 
         # Checkpoint: skip targets that completed in a previous run.
         checkpoint_path = self._checkpoint_path(manifest_path)
@@ -2803,6 +2864,7 @@ class AcquisitionEngine:
         if seeker_errors:
             seeker_candidates: list[AcquisitionCandidate] = []
         else:
+            self._emit_progress(request, "run: seeker stage started")
             (
                 seeker_candidates,
                 seeker_notes,
@@ -2811,6 +2873,10 @@ class AcquisitionEngine:
                 target_selection_metrics,
             ) = self._run_seeker(
                 request, seeker_state, seeker_notes, all_errors
+            )
+            self._emit_progress(
+                request,
+                f"run: seeker stage completed with {len(seeker_candidates)} candidate(s)",
             )
             seeker_raw_count = (
                 len(prioritizer_lineage)
@@ -2895,6 +2961,7 @@ class AcquisitionEngine:
         curated_count = 0
         download_notes: list[str] = []
         if not request.dry_run and candidates:
+            self._emit_progress(request, "run: download stage started")
             candidates_for_download, gating_notes = (
                 self._filter_candidates_for_download(candidates)
             )
@@ -3002,6 +3069,10 @@ class AcquisitionEngine:
 
         base_status = "scaffold_dry_run" if request.dry_run else "scaffold"
         status = f"{base_status}_with_errors" if all_errors else base_status
+        self._emit_progress(
+            request,
+            f"run: acquisition finished with status={status}",
+        )
 
         completed_at = datetime.now(timezone.utc)
         elapsed_seconds = round((completed_at - started_at).total_seconds(), 3)

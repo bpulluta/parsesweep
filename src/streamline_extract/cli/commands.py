@@ -13,6 +13,7 @@ import logging
 import os
 import re
 import sys
+import warnings as std_warnings
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional, List, Tuple, Dict, Any
@@ -41,12 +42,18 @@ from streamline_extract.cli.ui import (
     print_warning,
     print_success,
     print_info,
-    create_config_table,
-    create_summary_table,
+    key_values,
     create_extraction_progress,
     ask_confirm,
+    Verbosity,
+    set_verbosity,
+    get_verbosity,
 )
-from streamline_extract.cli.dashboard import create_live_dashboard
+from streamline_extract.cli.run_view import RunView
+from streamline_extract.cli.dashboard import (
+    create_live_dashboard,
+    create_acquisition_live_dashboard,
+)
 from streamline_extract.benchmarking import (
     collect_benchmark_metrics,
     compare_benchmark_to_baseline,
@@ -72,7 +79,6 @@ from streamline_extract.utils.error_taxonomy import (
 
 
 # Global verbosity level (set by CLI flags)
-VERBOSITY = "normal"  # 'quiet', 'normal', 'verbose', 'debug'
 
 _BENCHMARK_PROFILE_PATH_FIELDS = {
     "path",
@@ -109,7 +115,7 @@ def _print_effective_config(
         if not key.startswith("_")
     }
     print_header(f"{command_name.upper()} EFFECTIVE CONFIG")
-    console.print(create_config_table("", display))
+    console.print(key_values(display))
 
 
 def _resolve_runtime_command_inputs(
@@ -172,6 +178,27 @@ def configure_logging(verbosity: str) -> None:
     handler.setLevel(level)
     root_logger.addHandler(handler)
     root_logger.setLevel(level)
+
+
+def begin_run(
+    command: str,
+    *,
+    quiet: bool = False,
+    verbose: bool = False,
+    debug: bool = False,
+) -> RunView:
+    """Resolve verbosity, wire logging, and return a RunView for a command.
+
+    The single entry point for command setup: it resolves the shared
+    :class:`Verbosity` (readable anywhere via ``get_verbosity()``), configures
+    logging, and hands back the narrative controller the command renders
+    through. This replaces the per-command verbosity/logging boilerplate that
+    used to be copy-pasted into every command.
+    """
+    resolved = Verbosity.from_flags(quiet=quiet, verbose=verbose, debug=debug)
+    set_verbosity(resolved)
+    configure_logging(resolved.value)
+    return RunView(command, verbosity=resolved)
 
 
 def detect_api_provider() -> Tuple[str, bool, str]:
@@ -733,7 +760,7 @@ def _apply_page_targeting(
         rng = locator.locate(doc, pages=pages)
         if rng:
             page_range_map[doc] = rng
-            if VERBOSITY != "quiet":
+            if not get_verbosity().is_quiet:
                 print_info(
                     f"Page targeting: {doc.name} → pages {rng[0]}-{rng[1]}"
                 )
@@ -1041,19 +1068,7 @@ def process(
         • JSON schema file (--schema flag is REQUIRED)
         • API key in .env file for your chosen provider
     """
-    # Set global verbosity
-    global VERBOSITY
-    if quiet:
-        VERBOSITY = "quiet"
-    elif debug:
-        VERBOSITY = "debug"
-    elif verbose:
-        VERBOSITY = "verbose"
-    else:
-        VERBOSITY = "normal"
-
-    # Configure logging with RichHandler for clean integration with progress bars
-    configure_logging(VERBOSITY)
+    view = begin_run("process", quiet=quiet, verbose=verbose, debug=debug)
 
     # Load environment variables from .env file
     load_dotenv()
@@ -1120,20 +1135,18 @@ def process(
             cli_values=cli_overrides,
         )
     except RuntimeConfigError as exc:
-        print_error("Runtime config resolution failed", str(exc))
+        view.error("Runtime config resolution failed", str(exc))
         sys.exit(1)
 
     warnings = resolved_inputs.get("_config_warnings", [])
-    for warning in warnings:
-        if VERBOSITY != "quiet":
-            print_warning(warning)
+    view.warnings(warnings)
 
-    if show_effective_config and VERBOSITY != "quiet":
+    if show_effective_config and not get_verbosity().is_quiet:
         _print_effective_config("process", resolved_inputs)
         console.print()
 
     if validate_config_only:
-        if VERBOSITY == "quiet":
+        if get_verbosity().is_quiet:
             click.echo(
                 json.dumps(
                     {
@@ -1249,7 +1262,7 @@ def process(
                 doc_files.extend(sorted(path.rglob(f"*{ext}")))
             doc_files = sorted(f for f in doc_files if _not_sidecar(f))
 
-            if doc_files and VERBOSITY != "quiet":
+            if doc_files and not get_verbosity().is_quiet:
                 # Show subfolder summary
                 subdirs_found = set()
                 for doc in doc_files:
@@ -1260,8 +1273,9 @@ def process(
                     except ValueError:
                         pass
                 if subdirs_found:
-                    console.print(
-                        f"\n[bold]📁 Found {len(doc_files)} document(s) across {len(subdirs_found)} subfolder(s)[/bold]"
+                    view.info(
+                        f"Found {len(doc_files)} document(s) across "
+                        f"{len(subdirs_found)} subfolder(s)"
                     )
                     # Show per-subfolder counts
                     for sdir in sorted(subdirs_found):
@@ -1270,8 +1284,8 @@ def process(
                             for d in doc_files
                             if d.relative_to(path).parts[0] == sdir
                         ]
-                        console.print(
-                            f"  → {sdir}: {len(sdir_docs)} document(s)"
+                        view.status(
+                            "info", f"{sdir}: {len(sdir_docs)} document(s)"
                         )
 
         # Build per-file output directory mapping (mirrors input structure)
@@ -1309,7 +1323,7 @@ def process(
                 ).exists()
             ]
             skipped = original_count - len(doc_files)
-            if skipped > 0 and len(doc_files) > 0 and VERBOSITY != "quiet":
+            if skipped > 0 and len(doc_files) > 0 and not get_verbosity().is_quiet:
                 print_info(
                     f"Skipping {skipped} already processed file{'s' if skipped != 1 else ''} (use --reprocess to extract again)"
                 )
@@ -1353,7 +1367,7 @@ def process(
                 ).exists()
             ]
             skipped = original_count - len(doc_files)
-            if skipped > 0 and VERBOSITY != "quiet":
+            if skipped > 0 and not get_verbosity().is_quiet:
                 print_info(
                     f'Skipping {skipped} already processed file{"s" if skipped != 1 else ""} (use --reprocess to extract again)'
                 )
@@ -1363,7 +1377,7 @@ def process(
                 "All acquired files have already been processed. Use --reprocess to extract again.",
             )
             sys.exit(0)
-        if VERBOSITY != "quiet":
+        if not get_verbosity().is_quiet:
             print_info(
                 f"From-index mode: {len(doc_files)} file(s) loaded from {from_index}"
             )
@@ -1389,12 +1403,13 @@ def process(
                 elif doc.name in page_mappings:
                     page_range_map[doc] = page_mappings[doc.name]
 
-            if VERBOSITY != "quiet":
+            if not view.is_quiet:
                 mapped_count = sum(
                     1 for v in page_range_map.values() if v is not None
                 )
-                console.print(
-                    f"[dim]Loaded page ranges for {mapped_count} file(s) from CSV[/dim]"
+                view.status(
+                    "info",
+                    f"Loaded page ranges for {mapped_count} file(s) from CSV",
                 )
 
         except Exception as e:
@@ -1435,9 +1450,11 @@ def process(
             page_range_tuple = parse_page_range(pages)
             page_range_map[doc_files[0]] = page_range_tuple
 
-            if VERBOSITY != "quiet":
-                console.print(
-                    f"[dim]Extracting pages {page_range_tuple[0]}-{page_range_tuple[1]} only[/dim]"
+            if not view.is_quiet:
+                view.status(
+                    "info",
+                    f"Extracting pages {page_range_tuple[0]}-"
+                    f"{page_range_tuple[1]} only",
                 )
 
         except ValueError as e:
@@ -1465,16 +1482,18 @@ def process(
 
     # Final validation - check if we have files to process
     if not doc_files:
-        if is_dir and VERBOSITY != "quiet":
-            print_success(f"All {original_count} file(s) already processed!")
-            console.print(f"[dim]Output directory: {output_dir}[/dim]")
-            console.print("[dim]Use --reprocess to extract them again[/dim]\n")
+        if is_dir and not view.is_quiet:
+            view.header("DOCUMENT EXTRACTION")
+            view.success(f"All {original_count} file(s) already processed")
+            view.outputs({"Output directory": str(output_dir)})
+            view.next_steps(
+                ["Re-extract everything with the --reprocess flag"]
+            )
         return
 
     # Display header and configuration
-    if VERBOSITY != "quiet":
-        print_header("DOCUMENT EXTRACTION")
-
+    view.header("DOCUMENT EXTRACTION")
+    if not view.is_quiet:
         # Build configuration display - use relative paths where possible
         try:
             rel_input = path.relative_to(Path.cwd())
@@ -1492,7 +1511,7 @@ def process(
     model_display = config.llm_config.get("model", model)
 
     # Add model/provider info to config
-    if VERBOSITY != "quiet":
+    if not get_verbosity().is_quiet:
         config_info["Model"] = model_display
         config_info["Provider"] = provider_name
         config_info["QA/QC"] = "Enabled" if enable_qa_qc else "Disabled"
@@ -1550,7 +1569,7 @@ def process(
     runtime_artifact = _resolve_runtime_artifact(
         category, schema_path, profile_name=profile_name
     )
-    if VERBOSITY != "quiet":
+    if not get_verbosity().is_quiet:
         # Show relative path for clarity
         try:
             schema_rel = schema_path.relative_to(Path.cwd())
@@ -1565,13 +1584,11 @@ def process(
             config_info["Profile"] = profile_name
 
     # Display configuration table
-    if VERBOSITY != "quiet":
-        table = create_config_table("Configuration", config_info)
-        console.print(table)
-        console.print()
+    if not view.is_quiet:
+        view.config(config_info)
 
     # Cost estimation and confirmation for large batches
-    if len(doc_files) > 10 and VERBOSITY != "quiet":
+    if len(doc_files) > 10 and not view.is_quiet:
         # Quick estimation
         sample_size = min(3, len(doc_files))
         total_chars = 0
@@ -1611,15 +1628,13 @@ def process(
             total_est_cost = input_cost + output_cost
 
             if total_est_cost > 1.0:  # Threshold for confirmation
-                console.print(
-                    f"\n[yellow]⚠ Cost Estimate:[/yellow] ${total_est_cost:.2f}"
+                view.warning(
+                    f"Estimated cost: ${total_est_cost:.2f}",
+                    f"Processing {len(doc_files)} documents "
+                    f"with ~{estimated_tokens:,} tokens",
                 )
-                console.print(
-                    f"[dim]  Processing {len(doc_files)} documents with ~{estimated_tokens:,} tokens[/dim]\n"
-                )
-
                 if not ask_confirm("Proceed with extraction?", default=True):
-                    console.print("[yellow]Operation cancelled[/yellow]\n")
+                    view.info("Operation cancelled")
                     return
 
     # Load configuration
@@ -1694,7 +1709,7 @@ def process(
             config=config,
             max_context=max_context,
             page_range_map=page_range_map,
-            verbosity=VERBOSITY,
+            verbosity=get_verbosity().value,
             runtime_artifact=runtime_artifact,
             run_id=run_id,
             qaqc_lane=qaqc_lane,
@@ -1713,7 +1728,7 @@ def process(
 
             schema_metadata = SchemaMetadata(schema_path)
         except Exception as e:
-            if VERBOSITY == "verbose":
+            if get_verbosity() is Verbosity.VERBOSE:
                 console.print(
                     f"[dim yellow]Could not load schema metadata: {e}[/dim yellow]"
                 )
@@ -1747,9 +1762,7 @@ def process(
     )
 
     # Processing section
-    if VERBOSITY == "normal" or VERBOSITY == "verbose":
-        console.print("[dim]" + "─" * 80 + "[/dim]")
-        console.print()
+    view.phase("Extracting documents")
 
     # Provenance: map each document to its acquire origin URL + queried target
     # so extraction can cite the source and stay anchored to the intended
@@ -1757,11 +1770,12 @@ def process(
     source_context_map = _build_source_context_map(
         Path(path) if path else None, from_index
     )
-    if source_context_map and VERBOSITY != "quiet":
+    if source_context_map and not view.is_quiet:
         matched = sum(1 for d in doc_files if d.name in source_context_map)
-        console.print(
-            f"[dim]Source-context: matched {matched}/{len(doc_files)} "
-            f"document(s) to acquire provenance[/dim]"
+        view.status(
+            "info",
+            f"Source-context: matched {matched}/{len(doc_files)} "
+            "document(s) to acquire provenance",
         )
 
     results = []
@@ -1790,7 +1804,7 @@ def process(
         )
 
     # Use live dashboard for multiple files if requested
-    if len(doc_files) > 3 and live_dashboard and VERBOSITY != "quiet":
+    if len(doc_files) > 3 and live_dashboard and not view.is_quiet:
         live, dashboard = create_live_dashboard(len(doc_files), actual_model)
 
         with live:
@@ -1812,7 +1826,7 @@ def process(
                     dashboard.complete_document(res["file"], success=False)
 
     # Use progress bar for multiple files, simple output for single file
-    elif len(doc_files) > 1 and VERBOSITY != "quiet":
+    elif len(doc_files) > 1 and not view.is_quiet:
         progress = create_extraction_progress()
         # Start with first document name instead of generic "Extracting..." message
         task = progress.add_task(
@@ -1841,33 +1855,26 @@ def process(
     else:
         # Single file or quiet mode
         for doc_path in doc_files:
-            if VERBOSITY == "verbose" or VERBOSITY == "normal":
-                console.print()
-                # Show page range if specified
+            if not view.is_quiet:
                 page_range = page_range_map.get(doc_path)
+                detail = None
                 if page_range is not None:
                     start, end = page_range
-                    console.print(
-                        f"[cyan]→[/cyan] {doc_path.name} [dim](pages {start}-{end})[/dim]"
-                    )
-                else:
-                    console.print(f"[cyan]→[/cyan] {doc_path.name}")
+                    detail = f"pages {start}-{end}"
+                view.status("info", doc_path.name, detail)
 
             res = _run(doc_path)
             results.append(res)
             if res["success"]:
                 total_cost += res["cost"]
                 total_time += res["time"]
-                if VERBOSITY == "verbose" or VERBOSITY == "normal":
-                    console.print(
-                        f"  [green]✓[/green] {res['items']} items • "
-                        f"[magenta]${res['cost']:.4f}[/magenta] • "
-                        f"[dim]{res['time']:.1f}s[/dim]"
-                    )
-            elif VERBOSITY != "quiet":
-                console.print(
-                    f"  [yellow]✗[/yellow] [dim]Error: {res['error'][:60]}[/dim]"
+                view.status(
+                    "success",
+                    f"{res['items']} items",
+                    f"${res['cost']:.4f} • {res['time']:.1f}s",
                 )
+            elif not view.is_quiet:
+                view.status("error", "Extraction failed", res["error"][:60])
 
     run_finished_at = (
         datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
@@ -1895,60 +1902,46 @@ def process(
             failed_results=failed,
         )
         manifest_path = _write_run_manifest(output_dir, run_id, run_manifest)
-        if VERBOSITY == "verbose":
-            console.print(
-                f"[dim]Run manifest: {manifest_path.as_posix()}[/dim]"
-            )
+        if view.verbosity.shows_detail:
+            view.status("info", f"Run manifest: {manifest_path.as_posix()}")
     except Exception as exc:
-        if VERBOSITY != "quiet":
-            print_warning(f"Run manifest write failed: {exc}")
+        view.warning(f"Run manifest write failed: {exc}")
 
     # Summary
-    if VERBOSITY != "quiet":
+    if not view.is_quiet:
         summary_stats = {
             "Processed": f"{len(results)} file{'s' if len(results) != 1 else ''}",
-            "Successful": f"[green]{len(successful)}[/green]",
+            "Successful": str(len(successful)),
         }
-
         if failed:
-            summary_stats["Failed"] = f"[yellow]{len(failed)}[/yellow]"
-
+            summary_stats["Failed"] = str(len(failed))
         if successful:
             avg_cost = total_cost / len(successful)
             avg_time = total_time / len(successful)
-            summary_stats["Total Cost"] = (
-                f"[magenta]${total_cost:.4f}[/magenta]"
-            )
-            summary_stats["Avg Cost/File"] = (
-                f"[magenta]${avg_cost:.4f}[/magenta]"
-            )
+            summary_stats["Total Cost"] = f"${total_cost:.4f}"
+            summary_stats["Avg Cost/File"] = f"${avg_cost:.4f}"
             summary_stats["Total Time"] = f"{total_time:.1f}s"
             summary_stats["Avg Time/File"] = f"{avg_time:.1f}s"
-
             total_items = sum(r.get("items", 0) or 0 for r in successful)
             if total_items > 0:
-                summary_stats["Total Items"] = f"[green]{total_items}[/green]"
+                summary_stats["Total Items"] = str(total_items)
 
-        console.print()
-        table = create_summary_table("Extraction Summary", summary_stats)
-        console.print(table)
+        view.summary(summary_stats, title="Extraction Summary")
 
-        suggestion_failures = [
-            failure for failure in failed if failure.get("suggestions")
-        ]
-        if suggestion_failures:
-            console.print()
-            for failure in suggestion_failures[:3]:
-                print_error(
-                    f"Processing failed for {failure['file']}",
-                    failure.get("error"),
-                    failure.get("suggestions"),
-                )
+        for failure in [f for f in failed if f.get("suggestions")][:3]:
+            view.error(
+                f"Processing failed for {failure['file']}",
+                failure.get("error"),
+                failure.get("suggestions"),
+            )
 
-        console.print()
-        console.print("[bold green]✓ Results saved to:[/bold green]")
-        console.print(f"  [bold]{output_dir.absolute()}[/bold]")
-        console.print()
+        view.outputs({"Processed data": str(output_dir.absolute())})
+        view.next_steps(
+            [
+                f"Inspect a result: pixi run streamline-extract validate {output_dir}/<name>.json --show-data",
+                f"Consolidate into a spreadsheet: pixi run streamline-extract consolidate {output_dir} --schema {schema}",
+            ]
+        )
 
 
 def _run_qa_qc_extraction(
@@ -1999,27 +1992,26 @@ def _run_qa_qc_extraction(
         )
         return
 
-    # Show QA/QC configuration
-    if verbosity != "quiet":
-        console.print()
-        console.print(
-            "[bold cyan]━━━ QA/QC Multi-Model Validation Mode ━━━[/bold cyan]"
-        )
-        console.print(f"  Provider: [bold]{qa_provider.upper()}[/bold]")
-        console.print(f"  Models: [bold]{', '.join(qa_models)}[/bold]")
-        console.print(f"  Documents: [bold]{len(doc_files)}[/bold]")
-        console.print(f"  QA/QC Lane: [bold]{qaqc_lane or 'default'}[/bold]")
-        console.print()
-        console.print(
-            f"[yellow]⚠ Cost Warning:[/yellow] This will run [bold]{len(qa_models)}x[/bold] extractions per document"
-        )
-        console.print(
-            f"[dim]  Total API calls: {len(doc_files)} docs × {len(qa_models)} models = {len(doc_files) * len(qa_models)} extractions[/dim]"
-        )
-        console.print()
+    view = RunView("process", verbosity=Verbosity(verbosity))
 
+    # Show QA/QC configuration
+    view.header("QA/QC MULTI-MODEL VALIDATION")
+    view.config(
+        {
+            "Provider": qa_provider.upper(),
+            "Models": ", ".join(qa_models),
+            "Documents": str(len(doc_files)),
+            "QA/QC Lane": qaqc_lane or "default",
+        }
+    )
+    if not view.is_quiet:
+        view.warning(
+            f"This will run {len(qa_models)}x extractions per document",
+            f"Total API calls: {len(doc_files)} docs × {len(qa_models)} models "
+            f"= {len(doc_files) * len(qa_models)} extractions",
+        )
         if not ask_confirm("Proceed with QA/QC extraction?", default=True):
-            console.print("[yellow]Operation cancelled[/yellow]\n")
+            view.info("Operation cancelled")
             return
 
     # Process each document with multi-model extraction
@@ -2027,26 +2019,19 @@ def _run_qa_qc_extraction(
     total_cost = 0.0
     total_time = 0.0
 
-    if verbosity != "quiet":
-        console.print()
-        console.print("[dim]" + "─" * 80 + "[/dim]")
-        console.print()
+    view.phase("Extracting with multiple models")
 
     for doc_idx, doc_path in enumerate(doc_files, 1):
-        if verbosity != "quiet":
-            console.print(
-                f"[cyan][{doc_idx}/{len(doc_files)}][/cyan] {doc_path.name}"
-            )
+        if not view.is_quiet:
+            view.status("info", f"[{doc_idx}/{len(doc_files)}] {doc_path.name}")
 
         try:
             # Extract text from document (respecting page ranges)
             page_range = page_range_map.get(doc_path)
             text = extract_text_from_document(doc_path, page_range=page_range)
 
-            if verbosity == "verbose":
-                console.print(
-                    f"  [dim]Extracted {len(text):,} characters[/dim]"
-                )
+            if view.verbosity.shows_detail:
+                view.status("info", f"Extracted {len(text):,} characters")
 
             # Run multi-model extraction
             model_results = run_multi_model_extraction(
@@ -2083,15 +2068,12 @@ def _run_qa_qc_extraction(
                 }
             )
 
-            if verbosity != "quiet":
-                status = (
-                    "[green]✓[/green]"
-                    if successful == len(qa_models)
-                    else "[yellow]⚠[/yellow]"
-                )
-                console.print(
-                    f"  {status} {successful}/{len(qa_models)} models • [magenta]${doc_cost:.4f}[/magenta] • [dim]{doc_time:.1f}s[/dim]"
-                )
+            level = "success" if successful == len(qa_models) else "warning"
+            view.status(
+                level,
+                f"{successful}/{len(qa_models)} models",
+                f"${doc_cost:.4f} • {doc_time:.1f}s",
+            )
 
         except Exception as e:
             results.append(
@@ -2101,53 +2083,41 @@ def _run_qa_qc_extraction(
                     "error": str(e),
                 }
             )
-            if verbosity != "quiet":
-                console.print(f"  [red]✗[/red] Error: {str(e)[:60]}")
+            view.status("error", "Extraction failed", str(e)[:60])
 
     # Summary
-    if verbosity != "quiet":
-        console.print()
-        console.print("[dim]" + "─" * 80 + "[/dim]")
-        console.print()
-
+    if not view.is_quiet:
         successful_docs = [r for r in results if r.get("success")]
         failed_docs = [r for r in results if not r.get("success")]
 
         summary_stats = {
-            "Documents Processed": f"{len(results)}",
-            "Successful": f"[green]{len(successful_docs)}[/green]",
+            "Documents Processed": str(len(results)),
+            "Successful": str(len(successful_docs)),
         }
-
         if failed_docs:
-            summary_stats["Failed"] = f"[red]{len(failed_docs)}[/red]"
-
+            summary_stats["Failed"] = str(len(failed_docs))
         summary_stats["Models Used"] = (
-            f"{len(qa_models)} ({', '.join(qa_models[:3])}{'...' if len(qa_models) > 3 else ''})"
+            f"{len(qa_models)} ({', '.join(qa_models[:3])}"
+            f"{'...' if len(qa_models) > 3 else ''})"
         )
-        summary_stats["Total API Calls"] = (
-            f"{len(successful_docs) * len(qa_models)}"
+        summary_stats["Total API Calls"] = str(
+            len(successful_docs) * len(qa_models)
         )
-        summary_stats["Total Cost"] = f"[magenta]${total_cost:.4f}[/magenta]"
+        summary_stats["Total Cost"] = f"${total_cost:.4f}"
         summary_stats["Total Time"] = f"{total_time:.1f}s"
 
-        table = create_summary_table("QA/QC Extraction Summary", summary_stats)
-        console.print(table)
+        view.summary(summary_stats, title="QA/QC Extraction Summary")
 
-        # Output location
         qa_qc_output = output_dir / "qa_qc"
-        console.print()
-        console.print("[bold green]✓ QA/QC outputs saved to:[/bold green]")
-        console.print(f"  [bold]{qa_qc_output.absolute()}[/bold]")
-        console.print()
+        view.outputs({"QA/QC outputs": str(qa_qc_output.absolute())})
+
         compare_command = (
             "pixi run streamline-extract compare "
             f"{qa_qc_output.as_posix()} --schema {schema_path.as_posix()}"
         )
         if qaqc_lane:
             compare_command += f" --qaqc-lane {qaqc_lane}"
-        console.print("[dim]Next step: run the comparison workflow:[/dim]")
-        console.print(f"[dim]  {compare_command}[/dim]")
-        console.print()
+        view.next_steps([f"Run the comparison workflow: {compare_command}"])
 
 
 def _extract_and_save_result(
@@ -2310,15 +2280,16 @@ def validate(extraction_file: str, verbose: bool, show_data: bool):
     from streamline_extract.cli.ui import display_json
 
     extraction_file = Path(extraction_file)
+    view = begin_run("validate", verbose=verbose)
 
-    print_header(f"Validation: {extraction_file.name}")
+    view.header(f"Validation: {extraction_file.name}")
 
     # Load extraction
     try:
         with open(extraction_file) as f:
             data = json.load(f)
     except json.JSONDecodeError as e:
-        print_error("Invalid JSON file", str(e))
+        view.error("Invalid JSON file", str(e))
         return
 
     # Load schema
@@ -2335,9 +2306,9 @@ def validate(extraction_file: str, verbose: bool, show_data: bool):
                 "Extraction file must use canonical extraction-record format with a 'payload' object"
             )
         json_validate(instance=payload, schema=schema)
-        print_success("Schema validation passed")
+        view.status("success", "Schema validation passed")
     except ValidationError as e:
-        print_error("Schema validation failed", e.message)
+        view.error("Schema validation failed", e.message)
         sys.exit(1)
 
     # Display metadata
@@ -2367,9 +2338,7 @@ def validate(extraction_file: str, verbose: bool, show_data: bool):
             "Item Count": str(item_count),
         }
 
-        console.print()
-        table = create_config_table("Extraction Metadata", metadata)
-        console.print(table)
+        view.summary(metadata, title="Extraction Metadata")
 
     # Show extracted data with syntax highlighting
     if show_data and "payload" in data:
@@ -2378,7 +2347,12 @@ def validate(extraction_file: str, verbose: bool, show_data: bool):
 
         display_json(data.get("payload"), title="Extracted Data")
 
-    console.print()
+    view.next_steps(
+        [
+            f"Consolidate the folder: pixi run streamline-extract consolidate "
+            f"{extraction_file.parent} --schema <schema>",
+        ]
+    )
 
 
 @click.command()
@@ -2532,17 +2506,7 @@ def acquire(
     debug: bool,
 ):
     """Acquire source documents from web targets (scaffold entrypoint)."""
-    global VERBOSITY
-    if quiet:
-        VERBOSITY = "quiet"
-    elif debug:
-        VERBOSITY = "debug"
-    elif verbose:
-        VERBOSITY = "verbose"
-    else:
-        VERBOSITY = "normal"
-
-    configure_logging(VERBOSITY)
+    view = begin_run("acquire", quiet=quiet, verbose=verbose, debug=debug)
 
     cli_overrides = _explicit_cli_overrides(
         [
@@ -2573,20 +2537,18 @@ def acquire(
             cli_values=cli_overrides,
         )
     except RuntimeConfigError as exc:
-        print_error("Runtime config resolution failed", str(exc))
+        view.error("Runtime config resolution failed", str(exc))
         sys.exit(1)
 
     warnings = resolved_inputs.get("_config_warnings", [])
-    for warning in warnings:
-        if VERBOSITY != "quiet":
-            print_warning(warning)
+    view.warnings(warnings)
 
-    if show_effective_config and VERBOSITY != "quiet":
+    if show_effective_config and not get_verbosity().is_quiet:
         _print_effective_config("acquire", resolved_inputs)
         console.print()
 
     if validate_config_only:
-        if VERBOSITY == "quiet":
+        if get_verbosity().is_quiet:
             click.echo(
                 json.dumps(
                     {
@@ -2780,9 +2742,8 @@ def acquire(
         Path(resolved_output_manifest) if resolved_output_manifest else None
     )
 
-    if VERBOSITY != "quiet":
-        print_header("ACQUISITION")
-        if VERBOSITY in {"verbose", "debug"}:
+    if not view.is_quiet:
+        if view.verbosity.shows_detail:
             config_info = {
                 "Domain": resolved_domain,
                 "Seeds": str(len(resolved_seed_urls)),
@@ -2829,8 +2790,79 @@ def acquire(
                 else "(auto: run-scoped)",
                 "Mode": "dry-run" if dry_run else "run",
             }
-        console.print(create_config_table("", config_info))
-        console.print()
+        view.header("ACQUISITION")
+        view.config(config_info)
+
+        if resolved_targets:
+            view.info(
+                f"Preparing discovery plan for {len(resolved_targets)} target(s)..."
+            )
+            if view.verbosity.shows_detail:
+                preview_limit = 8
+                for idx, target_meta in enumerate(
+                    resolved_targets[:preview_limit], start=1
+                ):
+                    label = AcquisitionEngine._target_label(
+                        target_meta if isinstance(target_meta, dict) else None, idx
+                    )
+                    query_preview = (
+                        (target_meta.get("query") if isinstance(target_meta, dict) else None)
+                        or resolved_query
+                        or "(query templates)"
+                    )
+                    view.status("info", f"{idx}. {label}", f"query: {query_preview}")
+                if len(resolved_targets) > preview_limit:
+                    remaining = len(resolved_targets) - preview_limit
+                    view.status("info", f"... and {remaining} more target(s)")
+            console.print()
+
+    # Keep urllib3 TLS warnings out of the CLI output and surface a single
+    # styled warning instead so the run view remains cohesive.
+    try:
+        from urllib3.exceptions import InsecureRequestWarning
+
+        std_warnings.filterwarnings("ignore", category=InsecureRequestWarning)
+    except Exception:
+        pass
+
+    def _env_ssl_verify(env_var: str, fallback_var: str) -> bool:
+        raw = os.getenv(env_var) or os.getenv(fallback_var) or "false"
+        return str(raw).strip().lower() not in {"0", "false", "no", "off"}
+
+    seeker_ssl_verify = _env_ssl_verify(
+        "SERPAPI_SSL_VERIFY", "STREAMLINE_EXTRACT_SSL_VERIFY"
+    )
+    download_ssl_verify = _env_ssl_verify(
+        "ACQUISITION_SSL_VERIFY", "STREAMLINE_EXTRACT_SSL_VERIFY"
+    )
+
+    if resolved_enable_serpapi and not seeker_ssl_verify:
+        view.warning(
+            "SerpApi TLS verification is disabled (SERPAPI_SSL_VERIFY=false).",
+            "Set SERPAPI_SSL_VERIFY=true to suppress insecure-request warnings.",
+        )
+    if not dry_run and not download_ssl_verify:
+        view.warning(
+            "Download TLS verification is disabled (ACQUISITION_SSL_VERIFY=false)."
+        )
+
+    acquire_live = None
+    acquire_dashboard = None
+    if view.verbosity in {Verbosity.NORMAL, Verbosity.VERBOSE} and not dry_run:
+        acquire_live, acquire_dashboard = create_acquisition_live_dashboard(
+            domain=resolved_domain,
+            mode="dry-run" if dry_run else "run",
+            total_targets=len(resolved_targets or []),
+            seeker_enabled=resolved_enable_serpapi,
+        )
+
+    def _acquire_progress(message: str) -> None:
+        if view.is_quiet:
+            return
+        if acquire_dashboard is not None:
+            acquire_dashboard.push_event(message)
+            return
+        print_info(message)
 
     request = AcquisitionRequest(
         domain=resolved_domain,
@@ -2875,6 +2907,7 @@ def acquire(
         models=resolved_models,
         seeker_cache=resolved_seeker_cache,
         seeker_cache_ttl_minutes=resolved_seeker_cache_ttl_minutes,
+        progress_callback=_acquire_progress,
         query_context_aliases=resolved_query_context_aliases,
         partition_by=resolved_partition_by,
         browser_mode=resolved_browser_mode,
@@ -2898,31 +2931,83 @@ def acquire(
     )
 
     try:
-        result = AcquisitionEngine().run(request)
+        with view.live(acquire_live):
+            result = AcquisitionEngine().run(request)
     except Exception as exc:
-        print_error("Acquisition failed", str(exc))
-        if VERBOSITY == "debug":
+        view.error("Acquisition failed", str(exc))
+        if view.verbosity is Verbosity.DEBUG:
             import traceback
 
             traceback.print_exc()
         sys.exit(1)
 
-    if VERBOSITY == "quiet":
+    if view.is_quiet:
         click.echo(str(result.manifest_path))
         return
 
-    print_success(f"Acquisition complete (run_id={result.run_id})")
-    print_info(f"Run folder: {result.manifest_path.parent}")
-    print_info(f"All downloads: {result.documents_dir}")
+    view.success(f"Acquisition complete (run_id={result.run_id})")
+
+    try:
+        manifest_data = json.loads(
+            result.manifest_path.read_text(encoding="utf-8")
+        )
+    except Exception:
+        manifest_data = {}
+
+    notes = manifest_data.get("notes") or []
+    errors = manifest_data.get("errors") or []
+    download_summary = (
+        (manifest_data.get("stage_summaries") or {}).get("downloads") or {}
+    )
+    downloaded_count = int(download_summary.get("downloaded") or 0)
+    total_count = int(download_summary.get("total") or 0)
+
+    view.summary(
+        {
+            "Run ID": result.run_id,
+            "Mode": "dry-run" if dry_run else "run",
+            "Downloaded": f"{downloaded_count}/{total_count}",
+            "Notes": str(len(notes)),
+            "Errors": str(len(errors)),
+        },
+        title="Acquisition Summary",
+    )
+
+    view.notes(notes, title="Acquisition Notes")
+
+    if errors:
+        error_lines = []
+        for error in errors[:5]:
+            stage = error.get("stage") or "unknown-stage"
+            message = error.get("message") or error.get("error") or "unknown error"
+            error_lines.append(f"{stage}: {message}")
+        if len(errors) > 5:
+            error_lines.append(
+                f"... and {len(errors) - 5} more (see manifest for full details)"
+            )
+        view.warnings(error_lines)
+
+    outputs = {
+        "Run folder": str(result.manifest_path.parent),
+        "Downloads": str(result.documents_dir),
+    }
     if result.curated_dir is not None:
-        print_success(
-            f"Curated {result.curated_count} document(s) → {result.curated_dir}"
+        outputs["Curated"] = (
+            f"{result.curated_count} document(s) → {result.curated_dir}"
         )
+    view.outputs(outputs)
+
+    next_steps = []
     if result.review_index_path is not None:
-        print_info(
+        next_steps.append(
             f"Review/adjust picks: edit {result.review_index_path}, "
-            "then run `streamline-extract curate`"
+            "then run: pixi run streamline-extract curate"
         )
+    next_steps.append(
+        "Extract the documents: pixi run streamline-extract process "
+        f"{result.curated_dir or result.documents_dir} --schema <schema_or_pack>"
+    )
+    view.next_steps(next_steps)
 
 
 @click.command()
@@ -2959,16 +3044,7 @@ def curate(
     wrong (blank = accept the LLM's call). Then run this command to re-materialize
     ``curated/`` accordingly. Idempotent.
     """
-    global VERBOSITY
-    if quiet:
-        VERBOSITY = "quiet"
-    elif debug:
-        VERBOSITY = "debug"
-    elif verbose:
-        VERBOSITY = "verbose"
-    else:
-        VERBOSITY = "normal"
-    configure_logging(VERBOSITY)
+    view = begin_run("curate", quiet=quiet, verbose=verbose, debug=debug)
 
     # Resolve the run directory: explicit --run wins, else the domain's latest/.
     run_dir: Optional[Path] = None
@@ -3011,6 +3087,15 @@ def curate(
         )
         sys.exit(1)
 
+    view.header("CURATION")
+    view.config(
+        {
+            "Run folder": run_dir.as_posix(),
+            "Review ledger": review_csv.name,
+            "Documents": documents_dir.name,
+        }
+    )
+
     # Read the human-edited ledger and compute the effective keep set.
     with review_csv.open(encoding="utf-8", newline="") as handle:
         rows = list(csv.DictReader(handle))
@@ -3045,12 +3130,26 @@ def curate(
         download_records=records,
     )
 
-    if VERBOSITY == "quiet":
+    if view.is_quiet:
         click.echo(curated_dir.as_posix())
         return
-    print_success(
-        f"Curated {count} document(s) → {curated_dir}"
-        + (f" ({overridden} human override(s))" if overridden else "")
+
+    view.success(f"Curated {count} document(s)")
+    view.summary(
+        {
+            "Reviewed": str(len(records)),
+            "Kept": str(kept),
+            "Rejected": str(len(records) - kept),
+            "Human overrides": str(overridden),
+        },
+        title="Curation Summary",
+    )
+    view.outputs({"Curated documents": curated_dir.as_posix()})
+    view.next_steps(
+        [
+            f"Extract the curated set: pixi run streamline-extract process {curated_dir} "
+            "--schema <schema_or_pack>",
+        ]
     )
 
 
@@ -3182,19 +3281,7 @@ def consolidate(
         • CSV file for data analysis
         • Automatic deduplication of identical entries
     """
-    # Set global verbosity
-    global VERBOSITY
-    if quiet:
-        VERBOSITY = "quiet"
-    elif debug:
-        VERBOSITY = "debug"
-    elif verbose:
-        VERBOSITY = "verbose"
-    else:
-        VERBOSITY = "normal"
-
-    # Configure logging with RichHandler for clean integration with UI
-    configure_logging(VERBOSITY)
+    view = begin_run("consolidate", quiet=quiet, verbose=verbose, debug=debug)
 
     cli_overrides = _explicit_cli_overrides(
         [
@@ -3215,20 +3302,18 @@ def consolidate(
             cli_values=cli_overrides,
         )
     except RuntimeConfigError as exc:
-        print_error("Runtime config resolution failed", str(exc))
+        view.error("Runtime config resolution failed", str(exc))
         sys.exit(1)
 
     warnings = resolved_inputs.get("_config_warnings", [])
-    for warning in warnings:
-        if VERBOSITY != "quiet":
-            print_warning(warning)
+    view.warnings(warnings)
 
-    if show_effective_config and VERBOSITY != "quiet":
+    if show_effective_config and not get_verbosity().is_quiet:
         _print_effective_config("consolidate", resolved_inputs)
         console.print()
 
     if validate_config_only:
-        if VERBOSITY == "quiet":
+        if get_verbosity().is_quiet:
             click.echo(
                 json.dumps(
                     {
@@ -3293,14 +3378,8 @@ def consolidate(
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # Header
-    if VERBOSITY != "quiet" and not emit_json_report:
-        print_header("CONSOLIDATION")
-
-        config_info = {"Input": str(input_dir), "Output": str(output_dir)}
-
-        # Add schema to config after it's determined (will add after schema loading)
-        table = create_config_table("", config_info)
-        console.print(table)
+    if not emit_json_report:
+        view.header("CONSOLIDATION")
 
     # Load schema (enforced as required by Click)
     matched_schema = Path(schema)
@@ -3324,24 +3403,23 @@ def consolidate(
             matched_schema, metadata_overrides=metadata_overrides or None
         )
 
-        # Add schema to config display after successful load
-        if VERBOSITY != "quiet" and not emit_json_report:
-            # Show relative path for schema
+        # Config snapshot (after schema load so it is complete)
+        if not emit_json_report and not view.is_quiet:
             try:
-                schema_rel = matched_schema.relative_to(Path.cwd())
-                schema_display = str(schema_rel)
+                schema_display = str(matched_schema.relative_to(Path.cwd()))
             except ValueError:
                 schema_display = str(matched_schema)
-
-            console.print(f"  [bold]Schema[/bold]      {schema_display}")
-            console.print(
-                f"  [bold]Runtime[/bold]     {_format_runtime_artifact_summary(runtime_artifact)}"
-            )
+            config_info = {
+                "Input": str(input_dir),
+                "Output": str(output_dir),
+                "Schema": schema_display,
+                "Runtime": _format_runtime_artifact_summary(runtime_artifact),
+            }
             if metadata_overrides:
-                console.print(
-                    "  [bold]Overrides[/bold]   pack-owned consolidation config active"
+                config_info["Overrides"] = (
+                    "pack-owned consolidation config active"
                 )
-            console.print()
+            view.config(config_info)
     except Exception as e:
         print_error(
             "Schema validation failed",
@@ -3352,12 +3430,12 @@ def consolidate(
         return
 
     # Consolidate
-    if VERBOSITY != "quiet" and not emit_json_report:
-        console.print("[cyan]→[/cyan] Analyzing schema structure...")
+    if not emit_json_report:
+        view.phase("Analyzing schema structure")
     consolidator = Consolidator(
         schema_metadata=schema_metadata,
-        verbose=(VERBOSITY == "verbose" or VERBOSITY == "debug"),
-        debug=(VERBOSITY == "debug"),
+        verbose=view.verbosity.shows_detail,
+        debug=view.verbosity is Verbosity.DEBUG,
     )
 
     try:
@@ -3379,25 +3457,25 @@ def consolidate(
                 synthesis_cfg.get("model"),
                 models=resolved_inputs.get("models"),
             )
-            if VERBOSITY != "quiet" and not emit_json_report:
-                console.print(
-                    "[cyan]→[/cyan] Synthesizing one record per entity "
-                    f"(model={synth_client.raw_model})..."
+            if not emit_json_report:
+                view.phase(
+                    "Synthesizing one record per entity "
+                    f"(model={synth_client.raw_model})"
                 )
             synthesizer = Synthesizer(
                 schema_metadata=schema_metadata,
                 config=synthesis_cfg,
                 llm_client=synth_client,
-                verbose=(VERBOSITY in ("verbose", "debug")),
+                verbose=view.verbosity.shows_detail,
             )
             df = synthesizer.synthesize_from_directory(input_dir)
-            if VERBOSITY != "quiet" and not emit_json_report:
+            if not emit_json_report:
                 total_rows = synthesizer.llm_calls + synthesizer.deterministic_rows
-                console.print(
-                    f"  [dim]Synthesis: {synthesizer.llm_calls} LLM "
-                    f"reconciliation call(s), {synthesizer.deterministic_rows} "
-                    f"resolved deterministically (no API) of {total_rows} "
-                    "entities[/dim]"
+                view.status(
+                    "info",
+                    f"Synthesis: {synthesizer.llm_calls} LLM reconciliation "
+                    f"call(s), {synthesizer.deterministic_rows} resolved "
+                    f"deterministically (no API) of {total_rows} entities",
                 )
             schema_info = {
                 "type": f"Synthesized: {schema_metadata.get_main_data_array()}",
@@ -3413,13 +3491,9 @@ def consolidate(
             print_warning("No data found to consolidate")
             return
 
-        if VERBOSITY != "quiet" and not emit_json_report:
-            print_success(
-                f"Schema detected: [cyan]{schema_info['type']}[/cyan]"
-            )
-            console.print(
-                f"  [dim]Main entity: {schema_info['main_array_key']}[/dim]\n"
-            )
+        if not emit_json_report:
+            view.success(f"Schema detected: {schema_info['type']}")
+            view.status("info", f"Main entity: {schema_info['main_array_key']}")
 
         if dry_run and synthesis_active:
             print_info(
@@ -3443,12 +3517,12 @@ def consolidate(
                 )
             )
 
-            if emit_json_report or VERBOSITY == "quiet":
+            if emit_json_report or view.is_quiet:
                 click.echo(
                     json.dumps(preview_report, indent=2, sort_keys=True)
                 )
             else:
-                console.print("[cyan]→[/cyan] Previewing deduplication...")
+                view.phase("Previewing deduplication")
                 preview_stats = {
                     "Schema Type": preview_report["schema_type"],
                     "Rows Before Dedup": str(
@@ -3479,15 +3553,10 @@ def consolidate(
                     )
                     or "none",
                 }
-                table = create_summary_table(
-                    "Deduplication Preview", preview_stats
-                )
-                console.print()
-                console.print(table)
+                view.summary(preview_stats, title="Deduplication Preview")
 
-                warnings = preview_report["warnings"]
-                for warning in warnings:
-                    print_warning(warning)
+                for warning in preview_report["warnings"]:
+                    view.warning(warning)
 
                 for index, group in enumerate(
                     preview_report["duplicate_groups"][:5], start=1
@@ -3500,42 +3569,44 @@ def consolidate(
                         )
                         or "no populated key values"
                     )
-                    group_label = f"Preview {index}"
+                    group_label = f"Group {index}"
                     if group.get("suspicious"):
                         group_label += (
-                            f" [suspicious:{group.get('severity', 'low')}]"
+                            f" (suspicious:{group.get('severity', 'low')})"
                         )
-                    console.print(
-                        f"  [yellow]{group_label}[/yellow] keep row {group['keep_index']} | "
-                        f"drop {group['drop_indices']} | {sample_values}"
+                    view.status(
+                        "warning" if group.get("suspicious") else "info",
+                        f"{group_label}: keep row {group['keep_index']}, "
+                        f"drop {group['drop_indices']}",
+                        sample_values,
                     )
-                    console.print(f"    [dim]{group['note']}[/dim]")
+                    view.status("info", group["note"])
                     if group.get("conflicting_columns"):
-                        console.print(
-                            f"    [red]Conflicts:[/red] {', '.join(group['conflicting_columns'])}"
+                        view.status(
+                            "warning",
+                            f"Conflicts: {', '.join(group['conflicting_columns'])}",
                         )
 
                 if len(preview_report["duplicate_groups"]) > 5:
-                    console.print(
-                        f"  [dim]... {len(preview_report['duplicate_groups']) - 5} more duplicate group(s) omitted[/dim]"
+                    view.status(
+                        "info",
+                        f"... {len(preview_report['duplicate_groups']) - 5} "
+                        "more duplicate group(s) omitted",
                     )
 
-                console.print()
-                print_info(
-                    "Dry run complete - no CSV/Excel files were written"
-                )
+                view.info("Dry run complete - no CSV/Excel files were written")
 
             if preview_report["would_fail_on_suspicious"]:
-                if not emit_json_report and VERBOSITY != "quiet":
-                    print_error(
+                if not emit_json_report and not view.is_quiet:
+                    view.error(
                         "Suspicious deduplication threshold exceeded",
-                        f"Dry-run found suspicious groups at or above '{fail_on_suspicious}' severity",
+                        f"Dry-run found suspicious groups at or above "
+                        f"'{fail_on_suspicious}' severity",
                     )
                 sys.exit(2)
             return
 
-        if VERBOSITY != "quiet":
-            console.print("[cyan]→[/cyan] Creating outputs...")
+        view.phase("Creating outputs")
 
         # Generate output filename
         base_name = input_dir.name.replace("_", "-")
@@ -3550,12 +3621,12 @@ def consolidate(
             emitted_paths.append(csv_path)
             csv_size_mb = csv_path.stat().st_size / (1024 * 1024)
 
-            if VERBOSITY == "verbose" or VERBOSITY == "debug":
-                print_success(
+            if view.verbosity.shows_detail:
+                view.success(
                     f"CSV saved: {csv_path.name} ({csv_size_mb:.2f} MB, {len(df)} rows)"
                 )
-            elif VERBOSITY != "quiet":
-                print_success(f"CSV saved ({len(df)} rows)")
+            else:
+                view.success(f"CSV saved ({len(df)} rows)")
 
         if "excel" in output_formats:
             excel_path = output_dir / f"{base_name}.xlsx"
@@ -3563,17 +3634,17 @@ def consolidate(
             emitted_paths.append(excel_path)
             excel_size_mb = excel_path.stat().st_size / (1024 * 1024)
 
-            if VERBOSITY == "verbose" or VERBOSITY == "debug":
-                print_success(
+            if view.verbosity.shows_detail:
+                view.success(
                     f"Excel saved: {excel_path.name} ({excel_size_mb:.2f} MB, {len(df)} rows)"
                 )
-            elif VERBOSITY != "quiet":
-                print_success(
+            else:
+                view.success(
                     "Excel saved (clean formatting, auto-sized columns)"
                 )
 
         # Summary
-        if VERBOSITY != "quiet":
+        if not get_verbosity().is_quiet:
             summary_stats = {
                 "Schema Type": schema_info["type"],
                 "Records": str(len(df)),
@@ -3608,24 +3679,24 @@ def consolidate(
                         )
                         summary_stats[f"Top {category_display}s"] = top_cat_str
 
-            console.print()
-            table = create_summary_table(
-                "Consolidation Summary", summary_stats
+            view.summary(summary_stats, title="Consolidation Summary")
+            view.outputs(
+                {
+                    (p.suffix.lstrip(".").upper() or "File"): str(p.absolute())
+                    for p in emitted_paths
+                }
             )
-            console.print(table)
-
-            console.print("\n[bold green]✓ Output Location[/bold green]")
-            for emitted_path in emitted_paths:
-                console.print(f"  [bold]{emitted_path.absolute()}[/bold]")
-            console.print()
+            view.next_steps(
+                ["Open the CSV/Excel to review the consolidated dataset"]
+            )
         else:
             # Quiet mode - print emitted output path(s)
             for emitted_path in emitted_paths:
                 console.print(str(emitted_path.absolute()))
 
     except Exception as e:
-        print_error("Consolidation failed", str(e))
-        if VERBOSITY == "debug":
+        view.error("Consolidation failed", str(e))
+        if view.verbosity is Verbosity.DEBUG:
             import traceback
 
             traceback.print_exc()
@@ -3687,13 +3758,8 @@ def compare(
     qa_qc_path = Path(qa_qc_path)
     schema_path = Path(schema)
 
-    # Set verbosity
-    if quiet:
-        verbosity = "quiet"
-    elif verbose:
-        verbosity = "verbose"
-    else:
-        verbosity = "normal"
+    view = begin_run("compare", quiet=quiet, verbose=verbose)
+    verbosity = view.verbosity.value
 
     # Load schema metadata
     try:
@@ -3705,14 +3771,13 @@ def compare(
             preferred_lane=qaqc_lane,
         )
     except Exception as e:
-        print_error("Failed to load schema", str(e))
+        view.error("Failed to load schema", str(e))
         sys.exit(1)
 
     # Display header
-    if verbosity != "quiet":
-        print_header("QA/QC COMPARISON REPORT")
-
-        config_info = {
+    view.header("QA/QC COMPARISON REPORT")
+    view.config(
+        {
             "Input": str(qa_qc_path),
             "Schema": str(schema_path),
             "Runtime": _format_runtime_artifact_summary(runtime_artifact),
@@ -3724,9 +3789,7 @@ def compare(
             "Match Fields": ", ".join(qa_qc_config["match_fields"]),
             "Compare Fields": ", ".join(qa_qc_config["compare_fields"]),
         }
-        table = create_config_table("Configuration", config_info)
-        console.print(table)
-        console.print()
+    )
 
     # Create comparison engine and report generator
     engine = ComparisonEngine(schema_metadata, qa_qc_config=qa_qc_config)
@@ -3763,9 +3826,7 @@ def compare(
     # Process each document directory
     results = []
 
-    if verbosity != "quiet":
-        console.print("[dim]" + "─" * 60 + "[/dim]")
-        console.print()
+    view.phase("Comparing model outputs")
 
     for doc_dir in doc_dirs:
         # Find model output files
@@ -3777,10 +3838,10 @@ def compare(
             model_files[model_name] = f
 
         if len(model_files) < 2:
-            if verbosity != "quiet":
-                console.print(
-                    f"[yellow]⚠[/yellow] Skipping {doc_dir.name}: needs at least 2 model outputs"
-                )
+            view.status(
+                "warning",
+                f"Skipping {doc_dir.name}: needs at least 2 model outputs",
+            )
             continue
 
         # Run comparison
@@ -3813,24 +3874,28 @@ def compare(
                 }
             )
 
-            if verbosity != "quiet":
+            if not view.is_quiet:
                 agreement_pct = result.summary.get("full_agreement_pct", 0)
                 needs_review = result.summary.get("needs_review_count", 0)
                 total = result.summary.get("total_comparisons", 0)
 
-                # Color code based on agreement
-                if agreement_pct >= 80:
-                    status = "[green]✓[/green]"
-                elif agreement_pct >= 50:
-                    status = "[yellow]⚠[/yellow]"
-                else:
-                    status = "[red]![/red]"
-
-                console.print(f"{status} {doc_dir.name}")
-                console.print(
-                    f"    Agreement: [bold]{agreement_pct:.1f}%[/bold] ({total - needs_review}/{total} fields)"
+                level = (
+                    "success"
+                    if agreement_pct >= 80
+                    else "warning"
+                    if agreement_pct >= 50
+                    else "error"
                 )
-                console.print(f"    Needs review: {needs_review} field(s)")
+                view.status(
+                    level,
+                    doc_dir.name,
+                    f"{agreement_pct:.1f}% agreement",
+                )
+                view.detail(
+                    f"Agreement: {agreement_pct:.1f}% "
+                    f"({total - needs_review}/{total} fields)"
+                )
+                view.detail(f"Needs review: {needs_review} field(s)")
                 qualitative_gate = (
                     result.summary.get("qualitative_advisory_gate") or {}
                 )
@@ -3847,13 +3912,14 @@ def compare(
                     excluded_scope_variants = int(
                         qualitative_gate.get("excluded_scope_variants", 0) or 0
                     )
-                    console.print(
-                        f"    Qualitative advisory gate: [bold]{gate_status}[/bold] "
+                    view.detail(
+                        f"Qualitative advisory gate: {gate_status} "
                         f"({aligned_pct:.1f}% aligned, {missing_pct:.1f}% missing items)"
                     )
                     if excluded_scope_variants:
-                        console.print(
-                            f"    Excluded scope variants: {excluded_scope_variants} auxiliary row(s)"
+                        view.detail(
+                            f"Excluded scope variants: {excluded_scope_variants} "
+                            "auxiliary row(s)"
                         )
                 qualitative_breakdown = (
                     result.summary.get("qualitative_mismatch_breakdown") or {}
@@ -3874,26 +3940,19 @@ def compare(
                         f"{entry.get('label')} ({entry.get('count')})"
                         for entry in missing_categories[:3]
                     )
-                    console.print(
-                        f"    Top missing-item categories: {summary_text}"
-                    )
+                    view.detail(f"Top missing-item categories: {summary_text}")
                 if scope_variant_categories:
                     summary_text = ", ".join(
                         f"{entry.get('label')} ({entry.get('count')})"
                         for entry in scope_variant_categories[:3]
                     )
-                    console.print(
-                        f"    Top scope-variant categories: {summary_text}"
-                    )
+                    view.detail(f"Top scope-variant categories: {summary_text}")
                 if text_categories:
                     summary_text = ", ".join(
                         f"{entry.get('label')} ({entry.get('count')})"
                         for entry in text_categories[:3]
                     )
-                    console.print(
-                        f"    Top text-difference categories: {summary_text}"
-                    )
-                console.print()
+                    view.detail(f"Top text-difference categories: {summary_text}")
 
         except Exception as e:
             results.append(
@@ -3903,14 +3962,10 @@ def compare(
                     "error": str(e),
                 }
             )
-            if verbosity != "quiet":
-                console.print(f"[red]✗[/red] {doc_dir.name}: {str(e)[:50]}")
+            view.status("error", doc_dir.name, str(e)[:50])
 
     # Summary
-    if verbosity != "quiet":
-        console.print("[dim]" + "─" * 60 + "[/dim]")
-        console.print()
-
+    if not view.is_quiet:
         successful = [r for r in results if r.get("success")]
         failed = [r for r in results if not r.get("success")]
 
@@ -3946,19 +4001,17 @@ def compare(
                 )
 
             if failed:
-                summary_stats["Failed"] = f"[red]{len(failed)}[/red]"
+                summary_stats["Failed"] = str(len(failed))
 
-            table = create_summary_table("Comparison Summary", summary_stats)
-            console.print(table)
-            console.print()
-
-            print_success(f"Reports saved to: {qa_qc_path}")
-            console.print(
-                "[dim]  Files: comparison_report.xlsx, comparison_report.csv[/dim]"
+            view.summary(summary_stats, title="Comparison Summary")
+            view.outputs(
+                {
+                    "Reports": str(qa_qc_path),
+                    "Files": "comparison_report.xlsx, comparison_report.csv",
+                }
             )
-            console.print()
         else:
-            print_warning("No documents were successfully compared")
+            view.warning("No documents were successfully compared")
     else:
         # Quiet mode - just print success count
         successful = len([r for r in results if r.get("success")])
@@ -4258,7 +4311,9 @@ def benchmark(
             sys.exit(1)
         return
 
-    print_header("PERFORMANCE BENCHMARK")
+    view = begin_run("benchmark", quiet=quiet, verbose=verbose)
+
+    view.header("PERFORMANCE BENCHMARK")
     config_info = {
         "Input": str(benchmark_path),
         "Run Manifests": str(metrics["manifest_count"]),
@@ -4266,8 +4321,7 @@ def benchmark(
     }
     if gate_profile is not None:
         config_info["Gate Profile"] = str(gate_profile)
-    console.print(create_config_table("Benchmark Input", config_info))
-    console.print()
+    view.config(config_info, title="Benchmark Input")
 
     summary_stats = {
         "Extraction Parity": f"{metrics['extraction_parity']:.2f}%"
@@ -4306,10 +4360,9 @@ def benchmark(
         else "N/A",
         "Total Errors": str(metrics["total_errors"]),
     }
-    console.print(create_summary_table("Performance Profile", summary_stats))
+    view.summary(summary_stats, title="Performance Profile")
 
     if baseline_comparison is not None:
-        console.print()
         baseline_stats = {
             "Baseline Label": baseline_comparison["baseline_label"] or "N/A",
             "Baseline Median Doc Time": f"{baseline_comparison['baseline_median_document_duration_seconds']:.2f}s"
@@ -4327,47 +4380,32 @@ def benchmark(
             if baseline_comparison["cost_delta_percent"] is not None
             else "N/A",
         }
-        console.print(
-            create_summary_table("Baseline Comparison", baseline_stats)
-        )
+        view.summary(baseline_stats, title="Baseline Comparison")
 
     if verbose and metrics["error_categories"]:
-        console.print()
-        console.print(
-            create_summary_table(
-                "Error Categories", metrics["error_categories"]
-            )
-        )
+        view.summary(metrics["error_categories"], title="Error Categories")
 
     if verbose and metrics["qaqc_qualitative_gate_counts"]:
-        console.print()
-        console.print(
-            create_summary_table(
-                "QA/QC Qualitative Gates",
-                metrics["qaqc_qualitative_gate_counts"],
-            )
+        view.summary(
+            metrics["qaqc_qualitative_gate_counts"],
+            title="QA/QC Qualitative Gates",
         )
 
     if snapshot_path is not None:
-        console.print()
-        print_info(f"Snapshot written to: {snapshot_path}")
+        view.status("info", f"Snapshot written to: {snapshot_path}")
 
     if gate_result["gates"]:
-        console.print()
-        gate_stats = {}
+        view.section("Benchmark Gates")
         for gate_name, gate in gate_result["gates"].items():
-            actual = gate["actual"]
-            threshold = gate["threshold"]
-            gate_stats[gate_name] = (
-                f"{'PASS' if gate['passed'] else 'FAIL'} (actual={actual}, threshold={threshold})"
+            view.status(
+                "success" if gate["passed"] else "error",
+                gate_name,
+                f"actual={gate['actual']}, threshold={gate['threshold']}",
             )
-        console.print(create_summary_table("Benchmark Gates", gate_stats))
-        console.print()
         if gate_result["overall_passed"]:
-            print_success("Benchmark gates passed")
+            view.success("Benchmark gates passed")
         else:
-            print_warning("Benchmark gates failed")
+            view.warning("Benchmark gates failed")
             sys.exit(1)
     else:
-        console.print()
-        print_info("No thresholds supplied; reported metrics only")
+        view.info("No thresholds supplied; reported metrics only")

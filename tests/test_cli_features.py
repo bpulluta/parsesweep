@@ -10,8 +10,7 @@ from streamline_extract.cli.ui import (
     print_success,
     print_warning,
     print_info,
-    create_config_table,
-    create_summary_table,
+    key_values,
     ask_confirm,
 )
 
@@ -241,32 +240,35 @@ class TestCreateLiveDashboard:
 
 
 class TestUIFunctions:
-    """Test UI utility functions."""
-    
-    def test_create_config_table(self):
-        """Test creating a config table."""
+    """Test the unified key/value renderer."""
+
+    def test_key_values_from_dict(self):
+        """A mapping renders as a titled table (no panel by default)."""
         config = {
             "Documents": "10 files",
             "Schema": "test_schema.json",
             "Output": "extracted/test/",
         }
-        
-        table = create_config_table("Test Config", config)
+        table = key_values(config, title="Test Config")
         assert table is not None
-        assert table.title == "📄 Test Config"
-    
-    def test_create_summary_table(self):
-        """Test creating a summary table."""
-        stats = {
-            "Processed": 10,
-            "Successful": 9,
-            "Failed": 1,
-            "Total Cost": "$0.50",
-        }
-        
-        table = create_summary_table("Test Summary", stats)
+        # Cohesive style: plain title, no decorative emoji prefix.
+        assert table.title == "Test Config"
+        assert table.row_count == 3
+
+    def test_key_values_from_rows(self):
+        """A sequence of (key, value) pairs renders the same way."""
+        rows = [("Processed", "10"), ("Successful", "9"), ("Failed", "1")]
+        table = key_values(rows)
         assert table is not None
-        assert table.title == "📊 Test Summary"
+        assert table.row_count == 3
+
+    def test_key_values_as_panel(self):
+        """as_panel wraps the table in a bordered panel with the title."""
+        from rich.panel import Panel
+
+        panel = key_values({"Total Cost": "$0.50"}, title="Summary", as_panel=True)
+        assert isinstance(panel, Panel)
+        assert panel.title == "Summary"
 
 
 class TestCostCalculationAccuracy:

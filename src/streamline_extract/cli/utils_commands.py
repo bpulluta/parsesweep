@@ -43,11 +43,16 @@ from streamline_extract.cli.ui import (
     print_info,
     print_warning,
     print_cost_estimate,
+    print_next_steps,
+    print_outputs,
     ask_choice,
     ask_confirm,
     ask_text,
     create_file_tree,
-    create_config_table,
+    key_values,
+    section,
+    rule,
+    status_item,
 )
 
 
@@ -664,27 +669,25 @@ def init_domain_schema_cmd(
             )
 
         if interactive:
-            console.print("[bold]Interactive Domain Schema Setup[/bold]")
+            section("Interactive Domain Schema Setup")
             console.print(
                 "Answer the prompts to create a lean starter schema.\n"
             )
 
         if interactive and not schema_name:
-            schema_name = click.prompt("Schema name")
+            schema_name = ask_text("Schema name")
         if interactive and not reference_schema:
-            reference_schema = click.prompt(
-                "Reference schema path", type=click.Path(exists=True)
-            )
+            reference_schema = ask_text("Reference schema path")
         if interactive and document_type is None:
-            if click.confirm(
+            if ask_confirm(
                 "Override the reference document type?", default=False
             ):
-                document_type = click.prompt("Document type")
+                document_type = ask_text("Document type")
         if interactive and domain_name is None:
-            if click.confirm(
+            if ask_confirm(
                 "Override the reference domain label?", default=False
             ):
-                domain_name = click.prompt("Domain label")
+                domain_name = ask_text("Domain label")
 
         if not schema_name:
             raise ArtifactCompilerError(
@@ -757,8 +760,7 @@ def init_domain_schema_cmd(
         print_header("Init Domain Schema")
         print_success("Lean starter schema created")
         console.print(
-            create_config_table(
-                "",
+            key_values(
                 {
                     "Schema Name": schema_name,
                     "Schema Path": output_path.as_posix(),
@@ -771,13 +773,15 @@ def init_domain_schema_cmd(
                         "main_data_array"
                     ],
                     "Selected Fields": ", ".join(main_item_fields),
-                },
+                }
             )
         )
-        console.print("\n[bold]Next Steps[/bold]")
-        for index, step in enumerate(result["next_steps"], start=1):
-            console.print(f'{index}. {step["title"]}')
-            console.print(f'   {step["command"]}', soft_wrap=True)
+        print_next_steps(
+            [
+                f'{step["title"]}\n     {step["command"]}'
+                for step in result["next_steps"]
+            ]
+        )
         console.print()
     except ArtifactCompilerError as exc:
         error_report = {
@@ -1370,13 +1374,11 @@ def _collect_existing_scaffold_targets(
 
 
 def _confirm_interactive_overwrite(existing_paths: list[Path]) -> bool:
-    console.print(
-        "\n[bold yellow]Existing scaffold targets detected[/bold yellow]"
-    )
+    section("Existing scaffold targets detected")
     for path in existing_paths:
-        console.print(f"  - {path.as_posix()}")
+        status_item("warning", path.as_posix())
     console.print()
-    return click.confirm("Overwrite existing scaffold files?", default=False)
+    return ask_confirm("Overwrite existing scaffold files?", default=False)
 
 
 def _resolve_init_domain_pack_inputs(
@@ -1405,15 +1407,15 @@ def _resolve_init_domain_pack_inputs(
         )
 
     if interactive:
-        console.print("[bold]Interactive Domain Pack Setup[/bold]")
+        section("Interactive Domain Pack Setup")
         console.print(
             "Answer the prompts to scaffold a new runtime-ready domain pack.\n"
         )
 
     if interactive and not pack_name:
-        pack_name = click.prompt("Pack name")
+        pack_name = ask_text("Pack name")
     if interactive and not schema_path:
-        schema_path = click.prompt("Schema path", type=click.Path(exists=True))
+        schema_path = ask_text("Schema path")
 
     if not pack_name:
         raise ArtifactCompilerError(
@@ -1425,69 +1427,59 @@ def _resolve_init_domain_pack_inputs(
         )
 
     if interactive and document_type is None:
-        if click.confirm("Override the schema document type?", default=False):
-            document_type = click.prompt("Document type")
+        if ask_confirm("Override the schema document type?", default=False):
+            document_type = ask_text("Document type")
 
     if interactive and not create_profile and not profile_tiering:
-        profile_mode = click.prompt(
+        profile_mode = ask_choice(
             "Profile scaffold mode",
-            type=click.Choice(
-                ["none", "single", "tiered"], case_sensitive=False
-            ),
+            choices=["none", "single", "tiered"],
             default="none",
-            show_choices=True,
         ).lower()
         create_profile = profile_mode == "single"
         profile_tiering = profile_mode == "tiered"
 
     if interactive and create_profile and profile_name == "default":
-        profile_name = click.prompt(
-            "Profile name", default="default", show_default=True
-        )
+        profile_name = ask_text("Profile name", default="default")
 
     if interactive and profile_tiering and profile_ref == "default":
-        profile_ref = click.prompt(
+        profile_ref = ask_choice(
             "Validation profile tier",
-            type=click.Choice(_profile_tier_names(), case_sensitive=False),
+            choices=_profile_tier_names(),
             default="dev",
-            show_choices=True,
         ).lower()
 
     if interactive and not create_workspace:
-        create_workspace = click.confirm(
+        create_workspace = ask_confirm(
             "Create workspace folders under documents/ processed/ and consolidated/?",
             default=False,
         )
 
     if interactive and not create_config:
-        create_config = click.confirm(
+        create_config = ask_confirm(
             "Create config/<domain>/ starter files?", default=True
         )
 
     if interactive and not create_sample_assets:
-        create_sample_assets = click.confirm(
+        create_sample_assets = ask_confirm(
             "Create placeholder sample source-document assets under documents/<domain>/?",
             default=False,
         )
 
     if interactive and template_mode is None:
-        template_mode = click.prompt(
+        template_mode = ask_choice(
             "Template mode",
-            type=click.Choice(
-                ["recommended", "minimal"], case_sensitive=False
-            ),
+            choices=["recommended", "minimal"],
             default="minimal",
-            show_choices=True,
         ).lower()
 
     template_mode = template_mode or "minimal"
 
     if interactive and output_root is None:
         output_root = _resolve_scaffold_root_input(
-            click.prompt(
+            ask_text(
                 "Pack output root",
                 default="schemas/domain_packs",
-                show_default=True,
             ),
             repo_root,
         )
@@ -1498,15 +1490,13 @@ def _resolve_init_domain_pack_inputs(
         and (create_profile or profile_tiering)
     ):
         profiles_root = _resolve_scaffold_root_input(
-            click.prompt(
-                "Profiles root", default="schemas/profiles", show_default=True
-            ),
+            ask_text("Profiles root", default="schemas/profiles"),
             repo_root,
         )
 
     if interactive and config_root is None and create_config:
         config_root = _resolve_scaffold_root_input(
-            click.prompt("Config root", default="config", show_default=True),
+            ask_text("Config root", default="config"),
             repo_root,
         )
 
@@ -1543,7 +1533,7 @@ def init():
     EXAMPLE:
         streamline-extract init
     """
-    print_header("🚀 StreamlineExtract Setup Wizard")
+    print_header("StreamlineExtract Setup Wizard")
 
     console.print("Let's set up your project!\n")
 
@@ -1554,11 +1544,11 @@ def init():
             f".env file already exists at {env_path}. Overwrite?",
             default=False,
         ):
-            console.print("[yellow]Keeping existing .env file[/yellow]\n")
+            print_info("Keeping existing .env file")
             return
 
     # API Provider Selection
-    console.print("[bold]Step 1: API Configuration[/bold]")
+    section("Step 1: API Configuration")
     provider = ask_choice(
         "Select API provider", choices=["azure", "openai"], default="azure"
     )
@@ -1566,7 +1556,7 @@ def init():
     env_content = []
 
     if provider == "azure":
-        console.print("\n[cyan]Azure OpenAI Configuration[/cyan]")
+        section("Azure OpenAI Configuration")
         api_key = ask_text("Azure OpenAI API Key")
         endpoint = ask_text(
             "Azure OpenAI Endpoint",
@@ -1582,7 +1572,7 @@ def init():
             "AZURE_OPENAI_API_VERSION=2025-04-01-preview",
         ]
     else:
-        console.print("\n[cyan]OpenAI Configuration[/cyan]")
+        section("OpenAI Configuration")
         api_key = ask_text("OpenAI API Key (starts with sk-)")
 
         env_content = [
@@ -1597,7 +1587,7 @@ def init():
     print_success(f"Created .env file at {env_path}")
 
     # Document Type Selection
-    console.print("\n[bold]Step 2: Document Type[/bold]")
+    section("Step 2: Document Type")
     doc_type = ask_choice(
         "What type of documents will you process?",
         choices=["tariffs", "ordinances", "permits", "custom"],
@@ -1605,7 +1595,7 @@ def init():
     )
 
     # Create directory structure
-    console.print("\n[bold]Step 3: Directory Structure[/bold]")
+    section("Step 3: Directory Structure")
 
     project_root = Path.cwd()
     docs_dir = project_root / "documents" / doc_type
@@ -1622,7 +1612,7 @@ def init():
     )
 
     # Schema selection
-    console.print("\n[bold]Step 4: Schema Selection[/bold]")
+    section("Step 4: Schema Selection")
 
     config = get_config()
     schemas = list(config.schema_dir.glob("*.json"))
@@ -1642,23 +1632,20 @@ def init():
             )
 
         if suggested_schema:
-            console.print(
-                f"[dim]Suggested schema: [cyan]{suggested_schema}[/cyan][/dim]"
-            )
+            print_info(f"Suggested schema: {suggested_schema}")
 
         if len(schema_names) > 1:
             console.print(f"\nAvailable schemas: {', '.join(schema_names)}")
 
     # Summary
-    console.print("\n" + "=" * 80)
-    print_success("Setup complete! 🎉")
-    console.print("\n[bold]Next steps:[/bold]")
-    console.print(f"  1. Add your documents to: [cyan]{docs_dir}[/cyan]")
-    console.print(
-        f"  2. Run extraction: [green]streamline-extract process {docs_dir}[/green]"
-    )
-    console.print(
-        f"  3. Consolidate results: [green]streamline-extract consolidate {processed_dir}[/green]"
+    rule()
+    print_success("Setup complete!")
+    print_next_steps(
+        [
+            f"Add your documents to: {docs_dir}",
+            f"Run extraction: streamline-extract process {docs_dir}",
+            f"Consolidate results: streamline-extract consolidate {processed_dir}",
+        ]
     )
     console.print()
 
@@ -1688,26 +1675,25 @@ def preview(document_path: str):
         )
         return
 
-    print_header(f"📄 Document Preview: {doc_path.name}")
+    print_header(f"Document Preview: {doc_path.name}")
 
     # Get file info
     file_size = doc_path.stat().st_size
     file_size_mb = file_size / (1024 * 1024)
 
-    console.print("[bold]Document Info[/bold]")
-    info_table = create_config_table(
-        "",
+    section("Document Info")
+    info_table = key_values(
         {
             "File": doc_path.name,
             "Size": f"{file_size_mb:.2f} MB",
             "Type": doc_path.suffix.upper(),
-        },
+        }
     )
     console.print(info_table)
 
     # Extract text to analyze
     try:
-        console.print("\n[dim]Analyzing document...[/dim]")
+        print_info("Analyzing document...")
         text = extract_text_from_document(doc_path)
         text_length = len(text)
 
@@ -1724,13 +1710,12 @@ def preview(document_path: str):
         # Estimate time (rough: 100 tokens per second)
         estimated_time = estimated_tokens / 100
 
-        console.print("\n[bold]Content Analysis[/bold]")
-        analysis_table = create_config_table(
-            "",
+        section("Content Analysis")
+        analysis_table = key_values(
             {
                 "Text Length": f"{text_length:,} characters",
                 "Estimated Tokens": f"~{estimated_tokens:,}",
-            },
+            }
         )
         console.print(analysis_table)
 
@@ -1761,16 +1746,14 @@ def preview(document_path: str):
                 break
 
         if matched_schema:
-            console.print("\n[bold]Schema Detection[/bold]")
-            console.print(
-                f"  ✓ Matched schema: [cyan]{matched_schema.name}[/cyan]"
-            )
+            section("Schema Detection")
+            status_item("success", f"Matched schema: {matched_schema.name}")
 
             # Load and show field count
             schema = load_schema(matched_schema)
             if "properties" in schema:
                 field_count = len(schema["properties"])
-                console.print(f"  [dim]Expected fields: {field_count}[/dim]")
+                status_item("info", f"Expected fields: {field_count}")
 
         # Cost estimate
         print_cost_estimate(
@@ -1782,13 +1765,13 @@ def preview(document_path: str):
         )
 
         # Show sample content
-        console.print("[bold]Sample Content Preview[/bold]")
+        section("Sample Content Preview")
         sample = text[:500].replace("\n", " ")
-        console.print(f"[dim]{sample}...[/dim]\n")
+        console.print(f"{sample}...\n")
 
-        console.print("[bold green]Ready to extract?[/bold green]")
+        section("Ready to Extract")
         console.print(
-            f"Run: [cyan]streamline-extract process {doc_path} --schema schemas/example_utility_rate_schema.json[/cyan]\n"
+            f"Run: streamline-extract process {doc_path} --schema schemas/example_utility_rate_schema.json\n"
         )
 
     except Exception as e:
@@ -1825,7 +1808,7 @@ def estimate(documents_path: str, workers: int, pages_csv: str):
         print_error(f"Path not found: {docs_path}")
         return
 
-    print_header("💰 Cost & Time Estimation")
+    print_header("Cost & Time Estimation")
 
     # Gather all documents
     if docs_path.is_file():
@@ -1847,7 +1830,7 @@ def estimate(documents_path: str, workers: int, pages_csv: str):
             )
             return
 
-    console.print(f"[dim]Analyzing {len(doc_files)} document(s)...[/dim]\n")
+    print_info(f"Analyzing {len(doc_files)} document(s)...")
 
     # Load page ranges if provided
     page_range_map = {}
@@ -1868,8 +1851,8 @@ def estimate(documents_path: str, workers: int, pages_csv: str):
             mapped_count = sum(
                 1 for v in page_range_map.values() if v is not None
             )
-            console.print(
-                f"[dim]Loaded page ranges for {mapped_count} file(s) from CSV[/dim]\n"
+            print_info(
+                f"Loaded page ranges for {mapped_count} file(s) from CSV"
             )
         except Exception as e:
             print_error(f"Failed to load page ranges CSV: {e}")
@@ -1914,7 +1897,7 @@ def estimate(documents_path: str, workers: int, pages_csv: str):
     estimated_minutes = total_seconds / 60
 
     # Display analysis
-    console.print("[bold]Document Analysis[/bold]")
+    section("Document Analysis")
     doc_info = {
         "Total Documents": str(len(doc_files)),
         "Sample Analyzed": f"{sample_size} files",
@@ -1932,29 +1915,27 @@ def estimate(documents_path: str, workers: int, pages_csv: str):
                 f"{files_with_ranges} file(s) with specific ranges"
             )
 
-    doc_table = create_config_table("", doc_info)
+    doc_table = key_values(doc_info)
     console.print(doc_table)
 
     # Display cost breakdown
-    console.print(f"\n[bold]Cost Breakdown ({model_name})[/bold]")
-    cost_table = create_config_table(
-        "",
+    section(f"Cost Breakdown ({model_name})")
+    cost_table = key_values(
         {
             "Input Tokens": f"~{estimated_tokens:,} @ ${input_cost_per_1m:.2f}/1M",
             "Output Tokens": f"~{int(output_tokens):,} @ ${output_cost_per_1m:.2f}/1M",
-            "Total Estimated Cost": f"[magenta bold]${total_cost:.2f}[/magenta bold]",
-        },
+            "Total Estimated Cost": f"${total_cost:.2f}",
+        }
     )
     console.print(cost_table)
 
     # Display time estimate
-    console.print("\n[bold]Time Estimate[/bold]")
-    time_table = create_config_table(
-        "",
+    section("Time Estimate")
+    time_table = key_values(
         {
             "Workers": str(workers),
             "Processing Time": f"~{estimated_minutes:.1f} minutes",
-        },
+        }
     )
     console.print(time_table)
 
@@ -1962,10 +1943,10 @@ def estimate(documents_path: str, workers: int, pages_csv: str):
     console.print()
     if ask_confirm("Proceed with extraction?", default=False):
         console.print(
-            f"\n[green]Run:[/green] [cyan]streamline-extract process {docs_path} --schema schemas/example_utility_rate_schema.json[/cyan]\n"
+            f"\nRun: streamline-extract process {docs_path} --schema schemas/example_utility_rate_schema.json\n"
         )
     else:
-        console.print("[yellow]Operation cancelled[/yellow]\n")
+        print_info("Operation cancelled")
 
 
 @click.command("validate-schema")
@@ -2016,7 +1997,7 @@ def validate_schema_cmd(schema_path: str):
         issues.append("Missing 'properties' field (required)")
 
     # Check StreamlineExtract metadata
-    console.print("\n[bold]StreamlineExtract Metadata[/bold]")
+    section("StreamlineExtract Metadata")
 
     if "$metadata" in schema:
         metadata = schema["$metadata"]
@@ -2039,8 +2020,8 @@ def validate_schema_cmd(schema_path: str):
 
         if extraction_metadata.get("identifier_fields"):
             id_fields = extraction_metadata["identifier_fields"]
-            console.print(
-                f"  [dim]Identifier fields: {', '.join(id_fields)}[/dim]"
+            status_item(
+                "info", f"Identifier fields: {', '.join(id_fields)}"
             )
         else:
             warnings.append(
@@ -2049,7 +2030,7 @@ def validate_schema_cmd(schema_path: str):
 
         if extraction_metadata.get("main_data_array"):
             main_array = extraction_metadata["main_data_array"]
-            console.print(f"  [dim]Main data array: {main_array}[/dim]")
+            status_item("info", f"Main data array: {main_array}")
         else:
             warnings.append(
                 "$metadata.extraction missing 'main_data_array' (required for extraction row generation)"
@@ -2058,14 +2039,15 @@ def validate_schema_cmd(schema_path: str):
         if deduplication_metadata:
             key_fields = deduplication_metadata.get("key_fields") or []
             if isinstance(key_fields, list) and key_fields:
-                console.print(
-                    f"  [dim]Deduplication key fields: {', '.join(key_fields)}[/dim]"
+                status_item(
+                    "info",
+                    f"Deduplication key fields: {', '.join(key_fields)}",
                 )
             else:
-                console.print("  [dim]Deduplication configured[/dim]")
+                status_item("info", "Deduplication configured")
         else:
-            console.print(
-                "  [dim]No deduplication config (optional in starter schemas)[/dim]"
+            status_item(
+                "info", "No deduplication config (optional in starter schemas)"
             )
     else:
         issues.append(
@@ -2073,21 +2055,21 @@ def validate_schema_cmd(schema_path: str):
         )
 
     # Summary
-    console.print("\n" + "=" * 80)
+    rule()
 
     if issues:
-        console.print("\n[bold red]❌ Issues Found:[/bold red]")
+        section("Issues Found")
         for issue in issues:
-            console.print(f"  • {issue}")
+            status_item("error", issue)
         console.print()
     elif warnings:
-        console.print("\n[bold yellow]⚠ Recommendations:[/bold yellow]")
+        section("Recommendations")
         for warning in warnings:
-            console.print(f"  • {warning}")
+            status_item("warning", warning)
         console.print()
-        print_success("\nSchema is valid but could be improved! ✨")
+        print_success("Schema is valid but could be improved!")
     else:
-        print_success("\nSchema is perfect! ✨")
+        print_success("Schema is perfect!")
 
     console.print()
 
@@ -2169,8 +2151,7 @@ def validate_runtime_cmd(
 
     print_header("Runtime Validation")
     print_success("Runtime onboarding seam is ready")
-    summary = create_config_table(
-        "",
+    summary = key_values(
         {
             "Pack": report["resolved"]["pack_name"],
             "Profile": report["resolved"]["profile_name"],
@@ -2186,15 +2167,16 @@ def validate_runtime_cmd(
             "Enabled Modules": ", ".join(
                 report["resolved"]["enabled_module_ids"]
             ),
-        },
+        }
     )
     console.print(summary)
 
-    console.print("\n[bold]Checks[/bold]")
+    section("Checks")
     for check in report["checks"]:
-        label = "PASS" if check["status"] == "pass" else "WARN"
-        console.print(
-            f"  [{ 'green' if check['status'] == 'pass' else 'yellow' }]{label}[/{ 'green' if check['status'] == 'pass' else 'yellow' }] {check['name']}: {check['detail']}"
+        passed = check["status"] == "pass"
+        status_item(
+            "success" if passed else "warning",
+            f"{check['name']}: {check['detail']}",
         )
 
     console.print()
@@ -2613,8 +2595,7 @@ def init_domain_pack_cmd(
             f"Sample asset scaffold created ({len(created_sample_asset_paths)} path entries)"
         )
     console.print(
-        create_config_table(
-            "",
+        key_values(
             {
                 "Pack Name": pack_name,
                 "Pack Path": pack_path.as_posix(),
@@ -2640,16 +2621,18 @@ def init_domain_pack_cmd(
                 "Artifact": readiness["resolved"]["artifact_id"].rsplit(
                     "/", 1
                 )[-1],
-            },
+            }
         )
     )
-    console.print("\n[bold]Next Steps[/bold]")
-    for index, step in enumerate(result["next_steps"], start=1):
-        console.print(f'{index}. {step["title"]}')
+    next_step_lines: list[str] = []
+    for step in result["next_steps"]:
+        lines = [step["title"]]
         if "detail" in step:
-            console.print(f'   {step["detail"]}', soft_wrap=True)
+            lines.append(f'   {step["detail"]}')
         if "command" in step:
-            console.print(f'   {step["command"]}', soft_wrap=True)
+            lines.append(f'   {step["command"]}')
+        next_step_lines.append("\n     ".join(lines))
+    print_next_steps(next_step_lines)
 
     console.print()
 
@@ -2688,47 +2671,65 @@ def config(show_runtime_catalog: bool, output_format: str):
     print_header("Configuration")
 
     # API Configuration
-    console.print("[bold]API Configuration[/bold]")
+    section("API Configuration")
 
     azure_key = os.getenv("AZURE_OPENAI_API_KEY")
     azure_endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")
     openai_key = os.getenv("OPENAI_API_KEY")
 
     if azure_key and azure_endpoint:
-        console.print("  Provider: [magenta]Azure OpenAI[/magenta]")
-        console.print(f"  Endpoint: [dim]{azure_endpoint}[/dim]")
         console.print(
-            f"  Model: [dim]{os.getenv('AZURE_OPENAI_MODEL', 'Not set')}[/dim]"
+            key_values(
+                {
+                    "Provider": "Azure OpenAI",
+                    "Endpoint": azure_endpoint,
+                    "Model": os.getenv("AZURE_OPENAI_MODEL", "Not set"),
+                    "API Key": f"{'*' * 20}...{azure_key[-4:]}",
+                }
+            )
         )
-        console.print(f"  API Key: [dim]{'*' * 20}...{azure_key[-4:]}[/dim]")
     elif openai_key:
-        console.print("  Provider: [cyan]OpenAI[/cyan]")
-        console.print(f"  API Key: [dim]{'*' * 20}...{openai_key[-4:]}[/dim]")
+        console.print(
+            key_values(
+                {
+                    "Provider": "OpenAI",
+                    "API Key": f"{'*' * 20}...{openai_key[-4:]}",
+                }
+            )
+        )
     else:
-        console.print("  [yellow]No API credentials configured[/yellow]")
-        console.print("  [dim]Run 'streamline-extract init' to set up[/dim]")
+        print_warning(
+            "No API credentials configured",
+            "Run 'streamline-extract init' to set up",
+        )
 
     # Paths
     config_obj = get_config()
-    console.print("\n[bold]Paths[/bold]")
-    console.print(f"  Project Root: [dim]{config_obj.project_root}[/dim]")
-    console.print(f"  Schemas: [dim]{config_obj.schema_dir}[/dim]")
+    section("Paths")
+    console.print(
+        key_values(
+            {
+                "Project Root": str(config_obj.project_root),
+                "Schemas": str(config_obj.schema_dir),
+            }
+        )
+    )
 
     # Available schemas
     schemas = list(config_obj.schema_dir.glob("*.json"))
     if schemas:
-        console.print("\n[bold]Available Schemas[/bold]")
+        section("Available Schemas")
         for schema in schemas:
-            console.print(f"  • {schema.name}")
+            status_item("info", schema.name)
 
     if show_runtime_catalog:
-        console.print("\n[bold]Runtime Variable Catalog[/bold]")
+        section("Runtime Variable Catalog")
         for section_name in ("processing", "consolidation", "acquisition"):
             entries = VARIABLE_CATALOG.get(section_name, [])
             if not entries:
                 continue
 
-            console.print(f"\n[bold]{section_name.title()}[/bold]")
+            section(section_name.title())
             grouped = {"required": [], "optional": [], "advanced": []}
             for entry in entries:
                 grouped.setdefault(entry.get("level", "optional"), []).append(
@@ -2739,10 +2740,11 @@ def config(show_runtime_catalog: bool, output_format: str):
                 level_entries = grouped.get(level) or []
                 if not level_entries:
                     continue
-                console.print(f"  [bold]{level.title()}[/bold]")
+                section(level.title())
                 for entry in level_entries:
-                    console.print(
-                        f"    • {entry['name']}: [dim]{entry['description']}[/dim]"
+                    status_item(
+                        "info",
+                        f"{entry['name']}: {entry['description']}",
                     )
 
     console.print()

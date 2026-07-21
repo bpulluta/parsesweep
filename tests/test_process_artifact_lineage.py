@@ -1676,7 +1676,10 @@ def test_run_qaqc_extraction_prints_compare_command_with_selected_lane(tmp_path,
     )
 
     captured = capsys.readouterr().out
-    assert 'QA/QC Lane: qualitative' in captured
+    # The selected lane is shown in the configuration snapshot (rendered as a
+    # key/value table by the shared design system) and echoed in the follow-up
+    # compare command.
+    assert 'QA/QC Lane' in captured and 'qualitative' in captured
     assert 'pixi run streamline-extract compare' in captured
     assert '--qaqc-lane qualitative' in captured
 
