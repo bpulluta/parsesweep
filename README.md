@@ -4,9 +4,9 @@
 [![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
 [![Version](https://img.shields.io/badge/version-2.0.1-green.svg)](https://github.com/bpulluta/parsesweep/releases)
 
-**Transform unstructured documents into structured data in minutes, not hours.**
+**Transform unstructured documents into structured data**
 
-ParseSweep uses AI to extract structured data from documents and consolidate it into Excel/CSV. No manual data entry, no complex parsing—just define what you need with a JSON schema and let the AI do the work.
+ParseSweep uses generative AI to acquire and extract structured data from documents and consolidate it into Excel/CSV. No manual data entry, no complex parsing—just define what you need with a JSON schema and let the AI do the work.
 
 ### ✨ Key Features
 
