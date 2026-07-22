@@ -6,7 +6,7 @@ like when applied to one pipeline step. Reuse the same shape for `process`,
 `consolidate`, and their sub-steps. (QA/QC deferred — work in progress.)
 
 ## What the acquire step is
-Entry point `AcquisitionEngine.run()` (`src/streamline_extract/acquisition/engine.py`).
+Entry point `AcquisitionEngine.run()` (`src/psweep/acquisition/engine.py`).
 Stages: target load → SerpApi seek (`connectors/serpapi_seeker.py`) → candidate
 selection (`candidate_selector.py`) + ranking (`link_prioritizer.py`) → routing/crawl
 (`connectors/digger.py`) → download → keyword classify → LLM review
@@ -91,7 +91,7 @@ pixi run python -m pytest tests/ -q
 # strict-load every shipped config
 pixi run python - <<'PY'
 from pathlib import Path, PurePath
-from streamline_extract.config.runtime_config_loader import load_runtime_config_file, resolve_command_config
+from psweep.config.runtime_config_loader import load_runtime_config_file, resolve_command_config
 import glob
 for p in sorted(glob.glob('config/*/run.yaml')):
     d = load_runtime_config_file(Path(p))
@@ -101,5 +101,5 @@ for p in sorted(glob.glob('config/*/run.yaml')):
     print('OK', p)
 PY
 # bounded live pass:  set -a && . ./.env && set +a
-pixi run streamline-extract acquire --config config/industrial_pump_datasheets/run.yaml
+pixi run psweep acquire --config config/industrial_pump_datasheets/run.yaml
 ```

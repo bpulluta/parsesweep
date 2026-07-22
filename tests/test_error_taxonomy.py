@@ -1,6 +1,6 @@
 """Tests for canonical runtime error taxonomy helpers."""
 
-from streamline_extract.utils.error_taxonomy import build_error_record, summarize_error_records
+from psweep.utils.error_taxonomy import build_error_record, summarize_error_records
 
 
 def test_build_error_record_classifies_file_not_found() -> None:

@@ -2,7 +2,7 @@ import json
 
 from click.testing import CliRunner
 
-from streamline_extract.cli.main import cli
+from psweep.cli.main import cli
 
 
 def test_process_validate_config_with_run_yaml(tmp_path):

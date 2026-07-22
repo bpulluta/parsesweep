@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from streamline_extract.acquisition.engine import AcquisitionEngine
+from psweep.acquisition.engine import AcquisitionEngine
 
 
 def _write_doc(tmp_path: Path, name: str, text: str) -> str:

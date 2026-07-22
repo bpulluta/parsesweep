@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from streamline_extract.acquisition.connectors import SerpApiSeeker, SeekerInput
+from psweep.acquisition.connectors import SerpApiSeeker, SeekerInput
 
 
 class TestSerpApiSeekerConnector:

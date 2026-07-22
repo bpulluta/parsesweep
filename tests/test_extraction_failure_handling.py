@@ -5,9 +5,9 @@ from unittest.mock import patch
 
 import pytest
 
-from streamline_extract.extraction.document_extractor import DocumentExtractor
-from streamline_extract.extraction.llm_client import LLMClient
-from streamline_extract.utils.exceptions import ExtractionError
+from psweep.extraction.document_extractor import DocumentExtractor
+from psweep.extraction.llm_client import LLMClient
+from psweep.utils.exceptions import ExtractionError
 
 
 def test_document_extractor_propagates_llm_failure() -> None:
@@ -22,7 +22,7 @@ def test_llm_client_raises_on_empty_response() -> None:
     client = LLMClient(api_key="test-key", model="gpt-4o-mini", provider="openai")
     response = SimpleNamespace(choices=[])
 
-    with patch("streamline_extract.extraction.llm_client.completion", return_value=response):
+    with patch("psweep.extraction.llm_client.completion", return_value=response):
         with pytest.raises(ExtractionError, match="Empty response"):
             client.extract("sample text", {"type": "object", "properties": {}})
 
@@ -30,7 +30,7 @@ def test_llm_client_raises_on_empty_response() -> None:
 def test_llm_client_raises_on_provider_exception() -> None:
     client = LLMClient(api_key="test-key", model="gpt-4o-mini", provider="openai")
 
-    with patch("streamline_extract.extraction.llm_client.completion", side_effect=RuntimeError("context_length_exceeded")):
+    with patch("psweep.extraction.llm_client.completion", side_effect=RuntimeError("context_length_exceeded")):
         with pytest.raises(ExtractionError, match="context_length_exceeded"):
             client.extract("sample text", {"type": "object", "properties": {}})
 
@@ -46,7 +46,7 @@ def test_llm_client_preflight_rejects_oversized_request_before_provider_call() -
     )
     oversized_text = "x" * 1_300_000
 
-    with patch("streamline_extract.extraction.llm_client.completion") as completion_mock:
+    with patch("psweep.extraction.llm_client.completion") as completion_mock:
         with pytest.raises(ExtractionError, match="context_window_exceeded"):
             client.extract(oversized_text, {"type": "object", "properties": {}})
 
@@ -59,7 +59,7 @@ def test_llm_client_no_context_guard_when_window_unset() -> None:
     client = LLMClient(api_key="test-key", model="some-model", provider="azure")
     oversized_text = "x" * 1_300_000
 
-    with patch("streamline_extract.extraction.llm_client.completion") as completion_mock:
+    with patch("psweep.extraction.llm_client.completion") as completion_mock:
         completion_mock.side_effect = RuntimeError("reached provider")
         with pytest.raises(ExtractionError):
             client.extract(oversized_text, {"type": "object", "properties": {}})

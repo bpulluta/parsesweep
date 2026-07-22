@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from streamline_extract.extraction.page_locator import PageLocator
+from psweep.extraction.page_locator import PageLocator
 
 
 class _FakeClient:
@@ -129,7 +129,7 @@ class TestProcessIntegration:
     def test_apply_page_targeting_respects_manual_and_size(
         self, tmp_path, monkeypatch
     ):
-        from streamline_extract.cli import commands
+        from psweep.cli import commands
 
         big = tmp_path / "big.pdf"
         big.write_bytes(b"%PDF fake")
@@ -145,11 +145,11 @@ class TestProcessIntegration:
             manual: ["x" * 300_000],
         }
         monkeypatch.setattr(
-            "streamline_extract.extraction.pdf_utils.extract_pages_text",
+            "psweep.extraction.pdf_utils.extract_pages_text",
             lambda p: page_text[Path(p)],
         )
         monkeypatch.setattr(
-            "streamline_extract.extraction.page_locator.PageLocator.locate",
+            "psweep.extraction.page_locator.PageLocator.locate",
             lambda self, doc, pages=None: (5, 9),
         )
 
@@ -170,7 +170,7 @@ class TestProcessIntegration:
     def test_apply_page_targeting_noop_without_description(
         self, tmp_path, monkeypatch, capsys
     ):
-        from streamline_extract.cli import commands
+        from psweep.cli import commands
 
         doc = tmp_path / "d.pdf"
         doc.write_bytes(b"%PDF fake")

@@ -5,7 +5,7 @@ argument-hint: <module/step name, e.g. process | consolidate | curate>
 
 # Audit & clean a pipeline module: $1
 
-You are auditing and cleaning **$1** in StreamlineExtract so it becomes universal,
+You are auditing and cleaning **$1** in ParseSweep so it becomes universal,
 clean, modular, configurable, optimized, and scalable across many domains — with
 **no hardcoding of domain-specific logic, no redundancy, and no dead/legacy code**.
 

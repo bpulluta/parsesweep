@@ -21,7 +21,7 @@ from urllib.parse import urlparse
 
 import pytest
 
-from streamline_extract.acquisition.connectors import (
+from psweep.acquisition.connectors import (
     DiggerArtifact,
     DiggerInput,
     NullDiggerConnector,

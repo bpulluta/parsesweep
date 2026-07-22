@@ -3,7 +3,7 @@
 import json
 from pathlib import Path
 
-from streamline_extract.cli.commands import _build_run_manifest, _write_run_manifest
+from psweep.cli.commands import _build_run_manifest, _write_run_manifest
 
 
 def test_build_run_manifest_sorts_documents_and_output_records() -> None:

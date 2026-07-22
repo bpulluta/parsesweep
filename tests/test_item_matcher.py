@@ -9,7 +9,7 @@ import logging
 
 import pytest
 import pandas as pd
-from streamline_extract.utils.item_matcher import (
+from psweep.utils.item_matcher import (
     get_nested_value,
     create_item_key,
     create_item_index,

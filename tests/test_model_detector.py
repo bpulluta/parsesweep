@@ -43,12 +43,12 @@ class TestModelDetector:
 
     def test_import_model_detector(self):
         """Test that ModelDetector can be imported."""
-        from streamline_extract.qa_qc.model_detector import ModelDetector
+        from psweep.qa_qc.model_detector import ModelDetector
         assert ModelDetector is not None
 
     def test_import_from_init(self):
         """Test that ModelDetector can be imported from qa_qc package."""
-        from streamline_extract.qa_qc import ModelDetector
+        from psweep.qa_qc import ModelDetector
         assert ModelDetector is not None
 
 
@@ -82,7 +82,7 @@ class TestGetQaModels:
 
     def test_custom_models_two(self):
         """Test custom QAQC_MODELS with 2 models."""
-        from streamline_extract.qa_qc.model_detector import ModelDetector
+        from psweep.qa_qc.model_detector import ModelDetector
         
         os.environ["QAQC_MODELS"] = "model-a,model-b"
         models = ModelDetector.get_qa_models()
@@ -92,7 +92,7 @@ class TestGetQaModels:
 
     def test_custom_models_three(self):
         """Test custom QAQC_MODELS with 3 models."""
-        from streamline_extract.qa_qc.model_detector import ModelDetector
+        from psweep.qa_qc.model_detector import ModelDetector
         
         os.environ["QAQC_MODELS"] = "gpt-4o,gpt-4-turbo,gpt-3.5-turbo"
         models = ModelDetector.get_qa_models()
@@ -102,7 +102,7 @@ class TestGetQaModels:
 
     def test_custom_models_five(self):
         """Test custom QAQC_MODELS with 5 models."""
-        from streamline_extract.qa_qc.model_detector import ModelDetector
+        from psweep.qa_qc.model_detector import ModelDetector
         
         os.environ["QAQC_MODELS"] = "m1,m2,m3,m4,m5"
         models = ModelDetector.get_qa_models()
@@ -112,7 +112,7 @@ class TestGetQaModels:
 
     def test_custom_models_strips_whitespace(self):
         """Test that whitespace is stripped from model names."""
-        from streamline_extract.qa_qc.model_detector import ModelDetector
+        from psweep.qa_qc.model_detector import ModelDetector
         
         os.environ["QAQC_MODELS"] = "  model-a , model-b  ,  model-c  "
         models = ModelDetector.get_qa_models()
@@ -121,7 +121,7 @@ class TestGetQaModels:
 
     def test_custom_models_removes_duplicates(self):
         """Test that duplicate models are removed."""
-        from streamline_extract.qa_qc.model_detector import ModelDetector
+        from psweep.qa_qc.model_detector import ModelDetector
         
         os.environ["QAQC_MODELS"] = "model-a,model-b,model-a,model-c,model-b"
         models = ModelDetector.get_qa_models()
@@ -131,7 +131,7 @@ class TestGetQaModels:
 
     def test_custom_models_single_fails(self):
         """Test that single model raises ValueError."""
-        from streamline_extract.qa_qc.model_detector import ModelDetector
+        from psweep.qa_qc.model_detector import ModelDetector
         
         os.environ["QAQC_MODELS"] = "only-one-model"
         
@@ -142,7 +142,7 @@ class TestGetQaModels:
 
     def test_custom_models_empty_falls_back_to_defaults(self):
         """Test empty QAQC_MODELS falls back to defaults."""
-        from streamline_extract.qa_qc.model_detector import ModelDetector
+        from psweep.qa_qc.model_detector import ModelDetector
         
         os.environ["QAQC_MODELS"] = ""
         os.environ["OPENAI_API_KEY"] = "sk-test"  # Use OpenAI defaults
@@ -153,7 +153,7 @@ class TestGetQaModels:
 
     def test_azure_defaults(self):
         """Test Azure OpenAI defaults are returned."""
-        from streamline_extract.qa_qc.model_detector import ModelDetector
+        from psweep.qa_qc.model_detector import ModelDetector
         
         os.environ["AZURE_OPENAI_API_KEY"] = "azure-test-key"
         os.environ["AZURE_OPENAI_ENDPOINT"] = "https://test.openai.azure.com"
@@ -164,7 +164,7 @@ class TestGetQaModels:
 
     def test_openai_defaults(self):
         """Test OpenAI defaults are returned when no Azure config."""
-        from streamline_extract.qa_qc.model_detector import ModelDetector
+        from psweep.qa_qc.model_detector import ModelDetector
         
         os.environ["OPENAI_API_KEY"] = "sk-test"
         
@@ -174,7 +174,7 @@ class TestGetQaModels:
 
     def test_defaults_have_at_least_two_models(self):
         """Test that both default model lists have at least 2 models."""
-        from streamline_extract.qa_qc.model_detector import ModelDetector
+        from psweep.qa_qc.model_detector import ModelDetector
         
         assert len(ModelDetector.AZURE_QA_MODELS) >= 2
         assert len(ModelDetector.OPENAI_QA_MODELS) >= 2
@@ -202,7 +202,7 @@ class TestGetProvider:
 
     def test_azure_provider(self):
         """Test Azure provider detection."""
-        from streamline_extract.qa_qc.model_detector import ModelDetector
+        from psweep.qa_qc.model_detector import ModelDetector
         
         os.environ["AZURE_OPENAI_API_KEY"] = "azure-test-key"
         os.environ["AZURE_OPENAI_ENDPOINT"] = "https://test.openai.azure.com"
@@ -213,7 +213,7 @@ class TestGetProvider:
 
     def test_openai_provider_default(self):
         """Test OpenAI provider is default."""
-        from streamline_extract.qa_qc.model_detector import ModelDetector
+        from psweep.qa_qc.model_detector import ModelDetector
         
         provider = ModelDetector.get_provider()
         
@@ -221,7 +221,7 @@ class TestGetProvider:
 
     def test_openai_when_only_key_no_endpoint(self):
         """Test OpenAI is returned when only Azure key but no endpoint."""
-        from streamline_extract.qa_qc.model_detector import ModelDetector
+        from psweep.qa_qc.model_detector import ModelDetector
         
         os.environ["AZURE_OPENAI_API_KEY"] = "azure-test-key"
         # No endpoint set
@@ -236,7 +236,7 @@ class TestValidateModels:
 
     def test_validate_valid_models(self):
         """Test validation passes with valid models."""
-        from streamline_extract.qa_qc.model_detector import ModelDetector
+        from psweep.qa_qc.model_detector import ModelDetector
         
         # Should not raise
         ModelDetector.validate_models(["model-a", "model-b"])
@@ -244,7 +244,7 @@ class TestValidateModels:
 
     def test_validate_empty_list_fails(self):
         """Test validation fails with empty list."""
-        from streamline_extract.qa_qc.model_detector import ModelDetector
+        from psweep.qa_qc.model_detector import ModelDetector
         
         with pytest.raises(ValueError) as exc_info:
             ModelDetector.validate_models([])
@@ -253,7 +253,7 @@ class TestValidateModels:
 
     def test_validate_single_model_fails(self):
         """Test validation fails with single model."""
-        from streamline_extract.qa_qc.model_detector import ModelDetector
+        from psweep.qa_qc.model_detector import ModelDetector
         
         with pytest.raises(ValueError) as exc_info:
             ModelDetector.validate_models(["only-one"])
@@ -262,7 +262,7 @@ class TestValidateModels:
 
     def test_validate_duplicates_fails(self):
         """Test validation fails with duplicate models."""
-        from streamline_extract.qa_qc.model_detector import ModelDetector
+        from psweep.qa_qc.model_detector import ModelDetector
         
         with pytest.raises(ValueError) as exc_info:
             ModelDetector.validate_models(["model-a", "model-b", "model-a"])
@@ -297,7 +297,7 @@ class TestGetModelInfo:
 
     def test_get_model_info_structure(self):
         """Test get_model_info returns expected structure."""
-        from streamline_extract.qa_qc.model_detector import ModelDetector
+        from psweep.qa_qc.model_detector import ModelDetector
         
         os.environ["OPENAI_API_KEY"] = "sk-test"
         
@@ -311,7 +311,7 @@ class TestGetModelInfo:
 
     def test_get_model_info_with_custom_models(self):
         """Test get_model_info shows custom models are set."""
-        from streamline_extract.qa_qc.model_detector import ModelDetector
+        from psweep.qa_qc.model_detector import ModelDetector
         
         os.environ["QAQC_MODELS"] = "custom-model-1,custom-model-2"
         

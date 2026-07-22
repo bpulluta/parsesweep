@@ -4,7 +4,7 @@ import json
 import re
 from pathlib import Path
 
-from streamline_extract.acquisition import AcquisitionEngine, AcquisitionRequest
+from psweep.acquisition import AcquisitionEngine, AcquisitionRequest
 
 
 def _fixture_path(name: str) -> Path:

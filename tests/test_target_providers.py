@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from streamline_extract.acquisition.targets import (
+from psweep.acquisition.targets import (
     CrossProductTargetProvider,
     CsvTargetProvider,
     DatasetTargetProvider,

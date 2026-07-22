@@ -1,12 +1,12 @@
-# StreamlineExtract
+# ParseSweep
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
-[![Version](https://img.shields.io/badge/version-2.0.1-green.svg)](https://github.com/bpulluta/StreamlineExtract/releases)
+[![Version](https://img.shields.io/badge/version-2.0.1-green.svg)](https://github.com/bpulluta/parsesweep/releases)
 
 **Transform unstructured documents into structured data in minutes, not hours.**
 
-StreamlineExtract uses AI to extract structured data from documents and consolidate it into Excel/CSV. No manual data entry, no complex parsing—just define what you need with a JSON schema and let the AI do the work.
+ParseSweep uses AI to extract structured data from documents and consolidate it into Excel/CSV. No manual data entry, no complex parsing—just define what you need with a JSON schema and let the AI do the work.
 
 ### ✨ Key Features
 
@@ -65,23 +65,23 @@ Works with any document type: regulations, contracts, research papers, permits, 
 curl -fsSL https://pixi.sh/install.sh | bash
 
 # 2. Clone and setup
-git clone https://github.com/bpulluta/StreamlineExtract.git
-cd StreamlineExtract
+git clone https://github.com/bpulluta/parsesweep.git
+cd ParseSweep
 pixi install  # Installs Python 3.12 and all dependencies automatically
 
 # 3. Configure API credentials (interactive wizard)
-pixi run streamline-extract init
+pixi run psweep init
 # → Walks you through Azure OpenAI or OpenAI setup
 # → Creates .env file with your credentials
 
 # 4. Extract data from documents to JSON
-pixi run streamline-extract process documents/examples/ \
+pixi run psweep process documents/examples/ \
   --schema schemas/example_utility_rate_schema.json
 # → Extracts structured data using the example schema
 # → Outputs to processed/examples/*.json
 
 # 5. Consolidate JSON files to Excel/CSV
-pixi run streamline-extract consolidate processed/examples/ \
+pixi run psweep consolidate processed/examples/ \
   --schema schemas/example_utility_rate_schema.json
 # → Merges all JSON files with smart deduplication
 # → Outputs to consolidated/examples/output.xlsx and .csv
@@ -93,7 +93,7 @@ pixi run streamline-extract consolidate processed/examples/ \
 
 ## Architecture
 
-StreamlineExtract operates on one contract-first runtime.
+ParseSweep operates on one contract-first runtime.
 
 Core design rules:
 - One active runtime path for `process`, `compare`, and `consolidate`
@@ -141,13 +141,13 @@ When you are starting from raw source documents only, use the current runtime in
 1. Inspect 1-3 representative documents under `documents/<domain>/`.
 2. Create a lean first-pass schema under `schemas/personal/`.
 ```bash
-pixi run streamline-extract init-domain-schema \
+pixi run psweep init-domain-schema \
   --name your_domain \
   --reference-schema schemas/personal/geothermal_ordinance_schema.json
 ```
 If you already know the first few fields you want, trim the starter immediately:
 ```bash
-pixi run streamline-extract init-domain-schema \
+pixi run psweep init-domain-schema \
   --name your_domain \
   --reference-schema schemas/personal/geothermal_ordinance_schema.json \
   --include-field feature \
@@ -165,11 +165,11 @@ pixi run streamline-extract init-domain-schema \
   - keep pack responsibility to runtime modules, QA/QC behavior, and environment-specific runtime config
 5. Validate the schema:
 ```bash
-pixi run streamline-extract validate-schema schemas/personal/your_domain_schema.json
+pixi run psweep validate-schema schemas/personal/your_domain_schema.json
 ```
 6. Scaffold the runtime pack, config, and workspace folders:
 ```bash
-pixi run streamline-extract init-domain-pack \
+pixi run psweep init-domain-pack \
   --name your_domain \
   --schema schemas/personal/your_domain_schema.json \
   --with-workspace \
@@ -179,7 +179,7 @@ pixi run streamline-extract init-domain-pack \
    - use `--template-mode recommended` only when you explicitly want the extra QA/QC-oriented guidance
 7. Validate the runtime seam:
 ```bash
-pixi run streamline-extract validate-runtime \
+pixi run psweep validate-runtime \
   --pack schemas/domain_packs/your_domain/pack.yaml \
   --profile default
 ```
@@ -201,16 +201,16 @@ Starter references that work well today:
 
 Solar example:
 ```bash
-pixi run streamline-extract init-domain-schema \
+pixi run psweep init-domain-schema \
   --name solar \
   --reference-schema schemas/personal/solar_ordinance_schema.json
 
-pixi run streamline-extract process documents/solar/ \
+pixi run psweep process documents/solar/ \
   --schema schemas/personal/solar_ordinance_schema.json \
   --profile default \
   --pages-csv config/solar/page_ranges.csv
 
-pixi run streamline-extract consolidate processed/solar \
+pixi run psweep consolidate processed/solar \
   --schema schemas/personal/solar_ordinance_schema.json
 ```
 
@@ -220,9 +220,9 @@ If you want Copilot to drive this workflow, use the workspace prompt `/greenfiel
 
 ## Project Structure
 
-StreamlineExtract organizes your work into a simple folder structure:
+ParseSweep organizes your work into a simple folder structure:
 
-![StreamlineExtract Architecture](src/streamline_extract/img/image.png)
+![ParseSweep Architecture](src/psweep/img/image.png)
 
 **Workflow:**
 1. Put documents in `documents/topic/`
@@ -259,8 +259,8 @@ StreamlineExtract organizes your work into a simple folder structure:
 curl -fsSL https://pixi.sh/install.sh | bash
 
 # 2. Clone repository
-git clone https://github.com/bpulluta/StreamlineExtract.git
-cd StreamlineExtract
+git clone https://github.com/bpulluta/parsesweep.git
+cd ParseSweep
 
 # 3. Install dependencies (takes ~2-3 minutes, installs Python 3.12 + all packages)
 pixi install
@@ -268,8 +268,8 @@ pixi install
 
 ✅ **Verify installation:**
 ```bash
-pixi run streamline-extract --version
-# Should output: streamline-extract, version 2.0.1
+pixi run psweep --version
+# Should output: psweep, version 2.0.1
 ```
 
 ---
@@ -279,7 +279,7 @@ pixi run streamline-extract --version
 ### Option 1: Interactive Setup (Recommended)
 
 ```bash
-pixi run streamline-extract init
+pixi run psweep init
 ```
 
 The wizard will guide you through:
@@ -291,11 +291,11 @@ The wizard will guide you through:
 
 **After setup, test your configuration:**
 ```bash
-pixi run streamline-extract config
+pixi run psweep config
 # Displays your current settings (credentials are hidden)
 
 # Optional: Test with a single document
-pixi run streamline-extract preview documents/examples/sample_utility_rate.txt
+pixi run psweep preview documents/examples/sample_utility_rate.txt
 ```
 
 ### Option 2: Manual Setup
@@ -314,7 +314,7 @@ OPENAI_API_KEY=sk-your-api-key-here
 
 **Verify manual configuration:**
 ```bash
-pixi run streamline-extract config
+pixi run psweep config
 # Should show your API provider and model (no errors)
 ```
 
@@ -328,11 +328,11 @@ Here's a typical end-to-end workflow:
 
 ```bash
 # 1. Estimate costs before processing (optional but recommended)
-pixi run streamline-extract estimate documents/examples/
+pixi run psweep estimate documents/examples/
 # → Shows estimated documents count, cost, and processing time
 
 # 2. Extract data from documents
-pixi run streamline-extract process documents/examples/ \
+pixi run psweep process documents/examples/ \
   --schema schemas/example_utility_rate_schema.json \
   --live-dashboard
 # → Processes each document with real-time progress
@@ -342,7 +342,7 @@ pixi run streamline-extract process documents/examples/ \
 cat processed/examples/sample_doc.json | head -50
 
 # 4. Consolidate all JSON files
-pixi run streamline-extract consolidate processed/examples/ \
+pixi run psweep consolidate processed/examples/ \
   --schema schemas/example_utility_rate_schema.json
 # → Merges all JSONs with smart deduplication
 # → Outputs: 
@@ -362,7 +362,7 @@ Process documents and extract structured data to JSON files.
 #### Basic Usage
 
 ```bash
-pixi run streamline-extract process <input_directory>
+pixi run psweep process <input_directory>
 ```
 
 #### Options
@@ -386,29 +386,29 @@ pixi run streamline-extract process <input_directory>
 
 ```bash
 # Basic extraction
-pixi run streamline-extract process documents/contracts/
+pixi run psweep process documents/contracts/
 
 # With custom schema
-pixi run streamline-extract process documents/tariffs/ \
+pixi run psweep process documents/tariffs/ \
   --schema schemas/electricity_tariff_schema.json
 
 # Extract only specific pages from a large PDF (NEW in 2.0.1!)
-pixi run streamline-extract process documents/tariff_book.pdf \
+pixi run psweep process documents/tariff_book.pdf \
   --pages 615-759 \
   --schema schemas/my_schema.json
 
 # Batch processing with different page ranges per file
-pixi run streamline-extract process documents/tariffs/ \
+pixi run psweep process documents/tariffs/ \
   --pages-csv page_ranges.csv \
   --schema schemas/my_schema.json
 
 # Large documents with live dashboard
-pixi run streamline-extract process documents/reports/ \
+pixi run psweep process documents/reports/ \
   --max-context 1400000 \
   --live-dashboard
 
 # Test run (limit to 3 files)
-pixi run streamline-extract process documents/examples/ \
+pixi run psweep process documents/examples/ \
   --schema schemas/example_utility_rate_schema.json \
   --limit 3
 ```
@@ -451,21 +451,21 @@ Empty start/end means extract full document.
 ```bash
 # Step 1: Extract each section to separate directories
 # Residential rates (pages 30-130)
-pixi run streamline-extract process documents/tariffs/tariff_book.pdf \
+pixi run psweep process documents/tariffs/tariff_book.pdf \
   --schema schemas/example_utility_rate_schema.json \
   --pages 30-130 \
   --output processed/tariffs/residential/ \
   --max-context 600000
 
 # Commercial rates (pages 131-230)
-pixi run streamline-extract process documents/tariffs/tariff_book.pdf \
+pixi run psweep process documents/tariffs/tariff_book.pdf \
   --schema schemas/example_utility_rate_schema.json \
   --pages 131-230 \
   --output processed/tariffs/commercial/ \
   --max-context 600000
 
 # Industrial rates (pages 231-330)
-pixi run streamline-extract process documents/tariffs/tariff_book.pdf \
+pixi run psweep process documents/tariffs/tariff_book.pdf \
   --schema schemas/example_utility_rate_schema.json \
   --pages 231-330 \
   --output processed/tariffs/industrial/ \
@@ -478,7 +478,7 @@ cp processed/tariffs/commercial/*.json processed/tariffs_all/tariff_commercial.j
 cp processed/tariffs/industrial/*.json processed/tariffs_all/tariff_industrial.json
 
 # Step 3: Consolidate
-pixi run streamline-extract consolidate processed/tariffs_all/ \
+pixi run psweep consolidate processed/tariffs_all/ \
   --schema schemas/example_utility_rate_schema.json
 ```
 
@@ -495,7 +495,7 @@ utility3_tariff.pdf,50,150
 ```
 
 ```bash
-pixi run streamline-extract process documents/tariffs/ \
+pixi run psweep process documents/tariffs/ \
   --schema schemas/example_utility_rate_schema.json \
   --pages-csv config/tariffs/page_ranges.csv
 ```
@@ -548,19 +548,19 @@ The `acquire` command is an optional pre-processing stage. After it runs, point 
 
 ```bash
 # Dry-run: discover candidates without downloading
-pixi run streamline-extract acquire \
+pixi run psweep acquire \
   --domain generator_manuals \
   --seed-url "https://generac.com/products/industrial" \
   --dry-run
 
 # Live run: discover and download
-pixi run streamline-extract acquire \
+pixi run psweep acquire \
   --domain generator_manuals \
   --seed-url "https://generac.com/products/industrial" \
   --query "Generac 250kW industrial generator manual pdf"
 
 # From a config file (recommended for repeatable runs)
-pixi run streamline-extract acquire --config config/generator_manuals/run.yaml
+pixi run psweep acquire --config config/generator_manuals/run.yaml
 ```
 
 #### Options
@@ -610,17 +610,17 @@ export SERPAPI_SSL_VERIFY=false
 
 ```bash
 # 1. Discover, download, and LLM-curate documents
-pixi run streamline-extract acquire --config config/generator_manuals/run.yaml
+pixi run psweep acquire --config config/generator_manuals/run.yaml
 
 # 2. (Optional) Review the LLM's picks and correct any mistakes:
 #    open the run's review.csv, set human_decision = keep/reject, then:
-pixi run streamline-extract curate --config config/generator_manuals/run.yaml
+pixi run psweep curate --config config/generator_manuals/run.yaml
 
 # 3. Process the curated set (config input_dir points at latest/curated)
-pixi run streamline-extract process --config config/generator_manuals/run.yaml
+pixi run psweep process --config config/generator_manuals/run.yaml
 
 # 4. Consolidate to Excel
-pixi run streamline-extract consolidate --config config/generator_manuals/run.yaml
+pixi run psweep consolidate --config config/generator_manuals/run.yaml
 ```
 
 Because the config's `processing.input_dir` points at
@@ -725,9 +725,9 @@ Rebuild a run's `curated/` set from human edits in `review.csv`. Use this when t
 3. Re-materialize the curated set:
 
 ```bash
-pixi run streamline-extract curate --config config/<domain>/run.yaml
+pixi run psweep curate --config config/<domain>/run.yaml
 # or target a specific run directly:
-pixi run streamline-extract curate --run output/acquisition/<domain>/runs/<run_id>
+pixi run psweep curate --run output/acquisition/<domain>/runs/<run_id>
 ```
 
 `curate` is idempotent: it rebuilds `curated/` from `review.csv` (human overrides take precedence over the LLM), carries the OCR text cache along, and records your decisions back into the `.review/*.json` sidecars.
@@ -748,7 +748,7 @@ Merge extracted JSON files into Excel and CSV formats.
 #### Basic Usage
 
 ```bash
-pixi run streamline-extract consolidate <extracted_directory> \
+pixi run psweep consolidate <extracted_directory> \
   --schema <schema_file>
 ```
 
@@ -763,11 +763,11 @@ pixi run streamline-extract consolidate <extracted_directory> \
 
 ```bash
 # Basic consolidation
-pixi run streamline-extract consolidate processed/contracts/ \
+pixi run psweep consolidate processed/contracts/ \
   --schema schemas/example_utility_rate_schema.json
 
 # Custom output location
-pixi run streamline-extract consolidate processed/tariffs/ \
+pixi run psweep consolidate processed/tariffs/ \
   --schema schemas/electricity_tariff_schema.json \
   --output analysis/2026/tariffs/
 ```
@@ -777,7 +777,7 @@ pixi run streamline-extract consolidate processed/tariffs/ \
 #### init - Project Setup
 
 ```bash
-pixi run streamline-extract init
+pixi run psweep init
 ```
 
 Interactive wizard for API configuration and project setup.
@@ -785,7 +785,7 @@ Interactive wizard for API configuration and project setup.
 #### preview - Preview Document
 
 ```bash
-pixi run streamline-extract preview documents/examples/sample_utility_rate.txt
+pixi run psweep preview documents/examples/sample_utility_rate.txt
 ```
 
 Shows document metadata, estimated costs, and content preview.
@@ -793,7 +793,7 @@ Shows document metadata, estimated costs, and content preview.
 #### estimate - Cost Estimation
 
 ```bash
-pixi run streamline-extract estimate documents/examples/
+pixi run psweep estimate documents/examples/
 ```
 
 Calculates estimated API costs and processing time for a directory.
@@ -801,7 +801,7 @@ Calculates estimated API costs and processing time for a directory.
 #### validate-schema - Schema Validation
 
 ```bash
-pixi run streamline-extract validate-schema schemas/my_schema.json
+pixi run psweep validate-schema schemas/my_schema.json
 ```
 
 Validates schema structure and required metadata.
@@ -809,7 +809,7 @@ Validates schema structure and required metadata.
 #### config - View Configuration
 
 ```bash
-pixi run streamline-extract config
+pixi run psweep config
 ```
 
 Displays current API and path configurations.
@@ -830,7 +830,7 @@ Validate extractions by running multiple AI models and comparing their outputs. 
 
 ```bash
 # Step 1: Run extraction with QA/QC enabled (runs 2+ models)
-pixi run streamline-extract process documents/examples/ \
+pixi run psweep process documents/examples/ \
   --schema schemas/example_utility_rate_schema.json \
   --enable-qa-qc
 
@@ -838,7 +838,7 @@ pixi run streamline-extract process documents/examples/ \
 # Each document gets: model1.json, model2.json, comparison_report.xlsx
 
 # Step 3: Regenerate reports (if needed, no re-extraction)
-pixi run streamline-extract compare processed/examples/qa_qc \
+pixi run psweep compare processed/examples/qa_qc \
   --schema schemas/example_utility_rate_schema.json
 ```
 
@@ -906,7 +906,7 @@ Schemas define what data to extract from documents. Version 2.0 requires all sch
 
 ### Metadata Fields
 
-**Purpose:** The `$metadata` section tells StreamlineExtract:
+**Purpose:** The `$metadata` section tells ParseSweep:
 - **What to extract**: Which array contains your main data (`main_data_array`)
 - **How to identify documents**: Which fields uniquely identify each source (`identifier_fields`)
 - **How to consolidate**: Which fields determine duplicates (`key_fields`)
@@ -928,7 +928,7 @@ Schemas define what data to extract from documents. Version 2.0 requires all sch
 
 ### Schema Auto-Detection
 
-StreamlineExtract automatically selects schemas based on keywords in your document path:
+ParseSweep automatically selects schemas based on keywords in your document path:
 
 | Keyword in Path | Schema Selected | Use Case |
 |-----------------|----------------|----------|
@@ -939,19 +939,19 @@ StreamlineExtract automatically selects schemas based on keywords in your docume
 **Example:**
 ```bash
 # Automatically uses schemas/personal/geothermal_ordinance_schema.json
-pixi run streamline-extract process documents/geothermal_regulations/
+pixi run psweep process documents/geothermal_regulations/
 
 # Automatically uses schemas/electricity_tariff_schema.json
-pixi run streamline-extract process documents/utility_tariffs_2025/
+pixi run psweep process documents/utility_tariffs_2025/
 
 # Use the public example schema for general testing
-pixi run streamline-extract process documents/examples/ \
+pixi run psweep process documents/examples/ \
   --schema schemas/example_utility_rate_schema.json
 ```
 
 To override auto-detection, use `--schema` flag:
 ```bash
-pixi run streamline-extract process documents/my_docs/ \
+pixi run psweep process documents/my_docs/ \
   --schema schemas/custom_schema.json
 ```
 
@@ -971,12 +971,12 @@ pixi run streamline-extract process documents/my_docs/ \
 
 4. **Validate**:
    ```bash
-   pixi run streamline-extract validate-schema schemas/my_schema.json
+   pixi run psweep validate-schema schemas/my_schema.json
    ```
 
 5. **Test on sample documents**:
    ```bash
-   pixi run streamline-extract process documents/sample/ \
+   pixi run psweep process documents/sample/ \
      --schema schemas/my_schema.json \
      --limit 2
    ```
@@ -1003,21 +1003,21 @@ Use a small repeatable loop while authoring a schema so you can add fields, adju
 
 ```bash
 # 1. Validate the schema structure
-pixi run streamline-extract validate-schema schemas/my_schema.json
+pixi run psweep validate-schema schemas/my_schema.json
 
 # 2. Run a tiny extraction sample
-pixi run streamline-extract process documents/sample/ \
+pixi run psweep process documents/sample/ \
   --schema schemas/my_schema.json \
   -n 2 \
   --reprocess
 
 # 3. Consolidate the sample output
-pixi run streamline-extract consolidate processed/sample/ \
+pixi run psweep consolidate processed/sample/ \
   --schema schemas/my_schema.json \
   --verbose
 
 # 4. Preview deduplication before writing spreadsheets
-pixi run streamline-extract consolidate processed/sample/ \
+pixi run psweep consolidate processed/sample/ \
   --schema schemas/my_schema.json \
   --dry-run \
   --report-format json \
@@ -1050,11 +1050,11 @@ Use `--dry-run --report-format json --fail-on-suspicious high` when you want the
 
 ```bash
 # Extract requirements from municipal ordinances
-pixi run streamline-extract process documents/geothermal_ordinances/ \
+pixi run psweep process documents/geothermal_ordinances/ \
   --schema schemas/personal/geothermal_ordinance_schema.json
 
 # Consolidate to Excel
-pixi run streamline-extract consolidate processed/geothermal_ordinances/ \
+pixi run psweep consolidate processed/geothermal_ordinances/ \
   --schema schemas/personal/geothermal_ordinance_schema.json
 ```
 
@@ -1064,12 +1064,12 @@ pixi run streamline-extract consolidate processed/geothermal_ordinances/ \
 
 ```bash
 # Extract rate schedules from tariff documents
-pixi run streamline-extract process documents/tariffs/ \
+pixi run psweep process documents/tariffs/ \
   --schema schemas/electricity_tariff_schema.json \
   --max-context 1400000
 
 # Consolidate
-pixi run streamline-extract consolidate processed/tariffs/ \
+pixi run psweep consolidate processed/tariffs/ \
   --schema schemas/electricity_tariff_schema.json
 ```
 
@@ -1079,11 +1079,11 @@ pixi run streamline-extract consolidate processed/tariffs/ \
 
 ```bash
 # Extract generator specifications from permits
-pixi run streamline-extract process documents/aq_permits/ \
+pixi run psweep process documents/aq_permits/ \
   --schema schemas/air_quality_permits_schema.json
 
 # Consolidate
-pixi run streamline-extract consolidate processed/aq_permits/ \
+pixi run psweep consolidate processed/aq_permits/ \
   --schema schemas/air_quality_permits_schema.json
 ```
 
@@ -1099,10 +1099,10 @@ cp schemas/journal_article_schema.json schemas/contracts.json
 # (edit schemas/contracts.json)
 
 # 3. Validate
-pixi run streamline-extract validate-schema schemas/contracts.json
+pixi run psweep validate-schema schemas/contracts.json
 
 # 4. Extract with custom schema
-pixi run streamline-extract process documents/contracts/ \
+pixi run psweep process documents/contracts/ \
   --schema schemas/contracts.json \
   --limit 2
 
@@ -1110,11 +1110,11 @@ pixi run streamline-extract process documents/contracts/ \
 cat processed/contracts/*.json
 
 # 6. Process full batch
-pixi run streamline-extract process documents/contracts/ \
+pixi run psweep process documents/contracts/ \
   --schema schemas/contracts.json
 
 # 7. Consolidate
-pixi run streamline-extract consolidate processed/contracts/ \
+pixi run psweep consolidate processed/contracts/ \
   --schema schemas/contracts.json
 ```
 
@@ -1128,13 +1128,13 @@ Run these checks if you encounter issues:
 
 ```bash
 # 1. Verify installation
-pixi run streamline-extract --version
+pixi run psweep --version
 
 # 2. Check configuration
-pixi run streamline-extract config
+pixi run psweep config
 
 # 3. Test with a single file
-pixi run streamline-extract process documents/examples/ \
+pixi run psweep process documents/examples/ \
   --schema schemas/example_utility_rate_schema.json \
   --limit 1 --verbose
 ```
@@ -1150,13 +1150,13 @@ pixi run streamline-extract process documents/examples/ \
 **Solution**:
 ```bash
 # View error details
-pixi run streamline-extract validate-schema schemas/your_schema.json
+pixi run psweep validate-schema schemas/your_schema.json
 
 # Use production schema as template
 cp schemas/electricity_tariff_schema.json schemas/your_schema.json
 
 # Edit and validate
-pixi run streamline-extract validate-schema schemas/your_schema.json
+pixi run psweep validate-schema schemas/your_schema.json
 ```
 
 #### Document Processing Issues
@@ -1183,12 +1183,12 @@ find documents/your_folder/ -type f
 **Solution**:
 ```bash
 # Explicitly specify schema
-pixi run streamline-extract process documents/folder/ \
+pixi run psweep process documents/folder/ \
   --schema schemas/your_schema.json
 
 # Or add keyword to path for auto-detection
 mv documents/folder documents/tariff_folder
-pixi run streamline-extract process documents/tariff_folder/
+pixi run psweep process documents/tariff_folder/
 ```
 
 #### Performance Issues
@@ -1200,11 +1200,11 @@ pixi run streamline-extract process documents/tariff_folder/
 **Solution**:
 ```bash
 # Increase character limit
-pixi run streamline-extract process documents/large_docs/ \
+pixi run psweep process documents/large_docs/ \
   --max-context 1400000
 
 # For very large documents (tested up to 1.4M characters)
-pixi run streamline-extract process documents/tariff_books/ \
+pixi run psweep process documents/tariff_books/ \
   --max-context 1400000 \
   --live-dashboard
 ```
@@ -1236,7 +1236,7 @@ pixi run streamline-extract process documents/tariff_books/ \
 
 3. Validate:
    ```bash
-   pixi run streamline-extract validate-schema schemas/old_schema.json
+   pixi run psweep validate-schema schemas/old_schema.json
    ```
 
 See `schemas/SCHEMA_BEST_PRACTICES.md` for migration details.
@@ -1254,13 +1254,13 @@ See `schemas/SCHEMA_BEST_PRACTICES.md` for migration details.
 
 If these solutions don't resolve your issue:
 
-1. **Check existing issues**: [GitHub Issues](https://github.com/bpulluta/StreamlineExtract/issues)
+1. **Check existing issues**: [GitHub Issues](https://github.com/bpulluta/parsesweep/issues)
 2. **Search discussions**: Look for similar problems and solutions
 3. **Create new issue**: Include:
    - Error message (full output with `--debug` flag)
    - Command you ran
    - Sample document (if possible) or document type
-   - Output of `pixi run streamline-extract config`
+   - Output of `pixi run psweep config`
 
 ---
 
@@ -1278,7 +1278,7 @@ A: Accuracy depends on document quality and schema design. Well-structured docum
 A: Yes! Just point `extract` at a directory containing multiple documents. They'll all be processed automatically.
 
 **Q: How much does it cost?**  
-A: Costs vary by document length and model used. Use `pixi run streamline-extract estimate documents/folder/` to get cost estimates before processing. Typical costs: $0.10-$0.50 per document with gpt-4o-mini.
+A: Costs vary by document length and model used. Use `pixi run psweep estimate documents/folder/` to get cost estimates before processing. Typical costs: $0.10-$0.50 per document with gpt-4o-mini.
 
 ### Technical Questions
 
@@ -1289,18 +1289,18 @@ A: No! All commands are CLI-based. You only need to know basic terminal commands
 A: Yes, if you use the OpenAI-compatible API. Set `OPENAI_API_KEY` and `OPENAI_BASE_URL` in your `.env` file.
 
 **Q: How do I process documents larger than 400k characters?**  
-A: Use `--max-context` flag: `pixi run streamline-extract process docs/ --max-context 1400000` (tested up to 1.4M characters).
+A: Use `--max-context` flag: `pixi run psweep process docs/ --max-context 1400000` (tested up to 1.4M characters).
 
 **Q: Can I customize the output format?**  
 A: The consolidation outputs both Excel and CSV by default. You can further process these files with your preferred tools.
 
 **Q: Is my data sent to OpenAI/Azure?**  
-A: Yes, document content is sent to the API for extraction. Use Azure OpenAI if you need data residency compliance. No data is stored by StreamlineExtract beyond your local files.
+A: Yes, document content is sent to the API for extraction. Use Azure OpenAI if you need data residency compliance. No data is stored by ParseSweep beyond your local files.
 
 ### Schema Questions
 
 **Q: Do I need to create a custom schema?**  
-A: Not necessarily. StreamlineExtract includes production-ready schemas for common document types. Check the `schemas/` directory first.
+A: Not necessarily. ParseSweep includes production-ready schemas for common document types. Check the `schemas/` directory first.
 
 **Q: What if my schema is wrong?**  
 A: The AI is quite forgiving! It will extract data as best as it can according to your schema. Test with 1-2 documents first, review the output, then refine your schema.
@@ -1318,8 +1318,8 @@ We welcome contributions! Here's how to get started:
 
 ```bash
 # Clone repository
-git clone https://github.com/bpulluta/StreamlineExtract.git
-cd StreamlineExtract
+git clone https://github.com/bpulluta/parsesweep.git
+cd ParseSweep
 
 # Install development dependencies
 pixi install
@@ -1328,14 +1328,14 @@ pixi install
 pixi run pytest
 
 # Run tests with coverage
-pixi run pytest --cov=src/streamline_extract
+pixi run pytest --cov=src/psweep
 ```
 
 ### Project Structure
 
 ```
-StreamlineExtract/
-├── src/streamline_extract/
+ParseSweep/
+├── src/psweep/
 │   ├── cli/               # CLI commands and interface
 │   ├── extraction/        # Document extraction logic
 │   ├── consolidation/     # Data consolidation and deduplication
@@ -1396,7 +1396,7 @@ For detailed guidance on implementing new discovery connectors and contributing 
 - **Feature requests**: Describe use case and expected behavior
 - **Questions**: Check existing issues or start a discussion
 
-[Report an issue](https://github.com/bpulluta/StreamlineExtract/issues)
+[Report an issue](https://github.com/bpulluta/parsesweep/issues)
 
 ### Development Commands
 
@@ -1422,8 +1422,8 @@ pixi run mypy src/
 ## Documentation
 
 - **Schema Design Guide**: `schemas/SCHEMA_BEST_PRACTICES.md`
-- **Command Reference**: `pixi run streamline-extract --help`
-- **GitHub Issues**: https://github.com/bpulluta/StreamlineExtract/issues
+- **Command Reference**: `pixi run psweep --help`
+- **GitHub Issues**: https://github.com/bpulluta/parsesweep/issues
 - **Copilot Instructions**: `.github/copilot-instructions.md` (for contributors)
 
 ---

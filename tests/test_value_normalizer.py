@@ -5,7 +5,7 @@ Unit tests for value_normalizer utilities.
 Tests the value normalization and comparison logic used by QA/QC.
 """
 import pytest
-from streamline_extract.utils.value_normalizer import (
+from psweep.utils.value_normalizer import (
     normalize_value,
     compare_values,
     is_empty_value,

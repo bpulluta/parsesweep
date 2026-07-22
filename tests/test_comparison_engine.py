@@ -12,12 +12,12 @@ from unittest.mock import MagicMock
 import tempfile
 import shutil
 
-from streamline_extract.qa_qc.comparison_engine import (
+from psweep.qa_qc.comparison_engine import (
     ComparisonEngine,
     ComparisonResult,
     FieldComparison,
 )
-from streamline_extract.qa_qc.utils import resolve_qaqc_runtime_config
+from psweep.qa_qc.utils import resolve_qaqc_runtime_config
 
 
 class TestFieldComparison:

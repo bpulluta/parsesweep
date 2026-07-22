@@ -2,9 +2,9 @@
 
 import pytest
 from pathlib import Path
-from streamline_extract.cli.cost_tracker import CostTracker
-from streamline_extract.cli.dashboard import ExtractionDashboard, create_live_dashboard
-from streamline_extract.cli.ui import (
+from psweep.cli.cost_tracker import CostTracker
+from psweep.cli.dashboard import ExtractionDashboard, create_live_dashboard
+from psweep.cli.ui import (
     console,
     print_error,
     print_success,

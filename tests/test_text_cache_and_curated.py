@@ -10,8 +10,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from streamline_extract.acquisition.engine import AcquisitionEngine
-from streamline_extract.extraction.document_utils import (
+from psweep.acquisition.engine import AcquisitionEngine
+from psweep.extraction.document_utils import (
     extract_text_from_document,
     read_text_cache,
     write_text_cache,
@@ -39,7 +39,7 @@ class TestTextCache:
             return (text, {"used_ocr": True}) if return_meta else text
 
         monkeypatch.setattr(
-            "streamline_extract.extraction.pdf_utils.extract_text_from_pdf",
+            "psweep.extraction.pdf_utils.extract_text_from_pdf",
             _fake,
         )
         text1 = extract_text_from_document(pdf)
@@ -58,7 +58,7 @@ class TestTextCache:
             return (text, {"used_ocr": False}) if return_meta else text
 
         monkeypatch.setattr(
-            "streamline_extract.extraction.pdf_utils.extract_text_from_pdf",
+            "psweep.extraction.pdf_utils.extract_text_from_pdf",
             _fake,
         )
         extract_text_from_document(pdf)
@@ -84,7 +84,7 @@ class TestTextCache:
             return (text, {"used_ocr": False}) if return_meta else text
 
         monkeypatch.setattr(
-            "streamline_extract.extraction.pdf_utils.extract_text_from_pdf",
+            "psweep.extraction.pdf_utils.extract_text_from_pdf",
             _fake,
         )
         # A page-range request must re-extract, not return the full cache.

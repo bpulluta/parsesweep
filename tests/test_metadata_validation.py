@@ -2,10 +2,10 @@
 
 import pytest
 from pathlib import Path
-from streamline_extract.consolidation.schema_detector import SchemaDetector
-from streamline_extract.consolidation.deduplicator import Deduplicator
-from streamline_extract.consolidation.consolidator import Consolidator
-from streamline_extract.utils.exceptions import SchemaMetadataError
+from psweep.consolidation.schema_detector import SchemaDetector
+from psweep.consolidation.deduplicator import Deduplicator
+from psweep.consolidation.consolidator import Consolidator
+from psweep.utils.exceptions import SchemaMetadataError
 
 
 class TestComponentMetadataValidation:

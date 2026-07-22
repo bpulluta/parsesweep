@@ -15,9 +15,9 @@ from unittest.mock import MagicMock, patch
 
 import json
 
-from streamline_extract.extraction.llm_factory import detect_provider
-from streamline_extract.extraction.llm_client import LLMClient
-from streamline_extract.cli.commands import (
+from psweep.extraction.llm_factory import detect_provider
+from psweep.extraction.llm_client import LLMClient
+from psweep.cli.commands import (
     _process_one_document,
     _build_index_filters,
     _row_matches_filters,
@@ -203,10 +203,10 @@ def test_llm_client_returns_token_usage():
     )
 
     with patch(
-        "streamline_extract.extraction.llm_client.completion",
+        "psweep.extraction.llm_client.completion",
         return_value=fake_response,
     ), patch(
-        "streamline_extract.extraction.llm_client.completion_cost",
+        "psweep.extraction.llm_client.completion_cost",
         return_value=0.002,
     ):
         out = client.extract("text", {"type": "object", "properties": {}})

@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from streamline_extract.core import (
+from psweep.core import (
     ArtifactCompilerError,
     build_runtime_readiness_report,
     compile_runtime_artifact,

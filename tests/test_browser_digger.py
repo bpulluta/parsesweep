@@ -8,13 +8,13 @@ is exercised by the VA DEQ end-to-end run, not unit tests.
 
 from __future__ import annotations
 
-from streamline_extract.acquisition.connectors.base import DiggerInput
-from streamline_extract.acquisition.connectors.digger import (
+from psweep.acquisition.connectors.base import DiggerInput
+from psweep.acquisition.connectors.digger import (
     HttpDiggerConnector,
     SeleniumDiggerConnector,
     resolve_digger_connector,
 )
-from streamline_extract.acquisition.engine import (
+from psweep.acquisition.engine import (
     AcquisitionEngine,
     AcquisitionRequest,
 )
@@ -55,10 +55,10 @@ class TestBrowserModeFallback:
     def test_open_browser_returns_none_when_unavailable(self, monkeypatch):
         # Simulate Selenium/Chrome unavailable: _open_browser_for_download
         # must return (None, note) so the caller falls back to HTTP.
-        import streamline_extract.acquisition.browser as browser_mod
+        import psweep.acquisition.browser as browser_mod
 
         def _boom(self):
-            from streamline_extract.acquisition.browser import (
+            from psweep.acquisition.browser import (
                 BrowserUnavailableError,
             )
 

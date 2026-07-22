@@ -5,13 +5,13 @@ from pathlib import Path
 
 from click.testing import CliRunner
 
-from streamline_extract.benchmarking.performance import (
+from psweep.benchmarking.performance import (
     collect_benchmark_metrics,
     compare_benchmark_to_baseline,
     evaluate_benchmark_gates,
     load_benchmark_snapshot,
 )
-from streamline_extract.cli.main import cli
+from psweep.cli.main import cli
 
 
 def _write_json(path: Path, content: dict) -> None:

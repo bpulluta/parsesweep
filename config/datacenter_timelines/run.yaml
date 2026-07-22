@@ -1,9 +1,15 @@
 # Data Center Project Timelines
 #
-# Enriches a data-center site list with project TIMELINE dates
-# (announced / construction start / expected completion / cancelled) by finding
+# Enriches a data-center site list with project LIFECYCLE dates by finding
 # news articles, press releases, permits, and filings for each site — and
 # recording the SOURCE URL each fact came from (citation_urls).
+#
+# Temporal model (v2): a FACT and a FORECAST are separate fields —
+#   date_announced -> date_construction_start -> date_operational (ACTUAL go-live)
+#   with date_expected_completion holding the PROJECTED opening when not yet live,
+#   and date_cancelled (killed pre-build) / date_decommissioned (retired post-op)
+#   as mutually-exclusive terminal dates. Every date carries a precision
+#   (day/month/quarter/year). Chronology is advisory, never forced.
 #
 # Design notes (this domain is web-article-centric, unlike the PDF domains):
 #   - Discovery uses the SerpApi SEEKER, not the crawl digger. The HTTP crawl
@@ -21,10 +27,10 @@
 #
 # Required env: SERPAPI_KEY (+ Azure OpenAI for process)
 # Usage:
-#   streamline-extract acquire --config config/datacenter_timelines/run.yaml --dry-run
-#   streamline-extract acquire --config config/datacenter_timelines/run.yaml
-#   streamline-extract process --config config/datacenter_timelines/run.yaml
-#   streamline-extract consolidate --config config/datacenter_timelines/run.yaml
+#   psweep acquire --config config/datacenter_timelines/run.yaml --dry-run
+#   psweep acquire --config config/datacenter_timelines/run.yaml
+#   psweep process --config config/datacenter_timelines/run.yaml
+#   psweep consolidate --config config/datacenter_timelines/run.yaml
 
 domain: datacenter_timelines
 
@@ -45,15 +51,22 @@ acquisition:
   # completion. Organic queries surface those articles AND press releases /
   # permit / local-government coverage that state real project dates.
   queries:
-    - "{company_name} {city} data center announced OR \"broke ground\" OR groundbreaking"
-    - "{company_name} {city} data center construction OR completion OR online OR operational"
-    - "\"{site_name}\""
-    - "{company_name} {region} data center announcement OR timeline"
+    - "{company_name} {city} data center announced OR \"broke ground\" OR groundbreaking {demand_capacity_mw} MW"
+    - "{company_name} {city} data center construction OR completion OR online OR operational {demand_capacity_mw} MW"
+    - "{company_name} {region} data center announcement OR timeline {demand_capacity_mw} MW"
 
   search:
     provider: serpapi
     max_results: 10
     cache: true          # cache results so re-running acquire doesn't re-pay
+    # FINDING (2026-07-21): the Google News vertical (tbm=nws) had poor recall —
+    # only 3/18 sites got any hit (it favors very recent news + misses specific
+    # facility names / older projects). ORGANIC discovery finds far more news AND
+    # press AND directory pages; its only problem was noise PDFs, now removed by
+    # the exclude classes below. So we discover organically and filter for
+    # precision, rather than restrict the vertical. Flip to true only for a
+    # recency-biased news-refresh pass.
+    google_news: false
 
   # Seeker only — do NOT crawl (see design notes above).
   follow_links: false
@@ -69,15 +82,20 @@ acquisition:
     # pages. NOTE: data-center DIRECTORIES (baxtel, datacentermap,
     # datacenterHawk) are deliberately NOT excluded — they are our best source
     # of structured "Year Built" + facility history for these existing sites.
+    # Matched against candidate URL + seeker reasons BEFORE download, so this is
+    # the cheap place to remove whole domain CLASSES that never carry a project
+    # lifecycle date. We exclude by class (not per-city) to stay scalable: the
+    # same list is correct for any target set. Broad discovery still surfaces the
+    # news/press/directory/permit sources we want.
     exclude:
-      # Facility spec / cut sheets and other static operator PDFs
+      # -- Facility spec / cut sheets and other static operator PDFs --
       - "cutsheet"
       - "cut-sheet"
       - "cut_sheet"
       - "shipping-receiving"
       - "spec-sheet"
       - "datasheet"
-      # Non-content pages
+      # -- Non-content / social pages --
       - "/login"
       - "/signin"
       - "/careers"
@@ -90,6 +108,53 @@ acquisition:
       - "x.com/"
       - "linkedin.com/company"
       - "instagram.com"
+      # -- Academic / research papers & datasets (no project dates, often huge) --
+      - ".edu"
+      - ".ac."
+      - "researchgate"
+      - "ssrn"
+      - "arxiv"
+      - "semanticscholar"
+      - "dokumen.pub"
+      - "academia.edu"
+      - "sciencedirect"
+      - "springer"
+      - "ieee.org"
+      - "acm.org"
+      - "eric.ed.gov"
+      - "akademperiodyka"
+      - "informatik"
+      - "nlp."
+      - "downloads.cs."
+      - "publications.anl"
+      - "anl.gov"
+      - "iaea.org"
+      - "igs.org"
+      # -- Government science / statistics / legislative (NOT permit bodies) --
+      - "congress.gov"
+      - "senate.gov"
+      - "census.gov"
+      - "govinfo.gov"
+      - "noaa.gov"
+      - "nasa.gov"
+      - "climate.gov"
+      # -- Finance / investor relations / market data --
+      - "sec.gov"
+      - "crunchbase"
+      - "q4cdn"
+      - "deutsche-boerse"
+      - "dadavidson"
+      - "finance.yahoo"
+      - "seekingalpha"
+      - "marketwatch"
+      - "investor."
+      # -- Policy think-tanks / advocacy datasets --
+      - "cgdev.org"
+      - "greenpolicyplatform"
+      - "votesolar"
+      - "ourenergypolicy"
+      - "mediajustice"
+      - "nairrpilot"
 
   request_delay_ms: 600
 
@@ -98,7 +163,40 @@ processing:
   input_dir: output/acquisition/datacenter_timelines/latest/curated
   schema: schemas/personal/datacenter_timelines_schema.json
   output_dir: processed/datacenter_timelines
-  # Web pages are small; whole-document extraction is fine (no page targeting).
+
+  # News/press pages are small and extract whole. But permits, planning packets,
+  # and regulatory filings can be hundreds of pages — extracting them in full is
+  # the main cost driver and dilutes the signal. Page targeting LLM-locates just
+  # the pages that state a lifecycle date for THIS facility and extracts only
+  # those. Only triggers for docs whose text exceeds trigger_chars, so small
+  # HTML/news is untouched. Domain-neutral: the same mechanism serves any domain.
+  page_targeting:
+    enabled: true
+    # model: <cheaper-model>   # optional: cheaper model for the locator call
+    section_description: >-
+      the passage(s) that state WHEN this specific data-center facility/project
+      reached a lifecycle milestone — when it was announced/proposed, when
+      construction/groundbreaking occurred or is scheduled, when it opened /
+      became operational / was completed, its expected completion date, or when
+      it was cancelled or decommissioned. Not general company background,
+      financials, environmental-impact boilerplate, tables of contents, or
+      unrelated projects.
+    keywords:
+      - "data center"
+      - "data centre"
+      - "datacenter"
+      - "groundbreaking"
+      - "broke ground"
+      - "construction"
+      - "operational"
+      - "completion"
+      - "announced"
+      - "approved"
+      - "permit"
+      - "megawatt"
+      - "MW"
+    trigger_chars: 60000     # ~15+ pages of text -> target instead of full read
+    max_selected_pages: 12
 
 consolidation:
   input_dir: processed/datacenter_timelines
@@ -132,36 +230,58 @@ consolidation:
     relevance_flag: document_applicability.is_about_query_subject
     # The source URL for each record (becomes the citation list).
     citation_field: source_provenance.citation_url
-    # Fields to reconcile from each item of the main_data_array, each with an
-    # optional evidence field. Generic — not limited to dates.
+    # Fields to reconcile from each item of the main_data_array. Each may carry
+    # an optional `evidence` (verbatim quote) and `precision` (granularity)
+    # companion field. Generic — categorical/flag fields (no evidence/precision)
+    # are reconciled the same way. Order here does not matter.
     reconcile_fields:
-      - {field: date_announced, evidence: evidence_announced}
-      - {field: date_construction_start, evidence: evidence_construction_start}
-      - {field: date_expected_completion, evidence: evidence_expected_completion}
-      # Project killed BEFORE completion (withdrawn/cancelled — never built).
-      - {field: date_cancelled, evidence: evidence_cancelled}
+      # Categorical outcome + phase flags (drive Gantt color / interpretation).
+      - {field: lifecycle_status}
+      - {field: is_expansion}
+      - {field: construction_start_is_scheduled}
+      # Lifecycle dates. FACT vs FORECAST are separate fields:
+      #   date_operational        = ACTUAL go-live (already happened)
+      #   date_expected_completion = PROJECTED completion (not yet operational)
+      - {field: date_announced, evidence: evidence_announced, precision: precision_announced}
+      - {field: date_construction_start, evidence: evidence_construction_start, precision: precision_construction_start}
+      - {field: date_operational, evidence: evidence_operational, precision: precision_operational}
+      - {field: date_expected_completion, evidence: evidence_expected_completion, precision: precision_expected_completion}
+      # Project killed BEFORE completion (cancelled/withdrawn — never built).
+      - {field: date_cancelled, evidence: evidence_cancelled, precision: precision_cancelled}
       # Facility retired AFTER operating (decommissioned — distinct from cancelled).
-      - {field: date_operational_end, evidence: evidence_operational_end}
-    # OPTIONAL ordering validation (omit for non-ordered domains). Enforced
-    # non-decreasing; violations are flagged deterministically, never forced.
-    # date_operational_end sits at the end: a facility is decommissioned only
-    # after it becomes operational (completion). date_cancelled is intentionally
-    # NOT in this chain — a cancelled project has no completion to precede, so
-    # it is a mutually-exclusive terminal date, not a point on the build timeline.
+      - {field: date_decommissioned, evidence: evidence_decommissioned, precision: precision_decommissioned}
+    # OPTIONAL chronology check (omit for non-ordered domains). This is ADVISORY
+    # and precision-aware: values are compared only at the coarsest granularity
+    # they share, and a row is NEVER dropped, penalized, or altered to satisfy
+    # it. date_operational (actual) and date_expected_completion (forecast) are
+    # mutually exclusive, so listing both is safe — whichever is null is skipped.
+    # date_cancelled is intentionally NOT in this chain: a cancelled project has
+    # no completion to precede — it is a mutually-exclusive terminal date.
     ordering_constraint:
       - date_announced
       - date_construction_start
+      - date_operational
       - date_expected_completion
-      - date_operational_end
+      - date_decommissioned
+    # Select the precision-aware temporal comparator for the advisory check above
+    # (other domains use "numeric" or the default "lexical"). This is what keeps
+    # the synthesizer domain-neutral: temporal handling is opt-in, not hardwired.
+    ordering_comparison: date
     # OPTIONAL extra free-text outputs the LLM should produce for this domain.
     narrative_fields:
       - current_status
     instructions: >-
       These are data-center facilities. Only accept dates that describe the
       facility's own lifecycle; never use a building 'year built' that predates
-      the current project, and never use a source's publication date. Keep
-      date_cancelled and date_operational_end mutually exclusive: use
-      date_cancelled ONLY when the project was withdrawn/scrapped BEFORE it was
-      ever operational (never built), and date_operational_end ONLY when a
-      facility that HAD been operational was later decommissioned / shut down /
-      closed / retired. A single facility should not carry both.
+      the current project, and never use a source's publication date.
+      FACT vs FORECAST is the central rule: put an ALREADY-ACHIEVED go-live in
+      date_operational, and a PROJECTED/expected opening (facility not yet live)
+      in date_expected_completion — never both, and never swap them. Keep
+      date_cancelled and date_decommissioned mutually exclusive: use
+      date_cancelled ONLY when the project was scrapped BEFORE it was ever
+      operational (never built), and date_decommissioned ONLY when a facility
+      that HAD been operational was later shut down / closed / retired. Set
+      lifecycle_status to the most advanced state the sources support, and
+      is_expansion=true when the record is a later phase/expansion of an
+      existing campus (its announced date may postdate the base build — that is
+      expected, not an error).

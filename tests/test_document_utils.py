@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from streamline_extract.extraction.document_utils import extract_text_from_document, is_supported_document
+from psweep.extraction.document_utils import extract_text_from_document, is_supported_document
 
 
 def test_extract_text_from_html_document(tmp_path: Path):

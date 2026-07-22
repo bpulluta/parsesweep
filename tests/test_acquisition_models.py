@@ -3,7 +3,7 @@ import re
 import json
 import csv
 
-from streamline_extract.acquisition import (
+from psweep.acquisition import (
     AcquisitionCandidate,
     AcquisitionEngine,
     AcquisitionManifest,
@@ -623,7 +623,7 @@ def test_engine_run_uses_configured_request_headers_for_downloads(tmp_path: Path
         output_manifest=tmp_path / "manifest.json",
         dry_run=False,
         request_headers={
-            "User-Agent": "StreamlineExtract/2.0 (Apple SEC validation; contact: example@example.com)",
+            "User-Agent": "ParseSweep/2.0 (Apple SEC validation; contact: example@example.com)",
             "Accept-Language": "en-US,en;q=0.9",
         },
     )
@@ -634,7 +634,7 @@ def test_engine_run_uses_configured_request_headers_for_downloads(tmp_path: Path
     assert payload["downloads"][0]["status"] == "downloaded"
     assert payload["downloads"][0]["path"].endswith(".html")
     assert captured_headers
-    assert captured_headers[0]["User-Agent"].startswith("StreamlineExtract/2.0 (Apple SEC validation")
+    assert captured_headers[0]["User-Agent"].startswith("ParseSweep/2.0 (Apple SEC validation")
     assert captured_headers[0]["Accept-Language"] == "en-US,en;q=0.9"
 
 
@@ -1208,7 +1208,7 @@ def test_engine_run_seeker_applies_prioritization_and_emits_lineage(tmp_path: Pa
         staticmethod(fake_resolve_serpapi_state),
     )
     monkeypatch.setattr(
-        "streamline_extract.acquisition.connectors.serpapi_seeker.SerpApiSeeker",
+        "psweep.acquisition.connectors.serpapi_seeker.SerpApiSeeker",
         FakeSerpApiSeeker,
     )
 
@@ -1281,7 +1281,7 @@ def test_engine_run_emits_unknown_target_acceptance_metrics(tmp_path: Path, monk
         staticmethod(fake_resolve_serpapi_state),
     )
     monkeypatch.setattr(
-        "streamline_extract.acquisition.connectors.serpapi_seeker.SerpApiSeeker",
+        "psweep.acquisition.connectors.serpapi_seeker.SerpApiSeeker",
         FakeSerpApiSeeker,
     )
 
