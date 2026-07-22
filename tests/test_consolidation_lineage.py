@@ -6,9 +6,9 @@ from pathlib import Path
 import pandas as pd
 from openpyxl import load_workbook
 
-from streamline_extract.consolidation.consolidator import Consolidator
-from streamline_extract.consolidation.deduplicator import Deduplicator
-from streamline_extract.utils.schema_metadata import SchemaMetadata
+from psweep.consolidation.consolidator import Consolidator
+from psweep.consolidation.deduplicator import Deduplicator
+from psweep.utils.schema_metadata import SchemaMetadata
 
 
 def _write_json(path: Path, content: dict) -> None:

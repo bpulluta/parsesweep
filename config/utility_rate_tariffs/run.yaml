@@ -5,8 +5,8 @@
 #
 # Required env:  SERPAPI_API_KEY
 # Usage:
-#   streamline-extract acquire --config config/utility_rate_tariffs/run.yaml --dry-run
-#   streamline-extract acquire --config config/utility_rate_tariffs/run.yaml
+#   psweep acquire --config config/utility_rate_tariffs/run.yaml --dry-run
+#   psweep acquire --config config/utility_rate_tariffs/run.yaml
 #
 # HOW TO ADD A NEW ADDRESS
 # ─────────────────────────

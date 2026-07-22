@@ -1,7 +1,7 @@
-# StreamlineExtract Agent Operating Instructions
+# ParseSweep Agent Operating Instructions
 
 ## Purpose
-These instructions keep work aligned with the accepted StreamlineExtract production baseline.
+These instructions keep work aligned with the accepted ParseSweep production baseline.
 
 ## Default Operating Mode
 - Treat the contract-first runtime as the source of truth for this repository.

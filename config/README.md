@@ -29,9 +29,9 @@ Supported validation flags (all commands):
 
 ```bash
 # Validate and preview effective config for any command
-pixi run streamline-extract acquire --config config/generator_manuals/run.yaml --validate-config
-pixi run streamline-extract process --config config/tariffs/run.yaml --show-effective-config
-pixi run streamline-extract consolidate --config config/geothermal_ordinances/run.yaml --validate-config
+pixi run psweep acquire --config config/generator_manuals/run.yaml --validate-config
+pixi run psweep process --config config/tariffs/run.yaml --show-effective-config
+pixi run psweep consolidate --config config/geothermal_ordinances/run.yaml --validate-config
 ```
 
 ---
@@ -274,7 +274,7 @@ output/acquisition/<domain>/
 
 Downstream `process` consumes `output/acquisition/<domain>/latest/curated`.
 Edit `review.csv` (`human_decision` = `keep`/`reject`) and run
-`streamline-extract curate` to rebuild `curated/`.
+`psweep curate` to rebuild `curated/`.
 
 **`manifest.json` observability sections:**
 - `timing`: `started_at`, `completed_at`, `elapsed_seconds`
@@ -386,7 +386,7 @@ full_document.pdf,,
 - Leave both empty to process the full document.
 
 ```bash
-pixi run streamline-extract process documents/tariffs/ \
+pixi run psweep process documents/tariffs/ \
   --pages-csv config/tariffs/page_ranges.csv
 ```
 
@@ -404,9 +404,9 @@ pixi run streamline-extract process documents/tariffs/ \
 You can now configure `process` and `consolidate` with a runtime config file.
 
 Supported commands:
-- `pixi run streamline-extract process --config config/<domain>/run.yaml --validate-config`
-- `pixi run streamline-extract process --config config/<domain>/run.yaml --show-effective-config`
-- `pixi run streamline-extract consolidate --config config/<domain>/run.yaml --validate-config`
+- `pixi run psweep process --config config/<domain>/run.yaml --validate-config`
+- `pixi run psweep process --config config/<domain>/run.yaml --show-effective-config`
+- `pixi run psweep consolidate --config config/<domain>/run.yaml --validate-config`
 
 Validation controls:
 - `--validate-config`: validate resolved inputs and exit.
@@ -430,7 +430,7 @@ If your environment uses TLS interception or custom cert chains and SerpApi SSL 
 You can set this in your shell for a single run:
 
 ```bash
-SERPAPI_SSL_VERIFY=false pixi run streamline-extract acquire ... --enable-serpapi
+SERPAPI_SSL_VERIFY=false pixi run psweep acquire ... --enable-serpapi
 ```
 
 Or place it in `.env` for recurring local runs.
@@ -441,7 +441,7 @@ For non-dry acquisition downloads, TLS verification is controlled separately:
 Example download run with SSL disabled:
 
 ```bash
-ACQUISITION_SSL_VERIFY=false pixi run streamline-extract acquire --domain <domain> --seed-url <url>
+ACQUISITION_SSL_VERIFY=false pixi run psweep acquire --domain <domain> --seed-url <url>
 ```
 
 ### Acquisition Output Organization (Scalable Layout)
@@ -544,7 +544,7 @@ full_document.pdf,,
 Specify page ranges CSV when processing documents:
 
 ```bash
-pixi run streamline-extract process documents/tariffs/ --pages-csv config/tariffs/page_ranges.csv
+pixi run psweep process documents/tariffs/ --pages-csv config/tariffs/page_ranges.csv
 ```
 
 ## Why config/ Instead of documents/?

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from streamline_extract.acquisition.engine import (
+from psweep.acquisition.engine import (
     AcquisitionEngine,
     AcquisitionRequest,
 )

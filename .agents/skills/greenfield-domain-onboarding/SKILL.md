@@ -1,12 +1,12 @@
 ---
 name: greenfield-domain-onboarding
-description: "Use when a user only has raw documents for a new domain and needs the full current-state StreamlineExtract pipeline created, tested, and iterated."
+description: "Use when a user only has raw documents for a new domain and needs the full current-state ParseSweep pipeline created, tested, and iterated."
 ---
 
 # Greenfield Domain Onboarding
 
 ## Goal
-Turn a raw `documents/<domain>/` folder into a working StreamlineExtract pipeline with a schema, runtime pack, config, validation evidence, and a first extraction/consolidation pass.
+Turn a raw `documents/<domain>/` folder into a working ParseSweep pipeline with a schema, runtime pack, config, validation evidence, and a first extraction/consolidation pass.
 
 ## When To Use
 - The user says they are starting from scratch.
@@ -22,9 +22,9 @@ Turn a raw `documents/<domain>/` folder into a working StreamlineExtract pipelin
 5. If the user already knows the highest-value first-pass fields, use `--include-field` on `init-domain-schema` to trim the starter immediately.
 6. Use the closest existing schema as reference material, not as a full template to copy wholesale.
 7. Keep ownership boundaries explicit: schema handles extraction contract and minimal dedup semantics; pack YAML handles runtime modules, QA/QC behavior, and deployment/runtime tuning.
-8. Validate the schema with `pixi run streamline-extract validate-schema <schema>`.
-9. Scaffold the runtime surface with `pixi run streamline-extract init-domain-pack --name <domain> --schema <schema> --with-workspace --with-config`.
-10. Validate the runtime seam with `pixi run streamline-extract validate-runtime --pack schemas/domain_packs/<domain>/pack.yaml --profile default`.
+8. Validate the schema with `pixi run psweep validate-schema <schema>`.
+9. Scaffold the runtime surface with `pixi run psweep init-domain-pack --name <domain> --schema <schema> --with-workspace --with-config`.
+10. Validate the runtime seam with `pixi run psweep validate-runtime --pack schemas/domain_packs/<domain>/pack.yaml --profile default`.
 11. Run `process` on 1-2 documents first, not the full corpus.
 12. Run `consolidate` on the extracted records and inspect the row shape.
 13. Expand the schema only after the first pass shows what is missing or too ambiguous.

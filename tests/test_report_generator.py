@@ -11,8 +11,8 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from streamline_extract.qa_qc.comparison_engine import ComparisonResult, FieldComparison
-from streamline_extract.qa_qc.report_generator import ReportGenerator
+from psweep.qa_qc.comparison_engine import ComparisonResult, FieldComparison
+from psweep.qa_qc.report_generator import ReportGenerator
 
 
 class TestReportGenerator:

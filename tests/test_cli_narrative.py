@@ -14,19 +14,19 @@ from pathlib import Path
 
 from rich.console import Console
 
-from streamline_extract.cli.ui import (
+from psweep.cli.ui import (
     TerminalUI,
     UITheme,
     Verbosity,
     key_values,
 )
-from streamline_extract.cli.run_view import RunView
-from streamline_extract.cli.dashboard import (
+from psweep.cli.run_view import RunView
+from psweep.cli.dashboard import (
     AcquisitionDashboard,
     create_acquisition_live_dashboard,
     create_live_dashboard,
 )
-import streamline_extract.cli.ui as ui_module
+import psweep.cli.ui as ui_module
 
 
 def _record(width: int = 100) -> Console:
@@ -150,7 +150,7 @@ class TestNoAdHocMarkupInCommands:
 
     def _src(self, name: str) -> str:
         root = Path(__file__).resolve().parents[1]
-        return (root / "src" / "streamline_extract" / "cli" / name).read_text()
+        return (root / "src" / "psweep" / "cli" / name).read_text()
 
     def test_commands_have_no_colored_console_print(self):
         assert not self._COLOR.search(self._src("commands.py"))

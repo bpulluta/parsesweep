@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from streamline_extract.acquisition.engine import AcquisitionEngine, AcquisitionRequest
+from psweep.acquisition.engine import AcquisitionEngine, AcquisitionRequest
 
 
 def _read_manifest(path: Path) -> dict:

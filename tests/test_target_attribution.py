@@ -7,9 +7,9 @@ LinkPrioritizer re-ranking, and surfaced in the download record / index CSV.
 
 from __future__ import annotations
 
-from streamline_extract.acquisition.candidate_selector import CandidateSelector
-from streamline_extract.acquisition.link_prioritizer import LinkPrioritizer
-from streamline_extract.acquisition.models import (
+from psweep.acquisition.candidate_selector import CandidateSelector
+from psweep.acquisition.link_prioritizer import LinkPrioritizer
+from psweep.acquisition.models import (
     AcquisitionCandidate,
     CandidateScore,
 )
@@ -88,7 +88,7 @@ class TestRoutingPreservesMetadata:
     attributed back to its seed via source_seed."""
 
     def test_copy_candidate_preserves_metadata(self):
-        from streamline_extract.acquisition.engine import AcquisitionEngine
+        from psweep.acquisition.engine import AcquisitionEngine
 
         c = _candidate("https://generac.com/manual.pdf")
         c.target_metadata = {"manufacturer": "Generac", "power_class_kw": "200"}
@@ -102,7 +102,7 @@ class TestRoutingPreservesMetadata:
     def test_crawled_child_inherits_seed_metadata(self):
         from types import SimpleNamespace
 
-        from streamline_extract.acquisition.engine import AcquisitionEngine
+        from psweep.acquisition.engine import AcquisitionEngine
 
         seed = _candidate("https://county.gov/ordinances/")
         seed.target_metadata = {"county_name": "Boulder", "state": "CO"}
@@ -119,7 +119,7 @@ class TestRoutingPreservesMetadata:
     def test_inherit_returns_none_without_source_seed(self):
         from types import SimpleNamespace
 
-        from streamline_extract.acquisition.engine import AcquisitionEngine
+        from psweep.acquisition.engine import AcquisitionEngine
 
         artifact = SimpleNamespace(metadata={"discovery_mode": "x"})
         assert AcquisitionEngine._inherit_target_metadata(artifact, {}) is None

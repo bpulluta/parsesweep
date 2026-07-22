@@ -1,4 +1,4 @@
-# StreamlineExtract Domain Config Template
+# ParseSweep Domain Config Template
 #
 # Copy this file into a new folder under config/<your_domain>/run.yaml.
 # Remove sections you don't need — only `domain` and at least one

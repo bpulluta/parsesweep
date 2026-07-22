@@ -8931,7 +8931,7 @@ packages:
   size: 354697
   timestamp: 1742433568506
 - pypi: .
-  name: streamline-extract
+  name: psweep
   requires_dist:
   - pandas>=2.0.0
   - numpy>=1.24.0

@@ -6,8 +6,8 @@ from datetime import date
 
 import pytest
 
-from streamline_extract.acquisition.candidate_selector import CandidateSelector
-from streamline_extract.acquisition.models import AcquisitionCandidate, CandidateScore
+from psweep.acquisition.candidate_selector import CandidateSelector
+from psweep.acquisition.models import AcquisitionCandidate, CandidateScore
 
 
 # ---------------------------------------------------------------------------
@@ -352,7 +352,7 @@ class TestPerTargetSelection:
 
 class TestSelectionConfigMapping:
     def test_selection_block_maps_primary_per_target(self):
-        from streamline_extract.config.runtime_config_loader import resolve_command_config
+        from psweep.config.runtime_config_loader import resolve_command_config
 
         config = {
             "acquisition": {
@@ -371,7 +371,7 @@ class TestSelectionConfigMapping:
         assert resolved["selection_exclude_draft"] is False
 
     def test_selection_block_maps_draft_patterns(self):
-        from streamline_extract.config.runtime_config_loader import resolve_command_config
+        from psweep.config.runtime_config_loader import resolve_command_config
 
         config = {
             "acquisition": {
@@ -388,7 +388,7 @@ class TestSelectionConfigMapping:
         assert resolved["selection_draft_patterns"] == [r"\bfoo\b", r"\bbar\b"]
 
     def test_missing_selection_block_leaves_defaults(self):
-        from streamline_extract.config.runtime_config_loader import resolve_command_config
+        from psweep.config.runtime_config_loader import resolve_command_config
 
         resolved = resolve_command_config(
             command="acquire",
@@ -400,7 +400,7 @@ class TestSelectionConfigMapping:
         assert "selection_exclude_draft" not in resolved
 
     def test_selection_block_maps_target_identity_templates(self):
-        from streamline_extract.config.runtime_config_loader import resolve_command_config
+        from psweep.config.runtime_config_loader import resolve_command_config
 
         config = {
             "acquisition": {

@@ -7,7 +7,7 @@ from types import SimpleNamespace
 from click.testing import CliRunner
 import pytest
 
-from streamline_extract.cli.commands import (
+from psweep.cli.commands import (
     _build_dedup_preview_report,
     _context_budget_suggestions_for_process,
     _extract_and_save_result,
@@ -19,10 +19,10 @@ from streamline_extract.cli.commands import (
     _resolve_schema_ref,
     _should_fail_on_suspicious,
 )
-from streamline_extract.cli.main import cli
-from streamline_extract.qa_qc.utils import resolve_qaqc_runtime_config
-from streamline_extract.utils.exceptions import SchemaMetadataError
-from streamline_extract.utils.schema_metadata import SchemaMetadata
+from psweep.cli.main import cli
+from psweep.qa_qc.utils import resolve_qaqc_runtime_config
+from psweep.utils.exceptions import SchemaMetadataError
+from psweep.utils.schema_metadata import SchemaMetadata
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -1178,7 +1178,7 @@ def test_init_domain_pack_cli_rejects_conflicting_profile_scaffold_modes(tmp_pat
 
 def test_init_domain_pack_cli_can_scaffold_workspace_folders(tmp_path, monkeypatch) -> None:
     runner = CliRunner()
-    monkeypatch.setattr('streamline_extract.cli.utils_commands._cli_repo_root', lambda: REPO_ROOT)
+    monkeypatch.setattr('psweep.cli.utils_commands._cli_repo_root', lambda: REPO_ROOT)
 
     result = runner.invoke(
         cli,
@@ -1218,7 +1218,7 @@ def test_init_domain_pack_cli_can_scaffold_workspace_folders(tmp_path, monkeypat
 
 def test_init_domain_pack_cli_workspace_scaffold_is_idempotent(tmp_path, monkeypatch) -> None:
     runner = CliRunner()
-    monkeypatch.setattr('streamline_extract.cli.utils_commands._cli_repo_root', lambda: REPO_ROOT)
+    monkeypatch.setattr('psweep.cli.utils_commands._cli_repo_root', lambda: REPO_ROOT)
 
     for existing_path in (
         REPO_ROOT / 'documents/workspace_domain',
@@ -1256,9 +1256,9 @@ def test_init_domain_pack_cli_workspace_scaffold_is_idempotent(tmp_path, monkeyp
 
 def test_init_domain_pack_cli_can_scaffold_sample_assets(tmp_path, monkeypatch) -> None:
     runner = CliRunner()
-    monkeypatch.setattr('streamline_extract.cli.utils_commands._cli_repo_root', lambda: tmp_path)
+    monkeypatch.setattr('psweep.cli.utils_commands._cli_repo_root', lambda: tmp_path)
     monkeypatch.setattr(
-        'streamline_extract.cli.utils_commands.build_runtime_readiness_report',
+        'psweep.cli.utils_commands.build_runtime_readiness_report',
         lambda **_: {
             'status': 'ready',
             'resolved': {
@@ -1327,7 +1327,7 @@ def test_init_domain_pack_cli_can_scaffold_sample_assets(tmp_path, monkeypatch) 
 
 def test_init_domain_pack_cli_sample_assets_require_force_to_overwrite(tmp_path, monkeypatch) -> None:
     runner = CliRunner()
-    monkeypatch.setattr('streamline_extract.cli.utils_commands._cli_repo_root', lambda: tmp_path)
+    monkeypatch.setattr('psweep.cli.utils_commands._cli_repo_root', lambda: tmp_path)
     _write_file(tmp_path / 'documents/sample_domain/README.md', 'existing sample asset readme\n')
 
     result = runner.invoke(
@@ -1418,16 +1418,16 @@ def test_init_domain_pack_cli_can_scaffold_config_files(tmp_path) -> None:
         'Consolidate extracted records',
     ]
     assert next_steps[0]['detail'] == 'Place source files under documents/config_domain/ before the first run.'
-    assert next_steps[1]['command'].startswith('pixi run streamline-extract validate-runtime --pack ')
+    assert next_steps[1]['command'].startswith('pixi run psweep validate-runtime --pack ')
     assert '--profile' in next_steps[1]['command']
     assert next_steps[2]['command'] == (
-        'pixi run streamline-extract process documents/config_domain/ '
+        'pixi run psweep process documents/config_domain/ '
         '--schema schemas/personal/electricity_tariff_schema.json '
         f'--profile {payload["created"]["profile_path"]} '
         f'--pages-csv {(tmp_path / "config/config_domain/page_ranges.csv").as_posix()}'
     )
     assert next_steps[3]['command'] == (
-        'pixi run streamline-extract consolidate processed/config_domain '
+        'pixi run psweep consolidate processed/config_domain '
         '--schema schemas/personal/electricity_tariff_schema.json'
     )
 
@@ -1514,9 +1514,9 @@ def test_init_domain_pack_cli_prefills_page_ranges_from_existing_documents(tmp_p
     _write_file(documents_dir / 'beta.docx', '')
     _write_file(documents_dir / 'notes.md', '')
 
-    monkeypatch.setattr('streamline_extract.cli.utils_commands._cli_repo_root', lambda: repo_root)
+    monkeypatch.setattr('psweep.cli.utils_commands._cli_repo_root', lambda: repo_root)
     monkeypatch.setattr(
-        'streamline_extract.cli.utils_commands.build_runtime_readiness_report',
+        'psweep.cli.utils_commands.build_runtime_readiness_report',
         lambda **_: {
             'status': 'ready',
             'resolved': {
@@ -1623,11 +1623,11 @@ def test_init_domain_pack_cli_text_output_includes_next_steps(tmp_path) -> None:
     assert result.exit_code == 0
     assert 'Next Steps' in result.output
     assert '1. Add source documents' in result.output
-    assert 'pixi run streamline-extract validate-runtime --pack' in result.output
-    assert 'pixi run streamline-extract process documents/guided_domain/' in result.output
+    assert 'pixi run psweep validate-runtime --pack' in result.output
+    assert 'pixi run psweep process documents/guided_domain/' in result.output
     assert '--schema schemas/personal/geothermal_ordinance_schema.json --profile default --pages-csv' in result.output
     assert str(tmp_path / 'config/guided_domain/page_ranges.csv') in result.output
-    assert 'pixi run streamline-extract consolidate processed/guided_domain --schema schemas/personal/geothermal_ordinance_schema.json' in result.output
+    assert 'pixi run psweep consolidate processed/guided_domain --schema schemas/personal/geothermal_ordinance_schema.json' in result.output
     assert 'Optional multi-model QA/QC run' not in result.output
     assert '--enable-qa-qc' not in result.output
     assert 'processed/guided_domain/qa_qc' not in result.output
@@ -1647,17 +1647,17 @@ def test_run_qaqc_extraction_prints_compare_command_with_selected_lane(tmp_path,
             self.processing_time = processing_time
             self.success = success
 
-    monkeypatch.setattr('streamline_extract.qa_qc.ModelDetector.get_qa_models', lambda: ['model-a', 'model-b'])
-    monkeypatch.setattr('streamline_extract.qa_qc.ModelDetector.get_provider', lambda: 'openai')
-    monkeypatch.setattr('streamline_extract.extraction.document_utils.extract_text_from_document', lambda *args, **kwargs: 'doc text')
+    monkeypatch.setattr('psweep.qa_qc.ModelDetector.get_qa_models', lambda: ['model-a', 'model-b'])
+    monkeypatch.setattr('psweep.qa_qc.ModelDetector.get_provider', lambda: 'openai')
+    monkeypatch.setattr('psweep.extraction.document_utils.extract_text_from_document', lambda *args, **kwargs: 'doc text')
     monkeypatch.setattr(
-        'streamline_extract.qa_qc.run_multi_model_extraction',
+        'psweep.qa_qc.run_multi_model_extraction',
         lambda **kwargs: {
             'model-a': _DummyResult(cost=0.1, processing_time=1.0),
             'model-b': _DummyResult(cost=0.2, processing_time=1.5),
         },
     )
-    monkeypatch.setattr('streamline_extract.cli.commands.ask_confirm', lambda *args, **kwargs: True)
+    monkeypatch.setattr('psweep.cli.commands.ask_confirm', lambda *args, **kwargs: True)
 
     _run_qa_qc_extraction(
         doc_files=[document_path],
@@ -1680,7 +1680,7 @@ def test_run_qaqc_extraction_prints_compare_command_with_selected_lane(tmp_path,
     # key/value table by the shared design system) and echoed in the follow-up
     # compare command.
     assert 'QA/QC Lane' in captured and 'qualitative' in captured
-    assert 'pixi run streamline-extract compare' in captured
+    assert 'pixi run psweep compare' in captured
     assert '--qaqc-lane qualitative' in captured
 
 
@@ -1763,9 +1763,9 @@ def test_init_domain_pack_cli_defaults_to_minimal_template_mode(tmp_path) -> Non
 
 def test_init_domain_pack_cli_interactive_mode_uses_default_roots_when_prompted(tmp_path, monkeypatch) -> None:
     runner = CliRunner()
-    monkeypatch.setattr('streamline_extract.cli.utils_commands._cli_repo_root', lambda: tmp_path)
+    monkeypatch.setattr('psweep.cli.utils_commands._cli_repo_root', lambda: tmp_path)
     monkeypatch.setattr(
-        'streamline_extract.cli.utils_commands.build_runtime_readiness_report',
+        'psweep.cli.utils_commands.build_runtime_readiness_report',
         lambda **_: {
             'status': 'ready',
             'resolved': {
@@ -1968,9 +1968,9 @@ def test_init_domain_pack_cli_interactive_mode_can_enable_sample_assets(tmp_path
     runner = CliRunner()
     output_root = tmp_path / 'domain_packs'
     config_root = tmp_path / 'config'
-    monkeypatch.setattr('streamline_extract.cli.utils_commands._cli_repo_root', lambda: tmp_path)
+    monkeypatch.setattr('psweep.cli.utils_commands._cli_repo_root', lambda: tmp_path)
     monkeypatch.setattr(
-        'streamline_extract.cli.utils_commands.build_runtime_readiness_report',
+        'psweep.cli.utils_commands.build_runtime_readiness_report',
         lambda **_: {
             'status': 'ready',
             'resolved': {
@@ -2729,7 +2729,7 @@ def test_compare_cli_can_run_with_qualitative_lane(tmp_path, monkeypatch) -> Non
         },
     )
     monkeypatch.setattr(
-        'streamline_extract.qa_qc.report_generator.ReportGenerator.generate_report',
+        'psweep.qa_qc.report_generator.ReportGenerator.generate_report',
         lambda self, result, doc_dir: (doc_dir / 'comparison_report.xlsx', doc_dir / 'comparison_report.csv'),
     )
 
@@ -2796,7 +2796,7 @@ def test_compare_cli_ignores_comparison_summary_artifact(tmp_path, monkeypatch) 
         },
     )
     monkeypatch.setattr(
-        'streamline_extract.qa_qc.report_generator.ReportGenerator.generate_report',
+        'psweep.qa_qc.report_generator.ReportGenerator.generate_report',
         lambda self, result, doc_dir: (doc_dir / 'comparison_report.xlsx', doc_dir / 'comparison_report.csv'),
     )
 

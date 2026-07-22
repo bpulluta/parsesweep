@@ -2,7 +2,7 @@
 
 import pytest
 from pathlib import Path
-from streamline_extract.config import load_runtime_config_file, RuntimeConfigError
+from psweep.config import load_runtime_config_file, RuntimeConfigError
 
 
 class TestCsvTargetLoading:

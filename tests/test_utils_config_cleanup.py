@@ -1,4 +1,4 @@
-from streamline_extract.utils.config import Config
+from psweep.utils.config import Config
 
 
 def test_setup_directories_uses_data_root(tmp_path):

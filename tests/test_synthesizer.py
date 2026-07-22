@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import json
 
-from streamline_extract.consolidation.synthesizer import Synthesizer
+from psweep.consolidation.synthesizer import Synthesizer
 
 
 class _StubLLM:
@@ -106,7 +106,62 @@ def test_optional_ordering_guard_flags_violation_deterministically():
     row = syn._synthesize_group(("X",), recs)
 
     assert row["ordering_consistent"] is False
-    assert "ILLOGICAL ORDERING" in row["ordering_notes"]
+    assert "ordering note" in row["ordering_notes"]
+    assert "start (2025-05-01) is after end (2025-01-01)" in row["ordering_notes"]
+
+
+def test_date_comparator_is_precision_aware():
+    """The opt-in 'date' comparator compares at the coarsest shared precision, so
+    two year-precision values in the same year are NOT flagged as out of order."""
+    cfg = {
+        "item_array": "items",
+        "group_by": ["e.id"],
+        "citation_field": "src.url",
+        "reconcile_fields": [
+            {"field": "date_announced", "precision": "precision_announced"},
+            {"field": "date_construction_start",
+             "precision": "precision_construction_start"},
+        ],
+        "ordering_constraint": ["date_announced", "date_construction_start"],
+        "ordering_comparison": "date",
+        "min_sources_for_llm": 2,
+    }
+    # announced pinned to Jan 1 (year precision), construction in June (month) —
+    # same year: not a real violation despite date_announced > ... lexically false
+    # here, but the key case is that year-vs-year same year is tolerated.
+    recs = [{
+        "e": {"id": "Y"}, "src": {"url": "u"},
+        "items": [{
+            "date_announced": "2025-01-01", "precision_announced": "year",
+            "date_construction_start": "2025-06-01",
+            "precision_construction_start": "month",
+        }],
+    }]
+    syn = Synthesizer(schema_metadata=None, config=cfg, llm_client=_StubLLM())
+    row = syn._synthesize_group(("Y",), recs)
+    assert row["ordering_consistent"] is True
+    # precision fields are carried through onto the row
+    assert row["precision_announced"] == "year"
+
+
+def test_numeric_comparator_reused_for_non_temporal_domain():
+    """The synthesizer stays domain-neutral: 'numeric' orders by value, so it can
+    validate e.g. min <= max with no temporal semantics."""
+    cfg = {
+        "item_array": "items",
+        "group_by": ["e.id"],
+        "citation_field": "src.url",
+        "reconcile_fields": [{"field": "min"}, {"field": "max"}],
+        "ordering_constraint": ["min", "max"],
+        "ordering_comparison": "numeric",
+        "min_sources_for_llm": 2,
+    }
+    recs = [{"e": {"id": "Z"}, "src": {"url": "u"},
+             "items": [{"min": "10", "max": "5"}]}]
+    syn = Synthesizer(schema_metadata=None, config=cfg, llm_client=_StubLLM())
+    row = syn._synthesize_group(("Z",), recs)
+    assert row["ordering_consistent"] is False
+    assert "min (10) is after max (5)" in row["ordering_notes"]
 
 
 def test_relevance_flag_filters_records():

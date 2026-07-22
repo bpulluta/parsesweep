@@ -3,8 +3,8 @@
 import json
 import pytest
 from pathlib import Path
-from streamline_extract.utils.schema_metadata import SchemaMetadata
-from streamline_extract.utils.exceptions import SchemaMetadataError
+from psweep.utils.schema_metadata import SchemaMetadata
+from psweep.utils.exceptions import SchemaMetadataError
 
 
 @pytest.fixture

@@ -1,7 +1,7 @@
-# GitHub Copilot Instructions for StreamlineExtract
+# GitHub Copilot Instructions for ParseSweep
 
 ## Project Overview
-StreamlineExtract is a universal document extraction system that uses LLMs to extract structured data from documents (PDFs, DOCX, TXT, XLSX, CSV) into JSON, then consolidates into Excel/CSV.
+ParseSweep is a universal document extraction system that uses LLMs to extract structured data from documents (PDFs, DOCX, TXT, XLSX, CSV) into JSON, then consolidates into Excel/CSV.
 
 **Version 2.0+**: All schemas MUST include `$metadata` section. No heuristic fallbacks.
 
@@ -39,26 +39,26 @@ StreamlineExtract is a universal document extraction system that uses LLMs to ex
 
 **Geothermal ordinances extraction:**
 ```bash
-pixi run streamline-extract process documents/geothermal_ordinances/ \
+pixi run psweep process documents/geothermal_ordinances/ \
   --schema schemas/personal/geothermal_ordinance_schema.json
 ```
 
 **Tariff extraction:**
 ```bash
-pixi run streamline-extract process documents/tariffs/ \
+pixi run psweep process documents/tariffs/ \
   --schema schemas/personal/electricity_tariff_schema.json \
   --max-context 1400000
 ```
 
 **Air quality permits extraction:**
 ```bash
-pixi run streamline-extract process documents/aq_permits/ \
+pixi run psweep process documents/aq_permits/ \
   --schema schemas/personal/air_quality_permits_schema.json
 ```
 
 **Solar ordinances extraction:**
 ```bash
-pixi run streamline-extract process documents/solar/ \
+pixi run psweep process documents/solar/ \
   --schema schemas/personal/solar_ordinance_schema.json
 ```
 
@@ -74,7 +74,7 @@ pixi run streamline-extract process documents/solar/ \
 **Using page ranges:**
 ```bash
 # Extract specific pages from documents
-pixi run streamline-extract process documents/tariffs/ \
+pixi run psweep process documents/tariffs/ \
   --schema schemas/personal/electricity_tariff_schema.json \
   --pages-csv config/tariffs/page_ranges.csv
 ```
@@ -93,16 +93,16 @@ full_doc.pdf,,
 
 **Consolidate extracted JSONs to Excel/CSV:**
 ```bash
-pixi run streamline-extract consolidate processed/tariffs \\\n  --schema schemas/personal/electricity_tariff_schema.json
+pixi run psweep consolidate processed/tariffs \\\n  --schema schemas/personal/electricity_tariff_schema.json
 
-pixi run streamline-extract consolidate processed/geothermal_ordinances \\\n  --schema schemas/personal/geothermal_ordinance_schema.json
+pixi run psweep consolidate processed/geothermal_ordinances \\\n  --schema schemas/personal/geothermal_ordinance_schema.json
 
-pixi run streamline-extract consolidate processed/aq_permits \\\n  --schema schemas/personal/air_quality_permits_schema.json
+pixi run psweep consolidate processed/aq_permits \\\n  --schema schemas/personal/air_quality_permits_schema.json
 ```
 
 **With custom output:**
 ```bash
-pixi run streamline-extract consolidate processed/data \\\n  --schema schemas/your_schema.json \\\n  --output my_analysis/
+pixi run psweep consolidate processed/data \\\n  --schema schemas/your_schema.json \\\n  --output my_analysis/
 ```
 
 **Outputs:**
@@ -132,7 +132,7 @@ pixi run python script_name.py
 ## Project Structure
 
 ```
-StreamlineExtract/
+ParseSweep/
 ├── config/                 # Configuration files (page ranges, etc.)
 │   ├── tariffs/
 │   ├── aq_permits/
@@ -154,7 +154,7 @@ StreamlineExtract/
 ├── consolidated/           # Final Excel/CSV outputs
 │   ├── geothermal_ordinances/
 │   └── tariffs/
-└── src/streamline_extract/
+└── src/psweep/
     ├── cli/               # CLI commands
     ├── extraction/        # Document extraction logic
     ├── consolidation/     # Data consolidation logic
@@ -176,16 +176,16 @@ StreamlineExtract/
 rm -rf processed/category/* consolidated/category/*
 
 # 2. Process documents (specify correct schema!)
-pixi run streamline-extract process documents/tariffs/ \\\n  --schema schemas/personal/electricity_tariff_schema.json
+pixi run psweep process documents/tariffs/ \\\n  --schema schemas/personal/electricity_tariff_schema.json
 
 # 3. Consolidate (use same schema!)
-pixi run streamline-extract consolidate processed/tariffs/ \\\n  --schema schemas/personal/electricity_tariff_schema.json
+pixi run psweep consolidate processed/tariffs/ \\\n  --schema schemas/personal/electricity_tariff_schema.json
 ```
 
 ### Large Document Processing
 For documents like complete tariff books:
 ```bash
-pixi run streamline-extract process documents/tariffs/ \
+pixi run psweep process documents/tariffs/ \
   --schema schemas/personal/electricity_tariff_schema.json \
   --max-context 1400000
 ```
@@ -194,16 +194,16 @@ pixi run streamline-extract process documents/tariffs/ \
 Validate extractions by running 2+ AI models and comparing outputs:
 ```bash
 # Step 1: Run QA/QC extraction on the production schema/runtime path
-pixi run streamline-extract process documents/geothermal_ordinances/ \
+pixi run psweep process documents/geothermal_ordinances/ \
   --schema schemas/personal/geothermal_ordinance_schema.json \
   --enable-qa-qc
 
 # Step 2: Generate/regenerate comparison reports (no re-extraction needed)
-pixi run streamline-extract compare processed/geothermal_ordinances/qa_qc \
+pixi run psweep compare processed/geothermal_ordinances/qa_qc \
   --schema schemas/personal/geothermal_ordinance_schema.json
 
 # Optional: evaluate the qualitative review lane explicitly
-pixi run streamline-extract compare processed/geothermal_ordinances/qa_qc \
+pixi run psweep compare processed/geothermal_ordinances/qa_qc \
   --schema schemas/personal/geothermal_ordinance_schema.json \
   --qaqc-lane qualitative
 
@@ -242,10 +242,10 @@ pixi run streamline-extract compare processed/geothermal_ordinances/qa_qc \
 
 | Document Type | Schema Path | Command Example |
 |--------------|-------------|------------------|
-| Tariffs | `schemas/personal/electricity_tariff_schema.json` | `pixi run streamline-extract process documents/tariffs/ --schema schemas/personal/electricity_tariff_schema.json` |
-| Geothermal Ordinances | `schemas/personal/geothermal_ordinance_schema.json` | `pixi run streamline-extract process documents/geothermal_ordinances/ --schema schemas/personal/geothermal_ordinance_schema.json` |
-| Air Quality Permits | `schemas/personal/air_quality_permits_schema.json` | `pixi run streamline-extract process documents/aq_permits/ --schema schemas/personal/air_quality_permits_schema.json` |
-| Solar Ordinances | `schemas/personal/solar_ordinance_schema.json` | `pixi run streamline-extract process documents/solar/ --schema schemas/personal/solar_ordinance_schema.json` |
+| Tariffs | `schemas/personal/electricity_tariff_schema.json` | `pixi run psweep process documents/tariffs/ --schema schemas/personal/electricity_tariff_schema.json` |
+| Geothermal Ordinances | `schemas/personal/geothermal_ordinance_schema.json` | `pixi run psweep process documents/geothermal_ordinances/ --schema schemas/personal/geothermal_ordinance_schema.json` |
+| Air Quality Permits | `schemas/personal/air_quality_permits_schema.json` | `pixi run psweep process documents/aq_permits/ --schema schemas/personal/air_quality_permits_schema.json` |
+| Solar Ordinances | `schemas/personal/solar_ordinance_schema.json` | `pixi run psweep process documents/solar/ --schema schemas/personal/solar_ordinance_schema.json` |
 
 **Critical:**
 - The `--schema` flag is **REQUIRED** for production use
@@ -301,13 +301,13 @@ OPENAI_API_KEY=sk-your-key
 
 When the user only has raw documents for a new domain, guide them through the current runtime in this order:
 1. Inspect representative documents under `documents/<domain>/` and identify the 4-8 highest-value fields the user actually needs first.
-2. Start with a lean schema under `schemas/personal/` containing valid `$metadata.extraction`, top-level context objects, and a compact main data array shape. Prefer `pixi run streamline-extract init-domain-schema --name <domain> --reference-schema <closest_schema>` over manually copying a full production schema.
+2. Start with a lean schema under `schemas/personal/` containing valid `$metadata.extraction`, top-level context objects, and a compact main data array shape. Prefer `pixi run psweep init-domain-schema --name <domain> --reference-schema <closest_schema>` over manually copying a full production schema.
 3. If the user already knows the first 4-8 fields they need, prefer `--include-field ...` on `init-domain-schema` so the starter is trimmed immediately instead of expecting manual JSON edits.
 4. Use the closest existing schema only as a reference for field patterns and domain phrasing.
 5. Keep the separation explicit: schema owns extraction contract and minimal dedup semantics; pack YAML owns runtime modules, QA/QC behavior, and environment/runtime tuning.
-6. Run `pixi run streamline-extract validate-schema ...` and fix schema issues.
-7. Scaffold the runtime surface with `pixi run streamline-extract init-domain-pack --name <domain> --schema <schema> --with-workspace --with-config`.
-8. Validate the runtime seam with `pixi run streamline-extract validate-runtime --pack schemas/domain_packs/<domain>/pack.yaml --profile default`.
+6. Run `pixi run psweep validate-schema ...` and fix schema issues.
+7. Scaffold the runtime surface with `pixi run psweep init-domain-pack --name <domain> --schema <schema> --with-workspace --with-config`.
+8. Validate the runtime seam with `pixi run psweep validate-runtime --pack schemas/domain_packs/<domain>/pack.yaml --profile default`.
 9. Run `process` on 1-2 documents first, then `consolidate`, then optional `compare` QA/QC runs.
 10. Iterate on schema fields, page ranges, and qualitative review until extraction quality is acceptable.
 
@@ -352,7 +352,7 @@ pixi run python -c "import pandas as pd; df = pd.read_csv('output.csv'); print(d
 1. Copy an existing schema from schemas/ as a template
 2. Modify the properties to match your document structure
 3. Update the $metadata section with correct field paths
-4. Validate: `pixi run streamline-extract validate-schema schemas/your_schema.json`
+4. Validate: `pixi run psweep validate-schema schemas/your_schema.json`
 5. Test on 1-2 documents before full batch
 
 **Example minimal valid schema:**

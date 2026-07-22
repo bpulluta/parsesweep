@@ -13,7 +13,7 @@
 # document site works by changing the seed URL + include_url_patterns.
 #
 # Requires Selenium + Google Chrome.
-#   streamline-extract acquire --config config/aq_permits_va/run.yaml
+#   psweep acquire --config config/aq_permits_va/run.yaml
 
 domain: aq_permits_va
 

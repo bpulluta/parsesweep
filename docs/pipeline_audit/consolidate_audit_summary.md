@@ -104,7 +104,7 @@ pixi run python -m pytest tests/ -q                      # 754 pass
 # strict-load every shipped config (incl. datacenter synthesis)
 pixi run python - <<'PY'
 from pathlib import Path; import glob
-from streamline_extract.config.runtime_config_loader import load_runtime_config_file, resolve_command_config
+from psweep.config.runtime_config_loader import load_runtime_config_file, resolve_command_config
 for p in sorted(glob.glob('config/*/run.yaml')):
     d = load_runtime_config_file(Path(p))
     for c in ('acquire','process','consolidate'):
@@ -113,5 +113,5 @@ for p in sorted(glob.glob('config/*/run.yaml')):
     print('OK', p)
 PY
 # bounded live:  set -a && . ./.env && set +a
-pixi run streamline-extract consolidate processed/geothermal_small --schema schemas/personal/geothermal_ordinance_schema.json --output /tmp/g
+pixi run psweep consolidate processed/geothermal_small --schema schemas/personal/geothermal_ordinance_schema.json --output /tmp/g
 ```

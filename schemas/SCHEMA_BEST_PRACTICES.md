@@ -2,7 +2,7 @@
 
 ## Overview
 
-StreamlineExtract v2.0+ uses a metadata-driven architecture where:
+ParseSweep v2.0+ uses a metadata-driven architecture where:
 - **`$metadata` section** (required) defines extraction and consolidation behavior
 - **Schema properties** define the data structure to extract
 - Your schema design directly determines your spreadsheet output
@@ -38,21 +38,21 @@ Use a short loop while evolving a schema:
 
 ```bash
 # 1. Validate schema structure
-pixi run streamline-extract validate-schema schemas/my_schema.json
+pixi run psweep validate-schema schemas/my_schema.json
 
 # 2. Extract a tiny sample
-pixi run streamline-extract process documents/sample/ \
+pixi run psweep process documents/sample/ \
   --schema schemas/my_schema.json \
   -n 2 \
   --reprocess
 
 # 3. Consolidate the sample
-pixi run streamline-extract consolidate processed/sample/ \
+pixi run psweep consolidate processed/sample/ \
   --schema schemas/my_schema.json \
   --verbose
 
 # 4. Preview deduplication before writing outputs
-pixi run streamline-extract consolidate processed/sample/ \
+pixi run psweep consolidate processed/sample/ \
   --schema schemas/my_schema.json \
   --dry-run \
   --report-format json \
@@ -741,7 +741,7 @@ Use the same fields across all items in an array.
 ### 1. Validate Schema Structure
 
 ```bash
-pixi run streamline-extract validate-schema schemas/your_schema.json
+pixi run psweep validate-schema schemas/your_schema.json
 ```
 
 Checks for:
@@ -753,7 +753,7 @@ Checks for:
 
 ```bash
 # Extract 1-2 sample documents
-pixi run streamline-extract extract documents/samples/ \
+pixi run psweep extract documents/samples/ \
   --schema schemas/your_schema.json \
   --limit 2
 
@@ -771,7 +771,7 @@ Check:
 
 ```bash
 # Consolidate to Excel/CSV
-pixi run streamline-extract consolidate extracted/samples/
+pixi run psweep consolidate extracted/samples/
 
 # Review outputs
 open consolidated/samples/*.xlsx

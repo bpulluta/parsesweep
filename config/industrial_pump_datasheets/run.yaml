@@ -7,9 +7,9 @@
 #
 # Required env: SERPAPI_KEY (+ Azure OpenAI for process)
 # Usage:
-#   streamline-extract acquire --config config/industrial_pump_datasheets/run.yaml --dry-run
-#   streamline-extract acquire --config config/industrial_pump_datasheets/run.yaml
-#   streamline-extract process --config config/industrial_pump_datasheets/run.yaml
+#   psweep acquire --config config/industrial_pump_datasheets/run.yaml --dry-run
+#   psweep acquire --config config/industrial_pump_datasheets/run.yaml
+#   psweep process --config config/industrial_pump_datasheets/run.yaml
 
 domain: industrial_pump_datasheets
 

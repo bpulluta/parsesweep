@@ -74,7 +74,7 @@ def _sample_modules_catalog() -> dict:
                 "version": "1.0.0",
                 "kind": "classifier",
                 "enabled": True,
-                "entrypoint": "streamline_extract.modules.classifier:run",
+                "entrypoint": "psweep.modules.classifier:run",
                 "config": {"strict": True},
                 "notes": None,
             }

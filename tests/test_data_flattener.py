@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import pandas as pd
 
-from streamline_extract.consolidation.data_flattener import DataFlattener
+from psweep.consolidation.data_flattener import DataFlattener
 
 
 class _FakeSchema:

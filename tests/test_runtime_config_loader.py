@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from streamline_extract.config.runtime_config_loader import (
+from psweep.config.runtime_config_loader import (
     RuntimeConfigError,
     catalog_for_command,
     load_runtime_config_file,
@@ -404,7 +404,7 @@ def test_resolve_command_config_maps_request_headers(tmp_path: Path):
                 """
 acquisition:
     request_headers:
-            User-Agent: "StreamlineExtract/2.0 (custom contact: example@example.com)"
+            User-Agent: "ParseSweep/2.0 (custom contact: example@example.com)"
             Accept-Language: "en-US,en;q=0.9"
 """,
                 encoding="utf-8",
@@ -419,7 +419,7 @@ acquisition:
         )
 
         assert resolved["request_headers"] == {
-                "User-Agent": "StreamlineExtract/2.0 (custom contact: example@example.com)",
+                "User-Agent": "ParseSweep/2.0 (custom contact: example@example.com)",
                 "Accept-Language": "en-US,en;q=0.9",
         }
 

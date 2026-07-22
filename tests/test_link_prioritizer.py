@@ -8,8 +8,8 @@ from __future__ import annotations
 
 import pytest
 
-from streamline_extract.acquisition.link_prioritizer import LinkPrioritizer
-from streamline_extract.acquisition.models import AcquisitionCandidate, CandidateScore
+from psweep.acquisition.link_prioritizer import LinkPrioritizer
+from psweep.acquisition.models import AcquisitionCandidate, CandidateScore
 
 
 # ---------------------------------------------------------------------------

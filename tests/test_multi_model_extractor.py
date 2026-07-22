@@ -11,14 +11,14 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 from dataclasses import asdict
 
-from streamline_extract.qa_qc.multi_model_extractor import (
+from psweep.qa_qc.multi_model_extractor import (
     run_multi_model_extraction,
     ModelExtractionResult,
 )
 
 
 # Patch target - the import inside run_multi_model_extraction
-EXTRACTOR_PATCH_PATH = "streamline_extract.extraction.DocumentExtractor"
+EXTRACTOR_PATCH_PATH = "psweep.extraction.DocumentExtractor"
 
 
 class TestModelExtractionResult:
@@ -115,7 +115,7 @@ class TestRunMultiModelExtraction:
         mock_result.validation_notes = []
         return mock_result
     
-    @patch("streamline_extract.extraction.DocumentExtractor")
+    @patch("psweep.extraction.DocumentExtractor")
     def test_successful_extraction_with_two_models(
         self, mock_extractor_class, sample_schema, sample_text, mock_extraction_result, tmp_path
     ):
@@ -146,7 +146,7 @@ class TestRunMultiModelExtraction:
         # Verify extractor was called twice with different models
         assert mock_extractor_class.call_count == 2
     
-    @patch("streamline_extract.extraction.DocumentExtractor")
+    @patch("psweep.extraction.DocumentExtractor")
     def test_output_directory_created(
         self, mock_extractor_class, sample_schema, sample_text, mock_extraction_result, tmp_path
     ):
@@ -172,7 +172,7 @@ class TestRunMultiModelExtraction:
         assert expected_dir.exists()
         assert expected_dir.is_dir()
     
-    @patch("streamline_extract.extraction.DocumentExtractor")
+    @patch("psweep.extraction.DocumentExtractor")
     def test_json_files_saved(
         self, mock_extractor_class, sample_schema, sample_text, mock_extraction_result, tmp_path
     ):
@@ -207,7 +207,7 @@ class TestRunMultiModelExtraction:
             assert "payload" in data
             assert "items" in data["payload"]
     
-    @patch("streamline_extract.extraction.DocumentExtractor")
+    @patch("psweep.extraction.DocumentExtractor")
     def test_metadata_file_saved(
         self, mock_extractor_class, sample_schema, sample_text, mock_extraction_result, tmp_path
     ):
@@ -242,7 +242,7 @@ class TestRunMultiModelExtraction:
             assert metadata["summary"]["total_models"] == 2
             assert metadata["summary"]["successful"] == 2
 
-    @patch("streamline_extract.extraction.DocumentExtractor")
+    @patch("psweep.extraction.DocumentExtractor")
     def test_runtime_artifact_written_to_model_output_metadata(
         self, mock_extractor_class, sample_schema, sample_text, mock_extraction_result, tmp_path
     ):
@@ -290,7 +290,7 @@ class TestRunMultiModelExtraction:
         assert data["payload"]["items"][0]["name"] == "Item 1"
         assert data["processing_metrics"]["cost_usd"] == mock_extraction_result.cost
 
-    @patch("streamline_extract.extraction.DocumentExtractor")
+    @patch("psweep.extraction.DocumentExtractor")
     def test_runtime_artifact_written_to_run_metadata(
         self, mock_extractor_class, sample_schema, sample_text, mock_extraction_result, tmp_path
     ):
@@ -336,7 +336,7 @@ class TestRunMultiModelExtraction:
         assert metadata["lineage"]["run_id"] == "run://abc123def4567890"
         assert metadata["contract_versions"]["extraction_record"] == "1.0.0"
     
-    @patch("streamline_extract.extraction.DocumentExtractor")
+    @patch("psweep.extraction.DocumentExtractor")
     def test_partial_failure(
         self, mock_extractor_class, sample_schema, sample_text, mock_extraction_result, tmp_path
     ):
@@ -376,7 +376,7 @@ class TestRunMultiModelExtraction:
             assert metadata["errors"]["by_category"] == {"internal": 1}
             assert metadata["model_errors"]["gpt-nonexistent"]["code"] == "unexpected_processing_error"
     
-    @patch("streamline_extract.extraction.DocumentExtractor")
+    @patch("psweep.extraction.DocumentExtractor")
     def test_azure_provider_config(
         self, mock_extractor_class, sample_schema, sample_text, mock_extraction_result, tmp_path
     ):
@@ -406,7 +406,7 @@ class TestRunMultiModelExtraction:
         assert call_kwargs["azure_endpoint"] == "https://test.openai.azure.com/"
         assert call_kwargs["azure_api_version"] == "2024-02-15-preview"
     
-    @patch("streamline_extract.extraction.DocumentExtractor")
+    @patch("psweep.extraction.DocumentExtractor")
     def test_model_name_sanitization(
         self, mock_extractor_class, sample_schema, sample_text, mock_extraction_result, tmp_path
     ):
@@ -431,7 +431,7 @@ class TestRunMultiModelExtraction:
         output_dir = tmp_path / "qa_qc" / "test_doc"
         assert (output_dir / "azure-gpt-4o.json").exists()  # Slash replaced with dash
     
-    @patch("streamline_extract.extraction.DocumentExtractor")
+    @patch("psweep.extraction.DocumentExtractor")
     def test_cost_tracking(
         self, mock_extractor_class, sample_schema, sample_text, tmp_path
     ):
@@ -476,7 +476,7 @@ class TestRunMultiModelExtraction:
             metadata = json.load(f)
             assert metadata["summary"]["total_cost"] == pytest.approx(0.015, rel=0.01)
     
-    @patch("streamline_extract.extraction.DocumentExtractor")
+    @patch("psweep.extraction.DocumentExtractor")
     def test_extract_called_correctly(
         self, mock_extractor_class, sample_schema, sample_text, mock_extraction_result, tmp_path
     ):

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from streamline_extract.extraction import llm_factory
+from psweep.extraction import llm_factory
 
 
 AZURE_CFG = {

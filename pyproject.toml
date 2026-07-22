@@ -3,9 +3,9 @@ requires = ["setuptools>=68.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "streamline-extract"
+name = "psweep"
 version = "2.0.1"
-description = "StreamlineExtract: Universal document extraction system - extract structured data from ANY document type using schemas + LLMs"
+description = "ParseSweep: Universal document extraction system - extract structured data from ANY document type using schemas + LLMs"
 readme = "README.md"
 requires-python = ">=3.9"
 license = {text = "MIT"}
@@ -63,19 +63,19 @@ docs = [
 ]
 
 [project.scripts]
-streamline-extract = "streamline_extract.cli.main:main"
+psweep = "psweep.cli.main:main"
 
 [project.urls]
-Homepage = "https://github.com/bpulluta/StreamlineExtract"
-Repository = "https://github.com/bpulluta/StreamlineExtract"
-Issues = "https://github.com/bpulluta/StreamlineExtract/issues"
+Homepage = "https://github.com/bpulluta/parsesweep"
+Repository = "https://github.com/bpulluta/parsesweep"
+Issues = "https://github.com/bpulluta/parsesweep/issues"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
 
 [tool.setuptools.packages.find]
 where = ["src"]
-include = ["streamline_extract*"]
+include = ["psweep*"]
 
 [tool.black]
 line-length = 100
