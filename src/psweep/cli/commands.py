@@ -117,65 +117,6 @@ def _print_effective_config(
     console.print(key_values(display))
 
 
-def _auto_resolve_config_for_schema(schema_path: str) -> Optional[Path]:
-    """Find the domain config that references a given schema.
-
-    Scans all ``config/*/run.yaml`` files for an ``extraction.schema`` or
-    ``compilation.schema`` that matches *schema_path* — either directly or
-    through a domain pack's ``schema_path`` field.
-
-    Returns the config path if exactly one match is found, None otherwise.
-
-    This enables auto-loading of page_targeting, model overrides, and other
-    runtime settings when the user only specifies --schema.
-    """
-    config_root = Path("config")
-    if not config_root.is_dir():
-        return None
-
-    schema_resolved = Path(schema_path).resolve()
-    matches: list[Path] = []
-
-    for run_yaml in sorted(config_root.glob("*/run.yaml")):
-        try:
-            import yaml
-
-            with run_yaml.open() as f:
-                data = yaml.safe_load(f)
-            if not isinstance(data, dict):
-                continue
-            # Check extraction.schema and compilation.schema
-            for section_key in ("extraction", "compilation"):
-                section = data.get(section_key)
-                if isinstance(section, dict):
-                    cfg_schema = section.get("schema")
-                    if not cfg_schema:
-                        continue
-                    cfg_schema_path = Path(cfg_schema)
-                    # Direct match
-                    if cfg_schema_path.resolve() == schema_resolved:
-                        matches.append(run_yaml)
-                        break
-                    # Indirect match via pack's schema_path
-                    if cfg_schema_path.suffix in (".yaml", ".yml") and cfg_schema_path.exists():
-                        try:
-                            with cfg_schema_path.open() as pf:
-                                pack_data = yaml.safe_load(pf)
-                            if isinstance(pack_data, dict):
-                                pack_schema = pack_data.get("schema_path")
-                                if pack_schema and Path(pack_schema).resolve() == schema_resolved:
-                                    matches.append(run_yaml)
-                                    break
-                        except Exception:
-                            pass
-        except Exception:
-            continue
-
-    if len(matches) == 1:
-        return matches[0]
-    return None
-
-
 def _resolve_runtime_command_inputs(
     *,
     command_name: str,
@@ -185,26 +126,14 @@ def _resolve_runtime_command_inputs(
 ) -> Dict[str, Any]:
     """Load and resolve command inputs from config files and CLI overrides.
 
-    When no explicit --config is provided but --schema is given, auto-resolves
-    the matching domain config from ``config/*/run.yaml``. This ensures page
-    targeting, model overrides, and other runtime features are always active.
+    Two usage modes:
+    - --config: loads full domain config (schema, page targeting, dedup, etc.)
+    - --schema: quick mode with just the extraction schema (no runtime config)
     """
     config_data = None
-    resolved_config_path: Optional[Path] = None
-    auto_resolved = False
 
     if config_path:
-        resolved_config_path = Path(config_path)
-    elif cli_values.get("schema"):
-        # Auto-resolve: find a config that references this schema
-        resolved_config_path = _auto_resolve_config_for_schema(
-            cli_values["schema"]
-        )
-        if resolved_config_path:
-            auto_resolved = True
-
-    if resolved_config_path:
-        config_data = load_runtime_config_file(resolved_config_path)
+        config_data = load_runtime_config_file(Path(config_path))
 
     result = resolve_command_config(
         command=command_name,
@@ -212,9 +141,6 @@ def _resolve_runtime_command_inputs(
         config_data=config_data,
         strict=strict,
     )
-
-    if auto_resolved:
-        result["_auto_resolved_config"] = str(resolved_config_path)
 
     return result
 
@@ -903,7 +829,7 @@ def _extract_one_document(
     "config_path",
     type=click.Path(exists=True),
     default=None,
-    help="Path to runtime config file (.yaml/.yml/.json)",
+    help="Domain config file (RECOMMENDED — includes schema, page targeting, dedup)",
 )
 @click.option(
     "--show-effective-config",
@@ -932,7 +858,7 @@ def _extract_one_document(
     "-s",
     type=click.Path(exists=True),
     required=False,
-    help="Path to JSON schema file (required unless provided in --config)",
+    help="Schema file (for quick testing without a config YAML)",
 )
 @click.option(
     "--category",
@@ -1080,7 +1006,7 @@ def extract(
     \b
     EXAMPLES:
         # Extract from a directory against a schema (or a domain-pack pack.yaml)
-        psweep extract <input_dir> --schema <schema_or_pack>
+        psweep extract <input_dir> --schema <schema>
 
         # Drive everything from a domain's runtime config
         psweep extract --config config/<domain>/run.yaml
@@ -1180,10 +1106,6 @@ def extract(
         view.error("Runtime config resolution failed", str(exc))
         sys.exit(1)
 
-    # Notify user when config was auto-resolved from schema
-    auto_cfg = resolved_inputs.pop("_auto_resolved_config", None)
-    if auto_cfg:
-        view.info(f"Auto-loaded domain config: {auto_cfg}")
 
     warnings = resolved_inputs.get("_config_warnings", [])
     view.warnings(warnings)
@@ -2409,7 +2331,7 @@ def check(extraction_file: str, verbose: bool, show_data: bool):
     "config_path",
     type=click.Path(exists=True),
     default=None,
-    help="Path to runtime config file (.yaml/.yml/.json)",
+    help="Domain config file (RECOMMENDED — includes schema, page targeting, dedup)",
 )
 @click.option(
     "--show-effective-config",
@@ -2837,7 +2759,7 @@ def discover(
                 else "(auto: run-scoped)",
                 "Mode": "dry-run" if dry_run else "run",
             }
-        view.header("ACQUISITION")
+        view.header("DISCOVERY")
         view.config(config_info)
 
         if resolved_targets:
@@ -3052,7 +2974,7 @@ def discover(
         )
     next_steps.append(
         "Extract the documents: pixi run psweep extract "
-        f"{result.curated_dir or result.documents_dir} --schema <schema_or_pack>"
+        f"{result.curated_dir or result.documents_dir} --schema <schema>"
     )
     view.next_steps(next_steps)
 
@@ -3195,7 +3117,7 @@ def curate(
     view.next_steps(
         [
             f"Extract the curated set: pixi run psweep extract {curated_dir} "
-            "--schema <schema_or_pack>",
+            "--schema <schema>",
         ]
     )
 
@@ -3233,7 +3155,7 @@ def _update_review_sidecar(row: dict) -> None:
     "config_path",
     type=click.Path(exists=True),
     default=None,
-    help="Path to runtime config file (.yaml/.yml/.json)",
+    help="Domain config file (RECOMMENDED — includes schema, page targeting, dedup)",
 )
 @click.option(
     "--show-effective-config",
@@ -3256,7 +3178,7 @@ def _update_review_sidecar(row: dict) -> None:
     "-s",
     type=click.Path(exists=True),
     required=False,
-    help="Path to JSON schema file (required unless provided in --config)",
+    help="Schema file (for quick testing without a config YAML)",
 )
 @click.option(
     "--output",
@@ -3352,10 +3274,6 @@ def compile(
         view.error("Runtime config resolution failed", str(exc))
         sys.exit(1)
 
-    # Notify user when config was auto-resolved from schema
-    auto_cfg = resolved_inputs.pop("_auto_resolved_config", None)
-    if auto_cfg:
-        view.info(f"Auto-loaded domain config: {auto_cfg}")
 
     warnings = resolved_inputs.get("_config_warnings", [])
     view.warnings(warnings)
@@ -3431,7 +3349,7 @@ def compile(
 
     # Header
     if not emit_json_report:
-        view.header("CONSOLIDATION")
+        view.header("COMPILATION")
 
     # Load schema (enforced as required by Click)
     matched_schema = Path(schema)
@@ -3442,25 +3360,29 @@ def compile(
     try:
         from psweep.utils.schema_metadata import SchemaMetadata
 
-        # Build metadata overrides: prefer config-inline settings, fall back to pack
-        metadata_overrides = {}
+        # Build metadata overrides from config YAML compilation section
+        metadata_overrides: Dict[str, Any] = {}
+        compilation_overrides: Dict[str, Any] = {}
 
-        # Source 1: config YAML compilation.output section (primary)
-        config_compilation_output = resolved_inputs.get("output")
-        if isinstance(config_compilation_output, dict):
-            metadata_overrides["compilation"] = {"output": config_compilation_output}
+        # Deduplication settings from config
+        config_dedup = resolved_inputs.get("deduplication")
+        if isinstance(config_dedup, dict):
+            compilation_overrides["deduplication"] = config_dedup
 
-        # Source 2: runtime artifact pack (fallback for domains not yet migrated)
-        if not metadata_overrides:
-            runtime_artifact = _resolve_runtime_artifact(None, matched_schema)
-            if runtime_artifact:
-                pack_compilation = (
-                    (runtime_artifact.get("resolved") or {}).get("pack") or {}
-                ).get("compilation")
-                if isinstance(pack_compilation, dict):
-                    metadata_overrides["compilation"] = pack_compilation
-        else:
-            runtime_artifact = None
+        # Output formatting from config
+        config_output = resolved_inputs.get("compilation_output")
+        if isinstance(config_output, dict):
+            compilation_overrides["output"] = config_output
+
+        # Normalization from config
+        config_norm = resolved_inputs.get("normalization")
+        if isinstance(config_norm, dict):
+            compilation_overrides["normalization"] = config_norm
+
+        if compilation_overrides:
+            metadata_overrides["compilation"] = compilation_overrides
+
+        runtime_artifact = None
 
         schema_metadata = SchemaMetadata(
             matched_schema, metadata_overrides=metadata_overrides or None

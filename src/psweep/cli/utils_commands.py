@@ -27,20 +27,30 @@ from psweep.utils.config import get_config
 from psweep.utils.schema_metadata import SchemaMetadata
 from psweep.extraction import load_schema
 from psweep.extraction.document_utils import (
+    SUPPORTED_EXTENSIONS,
     extract_text_from_document,
     is_supported_document,
 )
 from psweep.cli.ui import (
+    ask_choice,
+    ask_confirm,
+    ask_text,
     console,
+    create_file_tree,
     key_values,
+    print_cost_estimate,
     print_error,
     print_header,
+    print_info,
+    print_next_steps,
     print_success,
     print_warning,
     rule,
     section,
     status_item,
 )
+from psweep.utils.model_pricing import get_model_pricing
+from psweep.utils.page_range import load_pages_csv
 
 
 class ConfigValidationError(ValueError):
@@ -1186,70 +1196,6 @@ def _build_onboarding_next_steps(
         )
 
     return next_steps
-
-
-def _resolve_scaffold_root_input(root_value: str, repo_root: Path) -> str:
-    candidate = Path(root_value)
-    if candidate.is_absolute():
-        return candidate.as_posix()
-    return (repo_root / candidate).resolve().as_posix()
-
-
-def _collect_existing_scaffold_targets(
-    *,
-    pack_path: Path,
-    create_profile: bool,
-    profile_tiering: bool,
-    profile_name: str,
-    profiles_root: Path,
-    create_config: bool,
-    create_sample_assets: bool,
-    config_root: Path,
-    category_name: str,
-) -> list[Path]:
-    existing_paths: list[Path] = []
-
-    if pack_path.exists():
-        existing_paths.append(pack_path)
-
-    if create_profile:
-        profile_path = profiles_root / _profile_filename(profile_name)
-        if profile_path.exists():
-            existing_paths.append(profile_path)
-    elif profile_tiering:
-        for tier_name in _profile_tier_names():
-            profile_path = profiles_root / _profile_filename(tier_name)
-            if profile_path.exists():
-                existing_paths.append(profile_path)
-
-    if create_config:
-        category_root = config_root / category_name
-        for scaffold_path in (
-            category_root / "README.md",
-            category_root / "page_ranges.csv",
-            category_root / "run.yaml",
-        ):
-            if scaffold_path.exists():
-                existing_paths.append(scaffold_path)
-
-    if create_sample_assets:
-        category_root = _cli_repo_root() / "documents" / category_name
-        for scaffold_path in (
-            category_root / "README.md",
-            category_root / "sample_manifest.csv",
-        ):
-            if scaffold_path.exists():
-                existing_paths.append(scaffold_path)
-
-    return existing_paths
-
-
-def _confirm_interactive_overwrite(existing_paths: list[Path]) -> bool:
-    section("Existing scaffold targets detected")
-    for path in existing_paths:
-        status_item("warning", path.as_posix())
-    console.print()
-    return ask_confirm("Overwrite existing scaffold files?", default=False)
 
 
 @click.command()

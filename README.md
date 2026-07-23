@@ -61,33 +61,25 @@ Works with any document type: regulations, contracts, research papers, permits, 
 ## Quick Start
 
 ```bash
-# 1. Install pixi package manager (manages all dependencies)
+# 1. Install pixi and clone
 curl -fsSL https://pixi.sh/install.sh | bash
+git clone https://github.com/bpulluta/parsesweep.git && cd ParseSweep
+pixi install
 
-# 2. Clone and setup
-git clone https://github.com/bpulluta/parsesweep.git
-cd ParseSweep
-pixi install  # Installs Python 3.12 and all dependencies automatically
-
-# 3. Configure API credentials (interactive wizard)
+# 2. Configure API credentials
 pixi run psweep init
-# → Walks you through Azure OpenAI or OpenAI setup
-# → Creates .env file with your credentials
 
-# 4. Extract data from documents to JSON
-pixi run psweep extract documents/examples/ \
-  --schema schemas/example_utility_rate_schema.json
-# → Extracts structured data using the example schema
-# → Outputs to extracted/examples/*.json
+# 3. Extract data using a config
+pixi run psweep extract --config config/geothermal_ordinances/run.yaml
 
-# 5. Compile JSON files to Excel/CSV
-pixi run psweep compile extracted/examples/ \
-  --schema schemas/example_utility_rate_schema.json
-# → Merges all JSON files with smart deduplication
-# → Outputs to compiled/examples/output.xlsx and .csv
+# 4. Compile extracted JSON into Excel/CSV
+pixi run psweep compile --config config/geothermal_ordinances/run.yaml
+
+# 5. Open the spreadsheet
+open compiled/geothermal_ordinances/*.xlsx
 ```
 
-**That's it!** You now have structured data ready for analysis.
+**The config is your single entry point.** It specifies the schema, input/output paths, page targeting, deduplication, and all runtime behavior. Each command (`discover`, `extract`, `compile`) reads its own section from the same config.
 
 ---
 
@@ -100,69 +92,59 @@ ParseSweep is built on a **contract-first, config-driven** runtime with clear se
 | Principle | Implementation |
 |-----------|---------------|
 | **Modular** | Each command (`discover`, `extract`, `compile`) runs independently |
-| **Config-driven** | One YAML config per domain controls all runtime behavior |
+| **Config-driven** | One YAML config per domain is the single entry point |
 | **Schema-focused** | Schema defines WHAT to extract; config defines HOW to run |
-| **Auto-resolving** | `--schema` auto-loads matching domain config when one exists |
 | **Domain-agnostic** | Same engine works for any document type via schema + config |
 
 ### Ownership Split
 
 | Surface | Owns | Example |
 |---------|------|---------|
-| **Schema** (JSON) | Extraction contract: field definitions, types, identifiers, dedup keys | `schemas/personal/tariff_schema.json` |
-| **Config** (YAML) | Runtime behavior: page targeting, models, output paths, discovery queries | `config/tariffs/run.yaml` |
-| **Pack** (YAML) | Reusable domain modules: QA/QC lanes, compilation presentation | `schemas/domain_packs/tariffs/pack.yaml` |
-| **Profile** | Environment tuning: model endpoints, concurrency, rate limits | `schemas/profiles/default.yaml` |
+| **Schema** (JSON) | Extraction contract: field definitions, types, identifiers | `schemas/personal/tariff_schema.json` |
+| **Config** (YAML) | All runtime behavior: page targeting, deduplication, output formatting, discovery, QA/QC | `config/tariffs/run.yaml` |
 
-### How Commands Find Their Settings
+### How It Works
 
 ```
-psweep extract documents/tariffs/ --schema schemas/personal/tariff_schema.json
-                                       │
-                                       ▼
-                          ┌─────────────────────────────┐
-                          │ Auto-resolve: scan config/   │
-                          │ for a run.yaml referencing   │
-                          │ this schema                  │
-                          └──────────────┬──────────────┘
-                                         ▼
-                          config/utility_rate_tariffs/run.yaml
-                          ┌─────────────────────────────┐
-                          │ extraction:                  │
-                          │   schema: ...               │
-                          │   page_targeting: ...       │
-                          │   max_context: 1400000      │
-                          │ compilation:                │
-                          │   schema: ...               │
-                          │   output_dir: ...           │
-                          └─────────────────────────────┘
+psweep extract --config config/utility_rate_tariffs/run.yaml
+                              │
+                              ▼
+               ┌─────────────────────────────────────┐
+               │  config/utility_rate_tariffs/run.yaml│
+               ├─────────────────────────────────────┤
+               │  extraction:                         │
+               │    schema: schemas/personal/x.json   │  ← what to extract
+               │    page_targeting: ...               │  ← how to handle large docs
+               │  compilation:                        │
+               │    deduplication: ...                │  ← how to deduplicate
+               │    output: ...                      │  ← how to format output
+               │  discovery:                         │  ← how to find documents
+               │    queries: ...                     │
+               └─────────────────────────────────────┘
 ```
 
-**Two ways to run — both first-class:**
-- **Quick mode**: `psweep extract docs/ --schema schema.json` — works for simple runs; auto-loads matching config if one exists
-- **Config mode**: `psweep extract --config config/domain/run.yaml` — explicit, full control
+**One entry point:** `--config` provides the schema, paths, page targeting, dedup settings, and all behavior. Each command reads only its section:
+- `psweep discover --config ...` reads the `discovery:` section
+- `psweep extract --config ...` reads the `extraction:` section
+- `psweep compile --config ...` reads the `compilation:` section
 
 ### Progression for New Domains
 
-1. Start with a lean schema (4-8 fields).
-2. Run `extract` on 1-2 documents with just `--schema`.
-3. When you need page targeting, model selection, or other runtime tuning → create a config YAML.
-4. Add a pack only when multiple domains share runtime behavior.
-5. Add profile overrides only when environments actually differ.
+1. Create a schema defining your data fields (see `schemas/SCHEMA_BEST_PRACTICES.md`).
+2. Create a minimal config pointing to your schema and documents.
+3. Run `extract` on 1-2 test documents.
+4. Add page targeting, deduplication, output formatting as needed.
+5. Add discovery when you need web document acquisition.
 
 ---
 
 ## Documentation Map
 
-Use the active docs for current operating guidance:
-
-- `README.md`: product overview, architecture baseline, core workflows, onboarding entry points
-- `schemas/SCHEMA_BEST_PRACTICES.md`: schema authoring, deduplication, and schema-versus-pack guidance
-- `config/README.md`: runtime config layout and page-range conventions
-- `.github/copilot-instructions.md`: repository-specific Copilot operating instructions and standard commands
-- `CONTRIBUTING_DISCOVERY.md`: extending seeker/digger connectors, testing patterns, and configuration
-
-If a document describes migration, phased implementation planning, release-gate bookkeeping, or retired implementation work, it should stay out of the tracked repo surface. Keep that material in a local ignored archive or in the issue tracker instead.
+- `README.md`: product overview, architecture, usage
+- `config/TEMPLATE.yaml`: annotated config template for new domains
+- `schemas/SCHEMA_BEST_PRACTICES.md`: schema authoring guide
+- `config/README.md`: config reference and page-range conventions
+- `.github/copilot-instructions.md`: Copilot operating instructions
 
 ---
 
