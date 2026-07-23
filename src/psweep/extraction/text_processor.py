@@ -116,14 +116,18 @@ class TextProcessor:
 
         return clean_dict(data)
 
-    def run_sanity_checks(self, data: Dict[str, Any]) -> List[str]:
+    def run_sanity_checks(
+        self, data: Dict[str, Any], schema_metadata=None
+    ) -> List[str]:
         """
         Run post-extraction sanity checks to catch obvious errors.
 
-        Generic checks that work for any schema type.
+        Generic checks that work for any schema type. Uses schema_metadata
+        identifier_fields (when available) to build human-readable item labels.
 
         Args:
             data: Extracted data dictionary
+            schema_metadata: Optional SchemaMetadata for identifier field lookup
 
         Returns:
             List of warning messages
@@ -143,20 +147,47 @@ class TextProcessor:
                 "⚠️ WARNING: No items extracted - check if document contains expected data"
             )
 
+        # Resolve item-level label fields from schema metadata.
+        # Dedup key_fields are per-item identifying fields defined in the schema.
+        id_field_names: List[str] = []
+        if schema_metadata:
+            try:
+                key_fields = schema_metadata.get_deduplication_key_fields() or []
+                id_field_names = [str(f) for f in key_fields if f]
+            except Exception:
+                pass
+
         # Check 2: Look for "or" in string fields (indicates multiple options not resolved)
         for array_name, items in main_arrays:
             for idx, item in enumerate(items):
                 if not isinstance(item, dict):
                     continue
 
+                # Build a short identifier from the item's fields.
+                # Use schema key_fields if available; otherwise pick the first
+                # 2 short string values from the item (fully dynamic, no
+                # hardcoded field names).
+                id_parts = []
+                if id_field_names:
+                    for id_field in id_field_names:
+                        val = item.get(id_field)
+                        if val and isinstance(val, str) and len(val) < 80:
+                            id_parts.append(val)
+                else:
+                    for val in item.values():
+                        if isinstance(val, str) and 2 < len(val) < 60:
+                            id_parts.append(val)
+                            if len(id_parts) >= 2:
+                                break
+                item_label = " / ".join(id_parts[:2]) if id_parts else f"#{idx}"
+
                 for field, value in item.items():
                     if isinstance(value, str):
                         if " or " in value.lower() or " / " in value:
                             warnings.append(
-                                f"⚠️ WARNING: {array_name}[{idx}].{field} contains multiple options: '{value}'"
+                                f"⚠️ WARNING: {array_name}[{idx}] ({item_label}).{field} contains multiple options: '{value}'"
                             )
 
-        # Don't log warnings - they're stored in validation_notes for later review if needed
         return warnings
 
     def calculate_completeness(
