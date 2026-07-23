@@ -1,21 +1,40 @@
-# solar Configuration
+# Solar Ordinances
 
-Document Type: Solar Ordinance
+Document type: Solar Ordinance  
+Domain: `solar`
 
-Domain: Energy - Solar Regulations
+---
 
-This directory contains configuration files for the domain onboarding scaffold.
+## Files
 
-Files:
-- page_ranges.csv: Optional page-range overrides for document processing
+- `run.yaml` — full pipeline config (create this from `config/TEMPLATE.yaml`)
+- `page_ranges.csv` — optional manual page-range overrides per document
 
-Suggested workflow:
-1. Add source documents under documents/solar/
-2. Update page_ranges.csv if extraction should target a subset of pages
-3. Run: pixi run psweep extract documents/solar/ --schema schemas/personal/solar_ordinance_schema.json --pages-csv /Users/bpulluta/ParseSweep/config/solar/page_ranges.csv
-4. Run: pixi run psweep compile extracted/solar --schema schemas/personal/solar_ordinance_schema.json
+---
 
-Optional QA/QC workflow:
-1. Run: pixi run psweep extract documents/solar/ --schema schemas/personal/solar_ordinance_schema.json --pages-csv /Users/bpulluta/ParseSweep/config/solar/page_ranges.csv --enable-qa-qc
-2. Run: pixi run psweep compare extracted/solar/qa_qc --schema schemas/personal/solar_ordinance_schema.json
-3. Optional qualitative review: pixi run psweep compare extracted/solar/qa_qc --schema schemas/personal/solar_ordinance_schema.json --qaqc-lane qualitative
+## Workflow
+
+```bash
+# 1. Put source documents in documents/solar/
+
+# 2. Extract
+pixi run psweep extract --config config/solar/run.yaml
+
+# 3. Compile into Excel
+pixi run psweep compile --config config/solar/run.yaml
+```
+
+To target specific pages in large PDFs, edit `page_ranges.csv` and reference it from `run.yaml`:
+
+```yaml
+extraction:
+  pages:
+    csv: config/solar/page_ranges.csv
+```
+
+## QA/QC (optional)
+
+```bash
+pixi run psweep extract --config config/solar/run.yaml --enable-qa-qc
+pixi run psweep compare --config config/solar/run.yaml
+```

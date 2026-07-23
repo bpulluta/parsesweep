@@ -43,19 +43,19 @@ VARIABLE_CATALOG: dict[str, list[dict[str, str]]] = {
         {
             "name": "pages_csv",
             "level": "optional",
-            "description": "CSV mapping file names to page ranges.",
+            "description": "CSV mapping file names to page ranges (from pages.csv or CLI --pages-csv).",
         },
         {
             "name": "pages",
             "level": "optional",
-            "description": "Single-file page range (for example: 10-35).",
+            "description": "Single-file page range (for example: 10-35, from pages.range or CLI --pages).",
         },
         {
             "name": "page_targeting",
             "level": "optional",
             "description": (
                 "LLM-assisted page selection for large documents "
-                "(enabled, section_description, trigger_chars, ...)."
+                "(from pages.auto_locate)."
             ),
         },
         {
@@ -279,9 +279,9 @@ _ALLOWED_SECTION_FIELDS = {
         "input_dir",
         "schema",
         "output_dir",
-        "pages_csv",
-        "pages",
-        "page_targeting",
+        "pages",           # unified block (csv + auto_locate); normalized to pages_csv / page_targeting internally
+        "pages_csv",       # internal (set by _normalize_pages_block or CLI --pages-csv)
+        "page_targeting",  # internal (set by _normalize_pages_block)
         "profile",
         "provider",
         "model",
@@ -640,6 +640,46 @@ def _validate_model_context_windows_block(windows: Any) -> None:
             )
 
 
+def _normalize_pages_block(extraction: dict[str, Any]) -> None:
+    """Normalize the unified ``pages`` block into flat internal keys.
+
+    Config format::
+
+        pages:
+          csv: path/to/ranges.csv        # manual ranges (wins)
+          auto_locate:                    # LLM fallback for uncovered docs
+            section_description: "..."
+            trigger_chars: 200000
+
+    Expands to internal keys ``pages_csv`` (str) and ``page_targeting``
+    (dict with ``enabled: True``) consumed by the extraction pipeline.
+    """
+    pages = extraction.get("pages")
+
+    if isinstance(pages, dict):
+        extraction.pop("pages")
+        if "csv" in pages:
+            extraction["pages_csv"] = pages["csv"]
+        if "auto_locate" in pages:
+            al = dict(pages["auto_locate"])
+            al.setdefault("enabled", True)  # presence = enabled
+            extraction["page_targeting"] = al
+        if "range" in pages:
+            # Single-file range from config (usually a CLI thing).
+            extraction["pages"] = pages["range"]
+    elif "pages_csv" in extraction or "page_targeting" in extraction:
+        raise RuntimeConfigError(
+            "'pages_csv' and 'page_targeting' are no longer supported as "
+            "top-level extraction keys. Use the unified 'pages:' block "
+            "instead:\n"
+            "  pages:\n"
+            "    csv: path/to/ranges.csv\n"
+            "    auto_locate:\n"
+            "      section_description: \"...\"\n"
+            "See config/TEMPLATE.yaml for the full reference."
+        )
+
+
 def _validate_extraction_section_schema(extraction: dict[str, Any]) -> None:
     """Deep-validate the ``extraction`` section at load time.
 
@@ -692,38 +732,34 @@ def _validate_extraction_section_schema(extraction: dict[str, Any]) -> None:
 
 
 def _validate_page_targeting_block(pt: Any) -> None:
-    """Validate the optional ``extraction.page_targeting`` block structure."""
+    """Validate the ``pages.auto_locate`` block (internal key: page_targeting)."""
     if not isinstance(pt, dict):
         raise RuntimeConfigError(
-            "extraction.page_targeting must be an object"
-        )
-    if pt.get("enabled") is not None and not isinstance(pt["enabled"], bool):
-        raise RuntimeConfigError(
-            "extraction.page_targeting.enabled must be a boolean"
+            "pages.auto_locate must be an object"
         )
     if pt.get("section_description") is not None and not isinstance(
         pt["section_description"], str
     ):
         raise RuntimeConfigError(
-            "extraction.page_targeting.section_description must be a string"
+            "pages.auto_locate.section_description must be a string"
         )
     for name in ("trigger_chars", "max_selected_pages"):
         val = pt.get(name)
         if val is not None:
             if isinstance(val, bool) or not isinstance(val, int) or val <= 0:
                 raise RuntimeConfigError(
-                    f"extraction.page_targeting.{name} must be a positive "
+                    f"pages.auto_locate.{name} must be a positive "
                     f"integer (got {val!r})"
                 )
     if pt.get("model") is not None and not isinstance(pt["model"], str):
         raise RuntimeConfigError(
-            "extraction.page_targeting.model must be a string"
+            "pages.auto_locate.model must be a string"
         )
     if pt.get("keywords") is not None and not isinstance(
         pt["keywords"], list
     ):
         raise RuntimeConfigError(
-            "extraction.page_targeting.keywords must be a list"
+            "pages.auto_locate.keywords must be a list"
         )
 
 
@@ -1039,6 +1075,7 @@ def load_runtime_config_file(config_path: Path) -> dict[str, Any]:
         if not isinstance(extraction, dict):
             msg = "'extraction' section must be an object in runtime config"
             raise RuntimeConfigError(msg)
+        _normalize_pages_block(extraction)
         _validate_extraction_section_schema(extraction)
 
     compilation = config_data.get("compilation")

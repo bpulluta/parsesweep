@@ -188,7 +188,7 @@ For documents like complete tariff books, use **page targeting** (preferred) or 
 **Option 1 — LLM-assisted page targeting (recommended for config-based runs):**
 Uses a cheap keyword scan + one LLM call to find the right pages automatically.
 ```bash
-# page_targeting is configured in the run config YAML
+# pages.auto_locate is configured in the run config YAML
 pixi run psweep extract --config config/utility_rate_tariffs/run.yaml
 ```
 

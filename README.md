@@ -34,10 +34,10 @@ pixi install
 pixi run psweep init   # configure API credentials
 
 # Run extraction
-pixi run psweep extract --config config/geothermal_ordinances/run.yaml
+pixi run psweep extract --config config/utility_rate_tariffs/run.yaml
 
 # Compile results into Excel
-pixi run psweep compile --config config/geothermal_ordinances/run.yaml
+pixi run psweep compile --config config/utility_rate_tariffs/run.yaml
 ```
 
 ---
@@ -68,14 +68,16 @@ domain: my_domain
 
 extraction:
   schema: schemas/personal/my_schema.json
+  input_dir: documents/my_domain          # where documents live
   output_dir: extracted/my_domain
-  page_targeting:
-    enabled: true
-    section_description: "the section with rate tables"
-    trigger_chars: 200000
+  pages:
+    auto_locate:
+      section_description: "the section with rate tables"
+      trigger_chars: 200000
 
 compilation:
   schema: schemas/personal/my_schema.json
+  input_dir: extracted/my_domain          # default: matches extraction output_dir
   output_dir: compiled/my_domain
   deduplication:
     key_fields: [name, type, value]
@@ -132,7 +134,7 @@ pixi run psweep extract --config config/my_domain/run.yaml
 
 # Options
   --config PATH       Config YAML (required for full features)
-  --schema PATH       Schema-only mode (quick testing without config)
+  --schema PATH       Schema-only mode (quick testing without a config file)
   -n N                Limit to N files
   --reprocess         Re-extract existing files
   --enable-qa-qc      Run multi-model QA/QC
@@ -173,7 +175,7 @@ Define what to extract:
 
 ```bash
 pixi run psweep init-domain-schema --name my_domain \
-  --reference-schema schemas/personal/geothermal_ordinance_schema.json
+  --reference-schema schemas/example_utility_rate_schema.json
 ```
 
 Or create manually — a minimal schema:
@@ -210,6 +212,8 @@ Or create manually — a minimal schema:
 }
 ```
 
+Save it to `schemas/personal/my_schema.json`. The `schemas/personal/` directory is the recommended location for your project-specific schemas.
+
 ### 2. Create Config
 
 Copy the template and customize:
@@ -225,23 +229,27 @@ domain: my_domain
 
 extraction:
   schema: schemas/personal/my_schema.json
+  input_dir: documents/my_domain
   output_dir: extracted/my_domain
 
 compilation:
   schema: schemas/personal/my_schema.json
+  input_dir: extracted/my_domain
   output_dir: compiled/my_domain
   deduplication:
     key_fields: [field1, field2]
 ```
 
-### 3. Test
+### 3. Extract and Compile
 
 ```bash
 # Put test documents in documents/my_domain/
+
+# Schema-only quick test (no config needed, good for iteration)
 pixi run psweep extract documents/my_domain/ \
   --schema schemas/personal/my_schema.json -n 2
 
-# Once working, use config for full features
+# Full run via config (recommended — picks up all settings)
 pixi run psweep extract --config config/my_domain/run.yaml
 pixi run psweep compile --config config/my_domain/run.yaml
 ```
@@ -255,15 +263,17 @@ For documents over 200 pages, configure **page targeting** to automatically find
 ```yaml
 extraction:
   schema: schemas/personal/my_schema.json
-  page_targeting:
-    enabled: true
-    section_description: "the section containing rate schedules"
-    trigger_chars: 200000      # only for docs exceeding this size
-    max_selected_pages: 30
+  pages:
+    csv: config/domain/page_ranges.csv   # manual ranges (win over auto)
+    auto_locate:                          # LLM fallback for uncovered docs
+      section_description: "the section containing rate schedules"
+      trigger_chars: 200000              # only for docs exceeding this size
+      max_selected_pages: 30
 ```
 
-Other options:
-- `pages_csv: config/domain/page_ranges.csv` — manual page ranges per file
+- Use `pages.csv` alone for fully manual ranges
+- Use `pages.auto_locate` alone for fully automatic targeting
+- Use both: CSV entries win, auto-locate fills in uncovered large docs
 - `--pages 615-759` — CLI override for a single file
 - `max_context: 1400000` — brute force (expensive)
 
@@ -294,27 +304,58 @@ qaqc:
 
 ---
 
+## Multi-Source Synthesis
+
+When extracting from many documents about the same entities (news articles, filings, reports for the same set of companies or sites), the **synthesis** stage reconciles multiple per-document records into one authoritative row per entity — resolving conflicts, tracking confidence, and collecting citation URLs.
+
+Configure in the `compilation.synthesis:` block:
+
+```yaml
+compilation:
+  schema: schemas/personal/my_schema.json
+  input_dir: extracted/my_domain
+  output_dir: compiled/my_domain
+  synthesis:
+    enabled: true
+    min_sources_for_llm: 2          # skip LLM call when only 1 source
+    group_by: ["entity.name"]       # one output row per distinct entity
+    identity_fields:
+      - entity.category
+      - entity.location
+    citation_field: source_provenance.citation_url
+    reconcile_fields:
+      - {field: status}
+      - {field: date_announced, evidence: evidence_announced}
+      - {field: value, evidence: value_evidence}
+```
+
+Synthesis runs automatically on `compile` when enabled. It uses the same LLM configured in your environment (override with `synthesis.model:` for a specific stage).
+
+---
+
 ## Project Structure
 
 ```
 parsesweep/
 ├── config/                    # Domain configs (one per domain)
-│   ├── TEMPLATE.yaml          # Annotated template
-│   ├── geothermal_ordinances/
-│   │   └── run.yaml
-│   └── utility_rate_tariffs/
-│       ├── run.yaml
-│       └── page_ranges.csv
-├── schemas/personal/          # Extraction schemas (JSON)
-├── documents/                 # Input documents
-├── extracted/                 # JSON extraction output
-├── compiled/                  # Final Excel/CSV output
-├── discovered/                # Web discovery output
+│   ├── TEMPLATE.yaml          # Annotated template — copy this to start
+│   ├── utility_rate_tariffs/
+│   │   ├── run.yaml
+│   │   └── page_ranges.csv    # optional manual page ranges
+│   └── datacenter_timelines/
+│       └── run.yaml
+├── schemas/
+│   ├── personal/              # Your extraction schemas (JSON) — put new schemas here
+│   └── example_utility_rate_schema.json
+├── documents/                 # Input documents (created by you)
+├── extracted/                 # JSON extraction output (generated)
+├── compiled/                  # Final Excel/CSV output (generated)
+├── discovered/                # Web discovery output (generated by discover)
 └── src/psweep/                # Source code
     ├── cli/                   # CLI commands
     ├── discovery/             # Web document discovery
     ├── extraction/            # Document extraction
-    ├── compilation/           # Data compilation
+    ├── compilation/           # Data compilation + synthesis
     ├── qa_qc/                 # QA/QC comparison
     └── utils/                 # Shared utilities
 ```
@@ -341,15 +382,15 @@ See `config/TEMPLATE.yaml` for a fully annotated config template.
 ```yaml
 extraction:
   schema: path/to/schema.json      # required
-  input_dir: path/to/documents     # default: from CLI args
+  input_dir: path/to/documents     # required (or pass as CLI argument)
   output_dir: extracted/domain     # default: extracted/<domain>
   max_context: 600000              # chars per document
-  page_targeting:                  # auto-find pages in large docs
-    enabled: true
-    section_description: "..."
-    trigger_chars: 200000
-    max_selected_pages: 30
-  pages_csv: path/to/ranges.csv   # manual page ranges
+  pages:                           # page selection for large PDFs
+    csv: path/to/ranges.csv        # manual ranges (win over auto)
+    auto_locate:                   # LLM fallback for uncovered docs
+      section_description: "..."
+      trigger_chars: 200000
+      max_selected_pages: 30
 ```
 
 ### Key Compilation Settings
@@ -357,7 +398,7 @@ extraction:
 ```yaml
 compilation:
   schema: path/to/schema.json      # required
-  input_dir: extracted/domain      # default: from CLI args
+  input_dir: extracted/domain      # required (or pass as CLI argument)
   output_dir: compiled/domain      # default: compiled/<domain>
   deduplication:
     key_fields: [f1, f2, f3]       # what makes a row unique
@@ -371,6 +412,19 @@ compilation:
     exclude_fields: [internal_f]   # hide columns
     freeze_columns: 2              # freeze in Excel
     auto_width: true               # auto-size columns
+  synthesis:                       # optional — multi-source reconciliation
+    enabled: true
+    group_by: ["entity.key_field"]
+    reconcile_fields:
+      - {field: some_field}
+```
+
+### Model Overrides (Optional)
+
+```yaml
+models:
+  primary: gpt-4o                  # model for extraction
+  secondary: gpt-4o-mini           # model for cheaper tasks (e.g. page targeting)
 ```
 
 ---
@@ -401,7 +455,7 @@ OPENAI_API_KEY=sk-your-key
 
 **"Schema missing $metadata"** — Schema needs `$metadata.extraction.main_data_array` and `identifier_fields`.
 
-**Large document timeout** — Enable `page_targeting` in your config or increase `max_context`.
+**Large document timeout** — Add `pages.auto_locate` in your config or increase `max_context`.
 
 **Rate limit errors** — Azure API throttling. Wait and retry, or reduce batch size with `-n`.
 

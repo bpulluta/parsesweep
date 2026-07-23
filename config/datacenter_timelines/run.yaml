@@ -221,33 +221,33 @@ extraction:
   # the pages that state a lifecycle date for THIS facility and extracts only
   # those. Only triggers for docs whose text exceeds trigger_chars, so small
   # HTML/news is untouched. Domain-neutral: the same mechanism serves any domain.
-  page_targeting:
-    enabled: true
-    # model: <cheaper-model>   # optional: cheaper model for the locator call
-    section_description: >-
-      the passage(s) that state WHEN this specific data-center facility/project
-      reached a lifecycle milestone — when it was announced/proposed, when
-      construction/groundbreaking occurred or is scheduled, when it opened /
-      became operational / was completed, its expected completion date, or when
-      it was cancelled or decommissioned. Not general company background,
-      financials, environmental-impact boilerplate, tables of contents, or
-      unrelated projects.
-    keywords:
-      - "data center"
-      - "data centre"
-      - "datacenter"
-      - "groundbreaking"
-      - "broke ground"
-      - "construction"
-      - "operational"
-      - "completion"
-      - "announced"
-      - "approved"
-      - "permit"
-      - "megawatt"
-      - "MW"
-    trigger_chars: 60000     # ~15+ pages of text -> target instead of full read
-    max_selected_pages: 12
+  pages:
+    auto_locate:
+      # model: <cheaper-model>   # optional: cheaper model for the locator call
+      section_description: >-
+        the passage(s) that state WHEN this specific data-center facility/project
+        reached a lifecycle milestone — when it was announced/proposed, when
+        construction/groundbreaking occurred or is scheduled, when it opened /
+        became operational / was completed, its expected completion date, or when
+        it was cancelled or decommissioned. Not general company background,
+        financials, environmental-impact boilerplate, tables of contents, or
+        unrelated projects.
+      keywords:
+        - "data center"
+        - "data centre"
+        - "datacenter"
+        - "groundbreaking"
+        - "broke ground"
+        - "construction"
+        - "operational"
+        - "completion"
+        - "announced"
+        - "approved"
+        - "permit"
+        - "megawatt"
+        - "MW"
+      trigger_chars: 60000     # ~15+ pages of text -> target instead of full read
+      max_selected_pages: 12
 
 compilation:
   input_dir: extracted/datacenter_timelines

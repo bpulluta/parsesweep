@@ -3,37 +3,63 @@
 # Usage: psweep extract --config config/<your_domain>/run.yaml
 #
 # Each section is independent — include only what you need:
+#   - extraction: required for the extract command
+#   - compilation: required for the compile command
 #   - discovery: only if you need web document discovery
-#   - extraction: required for extract command
-#   - compilation: required for compile command
 #   - qaqc: only if you use multi-model QA/QC validation
 
 domain: your_domain_name
 
+# ─── MODELS (recommended) ─────────────────────────────────────────────────────
+# Define model tiers so cheap/fast models handle iteration steps (discovery,
+# page targeting, review) while accurate models handle extraction.
+# When omitted, all stages use the model in your .env (AZURE_OPENAI_MODEL).
+models:
+  primary: your-accurate-model        # used for extraction
+  secondary: your-fast-cheap-model    # used for discovery review, page targeting
+
 # ─── EXTRACTION ──────────────────────────────────────────────────────────────
 extraction:
   schema: schemas/personal/your_schema.json
+  input_dir: documents/your_domain        # source documents folder
   output_dir: extracted/your_domain
-  # input_dir: discovered/your_domain/latest/curated  # after discovery
-  # max_context: 600000                               # for large documents
-  # page_targeting:                                   # auto-find relevant pages
-  #   enabled: true
-  #   section_description: "the section containing your target data"
-  #   trigger_chars: 200000
-  #   max_selected_pages: 30
+  # max_context: 600000                   # chars per document (default: 400000)
+  # pages:                                 # how to select pages from large PDFs
+  #   csv: config/your_domain/page_ranges.csv  # manual ranges per file (wins)
+  #   auto_locate:                         # LLM fallback for uncovered large docs
+  #     section_description: "the section containing your target data"
+  #     trigger_chars: 200000              # only targets docs larger than this
+  #     max_selected_pages: 30
+  #     save_discovered: true              # write discovered_page_ranges.csv for review
 
 # ─── COMPILATION ─────────────────────────────────────────────────────────────
 compilation:
   schema: schemas/personal/your_schema.json
+  input_dir: extracted/your_domain        # matches extraction output_dir
   output_dir: compiled/your_domain
   deduplication:
-    key_fields: [field1, field2, field3]   # fields that make an item unique
-    ignore_fields: [notes]                 # excluded from dedup comparison
+    key_fields: [field1, field2, field3]  # fields that make an item unique
+    ignore_fields: [notes]                # excluded from dedup comparison
   output:
-    default_format: excel                  # excel, csv, or both
+    default_format: excel                 # excel, csv, or both
     # column_order: [field1, field2, ...]  # custom column ordering
+    # column_renames: {OldName: new_name}  # rename output columns
+    # exclude_fields: [internal_field]     # hide columns from output
     # freeze_columns: 2                   # freeze first N columns in Excel
     # auto_width: true                    # auto-size Excel columns
+  # normalization:
+  #   state_column: State                # auto-abbreviate US state names
+  #
+  # synthesis:                           # multi-source reconciliation
+  #   enabled: true                      # reconcile many docs → one row per entity
+  #   min_sources_for_llm: 2             # skip LLM when only 1 source (cheaper)
+  #   group_by: ["entity.key_field"]     # one output row per distinct value
+  #   identity_fields:                   # context fields (first non-empty wins)
+  #     - entity.category
+  #   citation_field: source.url         # becomes citation list in output
+  #   reconcile_fields:
+  #     - {field: some_field}
+  #     - {field: dated_field, evidence: evidence_field}
 
 # ─── DISCOVERY (optional) ────────────────────────────────────────────────────
 # discovery:

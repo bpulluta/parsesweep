@@ -3,28 +3,43 @@
 
 domain: utility_rate_tariffs
 
+# Model tiers — cheap/fast for iteration steps, accurate for extraction.
+models:
+  primary: compassop-gpt-4.1          # extraction (accuracy matters)
+  secondary: compassop-gpt-4.1-mini   # discovery, page targeting, review (speed matters)
+
 discovery:
   targets_csv: targets.csv
   queries:
-    - "{utility_name} {state} residential electric rate tariff filetype:pdf 2026"
+    # Multiple query templates — each target gets all of them.
+    # Variables come from targets.csv columns.
+    - '{utility_name} {state} "schedule of rates" electric tariff filetype:pdf'
+    - '{utility_name} {state} residential electric rate schedule filetype:pdf'
+    - '{city} {state} electric utility tariff "service classification" filetype:pdf'
   search:
     provider: serpapi
     max_results: 10
   selection:
-    max_per_target: 2
-    require_any: [tariff, rate, schedule]
-    exclude: [news, blog, press release, rebate, incentive, program]
+    max_per_target: 3
+    require_any: [tariff, rate, schedule, kWh, kwh, service classification]
+    exclude: [news, blog, press release, rebate, incentive, program,
+              transportation, solar, EV, vehicle, gas]
   follow_links: false
   request_delay_ms: 500
   document_classifier:
-    required_keywords: [tariff, rate, schedule, service classification]
-    nice_to_have_keywords: [residential, kwh, monthly charge]
-    min_required_matches: 2
+    required_keywords: [tariff, rate, schedule, service classification, kWh, kwh]
+    nice_to_have_keywords: [residential, monthly charge, energy charge, demand charge]
+    min_required_matches: 1
     action: warn
   document_review:
+    model: secondary                  # cheap/fast — curation doesn't need 4.1
     document_description: >-
-      utility's authoritative residential electric rate tariff book filed
-      with the state commission
+      a utility's official electric tariff book, rate schedule filing, or
+      individual rate schedule PDF. Often begins with a table of contents
+      listing service classifications, riders, and charges. May also be a
+      single rate schedule page showing per-kWh charges, monthly customer
+      charges, and demand rates. NOT a customer notice, rebate program,
+      transportation plan, or general company information.
     keep_top: 1
     action: move
 
@@ -32,14 +47,15 @@ extraction:
   input_dir: discovered/utility_rate_tariffs/latest/curated
   schema: schemas/personal/electricity_tariff_schema.json
   output_dir: extracted/utility_rate_tariffs
-  pages_csv: config/utility_rate_tariffs/page_ranges.csv
-  page_targeting:                        # auto-locate rate pages in large PDFs
-    enabled: true
-    section_description: >-
-      residential electric rate schedules showing per-kWh energy charges,
-      monthly customer charge, and other rate components
-    trigger_chars: 200000
-    max_selected_pages: 30
+  pages:                                   # how to select pages from large PDFs
+    auto_locate:                           # LLM fallback for uncovered docs
+      model: secondary                     # cheap/fast — page finding doesn't need 4.1
+      section_description: >-
+        residential electric rate schedules showing per-kWh energy charges,
+        monthly customer charge, and other rate components
+      trigger_chars: 200000
+      max_selected_pages: 30
+      save_discovered: true                # write discovered ranges for human review
 
 compilation:
   input_dir: extracted/utility_rate_tariffs
