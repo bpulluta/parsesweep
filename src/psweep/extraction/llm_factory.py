@@ -126,8 +126,6 @@ def detect_provider(model: str) -> str:
     return "openai"
 
 
-# Backwards-compatible private alias (kept for any internal callers/tests).
-_detect_provider = detect_provider
 
 
 def resolve_llm_kwargs(

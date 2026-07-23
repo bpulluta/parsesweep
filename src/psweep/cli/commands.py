@@ -1511,7 +1511,16 @@ def extract(
 
     # Determine provider and model info from config
     provider_name = config.llm_config.get("provider", "unknown").title()
-    model_display = config.llm_config.get("model", model)
+    # Resolve model display through the tier system so the banner matches what
+    # the extraction will actually use (not just the env default).
+    if model and resolved_inputs.get("models"):
+        from psweep.extraction.llm_factory import resolve_model_name
+        model_display = resolve_model_name(
+            model, models=resolved_inputs.get("models"),
+            llm_config=config.llm_config,
+        )
+    else:
+        model_display = config.llm_config.get("model", model)
 
     # Add model/provider info to config
     if not get_verbosity().is_quiet:

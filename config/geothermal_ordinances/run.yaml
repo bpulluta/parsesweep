@@ -1,0 +1,105 @@
+# Geothermal Ordinances — full pipeline config
+# Usage: psweep extract --config config/geothermal_ordinances/run.yaml
+
+domain: geothermal_ordinances
+
+# ── Model tiers ──────────────────────────────────────────────────────────────
+# Define model identifiers here ONCE. Each pipeline stage below references a
+# tier name (primary/secondary) — never a raw model string — so you can swap
+# models globally by editing only these two lines.
+#
+#   primary   → used for extraction (accuracy-critical)
+#   secondary → used for discovery review, page targeting (speed/cost-critical)
+#
+# For iteration/testing: set both to mini. For production: use full-size primary.
+models:
+  primary: compassop-gpt-4.1-mini       # swap to compassop-gpt-4.1 for production
+  secondary: compassop-gpt-4.1-mini
+
+discovery:
+  targets_csv: targets.csv
+  queries:
+    - "{jurisdiction} {state} geothermal ordinance land use code filetype:pdf"
+    - "{jurisdiction} {state} geothermal ordinance zoning code division filetype:pdf"
+    - "{jurisdiction} {state} geothermal energy land use ordinance title division filetype:pdf"
+    - "{jurisdiction} {state} geothermal regulations county code chapter filetype:pdf"
+  search:
+    provider: serpapi
+    max_results: 15
+    cache: true
+  selection:
+    max_per_target: 7
+    exclude_draft: true
+    exclude: [news release, press release, fact sheet, presentation, notice of preparation, environmental impact report, staff report, briefing book]
+  follow_links: false
+  document_classifier:
+    required_keywords: [ordinance, code, chapter, section, regulation, division, title]
+    nice_to_have_keywords: [geothermal, 1041, setback, permit, overlay, zoning]
+    min_required_matches: 2
+    action: warn
+  document_review:
+    model: secondary   # ← tier name from models: block above
+    document_description: >-
+      enacted county ordinance, land use/zoning code chapter or division,
+      or county code section that regulates geothermal electricity generation
+      (not geothermal heat pumps, solar, wind, or other technologies).
+      Must be the codified/adopted regulation text, not a draft, EIR,
+      notice, or planning study.
+    keep_top: 1
+    action: move
+  partition_by: [state, jurisdiction]
+
+extraction:
+  model: primary              # ← tier name from models: block above
+  input_dir: discovered/geothermal_ordinances/latest/curated
+  schema: schemas/personal/geothermal_ordinance_schema.json
+  output_dir: extracted/geothermal_ordinances
+  max_context: 600000
+
+compilation:
+  input_dir: extracted/geothermal_ordinances
+  schema: schemas/personal/geothermal_ordinance_schema.json
+  output_dir: compiled/geothermal_ordinances
+  deduplication:
+    key_fields: [category, facility_type, specific_subject, value, unit, section]
+    ignore_fields: [details]
+  output:
+    default_format: excel
+    exclude_fields:
+      - Applies To Geothermal Electricity
+      - Extraction Approach
+      - Relevant Sections
+      - Date Adopted
+      - Date Effective
+      - Date Last Amended
+      - Supersedes
+      - Value Type
+      - Condition
+    column_renames:
+      State: state
+      County: county
+      Ordinance Code: ordinance_code
+      Category: category
+      Facility Type: facility_type
+      Specific Subject: specific_subject
+      Value: value
+      Unit: units
+      Applies To: applies_to
+      Details: summary
+      Section: section
+    column_order: [county, state, ordinance_code, category, facility_type,
+      specific_subject, applies_to, value, units, section, summary]
+    freeze_columns: 3
+    auto_width: true
+
+qaqc:
+  default_lane: quantitative
+  lanes:
+    quantitative:
+      enabled: true
+      mode: quantitative
+      comparison_approach: numeric_only
+      record_matching:
+        key_fields: [category, facility_type, specific_subject]
+      comparison:
+        primary_fields: [value, unit]

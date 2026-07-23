@@ -86,12 +86,12 @@ class Config:
         env_vars.update(os.environ)
 
         # Detect provider and model from environment
-        if (
-            "AZURE_OPENAI_API_KEY" in env_vars
-            and "AZURE_OPENAI_MODEL" in env_vars
+        if "AZURE_OPENAI_API_KEY" in env_vars and (
+            "AZURE_OPENAI_MODEL" in env_vars
+            or "AZURE_OPENAI_ENDPOINT" in env_vars
         ):
             config["provider"] = "azure"
-            config["model"] = env_vars["AZURE_OPENAI_MODEL"]
+            config["model"] = env_vars.get("AZURE_OPENAI_MODEL")
             config["api_key"] = env_vars["AZURE_OPENAI_API_KEY"]
             config["azure_endpoint"] = env_vars.get("AZURE_OPENAI_ENDPOINT")
             config["azure_api_version"] = env_vars.get(

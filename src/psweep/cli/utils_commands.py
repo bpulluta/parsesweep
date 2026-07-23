@@ -846,35 +846,18 @@ def _create_sample_asset_skeleton(
 
 
 def _suggest_page_ranges_filename(document_type: str) -> str:
+    """Suggest a sample filename based on document type (domain-agnostic)."""
     normalized = document_type.strip().lower()
-    if (
-        "filing" in normalized
-        or "10-k" in normalized
-        or "10-q" in normalized
-        or "8-k" in normalized
-    ):
-        return "sec_filing.html"
-    if (
-        "solar" in normalized
-        or "photovoltaic" in normalized
-        or "pv" in normalized
-    ):
-        return "solar_ordinance.pdf"
-    if "geothermal" in normalized:
-        return "geothermal_ordinance.pdf"
-    if "tariff" in normalized or "rate" in normalized:
-        return "utility_tariff.pdf"
-    if "permit" in normalized:
-        return "air_quality_permit.pdf"
-    if "ordinance" in normalized:
-        return "geothermal_ordinance.pdf"
-    return "example_document.pdf"
+    # Build a slug from the document type description
+    slug = "_".join(normalized.split()[:3])
+    if "html" in normalized or "filing" in normalized:
+        return f"{slug}.html"
+    return f"{slug}.pdf"
 
 
 def _recommended_extract_flags(document_type: str) -> list[str]:
-    normalized = document_type.strip().lower()
-    if "tariff" in normalized or "rate" in normalized:
-        return ["--max-context 1400000"]
+    """Return suggested CLI flags based on document type (domain-agnostic)."""
+    # No domain-specific defaults — users configure max_context in run.yaml
     return []
 
 
@@ -1500,7 +1483,7 @@ def estimate(documents_path: str, workers: int, pages_csv: str):
     else:
         doc_files = []
         for ext in SUPPORTED_EXTENSIONS:
-            doc_files.extend(sorted(docs_path.glob(f"*{ext}")))
+            doc_files.extend(sorted(docs_path.rglob(f"*{ext}")))
 
         if not doc_files:
             supported = ", ".join(SUPPORTED_EXTENSIONS)
