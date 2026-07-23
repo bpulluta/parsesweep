@@ -65,11 +65,6 @@ from psweep.benchmarking import (
     load_benchmark_snapshot,
     write_benchmark_snapshot,
 )
-from psweep.core import (
-    compile_runtime_artifact,
-    resolve_pack_ref_for_schema,
-    ArtifactCompilerError,
-)
 from psweep.config import (
     RuntimeConfigError,
     load_runtime_config_file,
@@ -126,8 +121,10 @@ def _auto_resolve_config_for_schema(schema_path: str) -> Optional[Path]:
     """Find the domain config that references a given schema.
 
     Scans all ``config/*/run.yaml`` files for an ``extraction.schema`` or
-    ``compilation.schema`` that matches *schema_path*. Returns the config
-    path if exactly one match is found, None otherwise.
+    ``compilation.schema`` that matches *schema_path* — either directly or
+    through a domain pack's ``schema_path`` field.
+
+    Returns the config path if exactly one match is found, None otherwise.
 
     This enables auto-loading of page_targeting, model overrides, and other
     runtime settings when the user only specifies --schema.
@@ -152,9 +149,25 @@ def _auto_resolve_config_for_schema(schema_path: str) -> Optional[Path]:
                 section = data.get(section_key)
                 if isinstance(section, dict):
                     cfg_schema = section.get("schema")
-                    if cfg_schema and Path(cfg_schema).resolve() == schema_resolved:
+                    if not cfg_schema:
+                        continue
+                    cfg_schema_path = Path(cfg_schema)
+                    # Direct match
+                    if cfg_schema_path.resolve() == schema_resolved:
                         matches.append(run_yaml)
-                        break  # One match per config file is enough
+                        break
+                    # Indirect match via pack's schema_path
+                    if cfg_schema_path.suffix in (".yaml", ".yml") and cfg_schema_path.exists():
+                        try:
+                            with cfg_schema_path.open() as pf:
+                                pack_data = yaml.safe_load(pf)
+                            if isinstance(pack_data, dict):
+                                pack_schema = pack_data.get("schema_path")
+                                if pack_schema and Path(pack_schema).resolve() == schema_resolved:
+                                    matches.append(run_yaml)
+                                    break
+                        except Exception:
+                            pass
         except Exception:
             continue
 
@@ -340,57 +353,18 @@ def _resolve_runtime_artifact(
     category: Optional[str],
     schema_path: Path,
     profile_name: str = "default",
-    *,
-    repo_root: Optional[Path] = None,
-    domain_packs_dir: Optional[Path] = None,
-    profiles_dir: Optional[Path] = None,
+    **kwargs,
 ) -> Optional[Dict[str, Any]]:
-    """Resolve a compiled runtime artifact for lineage emission when available."""
-    root = repo_root or Path(__file__).resolve().parents[3]
-    packs_root = domain_packs_dir or (root / "schemas/domain_packs")
-    profiles_root = profiles_dir or (root / "schemas/profiles")
-
-    if not packs_root.exists() or not profiles_root.exists():
-        return None
-
-    candidate_pack_refs: List[str] = []
-    if category:
-        candidate_pack_refs.append(category)
-    candidate_pack_refs.append(schema_path.stem)
-    resolved_pack_ref = resolve_pack_ref_for_schema(
-        schema_path,
-        repo_root=root,
-        domain_packs_dir=packs_root,
-    )
-    if resolved_pack_ref:
-        candidate_pack_refs.append(resolved_pack_ref)
-
-    seen = set()
-    for pack_ref in candidate_pack_refs:
-        if pack_ref in seen:
-            continue
-        seen.add(pack_ref)
-
-        try:
-            return compile_runtime_artifact(
-                pack_ref,
-                profile_name,
-                repo_root=root,
-                domain_packs_dir=packs_root,
-                profiles_dir=profiles_root,
-            )
-        except ArtifactCompilerError:
-            continue
-
+    """Runtime artifact resolution — returns None (config-driven system)."""
     return None
 
 
 def _format_runtime_artifact_summary(
     runtime_artifact: Optional[Dict[str, Any]],
 ) -> str:
-    """Return a concise user-facing summary of the resolved runtime artifact."""
+    """Return a concise user-facing summary of the runtime configuration."""
     if not runtime_artifact:
-        return "schema-only (no pack/profile runtime artifact resolved)"
+        return "config-driven (schema + domain config)"
 
     lineage = runtime_artifact.get("lineage") or {}
     pack_name = (
@@ -3468,14 +3442,25 @@ def compile(
     try:
         from psweep.utils.schema_metadata import SchemaMetadata
 
-        runtime_artifact = _resolve_runtime_artifact(None, matched_schema)
+        # Build metadata overrides: prefer config-inline settings, fall back to pack
         metadata_overrides = {}
-        if runtime_artifact:
-            pack_compilation = (
-                (runtime_artifact.get("resolved") or {}).get("pack") or {}
-            ).get("compilation")
-            if isinstance(pack_compilation, dict):
-                metadata_overrides["compilation"] = pack_compilation
+
+        # Source 1: config YAML compilation.output section (primary)
+        config_compilation_output = resolved_inputs.get("output")
+        if isinstance(config_compilation_output, dict):
+            metadata_overrides["compilation"] = {"output": config_compilation_output}
+
+        # Source 2: runtime artifact pack (fallback for domains not yet migrated)
+        if not metadata_overrides:
+            runtime_artifact = _resolve_runtime_artifact(None, matched_schema)
+            if runtime_artifact:
+                pack_compilation = (
+                    (runtime_artifact.get("resolved") or {}).get("pack") or {}
+                ).get("compilation")
+                if isinstance(pack_compilation, dict):
+                    metadata_overrides["compilation"] = pack_compilation
+        else:
+            runtime_artifact = None
 
         schema_metadata = SchemaMetadata(
             matched_schema, metadata_overrides=metadata_overrides or None
@@ -3491,11 +3476,10 @@ def compile(
                 "Input": str(input_dir),
                 "Output": str(output_dir),
                 "Schema": schema_display,
-                "Runtime": _format_runtime_artifact_summary(runtime_artifact),
             }
             if metadata_overrides:
                 config_info["Overrides"] = (
-                    "pack-owned compilation config active"
+                    "config-owned compilation settings active"
                 )
             view.config(config_info)
     except Exception as e:

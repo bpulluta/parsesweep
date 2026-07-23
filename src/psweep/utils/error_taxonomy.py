@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from typing import Any, Dict, Iterable, List, Optional
 
-from psweep.core.artifact_compiler import ArtifactCompilerError
 from psweep.utils.exceptions import (
     CompilationError,
     ExtractionError,
@@ -51,9 +50,6 @@ def build_error_record(
     elif isinstance(exc, FileNotFoundError):
         category = "document_io"
         code = "document_not_found"
-    elif isinstance(exc, ArtifactCompilerError):
-        category = "artifact_resolution"
-        code = "artifact_resolution_failed"
     elif isinstance(exc, SchemaMetadataError):
         category = "schema_contract"
         code = "schema_metadata_invalid"

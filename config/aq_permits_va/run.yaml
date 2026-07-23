@@ -46,10 +46,32 @@ extraction:
   # Curated set from the latest discover run (all downloads when no
   # document_review is configured for this domain).
   input_dir: discovered/aq_permits_va/latest/curated
-  schema: schemas/domain_packs/aq_permits/pack.yaml
+  schema: schemas/personal/air_quality_permits_schema.json
   output_dir: extracted/aq_permits_va
 
 compilation:
   input_dir: extracted/aq_permits_va
-  schema: schemas/domain_packs/aq_permits/pack.yaml
+  schema: schemas/personal/air_quality_permits_schema.json
   output_dir: compiled/aq_permits_va
+
+qaqc:
+  default_lane: quantitative
+  lanes:
+    quantitative:
+      enabled: true
+      mode: quantitative
+      comparison_approach: numeric_only
+      record_matching:
+        key_fields:
+          - referenceNumber
+          - make
+          - model
+      comparison:
+        primary_fields:
+          - ratedCapacityKW
+          - ratedCapacityBHP
+          - ratedCapacityHP
+          - ratedCapacityMMBtuPerHr
+          - operatingHoursPerUnitLimit
+          - operatingHoursCombinedLimit
+          - numGenerators
