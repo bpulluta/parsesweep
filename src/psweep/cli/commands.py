@@ -687,12 +687,18 @@ def _apply_page_targeting(
     page_range_map: dict,
     config: dict,
     models: dict | None = None,
+    pages_csv: str | None = None,
+    output_dir: Path | None = None,
 ) -> None:
     """Fill page_range_map for large PDFs via LLM-assisted page targeting.
 
     Only touches PDFs that are large (full text exceeds ``trigger_chars``) and
-    have no manual range yet — manual page_ranges.csv / --pages always win.
+    have no entry in the page_range_map — manual CSV ranges and explicit
+    full-doc entries always win.
     Best-effort: any locator failure leaves the file for full extraction.
+
+    Writes discovered page ranges to ``discovered_page_ranges.csv`` next to
+    the configured pages CSV (or in output_dir) for human review.
     """
     from psweep.extraction.page_locator import PageLocator
     from psweep.extraction.pdf_utils import extract_pages_text
@@ -700,7 +706,7 @@ def _apply_page_targeting(
     description = str(config.get("section_description") or "").strip()
     if not description:
         print_warning(
-            "page_targeting.enabled is set but section_description is missing; "
+            "pages.auto_locate is set but section_description is missing; "
             "skipping page targeting."
         )
         return
@@ -715,11 +721,13 @@ def _apply_page_targeting(
         keywords=config.get("keywords"),
     )
 
+    discovered: list[tuple[str, int, int]] = []
+
     for doc in doc_files:
         if doc.suffix.lower() != ".pdf":
             continue
-        if page_range_map.get(doc) is not None:
-            continue  # manual range wins
+        if doc in page_range_map:
+            continue  # listed in CSV (with range or explicit full-doc)
         pages = extract_pages_text(doc)
         if not pages:
             continue
@@ -728,10 +736,33 @@ def _apply_page_targeting(
         rng = locator.locate(doc, pages=pages)
         if rng:
             page_range_map[doc] = rng
+            discovered.append((doc.name, rng[0], rng[1]))
             if not get_verbosity().is_quiet:
                 print_info(
                     f"Page targeting: {doc.name} → pages {rng[0]}-{rng[1]}"
                 )
+
+    # Write discovered ranges to a CSV for human review/promotion.
+    if discovered and config.get("save_discovered", False):
+        if pages_csv:
+            dest = Path(pages_csv).parent / "discovered_page_ranges.csv"
+        elif output_dir:
+            dest = output_dir / "discovered_page_ranges.csv"
+        else:
+            return
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        import csv
+
+        with open(dest, "w", newline="") as f:
+            writer = csv.writer(f)
+            writer.writerow(["file_path", "start_page", "end_page"])
+            for name, start, end in discovered:
+                writer.writerow([name, start, end])
+        if not get_verbosity().is_quiet:
+            print_info(
+                f"Discovered page ranges written to {dest} — review and "
+                "promote to pages.csv if correct."
+            )
 
 
 def _document_progress_desc(doc_path: Path, page_range_map: dict) -> str:
@@ -1437,9 +1468,10 @@ def extract(
             )
             sys.exit(1)
 
-    # LLM-assisted page targeting (optional). For large PDFs with no manual page
-    # range, auto-locate the pages holding the described section so extraction
-    # targets them instead of overflowing the context. Manual ranges always win.
+    # LLM-assisted page targeting (from pages.auto_locate or legacy
+    # page_targeting). For large PDFs with no CSV entry, auto-locate the pages
+    # holding the described section so extraction targets them instead of
+    # overflowing the context. CSV entries always win.
     page_targeting = resolved_inputs.get("page_targeting")
     if isinstance(page_targeting, dict) and page_targeting.get("enabled"):
         _apply_page_targeting(
@@ -1447,6 +1479,8 @@ def extract(
             page_range_map=page_range_map,
             config=page_targeting,
             models=resolved_inputs.get("models"),
+            pages_csv=pages_csv,
+            output_dir=output_dir,
         )
 
     # Final validation - check if we have files to process
@@ -2964,18 +2998,33 @@ def discover(
         outputs["Curated"] = (
             f"{result.curated_count} document(s) → {result.curated_dir}"
         )
+    elif result.review_index_path is not None:
+        outputs["Curated"] = "0 documents passed review"
     view.outputs(outputs)
 
     next_steps = []
-    if result.review_index_path is not None:
+    if result.curated_count == 0 and result.review_index_path is not None:
+        # Zero curated — guide the user toward fixing the problem.
+        next_steps.append(
+            "No documents matched the review criteria. Options:"
+        )
+        next_steps.append(
+            "  • Adjust discovery queries or selection filters in your config"
+        )
+        next_steps.append(
+            f"  • Override LLM picks: edit {result.review_index_path} "
+            "(set human_decision=keep), then run: pixi run psweep curate"
+        )
+    elif result.review_index_path is not None:
         next_steps.append(
             f"Review/adjust picks: edit {result.review_index_path}, "
             "then run: pixi run psweep curate"
         )
-    next_steps.append(
-        "Extract the documents: pixi run psweep extract "
-        f"{result.curated_dir or result.documents_dir} --schema <schema>"
-    )
+    if result.curated_count > 0:
+        next_steps.append(
+            "Extract the documents: pixi run psweep extract "
+            f"{result.curated_dir or result.documents_dir} --schema <schema>"
+        )
     view.next_steps(next_steps)
 
 

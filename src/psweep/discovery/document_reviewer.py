@@ -82,7 +82,9 @@ class DocumentReviewer:
             )
         return self._client
 
-    def _grade(self, file_path: str) -> dict[str, Any] | None:
+    def _grade(
+        self, file_path: str, target_context: str = ""
+    ) -> dict[str, Any] | None:
         """Return the LLM grade for one file, or None if it can't be graded."""
         try:
             text = ContentSampler.extract_text(file_path)
@@ -92,12 +94,20 @@ class DocumentReviewer:
             return None
 
         sample = text[: self._max_chars]
+        target_line = (
+            f"\nSEARCH TARGET CONTEXT: {target_context}\n"
+            if target_context
+            else ""
+        )
         user_prompt = (
-            f"TARGET DOCUMENT: {self._description}\n\n"
-            "Grade the document excerpt below against that target. Return JSON "
-            "with: is_primary (bool — true only if this IS the target document), "
-            "relevance (0.0-1.0), doc_kind (a short free-form label describing "
-            "what this document actually is), and a one-sentence reason.\n\n"
+            f"TARGET DOCUMENT: {self._description}\n"
+            f"{target_line}\n"
+            "Grade the document excerpt below against the target description. "
+            "Return JSON with: is_primary (bool — true only if this IS the "
+            "target document type AND is specifically relevant to the search "
+            "target context above), relevance (0.0-1.0), doc_kind (a short "
+            "free-form label describing what this document actually is), and "
+            "a one-sentence reason.\n\n"
             f"EXCERPT:\n{sample}"
         )
         try:
@@ -184,7 +194,17 @@ class DocumentReviewer:
         selected = 0
         graded = 0
         cached = 0
-        for records in groups.values():
+        for target_key, records in groups.items():
+            # Build target context string from first record's metadata.
+            # Passes all user-defined target fields so the LLM can assess
+            # whether the document is relevant for THIS specific target.
+            _meta = (records[0].get("target_metadata") or {}) if records else {}
+            _ctx_parts = [
+                f"{k}={v}" for k, v in _meta.items()
+                if v and k != "query"  # exclude the search query itself
+            ]
+            target_context = ", ".join(_ctx_parts) if _ctx_parts else target_key
+
             for record in records:
                 path = str(record.get("path"))
                 # Cost saver: reuse a prior grade when the file + description +
@@ -194,7 +214,7 @@ class DocumentReviewer:
                     cached += 1
                     record["review_cached"] = True
                 else:
-                    grade = self._grade(path)
+                    grade = self._grade(path, target_context=target_context)
                     if grade is None:
                         continue
                     graded += 1

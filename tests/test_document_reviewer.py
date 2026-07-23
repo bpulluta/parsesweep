@@ -28,7 +28,7 @@ def _record(tmp_path: Path, name: str, label: str) -> dict:
 def _stub_grades(reviewer: DocumentReviewer, grades: dict[str, dict]) -> None:
     """Replace the LLM grade call with canned results keyed by filename."""
     reviewer._ensure_client = lambda: object()  # type: ignore[method-assign]
-    reviewer._grade = lambda p: grades.get(Path(p).name)  # type: ignore[method-assign]
+    reviewer._grade = lambda p, **kw: grades.get(Path(p).name)  # type: ignore[method-assign]
 
 
 class TestReviewSelection:

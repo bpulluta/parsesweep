@@ -731,7 +731,7 @@ def test_processing_validator_rejects_bad_page_targeting(tmp_path: Path):
     cfg = _write(
         tmp_path,
         "extraction:\n  schema: s.json\n  input_dir: d\n"
-        "  page_targeting:\n    trigger_chars: -5\n",
+        "  pages:\n    auto_locate:\n      trigger_chars: -5\n",
     )
     with pytest.raises(RuntimeConfigError, match="trigger_chars"):
         load_runtime_config_file(cfg)
@@ -741,12 +741,70 @@ def test_processing_validator_accepts_valid_block(tmp_path: Path):
     cfg = _write(
         tmp_path,
         "extraction:\n  schema: s.json\n  input_dir: d\n  max_context: 600000\n"
-        "  provider: azure\n  page_targeting:\n    enabled: true\n"
-        "    section_description: the rate tables\n    trigger_chars: 200000\n"
-        "    max_selected_pages: 30\n",
+        "  provider: azure\n"
+        "  pages:\n    auto_locate:\n"
+        "      section_description: the rate tables\n"
+        "      trigger_chars: 200000\n"
+        "      max_selected_pages: 30\n",
     )
     loaded = load_runtime_config_file(cfg)
     assert loaded["extraction"]["max_context"] == 600000
+
+
+def test_pages_block_normalizes_to_flat_keys(tmp_path: Path):
+    """New unified pages: block expands to pages_csv + page_targeting."""
+    cfg = _write(
+        tmp_path,
+        "extraction:\n  schema: s.json\n  input_dir: d\n"
+        "  pages:\n    csv: ranges.csv\n"
+        "    auto_locate:\n      section_description: rate tables\n"
+        "      trigger_chars: 200000\n",
+    )
+    loaded = load_runtime_config_file(cfg)
+    ext = loaded["extraction"]
+    assert ext["pages_csv"] == "ranges.csv"
+    assert ext["page_targeting"]["section_description"] == "rate tables"
+    assert ext["page_targeting"]["enabled"] is True
+
+
+def test_pages_block_auto_locate_only(tmp_path: Path):
+    """pages: with only auto_locate (no csv)."""
+    cfg = _write(
+        tmp_path,
+        "extraction:\n  schema: s.json\n  input_dir: d\n"
+        "  pages:\n    auto_locate:\n"
+        "      section_description: the charges section\n",
+    )
+    loaded = load_runtime_config_file(cfg)
+    ext = loaded["extraction"]
+    assert "pages_csv" not in ext
+    assert ext["page_targeting"]["enabled"] is True
+
+
+def test_pages_block_csv_only(tmp_path: Path):
+    """pages: with only csv (no auto_locate)."""
+    cfg = _write(
+        tmp_path,
+        "extraction:\n  schema: s.json\n  input_dir: d\n"
+        "  pages:\n    csv: my_ranges.csv\n",
+    )
+    loaded = load_runtime_config_file(cfg)
+    ext = loaded["extraction"]
+    assert ext["pages_csv"] == "my_ranges.csv"
+    assert "page_targeting" not in ext
+
+
+def test_old_flat_pages_keys_rejected(tmp_path: Path):
+    """Old pages_csv / page_targeting keys are no longer accepted."""
+    cfg = _write(
+        tmp_path,
+        "extraction:\n  schema: s.json\n  input_dir: d\n"
+        "  pages_csv: old.csv\n"
+        "  page_targeting:\n    enabled: true\n"
+        "    section_description: old style\n",
+    )
+    with pytest.raises(RuntimeConfigError, match="no longer supported"):
+        load_runtime_config_file(cfg)
 
 
 def test_model_context_windows_validates_and_passes_through(tmp_path: Path):

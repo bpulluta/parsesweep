@@ -7,11 +7,20 @@ and compilation, organized by domain/category.
 
 ```
 config/
+├── TEMPLATE.yaml                    # Annotated template — copy this to start
+├── utility_rate_tariffs/
+│   ├── run.yaml
+│   └── page_ranges.csv
+├── datacenter_timelines/
+│   └── run.yaml
+├── geothermal_ordinances/
+│   └── run.yaml
+├── industrial_pump_datasheets/
+│   └── run.yaml
 ├── generator_manuals/
-│   └── run.yaml             # Discovery + extraction + compilation config
-├── tariffs/
-│   ├── run.yaml             # Optional unified runtime config
-│   └── page_ranges.csv      # Page range specifications for tariff documents
+│   └── run.yaml
+├── aq_permits_va/
+│   └── run.yaml
 └── solar/
     └── page_ranges.csv
 ```
@@ -308,7 +317,7 @@ If a domain needs different discovery behavior, encode it in that domain's `run.
 | Category | Keys |
 |----------|------|
 | Required | `input_dir`, `schema` |
-| Optional | `output_dir`, `pages_csv`, `pages`, `profile`, `provider`, `model`, `limit` |
+| Optional | `output_dir`, `pages`, `profile`, `provider`, `model`, `limit` |
 | Advanced | `max_context`, `skip_existing`, `enable_qaqc`, `qaqc_lane`, `live_dashboard` |
 
 ---
@@ -323,55 +332,39 @@ If a domain needs different discovery behavior, encode it in that domain's `run.
 
 ---
 
-## Full `run.yaml` Template
+## Starting a New Domain
 
-```yaml
-domain: generator_manuals
+Copy `TEMPLATE.yaml` and fill in your domain name, schema path, and directories:
 
-discovery:
-  topology:
-    mode: distributed           # distributed | centralized | hybrid
-  targets:
-    - manufacturer: Generac
-      power_class_kw: "200-300"
-      query: "Generac industrial generator manual pdf"
-  query_families:
-    generator_similar_power:
-      - "{manufacturer} {power_class_kw} kW generator spec pdf"
-      - "{manufacturer} generator {power_class_kw} kW manual pdf"
-  seeker:
-    provider: serpapi
-    use_query_family: generator_similar_power
-    max_results: 6
-  link_prioritization:                 # own block, not under seeker
-    mode: heuristic
-    keywords: [manual, operator, installation]
-    domain_scores:                     # soft authority boosts (not a filter)
-      "generac.com": 0.2
-      "cummins.com": 0.2
-    # top_k: 5                         # optional global cap; omit for no cap
-  runtime:
-    min_request_interval_ms: 200
-    max_concurrent_downloads: 2
-    robots_policy_mode: ignore
-    tos_policy_mode: ignore
-
-extraction:
-  input_dir: documents/generator_manuals
-  schema: schemas/personal/generator_manuals_schema.json
-  output_dir: extracted/generator_manuals
-
-compilation:
-  input_dir: extracted/generator_manuals
-  schema: schemas/personal/generator_manuals_schema.json
-  output_dir: compiled/generator_manuals
+```bash
+cp config/TEMPLATE.yaml config/my_domain/run.yaml
 ```
+
+See `TEMPLATE.yaml` for the fully annotated, up-to-date config template with all available knobs for each section.
 
 ---
 
-## Page Ranges CSV Format
+## Page Selection for Large Documents
 
-Page range CSV files specify which pages to extract from specific documents:
+Configure page selection under `extraction.pages:` in your run config. Use manual
+CSV ranges, LLM-assisted auto-locate, or both (CSV entries win, auto-locate fills
+in uncovered large docs).
+
+```yaml
+extraction:
+  pages:
+    csv: config/tariffs/page_ranges.csv    # manual ranges (win over auto)
+    auto_locate:                            # LLM fallback for uncovered docs
+      section_description: >-
+        the residential electric rate schedules showing per-kWh energy charges,
+        monthly customer charge, and other rate components
+      trigger_chars: 200000                 # only activate for docs exceeding this size
+      max_selected_pages: 30                # max candidate pages sent to the LLM
+      # keywords: [rate schedule, residential]   # optional heuristic boosts
+      # model: gpt-4o-mini                       # optional cheaper locator model
+```
+
+### Page Ranges CSV Format
 
 ```csv
 file_path,start_page,end_page
@@ -383,34 +376,24 @@ full_document.pdf,,
 - **file_path**: Filename or full path.
 - **start_page**: First page to extract (1-indexed, inclusive).
 - **end_page**: Last page to extract (1-indexed, inclusive).
-- Leave both empty to extract the full document.
+- Leave both empty to extract the full document (and skip auto-locate for this file).
+
+### CLI Overrides
 
 ```bash
+# Manual CSV via CLI (no config needed)
 pixi run psweep extract documents/tariffs/ \
   --pages-csv config/tariffs/page_ranges.csv
+
+# Single file page range
+pixi run psweep extract doc.pdf --pages 615-759
 ```
 
-### Automatic Page Targeting (LLM-assisted)
+### How It Works
 
-For large documents **without** manual page ranges, `extract` can automatically
-find the right pages using a cheap keyword scan followed by one LLM confirmation
-call. Add a `page_targeting` block under `extraction:` in your run config:
-
-```yaml
-extraction:
-  page_targeting:
-    enabled: true
-    section_description: >-
-      the residential electric rate schedules showing per-kWh energy charges,
-      monthly customer charge, and other rate components
-    trigger_chars: 200000       # only activate for docs exceeding this size
-    max_selected_pages: 30      # max candidate pages sent to the LLM
-    # keywords: [rate schedule, residential]   # optional heuristic boosts
-    # model: gpt-4o-mini                       # optional cheaper locator model
-```
-
-- Manual `pages_csv` / `--pages` always takes precedence over auto-targeting.
-- Results are cached in `.pages/<name>.json` next to the file; the LLM call happens once.
+- `pages.csv` entries are loaded first; matched files use those ranges.
+- `pages.auto_locate` runs second — only on large PDFs not covered by the CSV.
+- Auto-locate results are cached in `.pages/<name>.json` next to the file; the LLM call happens once.
 - On any failure, extraction falls back to the full document.
 
 ---
@@ -517,63 +500,5 @@ Recommended modes:
 
 ### Example `run.yaml`
 
-```yaml
-domain: geothermal_ordinances
+See `config/geothermal_ordinances/run.yaml` for a complete, real-world example covering discovery, extraction, compilation, and QA/QC. See `TEMPLATE.yaml` for the fully annotated reference with all available knobs.
 
-extraction:
-    input_dir: documents/geothermal_ordinances
-    schema: schemas/personal/geothermal_ordinance_schema.json
-    output_dir: extracted/geothermal_ordinances
-    pages_csv: config/geothermal_ordinances/page_ranges.csv
-    max_context: 400000
-
-compilation:
-    input_dir: extracted/geothermal_ordinances
-    schema: schemas/personal/geothermal_ordinance_schema.json
-    output_dir: compiled/geothermal_ordinances
-    dry_run: false
-```
-
-### Variable Categories
-
-Processing:
-- Required: `input_dir`, `schema`
-- Optional: `output_dir`, `pages_csv`, `pages`, `profile`, `provider`, `model`, `limit`
-- Advanced: `max_context`, `skip_existing`, `enable_qaqc`, `qaqc_lane`, `live_dashboard`
-
-Compilation:
-- Required: `input_dir`, `schema`
-- Optional: `output_dir`, `dry_run`, `report_format`
-- Advanced: `fail_on_suspicious`
-
-## Page Ranges CSV Format
-
-Page range CSV files specify which pages to extract from specific documents:
-
-```csv
-file_path,start_page,end_page
-document1.pdf,615,650
-document2.pdf,100,200
-full_document.pdf,,
-```
-
-- **file_path**: Name of the document file (can be filename only or full path)
-- **start_page**: First page to extract (1-indexed, inclusive)
-- **end_page**: Last page to extract (1-indexed, inclusive)
-- Leave both start_page and end_page empty to extract the full document
-
-## Usage
-
-Specify page ranges CSV when extracting from documents:
-
-```bash
-pixi run psweep extract documents/tariffs/ --pages-csv config/tariffs/page_ranges.csv
-```
-
-## Why config/ Instead of documents/?
-
-Configuration files are separated from input documents because:
-- **Clear separation of concerns**: Config vs. data
-- **Scalability**: Each category can have multiple config files without cluttering documents/
-- **Maintainability**: Easy to find and update configurations
-- **Version control**: Easier to track config changes separately from large document files
