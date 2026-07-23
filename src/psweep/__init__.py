@@ -3,7 +3,7 @@ ParseSweep
 
 AI-powered toolkit for extracting structured data from any document type
 using state-of-the-art LLMs. Supports customizable schemas, intelligent
-deduplication, and automated data consolidation.
+deduplication, and automated data compilation.
 
 Quick start (programmatic):
     >>> from psweep import DocumentExtractor, load_schema
@@ -13,9 +13,9 @@ Quick start (programmatic):
     >>> print(result.data)
 
 For document discovery:
-    >>> from psweep import AcquisitionEngine, AcquisitionRequest
-    >>> engine = AcquisitionEngine()
-    >>> request = AcquisitionRequest(
+    >>> from psweep import DiscoveryEngine, DiscoveryRequest
+    >>> engine = DiscoveryEngine()
+    >>> request = DiscoveryRequest(
     ...     domain="my-domain",
     ...     seed_urls=["https://example.com"],
     ...     query="geothermal ordinance",
@@ -45,11 +45,11 @@ from psweep.extraction import (  # noqa: E402
     extract_text_from_document,
 )
 
-# Document acquisition API
-from psweep.acquisition import (  # noqa: E402
-    AcquisitionEngine,
-    AcquisitionRequest,
-    AcquisitionResult,
+# Document discovery API
+from psweep.discovery import (  # noqa: E402
+    DiscoveryEngine,
+    DiscoveryRequest,
+    DiscoveryResult,
 )
 
 __all__ = [
@@ -65,8 +65,8 @@ __all__ = [
     "ExtractionResult",
     "load_schema",
     "extract_text_from_document",
-    # Acquisition
-    "AcquisitionEngine",
-    "AcquisitionRequest",
-    "AcquisitionResult",
+    # Discovery
+    "DiscoveryEngine",
+    "DiscoveryRequest",
+    "DiscoveryResult",
 ]

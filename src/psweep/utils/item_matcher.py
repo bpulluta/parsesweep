@@ -3,7 +3,7 @@
 Item matching utilities for comparing and indexing data items.
 
 Provides reusable logic for matching items across different sources
-based on identifier fields. Used by both consolidation deduplication
+based on identifier fields. Used by both compilation deduplication
 and QA/QC comparison.
 """
 

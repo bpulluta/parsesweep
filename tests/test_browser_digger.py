@@ -8,15 +8,15 @@ is exercised by the VA DEQ end-to-end run, not unit tests.
 
 from __future__ import annotations
 
-from psweep.acquisition.connectors.base import DiggerInput
-from psweep.acquisition.connectors.digger import (
+from psweep.discovery.connectors.base import DiggerInput
+from psweep.discovery.connectors.digger import (
     HttpDiggerConnector,
     SeleniumDiggerConnector,
     resolve_digger_connector,
 )
-from psweep.acquisition.engine import (
-    AcquisitionEngine,
-    AcquisitionRequest,
+from psweep.discovery.engine import (
+    DiscoveryEngine,
+    DiscoveryRequest,
 )
 
 
@@ -55,22 +55,22 @@ class TestBrowserModeFallback:
     def test_open_browser_returns_none_when_unavailable(self, monkeypatch):
         # Simulate Selenium/Chrome unavailable: _open_browser_for_download
         # must return (None, note) so the caller falls back to HTTP.
-        import psweep.acquisition.browser as browser_mod
+        import psweep.discovery.browser as browser_mod
 
         def _boom(self):
-            from psweep.acquisition.browser import (
+            from psweep.discovery.browser import (
                 BrowserUnavailableError,
             )
 
             raise BrowserUnavailableError("no chrome")
 
         monkeypatch.setattr(browser_mod.BrowserSession, "_start", _boom)
-        session, note = AcquisitionEngine._open_browser_for_download()
+        session, note = DiscoveryEngine._open_browser_for_download()
         assert session is None
         assert "unavailable" in note.lower()
 
     def test_browser_mode_field_defaults_false(self):
-        req = AcquisitionRequest(
+        req = DiscoveryRequest(
             domain="d",
             seed_urls=[],
             query=None,

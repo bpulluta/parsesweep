@@ -87,7 +87,7 @@ def test_collect_benchmark_metrics_computes_extraction_parity(tmp_path) -> None:
                     "main_data_array": "items",
                     "identifier_fields": ["document_id"],
                 },
-                "consolidation": {
+                "compilation": {
                     "deduplication": {
                         "key_fields": ["name", "value"],
                         "ignore_fields": [],
@@ -170,7 +170,7 @@ def test_collect_benchmark_metrics_computes_extraction_parity_from_payload_recor
                     "main_data_array": "items",
                     "identifier_fields": ["document_id"],
                 },
-                "consolidation": {
+                "compilation": {
                     "deduplication": {
                         "key_fields": ["name", "value"],
                         "ignore_fields": [],
@@ -311,7 +311,7 @@ def test_collect_benchmark_metrics_computes_qaqc_qualitative_pass_rate(tmp_path)
     assert metrics["qaqc_qualitative_pass_rate"] == 50.0
 
 
-def test_collect_benchmark_metrics_computes_consolidation_correctness(tmp_path) -> None:
+def test_collect_benchmark_metrics_computes_compilation_correctness(tmp_path) -> None:
     schema_path = tmp_path / "schemas/test_schema.json"
     _write_json(
         schema_path,
@@ -321,7 +321,7 @@ def test_collect_benchmark_metrics_computes_consolidation_correctness(tmp_path) 
                     "main_data_array": "items",
                     "identifier_fields": ["metadata.id"],
                 },
-                "consolidation": {
+                "compilation": {
                     "deduplication": {
                         "key_fields": ["name", "state"],
                         "ignore_fields": ["notes"],
@@ -353,15 +353,15 @@ def test_collect_benchmark_metrics_computes_consolidation_correctness(tmp_path) 
     metrics = collect_benchmark_metrics(
         tmp_path / "actual",
         repo_root=tmp_path,
-        consolidation_baseline_dir=tmp_path / "expected",
-        consolidation_schema_path=schema_path,
+        compilation_baseline_dir=tmp_path / "expected",
+        compilation_schema_path=schema_path,
     )
 
     assert metrics["expected_rows"] == 2
     assert metrics["actual_rows"] == 2
     assert metrics["correct_rows"] == 1
-    assert metrics["scored_consolidated_files"] == 1
-    assert metrics["consolidation_correctness"] == 50.0
+    assert metrics["scored_compiled_files"] == 1
+    assert metrics["compilation_correctness"] == 50.0
 
 
 def test_compare_benchmark_to_baseline_returns_median_deltas() -> None:
@@ -391,7 +391,7 @@ def test_evaluate_benchmark_gates_returns_pass_fail_summary() -> None:
         "extraction_parity": 98.0,
         "qaqc_signal_quality": 97.0,
         "qaqc_qualitative_pass_rate": 100.0,
-        "consolidation_correctness": 99.6,
+        "compilation_correctness": 99.6,
         "failure_rate": 0.05,
         "average_document_duration_seconds": 8.0,
         "throughput_documents_per_minute": 4.0,
@@ -403,7 +403,7 @@ def test_evaluate_benchmark_gates_returns_pass_fail_summary() -> None:
         min_extraction_parity=97.0,
         min_qaqc_signal_quality=96.0,
         min_qaqc_qualitative_pass_rate=100.0,
-        min_consolidation_correctness=99.5,
+        min_compilation_correctness=99.5,
         max_failure_rate=0.10,
         max_average_seconds_per_document=10.0,
         min_documents_per_minute=2.0,
@@ -419,7 +419,7 @@ def test_evaluate_benchmark_gates_detects_failures() -> None:
         "extraction_parity": 92.0,
         "qaqc_signal_quality": 90.0,
         "qaqc_qualitative_pass_rate": 50.0,
-        "consolidation_correctness": 95.0,
+        "compilation_correctness": 95.0,
         "failure_rate": 0.20,
         "average_document_duration_seconds": 12.0,
         "throughput_documents_per_minute": 1.0,
@@ -431,7 +431,7 @@ def test_evaluate_benchmark_gates_detects_failures() -> None:
         min_extraction_parity=97.0,
         min_qaqc_signal_quality=96.0,
         min_qaqc_qualitative_pass_rate=100.0,
-        min_consolidation_correctness=99.5,
+        min_compilation_correctness=99.5,
         max_failure_rate=0.10,
         max_average_seconds_per_document=10.0,
         min_documents_per_minute=2.0,
@@ -442,7 +442,7 @@ def test_evaluate_benchmark_gates_detects_failures() -> None:
     assert gate_result["gates"]["min_extraction_parity"]["passed"] is False
     assert gate_result["gates"]["min_qaqc_signal_quality"]["passed"] is False
     assert gate_result["gates"]["min_qaqc_qualitative_pass_rate"]["passed"] is False
-    assert gate_result["gates"]["min_consolidation_correctness"]["passed"] is False
+    assert gate_result["gates"]["min_compilation_correctness"]["passed"] is False
     assert gate_result["gates"]["max_failure_rate"]["passed"] is False
     assert gate_result["gates"]["max_average_seconds_per_document"]["passed"] is False
     assert gate_result["gates"]["min_documents_per_minute"]["passed"] is False
@@ -542,23 +542,23 @@ def test_benchmark_cli_requires_baseline_dir_for_qaqc_gate(tmp_path) -> None:
     assert "requires --qaqc-baseline-dir" in result.output
 
 
-def test_benchmark_cli_requires_baseline_dir_for_consolidation_gate(tmp_path) -> None:
+def test_benchmark_cli_requires_baseline_dir_for_compilation_gate(tmp_path) -> None:
     runner = CliRunner()
     result = runner.invoke(
         cli,
         [
             "benchmark",
             str(tmp_path),
-            "--min-consolidation-correctness",
+            "--min-compilation-correctness",
             "99.5",
         ],
     )
 
     assert result.exit_code != 0
-    assert "requires --consolidation-baseline-dir" in result.output
+    assert "requires --compilation-baseline-dir" in result.output
 
 
-def test_benchmark_cli_requires_schema_for_consolidation_baseline(tmp_path) -> None:
+def test_benchmark_cli_requires_schema_for_compilation_baseline(tmp_path) -> None:
     runner = CliRunner()
     baseline_dir = tmp_path / "expected"
     baseline_dir.mkdir()
@@ -567,13 +567,13 @@ def test_benchmark_cli_requires_schema_for_consolidation_baseline(tmp_path) -> N
         [
             "benchmark",
             str(tmp_path),
-            "--consolidation-baseline-dir",
+            "--compilation-baseline-dir",
             str(baseline_dir),
         ],
     )
 
     assert result.exit_code != 0
-    assert "requires --consolidation-schema" in result.output
+    assert "requires --compilation-schema" in result.output
 
 
 def test_benchmark_cli_quiet_mode_emits_json(tmp_path) -> None:
@@ -823,7 +823,7 @@ def test_benchmark_cli_reports_extraction_parity_in_quiet_mode(tmp_path) -> None
                     "main_data_array": "items",
                     "identifier_fields": ["document_id"],
                 },
-                "consolidation": {
+                "compilation": {
                     "deduplication": {
                         "key_fields": ["name", "value"],
                         "ignore_fields": [],
@@ -969,7 +969,7 @@ def test_benchmark_cli_reports_qaqc_qualitative_pass_rate_in_quiet_mode(tmp_path
     assert '"min_qaqc_qualitative_pass_rate"' in result.output
 
 
-def test_benchmark_cli_reports_consolidation_correctness_in_quiet_mode(tmp_path) -> None:
+def test_benchmark_cli_reports_compilation_correctness_in_quiet_mode(tmp_path) -> None:
     schema_path = tmp_path / "schemas/test_schema.json"
     _write_json(
         schema_path,
@@ -979,7 +979,7 @@ def test_benchmark_cli_reports_consolidation_correctness_in_quiet_mode(tmp_path)
                     "main_data_array": "items",
                     "identifier_fields": ["metadata.id"],
                 },
-                "consolidation": {
+                "compilation": {
                     "deduplication": {
                         "key_fields": ["name", "state"],
                         "ignore_fields": ["notes"],
@@ -1012,16 +1012,16 @@ def test_benchmark_cli_reports_consolidation_correctness_in_quiet_mode(tmp_path)
         [
             "benchmark",
             str(tmp_path / "actual"),
-            "--consolidation-baseline-dir",
+            "--compilation-baseline-dir",
             str(tmp_path / "expected"),
-            "--consolidation-schema",
+            "--compilation-schema",
             str(schema_path),
-            "--min-consolidation-correctness",
+            "--min-compilation-correctness",
             "99.5",
             "--quiet",
         ],
     )
 
     assert result.exit_code == 0
-    assert '"consolidation_correctness": 100.0' in result.output
-    assert '"min_consolidation_correctness"' in result.output
+    assert '"compilation_correctness": 100.0' in result.output
+    assert '"min_compilation_correctness"' in result.output

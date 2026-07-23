@@ -2,7 +2,7 @@
 #
 # Copy this file into a new folder under config/<your_domain>/run.yaml.
 # Remove sections you don't need — only `domain` and at least one
-# of acquisition/processing/consolidation is required per run.
+# of discovery/extraction/compilation is required per run.
 #
 # Three tiers are documented below:
 #   REQUIRED   — must be set for the section to work
@@ -30,20 +30,20 @@ domain: my_domain
 #   my-azure-deployment-name: 300000
 
 
-# ── Acquisition ───────────────────────────────────────────────────────────────
+# ── Discovery ───────────────────────────────────────────────────────────────
 #
 # Drives web discovery. Searches SerpApi, scores candidates, downloads files.
 # Targets are rows of context injected into query templates.
 #
 # DESIGN PRINCIPLE — recall first, then flag:
-#   Keep acquire broad (good queries + light excludes) so the real document is
+#   Keep discover broad (good queries + light excludes) so the real document is
 #   never filtered out, and let `document_classifier` flag anything that isn't
 #   clearly the right document for human review. Aggressive allow-lists and long
 #   require-term lists tend to reject the actual files, so avoid them.
 #
 # Minimal (seeker only, no crawl):
 #
-#   acquisition:
+#   discovery:
 #     targets_csv: targets.csv
 #     queries:
 #       - "{address} rate tariff .pdf"
@@ -52,7 +52,7 @@ domain: my_domain
 #
 # With crawl (follow links from search results):
 #
-#   acquisition:
+#   discovery:
 #     targets_csv: targets.csv
 #     queries:
 #       - "{jurisdiction} geothermal ordinance pdf"
@@ -62,7 +62,7 @@ domain: my_domain
 #     selection:
 #       max_per_target: 2
 
-acquisition:
+discovery:
 
   # -- Targets -----------------------------------------------------------------
 
@@ -221,10 +221,10 @@ acquisition:
 #
 # Extracts structured data from downloaded documents using an LLM.
 
-processing:
-  # REQUIRED. Path to documents to extract. When using acquisition, point at the
+extraction:
+  # REQUIRED. Path to documents to extract. When using discovery, point at the
   # curated set of the latest run (LLM-reviewed + human-approved).
-  input_dir: output/acquisition/my_domain/latest/curated
+  input_dir: discovered/my_domain/latest/curated
 
   # REQUIRED. Schema that defines what fields to extract.
   # Use a domain pack (schemas/domain_packs/<name>/pack.yaml) or a
@@ -248,7 +248,7 @@ processing:
   #   max_selected_pages: 30
 
   # OPTIONAL.
-  output_dir: processed/my_domain
+  output_dir: extracted/my_domain
 
   # ADVANCED. LLM overrides — defaults come from environment.
   # provider: anthropic    # openai | azure | anthropic | gemini | auto
@@ -262,15 +262,15 @@ processing:
 #
 # Deduplicates and merges extracted JSON records into a single CSV/Excel output.
 
-consolidation:
-  # REQUIRED. Directory of extraction JSON records (output of processing step).
-  input_dir: processed/my_domain
+compilation:
+  # REQUIRED. Directory of extraction JSON records (output of extraction step).
+  input_dir: extracted/my_domain
 
-  # REQUIRED. Same schema used during processing.
+  # REQUIRED. Same schema used during extraction.
   schema: schemas/domain_packs/my_domain/pack.yaml
 
   # OPTIONAL.
-  output_dir: consolidated/my_domain
+  output_dir: compiled/my_domain
 
   # OPTIONAL — flattening. How arrays of objects become spreadsheet columns.
   # Every key is optional; unset keys use general defaults, so most domains omit

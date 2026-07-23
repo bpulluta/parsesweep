@@ -66,7 +66,7 @@ modules:
     version: 1.0.0
     kind: projector
     enabled: true
-  - module_id: consolidation_mapper
+  - module_id: compilation_mapper
     name: Consolidation Mapper
     version: 1.0.0
     kind: mapper

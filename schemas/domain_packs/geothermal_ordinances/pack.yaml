@@ -4,7 +4,7 @@ schema_path: schemas/personal/geothermal_ordinance_schema.json
 schema_aliases:
   - schemas/personal/geothermal_ordinance_schema.json
 document_type: Geothermal Ordinance
-consolidation:
+compilation:
   deduplication:
     strategy: latest
     comparison_mode: fuzzy
@@ -96,7 +96,7 @@ modules:
     version: 1.0.0
     kind: projector
     enabled: true
-  - module_id: consolidation_mapper
+  - module_id: compilation_mapper
     name: Consolidation Mapper
     version: 1.0.0
     kind: mapper

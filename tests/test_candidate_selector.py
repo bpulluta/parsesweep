@@ -6,8 +6,8 @@ from datetime import date
 
 import pytest
 
-from psweep.acquisition.candidate_selector import CandidateSelector
-from psweep.acquisition.models import AcquisitionCandidate, CandidateScore
+from psweep.discovery.candidate_selector import CandidateSelector
+from psweep.discovery.models import DiscoveryCandidate, CandidateScore
 
 
 # ---------------------------------------------------------------------------
@@ -15,8 +15,8 @@ from psweep.acquisition.models import AcquisitionCandidate, CandidateScore
 # ---------------------------------------------------------------------------
 
 
-def _candidate(url: str, reasons: list[str] | None = None) -> AcquisitionCandidate:
-    return AcquisitionCandidate(
+def _candidate(url: str, reasons: list[str] | None = None) -> DiscoveryCandidate:
+    return DiscoveryCandidate(
         url=url,
         source="test",
         score=CandidateScore(),
@@ -222,7 +222,7 @@ class TestPerTargetSelection:
             _candidate("https://xcel.com/Electric_Summation_Sheet_05.01.2024.pdf"),
         ]
         # Target 2: empty
-        t2: list[AcquisitionCandidate] = []
+        t2: list[DiscoveryCandidate] = []
 
         selected, notes = sel.select([t0, t1, t2], primary_per_target=1)
         assert len(selected) == 2  # one from t0, one from t1 (draft removed)
@@ -355,7 +355,7 @@ class TestSelectionConfigMapping:
         from psweep.config.runtime_config_loader import resolve_command_config
 
         config = {
-            "acquisition": {
+            "discovery": {
                 "selection": {
                     "primary_per_target": 2,
                     "exclude_draft": False,
@@ -363,7 +363,7 @@ class TestSelectionConfigMapping:
             }
         }
         resolved = resolve_command_config(
-            command="acquire",
+            command="discover",
             cli_values={},
             config_data=config,
         )
@@ -374,14 +374,14 @@ class TestSelectionConfigMapping:
         from psweep.config.runtime_config_loader import resolve_command_config
 
         config = {
-            "acquisition": {
+            "discovery": {
                 "selection": {
                     "draft_patterns": [r"\bfoo\b", r"\bbar\b"],
                 }
             }
         }
         resolved = resolve_command_config(
-            command="acquire",
+            command="discover",
             cli_values={},
             config_data=config,
         )
@@ -391,7 +391,7 @@ class TestSelectionConfigMapping:
         from psweep.config.runtime_config_loader import resolve_command_config
 
         resolved = resolve_command_config(
-            command="acquire",
+            command="discover",
             cli_values={},
             config_data={},
         )
@@ -403,7 +403,7 @@ class TestSelectionConfigMapping:
         from psweep.config.runtime_config_loader import resolve_command_config
 
         config = {
-            "acquisition": {
+            "discovery": {
                 "selection": {
                     "target_identity_require_any_templates": ["{jurisdiction}", "{state}"],
                     "target_identity_require_all_templates": ["{utility}", "{sector}"],
@@ -412,7 +412,7 @@ class TestSelectionConfigMapping:
             }
         }
         resolved = resolve_command_config(
-            command="acquire",
+            command="discover",
             cli_values={},
             config_data=config,
         )

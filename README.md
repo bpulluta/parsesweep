@@ -6,14 +6,14 @@
 
 **Transform unstructured documents into structured data**
 
-ParseSweep uses generative AI to acquire and extract structured data from documents and consolidate it into Excel/CSV. No manual data entry, no complex parsing—just define what you need with a JSON schema and let the AI do the work.
+ParseSweep uses generative AI to discover and extract structured data from documents and compile it into Excel/CSV. No manual data entry, no complex parsing—just define what you need with a JSON schema and let the AI do the work.
 
 ### ✨ Key Features
 
 - **Universal Document Support**: PDFs, Word docs, text files, spreadsheets—all in one pipeline
 - **Schema-Driven Extraction**: Define your data structure once, extract consistently
 - **AI-Powered Intelligence**: Understands context, handles variations, extracts semantically
-- **Auto-Consolidation**: Merges extracted data with smart deduplication
+- **Auto-Compilation**: Merges extracted data with smart deduplication
 - **Production-Ready**: Battle-tested on 100s of documents across multiple domains
 
 ### 💡 Perfect For
@@ -43,9 +43,9 @@ Works with any document type: regulations, contracts, research papers, permits, 
 - [Configuration](#configuration)
 - [Usage](#usage)
   - [Complete Workflow Example](#complete-workflow-example)
-  - [Process Command](#process-command)
-  - [Consolidate Command](#consolidate-command)
-  - [Acquire Command](#acquire-command)
+  - [Extract Command](#extract-command)
+  - [Compile Command](#compile-command)
+  - [Discover Command](#discover-command)
   - [Curate Command](#curate-command)
   - [Helper Commands](#helper-commands)
   - [QA/QC Multi-Model Validation](#qaqc-multi-model-validation)
@@ -75,16 +75,16 @@ pixi run psweep init
 # → Creates .env file with your credentials
 
 # 4. Extract data from documents to JSON
-pixi run psweep process documents/examples/ \
+pixi run psweep extract documents/examples/ \
   --schema schemas/example_utility_rate_schema.json
 # → Extracts structured data using the example schema
-# → Outputs to processed/examples/*.json
+# → Outputs to extracted/examples/*.json
 
-# 5. Consolidate JSON files to Excel/CSV
-pixi run psweep consolidate processed/examples/ \
+# 5. Compile JSON files to Excel/CSV
+pixi run psweep compile extracted/examples/ \
   --schema schemas/example_utility_rate_schema.json
 # → Merges all JSON files with smart deduplication
-# → Outputs to consolidated/examples/output.xlsx and .csv
+# → Outputs to compiled/examples/output.xlsx and .csv
 ```
 
 **That's it!** You now have structured data ready for analysis.
@@ -93,30 +93,62 @@ pixi run psweep consolidate processed/examples/ \
 
 ## Architecture
 
-ParseSweep operates on one contract-first runtime.
+ParseSweep is built on a **contract-first, config-driven** runtime with clear separation of concerns:
 
-Core design rules:
-- One active runtime path for `process`, `compare`, and `consolidate`
-- One schema contract with required `$metadata` for extraction and consolidation behavior
-- One optional runtime-pack layer for reusable domain behavior such as QA/QC lanes and presentation defaults
-- One optional profile layer for environment-specific runtime settings
-- One lineage model so outputs and reports can be traced back to the runtime artifact used to produce them
+### Design Principles
 
-Use this ownership split when deciding where changes belong:
+| Principle | Implementation |
+|-----------|---------------|
+| **Modular** | Each command (`discover`, `extract`, `compile`) runs independently |
+| **Config-driven** | One YAML config per domain controls all runtime behavior |
+| **Schema-focused** | Schema defines WHAT to extract; config defines HOW to run |
+| **Auto-resolving** | `--schema` auto-loads matching domain config when one exists |
+| **Domain-agnostic** | Same engine works for any document type via schema + config |
 
-| Surface | Owns |
-|---------|------|
-| Schema | extraction row shape, field descriptions, identifiers, deduplication keys |
-| Pack | reusable domain runtime behavior, QA/QC defaults, consolidation presentation |
-| Profile | environment/runtime tuning |
+### Ownership Split
 
-The normal progression is:
-1. Start with a lean schema.
-2. Validate it on 1-2 representative documents.
-3. Add a pack only when multiple runs need shared runtime behavior.
-4. Add profile overrides only when environments actually differ.
+| Surface | Owns | Example |
+|---------|------|---------|
+| **Schema** (JSON) | Extraction contract: field definitions, types, identifiers, dedup keys | `schemas/personal/tariff_schema.json` |
+| **Config** (YAML) | Runtime behavior: page targeting, models, output paths, discovery queries | `config/tariffs/run.yaml` |
+| **Pack** (YAML) | Reusable domain modules: QA/QC lanes, compilation presentation | `schemas/domain_packs/tariffs/pack.yaml` |
+| **Profile** | Environment tuning: model endpoints, concurrency, rate limits | `schemas/profiles/default.yaml` |
 
-This keeps onboarding simple for a new domain while preserving a clean path to larger, more configurable deployments.
+### How Commands Find Their Settings
+
+```
+psweep extract documents/tariffs/ --schema schemas/personal/tariff_schema.json
+                                       │
+                                       ▼
+                          ┌─────────────────────────────┐
+                          │ Auto-resolve: scan config/   │
+                          │ for a run.yaml referencing   │
+                          │ this schema                  │
+                          └──────────────┬──────────────┘
+                                         ▼
+                          config/utility_rate_tariffs/run.yaml
+                          ┌─────────────────────────────┐
+                          │ extraction:                  │
+                          │   schema: ...               │
+                          │   page_targeting: ...       │
+                          │   max_context: 1400000      │
+                          │ compilation:                │
+                          │   schema: ...               │
+                          │   output_dir: ...           │
+                          └─────────────────────────────┘
+```
+
+**Two ways to run — both first-class:**
+- **Quick mode**: `psweep extract docs/ --schema schema.json` — works for simple runs; auto-loads matching config if one exists
+- **Config mode**: `psweep extract --config config/domain/run.yaml` — explicit, full control
+
+### Progression for New Domains
+
+1. Start with a lean schema (4-8 fields).
+2. Run `extract` on 1-2 documents with just `--schema`.
+3. When you need page targeting, model selection, or other runtime tuning → create a config YAML.
+4. Add a pack only when multiple domains share runtime behavior.
+5. Add profile overrides only when environments actually differ.
 
 ---
 
@@ -128,7 +160,7 @@ Use the active docs for current operating guidance:
 - `schemas/SCHEMA_BEST_PRACTICES.md`: schema authoring, deduplication, and schema-versus-pack guidance
 - `config/README.md`: runtime config layout and page-range conventions
 - `.github/copilot-instructions.md`: repository-specific Copilot operating instructions and standard commands
-- `CONTRIBUTING_ACQUISITION.md`: extending seeker/digger connectors, testing patterns, and configuration
+- `CONTRIBUTING_DISCOVERY.md`: extending seeker/digger connectors, testing patterns, and configuration
 
 If a document describes migration, phased implementation planning, release-gate bookkeeping, or retired implementation work, it should stay out of the tracked repo surface. Keep that material in a local ignored archive or in the issue tracker instead.
 
@@ -165,7 +197,7 @@ pixi run psweep init-domain-schema \
   - keep pack responsibility to runtime modules, QA/QC behavior, and environment-specific runtime config
 5. Validate the schema:
 ```bash
-pixi run psweep validate-schema schemas/personal/your_domain_schema.json
+pixi run psweep check-schema schemas/personal/your_domain_schema.json
 ```
 6. Scaffold the runtime pack, config, and workspace folders:
 ```bash
@@ -179,11 +211,11 @@ pixi run psweep init-domain-pack \
    - use `--template-mode recommended` only when you explicitly want the extra QA/QC-oriented guidance
 7. Validate the runtime seam:
 ```bash
-pixi run psweep validate-runtime \
+pixi run psweep check-runtime \
   --pack schemas/domain_packs/your_domain/pack.yaml \
   --profile default
 ```
-8. Process 1-2 documents first, then consolidate and inspect the output.
+8. Extract 1-2 documents first, then compile and inspect the output.
 9. Iterate on the schema, page ranges, and QA/QC review until the extraction quality is acceptable.
 
 What a lean first-pass schema should feel like:
@@ -205,12 +237,12 @@ pixi run psweep init-domain-schema \
   --name solar \
   --reference-schema schemas/personal/solar_ordinance_schema.json
 
-pixi run psweep process documents/solar/ \
+pixi run psweep extract documents/solar/ \
   --schema schemas/personal/solar_ordinance_schema.json \
   --profile default \
   --pages-csv config/solar/page_ranges.csv
 
-pixi run psweep consolidate processed/solar \
+pixi run psweep compile extracted/solar \
   --schema schemas/personal/solar_ordinance_schema.json
 ```
 
@@ -227,13 +259,13 @@ ParseSweep organizes your work into a simple folder structure:
 **Workflow:**
 1. Put documents in `documents/topic/`
 2. Create schema in `schemas/personal/your_schema.json`
-3. Run `process` → Creates `processed/topic/*.json`
-4. Run `consolidate` → Creates `consolidated/topic/*.xlsx|csv`
+3. Run `extract` → Creates `extracted/topic/*.json`
+4. Run `compile` → Creates `compiled/topic/*.xlsx|csv`
 
 **Pro Tips:**
 - **Use `schemas/personal/`** for your custom schemas (this folder is gitignored to prevent accidentally committing schemas)
-- The same category name flows through: `documents/X/` → `processed/X/` → `consolidated/X/`
-- `processed/` and `consolidated/` folders are created automatically
+- The same category name flows through: `documents/X/` → `extracted/X/` → `compiled/X/`
+- `extracted/` and `compiled/` folders are created automatically
 
 ---
 
@@ -318,6 +350,37 @@ pixi run psweep config
 # Should show your API provider and model (no errors)
 ```
 
+### Domain Config (run.yaml)
+
+Each domain can have a `config/<domain>/run.yaml` that controls runtime behavior for all commands. The config is **auto-loaded** when you use `--schema` (no need to remember `--config`).
+
+```yaml
+# config/my_domain/run.yaml
+extraction:
+  schema: schemas/personal/my_schema.json
+  max_context: 600000
+  page_targeting:              # LLM-assisted page finding for large docs
+    enabled: true
+    section_description: "the section containing rate schedules"
+    trigger_chars: 200000
+
+compilation:
+  schema: schemas/personal/my_schema.json
+  output_dir: compiled/my_domain
+
+discovery:                     # Only needed if using web discovery
+  queries: ["site permits", "regulatory filings"]
+  targets_csv: config/my_domain/targets.csv
+```
+
+**Key behaviors:**
+- `psweep extract --schema ...` auto-loads the matching config
+- `psweep extract --config ...` uses the specified config explicitly
+- Each command reads only its own section (`extraction:`, `compilation:`, `discovery:`)
+- CLI flags always override config values
+
+See `config/README.md` for the full config reference.
+
 ---
 
 ## Usage
@@ -327,54 +390,60 @@ pixi run psweep config
 Here's a typical end-to-end workflow:
 
 ```bash
-# 1. Estimate costs before processing (optional but recommended)
+# 1. Estimate costs before extraction (optional but recommended)
 pixi run psweep estimate documents/examples/
-# → Shows estimated documents count, cost, and processing time
+# → Shows estimated documents count, cost, and extraction time
 
 # 2. Extract data from documents
-pixi run psweep process documents/examples/ \
+pixi run psweep extract documents/examples/ \
   --schema schemas/example_utility_rate_schema.json \
   --live-dashboard
-# → Processes each document with real-time progress
-# → Outputs: processed/examples/doc1.json, doc2.json, ...
+# → Extracts each document with real-time progress
+# → Outputs: extracted/examples/doc1.json, doc2.json, ...
 
 # 3. Review extracted data (optional)
-cat processed/examples/sample_doc.json | head -50
+cat extracted/examples/sample_doc.json | head -50
 
-# 4. Consolidate all JSON files
-pixi run psweep consolidate processed/examples/ \
+# 4. Compile all JSON files
+pixi run psweep compile extracted/examples/ \
   --schema schemas/example_utility_rate_schema.json
 # → Merges all JSONs with smart deduplication
 # → Outputs: 
-#   - consolidated/examples/examples_consolidated.xlsx
-#   - consolidated/examples/examples_consolidated.csv
+#   - compiled/examples/examples_compiled.xlsx
+#   - compiled/examples/examples_compiled.csv
 
 # 5. Open and analyze
-open consolidated/examples/examples_consolidated.xlsx
+open compiled/examples/examples_compiled.xlsx
 ```
 
-### Process Command
+### Extract Command
 
-Process documents and extract structured data to JSON files.
+Extract structured data from documents into JSON files.
 
-**What it does:** Reads documents, sends content to AI with your schema, saves structured JSON responses.
+**What it does:** Reads documents, sends content to AI with your schema, saves structured JSON responses. When a matching domain config exists in `config/*/run.yaml`, page targeting and other runtime settings are loaded automatically.
 
 #### Basic Usage
 
 ```bash
-pixi run psweep process <input_directory>
+# Simple: schema-only (auto-loads matching config if one exists)
+pixi run psweep extract documents/tariffs/ \
+  --schema schemas/personal/electricity_tariff_schema.json
+
+# Explicit: full config control
+pixi run psweep extract --config config/utility_rate_tariffs/run.yaml
 ```
 
 #### Options
 
 | Option | Description | Default |
 |--------|-------------|---------|
-| `--schema PATH` | Custom schema file | REQUIRED |
-| `--output PATH` | Output directory | `processed/<input_name>/` |
+| `--schema PATH` | Schema file (auto-resolves matching config) | REQUIRED |
+| `--config PATH` | Explicit config YAML (overrides auto-resolve) | Auto-resolved |
+| `--output PATH` | Output directory | `extracted/<input_name>/` |
 | `--pages RANGE` | Page range for single PDF (e.g., "615-759") | All pages |
 | `--pages-csv PATH` | CSV with per-file page ranges | None |
 | `--max-context N` | Max characters per document | 400000 |
-| `--limit N` | Process only N files | All files |
+| `--limit N` | Extract only N files | All files |
 | `--enable-qa-qc` | Enable quality checks | Disabled |
 | `--reprocess` | Re-extract existing files | Skip existing |
 | `--live-dashboard` | Show real-time progress | Disabled |
@@ -385,30 +454,32 @@ pixi run psweep process <input_directory>
 #### Examples
 
 ```bash
-# Basic extraction
-pixi run psweep process documents/contracts/
+# Basic extraction (auto-loads page targeting from config if available)
+pixi run psweep extract documents/contracts/ \
+  --schema schemas/personal/my_schema.json
 
-# With custom schema
-pixi run psweep process documents/tariffs/ \
-  --schema schemas/electricity_tariff_schema.json
+# Large documents: page targeting is loaded automatically from config
+pixi run psweep extract documents/tariffs/ \
+  --schema schemas/personal/electricity_tariff_schema.json
+# ℹ Auto-loaded domain config: config/utility_rate_tariffs/run.yaml
 
-# Extract only specific pages from a large PDF (NEW in 2.0.1!)
-pixi run psweep process documents/tariff_book.pdf \
+# Extract only specific pages from a large PDF
+pixi run psweep extract documents/tariff_book.pdf \
   --pages 615-759 \
-  --schema schemas/my_schema.json
+  --schema schemas/personal/my_schema.json
 
 # Batch processing with different page ranges per file
-pixi run psweep process documents/tariffs/ \
+pixi run psweep extract documents/tariffs/ \
   --pages-csv page_ranges.csv \
-  --schema schemas/my_schema.json
+  --schema schemas/personal/my_schema.json
 
 # Large documents with live dashboard
-pixi run psweep process documents/reports/ \
+pixi run psweep extract documents/reports/ \
   --max-context 1400000 \
   --live-dashboard
 
 # Test run (limit to 3 files)
-pixi run psweep process documents/examples/ \
+pixi run psweep extract documents/examples/ \
   --schema schemas/example_utility_rate_schema.json \
   --limit 3
 ```
@@ -424,11 +495,15 @@ Empty start/end means extract full document.
 
 ---
 
-### ⚡ Processing Large Documents - Page Range Optimization
+### ⚡ Large Documents - Page Range Optimization
 
-**Problem**: When extracting from large documents (200+ pages), important details at the end of sections (like ADJUSTMENTS, footnotes, or appendices) may be lost due to context window limitations.
+**Problem**: When extracting from large documents (200+ pages), important details may be lost due to context window limitations.
 
-**Solution**: Break large documents into focused page ranges for optimal extraction quality.
+**Solutions** (in order of preference):
+
+1. **Automatic page targeting** (recommended): Configure `page_targeting` in your domain config — the system finds the right pages automatically using a cheap LLM call
+2. **Manual page ranges**: Specify exact pages via `--pages` or `--pages-csv`
+3. **Increase context**: Use `--max-context 1400000` (brute force, expensive)
 
 #### 📊 Recommended Settings
 
@@ -436,7 +511,7 @@ Empty start/end means extract full document.
 > - ✅ Captures complete sections including end-matter
 > - ✅ Maintains 100% data capture rate
 > - ✅ Cost-effective: $0.04-0.06 per extraction
-> - ✅ Processing time: 3-5 minutes
+> - ✅ Extraction time: 3-5 minutes
 >
 > **Max Context: `--max-context 600000`**
 > - ✅ Optimal for 50-100 page ranges
@@ -451,34 +526,34 @@ Empty start/end means extract full document.
 ```bash
 # Step 1: Extract each section to separate directories
 # Residential rates (pages 30-130)
-pixi run psweep process documents/tariffs/tariff_book.pdf \
+pixi run psweep extract documents/tariffs/tariff_book.pdf \
   --schema schemas/example_utility_rate_schema.json \
   --pages 30-130 \
-  --output processed/tariffs/residential/ \
+  --output extracted/tariffs/residential/ \
   --max-context 600000
 
 # Commercial rates (pages 131-230)
-pixi run psweep process documents/tariffs/tariff_book.pdf \
+pixi run psweep extract documents/tariffs/tariff_book.pdf \
   --schema schemas/example_utility_rate_schema.json \
   --pages 131-230 \
-  --output processed/tariffs/commercial/ \
+  --output extracted/tariffs/commercial/ \
   --max-context 600000
 
 # Industrial rates (pages 231-330)
-pixi run psweep process documents/tariffs/tariff_book.pdf \
+pixi run psweep extract documents/tariffs/tariff_book.pdf \
   --schema schemas/example_utility_rate_schema.json \
   --pages 231-330 \
-  --output processed/tariffs/industrial/ \
+  --output extracted/tariffs/industrial/ \
   --max-context 600000
 
 # Step 2: Combine all JSON files into one directory with unique names
-mkdir -p processed/tariffs_all
-cp processed/tariffs/residential/*.json processed/tariffs_all/tariff_residential.json
-cp processed/tariffs/commercial/*.json processed/tariffs_all/tariff_commercial.json
-cp processed/tariffs/industrial/*.json processed/tariffs_all/tariff_industrial.json
+mkdir -p extracted/tariffs_all
+cp extracted/tariffs/residential/*.json extracted/tariffs_all/tariff_residential.json
+cp extracted/tariffs/commercial/*.json extracted/tariffs_all/tariff_commercial.json
+cp extracted/tariffs/industrial/*.json extracted/tariffs_all/tariff_industrial.json
 
-# Step 3: Consolidate
-pixi run psweep consolidate processed/tariffs_all/ \
+# Step 3: Compile
+pixi run psweep compile extracted/tariffs_all/ \
   --schema schemas/example_utility_rate_schema.json
 ```
 
@@ -495,30 +570,37 @@ utility3_tariff.pdf,50,150
 ```
 
 ```bash
-pixi run psweep process documents/tariffs/ \
+pixi run psweep extract documents/tariffs/ \
   --schema schemas/example_utility_rate_schema.json \
   --pages-csv config/tariffs/page_ranges.csv
 ```
 
-#### 🎯 Automatic page targeting (optional, LLM-assisted)
+#### 🎯 Automatic page targeting (LLM-assisted, auto-loaded from config)
 
-When you *don't* have hand-derived page numbers, `process` can find the right
-pages itself. Add a `page_targeting` block to the `processing` config: for any
-large PDF **without** a manual range, it runs a cheap keyword scan to shortlist
-candidate pages, then one LLM call to confirm the exact range, and extracts only
-those pages. Manual `page_ranges.csv` / `--pages` always take precedence.
+For large documents, ParseSweep can **automatically find the right pages** using
+a cheap keyword scan + one LLM call. This is configured in the domain's
+`config/*/run.yaml` file and **loads automatically** when you use `--schema`:
+
+```bash
+# Page targeting loads automatically from config/utility_rate_tariffs/run.yaml
+pixi run psweep extract documents/tariffs/ \
+  --schema schemas/personal/electricity_tariff_schema.json
+# ℹ Auto-loaded domain config: config/utility_rate_tariffs/run.yaml
+# → Automatically targets the relevant pages in large documents
+```
+
+Configure it in your domain config YAML:
 
 ```yaml
-processing:
-  input_dir: output/acquisition/utility_rate_tariffs/latest/curated
-  schema: schemas/domain_packs/tariffs/pack.yaml
-  pages_csv: config/utility_rate_tariffs/page_ranges.csv   # optional; wins where present
+# config/your_domain/run.yaml
+extraction:
+  schema: schemas/personal/your_schema.json
   page_targeting:
     enabled: true
     section_description: >-
       the residential electric rate schedules showing per-kWh energy charges,
       monthly customer charge, and other rate components
-    trigger_chars: 200000       # only run when the document exceeds this size
+    trigger_chars: 200000       # only activate for documents exceeding this size
     max_selected_pages: 30
     # keywords: [rate schedule, residential, per kwh]   # optional heuristic boosts
     # model: gpt-4o-mini                                 # optional cheaper locator model
@@ -531,36 +613,36 @@ full-document extraction.
 
 ---
 
-### Acquire Command
+### Discover Command
 
 Discover, download, and curate source documents from the web before extraction.
 
-**What it does:** Queries web search (via SerpApi) or crawls seed URLs to find candidate documents for each target, downloads the accepted files, then **grades every download with an LLM** against a plain-language description of the document you actually want and promotes the best one(s) per target into a `curated/` set. Everything for a run lives in **one self-contained folder** under `output/acquisition/<domain>/runs/<run_id>/`, with a `latest` pointer so downstream steps never need to know the run id.
+**What it does:** Queries web search (via SerpApi) or crawls seed URLs to find candidate documents for each target, downloads the accepted files, then **grades every download with an LLM** against a plain-language description of the document you actually want and promotes the best one(s) per target into a `curated/` set. Everything for a run lives in **one self-contained folder** under `discovered/<domain>/runs/<run_id>/`, with a `latest` pointer so downstream steps never need to know the run id.
 
 Key properties:
-- **Recall-first + LLM curation:** acquisition favors finding the governing document; the LLM reviewer handles precision, so presentations, drafts, notices, and tangential reports stay out of `curated/`.
+- **Recall-first + LLM curation:** discovery favors finding the governing document; the LLM reviewer handles precision, so presentations, drafts, notices, and tangential reports stay out of `curated/`.
 - **OCR once, reuse everywhere:** scanned/image PDFs are OCR'd a single time and the text is cached next to the file (`.text/`); the extraction stage reuses it instead of re-OCRing. Native-text PDFs are always read fresh (no flattened cache) so table structure is preserved.
 - **Human-in-the-loop:** every download is written to an editable `review.csv`; correct any wrong calls and run [`curate`](#curate-command) to rebuild `curated/`.
 
-The `acquire` command is an optional pre-processing stage. After it runs, point `process` at `output/acquisition/<domain>/latest/curated` and continue normally.
+The `discover` command is an optional pre-extraction stage. After it runs, point `extract` at `discovered/<domain>/latest/curated` and continue normally.
 
 #### Basic Usage
 
 ```bash
 # Dry-run: discover candidates without downloading
-pixi run psweep acquire \
+pixi run psweep discover \
   --domain generator_manuals \
   --seed-url "https://generac.com/products/industrial" \
   --dry-run
 
 # Live run: discover and download
-pixi run psweep acquire \
+pixi run psweep discover \
   --domain generator_manuals \
   --seed-url "https://generac.com/products/industrial" \
   --query "Generac 250kW industrial generator manual pdf"
 
 # From a config file (recommended for repeatable runs)
-pixi run psweep acquire --config config/generator_manuals/run.yaml
+pixi run psweep discover --config config/generator_manuals/run.yaml
 ```
 
 #### Options
@@ -573,8 +655,8 @@ pixi run psweep acquire --config config/generator_manuals/run.yaml
 | `--query TEXT` | Search query or intent keywords | None |
 | `--enable-serpapi` | Use SerpApi for web search discovery | Disabled |
 | `--topology` | Routing mode: `distributed`, `centralized`, `hybrid` | Default |
-| `--output-documents PATH` | Override documents output directory | `output/acquisition/<domain>/runs/<id>/documents/` |
-| `--output-manifest PATH` | Override manifest path | `output/acquisition/<domain>/runs/<id>/manifest.json` |
+| `--output-documents PATH` | Override documents output directory | `discovered/<domain>/runs/<id>/documents/` |
+| `--output-manifest PATH` | Override manifest path | `discovered/<domain>/runs/<id>/manifest.json` |
 | `--dry-run` | Discover candidates but skip downloads | Off |
 | `--partition-mode MODE` | `jurisdiction`, `host`, or `auto` | `auto` |
 | `--state TEXT` | State hint for jurisdiction partitioning | None |
@@ -606,35 +688,35 @@ Optional SSL override if your environment uses TLS interception:
 export SERPAPI_SSL_VERIFY=false
 ```
 
-#### Full Pipeline: Acquire → (Review) → Process → Consolidate
+#### Full Pipeline: Discover → (Review) → Extract → Compile
 
 ```bash
 # 1. Discover, download, and LLM-curate documents
-pixi run psweep acquire --config config/generator_manuals/run.yaml
+pixi run psweep discover --config config/generator_manuals/run.yaml
 
 # 2. (Optional) Review the LLM's picks and correct any mistakes:
 #    open the run's review.csv, set human_decision = keep/reject, then:
 pixi run psweep curate --config config/generator_manuals/run.yaml
 
-# 3. Process the curated set (config input_dir points at latest/curated)
-pixi run psweep process --config config/generator_manuals/run.yaml
+# 3. Extract from the curated set (config input_dir points at latest/curated)
+pixi run psweep extract --config config/generator_manuals/run.yaml
 
-# 4. Consolidate to Excel
-pixi run psweep consolidate --config config/generator_manuals/run.yaml
+# 4. Compile to Excel
+pixi run psweep compile --config config/generator_manuals/run.yaml
 ```
 
-Because the config's `processing.input_dir` points at
-`output/acquisition/<domain>/latest/curated`, steps 3–4 always consume the
+Because the config's `extraction.input_dir` points at
+`discovered/<domain>/latest/curated`, steps 3–4 always consume the
 curated (LLM-reviewed + human-approved) set of the most recent run.
 
 #### Config File Pattern
 
-Place acquisition config in `config/<domain>/run.yaml`. This keeps repeatable run inputs separate from the extraction schema:
+Place discovery config in `config/<domain>/run.yaml`. This keeps repeatable run inputs separate from the extraction schema:
 
 ```yaml
 domain: generator_manuals
 
-acquisition:
+discovery:
   topology:
     mode: distributed
   targets:
@@ -670,24 +752,24 @@ acquisition:
     robots_policy_mode: ignore
     tos_policy_mode: ignore
 
-processing:
-  # Consume only the curated set from the latest acquire run.
-  input_dir: output/acquisition/generator_manuals/latest/curated
+extraction:
+  # Consume only the curated set from the latest discover run.
+  input_dir: discovered/generator_manuals/latest/curated
   schema: schemas/personal/generator_manuals_schema.json
-  output_dir: processed/generator_manuals
+  output_dir: extracted/generator_manuals
 
-consolidation:
-  input_dir: processed/generator_manuals
+compilation:
+  input_dir: extracted/generator_manuals
   schema: schemas/personal/generator_manuals_schema.json
-  output_dir: consolidated/generator_manuals
+  output_dir: compiled/generator_manuals
 ```
 
-#### Acquisition Outputs
+#### Discovery Outputs
 
 Each run is one self-contained, run-scoped folder, with a `latest` pointer to the most recent run that produced downloads:
 
 ```
-output/acquisition/<domain>/
+discovered/<domain>/
     checkpoint.json                 # domain-level resume state
     latest -> runs/<run_id>         # symlink to the current run
     runs/<run_id>/
@@ -720,21 +802,21 @@ Rebuild a run's `curated/` set from human edits in `review.csv`. Use this when t
 
 **Workflow:**
 
-1. Run `acquire` — it writes `review.csv` in the run folder (one row per download, sorted by target then LLM relevance) with the LLM's verdict and blank `human_decision` / `human_notes` columns.
-2. Open `output/acquisition/<domain>/latest/review.csv` and set `human_decision` to `keep` or `reject` for any file the LLM got wrong. Leave it blank to accept the LLM's call.
+1. Run `discover` — it writes `review.csv` in the run folder (one row per download, sorted by target then LLM relevance) with the LLM's verdict and blank `human_decision` / `human_notes` columns.
+2. Open `discovered/<domain>/latest/review.csv` and set `human_decision` to `keep` or `reject` for any file the LLM got wrong. Leave it blank to accept the LLM's call.
 3. Re-materialize the curated set:
 
 ```bash
 pixi run psweep curate --config config/<domain>/run.yaml
 # or target a specific run directly:
-pixi run psweep curate --run output/acquisition/<domain>/runs/<run_id>
+pixi run psweep curate --run discovered/<domain>/runs/<run_id>
 ```
 
 `curate` is idempotent: it rebuilds `curated/` from `review.csv` (human overrides take precedence over the LLM), carries the OCR text cache along, and records your decisions back into the `.review/*.json` sidecars.
 
 ---
 
-### Consolidate Command
+### Compile Command
 
 Merge extracted JSON files into Excel and CSV formats.
 
@@ -748,7 +830,7 @@ Merge extracted JSON files into Excel and CSV formats.
 #### Basic Usage
 
 ```bash
-pixi run psweep consolidate <extracted_directory> \
+pixi run psweep compile <extracted_directory> \
   --schema <schema_file>
 ```
 
@@ -757,17 +839,17 @@ pixi run psweep consolidate <extracted_directory> \
 | Option | Description | Default |
 |--------|-------------|---------|
 | `--schema PATH` | Schema file (same as used for extraction) | REQUIRED |
-| `--output PATH` | Output directory | `consolidated/<input_name>/` |
+| `--output PATH` | Output directory | `compiled/<input_name>/` |
 
 #### Examples
 
 ```bash
-# Basic consolidation
-pixi run psweep consolidate processed/contracts/ \
+# Basic compilation
+pixi run psweep compile extracted/contracts/ \
   --schema schemas/example_utility_rate_schema.json
 
 # Custom output location
-pixi run psweep consolidate processed/tariffs/ \
+pixi run psweep compile extracted/tariffs/ \
   --schema schemas/electricity_tariff_schema.json \
   --output analysis/2026/tariffs/
 ```
@@ -796,12 +878,12 @@ Shows document metadata, estimated costs, and content preview.
 pixi run psweep estimate documents/examples/
 ```
 
-Calculates estimated API costs and processing time for a directory.
+Calculates estimated API costs and extraction time for a directory.
 
 #### validate-schema - Schema Validation
 
 ```bash
-pixi run psweep validate-schema schemas/my_schema.json
+pixi run psweep check-schema schemas/my_schema.json
 ```
 
 Validates schema structure and required metadata.
@@ -830,7 +912,7 @@ Validate extractions by running multiple AI models and comparing their outputs. 
 
 ```bash
 # Step 1: Run extraction with QA/QC enabled (runs 2+ models)
-pixi run psweep process documents/examples/ \
+pixi run psweep extract documents/examples/ \
   --schema schemas/example_utility_rate_schema.json \
   --enable-qa-qc
 
@@ -838,7 +920,7 @@ pixi run psweep process documents/examples/ \
 # Each document gets: model1.json, model2.json, comparison_report.xlsx
 
 # Step 3: Regenerate reports (if needed, no re-extraction)
-pixi run psweep compare processed/examples/qa_qc \
+pixi run psweep compare extracted/examples/qa_qc \
   --schema schemas/example_utility_rate_schema.json
 ```
 
@@ -881,7 +963,7 @@ Schemas define what data to extract from documents. Version 2.0 requires all sch
       "identifier_fields": ["metadata.id"],
       "context_objects": ["metadata"]
     },
-    "consolidation": {
+    "compilation": {
       "deduplication": {
         "key_fields": ["name", "type"],
         "ignore_fields": ["notes"]
@@ -909,7 +991,7 @@ Schemas define what data to extract from documents. Version 2.0 requires all sch
 **Purpose:** The `$metadata` section tells ParseSweep:
 - **What to extract**: Which array contains your main data (`main_data_array`)
 - **How to identify documents**: Which fields uniquely identify each source (`identifier_fields`)
-- **How to consolidate**: Which fields determine duplicates (`key_fields`)
+- **How to compile**: Which fields determine duplicates (`key_fields`)
 - **What to preserve**: Context objects that appear once per document (`context_objects`)
 
 **Required:**
@@ -918,8 +1000,8 @@ Schemas define what data to extract from documents. Version 2.0 requires all sch
 
 **Recommended:**
 - `extraction.context_objects` - Metadata objects (non-repeated info like document title, date)
-- `consolidation.deduplication.key_fields` - Fields for identifying duplicates (e.g., ["jurisdiction", "regulation_type"])
-- `consolidation.deduplication.ignore_fields` - Fields to exclude from comparison (e.g., ["notes", "extraction_timestamp"])
+- `compilation.deduplication.key_fields` - Fields for identifying duplicates (e.g., ["jurisdiction", "regulation_type"])
+- `compilation.deduplication.ignore_fields` - Fields to exclude from comparison (e.g., ["notes", "extraction_timestamp"])
 
 ### Available Schemas
 
@@ -939,19 +1021,19 @@ ParseSweep automatically selects schemas based on keywords in your document path
 **Example:**
 ```bash
 # Automatically uses schemas/personal/geothermal_ordinance_schema.json
-pixi run psweep process documents/geothermal_regulations/
+pixi run psweep extract documents/geothermal_regulations/
 
 # Automatically uses schemas/electricity_tariff_schema.json
-pixi run psweep process documents/utility_tariffs_2025/
+pixi run psweep extract documents/utility_tariffs_2025/
 
 # Use the public example schema for general testing
-pixi run psweep process documents/examples/ \
+pixi run psweep extract documents/examples/ \
   --schema schemas/example_utility_rate_schema.json
 ```
 
 To override auto-detection, use `--schema` flag:
 ```bash
-pixi run psweep process documents/my_docs/ \
+pixi run psweep extract documents/my_docs/ \
   --schema schemas/custom_schema.json
 ```
 
@@ -971,12 +1053,12 @@ pixi run psweep process documents/my_docs/ \
 
 4. **Validate**:
    ```bash
-   pixi run psweep validate-schema schemas/my_schema.json
+   pixi run psweep check-schema schemas/my_schema.json
    ```
 
 5. **Test on sample documents**:
    ```bash
-   pixi run psweep process documents/sample/ \
+   pixi run psweep extract documents/sample/ \
      --schema schemas/my_schema.json \
      --limit 2
    ```
@@ -988,7 +1070,7 @@ See `schemas/SCHEMA_BEST_PRACTICES.md` for detailed guidance.
 When you author a new extraction setup, start with the schema. Add a pack only when you need reusable runtime behavior across a domain.
 
 - `Schema JSON`: The file you author directly. It defines what data to extract, which array becomes spreadsheet rows, how documents are identified, and which fields define deduplication.
-- `Pack YAML`: Optional runtime config for a domain. Use it when you want reusable QA/QC lanes, consolidation output settings, schema aliases, or other shared behavior that should not clutter the schema itself.
+- `Pack YAML`: Optional runtime config for a domain. Use it when you want reusable QA/QC lanes, compilation output settings, schema aliases, or other shared behavior that should not clutter the schema itself.
 - `Profile`: Runtime environment selection such as `default`, `dev`, `staging`, or `prod`. Most schema authors can stay on `default` unless they intentionally need environment-specific behavior.
 
 Rule of thumb:
@@ -1003,27 +1085,27 @@ Use a small repeatable loop while authoring a schema so you can add fields, adju
 
 ```bash
 # 1. Validate the schema structure
-pixi run psweep validate-schema schemas/my_schema.json
+pixi run psweep check-schema schemas/my_schema.json
 
 # 2. Run a tiny extraction sample
-pixi run psweep process documents/sample/ \
+pixi run psweep extract documents/sample/ \
   --schema schemas/my_schema.json \
   -n 2 \
   --reprocess
 
-# 3. Consolidate the sample output
-pixi run psweep consolidate processed/sample/ \
+# 3. Compile the sample output
+pixi run psweep compile extracted/sample/ \
   --schema schemas/my_schema.json \
   --verbose
 
 # 4. Preview deduplication before writing spreadsheets
-pixi run psweep consolidate processed/sample/ \
+pixi run psweep compile extracted/sample/ \
   --schema schemas/my_schema.json \
   --dry-run \
   --report-format json \
   --fail-on-suspicious high
 
-# 5. Review extracted JSON + consolidated spreadsheet, then iterate
+# 5. Review extracted JSON + compiled spreadsheet, then iterate
 ```
 
 What to look for on each pass:
@@ -1034,9 +1116,9 @@ What to look for on each pass:
 - `key_fields` do not merge distinct records accidentally
 - dry-run output does not report suspicious duplicate groups with conflicting non-key values
 - high-severity suspicious groups are resolved before you trust the schema on a full batch
-- consolidation output columns make sense for analysis
+- compilation output columns make sense for analysis
 
-When a matching pack exists, `--verbose` output now shows the resolved runtime artifact so you can tell whether pack-owned QA/QC or consolidation settings are active.
+When a matching pack exists, `--verbose` output now shows the resolved runtime artifact so you can tell whether pack-owned QA/QC or compilation settings are active.
 
 Use `--dry-run --report-format json --fail-on-suspicious high` when you want the schema iteration loop to stop automatically on likely data-loss merges. High severity now comes from both conflict names and schema-declared numeric or unit-like fields, so vague column names can still be flagged correctly.
 
@@ -1050,11 +1132,11 @@ Use `--dry-run --report-format json --fail-on-suspicious high` when you want the
 
 ```bash
 # Extract requirements from municipal ordinances
-pixi run psweep process documents/geothermal_ordinances/ \
+pixi run psweep extract documents/geothermal_ordinances/ \
   --schema schemas/personal/geothermal_ordinance_schema.json
 
-# Consolidate to Excel
-pixi run psweep consolidate processed/geothermal_ordinances/ \
+# Compile to Excel
+pixi run psweep compile extracted/geothermal_ordinances/ \
   --schema schemas/personal/geothermal_ordinance_schema.json
 ```
 
@@ -1064,12 +1146,12 @@ pixi run psweep consolidate processed/geothermal_ordinances/ \
 
 ```bash
 # Extract rate schedules from tariff documents
-pixi run psweep process documents/tariffs/ \
+pixi run psweep extract documents/tariffs/ \
   --schema schemas/electricity_tariff_schema.json \
   --max-context 1400000
 
-# Consolidate
-pixi run psweep consolidate processed/tariffs/ \
+# Compile
+pixi run psweep compile extracted/tariffs/ \
   --schema schemas/electricity_tariff_schema.json
 ```
 
@@ -1079,11 +1161,11 @@ pixi run psweep consolidate processed/tariffs/ \
 
 ```bash
 # Extract generator specifications from permits
-pixi run psweep process documents/aq_permits/ \
+pixi run psweep extract documents/aq_permits/ \
   --schema schemas/air_quality_permits_schema.json
 
-# Consolidate
-pixi run psweep consolidate processed/aq_permits/ \
+# Compile
+pixi run psweep compile extracted/aq_permits/ \
   --schema schemas/air_quality_permits_schema.json
 ```
 
@@ -1099,22 +1181,22 @@ cp schemas/journal_article_schema.json schemas/contracts.json
 # (edit schemas/contracts.json)
 
 # 3. Validate
-pixi run psweep validate-schema schemas/contracts.json
+pixi run psweep check-schema schemas/contracts.json
 
 # 4. Extract with custom schema
-pixi run psweep process documents/contracts/ \
+pixi run psweep extract documents/contracts/ \
   --schema schemas/contracts.json \
   --limit 2
 
 # 5. Review output
-cat processed/contracts/*.json
+cat extracted/contracts/*.json
 
 # 6. Process full batch
-pixi run psweep process documents/contracts/ \
+pixi run psweep extract documents/contracts/ \
   --schema schemas/contracts.json
 
-# 7. Consolidate
-pixi run psweep consolidate processed/contracts/ \
+# 7. Compile
+pixi run psweep compile extracted/contracts/ \
   --schema schemas/contracts.json
 ```
 
@@ -1134,7 +1216,7 @@ pixi run psweep --version
 pixi run psweep config
 
 # 3. Test with a single file
-pixi run psweep process documents/examples/ \
+pixi run psweep extract documents/examples/ \
   --schema schemas/example_utility_rate_schema.json \
   --limit 1 --verbose
 ```
@@ -1150,16 +1232,16 @@ pixi run psweep process documents/examples/ \
 **Solution**:
 ```bash
 # View error details
-pixi run psweep validate-schema schemas/your_schema.json
+pixi run psweep check-schema schemas/your_schema.json
 
 # Use production schema as template
 cp schemas/electricity_tariff_schema.json schemas/your_schema.json
 
 # Edit and validate
-pixi run psweep validate-schema schemas/your_schema.json
+pixi run psweep check-schema schemas/your_schema.json
 ```
 
-#### Document Processing Issues
+#### Document Extraction Issues
 
 ##### "No documents found"
 
@@ -1183,12 +1265,12 @@ find documents/your_folder/ -type f
 **Solution**:
 ```bash
 # Explicitly specify schema
-pixi run psweep process documents/folder/ \
+pixi run psweep extract documents/folder/ \
   --schema schemas/your_schema.json
 
 # Or add keyword to path for auto-detection
 mv documents/folder documents/tariff_folder
-pixi run psweep process documents/tariff_folder/
+pixi run psweep extract documents/tariff_folder/
 ```
 
 #### Performance Issues
@@ -1200,11 +1282,11 @@ pixi run psweep process documents/tariff_folder/
 **Solution**:
 ```bash
 # Increase character limit
-pixi run psweep process documents/large_docs/ \
+pixi run psweep extract documents/large_docs/ \
   --max-context 1400000
 
 # For very large documents (tested up to 1.4M characters)
-pixi run psweep process documents/tariff_books/ \
+pixi run psweep extract documents/tariff_books/ \
   --max-context 1400000 \
   --live-dashboard
 ```
@@ -1236,7 +1318,7 @@ pixi run psweep process documents/tariff_books/ \
 
 3. Validate:
    ```bash
-   pixi run psweep validate-schema schemas/old_schema.json
+   pixi run psweep check-schema schemas/old_schema.json
    ```
 
 See `schemas/SCHEMA_BEST_PRACTICES.md` for migration details.
@@ -1245,7 +1327,7 @@ See `schemas/SCHEMA_BEST_PRACTICES.md` for migration details.
 
 - **Testing**: Use `--limit 3` to test on small batches first
 - **Large batches**: Enable `--live-dashboard` for progress monitoring  
-- **Cost control**: Run `estimate` before processing large directories
+- **Cost control**: Run `estimate` before extracting from large directories
 - **Debugging**: Use `--verbose` for details, `--debug` for full logs
 - **Automation**: Use `--quiet` to suppress prompts in scripts
 - **Parallel processing**: Process multiple directories simultaneously in separate terminals
@@ -1278,7 +1360,7 @@ A: Accuracy depends on document quality and schema design. Well-structured docum
 A: Yes! Just point `extract` at a directory containing multiple documents. They'll all be processed automatically.
 
 **Q: How much does it cost?**  
-A: Costs vary by document length and model used. Use `pixi run psweep estimate documents/folder/` to get cost estimates before processing. Typical costs: $0.10-$0.50 per document with gpt-4o-mini.
+A: Costs vary by document length and model used. Use `pixi run psweep estimate documents/folder/` to get cost estimates before extraction. Typical costs: $0.10-$0.50 per document with gpt-4o-mini.
 
 ### Technical Questions
 
@@ -1289,10 +1371,10 @@ A: No! All commands are CLI-based. You only need to know basic terminal commands
 A: Yes, if you use the OpenAI-compatible API. Set `OPENAI_API_KEY` and `OPENAI_BASE_URL` in your `.env` file.
 
 **Q: How do I process documents larger than 400k characters?**  
-A: Use `--max-context` flag: `pixi run psweep process docs/ --max-context 1400000` (tested up to 1.4M characters).
+A: Use `--max-context` flag: `pixi run psweep extract docs/ --max-context 1400000` (tested up to 1.4M characters).
 
 **Q: Can I customize the output format?**  
-A: The consolidation outputs both Excel and CSV by default. You can further process these files with your preferred tools.
+A: The compilation outputs both Excel and CSV by default. You can further process these files with your preferred tools.
 
 **Q: Is my data sent to OpenAI/Azure?**  
 A: Yes, document content is sent to the API for extraction. Use Azure OpenAI if you need data residency compliance. No data is stored by ParseSweep beyond your local files.
@@ -1338,13 +1420,13 @@ ParseSweep/
 ├── src/psweep/
 │   ├── cli/               # CLI commands and interface
 │   ├── extraction/        # Document extraction logic
-│   ├── consolidation/     # Data consolidation and deduplication
+│   ├── compilation/     # Data compilation and deduplication
 │   └── utils/             # Shared utilities and exceptions
 ├── schemas/               # JSON schemas for extraction
 ├── tests/                 # Test suite
 ├── documents/             # Sample input documents (not in repo)
-├── processed/             # Extraction output (auto-generated)
-├── consolidated/          # Final output (auto-generated)
+├── extracted/             # Extraction output (auto-generated)
+├── compiled/          # Final output (auto-generated)
 └── pixi.toml             # Dependencies and environment
 ```
 
@@ -1370,11 +1452,11 @@ ParseSweep/
    - Reference any related issues
    - Ensure tests pass
 
-### Extending the Acquisition Pipeline (Seeker/Digger Connectors)
+### Extending the Discovery Pipeline (Seeker/Digger Connectors)
 
-For detailed guidance on implementing new discovery connectors and contributing to the web acquisition stage:
+For detailed guidance on implementing new discovery connectors and contributing to the web discovery stage:
 
-**See [`CONTRIBUTING_ACQUISITION.md`](CONTRIBUTING_ACQUISITION.md)** — Complete guide covering:
+**See [`CONTRIBUTING_DISCOVERY.md`](CONTRIBUTING_DISCOVERY.md)** — Complete guide covering:
 - Connector architecture and base interfaces
 - Step-by-step implementation of custom seeker connectors
 - Step-by-step implementation of custom digger connectors
@@ -1461,7 +1543,7 @@ MIT License - see [LICENSE](LICENSE) file for details.
 **Improvements:**
 - Improved error messages with migration guidance
 - Better deduplication with configurable fields
-- Auto-consolidation to Excel and CSV with smart formatting
+- Auto-compilation to Excel and CSV with smart formatting
 
 ---
 

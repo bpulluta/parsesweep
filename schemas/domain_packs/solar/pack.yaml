@@ -2,7 +2,7 @@ name: solar
 version: 1.0.0
 schema_path: schemas/personal/solar_ordinance_schema.json
 document_type: Solar Ordinance
-consolidation:
+compilation:
   deduplication:
     key_fields:
     - feature
@@ -30,7 +30,7 @@ modules:
   version: 1.0.0
   kind: projector
   enabled: true
-- module_id: consolidation_mapper
+- module_id: compilation_mapper
   name: Consolidation Mapper
   version: 1.0.0
   kind: mapper

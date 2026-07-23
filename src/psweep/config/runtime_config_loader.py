@@ -24,7 +24,7 @@ VARIABLE_CATALOG: dict[str, list[dict[str, str]]] = {
             ),
         },
     ],
-    "processing": [
+    "extraction": [
         {
             "name": "input_dir",
             "level": "required",
@@ -107,7 +107,7 @@ VARIABLE_CATALOG: dict[str, list[dict[str, str]]] = {
             "description": "Enable live rich dashboard for multi-file runs.",
         },
     ],
-    "consolidation": [
+    "compilation": [
         {
             "name": "input_dir",
             "level": "required",
@@ -121,7 +121,7 @@ VARIABLE_CATALOG: dict[str, list[dict[str, str]]] = {
         {
             "name": "output_dir",
             "level": "optional",
-            "description": "Override destination for consolidated output.",
+            "description": "Override destination for compiled output.",
         },
         {
             "name": "dry_run",
@@ -141,7 +141,7 @@ VARIABLE_CATALOG: dict[str, list[dict[str, str]]] = {
             ),
         },
     ],
-    "acquisition": [
+    "discovery": [
         {
             "name": "seeds",
             "level": "required",
@@ -174,12 +174,12 @@ VARIABLE_CATALOG: dict[str, list[dict[str, str]]] = {
         {
             "name": "runtime.max_concurrent_downloads",
             "level": "advanced",
-            "description": "Max parallel file downloads in acquisition runs.",
+            "description": "Max parallel file downloads in discovery runs.",
         },
         {
             "name": "runtime.min_request_interval_ms",
             "level": "advanced",
-            "description": "Min delay between acquisition requests (ms).",
+            "description": "Min delay between discovery requests (ms).",
         },
         {
             "name": "policy.robots_mode",
@@ -195,24 +195,24 @@ VARIABLE_CATALOG: dict[str, list[dict[str, str]]] = {
 }
 
 _SECTION_ALIASES = {
-    "acquire": "acquisition",
-    "acquisition": "acquisition",
-    "process": "processing",
-    "processing": "processing",
-    "consolidate": "consolidation",
-    "consolidation": "consolidation",
+    "discover": "discovery",
+    "discovery": "discovery",
+    "extract": "extraction",
+    "extraction": "extraction",
+    "compile": "compilation",
+    "compilation": "compilation",
 }
 
 _ALLOWED_TOP_LEVEL = {
     "domain",
     "models",
     "model_context_windows",
-    "acquisition",
-    "processing",
-    "consolidation",
+    "discovery",
+    "extraction",
+    "compilation",
 }
 _ALLOWED_SECTION_FIELDS = {
-    "acquisition": {
+    "discovery": {
         "domain",
         "seeds",
         # --- shorthand keys (simple form) ---
@@ -259,7 +259,7 @@ _ALLOWED_SECTION_FIELDS = {
         "browser_mode",
         "browser",
     },
-    "processing": {
+    "extraction": {
         "input_dir",
         "schema",
         "output_dir",
@@ -276,7 +276,7 @@ _ALLOWED_SECTION_FIELDS = {
         "qaqc_lane",
         "live_dashboard",
     },
-    "consolidation": {
+    "compilation": {
         "input_dir",
         "schema",
         "output_dir",
@@ -322,7 +322,7 @@ _ACQUISITION_OBJECT_FIELDS = {
 
 _ALLOWED_POLICY_MODES = {"ignore", "warn", "enforce"}
 
-_SECTION_NAMES = ("acquisition", "processing", "consolidation")
+_SECTION_NAMES = ("discovery", "extraction", "compilation")
 _CONFIG_SUFFIXES = (".yaml", ".yml", ".json")
 
 
@@ -369,10 +369,10 @@ def _load_targets_from_csv(csv_path: Path) -> list[dict[str, Any]]:
 
 
 def _resolve_targets(
-    acquisition: dict[str, Any],
+    discovery: dict[str, Any],
     config_dir: Path,
 ) -> None:
-    """Resolve all target sources into ``acquisition['targets']`` in-place.
+    """Resolve all target sources into ``discovery['targets']`` in-place.
 
     Handles three forms:
     - ``targets_csv``: authored CSV of target rows (merged with inline).
@@ -382,8 +382,8 @@ def _resolve_targets(
 
     Parameters
     ----------
-    acquisition:
-        Acquisition section of the config dict (mutated in-place).
+    discovery:
+        Discovery section of the config dict (mutated in-place).
     config_dir:
         Config file directory for resolving relative dataset paths.
 
@@ -392,7 +392,7 @@ def _resolve_targets(
     RuntimeConfigError
         If a source is misconfigured or unreadable.
     """
-    from psweep.acquisition.targets import (
+    from psweep.discovery.targets import (
         TargetProviderError,
         resolve_target_provider,
     )
@@ -400,57 +400,57 @@ def _resolve_targets(
     generated: list[dict[str, Any]] = []
 
     # 1. targets_csv shorthand → authored rows.
-    targets_csv = acquisition.get("targets_csv")
+    targets_csv = discovery.get("targets_csv")
     if isinstance(targets_csv, str):
         csv_path = Path(targets_csv)
         if not csv_path.is_absolute():
             csv_path = config_dir / csv_path
         generated.extend(_load_targets_from_csv(csv_path))
-    acquisition.pop("targets_csv", None)
+    discovery.pop("targets_csv", None)
 
     # 2. targets: either an inline list (unchanged) or a generated source dict.
-    targets = acquisition.get("targets")
+    targets = discovery.get("targets")
     if isinstance(targets, dict):
         try:
             provider = resolve_target_provider(targets, config_dir=config_dir)
-            acquisition["targets"] = generated + provider.provide()
+            discovery["targets"] = generated + provider.provide()
         except TargetProviderError as exc:
             raise RuntimeConfigError(str(exc)) from exc
     elif isinstance(targets, list):
-        acquisition["targets"] = generated + targets
+        discovery["targets"] = generated + targets
     elif generated:
-        acquisition["targets"] = generated
+        discovery["targets"] = generated
 
 
-def _validate_acquisition_shorthands(acquisition: dict[str, Any]) -> None:
+def _validate_discovery_shorthands(discovery: dict[str, Any]) -> None:
     """Validate shorthand keys for simpler domain configs."""
-    queries = acquisition.get("queries")
+    queries = discovery.get("queries")
     if isinstance(queries, list) and not all(
         isinstance(q, str) for q in queries
     ):
-        msg = "'acquisition.queries' must be an array of strings"
+        msg = "'discovery.queries' must be an array of strings"
         raise RuntimeConfigError(msg)
 
-    follow_links = acquisition.get("follow_links")
+    follow_links = discovery.get("follow_links")
     if follow_links is not None and not isinstance(follow_links, bool):
-        msg = "'acquisition.follow_links' must be a boolean"
+        msg = "'discovery.follow_links' must be a boolean"
         raise RuntimeConfigError(msg)
 
-    request_delay_ms = acquisition.get("request_delay_ms")
+    request_delay_ms = discovery.get("request_delay_ms")
     if request_delay_ms is not None and (
         not isinstance(request_delay_ms, int) or request_delay_ms < 0
     ):
-        msg = "'acquisition.request_delay_ms' must be an integer >= 0"
+        msg = "'discovery.request_delay_ms' must be an integer >= 0"
         raise RuntimeConfigError(msg)
 
 
-def _validate_acquisition_runtime(runtime: dict[str, Any]) -> None:
+def _validate_discovery_runtime(runtime: dict[str, Any]) -> None:
     max_conc = runtime.get("max_concurrent_downloads")
     if max_conc is not None and (
         not isinstance(max_conc, int) or max_conc < 1
     ):
         msg = (
-            "'acquisition.runtime.max_concurrent_downloads'"
+            "'discovery.runtime.max_concurrent_downloads'"
             " must be an integer >= 1"
         )
         raise RuntimeConfigError(msg)
@@ -460,15 +460,15 @@ def _validate_acquisition_runtime(runtime: dict[str, Any]) -> None:
         not isinstance(min_interval, int) or min_interval < 0
     ):
         msg = (
-            "'acquisition.runtime.min_request_interval_ms'"
+            "'discovery.runtime.min_request_interval_ms'"
             " must be an integer >= 0"
         )
         raise RuntimeConfigError(msg)
 
 
-def _validate_acquisition_request_headers(request_headers: Any) -> None:
+def _validate_discovery_request_headers(request_headers: Any) -> None:
     if not isinstance(request_headers, dict):
-        msg = "'acquisition.request_headers' must be an object"
+        msg = "'discovery.request_headers' must be an object"
         raise RuntimeConfigError(msg)
     for key, value in request_headers.items():
         if (
@@ -478,19 +478,19 @@ def _validate_acquisition_request_headers(request_headers: Any) -> None:
             or not value.strip()
         ):
             msg = (
-                "'acquisition.request_headers' must map"
+                "'discovery.request_headers' must map"
                 " non-empty string keys to non-empty string values"
             )
             raise RuntimeConfigError(msg)
 
 
-def _validate_acquisition_policy(policy: dict[str, Any]) -> None:
+def _validate_discovery_policy(policy: dict[str, Any]) -> None:
     for field_name in ("robots_mode", "tos_mode"):
         mode = policy.get(field_name)
         if mode is not None and mode not in _ALLOWED_POLICY_MODES:
             allowed = ", ".join(sorted(_ALLOWED_POLICY_MODES))
             msg = (
-                f"'acquisition.policy.{field_name}'"
+                f"'discovery.policy.{field_name}'"
                 f" must be one of: {allowed}"
             )
             raise RuntimeConfigError(msg)
@@ -503,21 +503,21 @@ def _validate_acquisition_policy(policy: dict[str, Any]) -> None:
         )
     ):
         msg = (
-            "'acquisition.policy.acknowledged_tos_domains'"
+            "'discovery.policy.acknowledged_tos_domains'"
             " must be an array of non-empty strings"
         )
         raise RuntimeConfigError(msg)
 
 
-def _validate_acquisition_topology(topology: dict[str, Any]) -> None:
+def _validate_discovery_topology(topology: dict[str, Any]) -> None:
     mode = topology.get("mode")
     if mode is not None and mode not in _ALLOWED_TOPOLOGY_MODES:
         allowed = ", ".join(sorted(_ALLOWED_TOPOLOGY_MODES))
-        msg = f"'acquisition.topology.mode' must be one of: {allowed}"
+        msg = f"'discovery.topology.mode' must be one of: {allowed}"
         raise RuntimeConfigError(msg)
 
 
-def _validate_acquisition_query_families(
+def _validate_discovery_query_families(
     query_families: dict[str, Any],
 ) -> None:
     for family_name, templates in query_families.items():
@@ -525,46 +525,46 @@ def _validate_acquisition_query_families(
             isinstance(item, str) for item in templates
         ):
             msg = (
-                f"'acquisition.query_families.{family_name}'"
+                f"'discovery.query_families.{family_name}'"
                 " must be an array of strings"
             )
             raise RuntimeConfigError(msg)
 
 
-def _validate_acquisition_section_schema(acquisition: dict[str, Any]) -> None:
+def _validate_discovery_section_schema(discovery: dict[str, Any]) -> None:
     for field in _ACQUISITION_LIST_FIELDS:
-        value = acquisition.get(field)
+        value = discovery.get(field)
         if value is not None and not isinstance(value, list):
-            msg = f"'acquisition.{field}' must be an array"
+            msg = f"'discovery.{field}' must be an array"
             raise RuntimeConfigError(msg)
 
     for field in _ACQUISITION_OBJECT_FIELDS:
-        value = acquisition.get(field)
+        value = discovery.get(field)
         if value is not None and not isinstance(value, dict):
-            msg = f"'acquisition.{field}' must be an object"
+            msg = f"'discovery.{field}' must be an object"
             raise RuntimeConfigError(msg)
 
-    _validate_acquisition_shorthands(acquisition)
+    _validate_discovery_shorthands(discovery)
 
-    topology = acquisition.get("topology")
+    topology = discovery.get("topology")
     if isinstance(topology, dict):
-        _validate_acquisition_topology(topology)
+        _validate_discovery_topology(topology)
 
-    query_families = acquisition.get("query_families")
+    query_families = discovery.get("query_families")
     if isinstance(query_families, dict):
-        _validate_acquisition_query_families(query_families)
+        _validate_discovery_query_families(query_families)
 
-    runtime = acquisition.get("runtime")
+    runtime = discovery.get("runtime")
     if isinstance(runtime, dict):
-        _validate_acquisition_runtime(runtime)
+        _validate_discovery_runtime(runtime)
 
-    request_headers = acquisition.get("request_headers")
+    request_headers = discovery.get("request_headers")
     if request_headers is not None:
-        _validate_acquisition_request_headers(request_headers)
+        _validate_discovery_request_headers(request_headers)
 
-    policy = acquisition.get("policy")
+    policy = discovery.get("policy")
     if isinstance(policy, dict):
-        _validate_acquisition_policy(policy)
+        _validate_discovery_policy(policy)
 
 
 def _validate_models_block(models: Any) -> None:
@@ -621,10 +621,10 @@ def _validate_model_context_windows_block(windows: Any) -> None:
             )
 
 
-def _validate_processing_section_schema(processing: dict[str, Any]) -> None:
-    """Deep-validate the ``processing`` section at load time.
+def _validate_extraction_section_schema(extraction: dict[str, Any]) -> None:
+    """Deep-validate the ``extraction`` section at load time.
 
-    Mirrors ``_validate_acquisition_section_schema`` so config-supplied values
+    Mirrors ``_validate_discovery_section_schema`` so config-supplied values
     are checked with the same rigor as CLI flags (Click type/choice guards are
     bypassed when a value comes from YAML). Domain-neutral: only structural
     types and ranges are enforced.
@@ -633,78 +633,78 @@ def _validate_processing_section_schema(processing: dict[str, Any]) -> None:
     def _require_positive_int(name: str, value: Any) -> None:
         if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
             raise RuntimeConfigError(
-                f"processing.{name} must be a positive integer (got {value!r})"
+                f"extraction.{name} must be a positive integer (got {value!r})"
             )
 
     for name in ("max_context", "limit"):
-        if name in processing and processing[name] is not None:
-            _require_positive_int(name, processing[name])
+        if name in extraction and extraction[name] is not None:
+            _require_positive_int(name, extraction[name])
 
-    if processing.get("skip_existing") is not None and not isinstance(
-        processing["skip_existing"], bool
+    if extraction.get("skip_existing") is not None and not isinstance(
+        extraction["skip_existing"], bool
     ):
-        raise RuntimeConfigError("processing.skip_existing must be a boolean")
+        raise RuntimeConfigError("extraction.skip_existing must be a boolean")
 
-    if processing.get("live_dashboard") is not None and not isinstance(
-        processing["live_dashboard"], bool
+    if extraction.get("live_dashboard") is not None and not isinstance(
+        extraction["live_dashboard"], bool
     ):
-        raise RuntimeConfigError("processing.live_dashboard must be a boolean")
+        raise RuntimeConfigError("extraction.live_dashboard must be a boolean")
 
-    provider = processing.get("provider")
+    provider = extraction.get("provider")
     if provider is not None:
         allowed = {"openai", "azure", "anthropic", "gemini", "auto"}
         if not isinstance(provider, str) or provider.lower() not in allowed:
             raise RuntimeConfigError(
-                "processing.provider must be one of: "
+                "extraction.provider must be one of: "
                 + ", ".join(sorted(allowed))
             )
 
     for name in ("input_dir", "schema", "output_dir", "pages", "pages_csv",
                  "model", "profile", "qaqc_lane"):
-        if name in processing and processing[name] is not None:
-            if not isinstance(processing[name], str):
+        if name in extraction and extraction[name] is not None:
+            if not isinstance(extraction[name], str):
                 raise RuntimeConfigError(
-                    f"processing.{name} must be a string"
+                    f"extraction.{name} must be a string"
                 )
 
-    page_targeting = processing.get("page_targeting")
+    page_targeting = extraction.get("page_targeting")
     if page_targeting is not None:
         _validate_page_targeting_block(page_targeting)
 
 
 def _validate_page_targeting_block(pt: Any) -> None:
-    """Validate the optional ``processing.page_targeting`` block structure."""
+    """Validate the optional ``extraction.page_targeting`` block structure."""
     if not isinstance(pt, dict):
         raise RuntimeConfigError(
-            "processing.page_targeting must be an object"
+            "extraction.page_targeting must be an object"
         )
     if pt.get("enabled") is not None and not isinstance(pt["enabled"], bool):
         raise RuntimeConfigError(
-            "processing.page_targeting.enabled must be a boolean"
+            "extraction.page_targeting.enabled must be a boolean"
         )
     if pt.get("section_description") is not None and not isinstance(
         pt["section_description"], str
     ):
         raise RuntimeConfigError(
-            "processing.page_targeting.section_description must be a string"
+            "extraction.page_targeting.section_description must be a string"
         )
     for name in ("trigger_chars", "max_selected_pages"):
         val = pt.get(name)
         if val is not None:
             if isinstance(val, bool) or not isinstance(val, int) or val <= 0:
                 raise RuntimeConfigError(
-                    f"processing.page_targeting.{name} must be a positive "
+                    f"extraction.page_targeting.{name} must be a positive "
                     f"integer (got {val!r})"
                 )
     if pt.get("model") is not None and not isinstance(pt["model"], str):
         raise RuntimeConfigError(
-            "processing.page_targeting.model must be a string"
+            "extraction.page_targeting.model must be a string"
         )
     if pt.get("keywords") is not None and not isinstance(
         pt["keywords"], list
     ):
         raise RuntimeConfigError(
-            "processing.page_targeting.keywords must be a list"
+            "extraction.page_targeting.keywords must be a list"
         )
 
 
@@ -734,30 +734,30 @@ _ALLOWED_SYNTHESIS_KEYS = (
 )
 
 
-def _validate_consolidation_section_schema(
-    consolidation: dict[str, Any],
+def _validate_compilation_section_schema(
+    compilation: dict[str, Any],
 ) -> None:
-    """Deep-validate the ``consolidation`` section at load time.
+    """Deep-validate the ``compilation`` section at load time.
 
-    Mirrors ``_validate_processing_section_schema``. Domain-neutral: only
+    Mirrors ``_validate_extraction_section_schema``. Domain-neutral: only
     structural types/shapes are enforced. The rich ``synthesis`` block was
     previously an unchecked passthrough, so a mistyped key (e.g. ``group_bye``)
     silently produced empty output; it is now validated.
     """
-    synthesis = consolidation.get("synthesis")
+    synthesis = compilation.get("synthesis")
     if synthesis is not None:
         _validate_synthesis_block(synthesis)
 
 
 def _validate_synthesis_block(syn: Any) -> None:
-    """Validate the optional ``consolidation.synthesis`` block structure."""
+    """Validate the optional ``compilation.synthesis`` block structure."""
     if not isinstance(syn, dict):
-        raise RuntimeConfigError("consolidation.synthesis must be an object")
+        raise RuntimeConfigError("compilation.synthesis must be an object")
 
     unknown = sorted(k for k in syn if k not in _ALLOWED_SYNTHESIS_KEYS)
     if unknown:
         raise RuntimeConfigError(
-            "Unknown keys in 'consolidation.synthesis': "
+            "Unknown keys in 'compilation.synthesis': "
             + ", ".join(unknown)
         )
 
@@ -765,7 +765,7 @@ def _validate_synthesis_block(syn: Any) -> None:
         syn["enabled"], bool
     ):
         raise RuntimeConfigError(
-            "consolidation.synthesis.enabled must be a boolean"
+            "compilation.synthesis.enabled must be a boolean"
         )
 
     msl = syn.get("min_sources_for_llm")
@@ -773,14 +773,14 @@ def _validate_synthesis_block(syn: Any) -> None:
         isinstance(msl, bool) or not isinstance(msl, int) or msl < 0
     ):
         raise RuntimeConfigError(
-            "consolidation.synthesis.min_sources_for_llm must be a "
+            "compilation.synthesis.min_sources_for_llm must be a "
             f"non-negative integer (got {msl!r})"
         )
 
     for name in _SYNTHESIS_STRING_FIELDS:
         if syn.get(name) is not None and not isinstance(syn[name], str):
             raise RuntimeConfigError(
-                f"consolidation.synthesis.{name} must be a string"
+                f"compilation.synthesis.{name} must be a string"
             )
 
     for name in _SYNTHESIS_STRING_LIST_FIELDS:
@@ -791,14 +791,14 @@ def _validate_synthesis_block(syn: Any) -> None:
             isinstance(item, str) and item for item in value
         ):
             raise RuntimeConfigError(
-                f"consolidation.synthesis.{name} must be a list of "
+                f"compilation.synthesis.{name} must be a list of "
                 "non-empty strings"
             )
 
     comparison = syn.get("ordering_comparison")
     if comparison is not None and comparison not in _ALLOWED_ORDERING_COMPARISONS:
         raise RuntimeConfigError(
-            "consolidation.synthesis.ordering_comparison must be one of "
+            "compilation.synthesis.ordering_comparison must be one of "
             + ", ".join(_ALLOWED_ORDERING_COMPARISONS)
             + f" (got {comparison!r})"
         )
@@ -808,7 +808,7 @@ def _validate_synthesis_block(syn: Any) -> None:
     # When enabled, group_by is what turns records into entity rows.
     if syn.get("enabled") and not syn.get("group_by"):
         raise RuntimeConfigError(
-            "consolidation.synthesis.group_by is required when synthesis is "
+            "compilation.synthesis.group_by is required when synthesis is "
             "enabled"
         )
 
@@ -818,7 +818,7 @@ def _validate_synthesis_block(syn: Any) -> None:
         unknown_ordered = [f for f in ordering if f not in field_names]
         if unknown_ordered:
             raise RuntimeConfigError(
-                "consolidation.synthesis.ordering_constraint references "
+                "compilation.synthesis.ordering_constraint references "
                 "field(s) not in reconcile_fields: "
                 + ", ".join(unknown_ordered)
             )
@@ -830,19 +830,19 @@ def _validate_reconcile_fields(reconcile_fields: Any) -> set[str]:
         return set()
     if not isinstance(reconcile_fields, list):
         raise RuntimeConfigError(
-            "consolidation.synthesis.reconcile_fields must be a list"
+            "compilation.synthesis.reconcile_fields must be a list"
         )
     field_names: set[str] = set()
     for entry in reconcile_fields:
         if not isinstance(entry, dict):
             raise RuntimeConfigError(
-                "each consolidation.synthesis.reconcile_fields entry must be "
+                "each compilation.synthesis.reconcile_fields entry must be "
                 "an object with a 'field' key"
             )
         field = entry.get("field")
         if not isinstance(field, str) or not field:
             raise RuntimeConfigError(
-                "each consolidation.synthesis.reconcile_fields entry requires "
+                "each compilation.synthesis.reconcile_fields entry requires "
                 "a non-empty string 'field'"
             )
         evidence = entry.get("evidence")
@@ -1006,28 +1006,28 @@ def load_runtime_config_file(config_path: Path) -> dict[str, Any]:
         config_data.get("model_context_windows")
     )
 
-    acquisition = config_data.get("acquisition")
-    if acquisition is not None:
-        if not isinstance(acquisition, dict):
-            msg = "'acquisition' section must be an object in runtime config"
+    discovery = config_data.get("discovery")
+    if discovery is not None:
+        if not isinstance(discovery, dict):
+            msg = "'discovery' section must be an object in runtime config"
             raise RuntimeConfigError(msg)
         # targets_csv must be resolved before schema validation
-        _resolve_targets(acquisition, config_path.parent)
-        _validate_acquisition_section_schema(acquisition)
+        _resolve_targets(discovery, config_path.parent)
+        _validate_discovery_section_schema(discovery)
 
-    processing = config_data.get("processing")
-    if processing is not None:
-        if not isinstance(processing, dict):
-            msg = "'processing' section must be an object in runtime config"
+    extraction = config_data.get("extraction")
+    if extraction is not None:
+        if not isinstance(extraction, dict):
+            msg = "'extraction' section must be an object in runtime config"
             raise RuntimeConfigError(msg)
-        _validate_processing_section_schema(processing)
+        _validate_extraction_section_schema(extraction)
 
-    consolidation = config_data.get("consolidation")
-    if consolidation is not None:
-        if not isinstance(consolidation, dict):
-            msg = "'consolidation' section must be an object in runtime config"
+    compilation = config_data.get("compilation")
+    if compilation is not None:
+        if not isinstance(compilation, dict):
+            msg = "'compilation' section must be an object in runtime config"
             raise RuntimeConfigError(msg)
-        _validate_consolidation_section_schema(consolidation)
+        _validate_compilation_section_schema(compilation)
 
     return config_data
 
@@ -1060,17 +1060,17 @@ def _validate_section_keys(
 
 
 def _required_fields_for_section(section_name: str) -> list[str]:
-    if section_name == "acquisition":
+    if section_name == "discovery":
         return []
-    if section_name == "processing":
+    if section_name == "extraction":
         return ["schema", "path"]
-    if section_name == "consolidation":
+    if section_name == "compilation":
         return ["schema", "extracted_dir"]
     return ["schema"]
 
 
-# ── Acquisition merge helpers ──────────────────────────────────────
-# One helper per acquisition subsection.
+# ── Discovery merge helpers ──────────────────────────────────────
+# One helper per discovery subsection.
 # Shorthands run first; verbose keys win when both are present.
 
 _ACQ_SIMPLE_KEYS: tuple[tuple[str, str], ...] = (
@@ -1140,22 +1140,22 @@ def _merge_acq_shorthands(
     queries = section.get("queries")
     if isinstance(queries, list) and queries:
         _set(merged, sources, "query_families", {"_default": queries},
-             "config.acquisition.queries")
+             "config.discovery.queries")
         _set(merged, sources, "use_query_family", "_default",
-             "config.acquisition.queries")
+             "config.discovery.queries")
 
     follow_links = section.get("follow_links")
     if follow_links is True:
         _set(merged, sources, "topology_mode", "distributed",
-             "config.acquisition.follow_links")
+             "config.discovery.follow_links")
     elif follow_links is False and "topology_mode" not in merged:
         _set(merged, sources, "topology_mode", None,
-             "config.acquisition.follow_links")
+             "config.discovery.follow_links")
 
     delay = section.get("request_delay_ms")
     if delay is not None:
         _set(merged, sources, "min_request_interval_ms", delay,
-             "config.acquisition.request_delay_ms")
+             "config.discovery.request_delay_ms")
 
 
 def _merge_acq_topology(
@@ -1166,7 +1166,7 @@ def _merge_acq_topology(
     topo = section.get("topology")
     if isinstance(topo, dict) and topo.get("mode") is not None:
         _set(merged, sources, "topology_mode", topo["mode"],
-             "config.acquisition.topology.mode")
+             "config.discovery.topology.mode")
 
 
 def _merge_acq_discovery_rules(
@@ -1178,7 +1178,7 @@ def _merge_acq_discovery_rules(
     for key in ("include_url_patterns", "include_link_text_patterns"):
         if key in rules:
             _set(merged, sources, key, rules[key],
-                 f"config.acquisition.{prefix}.{key}")
+                 f"config.discovery.{prefix}.{key}")
 
 
 def _merge_acq_runtime(
@@ -1192,7 +1192,7 @@ def _merge_acq_runtime(
     for key in _ACQ_RUNTIME_KEYS:
         if key in runtime:
             _set(merged, sources, key, runtime[key],
-                 f"config.acquisition.runtime.{key}")
+                 f"config.discovery.runtime.{key}")
 
 
 def _merge_acq_retry(
@@ -1210,7 +1210,7 @@ def _merge_acq_retry(
     ):
         if src in rp:
             _set(merged, sources, dst, rp[src],
-                 f"config.acquisition.retry_policy.{src}")
+                 f"config.discovery.retry_policy.{src}")
 
 
 def _merge_acq_policy(
@@ -1227,11 +1227,11 @@ def _merge_acq_policy(
     ):
         if src in pol:
             _set(merged, sources, dst, pol[src],
-                 f"config.acquisition.policy.{src}")
+                 f"config.discovery.policy.{src}")
     if "acknowledged_tos_domains" in pol:
         _set(merged, sources, "acknowledged_tos_domains",
              pol["acknowledged_tos_domains"],
-             "config.acquisition.policy.acknowledged_tos_domains")
+             "config.discovery.policy.acknowledged_tos_domains")
 
 
 def _merge_acq_output(
@@ -1244,10 +1244,10 @@ def _merge_acq_output(
         return
     if "documents_dir" in out:
         _set(merged, sources, "output_documents", out["documents_dir"],
-             "config.acquisition.output.documents_dir")
+             "config.discovery.output.documents_dir")
     if "manifest_path" in out:
         _set(merged, sources, "output_manifest", out["manifest_path"],
-             "config.acquisition.output.manifest_path")
+             "config.discovery.output.manifest_path")
 
 
 def _merge_acq_search(
@@ -1261,7 +1261,7 @@ def _merge_acq_search(
     provider = str(cfg.get("provider") or "").lower()
     if provider == "serpapi" and cfg.get("enabled") is not False:
         _set(merged, sources, "enable_serpapi", True,
-             "config.acquisition.search.provider")
+             "config.discovery.search.provider")
     for src, dst in (
         ("query_templates", "query_templates"),
         ("max_results_per_query", "seeker_max_results"),
@@ -1271,7 +1271,7 @@ def _merge_acq_search(
     ):
         if src in cfg:
             _set(merged, sources, dst, cfg[src],
-                 f"config.acquisition.search.{src}")
+                 f"config.discovery.search.{src}")
 
     # Verbatim SerpApi params + the google_news convenience flag → merged into a
     # single seeker_extra_params dict forwarded to the seeker.
@@ -1283,7 +1283,7 @@ def _merge_acq_search(
         seeker_params.setdefault("tbm", "nws")
     if seeker_params:
         _set(merged, sources, "seeker_extra_params", seeker_params,
-             "config.acquisition.search.serpapi_params")
+             "config.discovery.search.serpapi_params")
 
 
 def _merge_acq_seeker(
@@ -1297,7 +1297,7 @@ def _merge_acq_seeker(
     provider = str(cfg.get("provider") or "").lower()
     if provider == "serpapi" and cfg.get("enabled") is not False:
         _set(merged, sources, "enable_serpapi", True,
-             "config.acquisition.seeker.provider")
+             "config.discovery.seeker.provider")
     for src, dst in (
         ("query_templates", "query_templates"),
         ("use_query_family", "use_query_family"),
@@ -1305,7 +1305,7 @@ def _merge_acq_seeker(
     ):
         if src in cfg:
             _set(merged, sources, dst, cfg[src],
-                 f"config.acquisition.seeker.{src}")
+                 f"config.discovery.seeker.{src}")
 
 
 def _merge_acq_digger(
@@ -1323,10 +1323,10 @@ def _merge_acq_digger(
     ):
         if src in cfg:
             _set(merged, sources, dst, cfg[src],
-                 f"config.acquisition.digger.{src}")
+                 f"config.discovery.digger.{src}")
     if isinstance(cfg.get("index_page_mode"), dict):
         _set(merged, sources, "index_page_mode", cfg["index_page_mode"],
-             "config.acquisition.digger.index_page_mode")
+             "config.discovery.digger.index_page_mode")
     digger_rules = cfg.get("discovery_rules")
     if isinstance(digger_rules, dict):
         _merge_acq_discovery_rules(
@@ -1350,7 +1350,7 @@ def _merge_acq_link_prioritization(
     ):
         if src in lp:
             _set(merged, sources, dst, lp[src],
-                 f"config.acquisition.link_prioritization.{src}")
+                 f"config.discovery.link_prioritization.{src}")
 
 
 def _merge_acq_selection(
@@ -1364,7 +1364,7 @@ def _merge_acq_selection(
     for src_key, dst_key in _ACQ_SELECTION_KEY_MAP.items():
         if src_key in sel:
             _set(merged, sources, dst_key, sel[src_key],
-                 f"config.acquisition.selection.{src_key}")
+                 f"config.discovery.selection.{src_key}")
 
 
 def _merge_acq_routing(
@@ -1377,10 +1377,10 @@ def _merge_acq_routing(
         return
     if "index_links" in routing:
         _set(merged, sources, "index_links", routing["index_links"],
-             "config.acquisition.routing.index_links")
+             "config.discovery.routing.index_links")
 
 
-def _merge_acquisition_fields(
+def _merge_discovery_fields(
     section: dict[str, Any],
     merged: dict[str, Any],
     sources: dict[str, str],
@@ -1391,7 +1391,7 @@ def _merge_acquisition_fields(
     for sec_key, merged_key in _ACQ_SIMPLE_KEYS:
         if sec_key in section:
             _set(merged, sources, merged_key, section[sec_key],
-                 f"config.acquisition.{sec_key}")
+                 f"config.discovery.{sec_key}")
     discovery_rules = section.get("discovery_rules")
     if isinstance(discovery_rules, dict):
         _merge_acq_discovery_rules(
@@ -1410,25 +1410,25 @@ def _merge_acquisition_fields(
     classifier = section.get("document_classifier")
     if isinstance(classifier, dict):
         _set(merged, sources, "document_classifier", classifier,
-             "config.acquisition.document_classifier")
+             "config.discovery.document_classifier")
     review = section.get("document_review")
     if isinstance(review, dict):
         _set(merged, sources, "document_review", review,
-             "config.acquisition.document_review")
+             "config.discovery.document_review")
     aliases = section.get("query_context_aliases")
     if isinstance(aliases, dict):
         _set(merged, sources, "query_context_aliases", aliases,
-             "config.acquisition.query_context_aliases")
+             "config.discovery.query_context_aliases")
     partition_by = section.get("partition_by")
     if isinstance(partition_by, list):
         _set(merged, sources, "partition_by", partition_by,
-             "config.acquisition.partition_by")
+             "config.discovery.partition_by")
     browser_flag = section.get("browser_mode")
     if browser_flag is None:
         browser_flag = section.get("browser")
     if browser_flag is not None:
         _set(merged, sources, "browser_mode", bool(browser_flag),
-             "config.acquisition.browser_mode")
+             "config.discovery.browser_mode")
 
 
 # ── Top-level field map (all commands) ──────────────────────────
@@ -1480,8 +1480,8 @@ def _merge_config_fields(
             merged[cli_key] = section.get(section_key)
             sources[cli_key] = f"config.{section_name}.{section_key}"
 
-    if section_name == "acquisition":
-        _merge_acquisition_fields(section, merged, sources)
+    if section_name == "discovery":
+        _merge_discovery_fields(section, merged, sources)
 
     for cli_key, value in cli_values.items():
         if value is not None:
@@ -1530,7 +1530,7 @@ def resolve_command_config(
         sources["domain"] = "config.domain"
 
     # Top-level model alias map is available to every command (process,
-    # acquire, consolidate) so any LLM stage can resolve an alias reference.
+    # discover, compile) so any LLM stage can resolve an alias reference.
     if "models" in cfg:
         merged["models"] = cfg.get("models")
         sources["models"] = "config.models"
