@@ -2,7 +2,7 @@
 """
 Unit tests for item_matcher utilities.
 
-Tests the extracted item matching logic used by both consolidation
+Tests the extracted item matching logic used by both compilation
 and QA/QC comparison.
 """
 import logging

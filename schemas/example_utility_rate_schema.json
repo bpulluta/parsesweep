@@ -10,7 +10,7 @@
       "identifier_fields": ["utility_info.utility_name"],
       "document_type": "Utility Rate Document"
     },
-    "consolidation": {
+    "compilation": {
       "deduplication": {
         "key_fields": ["rate_name", "customer_class"],
         "ignore_fields": ["notes"]

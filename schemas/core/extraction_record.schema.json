@@ -11,7 +11,7 @@
       "identifier_fields": ["record_id", "document.source_document_id"],
       "document_type": "Extraction Record"
     },
-    "consolidation": {
+    "compilation": {
       "deduplication": {
         "key_fields": ["record_id", "lineage.artifact_id", "lineage.run_id"],
         "ignore_fields": ["quality", "processing_metrics"],
@@ -21,7 +21,7 @@
     }
   },
   "title": "Extraction Record Contract",
-  "description": "Single-record contract consumed by extraction, QA/QC, and consolidation stages.",
+  "description": "Single-record contract consumed by extraction, QA/QC, and compilation stages.",
   "type": "object",
   "additionalProperties": false,
   "properties": {

@@ -75,7 +75,7 @@ class TestCostTracker:
     def test_cost_calculation_uses_shared_pricing_db(self):
         """CostTracker rates come from the single shared pricing DB.
 
-        Regression guard for the pricing consolidation: CostTracker no longer
+        Regression guard for the pricing compilation: CostTracker no longer
         carries its own private price table, so rates must match
         ``utils.model_pricing`` for any model (here gpt-4o = $5/$15 per 1M).
         """

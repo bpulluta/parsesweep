@@ -1,12 +1,12 @@
-# Utility Rate Tariff Acquisition
+# Utility Rate Tariff Discovery
 #
 # Finds and downloads residential electric rate tariff documents
 # for addresses mapped to their utility providers.
 #
 # Required env:  SERPAPI_API_KEY
 # Usage:
-#   psweep acquire --config config/utility_rate_tariffs/run.yaml --dry-run
-#   psweep acquire --config config/utility_rate_tariffs/run.yaml
+#   psweep discover --config config/utility_rate_tariffs/run.yaml --dry-run
+#   psweep discover --config config/utility_rate_tariffs/run.yaml
 #
 # HOW TO ADD A NEW ADDRESS
 # ─────────────────────────
@@ -39,9 +39,9 @@ domain: utility_rate_tariffs
 # use (else it inherits the environment-configured model). A cheaper model is
 # fine for bulk curation + page targeting; a stronger one helps extract the rate
 # tables. Set the actual model/deployment names for your provider on the stages
-# below (document_review.model / page_targeting.model / processing.model).
+# below (document_review.model / page_targeting.model / extraction.model).
 
-acquisition:
+discovery:
   targets_csv: targets.csv
 
   # Fallback query templates — used only for rows where `query` is blank.
@@ -98,12 +98,12 @@ acquisition:
 # model_context_windows:
 #   my-azure-deployment-name: 300000
 
-processing:
+extraction:
   # Consume only the curated (LLM-reviewed + human-approved) set from the latest
-  # acquire run. Edit the run's review.csv and re-run `curate` to change this set.
-  input_dir: output/acquisition/utility_rate_tariffs/latest/curated
+  # discover run. Edit the run's review.csv and re-run `curate` to change this set.
+  input_dir: discovered/utility_rate_tariffs/latest/curated
   schema: schemas/domain_packs/tariffs/pack.yaml
-  output_dir: processed/utility_rate_tariffs
+  output_dir: extracted/utility_rate_tariffs
   # model: <stronger-model>   # optional: name the extraction model explicitly
   # Tariff books are large (hundreds of pages); extracting the whole document
   # overflows the model context before it reaches the rate tables. Point each
@@ -124,7 +124,7 @@ processing:
     trigger_chars: 200000
     max_selected_pages: 30
 
-consolidation:
-  input_dir: processed/utility_rate_tariffs
+compilation:
+  input_dir: extracted/utility_rate_tariffs
   schema: schemas/domain_packs/tariffs/pack.yaml
-  output_dir: consolidated/utility_rate_tariffs
+  output_dir: compiled/utility_rate_tariffs

@@ -126,7 +126,7 @@ def test_contract_accepts_structured_quality_errors() -> None:
     sample = _sample_record()
     sample["quality"]["errors"] = [
         {
-            "stage": "process",
+            "stage": "extract",
             "category": "document_processing",
             "code": "document_extraction_failed",
             "message": "OCR text quality degraded",

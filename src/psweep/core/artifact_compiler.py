@@ -10,7 +10,7 @@ from typing import Any, Dict, Optional, Tuple
 
 import yaml
 
-from psweep.consolidation.data_flattener import DataFlattener
+from psweep.compilation.data_flattener import DataFlattener
 from psweep.utils.exceptions import SchemaMetadataError
 from psweep.utils.schema_metadata import SchemaMetadata
 
@@ -469,8 +469,8 @@ def _collect_flattened_columns(
     return columns
 
 
-def _validate_consolidation_config_against_schema(
-    consolidation_config: Dict[str, Any],
+def _validate_compilation_config_against_schema(
+    compilation_config: Dict[str, Any],
     *,
     schema_metadata: SchemaMetadata,
 ) -> None:
@@ -480,14 +480,14 @@ def _validate_consolidation_config_against_schema(
     main_array_node = _resolve_schema_path_node(schema_root, main_data_array)
     if not _schema_has_type(main_array_node, "array"):
         raise ArtifactCompilerError(
-            "Schema main data array must resolve to an array for consolidation runtime validation: "
+            "Schema main data array must resolve to an array for compilation runtime validation: "
             f"{main_data_array}"
         )
 
     main_item_schema = _schema_array_items(main_array_node)
     if not isinstance(main_item_schema, dict):
         raise ArtifactCompilerError(
-            "Schema main data array must declare item schema for consolidation runtime validation: "
+            "Schema main data array must declare item schema for compilation runtime validation: "
             f"{main_data_array}"
         )
 
@@ -514,12 +514,12 @@ def _validate_consolidation_config_against_schema(
             for field_name in _schema_properties(context_node)
         )
 
-    deduplication = consolidation_config.get("deduplication") or {}
+    deduplication = compilation_config.get("deduplication") or {}
     key_fields = deduplication.get("key_fields") or []
     for key_field in key_fields:
         if not isinstance(key_field, str) or not key_field:
             raise ArtifactCompilerError(
-                "Consolidation deduplication key_fields contain an invalid field reference"
+                "Compilation deduplication key_fields contain an invalid field reference"
             )
         if "." in key_field:
             resolved = False
@@ -532,7 +532,7 @@ def _validate_consolidation_config_against_schema(
                     continue
             if not resolved:
                 raise ArtifactCompilerError(
-                    "Consolidation deduplication field could not be resolved against the schema: "
+                    "Compilation deduplication field could not be resolved against the schema: "
                     f"{key_field}"
                 )
             continue
@@ -542,7 +542,7 @@ def _validate_consolidation_config_against_schema(
             for candidate_root in row_field_nodes
         ):
             raise ArtifactCompilerError(
-                "Consolidation deduplication field could not be resolved against the schema: "
+                "Compilation deduplication field could not be resolved against the schema: "
                 f"{key_field}"
             )
 
@@ -553,7 +553,7 @@ def _validate_consolidation_config_against_schema(
         "merge",
     }:
         raise ArtifactCompilerError(
-            f"Unsupported consolidation deduplication strategy for runtime validation: {strategy}"
+            f"Unsupported compilation deduplication strategy for runtime validation: {strategy}"
         )
 
     comparison_mode = deduplication.get("comparison_mode")
@@ -562,23 +562,23 @@ def _validate_consolidation_config_against_schema(
         "fuzzy",
     }:
         raise ArtifactCompilerError(
-            f"Unsupported consolidation comparison_mode for runtime validation: {comparison_mode}"
+            f"Unsupported compilation comparison_mode for runtime validation: {comparison_mode}"
         )
 
-    output_config = consolidation_config.get("output") or {}
+    output_config = compilation_config.get("output") or {}
     default_format = output_config.get("default_format")
     if default_format is not None and str(
         default_format
     ).strip().lower() not in {"excel", "csv", "both", "all"}:
         raise ArtifactCompilerError(
-            f"Unsupported consolidation output.default_format for runtime validation: {default_format}"
+            f"Unsupported compilation output.default_format for runtime validation: {default_format}"
         )
 
     exclude_fields = output_config.get("exclude_fields") or []
     for field_name in exclude_fields:
         if field_name not in row_columns:
             raise ArtifactCompilerError(
-                "Consolidation output.exclude_fields entry could not be resolved against consolidated columns: "
+                "Compilation output.exclude_fields entry could not be resolved against compiled columns: "
                 f"{field_name}"
             )
 
@@ -586,12 +586,12 @@ def _validate_consolidation_config_against_schema(
     for source_name, target_name in column_renames.items():
         if source_name not in row_columns:
             raise ArtifactCompilerError(
-                "Consolidation output.column_renames source could not be resolved against consolidated columns: "
+                "Compilation output.column_renames source could not be resolved against compiled columns: "
                 f"{source_name}"
             )
         if not isinstance(target_name, str) or not target_name.strip():
             raise ArtifactCompilerError(
-                f"Consolidation output.column_renames target must be a non-empty string for source: {source_name}"
+                f"Compilation output.column_renames target must be a non-empty string for source: {source_name}"
             )
 
     renamed_columns = {
@@ -603,7 +603,7 @@ def _validate_consolidation_config_against_schema(
     for ordered_column in column_order:
         if ordered_column not in renamed_columns:
             raise ArtifactCompilerError(
-                "Consolidation output.column_order entry could not be resolved after renames/exclusions: "
+                "Compilation output.column_order entry could not be resolved after renames/exclusions: "
                 f"{ordered_column}"
             )
 
@@ -612,13 +612,13 @@ def _validate_consolidation_config_against_schema(
         not isinstance(freeze_columns, int) or freeze_columns < 0
     ):
         raise ArtifactCompilerError(
-            f"Consolidation output.freeze_columns must be a non-negative integer for runtime validation: {freeze_columns}"
+            f"Compilation output.freeze_columns must be a non-negative integer for runtime validation: {freeze_columns}"
         )
 
     auto_width = output_config.get("auto_width")
     if auto_width is not None and not isinstance(auto_width, bool):
         raise ArtifactCompilerError(
-            f"Consolidation output.auto_width must be a boolean for runtime validation: {auto_width}"
+            f"Compilation output.auto_width must be a boolean for runtime validation: {auto_width}"
         )
 
 
@@ -849,29 +849,29 @@ def build_runtime_readiness_report(
         )
     )
 
-    consolidation_config = (
-        pack_data.get("consolidation")
-        if isinstance(pack_data.get("consolidation"), dict)
+    compilation_config = (
+        pack_data.get("compilation")
+        if isinstance(pack_data.get("compilation"), dict)
         else None
     )
-    if consolidation_config:
-        _validate_consolidation_config_against_schema(
-            consolidation_config,
+    if compilation_config:
+        _validate_compilation_config_against_schema(
+            compilation_config,
             schema_metadata=schema_metadata,
         )
         checks.append(
             _build_readiness_check(
-                "consolidation_paths",
+                "compilation_paths",
                 "pass",
-                "Validated consolidation deduplication and output references against the schema",
+                "Validated compilation deduplication and output references against the schema",
             )
         )
     else:
         checks.append(
             _build_readiness_check(
-                "consolidation_paths",
+                "compilation_paths",
                 "warn",
-                "Pack does not define consolidation overrides; schema metadata remains authoritative",
+                "Pack does not define compilation overrides; schema metadata remains authoritative",
             )
         )
 

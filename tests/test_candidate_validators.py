@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from psweep.acquisition.validators import ContentSampler
+from psweep.discovery.validators import ContentSampler
 
 
 class TestContentSamplerTextExtraction:
@@ -12,7 +12,7 @@ class TestContentSamplerTextExtraction:
 
     def test_extract_text_from_txt_file(self):
         """Test extraction from plain text file."""
-        from psweep.acquisition.validators import ContentSampler
+        from psweep.discovery.validators import ContentSampler
         from pathlib import Path
 
         fixture_path = Path(__file__).parent / "fixtures/content_samples/geothermal_ordinance.txt"
@@ -24,7 +24,7 @@ class TestContentSamplerTextExtraction:
 
     def test_extract_text_from_generic_txt(self):
         """Test extraction from generic text file."""
-        from psweep.acquisition.validators import ContentSampler
+        from psweep.discovery.validators import ContentSampler
         from pathlib import Path
 
         fixture_path = Path(__file__).parent / "fixtures/content_samples/generic_document.txt"
@@ -35,14 +35,14 @@ class TestContentSamplerTextExtraction:
 
     def test_extract_text_unsupported_format_raises_error(self):
         """Test that unsupported formats raise ValueError."""
-        from psweep.acquisition.validators import ContentSampler
+        from psweep.discovery.validators import ContentSampler
 
         with pytest.raises(ValueError):
             ContentSampler.extract_text("/path/to/file.zip")
 
     def test_extract_text_nonexistent_file_raises_error(self):
         """Test that nonexistent files raise error."""
-        from psweep.acquisition.validators import ContentSampler
+        from psweep.discovery.validators import ContentSampler
 
         with pytest.raises(Exception):
             ContentSampler.extract_text("/nonexistent/path/file.txt")
@@ -53,7 +53,7 @@ class TestContentSamplerValidation:
 
     def test_validate_content_with_required_keywords_present(self):
         """Test validation passes when required keywords are found."""
-        from psweep.acquisition.validators import ContentSampler
+        from psweep.discovery.validators import ContentSampler
         from pathlib import Path
 
         fixture_path = Path(__file__).parent / "fixtures/content_samples/geothermal_ordinance.txt"
@@ -70,7 +70,7 @@ class TestContentSamplerValidation:
 
     def test_validate_content_with_required_keywords_missing(self):
         """Test validation fails when required keywords are missing."""
-        from psweep.acquisition.validators import ContentSampler
+        from psweep.discovery.validators import ContentSampler
         from pathlib import Path
 
         fixture_path = Path(__file__).parent / "fixtures/content_samples/generic_document.txt"
@@ -86,7 +86,7 @@ class TestContentSamplerValidation:
 
     def test_validate_content_with_partial_keyword_matches(self):
         """Test validation with some keywords present, some missing."""
-        from psweep.acquisition.validators import ContentSampler
+        from psweep.discovery.validators import ContentSampler
         from pathlib import Path
 
         fixture_path = Path(__file__).parent / "fixtures/content_samples/geothermal_ordinance.txt"
@@ -103,7 +103,7 @@ class TestContentSamplerValidation:
 
     def test_validate_content_case_insensitive(self):
         """Test that keyword matching is case-insensitive."""
-        from psweep.acquisition.validators import ContentSampler
+        from psweep.discovery.validators import ContentSampler
         from pathlib import Path
 
         fixture_path = Path(__file__).parent / "fixtures/content_samples/geothermal_ordinance.txt"
@@ -118,7 +118,7 @@ class TestContentSamplerValidation:
 
     def test_validate_content_with_nice_to_have_keywords(self):
         """Test confidence score includes nice-to-have keywords."""
-        from psweep.acquisition.validators import ContentSampler
+        from psweep.discovery.validators import ContentSampler
         from pathlib import Path
 
         fixture_path = Path(__file__).parent / "fixtures/content_samples/electricity_tariff.txt"
@@ -135,7 +135,7 @@ class TestContentSamplerValidation:
 
     def test_validate_content_no_keywords_specified(self):
         """Test validation passes when no keywords are specified."""
-        from psweep.acquisition.validators import ContentSampler
+        from psweep.discovery.validators import ContentSampler
         from pathlib import Path
 
         fixture_path = Path(__file__).parent / "fixtures/content_samples/generic_document.txt"
@@ -146,7 +146,7 @@ class TestContentSamplerValidation:
 
     def test_validate_content_insufficient_extraction_length(self):
         """Test validation fails when insufficient text is extracted."""
-        from psweep.acquisition.validators import ContentSampler
+        from psweep.discovery.validators import ContentSampler
         import tempfile
         import os
 
@@ -167,7 +167,7 @@ class TestContentSamplerValidation:
 
     def test_validate_content_min_required_matches_threshold(self):
         """Test min_required_matches threshold enforcement."""
-        from psweep.acquisition.validators import ContentSampler
+        from psweep.discovery.validators import ContentSampler
         from pathlib import Path
 
         fixture_path = Path(__file__).parent / "fixtures/content_samples/geothermal_ordinance.txt"
@@ -190,7 +190,7 @@ class TestContentSamplerValidation:
 
     def test_validate_content_confidence_score_calculation(self):
         """Test confidence score is correctly calculated."""
-        from psweep.acquisition.validators import ContentSampler
+        from psweep.discovery.validators import ContentSampler
         from pathlib import Path
 
         fixture_path = Path(__file__).parent / "fixtures/content_samples/electricity_tariff.txt"
@@ -227,7 +227,7 @@ class TestContentSamplerIntegration:
 
     def test_content_sampler_with_domain_specific_keywords(self):
         """Test content sampling identifies domain-specific documents."""
-        from psweep.acquisition.validators import ContentSampler
+        from psweep.discovery.validators import ContentSampler
         from pathlib import Path
 
         # Test geothermal ordinance
@@ -263,7 +263,7 @@ class TestContentSamplerIntegration:
 
     def test_content_sampler_provides_detailed_reasons(self):
         """Test that ContentSampler provides detailed validation reasons."""
-        from psweep.acquisition.validators import ContentSampler
+        from psweep.discovery.validators import ContentSampler
         from pathlib import Path
 
         fixture_path = Path(__file__).parent / "fixtures/content_samples/geothermal_ordinance.txt"

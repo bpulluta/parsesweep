@@ -3,12 +3,13 @@ Utility CLI commands for ParseSweep.
 
 This module contains helper and setup commands:
 - init: Interactive project setup wizard
-- preview: Preview document before processing
-- estimate: Estimate cost and time for batch processing
-- validate_schema: Validate JSON schema files
+- preview: Preview document before extraction
+- estimate: Estimate cost and time for batch extraction
+- check-schema: Check JSON schema files
+- check-runtime: Check runtime onboarding readiness
 - config: Show current configuration
 
-For core workflow commands (process, consolidate), see commands.py
+For core workflow commands (extract, compile), see commands.py
 """
 
 import json
@@ -123,8 +124,8 @@ def _default_pack_modules() -> list[dict[str, Any]]:
             "enabled": True,
         },
         {
-            "module_id": "consolidation_mapper",
-            "name": "Consolidation Mapper",
+            "module_id": "compilation_mapper",
+            "name": "Compilation Mapper",
             "version": "1.0.0",
             "kind": "mapper",
             "enabled": True,
@@ -325,16 +326,16 @@ def _build_qaqc_scaffold(
     }
 
 
-def _build_consolidation_scaffold(
+def _build_compilation_scaffold(
     schema_metadata: SchemaMetadata,
 ) -> Dict[str, Any]:
-    consolidation_metadata = (
-        schema_metadata.metadata.get("consolidation") or {}
+    compilation_metadata = (
+        schema_metadata.metadata.get("compilation") or {}
     )
-    deduplication_metadata = consolidation_metadata.get("deduplication") or {}
-    output_metadata = consolidation_metadata.get("output") or {}
+    deduplication_metadata = compilation_metadata.get("deduplication") or {}
+    output_metadata = compilation_metadata.get("output") or {}
 
-    consolidation: Dict[str, Any] = {
+    compilation: Dict[str, Any] = {
         "deduplication": {
             "key_fields": schema_metadata.get_deduplication_key_fields(),
             "ignore_fields": schema_metadata.get_deduplication_ignore_fields(),
@@ -343,7 +344,7 @@ def _build_consolidation_scaffold(
 
     for field_name in ("strategy", "comparison_mode"):
         if field_name in deduplication_metadata:
-            consolidation["deduplication"][field_name] = deepcopy(
+            compilation["deduplication"][field_name] = deepcopy(
                 deduplication_metadata[field_name]
             )
 
@@ -357,9 +358,9 @@ def _build_consolidation_scaffold(
             output[field_name] = deepcopy(output_metadata[field_name])
 
     if output:
-        consolidation["output"] = output
+        compilation["output"] = output
 
-    return consolidation
+    return compilation
 
 
 def _default_profile_template(profile_name: str) -> Dict[str, Any]:
@@ -473,8 +474,8 @@ def _apply_main_array_field_selection(
             item_schema.pop("required", None)
 
     metadata = schema_data.get("$metadata") or {}
-    consolidation = metadata.get("consolidation") or {}
-    deduplication = consolidation.get("deduplication") or {}
+    compilation = metadata.get("compilation") or {}
+    deduplication = compilation.get("deduplication") or {}
     if deduplication:
         key_fields = [
             field_name
@@ -498,9 +499,9 @@ def _apply_main_array_field_selection(
             deduplication.pop("ignore_fields", None)
 
         if not deduplication:
-            consolidation.pop("deduplication", None)
-        if not consolidation:
-            metadata.pop("consolidation", None)
+            compilation.pop("deduplication", None)
+        if not compilation:
+            metadata.pop("compilation", None)
 
     return schema_data
 
@@ -520,9 +521,9 @@ def _build_schema_starter_from_reference(
 
     reference_metadata = reference_schema.get("$metadata") or {}
     reference_extraction = reference_metadata.get("extraction") or {}
-    reference_consolidation = reference_metadata.get("consolidation") or {}
+    reference_compilation = reference_metadata.get("compilation") or {}
     reference_deduplication = (
-        reference_consolidation.get("deduplication") or {}
+        reference_compilation.get("deduplication") or {}
     )
     inferred_label = _humanize_domain_name(schema_name)
 
@@ -563,7 +564,7 @@ def _build_schema_starter_from_reference(
             reference_deduplication["ignore_fields"]
         )
     if deduplication:
-        starter_metadata["consolidation"] = {"deduplication": deduplication}
+        starter_metadata["compilation"] = {"deduplication": deduplication}
 
     starter_schema["$metadata"] = starter_metadata
     starter_schema["title"] = f"{resolved_document_type} Starter Schema"
@@ -739,7 +740,7 @@ def init_domain_schema_cmd(
             "next_steps": [
                 {
                     "title": "Validate starter schema",
-                    "command": f"pixi run psweep validate-schema {_display_cli_path(output_path, repo_root)}",
+                    "command": f"pixi run psweep check-schema {_display_cli_path(output_path, repo_root)}",
                 },
                 {
                     "title": "Scaffold runtime pack and config",
@@ -813,7 +814,7 @@ def _build_pack_scaffold(
         "version": "1.0.0",
         "schema_path": _normalize_pack_schema_path(schema_path, repo_root),
         "document_type": document_type,
-        "consolidation": _build_consolidation_scaffold(schema_metadata),
+        "compilation": _build_compilation_scaffold(schema_metadata),
         "modules": _default_pack_modules(),
     }
 
@@ -862,7 +863,7 @@ def _create_workspace_skeleton(
     repo_root: Path, category_name: str
 ) -> list[str]:
     created_paths: list[str] = []
-    for root_name in ("documents", "processed", "consolidated"):
+    for root_name in ("documents", "extracted", "compiled"):
         path = repo_root / root_name / category_name
         path.mkdir(parents=True, exist_ok=True)
         created_paths.append(path.as_posix())
@@ -890,7 +891,7 @@ def _sample_assets_readme_content(
         )
         workflow_lines.append(
             "4. Run: "
-            + _build_scaffold_process_command(
+            + _build_scaffold_extract_command(
                 documents_ref=f"documents/{category_name}",
                 schema_ref=schema_ref,
                 page_ranges_ref=page_ranges_ref,
@@ -901,7 +902,7 @@ def _sample_assets_readme_content(
     else:
         workflow_lines.append(
             "3. Run: "
-            + _build_scaffold_process_command(
+            + _build_scaffold_extract_command(
                 documents_ref=f"documents/{category_name}",
                 schema_ref=schema_ref,
                 document_type=document_type,
@@ -924,7 +925,7 @@ def _sample_assets_readme_content(
 def _sample_manifest_csv_content(document_type: str) -> str:
     return (
         "file_name,notes\n"
-        f"{_suggest_page_ranges_filename(document_type)},Replace with a real source document before processing\n"
+        f"{_suggest_page_ranges_filename(document_type)},Replace with a real source document before extraction\n"
     )
 
 
@@ -990,14 +991,14 @@ def _suggest_page_ranges_filename(document_type: str) -> str:
     return "example_document.pdf"
 
 
-def _recommended_process_flags(document_type: str) -> list[str]:
+def _recommended_extract_flags(document_type: str) -> list[str]:
     normalized = document_type.strip().lower()
     if "tariff" in normalized or "rate" in normalized:
         return ["--max-context 1400000"]
     return []
 
 
-def _build_scaffold_process_command(
+def _build_scaffold_extract_command(
     *,
     documents_ref: str,
     schema_ref: str,
@@ -1009,14 +1010,14 @@ def _build_scaffold_process_command(
     qaqc_lane: Optional[str] = None,
 ) -> str:
     command_parts = [
-        "pixi run psweep process",
+        "pixi run psweep extract",
         f"{documents_ref}/",
         f"--schema {schema_ref}",
     ]
     if profile_ref:
         command_parts.append(f"--profile {profile_ref}")
     if template_mode == "recommended":
-        command_parts.extend(_recommended_process_flags(document_type))
+        command_parts.extend(_recommended_extract_flags(document_type))
     if page_ranges_ref:
         command_parts.append(f"--pages-csv {page_ranges_ref}")
     if enable_qaqc:
@@ -1044,22 +1045,22 @@ def _config_readme_content(
         "2. Update page_ranges.csv if extraction should target a subset of pages",
         (
             '3. Run: '
-            f'{_build_scaffold_process_command(documents_ref=f"documents/{category_name}", schema_ref=schema_ref, page_ranges_ref=page_ranges_ref, document_type=document_type, template_mode=template_mode)}'
+            f'{_build_scaffold_extract_command(documents_ref=f"documents/{category_name}", schema_ref=schema_ref, page_ranges_ref=page_ranges_ref, document_type=document_type, template_mode=template_mode)}'
         ),
         (
-            f"4. Run: pixi run psweep consolidate processed/{category_name} "
+            f"4. Run: pixi run psweep compile extracted/{category_name} "
             f"--schema {schema_ref}"
         ),
         (
-            f"5. Optional config-based workflow: pixi run psweep process --config {run_config_ref} "
+            f"5. Optional config-based workflow: pixi run psweep extract --config {run_config_ref} "
             f"--pages-csv {page_ranges_ref}"
         ),
         (
-            f"6. Optional config-based consolidation: pixi run psweep consolidate --config {run_config_ref}"
+            f"6. Optional config-based compilation: pixi run psweep compile --config {run_config_ref}"
         ),
     ]
 
-    recommended_flags = _recommended_process_flags(document_type)
+    recommended_flags = _recommended_extract_flags(document_type)
     if template_mode == "recommended" and recommended_flags:
         workflow_lines.extend(
             [
@@ -1076,14 +1077,14 @@ def _config_readme_content(
                 "Optional QA/QC workflow:",
                 (
                     '1. Run: '
-                    f'{_build_scaffold_process_command(documents_ref=f"documents/{category_name}", schema_ref=schema_ref, page_ranges_ref=page_ranges_ref, document_type=document_type, template_mode=template_mode, enable_qaqc=True)}'
+                    f'{_build_scaffold_extract_command(documents_ref=f"documents/{category_name}", schema_ref=schema_ref, page_ranges_ref=page_ranges_ref, document_type=document_type, template_mode=template_mode, enable_qaqc=True)}'
                 ),
                 (
-                    f"2. Run: pixi run psweep compare processed/{category_name}/qa_qc "
+                    f"2. Run: pixi run psweep compare extracted/{category_name}/qa_qc "
                     f"--schema {schema_ref}"
                 ),
                 (
-                    f"3. Optional qualitative review: pixi run psweep compare processed/{category_name}/qa_qc "
+                    f"3. Optional qualitative review: pixi run psweep compare extracted/{category_name}/qa_qc "
                     f"--schema {schema_ref} --qaqc-lane qualitative"
                 ),
             ]
@@ -1095,8 +1096,8 @@ def _config_readme_content(
         f"Domain: {domain_name}\n\n"
         "This directory contains configuration files for the domain onboarding scaffold.\n\n"
         "Files:\n"
-        "- page_ranges.csv: Optional page-range overrides for document processing\n"
-        "- run.yaml: Starter runtime config for acquire/process/consolidate commands\n\n"
+        "- page_ranges.csv: Optional page-range overrides for document extraction\n"
+        "- run.yaml: Starter runtime config for discover/extract/compile commands\n\n"
         + "\n".join(workflow_lines)
         + "\n"
     )
@@ -1109,15 +1110,15 @@ def _config_run_yaml_content(
 ) -> str:
     run_config = {
         "domain": category_name,
-        "processing": {
+        "extraction": {
             "input_dir": f"documents/{category_name}",
             "schema": schema_ref,
-            "output_dir": f"processed/{category_name}",
+            "output_dir": f"extracted/{category_name}",
         },
-        "consolidation": {
-            "input_dir": f"processed/{category_name}",
+        "compilation": {
+            "input_dir": f"extracted/{category_name}",
             "schema": schema_ref,
-            "output_dir": f"consolidated/{category_name}",
+            "output_dir": f"compiled/{category_name}",
         },
     }
     return yaml.safe_dump(run_config, sort_keys=False, allow_unicode=False)
@@ -1229,13 +1230,13 @@ def _build_onboarding_next_steps(
         repo_root / "documents" / category_name, repo_root
     )
     processed_dir = _display_cli_path(
-        repo_root / "processed" / category_name, repo_root
+        repo_root / "extracted" / category_name, repo_root
     )
     page_ranges_path = _display_cli_path(
         config_root / category_name / "page_ranges.csv", repo_root
     )
 
-    process_command = _build_scaffold_process_command(
+    extract_command = _build_scaffold_extract_command(
         documents_ref=documents_dir,
         schema_ref=schema_ref,
         profile_ref=profile_display,
@@ -1251,18 +1252,18 @@ def _build_onboarding_next_steps(
         {
             "title": "Validate runtime seam",
             "command": (
-                "pixi run psweep validate-runtime "
+                "pixi run psweep check-runtime "
                 f"--pack {pack_ref} --profile {profile_display}"
             ),
         },
         {
-            "title": "Process documents",
-            "command": process_command,
+            "title": "Extract documents",
+            "command": extract_command,
         },
         {
-            "title": "Consolidate extracted records",
+            "title": "Compile extracted records",
             "command": (
-                "pixi run psweep consolidate "
+                "pixi run psweep compile "
                 f"{processed_dir} --schema {schema_ref}"
             ),
         },
@@ -1285,7 +1286,7 @@ def _build_onboarding_next_steps(
             [
                 {
                     "title": "Optional multi-model QA/QC run",
-                    "command": _build_scaffold_process_command(
+                    "command": _build_scaffold_extract_command(
                         documents_ref=documents_dir,
                         schema_ref=schema_ref,
                         profile_ref=profile_display,
@@ -1451,7 +1452,7 @@ def _resolve_init_domain_pack_inputs(
 
     if interactive and not create_workspace:
         create_workspace = ask_confirm(
-            "Create workspace folders under documents/ processed/ and consolidated/?",
+            "Create workspace folders under documents/ extracted/ and compiled/?",
             default=False,
         )
 
@@ -1599,12 +1600,12 @@ def init():
 
     project_root = Path.cwd()
     docs_dir = project_root / "documents" / doc_type
-    processed_dir = project_root / "processed" / doc_type
-    consolidated_dir = project_root / "consolidated" / doc_type
+    processed_dir = project_root / "extracted" / doc_type
+    compiled_dir = project_root / "compiled" / doc_type
 
     docs_dir.mkdir(parents=True, exist_ok=True)
     processed_dir.mkdir(parents=True, exist_ok=True)
-    consolidated_dir.mkdir(parents=True, exist_ok=True)
+    compiled_dir.mkdir(parents=True, exist_ok=True)
 
     print_success("Created directory structure:")
     console.print(
@@ -1643,8 +1644,8 @@ def init():
     print_next_steps(
         [
             f"Add your documents to: {docs_dir}",
-            f"Run extraction: psweep process {docs_dir}",
-            f"Consolidate results: psweep consolidate {processed_dir}",
+            f"Run extraction: psweep extract {docs_dir}",
+            f"Compile results: psweep compile {processed_dir}",
         ]
     )
     console.print()
@@ -1771,7 +1772,7 @@ def preview(document_path: str):
 
         section("Ready to Extract")
         console.print(
-            f"Run: psweep process {doc_path} --schema schemas/example_utility_rate_schema.json\n"
+            f"Run: psweep extract {doc_path} --schema schemas/example_utility_rate_schema.json\n"
         )
 
     except Exception as e:
@@ -1943,25 +1944,25 @@ def estimate(documents_path: str, workers: int, pages_csv: str):
     console.print()
     if ask_confirm("Proceed with extraction?", default=False):
         console.print(
-            f"\nRun: psweep process {docs_path} --schema schemas/example_utility_rate_schema.json\n"
+            f"\nRun: psweep extract {docs_path} --schema schemas/example_utility_rate_schema.json\n"
         )
     else:
         print_info("Operation cancelled")
 
 
-@click.command("validate-schema")
+@click.command("check-schema")
 @click.argument("schema_path", type=click.Path(exists=True))
-def validate_schema_cmd(schema_path: str):
+def check_schema_cmd(schema_path: str):
     """
-    Validate a JSON schema file.
+    Check a JSON schema file.
 
     Checks schema syntax, structure, and ParseSweep-specific
     metadata requirements.
 
     \b
     EXAMPLES:
-        psweep validate-schema schemas/my_schema.json
-        psweep validate-schema schemas/example_utility_rate_schema.json
+        psweep check-schema schemas/my_schema.json
+        psweep check-schema schemas/example_utility_rate_schema.json
     """
     schema_file = Path(schema_path)
 
@@ -2006,14 +2007,14 @@ def validate_schema_cmd(schema_path: str):
             if isinstance(metadata.get("extraction"), dict)
             else {}
         )
-        consolidation_metadata = (
-            metadata.get("consolidation")
-            if isinstance(metadata.get("consolidation"), dict)
+        compilation_metadata = (
+            metadata.get("compilation")
+            if isinstance(metadata.get("compilation"), dict)
             else {}
         )
         deduplication_metadata = (
-            consolidation_metadata.get("deduplication")
-            if isinstance(consolidation_metadata.get("deduplication"), dict)
+            compilation_metadata.get("deduplication")
+            if isinstance(compilation_metadata.get("deduplication"), dict)
             else {}
         )
         print_success("Has $metadata section")
@@ -2074,7 +2075,7 @@ def validate_schema_cmd(schema_path: str):
     console.print()
 
 
-@click.command("validate-runtime")
+@click.command("check-runtime")
 @click.option(
     "--schema",
     "schema_path",
@@ -2100,14 +2101,14 @@ def validate_schema_cmd(schema_path: str):
     show_default=True,
     help="Output format for the readiness report",
 )
-def validate_runtime_cmd(
+def check_runtime_cmd(
     schema_path: Optional[str],
     pack_ref: Optional[str],
     profile_ref: str,
     report_format: str,
 ):
     """
-    Validate runtime onboarding readiness for a schema or pack.
+    Check runtime onboarding readiness for a schema or pack.
 
     This command resolves the canonical runtime artifact seam used by the
     modernized pipeline and reports whether the selected input is ready for
@@ -2115,9 +2116,9 @@ def validate_runtime_cmd(
 
     \b
     EXAMPLES:
-        psweep validate-runtime --schema schemas/personal/electricity_tariff_schema.json
-        psweep validate-runtime --pack tariffs --profile prod
-        psweep validate-runtime --pack schemas/domain_packs/tariffs/pack.yaml --report-format json
+        psweep check-runtime --schema schemas/personal/electricity_tariff_schema.json
+        psweep check-runtime --pack tariffs --profile prod
+        psweep check-runtime --pack schemas/domain_packs/tariffs/pack.yaml --report-format json
     """
     try:
         report = build_runtime_readiness_report(
@@ -2241,7 +2242,7 @@ def validate_runtime_cmd(
     "--with-workspace",
     "create_workspace",
     is_flag=True,
-    help="Also scaffold matching documents/processed/consolidated folders for the new domain",
+    help="Also scaffold matching documents/extracted/compiled folders for the new domain",
 )
 @click.option(
     "--with-config",
@@ -2301,7 +2302,7 @@ def init_domain_pack_cmd(
 
     This command is a minimal onboarding scaffold for the modernization runtime.
     It writes a starter `pack.yaml` with the default module set, then runs the
-    same runtime validation path used by `validate-runtime`.
+    same runtime validation path used by `check-runtime`.
 
     \b
     EXAMPLES:
@@ -2724,7 +2725,7 @@ def config(show_runtime_catalog: bool, output_format: str):
 
     if show_runtime_catalog:
         section("Runtime Variable Catalog")
-        for section_name in ("processing", "consolidation", "acquisition"):
+        for section_name in ("extraction", "compilation", "discovery"):
             entries = VARIABLE_CATALOG.get(section_name, [])
             if not entries:
                 continue

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import json
 
-from psweep.consolidation.synthesizer import Synthesizer
+from psweep.compilation.synthesizer import Synthesizer
 
 
 class _StubLLM:

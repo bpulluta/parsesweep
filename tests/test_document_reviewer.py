@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from psweep.acquisition.document_reviewer import DocumentReviewer
+from psweep.discovery.document_reviewer import DocumentReviewer
 
 
 def _record(tmp_path: Path, name: str, label: str) -> dict:

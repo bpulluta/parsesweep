@@ -9,7 +9,7 @@ def test_process_validate_config_with_run_yaml(tmp_path):
     config_path = tmp_path / "run.yaml"
     config_path.write_text(
         """
-processing:
+extraction:
   input_dir: documents/geothermal_ordinances
   schema: schemas/personal/geothermal_ordinance_schema.json
 """,
@@ -19,7 +19,7 @@ processing:
     runner = CliRunner()
     result = runner.invoke(
         cli,
-        ["process", "--config", str(config_path), "--validate-config"],
+        ["extract", "--config", str(config_path), "--validate-config"],
     )
 
     assert result.exit_code == 0
@@ -31,7 +31,7 @@ def test_process_validate_config_strict_rejects_unknown_key(tmp_path):
     config_path = tmp_path / "run.yaml"
     config_path.write_text(
         """
-processing:
+extraction:
   input_dir: documents/geothermal_ordinances
   schema: schemas/personal/geothermal_ordinance_schema.json
   mystery_option: true
@@ -43,7 +43,7 @@ processing:
     result = runner.invoke(
         cli,
         [
-            "process",
+            "extract",
             "--config",
             str(config_path),
             "--validate-config",
@@ -52,14 +52,14 @@ processing:
     )
 
     assert result.exit_code != 0
-    assert "Unknown keys in 'processing' section" in result.output
+    assert "Unknown keys in 'extraction' section" in result.output
 
 
-def test_consolidate_validate_config_quiet_returns_json(tmp_path):
+def test_compile_validate_config_quiet_returns_json(tmp_path):
     config_path = tmp_path / "run.yaml"
     config_path.write_text(
         """
-consolidation:
+compilation:
   input_dir: processed/geothermal_ordinances
   schema: schemas/personal/geothermal_ordinance_schema.json
 """,
@@ -69,13 +69,13 @@ consolidation:
     runner = CliRunner()
     result = runner.invoke(
         cli,
-        ["consolidate", "--config", str(config_path), "--validate-config", "-q"],
+        ["compile", "--config", str(config_path), "--validate-config", "-q"],
     )
 
     assert result.exit_code == 0
     payload = json.loads(result.output)
     assert payload["status"] == "valid"
-    assert payload["command"] == "consolidate"
+    assert payload["command"] == "compile"
 
 
 def test_config_runtime_catalog_json_output():
@@ -87,9 +87,9 @@ def test_config_runtime_catalog_json_output():
 
     assert result.exit_code == 0
     catalog = json.loads(result.output)
-    assert "processing" in catalog
-    assert "consolidation" in catalog
-    assert "acquisition" in catalog
+    assert "extraction" in catalog
+    assert "compilation" in catalog
+    assert "discovery" in catalog
 
 
 def test_acquire_validate_config_with_run_yaml(tmp_path):
@@ -97,7 +97,7 @@ def test_acquire_validate_config_with_run_yaml(tmp_path):
     config_path.write_text(
         """
 domain: geothermal_ordinances
-acquisition:
+discovery:
   seeds:
     - https://example.org/docs
 """,
@@ -107,7 +107,7 @@ acquisition:
     runner = CliRunner()
     result = runner.invoke(
         cli,
-        ["acquire", "--config", str(config_path), "--validate-config"],
+        ["discover", "--config", str(config_path), "--validate-config"],
     )
 
     assert result.exit_code == 0
@@ -122,7 +122,7 @@ def test_acquire_dry_run_writes_manifest(tmp_path):
     result = runner.invoke(
         cli,
         [
-            "acquire",
+            "discover",
             "--seed-url",
             "https://example.org/docs",
             "--output-documents",
@@ -144,7 +144,7 @@ def test_acquire_validate_config_accepts_serpapi_flag(tmp_path):
     result = runner.invoke(
         cli,
         [
-            "acquire",
+            "discover",
             "--seed-url",
             "https://example.org/docs",
             "--enable-serpapi",
@@ -163,7 +163,7 @@ def test_acquire_validate_config_accepts_partition_fields(tmp_path):
         config_path.write_text(
                 """
 domain: geothermal_ordinances
-acquisition:
+discovery:
     seeds:
         - https://example.org/docs
     state: California
@@ -176,7 +176,7 @@ acquisition:
         runner = CliRunner()
         result = runner.invoke(
                 cli,
-                ["acquire", "--config", str(config_path), "--validate-config", "-q"],
+                ["discover", "--config", str(config_path), "--validate-config", "-q"],
         )
 
         assert result.exit_code == 0
@@ -192,7 +192,7 @@ def test_acquire_validate_config_accepts_policy_fields(tmp_path):
         config_path.write_text(
                 """
 domain: geothermal_ordinances
-acquisition:
+discovery:
     seeds:
         - https://example.org/docs
     policy:
@@ -207,7 +207,7 @@ acquisition:
         runner = CliRunner()
         result = runner.invoke(
                 cli,
-                ["acquire", "--config", str(config_path), "--validate-config", "-q"],
+                ["discover", "--config", str(config_path), "--validate-config", "-q"],
         )
 
         assert result.exit_code == 0

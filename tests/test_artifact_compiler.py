@@ -223,7 +223,7 @@ def test_build_runtime_readiness_report_uses_schema_resolution() -> None:
         "identifier_fields",
         "context_object_paths",
         "identifier_field_paths",
-        "consolidation_paths",
+        "compilation_paths",
         "qaqc_lane_paths",
         "modules",
         "profile_runtime",
@@ -339,7 +339,7 @@ def test_build_runtime_readiness_report_requires_valid_identifier_paths(tmp_path
             '    "context_objects": ["metadata"],'
             '    "identifier_fields": ["metadata.missing"]'
             '  },'
-            '  "consolidation": {"deduplication": {"key_fields": ["name"], "ignore_fields": []}}'
+            '  "compilation": {"deduplication": {"key_fields": ["name"], "ignore_fields": []}}'
             '},'
             '"type": "object",'
             '"properties": {'
@@ -390,7 +390,7 @@ def test_build_runtime_readiness_report_requires_object_context_objects(tmp_path
             '    "context_objects": ["scalar_context"],'
             '    "identifier_fields": ["scalar_context"]'
             '  },'
-            '  "consolidation": {"deduplication": {"key_fields": ["name"], "ignore_fields": []}}'
+            '  "compilation": {"deduplication": {"key_fields": ["name"], "ignore_fields": []}}'
             '},'
             '"type": "object",'
             '"properties": {'
@@ -441,7 +441,7 @@ def test_build_runtime_readiness_report_requires_valid_qaqc_lane_fields(tmp_path
             '    "context_objects": ["metadata"],'
             '    "identifier_fields": ["metadata.id"]'
             '  },'
-            '  "consolidation": {"deduplication": {"key_fields": ["name"], "ignore_fields": []}}'
+            '  "compilation": {"deduplication": {"key_fields": ["name"], "ignore_fields": []}}'
             '},'
             '"type": "object",'
             '"properties": {'
@@ -506,7 +506,7 @@ def test_build_runtime_readiness_report_requires_valid_qaqc_projection_fields(tm
             '    "context_objects": ["metadata"],'
             '    "identifier_fields": ["metadata.id"]'
             '  },'
-            '  "consolidation": {"deduplication": {"key_fields": ["rate_name"], "ignore_fields": []}}'
+            '  "compilation": {"deduplication": {"key_fields": ["rate_name"], "ignore_fields": []}}'
             '},'
             '"type": "object",'
             '"properties": {'
@@ -562,7 +562,7 @@ def test_build_runtime_readiness_report_requires_valid_qaqc_projection_fields(tm
         )
 
 
-def test_build_runtime_readiness_report_requires_valid_consolidation_key_fields(tmp_path) -> None:
+def test_build_runtime_readiness_report_requires_valid_compilation_key_fields(tmp_path) -> None:
     packs_dir = tmp_path / "schemas/domain_packs"
     profiles_dir = tmp_path / "schemas/profiles"
     schema_path = tmp_path / "schemas/personal/broken.json"
@@ -577,7 +577,7 @@ def test_build_runtime_readiness_report_requires_valid_consolidation_key_fields(
             '    "context_objects": ["metadata"],'
             '    "identifier_fields": ["metadata.id"]'
             '  },'
-            '  "consolidation": {"deduplication": {"key_fields": ["name"], "ignore_fields": []}}'
+            '  "compilation": {"deduplication": {"key_fields": ["name"], "ignore_fields": []}}'
             '},'
             '"type": "object",'
             '"properties": {'
@@ -593,7 +593,7 @@ def test_build_runtime_readiness_report_requires_valid_consolidation_key_fields(
             "name: broken\n"
             "version: 1.0.0\n"
             f"schema_path: {schema_path.as_posix()}\n"
-            "consolidation:\n"
+            "compilation:\n"
             "  deduplication:\n"
             "    key_fields:\n"
             "      - missing_field\n"
@@ -607,7 +607,7 @@ def test_build_runtime_readiness_report_requires_valid_consolidation_key_fields(
         '{"profile_id": "default", "runtime": {"emit_lineage": true}}',
     )
 
-    with pytest.raises(ArtifactCompilerError, match="Consolidation deduplication field could not be resolved"):
+    with pytest.raises(ArtifactCompilerError, match="Compilation deduplication field could not be resolved"):
         build_runtime_readiness_report(
             pack_ref="broken",
             profile_ref="default",
@@ -617,7 +617,7 @@ def test_build_runtime_readiness_report_requires_valid_consolidation_key_fields(
         )
 
 
-def test_build_runtime_readiness_report_requires_valid_consolidation_output_fields(tmp_path) -> None:
+def test_build_runtime_readiness_report_requires_valid_compilation_output_fields(tmp_path) -> None:
     packs_dir = tmp_path / "schemas/domain_packs"
     profiles_dir = tmp_path / "schemas/profiles"
     schema_path = tmp_path / "schemas/personal/broken.json"
@@ -632,7 +632,7 @@ def test_build_runtime_readiness_report_requires_valid_consolidation_output_fiel
             '    "context_objects": ["metadata"],'
             '    "identifier_fields": ["metadata.id"]'
             '  },'
-            '  "consolidation": {"deduplication": {"key_fields": ["name"], "ignore_fields": []}}'
+            '  "compilation": {"deduplication": {"key_fields": ["name"], "ignore_fields": []}}'
             '},'
             '"type": "object",'
             '"properties": {'
@@ -648,7 +648,7 @@ def test_build_runtime_readiness_report_requires_valid_consolidation_output_fiel
             "name: broken\n"
             "version: 1.0.0\n"
             f"schema_path: {schema_path.as_posix()}\n"
-            "consolidation:\n"
+            "compilation:\n"
             "  output:\n"
             "    exclude_fields:\n"
             "      - Missing Column\n"

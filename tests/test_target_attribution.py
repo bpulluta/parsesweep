@@ -7,16 +7,16 @@ LinkPrioritizer re-ranking, and surfaced in the download record / index CSV.
 
 from __future__ import annotations
 
-from psweep.acquisition.candidate_selector import CandidateSelector
-from psweep.acquisition.link_prioritizer import LinkPrioritizer
-from psweep.acquisition.models import (
-    AcquisitionCandidate,
+from psweep.discovery.candidate_selector import CandidateSelector
+from psweep.discovery.link_prioritizer import LinkPrioritizer
+from psweep.discovery.models import (
+    DiscoveryCandidate,
     CandidateScore,
 )
 
 
-def _candidate(url: str) -> AcquisitionCandidate:
-    return AcquisitionCandidate(
+def _candidate(url: str) -> DiscoveryCandidate:
+    return DiscoveryCandidate(
         url=url,
         source="test",
         score=CandidateScore(),
@@ -88,11 +88,11 @@ class TestRoutingPreservesMetadata:
     attributed back to its seed via source_seed."""
 
     def test_copy_candidate_preserves_metadata(self):
-        from psweep.acquisition.engine import AcquisitionEngine
+        from psweep.discovery.engine import DiscoveryEngine
 
         c = _candidate("https://generac.com/manual.pdf")
         c.target_metadata = {"manufacturer": "Generac", "power_class_kw": "200"}
-        copied = AcquisitionEngine._copy_candidate_with_reason(c, "routed")
+        copied = DiscoveryEngine._copy_candidate_with_reason(c, "routed")
         assert copied.target_metadata == {
             "manufacturer": "Generac",
             "power_class_kw": "200",
@@ -102,7 +102,7 @@ class TestRoutingPreservesMetadata:
     def test_crawled_child_inherits_seed_metadata(self):
         from types import SimpleNamespace
 
-        from psweep.acquisition.engine import AcquisitionEngine
+        from psweep.discovery.engine import DiscoveryEngine
 
         seed = _candidate("https://county.gov/ordinances/")
         seed.target_metadata = {"county_name": "Boulder", "state": "CO"}
@@ -111,7 +111,7 @@ class TestRoutingPreservesMetadata:
         artifact = SimpleNamespace(
             metadata={"source_seed": "https://county.gov/ordinances/"}
         )
-        inherited = AcquisitionEngine._inherit_target_metadata(
+        inherited = DiscoveryEngine._inherit_target_metadata(
             artifact, by_url
         )
         assert inherited == {"county_name": "Boulder", "state": "CO"}
@@ -119,7 +119,7 @@ class TestRoutingPreservesMetadata:
     def test_inherit_returns_none_without_source_seed(self):
         from types import SimpleNamespace
 
-        from psweep.acquisition.engine import AcquisitionEngine
+        from psweep.discovery.engine import DiscoveryEngine
 
         artifact = SimpleNamespace(metadata={"discovery_mode": "x"})
-        assert AcquisitionEngine._inherit_target_metadata(artifact, {}) is None
+        assert DiscoveryEngine._inherit_target_metadata(artifact, {}) is None

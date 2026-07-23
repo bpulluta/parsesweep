@@ -1,7 +1,7 @@
 """Tests for the shared text/OCR cache and curated-set materialization.
 
 These cover the reuse + organization work: extracted text is cached next to a
-document and reused (so OCR runs once), and the acquisition engine materializes
+document and reused (so OCR runs once), and the discovery engine materializes
 only the selected documents into a ``curated/`` tree, carrying the text cache
 along so downstream extraction never re-OCRs.
 """
@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from psweep.acquisition.engine import AcquisitionEngine
+from psweep.discovery.engine import DiscoveryEngine
 from psweep.extraction.document_utils import (
     extract_text_from_document,
     read_text_cache,
@@ -109,7 +109,7 @@ class TestMaterializeCurated:
         keep = self._record(docs, "co/keep.pdf", True)
         drop = self._record(docs, "co/drop.pdf", False)
 
-        curated_dir, count = AcquisitionEngine._materialize_curated(
+        curated_dir, count = DiscoveryEngine._materialize_curated(
             documents_dir=docs, download_records=[keep, drop]
         )
         assert count == 1
@@ -129,7 +129,7 @@ class TestMaterializeCurated:
         (docs / "h/a.pdf").write_text("x", encoding="utf-8")
         b = {"status": "failed"}  # no path — must be skipped
 
-        curated_dir, count = AcquisitionEngine._materialize_curated(
+        curated_dir, count = DiscoveryEngine._materialize_curated(
             documents_dir=docs, download_records=[a, b]
         )
         assert count == 1
@@ -141,7 +141,7 @@ class TestMaterializeCurated:
         # Simulate an OCR cache produced during review.
         write_text_cache(Path(rec["path"]), "OCR TEXT")
 
-        curated_dir, _ = AcquisitionEngine._materialize_curated(
+        curated_dir, _ = DiscoveryEngine._materialize_curated(
             documents_dir=docs, download_records=[rec]
         )
         # The curated copy carries its cache, so extraction reuses it.
@@ -152,14 +152,14 @@ class TestMaterializeCurated:
         a = self._record(docs, "co/a.pdf", True)
         b = self._record(docs, "co/b.pdf", True)
 
-        curated_dir, _ = AcquisitionEngine._materialize_curated(
+        curated_dir, _ = DiscoveryEngine._materialize_curated(
             documents_dir=docs, download_records=[a, b]
         )
         assert (curated_dir / "co/b.pdf").exists()
 
         # Re-materialize with b no longer selected → it must disappear.
         b["review_selected"] = False
-        curated_dir, count = AcquisitionEngine._materialize_curated(
+        curated_dir, count = DiscoveryEngine._materialize_curated(
             documents_dir=docs, download_records=[a, b]
         )
         assert count == 1

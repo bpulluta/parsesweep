@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from psweep.acquisition.connectors import (
+from psweep.discovery.connectors import (
     BaseDiggerConnector,
     DiggerArtifact,
     DiggerInput,
@@ -232,7 +232,7 @@ class TestDiggerConnectorAbstraction:
     def test_resolve_digger_connector_browser_aliases(self):
         # Browser-provider names resolve to the Selenium (real-browser) digger,
         # not the requests-based HTTP one.
-        from psweep.acquisition.connectors.digger import (
+        from psweep.discovery.connectors.digger import (
             SeleniumDiggerConnector,
         )
 

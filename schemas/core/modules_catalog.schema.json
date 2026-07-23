@@ -11,7 +11,7 @@
       "identifier_fields": ["catalog_id", "modules.module_id"],
       "document_type": "Modules Catalog"
     },
-    "consolidation": {
+    "compilation": {
       "deduplication": {
         "key_fields": ["catalog_id", "modules.module_id", "modules.version"],
         "ignore_fields": ["modules.notes"],

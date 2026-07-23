@@ -6,7 +6,7 @@ from psweep.utils.error_taxonomy import build_error_record, summarize_error_reco
 def test_build_error_record_classifies_file_not_found() -> None:
     error = build_error_record(
         FileNotFoundError("missing.pdf"),
-        stage="process",
+        stage="extract",
         document_path="documents/missing.pdf",
         model="gpt-5",
         provider="azure",
@@ -32,7 +32,7 @@ def test_build_error_record_marks_retryable_timeout() -> None:
 def test_build_error_record_classifies_context_window_exceeded() -> None:
     error = build_error_record(
         RuntimeError("context_window_exceeded: estimated request size 353161 prompt chars exceeds model budget"),
-        stage="process",
+        stage="extract",
         document_path="documents/tariffs/PSCo_Electric_Entire_Tariff.pdf",
         model="compassop-gpt-4.1-mini",
         provider="azure",
@@ -46,7 +46,7 @@ def test_summarize_error_records_aggregates_by_category_and_code() -> None:
     summary = summarize_error_records(
         [
             {
-                "stage": "process",
+                "stage": "extract",
                 "category": "document_processing",
                 "code": "document_extraction_failed",
                 "message": "OCR issue",

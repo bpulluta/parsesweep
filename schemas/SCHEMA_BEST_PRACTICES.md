@@ -3,7 +3,7 @@
 ## Overview
 
 ParseSweep v2.0+ uses a metadata-driven architecture where:
-- **`$metadata` section** (required) defines extraction and consolidation behavior
+- **`$metadata` section** (required) defines extraction and compilation behavior
 - **Schema properties** define the data structure to extract
 - Your schema design directly determines your spreadsheet output
 
@@ -12,7 +12,7 @@ Design schemas to match how you want to analyze the data.
 For authoring, use this mental model:
 
 - `Schema`: Your primary authoring surface. Start here for fields, descriptions, examples, row shape, identifiers, and deduplication keys.
-- `Pack`: Optional runtime config for a domain. Use it when multiple runs should share QA/QC lanes, consolidation presentation, or schema aliases.
+- `Pack`: Optional runtime config for a domain. Use it when multiple runs should share QA/QC lanes, compilation presentation, or schema aliases.
 - `Profile`: Optional environment selection. Most schema authors should use `default` and ignore profiles until they need environment-specific runtime behavior.
 
 ---
@@ -26,7 +26,7 @@ Most new extraction setups should begin with a schema only. That keeps iteration
 Add a pack later if you need any of the following:
 
 - shared QA/QC lanes for a domain
-- shared consolidation output settings such as column order or renames
+- shared compilation output settings such as column order or renames
 - multiple schema paths that should resolve to the same runtime behavior
 - domain-level runtime modules or overrides you do not want repeated across schemas
 
@@ -38,21 +38,21 @@ Use a short loop while evolving a schema:
 
 ```bash
 # 1. Validate schema structure
-pixi run psweep validate-schema schemas/my_schema.json
+pixi run psweep check-schema schemas/my_schema.json
 
 # 2. Extract a tiny sample
-pixi run psweep process documents/sample/ \
+pixi run psweep extract documents/sample/ \
   --schema schemas/my_schema.json \
   -n 2 \
   --reprocess
 
 # 3. Consolidate the sample
-pixi run psweep consolidate processed/sample/ \
+pixi run psweep compile extracted/sample/ \
   --schema schemas/my_schema.json \
   --verbose
 
 # 4. Preview deduplication before writing outputs
-pixi run psweep consolidate processed/sample/ \
+pixi run psweep compile extracted/sample/ \
   --schema schemas/my_schema.json \
   --dry-run \
   --report-format json \
@@ -80,7 +80,7 @@ This loop is the safest way to add fields and tune descriptions without re-runni
 Use this decision rule:
 
 - `No`: You are still defining fields, examples, descriptions, identifiers, or deduplication keys for one schema.
-- `Yes`: You want reusable runtime QA/QC behavior, reusable consolidation presentation, or one domain pack to cover multiple schema aliases.
+- `Yes`: You want reusable runtime QA/QC behavior, reusable compilation presentation, or one domain pack to cover multiple schema aliases.
 
 Keep authoring friction low by delaying `pack.yaml` until you actually need shared runtime behavior.
 
@@ -106,7 +106,7 @@ ERROR: Schema missing required $metadata section
       "identifier_fields": ["metadata.document_id"],
       "context_objects": ["metadata"]
     },
-    "consolidation": {
+    "compilation": {
       "deduplication": {
         "key_fields": ["item_name"],
         "ignore_fields": ["notes"]
@@ -159,7 +159,7 @@ This example shows the full metadata surface. In a pack-backed domain, some runt
       "document_type": "Utility Tariff"
     },
     
-    "consolidation": {
+    "compilation": {
       "deduplication": {
         "key_fields": ["rate_name", "charge_type", "season"],
         "ignore_fields": ["notes", "extracted_text"],
@@ -218,14 +218,14 @@ This example shows the full metadata surface. In a pack-backed domain, some runt
 |-------|---------|---------|
 | `extraction.main_data_array` | Array that becomes spreadsheet rows | `"rate_schedules"` |
 | `extraction.identifier_fields` | Fields that identify the source document | `["metadata.permit_id"]` |
-| `consolidation.deduplication.key_fields` | Fields that determine record uniqueness | `["name", "type", "date"]` |
+| `compilation.deduplication.key_fields` | Fields that determine record uniqueness | `["name", "type", "date"]` |
 
 ### Recommended Fields
 
 | Field | Purpose | Example |
 |-------|---------|---------|
 | `extraction.context_objects` | Top-level objects with metadata | `["metadata", "location"]` |
-| `consolidation.deduplication.ignore_fields` | Fields to ignore when deduplicating | `["notes", "timestamp"]` |
+| `compilation.deduplication.ignore_fields` | Fields to ignore when deduplicating | `["notes", "timestamp"]` |
 | `domain` | Category for organization | `"Environmental - Air Quality"` |
 | `version` | Schema version (semver) | `"2.1.0"` |
 
@@ -289,7 +289,7 @@ Context objects (`utility_info`) are included in every row.
 
 ### Nested Arrays: Automatic Expansion vs Summarization
 
-The consolidator automatically decides based on array characteristics:
+The compiler automatically decides based on array characteristics:
 
 #### ✅ Expands to Columns (Best for Analysis)
 
@@ -741,7 +741,7 @@ Use the same fields across all items in an array.
 ### 1. Validate Schema Structure
 
 ```bash
-pixi run psweep validate-schema schemas/your_schema.json
+pixi run psweep check-schema schemas/your_schema.json
 ```
 
 Checks for:
@@ -771,10 +771,10 @@ Check:
 
 ```bash
 # Consolidate to Excel/CSV
-pixi run psweep consolidate extracted/samples/
+pixi run psweep compile extracted/samples/
 
 # Review outputs
-open consolidated/samples/*.xlsx
+open compiled/samples/*.xlsx
 ```
 
 Verify:
