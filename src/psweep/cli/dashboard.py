@@ -40,10 +40,10 @@ def _create_live_session(
 
 
 @dataclass(frozen=True)
-class AcquisitionDashboardConfig:
-    """Presentation settings for acquisition live dashboards."""
+class DiscoveryDashboardConfig:
+    """Presentation settings for discovery live dashboards."""
 
-    header_title: str = "Acquisition In Progress"
+    header_title: str = "Discovery In Progress"
     max_recent_events: int = 6
     refresh_per_second: int = 8
     transient: bool = False
@@ -221,8 +221,8 @@ def create_live_dashboard(
     return live, dashboard
 
 
-class AcquisitionDashboard:
-    """Compact live dashboard for acquisition progress and stage telemetry."""
+class DiscoveryDashboard:
+    """Compact live dashboard for discovery progress and stage telemetry."""
 
     _SEEKER_SEARCH_RE = re.compile(
         r"^seeker\s+(\d+)/(\d+):\s+searching\s+(.+?)\s+\|\s+query=",
@@ -240,9 +240,9 @@ class AcquisitionDashboard:
         mode: str,
         total_targets: int,
         seeker_enabled: bool,
-        config: AcquisitionDashboardConfig | None = None,
+        config: DiscoveryDashboardConfig | None = None,
     ):
-        self.config = config or AcquisitionDashboardConfig()
+        self.config = config or DiscoveryDashboardConfig()
         self.domain = domain
         self.mode = mode
         self.total_targets = total_targets
@@ -269,7 +269,7 @@ class AcquisitionDashboard:
             TextColumn("[dim]{task.fields[detail]}[/dim]"),
         )
         self.task = self.progress.add_task(
-            "Acquisition",
+            "Discovery",
             total=None,
             detail="bootstrapping",
         )
@@ -288,11 +288,11 @@ class AcquisitionDashboard:
 
     def _ingest_progress_line(self, text: str) -> None:
         lowered = text.lower()
-        if lowered.startswith("run: acquisition started"):
+        if lowered.startswith("run: discovery started"):
             self.stage = "starting"
             self.progress.update(
                 self.task,
-                description="Acquisition",
+                description="Discovery",
                 detail="starting run",
             )
             return
@@ -320,7 +320,7 @@ class AcquisitionDashboard:
                 detail="fetching source documents",
             )
             return
-        if lowered.startswith("run: acquisition finished"):
+        if lowered.startswith("run: discovery finished"):
             self.stage = "completed"
             self.progress.update(
                 self.task,
@@ -407,17 +407,17 @@ class AcquisitionDashboard:
         return self.layout
 
 
-def create_acquisition_live_dashboard(
+def create_discovery_live_dashboard(
     *,
     domain: str,
     mode: str,
     total_targets: int,
     seeker_enabled: bool,
-    config: AcquisitionDashboardConfig | None = None,
-) -> tuple[Live, AcquisitionDashboard]:
-    """Create live dashboard widgets for acquire command UX."""
-    dashboard_config = config or AcquisitionDashboardConfig()
-    dashboard = AcquisitionDashboard(
+    config: DiscoveryDashboardConfig | None = None,
+) -> tuple[Live, DiscoveryDashboard]:
+    """Create live dashboard widgets for discover command UX."""
+    dashboard_config = config or DiscoveryDashboardConfig()
+    dashboard = DiscoveryDashboard(
         domain=domain,
         mode=mode,
         total_targets=total_targets,

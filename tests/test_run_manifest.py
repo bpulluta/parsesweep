@@ -72,7 +72,7 @@ def test_build_run_manifest_summarizes_failed_error_records() -> None:
                 "success": False,
                 "errors": [
                     {
-                        "stage": "process",
+                        "stage": "extract",
                         "category": "document_processing",
                         "code": "document_extraction_failed",
                         "message": "Failed to extract from PDF",

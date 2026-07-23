@@ -9,7 +9,7 @@ You are auditing and cleaning **$1** in ParseSweep so it becomes universal,
 clean, modular, configurable, optimized, and scalable across many domains — with
 **no hardcoding of domain-specific logic, no redundancy, and no dead/legacy code**.
 
-This is the same methodology already applied to the `acquire` module. Read the
+This is the same methodology already applied to the `discover` module. Read the
 worked example first so you match its bar and output style:
 `docs/pipeline_audit/acquire_audit_summary.md`.
 

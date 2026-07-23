@@ -3,12 +3,13 @@ Utility CLI commands for ParseSweep.
 
 This module contains helper and setup commands:
 - init: Interactive project setup wizard
-- preview: Preview document before processing
-- estimate: Estimate cost and time for batch processing
-- validate_schema: Validate JSON schema files
+- preview: Preview document before extraction
+- estimate: Estimate cost and time for batch extraction
+- check-schema: Check JSON schema files
+- check-runtime: Check runtime onboarding readiness
 - config: Show current configuration
 
-For core workflow commands (process, consolidate), see commands.py
+For core workflow commands (extract, compile), see commands.py
 """
 
 import json
@@ -21,39 +22,39 @@ import click
 from dotenv import load_dotenv
 import yaml
 
-from psweep.core import (
-    ArtifactCompilerError,
-    build_runtime_readiness_report,
-)
 from psweep.config import VARIABLE_CATALOG
 from psweep.utils.config import get_config
 from psweep.utils.schema_metadata import SchemaMetadata
 from psweep.extraction import load_schema
 from psweep.extraction.document_utils import (
+    SUPPORTED_EXTENSIONS,
     extract_text_from_document,
     is_supported_document,
-    SUPPORTED_EXTENSIONS,
 )
-from psweep.utils.model_pricing import get_model_pricing
 from psweep.cli.ui import (
-    console,
-    print_header,
-    print_error,
-    print_success,
-    print_info,
-    print_warning,
-    print_cost_estimate,
-    print_next_steps,
-    print_outputs,
     ask_choice,
     ask_confirm,
     ask_text,
+    console,
     create_file_tree,
     key_values,
-    section,
+    print_cost_estimate,
+    print_error,
+    print_header,
+    print_info,
+    print_next_steps,
+    print_success,
+    print_warning,
     rule,
+    section,
     status_item,
 )
+from psweep.utils.model_pricing import get_model_pricing
+from psweep.utils.page_range import load_pages_csv
+
+
+class ConfigValidationError(ValueError):
+    """Config or schema validation error."""
 
 
 def _cli_repo_root() -> Path:
@@ -72,15 +73,6 @@ def _infer_document_type_from_schema(schema_path: Path) -> str:
     return schema_path.stem.replace("_", " ").title()
 
 
-def _normalize_pack_schema_path(schema_path: Path, repo_root: Path) -> str:
-    try:
-        return (
-            schema_path.resolve().relative_to(repo_root.resolve()).as_posix()
-        )
-    except ValueError:
-        return schema_path.resolve().as_posix()
-
-
 def _display_cli_path(path: Path, repo_root: Path) -> str:
     try:
         return path.resolve().relative_to(repo_root.resolve()).as_posix()
@@ -97,39 +89,6 @@ def _display_cli_reference(reference: str, repo_root: Path) -> str:
 
 def _humanize_domain_name(name: str) -> str:
     return name.replace("_", " ").replace("-", " ").strip().title()
-
-
-def _default_pack_modules() -> list[dict[str, Any]]:
-    return [
-        {
-            "module_id": "value_semantics_classifier",
-            "name": "Value Semantics Classifier",
-            "version": "1.0.0",
-            "kind": "classifier",
-            "enabled": True,
-        },
-        {
-            "module_id": "eligibility_policy_engine",
-            "name": "Eligibility Policy Engine",
-            "version": "1.0.0",
-            "kind": "policy",
-            "enabled": True,
-        },
-        {
-            "module_id": "lane_projector",
-            "name": "Lane Projector",
-            "version": "1.0.0",
-            "kind": "projector",
-            "enabled": True,
-        },
-        {
-            "module_id": "consolidation_mapper",
-            "name": "Consolidation Mapper",
-            "version": "1.0.0",
-            "kind": "mapper",
-            "enabled": True,
-        },
-    ]
 
 
 def _schema_type_options(schema_node: Dict[str, Any]) -> set[str]:
@@ -325,16 +284,16 @@ def _build_qaqc_scaffold(
     }
 
 
-def _build_consolidation_scaffold(
+def _build_compilation_scaffold(
     schema_metadata: SchemaMetadata,
 ) -> Dict[str, Any]:
-    consolidation_metadata = (
-        schema_metadata.metadata.get("consolidation") or {}
+    compilation_metadata = (
+        schema_metadata.metadata.get("compilation") or {}
     )
-    deduplication_metadata = consolidation_metadata.get("deduplication") or {}
-    output_metadata = consolidation_metadata.get("output") or {}
+    deduplication_metadata = compilation_metadata.get("deduplication") or {}
+    output_metadata = compilation_metadata.get("output") or {}
 
-    consolidation: Dict[str, Any] = {
+    compilation: Dict[str, Any] = {
         "deduplication": {
             "key_fields": schema_metadata.get_deduplication_key_fields(),
             "ignore_fields": schema_metadata.get_deduplication_ignore_fields(),
@@ -343,7 +302,7 @@ def _build_consolidation_scaffold(
 
     for field_name in ("strategy", "comparison_mode"):
         if field_name in deduplication_metadata:
-            consolidation["deduplication"][field_name] = deepcopy(
+            compilation["deduplication"][field_name] = deepcopy(
                 deduplication_metadata[field_name]
             )
 
@@ -357,37 +316,9 @@ def _build_consolidation_scaffold(
             output[field_name] = deepcopy(output_metadata[field_name])
 
     if output:
-        consolidation["output"] = output
+        compilation["output"] = output
 
-    return consolidation
-
-
-def _default_profile_template(profile_name: str) -> Dict[str, Any]:
-    profile = {
-        "profile_id": profile_name,
-        "environment": profile_name,
-        "runtime": {
-            "emit_lineage": True,
-            "emit_run_manifests": True,
-            "strict_contracts": True,
-        },
-        "llm": {
-            "provider_strategy": "auto",
-        },
-    }
-
-    if profile_name == "dev":
-        profile["runtime"]["debug_logging"] = True
-
-    return profile
-
-
-def _profile_tier_names() -> list[str]:
-    return ["dev", "staging", "prod"]
-
-
-def _profile_filename(profile_name: str) -> str:
-    return f"{profile_name}.profile.json"
+    return compilation
 
 
 def _prune_schema_for_starter(node: Any) -> Any:
@@ -408,13 +339,13 @@ def _main_array_item_schema(schema_data: Dict[str, Any]) -> Dict[str, Any]:
     extraction = metadata.get("extraction") or {}
     main_data_array = extraction.get("main_data_array")
     if not isinstance(main_data_array, str) or not main_data_array:
-        raise ArtifactCompilerError(
+        raise ConfigValidationError(
             "Reference schema is missing $metadata.extraction.main_data_array"
         )
 
     main_array_schema = _schema_properties(schema_data).get(main_data_array)
     if not isinstance(main_array_schema, dict):
-        raise ArtifactCompilerError(
+        raise ConfigValidationError(
             f"Reference schema is missing properties.{main_data_array}"
         )
 
@@ -422,7 +353,7 @@ def _main_array_item_schema(schema_data: Dict[str, Any]) -> Dict[str, Any]:
     if not isinstance(
         item_schema, dict
     ) or "object" not in _schema_type_options(item_schema):
-        raise ArtifactCompilerError(
+        raise ConfigValidationError(
             f"Reference schema properties.{main_data_array}.items must be an object schema"
         )
     return item_schema
@@ -441,7 +372,7 @@ def _apply_main_array_field_selection(
     item_schema = _main_array_item_schema(schema_data)
     item_properties = _schema_properties(item_schema)
     if not selected_fields:
-        raise ArtifactCompilerError(
+        raise ConfigValidationError(
             "Starter schema field selection cannot be empty"
         )
 
@@ -451,7 +382,7 @@ def _apply_main_array_field_selection(
         if field_name not in item_properties
     ]
     if unknown_fields:
-        raise ArtifactCompilerError(
+        raise ConfigValidationError(
             "Unknown starter fields requested: " + ", ".join(unknown_fields)
         )
 
@@ -473,8 +404,8 @@ def _apply_main_array_field_selection(
             item_schema.pop("required", None)
 
     metadata = schema_data.get("$metadata") or {}
-    consolidation = metadata.get("consolidation") or {}
-    deduplication = consolidation.get("deduplication") or {}
+    compilation = metadata.get("compilation") or {}
+    deduplication = compilation.get("deduplication") or {}
     if deduplication:
         key_fields = [
             field_name
@@ -498,9 +429,9 @@ def _apply_main_array_field_selection(
             deduplication.pop("ignore_fields", None)
 
         if not deduplication:
-            consolidation.pop("deduplication", None)
-        if not consolidation:
-            metadata.pop("consolidation", None)
+            compilation.pop("deduplication", None)
+        if not compilation:
+            metadata.pop("compilation", None)
 
     return schema_data
 
@@ -520,9 +451,9 @@ def _build_schema_starter_from_reference(
 
     reference_metadata = reference_schema.get("$metadata") or {}
     reference_extraction = reference_metadata.get("extraction") or {}
-    reference_consolidation = reference_metadata.get("consolidation") or {}
+    reference_compilation = reference_metadata.get("compilation") or {}
     reference_deduplication = (
-        reference_consolidation.get("deduplication") or {}
+        reference_compilation.get("deduplication") or {}
     )
     inferred_label = _humanize_domain_name(schema_name)
 
@@ -563,7 +494,7 @@ def _build_schema_starter_from_reference(
             reference_deduplication["ignore_fields"]
         )
     if deduplication:
-        starter_metadata["consolidation"] = {"deduplication": deduplication}
+        starter_metadata["compilation"] = {"deduplication": deduplication}
 
     starter_schema["$metadata"] = starter_metadata
     starter_schema["title"] = f"{resolved_document_type} Starter Schema"
@@ -584,7 +515,7 @@ def _write_schema_starter(
     schema_path: Path, schema_data: Dict[str, Any], force: bool
 ) -> None:
     if schema_path.exists() and not force:
-        raise ArtifactCompilerError(
+        raise ConfigValidationError(
             f"Schema already exists: {schema_path.as_posix()}"
         )
 
@@ -664,7 +595,7 @@ def init_domain_schema_cmd(
 
     try:
         if interactive and report_format == "json":
-            raise ArtifactCompilerError(
+            raise ConfigValidationError(
                 "--interactive only supports text output; omit --report-format json"
             )
 
@@ -690,11 +621,11 @@ def init_domain_schema_cmd(
                 domain_name = ask_text("Domain label")
 
         if not schema_name:
-            raise ArtifactCompilerError(
+            raise ConfigValidationError(
                 "init-domain-schema requires --name unless --interactive is used"
             )
         if not reference_schema:
-            raise ArtifactCompilerError(
+            raise ConfigValidationError(
                 "init-domain-schema requires --reference-schema unless --interactive is used"
             )
 
@@ -739,7 +670,7 @@ def init_domain_schema_cmd(
             "next_steps": [
                 {
                     "title": "Validate starter schema",
-                    "command": f"pixi run psweep validate-schema {_display_cli_path(output_path, repo_root)}",
+                    "command": f"pixi run psweep check-schema {_display_cli_path(output_path, repo_root)}",
                 },
                 {
                     "title": "Scaffold runtime pack and config",
@@ -783,7 +714,7 @@ def init_domain_schema_cmd(
             ]
         )
         console.print()
-    except ArtifactCompilerError as exc:
+    except ConfigValidationError as exc:
         error_report = {
             "status": "error",
             "error": {
@@ -804,56 +735,6 @@ def init_domain_schema_cmd(
         raise click.exceptions.Exit(1)
 
 
-def _build_pack_scaffold(
-    pack_name: str, schema_path: Path, document_type: str, repo_root: Path
-) -> Dict[str, Any]:
-    schema_metadata = SchemaMetadata(schema_path)
-    pack_scaffold = {
-        "name": pack_name,
-        "version": "1.0.0",
-        "schema_path": _normalize_pack_schema_path(schema_path, repo_root),
-        "document_type": document_type,
-        "consolidation": _build_consolidation_scaffold(schema_metadata),
-        "modules": _default_pack_modules(),
-    }
-
-    qaqc_scaffold = _build_qaqc_scaffold(schema_metadata)
-    if qaqc_scaffold is not None:
-        pack_scaffold["qaqc"] = qaqc_scaffold
-
-    return pack_scaffold
-
-
-def _write_pack_scaffold(
-    pack_path: Path, pack_data: Dict[str, Any], force: bool
-) -> None:
-    if pack_path.exists() and not force:
-        raise ArtifactCompilerError(
-            f"Domain pack already exists: {pack_path.as_posix()}"
-        )
-
-    pack_path.parent.mkdir(parents=True, exist_ok=True)
-    pack_path.write_text(
-        yaml.safe_dump(pack_data, sort_keys=False, allow_unicode=False),
-        encoding="utf-8",
-    )
-
-
-def _write_profile_scaffold(
-    profile_path: Path, profile_data: Dict[str, Any], force: bool
-) -> None:
-    if profile_path.exists() and not force:
-        raise ArtifactCompilerError(
-            f"Profile already exists: {profile_path.as_posix()}"
-        )
-
-    profile_path.parent.mkdir(parents=True, exist_ok=True)
-    profile_path.write_text(
-        json.dumps(profile_data, indent=2) + "\n",
-        encoding="utf-8",
-    )
-
-
 def _workspace_category_name(pack_name: str) -> str:
     return pack_name
 
@@ -862,7 +743,7 @@ def _create_workspace_skeleton(
     repo_root: Path, category_name: str
 ) -> list[str]:
     created_paths: list[str] = []
-    for root_name in ("documents", "processed", "consolidated"):
+    for root_name in ("documents", "extracted", "compiled"):
         path = repo_root / root_name / category_name
         path.mkdir(parents=True, exist_ok=True)
         created_paths.append(path.as_posix())
@@ -890,7 +771,7 @@ def _sample_assets_readme_content(
         )
         workflow_lines.append(
             "4. Run: "
-            + _build_scaffold_process_command(
+            + _build_scaffold_extract_command(
                 documents_ref=f"documents/{category_name}",
                 schema_ref=schema_ref,
                 page_ranges_ref=page_ranges_ref,
@@ -901,7 +782,7 @@ def _sample_assets_readme_content(
     else:
         workflow_lines.append(
             "3. Run: "
-            + _build_scaffold_process_command(
+            + _build_scaffold_extract_command(
                 documents_ref=f"documents/{category_name}",
                 schema_ref=schema_ref,
                 document_type=document_type,
@@ -924,7 +805,7 @@ def _sample_assets_readme_content(
 def _sample_manifest_csv_content(document_type: str) -> str:
     return (
         "file_name,notes\n"
-        f"{_suggest_page_ranges_filename(document_type)},Replace with a real source document before processing\n"
+        f"{_suggest_page_ranges_filename(document_type)},Replace with a real source document before extraction\n"
     )
 
 
@@ -990,14 +871,14 @@ def _suggest_page_ranges_filename(document_type: str) -> str:
     return "example_document.pdf"
 
 
-def _recommended_process_flags(document_type: str) -> list[str]:
+def _recommended_extract_flags(document_type: str) -> list[str]:
     normalized = document_type.strip().lower()
     if "tariff" in normalized or "rate" in normalized:
         return ["--max-context 1400000"]
     return []
 
 
-def _build_scaffold_process_command(
+def _build_scaffold_extract_command(
     *,
     documents_ref: str,
     schema_ref: str,
@@ -1009,14 +890,14 @@ def _build_scaffold_process_command(
     qaqc_lane: Optional[str] = None,
 ) -> str:
     command_parts = [
-        "pixi run psweep process",
+        "pixi run psweep extract",
         f"{documents_ref}/",
         f"--schema {schema_ref}",
     ]
     if profile_ref:
         command_parts.append(f"--profile {profile_ref}")
     if template_mode == "recommended":
-        command_parts.extend(_recommended_process_flags(document_type))
+        command_parts.extend(_recommended_extract_flags(document_type))
     if page_ranges_ref:
         command_parts.append(f"--pages-csv {page_ranges_ref}")
     if enable_qaqc:
@@ -1044,22 +925,22 @@ def _config_readme_content(
         "2. Update page_ranges.csv if extraction should target a subset of pages",
         (
             '3. Run: '
-            f'{_build_scaffold_process_command(documents_ref=f"documents/{category_name}", schema_ref=schema_ref, page_ranges_ref=page_ranges_ref, document_type=document_type, template_mode=template_mode)}'
+            f'{_build_scaffold_extract_command(documents_ref=f"documents/{category_name}", schema_ref=schema_ref, page_ranges_ref=page_ranges_ref, document_type=document_type, template_mode=template_mode)}'
         ),
         (
-            f"4. Run: pixi run psweep consolidate processed/{category_name} "
+            f"4. Run: pixi run psweep compile extracted/{category_name} "
             f"--schema {schema_ref}"
         ),
         (
-            f"5. Optional config-based workflow: pixi run psweep process --config {run_config_ref} "
+            f"5. Optional config-based workflow: pixi run psweep extract --config {run_config_ref} "
             f"--pages-csv {page_ranges_ref}"
         ),
         (
-            f"6. Optional config-based consolidation: pixi run psweep consolidate --config {run_config_ref}"
+            f"6. Optional config-based compilation: pixi run psweep compile --config {run_config_ref}"
         ),
     ]
 
-    recommended_flags = _recommended_process_flags(document_type)
+    recommended_flags = _recommended_extract_flags(document_type)
     if template_mode == "recommended" and recommended_flags:
         workflow_lines.extend(
             [
@@ -1076,14 +957,14 @@ def _config_readme_content(
                 "Optional QA/QC workflow:",
                 (
                     '1. Run: '
-                    f'{_build_scaffold_process_command(documents_ref=f"documents/{category_name}", schema_ref=schema_ref, page_ranges_ref=page_ranges_ref, document_type=document_type, template_mode=template_mode, enable_qaqc=True)}'
+                    f'{_build_scaffold_extract_command(documents_ref=f"documents/{category_name}", schema_ref=schema_ref, page_ranges_ref=page_ranges_ref, document_type=document_type, template_mode=template_mode, enable_qaqc=True)}'
                 ),
                 (
-                    f"2. Run: pixi run psweep compare processed/{category_name}/qa_qc "
+                    f"2. Run: pixi run psweep compare extracted/{category_name}/qa_qc "
                     f"--schema {schema_ref}"
                 ),
                 (
-                    f"3. Optional qualitative review: pixi run psweep compare processed/{category_name}/qa_qc "
+                    f"3. Optional qualitative review: pixi run psweep compare extracted/{category_name}/qa_qc "
                     f"--schema {schema_ref} --qaqc-lane qualitative"
                 ),
             ]
@@ -1095,8 +976,8 @@ def _config_readme_content(
         f"Domain: {domain_name}\n\n"
         "This directory contains configuration files for the domain onboarding scaffold.\n\n"
         "Files:\n"
-        "- page_ranges.csv: Optional page-range overrides for document processing\n"
-        "- run.yaml: Starter runtime config for acquire/process/consolidate commands\n\n"
+        "- page_ranges.csv: Optional page-range overrides for document extraction\n"
+        "- run.yaml: Starter runtime config for discover/extract/compile commands\n\n"
         + "\n".join(workflow_lines)
         + "\n"
     )
@@ -1109,15 +990,15 @@ def _config_run_yaml_content(
 ) -> str:
     run_config = {
         "domain": category_name,
-        "processing": {
+        "extraction": {
             "input_dir": f"documents/{category_name}",
             "schema": schema_ref,
-            "output_dir": f"processed/{category_name}",
+            "output_dir": f"extracted/{category_name}",
         },
-        "consolidation": {
-            "input_dir": f"processed/{category_name}",
+        "compilation": {
+            "input_dir": f"extracted/{category_name}",
             "schema": schema_ref,
-            "output_dir": f"consolidated/{category_name}",
+            "output_dir": f"compiled/{category_name}",
         },
     }
     return yaml.safe_dump(run_config, sort_keys=False, allow_unicode=False)
@@ -1144,7 +1025,7 @@ def _page_ranges_csv_content(
 
 def _write_text_file(path: Path, content: str, force: bool) -> None:
     if path.exists() and not force:
-        raise ArtifactCompilerError(
+        raise ConfigValidationError(
             f"Scaffold file already exists: {path.as_posix()}"
         )
 
@@ -1229,13 +1110,13 @@ def _build_onboarding_next_steps(
         repo_root / "documents" / category_name, repo_root
     )
     processed_dir = _display_cli_path(
-        repo_root / "processed" / category_name, repo_root
+        repo_root / "extracted" / category_name, repo_root
     )
     page_ranges_path = _display_cli_path(
         config_root / category_name / "page_ranges.csv", repo_root
     )
 
-    process_command = _build_scaffold_process_command(
+    extract_command = _build_scaffold_extract_command(
         documents_ref=documents_dir,
         schema_ref=schema_ref,
         profile_ref=profile_display,
@@ -1251,18 +1132,18 @@ def _build_onboarding_next_steps(
         {
             "title": "Validate runtime seam",
             "command": (
-                "pixi run psweep validate-runtime "
+                "pixi run psweep check-runtime "
                 f"--pack {pack_ref} --profile {profile_display}"
             ),
         },
         {
-            "title": "Process documents",
-            "command": process_command,
+            "title": "Extract documents",
+            "command": extract_command,
         },
         {
-            "title": "Consolidate extracted records",
+            "title": "Compile extracted records",
             "command": (
-                "pixi run psweep consolidate "
+                "pixi run psweep compile "
                 f"{processed_dir} --schema {schema_ref}"
             ),
         },
@@ -1285,7 +1166,7 @@ def _build_onboarding_next_steps(
             [
                 {
                     "title": "Optional multi-model QA/QC run",
-                    "command": _build_scaffold_process_command(
+                    "command": _build_scaffold_extract_command(
                         documents_ref=documents_dir,
                         schema_ref=schema_ref,
                         profile_ref=profile_display,
@@ -1315,207 +1196,6 @@ def _build_onboarding_next_steps(
         )
 
     return next_steps
-
-
-def _resolve_scaffold_root_input(root_value: str, repo_root: Path) -> str:
-    candidate = Path(root_value)
-    if candidate.is_absolute():
-        return candidate.as_posix()
-    return (repo_root / candidate).resolve().as_posix()
-
-
-def _collect_existing_scaffold_targets(
-    *,
-    pack_path: Path,
-    create_profile: bool,
-    profile_tiering: bool,
-    profile_name: str,
-    profiles_root: Path,
-    create_config: bool,
-    create_sample_assets: bool,
-    config_root: Path,
-    category_name: str,
-) -> list[Path]:
-    existing_paths: list[Path] = []
-
-    if pack_path.exists():
-        existing_paths.append(pack_path)
-
-    if create_profile:
-        profile_path = profiles_root / _profile_filename(profile_name)
-        if profile_path.exists():
-            existing_paths.append(profile_path)
-    elif profile_tiering:
-        for tier_name in _profile_tier_names():
-            profile_path = profiles_root / _profile_filename(tier_name)
-            if profile_path.exists():
-                existing_paths.append(profile_path)
-
-    if create_config:
-        category_root = config_root / category_name
-        for scaffold_path in (
-            category_root / "README.md",
-            category_root / "page_ranges.csv",
-            category_root / "run.yaml",
-        ):
-            if scaffold_path.exists():
-                existing_paths.append(scaffold_path)
-
-    if create_sample_assets:
-        category_root = _cli_repo_root() / "documents" / category_name
-        for scaffold_path in (
-            category_root / "README.md",
-            category_root / "sample_manifest.csv",
-        ):
-            if scaffold_path.exists():
-                existing_paths.append(scaffold_path)
-
-    return existing_paths
-
-
-def _confirm_interactive_overwrite(existing_paths: list[Path]) -> bool:
-    section("Existing scaffold targets detected")
-    for path in existing_paths:
-        status_item("warning", path.as_posix())
-    console.print()
-    return ask_confirm("Overwrite existing scaffold files?", default=False)
-
-
-def _resolve_init_domain_pack_inputs(
-    *,
-    repo_root: Path,
-    interactive: bool,
-    pack_name: Optional[str],
-    schema_path: Optional[str],
-    document_type: Optional[str],
-    profile_ref: str,
-    create_profile: bool,
-    profile_tiering: bool,
-    profile_name: str,
-    output_root: Optional[str],
-    profiles_root: Optional[str],
-    create_workspace: bool,
-    create_config: bool,
-    create_sample_assets: bool,
-    config_root: Optional[str],
-    template_mode: Optional[str],
-    report_format: str,
-) -> dict[str, Any]:
-    if interactive and report_format == "json":
-        raise ArtifactCompilerError(
-            "--interactive only supports text output; omit --report-format json"
-        )
-
-    if interactive:
-        section("Interactive Domain Pack Setup")
-        console.print(
-            "Answer the prompts to scaffold a new runtime-ready domain pack.\n"
-        )
-
-    if interactive and not pack_name:
-        pack_name = ask_text("Pack name")
-    if interactive and not schema_path:
-        schema_path = ask_text("Schema path")
-
-    if not pack_name:
-        raise ArtifactCompilerError(
-            "init-domain-pack requires --name unless --interactive is used"
-        )
-    if not schema_path:
-        raise ArtifactCompilerError(
-            "init-domain-pack requires --schema unless --interactive is used"
-        )
-
-    if interactive and document_type is None:
-        if ask_confirm("Override the schema document type?", default=False):
-            document_type = ask_text("Document type")
-
-    if interactive and not create_profile and not profile_tiering:
-        profile_mode = ask_choice(
-            "Profile scaffold mode",
-            choices=["none", "single", "tiered"],
-            default="none",
-        ).lower()
-        create_profile = profile_mode == "single"
-        profile_tiering = profile_mode == "tiered"
-
-    if interactive and create_profile and profile_name == "default":
-        profile_name = ask_text("Profile name", default="default")
-
-    if interactive and profile_tiering and profile_ref == "default":
-        profile_ref = ask_choice(
-            "Validation profile tier",
-            choices=_profile_tier_names(),
-            default="dev",
-        ).lower()
-
-    if interactive and not create_workspace:
-        create_workspace = ask_confirm(
-            "Create workspace folders under documents/ processed/ and consolidated/?",
-            default=False,
-        )
-
-    if interactive and not create_config:
-        create_config = ask_confirm(
-            "Create config/<domain>/ starter files?", default=True
-        )
-
-    if interactive and not create_sample_assets:
-        create_sample_assets = ask_confirm(
-            "Create placeholder sample source-document assets under documents/<domain>/?",
-            default=False,
-        )
-
-    if interactive and template_mode is None:
-        template_mode = ask_choice(
-            "Template mode",
-            choices=["recommended", "minimal"],
-            default="minimal",
-        ).lower()
-
-    template_mode = template_mode or "minimal"
-
-    if interactive and output_root is None:
-        output_root = _resolve_scaffold_root_input(
-            ask_text(
-                "Pack output root",
-                default="schemas/domain_packs",
-            ),
-            repo_root,
-        )
-
-    if (
-        interactive
-        and profiles_root is None
-        and (create_profile or profile_tiering)
-    ):
-        profiles_root = _resolve_scaffold_root_input(
-            ask_text("Profiles root", default="schemas/profiles"),
-            repo_root,
-        )
-
-    if interactive and config_root is None and create_config:
-        config_root = _resolve_scaffold_root_input(
-            ask_text("Config root", default="config"),
-            repo_root,
-        )
-
-    return {
-        "pack_name": pack_name,
-        "schema_path": schema_path,
-        "document_type": document_type,
-        "profile_ref": profile_ref,
-        "create_profile": create_profile,
-        "profile_tiering": profile_tiering,
-        "profile_name": profile_name,
-        "output_root": output_root,
-        "profiles_root": profiles_root,
-        "create_workspace": create_workspace,
-        "create_config": create_config,
-        "create_sample_assets": create_sample_assets,
-        "config_root": config_root,
-        "template_mode": template_mode,
-    }
 
 
 @click.command()
@@ -1599,12 +1279,12 @@ def init():
 
     project_root = Path.cwd()
     docs_dir = project_root / "documents" / doc_type
-    processed_dir = project_root / "processed" / doc_type
-    consolidated_dir = project_root / "consolidated" / doc_type
+    processed_dir = project_root / "extracted" / doc_type
+    compiled_dir = project_root / "compiled" / doc_type
 
     docs_dir.mkdir(parents=True, exist_ok=True)
     processed_dir.mkdir(parents=True, exist_ok=True)
-    consolidated_dir.mkdir(parents=True, exist_ok=True)
+    compiled_dir.mkdir(parents=True, exist_ok=True)
 
     print_success("Created directory structure:")
     console.print(
@@ -1643,8 +1323,8 @@ def init():
     print_next_steps(
         [
             f"Add your documents to: {docs_dir}",
-            f"Run extraction: psweep process {docs_dir}",
-            f"Consolidate results: psweep consolidate {processed_dir}",
+            f"Run extraction: psweep extract {docs_dir}",
+            f"Compile results: psweep compile {processed_dir}",
         ]
     )
     console.print()
@@ -1771,7 +1451,7 @@ def preview(document_path: str):
 
         section("Ready to Extract")
         console.print(
-            f"Run: psweep process {doc_path} --schema schemas/example_utility_rate_schema.json\n"
+            f"Run: psweep extract {doc_path} --schema schemas/example_utility_rate_schema.json\n"
         )
 
     except Exception as e:
@@ -1943,25 +1623,25 @@ def estimate(documents_path: str, workers: int, pages_csv: str):
     console.print()
     if ask_confirm("Proceed with extraction?", default=False):
         console.print(
-            f"\nRun: psweep process {docs_path} --schema schemas/example_utility_rate_schema.json\n"
+            f"\nRun: psweep extract {docs_path} --schema schemas/example_utility_rate_schema.json\n"
         )
     else:
         print_info("Operation cancelled")
 
 
-@click.command("validate-schema")
+@click.command("check-schema")
 @click.argument("schema_path", type=click.Path(exists=True))
-def validate_schema_cmd(schema_path: str):
+def check_schema_cmd(schema_path: str):
     """
-    Validate a JSON schema file.
+    Check a JSON schema file.
 
     Checks schema syntax, structure, and ParseSweep-specific
     metadata requirements.
 
     \b
     EXAMPLES:
-        psweep validate-schema schemas/my_schema.json
-        psweep validate-schema schemas/example_utility_rate_schema.json
+        psweep check-schema schemas/my_schema.json
+        psweep check-schema schemas/example_utility_rate_schema.json
     """
     schema_file = Path(schema_path)
 
@@ -2006,14 +1686,14 @@ def validate_schema_cmd(schema_path: str):
             if isinstance(metadata.get("extraction"), dict)
             else {}
         )
-        consolidation_metadata = (
-            metadata.get("consolidation")
-            if isinstance(metadata.get("consolidation"), dict)
+        compilation_metadata = (
+            metadata.get("compilation")
+            if isinstance(metadata.get("compilation"), dict)
             else {}
         )
         deduplication_metadata = (
-            consolidation_metadata.get("deduplication")
-            if isinstance(consolidation_metadata.get("deduplication"), dict)
+            compilation_metadata.get("deduplication")
+            if isinstance(compilation_metadata.get("deduplication"), dict)
             else {}
         )
         print_success("Has $metadata section")
@@ -2070,569 +1750,6 @@ def validate_schema_cmd(schema_path: str):
         print_success("Schema is valid but could be improved!")
     else:
         print_success("Schema is perfect!")
-
-    console.print()
-
-
-@click.command("validate-runtime")
-@click.option(
-    "--schema",
-    "schema_path",
-    type=click.Path(exists=True),
-    help="Schema path to validate through runtime pack resolution",
-)
-@click.option(
-    "--pack",
-    "pack_ref",
-    help="Pack name or pack.yaml path to validate directly",
-)
-@click.option(
-    "--profile",
-    "profile_ref",
-    default="default",
-    show_default=True,
-    help="Runtime profile name or profile path to validate",
-)
-@click.option(
-    "--report-format",
-    type=click.Choice(["text", "json"]),
-    default="text",
-    show_default=True,
-    help="Output format for the readiness report",
-)
-def validate_runtime_cmd(
-    schema_path: Optional[str],
-    pack_ref: Optional[str],
-    profile_ref: str,
-    report_format: str,
-):
-    """
-    Validate runtime onboarding readiness for a schema or pack.
-
-    This command resolves the canonical runtime artifact seam used by the
-    modernized pipeline and reports whether the selected input is ready for
-    profile-backed execution.
-
-    \b
-    EXAMPLES:
-        psweep validate-runtime --schema schemas/personal/electricity_tariff_schema.json
-        psweep validate-runtime --pack tariffs --profile prod
-        psweep validate-runtime --pack schemas/domain_packs/tariffs/pack.yaml --report-format json
-    """
-    try:
-        report = build_runtime_readiness_report(
-            schema_path=Path(schema_path) if schema_path else None,
-            pack_ref=pack_ref,
-            profile_ref=profile_ref,
-        )
-    except ArtifactCompilerError as exc:
-        error_report = {
-            "status": "error",
-            "target": {
-                "schema_path": schema_path,
-                "pack_ref": pack_ref,
-                "profile_ref": profile_ref,
-            },
-            "error": {
-                "category": "runtime_validation",
-                "message": str(exc),
-            },
-        }
-        if report_format == "json":
-            click.echo(json.dumps(error_report, indent=2))
-        else:
-            print_header("Runtime Validation")
-            print_error("Runtime onboarding validation failed", str(exc))
-        raise click.exceptions.Exit(1)
-
-    if report_format == "json":
-        click.echo(json.dumps(report, indent=2))
-        return
-
-    print_header("Runtime Validation")
-    print_success("Runtime onboarding seam is ready")
-    summary = key_values(
-        {
-            "Pack": report["resolved"]["pack_name"],
-            "Profile": report["resolved"]["profile_name"],
-            "Artifact": report["resolved"]["artifact_id"].rsplit("/", 1)[-1],
-            "Schema Path": report["resolved"]["schema_path"],
-            "Schema File": report["resolved"]["schema_file_path"],
-            "Main Data Array": report["resolved"]["main_data_array"],
-            "Identifier Fields": ", ".join(
-                report["resolved"]["identifier_fields"]
-            ),
-            "Pack Path": report["resolved"]["pack_path"],
-            "Profile Path": report["resolved"]["profile_path"],
-            "Enabled Modules": ", ".join(
-                report["resolved"]["enabled_module_ids"]
-            ),
-        }
-    )
-    console.print(summary)
-
-    section("Checks")
-    for check in report["checks"]:
-        passed = check["status"] == "pass"
-        status_item(
-            "success" if passed else "warning",
-            f"{check['name']}: {check['detail']}",
-        )
-
-    console.print()
-
-
-@click.command("init-domain-pack")
-@click.option(
-    "--interactive",
-    is_flag=True,
-    help="Prompt for missing values and onboarding scaffold choices",
-)
-@click.option(
-    "--name",
-    "pack_name",
-    help="Pack name to create under schemas/domain_packs/",
-)
-@click.option(
-    "--schema",
-    "schema_path",
-    type=click.Path(exists=True),
-    help="Existing schema file the new pack should target",
-)
-@click.option(
-    "--document-type",
-    help="Optional human-readable document type; defaults to schema metadata document_type",
-)
-@click.option(
-    "--profile",
-    "profile_ref",
-    default="default",
-    show_default=True,
-    help="Runtime profile to validate after scaffolding",
-)
-@click.option(
-    "--with-profile",
-    "create_profile",
-    is_flag=True,
-    help="Also scaffold a profile JSON and validate against the created profile path",
-)
-@click.option(
-    "--profile-tiering",
-    is_flag=True,
-    help="Scaffold the standard dev/staging/prod profile set and validate against one generated tier",
-)
-@click.option(
-    "--profile-name",
-    default="default",
-    show_default=True,
-    help="Profile name to create when --with-profile is used",
-)
-@click.option(
-    "--output-root",
-    type=click.Path(file_okay=False, dir_okay=True),
-    help="Optional directory for writing the pack scaffold (defaults to schemas/domain_packs)",
-)
-@click.option(
-    "--profiles-root",
-    type=click.Path(file_okay=False, dir_okay=True),
-    help="Optional directory for writing scaffolded profiles (defaults to schemas/profiles)",
-)
-@click.option(
-    "--with-workspace",
-    "create_workspace",
-    is_flag=True,
-    help="Also scaffold matching documents/processed/consolidated folders for the new domain",
-)
-@click.option(
-    "--with-config",
-    "create_config",
-    is_flag=True,
-    help="Also scaffold config/<domain>/ starter files for the new domain",
-)
-@click.option(
-    "--with-sample-assets",
-    "create_sample_assets",
-    is_flag=True,
-    help="Also scaffold placeholder source-document assets under documents/<domain>/",
-)
-@click.option(
-    "--config-root",
-    type=click.Path(file_okay=False, dir_okay=True),
-    help="Optional directory for writing scaffolded config files (defaults to config/)",
-)
-@click.option(
-    "--template-mode",
-    type=click.Choice(["recommended", "minimal"]),
-    help="Starter guidance level for scaffolded docs and next-step output",
-)
-@click.option(
-    "--force",
-    is_flag=True,
-    help="Overwrite an existing pack.yaml if it already exists",
-)
-@click.option(
-    "--report-format",
-    type=click.Choice(["text", "json"]),
-    default="text",
-    show_default=True,
-    help="Output format for scaffold and validation results",
-)
-def init_domain_pack_cmd(
-    interactive: bool,
-    pack_name: str,
-    schema_path: str,
-    document_type: Optional[str],
-    profile_ref: str,
-    create_profile: bool,
-    profile_tiering: bool,
-    profile_name: str,
-    output_root: Optional[str],
-    profiles_root: Optional[str],
-    create_workspace: bool,
-    create_config: bool,
-    create_sample_assets: bool,
-    config_root: Optional[str],
-    template_mode: Optional[str],
-    force: bool,
-    report_format: str,
-):
-    """
-    Create a starter domain pack and immediately validate it.
-
-    This command is a minimal onboarding scaffold for the modernization runtime.
-    It writes a starter `pack.yaml` with the default module set, then runs the
-    same runtime validation path used by `validate-runtime`.
-
-    \b
-    EXAMPLES:
-        psweep init-domain-pack --name my_domain --schema schemas/my_schema.json
-        psweep init-domain-pack --name my_domain --schema schemas/my_schema.json --profile prod
-        psweep init-domain-pack --interactive
-        psweep init-domain-pack --interactive --output-root /tmp/domain_packs
-        psweep init-domain-pack --name my_domain --schema schemas/my_schema.json --template-mode minimal
-        psweep init-domain-pack --name my_domain --schema schemas/my_schema.json --report-format json
-    """
-    repo_root = _cli_repo_root()
-    schema_file = Path(schema_path).resolve() if schema_path else None
-    target_root = (
-        Path(output_root).resolve()
-        if output_root
-        else (repo_root / "schemas/domain_packs")
-    )
-    target_profiles_root = (
-        Path(profiles_root).resolve()
-        if profiles_root
-        else (repo_root / "schemas/profiles")
-    )
-    target_config_root = (
-        Path(config_root).resolve() if config_root else (repo_root / "config")
-    )
-    pack_path = target_root / (pack_name or "__pending__") / "pack.yaml"
-    created_profile_path: Optional[Path] = None
-    created_profile_paths: list[str] = []
-    created_workspace_paths: list[str] = []
-    created_config_paths: list[str] = []
-    created_sample_asset_paths: list[str] = []
-    validation_profile_ref = profile_ref
-
-    try:
-        resolved_inputs = _resolve_init_domain_pack_inputs(
-            repo_root=repo_root,
-            interactive=interactive,
-            pack_name=pack_name,
-            schema_path=schema_path,
-            document_type=document_type,
-            profile_ref=profile_ref,
-            create_profile=create_profile,
-            profile_tiering=profile_tiering,
-            profile_name=profile_name,
-            output_root=output_root,
-            profiles_root=profiles_root,
-            create_workspace=create_workspace,
-            create_config=create_config,
-            create_sample_assets=create_sample_assets,
-            config_root=config_root,
-            template_mode=template_mode,
-            report_format=report_format,
-        )
-        pack_name = resolved_inputs["pack_name"]
-        schema_path = resolved_inputs["schema_path"]
-        document_type = resolved_inputs["document_type"]
-        profile_ref = resolved_inputs["profile_ref"]
-        create_profile = resolved_inputs["create_profile"]
-        profile_tiering = resolved_inputs["profile_tiering"]
-        profile_name = resolved_inputs["profile_name"]
-        output_root = resolved_inputs["output_root"]
-        profiles_root = resolved_inputs["profiles_root"]
-        create_workspace = resolved_inputs["create_workspace"]
-        create_config = resolved_inputs["create_config"]
-        create_sample_assets = resolved_inputs["create_sample_assets"]
-        config_root = resolved_inputs["config_root"]
-        template_mode = resolved_inputs["template_mode"]
-
-        target_root = (
-            Path(output_root).resolve()
-            if output_root
-            else (repo_root / "schemas/domain_packs")
-        )
-        target_profiles_root = (
-            Path(profiles_root).resolve()
-            if profiles_root
-            else (repo_root / "schemas/profiles")
-        )
-        target_config_root = (
-            Path(config_root).resolve()
-            if config_root
-            else (repo_root / "config")
-        )
-
-        schema_file = Path(schema_path).resolve()
-        pack_path = target_root / pack_name / "pack.yaml"
-        validation_profile_ref = profile_ref
-
-        existing_scaffold_targets = _collect_existing_scaffold_targets(
-            pack_path=pack_path,
-            create_profile=create_profile,
-            profile_tiering=profile_tiering,
-            profile_name=profile_name,
-            profiles_root=target_profiles_root,
-            create_config=create_config,
-            create_sample_assets=create_sample_assets,
-            config_root=target_config_root,
-            category_name=_workspace_category_name(pack_name),
-        )
-        if interactive and existing_scaffold_targets and not force:
-            if _confirm_interactive_overwrite(existing_scaffold_targets):
-                force = True
-            else:
-                raise ArtifactCompilerError(
-                    "Interactive onboarding cancelled because scaffold targets already exist; rerun and confirm overwrite or pass --force"
-                )
-
-        if create_profile and profile_tiering:
-            raise ArtifactCompilerError(
-                "Specify only one of --with-profile or --profile-tiering when scaffolding profiles"
-            )
-
-        scaffold = _build_pack_scaffold(
-            pack_name,
-            schema_file,
-            document_type or _infer_document_type_from_schema(schema_file),
-            repo_root,
-        )
-        _write_pack_scaffold(pack_path, scaffold, force=force)
-        if profile_tiering:
-            validation_profile_name = (
-                profile_ref if profile_ref != "default" else "dev"
-            )
-            if validation_profile_name not in _profile_tier_names():
-                raise ArtifactCompilerError(
-                    "When using --profile-tiering, --profile must be one of dev, staging, or prod"
-                )
-
-            for tier_name in _profile_tier_names():
-                profile_path = target_profiles_root / _profile_filename(
-                    tier_name
-                )
-                _write_profile_scaffold(
-                    profile_path,
-                    _default_profile_template(tier_name),
-                    force=force,
-                )
-                created_profile_paths.append(profile_path.as_posix())
-                if tier_name == validation_profile_name:
-                    created_profile_path = profile_path
-
-            if created_profile_path is None:
-                raise ArtifactCompilerError(
-                    "Failed to resolve validation profile from scaffolded tier set"
-                )
-            validation_profile_ref = str(created_profile_path)
-        elif create_profile:
-            created_profile_path = target_profiles_root / _profile_filename(
-                profile_name
-            )
-            _write_profile_scaffold(
-                created_profile_path,
-                _default_profile_template(profile_name),
-                force=force,
-            )
-            created_profile_paths.append(created_profile_path.as_posix())
-            validation_profile_ref = str(created_profile_path)
-        if create_workspace:
-            created_workspace_paths = _create_workspace_skeleton(
-                repo_root,
-                _workspace_category_name(pack_name),
-            )
-        if create_config:
-            created_config_paths = _create_config_skeleton(
-                repo_root,
-                target_config_root,
-                _workspace_category_name(pack_name),
-                document_type=scaffold["document_type"],
-                domain_name=(
-                    SchemaMetadata(schema_file).metadata.get("domain")
-                    or scaffold["document_type"]
-                ),
-                schema_ref=scaffold["schema_path"],
-                has_qaqc="qaqc" in scaffold,
-                template_mode=template_mode,
-                force=force,
-            )
-        if create_sample_assets:
-            created_sample_asset_paths = _create_sample_asset_skeleton(
-                repo_root,
-                _workspace_category_name(pack_name),
-                document_type=scaffold["document_type"],
-                schema_ref=scaffold["schema_path"],
-                page_ranges_ref=(
-                    _display_cli_path(
-                        target_config_root
-                        / _workspace_category_name(pack_name)
-                        / "page_ranges.csv",
-                        repo_root,
-                    )
-                    if create_config
-                    else None
-                ),
-                template_mode=template_mode,
-                force=force,
-            )
-        readiness = build_runtime_readiness_report(
-            pack_ref=str(pack_path),
-            profile_ref=validation_profile_ref,
-            repo_root=repo_root,
-        )
-    except (ArtifactCompilerError, json.JSONDecodeError) as exc:
-        error_report = {
-            "status": "error",
-            "error": {
-                "category": "domain_pack_init",
-                "message": str(exc),
-            },
-            "target": {
-                "pack_name": pack_name,
-                "schema_path": str(schema_file)
-                if schema_file
-                else schema_path,
-                "pack_path": pack_path.as_posix(),
-                "profile_ref": validation_profile_ref,
-            },
-        }
-        if report_format == "json":
-            click.echo(json.dumps(error_report, indent=2))
-        else:
-            print_header("Init Domain Pack")
-            print_error("Domain pack scaffold failed", str(exc))
-        raise click.exceptions.Exit(1)
-
-    result = {
-        "status": "ready",
-        "created": {
-            "pack_name": pack_name,
-            "pack_path": pack_path.as_posix(),
-            "schema_path": str(schema_file),
-            "interactive": interactive,
-            "profile_ref": validation_profile_ref,
-            "profile_path": created_profile_path.as_posix()
-            if created_profile_path
-            else None,
-            "profile_paths": created_profile_paths,
-            "output_root": target_root.as_posix(),
-            "profiles_root": target_profiles_root.as_posix(),
-            "workspace_paths": created_workspace_paths,
-            "config_paths": created_config_paths,
-            "sample_asset_paths": created_sample_asset_paths,
-            "config_root": target_config_root.as_posix(),
-            "document_type": scaffold["document_type"],
-            "template_mode": template_mode,
-            "force": force,
-        },
-        "readiness": readiness,
-        "next_steps": _build_onboarding_next_steps(
-            repo_root=repo_root,
-            pack_path=pack_path,
-            schema_path=schema_file,
-            profile_ref=validation_profile_ref,
-            category_name=_workspace_category_name(pack_name),
-            config_root=target_config_root,
-            document_type=scaffold["document_type"],
-            create_config=create_config,
-            create_sample_assets=create_sample_assets,
-            has_qaqc="qaqc" in scaffold,
-            template_mode=template_mode,
-        ),
-    }
-
-    if report_format == "json":
-        click.echo(json.dumps(result, indent=2))
-        return
-
-    print_header("Init Domain Pack")
-    print_success("Domain pack scaffold created and validated")
-    if interactive:
-        print_info(
-            "Input mode: interactive prompts resolved missing onboarding options"
-        )
-    if created_profile_path is not None:
-        print_success(
-            f"Profile scaffold created at {created_profile_path.as_posix()}"
-        )
-    if len(created_profile_paths) > 1:
-        print_success(
-            f"Profile tier set created ({len(created_profile_paths)} profiles)"
-        )
-    if created_workspace_paths:
-        print_success(
-            f"Workspace skeleton created ({len(created_workspace_paths)} folders)"
-        )
-    if created_config_paths:
-        print_success(
-            f"Config scaffold created ({len(created_config_paths)} path entries)"
-        )
-    if created_sample_asset_paths:
-        print_success(
-            f"Sample asset scaffold created ({len(created_sample_asset_paths)} path entries)"
-        )
-    console.print(
-        key_values(
-            {
-                "Pack Name": pack_name,
-                "Pack Path": pack_path.as_posix(),
-                "Schema": str(schema_file),
-                "Document Type": scaffold["document_type"],
-                "Template Mode": template_mode,
-                "Profile": readiness["resolved"]["profile_name"],
-                "Profile Path": created_profile_path.as_posix()
-                if created_profile_path
-                else "(existing profile)",
-                "Profile Count": str(len(created_profile_paths))
-                if created_profile_paths
-                else "0",
-                "Workspace Folders": str(len(created_workspace_paths))
-                if created_workspace_paths
-                else "0",
-                "Config Entries": str(len(created_config_paths))
-                if created_config_paths
-                else "0",
-                "Sample Assets": str(len(created_sample_asset_paths))
-                if created_sample_asset_paths
-                else "0",
-                "Artifact": readiness["resolved"]["artifact_id"].rsplit(
-                    "/", 1
-                )[-1],
-            }
-        )
-    )
-    next_step_lines: list[str] = []
-    for step in result["next_steps"]:
-        lines = [step["title"]]
-        if "detail" in step:
-            lines.append(f'   {step["detail"]}')
-        if "command" in step:
-            lines.append(f'   {step["command"]}')
-        next_step_lines.append("\n     ".join(lines))
-    print_next_steps(next_step_lines)
 
     console.print()
 
@@ -2724,7 +1841,7 @@ def config(show_runtime_catalog: bool, output_format: str):
 
     if show_runtime_catalog:
         section("Runtime Variable Catalog")
-        for section_name in ("processing", "consolidation", "acquisition"):
+        for section_name in ("extraction", "compilation", "discovery"):
             entries = VARIABLE_CATALOG.get(section_name, [])
             if not entries:
                 continue

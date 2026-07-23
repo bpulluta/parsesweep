@@ -1,6 +1,6 @@
 domain: generator_manuals
 
-acquisition:
+discovery:
   topology:
     mode: distributed
   targets:
@@ -41,14 +41,14 @@ acquisition:
     min_request_interval_ms: 200
     max_concurrent_downloads: 2
 
-processing:
-  # Curated set from the latest acquire run (all downloads when no
+extraction:
+  # Curated set from the latest discover run (all downloads when no
   # document_review is configured for this domain).
-  input_dir: output/acquisition/generator_manuals/latest/curated
+  input_dir: discovered/generator_manuals/latest/curated
   schema: schemas/personal/generator_manuals_schema.json
-  output_dir: processed/generator_manuals
+  output_dir: extracted/generator_manuals
 
-consolidation:
-  input_dir: processed/generator_manuals
+compilation:
+  input_dir: extracted/generator_manuals
   schema: schemas/personal/generator_manuals_schema.json
-  output_dir: consolidated/generator_manuals
+  output_dir: compiled/generator_manuals

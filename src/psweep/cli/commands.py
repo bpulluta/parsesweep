@@ -1,9 +1,13 @@
 """
 Core workflow CLI commands for ParseSweep.
 
-This module contains the main data processing pipeline commands:
-- process: Extract structured data from documents to JSON
-- consolidate: Merge JSON files into Excel/CSV
+This module contains the main data pipeline commands:
+- extract: Extract structured data from documents to JSON
+- compile: Merge JSON files into Excel/CSV
+- discover: Find and download documents from the web
+- curate: Filter discovered documents via human review
+- compare: Generate QA/QC comparison reports
+- benchmark: Performance profiling and gate evaluation
 """
 
 import csv
@@ -30,10 +34,10 @@ from psweep.extraction.document_utils import (
     is_supported_document,
     SUPPORTED_EXTENSIONS,
 )
-from psweep.consolidation.consolidator import Consolidator
-from psweep.acquisition import (
-    AcquisitionEngine,
-    AcquisitionRequest,
+from psweep.compilation.data_compiler import DataCompiler
+from psweep.discovery import (
+    DiscoveryEngine,
+    DiscoveryRequest,
 )
 from psweep.cli.ui import (
     console,
@@ -52,7 +56,7 @@ from psweep.cli.ui import (
 from psweep.cli.run_view import RunView
 from psweep.cli.dashboard import (
     create_live_dashboard,
-    create_acquisition_live_dashboard,
+    create_discovery_live_dashboard,
 )
 from psweep.benchmarking import (
     collect_benchmark_metrics,
@@ -60,11 +64,6 @@ from psweep.benchmarking import (
     evaluate_benchmark_gates,
     load_benchmark_snapshot,
     write_benchmark_snapshot,
-)
-from psweep.core import (
-    compile_runtime_artifact,
-    resolve_pack_ref_for_schema,
-    ArtifactCompilerError,
 )
 from psweep.config import (
     RuntimeConfigError,
@@ -84,8 +83,8 @@ _BENCHMARK_PROFILE_PATH_FIELDS = {
     "path",
     "extraction_baseline_dir",
     "qaqc_baseline_dir",
-    "consolidation_baseline_dir",
-    "consolidation_schema",
+    "compilation_baseline_dir",
+    "compilation_schema",
     "baseline_snapshot",
     "write_snapshot",
 }
@@ -125,17 +124,25 @@ def _resolve_runtime_command_inputs(
     strict: bool,
     cli_values: Dict[str, Any],
 ) -> Dict[str, Any]:
-    """Load and resolve command inputs from config files and CLI overrides."""
+    """Load and resolve command inputs from config files and CLI overrides.
+
+    Two usage modes:
+    - --config: loads full domain config (schema, page targeting, dedup, etc.)
+    - --schema: quick mode with just the extraction schema (no runtime config)
+    """
     config_data = None
+
     if config_path:
         config_data = load_runtime_config_file(Path(config_path))
 
-    return resolve_command_config(
+    result = resolve_command_config(
         command=command_name,
         cli_values=cli_values,
         config_data=config_data,
         strict=strict,
     )
+
+    return result
 
 
 def configure_logging(verbosity: str) -> None:
@@ -272,57 +279,18 @@ def _resolve_runtime_artifact(
     category: Optional[str],
     schema_path: Path,
     profile_name: str = "default",
-    *,
-    repo_root: Optional[Path] = None,
-    domain_packs_dir: Optional[Path] = None,
-    profiles_dir: Optional[Path] = None,
+    **kwargs,
 ) -> Optional[Dict[str, Any]]:
-    """Resolve a compiled runtime artifact for lineage emission when available."""
-    root = repo_root or Path(__file__).resolve().parents[3]
-    packs_root = domain_packs_dir or (root / "schemas/domain_packs")
-    profiles_root = profiles_dir or (root / "schemas/profiles")
-
-    if not packs_root.exists() or not profiles_root.exists():
-        return None
-
-    candidate_pack_refs: List[str] = []
-    if category:
-        candidate_pack_refs.append(category)
-    candidate_pack_refs.append(schema_path.stem)
-    resolved_pack_ref = resolve_pack_ref_for_schema(
-        schema_path,
-        repo_root=root,
-        domain_packs_dir=packs_root,
-    )
-    if resolved_pack_ref:
-        candidate_pack_refs.append(resolved_pack_ref)
-
-    seen = set()
-    for pack_ref in candidate_pack_refs:
-        if pack_ref in seen:
-            continue
-        seen.add(pack_ref)
-
-        try:
-            return compile_runtime_artifact(
-                pack_ref,
-                profile_name,
-                repo_root=root,
-                domain_packs_dir=packs_root,
-                profiles_dir=profiles_root,
-            )
-        except ArtifactCompilerError:
-            continue
-
+    """Runtime artifact resolution — returns None (config-driven system)."""
     return None
 
 
 def _format_runtime_artifact_summary(
     runtime_artifact: Optional[Dict[str, Any]],
 ) -> str:
-    """Return a concise user-facing summary of the resolved runtime artifact."""
+    """Return a concise user-facing summary of the runtime configuration."""
     if not runtime_artifact:
-        return "schema-only (no pack/profile runtime artifact resolved)"
+        return "config-driven (schema + domain config)"
 
     lineage = runtime_artifact.get("lineage") or {}
     pack_name = (
@@ -613,14 +581,14 @@ def _build_source_context_map(
     input_path: Optional[Path],
     from_index: Optional[str],
 ) -> Dict[str, Dict[str, str]]:
-    """Map each acquired document's filename to its origin URL + queried target.
+    """Map each discovered document's filename to its origin URL + queried target.
 
-    Reads the acquire run's ``download_index.csv`` (which records the source
+    Reads the discover run's ``download_index.csv`` (which records the source
     ``url``/``final_url`` and the ``target_metadata`` each file was found for) so
     the process step can (1) cite the source URL for extracted facts and
     (2) anchor extraction to the project the document was searched for, rather
     than to unrelated content elsewhere on the page. Domain-neutral: any
-    web-acquire run benefits. Returns ``{}`` when no index can be located
+    web-discover run benefits. Returns ``{}`` when no index can be located
     (e.g. processing a hand-curated directory).
     """
     index_path: Optional[Path] = None
@@ -633,14 +601,14 @@ def _build_source_context_map(
     if index_path is None and input_path is not None:
         # input_dir is typically <run>/curated or <domain>/latest/curated;
         # download_index.csv sits at the run root. Walk up a few levels but do
-        # not wander above the acquisition tree.
+        # not wander above the discovery tree.
         base = input_path if input_path.is_dir() else input_path.parent
         for up in (base, *base.parents):
             candidate = up / "download_index.csv"
             if candidate.is_file():
                 index_path = candidate
                 break
-            if up.name == "acquisition":
+            if up.name == "discovered":
                 break
 
     if index_path is None:
@@ -687,7 +655,7 @@ def _prepend_source_context(
     """Prepend a CONTEXT block (source URL + queried site) to document text.
 
     This lets schema fields copy the origin URL as a citation and anchor the
-    extraction to the intended project. No-op when the document has no acquire
+    extraction to the intended project. No-op when the document has no discover
     provenance in ``context_map``.
     """
     info = context_map.get(doc_path.name)
@@ -719,12 +687,18 @@ def _apply_page_targeting(
     page_range_map: dict,
     config: dict,
     models: dict | None = None,
+    pages_csv: str | None = None,
+    output_dir: Path | None = None,
 ) -> None:
     """Fill page_range_map for large PDFs via LLM-assisted page targeting.
 
     Only touches PDFs that are large (full text exceeds ``trigger_chars``) and
-    have no manual range yet — manual page_ranges.csv / --pages always win.
+    have no entry in the page_range_map — manual CSV ranges and explicit
+    full-doc entries always win.
     Best-effort: any locator failure leaves the file for full extraction.
+
+    Writes discovered page ranges to ``discovered_page_ranges.csv`` next to
+    the configured pages CSV (or in output_dir) for human review.
     """
     from psweep.extraction.page_locator import PageLocator
     from psweep.extraction.pdf_utils import extract_pages_text
@@ -732,7 +706,7 @@ def _apply_page_targeting(
     description = str(config.get("section_description") or "").strip()
     if not description:
         print_warning(
-            "page_targeting.enabled is set but section_description is missing; "
+            "pages.auto_locate is set but section_description is missing; "
             "skipping page targeting."
         )
         return
@@ -747,11 +721,13 @@ def _apply_page_targeting(
         keywords=config.get("keywords"),
     )
 
+    discovered: list[tuple[str, int, int]] = []
+
     for doc in doc_files:
         if doc.suffix.lower() != ".pdf":
             continue
-        if page_range_map.get(doc) is not None:
-            continue  # manual range wins
+        if doc in page_range_map:
+            continue  # listed in CSV (with range or explicit full-doc)
         pages = extract_pages_text(doc)
         if not pages:
             continue
@@ -760,10 +736,33 @@ def _apply_page_targeting(
         rng = locator.locate(doc, pages=pages)
         if rng:
             page_range_map[doc] = rng
+            discovered.append((doc.name, rng[0], rng[1]))
             if not get_verbosity().is_quiet:
                 print_info(
                     f"Page targeting: {doc.name} → pages {rng[0]}-{rng[1]}"
                 )
+
+    # Write discovered ranges to a CSV for human review/promotion.
+    if discovered and config.get("save_discovered", False):
+        if pages_csv:
+            dest = Path(pages_csv).parent / "discovered_page_ranges.csv"
+        elif output_dir:
+            dest = output_dir / "discovered_page_ranges.csv"
+        else:
+            return
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        import csv
+
+        with open(dest, "w", newline="") as f:
+            writer = csv.writer(f)
+            writer.writerow(["file_path", "start_page", "end_page"])
+            for name, start, end in discovered:
+                writer.writerow([name, start, end])
+        if not get_verbosity().is_quiet:
+            print_info(
+                f"Discovered page ranges written to {dest} — review and "
+                "promote to pages.csv if correct."
+            )
 
 
 def _document_progress_desc(doc_path: Path, page_range_map: dict) -> str:
@@ -776,7 +775,7 @@ def _document_progress_desc(doc_path: Path, page_range_map: dict) -> str:
     return desc
 
 
-def _process_one_document(
+def _extract_one_document(
     doc_path: Path,
     *,
     extractor,
@@ -835,7 +834,7 @@ def _process_one_document(
     except Exception as e:
         error_record = build_error_record(
             e,
-            stage="process",
+            stage="extract",
             document_path=doc_path.as_posix(),
             model=actual_model,
             provider=provider,
@@ -861,7 +860,7 @@ def _process_one_document(
     "config_path",
     type=click.Path(exists=True),
     default=None,
-    help="Path to runtime config file (.yaml/.yml/.json)",
+    help="Domain config file (RECOMMENDED — includes schema, page targeting, dedup)",
 )
 @click.option(
     "--show-effective-config",
@@ -872,7 +871,7 @@ def _process_one_document(
     "--validate-config",
     "validate_config_only",
     is_flag=True,
-    help="Validate resolved command inputs and exit without processing",
+    help="Validate resolved command inputs and exit without extracting",
 )
 @click.option(
     "--config-strict",
@@ -890,7 +889,7 @@ def _process_one_document(
     "-s",
     type=click.Path(exists=True),
     required=False,
-    help="Path to JSON schema file (required unless provided in --config)",
+    help="Schema file (for quick testing without a config YAML)",
 )
 @click.option(
     "--category",
@@ -971,7 +970,7 @@ def _process_one_document(
     "from_index",
     type=click.Path(exists=True),
     default=None,
-    help="Load acquired files from a download_index.csv (bypasses PATH argument)",
+    help="Load discovered files from a download_index.csv (bypasses PATH argument)",
 )
 @click.option(
     "--filter",
@@ -995,7 +994,7 @@ def _process_one_document(
     default=None,
     help="Back-compat alias for --filter source_jurisdiction=VALUE",
 )
-def process(
+def extract(
     path: Optional[str],
     config_path: Optional[str],
     show_effective_config: bool,
@@ -1024,37 +1023,37 @@ def process(
     filter_jurisdiction: Optional[str] = None,
 ):
     """
-    Process documents and extract structured data.
+    Extract structured data from documents.
 
-    This command reads PDF documents and extracts structured information
+    This command reads documents and extracts structured information
     based on a JSON schema. Works with any document type (permits, ordinances, regulations, etc.).
 
     Supports multiple LLM providers: OpenAI, Azure OpenAI, Claude, Gemini, and more.
     See docs/MODEL_COSTS.md for cost comparison and model selection guidance.
 
     The output will be saved as JSON files in a parallel folder structure.
-    For example: documents/Category/ → processed/Category/
+    For example: documents/Category/ → extracted/Category/
 
     \b
     EXAMPLES:
-        # Process a directory against a schema (or a domain-pack pack.yaml)
-        psweep process <input_dir> --schema <schema_or_pack>
+        # Extract from a directory against a schema (or a domain-pack pack.yaml)
+        psweep extract <input_dir> --schema <schema>
 
         # Drive everything from a domain's runtime config
-        psweep process --config config/<domain>/run.yaml
+        psweep extract --config config/<domain>/run.yaml
 
         # Pick a specific model / provider for this run
-        psweep process <input_dir> --schema <schema> --model <model_name>
-        psweep process <input_dir> --schema <schema> --provider azure
+        psweep extract <input_dir> --schema <schema> --model <model_name>
+        psweep extract <input_dir> --schema <schema> --provider azure
 
         # Compile artifact lineage under a named profile
-        psweep process <input_dir> --schema <schema> --profile prod
+        psweep extract <input_dir> --schema <schema> --profile prod
 
         # Restrict large PDFs to specific pages
-        psweep process <input_dir> --schema <schema> --pages-csv <page_ranges.csv>
+        psweep extract <input_dir> --schema <schema> --pages-csv <page_ranges.csv>
 
         # Test with the first 5 documents
-        psweep process <input_dir> --schema <schema> -n 5
+        psweep extract <input_dir> --schema <schema> -n 5
 
     \b
     MODELS:
@@ -1068,7 +1067,7 @@ def process(
         • JSON schema file (--schema flag is REQUIRED)
         • API key in .env file for your chosen provider
     """
-    view = begin_run("process", quiet=quiet, verbose=verbose, debug=debug)
+    view = begin_run("extract", quiet=quiet, verbose=verbose, debug=debug)
 
     # Load environment variables from .env file
     load_dotenv()
@@ -1129,7 +1128,7 @@ def process(
 
     try:
         resolved_inputs = _resolve_runtime_command_inputs(
-            command_name="process",
+            command_name="extract",
             config_path=config_path,
             strict=config_strict,
             cli_values=cli_overrides,
@@ -1138,11 +1137,12 @@ def process(
         view.error("Runtime config resolution failed", str(exc))
         sys.exit(1)
 
+
     warnings = resolved_inputs.get("_config_warnings", [])
     view.warnings(warnings)
 
     if show_effective_config and not get_verbosity().is_quiet:
-        _print_effective_config("process", resolved_inputs)
+        _print_effective_config("extract", resolved_inputs)
         console.print()
 
     if validate_config_only:
@@ -1150,7 +1150,7 @@ def process(
             click.echo(
                 json.dumps(
                     {
-                        "command": "process",
+                        "command": "extract",
                         "status": "valid",
                         "resolved": {
                             k: v
@@ -1164,7 +1164,7 @@ def process(
             )
         else:
             print_success(
-                "Runtime config validation passed for process command"
+                "Runtime config validation passed for extract command"
             )
         return
 
@@ -1210,13 +1210,13 @@ def process(
         category = path.parent.name
 
     # Setup output directory - CLEAN parallel structure
-    # documents/category/ → processed/category/
-    # output/acquisition/<domain>/.../curated → processed/<domain>/
-    def _acquisition_domain(p: Path) -> Optional[str]:
-        """Return <domain> if p is under output/acquisition/<domain>/..."""
+    # documents/category/ → extracted/category/
+    # discovered/<domain>/.../curated → extracted/<domain>/
+    def _discover_domain(p: Path) -> Optional[str]:
+        """Return <domain> if p is under discovered/<domain>/..."""
         resolved_parts = list(p.resolve().parts)
-        if "acquisition" in resolved_parts:
-            i = resolved_parts.index("acquisition")
+        if "discovered" in resolved_parts:
+            i = resolved_parts.index("discovered")
             if i + 1 < len(resolved_parts):
                 return resolved_parts[i + 1]
         return None
@@ -1225,19 +1225,19 @@ def process(
         output_dir = Path(output)
     else:
         probe = path if is_dir else path.parent
-        acq_domain = _acquisition_domain(probe)
-        if acq_domain:
-            # Curated acquisition output → processed/<domain>/
-            output_dir = Path.cwd() / "processed" / acq_domain
+        disc_domain = _discover_domain(probe)
+        if disc_domain:
+            # Curated discovery output → extracted/<domain>/
+            output_dir = Path.cwd() / "extracted" / disc_domain
         else:
             parts = list(probe.parts)
             if "documents" in parts:
                 idx = parts.index("documents")
-                parts[idx] = "processed"
+                parts[idx] = "extracted"
                 output_dir = Path(*parts)
             else:
-                # Fallback: create in project root processed/
-                output_dir = Path.cwd() / "processed" / probe.name
+                # Fallback: create in project root extracted/
+                output_dir = Path.cwd() / "extracted" / probe.name
 
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -1342,15 +1342,15 @@ def process(
             sys.exit(1)
         doc_files = [path]
 
-    # --from-index: override doc_files with files listed in the acquisition CSV.
-    # This wires the acquire → process pipeline without any manual path wrangling.
+    # --from-index: override doc_files with files listed in the discovery CSV.
+    # This wires the discover → extract pipeline without any manual path wrangling.
     if from_index and _from_index_data.get("doc_files"):
         doc_files = _from_index_data["doc_files"]
         if limit:
             doc_files = doc_files[:limit]
-        # Override output dir to processed/<domain>/ unless explicitly set
+        # Override output dir to extracted/<domain>/ unless explicitly set
         if not output:
-            output_dir = Path("processed") / _from_index_data["domain"]
+            output_dir = Path("extracted") / _from_index_data["domain"]
             output_dir.mkdir(parents=True, exist_ok=True)
             category = _from_index_data["domain"]
         # Rebuild file_output_dirs for the --from-index files
@@ -1374,7 +1374,7 @@ def process(
         if not doc_files:
             print_error(
                 "No new files to process from download index",
-                "All acquired files have already been processed. Use --reprocess to extract again.",
+                "All discovered files have already been processed. Use --reprocess to extract again.",
             )
             sys.exit(0)
         if not get_verbosity().is_quiet:
@@ -1468,9 +1468,10 @@ def process(
             )
             sys.exit(1)
 
-    # LLM-assisted page targeting (optional). For large PDFs with no manual page
-    # range, auto-locate the pages holding the described section so extraction
-    # targets them instead of overflowing the context. Manual ranges always win.
+    # LLM-assisted page targeting (from pages.auto_locate or legacy
+    # page_targeting). For large PDFs with no CSV entry, auto-locate the pages
+    # holding the described section so extraction targets them instead of
+    # overflowing the context. CSV entries always win.
     page_targeting = resolved_inputs.get("page_targeting")
     if isinstance(page_targeting, dict) and page_targeting.get("enabled"):
         _apply_page_targeting(
@@ -1478,6 +1479,8 @@ def process(
             page_range_map=page_range_map,
             config=page_targeting,
             models=resolved_inputs.get("models"),
+            pages_csv=pages_csv,
+            output_dir=output_dir,
         )
 
     # Final validation - check if we have files to process
@@ -1764,7 +1767,7 @@ def process(
     # Processing section
     view.phase("Extracting documents")
 
-    # Provenance: map each document to its acquire origin URL + queried target
+    # Provenance: map each document to its discover origin URL + queried target
     # so extraction can cite the source and stay anchored to the intended
     # project (guards against extracting dates from unrelated page content).
     source_context_map = _build_source_context_map(
@@ -1775,7 +1778,7 @@ def process(
         view.status(
             "info",
             f"Source-context: matched {matched}/{len(doc_files)} "
-            "document(s) to acquire provenance",
+            "document(s) to discover provenance",
         )
 
     results = []
@@ -1785,7 +1788,7 @@ def process(
     # One place does the actual extraction+save for a document; the three
     # branches below differ only in how they report progress.
     def _run(doc_path: Path) -> dict:
-        return _process_one_document(
+        return _extract_one_document(
             doc_path,
             extractor=extractor,
             loaded_schema=loaded_schema,
@@ -1910,7 +1913,7 @@ def process(
     # Summary
     if not view.is_quiet:
         summary_stats = {
-            "Processed": f"{len(results)} file{'s' if len(results) != 1 else ''}",
+            "Extracted": f"{len(results)} file{'s' if len(results) != 1 else ''}",
             "Successful": str(len(successful)),
         }
         if failed:
@@ -1935,11 +1938,11 @@ def process(
                 failure.get("suggestions"),
             )
 
-        view.outputs({"Processed data": str(output_dir.absolute())})
+        view.outputs({"Extracted data": str(output_dir.absolute())})
         view.next_steps(
             [
-                f"Inspect a result: pixi run psweep validate {output_dir}/<name>.json --show-data",
-                f"Consolidate into a spreadsheet: pixi run psweep consolidate {output_dir} --schema {schema}",
+                f"Inspect a result: pixi run psweep check {output_dir}/<name>.json --show-data",
+                f"Compile into a spreadsheet: pixi run psweep compile {output_dir} --schema {schema}",
             ]
         )
 
@@ -1966,7 +1969,7 @@ def _run_qa_qc_extraction(
     1. Auto-detecting models from environment
     2. Confirming with user (Nx cost warning)
     3. Running extraction with multiple models
-    4. Saving outputs to processed/qa_qc/{doc_name}/
+    4. Saving outputs to extracted/qa_qc/{doc_name}/
     """
     from psweep.qa_qc import (
         ModelDetector,
@@ -1992,7 +1995,7 @@ def _run_qa_qc_extraction(
         )
         return
 
-    view = RunView("process", verbosity=Verbosity(verbosity))
+    view = RunView("extract", verbosity=Verbosity(verbosity))
 
     # Show QA/QC configuration
     view.header("QA/QC MULTI-MODEL VALIDATION")
@@ -2227,10 +2230,10 @@ def _extract_and_save_result(
     return num_items
 
 
-def _resolve_consolidation_output_formats(
+def _resolve_compilation_output_formats(
     metadata_overrides: Optional[Dict[str, Any]] = None,
 ) -> List[str]:
-    """Resolve which consolidation outputs to emit.
+    """Resolve which compilation outputs to emit.
 
     Runtime pack overrides are the only source that currently changes output
     selection. Schema-owned `default_format` remains non-authoritative so
@@ -2238,7 +2241,7 @@ def _resolve_consolidation_output_formats(
     the runtime-pack layer.
     """
     output_config = (
-        (metadata_overrides or {}).get("consolidation") or {}
+        (metadata_overrides or {}).get("compilation") or {}
     ).get("output") or {}
     requested_format = output_config.get("default_format")
 
@@ -2254,7 +2257,7 @@ def _resolve_consolidation_output_formats(
         return ["csv", "excel"]
 
     logging.getLogger(__name__).warning(
-        "Unsupported consolidation output format '%s'; falling back to csv+excel",
+        "Unsupported compilation output format '%s'; falling back to csv+excel",
         requested_format,
     )
     return ["csv", "excel"]
@@ -2268,19 +2271,19 @@ def _resolve_consolidation_output_formats(
     is_flag=True,
     help="Display extracted data with syntax highlighting",
 )
-def validate(extraction_file: str, verbose: bool, show_data: bool):
+def check(extraction_file: str, verbose: bool, show_data: bool):
     """
-    Validate an extraction result against the schema.
+    Check an extraction result against the schema.
 
     \b
     EXAMPLES:
-        psweep validate processed/data/doc.json
-        psweep validate processed/data/doc.json --show-data
+        psweep check extracted/data/doc.json
+        psweep check extracted/data/doc.json --show-data
     """
     from psweep.cli.ui import display_json
 
     extraction_file = Path(extraction_file)
-    view = begin_run("validate", verbose=verbose)
+    view = begin_run("check", verbose=verbose)
 
     view.header(f"Validation: {extraction_file.name}")
 
@@ -2349,7 +2352,7 @@ def validate(extraction_file: str, verbose: bool, show_data: bool):
 
     view.next_steps(
         [
-            f"Consolidate the folder: pixi run psweep consolidate "
+            f"Compile the folder: pixi run psweep compile "
             f"{extraction_file.parent} --schema <schema>",
         ]
     )
@@ -2362,7 +2365,7 @@ def validate(extraction_file: str, verbose: bool, show_data: bool):
     "config_path",
     type=click.Path(exists=True),
     default=None,
-    help="Path to runtime config file (.yaml/.yml/.json)",
+    help="Domain config file (RECOMMENDED — includes schema, page targeting, dedup)",
 )
 @click.option(
     "--show-effective-config",
@@ -2373,7 +2376,7 @@ def validate(extraction_file: str, verbose: bool, show_data: bool):
     "--validate-config",
     "validate_config_only",
     is_flag=True,
-    help="Validate resolved command inputs and exit without running acquisition",
+    help="Validate resolved command inputs and exit without running discovery",
 )
 @click.option(
     "--config-strict",
@@ -2384,7 +2387,7 @@ def validate(extraction_file: str, verbose: bool, show_data: bool):
     "--domain",
     type=str,
     default=None,
-    help="Domain key for acquisition output structure",
+    help="Domain key for discovery output structure",
 )
 @click.option(
     "--seed-url",
@@ -2431,13 +2434,13 @@ def validate(extraction_file: str, verbose: bool, show_data: bool):
     "--max-concurrent-downloads",
     type=int,
     default=None,
-    help="Maximum parallel downloads during acquire runs",
+    help="Maximum parallel downloads during discover runs",
 )
 @click.option(
     "--min-request-interval-ms",
     type=int,
     default=None,
-    help="Minimum delay between outbound acquisition requests in milliseconds",
+    help="Minimum delay between outbound discovery requests in milliseconds",
 )
 @click.option(
     "--robots-policy-mode",
@@ -2461,13 +2464,13 @@ def validate(extraction_file: str, verbose: bool, show_data: bool):
     "--output-documents",
     type=click.Path(),
     default=None,
-    help="Directory for acquired documents (defaults to run-scoped deterministic path)",
+    help="Directory for discovered documents (defaults to run-scoped deterministic path)",
 )
 @click.option(
     "--output-manifest",
     type=click.Path(),
     default=None,
-    help="Path to acquisition manifest JSON (defaults to run-scoped deterministic path)",
+    help="Path to discovery manifest JSON (defaults to run-scoped deterministic path)",
 )
 @click.option(
     "--dry-run",
@@ -2479,7 +2482,7 @@ def validate(extraction_file: str, verbose: bool, show_data: bool):
 @click.option(
     "--debug", is_flag=True, help="Debug output with diagnostic context"
 )
-def acquire(
+def discover(
     target: Optional[str],
     config_path: Optional[str],
     show_effective_config: bool,
@@ -2505,8 +2508,8 @@ def acquire(
     verbose: bool,
     debug: bool,
 ):
-    """Acquire source documents from web targets (scaffold entrypoint)."""
-    view = begin_run("acquire", quiet=quiet, verbose=verbose, debug=debug)
+    """Discover and download source documents from web targets."""
+    view = begin_run("discover", quiet=quiet, verbose=verbose, debug=debug)
 
     cli_overrides = _explicit_cli_overrides(
         [
@@ -2531,7 +2534,7 @@ def acquire(
 
     try:
         resolved_inputs = _resolve_runtime_command_inputs(
-            command_name="acquire",
+            command_name="discover",
             config_path=config_path,
             strict=config_strict,
             cli_values=cli_overrides,
@@ -2544,7 +2547,7 @@ def acquire(
     view.warnings(warnings)
 
     if show_effective_config and not get_verbosity().is_quiet:
-        _print_effective_config("acquire", resolved_inputs)
+        _print_effective_config("discover", resolved_inputs)
         console.print()
 
     if validate_config_only:
@@ -2552,7 +2555,7 @@ def acquire(
             click.echo(
                 json.dumps(
                     {
-                        "command": "acquire",
+                        "command": "discover",
                         "status": "valid",
                         "resolved": {
                             k: v
@@ -2566,7 +2569,7 @@ def acquire(
             )
         else:
             print_success(
-                "Runtime config validation passed for acquire command"
+                "Runtime config validation passed for discover command"
             )
         return
 
@@ -2723,8 +2726,8 @@ def acquire(
 
     if not resolved_seed_urls and not resolved_query and not resolved_targets:
         print_error(
-            "Acquisition input missing",
-            "Provide at least one --seed-url, --query, or acquisition.targets entry in config.",
+            "Discovery input missing",
+            "Provide at least one --seed-url, --query, or discovery.targets entry in config.",
         )
         sys.exit(1)
 
@@ -2790,7 +2793,7 @@ def acquire(
                 else "(auto: run-scoped)",
                 "Mode": "dry-run" if dry_run else "run",
             }
-        view.header("ACQUISITION")
+        view.header("DISCOVERY")
         view.config(config_info)
 
         if resolved_targets:
@@ -2802,7 +2805,7 @@ def acquire(
                 for idx, target_meta in enumerate(
                     resolved_targets[:preview_limit], start=1
                 ):
-                    label = AcquisitionEngine._target_label(
+                    label = DiscoveryEngine._target_label(
                         target_meta if isinstance(target_meta, dict) else None, idx
                     )
                     query_preview = (
@@ -2833,7 +2836,7 @@ def acquire(
         "SERPAPI_SSL_VERIFY", "PSWEEP_SSL_VERIFY"
     )
     download_ssl_verify = _env_ssl_verify(
-        "ACQUISITION_SSL_VERIFY", "PSWEEP_SSL_VERIFY"
+        "DISCOVERY_SSL_VERIFY", "PSWEEP_SSL_VERIFY"
     )
 
     if resolved_enable_serpapi and not seeker_ssl_verify:
@@ -2843,28 +2846,28 @@ def acquire(
         )
     if not dry_run and not download_ssl_verify:
         view.warning(
-            "Download TLS verification is disabled (ACQUISITION_SSL_VERIFY=false)."
+            "Download TLS verification is disabled (DISCOVERY_SSL_VERIFY=false)."
         )
 
-    acquire_live = None
-    acquire_dashboard = None
+    discover_live = None
+    discover_dashboard = None
     if view.verbosity in {Verbosity.NORMAL, Verbosity.VERBOSE} and not dry_run:
-        acquire_live, acquire_dashboard = create_acquisition_live_dashboard(
+        discover_live, discover_dashboard = create_discovery_live_dashboard(
             domain=resolved_domain,
             mode="dry-run" if dry_run else "run",
             total_targets=len(resolved_targets or []),
             seeker_enabled=resolved_enable_serpapi,
         )
 
-    def _acquire_progress(message: str) -> None:
+    def _discover_progress(message: str) -> None:
         if view.is_quiet:
             return
-        if acquire_dashboard is not None:
-            acquire_dashboard.push_event(message)
+        if discover_dashboard is not None:
+            discover_dashboard.push_event(message)
             return
         print_info(message)
 
-    request = AcquisitionRequest(
+    request = DiscoveryRequest(
         domain=resolved_domain,
         seed_urls=resolved_seed_urls,
         query=resolved_query,
@@ -2907,7 +2910,7 @@ def acquire(
         models=resolved_models,
         seeker_cache=resolved_seeker_cache,
         seeker_cache_ttl_minutes=resolved_seeker_cache_ttl_minutes,
-        progress_callback=_acquire_progress,
+        progress_callback=_discover_progress,
         query_context_aliases=resolved_query_context_aliases,
         partition_by=resolved_partition_by,
         browser_mode=resolved_browser_mode,
@@ -2931,10 +2934,10 @@ def acquire(
     )
 
     try:
-        with view.live(acquire_live):
-            result = AcquisitionEngine().run(request)
+        with view.live(discover_live):
+            result = DiscoveryEngine().run(request)
     except Exception as exc:
-        view.error("Acquisition failed", str(exc))
+        view.error("Discovery failed", str(exc))
         if view.verbosity is Verbosity.DEBUG:
             import traceback
 
@@ -2945,7 +2948,7 @@ def acquire(
         click.echo(str(result.manifest_path))
         return
 
-    view.success(f"Acquisition complete (run_id={result.run_id})")
+    view.success(f"Discovery complete (run_id={result.run_id})")
 
     try:
         manifest_data = json.loads(
@@ -2970,10 +2973,10 @@ def acquire(
             "Notes": str(len(notes)),
             "Errors": str(len(errors)),
         },
-        title="Acquisition Summary",
+        title="Discovery Summary",
     )
 
-    view.notes(notes, title="Acquisition Notes")
+    view.notes(notes, title="Discovery Notes")
 
     if errors:
         error_lines = []
@@ -2995,18 +2998,33 @@ def acquire(
         outputs["Curated"] = (
             f"{result.curated_count} document(s) → {result.curated_dir}"
         )
+    elif result.review_index_path is not None:
+        outputs["Curated"] = "0 documents passed review"
     view.outputs(outputs)
 
     next_steps = []
-    if result.review_index_path is not None:
+    if result.curated_count == 0 and result.review_index_path is not None:
+        # Zero curated — guide the user toward fixing the problem.
+        next_steps.append(
+            "No documents matched the review criteria. Options:"
+        )
+        next_steps.append(
+            "  • Adjust discovery queries or selection filters in your config"
+        )
+        next_steps.append(
+            f"  • Override LLM picks: edit {result.review_index_path} "
+            "(set human_decision=keep), then run: pixi run psweep curate"
+        )
+    elif result.review_index_path is not None:
         next_steps.append(
             f"Review/adjust picks: edit {result.review_index_path}, "
             "then run: pixi run psweep curate"
         )
-    next_steps.append(
-        "Extract the documents: pixi run psweep process "
-        f"{result.curated_dir or result.documents_dir} --schema <schema_or_pack>"
-    )
+    if result.curated_count > 0:
+        next_steps.append(
+            "Extract the documents: pixi run psweep extract "
+            f"{result.curated_dir or result.documents_dir} --schema <schema>"
+        )
     view.next_steps(next_steps)
 
 
@@ -3039,7 +3057,7 @@ def curate(
 ):
     """Rebuild a run's curated/ set from human edits in review.csv.
 
-    After an acquisition run, open ``review.csv`` in the run folder and set the
+    After a discovery run, open ``review.csv`` in the run folder and set the
     ``human_decision`` column to ``keep`` or ``reject`` for any file the LLM got
     wrong (blank = accept the LLM's call). Then run this command to re-materialize
     ``curated/`` accordingly. Idempotent.
@@ -3055,7 +3073,7 @@ def curate(
         if not domain and config_path:
             try:
                 resolved = _resolve_runtime_command_inputs(
-                    command_name="acquire",
+                    command_name="discover",
                     config_path=config_path,
                     strict=False,
                     cli_values={},
@@ -3069,11 +3087,11 @@ def curate(
                 "Pass --config <run.yaml>, a domain name, or --run <dir>.",
             )
             sys.exit(1)
-        latest = Path("output") / "acquisition" / str(domain) / "latest"
+        latest = Path("discovered") / str(domain) / "latest"
         if not latest.exists():
             print_error(
                 "No latest run found for domain",
-                f"Expected {latest.as_posix()} (run `acquire` first).",
+                f"Expected {latest.as_posix()} (run `discover` first).",
             )
             sys.exit(1)
         run_dir = latest.resolve()
@@ -3125,7 +3143,7 @@ def curate(
         )
         _update_review_sidecar(row)
 
-    curated_dir, count = AcquisitionEngine._materialize_curated(
+    curated_dir, count = DiscoveryEngine._materialize_curated(
         documents_dir=documents_dir,
         download_records=records,
     )
@@ -3147,8 +3165,8 @@ def curate(
     view.outputs({"Curated documents": curated_dir.as_posix()})
     view.next_steps(
         [
-            f"Extract the curated set: pixi run psweep process {curated_dir} "
-            "--schema <schema_or_pack>",
+            f"Extract the curated set: pixi run psweep extract {curated_dir} "
+            "--schema <schema>",
         ]
     )
 
@@ -3186,7 +3204,7 @@ def _update_review_sidecar(row: dict) -> None:
     "config_path",
     type=click.Path(exists=True),
     default=None,
-    help="Path to runtime config file (.yaml/.yml/.json)",
+    help="Domain config file (RECOMMENDED — includes schema, page targeting, dedup)",
 )
 @click.option(
     "--show-effective-config",
@@ -3197,7 +3215,7 @@ def _update_review_sidecar(row: dict) -> None:
     "--validate-config",
     "validate_config_only",
     is_flag=True,
-    help="Validate resolved command inputs and exit without consolidating",
+    help="Validate resolved command inputs and exit without compiling",
 )
 @click.option(
     "--config-strict",
@@ -3209,7 +3227,7 @@ def _update_review_sidecar(row: dict) -> None:
     "-s",
     type=click.Path(exists=True),
     required=False,
-    help="Path to JSON schema file (required unless provided in --config)",
+    help="Schema file (for quick testing without a config YAML)",
 )
 @click.option(
     "--output",
@@ -3220,7 +3238,7 @@ def _update_review_sidecar(row: dict) -> None:
 @click.option(
     "--dry-run",
     is_flag=True,
-    help="Preview consolidation and deduplication without writing output files",
+    help="Preview compilation and deduplication without writing output files",
 )
 @click.option(
     "--report-format",
@@ -3243,7 +3261,7 @@ def _update_review_sidecar(row: dict) -> None:
     "--verbose", "-v", is_flag=True, help="Detailed output with statistics"
 )
 @click.option("--debug", is_flag=True, help="Debug mode with full logs")
-def consolidate(
+def compile(
     extracted_dir: Optional[str],
     config_path: Optional[str],
     show_effective_config: bool,
@@ -3259,21 +3277,21 @@ def consolidate(
     debug: bool,
 ):
     """
-    Consolidate extracted JSON files into clean Excel/CSV output.
+    Compile extracted JSON files into clean Excel/CSV output.
 
     Works with ANY schema type - automatically detects structure and creates
     clean, readable output with intelligent deduplication.
 
     \b
     EXAMPLES:
-        # Consolidate utility tariffs (specify same schema used for extraction)
-        psweep consolidate processed/tariffs --schema schemas/personal/electricity_tariff_schema.json
+        # Compile utility tariffs (specify same schema used for extraction)
+        psweep compile extracted/tariffs --schema schemas/personal/electricity_tariff_schema.json
 
-        # Consolidate geothermal ordinances
-        psweep consolidate processed/geothermal_ordinances --schema schemas/personal/geothermal_ordinance_schema.json
+        # Compile geothermal ordinances
+        psweep compile extracted/geothermal_ordinances --schema schemas/personal/geothermal_ordinance_schema.json
 
         # Specify custom output directory
-        psweep consolidate processed/data --schema schemas/your_schema.json --output my_analysis/
+        psweep compile extracted/data --schema schemas/your_schema.json --output my_analysis/
 
     \b
     OUTPUT:
@@ -3281,7 +3299,7 @@ def consolidate(
         • CSV file for data analysis
         • Automatic deduplication of identical entries
     """
-    view = begin_run("consolidate", quiet=quiet, verbose=verbose, debug=debug)
+    view = begin_run("compile", quiet=quiet, verbose=verbose, debug=debug)
 
     cli_overrides = _explicit_cli_overrides(
         [
@@ -3296,7 +3314,7 @@ def consolidate(
 
     try:
         resolved_inputs = _resolve_runtime_command_inputs(
-            command_name="consolidate",
+            command_name="compile",
             config_path=config_path,
             strict=config_strict,
             cli_values=cli_overrides,
@@ -3305,11 +3323,12 @@ def consolidate(
         view.error("Runtime config resolution failed", str(exc))
         sys.exit(1)
 
+
     warnings = resolved_inputs.get("_config_warnings", [])
     view.warnings(warnings)
 
     if show_effective_config and not get_verbosity().is_quiet:
-        _print_effective_config("consolidate", resolved_inputs)
+        _print_effective_config("compile", resolved_inputs)
         console.print()
 
     if validate_config_only:
@@ -3317,7 +3336,7 @@ def consolidate(
             click.echo(
                 json.dumps(
                     {
-                        "command": "consolidate",
+                        "command": "compile",
                         "status": "valid",
                         "resolved": {
                             k: v
@@ -3331,7 +3350,7 @@ def consolidate(
             )
         else:
             print_success(
-                "Runtime config validation passed for consolidate command"
+                "Runtime config validation passed for compile command"
             )
         return
 
@@ -3362,24 +3381,24 @@ def consolidate(
         sys.exit(1)
 
     # Set up output directory - CLEAN structure
-    # processed/category/ → consolidated/category/
+    # extracted/category/ → compiled/category/
     if output:
         output_dir = Path(output)
     else:
         parts = list(input_dir.parts)
-        if "processed" in parts:
-            idx = parts.index("processed")
-            parts[idx] = "consolidated"
+        if "extracted" in parts:
+            idx = parts.index("extracted")
+            parts[idx] = "compiled"
             output_dir = Path(*parts)
         else:
             project_root = Path.cwd()
-            output_dir = project_root / "consolidated" / input_dir.name
+            output_dir = project_root / "compiled" / input_dir.name
 
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # Header
     if not emit_json_report:
-        view.header("CONSOLIDATION")
+        view.header("COMPILATION")
 
     # Load schema (enforced as required by Click)
     matched_schema = Path(schema)
@@ -3390,14 +3409,29 @@ def consolidate(
     try:
         from psweep.utils.schema_metadata import SchemaMetadata
 
-        runtime_artifact = _resolve_runtime_artifact(None, matched_schema)
-        metadata_overrides = {}
-        if runtime_artifact:
-            pack_consolidation = (
-                (runtime_artifact.get("resolved") or {}).get("pack") or {}
-            ).get("consolidation")
-            if isinstance(pack_consolidation, dict):
-                metadata_overrides["consolidation"] = pack_consolidation
+        # Build metadata overrides from config YAML compilation section
+        metadata_overrides: Dict[str, Any] = {}
+        compilation_overrides: Dict[str, Any] = {}
+
+        # Deduplication settings from config
+        config_dedup = resolved_inputs.get("deduplication")
+        if isinstance(config_dedup, dict):
+            compilation_overrides["deduplication"] = config_dedup
+
+        # Output formatting from config
+        config_output = resolved_inputs.get("compilation_output")
+        if isinstance(config_output, dict):
+            compilation_overrides["output"] = config_output
+
+        # Normalization from config
+        config_norm = resolved_inputs.get("normalization")
+        if isinstance(config_norm, dict):
+            compilation_overrides["normalization"] = config_norm
+
+        if compilation_overrides:
+            metadata_overrides["compilation"] = compilation_overrides
+
+        runtime_artifact = None
 
         schema_metadata = SchemaMetadata(
             matched_schema, metadata_overrides=metadata_overrides or None
@@ -3413,11 +3447,10 @@ def consolidate(
                 "Input": str(input_dir),
                 "Output": str(output_dir),
                 "Schema": schema_display,
-                "Runtime": _format_runtime_artifact_summary(runtime_artifact),
             }
             if metadata_overrides:
                 config_info["Overrides"] = (
-                    "pack-owned consolidation config active"
+                    "config-owned compilation settings active"
                 )
             view.config(config_info)
     except Exception as e:
@@ -3429,10 +3462,10 @@ def consolidate(
         )
         return
 
-    # Consolidate
+    # Compile
     if not emit_json_report:
         view.phase("Analyzing schema structure")
-    consolidator = Consolidator(
+    compiler = DataCompiler(
         schema_metadata=schema_metadata,
         verbose=view.verbosity.shows_detail,
         debug=view.verbosity is Verbosity.DEBUG,
@@ -3443,7 +3476,7 @@ def consolidate(
             # Config-driven per-entity LLM synthesis: reconcile many
             # per-document records into one row per entity (conflict resolution,
             # confidence, chronology validation) instead of tabular dedup.
-            from psweep.consolidation.synthesizer import (
+            from psweep.compilation.synthesizer import (
                 Synthesizer,
             )
             from psweep.extraction.llm_factory import (
@@ -3482,13 +3515,13 @@ def consolidate(
                 "main_array_key": (synthesis_cfg.get("group_by") or ["entity"])[0],
             }
         else:
-            df, schema_info = consolidator.consolidate_from_directory(
+            df, schema_info = compiler.compile_from_directory(
                 input_dir,
                 apply_deduplication=not dry_run,
             )
 
         if df.empty:
-            print_warning("No data found to consolidate")
+            print_warning("No data found to compile")
             return
 
         if not emit_json_report:
@@ -3503,7 +3536,7 @@ def consolidate(
             return
 
         if dry_run:
-            dedup_preview = consolidator.deduplicator.preview_deduplication(df)
+            dedup_preview = compiler.deduplicator.preview_deduplication(df)
             preview_report = _build_dedup_preview_report(
                 schema_info=schema_info,
                 dedup_preview=dedup_preview,
@@ -3610,14 +3643,14 @@ def consolidate(
 
         # Generate output filename
         base_name = input_dir.name.replace("_", "-")
-        output_formats = _resolve_consolidation_output_formats(
+        output_formats = _resolve_compilation_output_formats(
             metadata_overrides or None
         )
         emitted_paths: List[Path] = []
 
         if "csv" in output_formats:
             csv_path = output_dir / f"{base_name}.csv"
-            consolidator.save_csv(df, csv_path)
+            compiler.save_csv(df, csv_path)
             emitted_paths.append(csv_path)
             csv_size_mb = csv_path.stat().st_size / (1024 * 1024)
 
@@ -3630,7 +3663,7 @@ def consolidate(
 
         if "excel" in output_formats:
             excel_path = output_dir / f"{base_name}.xlsx"
-            consolidator.save_excel(df, excel_path)
+            compiler.save_excel(df, excel_path)
             emitted_paths.append(excel_path)
             excel_size_mb = excel_path.stat().st_size / (1024 * 1024)
 
@@ -3679,7 +3712,7 @@ def consolidate(
                         )
                         summary_stats[f"Top {category_display}s"] = top_cat_str
 
-            view.summary(summary_stats, title="Consolidation Summary")
+            view.summary(summary_stats, title="Compilation Summary")
             view.outputs(
                 {
                     (p.suffix.lstrip(".").upper() or "File"): str(p.absolute())
@@ -3687,7 +3720,7 @@ def consolidate(
                 }
             )
             view.next_steps(
-                ["Open the CSV/Excel to review the consolidated dataset"]
+                ["Open the CSV/Excel to review the compiled dataset"]
             )
         else:
             # Quiet mode - print emitted output path(s)
@@ -3695,7 +3728,7 @@ def consolidate(
                 console.print(str(emitted_path.absolute()))
 
     except Exception as e:
-        view.error("Consolidation failed", str(e))
+        view.error("Compilation failed", str(e))
         if view.verbosity is Verbosity.DEBUG:
             import traceback
 
@@ -3736,10 +3769,10 @@ def compare(
     \b
     EXAMPLES:
         # Generate comparison reports for all documents
-        psweep compare processed/qa_qc_test/qa_qc --schema schemas/personal/geothermal_ordinance_schema.json
+        psweep compare extracted/qa_qc_test/qa_qc --schema schemas/personal/geothermal_ordinance_schema.json
 
         # Compare specific document folder
-        psweep compare "processed/qa_qc_test/qa_qc/Chaffee County Colorado" --schema schemas/personal/geothermal_ordinance_schema.json
+        psweep compare "extracted/qa_qc_test/qa_qc/Chaffee County Colorado" --schema schemas/personal/geothermal_ordinance_schema.json
 
     \b
     OUTPUT (per document):
@@ -3748,8 +3781,8 @@ def compare(
 
     \b
     WORKFLOW:
-        1. Run extraction with QA/QC: psweep process docs/ --schema schema.json --enable-qa-qc
-        2. Generate/update reports: psweep compare processed/docs/qa_qc --schema schema.json
+        1. Run extraction with QA/QC: psweep extract docs/ --schema schema.json --enable-qa-qc
+        2. Generate/update reports: psweep compare extracted/docs/qa_qc --schema schema.json
     """
     from psweep.qa_qc import ComparisonEngine, ReportGenerator
     from psweep.qa_qc.utils import resolve_qaqc_runtime_config
@@ -4039,16 +4072,16 @@ def compare(
     help="Directory containing expected QA/QC comparison_report.csv files for signal-quality scoring. Files should mirror benchmark document-folder relative paths.",
 )
 @click.option(
-    "--consolidation-baseline-dir",
+    "--compilation-baseline-dir",
     type=click.Path(exists=True, file_okay=False, path_type=Path),
     default=None,
-    help="Directory containing expected consolidated CSV outputs for row-correctness scoring. Files should mirror benchmark CSV relative paths or filenames.",
+    help="Directory containing expected compiled CSV outputs for row-correctness scoring. Files should mirror benchmark CSV relative paths or filenames.",
 )
 @click.option(
-    "--consolidation-schema",
+    "--compilation-schema",
     type=click.Path(exists=True, dir_okay=False, path_type=Path),
     default=None,
-    help="Schema used to generate consolidated outputs. Required for consolidation correctness scoring.",
+    help="Schema used to generate compiled outputs. Required for compilation correctness scoring.",
 )
 @click.option(
     "--baseline-snapshot",
@@ -4087,10 +4120,10 @@ def compare(
     help="Minimum required percentage (0-100) of qualitative QA/QC comparison summaries whose advisory gate status is pass.",
 )
 @click.option(
-    "--min-consolidation-correctness",
+    "--min-compilation-correctness",
     type=float,
     default=None,
-    help="Minimum required consolidation correctness percentage (0-100) when expected consolidated CSVs are provided.",
+    help="Minimum required compilation correctness percentage (0-100) when expected compiled CSVs are provided.",
 )
 @click.option(
     "--max-failure-rate",
@@ -4137,15 +4170,15 @@ def benchmark(
     gate_profile: Optional[Path],
     extraction_baseline_dir: Optional[Path],
     qaqc_baseline_dir: Optional[Path],
-    consolidation_baseline_dir: Optional[Path],
-    consolidation_schema: Optional[Path],
+    compilation_baseline_dir: Optional[Path],
+    compilation_schema: Optional[Path],
     baseline_snapshot: Optional[Path],
     write_snapshot: Optional[Path],
     snapshot_label: Optional[str],
     min_extraction_parity: Optional[float],
     min_qaqc_signal_quality: Optional[float],
     min_qaqc_qualitative_pass_rate: Optional[float],
-    min_consolidation_correctness: Optional[float],
+    min_compilation_correctness: Optional[float],
     max_failure_rate: Optional[float],
     max_average_seconds_per_document: Optional[float],
     min_documents_per_minute: Optional[float],
@@ -4169,13 +4202,13 @@ def benchmark(
     qaqc_baseline_dir = _coalesce_benchmark_option(
         qaqc_baseline_dir, profile_values, "qaqc_baseline_dir"
     )
-    consolidation_baseline_dir = _coalesce_benchmark_option(
-        consolidation_baseline_dir,
+    compilation_baseline_dir = _coalesce_benchmark_option(
+        compilation_baseline_dir,
         profile_values,
-        "consolidation_baseline_dir",
+        "compilation_baseline_dir",
     )
-    consolidation_schema = _coalesce_benchmark_option(
-        consolidation_schema, profile_values, "consolidation_schema"
+    compilation_schema = _coalesce_benchmark_option(
+        compilation_schema, profile_values, "compilation_schema"
     )
     baseline_snapshot = _coalesce_benchmark_option(
         baseline_snapshot, profile_values, "baseline_snapshot"
@@ -4197,10 +4230,10 @@ def benchmark(
         profile_values,
         "min_qaqc_qualitative_pass_rate",
     )
-    min_consolidation_correctness = _coalesce_benchmark_option(
-        min_consolidation_correctness,
+    min_compilation_correctness = _coalesce_benchmark_option(
+        min_compilation_correctness,
         profile_values,
-        "min_consolidation_correctness",
+        "min_compilation_correctness",
     )
     max_failure_rate = _coalesce_benchmark_option(
         max_failure_rate, profile_values, "max_failure_rate"
@@ -4242,15 +4275,15 @@ def benchmark(
             "--min-qaqc-signal-quality requires --qaqc-baseline-dir"
         )
     if (
-        min_consolidation_correctness is not None
-        and consolidation_baseline_dir is None
+        min_compilation_correctness is not None
+        and compilation_baseline_dir is None
     ):
         raise click.UsageError(
-            "--min-consolidation-correctness requires --consolidation-baseline-dir"
+            "--min-compilation-correctness requires --compilation-baseline-dir"
         )
-    if consolidation_baseline_dir is not None and consolidation_schema is None:
+    if compilation_baseline_dir is not None and compilation_schema is None:
         raise click.UsageError(
-            "--consolidation-baseline-dir requires --consolidation-schema"
+            "--compilation-baseline-dir requires --compilation-schema"
         )
 
     metrics = collect_benchmark_metrics(
@@ -4258,8 +4291,8 @@ def benchmark(
         repo_root=Path.cwd(),
         extraction_baseline_dir=extraction_baseline_dir,
         qaqc_baseline_dir=qaqc_baseline_dir,
-        consolidation_baseline_dir=consolidation_baseline_dir,
-        consolidation_schema_path=consolidation_schema,
+        compilation_baseline_dir=compilation_baseline_dir,
+        compilation_schema_path=compilation_schema,
     )
     baseline_comparison = None
     if baseline_snapshot:
@@ -4282,7 +4315,7 @@ def benchmark(
         min_extraction_parity=min_extraction_parity,
         min_qaqc_signal_quality=min_qaqc_signal_quality,
         min_qaqc_qualitative_pass_rate=min_qaqc_qualitative_pass_rate,
-        min_consolidation_correctness=min_consolidation_correctness,
+        min_compilation_correctness=min_compilation_correctness,
         max_failure_rate=max_failure_rate,
         max_average_seconds_per_document=max_average_seconds_per_document,
         min_documents_per_minute=min_documents_per_minute,
@@ -4333,8 +4366,8 @@ def benchmark(
         "QA/QC Qualitative Pass Rate": f"{metrics['qaqc_qualitative_pass_rate']:.2f}%"
         if metrics["qaqc_qualitative_pass_rate"] is not None
         else "N/A",
-        "Consolidation Correctness": f"{metrics['consolidation_correctness']:.2f}%"
-        if metrics["consolidation_correctness"] is not None
+        "Compilation Correctness": f"{metrics['compilation_correctness']:.2f}%"
+        if metrics["compilation_correctness"] is not None
         else "N/A",
         "Successful Documents": str(metrics["successful_documents"]),
         "Failed Documents": str(metrics["failed_documents"]),

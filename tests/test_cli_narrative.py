@@ -4,8 +4,8 @@ These lock in the design-system contract established by the UI refactor:
 - the shared primitives render in a consistent, theme-driven way,
 - the RunView narrative controller emits sections in the right order and
   self-gates on verbosity,
-- the acquisition live dashboard is bound to the shared console and dedupes
-  repeated events (the fix for duplicated/flickering acquire frames), and
+- the discovery live dashboard is bound to the shared console and dedupes
+  repeated events (the fix for duplicated/flickering discover frames), and
 - command source no longer carries ad-hoc colored markup / ASCII dividers.
 """
 
@@ -22,8 +22,8 @@ from psweep.cli.ui import (
 )
 from psweep.cli.run_view import RunView
 from psweep.cli.dashboard import (
-    AcquisitionDashboard,
-    create_acquisition_live_dashboard,
+    DiscoveryDashboard,
+    create_discovery_live_dashboard,
     create_live_dashboard,
 )
 import psweep.cli.ui as ui_module
@@ -122,7 +122,7 @@ class TestRunViewNarrative:
 
 class TestLiveDashboard:
     def test_acquire_live_bound_to_shared_console(self):
-        live, _ = create_acquisition_live_dashboard(
+        live, _ = create_discovery_live_dashboard(
             domain="x", mode="run", total_targets=3, seeker_enabled=True
         )
         assert live.console is ui_module.console
@@ -132,7 +132,7 @@ class TestLiveDashboard:
         assert live.console is ui_module.console
 
     def test_push_event_dedupes_consecutive_duplicates(self):
-        dash = AcquisitionDashboard(
+        dash = DiscoveryDashboard(
             domain="x", mode="run", total_targets=3, seeker_enabled=True
         )
         dash.push_event("seeker 1/3: searching A | query=q")

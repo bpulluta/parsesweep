@@ -9,7 +9,7 @@ The simplest, recommended usage is to name the model directly on each stage::
 
     processing:
       model: gpt-5                 # extraction model
-    acquisition:
+    discovery:
       document_review:
         model: gpt-4o-mini         # a cheaper model for bulk curation
 

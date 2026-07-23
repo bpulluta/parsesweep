@@ -1,17 +1,26 @@
 # Configuration Files
 
-This directory contains runtime configuration files for acquisition, processing,
-and consolidation, organized by domain/category.
+This directory contains runtime configuration files for discovery, extraction,
+and compilation, organized by domain/category.
 
 ## Structure
 
 ```
 config/
+├── TEMPLATE.yaml                    # Annotated template — copy this to start
+├── utility_rate_tariffs/
+│   ├── run.yaml
+│   └── page_ranges.csv
+├── datacenter_timelines/
+│   └── run.yaml
+├── geothermal_ordinances/
+│   └── run.yaml
+├── industrial_pump_datasheets/
+│   └── run.yaml
 ├── generator_manuals/
-│   └── run.yaml             # Acquisition + processing + consolidation config
-├── tariffs/
-│   ├── run.yaml             # Optional unified runtime config
-│   └── page_ranges.csv      # Page range specifications for tariff documents
+│   └── run.yaml
+├── aq_permits_va/
+│   └── run.yaml
 └── solar/
     └── page_ranges.csv
 ```
@@ -20,25 +29,25 @@ config/
 
 ## Runtime Config Overview
 
-All three pipeline commands (`acquire`, `process`, `consolidate`) accept a `--config` flag pointing at a YAML file. Sections not relevant to a command are ignored.
+All three pipeline commands (`discover`, `extract`, `compile`) accept a `--config` flag pointing at a YAML file. Sections not relevant to a command are ignored.
 
 Supported validation flags (all commands):
-- `--validate-config`: validate resolved inputs and exit — no processing runs.
+- `--validate-config`: validate resolved inputs and exit — no extraction runs.
 - `--show-effective-config`: print resolved values with source attribution and continue.
 - `--config-strict`: fail on unknown keys in runtime config sections.
 
 ```bash
 # Validate and preview effective config for any command
-pixi run psweep acquire --config config/generator_manuals/run.yaml --validate-config
-pixi run psweep process --config config/tariffs/run.yaml --show-effective-config
-pixi run psweep consolidate --config config/geothermal_ordinances/run.yaml --validate-config
+pixi run psweep discover --config config/generator_manuals/run.yaml --validate-config
+pixi run psweep extract --config config/tariffs/run.yaml --show-effective-config
+pixi run psweep compile --config config/geothermal_ordinances/run.yaml --validate-config
 ```
 
 ---
 
-## Acquisition Config Reference
+## Discovery Config Reference
 
-The `acquisition` section drives the `acquire` command.
+The `discovery` section drives the `discover` command.
 
 ### Top-Level Keys
 
@@ -56,7 +65,7 @@ Each target defines one document-discovery run. Free-form fields are available a
 
 **Option 1: Inline targets (small number of targets)**
 ```yaml
-acquisition:
+discovery:
   targets:
     - manufacturer: Generac           # used in query template as {manufacturer}
       power_class_kw: "200-300"       # used as {power_class_kw}
@@ -75,7 +84,7 @@ acquisition:
 
 **Option 2: CSV file (hundreds or thousands of targets)**
 ```yaml
-acquisition:
+discovery:
   targets_csv: targets.csv   # Load targets from CSV in same directory
   query_families:
     generator_similar_power:
@@ -108,7 +117,7 @@ Cummins,150-250
 Named lists of query templates. Use `{field}` placeholders that are filled from `targets[].` fields at runtime.
 
 ```yaml
-acquisition:
+discovery:
   query_families:
     generator_similar_power:
       - "{manufacturer} {power_class_kw} kW generator spec pdf"
@@ -154,7 +163,7 @@ are preserved in `manifest.lineage.link_prioritization` for audit. Set
 
 ```yaml
 # Example: generator domain with power-range bonus
-acquisition:
+discovery:
   seeker:
     provider: serpapi
     max_results: 6
@@ -192,7 +201,7 @@ Design rule:
 Example: the same generic mechanism can support very different domains without code branching.
 
 ```yaml
-acquisition:
+discovery:
   selection:
     primary_per_target: 2
     exclude_draft: true
@@ -216,7 +225,7 @@ This keeps the runtime extensible across any domain while leaving the actual pol
 > `document_classifier` (keyword) and `document_review` (LLM), which flag or
 > curate after download.
 
-### Newer acquisition keys
+### Newer discovery keys
 
 These are documented with examples in
 [TEMPLATE.yaml](TEMPLATE.yaml); in brief:
@@ -249,15 +258,15 @@ These are documented with examples in
 | `SERPAPI_API_KEY` | SerpApi key (primary). |
 | `SERPAPI_KEY` | SerpApi key (fallback). |
 | `SERPAPI_SSL_VERIFY` | Set to `false` to disable SerpApi SSL verification (TLS interception environments). |
-| `ACQUISITION_SSL_VERIFY` | Set to `false` to disable download SSL verification. |
+| `DISCOVERY_SSL_VERIFY` | Set to `false` to disable download SSL verification. |
 
-### Acquisition Outputs
+### Discovery Outputs
 
 Each non-dry run is one self-contained, run-scoped folder, with a `latest`
 pointer to the most recent run that produced downloads:
 
 ```text
-output/acquisition/<domain>/
+discovered/<domain>/
     checkpoint.json                 # domain-level resume state
     latest -> runs/<run_id>         # symlink to the current run
     runs/<run_id>/
@@ -272,7 +281,7 @@ output/acquisition/<domain>/
             <partition>/<file>
 ```
 
-Downstream `process` consumes `output/acquisition/<domain>/latest/curated`.
+Downstream `extract` consumes `discovered/<domain>/latest/curated`.
 Edit `review.csv` (`human_decision` = `keep`/`reject`) and run
 `psweep curate` to rebuild `curated/`.
 
@@ -290,7 +299,7 @@ Edit `review.csv` (`human_decision` = `keep`/`reject`) and run
 
 ### Policy Design Decision
 
-Acquisition should remain domain-agnostic at the product level.
+Discovery should remain domain-agnostic at the product level.
 
 That means:
 - prefer domain config values over built-in preset bundle names
@@ -308,12 +317,12 @@ If a domain needs different discovery behavior, encode it in that domain's `run.
 | Category | Keys |
 |----------|------|
 | Required | `input_dir`, `schema` |
-| Optional | `output_dir`, `pages_csv`, `pages`, `profile`, `provider`, `model`, `limit` |
+| Optional | `output_dir`, `pages`, `profile`, `provider`, `model`, `limit` |
 | Advanced | `max_context`, `skip_existing`, `enable_qaqc`, `qaqc_lane`, `live_dashboard` |
 
 ---
 
-## Consolidation Config Reference
+## Compilation Config Reference
 
 | Category | Keys |
 |----------|------|
@@ -323,55 +332,39 @@ If a domain needs different discovery behavior, encode it in that domain's `run.
 
 ---
 
-## Full `run.yaml` Template
+## Starting a New Domain
 
-```yaml
-domain: generator_manuals
+Copy `TEMPLATE.yaml` and fill in your domain name, schema path, and directories:
 
-acquisition:
-  topology:
-    mode: distributed           # distributed | centralized | hybrid
-  targets:
-    - manufacturer: Generac
-      power_class_kw: "200-300"
-      query: "Generac industrial generator manual pdf"
-  query_families:
-    generator_similar_power:
-      - "{manufacturer} {power_class_kw} kW generator spec pdf"
-      - "{manufacturer} generator {power_class_kw} kW manual pdf"
-  seeker:
-    provider: serpapi
-    use_query_family: generator_similar_power
-    max_results: 6
-  link_prioritization:                 # own block, not under seeker
-    mode: heuristic
-    keywords: [manual, operator, installation]
-    domain_scores:                     # soft authority boosts (not a filter)
-      "generac.com": 0.2
-      "cummins.com": 0.2
-    # top_k: 5                         # optional global cap; omit for no cap
-  runtime:
-    min_request_interval_ms: 200
-    max_concurrent_downloads: 2
-    robots_policy_mode: ignore
-    tos_policy_mode: ignore
-
-processing:
-  input_dir: documents/generator_manuals
-  schema: schemas/personal/generator_manuals_schema.json
-  output_dir: processed/generator_manuals
-
-consolidation:
-  input_dir: processed/generator_manuals
-  schema: schemas/personal/generator_manuals_schema.json
-  output_dir: consolidated/generator_manuals
+```bash
+cp config/TEMPLATE.yaml config/my_domain/run.yaml
 ```
+
+See `TEMPLATE.yaml` for the fully annotated, up-to-date config template with all available knobs for each section.
 
 ---
 
-## Page Ranges CSV Format
+## Page Selection for Large Documents
 
-Page range CSV files specify which pages to extract from specific documents:
+Configure page selection under `extraction.pages:` in your run config. Use manual
+CSV ranges, LLM-assisted auto-locate, or both (CSV entries win, auto-locate fills
+in uncovered large docs).
+
+```yaml
+extraction:
+  pages:
+    csv: config/tariffs/page_ranges.csv    # manual ranges (win over auto)
+    auto_locate:                            # LLM fallback for uncovered docs
+      section_description: >-
+        the residential electric rate schedules showing per-kWh energy charges,
+        monthly customer charge, and other rate components
+      trigger_chars: 200000                 # only activate for docs exceeding this size
+      max_selected_pages: 30                # max candidate pages sent to the LLM
+      # keywords: [rate schedule, residential]   # optional heuristic boosts
+      # model: gpt-4o-mini                       # optional cheaper locator model
+```
+
+### Page Ranges CSV Format
 
 ```csv
 file_path,start_page,end_page
@@ -383,12 +376,25 @@ full_document.pdf,,
 - **file_path**: Filename or full path.
 - **start_page**: First page to extract (1-indexed, inclusive).
 - **end_page**: Last page to extract (1-indexed, inclusive).
-- Leave both empty to process the full document.
+- Leave both empty to extract the full document (and skip auto-locate for this file).
+
+### CLI Overrides
 
 ```bash
-pixi run psweep process documents/tariffs/ \
+# Manual CSV via CLI (no config needed)
+pixi run psweep extract documents/tariffs/ \
   --pages-csv config/tariffs/page_ranges.csv
+
+# Single file page range
+pixi run psweep extract doc.pdf --pages 615-759
 ```
+
+### How It Works
+
+- `pages.csv` entries are loaded first; matched files use those ranges.
+- `pages.auto_locate` runs second — only on large PDFs not covered by the CSV.
+- Auto-locate results are cached in `.pages/<name>.json` next to the file; the LLM call happens once.
+- On any failure, extraction falls back to the full document.
 
 ---
 
@@ -401,12 +407,12 @@ pixi run psweep process documents/tariffs/ \
 
 ## Runtime Config (Gate 0)
 
-You can now configure `process` and `consolidate` with a runtime config file.
+You can now configure `extract` and `compile` with a runtime config file.
 
 Supported commands:
-- `pixi run psweep process --config config/<domain>/run.yaml --validate-config`
-- `pixi run psweep process --config config/<domain>/run.yaml --show-effective-config`
-- `pixi run psweep consolidate --config config/<domain>/run.yaml --validate-config`
+- `pixi run psweep extract --config config/<domain>/run.yaml --validate-config`
+- `pixi run psweep extract --config config/<domain>/run.yaml --show-effective-config`
+- `pixi run psweep compile --config config/<domain>/run.yaml --validate-config`
 
 Validation controls:
 - `--validate-config`: validate resolved inputs and exit.
@@ -414,13 +420,13 @@ Validation controls:
 - `--config-strict`: fail on unknown keys in runtime config sections.
 
 Current supported runtime sections:
-- `processing`
-- `consolidation`
-- `acquisition` (active for `acquire` command)
+- `extraction`
+- `compilation`
+- `discovery` (active for `discover` command)
 
-### Acquisition and SerpApi Notes
+### Discovery and SerpApi Notes
 
-For web acquisition runs that use `--enable-serpapi`, set one of:
+For web discovery runs that use `--enable-serpapi`, set one of:
 - `SERPAPI_API_KEY=...`
 - `SERPAPI_KEY=...` (fallback supported)
 
@@ -430,27 +436,27 @@ If your environment uses TLS interception or custom cert chains and SerpApi SSL 
 You can set this in your shell for a single run:
 
 ```bash
-SERPAPI_SSL_VERIFY=false pixi run psweep acquire ... --enable-serpapi
+SERPAPI_SSL_VERIFY=false pixi run psweep discover ... --enable-serpapi
 ```
 
 Or place it in `.env` for recurring local runs.
 
-For non-dry acquisition downloads, TLS verification is controlled separately:
-- `ACQUISITION_SSL_VERIFY=false`
+For non-dry discovery downloads, TLS verification is controlled separately:
+- `DISCOVERY_SSL_VERIFY=false`
 
 Example download run with SSL disabled:
 
 ```bash
-ACQUISITION_SSL_VERIFY=false pixi run psweep acquire --domain <domain> --seed-url <url>
+DISCOVERY_SSL_VERIFY=false pixi run psweep discover --domain <domain> --seed-url <url>
 ```
 
-### Acquisition Output Organization (Scalable Layout)
+### Discovery Output Organization (Scalable Layout)
 
-For non-dry `acquire` runs, outputs are run-scoped and partitioned by strategy
-under the single run folder (see [Acquisition Outputs](#acquisition-outputs)):
+For non-dry `discover` runs, outputs are run-scoped and partitioned by strategy
+under the single run folder (see [Discovery Outputs](#discovery-outputs)):
 
 ```text
-output/acquisition/<domain>/runs/<run_id>/
+discovered/<domain>/runs/<run_id>/
     documents/
         by_state_jurisdiction/<state>/<jurisdiction>/...  # jurisdiction partitioning
         by_host/<source-host>/...                         # host fallback/default
@@ -473,8 +479,8 @@ This layout keeps large cross-state, cross-jurisdiction, and cross-website colle
 
 ### Run-Level Download Index
 
-Each non-dry `acquire` run writes `download_index.csv` next to the manifest.
-This file is intended as a machine-readable handoff for downstream batch processing.
+Each non-dry `discover` run writes `download_index.csv` next to the manifest.
+This file is intended as a machine-readable handoff for downstream batch extraction.
 
 Key columns include:
 - `run_id`, `domain`
@@ -494,63 +500,5 @@ Recommended modes:
 
 ### Example `run.yaml`
 
-```yaml
-domain: geothermal_ordinances
+See `config/geothermal_ordinances/run.yaml` for a complete, real-world example covering discovery, extraction, compilation, and QA/QC. See `TEMPLATE.yaml` for the fully annotated reference with all available knobs.
 
-processing:
-    input_dir: documents/geothermal_ordinances
-    schema: schemas/personal/geothermal_ordinance_schema.json
-    output_dir: processed/geothermal_ordinances
-    pages_csv: config/geothermal_ordinances/page_ranges.csv
-    max_context: 400000
-
-consolidation:
-    input_dir: processed/geothermal_ordinances
-    schema: schemas/personal/geothermal_ordinance_schema.json
-    output_dir: consolidated/geothermal_ordinances
-    dry_run: false
-```
-
-### Variable Categories
-
-Processing:
-- Required: `input_dir`, `schema`
-- Optional: `output_dir`, `pages_csv`, `pages`, `profile`, `provider`, `model`, `limit`
-- Advanced: `max_context`, `skip_existing`, `enable_qaqc`, `qaqc_lane`, `live_dashboard`
-
-Consolidation:
-- Required: `input_dir`, `schema`
-- Optional: `output_dir`, `dry_run`, `report_format`
-- Advanced: `fail_on_suspicious`
-
-## Page Ranges CSV Format
-
-Page range CSV files specify which pages to extract from specific documents:
-
-```csv
-file_path,start_page,end_page
-document1.pdf,615,650
-document2.pdf,100,200
-full_document.pdf,,
-```
-
-- **file_path**: Name of the document file (can be filename only or full path)
-- **start_page**: First page to extract (1-indexed, inclusive)
-- **end_page**: Last page to extract (1-indexed, inclusive)
-- Leave both start_page and end_page empty to process the full document
-
-## Usage
-
-Specify page ranges CSV when processing documents:
-
-```bash
-pixi run psweep process documents/tariffs/ --pages-csv config/tariffs/page_ranges.csv
-```
-
-## Why config/ Instead of documents/?
-
-Configuration files are separated from input documents because:
-- **Clear separation of concerns**: Config vs. data
-- **Scalability**: Each category can have multiple config files without cluttering documents/
-- **Maintainability**: Easy to find and update configurations
-- **Version control**: Easier to track config changes separately from large document files

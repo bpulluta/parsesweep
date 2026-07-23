@@ -1,0 +1,6 @@
+site_name,company_name,city,state,region,stage,demand_capacity_mw,full_address
+Microsoft Des Moines Project Alluvion,Microsoft Azure,West Des Moines,IA,Des Moines,operational,200.0,"555 White Crane Rd, West Des Moines, IA 50265"
+Crusoe: Abilene 7,Crusoe,Abilene,TX,West Texas,construction,180.0,"5502 Spinks Rd, Abilene, TX 79601, USA"
+Meta: Hyperion Expansion,Meta,,LA,Louisiana,planned,1900.0,"Burn Rd, Louisiana 71269, USA"
+"Amazon: King George, VA",Amazon AWS,King George,VA,AWS US East (N. Virginia),in_doubt,900.0,"Birchwood Dr, King George, VA"
+Nautilus Millinocket ME,Nautilus Data Technologies,Millinocket,ME,Maine,decommissioned,60.0,"34 York St, Millinocket, ME 04462"

@@ -4,9 +4,8 @@ from __future__ import annotations
 
 from typing import Any, Dict, Iterable, List, Optional
 
-from psweep.core.artifact_compiler import ArtifactCompilerError
 from psweep.utils.exceptions import (
-    ConsolidationError,
+    CompilationError,
     ExtractionError,
     SchemaMetadataError,
     SchemaValidationError,
@@ -51,18 +50,15 @@ def build_error_record(
     elif isinstance(exc, FileNotFoundError):
         category = "document_io"
         code = "document_not_found"
-    elif isinstance(exc, ArtifactCompilerError):
-        category = "artifact_resolution"
-        code = "artifact_resolution_failed"
     elif isinstance(exc, SchemaMetadataError):
         category = "schema_contract"
         code = "schema_metadata_invalid"
     elif isinstance(exc, SchemaValidationError):
         category = "schema_contract"
         code = "schema_validation_failed"
-    elif isinstance(exc, ConsolidationError):
-        category = "consolidation"
-        code = "consolidation_failed"
+    elif isinstance(exc, CompilationError):
+        category = "compilation"
+        code = "compilation_failed"
     elif isinstance(exc, ExtractionError):
         category = "extraction"
         code = "extraction_failed"
@@ -75,7 +71,7 @@ def build_error_record(
             or "extract from" in lowered_message
             or "ocr" in lowered_message
         ):
-            category = "document_processing"
+            category = "document_extraction"
             code = "document_extraction_failed"
         else:
             category = "runtime"

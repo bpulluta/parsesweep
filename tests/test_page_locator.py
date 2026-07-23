@@ -165,7 +165,76 @@ class TestProcessIntegration:
         )
         assert page_range_map[big] == (5, 9)  # located
         assert small not in page_range_map  # too small, untouched
-        assert page_range_map[manual] == (1, 3)  # manual wins
+        assert page_range_map[manual] == (1, 3)  # CSV entry wins
+
+    def test_apply_page_targeting_skips_explicit_full_doc(
+        self, tmp_path, monkeypatch
+    ):
+        """CSV entry with empty pages (explicit full-doc) blocks targeting."""
+        from psweep.cli import commands
+
+        doc = tmp_path / "full.pdf"
+        doc.write_bytes(b"%PDF fake")
+
+        monkeypatch.setattr(
+            "psweep.extraction.pdf_utils.extract_pages_text",
+            lambda p: ["x" * 300_000],
+        )
+        monkeypatch.setattr(
+            "psweep.extraction.page_locator.PageLocator.locate",
+            lambda self, doc, pages=None: (5, 9),
+        )
+
+        # Explicit full-doc entry (None value, but key IS present)
+        page_range_map = {doc: None}
+        commands._apply_page_targeting(
+            doc_files=[doc],
+            page_range_map=page_range_map,
+            config={
+                "enabled": True,
+                "section_description": "rate schedules",
+                "trigger_chars": 200_000,
+            },
+        )
+        assert page_range_map[doc] is None  # still None, targeting skipped
+
+    def test_apply_page_targeting_writes_discovered_csv(
+        self, tmp_path, monkeypatch
+    ):
+        """Discovered page ranges are written to a CSV for human review."""
+        from psweep.cli import commands
+
+        doc = tmp_path / "big.pdf"
+        doc.write_bytes(b"%PDF fake")
+
+        monkeypatch.setattr(
+            "psweep.extraction.pdf_utils.extract_pages_text",
+            lambda p: ["x" * 300_000],
+        )
+        monkeypatch.setattr(
+            "psweep.extraction.page_locator.PageLocator.locate",
+            lambda self, doc, pages=None: (10, 20),
+        )
+
+        page_range_map: dict = {}
+        out_dir = tmp_path / "output"
+        out_dir.mkdir()
+        commands._apply_page_targeting(
+            doc_files=[doc],
+            page_range_map=page_range_map,
+            config={
+                "enabled": True,
+                "section_description": "rate schedules",
+                "trigger_chars": 200_000,
+                "save_discovered": True,
+            },
+            output_dir=out_dir,
+        )
+        csv_path = out_dir / "discovered_page_ranges.csv"
+        assert csv_path.exists()
+        content = csv_path.read_text()
+        assert "big.pdf" in content
+        assert "10" in content and "20" in content
 
     def test_apply_page_targeting_noop_without_description(
         self, tmp_path, monkeypatch, capsys

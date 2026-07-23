@@ -99,7 +99,7 @@ class SchemaMetadata:
                 '      "context_objects": ["context_object_keys"],\n'
                 '      "identifier_fields": ["path.to.identifier"]\n'
                 "    },\n"
-                '    "consolidation": {\n'
+                '    "compilation": {\n'
                 '      "deduplication": {\n'
                 '        "key_fields": ["unique_fields"],\n'
                 '        "ignore_fields": ["fields_to_ignore"]\n'
@@ -185,77 +185,77 @@ class SchemaMetadata:
             "document_type", "Document"
         )
 
-    # --- Consolidation Metadata ---
+    # --- Compilation Metadata ---
 
     def get_deduplication_key_fields(self) -> List[str]:
         """Get fields that define uniqueness for deduplication."""
-        dedup = self.metadata.get("consolidation", {}).get("deduplication", {})
+        dedup = self.metadata.get("compilation", {}).get("deduplication", {})
         return dedup.get("key_fields", [])
 
     def get_deduplication_ignore_fields(self) -> List[str]:
         """Get fields to ignore during deduplication comparison."""
-        dedup = self.metadata.get("consolidation", {}).get("deduplication", {})
+        dedup = self.metadata.get("compilation", {}).get("deduplication", {})
         return dedup.get("ignore_fields", [])
 
     def get_deduplication_strategy(self) -> str:
         """Get deduplication strategy (latest, earliest, merge)."""
-        dedup = self.metadata.get("consolidation", {}).get("deduplication", {})
+        dedup = self.metadata.get("compilation", {}).get("deduplication", {})
         return dedup.get("strategy", "latest")
 
     def get_comparison_mode(self) -> str:
         """Get comparison mode for deduplication (exact, fuzzy)."""
-        dedup = self.metadata.get("consolidation", {}).get("deduplication", {})
+        dedup = self.metadata.get("compilation", {}).get("deduplication", {})
         return dedup.get("comparison_mode", "exact")
 
     def get_output_format(self) -> str:
         """Get default output format."""
-        output = self.metadata.get("consolidation", {}).get("output", {})
+        output = self.metadata.get("compilation", {}).get("output", {})
         return output.get("default_format", "excel")
 
     def get_output_exclude_fields(self) -> List[str]:
-        """Get fields that should be excluded from consolidated outputs."""
-        output = self.metadata.get("consolidation", {}).get("output", {})
+        """Get fields that should be excluded from compiled outputs."""
+        output = self.metadata.get("compilation", {}).get("output", {})
         return output.get("exclude_fields", [])
 
     def get_column_renames(self) -> Dict[str, str]:
         """Get output column rename mapping."""
-        output = self.metadata.get("consolidation", {}).get("output", {})
+        output = self.metadata.get("compilation", {}).get("output", {})
         return output.get("column_renames", {})
 
     def get_column_order(self) -> List[str]:
         """Get preferred column order for output."""
-        output = self.metadata.get("consolidation", {}).get("output", {})
+        output = self.metadata.get("compilation", {}).get("output", {})
         return output.get("column_order", [])
 
     def get_freeze_columns(self) -> int:
         """Get number of columns to freeze in Excel output."""
-        output = self.metadata.get("consolidation", {}).get("output", {})
+        output = self.metadata.get("compilation", {}).get("output", {})
         return output.get("freeze_columns", 0)
 
     def get_auto_width(self) -> bool:
         """Get whether to auto-size columns in Excel output."""
-        output = self.metadata.get("consolidation", {}).get("output", {})
+        output = self.metadata.get("compilation", {}).get("output", {})
         return output.get("auto_width", True)
 
     def get_flattening_config(self) -> Dict[str, Any]:
-        """Return the optional ``consolidation.flattening`` block.
+        """Return the optional ``compilation.flattening`` block.
 
         Domain-neutral knobs the flattener consults to decide how arrays of
         objects become spreadsheet columns. Every key is optional; when a key
         is absent the flattener falls back to its documented general defaults,
         so schemas that declare nothing keep the legacy behavior.
         """
-        return self.metadata.get("consolidation", {}).get("flattening", {})
+        return self.metadata.get("compilation", {}).get("flattening", {})
 
     def get_state_normalization_column(self) -> Optional[str]:
         """Column whose US-state names should be normalized to abbreviations.
 
-        Driven by ``consolidation.normalization.state_column``. Defaults to
+        Driven by ``compilation.normalization.state_column``. Defaults to
         ``"State"`` (legacy behavior: normalize a column literally named
         ``State`` when present). Set to ``null``/``""`` in a schema to opt a
         non-US / non-jurisdiction domain out entirely.
         """
-        normalization = self.metadata.get("consolidation", {}).get(
+        normalization = self.metadata.get("compilation", {}).get(
             "normalization", {}
         )
         if "state_column" not in normalization:
@@ -263,8 +263,8 @@ class SchemaMetadata:
         column = normalization.get("state_column")
         return column or None
 
-    def get_consolidation_field_severity_hints(self) -> Dict[str, str]:
-        """Return schema-derived severity hints for consolidated output fields."""
+    def get_compilation_field_severity_hints(self) -> Dict[str, str]:
+        """Return schema-derived severity hints for compiled output fields."""
         hints: Dict[str, str] = {}
         properties = self.schema.get("properties", {})
 
@@ -455,7 +455,7 @@ class SchemaMetadata:
         *,
         prefix: Optional[str],
     ) -> None:
-        """Collect severity hints from an object schema using consolidation naming rules."""
+        """Collect severity hints from an object schema using compilation naming rules."""
         properties = schema_node.get("properties", {})
         if not isinstance(properties, dict):
             return

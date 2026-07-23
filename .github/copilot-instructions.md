@@ -1,7 +1,7 @@
 # GitHub Copilot Instructions for ParseSweep
 
 ## Project Overview
-ParseSweep is a universal document extraction system that uses LLMs to extract structured data from documents (PDFs, DOCX, TXT, XLSX, CSV) into JSON, then consolidates into Excel/CSV.
+ParseSweep is a universal document extraction system that uses LLMs to extract structured data from documents (PDFs, DOCX, TXT, XLSX, CSV) into JSON, then compiles into Excel/CSV.
 
 **Version 2.0+**: All schemas MUST include `$metadata` section. No heuristic fallbacks.
 
@@ -12,7 +12,7 @@ ParseSweep is a universal document extraction system that uses LLMs to extract s
 - Prefer runtime quality, repo hygiene, and repeatable onboarding over expanding optional surface area.
 - Keep ownership boundaries explicit:
   - schema: extraction contract, field definitions, identifiers, minimal dedup semantics
-  - pack: reusable domain runtime behavior, QA/QC defaults, consolidation presentation
+  - pack: reusable domain runtime behavior, QA/QC defaults, compilation presentation
   - profile: environment/runtime tuning
 - Start new domains with the leanest schema that can support a smoke extraction, then expand through iteration.
 
@@ -39,32 +39,32 @@ ParseSweep is a universal document extraction system that uses LLMs to extract s
 
 **Geothermal ordinances extraction:**
 ```bash
-pixi run psweep process documents/geothermal_ordinances/ \
+pixi run psweep extract documents/geothermal_ordinances/ \
   --schema schemas/personal/geothermal_ordinance_schema.json
 ```
 
 **Tariff extraction:**
 ```bash
-pixi run psweep process documents/tariffs/ \
+pixi run psweep extract documents/tariffs/ \
   --schema schemas/personal/electricity_tariff_schema.json \
   --max-context 1400000
 ```
 
 **Air quality permits extraction:**
 ```bash
-pixi run psweep process documents/aq_permits/ \
+pixi run psweep extract documents/aq_permits/ \
   --schema schemas/personal/air_quality_permits_schema.json
 ```
 
 **Solar ordinances extraction:**
 ```bash
-pixi run psweep process documents/solar/ \
+pixi run psweep extract documents/solar/ \
   --schema schemas/personal/solar_ordinance_schema.json
 ```
 
 **Key options:**
 - `--schema`: **REQUIRED** for production - Path to schema JSON file (see Schema Requirements below)
-- `--output`: Custom output directory (defaults to processed/category/)
+- `--output`: Custom output directory (defaults to extracted/category/)
 - `--max-context`: Maximum characters to extract (default: 400000, increase for large docs)
 - `--pages-csv`: Path to CSV file specifying page ranges (e.g., `config/tariffs/page_ranges.csv`)
 - `--enable-qa-qc`: Enable multi-model QA/QC extraction (runs 2+ models, generates comparison reports)
@@ -74,7 +74,7 @@ pixi run psweep process documents/solar/ \
 **Using page ranges:**
 ```bash
 # Extract specific pages from documents
-pixi run psweep process documents/tariffs/ \
+pixi run psweep extract documents/tariffs/ \
   --schema schemas/personal/electricity_tariff_schema.json \
   --pages-csv config/tariffs/page_ranges.csv
 ```
@@ -93,20 +93,20 @@ full_doc.pdf,,
 
 **Consolidate extracted JSONs to Excel/CSV:**
 ```bash
-pixi run psweep consolidate processed/tariffs \\\n  --schema schemas/personal/electricity_tariff_schema.json
+pixi run psweep compile extracted/tariffs \\\n  --schema schemas/personal/electricity_tariff_schema.json
 
-pixi run psweep consolidate processed/geothermal_ordinances \\\n  --schema schemas/personal/geothermal_ordinance_schema.json
+pixi run psweep compile extracted/geothermal_ordinances \\\n  --schema schemas/personal/geothermal_ordinance_schema.json
 
-pixi run psweep consolidate processed/aq_permits \\\n  --schema schemas/personal/air_quality_permits_schema.json
+pixi run psweep compile extracted/aq_permits \\\n  --schema schemas/personal/air_quality_permits_schema.json
 ```
 
 **With custom output:**
 ```bash
-pixi run psweep consolidate processed/data \\\n  --schema schemas/your_schema.json \\\n  --output my_analysis/
+pixi run psweep compile extracted/data \\\n  --schema schemas/your_schema.json \\\n  --output my_analysis/
 ```
 
 **Outputs:**
-- Automatically creates `consolidated/` directory
+- Automatically creates `compiled/` directory
 - Generates both `.xlsx` and `.csv` files
 - Auto-deduplicates identical entries
 - Auto-sizes Excel columns
@@ -147,17 +147,17 @@ ParseSweep/
 │   │   ├── geothermal_ordinance_schema.json
 │   │   └── air_quality_permits_schema.json
 │   └── example_utility_rate_schema.json
-├── processed/              # Raw JSON extractions
+├── extracted/              # Raw JSON extractions
 │   ├── geothermal_ordinances/
 │   ├── aq_permits/
 │   └── tariffs/
-├── consolidated/           # Final Excel/CSV outputs
+├── compiled/           # Final Excel/CSV outputs
 │   ├── geothermal_ordinances/
 │   └── tariffs/
 └── src/psweep/
     ├── cli/               # CLI commands
     ├── extraction/        # Document extraction logic
-    ├── consolidation/     # Data consolidation logic
+    ├── compilation/     # Data compilation logic
     └── utils/             # Utilities
 ```
 
@@ -173,19 +173,35 @@ ParseSweep/
 ### Full Pipeline (Process → Consolidate)
 ```bash
 # 1. Clear old data (optional)
-rm -rf processed/category/* consolidated/category/*
+rm -rf extracted/category/* compiled/category/*
 
 # 2. Process documents (specify correct schema!)
-pixi run psweep process documents/tariffs/ \\\n  --schema schemas/personal/electricity_tariff_schema.json
+pixi run psweep extract documents/tariffs/ \\\n  --schema schemas/personal/electricity_tariff_schema.json
 
 # 3. Consolidate (use same schema!)
-pixi run psweep consolidate processed/tariffs/ \\\n  --schema schemas/personal/electricity_tariff_schema.json
+pixi run psweep compile extracted/tariffs/ \\\n  --schema schemas/personal/electricity_tariff_schema.json
 ```
 
 ### Large Document Processing
-For documents like complete tariff books:
+For documents like complete tariff books, use **page targeting** (preferred) or increase context:
+
+**Option 1 — LLM-assisted page targeting (recommended for config-based runs):**
+Uses a cheap keyword scan + one LLM call to find the right pages automatically.
 ```bash
-pixi run psweep process documents/tariffs/ \
+# pages.auto_locate is configured in the run config YAML
+pixi run psweep extract --config config/utility_rate_tariffs/run.yaml
+```
+
+**Option 2 — Manual page ranges:**
+```bash
+pixi run psweep extract documents/tariffs/ \
+  --schema schemas/personal/electricity_tariff_schema.json \
+  --pages-csv config/tariffs/page_ranges.csv
+```
+
+**Option 3 — Increase context window (brute force):**
+```bash
+pixi run psweep extract documents/tariffs/ \
   --schema schemas/personal/electricity_tariff_schema.json \
   --max-context 1400000
 ```
@@ -194,16 +210,16 @@ pixi run psweep process documents/tariffs/ \
 Validate extractions by running 2+ AI models and comparing outputs:
 ```bash
 # Step 1: Run QA/QC extraction on the production schema/runtime path
-pixi run psweep process documents/geothermal_ordinances/ \
+pixi run psweep extract documents/geothermal_ordinances/ \
   --schema schemas/personal/geothermal_ordinance_schema.json \
   --enable-qa-qc
 
 # Step 2: Generate/regenerate comparison reports (no re-extraction needed)
-pixi run psweep compare processed/geothermal_ordinances/qa_qc \
+pixi run psweep compare extracted/geothermal_ordinances/qa_qc \
   --schema schemas/personal/geothermal_ordinance_schema.json
 
 # Optional: evaluate the qualitative review lane explicitly
-pixi run psweep compare processed/geothermal_ordinances/qa_qc \
+pixi run psweep compare extracted/geothermal_ordinances/qa_qc \
   --schema schemas/personal/geothermal_ordinance_schema.json \
   --qaqc-lane qualitative
 
@@ -228,7 +244,7 @@ pixi run psweep compare processed/geothermal_ordinances/qa_qc \
       "identifier_fields": ["path.to.id"],
       "context_objects": ["metadata_object"]
     },
-    "consolidation": {
+    "compilation": {
       "deduplication": {
         "key_fields": ["unique_fields"],
         "ignore_fields": ["notes", "timestamp"]
@@ -242,10 +258,10 @@ pixi run psweep compare processed/geothermal_ordinances/qa_qc \
 
 | Document Type | Schema Path | Command Example |
 |--------------|-------------|------------------|
-| Tariffs | `schemas/personal/electricity_tariff_schema.json` | `pixi run psweep process documents/tariffs/ --schema schemas/personal/electricity_tariff_schema.json` |
-| Geothermal Ordinances | `schemas/personal/geothermal_ordinance_schema.json` | `pixi run psweep process documents/geothermal_ordinances/ --schema schemas/personal/geothermal_ordinance_schema.json` |
-| Air Quality Permits | `schemas/personal/air_quality_permits_schema.json` | `pixi run psweep process documents/aq_permits/ --schema schemas/personal/air_quality_permits_schema.json` |
-| Solar Ordinances | `schemas/personal/solar_ordinance_schema.json` | `pixi run psweep process documents/solar/ --schema schemas/personal/solar_ordinance_schema.json` |
+| Tariffs | `schemas/personal/electricity_tariff_schema.json` | `pixi run psweep extract documents/tariffs/ --schema schemas/personal/electricity_tariff_schema.json` |
+| Geothermal Ordinances | `schemas/personal/geothermal_ordinance_schema.json` | `pixi run psweep extract documents/geothermal_ordinances/ --schema schemas/personal/geothermal_ordinance_schema.json` |
+| Air Quality Permits | `schemas/personal/air_quality_permits_schema.json` | `pixi run psweep extract documents/aq_permits/ --schema schemas/personal/air_quality_permits_schema.json` |
+| Solar Ordinances | `schemas/personal/solar_ordinance_schema.json` | `pixi run psweep extract documents/solar/ --schema schemas/personal/solar_ordinance_schema.json` |
 
 **Critical:**
 - The `--schema` flag is **REQUIRED** for production use
@@ -305,10 +321,10 @@ When the user only has raw documents for a new domain, guide them through the cu
 3. If the user already knows the first 4-8 fields they need, prefer `--include-field ...` on `init-domain-schema` so the starter is trimmed immediately instead of expecting manual JSON edits.
 4. Use the closest existing schema only as a reference for field patterns and domain phrasing.
 5. Keep the separation explicit: schema owns extraction contract and minimal dedup semantics; pack YAML owns runtime modules, QA/QC behavior, and environment/runtime tuning.
-6. Run `pixi run psweep validate-schema ...` and fix schema issues.
+6. Run `pixi run psweep check-schema ...` and fix schema issues.
 7. Scaffold the runtime surface with `pixi run psweep init-domain-pack --name <domain> --schema <schema> --with-workspace --with-config`.
-8. Validate the runtime seam with `pixi run psweep validate-runtime --pack schemas/domain_packs/<domain>/pack.yaml --profile default`.
-9. Run `process` on 1-2 documents first, then `consolidate`, then optional `compare` QA/QC runs.
+8. Validate the runtime seam with `pixi run psweep check-runtime --pack schemas/domain_packs/<domain>/pack.yaml --profile default`.
+9. Run `extract` on 1-2 documents first, then `compile`, then optional `compare` QA/QC runs.
 10. Iterate on schema fields, page ranges, and qualitative review until extraction quality is acceptable.
 
 Prefer reusing the product commands and tracked runtime files over ad hoc scripts.
@@ -317,7 +333,7 @@ Prefer reusing the product commands and tracked runtime files over ad hoc script
 1. `extraction.main_data_array` - Key for the array of items to extract
 2. `extraction.identifier_fields` - Fields used to identify each document
 3. `extraction.context_objects` - Metadata objects (optional but recommended)
-4. `consolidation.deduplication.key_fields` - Fields for deduplication
+4. `compilation.deduplication.key_fields` - Fields for deduplication
 
 **CRITICAL: Defining key_fields for deduplication**
 
@@ -344,7 +360,7 @@ Example - Tariff charges:
 
 **Verification command:**
 ```bash
-# After consolidation, check for unexpected "Merged N duplicate(s)" notes
+# After compilation, check for unexpected "Merged N duplicate(s)" notes
 pixi run python -c "import pandas as pd; df = pd.read_csv('output.csv'); print(df[df['Notes'].str.contains('Merged', na=False)])"
 ```
 
@@ -352,7 +368,7 @@ pixi run python -c "import pandas as pd; df = pd.read_csv('output.csv'); print(d
 1. Copy an existing schema from schemas/ as a template
 2. Modify the properties to match your document structure
 3. Update the $metadata section with correct field paths
-4. Validate: `pixi run psweep validate-schema schemas/your_schema.json`
+4. Validate: `pixi run psweep check-schema schemas/your_schema.json`
 5. Test on 1-2 documents before full batch
 
 **Example minimal valid schema:**
@@ -367,7 +383,7 @@ pixi run python -c "import pandas as pd; df = pd.read_csv('output.csv'); print(d
       "identifier_fields": ["metadata.id"],
       "context_objects": ["metadata"]
     },
-    "consolidation": {
+    "compilation": {
       "deduplication": {
         "key_fields": ["name", "type"],
         "ignore_fields": ["notes"]

@@ -21,7 +21,7 @@ from urllib.parse import urlparse
 
 import pytest
 
-from psweep.acquisition.connectors import (
+from psweep.discovery.connectors import (
     DiggerArtifact,
     DiggerInput,
     NullDiggerConnector,

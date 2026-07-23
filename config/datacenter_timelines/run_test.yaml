@@ -1,0 +1,82 @@
+# Test iteration config — 5 diverse sites for rapid query tuning
+domain: datacenter_timelines_test
+
+discovery:
+  targets_csv: targets_test5.csv
+
+  queries:
+    # Tier 1: Construction & operational status — uses state as reliable location
+    - "{company_name} {state} {city?} data center construction OR completion OR operational OR \"now online\""
+    # Tier 2: Announcement/groundbreaking with tighter phrasing
+    - "{company_name} {state} {city?} data center \"announced\" OR \"broke ground\" OR \"groundbreaking\" OR \"plans to build\""
+    # Tier 3: Directory/structured-data sources (carry "year built" and timelines)
+    - "\"{site_name}\" data center baxtel OR datacentermap OR datacenterhawk"
+    # Tier 4: Timeline, permits, and regulatory filings
+    - "{company_name} {state} {city?} data center timeline OR permit OR \"expected to open\" OR \"target completion\""
+    # Tier 5: Industry news with lifecycle keywords
+    - "{company_name} {state} {city?} data center site:datacenterdynamics.com OR site:datacenterfrontier.com OR site:datacenterknowledge.com"
+
+  search:
+    provider: serpapi
+    max_results: 10
+    cache: true
+    google_news: false
+
+  follow_links: false
+  browser_mode: false
+
+  selection:
+    max_per_target: 8
+    require_supported_document: false
+    exclude:
+      - "cutsheet"
+      - "cut-sheet"
+      - "spec-sheet"
+      - "datasheet"
+      - "/login"
+      - "/signin"
+      - "/careers"
+      - "/privacy"
+      - "/terms"
+      - "/contact"
+      - "youtube.com"
+      - "facebook.com"
+      - "twitter.com"
+      - "x.com/"
+      - "linkedin.com/company"
+      - "instagram.com"
+      - ".edu"
+      - ".ac."
+      - "researchgate"
+      - "ssrn"
+      - "arxiv"
+      - "semanticscholar"
+      - "sciencedirect"
+      - "springer"
+      - "ieee.org"
+      - "congress.gov"
+      - "senate.gov"
+      - "census.gov"
+      - "sec.gov"
+      - "crunchbase"
+      - "finance.yahoo"
+      - "seekingalpha"
+      - "marketwatch"
+      - "investor."
+      - "fraser.stlouisfed.org"
+      - "ugr.es"
+      - "usmodernist.org"
+      - "hartenergy.com"
+      # -- Job sites (no project dates) --
+      - "ziprecruiter.com"
+      - "indeed.com"
+      - "glassdoor.com"
+      - "jobs."
+      - "careers."
+      - "/careers/"
+      - "/jobs/"
+      # -- Broad listings without temporal data --
+      - "linkedin.com"
+      - "servercountry.org"
+
+  request_delay_ms: 400

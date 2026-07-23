@@ -21,11 +21,11 @@ class TestCsvTargetLoading:
         run_path = tmp_path / "run.yaml"
         run_path.write_text(
             """
-acquisition:
+discovery:
   targets_csv: targets.csv
   seeker:
     provider: serpapi
-processing:
+extraction:
   input_dir: documents
   schema: schemas/test.json
 """,
@@ -35,8 +35,8 @@ processing:
         config_data = load_runtime_config_file(run_path)
         
         # Verify targets were loaded from CSV
-        assert "targets" in config_data["acquisition"]
-        targets = config_data["acquisition"]["targets"]
+        assert "targets" in config_data["discovery"]
+        targets = config_data["discovery"]["targets"]
         assert len(targets) == 2
         assert targets[0]["utility"] == "PG&E"
         assert targets[0]["state"] == "CA"
@@ -44,7 +44,7 @@ processing:
         assert targets[1]["state"] == "NC"
         
         # CSV reference should be removed after processing
-        assert "targets_csv" not in config_data["acquisition"]
+        assert "targets_csv" not in config_data["discovery"]
 
     def test_load_targets_from_csv_with_multiple_columns(self, tmp_path: Path):
         """Load targets from CSV with many columns (for template substitution)."""
@@ -57,11 +57,11 @@ processing:
         run_path = tmp_path / "run.yaml"
         run_path.write_text(
             """
-acquisition:
+discovery:
   targets_csv: targets.csv
   seeker:
     provider: serpapi
-processing:
+extraction:
   input_dir: documents
   schema: schemas/test.json
 """,
@@ -69,7 +69,7 @@ processing:
         )
 
         config_data = load_runtime_config_file(run_path)
-        targets = config_data["acquisition"]["targets"]
+        targets = config_data["discovery"]["targets"]
         
         assert len(targets) == 2
         assert targets[0]["manufacturer"] == "Generac"
@@ -86,14 +86,14 @@ processing:
         run_path = tmp_path / "run.yaml"
         run_path.write_text(
             """
-acquisition:
+discovery:
   targets_csv: targets.csv
   targets:
     - utility: Duke Energy
       state: NC
   seeker:
     provider: serpapi
-processing:
+extraction:
   input_dir: documents
   schema: schemas/test.json
 """,
@@ -101,7 +101,7 @@ processing:
         )
 
         config_data = load_runtime_config_file(run_path)
-        targets = config_data["acquisition"]["targets"]
+        targets = config_data["discovery"]["targets"]
         
         # CSV targets should come first, then inline targets
         assert len(targets) == 2
@@ -122,11 +122,11 @@ processing:
         run_path = config_dir / "run.yaml"
         run_path.write_text(
             """
-acquisition:
+discovery:
   targets_csv: targets.csv
   seeker:
     provider: serpapi
-processing:
+extraction:
   input_dir: documents
   schema: schemas/test.json
 """,
@@ -134,7 +134,7 @@ processing:
         )
 
         config_data = load_runtime_config_file(run_path)
-        targets = config_data["acquisition"]["targets"]
+        targets = config_data["discovery"]["targets"]
         
         assert len(targets) == 1
         assert targets[0]["name"] == "Test1"
@@ -144,11 +144,11 @@ processing:
         run_path = tmp_path / "run.yaml"
         run_path.write_text(
             """
-acquisition:
+discovery:
   targets_csv: nonexistent.csv
   seeker:
     provider: serpapi
-processing:
+extraction:
   input_dir: documents
   schema: schemas/test.json
 """,
@@ -171,11 +171,11 @@ processing:
         run_path = tmp_path / "run.yaml"
         run_path.write_text(
             """
-acquisition:
+discovery:
   targets_csv: targets.csv
   seeker:
     provider: serpapi
-processing:
+extraction:
   input_dir: documents
   schema: schemas/test.json
 """,
@@ -183,7 +183,7 @@ processing:
         )
 
         config_data = load_runtime_config_file(run_path)
-        targets = config_data["acquisition"]["targets"]
+        targets = config_data["discovery"]["targets"]
         
         assert targets[0]["sector"] == "residential"
         assert targets[1]["sector"] is None  # Empty string becomes None
@@ -199,7 +199,7 @@ processing:
         run_path = tmp_path / "run.yaml"
         run_path.write_text(
             """
-acquisition:
+discovery:
   targets_csv: targets.csv
   query_families:
     utility_tariff:
@@ -207,7 +207,7 @@ acquisition:
   seeker:
     provider: serpapi
     use_query_family: utility_tariff
-processing:
+extraction:
   input_dir: documents
   schema: schemas/test.json
 """,
@@ -217,8 +217,8 @@ processing:
         config_data = load_runtime_config_file(run_path)
         
         # Verify targets loaded with proper structure for template substitution
-        assert "targets" in config_data["acquisition"]
-        assert "query_families" in config_data["acquisition"]
-        targets = config_data["acquisition"]["targets"]
+        assert "targets" in config_data["discovery"]
+        assert "query_families" in config_data["discovery"]
+        targets = config_data["discovery"]["targets"]
         assert targets[0]["utility"] == "PG&E"
         assert targets[0]["state"] == "CA"

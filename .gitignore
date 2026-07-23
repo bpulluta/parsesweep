@@ -55,10 +55,9 @@ Thumbs.db
 # ─────────────────────────────────────────────────────────
 # Output Files (can be regenerated)
 # ─────────────────────────────────────────────────────────
-processed/
-consolidated/
-data/
-output/
+extracted/
+compiled/
+discovered/
 outputs/
 
 # ─────────────────────────────────────────────────────────
@@ -107,4 +106,4 @@ output*/
 
 test-v1/
 config/audit/
-docs/pipeline_audit/
+dev_docs/

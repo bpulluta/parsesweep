@@ -23,7 +23,7 @@ def temp_schema_with_metadata(tmp_path):
                 "display_name_template": "{name} - {id}",
                 "document_type": "Test Document"
             },
-            "consolidation": {
+            "compilation": {
                 "deduplication": {
                     "key_fields": ["field1", "field2"],
                     "ignore_fields": ["notes", "timestamp"],
@@ -127,8 +127,8 @@ class TestExtractionMetadata:
         assert meta.get_main_data_array() == "test_items"
 
 
-class TestConsolidationMetadata:
-    """Test consolidation metadata accessor methods."""
+class TestCompilationMetadata:
+    """Test compilation metadata accessor methods."""
     
     def test_get_deduplication_key_fields(self, temp_schema_with_metadata):
         """Test getting deduplication key fields."""
@@ -158,7 +158,7 @@ class TestConsolidationMetadata:
     def test_get_output_exclude_fields(self, temp_schema_with_metadata):
         """Test getting output exclude fields."""
         schema = json.loads(temp_schema_with_metadata.read_text())
-        schema["$metadata"]["consolidation"]["output"]["exclude_fields"] = ["notes", "details"]
+        schema["$metadata"]["compilation"]["output"]["exclude_fields"] = ["notes", "details"]
         temp_schema_with_metadata.write_text(json.dumps(schema), encoding="utf-8")
 
         meta = SchemaMetadata(temp_schema_with_metadata)
@@ -172,18 +172,18 @@ class TestConsolidationMetadata:
     def test_get_column_renames(self, temp_schema_with_metadata):
         """Test getting output column rename mapping."""
         schema = json.loads(temp_schema_with_metadata.read_text())
-        schema["$metadata"]["consolidation"]["output"]["column_renames"] = {"Name": "charge_name"}
+        schema["$metadata"]["compilation"]["output"]["column_renames"] = {"Name": "charge_name"}
         temp_schema_with_metadata.write_text(json.dumps(schema), encoding="utf-8")
 
         meta = SchemaMetadata(temp_schema_with_metadata)
         assert meta.get_column_renames() == {"Name": "charge_name"}
 
-    def test_metadata_overrides_merge_consolidation_output(self, temp_schema_with_metadata):
-        """Runtime metadata overrides should replace schema-owned consolidation settings."""
+    def test_metadata_overrides_merge_compilation_output(self, temp_schema_with_metadata):
+        """Runtime metadata overrides should replace schema-owned compilation settings."""
         meta = SchemaMetadata(
             temp_schema_with_metadata,
             metadata_overrides={
-                "consolidation": {
+                "compilation": {
                     "output": {
                         "exclude_fields": ["runtime_only"],
                         "default_format": "csv",
@@ -413,7 +413,7 @@ class TestEdgeCases:
                     "main_data_array": "items"
                     # Missing other extraction fields
                 }
-                # Missing consolidation and validation sections
+                # Missing compilation and validation sections
             },
             "type": "object",
             "properties": {}
@@ -444,7 +444,7 @@ class TestExpectedRequirementsMethods:
                     "context_objects": ["document_info"],
                     "identifier_fields": ["document_info.state"]
                 },
-                "consolidation": {
+                "compilation": {
                     "deduplication": {
                         "key_fields": ["requirement_type"],
                         "ignore_fields": []
