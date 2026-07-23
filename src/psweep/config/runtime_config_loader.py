@@ -124,6 +124,21 @@ VARIABLE_CATALOG: dict[str, list[dict[str, str]]] = {
             "description": "Override destination for compiled output.",
         },
         {
+            "name": "deduplication",
+            "level": "optional",
+            "description": "Deduplication settings: key_fields, ignore_fields, strategy.",
+        },
+        {
+            "name": "output",
+            "level": "optional",
+            "description": "Output formatting: column_order, exclude_fields, column_renames.",
+        },
+        {
+            "name": "normalization",
+            "level": "optional",
+            "description": "Field normalization (e.g., state abbreviation).",
+        },
+        {
             "name": "dry_run",
             "level": "optional",
             "description": "Preview deduplication without writing files.",
@@ -282,6 +297,8 @@ _ALLOWED_SECTION_FIELDS = {
         "schema",
         "output_dir",
         "output",
+        "deduplication",
+        "normalization",
         "dry_run",
         "report_format",
         "fail_on_suspicious",
@@ -1465,6 +1482,9 @@ _FIELD_MAP: dict[str, str] = {
     "report_format": "report_format",
     "fail_on_suspicious": "fail_on_suspicious",
     "synthesis": "synthesis",
+    "deduplication": "deduplication",
+    "normalization": "normalization",
+    "compilation_output": "output",
 }
 
 

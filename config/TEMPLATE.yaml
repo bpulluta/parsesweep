@@ -1,312 +1,63 @@
-# ParseSweep Domain Config Template
+# Domain Config Template
+# Copy this file to config/<your_domain>/run.yaml
+# Usage: psweep extract --config config/<your_domain>/run.yaml
 #
-# Copy this file into a new folder under config/<your_domain>/run.yaml.
-# Remove sections you don't need — only `domain` and at least one
-# of discovery/extraction/compilation is required per run.
-#
-# Three tiers are documented below:
-#   REQUIRED   — must be set for the section to work
-#   OPTIONAL   — sensible defaults apply when omitted
-#   ADVANCED   — override only when you know why
-#
-# Full reference: docs/config_reference.md
+# Each section is independent — include only what you need:
+#   - discovery: only if you need web document discovery
+#   - extraction: required for extract command
+#   - compilation: required for compile command
+#   - qaqc: only if you use multi-model QA/QC validation
 
-# ── Global ────────────────────────────────────────────────────────────────────
+domain: your_domain_name
 
-# REQUIRED. Slug used to name output folders and label artifacts.
-domain: my_domain
-
-# OPTIONAL. Reusable model aliases with user-chosen names (no reserved names).
-# Reference an alias from any stage's `model:` instead of repeating a model name.
-# models:
-#   fast: gpt-4o-mini
-#   accurate: gpt-5
-
-# OPTIONAL. Per-model context window (in prompt tokens) used to fail fast before
-# an over-budget extraction request. Only needed for deployments whose window
-# cannot be inferred (e.g. custom Azure deployment names). Models not listed here
-# are simply not guarded. No model names are hardcoded anywhere in the code.
-# model_context_windows:
-#   my-azure-deployment-name: 300000
-
-
-# ── Discovery ───────────────────────────────────────────────────────────────
-#
-# Drives web discovery. Searches SerpApi, scores candidates, downloads files.
-# Targets are rows of context injected into query templates.
-#
-# DESIGN PRINCIPLE — recall first, then flag:
-#   Keep discover broad (good queries + light excludes) so the real document is
-#   never filtered out, and let `document_classifier` flag anything that isn't
-#   clearly the right document for human review. Aggressive allow-lists and long
-#   require-term lists tend to reject the actual files, so avoid them.
-#
-# Minimal (seeker only, no crawl):
-#
-#   discovery:
-#     targets_csv: targets.csv
-#     queries:
-#       - "{address} rate tariff .pdf"
-#     search:
-#       provider: serpapi
-#
-# With crawl (follow links from search results):
-#
-#   discovery:
-#     targets_csv: targets.csv
-#     queries:
-#       - "{jurisdiction} geothermal ordinance pdf"
-#     search:
-#       provider: serpapi
-#     follow_links: true
-#     selection:
-#       max_per_target: 2
-
-discovery:
-
-  # -- Targets -----------------------------------------------------------------
-
-  # OPTIONAL. Load targets from a CSV file next to this run.yaml.
-  # Each row becomes one search; column names inject into query templates.
-  # Inline `targets` list and targets_csv can both be set — CSV rows go first.
-  targets_csv: targets.csv
-
-  # OPTIONAL. Inline targets (use instead of or alongside targets_csv).
-  # targets:
-  #   - label: "Example target"
-  #     address: "123 Main St, Denver, CO 80202"
-  #     state: co
-  #     utility_name: "Xcel Energy"
-
-  # SCALE. Generate targets automatically instead of authoring each row.
-  # `targets` may instead be an object with a `source`:
-  #
-  #   dataset      — one target per entity row from a .csv/.json file
-  #   cross_product — cartesian product of named dimensions
-  #
-  # Cross-product example (every county x every doc type):
-  # targets:
-  #   source: cross_product
-  #   dimensions:
-  #     - {name: county, dataset: data/us_counties.csv}  # columns → fields
-  #     - {name: doc_type, values: ["ordinance", "zoning code"]}
-  #   filter: {state: ["CO", "OH"]}   # optional; matches generated fields
-  #   limit: 500                      # optional cap on total targets
-  #
-  # Dataset example (one target per row):
-  # targets:
-  #   source: dataset
-  #   path: data/manufacturers.csv
-  #   limit: 100
-
-  # OPTIONAL. Query-template context aliases: an alias resolves to the first
-  # non-empty source field. Lets one template serve multiple domains.
-  # query_context_aliases:
-  #   place: ["county_name", "jurisdiction", "city"]
-
-  # -- Search queries ----------------------------------------------------------
-
-  # REQUIRED (shorthand). List of query templates for SerpApi searches.
-  # The engine runs every template per target and deduplicates results.
-  # Token syntax: {field} = required, {field?} = optional (skipped if missing).
-  queries:
-    - "{address} rate tariff .pdf"
-    - "{utility_name} residential rate schedule {state}"
-
-  # OPTIONAL. SerpApi search settings.
-  search:
-    provider: serpapi       # only supported provider right now
-    max_results: 10         # results per query template per target
-
-  # -- Crawl (follow links) ----------------------------------------------------
-
-  # OPTIONAL. Whether to follow links from search results.
-  # false (default) = direct download of search-result URLs only.
-  # true            = crawl each result page and score child links.
-  follow_links: false
-
-  # ADVANCED. Digger controls depth/breadth of the crawl (only if follow_links: true).
-  # digger:
-  #   provider: http
-  #   max_depth: 2
-  #   max_pages: 30
-  #   max_files: 15
-  #   timeout_seconds: 45
-  #   allowed_domains:
-  #     - "gov"
-  #     - "municode.com"
-
-  # ADVANCED. Score and rank crawled links before downloading.
-  # link_prioritization:
-  #   mode: heuristic
-  #   top_k: 8
-  #   keywords:
-  #     - "tariff"
-  #     - "rate schedule"
-
-  # -- Candidate selection -----------------------------------------------------
-
-  # OPTIONAL. Controls which candidates are downloaded.
-  selection:
-    max_per_target: 2             # max downloads per target row
-
-    # OPTIONAL. At least one term must appear in the candidate URL or title.
-    require_any:
-      - "tariff"
-      - "rate"
-
-    # OPTIONAL. Skip candidates matching any of these terms.
-    exclude:
-      - "news"
-      - "blog"
-      - "press release"
-
-    # ADVANCED. Skip draft/superseded documents.
-    # exclude_draft: true
-    # draft_patterns:
-    #   - "\\bdraft\\b"
-    #   - "\\bproposed\\b"
-    #   - "\\bsuperseded\\b"
-
-  # -- Post-download classification --------------------------------------------
-
-  # OPTIONAL. Cheap keyword check: after download, read each file and confirm
-  # it looks like the expected document type (catches meeting minutes /
-  # research papers that pass URL filters). action: warn = annotate only;
-  # filter = mark rejected_classifier.
-  # document_classifier:
-  #   required_keywords: ["ordinance", "chapter", "section"]
-  #   nice_to_have_keywords: ["geothermal", "heat pump"]
-  #   min_required_matches: 1
-  #   action: warn
-
-  # OPTIONAL (LLM). Grade each downloaded file against a plain description of
-  # the document you want, then select the best one(s) per target into the run's
-  # curated/ set — so large runs need no manual review. Needs an LLM API key.
-  # Files are never moved; the picks are hardlinked into curated/ and a
-  # human-editable review.csv is written (edit + run `curate` to override).
-  # document_review:
-  #   document_description: >-
-  #     the enacted ordinance/code that governs X — not a draft, presentation,
-  #     staff report, or news item
-  #   keep_top: 1
-  #   # model: gpt-4o-mini      # optional; defaults to the extraction model
-
-  # -- Output partitioning -----------------------------------------------------
-
-  # OPTIONAL. Partition downloaded files into by_<f1>/<v1>/<v2>/... using
-  # target-metadata fields (domain-neutral). Falls back to by_host when unset.
-  # partition_by: ["state", "county_name"]
-
-  # -- Runtime -----------------------------------------------------------------
-
-  # OPTIONAL. Milliseconds between outbound requests (be polite to target sites).
-  request_delay_ms: 500
-
-  # ADVANCED. Concurrency and retry.
-  # runtime:
-  #   max_concurrent_downloads: 2
-  # retry_policy:
-  #   max_attempts: 3
-  #   initial_backoff_seconds: 1.0
-  #   max_backoff_seconds: 8.0
-
-  # ADVANCED. Crawl policy for robots.txt and ToS.
-  # policy:
-  #   robots_mode: warn       # ignore | warn | enforce
-  #   tos_mode: warn          # ignore | warn | enforce
-
-
-# ── Processing ────────────────────────────────────────────────────────────────
-#
-# Extracts structured data from downloaded documents using an LLM.
-
+# ─── EXTRACTION ──────────────────────────────────────────────────────────────
 extraction:
-  # REQUIRED. Path to documents to extract. When using discovery, point at the
-  # curated set of the latest run (LLM-reviewed + human-approved).
-  input_dir: discovered/my_domain/latest/curated
-
-  # REQUIRED. Schema that defines what fields to extract.
-  # Use a domain pack (schemas/domain_packs/<name>/pack.yaml) or a
-  # custom JSON schema (schemas/personal/<name>.json).
-  schema: schemas/domain_packs/my_domain/pack.yaml
-
-  # OPTIONAL. For large documents (e.g. tariff books), target specific pages so
-  # extraction reaches the relevant tables instead of overflowing the context.
-  # Keyed by file name; leave a file out to extract it in full.
-  # pages_csv: config/my_domain/page_ranges.csv
-
-  # OPTIONAL (LLM). Auto-locate the pages holding a described section for large
-  # files that have no manual range above (cheap keyword scan -> one LLM
-  # confirmation, cached in .pages/). Manual page_ranges.csv always wins.
-  # page_targeting:
+  schema: schemas/personal/your_schema.json
+  output_dir: extracted/your_domain
+  # input_dir: discovered/your_domain/latest/curated  # after discovery
+  # max_context: 600000                               # for large documents
+  # page_targeting:                                   # auto-find relevant pages
   #   enabled: true
-  #   section_description: >-
-  #     the section you want extracted — e.g. the residential rate schedules
-  #     showing per-kWh charges and the monthly customer charge
-  #   trigger_chars: 200000       # only run when the document exceeds this size
+  #   section_description: "the section containing your target data"
+  #   trigger_chars: 200000
   #   max_selected_pages: 30
 
-  # OPTIONAL.
-  output_dir: extracted/my_domain
-
-  # ADVANCED. LLM overrides — defaults come from environment.
-  # provider: anthropic    # openai | azure | anthropic | gemini | auto
-  # model: claude-opus-4-8
-  # max_context: 400000    # max characters sent per extraction call
-  # limit: 10              # process only the first N files (useful for testing)
-  # skip_existing: true    # skip files that already have output JSON
-
-
-# ── Consolidation ─────────────────────────────────────────────────────────────
-#
-# Deduplicates and merges extracted JSON records into a single CSV/Excel output.
-
+# ─── COMPILATION ─────────────────────────────────────────────────────────────
 compilation:
-  # REQUIRED. Directory of extraction JSON records (output of extraction step).
-  input_dir: extracted/my_domain
+  schema: schemas/personal/your_schema.json
+  output_dir: compiled/your_domain
+  deduplication:
+    key_fields: [field1, field2, field3]   # fields that make an item unique
+    ignore_fields: [notes]                 # excluded from dedup comparison
+  output:
+    default_format: excel                  # excel, csv, or both
+    # column_order: [field1, field2, ...]  # custom column ordering
+    # freeze_columns: 2                   # freeze first N columns in Excel
+    # auto_width: true                    # auto-size Excel columns
 
-  # REQUIRED. Same schema used during extraction.
-  schema: schemas/domain_packs/my_domain/pack.yaml
+# ─── DISCOVERY (optional) ────────────────────────────────────────────────────
+# discovery:
+#   targets_csv: targets.csv
+#   queries:
+#     - "{entity_name} {state} filetype:pdf"
+#   search:
+#     provider: serpapi
+#     max_results: 10
+#   selection:
+#     max_per_target: 3
+#     exclude: [news, blog, press release]
+#   document_review:
+#     document_description: "the authoritative source document"
+#     keep_top: 1
+#     action: move
 
-  # OPTIONAL.
-  output_dir: compiled/my_domain
-
-  # OPTIONAL — flattening. How arrays of objects become spreadsheet columns.
-  # Every key is optional; unset keys use general defaults, so most domains omit
-  # this block entirely. Override only when your field names differ.
-  # flattening:
-  #   type_fields: [type, category, name]     # field used to label/group items
-  #   distinguishing_fields: [tier, period]   # disambiguates sibling items
-  #   value_fields: [value, amount]           # value shown in summaries
-  #   unit_fields: [unit, units]              # unit column(s) to detect
-  #   skip_fields: [details, notes]           # omitted from expanded columns
-  #   expand_max_items: 15                     # >N items -> summarized, not columns
-  #   expand_max_fields: 20
-  #   unit_normalizations: {ft: feet, '"': inches}  # {} to disable normalization
-
-  # OPTIONAL — normalization.
-  # normalization:
-  #   state_column: State   # column of US-state names to abbreviate (UT, CA...).
-  #                         # Default "State"; set null to opt out (non-US domains).
-
-  # OPTIONAL — synthesis. Reconcile MANY per-document records into ONE row per
-  # entity using an LLM (conflict resolution + confidence + provenance) instead
-  # of lossy tabular dedup. Domain-neutral: every key below is a path into the
-  # extraction payload. Only pays for an LLM call when >= min_sources_for_llm
-  # sources carry a value to reconcile.
-  # synthesis:
-  #   enabled: true
-  #   min_sources_for_llm: 2
-  #   model: <stronger-model>            # optional; else inherits the env model
-  #   group_by: [entity.name]            # one output row per distinct value
-  #   identity_fields: [entity.city]     # context carried onto every row
-  #   relevance_flag: applicability.on_topic   # only reconcile on-topic records
-  #   citation_field: provenance.url     # source URL per record (citation list)
-  #   reconcile_fields:                  # fields to reconcile, optional evidence
-  #     - {field: start, evidence: ev_start}
-  #     - {field: end}
-  #   ordering_constraint: [start, end]  # optional: enforce non-decreasing order
-  #   narrative_fields: [status]         # optional extra free-text outputs
-  #   instructions: >-                   # optional domain guidance for the LLM
-  #     Only accept values that describe the entity itself.
+# ─── QA/QC (optional) ────────────────────────────────────────────────────────
+# qaqc:
+#   default_lane: quantitative
+#   lanes:
+#     quantitative:
+#       enabled: true
+#       record_matching:
+#         key_fields: [field1, field2]
+#       comparison:
+#         primary_fields: [value_field, unit_field]

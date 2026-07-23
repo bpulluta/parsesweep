@@ -41,34 +41,29 @@ def cli():
 
     \b
     QUICK START:
-        1. Put your documents in a folder (e.g., documents/Category/)
-        2. Extract with your schema:
-           psweep extract documents/Category --schema schemas/your_schema.json
-        3. Compile into spreadsheet:
-           psweep compile extracted/Category --schema schemas/your_schema.json
-        4. Open the CSV or Excel file!
+        1. Put your documents in a folder (e.g., documents/my_domain/)
+        2. Create a config: config/my_domain/run.yaml (references your schema)
+        3. Extract:  psweep extract --config config/my_domain/run.yaml
+        4. Compile:  psweep compile --config config/my_domain/run.yaml
+        5. Open the CSV or Excel file!
 
     \b
     COMMON WORKFLOWS:
 
-        Extract with a custom schema (REQUIRED for production):
-        $ psweep extract documents/Category --schema schemas/your_schema.json
+        Full pipeline with config (RECOMMENDED):
+        $ psweep extract --config config/my_domain/run.yaml
+        $ psweep compile --config config/my_domain/run.yaml
 
-        Extract a single document:
-        $ psweep extract documents/Category/doc1.pdf --schema schemas/your_schema.json
-
-        Test with just 5 documents first:
-        $ psweep extract documents/Category --schema schemas/your_schema.json -n 5
-
-        Compile extracted data (use same schema):
-        $ psweep compile extracted/Category --schema schemas/your_schema.json
+        Discovery + extraction + compilation:
+        $ psweep discover --config config/my_domain/run.yaml
+        $ psweep extract --config config/my_domain/run.yaml
+        $ psweep compile --config config/my_domain/run.yaml
 
     \b
     REQUIREMENTS:
-        • Python 3.9 or later
+        • Python 3.12 or later
         • Azure OpenAI or OpenAI API key (run: psweep init)
-        • JSON schema defining your data structure
-        • Documents to process (PDF, DOCX, TXT, XLSX, CSV)
+        • Domain config YAML (references schema, sets page targeting, etc.)
 
     \b
     NEED HELP?

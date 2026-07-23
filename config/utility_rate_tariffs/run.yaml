@@ -1,126 +1,43 @@
-# Utility Rate Tariff Discovery
-#
-# Finds and downloads residential electric rate tariff documents
-# for addresses mapped to their utility providers.
-#
-# Required env:  SERPAPI_API_KEY
-# Usage:
-#   psweep discover --config config/utility_rate_tariffs/run.yaml --dry-run
-#   psweep discover --config config/utility_rate_tariffs/run.yaml
-#
-# HOW TO ADD A NEW ADDRESS
-# ─────────────────────────
-# 1. Open targets.csv and add a row.
-#
-# 2. In the `query` column, write the Google search that finds the tariff PDF.
-#
-#    IMPORTANT: Address-only queries like "aurora, co 80019 electric rate tariff .pdf"
-#    work in YOUR browser because Google personalizes results by your location.
-#    This tool searches from a neutral IP, so location context is lost.
-#
-#    Queries that work WITHOUT location personalization:
-#
-#      site:xcelenergy.com colorado residential electric rate tariff filetype:pdf
-#      site:firstenergycorp.com ohio edison electric service tariff filetype:pdf
-#      xcel energy colorado residential rate schedule 2025 filetype:pdf
-#      ohio edison electric tariff service OH 2025 filetype:pdf
-#
-#    The pattern that works best: site:<utility-domain.com> + state name + tariff keywords
-#
-# 3. Leave `query` blank to fall back to the template queries below, which
-#    are constructed from the other columns (utility_name, state, address).
-#
-# NOTE: The engine does not resolve utility from address automatically.
-# Look up the serving utility and supply it in utility_name.
+# Utility Rate Tariffs — full pipeline config
+# Usage: psweep extract --config config/utility_rate_tariffs/run.yaml
 
 domain: utility_rate_tariffs
 
-# COST CONTROL (optional): each LLM stage accepts a `model:` naming the model to
-# use (else it inherits the environment-configured model). A cheaper model is
-# fine for bulk curation + page targeting; a stronger one helps extract the rate
-# tables. Set the actual model/deployment names for your provider on the stages
-# below (document_review.model / page_targeting.model / extraction.model).
-
 discovery:
   targets_csv: targets.csv
-
-  # Fallback query templates — used only for rows where `query` is blank.
-  # {utility_name}, {state}, and {address} are injected from targets.csv columns.
-  # If the fallback produces wrong-state results, add the proven query to
-  # the `query` column of targets.csv instead.
   queries:
     - "{utility_name} {state} residential electric rate tariff filetype:pdf 2026"
-
   search:
     provider: serpapi
     max_results: 10
-
   selection:
     max_per_target: 2
-    require_any:
-      - "tariff"
-      - "rate"
-      - "schedule"
-    exclude:
-      - "news"
-      - "blog"
-      - "press release"
-      - "rebate"
-      - "incentive"
-      - "program"
-
+    require_any: [tariff, rate, schedule]
+    exclude: [news, blog, press release, rebate, incentive, program]
   follow_links: false
   request_delay_ms: 500
-
-  # Flag any downloaded file that doesn't clearly read like an actual tariff
-  # book (e.g. a rate-change notice or brochure) so a human can review it.
   document_classifier:
-    required_keywords: ["tariff", "rate", "schedule", "service classification"]
-    nice_to_have_keywords: ["residential", "kwh", "monthly charge"]
+    required_keywords: [tariff, rate, schedule, service classification]
+    nice_to_have_keywords: [residential, kwh, monthly charge]
     min_required_matches: 2
     action: warn
-
-  # LLM curation: grade each downloaded file and select the primary tariff
-  # book into the run's curated/ set so runs need no manual triage.
   document_review:
-    # model: <cheaper-model>   # optional: cheaper model for bulk curation
     document_description: >-
-      the utility's authoritative residential electric rate tariff / rate
-      schedule book filed with the state commission — not a rate-change notice,
-      brochure, rebate/incentive flyer, press release, or bill-insert
+      utility's authoritative residential electric rate tariff book filed
+      with the state commission
     keep_top: 1
     action: move
 
-# OPTIONAL. Declare your extraction model's context window (prompt tokens) so a
-# whole-book run fails fast with an actionable message instead of a raw provider
-# error. Only needed for deployments whose window can't be inferred (e.g. custom
-# Azure deployment names). Key must match your configured model name.
-# model_context_windows:
-#   my-azure-deployment-name: 300000
-
 extraction:
-  # Consume only the curated (LLM-reviewed + human-approved) set from the latest
-  # discover run. Edit the run's review.csv and re-run `curate` to change this set.
   input_dir: discovered/utility_rate_tariffs/latest/curated
   schema: schemas/personal/electricity_tariff_schema.json
   output_dir: extracted/utility_rate_tariffs
-  # model: <stronger-model>   # optional: name the extraction model explicitly
-  # Tariff books are large (hundreds of pages); extracting the whole document
-  # overflows the model context before it reaches the rate tables. Point each
-  # curated file at its residential rate-schedule pages (human- or LLM-derived).
-  # Files not listed here are extracted in full.
   pages_csv: config/utility_rate_tariffs/page_ranges.csv
-
-  # OPTIONAL. For large files WITHOUT a manual range above, auto-locate the
-  # rate-schedule pages (cheap keyword scan → one LLM confirmation, cached in
-  # .pages/). Manual page_ranges.csv always wins.
-  page_targeting:
+  page_targeting:                        # auto-locate rate pages in large PDFs
     enabled: true
-    # model: <cheaper-model>   # optional: cheaper model for the locator call
     section_description: >-
-      the residential electric rate schedules / service classification tables
-      showing the per-kWh energy charges, monthly customer charge, and other
-      rate components — not the table of contents, definitions, or riders
+      residential electric rate schedules showing per-kWh energy charges,
+      monthly customer charge, and other rate components
     trigger_chars: 200000
     max_selected_pages: 30
 
@@ -128,6 +45,18 @@ compilation:
   input_dir: extracted/utility_rate_tariffs
   schema: schemas/personal/electricity_tariff_schema.json
   output_dir: compiled/utility_rate_tariffs
+  deduplication:
+    key_fields: [rate_name, charge_type, charge_description, season, time_period]
+    ignore_fields: [extracted_text]
+  normalization:
+    state_column: State
+  output:
+    default_format: excel
+    column_order: [utility_name, state, effective_date, rate_name, is_rider,
+      sector, applicable_riders, rate_calculation_formula, charge_type,
+      charge_description, rate, unit, season, time_period]
+    freeze_columns: 2
+    auto_width: true
 
 qaqc:
   default_lane: quantitative
@@ -140,18 +69,8 @@ qaqc:
         type: nested_array_items
         source_array: rate_schedules
         nested_array: charges
-        parent_fields:
-          - rate_name
-          - is_rider
-          - sector
+        parent_fields: [rate_name, is_rider, sector]
       record_matching:
-        key_fields:
-          - rate_name
-          - charge_type
-          - charge_description
-          - season
-          - time_period
+        key_fields: [rate_name, charge_type, charge_description, season, time_period]
       comparison:
-        primary_fields:
-          - rate
-          - unit
+        primary_fields: [rate, unit]
