@@ -210,6 +210,7 @@ _ALLOWED_TOP_LEVEL = {
     "discovery",
     "extraction",
     "compilation",
+    "qaqc",
 }
 _ALLOWED_SECTION_FIELDS = {
     "discovery": {
@@ -280,6 +281,7 @@ _ALLOWED_SECTION_FIELDS = {
         "input_dir",
         "schema",
         "output_dir",
+        "output",
         "dry_run",
         "report_format",
         "fail_on_suspicious",
@@ -322,7 +324,7 @@ _ACQUISITION_OBJECT_FIELDS = {
 
 _ALLOWED_POLICY_MODES = {"ignore", "warn", "enforce"}
 
-_SECTION_NAMES = ("discovery", "extraction", "compilation")
+_SECTION_NAMES = ("discovery", "extraction", "compilation", "qaqc")
 _CONFIG_SUFFIXES = (".yaml", ".yml", ".json")
 
 

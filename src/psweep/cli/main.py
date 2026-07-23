@@ -3,7 +3,7 @@ Command-line interface for ParseSweep.
 
 Organizes commands into two categories:
 1. Core workflow (commands.py): extract, check, compile, discover, curate, compare, benchmark
-2. Utilities (utils_commands.py): init, preview, estimate, config, check-schema, check-runtime
+2. Utilities (utils_commands.py): init, preview, estimate, config, check-schema, init-domain-schema
 """
 
 import click
@@ -21,11 +21,9 @@ from psweep.cli.commands import (
 from psweep.cli.utils_commands import (
     init,
     init_domain_schema_cmd,
-    init_domain_pack_cmd,
     preview,
     estimate,
     check_schema_cmd,
-    check_runtime_cmd,
     config,
 )
 
@@ -84,7 +82,6 @@ def cli():
 # Register commands
 cli.add_command(init)
 cli.add_command(init_domain_schema_cmd)
-cli.add_command(init_domain_pack_cmd)
 cli.add_command(discover)
 cli.add_command(curate)
 cli.add_command(extract)
@@ -92,7 +89,6 @@ cli.add_command(preview)
 cli.add_command(estimate)
 cli.add_command(check)
 cli.add_command(check_schema_cmd)
-cli.add_command(check_runtime_cmd)
 cli.add_command(compile)
 cli.add_command(compare)
 cli.add_command(benchmark)
