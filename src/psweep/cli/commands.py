@@ -142,6 +142,14 @@ def _resolve_runtime_command_inputs(
         strict=strict,
     )
 
+    # Pass through cross-section references so downstream stages (like compile)
+    # can access paths from other stages for accounting/provenance. These come
+    # directly from the config — no path derivation.
+    if config_data:
+        extraction_section = config_data.get("extraction") or {}
+        if extraction_section.get("input_dir"):
+            result["_extraction_input_dir"] = extraction_section["input_dir"]
+
     return result
 
 
@@ -436,6 +444,124 @@ def _context_budget_suggestions_for_process(
             )
 
     return suggestions
+
+
+def _build_pipeline_accounting(
+    *,
+    domain: str,
+    extraction_dir: Path,
+    output_dir: Path,
+    compilation_stats: Dict[str, Any],
+    discovery_input_dir: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Stitch together discovery + extraction + compilation into a unified accounting.
+
+    All paths come from the resolved config — nothing is hardcoded. Returns a
+    domain-agnostic summary dict. Missing stages are omitted gracefully.
+    """
+    from datetime import timezone
+
+    accounting: Dict[str, Any] = {
+        "domain": domain,
+        "generated_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        "stages": {},
+        "totals": {"cost_usd": 0.0, "elapsed_seconds": 0.0, "llm_calls": 0, "tokens": 0},
+    }
+
+    # --- Discovery ---
+    # Derive discovery manifest from extraction.input_dir (which points into
+    # discovered/{domain}/runs/.../curated). Walk up to find manifest.json.
+    if discovery_input_dir:
+        disc_path = Path(discovery_input_dir)
+        # Walk up from curated/ to find manifest.json in the run folder
+        for parent in [disc_path, disc_path.parent, disc_path.parent.parent]:
+            candidate = parent / "manifest.json"
+            if candidate.exists():
+                try:
+                    disc = json.loads(candidate.read_text(encoding="utf-8"))
+                    timing = disc.get("timing", {})
+                    ss = disc.get("stage_summaries", {})
+                    seeker = ss.get("seeker", {})
+                    review = ss.get("document_review", {})
+                    review_costs = review.get("costs", {})
+                    downloads = ss.get("downloads", {})
+
+                    disc_cost = review_costs.get("total_cost_usd", 0.0)
+                    disc_elapsed = timing.get("elapsed_seconds", 0.0)
+                    disc_tokens = (review_costs.get("total_input_tokens", 0)
+                                  + review_costs.get("total_output_tokens", 0))
+
+                    accounting["stages"]["discovery"] = {
+                        "run_id": disc.get("run_id"),
+                        "timing_seconds": disc_elapsed,
+                        "seeker_queries": seeker.get("queries_executed", 0),
+                        "candidates_found": seeker.get("candidates_discovered", 0),
+                        "documents_downloaded": downloads.get("downloaded", 0),
+                        "documents_curated": disc.get("lineage", {}).get("curated_count", 0),
+                        "review_llm_calls": review_costs.get("llm_calls", 0),
+                        "review_cost_usd": disc_cost,
+                        "review_tokens": disc_tokens,
+                        "notes_count": len(disc.get("notes", [])),
+                        "errors_count": len(disc.get("errors", [])),
+                    }
+                    accounting["totals"]["cost_usd"] += disc_cost
+                    accounting["totals"]["elapsed_seconds"] += disc_elapsed
+                    accounting["totals"]["llm_calls"] += review_costs.get("llm_calls", 0)
+                    accounting["totals"]["tokens"] += disc_tokens
+                except Exception:
+                    pass
+                break
+
+    # --- Extraction ---
+    manifest_dir = extraction_dir / "run_manifests"
+    if manifest_dir.exists():
+        manifests = sorted(manifest_dir.glob("*.manifest.json"), key=lambda p: p.stat().st_mtime)
+        if manifests:
+            try:
+                ext = json.loads(manifests[-1].read_text(encoding="utf-8"))
+                costs = ext.get("costs", {})
+                timing = ext.get("timing", {})
+                status = ext.get("status", {})
+
+                ext_cost = costs.get("total_cost_usd", 0.0)
+                ext_tokens = (costs.get("total_input_tokens", 0)
+                             + costs.get("total_output_tokens", 0))
+                ext_elapsed = 0.0
+                if timing.get("started_at") and timing.get("finished_at"):
+                    from datetime import datetime as _dt
+                    try:
+                        t0 = _dt.fromisoformat(timing["started_at"].replace("Z", "+00:00"))
+                        t1 = _dt.fromisoformat(timing["finished_at"].replace("Z", "+00:00"))
+                        ext_elapsed = (t1 - t0).total_seconds()
+                    except Exception:
+                        pass
+
+                accounting["stages"]["extraction"] = {
+                    "run_id": ext.get("run_id"),
+                    "model": costs.get("model"),
+                    "timing_seconds": ext_elapsed,
+                    "documents_processed": status.get("total_processed", 0),
+                    "documents_successful": status.get("successful", 0),
+                    "documents_failed": status.get("failed", 0),
+                    "cost_usd": ext_cost,
+                    "input_tokens": costs.get("total_input_tokens", 0),
+                    "output_tokens": costs.get("total_output_tokens", 0),
+                }
+                accounting["totals"]["cost_usd"] += ext_cost
+                accounting["totals"]["elapsed_seconds"] += ext_elapsed
+                accounting["totals"]["llm_calls"] += costs.get("documents_billed", 0)
+                accounting["totals"]["tokens"] += ext_tokens
+            except Exception:
+                pass
+
+    # --- Compilation ---
+    accounting["stages"]["compilation"] = compilation_stats
+
+    # Round totals
+    accounting["totals"]["cost_usd"] = round(accounting["totals"]["cost_usd"], 6)
+    accounting["totals"]["elapsed_seconds"] = round(accounting["totals"]["elapsed_seconds"], 1)
+
+    return accounting
 
 
 def _build_run_manifest(
@@ -3746,6 +3872,28 @@ def compile(
             view.next_steps(
                 ["Open the CSV/Excel to review the compiled dataset"]
             )
+
+            # Write pipeline accounting JSON alongside compiled output
+            try:
+                accounting = _build_pipeline_accounting(
+                    domain=resolved_inputs.get("domain", input_dir.name),
+                    extraction_dir=input_dir,
+                    output_dir=output_dir,
+                    compilation_stats={
+                        "records": len(df),
+                        "columns": len(df.columns),
+                        "duplicates_removed": compiler.duplicates_removed,
+                        "output_format": summary_stats.get("Outputs", ""),
+                    },
+                    discovery_input_dir=resolved_inputs.get("_extraction_input_dir"),
+                )
+                acct_path = output_dir / "run_accounting.json"
+                acct_path.write_text(
+                    json.dumps(accounting, indent=2) + "\n", encoding="utf-8"
+                )
+                view.outputs({"Accounting": str(acct_path.absolute())})
+            except Exception:
+                pass  # Best-effort — don't fail compilation over accounting
         else:
             # Quiet mode - print emitted output path(s)
             for emitted_path in emitted_paths:
