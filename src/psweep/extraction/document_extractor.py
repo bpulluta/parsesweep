@@ -141,7 +141,9 @@ class DocumentExtractor:
 
         # Stage 2: Post-extraction sanity checks and normalization
         validated_data = self.processor.normalize_string_fields(validated_data)
-        sanity_warnings = self.processor.run_sanity_checks(validated_data)
+        sanity_warnings = self.processor.run_sanity_checks(
+            validated_data, schema_metadata=self.schema_metadata
+        )
         validation_notes.extend(sanity_warnings)
 
         processing_time = time.time() - start_time
