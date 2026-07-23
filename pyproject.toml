@@ -47,7 +47,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-acquisition = [
+discovery = [
   "google-search-results>=2.4.2",
 ]
 dev = [

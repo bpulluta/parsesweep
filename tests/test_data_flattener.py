@@ -4,13 +4,13 @@ The flattener used to hardcode energy/tariff field names (charge_type, season,
 rate) and unit conversions (feet/inches/dBA). These tests prove that (a) with no
 schema config the documented defaults still apply, and (b) a NON-energy schema
 can redirect grouping, distinguishers, value/unit detection, and unit
-normalization entirely through `consolidation.flattening` config — no code change.
+normalization entirely through `compilation.flattening` config — no code change.
 """
 from __future__ import annotations
 
 import pandas as pd
 
-from psweep.consolidation.data_flattener import DataFlattener
+from psweep.compilation.data_flattener import DataFlattener
 
 
 class _FakeSchema:

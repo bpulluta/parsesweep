@@ -2,19 +2,19 @@
 
 import pytest
 from pathlib import Path
-from psweep.consolidation.schema_detector import SchemaDetector
-from psweep.consolidation.deduplicator import Deduplicator
-from psweep.consolidation.consolidator import Consolidator
+from psweep.compilation.schema_detector import SchemaDetector
+from psweep.compilation.deduplicator import Deduplicator
+from psweep.compilation.data_compiler import DataCompiler
 from psweep.utils.exceptions import SchemaMetadataError
 
 
 class TestComponentMetadataValidation:
-    """Test that all consolidation components require schema metadata."""
+    """Test that all compilation components require schema metadata."""
     
-    def test_consolidator_rejects_none_metadata(self):
-        """Test that Consolidator raises error when schema_metadata is None."""
+    def test_data_compiler_rejects_none_metadata(self):
+        """Test that DataCompiler raises error when schema_metadata is None."""
         with pytest.raises(SchemaMetadataError, match="metadata"):
-            Consolidator(schema_metadata=None)
+            DataCompiler(schema_metadata=None)
     
     def test_deduplicator_rejects_none_metadata(self):
         """Test that Deduplicator raises error when schema_metadata is None."""

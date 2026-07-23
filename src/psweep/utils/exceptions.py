@@ -40,7 +40,7 @@ class ExtractionError(PsweepError):
     pass
 
 
-class ConsolidationError(PsweepError):
-    """Raised when data consolidation fails."""
+class CompilationError(PsweepError):
+    """Raised when data compilation fails."""
 
     pass

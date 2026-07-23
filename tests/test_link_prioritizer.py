@@ -8,16 +8,16 @@ from __future__ import annotations
 
 import pytest
 
-from psweep.acquisition.link_prioritizer import LinkPrioritizer
-from psweep.acquisition.models import AcquisitionCandidate, CandidateScore
+from psweep.discovery.link_prioritizer import LinkPrioritizer
+from psweep.discovery.models import DiscoveryCandidate, CandidateScore
 
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _candidate(url: str, reasons: list[str] | None = None) -> AcquisitionCandidate:
-    return AcquisitionCandidate(
+def _candidate(url: str, reasons: list[str] | None = None) -> DiscoveryCandidate:
+    return DiscoveryCandidate(
         url=url,
         source="test",
         score=CandidateScore(url_signal=0.5, trust_signal=0.4),

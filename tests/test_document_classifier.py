@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from psweep.acquisition.engine import AcquisitionEngine
+from psweep.discovery.engine import DiscoveryEngine
 
 
 def _write_doc(tmp_path: Path, name: str, text: str) -> str:
@@ -32,7 +32,7 @@ class TestClassifierWarnMode:
         )
         cfg = {"required_keywords": ["ordinance"], "min_required_matches": 1}
 
-        downloads, notes = AcquisitionEngine._run_post_download_classifier(
+        downloads, notes = DiscoveryEngine._run_post_download_classifier(
             [_record(path)], cfg, []
         )
 
@@ -52,7 +52,7 @@ class TestClassifierWarnMode:
             "action": "warn",
         }
 
-        downloads, _ = AcquisitionEngine._run_post_download_classifier(
+        downloads, _ = DiscoveryEngine._run_post_download_classifier(
             [_record(path)], cfg, []
         )
 
@@ -73,7 +73,7 @@ class TestClassifierFilterMode:
             "action": "filter",
         }
 
-        downloads, _ = AcquisitionEngine._run_post_download_classifier(
+        downloads, _ = DiscoveryEngine._run_post_download_classifier(
             [_record(path)], cfg, []
         )
 
@@ -84,14 +84,14 @@ class TestClassifierFilterMode:
 class TestClassifierEdgeCases:
     def test_non_downloaded_records_are_skipped(self, tmp_path: Path):
         rec = {"status": "failed", "path": None, "url": "http://x"}
-        downloads, _ = AcquisitionEngine._run_post_download_classifier(
+        downloads, _ = DiscoveryEngine._run_post_download_classifier(
             [rec], {"required_keywords": ["ordinance"]}, []
         )
         assert "classification_passed" not in downloads[0]
 
     def test_missing_file_records_error_not_crash(self, tmp_path: Path):
         rec = _record(str(tmp_path / "does_not_exist.pdf"))
-        downloads, _ = AcquisitionEngine._run_post_download_classifier(
+        downloads, _ = DiscoveryEngine._run_post_download_classifier(
             [rec], {"required_keywords": ["ordinance"]}, []
         )
         # Either annotated as failed or carries a classification_error; never raises.

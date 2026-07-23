@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from psweep.acquisition.targets import (
+from psweep.discovery.targets import (
     CrossProductTargetProvider,
     CsvTargetProvider,
     DatasetTargetProvider,

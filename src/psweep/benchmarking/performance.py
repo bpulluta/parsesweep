@@ -131,7 +131,7 @@ def _load_qaqc_status_index(report_path: Path) -> Dict[str, str]:
         }
 
 
-def _find_consolidated_csv_paths(path: Path) -> List[Path]:
+def _find_compiled_csv_paths(path: Path) -> List[Path]:
     if path.is_file():
         return [path] if path.suffix.lower() == ".csv" else []
     return sorted(
@@ -141,7 +141,7 @@ def _find_consolidated_csv_paths(path: Path) -> List[Path]:
     )
 
 
-def _resolve_expected_consolidated_path(
+def _resolve_expected_compiled_path(
     actual_csv_path: Path, benchmark_path: Path, expected_dir: Path
 ) -> Path:
     try:
@@ -159,19 +159,19 @@ def _resolve_expected_consolidated_path(
     return expected_dir / actual_csv_path.name
 
 
-def _normalize_consolidated_dataframe(df: pd.DataFrame) -> pd.DataFrame:
+def _normalize_compiled_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     normalized = df.copy()
     normalize_state_column(normalized, "State")
     return normalized
 
 
-def _build_consolidated_row_signatures(
+def _build_compiled_row_signatures(
     df: pd.DataFrame,
     *,
     schema_metadata: SchemaMetadata,
     compare_columns: List[str],
 ) -> List[tuple]:
-    normalized_df = _normalize_consolidated_dataframe(df)
+    normalized_df = _normalize_compiled_dataframe(df)
     if compare_columns:
         normalized_df = normalized_df[compare_columns].copy()
 
@@ -183,7 +183,7 @@ def _build_consolidated_row_signatures(
     )
     if not mapped_key_columns:
         raise ValueError(
-            f"Schema {schema_metadata.schema_path} did not map any deduplication key fields to consolidated CSV columns"
+            f"Schema {schema_metadata.schema_path} did not map any deduplication key fields to compiled CSV columns"
         )
 
     normalized_df = normalized_df.fillna("")
@@ -233,8 +233,8 @@ def collect_benchmark_metrics(
     repo_root: Optional[Path] = None,
     extraction_baseline_dir: Optional[Path] = None,
     qaqc_baseline_dir: Optional[Path] = None,
-    consolidation_baseline_dir: Optional[Path] = None,
-    consolidation_schema_path: Optional[Path] = None,
+    compilation_baseline_dir: Optional[Path] = None,
+    compilation_schema_path: Optional[Path] = None,
 ) -> Dict[str, Any]:
     """Collect a deterministic performance and optional extraction-parity profile."""
     root = repo_root or Path.cwd()
@@ -263,7 +263,7 @@ def collect_benchmark_metrics(
     total_expected_rows = 0
     total_actual_rows = 0
     total_correct_rows = 0
-    scored_consolidated_files = 0
+    scored_compiled_files = 0
 
     for manifest_path in manifest_paths:
         manifest = _load_json(manifest_path)
@@ -338,7 +338,7 @@ def collect_benchmark_metrics(
             key_fields = metadata.get_deduplication_key_fields()
             if not key_fields:
                 raise ValueError(
-                    f"Schema {schema_path} does not define consolidation.deduplication.key_fields required for parity scoring"
+                    f"Schema {schema_path} does not define compilation.deduplication.key_fields required for parity scoring"
                 )
 
             actual_payload = _extract_record_payload(record)
@@ -399,31 +399,31 @@ def collect_benchmark_metrics(
         )
         scored_qaqc_qualitative_reports += 1
 
-    if consolidation_baseline_dir is not None:
-        if consolidation_schema_path is None:
+    if compilation_baseline_dir is not None:
+        if compilation_schema_path is None:
             raise ValueError(
-                "consolidation_schema_path is required when consolidation_baseline_dir is provided"
+                "compilation_schema_path is required when compilation_baseline_dir is provided"
             )
 
-        schema_metadata = SchemaMetadata(consolidation_schema_path)
+        schema_metadata = SchemaMetadata(compilation_schema_path)
         ignore_fields = {
             field.lower()
             for field in schema_metadata.get_deduplication_ignore_fields()
         }
 
-        csv_paths = _find_consolidated_csv_paths(path)
+        csv_paths = _find_compiled_csv_paths(path)
         if not csv_paths:
             raise FileNotFoundError(
-                f"No consolidated CSV files found under {path}"
+                f"No compiled CSV files found under {path}"
             )
 
         for csv_path in csv_paths:
-            expected_csv_path = _resolve_expected_consolidated_path(
-                csv_path, benchmark_root, consolidation_baseline_dir
+            expected_csv_path = _resolve_expected_compiled_path(
+                csv_path, benchmark_root, compilation_baseline_dir
             )
             if not expected_csv_path.exists():
                 raise FileNotFoundError(
-                    f"Expected consolidated baseline CSV not found for {csv_path.name}: {expected_csv_path}"
+                    f"Expected compiled baseline CSV not found for {csv_path.name}: {expected_csv_path}"
                 )
 
             actual_df = pd.read_csv(csv_path)
@@ -437,15 +437,15 @@ def collect_benchmark_metrics(
             ]
             if not common_columns:
                 raise ValueError(
-                    f"No shared comparable columns found between consolidated outputs for {csv_path.name}"
+                    f"No shared comparable columns found between compiled outputs for {csv_path.name}"
                 )
 
-            actual_signatures = _build_consolidated_row_signatures(
+            actual_signatures = _build_compiled_row_signatures(
                 actual_df,
                 schema_metadata=schema_metadata,
                 compare_columns=common_columns,
             )
-            expected_signatures = _build_consolidated_row_signatures(
+            expected_signatures = _build_compiled_row_signatures(
                 expected_df,
                 schema_metadata=schema_metadata,
                 compare_columns=common_columns,
@@ -462,7 +462,7 @@ def collect_benchmark_metrics(
                     correct_rows += 1
 
             total_correct_rows += correct_rows
-            scored_consolidated_files += 1
+            scored_compiled_files += 1
 
     average_doc_duration = (
         sum(record_durations) / len(record_durations)
@@ -512,9 +512,9 @@ def collect_benchmark_metrics(
             qualitative_gate_counts.get("pass", 0)
             / scored_qaqc_qualitative_reports
         ) * 100.0
-    consolidation_correctness = None
-    if consolidation_baseline_dir is not None:
-        consolidation_correctness = (
+    compilation_correctness = None
+    if compilation_baseline_dir is not None:
+        compilation_correctness = (
             0.0
             if total_expected_rows == 0
             else (total_correct_rows / total_expected_rows) * 100.0
@@ -554,8 +554,8 @@ def collect_benchmark_metrics(
         "correct_rows": total_correct_rows,
         "expected_rows": total_expected_rows,
         "actual_rows": total_actual_rows,
-        "scored_consolidated_files": scored_consolidated_files,
-        "consolidation_correctness": consolidation_correctness,
+        "scored_compiled_files": scored_compiled_files,
+        "compilation_correctness": compilation_correctness,
     }
 
 
@@ -646,7 +646,7 @@ def evaluate_benchmark_gates(
     min_extraction_parity: Optional[float] = None,
     min_qaqc_signal_quality: Optional[float] = None,
     min_qaqc_qualitative_pass_rate: Optional[float] = None,
-    min_consolidation_correctness: Optional[float] = None,
+    min_compilation_correctness: Optional[float] = None,
     max_failure_rate: Optional[float] = None,
     max_average_seconds_per_document: Optional[float] = None,
     min_documents_per_minute: Optional[float] = None,
@@ -683,13 +683,13 @@ def evaluate_benchmark_gates(
             and actual >= min_qaqc_qualitative_pass_rate,
         }
 
-    if min_consolidation_correctness is not None:
-        actual = metrics.get("consolidation_correctness")
-        gates["min_consolidation_correctness"] = {
-            "threshold": min_consolidation_correctness,
+    if min_compilation_correctness is not None:
+        actual = metrics.get("compilation_correctness")
+        gates["min_compilation_correctness"] = {
+            "threshold": min_compilation_correctness,
             "actual": actual,
             "passed": actual is not None
-            and actual >= min_consolidation_correctness,
+            and actual >= min_compilation_correctness,
         }
 
     if max_failure_rate is not None:

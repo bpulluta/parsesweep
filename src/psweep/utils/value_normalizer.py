@@ -5,7 +5,7 @@ Value normalization and comparison utilities.
 Provides smart comparison logic that handles different representations
 of the same value (e.g., "$5.00" vs 5.0, "CA" vs "California").
 
-Used by QA/QC comparison engine and potentially by consolidation.
+Used by QA/QC comparison engine and potentially by compilation.
 """
 
 from typing import Any, Optional

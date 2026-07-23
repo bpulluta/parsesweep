@@ -27,38 +27,53 @@
 #
 # Required env: SERPAPI_KEY (+ Azure OpenAI for process)
 # Usage:
-#   psweep acquire --config config/datacenter_timelines/run.yaml --dry-run
-#   psweep acquire --config config/datacenter_timelines/run.yaml
-#   psweep process --config config/datacenter_timelines/run.yaml
-#   psweep consolidate --config config/datacenter_timelines/run.yaml
+#   psweep discover --config config/datacenter_timelines/run.yaml --dry-run
+#   psweep discover --config config/datacenter_timelines/run.yaml
+#   psweep extract --config config/datacenter_timelines/run.yaml
+#   psweep compile --config config/datacenter_timelines/run.yaml
 
 domain: datacenter_timelines
 
 # COST CONTROL (optional): each LLM stage accepts a `model:` naming the model to
-# use (else it inherits the environment-configured model). See processing.model
-# and consolidation.synthesis.model below.
+# use (else it inherits the environment-configured model). See extraction.model
+# and compilation.synthesis.model below.
 
-acquisition:
+discovery:
   # Stratified validation set: 3 sites per stage (operational / planned /
   # construction / in_doubt / decommissioned / withdrawn) sampled from
   # test-v1/baxtel_sites_20250915.csv, preferring notable operators.
   targets_csv: targets_sample.csv
 
-  # SOURCE STRATEGY for ACTIVE projects — news & press narrate the lifecycle.
-  # Unlike operational colos (whose only date is a building "year built" that
-  # does NOT represent the current project), greenfield/hyperscale builds are
-  # covered by dated news: the announcement, the groundbreaking, the target
-  # completion. Organic queries surface those articles AND press releases /
-  # permit / local-government coverage that state real project dates.
+  # SOURCE STRATEGY — lifecycle-focused queries WITHOUT noisy MW capacity term.
+  # FINDINGS from v1→v2 iteration (2026-07-22):
+  #   - "{demand_capacity_mw} MW" caused massive noise (Fed Reserve, Spanish PDFs)
+  #   - Making {city?} optional fixes Meta/rural sites with no city
+  #   - Baxtel directory pages scored highest (structured "year built" data)
+  #   - Industry press (DCD, DCK, DCF) are second-best lifecycle sources
+  #   - 5 query tiers give 83% temporal-content hit rate on test set
+  #
+  # STRATEGY: 5 complementary query tiers (from best→broadest):
+  #   1. Construction/operational status (best performer in v1)
+  #   2. Announcement/groundbreaking with quoted phrases
+  #   3. Data-center directories (baxtel, datacentermap) — structured dates
+  #   4. Project timeline/permit/approval angle
+  #   5. Industry trade press (DCD, DCF, DCK) — lifecycle coverage
   queries:
-    - "{company_name} {city} data center announced OR \"broke ground\" OR groundbreaking {demand_capacity_mw} MW"
-    - "{company_name} {city} data center construction OR completion OR online OR operational {demand_capacity_mw} MW"
-    - "{company_name} {region} data center announcement OR timeline {demand_capacity_mw} MW"
+    # Tier 1: Construction & operational status (best performer from v1)
+    - "{company_name} {state} {city?} data center construction OR completion OR operational OR \"now online\""
+    # Tier 2: Announcement/groundbreaking with tighter phrasing
+    - "{company_name} {state} {city?} data center \"announced\" OR \"broke ground\" OR \"groundbreaking\" OR \"plans to build\""
+    # Tier 3: Directory/structured-data sources (carry "year built" and timelines)
+    - "\"{site_name}\" data center baxtel OR datacentermap OR datacenterhawk"
+    # Tier 4: Timeline, permits, and regulatory filings
+    - "{company_name} {state} {city?} data center timeline OR permit OR \"expected to open\" OR \"target completion\""
+    # Tier 5: Industry news with lifecycle keywords
+    - "{company_name} {state} {city?} data center site:datacenterdynamics.com OR site:datacenterfrontier.com OR site:datacenterknowledge.com"
 
   search:
     provider: serpapi
     max_results: 10
-    cache: true          # cache results so re-running acquire doesn't re-pay
+    cache: true          # cache results so re-running discover doesn't re-pay
     # FINDING (2026-07-21): the Google News vertical (tbm=nws) had poor recall —
     # only 3/18 sites got any hit (it favors very recent news + misses specific
     # facility names / older projects). ORGANIC discovery finds far more news AND
@@ -76,7 +91,7 @@ acquisition:
   browser_mode: false
 
   selection:
-    max_per_target: 6            # multiple sources per site (bounded for browser dl)
+    max_per_target: 8            # bumped for 5 query tiers (was 6 for 3 queries)
     require_supported_document: false   # KEY: allow extension-less HTML news pages
     # Drop facility spec/cut sheets (they carry no dates) and pure non-content
     # pages. NOTE: data-center DIRECTORIES (baxtel, datacentermap,
@@ -99,15 +114,23 @@ acquisition:
       - "/login"
       - "/signin"
       - "/careers"
+      - "/careers/"
+      - "careers."
       - "/privacy"
       - "/terms"
       - "/contact"
+      - "/jobs/"
       - "youtube.com"
       - "facebook.com"
       - "twitter.com"
       - "x.com/"
-      - "linkedin.com/company"
+      - "linkedin.com"
       - "instagram.com"
+      # -- Job sites (no project dates) --
+      - "ziprecruiter.com"
+      - "indeed.com"
+      - "glassdoor.com"
+      - "jobs."
       # -- Academic / research papers & datasets (no project dates, often huge) --
       - ".edu"
       - ".ac."
@@ -138,6 +161,9 @@ acquisition:
       - "noaa.gov"
       - "nasa.gov"
       - "climate.gov"
+      - "science.gov"
+      - "fraser.stlouisfed.org"
+      - "nepis.epa.gov"
       # -- Finance / investor relations / market data --
       - "sec.gov"
       - "crunchbase"
@@ -148,6 +174,19 @@ acquisition:
       - "seekingalpha"
       - "marketwatch"
       - "investor."
+      # -- Noise domains observed in v1 dry-run (2026-07-22) --
+      - "ugr.es"
+      - "usmodernist.org"
+      - "hartenergy.com"
+      - "kewi.go.ke"
+      - "mdpi-res.com"
+      - "imetsociety.org"
+      - "arataumodular.com"
+      - "semiconductor-today.com"
+      - "ijmer"
+      - "s3-ap-southeast"
+      - "corpdata"
+      - "pdfs.hartenergy"
       # -- Policy think-tanks / advocacy datasets --
       - "cgdev.org"
       - "greenpolicyplatform"
@@ -155,14 +194,26 @@ acquisition:
       - "ourenergypolicy"
       - "mediajustice"
       - "nairrpilot"
+      # -- Large irrelevant PDFs discovered in v2 run --
+      - "media.datacenterdynamics.com"   # full magazine issues, not articles
+      - "abcnhvt.org"
+      - "mountain-valley-pipeline"
+      - "ag.ny.gov"
+      - "cdn.prod.website-files.com"     # generic CDN hosting off-topic docs
+      # -- Huge irrelevant PDFs observed in v2 run (2026-07-22) --
+      - "media.datacenterdynamics.com"   # Full magazine PDFs (37MB+)
+      - "abcnhvt.org"                   # Construction association magazines
+      - "mountain-valley-pipeline"       # Pipeline EAs, not data centers
+      - "ag.ny.gov"                      # Attorney general settlements
+      - "cdn.prod.website-files.com"     # Generic CDN hosting large unrelated PDFs
 
-  request_delay_ms: 600
+  request_delay_ms: 800
 
-processing:
-  # Curated set from the latest acquire run (all downloads — no document_review).
-  input_dir: output/acquisition/datacenter_timelines/latest/curated
+extraction:
+  # Curated set from the latest discover run (all downloads — no document_review).
+  input_dir: discovered/datacenter_timelines/latest/curated
   schema: schemas/personal/datacenter_timelines_schema.json
-  output_dir: processed/datacenter_timelines
+  output_dir: extracted/datacenter_timelines
 
   # News/press pages are small and extract whole. But permits, planning packets,
   # and regulatory filings can be hundreds of pages — extracting them in full is
@@ -170,45 +221,45 @@ processing:
   # the pages that state a lifecycle date for THIS facility and extracts only
   # those. Only triggers for docs whose text exceeds trigger_chars, so small
   # HTML/news is untouched. Domain-neutral: the same mechanism serves any domain.
-  page_targeting:
-    enabled: true
-    # model: <cheaper-model>   # optional: cheaper model for the locator call
-    section_description: >-
-      the passage(s) that state WHEN this specific data-center facility/project
-      reached a lifecycle milestone — when it was announced/proposed, when
-      construction/groundbreaking occurred or is scheduled, when it opened /
-      became operational / was completed, its expected completion date, or when
-      it was cancelled or decommissioned. Not general company background,
-      financials, environmental-impact boilerplate, tables of contents, or
-      unrelated projects.
-    keywords:
-      - "data center"
-      - "data centre"
-      - "datacenter"
-      - "groundbreaking"
-      - "broke ground"
-      - "construction"
-      - "operational"
-      - "completion"
-      - "announced"
-      - "approved"
-      - "permit"
-      - "megawatt"
-      - "MW"
-    trigger_chars: 60000     # ~15+ pages of text -> target instead of full read
-    max_selected_pages: 12
+  pages:
+    auto_locate:
+      # model: <cheaper-model>   # optional: cheaper model for the locator call
+      section_description: >-
+        the passage(s) that state WHEN this specific data-center facility/project
+        reached a lifecycle milestone — when it was announced/proposed, when
+        construction/groundbreaking occurred or is scheduled, when it opened /
+        became operational / was completed, its expected completion date, or when
+        it was cancelled or decommissioned. Not general company background,
+        financials, environmental-impact boilerplate, tables of contents, or
+        unrelated projects.
+      keywords:
+        - "data center"
+        - "data centre"
+        - "datacenter"
+        - "groundbreaking"
+        - "broke ground"
+        - "construction"
+        - "operational"
+        - "completion"
+        - "announced"
+        - "approved"
+        - "permit"
+        - "megawatt"
+        - "MW"
+      trigger_chars: 60000     # ~15+ pages of text -> target instead of full read
+      max_selected_pages: 12
 
-consolidation:
-  input_dir: processed/datacenter_timelines
+compilation:
+  input_dir: extracted/datacenter_timelines
   schema: schemas/personal/datacenter_timelines_schema.json
-  output_dir: consolidated/datacenter_timelines
+  output_dir: compiled/datacenter_timelines
 
   # SYNTHESIS — reconcile the many per-document extraction records into ONE row
   # per entity (conflict resolution + confidence + provenance), instead of lossy
   # tabular dedup. This stage is DOMAIN-NEUTRAL: every key below is a path into
   # the extraction payload and any set of fields can be reconciled. Timelines are
   # just this configuration; the same stage reconciles permit limits, spec
-  # values, prices, etc. Runs on `consolidate` and reuses the `process` LLM.
+  # values, prices, etc. Runs on `compile` and reuses the `extract` LLM.
   synthesis:
     enabled: true
     # COST CONTROL. Only pay for an LLM reconciliation call when >= this many

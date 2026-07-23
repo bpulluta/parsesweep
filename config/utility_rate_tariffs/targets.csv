@@ -1,3 +1,2 @@
-label,address,state,utility_name,service_class,query
-Aurora CO - Residential,"19389 E 59th Dr, Aurora, CO 80019",co,Xcel Energy,residential,site:xcelenergy.com colorado residential electric rate tariff book filetype:pdf 2026
-Queens NY - Residential,,NY,Con Edison,residential,site:coned.com ny residential electric rate tariff book filetype:pdf 2026
+label,city,state,utility_name
+Aurora CO,Aurora,Colorado,Xcel Energy
