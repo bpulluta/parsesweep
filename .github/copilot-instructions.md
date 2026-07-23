@@ -273,10 +273,10 @@ pixi run psweep compare extracted/geothermal_ordinances/qa_qc \
 
 **Environment variables (.env file):**
 ```bash
-# Azure OpenAI (preferred)
+# Azure OpenAI (preferred — only key + endpoint needed)
 AZURE_OPENAI_API_KEY=your-key
 AZURE_OPENAI_ENDPOINT=https://your-endpoint.openai.azure.com/
-AZURE_OPENAI_MODEL=your-deployment-name
+# AZURE_OPENAI_MODEL is optional — model comes from config's models: block
 
 # Or OpenAI
 OPENAI_API_KEY=sk-your-key
@@ -285,10 +285,12 @@ OPENAI_API_KEY=sk-your-key
 ## Important Notes
 
 1. **Always use pixi** - Do not use `pip install`, `python`, or `python3` directly
-2. **Model defaults** - Don't specify `--model gpt-4o-mini`, it's the default
+2. **Model tiers** - Define models in run.yaml `models:` block, not CLI flags. Stages reference tier names (`primary`/`secondary`)
 3. **Schema required** - Always specify `--schema` for production use (see Schema Requirements)
 4. **Sanity checks** - Warnings like "Sanity checks found N issues" are informational, not errors
 5. **Multi-format** - System automatically handles PDFs, DOCX, TXT, XLSX, CSV in the same directory
+6. **Cost visibility** - Use `--validate-config` (no API calls), `estimate` (cost preview), `run_accounting.json` (post-compile summary)
+7. **Cache control** - Use `--reprocess` to re-extract without deleting files; use `--skip-existing` (default) to skip
 
 ## Troubleshooting
 

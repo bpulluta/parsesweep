@@ -165,6 +165,51 @@ pixi run psweep discover --config config/my_domain/run.yaml
   --max-downloads N   Limit downloads
 ```
 
+### Discovery Configuration
+
+Discovery uses a `targets.csv` where each row is a target to search for. All columns automatically flow into the document reviewer as context:
+
+```csv
+label,jurisdiction,state,topic,technology
+"Chaffee County CO","Chaffee County",CO,geothermal ordinance,geothermal electricity
+"Imperial County CA","Imperial County",CA,geothermal ordinance,geothermal electricity
+```
+
+**Key discovery config sections:**
+
+```yaml
+discovery:
+  targets_csv: targets.csv
+  queries:
+    # Templates — variables come from targets.csv columns
+    - "{jurisdiction} {state} ordinance filetype:pdf"
+    - "{jurisdiction} {state} zoning code division filetype:pdf"
+
+  selection:
+    max_per_target: 7             # candidates downloaded per target
+    exclude: [press release, fact sheet, presentation]
+
+  document_classifier:            # cheap keyword pre-filter (no API calls)
+    required_keywords: [ordinance, code, chapter, section]
+    min_required_matches: 2
+    action: warn
+
+  document_review:                # LLM curation (uses secondary model)
+    model: secondary
+    document_description: >-
+      enacted county ordinance that regulates geothermal electricity
+      generation. Must be codified regulation text, not a draft or EIR.
+    keep_top: 1                   # curate the single best per target
+    action: move
+
+  partition_by: [state, jurisdiction]
+```
+
+The `document_description` defines what document type to select. The `target_context` (all columns from targets.csv) tells the reviewer which specific target each document should match. This separation means:
+- Change what TYPE of document you want → edit `document_description`
+- Change what TARGET to search for → edit `targets.csv`
+- No code changes needed for either
+
 ---
 
 ## Setting Up a New Domain
@@ -422,9 +467,93 @@ compilation:
 ### Model Overrides (Optional)
 
 ```yaml
+# ── Model tiers ──────────────────────────────────────────────────────────────
+# Define model identifiers ONCE. Each pipeline stage references a tier name
+# (primary/secondary) — never a raw model string — so you can swap models
+# globally by editing only these two lines.
+#
+#   primary   → used for extraction (accuracy-critical)
+#   secondary → used for discovery review, page targeting (speed/cost-critical)
+#
+# For iteration/testing: set both to mini. For production: use full-size primary.
 models:
-  primary: gpt-4o                  # model for extraction
-  secondary: gpt-4o-mini           # model for cheaper tasks (e.g. page targeting)
+  primary: gpt-4.1                 # swap to gpt-4.1-mini for fast iteration
+  secondary: gpt-4.1-mini          # cheap/fast for non-extraction stages
+
+# Stages reference tier names:
+extraction:
+  model: primary                   # ← resolves to gpt-4.1
+
+discovery:
+  document_review:
+    model: secondary               # ← resolves to gpt-4.1-mini
+```
+
+**Workflow:**
+- Testing/iterating: set both tiers to `mini` (fast + cheap)
+- Production: change only `primary` to the full model (one edit)
+- Stage-level granularity available if needed
+
+---
+
+## Cost Visibility & Accounting
+
+ParseSweep tracks costs at every stage and surfaces them to the user.
+
+### Before a Run
+
+```bash
+# Validate config without any API calls
+pixi run psweep extract --config config/my_domain/run.yaml --validate-config
+
+# Estimate cost before committing
+pixi run psweep estimate discovered/my_domain/latest/curated
+
+# Discovery dry-run (no downloads or LLM calls)
+pixi run psweep discover --config config/my_domain/run.yaml --dry-run
+```
+
+### During a Run
+
+Extraction shows per-file cost in real-time:
+```
+✓ 42 items $0.0121 • 75.3s
+```
+
+### After a Run
+
+**Extraction summary** with total/average cost:
+```
+╭─── Extraction Summary ───╮
+│ Total Cost    $0.0389     │
+│ Avg Cost/File $0.0195     │
+│ Total Items   99          │
+╰───────────────────────────╯
+```
+
+**Pipeline accounting** — written on compile to `compiled/{domain}/run_accounting.json`:
+```json
+{
+  "stages": {
+    "discovery": { "seeker_queries": 2, "review_cost_usd": 0.011, ... },
+    "extraction": { "model": "gpt-4.1-mini", "cost_usd": 0.021, "input_tokens": 42498, ... },
+    "compilation": { "records": 67, "duplicates_removed": 1 }
+  },
+  "totals": { "cost_usd": 0.032, "elapsed_seconds": 275.9, "llm_calls": 15, "tokens": 77230 }
+}
+```
+
+### Cache & Reprocessing
+
+```bash
+# Default: skips already-extracted files
+pixi run psweep extract --config config/my_domain/run.yaml
+
+# Force re-extract (no need to delete files)
+pixi run psweep extract --config config/my_domain/run.yaml --reprocess
+
+# Discovery resumes from checkpoint (delete checkpoint to re-run)
+rm discovered/my_domain/checkpoint.json
 ```
 
 ---
