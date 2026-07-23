@@ -454,6 +454,7 @@ def _build_run_manifest(
     successful_count: int,
     failed_count: int,
     failed_results: Optional[List[Dict[str, Any]]] = None,
+    costs: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Build a deterministic run manifest payload for process executions."""
     lineage = (runtime_artifact or {}).get("lineage") or {}
@@ -462,7 +463,7 @@ def _build_run_manifest(
         for result in (failed_results or [])
         for error in result.get("errors", [])
     )
-    return {
+    manifest = {
         "manifest_version": "1.0.0",
         "run_id": run_id,
         "mode": mode,
@@ -492,6 +493,9 @@ def _build_run_manifest(
         },
         "errors": manifest_errors,
     }
+    if costs:
+        manifest["costs"] = costs
+    return manifest
 
 
 def _write_run_manifest(
@@ -1896,6 +1900,16 @@ def extract(
     successful_output_paths = [
         Path(r["output_path"]) for r in successful if r.get("output_path")
     ]
+    # Aggregate cost/token data for the manifest
+    total_input_tokens = sum(r.get("input_tokens") or 0 for r in successful)
+    total_output_tokens = sum(r.get("output_tokens") or 0 for r in successful)
+    run_costs = {
+        "total_cost_usd": round(total_cost, 6),
+        "total_input_tokens": total_input_tokens,
+        "total_output_tokens": total_output_tokens,
+        "model": actual_model,
+        "documents_billed": len(successful),
+    }
     try:
         run_manifest = _build_run_manifest(
             run_id=run_id,
@@ -1912,6 +1926,7 @@ def extract(
             successful_count=len(successful),
             failed_count=len(failed),
             failed_results=failed,
+            costs=run_costs,
         )
         manifest_path = _write_run_manifest(output_dir, run_id, run_manifest)
         if view.verbosity.shows_detail:

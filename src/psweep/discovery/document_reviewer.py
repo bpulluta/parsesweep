@@ -67,6 +67,11 @@ class DocumentReviewer:
         self._action = action if action in {"move", "flag"} else "move"
         self._max_chars = max_chars
         self._client: Any = None
+        # Cost accounting
+        self._total_cost: float = 0.0
+        self._total_input_tokens: int = 0
+        self._total_output_tokens: int = 0
+        self._llm_calls: int = 0
 
     def _ensure_client(self) -> Any:
         if self._client is None:
@@ -119,6 +124,12 @@ class DocumentReviewer:
             )
         except Exception:  # noqa: BLE001 - one bad file must not abort review
             return None
+        # Track cost from the LLM response
+        if isinstance(result, dict):
+            self._total_cost += result.get("cost", 0.0) or 0.0
+            self._total_input_tokens += result.get("input_tokens", 0) or 0
+            self._total_output_tokens += result.get("output_tokens", 0) or 0
+            self._llm_calls += 1
         return result.get("data") if isinstance(result, dict) else None
 
     # -- grade cache -------------------------------------------------------
@@ -250,7 +261,22 @@ class DocumentReviewer:
             f"selected {selected} primary document(s) "
             f"(keep_top={self._keep_top})."
         )
+        if self._total_cost > 0:
+            notes.append(
+                f"Document review cost: ${self._total_cost:.4f} "
+                f"({self._llm_calls} LLM call(s), "
+                f"{self._total_input_tokens + self._total_output_tokens:,} tokens)."
+            )
         return downloads, notes
+
+    def get_costs(self) -> dict[str, Any]:
+        """Return accumulated cost data from document review LLM calls."""
+        return {
+            "total_cost_usd": round(self._total_cost, 6),
+            "llm_calls": self._llm_calls,
+            "total_input_tokens": self._total_input_tokens,
+            "total_output_tokens": self._total_output_tokens,
+        }
 
     def _write_sidecar(self, record: dict[str, Any]) -> None:
         """Write ``.review/<stem>.json`` next to a graded file (best-effort).

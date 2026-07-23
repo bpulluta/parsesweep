@@ -2788,19 +2788,21 @@ class DiscoveryEngine:
         review_cfg: dict[str, object],
         notes: list[str],
         models: dict[str, object] | None = None,
-    ) -> tuple[list[dict[str, object]], list[str]]:
+    ) -> tuple[list[dict[str, object]], list[str], dict[str, object]]:
         """LLM-grade downloaded files and promote the primary one(s).
 
         Best-effort curation: annotates records with ``review_*`` fields and,
         in ``move`` mode, relocates the top file(s) per target into a
         ``reviewed/`` subfolder. Never fails the run if the LLM is unavailable.
+
+        Returns (downloads, notes, costs_dict).
         """
         description = str(review_cfg.get("document_description") or "").strip()
         if not description:
             notes.append(
                 "Document review skipped (no document_description configured)."
             )
-            return downloads, notes
+            return downloads, notes, {}
 
         from .document_reviewer import DocumentReviewer
 
@@ -2812,10 +2814,11 @@ class DiscoveryEngine:
             action=str(review_cfg.get("action", "move")),
         )
         try:
-            return reviewer.review(downloads, notes)
+            downloads, notes = reviewer.review(downloads, notes)
+            return downloads, notes, reviewer.get_costs()
         except Exception as exc:  # noqa: BLE001 - review is best-effort
             notes.append(f"Document review error (skipped): {exc}")
-            return downloads, notes
+            return downloads, notes, reviewer.get_costs()
 
     def run(self, request: DiscoveryRequest) -> DiscoveryResult:
         started_at = datetime.now(timezone.utc)
@@ -2959,6 +2962,7 @@ class DiscoveryEngine:
         curated_dir: Path | None = None
         curated_count = 0
         download_notes: list[str] = []
+        review_costs: dict[str, object] = {}
         if not request.dry_run and candidates:
             self._emit_progress(request, "run: download stage started")
             candidates_for_download, gating_notes = (
@@ -2996,7 +3000,7 @@ class DiscoveryEngine:
                 # LLM document review/curation (optional, per-domain config).
                 review_cfg = getattr(request, "document_review", None)
                 if review_cfg and download_records:
-                    download_records, download_notes = (
+                    download_records, download_notes, review_costs = (
                         self._run_document_review(
                             download_records,
                             review_cfg,
@@ -3097,6 +3101,7 @@ class DiscoveryEngine:
                 "seeker": {
                     "provider": seeker_state.get("provider", "seed_only"),
                     "enabled": bool(seeker_state.get("enabled")),
+                    "queries_executed": len(request.targets or []),
                     "candidates_discovered": seeker_raw_count,
                     "candidates_after_prioritization": candidates_after_seeker,
                     "link_prioritization_mode": request.link_prioritization_mode,
@@ -3109,6 +3114,9 @@ class DiscoveryEngine:
                     "candidates_out": candidates_after_routing,
                 },
                 "downloads": self._build_download_summary(download_records),
+                "document_review": {
+                    "costs": review_costs,
+                } if review_costs else {},
                 "acceptance_metrics": self._build_acceptance_metrics(
                     request=request,
                     seeker_state=seeker_state,
