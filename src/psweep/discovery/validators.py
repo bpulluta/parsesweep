@@ -188,13 +188,31 @@ class ContentSampler:
             raise ValueError(f"Failed to extract CSV text: {e}")
 
     @staticmethod
-    def _extract_text_from_txt(file_path: str) -> str:
-        """Extract text from TXT file."""
-        try:
-            with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
-                return f.read()
-        except Exception as e:
-            raise ValueError(f"Failed to extract TXT text: {e}")
+    def _extract_text_from_html_or_txt(file_path: str) -> str:
+        """Extract text from HTML/HTM/TXT using the shared extraction pipeline.
+
+        For HTML files, this uses the document_utils extractor which includes
+        JS-shell detection (returns empty for SPA framework pages).
+        For TXT files, reads directly.
+        """
+        from pathlib import Path
+
+        path = Path(file_path)
+        if path.suffix.lower() in (".html", ".htm"):
+            try:
+                from ..extraction.document_utils import (
+                    extract_text_from_document,
+                )
+
+                return extract_text_from_document(path) or ""
+            except Exception as e:
+                raise ValueError(f"Failed to extract HTML text: {e}")
+        else:
+            try:
+                with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
+                    return f.read()
+            except Exception as e:
+                raise ValueError(f"Failed to extract text: {e}")
 
     @classmethod
     def extract_text(cls, file_path: str) -> str:
@@ -221,8 +239,8 @@ class ContentSampler:
             return cls._extract_text_from_xlsx(file_path)
         elif file_path_lower.endswith(".csv"):
             return cls._extract_text_from_csv(file_path)
-        elif file_path_lower.endswith(".txt"):
-            return cls._extract_text_from_txt(file_path)
+        elif file_path_lower.endswith((".txt", ".html", ".htm")):
+            return cls._extract_text_from_html_or_txt(file_path)
         else:
             raise ValueError(
                 f"Unsupported file type for content sampling: {file_path}"

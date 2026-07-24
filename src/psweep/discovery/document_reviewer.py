@@ -57,7 +57,7 @@ class DocumentReviewer:
         default_model: str | None = None,
         keep_top: int = 1,
         action: str = "move",
-        max_chars: int = 8000,
+        max_chars: int = 12000,
     ) -> None:
         self._description = document_description
         self._model = model
@@ -87,18 +87,91 @@ class DocumentReviewer:
             )
         return self._client
 
+    def _build_review_sample(self, text: str) -> str:
+        """Build a bounded text sample for LLM review from any document.
+
+        Strategy: head + distributed body + tail. This is intentionally simple
+        and domain-agnostic — no keyword extraction, no description parsing,
+        no domain-specific tuning. Works for any document type:
+
+        - Zoning ordinances with relevant sections deep in the text
+        - Multi-hundred-page tariff books
+        - Short permits or regulatory filings
+
+        For documents shorter than max_chars, returns full text. For longer
+        documents, samples three regions:
+        - Head (1/4): title, TOC, jurisdiction context
+        - Body (2/4): evenly-spaced windows through the middle
+        - Tail (1/4): end of document (appendices, specific criteria, amendments)
+
+        This ensures coverage of the full document regardless of where relevant
+        content appears. Cost: only max_chars (configurable) is sent to the LLM.
+        """
+        if len(text) <= self._max_chars:
+            return text
+
+        # Reserve chars for separators between sections
+        separator = "\n[...]\n"
+        n_body_windows = 6
+        # Total separators: 2 outer (head|body, body|tail) + inner body joins
+        total_separator_count = 2 + (n_body_windows - 1)
+        separator_budget = len(separator) * total_separator_count
+
+        # Budget allocation: head + body + tail (minus separator overhead)
+        usable = self._max_chars - separator_budget
+        head_budget = usable // 4
+        tail_budget = usable // 4
+        body_budget = usable - head_budget - tail_budget
+
+        head = text[:head_budget]
+        tail = text[-tail_budget:]
+
+        # Distribute body windows evenly through the middle of the document
+        body_start = head_budget
+        body_end = len(text) - tail_budget
+        body_length = body_end - body_start
+
+        if body_length <= body_budget:
+            # Middle section fits entirely — include it all
+            body_section = text[body_start:body_end]
+        else:
+            # Sample N windows evenly through the body
+            window_size = body_budget // n_body_windows
+            step = (body_length - window_size) // max(n_body_windows - 1, 1)
+            excerpts: list[str] = []
+            for i in range(n_body_windows):
+                offset = body_start + (i * step)
+                excerpt = text[offset : offset + window_size]
+                if excerpt.strip():
+                    excerpts.append(excerpt)
+            body_section = "\n[...]\n".join(excerpts)
+
+        combined = f"{head}{separator}{body_section}{separator}{tail}"
+        return combined[: self._max_chars]
+
     def _grade(
         self, file_path: str, target_context: str = ""
     ) -> dict[str, Any] | None:
         """Return the LLM grade for one file, or None if it can't be graded."""
         try:
-            text = ContentSampler.extract_text(file_path)
+            # Use full document extraction (with caching) instead of the
+            # 5-page sample. This ensures the keyword-targeted sampling can
+            # find relevant content deep in large multi-section documents.
+            from pathlib import Path
+
+            from ..extraction.document_utils import extract_text_from_document
+
+            text = extract_text_from_document(Path(file_path))
         except Exception:  # noqa: BLE001 - unreadable file, skip grading
-            return None
+            # Fall back to the sampler if full extraction fails
+            try:
+                text = ContentSampler.extract_text(file_path)
+            except Exception:
+                return None
         if not text or len(text.strip()) < ContentSampler.MIN_EXTRACTION_LENGTH:
             return None
 
-        sample = text[: self._max_chars]
+        sample = self._build_review_sample(text)
         target_line = (
             f"\nSEARCH TARGET CONTEXT: {target_context}\n"
             if target_context

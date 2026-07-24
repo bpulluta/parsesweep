@@ -322,6 +322,53 @@ class DiscoveryEngine:
         return candidates
 
     @staticmethod
+    def _attribute_seeds_to_targets(
+        seed_candidates: list[DiscoveryCandidate],
+        targets: list[dict[str, object]],
+    ) -> None:
+        """Match seed URLs to targets and assign target_metadata.
+
+        Fully generic: scores every field value in each target against the URL.
+        Works with any targets.csv schema — jurisdiction, state, county, city,
+        municipality, district, label, or any custom field. No hardcoded field
+        names.
+
+        Scoring: for each target, every word from any field value that appears
+        in the URL contributes its character length to the score. Longer/more
+        specific matches win. Minimum score threshold prevents false positives.
+        """
+        if not targets or not seed_candidates:
+            return
+
+        for candidate in seed_candidates:
+            if candidate.target_metadata:
+                continue  # Already attributed (e.g., from seeker)
+
+            url_lower = candidate.url.lower()
+            best_target: dict[str, object] | None = None
+            best_score = 0
+
+            for target in targets:
+                score = 0
+                # Score ALL string fields in the target against the URL
+                for _field, val in target.items():
+                    if not isinstance(val, str) or not val.strip():
+                        continue
+                    # Split multi-word values and check each part
+                    # e.g., "Drumore Township" → ["drumore", "township"]
+                    for part in val.lower().split():
+                        if len(part) > 2 and part in url_lower:
+                            score += len(part)
+
+                if score > best_score:
+                    best_score = score
+                    best_target = target
+
+            # Minimum threshold: at least one meaningful match (> 4 chars total)
+            if best_target and best_score >= 4:
+                candidate.target_metadata = dict(best_target)
+
+    @staticmethod
     def _normalize_seed_urls(
         seed_urls: list[str],
     ) -> tuple[list[str], list[dict[str, object]]]:
@@ -2782,6 +2829,143 @@ class DiscoveryEngine:
         )
         return downloads, notes
 
+    def _escalate_js_shells_to_browser(
+        self,
+        downloads: list[dict[str, object]],
+        notes: list[str],
+        request: DiscoveryRequest,
+    ) -> tuple[list[dict[str, object]], list[str]]:
+        """Re-fetch HTML files detected as JS-rendered shells via browser.
+
+        After initial download, some HTML files from SPA sites (municode.com,
+        ecode360.com, etc.) contain only a JavaScript bootstrap with no
+        server-rendered content. This method:
+
+        1. Identifies HTML files with insufficient extracted text.
+        2. Launches a headless browser to render the page.
+        3. Saves the rendered HTML (with actual content) over the shell.
+        4. Re-validates the replacement file.
+
+        Configurable via ``discovery.browser_escalation`` in run.yaml:
+            settle_seconds: Time to wait for SPA to render (default: 10)
+            min_shell_chars: Below this = JS shell detected (default: 200)
+            min_rendered_chars: Rendered text must exceed this (default: 1000)
+            enabled: true/false (default: true)
+
+        This is a general-purpose escalation that works for any domain without
+        site-specific configuration.
+        """
+        from pathlib import Path
+
+        from .validators import ContentSampler
+
+        # Load configurable thresholds from discovery config
+        escalation_cfg = getattr(request, "browser_escalation", None) or {}
+        if isinstance(escalation_cfg, bool):
+            escalation_cfg = {"enabled": escalation_cfg}
+        if not escalation_cfg.get("enabled", True):
+            return downloads, notes
+
+        settle_seconds = float(escalation_cfg.get("settle_seconds", 10))
+        min_shell_chars = int(escalation_cfg.get("min_shell_chars", 200))
+        min_rendered_chars = int(escalation_cfg.get("min_rendered_chars", 1000))
+
+        html_extensions = {".html", ".htm"}
+        candidates_for_escalation: list[dict[str, object]] = []
+
+        for record in downloads:
+            if record.get("status") != "downloaded":
+                continue
+            file_path = record.get("path")
+            if not file_path:
+                continue
+            path = Path(str(file_path))
+            if path.suffix.lower() not in html_extensions:
+                continue
+
+            # Check if the file has insufficient content (JS shell signature)
+            try:
+                text = ContentSampler.extract_text(str(path))
+                if len(text.strip()) < min_shell_chars:
+                    candidates_for_escalation.append(record)
+            except Exception:
+                continue
+
+        if not candidates_for_escalation:
+            return downloads, notes
+
+        # Attempt browser rendering for shell files
+        browser = None
+        escalated = 0
+        try:
+            browser, browser_note = self._open_browser_for_download()
+            if browser is None:
+                notes.append(
+                    f"Browser escalation: {len(candidates_for_escalation)} "
+                    f"JS-rendered HTML file(s) detected but browser unavailable "
+                    f"({browser_note}). Content may be incomplete."
+                )
+                return downloads, notes
+
+            for record in candidates_for_escalation:
+                file_path = Path(str(record["path"]))
+                url = str(record.get("url") or record.get("final_url") or "")
+                if not url:
+                    continue
+
+                try:
+                    rendered_html = browser.fetch_html(
+                        url, settle_seconds=settle_seconds
+                    )
+                    if not rendered_html or len(rendered_html.strip()) < 500:
+                        continue
+
+                    # Save rendered HTML over the shell
+                    file_path.write_text(rendered_html, encoding="utf-8")
+
+                    # Verify the rendered version has meaningful content
+                    # (not just navigation/TOC from a lazy-loading SPA).
+                    text = ContentSampler.extract_text(str(file_path))
+                    if len(text.strip()) >= min_rendered_chars:
+                        escalated += 1
+                        record["browser_escalated"] = True
+
+                        # Cache extracted text as .text/ file (same pattern as
+                        # OCR'd PDFs). Users can inspect the .txt instead of
+                        # opening raw HTML, and the extraction pipeline reuses
+                        # it without re-parsing.
+                        from ..extraction.document_utils import write_text_cache
+
+                        write_text_cache(
+                            file_path, text, method="browser_render"
+                        )
+                    else:
+                        record["browser_escalated"] = False
+                except Exception:
+                    record["browser_escalated"] = False
+                    continue
+        finally:
+            if browser is not None:
+                try:
+                    browser.close()
+                except Exception:
+                    pass
+
+        if escalated:
+            notes.append(
+                f"Browser escalation: re-rendered {escalated} of "
+                f"{len(candidates_for_escalation)} JS-shell HTML file(s) "
+                f"via headless browser."
+            )
+        elif candidates_for_escalation:
+            notes.append(
+                f"Browser escalation: {len(candidates_for_escalation)} "
+                f"JS-rendered HTML file(s) detected; browser rendering "
+                f"did not yield additional content."
+            )
+
+        return downloads, notes
+
     @staticmethod
     def _run_document_review(
         downloads: list[dict[str, object]],
@@ -2812,6 +2996,7 @@ class DiscoveryEngine:
             models={str(k): str(v) for k, v in (models or {}).items()} or None,
             keep_top=int(review_cfg.get("keep_top", 1) or 1),
             action=str(review_cfg.get("action", "move")),
+            max_chars=int(review_cfg.get("max_chars", 12000) or 12000),
         )
         try:
             downloads, notes = reviewer.review(downloads, notes)
@@ -2886,11 +3071,35 @@ class DiscoveryEngine:
                 else len(seeker_candidates)
             )
 
-        # Prefer seeker candidates; fall back to scaffold seeds if seeker yields nothing.
-        if seeker_candidates:
+        # Merge seeker candidates with seed candidates. Seeds are always
+        # included (they represent known-good URLs from config) while seeker
+        # candidates come from search. This ensures both discovery paths
+        # contribute to the download pool regardless of search results.
+        seed_candidates = self._scaffold_candidates(normalized_seed_urls)
+
+        # Attribute seeds to targets: match each seed URL to the best target
+        # based on jurisdiction/state appearing in the URL. This ensures seeds
+        # get proper partition paths (tx/keller instead of unknown-state) and
+        # count toward per-target keep_top in document review.
+        if seed_candidates and request.targets:
+            self._attribute_seeds_to_targets(seed_candidates, request.targets)
+
+        if seeker_candidates and seed_candidates:
+            # Deduplicate: seeds that were also found by seeker are not doubled.
+            seeker_urls = {c.url for c in seeker_candidates}
+            unique_seeds = [
+                c for c in seed_candidates if c.url not in seeker_urls
+            ]
+            candidates = seeker_candidates + unique_seeds
+            if unique_seeds:
+                seeker_notes.append(
+                    f"Merged {len(unique_seeds)} seed URL(s) with "
+                    f"{len(seeker_candidates)} seeker candidate(s)."
+                )
+        elif seeker_candidates:
             candidates = seeker_candidates
         else:
-            candidates = self._scaffold_candidates(normalized_seed_urls)
+            candidates = seed_candidates
 
         all_errors, seeker_notes = self._append_discovery_gap_diagnostics(
             request=request,
@@ -2996,6 +3205,15 @@ class DiscoveryEngine:
                             download_records, classifier_cfg, download_notes
                         )
                     )
+
+                # Browser escalation: re-fetch HTML files that are JS-rendered
+                # shells (SPA frameworks like Angular/React) with no usable
+                # server-side content. Replaces the shell with rendered text.
+                download_records, download_notes = (
+                    self._escalate_js_shells_to_browser(
+                        download_records, download_notes, request
+                    )
+                )
 
                 # LLM document review/curation (optional, per-domain config).
                 review_cfg = getattr(request, "document_review", None)
