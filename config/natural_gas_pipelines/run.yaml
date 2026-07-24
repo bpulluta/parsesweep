@@ -1,0 +1,116 @@
+# Natural Gas Pipelines & Compressor Stations — full pipeline config
+# Usage: pixi run psweep discover --config config/natural_gas_pipelines/run.yaml
+#        pixi run psweep extract --config config/natural_gas_pipelines/run.yaml
+#        pixi run psweep compile --config config/natural_gas_pipelines/run.yaml
+
+domain: natural_gas_pipelines
+
+# ── Model tiers ──────────────────────────────────────────────────────────────
+models:
+  primary: compassop-gpt-4.1           # extraction (accuracy-critical)
+  secondary: compassop-gpt-4.1-mini  # discovery review, page targeting (speed/cost)
+
+# ── Discovery ────────────────────────────────────────────────────────────────
+discovery:
+  targets_csv: targets.csv
+  seeds:
+    - "https://library.municode.com/tx/weatherford/codes/code_of_ordinances?nodeId=COOR_TITXIIZOOR_CH5SUUSRE_S12-5-106OIGAFA"
+    - "https://library.municode.com/tx/keller/codes/code_of_ordinances?nodeId=PTIICO_CH10MIPR_ARTVIIGAWEDRPR_S10-1120TERE"
+    - "https://www.drumoretownship.org/DocumentCenter/View/57/Article-5-Specific-Criteria"
+  queries:
+    - "{jurisdiction} {state} natural gas compressor station ordinance"
+    - "{jurisdiction} {state} compressor station setback zoning code"
+    - "site:municode.com {jurisdiction} {state} compressor station"
+    - "site:ecode360.com {jurisdiction} {state} compressor station OR natural gas"
+    - "{jurisdiction} {state} oil gas compressor station zoning ordinance"
+  search:
+    provider: serpapi
+    max_results: 15
+    cache: true
+  selection:
+    primary_per_target: 5
+    exclude_draft: true
+    relevance_require_any_terms: [compressor, pipeline, natural gas, oil and gas, gas well, setback]
+    relevance_exclude_any_terms: [press release, news article, meeting minutes, agenda, newsletter, presentation]
+    relevance_allowed_domain_patterns: [".gov", ".us", "municode.com", "ecode360.com", "codepublishing.com", "zoneomics.com", ".org"]
+    require_supported_document: false
+  link_prioritization:
+    mode: heuristic
+    keywords: [compressor, pipeline, natural gas, ordinance, zoning, code, setback]
+    domain_scores: {"municode.com": 0.2, "ecode360.com": 0.2, "codepublishing.com": 0.15}
+  document_classifier:
+    required_keywords: [ordinance, code, chapter, section, regulation, zoning, permitted, conditional]
+    nice_to_have_keywords: [compressor, pipeline, natural gas, setback, noise, permit, oil and gas]
+    min_required_matches: 1
+    action: warn
+  document_review:
+    model: secondary
+    document_description: >-
+      enacted municipal or county ordinance, zoning code chapter, or code of
+      ordinances section that regulates natural gas compressor stations,
+      natural gas pipelines, or oil and gas facilities. Relevant content includes:
+      setbacks, noise limits, zoning district requirements, permit conditions,
+      fencing, enclosures, or even just listing compressor stations as a
+      permitted/conditional/special use in a zoning district. Accept the document
+      if it contains ANY regulatory provisions for natural gas facilities,
+      even if it only shows use classifications without detailed setback numbers.
+      Reject only: drafts, meeting minutes, staff reports, news articles,
+      environmental impact reports, state-level regulations, or documents from
+      a different jurisdiction than the target.
+    keep_top: 2
+    action: move
+  partition_by: [state, jurisdiction]
+
+# ── Extraction ───────────────────────────────────────────────────────────────
+extraction:
+  model: primary
+  input_dir: discovered/natural_gas_pipelines/latest/curated
+  schema: schemas/personal/natural_gas_pipeline_schema.json
+  output_dir: extracted/natural_gas_pipelines
+  max_context: 600000
+
+# ── Compilation ──────────────────────────────────────────────────────────────
+compilation:
+  input_dir: extracted/natural_gas_pipelines
+  schema: schemas/personal/natural_gas_pipeline_schema.json
+  output_dir: compiled/natural_gas_pipelines
+  deduplication:
+    key_fields: [category, facility_type, specific_subject, applies_to, value, unit, section]
+    ignore_fields: [details, notes]
+  output:
+    default_format: both
+    exclude_fields:
+      - Applies To Natural Gas
+      - Extraction Approach
+      - Relevant Sections
+      - Ordinance Code
+    column_renames:
+      State: state
+      County: county
+      Subdivision: subdivision
+      Jurisdiction Type: jurisdiction_type
+      Category: feature
+      Facility Type: facility_type
+      Specific Subject: specific_subject
+      Value: value
+      Unit: units
+      Min Dist: min_dist
+      Max Dist: max_dist
+      Applies To: adder
+      Details: summary
+      Year: year
+      Section: section
+      Notes: notes
+    column_order: [county, state, subdivision, jurisdiction_type, feature,
+      facility_type, specific_subject, value, units, adder, min_dist, max_dist,
+      summary, year, section, notes]
+    freeze_columns: 4
+    auto_width: true
+
+# ── QA/QC ────────────────────────────────────────────────────────────────────
+qaqc:
+  default_lane: quantitative
+  lanes:
+    quantitative:
+      enabled: true
+      mode: quantitative

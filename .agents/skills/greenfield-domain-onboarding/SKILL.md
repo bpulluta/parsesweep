@@ -6,44 +6,90 @@ description: "Use when a user only has raw documents for a new domain and needs 
 # Greenfield Domain Onboarding
 
 ## Goal
-Turn a raw `documents/<domain>/` folder into a working ParseSweep pipeline with a schema, runtime pack, config, validation evidence, and a first extraction/compilation pass.
+
+Turn a raw `documents/<domain>/` folder into a working ParseSweep pipeline with a schema, config, validation evidence, and a first extract/compile pass.
 
 ## When To Use
-- The user says they are starting from scratch.
-- The user only has documents and needs the rest of the pipeline created.
-- A new domain such as solar, wind, mining, or another regulatory/document set needs onboarding.
-- The user wants Copilot to drive a repeatable domain-bootstrap workflow.
+
+- The user is starting from scratch with only documents.
+- A new domain (regulatory filings, permits, tariffs, ordinances, etc.) needs onboarding.
+- The user wants a repeatable domain-bootstrap workflow driven end-to-end.
 
 ## Required Workflow
+
 1. Read `AGENTS.md`, `README.md`, and `schemas/SCHEMA_BEST_PRACTICES.md`.
 2. Inspect a small representative sample of source documents.
-3. Identify the 4-8 highest-value fields the user needs in the first pass.
-4. Create a lean schema under `schemas/personal/` with valid `$metadata.extraction`, top-level context objects, and a compact main data array. Prefer `init-domain-schema` with a closest reference schema over copying a full production schema.
-5. If the user already knows the highest-value first-pass fields, use `--include-field` on `init-domain-schema` to trim the starter immediately.
-6. Use the closest existing schema as reference material, not as a full template to copy wholesale.
-7. Keep ownership boundaries explicit: schema handles extraction contract and minimal dedup semantics; pack YAML handles runtime modules, QA/QC behavior, and deployment/runtime tuning.
-8. Validate the schema with `pixi run psweep check-schema <schema>`.
-9. Scaffold the runtime surface with `pixi run psweep init-domain-pack --name <domain> --schema <schema> --with-workspace --with-config`.
-10. Validate the runtime seam with `pixi run psweep check-runtime --pack schemas/domain_packs/<domain>/pack.yaml --profile default`.
-11. Run `process` on 1-2 documents first, not the full corpus.
-12. Run `compile` on the extracted records and inspect the row shape.
-13. Expand the schema only after the first pass shows what is missing or too ambiguous.
-14. If the user needs stronger validation, run QA/QC compare and optional qualitative review.
-15. Iterate on schema fields, page ranges, and extraction wording before scaling up.
+3. Identify the 4–8 highest-value fields needed in the first pass.
+4. Create a lean schema under `schemas/personal/` with valid `$metadata.extraction`, top-level context objects, and a compact main data array.
+   - Use `init-domain-schema` with a closest reference schema as the starting point rather than copying a production schema wholesale.
+   - If the user can already name the first-pass fields, pass `--include-field` to trim the starter immediately.
+5. Validate the schema:
+   ```bash
+   pixi run psweep check-schema schemas/personal/<schema>.json
+   ```
+6. Run a schema-only smoke extraction on 1–2 documents (no config required at this stage):
+   ```bash
+   pixi run psweep extract documents/<domain>/ \
+     --schema schemas/personal/<schema>.json \
+     -n 2 --reprocess
+   ```
+7. Compile the smoke sample and preview deduplication:
+   ```bash
+   pixi run psweep compile extracted/<domain>/ \
+     --schema schemas/personal/<schema>.json \
+     --dry-run
+   ```
+8. Review the smoke output:
+   - Is `main_data_array` producing the right rows?
+   - Are `identifier_fields` pointing to the right document-level context?
+   - Are `key_fields` keeping distinct records separate?
+   - Does the dry-run dedup report flag any unintended merges?
+9. Iterate on schema fields, descriptions, and page ranges before wiring up the full config.
+10. Once the schema shape is stable, scaffold the config from the template:
+    ```bash
+    cp config/TEMPLATE.yaml config/<domain>/run.yaml
+    ```
+    Populate `domain`, `extraction.schema`, `extraction.input_dir`, `compilation.schema`, `compilation.input_dir`, and `compilation.deduplication.key_fields` at minimum.
+11. Run the full pipeline via config and inspect the compiled output:
+    ```bash
+    pixi run psweep extract --config config/<domain>/run.yaml
+    pixi run psweep compile --config config/<domain>/run.yaml
+    ```
+12. Expand the schema only after the first config pass shows what is missing or too ambiguous.
+13. If the user needs stronger validation, run QA/QC compare:
+    ```bash
+    pixi run psweep extract --config config/<domain>/run.yaml --enable-qa-qc
+    pixi run psweep compare  --config config/<domain>/run.yaml
+    ```
 
 ## Guardrails
-- Keep the contract-first runtime as the only active path.
-- Prefer a lean first-pass schema over cloning a full production schema.
-- Reuse existing production schemas as references for field names, descriptions, and domain patterns only when they actually help.
-- Use `init-domain-schema` as the default novice entry point when the user only has documents plus a closest reference domain.
-- Use `--include-field` when the user can already name the first-pass fields, rather than generating a larger starter and asking them to prune JSON manually.
-- Do not scale to the full corpus until a small smoke set produces acceptable structured output.
+
+- The system is two files per domain: a JSON schema (what to extract) and a YAML config (how to run). Do not introduce any other runtime layer unless the user explicitly needs shared QA/QC or multi-schema behavior.
+- Always start with a lean schema. Do not clone a full production schema as a template.
+- Use `init-domain-schema` with a reference schema as the novice entry point.
+- Validate with `check-schema` before running any extraction.
+- Run `extract` and `compile` on a 1–2 document smoke set before touching the full corpus.
+- Do not scale to the full corpus until the smoke set produces acceptable structured output.
 - Use `pixi` for all commands.
-- Update tracking docs if the work changes active modernization/release status.
+- Key schema fields to always set: `$metadata.extraction.main_data_array`, `$metadata.extraction.identifier_fields`, `$metadata.extraction.context_objects`, `$metadata.compilation.deduplication.key_fields`.
+
+## Large Documents
+
+For documents over 200 pages, configure page targeting in the config before scaling:
+
+```yaml
+extraction:
+  pages:
+    csv: config/<domain>/page_ranges.csv   # manual ranges win
+    auto_locate:
+      section_description: "the section containing <target data>"
+      trigger_chars: 200000
+      max_selected_pages: 30
+```
 
 ## Expected Deliverables
-- A validated schema under `schemas/personal/`.
-- A validated pack under `schemas/domain_packs/<domain>/pack.yaml`.
-- Starter config under `config/<domain>/`.
-- Evidence from `validate-runtime`, `extract`, and `compile`.
-- A short iteration note describing what still needs refinement.
+
+- A validated schema at `schemas/personal/<domain>_schema.json`.
+- A config at `config/<domain>/run.yaml` derived from `config/TEMPLATE.yaml`.
+- Evidence from `check-schema`, smoke `extract`/`compile` (schema-only), and a full config run.
+- A short iteration note describing what still needs refinement before scaling to the full corpus.

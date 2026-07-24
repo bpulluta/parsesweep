@@ -85,7 +85,13 @@ SUPPORTED_EXTENSIONS = {
 
 
 class _HTMLTextExtractor(HTMLParser):
-    """Convert HTML content into readable plain text."""
+    """Convert HTML content into readable plain text.
+
+    Handles tables by preserving column structure with tab separators,
+    and filters out navigation elements (nav) that add noise without
+    useful content. Footer and header are preserved as block elements
+    since they can contain legal citations, dates, or ordinance metadata.
+    """
 
     _BLOCK_TAGS = {
         "address",
@@ -112,33 +118,48 @@ class _HTMLTextExtractor(HTMLParser):
         "hr",
         "li",
         "main",
-        "nav",
         "ol",
         "p",
         "pre",
         "section",
         "table",
         "tbody",
-        "td",
         "tfoot",
-        "th",
         "thead",
-        "tr",
         "ul",
     }
-    _SKIP_TAGS = {"script", "style", "noscript"}
+    # Tags whose content is skipped entirely.
+    _SKIP_TAGS = {"script", "style", "noscript", "nav"}
+
+    # Table cell tags get tab-separated within a row instead of newlines,
+    # preserving column association (e.g., "AG\t500\tfeet").
+    _TABLE_CELL_TAGS = {"td", "th"}
+    # Table row tag — ends with a newline (row boundary).
+    _TABLE_ROW_TAG = "tr"
 
     def __init__(self) -> None:
         super().__init__()
         self._chunks: list[str] = []
         self._skip_depth = 0
+        self._in_table_cell = False
 
     def handle_starttag(self, tag: str, attrs) -> None:
         normalized = tag.lower()
         if normalized in self._SKIP_TAGS:
             self._skip_depth += 1
             return
-        if self._skip_depth == 0 and normalized in self._BLOCK_TAGS:
+        if self._skip_depth > 0:
+            return
+        if normalized in self._TABLE_CELL_TAGS:
+            # Tab separator between cells (column delimiter)
+            if self._in_table_cell:
+                self._chunks.append("\t")
+            self._in_table_cell = True
+        elif normalized == self._TABLE_ROW_TAG:
+            # Newline at row start
+            self._chunks.append("\n")
+            self._in_table_cell = False
+        elif normalized in self._BLOCK_TAGS:
             self._chunks.append("\n")
 
     def handle_endtag(self, tag: str) -> None:
@@ -146,7 +167,14 @@ class _HTMLTextExtractor(HTMLParser):
         if normalized in self._SKIP_TAGS and self._skip_depth > 0:
             self._skip_depth -= 1
             return
-        if self._skip_depth == 0 and normalized in self._BLOCK_TAGS:
+        if self._skip_depth > 0:
+            return
+        if normalized in self._TABLE_CELL_TAGS:
+            pass  # No newline after cell — tab separator handles it
+        elif normalized == self._TABLE_ROW_TAG:
+            self._chunks.append("\n")
+            self._in_table_cell = False
+        elif normalized in self._BLOCK_TAGS:
             self._chunks.append("\n")
 
     def handle_data(self, data: str) -> None:
@@ -167,6 +195,11 @@ class _HTMLTextExtractor(HTMLParser):
                 elif lines and lines[-1] != "":
                     lines.append("")
                 continue
+            if chunk == "\t":
+                # Preserve tab as column separator
+                if current_parts:
+                    current_parts.append("\t")
+                continue
             current_parts.append(chunk)
 
         if current_parts:
@@ -174,8 +207,10 @@ class _HTMLTextExtractor(HTMLParser):
 
         collapsed: list[str] = []
         for line in lines:
-            cleaned = " ".join(line.split())
-            if cleaned:
+            # Preserve tabs within lines (table columns)
+            parts = line.split("\t")
+            cleaned = "\t".join(" ".join(p.split()) for p in parts)
+            if cleaned.strip():
                 collapsed.append(cleaned)
             elif collapsed and collapsed[-1] != "":
                 collapsed.append("")
@@ -442,7 +477,13 @@ def _extract_from_csv(csv_path: Path) -> str:
 
 
 def _extract_from_html(html_path: Path) -> str:
-    """Extract readable text from HTML/HTM files."""
+    """Extract readable text from HTML/HTM files.
+
+    Detects JavaScript-rendered single-page application (SPA) shells that contain
+    no meaningful server-side content (e.g., Angular, React, Vue apps like
+    municode.com, ecode360.com) and returns empty text so downstream quality
+    checks can flag or skip them.
+    """
     try:
         raw_html = html_path.read_text(encoding="utf-8")
     except UnicodeDecodeError:
@@ -454,6 +495,16 @@ def _extract_from_html(html_path: Path) -> str:
             ) from e
     except Exception as e:
         raise RuntimeError(f"Failed to read HTML {html_path.name}: {e}") from e
+
+    # Detect SPA/JS-framework shells before spending effort on parsing.
+    # These files contain framework bootstrap code but no server-rendered content.
+    if _is_js_rendered_shell(raw_html):
+        logger.warning(
+            f"⚠ HTML file appears to be a JavaScript-rendered shell "
+            f"(no server-side content): {html_path.name}. "
+            f"Content requires browser rendering to extract."
+        )
+        return ""
 
     try:
         parser = _HTMLTextExtractor()
@@ -467,3 +518,48 @@ def _extract_from_html(html_path: Path) -> str:
         raise RuntimeError(
             f"Failed to extract from HTML {html_path.name}: {e}"
         ) from e
+
+
+# Indicators that an HTML file is a JS-rendered SPA shell with no server-side content.
+_SPA_FRAMEWORK_INDICATORS = [
+    "ng-app=",          # Angular 1.x
+    "ng-strict-di=",    # Angular 1.x strict mode
+    "__NEXT_DATA__",    # Next.js
+    "id=\"__next\"",    # Next.js root
+    "id=\"root\"",      # React CRA default
+    "id=\"app\"",       # Vue.js default
+    "data-reactroot",   # React
+    "window.__NUXT__",  # Nuxt.js
+]
+
+# Minimum meaningful text threshold for HTML documents. SPA shells typically
+# produce < 200 chars of framework boilerplate after tag stripping.
+_HTML_MIN_MEANINGFUL_CHARS = 200
+
+
+def _is_js_rendered_shell(raw_html: str) -> bool:
+    """Detect if an HTML document is a JavaScript SPA shell with no content.
+
+    Returns True if the HTML contains SPA framework indicators AND produces
+    very little meaningful text when tags are stripped — indicating the real
+    content is loaded dynamically by JavaScript.
+    """
+    html_lower = raw_html.lower()
+
+    # Check for SPA framework indicators
+    has_framework = any(
+        indicator.lower() in html_lower for indicator in _SPA_FRAMEWORK_INDICATORS
+    )
+    if not has_framework:
+        return False
+
+    # Quick extraction to see if there's meaningful content
+    try:
+        parser = _HTMLTextExtractor()
+        parser.feed(raw_html)
+        text = parser.get_text()
+    except Exception:
+        return False
+
+    # If a framework is detected AND text is very short, it's a shell
+    return len(text.strip()) < _HTML_MIN_MEANINGFUL_CHARS
