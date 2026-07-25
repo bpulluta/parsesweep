@@ -632,6 +632,8 @@ class DiscoveryEngine:
                     weights=dict(SEEKER_ONLY_SCORE_WEIGHTS),
                 ),
                 reasons=list(raw.get("reasons") or []),
+                title=raw.get("title") or None,
+                snippet=raw.get("snippet") or None,
             )
 
         candidates_by_target: list[list[DiscoveryCandidate]] = [
@@ -747,7 +749,8 @@ class DiscoveryEngine:
                             context[singular_key[:-1]] = text
 
         # Coalesce aliases: an alias resolves to the first non-empty source
-        # field. Config-driven; defaults preserve legacy behavior.
+        # field. Config-driven; uses DEFAULT_QUERY_CONTEXT_ALIASES when not
+        # overridden.
         effective_aliases = (
             aliases
             if aliases is not None
@@ -2100,9 +2103,53 @@ class DiscoveryEngine:
             )
             return candidates, errors, notes, routing_state
 
+        # Only route crawlable HTML pages (non-document URLs) from domains
+        # configured for deep crawling. PDFs and other direct-download files
+        # don't benefit from link-following. This prevents wasting the crawl
+        # budget on sites that serve content directly (no navigation needed).
+        from .connectors.digger import HttpDiggerConnector
+
+        # Configurable: domains that use deep navigation requiring crawling.
+        # Falls back to link_prioritization domain_scores keys (which are
+        # code-hosting sites by convention).
+        crawl_domains = getattr(request, "crawl_domains", None) or list(
+            (request.link_prioritization_domain_scores or {}).keys()
+        )
+        crawlable_urls: list[str] = []
+        for candidate in candidates:
+            url = candidate.url
+            if HttpDiggerConnector._is_document_url(url):
+                continue  # PDFs skip routing — they'll be downloaded directly
+            if not crawl_domains:
+                crawlable_urls.append(url)
+                continue
+            host = (urlparse(url).hostname or "").lower()
+            if any(domain in host for domain in crawl_domains):
+                crawlable_urls.append(url)
+
+        if not crawlable_urls:
+            notes.append(
+                "Distributed routing skipped: no crawlable HTML pages from allowed domains."
+            )
+            # Filter by allowed_domains to maintain domain boundary.
+            if request.allowed_domains:
+                from .connectors.digger import NullDiggerConnector
+                candidates = [
+                    c for c in candidates
+                    if NullDiggerConnector._matches_allowed_domain(
+                        c.url, request.allowed_domains
+                    )
+                ]
+            return candidates, errors, notes, routing_state
+
+        notes.append(
+            f"Distributed routing: {len(crawlable_urls)} crawlable page(s) "
+            f"from {len(candidates)} candidate(s) sent to digger."
+        )
+
         ssl_verify = self._downloads_ssl_verify()
         filtered_seed_urls, policy_notes = self._filter_urls_for_policy(
-            urls=[candidate.url for candidate in candidates],
+            urls=crawlable_urls,
             request=request,
             ssl_verify=ssl_verify,
             stage_name="Routing",
@@ -2217,6 +2264,14 @@ class DiscoveryEngine:
         notes.append(
             f"Distributed routing staged {len(routed_candidates)} candidate(s) through digger."
         )
+
+        # Merge digger artifacts with original non-crawled candidates (PDFs
+        # and other direct-download files that bypassed the digger).
+        for candidate in candidates:
+            if candidate.url not in seen_urls:
+                routed_candidates.append(candidate)
+                seen_urls.add(candidate.url)
+
         return (
             routed_candidates,
             normalize_error_records(errors),
@@ -2460,9 +2515,10 @@ class DiscoveryEngine:
         notes.extend(distributed_notes)
         routing_state["stages"].append({"distributed": distributed_state})
 
+        # Use the distributed results directly. When routing was skipped
+        # (e.g., all candidates are PDFs), distributed_candidates contains
+        # the original candidates filtered by allowed_domains.
         distributed_routed_candidates = distributed_candidates
-        if int(distributed_state.get("artifact_count") or 0) == 0:
-            distributed_routed_candidates = []
 
         routing_state["centralized_candidate_count"] = len(
             centralized_routed_candidates
