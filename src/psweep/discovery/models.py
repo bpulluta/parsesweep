@@ -67,6 +67,8 @@ class DiscoveryCandidate:
     canonical_url: str | None = None
     content_hash: str | None = None
     target_metadata: dict[str, Any] | None = field(default=None)
+    title: str | None = None
+    snippet: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         effective_status = self.status or self.score.acceptance_class()

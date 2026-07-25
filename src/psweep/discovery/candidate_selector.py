@@ -424,7 +424,7 @@ class CandidateSelector:
             return True
 
         normalized_context = self._normalize_template_context(target_context)
-        text = self._candidate_text(candidate)
+        text = self._candidate_identity_text(candidate)
         text_compact = re.sub(r"[^a-z0-9]+", "", text)
 
         require_any_terms = self._resolve_templates(
@@ -515,6 +515,24 @@ class CandidateSelector:
     @staticmethod
     def _candidate_text(candidate: DiscoveryCandidate) -> str:
         parts = [candidate.url or ""] + list(candidate.reasons or [])
+        if candidate.title:
+            parts.append(candidate.title)
+        if candidate.snippet:
+            parts.append(candidate.snippet)
+        return normalize_url_text(" ".join(parts))
+
+    @staticmethod
+    def _candidate_identity_text(candidate: DiscoveryCandidate) -> str:
+        """Text for target-identity matching: URL + title + snippet only.
+
+        Excludes reasons (which embed the query string and would cause
+        every candidate to match the jurisdiction name).
+        """
+        parts = [candidate.url or ""]
+        if candidate.title:
+            parts.append(candidate.title)
+        if candidate.snippet:
+            parts.append(candidate.snippet)
         return normalize_url_text(" ".join(parts))
 
     @staticmethod

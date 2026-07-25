@@ -817,15 +817,16 @@ def test_engine_run_routes_distributed_topology_through_digger_filters(tmp_path:
     assert payload["constraints"]["topology_mode"] == "distributed"
     assert payload["constraints"]["allowed_domains"] == ["county.gov"]
     assert payload["constraints"]["max_depth"] == 4
+    # PDF seeds bypass routing (go directly to download) — routing only
+    # activates for crawlable HTML pages from code-hosting domains.
+    # external.org is excluded by allowed_domains.
     assert len(payload["candidates"]) == 1
     assert payload["candidates"][0]["url"] == "https://county.gov/ordinance.pdf"
-    assert "Routed via distributed digger path" in payload["candidates"][0]["reasons"]
     assert payload["lineage"]["routing"]["mode"] == "distributed"
-    assert payload["lineage"]["routing"]["applied"] is True
-    assert payload["lineage"]["routing"]["artifact_count"] == 1
-    assert payload["lineage"]["routing"]["discovery_modes"] == ["seed_only"]
+    # Routing was not applied because all candidates are PDFs
+    assert payload["lineage"]["routing"]["applied"] is False
     assert any(
-        note == "Distributed routing staged 1 candidate(s) through digger."
+        "no crawlable HTML pages" in note
         for note in payload["notes"]
     )
 
@@ -960,12 +961,17 @@ def test_engine_run_routes_hybrid_topology_with_centralized_then_distributed(tmp
     assert payload["constraints"]["topology_mode"] == "hybrid"
     assert len(payload["candidates"]) == 2
     urls = [candidate["url"] for candidate in payload["candidates"]]
-    assert urls == [
-        "https://docs.county.gov/hub-geothermal-ordinance.pdf",
-        "https://county.gov/distributed-ordinance.pdf",
-    ]
-    assert "Routed via centralized hub sweep" in payload["candidates"][0]["reasons"]
-    assert "Routed via distributed digger path" in payload["candidates"][1]["reasons"]
+    # Centralized finds the hub-linked PDF; distributed preserves the
+    # original PDF seed from an allowed domain (external.org is excluded
+    # by allowed_domains).
+    assert "https://docs.county.gov/hub-geothermal-ordinance.pdf" in urls
+    assert "https://county.gov/distributed-ordinance.pdf" in urls
+    assert "https://external.org/outside.pdf" not in urls
+    centralized_candidate = next(
+        c for c in payload["candidates"]
+        if c["url"] == "https://docs.county.gov/hub-geothermal-ordinance.pdf"
+    )
+    assert "Routed via centralized hub sweep" in centralized_candidate["reasons"]
     assert payload["lineage"]["routing"]["mode"] == "hybrid"
     assert payload["lineage"]["routing"]["centralized_candidate_count"] == 1
     assert payload["lineage"]["routing"]["distributed_candidate_count"] == 1
@@ -974,9 +980,10 @@ def test_engine_run_routes_hybrid_topology_with_centralized_then_distributed(tmp
     hybrid_metrics = payload["stage_summaries"]["acceptance_metrics"]["hybrid_mixed_source_resolution"]
     assert hybrid_metrics["applicable"] is True
     assert hybrid_metrics["centralized_candidate_count"] == 1
-    assert hybrid_metrics["distributed_candidate_count"] == 1
-    assert hybrid_metrics["both_paths_resolved"] is True
-    assert hybrid_metrics["meets_coverage_threshold"] is True
+    # Distributed preserved the PDF fallback but didn't produce new crawled
+    # artifacts — the metric correctly reports only centralized resolved.
+    assert hybrid_metrics["distributed_candidate_count"] == 0
+    assert hybrid_metrics["both_paths_resolved"] is False
     assert any(
         note == "Hybrid routing produced 2 candidate(s) after centralized-plus-distributed sequencing."
         for note in payload["notes"]
@@ -1023,7 +1030,7 @@ def test_engine_run_hybrid_routing_falls_back_to_distributed_when_hub_empty(tmp_
         for note in payload["notes"]
     )
     assert any(
-        note == "Distributed routing staged 1 candidate(s) through digger."
+        note == "Distributed routing skipped: no crawlable HTML pages from allowed domains."
         for note in payload["notes"]
     )
 
@@ -1339,7 +1346,7 @@ def test_engine_run_emits_stage_summaries_routing_section(tmp_path: Path):
 
     routing = payload["stage_summaries"]["routing"]
     assert routing["mode"] == "distributed"
-    assert routing["applied"] is True
+    assert routing["applied"] is False
     assert isinstance(routing["candidates_in"], int)
     assert isinstance(routing["candidates_out"], int)
     assert routing["candidates_out"] <= routing["candidates_in"]

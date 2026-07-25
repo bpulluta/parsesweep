@@ -5,12 +5,51 @@ from __future__ import annotations
 from html.parser import HTMLParser
 import re
 import time
+from typing import Any
 from urllib.parse import urljoin, urlparse
 
 from ..constants import DOWNLOADABLE_EXTENSIONS
 from ..retry import compute_backoff, is_transient_error
 from ..urls import url_extension
 from .base import BaseDiggerConnector, DiggerArtifact, DiggerInput
+
+# Patterns that indicate an HTML response is a JS-rendered shell
+# (Angular, React, Vue, Next.js) with no server-rendered content.
+_JS_SHELL_MARKERS = re.compile(
+    r"ng-app=|<app-root|__NEXT_DATA__|<div\s+id=[\"'](?:root|app|__next)[\"']\s*>",
+    re.IGNORECASE,
+)
+_MIN_SHELL_CHARS = 200  # Below this extracted text length = likely JS shell
+
+
+def _is_js_shell(html_text: str) -> bool:
+    """Return True if the HTML looks like a JS framework shell with no content."""
+    if not html_text:
+        return False
+    # Quick structural check: if there are very few anchor tags AND a framework marker
+    anchor_count = html_text.lower().count("<a ")
+    if anchor_count > 5:
+        return False  # Has real links, probably not a shell
+    return bool(_JS_SHELL_MARKERS.search(html_text[:5000]))
+
+
+# Navigation link texts to skip during crawling (case-insensitive).
+# These waste page budget on non-content pages.
+_NAVIGATION_SKIP_PATTERNS = re.compile(
+    r"^(?:home|skip to|my (?:drafts|notes|saved|account)|sign (?:in|up|out)"
+    r"|log ?(?:in|out)|search|contact|help|faq|about|privacy|terms"
+    r"|cookie|feedback|order|cart|checkout|translate|share|print"
+    r"|copyright|accessibility|back to top|menu|close|toggle)$",
+    re.IGNORECASE,
+)
+
+
+def _is_navigation_link(link_text: str) -> bool:
+    """Return True if link text looks like site navigation rather than content."""
+    text = link_text.strip()
+    if not text or len(text) > 100:
+        return False
+    return bool(_NAVIGATION_SKIP_PATTERNS.match(text))
 
 
 class NullDiggerConnector(BaseDiggerConnector):
@@ -557,104 +596,235 @@ class HttpDiggerConnector(BaseDiggerConnector):
         # Each queue item carries its originating seed URL so discovered
         # child documents can be attributed back to the target that seeded
         # the crawl (target provenance for distributed/crawl domains).
-        queue: list[tuple[str, int, str]] = [
-            (url, 0, url) for url in digger_input.seed_urls
+        # Queue entries: (url, depth, origin_seed, incoming_link_text)
+        queue: list[tuple[str, int, str, str]] = [
+            (url, 0, url, "") for url in digger_input.seed_urls
         ]
         visited: set[str] = set()
         seen_artifacts: set[str] = set()
         artifacts: list[DiggerArtifact] = []
         pages_fetched = 0
 
-        while (
-            queue and pages_fetched < max_pages and len(artifacts) < max_files
-        ):
-            current_url, depth, origin_seed = queue.pop(0)
-            if current_url in visited:
-                continue
-            visited.add(current_url)
+        # Auto-scope: when no explicit allowed_domains, derive from seed URLs.
+        # This prevents the crawl from wandering to external sites.
+        effective_allowed_domains = digger_input.allowed_domains
+        if not effective_allowed_domains:
+            seed_domains: set[str] = set()
+            for seed_url in digger_input.seed_urls:
+                parsed = urlparse(seed_url)
+                if parsed.hostname:
+                    # Use base domain (e.g., "municode.com" from "library.municode.com")
+                    parts = parsed.hostname.split(".")
+                    if len(parts) >= 2:
+                        seed_domains.add(".".join(parts[-2:]))
+                    else:
+                        seed_domains.add(parsed.hostname)
+            effective_allowed_domains = list(seed_domains) if seed_domains else None
 
-            if not self._is_http_url(current_url):
-                continue
+        # When link text patterns are configured, save matching HTML pages as
+        # artifacts (not just traditional document files). This allows the
+        # system to capture content from code-hosting sites (municode,
+        # ecode360) where the ordinance text IS the HTML page.
+        save_matching_pages = bool(
+            digger_input.include_link_text_patterns
+        )
 
-            if self._is_document_url(current_url):
-                if (
-                    self._passes_filters(
-                        url=current_url,
-                        link_text="",
-                        digger_input=digger_input,
-                        require_document_match=True,
-                    )
-                    and current_url not in seen_artifacts
-                ):
-                    seen_artifacts.add(current_url)
-                    artifacts.append(
-                        DiggerArtifact(
-                            url=current_url,
-                            source="http_digger",
-                            status="seed_staged",
-                            metadata={
-                                "discovery_mode": "distributed_http",
-                                "source_seed": origin_seed,
-                            },
-                        )
-                    )
-                continue
+        # Lazy browser session for JS-shell sites (only opened if needed)
+        browser: Any = None
+        browser_attempted = False
 
-            if depth >= max_depth:
-                continue
+        def _get_browser() -> Any:
+            """Open browser session on first JS-shell encounter."""
+            nonlocal browser, browser_attempted
+            if browser is not None:
+                return browser
+            if browser_attempted:
+                return None
+            browser_attempted = True
+            try:
+                from ..browser import BrowserSession, BrowserUnavailableError
+                session = BrowserSession()
+                session._start()  # noqa: SLF001
+                browser = session
+                return browser
+            except (ImportError, Exception):
+                return None
 
+        def _fetch_and_extract_links(url: str) -> list[dict[str, str]]:
+            """Fetch a page and extract links, using browser if JS shell detected."""
+            nonlocal pages_fetched
             try:
                 html_text, _ = self._fetch_html(
-                    url=current_url,
+                    url=url,
                     timeout_seconds=timeout_seconds,
                     ssl_verify=ssl_verify,
                     request_headers=request_headers,
                     retry_config=retry_config,
                 )
             except Exception:
-                continue
+                return []
 
             pages_fetched += 1
             if not html_text:
-                continue
+                return []
 
-            for link in self._extract_links(html_text, current_url):
-                url = link["url"]
-                link_text = link["text"]
-                if not NullDiggerConnector._matches_allowed_domain(
-                    url, digger_input.allowed_domains
-                ):
+            # Detect JS shell and escalate to browser rendering
+            if _is_js_shell(html_text):
+                b = _get_browser()
+                if b is not None:
+                    try:
+                        html_text = b.fetch_html(url, settle_seconds=4)
+                        if not html_text:
+                            return []
+                    except Exception:
+                        return []
+                else:
+                    return []  # No browser, can't render JS shell
+
+            return self._extract_links(html_text, url)
+
+        try:
+            while (
+                queue and pages_fetched < max_pages and len(artifacts) < max_files
+            ):
+                current_url, depth, origin_seed, incoming_text = queue.pop(0)
+                if current_url in visited:
+                    continue
+                visited.add(current_url)
+
+                if not self._is_http_url(current_url):
                     continue
 
-                if self._is_document_url(url):
-                    if not self._passes_filters(
-                        url=url,
-                        link_text=link_text,
-                        digger_input=digger_input,
-                        require_document_match=True,
+                if self._is_document_url(current_url):
+                    if (
+                        self._passes_filters(
+                            url=current_url,
+                            link_text=incoming_text,
+                            digger_input=digger_input,
+                            require_document_match=True,
+                        )
+                        and current_url not in seen_artifacts
+                    ):
+                        seen_artifacts.add(current_url)
+                        artifacts.append(
+                            DiggerArtifact(
+                                url=current_url,
+                                source="http_digger",
+                                status="seed_staged",
+                                metadata={
+                                    "discovery_mode": "distributed_http",
+                                    "source_seed": origin_seed,
+                                },
+                            )
+                        )
+                    continue
+
+                if depth >= max_depth:
+                    # Terminal depth: save this page as an artifact if its
+                    # incoming link text matches our patterns (captures HTML
+                    # content pages on code-hosting sites like municode).
+                    if (
+                        save_matching_pages
+                        and incoming_text
+                        and current_url not in seen_artifacts
+                        and NullDiggerConnector._matches_include_patterns(
+                            url=current_url,
+                            link_text=incoming_text,
+                            include_url_patterns=digger_input.include_url_patterns,
+                            include_link_text_patterns=digger_input.include_link_text_patterns,
+                        )
+                    ):
+                        seen_artifacts.add(current_url)
+                        artifacts.append(
+                            DiggerArtifact(
+                                url=current_url,
+                                source="http_digger",
+                                status="page_discovered",
+                                metadata={
+                                    "discovery_mode": "distributed_http",
+                                    "link_text": incoming_text,
+                                    "source_seed": origin_seed,
+                                    "terminal_page": True,
+                                },
+                            )
+                        )
+                    continue
+
+                links = _fetch_and_extract_links(current_url)
+
+                for link in links:
+                    url = link["url"]
+                    link_text = link["text"]
+                    if not NullDiggerConnector._matches_allowed_domain(
+                        url, effective_allowed_domains
                     ):
                         continue
-                    if url in seen_artifacts:
-                        continue
-                    seen_artifacts.add(url)
-                    artifacts.append(
-                        DiggerArtifact(
-                            url=url,
-                            source="http_digger",
-                            status="link_discovered",
-                            metadata={
-                                "discovery_mode": "distributed_http",
-                                "link_text": link_text,
-                                "source_seed": origin_seed,
-                            },
-                        )
-                    )
-                    if len(artifacts) >= max_files:
-                        break
-                    continue
 
-                if depth + 1 < max_depth and url not in visited:
-                    queue.append((url, depth + 1, origin_seed))
+                    if self._is_document_url(url):
+                        if not self._passes_filters(
+                            url=url,
+                            link_text=link_text,
+                            digger_input=digger_input,
+                            require_document_match=True,
+                        ):
+                            continue
+                        if url in seen_artifacts:
+                            continue
+                        seen_artifacts.add(url)
+                        artifacts.append(
+                            DiggerArtifact(
+                                url=url,
+                                source="http_digger",
+                                status="link_discovered",
+                                metadata={
+                                    "discovery_mode": "distributed_http",
+                                    "link_text": link_text,
+                                    "source_seed": origin_seed,
+                                },
+                            )
+                        )
+                        if len(artifacts) >= max_files:
+                            break
+                        continue
+
+                    # Save matching HTML pages at any depth when link text matches
+                    if (
+                        save_matching_pages
+                        and link_text
+                        and url not in seen_artifacts
+                        and NullDiggerConnector._matches_include_patterns(
+                            url=url,
+                            link_text=link_text,
+                            include_url_patterns=digger_input.include_url_patterns,
+                            include_link_text_patterns=digger_input.include_link_text_patterns,
+                        )
+                    ):
+                        seen_artifacts.add(url)
+                        artifacts.append(
+                            DiggerArtifact(
+                                url=url,
+                                source="http_digger",
+                                status="page_discovered",
+                                metadata={
+                                    "discovery_mode": "distributed_http",
+                                    "link_text": link_text,
+                                    "source_seed": origin_seed,
+                                },
+                            )
+                        )
+                        if len(artifacts) >= max_files:
+                            break
+                        # Don't continue crawling into matched pages — they ARE the target
+
+                    elif depth + 1 < max_depth and url not in visited:
+                        if not _is_navigation_link(link_text):
+                            queue.append((url, depth + 1, origin_seed, link_text))
+        finally:
+            if browser is not None:
+                try:
+                    browser.close()
+                except Exception:
+                    pass
 
         return artifacts, pages_fetched
 
