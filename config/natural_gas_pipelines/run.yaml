@@ -164,6 +164,47 @@ compilation:
     default_format: both
     freeze_columns: 4
     auto_width: true
+    exclude_fields:
+      - Run Id
+      - Artifact Id
+      - Error Count
+      - Error Categories
+      - Error Messages
+    column_renames:
+      State: state
+      County: county
+      Subdivision: subdivision
+      Jurisdiction_Type: jurisdiction_type
+      "Jurisdiction Type": jurisdiction_type
+      Fips: FIPS
+      Year: year
+      Source: source
+      Feature: feature
+      Value: value
+      Units: units
+      Adder: adder
+      "Min Dist": min_dist
+      "Max Dist": max_dist
+      Summary: summary
+      Section: section
+      Notes: notes
+    column_order:
+      - county
+      - state
+      - subdivision
+      - jurisdiction_type
+      - FIPS
+      - feature
+      - value
+      - units
+      - adder
+      - min_dist
+      - max_dist
+      - summary
+      - year
+      - section
+      - source
+      - notes
 
 # ── QA/QC ────────────────────────────────────────────────────────────────────
 qaqc:

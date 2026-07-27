@@ -1,0 +1,145 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$metadata": {
+    "domain": "Natural Gas Pipelines & Compressor Stations",
+    "version": "2.0.0",
+    "extraction": {
+      "main_data_array": "requirements",
+      "identifier_fields": [
+        "jurisdiction.state",
+        "jurisdiction.county"
+      ],
+      "context_objects": [
+        "jurisdiction"
+      ]
+    },
+    "compilation": {
+      "deduplication": {
+        "key_fields": ["feature", "value", "units", "adder", "section"],
+        "ignore_fields": ["summary", "notes"]
+      }
+    }
+  },
+  "title": "Natural Gas Pipeline & Compressor Station Ordinance Extraction Schema",
+  "description": "Regulatory requirements for natural gas pipelines, compressor stations, and associated infrastructure.\n\nSCOPE: Natural gas compressor stations, natural gas pipelines (transmission and distribution), metering/regulator stations, oil and gas facilities, and associated equipment.\n\nEXCLUDE: Geothermal wells, wind turbines, solar installations, water/sewer utilities, electric substations, and telecommunications towers.\n\nWhen extracting from multi-use ordinances, ONLY extract provisions that explicitly apply to natural gas or oil and gas facilities.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "jurisdiction",
+    "requirements",
+    "document_applicability"
+  ],
+  "properties": {
+    "document_applicability": {
+      "type": "object",
+      "description": "Scope verification (extraction-quality field, excluded from compiled output).",
+      "additionalProperties": false,
+      "required": ["applies_to_natural_gas", "extraction_approach"],
+      "properties": {
+        "applies_to_natural_gas": {
+          "type": "boolean",
+          "description": "Does this document contain provisions regulating natural gas pipelines, compressor stations, or oil and gas facilities?"
+        },
+        "extraction_approach": {
+          "type": "string",
+          "description": "Which sections were extracted vs excluded. Format: 'Extracted [sections]; Excluded [sections]'"
+        }
+      }
+    },
+    "jurisdiction": {
+      "type": "object",
+      "description": "Geographic and temporal context. These fields become row-level context in compiled output.",
+      "additionalProperties": false,
+      "required": ["state", "county"],
+      "properties": {
+        "state": {
+          "type": "string",
+          "description": "US state name or abbreviation exactly as written in document."
+        },
+        "county": {
+          "type": "string",
+          "description": "County, city, town, or township name exactly as written."
+        },
+        "subdivision": {
+          "type": ["string", "null"],
+          "description": "Sub-jurisdiction name if applicable. Null if county-level."
+        },
+        "jurisdiction_type": {
+          "type": ["string", "null"],
+          "description": "Type of jurisdiction: County, City, Town, Township, Borough, or Village.",
+          "enum": ["County", "City", "Town", "Township", "Borough", "Village", null]
+        },
+        "year": {
+          "type": ["integer", "string", "null"],
+          "description": "Year the ordinance was adopted or last amended. Null if not stated."
+        },
+        "source": {
+          "type": ["string", "null"],
+          "description": "URL or document reference for the source ordinance. Use the SOURCE_URL from the CONTEXT block at the top of the document if present."
+        }
+      }
+    },
+    "requirements": {
+      "type": "array",
+      "description": "Regulatory requirements extracted from the ordinance.\n\nEXTRACTION RULES:\n\n(1) ONE ROW PER REQUIREMENT: Each distinct regulatory provision gets its own row. When a single regulation applies to multiple subjects (e.g., 'setback from property lines and residential structures'), create SEPARATE rows.\n\n(2) RANGES: When setbacks vary by zone (e.g., 100-500 ft depending on zone), extract the range as the value string AND populate min_dist/max_dist.\n\n(3) DAY/NIGHT: When noise limits differ by time, create separate rows with adder='daytime' or 'nighttime'.\n\n(4) PRIORITY FEATURES (extract if present):\n   - structures distance, property lines distance, residential zones distance\n   - front yard distance, roads distance, water bodies distance\n   - schools distance, hospitals distance\n   - distance between compressor stations\n   - noise (day/night separately)\n   - fencing, enclosure, minimum lot size\n   - permitted/conditional/special use districts\n   - required permits, bufferyard/landscaping",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["feature", "summary"],
+        "properties": {
+          "feature": {
+            "type": "string",
+            "description": "Standardized feature name. Use these exact values for cross-jurisdiction consistency.",
+            "enum": [
+              "structures distance",
+              "front yard distance",
+              "property lines distance",
+              "residential zones distance",
+              "water bodies distance",
+              "roads distance",
+              "schools distance",
+              "hospitals distance",
+              "community structures distance",
+              "residential district boundary distance",
+              "distance between compressor stations",
+              "noise",
+              "fencing",
+              "minimum lot size",
+              "enclosure"
+            ]
+          },
+          "value": {
+            "type": ["number", "string", "null"],
+            "description": "Primary quantifiable value. Numbers without units (e.g., 500). Ranges as string (e.g., '100-500'). Zone names for district features. Descriptive text for non-numeric. Null if purely procedural.",
+            "examples": [500, 300, 60, 55, 8, 20, "100-500", "Required", "AG, RE, SF 8.5, R1, R2, R3", null]
+          },
+          "units": {
+            "type": ["string", "null"],
+            "description": "Unit of measurement.",
+            "examples": ["feet", "dBA", "dBC", "acres", "miles", "inches", null]
+          },
+          "min_dist": {
+            "type": ["number", "null"],
+            "description": "Minimum distance when value is a range (e.g., 100 for '100-500'). Null if not a range."
+          },
+          "max_dist": {
+            "type": ["number", "null"],
+            "description": "Maximum distance when value is a range (e.g., 500 for '100-500'). Null if not a range."
+          },
+          "summary": {
+            "type": ["string", "null"],
+            "description": "Verbatim or closely paraphrased text from the ordinance supporting this requirement. Include enough context for verification."
+          },
+          "section": {
+            "type": ["string", "null"],
+            "description": "Specific ordinance section/article reference (e.g., 'Sec. 12-5-106', 'Article 5 § 552', '§ 270-4.10')."
+          },
+          "notes": {
+            "type": ["string", "null"],
+            "description": "Additional context not captured elsewhere: measurement conditions, exceptions, cross-references."
+          }
+        }
+      }
+    }
+  }
+}
