@@ -2761,6 +2761,40 @@ class DiscoveryEngine:
         return curated_dir, count
 
     @staticmethod
+    def _promote_to_consolidated_curated(
+        *,
+        run_curated_dir: Path,
+        domain_dir: Path,
+    ) -> None:
+        """Copy curated documents to the domain-level consolidated directory.
+
+        The consolidated directory (``discovered/<domain>/curated/``) accumulates
+        curated documents across all discovery runs. The partition structure
+        (``by_state_jurisdiction/<state>/<jurisdiction>/``) ensures newer
+        curations for the same target overwrite older ones without conflicts.
+
+        This allows extraction to read from ONE stable directory regardless of
+        how many discovery runs contributed documents.
+        """
+        import shutil
+
+        consolidated = domain_dir / "curated"
+        consolidated.mkdir(parents=True, exist_ok=True)
+
+        for src_file in run_curated_dir.rglob("*"):
+            if not src_file.is_file():
+                continue
+            rel = src_file.relative_to(run_curated_dir)
+            dest = consolidated / rel
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            try:
+                if dest.exists():
+                    dest.unlink()
+                dest.hardlink_to(src_file)
+            except (OSError, AttributeError):
+                shutil.copy2(src_file, dest)
+
+    @staticmethod
     def _refresh_latest_pointer(run_dir: Path) -> None:
         """Point ``<domain>/latest`` at this run (symlink, txt fallback)."""
         import os
@@ -3328,6 +3362,14 @@ class DiscoveryEngine:
                     documents_dir=documents_dir,
                     download_records=download_records,
                 )
+                # Promote curated docs to the domain-level consolidated directory.
+                # This accumulates across runs so extraction always sees the
+                # complete set regardless of which run produced each document.
+                if curated_count > 0:
+                    self._promote_to_consolidated_curated(
+                        run_curated_dir=curated_dir,
+                        domain_dir=manifest_path.parent.parent.parent,
+                    )
                 review_index_path = self._write_review_index(
                     request=request,
                     download_records=download_records,
