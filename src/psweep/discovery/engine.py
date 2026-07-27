@@ -2794,6 +2794,57 @@ class DiscoveryEngine:
             except (OSError, AttributeError):
                 shutil.copy2(src_file, dest)
 
+        # Merge the run's download_index.csv into a domain-level index so
+        # extraction can resolve source URLs for provenance/citation.
+        run_dir = run_curated_dir.parent
+        run_index = run_dir / "download_index.csv"
+        if run_index.is_file():
+            DiscoveryEngine._merge_download_index(
+                run_index=run_index,
+                domain_index=domain_dir / "download_index.csv",
+            )
+
+    @staticmethod
+    def _merge_download_index(
+        *,
+        run_index: Path,
+        domain_index: Path,
+    ) -> None:
+        """Merge a run's download_index.csv into the domain-level index.
+
+        Keyed by relative_path — newer entries overwrite older ones for the
+        same file. This ensures extraction's source-context lookup finds
+        URLs for ALL curated documents regardless of which run produced them.
+        """
+        import csv
+
+        existing: dict[str, dict[str, str]] = {}
+        fieldnames: list[str] = []
+
+        if domain_index.is_file():
+            with domain_index.open(encoding="utf-8", newline="") as f:
+                reader = csv.DictReader(f)
+                fieldnames = list(reader.fieldnames or [])
+                for row in reader:
+                    key = row.get("relative_path") or row.get("path", "")
+                    if key:
+                        existing[key] = dict(row)
+
+        with run_index.open(encoding="utf-8", newline="") as f:
+            reader = csv.DictReader(f)
+            if not fieldnames:
+                fieldnames = list(reader.fieldnames or [])
+            for row in reader:
+                key = row.get("relative_path") or row.get("path", "")
+                if key:
+                    existing[key] = dict(row)
+
+        with domain_index.open("w", encoding="utf-8", newline="") as f:
+            writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
+            writer.writeheader()
+            for row in existing.values():
+                writer.writerow(row)
+
     @staticmethod
     def _refresh_latest_pointer(run_dir: Path) -> None:
         """Point ``<domain>/latest`` at this run (symlink, txt fallback)."""
