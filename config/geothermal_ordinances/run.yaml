@@ -1,105 +1,173 @@
 # Geothermal Ordinances — full pipeline config
-# Usage: psweep extract --config config/geothermal_ordinances/run.yaml
+# Usage: pixi run psweep run --config config/geothermal_ordinances/run.yaml
 
 domain: geothermal_ordinances
 
 # ── Model tiers ──────────────────────────────────────────────────────────────
-# Define model identifiers here ONCE. Each pipeline stage below references a
-# tier name (primary/secondary) — never a raw model string — so you can swap
-# models globally by editing only these two lines.
-#
-#   primary   → used for extraction (accuracy-critical)
-#   secondary → used for discovery review, page targeting (speed/cost-critical)
-#
-# For iteration/testing: set both to mini. For production: use full-size primary.
 models:
-  primary: compassop-gpt-4.1-mini       # swap to compassop-gpt-4.1 for production
+  primary: compassop-gpt-4.1
   secondary: compassop-gpt-4.1-mini
 
+# ── Discovery ────────────────────────────────────────────────────────────────
 discovery:
   targets_csv: targets.csv
   queries:
-    - "{jurisdiction} {state} geothermal ordinance land use code filetype:pdf"
-    - "{jurisdiction} {state} geothermal ordinance zoning code division filetype:pdf"
-    - "{jurisdiction} {state} geothermal energy land use ordinance title division filetype:pdf"
-    - "{jurisdiction} {state} geothermal regulations county code chapter filetype:pdf"
+    - "\"{jurisdiction}\" {state} geothermal ordinance zoning code"
+    - "\"{jurisdiction}\" {state} geothermal energy land use regulation"
+    - "\"{jurisdiction}\" {state} geothermal wells setback permit ordinance"
+    - "site:ecode360.com \"{jurisdiction}\" {state}"
+    - "\"{jurisdiction}\" {state} renewable energy geothermal code chapter"
   search:
     provider: serpapi
-    max_results: 15
+    max_results: 10
     cache: true
   selection:
-    max_per_target: 7
+    primary_per_target: 40
     exclude_draft: true
-    exclude: [news release, press release, fact sheet, presentation, notice of preparation, environmental impact report, staff report, briefing book]
-  follow_links: false
+    target_identity_require_any_templates:
+      - "{jurisdiction}"
+    relevance_require_any_terms:
+      - geothermal
+      - ordinance
+      - zoning
+      - code
+      - regulation
+      - chapter
+      - division
+      - setback
+      - permit
+      - well
+      - energy
+    relevance_exclude_any_terms:
+      - press release
+      - news article
+      - meeting minutes
+      - agenda
+      - newsletter
+      - presentation
+      - environmental impact report
+      - staff report
+    relevance_allowed_domain_patterns:
+      - ".gov"
+      - ".us"
+      - ecode360.com
+      - municode.com
+      - codepublishing.com
+      - ".org"
+    require_supported_document: false
+  link_prioritization:
+    mode: heuristic
+    keywords:
+      - geothermal
+      - ordinance
+      - zoning
+      - code
+      - setback
+      - well
+      - energy
+      - permit
+    domain_scores:
+      "ecode360.com": 0.2
+      "municode.com": 0.2
+      "codepublishing.com": 0.15
   document_classifier:
-    required_keywords: [ordinance, code, chapter, section, regulation, division, title]
-    nice_to_have_keywords: [geothermal, 1041, setback, permit, overlay, zoning]
+    required_keywords:
+      - ordinance
+      - code
+      - chapter
+      - section
+      - regulation
+      - division
+      - title
+      - zoning
+    nice_to_have_keywords:
+      - geothermal
+      - setback
+      - permit
+      - overlay
+      - well
+      - energy
     min_required_matches: 2
     action: warn
   document_review:
-    model: secondary   # ← tier name from models: block above
+    model: secondary
     document_description: >-
       enacted county ordinance, land use/zoning code chapter or division,
       or county code section that regulates geothermal electricity generation
       (not geothermal heat pumps, solar, wind, or other technologies).
       Must be the codified/adopted regulation text, not a draft, EIR,
-      notice, or planning study.
-    keep_top: 1
+      notice, or planning study. Accept if it contains ANY regulatory
+      provisions for geothermal energy facilities, even if just setbacks
+      or use classifications.
+    keep_top: 2
     action: move
   partition_by: [state, jurisdiction]
 
+# ── Extraction ───────────────────────────────────────────────────────────────
 extraction:
-  model: primary              # ← tier name from models: block above
-  input_dir: discovered/geothermal_ordinances/latest/curated
+  model: primary
+  input_dir: discovered/geothermal_ordinances/curated
   schema: schemas/personal/geothermal_ordinance_schema.json
   output_dir: extracted/geothermal_ordinances
   max_context: 600000
 
+# ── Compilation ──────────────────────────────────────────────────────────────
 compilation:
   input_dir: extracted/geothermal_ordinances
   schema: schemas/personal/geothermal_ordinance_schema.json
   output_dir: compiled/geothermal_ordinances
-  deduplication:
-    key_fields: [category, facility_type, specific_subject, value, unit, section]
-    ignore_fields: [details]
   output:
-    default_format: excel
+    default_format: both
     exclude_fields:
-      - Applies To Geothermal Electricity
-      - Extraction Approach
-      - Relevant Sections
-      - Date Adopted
-      - Date Effective
-      - Date Last Amended
-      - Supersedes
-      - Value Type
-      - Condition
+      - Run Id
+      - Artifact Id
+      - Error Count
+      - Error Categories
+      - Error Messages
+      - Applies_To_Geothermal
+      - Extraction_Approach
     column_renames:
       State: state
       County: county
-      Ordinance Code: ordinance_code
-      Category: category
-      Facility Type: facility_type
-      Specific Subject: specific_subject
+      Subdivision: subdivision
+      Jurisdiction_Type: jurisdiction_type
+      Jurisdiction Type: jurisdiction_type
+      Year: year
+      Source: source
+      Feature: feature
       Value: value
-      Unit: units
-      Applies To: applies_to
-      Details: summary
+      Units: units
+      Adder: adder
+      Min Dist: min_dist
+      Max Dist: max_dist
+      Summary: summary
       Section: section
-    column_order: [county, state, ordinance_code, category, facility_type,
-      specific_subject, applies_to, value, units, section, summary]
-    freeze_columns: 3
+      Notes: notes
+      Fips: FIPS
+    column_order:
+      - county
+      - state
+      - subdivision
+      - jurisdiction_type
+      - FIPS
+      - feature
+      - value
+      - units
+      - adder
+      - min_dist
+      - max_dist
+      - summary
+      - year
+      - section
+      - source
+      - notes
+    freeze_columns: 4
     auto_width: true
 
+# ── QA/QC ────────────────────────────────────────────────────────────────────
 qaqc:
   default_lane: quantitative
   lanes:
     quantitative:
       enabled: true
       mode: quantitative
-      comparison_approach: numeric_only
-      record_matching:
-        key_fields: [category, facility_type, specific_subject]
-      comparison:
-        primary_fields: [value, unit]
