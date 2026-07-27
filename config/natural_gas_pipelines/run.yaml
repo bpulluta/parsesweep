@@ -150,7 +150,7 @@ discovery:
 # ── Extraction ───────────────────────────────────────────────────────────────
 extraction:
   model: primary
-  input_dir: discovered/natural_gas_pipelines/latest/curated
+  input_dir: discovered/natural_gas_pipelines/curated
   schema: schemas/personal/natural_gas_pipeline_schema.json
   output_dir: extracted/natural_gas_pipelines
   max_context: 600000
