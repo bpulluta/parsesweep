@@ -50,8 +50,16 @@ Turn a raw `documents/<domain>/` folder into a working ParseSweep pipeline with 
     cp config/TEMPLATE.yaml config/<domain>/run.yaml
     ```
     Populate `domain`, `extraction.schema`, `extraction.input_dir`, `compilation.schema`, `compilation.input_dir`, and `compilation.deduplication.key_fields` at minimum.
-11. Run the full pipeline via config and inspect the compiled output:
+    - `extraction.input_dir` should be `discovered/<domain>/curated` (consolidated across runs).
+    - `compilation.output` section owns ALL presentation: column_renames, column_order, exclude_fields, freeze_columns, auto_width.
+    - The schema owns ONLY data structure: field definitions, deduplication key_fields.
+11. Run the full pipeline via a single command:
     ```bash
+    pixi run psweep run --config config/<domain>/run.yaml
+    ```
+    Or step-by-step for debugging:
+    ```bash
+    pixi run psweep discover --config config/<domain>/run.yaml
     pixi run psweep extract --config config/<domain>/run.yaml
     pixi run psweep compile --config config/<domain>/run.yaml
     ```
