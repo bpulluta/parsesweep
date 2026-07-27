@@ -90,6 +90,53 @@ cli.add_command(benchmark)
 cli.add_command(config)
 
 
+@cli.command()
+@click.option("--config", "config_path", required=True, help="Path to run.yaml config file")
+@click.option("--reprocess", is_flag=True, help="Re-extract already-processed documents")
+@click.option("--skip-discover", is_flag=True, help="Skip discovery (use existing curated docs)")
+@click.option("--skip-extract", is_flag=True, help="Skip extraction (compile from existing)")
+@click.option("-q", "--quiet", is_flag=True, help="Minimal output")
+def run(config_path: str, reprocess: bool, skip_discover: bool, skip_extract: bool, quiet: bool):
+    """Run the full pipeline: discover → extract → compile.
+
+    Chains all three stages using the same config file. Each stage respects
+    its built-in caching: discovery skips checkpointed targets, extraction
+    skips already-processed documents, compilation rebuilds from all data.
+
+    \b
+    Usage:
+        psweep run --config config/my_domain/run.yaml
+    """
+    import subprocess
+    import sys
+
+    base_cmd = ["pixi", "run", "psweep"]
+    flags = ["-q"] if quiet else []
+
+    stages = []
+    if not skip_discover:
+        stages.append(("discover", base_cmd + ["discover", "--config", config_path] + flags))
+    if not skip_extract:
+        extract_flags = flags + (["--reprocess"] if reprocess else [])
+        stages.append(("extract", base_cmd + ["extract", "--config", config_path] + extract_flags))
+    stages.append(("compile", base_cmd + ["compile", "--config", config_path] + flags))
+
+    for stage_name, cmd in stages:
+        if not quiet:
+            click.echo(f"\n{'─' * 60}")
+            click.echo(f"  Stage: {stage_name}")
+            click.echo(f"{'─' * 60}\n")
+        result = subprocess.run(cmd)
+        if result.returncode != 0:
+            click.echo(f"\n✗ Stage '{stage_name}' failed (exit {result.returncode})", err=True)
+            sys.exit(result.returncode)
+
+    if not quiet:
+        click.echo(f"\n{'─' * 60}")
+        click.echo("  ✓ Pipeline complete: discover → extract → compile")
+        click.echo(f"{'─' * 60}\n")
+
+
 def main():
     """Entry point for the CLI."""
     cli()
