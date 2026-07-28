@@ -98,7 +98,8 @@ cli.add_command(config)
 @click.option("--skip-extract", is_flag=True, help="Skip extraction (compile from existing)")
 @click.option("-y", "--yes", is_flag=True, help="Skip confirmation prompt")
 @click.option("-q", "--quiet", is_flag=True, help="Minimal output")
-def run(config_path: str, reprocess: bool, fresh: bool, skip_discover: bool, skip_extract: bool, yes: bool, quiet: bool):
+@click.option("-v", "--verbose", is_flag=True, help="Detailed output")
+def run(config_path: str, reprocess: bool, fresh: bool, skip_discover: bool, skip_extract: bool, yes: bool, quiet: bool, verbose: bool):
     """Run the full pipeline: discover → extract → compile.
 
     Shows what will be reused from previous runs and what's new, then asks
@@ -122,9 +123,17 @@ def run(config_path: str, reprocess: bool, fresh: bool, skip_discover: bool, ski
 
     import yaml
 
+    from psweep.cli.run_view import RunView
+    from psweep.cli.ui import Verbosity, set_verbosity
+
+    # --- Resolve verbosity and view ---
+    resolved_verbosity = Verbosity.from_flags(quiet=quiet, verbose=verbose, debug=False)
+    set_verbosity(resolved_verbosity)
+    view = RunView("run", verbosity=resolved_verbosity)
+
     config = Path(config_path)
     if not config.exists():
-        click.echo(f"✗ Config not found: {config_path}", err=True)
+        view.error(f"Config not found: {config_path}")
         sys.exit(1)
 
     with config.open() as f:
@@ -135,12 +144,10 @@ def run(config_path: str, reprocess: bool, fresh: bool, skip_discover: bool, ski
     targets_csv = config.parent / discovery_cfg.get("targets_csv", "targets.csv")
 
     # --- Build run plan ---
-    total_targets = 0
     target_labels: list[str] = []
     if targets_csv.exists():
         with targets_csv.open() as f:
             target_labels = [row.get("label", "") for row in csv.DictReader(f)]
-        total_targets = len(target_labels)
 
     checkpoint_path = Path(f"discovered/{domain}/checkpoint.json")
     checkpointed: list[str] = []
@@ -152,7 +159,6 @@ def run(config_path: str, reprocess: bool, fresh: bool, skip_discover: bool, ski
 
     new_targets = [t for t in target_labels if t not in checkpointed]
     curated_dir = Path(f"discovered/{domain}/curated")
-    curated_dir = Path(f"discovered/{domain}/curated")
     curated_count = sum(1 for f in curated_dir.rglob("*") if f.is_file() and ".text" not in str(f) and f.suffix != ".json") if curated_dir.exists() else 0
 
     extraction_dir = Path(cfg.get("extraction", {}).get("output_dir", f"extracted/{domain}"))
@@ -163,73 +169,78 @@ def run(config_path: str, reprocess: bool, fresh: bool, skip_discover: bool, ski
         manifest_json = sum(1 for _ in manifests_dir.rglob("*.json")) if manifests_dir.exists() else 0
         extracted_count = all_json - manifest_json
 
-    # --- Show plan ---
-    if not quiet:
-        click.echo(f"\n{'─' * 60}")
-        click.echo(f"  Pipeline: {domain}")
-        click.echo(f"{'─' * 60}")
-        click.echo(f"  Targets:    {total_targets} total", nl=False)
-        if checkpointed and not fresh:
-            click.echo(f" ({len(checkpointed)} cached, {len(new_targets)} new)")
+    # --- Show plan (using RunView for cohesive design) ---
+    view.header()
+
+    plan_rows: dict[str, str] = {"Domain": domain}
+    if checkpointed and not fresh:
+        plan_rows["Targets"] = f"{len(target_labels)} total ({len(checkpointed)} cached, {len(new_targets)} new)"
+    else:
+        plan_rows["Targets"] = f"{len(target_labels)} total (all {'fresh' if fresh else 'new'})"
+    if curated_count and not fresh:
+        plan_rows["Curated"] = f"{curated_count} docs (preserved)"
+    if extracted_count and not fresh and not reprocess:
+        plan_rows["Extracted"] = f"{extracted_count} docs (skip existing)"
+    if fresh:
+        plan_rows["Mode"] = "FRESH (all caches cleared)"
+    stages_list = []
+    if not skip_discover:
+        stages_list.append("discover")
+    if not skip_extract:
+        stages_list.append("extract")
+    stages_list.append("compile")
+    plan_rows["Stages"] = " → ".join(stages_list)
+
+    view.config(plan_rows, title="Run Plan")
+
+    # Show new targets (capped for scale)
+    if new_targets and not view.is_quiet:
+        if len(new_targets) <= 10:
+            for t in new_targets:
+                view.detail(f"→ {t}")
         else:
-            click.echo(f" (all {'fresh' if fresh else 'new'})")
-
-        if new_targets and len(new_targets) <= 10:
-            for t in new_targets[:5]:
-                click.echo(f"    → {t}")
-            if len(new_targets) > 5:
-                click.echo(f"    ... and {len(new_targets) - 5} more")
-        elif new_targets:
-            click.echo(f"    ({len(new_targets)} new targets to process)")
-
-        if curated_count and not fresh:
-            click.echo(f"  Curated:    {curated_count} docs (preserved from previous runs)")
-        if extracted_count and not fresh and not reprocess:
-            click.echo(f"  Extracted:  {extracted_count} docs (will skip existing)")
-        if fresh:
-            click.echo(f"  Mode:       FRESH (all caches cleared)")
-        click.echo(f"{'─' * 60}")
+            view.info(f"{len(new_targets)} new targets to process")
 
     # --- Confirm ---
-    if not yes and not quiet:
-        if not click.confirm("  Proceed?", default=True):
-            click.echo("  Cancelled.")
+    if not yes and not view.is_quiet:
+        if not click.confirm("Proceed?", default=True):
+            view.info("Cancelled.")
             sys.exit(0)
 
     # --- Fresh mode: clear caches ---
     if fresh:
         if checkpoint_path.exists():
             checkpoint_path.unlink()
-        if not quiet:
-            click.echo("  ✓ Checkpoint cleared")
-        reprocess = True  # force re-extraction
+        view.success("Checkpoint cleared")
+        reprocess = True
 
     # --- Run stages ---
     base_cmd = ["pixi", "run", "psweep"]
-    flags = ["-q"] if quiet else []
+    flags = []
+    if quiet:
+        flags.append("-q")
+    elif verbose:
+        flags.append("-v")
 
-    stages = []
+    stage_cmds = []
     if not skip_discover:
-        stages.append(("discover", base_cmd + ["discover", "--config", config_path] + flags))
+        stage_cmds.append(("discover", base_cmd + ["discover", "--config", config_path] + flags))
     if not skip_extract:
         extract_flags = flags + (["--reprocess"] if reprocess else [])
-        stages.append(("extract", base_cmd + ["extract", "--config", config_path] + extract_flags))
-    stages.append(("compile", base_cmd + ["compile", "--config", config_path] + flags))
+        stage_cmds.append(("extract", base_cmd + ["extract", "--config", config_path] + extract_flags))
+    stage_cmds.append(("compile", base_cmd + ["compile", "--config", config_path] + flags))
 
-    for stage_name, cmd in stages:
-        if not quiet:
-            click.echo(f"\n{'─' * 60}")
-            click.echo(f"  Stage: {stage_name}")
-            click.echo(f"{'─' * 60}\n")
+    for stage_name, cmd in stage_cmds:
+        view.section(stage_name.upper())
         result = subprocess.run(cmd)
         if result.returncode != 0:
-            click.echo(f"\n✗ Stage '{stage_name}' failed (exit {result.returncode})", err=True)
+            view.error(f"Stage '{stage_name}' failed (exit {result.returncode})")
             sys.exit(result.returncode)
 
-    if not quiet:
-        click.echo(f"\n{'─' * 60}")
-        click.echo("  ✓ Pipeline complete: discover → extract → compile")
-        click.echo(f"{'─' * 60}\n")
+    view.summary(
+        {"Status": "complete", "Stages": " → ".join(stages_list)},
+        title="Pipeline Complete",
+    )
 
 
 def main():

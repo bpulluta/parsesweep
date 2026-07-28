@@ -58,6 +58,7 @@ class DocumentReviewer:
         keep_top: int = 1,
         action: str = "move",
         max_chars: int = 12000,
+        review_keywords: list[str] | None = None,
     ) -> None:
         self._description = document_description
         self._model = model
@@ -66,6 +67,9 @@ class DocumentReviewer:
         self._keep_top = max(1, int(keep_top))
         self._action = action if action in {"move", "flag"} else "move"
         self._max_chars = max_chars
+        self._review_keywords = [
+            k.lower() for k in (review_keywords or []) if k and k.strip()
+        ]
         self._client: Any = None
         # Cost accounting
         self._total_cost: float = 0.0
@@ -90,52 +94,68 @@ class DocumentReviewer:
     def _build_review_sample(self, text: str) -> str:
         """Build a bounded text sample for LLM review from any document.
 
-        Strategy: head + distributed body + tail. This is intentionally simple
-        and domain-agnostic — no keyword extraction, no description parsing,
-        no domain-specific tuning. Works for any document type:
+        Strategy: head + keyword-targeted windows + distributed body + tail.
+        When review_keywords are configured, the sampler finds sections
+        containing those keywords and includes them — ensuring relevant
+        content is sampled even in long documents where it appears deep.
 
-        - Zoning ordinances with relevant sections deep in the text
-        - Multi-hundred-page tariff books
-        - Short permits or regulatory filings
-
-        For documents shorter than max_chars, returns full text. For longer
-        documents, samples three regions:
-        - Head (1/4): title, TOC, jurisdiction context
-        - Body (2/4): evenly-spaced windows through the middle
-        - Tail (1/4): end of document (appendices, specific criteria, amendments)
-
-        This ensures coverage of the full document regardless of where relevant
-        content appears. Cost: only max_chars (configurable) is sent to the LLM.
+        For documents shorter than max_chars, returns full text.
         """
         if len(text) <= self._max_chars:
             return text
 
-        # Reserve chars for separators between sections
         separator = "\n[...]\n"
-        n_body_windows = 6
-        # Total separators: 2 outer (head|body, body|tail) + inner body joins
-        total_separator_count = 2 + (n_body_windows - 1)
+        n_body_windows = 4
+        total_separator_count = 3 + (n_body_windows - 1)
         separator_budget = len(separator) * total_separator_count
 
-        # Budget allocation: head + body + tail (minus separator overhead)
         usable = self._max_chars - separator_budget
-        head_budget = usable // 4
-        tail_budget = usable // 4
-        body_budget = usable - head_budget - tail_budget
+        head_budget = usable // 5
+        tail_budget = usable // 5
+        keyword_budget = usable // 5
+        body_budget = usable - head_budget - tail_budget - keyword_budget
 
         head = text[:head_budget]
         tail = text[-tail_budget:]
 
-        # Distribute body windows evenly through the middle of the document
+        # Keyword-targeted sampling: find sections containing domain keywords
+        keyword_section = ""
+        if self._review_keywords:
+            text_lower = text.lower()
+            keyword_windows: list[str] = []
+            seen_positions: set[int] = set()
+            window_size = keyword_budget // max(len(self._review_keywords), 2)
+
+            for keyword in self._review_keywords:
+                pos = text_lower.find(keyword, head_budget)
+                while pos != -1 and pos < len(text) - tail_budget:
+                    # Skip if too close to a window we already captured
+                    if not any(abs(pos - s) < window_size for s in seen_positions):
+                        start = max(head_budget, pos - window_size // 4)
+                        excerpt = text[start : start + window_size]
+                        if excerpt.strip():
+                            keyword_windows.append(excerpt)
+                            seen_positions.add(pos)
+                        if len(keyword_windows) * window_size >= keyword_budget:
+                            break
+                    pos = text_lower.find(keyword, pos + window_size)
+                if len(keyword_windows) * window_size >= keyword_budget:
+                    break
+
+            if keyword_windows:
+                keyword_section = separator.join(keyword_windows)[:keyword_budget]
+            else:
+                # No keywords found — give budget back to body
+                body_budget += keyword_budget
+
+        # Distributed body windows through the middle
         body_start = head_budget
         body_end = len(text) - tail_budget
         body_length = body_end - body_start
 
         if body_length <= body_budget:
-            # Middle section fits entirely — include it all
             body_section = text[body_start:body_end]
         else:
-            # Sample N windows evenly through the body
             window_size = body_budget // n_body_windows
             step = (body_length - window_size) // max(n_body_windows - 1, 1)
             excerpts: list[str] = []
@@ -144,9 +164,14 @@ class DocumentReviewer:
                 excerpt = text[offset : offset + window_size]
                 if excerpt.strip():
                     excerpts.append(excerpt)
-            body_section = "\n[...]\n".join(excerpts)
+            body_section = separator.join(excerpts)
 
-        combined = f"{head}{separator}{body_section}{separator}{tail}"
+        parts = [head]
+        if keyword_section:
+            parts.append(keyword_section)
+        parts.append(body_section)
+        parts.append(tail)
+        combined = separator.join(parts)
         return combined[: self._max_chars]
 
     def _grade(
