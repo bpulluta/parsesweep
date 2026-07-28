@@ -104,6 +104,7 @@ discovery:
       "ecode360.com": 0.2
       "codepublishing.com": 0.15
       "generalcode.com": 0.15
+      "amlegal.com": 0.2
   document_classifier:
     required_keywords:
       - ordinance

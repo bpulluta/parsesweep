@@ -3113,6 +3113,7 @@ class DiscoveryEngine:
         review_cfg: dict[str, object],
         notes: list[str],
         models: dict[str, object] | None = None,
+        classifier_keywords: list[str] | None = None,
     ) -> tuple[list[dict[str, object]], list[str], dict[str, object]]:
         """LLM-grade downloaded files and promote the primary one(s).
 
@@ -3138,6 +3139,7 @@ class DiscoveryEngine:
             keep_top=int(review_cfg.get("keep_top", 1) or 1),
             action=str(review_cfg.get("action", "move")),
             max_chars=int(review_cfg.get("max_chars", 12000) or 12000),
+            review_keywords=review_cfg.get("keywords") or classifier_keywords,
         )
         try:
             downloads, notes = reviewer.review(downloads, notes)
@@ -3359,12 +3361,14 @@ class DiscoveryEngine:
                 # LLM document review/curation (optional, per-domain config).
                 review_cfg = getattr(request, "document_review", None)
                 if review_cfg and download_records:
+                    classifier_cfg = getattr(request, "document_classifier", None) or {}
                     download_records, download_notes, review_costs = (
                         self._run_document_review(
                             download_records,
                             review_cfg,
                             download_notes,
                             models=getattr(request, "models", None),
+                            classifier_keywords=classifier_cfg.get("nice_to_have_keywords"),
                         )
                     )
 
