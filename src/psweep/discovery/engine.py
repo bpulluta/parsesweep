@@ -3107,6 +3107,163 @@ class DiscoveryEngine:
 
         return downloads, notes
 
+    def _retry_failed_targets_on_code_hosting(
+        self,
+        *,
+        request: DiscoveryRequest,
+        download_records: list[dict[str, object]],
+        notes: list[str],
+        documents_dir: Path,
+        review_cfg: dict[str, object],
+        classifier_keywords: list[str] | None = None,
+    ) -> tuple[list[dict[str, object]], list[str]]:
+        """Targeted retry for targets that got 0 curated docs from code-hosting sites.
+
+        When a target has candidates from known code-hosting domains (municode,
+        ecode360, amlegal, etc.) but none scored high enough for curation, this
+        fires one additional SerpApi query scoped to the domain path already
+        discovered, combined with domain keywords. This finds deeper sections
+        (like specific chapters) that the initial broad query missed.
+
+        Only fires for failed targets — typically 1-2 extra queries per run.
+        """
+        # Identify code-hosting domains from link_prioritization.domain_scores
+        domain_scores = request.link_prioritization_domain_scores or {}
+        code_hosting_domains = set(domain_scores.keys())
+        if not code_hosting_domains:
+            return download_records, notes
+
+        keywords = classifier_keywords or []
+        if not keywords:
+            return download_records, notes
+
+        # Group records by target, find targets with 0 curated
+        from urllib.parse import urlparse
+        from collections import defaultdict
+
+        by_target: dict[str, list[dict[str, object]]] = defaultdict(list)
+        for rec in download_records:
+            meta = rec.get("target_metadata") or {}
+            key = str(meta.get("label") or "")
+            if key:
+                by_target[key].append(rec)
+
+        failed_targets: list[tuple[str, str, dict[str, object]]] = []
+        for target_key, records in by_target.items():
+            has_curated = any(r.get("review_selected") for r in records)
+            if has_curated:
+                continue
+
+            # Find code-hosting URLs for this target
+            code_hosting_found = False
+            for rec in records:
+                url = str(rec.get("url") or "")
+                parsed = urlparse(url)
+                host = parsed.hostname or ""
+                matched_domain = None
+                for domain in code_hosting_domains:
+                    if domain in host:
+                        matched_domain = domain
+                        break
+                if matched_domain:
+                    # Extract domain + path prefix for site-scoped retry
+                    path_parts = parsed.path.strip("/").split("/")
+                    # Keep first 2-3 path segments as the jurisdiction scope
+                    scope = "/".join(path_parts[:3]) if len(path_parts) >= 3 else "/".join(path_parts[:2])
+                    site_prefix = f"{host}/{scope}" if scope else host
+                    meta = rec.get("target_metadata") or {}
+                    failed_targets.append((target_key, site_prefix, meta))
+                    break
+
+        if not failed_targets:
+            return download_records, notes
+
+        # Fire targeted retry queries
+        retry_notes: list[str] = []
+        keyword_or = " OR ".join(f'"{k}"' for k in keywords[:3])
+
+        from .connectors.serpapi_seeker import SerpApiSeeker
+        from .connectors.base import SeekerInput
+
+        seeker = SerpApiSeeker(
+            cache_dir=str(documents_dir.parent.parent.parent / ".serpapi_cache"),
+            cache_ttl_seconds=86400 * 7,
+        )
+
+        retry_candidates = []
+        for target_key, site_prefix, target_meta in failed_targets:
+            query = f"site:{site_prefix} {keyword_or}"
+            try:
+                results = seeker.discover(SeekerInput(query=query, max_results=5))
+            except Exception as exc:
+                notes.append(f"Code-hosting retry: query failed for '{target_key}': {exc}")
+                continue
+
+            if not results:
+                continue
+
+            for result in results[:2]:
+                url = result.get("link") or result.get("url")
+                if url:
+                    retry_candidates.append({
+                        "url": url,
+                        "target_metadata": target_meta,
+                        "source": "code_hosting_retry",
+                    })
+
+            retry_notes.append(
+                f"Code-hosting retry for '{target_key}': queried site:{site_prefix}, "
+                f"found {len(results)} result(s)."
+            )
+
+        if not retry_candidates:
+            notes.extend(retry_notes)
+            return download_records, notes
+
+        # Download retry candidates
+        from .models import DiscoveryCandidate, CandidateScore
+
+        candidates_for_download = [
+            DiscoveryCandidate(
+                url=c["url"],
+                source="code_hosting_retry",
+                score=CandidateScore(
+                    url_signal=0.6, anchor_signal=0.0,
+                    content_signal=0.0, trust_signal=0.4,
+                ),
+                target_metadata=c.get("target_metadata"),
+            )
+            for c in retry_candidates
+        ]
+
+        retry_downloads, retry_errors, retry_dl_notes = self._download_candidates(
+            request=request,
+            candidates=candidates_for_download,
+            documents_dir=documents_dir,
+            max_downloads=len(candidates_for_download),
+        )
+
+        # Review retry downloads
+        if retry_downloads and review_cfg:
+            retry_downloads, retry_review_notes, _ = self._run_document_review(
+                retry_downloads,
+                review_cfg,
+                [],
+                models=getattr(request, "models", None),
+                classifier_keywords=classifier_keywords,
+            )
+            retry_notes.extend(retry_review_notes)
+
+        # Merge into main records
+        download_records.extend(retry_downloads)
+        curated_retry = sum(1 for r in retry_downloads if r.get("review_selected"))
+        retry_notes.append(
+            f"Code-hosting retry: {len(retry_downloads)} downloaded, "
+            f"{curated_retry} curated from retry."
+        )
+        notes.extend(retry_notes)
+        return download_records, notes
+
     @staticmethod
     def _run_document_review(
         downloads: list[dict[str, object]],
@@ -3371,6 +3528,20 @@ class DiscoveryEngine:
                             classifier_keywords=classifier_cfg.get("nice_to_have_keywords"),
                         )
                     )
+
+                    # Retry on code-hosting sites for targets that got 0 curated.
+                    if request.link_prioritization_domain_scores:
+                        classifier_cfg = getattr(request, "document_classifier", None) or {}
+                        download_records, download_notes = (
+                            self._retry_failed_targets_on_code_hosting(
+                                request=request,
+                                download_records=download_records,
+                                notes=download_notes,
+                                documents_dir=documents_dir,
+                                review_cfg=review_cfg,
+                                classifier_keywords=classifier_cfg.get("nice_to_have_keywords"),
+                            )
+                        )
 
                 # Checkpoint: persist completed targets for resume capability.
                 new_checkpoint_entries: dict[
