@@ -71,7 +71,7 @@ class DiscoveryRequest:
     retry_max_attempts: int = 3
     retry_initial_backoff_seconds: float = 1.0
     retry_max_backoff_seconds: float = 8.0
-    max_concurrent_downloads: int = 2
+    max_concurrent_downloads: int = 5
     min_request_interval_ms: int = 0
     request_headers: dict[str, str] | None = None
     robots_policy_mode: str = "ignore"

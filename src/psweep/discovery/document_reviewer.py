@@ -289,23 +289,32 @@ class DocumentReviewer:
             ]
             target_context = ", ".join(_ctx_parts) if _ctx_parts else target_key
 
-            for record in records:
+            # Grade files concurrently (4 threads) for speed.
+            from concurrent.futures import ThreadPoolExecutor, as_completed
+
+            def _grade_record(record: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any] | None, bool]:
                 path = str(record.get("path"))
-                # Cost saver: reuse a prior grade when the file + description +
-                # model are unchanged, so re-runs skip the per-file LLM call.
                 grade = self._read_cached_grade(path)
-                if grade is not None:
-                    cached += 1
-                    record["review_cached"] = True
-                else:
+                was_cached = grade is not None
+                if grade is None:
                     grade = self._grade(path, target_context=target_context)
+                return record, grade, was_cached
+
+            with ThreadPoolExecutor(max_workers=4) as executor:
+                futures = [executor.submit(_grade_record, r) for r in records]
+                for future in as_completed(futures):
+                    record, grade, was_cached = future.result()
                     if grade is None:
                         continue
-                    graded += 1
-                record["review_is_primary"] = bool(grade.get("is_primary"))
-                record["review_relevance"] = grade.get("relevance")
-                record["review_doc_kind"] = grade.get("doc_kind")
-                record["review_reason"] = grade.get("reason")
+                    if was_cached:
+                        cached += 1
+                        record["review_cached"] = True
+                    else:
+                        graded += 1
+                    record["review_is_primary"] = bool(grade.get("is_primary"))
+                    record["review_relevance"] = grade.get("relevance")
+                    record["review_doc_kind"] = grade.get("doc_kind")
+                    record["review_reason"] = grade.get("reason")
 
             ranked = sorted(
                 (r for r in records if "review_relevance" in r),
