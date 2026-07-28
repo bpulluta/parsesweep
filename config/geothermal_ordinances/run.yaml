@@ -12,17 +12,17 @@ models:
 discovery:
   targets_csv: targets.csv
   queries:
-    - "\"{jurisdiction}\" {state} geothermal ordinance zoning code"
-    - "\"{jurisdiction}\" {state} geothermal energy land use regulation"
-    - "\"{jurisdiction}\" {state} geothermal wells setback permit ordinance"
+    - "filetype:pdf \"{jurisdiction}\" {state} geothermal power plant ordinance"
+    - "geothermal electricity generation ordinance \"{jurisdiction}\" {state}"
+    - "\"{jurisdiction}\" {state} geothermal energy facility zoning ordinance"
     - "site:ecode360.com \"{jurisdiction}\" {state}"
-    - "\"{jurisdiction}\" {state} renewable energy geothermal code chapter"
+    - "\"{jurisdiction}\" {state} geothermal power plant land use code"
   search:
     provider: serpapi
     max_results: 10
     cache: true
   selection:
-    primary_per_target: 40
+    primary_per_target: 10
     exclude_draft: true
     target_identity_require_any_templates:
       - "{jurisdiction}"
@@ -96,9 +96,12 @@ discovery:
       or county code section that regulates geothermal electricity generation
       (not geothermal heat pumps, solar, wind, or other technologies).
       Must be the codified/adopted regulation text, not a draft, EIR,
-      notice, or planning study. Accept if it contains ANY regulatory
-      provisions for geothermal energy facilities, even if just setbacks
-      or use classifications.
+      notice, or planning study. Strongly prefer documents that contain
+      quantitative regulatory values (setbacks in feet, noise limits in dBA,
+      lot sizes in acres, bond amounts in dollars, drilling hours) over
+      documents with only qualitative policies or use classifications.
+      Accept if it contains ANY regulatory provisions for geothermal energy
+      facilities.
     keep_top: 2
     action: move
   partition_by: [state, jurisdiction]
