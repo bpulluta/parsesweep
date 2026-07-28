@@ -469,48 +469,68 @@ def _build_pipeline_accounting(
     }
 
     # --- Discovery ---
-    # Derive discovery manifest from extraction.input_dir (which points into
-    # discovered/{domain}/runs/.../curated). Walk up to find manifest.json.
+    # Derive discovery manifest from extraction.input_dir. Two layouts:
+    # 1. Run-scoped: discovered/<domain>/runs/<id>/curated → walk up to find manifest.json
+    # 2. Consolidated: discovered/<domain>/curated → find latest manifest in runs/
     if discovery_input_dir:
         disc_path = Path(discovery_input_dir)
-        # Walk up from curated/ to find manifest.json in the run folder
+        manifest_candidate: Optional[Path] = None
+
+        # Try walk-up first (run-scoped layout)
         for parent in [disc_path, disc_path.parent, disc_path.parent.parent]:
             candidate = parent / "manifest.json"
             if candidate.exists():
-                try:
-                    disc = json.loads(candidate.read_text(encoding="utf-8"))
-                    timing = disc.get("timing", {})
-                    ss = disc.get("stage_summaries", {})
-                    seeker = ss.get("seeker", {})
-                    review = ss.get("document_review", {})
-                    review_costs = review.get("costs", {})
-                    downloads = ss.get("downloads", {})
-
-                    disc_cost = review_costs.get("total_cost_usd", 0.0)
-                    disc_elapsed = timing.get("elapsed_seconds", 0.0)
-                    disc_tokens = (review_costs.get("total_input_tokens", 0)
-                                  + review_costs.get("total_output_tokens", 0))
-
-                    accounting["stages"]["discovery"] = {
-                        "run_id": disc.get("run_id"),
-                        "timing_seconds": disc_elapsed,
-                        "seeker_queries": seeker.get("queries_executed", 0),
-                        "candidates_found": seeker.get("candidates_discovered", 0),
-                        "documents_downloaded": downloads.get("downloaded", 0),
-                        "documents_curated": disc.get("lineage", {}).get("curated_count", 0),
-                        "review_llm_calls": review_costs.get("llm_calls", 0),
-                        "review_cost_usd": disc_cost,
-                        "review_tokens": disc_tokens,
-                        "notes_count": len(disc.get("notes", [])),
-                        "errors_count": len(disc.get("errors", [])),
-                    }
-                    accounting["totals"]["cost_usd"] += disc_cost
-                    accounting["totals"]["elapsed_seconds"] += disc_elapsed
-                    accounting["totals"]["llm_calls"] += review_costs.get("llm_calls", 0)
-                    accounting["totals"]["tokens"] += disc_tokens
-                except Exception:
-                    pass
+                manifest_candidate = candidate
                 break
+
+        # Consolidated layout: look for latest manifest in sibling runs/ dir
+        if manifest_candidate is None:
+            runs_dir = disc_path.parent / "runs"
+            if runs_dir.is_dir():
+                run_dirs = sorted(
+                    [d for d in runs_dir.iterdir() if d.is_dir()],
+                    reverse=True,
+                )
+                for run_dir in run_dirs:
+                    candidate = run_dir / "manifest.json"
+                    if candidate.exists():
+                        manifest_candidate = candidate
+                        break
+
+        if manifest_candidate is not None:
+            try:
+                disc = json.loads(manifest_candidate.read_text(encoding="utf-8"))
+                timing = disc.get("timing", {})
+                ss = disc.get("stage_summaries", {})
+                seeker = ss.get("seeker", {})
+                review = ss.get("document_review", {})
+                review_costs = review.get("costs", {})
+                downloads = ss.get("downloads", {})
+
+                disc_cost = review_costs.get("total_cost_usd", 0.0)
+                disc_elapsed = timing.get("elapsed_seconds", 0.0)
+                disc_tokens = (review_costs.get("total_input_tokens", 0)
+                              + review_costs.get("total_output_tokens", 0))
+
+                accounting["stages"]["discovery"] = {
+                    "run_id": disc.get("run_id"),
+                    "timing_seconds": disc_elapsed,
+                    "seeker_queries": seeker.get("queries_executed", 0),
+                    "candidates_found": seeker.get("candidates_discovered", 0),
+                    "documents_downloaded": downloads.get("downloaded", 0),
+                    "documents_curated": disc.get("lineage", {}).get("curated_count", 0),
+                    "review_llm_calls": review_costs.get("llm_calls", 0),
+                    "review_cost_usd": disc_cost,
+                    "review_tokens": disc_tokens,
+                    "notes_count": len(disc.get("notes", [])),
+                    "errors_count": len(disc.get("errors", [])),
+                }
+                accounting["totals"]["cost_usd"] += disc_cost
+                accounting["totals"]["elapsed_seconds"] += disc_elapsed
+                accounting["totals"]["llm_calls"] += review_costs.get("llm_calls", 0)
+                accounting["totals"]["tokens"] += disc_tokens
+            except Exception:
+                pass
 
     # --- Extraction ---
     manifest_dir = extraction_dir / "run_manifests"
