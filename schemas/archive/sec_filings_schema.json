@@ -1,0 +1,126 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$metadata": {
+    "domain": "SEC Filings",
+    "version": "0.1.0",
+    "description": "Lean starter schema for SEC Filing.",
+    "extraction": {
+      "main_data_array": "filings",
+      "context_objects": [
+        "source_document"
+      ],
+      "identifier_fields": [
+        "source_document.file_name"
+      ],
+      "display_name_template": "{file_name}",
+      "document_type": "SEC Filing"
+    }
+  },
+  "title": "SEC Filing Starter Schema",
+  "description": "Lean starter schema for SEC Filing. Expand field detail and runtime presentation only after the first extraction pass.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "source_document",
+    "filings"
+  ],
+  "properties": {
+    "source_document": {
+      "type": "object",
+      "description": "Source context for the filing detail page or downloaded artifact.",
+      "additionalProperties": false,
+      "required": [
+        "file_name"
+      ],
+      "properties": {
+        "file_name": {
+          "type": "string",
+          "description": "Name of the acquired source file exactly as stored in the documents directory."
+        },
+        "source_url": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Original acquisition URL for the filing detail page or downloaded artifact. Null if unavailable."
+        }
+      }
+    },
+    "filings": {
+      "type": "array",
+      "description": "Structured summary of a filing represented by the acquired document. Create one row per filing described by the source page.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "company_name",
+          "filing_type",
+          "filing_date"
+        ],
+        "properties": {
+          "company_name": {
+            "type": "string",
+            "description": "Company or registrant name exactly as shown on the filing detail page."
+          },
+          "cik": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Central Index Key if present on the page. Null if unavailable."
+          },
+          "filing_type": {
+            "type": "string",
+            "description": "SEC filing form type exactly as written, such as 10-Q, 10-K, or 8-K."
+          },
+          "filing_title": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Human-readable filing title or page headline. Null if the page only provides the form type."
+          },
+          "filing_date": {
+            "type": "string",
+            "description": "Filing date in YYYY-MM-DD when available. Preserve the source text only if a precise ISO date cannot be determined."
+          },
+          "period_end": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Reporting period end date or quarter end when present. Null if unavailable."
+          },
+          "accession_number": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "SEC accession number if present. Null if unavailable on the source page."
+          },
+          "sec_archive_url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Direct SEC archive URL or filing resource URL referenced by the source page. Null if unavailable."
+          },
+          "source_detail_url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "URL of the acquired filing detail page used as the extraction source. Null if unavailable."
+          },
+          "summary": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Short narrative summary of the filing detail page or filing purpose. Null if unavailable."
+          }
+        }
+      }
+    }
+  }
+}

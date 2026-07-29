@@ -15,6 +15,10 @@ For authoring, use this mental model:
 - `Pack`: Optional runtime config for a domain. Use it when multiple runs should share QA/QC lanes, compilation presentation, or schema aliases.
 - `Profile`: Optional environment selection. Most schema authors should use `default` and ignore profiles until they need environment-specific runtime behavior.
 
+> **Note:** Domain pack scaffolding (`init-domain-pack`, `check-runtime`) is planned
+> infrastructure — these commands are not yet implemented in the current CLI. The
+> pack/profile guidance below is conceptual; author schemas directly for now.
+
 ---
 
 ## Authoring Workflow
@@ -841,6 +845,6 @@ Reference these working schemas in the `schemas/` directory:
 4. **Keep it simple** - Fewer levels of nesting = clearer outputs
 5. **Be consistent** - Same structure across all items in an array enables expansion
 6. **Include context** - Add fields that distinguish similar items (season, type, tier)
-7. **Validate first** - Use `validate-schema` command before extraction
+7. **Validate first** - Use `check-schema` command before extraction
 
 **Remember:** Good schema design = good data analysis. Take time to structure your schema correctly.

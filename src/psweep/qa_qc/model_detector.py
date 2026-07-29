@@ -8,7 +8,7 @@ Usage:
 
     # Get models for QA/QC (auto-detects from environment or uses defaults)
     models = ModelDetector.get_qa_models()
-    # Returns: ['compassop-gpt-5', 'compassop-gpt-4.1', 'compassop-gpt-4o']
+    # Returns: ['gpt-4o', 'gpt-4.1', 'gpt-4o-mini']
 
     # Get current provider
     provider = ModelDetector.get_provider()
@@ -19,9 +19,13 @@ Environment Variables:
                  Leave empty to auto-select diverse models based on provider
 
     Examples:
-        - 2 models: QAQC_MODELS=compassop-gpt-5-mini,compassop-gpt-4o
-        - 3 models: QAQC_MODELS=compassop-gpt-5,compassop-gpt-4.1,compassop-gpt-4o
-        - 5 models: QAQC_MODELS=compassop-gpt-5,compassop-gpt-5-mini,compassop-gpt-4.1,compassop-gpt-4.1-mini,compassop-gpt-4o
+        - 2 models: QAQC_MODELS=my-deployment-gpt-5-mini,my-deployment-gpt-4o
+        - 3 models: QAQC_MODELS=my-deployment-gpt-5,my-deployment-gpt-4.1,my-deployment-gpt-4o
+        - 5 models: QAQC_MODELS=my-deployment-gpt-5,my-deployment-gpt-5-mini,my-deployment-gpt-4.1,my-deployment-gpt-4.1-mini,my-deployment-gpt-4o
+
+    Note: Azure OpenAI deployment names are environment-specific and must be
+    configured via QAQC_MODELS (or the runtime config pack's `models:` block)
+    rather than hardcoded here.
 """
 
 import os
@@ -34,11 +38,12 @@ logger = logging.getLogger(__name__)
 class ModelDetector:
     """Auto-detect QA/QC models from environment."""
 
-    # Default Azure OpenAI models (diverse capabilities)
+    # Default Azure OpenAI models (generic model names; actual deployment
+    # names are environment-specific and should be set via QAQC_MODELS or
+    # the runtime config pack's `models:` block).
     AZURE_QA_MODELS = [
-        "compassop-gpt-5",  # Latest, most capable
-        "compassop-gpt-4.1",  # High accuracy
-        "compassop-gpt-4o",  # Optimized
+        "gpt-4o",  # Optimized
+        "gpt-4.1",  # High accuracy
     ]
 
     # Default OpenAI models

@@ -3081,6 +3081,39 @@ class DiscoveryEngine:
                             file_path, text, method="browser_render"
                         )
                     else:
+                        # Page rendered but insufficient content (likely a TOC).
+                        # Try following keyword-matching links 1 level deeper.
+                        classifier_cfg = getattr(request, "document_classifier", None) or {}
+                        keywords = classifier_cfg.get("nice_to_have_keywords") or []
+                        if keywords and rendered_html:
+                            deeper_url = self._find_keyword_link_in_rendered(
+                                rendered_html, url, keywords
+                            )
+                            if deeper_url:
+                                try:
+                                    deeper_html = browser.fetch_html(
+                                        deeper_url, settle_seconds=settle_seconds
+                                    )
+                                    if deeper_html:
+                                        deeper_text = ContentSampler.extract_text_from_string(deeper_html)
+                                        if len(deeper_text.strip()) >= min_rendered_chars:
+                                            # Save the deeper page as a NEW file
+                                            deeper_path = file_path.parent / f"{file_path.stem}-deep{file_path.suffix}"
+                                            deeper_path.write_text(deeper_html, encoding="utf-8")
+                                            write_text_cache(deeper_path, deeper_text, method="browser_render")
+                                            # Add as a new download record
+                                            new_record = dict(record)
+                                            new_record["path"] = str(deeper_path)
+                                            new_record["relative_path"] = str(
+                                                Path(record.get("relative_path", "")).parent / deeper_path.name
+                                            )
+                                            new_record["url"] = deeper_url
+                                            new_record["browser_escalated"] = True
+                                            new_record["status"] = "downloaded"
+                                            downloads.append(new_record)
+                                            escalated += 1
+                                except Exception:
+                                    pass
                         record["browser_escalated"] = False
                 except Exception:
                     record["browser_escalated"] = False
@@ -3106,6 +3139,341 @@ class DiscoveryEngine:
             )
 
         return downloads, notes
+
+    def _retry_js_shells_with_digger(
+        self,
+        *,
+        request: DiscoveryRequest,
+        download_records: list[dict[str, object]],
+        notes: list[str],
+        documents_dir: Path,
+        review_cfg: dict[str, object],
+    ) -> tuple[list[dict[str, object]], list[str]]:
+        """Browser-crawl retry for failed targets with JS-shell downloads.
+
+        After review, some targets have 0 curated docs but DO have downloaded
+        HTML files that were identified as JS shells (municode, etc.). For these,
+        launch the HTTP digger (with browser fallback) on the code-hosting URL
+        to crawl 2-3 levels deep and find keyword-matching section pages.
+
+        This is the hybrid approach: fast SerpApi for most targets, targeted
+        browser crawl only for the ~15% that need it.
+        """
+        from pathlib import Path as _Path
+        from collections import defaultdict
+
+        classifier_cfg = getattr(request, "document_classifier", None) or {}
+        keywords = classifier_cfg.get("nice_to_have_keywords") or []
+        if not keywords:
+            return download_records, notes
+
+        domain_scores = request.link_prioritization_domain_scores or {}
+        code_hosting_domains = set(domain_scores.keys())
+        if not code_hosting_domains:
+            return download_records, notes
+
+        # Find targets with 0 curated AND JS-shell downloads from code-hosting domains
+        by_target: dict[str, list[dict[str, object]]] = defaultdict(list)
+        for rec in download_records:
+            meta = rec.get("target_metadata") or {}
+            key = str(meta.get("label") or "")
+            if key:
+                by_target[key].append(rec)
+
+        shell_urls: list[tuple[str, str, dict[str, object]]] = []
+        for target_key, records in by_target.items():
+            if any(r.get("review_selected") for r in records):
+                continue  # target already has curated docs
+
+            for rec in records:
+                if not rec.get("browser_escalated") and rec.get("status") == "downloaded":
+                    # Check if this is a JS shell from a code-hosting domain
+                    url = str(rec.get("url") or "")
+                    from urllib.parse import urlparse
+                    host = urlparse(url).hostname or ""
+                    if any(d in host for d in code_hosting_domains):
+                        file_path = rec.get("path")
+                        if file_path and _Path(str(file_path)).suffix.lower() in {".html", ".htm"}:
+                            shell_urls.append((target_key, url, rec.get("target_metadata") or {}))
+                            break
+
+        if not shell_urls:
+            return download_records, notes
+
+        # Use the HTTP digger with browser to crawl from each shell URL
+        from .connectors.digger import HttpDiggerConnector
+        from .connectors.base import DiggerInput
+
+        digger = HttpDiggerConnector()
+        crawled = 0
+        for target_key, url, target_meta in shell_urls:
+            di = DiggerInput(
+                seed_urls=[url],
+                max_depth=3,
+                max_pages=15,
+                max_files=3,
+                timeout_seconds=60,
+                include_link_text_patterns=keywords,
+                extra_params={"ssl_verify": self._downloads_ssl_verify()},
+            )
+            try:
+                artifacts = digger.discover(di)
+            except Exception:
+                continue
+
+            if not artifacts:
+                continue
+
+            # Download and review the found artifacts
+            from .models import DiscoveryCandidate, CandidateScore
+            artifact_candidates = [
+                DiscoveryCandidate(
+                    url=a.url,
+                    source="browser_crawl_retry",
+                    score=CandidateScore(
+                        url_signal=0.7, anchor_signal=0.0,
+                        content_signal=0.0, trust_signal=0.3,
+                    ),
+                    target_metadata=target_meta,
+                )
+                for a in artifacts
+            ]
+
+            retry_downloads, _, _ = self._download_candidates(
+                request=request,
+                candidates=artifact_candidates,
+                documents_dir=documents_dir,
+                max_downloads=len(artifact_candidates),
+            )
+
+            if retry_downloads and review_cfg:
+                retry_downloads, _, _ = self._run_document_review(
+                    retry_downloads, review_cfg, [],
+                    models=getattr(request, "models", None),
+                    classifier_keywords=keywords,
+                )
+
+            new_curated = sum(1 for r in retry_downloads if r.get("review_selected"))
+            download_records.extend(retry_downloads)
+            if new_curated:
+                crawled += 1
+
+        if crawled or shell_urls:
+            notes.append(
+                f"Browser crawl retry: crawled {len(shell_urls)} JS-shell URL(s), "
+                f"{crawled} target(s) found new curated doc(s)."
+            )
+        return download_records, notes
+
+    @staticmethod
+    def _find_keyword_link_in_rendered(
+        html: str, base_url: str, keywords: list[str]
+    ) -> str | None:
+        """Find the first link in rendered HTML whose text matches any keyword.
+
+        Used after browser escalation renders a TOC page — identifies the
+        deepest relevant section link to follow (e.g., "Oil and Gas" chapter
+        on a municode TOC page).
+        """
+        import re
+        from html.parser import HTMLParser
+        from urllib.parse import urljoin
+
+        class _LinkFinder(HTMLParser):
+            def __init__(self):
+                super().__init__()
+                self.links: list[tuple[str, str]] = []
+                self._href: str | None = None
+                self._text_parts: list[str] = []
+
+            def handle_starttag(self, tag, attrs):
+                if tag == "a":
+                    for name, val in attrs:
+                        if name == "href" and val:
+                            self._href = val
+                            self._text_parts = []
+
+            def handle_data(self, data):
+                if self._href is not None:
+                    self._text_parts.append(data)
+
+            def handle_endtag(self, tag):
+                if tag == "a" and self._href:
+                    text = " ".join(self._text_parts).strip()
+                    if text:
+                        self.links.append((self._href, text))
+                    self._href = None
+                    self._text_parts = []
+
+        parser = _LinkFinder()
+        try:
+            parser.feed(html)
+        except Exception:
+            return None
+
+        keywords_lower = [k.lower() for k in keywords]
+        for href, text in parser.links:
+            text_lower = text.lower()
+            if any(kw in text_lower for kw in keywords_lower):
+                return urljoin(base_url, href)
+        return None
+
+    def _retry_failed_targets_on_code_hosting(
+        self,
+        *,
+        request: DiscoveryRequest,
+        download_records: list[dict[str, object]],
+        notes: list[str],
+        documents_dir: Path,
+        review_cfg: dict[str, object],
+        classifier_keywords: list[str] | None = None,
+    ) -> tuple[list[dict[str, object]], list[str]]:
+        """Targeted retry for targets that got 0 curated docs from code-hosting sites.
+
+        When a target has candidates from known code-hosting domains (municode,
+        ecode360, amlegal, etc.) but none scored high enough for curation, this
+        fires one additional SerpApi query scoped to the domain path already
+        discovered, combined with domain keywords. This finds deeper sections
+        (like specific chapters) that the initial broad query missed.
+
+        Only fires for failed targets — typically 1-2 extra queries per run.
+        """
+        # Identify code-hosting domains from link_prioritization.domain_scores
+        domain_scores = request.link_prioritization_domain_scores or {}
+        code_hosting_domains = set(domain_scores.keys())
+        if not code_hosting_domains:
+            return download_records, notes
+
+        keywords = classifier_keywords or []
+        if not keywords:
+            return download_records, notes
+
+        # Group records by target, find targets with 0 curated
+        from urllib.parse import urlparse
+        from collections import defaultdict
+
+        by_target: dict[str, list[dict[str, object]]] = defaultdict(list)
+        for rec in download_records:
+            meta = rec.get("target_metadata") or {}
+            key = str(meta.get("label") or "")
+            if key:
+                by_target[key].append(rec)
+
+        failed_targets: list[tuple[str, str, dict[str, object]]] = []
+        for target_key, records in by_target.items():
+            has_curated = any(r.get("review_selected") for r in records)
+            if has_curated:
+                continue
+
+            # Find code-hosting URLs for this target
+            code_hosting_found = False
+            for rec in records:
+                url = str(rec.get("url") or "")
+                parsed = urlparse(url)
+                host = parsed.hostname or ""
+                matched_domain = None
+                for domain in code_hosting_domains:
+                    if domain in host:
+                        matched_domain = domain
+                        break
+                if matched_domain:
+                    # Extract domain + path prefix for site-scoped retry
+                    path_parts = parsed.path.strip("/").split("/")
+                    # Keep first 2-3 path segments as the jurisdiction scope
+                    scope = "/".join(path_parts[:3]) if len(path_parts) >= 3 else "/".join(path_parts[:2])
+                    site_prefix = f"{host}/{scope}" if scope else host
+                    meta = rec.get("target_metadata") or {}
+                    failed_targets.append((target_key, site_prefix, meta))
+                    break
+
+        if not failed_targets:
+            return download_records, notes
+
+        # Fire targeted retry queries
+        retry_notes: list[str] = []
+        keyword_or = " OR ".join(f'"{k}"' for k in keywords[:3])
+
+        from .connectors.serpapi_seeker import SerpApiSeeker
+        from .connectors.base import SeekerInput
+
+        seeker = SerpApiSeeker(
+            cache_dir=str(documents_dir.parent.parent.parent / ".serpapi_cache"),
+            cache_ttl_seconds=86400 * 7,
+        )
+
+        retry_candidates = []
+        for target_key, site_prefix, target_meta in failed_targets:
+            query = f"site:{site_prefix} {keyword_or}"
+            try:
+                results = seeker.discover(SeekerInput(query=query, max_results=5))
+            except Exception as exc:
+                notes.append(f"Code-hosting retry: query failed for '{target_key}': {exc}")
+                continue
+
+            if not results:
+                continue
+
+            for result in results[:2]:
+                url = result.get("link") or result.get("url")
+                if url:
+                    retry_candidates.append({
+                        "url": url,
+                        "target_metadata": target_meta,
+                        "source": "code_hosting_retry",
+                    })
+
+            retry_notes.append(
+                f"Code-hosting retry for '{target_key}': queried site:{site_prefix}, "
+                f"found {len(results)} result(s)."
+            )
+
+        if not retry_candidates:
+            notes.extend(retry_notes)
+            return download_records, notes
+
+        # Download retry candidates
+        from .models import DiscoveryCandidate, CandidateScore
+
+        candidates_for_download = [
+            DiscoveryCandidate(
+                url=c["url"],
+                source="code_hosting_retry",
+                score=CandidateScore(
+                    url_signal=0.6, anchor_signal=0.0,
+                    content_signal=0.0, trust_signal=0.4,
+                ),
+                target_metadata=c.get("target_metadata"),
+            )
+            for c in retry_candidates
+        ]
+
+        retry_downloads, retry_errors, retry_dl_notes = self._download_candidates(
+            request=request,
+            candidates=candidates_for_download,
+            documents_dir=documents_dir,
+            max_downloads=len(candidates_for_download),
+        )
+
+        # Review retry downloads
+        if retry_downloads and review_cfg:
+            retry_downloads, retry_review_notes, _ = self._run_document_review(
+                retry_downloads,
+                review_cfg,
+                [],
+                models=getattr(request, "models", None),
+                classifier_keywords=classifier_keywords,
+            )
+            retry_notes.extend(retry_review_notes)
+
+        # Merge into main records
+        download_records.extend(retry_downloads)
+        curated_retry = sum(1 for r in retry_downloads if r.get("review_selected"))
+        retry_notes.append(
+            f"Code-hosting retry: {len(retry_downloads)} downloaded, "
+            f"{curated_retry} curated from retry."
+        )
+        notes.extend(retry_notes)
+        return download_records, notes
 
     @staticmethod
     def _run_document_review(
@@ -3369,6 +3737,33 @@ class DiscoveryEngine:
                             download_notes,
                             models=getattr(request, "models", None),
                             classifier_keywords=classifier_cfg.get("nice_to_have_keywords"),
+                        )
+                    )
+
+                    # Retry on code-hosting sites for targets that got 0 curated.
+                    if request.link_prioritization_domain_scores:
+                        classifier_cfg = getattr(request, "document_classifier", None) or {}
+                        download_records, download_notes = (
+                            self._retry_failed_targets_on_code_hosting(
+                                request=request,
+                                download_records=download_records,
+                                notes=download_notes,
+                                documents_dir=documents_dir,
+                                review_cfg=review_cfg,
+                                classifier_keywords=classifier_cfg.get("nice_to_have_keywords"),
+                            )
+                        )
+
+                    # Browser crawl retry: for targets that still have 0 curated
+                    # AND have JS-shell escalated pages, use the digger to crawl
+                    # deeper from those rendered pages.
+                    download_records, download_notes = (
+                        self._retry_js_shells_with_digger(
+                            request=request,
+                            download_records=download_records,
+                            notes=download_notes,
+                            documents_dir=documents_dir,
+                            review_cfg=review_cfg,
                         )
                     )
 

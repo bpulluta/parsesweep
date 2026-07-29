@@ -14,7 +14,6 @@ from psweep.cli.commands import (
     _generate_run_id,
     _run_qa_qc_extraction,
     _resolve_compilation_output_formats,
-    _resolve_runtime_artifact,
     _resolve_schema_ref,
     _should_fail_on_suspicious,
 )

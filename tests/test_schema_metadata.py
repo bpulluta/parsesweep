@@ -224,35 +224,6 @@ class TestValidationMetadata:
         assert meta.get_completeness_threshold() == 0.85
 
 
-class TestIdentifierExtraction:
-    """Test identifier extraction from data."""
-    
-    def test_extract_identifier_from_data_with_metadata(self, temp_schema_with_metadata):
-        """Test extracting identifier using metadata."""
-        meta = SchemaMetadata(temp_schema_with_metadata)
-        data = {
-            "metadata_obj": {
-                "id": "12345",
-                "name": "Test Item"
-            },
-            "test_items": []
-        }
-        identifier = meta.extract_identifier_from_data(data)
-        assert identifier == "12345 - Test Item"
-    
-    def test_extract_identifier_partial_data(self, temp_schema_with_metadata):
-        """Test extracting identifier with partial data."""
-        meta = SchemaMetadata(temp_schema_with_metadata)
-        data = {
-            "metadata_obj": {
-                "id": "12345"
-                # name is missing
-            },
-            "test_items": []
-        }
-        identifier = meta.extract_identifier_from_data(data)
-        assert identifier == "12345"
-
 class TestV2Requirements:
     """Test v2.0 strict validation requirements."""
     
@@ -368,41 +339,6 @@ class TestV2Requirements:
 
 class TestEdgeCases:
     """Test edge cases and error handling."""
-    
-    def test_nested_value_extraction_deep_nesting(self, temp_schema_with_metadata):
-        """Test nested value extraction with deep nesting."""
-        meta = SchemaMetadata(temp_schema_with_metadata)
-        data = {
-            "level1": {
-                "level2": {
-                    "level3": {
-                        "value": "deep_value"
-                    }
-                }
-            }
-        }
-        value = meta._get_nested_value(data, "level1.level2.level3.value")
-        assert value == "deep_value"
-    
-    def test_nested_value_extraction_missing_path(self, temp_schema_with_metadata):
-        """Test nested value extraction with missing path."""
-        meta = SchemaMetadata(temp_schema_with_metadata)
-        data = {
-            "level1": {
-                "level2": {}
-            }
-        }
-        value = meta._get_nested_value(data, "level1.level2.level3.value")
-        assert value is None
-    
-    def test_nested_value_extraction_non_dict(self, temp_schema_with_metadata):
-        """Test nested value extraction when encountering non-dict."""
-        meta = SchemaMetadata(temp_schema_with_metadata)
-        data = {
-            "level1": "not_a_dict"
-        }
-        value = meta._get_nested_value(data, "level1.level2.value")
-        assert value is None
     
     def test_partial_metadata_sections(self, tmp_path):
         """Test schema with partial metadata (only some sections)."""

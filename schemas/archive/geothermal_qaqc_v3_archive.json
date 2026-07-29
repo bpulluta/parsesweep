@@ -1,0 +1,164 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$metadata": {
+    "purpose": "QA/QC validation - constrained extraction matching production schema structure",
+    "companion_to": "personal/geothermal_ordinance_schema.json",
+    "version": "3.1.0",
+    "design_philosophy": "Same field names as production, but with enum constraints to force model agreement. Simplified applies_to to reduce ambiguity.",
+    "extraction": {
+      "main_data_array": "key_requirements",
+      "context_objects": ["document_info"],
+      "identifier_fields": ["document_info.state", "document_info.county"]
+    },
+    "compilation": {
+      "deduplication": {
+        "key_fields": ["category", "specific_subject"],
+        "ignore_fields": ["section", "applies_to"]
+      }
+    },
+    "qa_qc": {
+      "record_matching": {
+        "key_fields": ["category", "specific_subject"]
+      },
+      "comparison": {
+        "primary_fields": ["value", "unit", "applies_to"]
+      },
+      "expected_requirements": [
+        {"category": "setback", "specific_subject": "property_line"},
+        {"category": "setback", "specific_subject": "residence"},
+        {"category": "setback", "specific_subject": "road"},
+        {"category": "noise_limit", "specific_subject": "at_property_line"},
+        {"category": "fee_or_bond", "specific_subject": "performance_bond"},
+        {"category": "lot_size", "specific_subject": "min_lot_size"}
+      ],
+      "expected_count_range": [6, 20]
+    }
+  },
+  "title": "Geothermal Electricity QA/QC Schema v3.1",
+  "description": "QA/QC validation schema for GEOTHERMAL ELECTRICITY GENERATION facilities. Uses SAME FIELD NAMES as production schema but with constrained enums. SCOPE: Commercial geothermal power plants, production/injection wells. EXCLUDE: Heat pumps, direct-use heating, solar, wind, biomass. Extract ONLY items with SPECIFIC NUMERIC values. SKIP vague values like 'as required'. Target: 8-20 items per document. DO NOT create duplicate rows for the same requirement - use 'all' for applies_to unless document EXPLICITLY distinguishes between wells vs structures.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["document_info", "key_requirements"],
+  "properties": {
+    "document_info": {
+      "type": "object",
+      "description": "Document identification",
+      "additionalProperties": false,
+      "required": ["state", "county"],
+      "properties": {
+        "state": {
+          "type": "string",
+          "description": "State 2-letter abbreviation (CO, UT, NV)"
+        },
+        "county": {
+          "type": "string",
+          "description": "County name"
+        },
+        "document_title": {
+          "type": ["string", "null"],
+          "description": "Ordinance title. Null if not stated."
+        }
+      }
+    },
+    "key_requirements": {
+      "type": "array",
+      "description": "Major requirements with SPECIFIC NUMERIC values. One row per unique requirement. SKIP items without concrete numbers. DO NOT duplicate rows - if a setback applies to 'all geothermal facilities', use applies_to='all', not separate rows for wells and structures.",
+      "maxItems": 20,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["category", "specific_subject", "applies_to", "value", "unit"],
+        "properties": {
+          "category": {
+            "type": "string",
+            "description": "Requirement type - choose the single best match from expanded list",
+            "enum": [
+              "setback",
+              "noise_limit",
+              "height_limit",
+              "lot_size",
+              "time_limit",
+              "fee_or_bond",
+              "working_hours",
+              "fencing",
+              "visual_screening",
+              "permit",
+              "decommissioning",
+              "monitoring"
+            ]
+          },
+          "specific_subject": {
+            "type": "string",
+            "description": "The specific target or scope that distinguishes this requirement. Choose the SINGLE best match. NO 'other' - if nothing fits, don't extract.",
+            "enum": [
+              "property_line",
+              "residence",
+              "school",
+              "hospital",
+              "church",
+              "public_building",
+              "road",
+              "water_well",
+              "wellhead",
+              "water_body",
+              "wetland",
+              "drilling_rig",
+              "cooling_tower",
+              "wellhead_structure",
+              "transmission_tower",
+              "max_structure",
+              "at_property_line",
+              "at_residence",
+              "during_drilling",
+              "during_construction",
+              "min_lot_size",
+              "permit_duration",
+              "review_period",
+              "reclamation_period",
+              "abandonment_period",
+              "permit_fee",
+              "application_fee",
+              "performance_bond",
+              "reclamation_bond",
+              "liability_insurance",
+              "blanket_bond",
+              "site_preparation",
+              "equipment_delivery",
+              "drilling_operations",
+              "well_venting",
+              "testing_operations",
+              "perimeter_fence",
+              "height_of_fence",
+              "seismic",
+              "water_quality"
+            ]
+          },
+          "applies_to": {
+            "type": "string",
+            "description": "SIMPLIFIED: Use 'all' by DEFAULT. Only use 'wells' or 'structures' when document EXPLICITLY states DIFFERENT requirements for wells vs structures. If one setback applies to everything, use 'all' - do NOT create separate rows.",
+            "enum": [
+              "all",
+              "wells",
+              "structures",
+              "drilling"
+            ],
+            "default": "all"
+          },
+          "value": {
+            "type": "number",
+            "description": "NUMERIC value only. Use digits: 100, 1320, 0.5, 65. Do NOT use words or vague terms."
+          },
+          "unit": {
+            "type": "string",
+            "description": "Standardized unit - expanded list",
+            "enum": ["feet", "miles", "meters", "acres", "square_feet", "days", "years", "months", "hours", "USD", "dBA", "MW", "percent"]
+          },
+          "section": {
+            "type": ["string", "null"],
+            "description": "Section reference. Null if not stated."
+          }
+        }
+      }
+    }
+  }
+}

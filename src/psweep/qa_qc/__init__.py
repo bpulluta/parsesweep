@@ -47,7 +47,6 @@ from .comparison_engine import (
     FieldComparison,
 )
 from .report_generator import ReportGenerator
-from .utils import find_companion_qaqc_schema
 
 __all__ = [
     "ModelDetector",
@@ -57,7 +56,6 @@ __all__ = [
     "ComparisonResult",
     "FieldComparison",
     "ReportGenerator",
-    "find_companion_qaqc_schema",
 ]
 
 __version__ = "2.0.0"

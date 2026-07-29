@@ -8,12 +8,7 @@ from .document_utils import (
 )
 from .document_extractor import DocumentExtractor, ExtractionResult
 from .llm_client import LLMClient
-from .schema_utils import (
-    load_schema,
-    validate_schema,
-    get_schema_fields,
-    get_required_fields,
-)
+from .schema_utils import load_schema
 
 
 __all__ = [
@@ -25,7 +20,4 @@ __all__ = [
     "is_supported_document",
     "SUPPORTED_EXTENSIONS",
     "load_schema",
-    "validate_schema",
-    "get_schema_fields",
-    "get_required_fields",
 ]

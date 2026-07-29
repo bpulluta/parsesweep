@@ -216,17 +216,7 @@ class ContentSampler:
 
     @classmethod
     def extract_text(cls, file_path: str) -> str:
-        """Extract text from file based on extension.
-
-        Args:
-            file_path: Path to the file
-
-        Returns:
-            Extracted text
-
-        Raises:
-            ValueError: If extraction fails or file type is unsupported
-        """
+        """Extract text from file based on extension."""
         file_path_lower = file_path.lower()
 
         if file_path_lower.endswith(".pdf"):
@@ -245,6 +235,14 @@ class ContentSampler:
             raise ValueError(
                 f"Unsupported file type for content sampling: {file_path}"
             )
+
+    @classmethod
+    def extract_text_from_string(cls, html_content: str) -> str:
+        """Extract text from an HTML string (no file needed)."""
+        from ..extraction.document_utils import _HTMLTextExtractor
+        parser = _HTMLTextExtractor()
+        parser.feed(html_content)
+        return parser.get_text()
 
     @classmethod
     def validate_content(

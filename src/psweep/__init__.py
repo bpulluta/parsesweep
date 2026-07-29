@@ -5,12 +5,22 @@ AI-powered toolkit for extracting structured data from any document type
 using state-of-the-art LLMs. Supports customizable schemas, intelligent
 deduplication, and automated data compilation.
 
-Quick start (programmatic):
+Programmatic API — engine level:
     >>> from psweep import DocumentExtractor, load_schema
-    >>> extractor = DocumentExtractor(api_key="sk-...")
-    >>> schema = load_schema("schemas/my_schema.json")
+    >>> extractor = DocumentExtractor(model="gpt-4o-mini")
+    >>> schema = load_schema("schemas/personal/my_schema.json")
     >>> result = extractor.extract(document_text, schema)
     >>> print(result.data)
+
+Programmatic API — pipeline level (recommended for batch use):
+    >>> from psweep.pipeline import extract_documents, compile_extractions
+    >>> result = extract_documents(
+    ...     "documents/my_domain/",
+    ...     schema="schemas/personal/my_schema.json",
+    ... )
+    >>> print(f"Extracted {result.successful}/{result.total} documents")
+    >>> compiled = compile_extractions(result.output_dir, schema=result.schema_path)
+    >>> print(f"Compiled to {compiled.output_files}")
 
 For document discovery:
     >>> from psweep import DiscoveryEngine, DiscoveryRequest
@@ -52,6 +62,28 @@ from psweep.discovery import (  # noqa: E402
     DiscoveryResult,
 )
 
+# Pipeline API (orchestration — no CLI deps)
+from psweep.pipeline import (  # noqa: E402
+    extract_documents,
+    compile_extractions,
+    run_pipeline,
+    ExtractionRunResult,
+    CompilationResult,
+    PipelineResult,
+)
+
+# Typed exceptions
+from psweep.exceptions import (  # noqa: E402
+    ParseSweepError,
+    ConfigurationError,
+    SchemaError,
+    ExtractionError,
+    CompilationError,
+    DiscoveryError,
+    PipelineError,
+    APIKeyError,
+)
+
 __all__ = [
     # Version metadata
     "__version__",
@@ -60,13 +92,29 @@ __all__ = [
     # Paths
     "PACKAGE_ROOT",
     "PROJECT_ROOT",
-    # Extraction
+    # Extraction engine
     "DocumentExtractor",
     "ExtractionResult",
     "load_schema",
     "extract_text_from_document",
-    # Discovery
+    # Discovery engine
     "DiscoveryEngine",
     "DiscoveryRequest",
     "DiscoveryResult",
+    # Pipeline API
+    "extract_documents",
+    "compile_extractions",
+    "run_pipeline",
+    "ExtractionRunResult",
+    "CompilationResult",
+    "PipelineResult",
+    # Exceptions
+    "ParseSweepError",
+    "ConfigurationError",
+    "SchemaError",
+    "ExtractionError",
+    "CompilationError",
+    "DiscoveryError",
+    "PipelineError",
+    "APIKeyError",
 ]

@@ -17,7 +17,10 @@ from .exceptions import SchemaMetadataError
 logger = logging.getLogger(__name__)
 
 
-HIGH_SEVERITY_SCHEMA_TOKENS = frozenset(
+# Shared severity token sets used to classify how impactful a field
+# difference is (e.g. by both schema metadata inference and compilation
+# deduplication). Single source of truth — do not duplicate elsewhere.
+HIGH_SEVERITY_TOKENS = frozenset(
     {
         "unit",
         "amount",
@@ -36,7 +39,7 @@ HIGH_SEVERITY_SCHEMA_TOKENS = frozenset(
     }
 )
 
-MEDIUM_SEVERITY_SCHEMA_TOKENS = frozenset(
+MEDIUM_SEVERITY_TOKENS = frozenset(
     {
         "category",
         "type",
@@ -309,61 +312,6 @@ class SchemaMetadata:
 
     # --- Helper Methods ---
 
-    def extract_identifier_from_data(self, data: dict) -> str:
-        """
-        Extract identifier value from data using metadata.
-
-        Args:
-            data: Extracted data dictionary
-
-        Returns:
-            String identifier for the document/entity
-
-        Raises:
-            SchemaMetadataError: If identifier fields are not specified or found
-        """
-        identifier_fields = self.get_identifier_fields()
-
-        # Metadata is required, so identifier_fields will always exist
-        values = []
-        for field_path in identifier_fields:
-            value = self._get_nested_value(data, field_path)
-            if value:
-                values.append(str(value))
-
-        if values:
-            return " - ".join(values)
-
-        # If no values found, that's a data problem, not a schema problem
-        logger.warning(
-            f"Could not extract identifier from data using fields: {identifier_fields}. "
-            f"Data may be incomplete or fields may not exist in extraction."
-        )
-        return "UNKNOWN"
-
-    def extract_context_from_data(self, data: dict) -> Dict[str, Any]:
-        """
-        Extract context fields from data using metadata.
-
-        Args:
-            data: Extracted data dictionary
-
-        Returns:
-            Dictionary of context fields with human-readable names
-        """
-        context = {}
-        context_objects = self.get_context_objects()
-
-        if context_objects:
-            for context_key in context_objects:
-                if context_key in data and isinstance(data[context_key], dict):
-                    for k, v in data[context_key].items():
-                        # Convert camelCase to Title Case with spaces
-                        display_name = self._camel_to_title(k)
-                        context[display_name] = v
-
-        return context
-
     def extract_main_data_array(self, data: dict) -> List[Dict[str, Any]]:
         """
         Extract main data array from extraction results.
@@ -396,45 +344,6 @@ class SchemaMetadata:
             )
 
         return []
-
-    def _get_nested_value(self, data: dict, path: str) -> Any:
-        """
-        Get value from nested dict using dot notation path.
-
-        Args:
-            data: Dictionary to traverse
-            path: Dot-separated path (e.g., "company_info.cik")
-
-        Returns:
-            Value at path, or None if not found
-        """
-        keys = path.split(".")
-        value = data
-
-        for key in keys:
-            if isinstance(value, dict):
-                value = value.get(key)
-                if value is None:
-                    return None
-            else:
-                return None
-
-        return value
-
-    def _camel_to_title(self, text: str) -> str:
-        """
-        Convert camelCase to Title Case with spaces.
-
-        Args:
-            text: camelCase string
-
-        Returns:
-            Title Case string
-        """
-        # Insert space before capital letters
-        result = "".join([" " + c if c.isupper() else c for c in text]).strip()
-        # Title case
-        return result.title()
 
     def get_domain(self) -> str:
         """Get domain/category from metadata."""
@@ -511,7 +420,7 @@ class SchemaMetadata:
             return "high"
 
         if any(
-            token in normalized_name for token in HIGH_SEVERITY_SCHEMA_TOKENS
+            token in normalized_name for token in HIGH_SEVERITY_TOKENS
         ):
             return "high"
 
@@ -519,7 +428,7 @@ class SchemaMetadata:
             return "medium"
 
         if any(
-            token in normalized_name for token in MEDIUM_SEVERITY_SCHEMA_TOKENS
+            token in normalized_name for token in MEDIUM_SEVERITY_TOKENS
         ):
             return "medium"
 

@@ -1,0 +1,22 @@
+# Solar Ordinances — local-document extraction config
+# Usage: pixi run psweep run --config config/solar/run.yaml
+
+domain: solar
+
+models:
+  primary: compassop-gpt-4.1
+  secondary: compassop-gpt-4.1-mini
+
+extraction:
+  model: primary
+  input_dir: documents/solar/
+  schema: schemas/personal/solar_ordinance_schema.json
+  output_dir: extracted/solar/
+  max_context: 600000
+
+compilation:
+  input_dir: extracted/solar/
+  schema: schemas/personal/solar_ordinance_schema.json
+  output_dir: compiled/solar/
+  output:
+    default_format: both

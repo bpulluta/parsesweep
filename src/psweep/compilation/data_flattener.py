@@ -51,6 +51,30 @@ DEFAULT_UNIT_NORMALIZATIONS = {
 }
 
 
+def humanize_field_name(field_name: str) -> str:
+    """
+    Convert any naming style to clean Title Case.
+
+    Handles snake_case, camelCase, and mixed formats.
+
+    Args:
+        field_name: Raw field name
+
+    Returns:
+        Clean Title Case column name
+
+    Examples:
+        >>> humanize_field_name("charge_type")
+        "Charge Type"
+        >>> humanize_field_name("annualConsumption")
+        "Annual Consumption"
+    """
+    # Handle camelCase and snake_case
+    name = field_name.replace("_", " ")
+    name = "".join([" " + c if c.isupper() else c for c in name]).strip()
+    return " ".join(word.capitalize() for word in name.split())
+
+
 class DataFlattener:
     """
     Flatten nested JSON structures into spreadsheet-friendly rows.
@@ -152,10 +176,7 @@ class DataFlattener:
             >>> flattener.make_column_name("annualConsumption")
             "Annual Consumption"
         """
-        # Handle camelCase and snake_case
-        name = name.replace("_", " ")
-        name = "".join([" " + c if c.isupper() else c for c in name]).strip()
-        return " ".join(word.capitalize() for word in name.split())
+        return humanize_field_name(name)
 
     def handle_array(self, key: str, items: List) -> Dict:
         """
