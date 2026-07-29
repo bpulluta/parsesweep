@@ -558,7 +558,7 @@ def _is_js_rendered_shell(raw_html: str) -> bool:
         parser = _HTMLTextExtractor()
         parser.feed(raw_html)
         text = parser.get_text()
-    except Exception:
+    except Exception:  # noqa: BLE001 - HTML parser failure means we can't judge content; treat as non-shell
         return False
 
     # If a framework is detected AND text is very short, it's a shell

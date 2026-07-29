@@ -140,44 +140,47 @@ class TestGetQaModels:
         
         assert "at least 2 models" in str(exc_info.value)
 
-    def test_custom_models_empty_falls_back_to_defaults(self):
-        """Test empty QAQC_MODELS falls back to defaults."""
+    def test_empty_qaqc_models_raises(self):
+        """Test empty QAQC_MODELS raises ValueError (no silent fallback)."""
         from psweep.qa_qc.model_detector import ModelDetector
-        
-        os.environ["QAQC_MODELS"] = ""
-        os.environ["OPENAI_API_KEY"] = "sk-test"  # Use OpenAI defaults
-        
-        models = ModelDetector.get_qa_models()
-        
-        assert models == ModelDetector.OPENAI_QA_MODELS
 
-    def test_azure_defaults(self):
-        """Test Azure OpenAI defaults are returned."""
+        os.environ["QAQC_MODELS"] = ""
+
+        with pytest.raises(ValueError) as exc_info:
+            ModelDetector.get_qa_models()
+
+        assert "QAQC_MODELS" in str(exc_info.value)
+
+    def test_missing_qaqc_models_raises_with_azure_creds(self):
+        """Test that Azure credentials alone do not supply defaults — QAQC_MODELS required."""
         from psweep.qa_qc.model_detector import ModelDetector
-        
+
         os.environ["AZURE_OPENAI_API_KEY"] = "azure-test-key"
         os.environ["AZURE_OPENAI_ENDPOINT"] = "https://test.openai.azure.com"
-        
-        models = ModelDetector.get_qa_models()
-        
-        assert models == ModelDetector.AZURE_QA_MODELS
+        # QAQC_MODELS intentionally not set
 
-    def test_openai_defaults(self):
-        """Test OpenAI defaults are returned when no Azure config."""
+        with pytest.raises(ValueError) as exc_info:
+            ModelDetector.get_qa_models()
+
+        assert "QAQC_MODELS" in str(exc_info.value)
+
+    def test_missing_qaqc_models_raises_with_openai_creds(self):
+        """Test that OpenAI credentials alone do not supply defaults — QAQC_MODELS required."""
         from psweep.qa_qc.model_detector import ModelDetector
-        
+
         os.environ["OPENAI_API_KEY"] = "sk-test"
-        
-        models = ModelDetector.get_qa_models()
-        
-        assert models == ModelDetector.OPENAI_QA_MODELS
+        # QAQC_MODELS intentionally not set
 
-    def test_defaults_have_at_least_two_models(self):
-        """Test that both default model lists have at least 2 models."""
+        with pytest.raises(ValueError) as exc_info:
+            ModelDetector.get_qa_models()
+
+        assert "QAQC_MODELS" in str(exc_info.value)
+
+    def test_min_models_constant(self):
+        """Test that MIN_MODELS is at least 2."""
         from psweep.qa_qc.model_detector import ModelDetector
-        
-        assert len(ModelDetector.AZURE_QA_MODELS) >= 2
-        assert len(ModelDetector.OPENAI_QA_MODELS) >= 2
+
+        assert ModelDetector.MIN_MODELS >= 2
 
 
 class TestGetProvider:
@@ -298,16 +301,31 @@ class TestGetModelInfo:
     def test_get_model_info_structure(self):
         """Test get_model_info returns expected structure."""
         from psweep.qa_qc.model_detector import ModelDetector
-        
-        os.environ["OPENAI_API_KEY"] = "sk-test"
-        
+
+        os.environ["QAQC_MODELS"] = "model-x,model-y"
+
         info = ModelDetector.get_model_info()
-        
+
         assert "provider" in info
         assert "custom_models_set" in info
         assert "models" in info
+        assert "models_error" in info
         assert "has_azure_key" in info
         assert "has_openai_key" in info
+        assert info["models"] == ["model-x", "model-y"]
+        assert info["models_error"] is None
+
+    def test_get_model_info_without_qaqc_models(self):
+        """Test get_model_info reports error gracefully when QAQC_MODELS is missing."""
+        from psweep.qa_qc.model_detector import ModelDetector
+
+        # QAQC_MODELS not set
+        info = ModelDetector.get_model_info()
+
+        assert info["custom_models_set"] is False
+        assert info["models"] is None
+        assert info["models_error"] is not None
+        assert "QAQC_MODELS" in info["models_error"]
 
     def test_get_model_info_with_custom_models(self):
         """Test get_model_info shows custom models are set."""
