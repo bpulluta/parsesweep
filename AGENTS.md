@@ -3,6 +3,27 @@
 ## Purpose
 These instructions keep work aligned with the accepted ParseSweep production baseline.
 
+## Code Quality Standards (always apply — every change, no exceptions)
+- No legacy code, backward compatibility layers, or deprecated paths
+- No redundancy — single source of truth for every concept
+- No hardcoding — everything configurable via schema or config YAML
+- Modular: each component has one clear responsibility
+- Scalable: must work for 10 targets and 100,000 targets
+- Clean: remove old code when replacing it, never leave dead paths
+- Cohesive: the entire system should feel like one product (CLI style, config patterns, naming)
+- Optimized: prefer efficient approaches (generators over lists, parallel over sequential)
+
+## Config Philosophy
+- Two files per domain: schema (data contract) + config YAML (runtime behavior)
+- Reuse concepts across stages when possible (e.g., nice_to_have_keywords serves classifier AND reviewer)
+- Don't duplicate information between schema and config
+- User-facing config should be minimal — derive what you can from what's already specified
+
+## Before Writing Code
+- Check if the concept already exists elsewhere (don't duplicate)
+- Check if an existing mechanism can be extended (don't add new surface area)
+- Consider: does this scale? Does this add maintenance burden? Is this the simplest solution?
+
 ## Default Operating Mode
 - Treat the contract-first runtime as the source of truth for this repository.
 - Do not reintroduce legacy pathways, compatibility layers, or retired architecture unless explicitly requested by the user.
@@ -13,6 +34,11 @@ These instructions keep work aligned with the accepted ParseSweep production bas
 - Keep changes phase-gated and test-first.
 - Record major decisions in stable user-relevant docs only when they materially affect architecture or operating policy.
 - Use `pixi` for repo commands.
+
+## Commands
+- Use `pixi` for all repo commands.
+- Full pipeline: `pixi run psweep run --config config/<domain>/run.yaml`
+- Run tests: `pixi run pytest`
 
 ## Common Pitfall Warning
 - Avoid tool flows that hang on "Reading changed files" when simple terminal commands are sufficient.

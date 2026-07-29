@@ -1,7 +1,7 @@
 # ParseSweep
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
+[![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
 
 **AI-powered document extraction pipeline.**
 
@@ -113,6 +113,7 @@ psweep compile --config config/tariffs/run.yaml
 
 | Command | Purpose |
 |---------|---------|
+| `run` | Run full pipeline (discover → extract → compile) from a config file |
 | `extract` | Extract structured data from documents to JSON |
 | `compile` | Merge extracted JSONs into Excel/CSV with deduplication |
 | `discover` | Find and download documents from the web |
@@ -330,7 +331,7 @@ Run 2+ models on the same documents to compare outputs:
 
 ```bash
 pixi run psweep extract --config config/my_domain/run.yaml --enable-qa-qc
-pixi run psweep compare --config config/my_domain/run.yaml
+pixi run psweep compare extracted/my_domain/qa_qc --schema schemas/personal/my_domain_schema.json
 ```
 
 Configure in the `qaqc:` section of your config:
