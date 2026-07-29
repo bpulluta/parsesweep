@@ -295,17 +295,47 @@ def run(
         extra_flags=flags,
     )
 
-    for stage_name, cmd in stage_cmds:
-        view.section(stage_name.upper())
+    _stage_labels = {
+        "discover": "Discovering documents",
+        "extract": "Extracting data",
+        "compile": "Compiling results",
+    }
+    total_stages = len(stage_cmds)
+    for i, (stage_name, cmd) in enumerate(stage_cmds, 1):
+        view.phase(
+            f"Phase {i}/{total_stages}: {_stage_labels.get(stage_name, stage_name.title())}"
+        )
         result = subprocess.run(cmd)
         if result.returncode != 0:
             view.error(f"Stage '{stage_name}' failed (exit {result.returncode})")
             raise typer.Exit(result.returncode)
 
-    view.summary(
-        {"Status": "complete", "Stages": " → ".join(stages_list)},
-        title="Pipeline Complete",
-    )
+    # Build a richer post-run summary from on-disk artifacts.
+    summary_rows: dict[str, str] = {
+        "Status": "complete",
+        "Stages": " → ".join(stages_list),
+    }
+    final_curated_dir = Path(f"discovered/{domain}/curated")
+    if final_curated_dir.exists():
+        doc_count = sum(
+            1
+            for f in final_curated_dir.rglob("*")
+            if f.is_file() and ".text" not in str(f) and f.suffix != ".json"
+        )
+        if doc_count:
+            summary_rows["Documents found"] = str(doc_count)
+    if extraction_dir.exists():
+        manifests_dir = extraction_dir / "run_manifests"
+        all_json = sum(1 for _ in extraction_dir.rglob("*.json"))
+        manifest_json = (
+            sum(1 for _ in manifests_dir.rglob("*.json"))
+            if manifests_dir.exists()
+            else 0
+        )
+        final_extracted = all_json - manifest_json
+        if final_extracted:
+            summary_rows["Extracted"] = str(final_extracted)
+    view.summary(summary_rows, title="Pipeline Complete")
 
 
 # ---------------------------------------------------------------------------
