@@ -4,6 +4,7 @@ from typing import Dict, Optional
 from dataclasses import dataclass, field
 from datetime import datetime
 
+from psweep.extraction.llm_factory import DEFAULT_MODEL
 from psweep.utils.model_pricing import get_model_pricing
 
 
@@ -11,7 +12,7 @@ from psweep.utils.model_pricing import get_model_pricing
 class CostTracker:
     """Track API costs in real-time during extraction operations."""
 
-    model: str = "gpt-4o-mini"
+    model: str = DEFAULT_MODEL
     total_input_tokens: int = 0
     total_output_tokens: int = 0
     total_requests: int = 0

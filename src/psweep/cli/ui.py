@@ -33,6 +33,8 @@ from rich.prompt import Prompt, Confirm
 from rich.syntax import Syntax
 from rich.tree import Tree
 
+from psweep.extraction.llm_factory import DEFAULT_MODEL
+
 # Global console instance shared by the whole CLI (and the logging RichHandler,
 # so live displays and log records serialize onto one stream).
 console = Console()
@@ -489,7 +491,7 @@ def print_cost_estimate(
     estimated_tokens: int,
     estimated_cost: float,
     estimated_time: float,
-    model: str = "gpt-4o-mini",
+    model: str = DEFAULT_MODEL,
 ) -> None:
     """Print a formatted cost estimation panel."""
     rows = [

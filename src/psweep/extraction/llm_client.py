@@ -20,7 +20,7 @@ from litellm import completion, completion_cost
 
 from ..utils.model_pricing import get_pricing
 from ..utils.exceptions import ExtractionError
-from .llm_factory import detect_provider
+from .llm_factory import DEFAULT_MODEL, detect_provider
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +38,7 @@ class LLMClient:
     def __init__(
         self,
         api_key: str = None,
-        model: str = "gpt-4o-mini",
+        model: str = DEFAULT_MODEL,
         provider: str = None,
         azure_endpoint: str = None,
         azure_api_version: str = None,
