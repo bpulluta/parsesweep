@@ -173,58 +173,6 @@ def get_nested_value(obj: Dict[str, Any], dot_path: str) -> Any:
     return current
 
 
-def create_item_key(
-    item: Dict[str, Any],
-    identifier_fields: List[str],
-    fuzzy_fields: Optional[List[str]] = None,
-) -> Tuple:
-    """
-    Create a unique key tuple for an item based on identifier fields.
-
-    Values are normalized for consistent matching:
-    - Strings: lowercase, stripped whitespace
-    - Fuzzy fields: token-normalized (removes stop words, sorts keywords)
-    - None values preserved
-
-    Args:
-        item: Data item (dict)
-        identifier_fields: List of dot-notation field paths (e.g., ["metadata.id", "name"])
-        fuzzy_fields: Optional list of fields to apply token normalization for fuzzy matching
-
-    Returns:
-        Tuple of normalized identifier values
-
-    Examples:
-        >>> item = {"metadata": {"id": "123"}, "name": "Test Item"}
-        >>> create_item_key(item, ["metadata.id", "name"])
-        ("123", "test item")
-
-        >>> item = {"applies_to": "work in preparation of the site for drilling"}
-        >>> create_item_key(item, ["applies_to"], fuzzy_fields=["applies_to"])
-        ("drilling preparation site",)
-    """
-    values = []
-    fuzzy_set = set(fuzzy_fields) if fuzzy_fields else set()
-
-    for field_path in identifier_fields:
-        value = get_nested_value(item, field_path)
-
-        # Normalize value for key creation
-        if value is None:
-            values.append(None)
-        elif isinstance(value, str):
-            # Apply token normalization for fuzzy fields
-            if field_path in fuzzy_set:
-                values.append(normalize_for_matching(value))
-            else:
-                # Standard normalization: lowercase and strip
-                values.append(value.strip().lower())
-        else:
-            values.append(value)
-
-    return tuple(values)
-
-
 def create_item_index(
     items: List[Dict[str, Any]],
     identifier_fields: List[str],
@@ -232,6 +180,11 @@ def create_item_index(
 ) -> Dict[Tuple, Dict[str, Any]]:
     """
     Create an index of items by their identifier fields.
+
+    Values are normalized for consistent matching:
+    - Strings: lowercase, stripped whitespace
+    - Fuzzy fields: token-normalized (removes stop words, sorts keywords)
+    - None values preserved
 
     Args:
         items: List of data items (dicts)
@@ -251,10 +204,27 @@ def create_item_index(
         "Item 1"
     """
     index = {}
+    fuzzy_set = set(fuzzy_fields) if fuzzy_fields else set()
 
     for item in items:
-        key = create_item_key(item, identifier_fields, fuzzy_fields)
-        index[key] = item
+        values = []
+        for field_path in identifier_fields:
+            value = get_nested_value(item, field_path)
+
+            # Normalize value for key creation
+            if value is None:
+                values.append(None)
+            elif isinstance(value, str):
+                # Apply token normalization for fuzzy fields
+                if field_path in fuzzy_set:
+                    values.append(normalize_for_matching(value))
+                else:
+                    # Standard normalization: lowercase and strip
+                    values.append(value.strip().lower())
+            else:
+                values.append(value)
+
+        index[tuple(values)] = item
 
     return index
 
@@ -311,50 +281,3 @@ def map_key_fields_to_columns(
             )
 
     return mapped_cols
-
-
-def match_items_across_sources(
-    source_a_items: List[Dict[str, Any]],
-    source_b_items: List[Dict[str, Any]],
-    identifier_fields: List[str],
-) -> Dict[Tuple, Dict[str, Optional[Dict[str, Any]]]]:
-    """
-    Match items across two sources based on identifier fields.
-
-    Args:
-        source_a_items: Items from first source
-        source_b_items: Items from second source
-        identifier_fields: Fields to use for matching
-
-    Returns:
-        Dictionary mapping identifier tuples to:
-        {
-            "source_a": item_from_a or None,
-            "source_b": item_from_b or None
-        }
-
-    Examples:
-        >>> items_a = [{"id": "1", "value": "A"}]
-        >>> items_b = [{"id": "1", "value": "B"}, {"id": "2", "value": "C"}]
-        >>> matches = match_items_across_sources(items_a, items_b, ["id"])
-        >>> matches[("1",)]["source_a"]["value"]
-        "A"
-        >>> matches[("2",)]["source_a"]  # Missing from source_a
-        None
-    """
-    # Create indexes
-    index_a = create_item_index(source_a_items, identifier_fields)
-    index_b = create_item_index(source_b_items, identifier_fields)
-
-    # Find all unique identifiers
-    all_keys = set(index_a.keys()) | set(index_b.keys())
-
-    # Build matched result
-    matches = {}
-    for key in all_keys:
-        matches[key] = {
-            "source_a": index_a.get(key),
-            "source_b": index_b.get(key),
-        }
-
-    return matches
