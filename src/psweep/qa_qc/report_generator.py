@@ -396,42 +396,6 @@ class ReportGenerator:
         )
         rows.append({"Metric": metric_name, "Value": value})
 
-    def _build_comparison_df(
-        self, comparisons: List[FieldComparison], models: List[str]
-    ) -> pd.DataFrame:
-        """
-        Build comparison DataFrame from FieldComparison list.
-
-        Args:
-            comparisons: List of FieldComparison objects
-            models: List of model names for column ordering
-
-        Returns:
-            DataFrame with columns: Item ID, Field Path, Model values..., Agreement, Needs Review, Notes
-        """
-        if not comparisons:
-            return pd.DataFrame()
-
-        rows = []
-        for fc in comparisons:
-            row = {
-                "Item ID": self._truncate_value(fc.item_id),
-                "Field Path": fc.field_path,
-            }
-
-            # Add model values in consistent order
-            for model in models:
-                value = fc.model_values.get(model, "N/A")
-                row[f"Model: {model}"] = self._truncate_value(value)
-
-            row["Agreement"] = fc.agreement_score
-            row["Needs Review"] = "YES" if fc.needs_review else "NO"
-            row["Notes"] = fc.notes or ""
-
-            rows.append(row)
-
-        return pd.DataFrame(rows)
-
     def _truncate_value(self, value: Any) -> str:
         """Truncate long values for readability."""
         if value is None:
@@ -441,29 +405,6 @@ class ReportGenerator:
         if len(str_value) > MAX_VALUE_LENGTH:
             return str_value[: MAX_VALUE_LENGTH - 3] + "..."
         return str_value
-
-    def _apply_formatting(self, excel_path: Path, num_models: int) -> None:
-        """
-        Apply color coding and formatting to Excel.
-
-        Colors rows based on agreement level:
-        - Green: Full agreement (N/N)
-        - Yellow: Partial agreement (>50%)
-        - Red: Low agreement (≤50%)
-        - Gray: Missing items
-        """
-        wb = load_workbook(excel_path)
-
-        # Format Summary sheet
-        if "Summary" in wb.sheetnames:
-            self._format_summary_sheet(wb["Summary"])
-
-        # Format comparison sheets
-        for sheet_name in ["Context Comparison", "Item Comparison"]:
-            if sheet_name in wb.sheetnames:
-                self._format_comparison_sheet(wb[sheet_name], num_models)
-
-        wb.save(excel_path)
 
     def _format_summary_sheet(self, ws) -> None:
         """Format the Summary sheet."""
@@ -919,45 +860,6 @@ class ReportGenerator:
 
         # Auto-size columns
         self._auto_size_columns(ws)
-
-    def _generate_csv(
-        self, result: ComparisonResult, output_path: Path
-    ) -> None:
-        """
-        Generate CSV (same data as Excel but no formatting).
-
-        Combines context and item comparisons into a single CSV.
-        """
-        # Combine all comparisons
-        all_comparisons = result.context_comparisons + result.item_comparisons
-
-        if not all_comparisons:
-            # Create empty CSV with headers
-            pd.DataFrame(
-                columns=[
-                    "Item ID",
-                    "Field Path",
-                    "Agreement",
-                    "Needs Review",
-                    "Notes",
-                ]
-            ).to_csv(output_path, index=False)
-            return
-
-        # Build combined DataFrame
-        df = self._build_comparison_df(all_comparisons, result.models)
-
-        # Add a Type column to distinguish context vs item comparisons
-        df.insert(
-            0,
-            "Type",
-            [
-                "Context" if i < len(result.context_comparisons) else "Item"
-                for i in range(len(all_comparisons))
-            ],
-        )
-
-        df.to_csv(output_path, index=False)
 
     def _generate_item_centric_csv(
         self, result: ComparisonResult, output_path: Path

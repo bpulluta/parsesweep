@@ -23,6 +23,9 @@ extraction:
   schema: schemas/personal/your_schema.json
   input_dir: documents/your_domain        # source documents folder
   output_dir: extracted/your_domain
+  # model: primary                        # model tier for extraction (primary/secondary)
+  # enable_qaqc: false                    # run multi-model QA/QC during extraction
+  # qaqc_lane: quantitative               # which QA/QC lane to run (see qaqc: section)
   # max_context: 600000                   # chars per document (default: 400000)
   # pages:                                 # how to select pages from large PDFs
   #   csv: config/your_domain/page_ranges.csv  # manual ranges per file (wins)
@@ -37,6 +40,8 @@ compilation:
   schema: schemas/personal/your_schema.json
   input_dir: extracted/your_domain        # matches extraction output_dir
   output_dir: compiled/your_domain
+  # dry_run: false                        # preview dedup/merges without writing output
+  # fail_on_suspicious: false             # fail compile when suspicious dedup groups found
   deduplication:
     key_fields: [field1, field2, field3]  # fields that make an item unique
     ignore_fields: [notes]                # excluded from dedup comparison
@@ -72,6 +77,8 @@ compilation:
 #   selection:
 #     max_per_target: 3
 #     exclude: [news, blog, press release]
+#   browser_mode: false                   # true = download via headless Chrome (bot-protected sites)
+#   partition_by: [state, jurisdiction]   # output layout by_<field>/<value>/… from target metadata
 #   document_review:
 #     document_description: "the authoritative source document"
 #     keep_top: 1

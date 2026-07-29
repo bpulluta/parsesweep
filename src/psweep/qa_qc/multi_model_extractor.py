@@ -38,7 +38,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from .utils import sanitize_model_name
-from psweep.utils.error_taxonomy import (
+from ..utils.error_taxonomy import (
     build_error_record,
     normalize_error_records,
     summarize_error_records,
@@ -96,7 +96,7 @@ def run_multi_model_extraction(
         Dict mapping model name to ModelExtractionResult
     """
     # Import here to avoid circular imports
-    from psweep.extraction import DocumentExtractor
+    from ..extraction import DocumentExtractor
 
     # Create output directory for this document
     doc_output_dir = Path(output_dir) / "qa_qc" / doc_name

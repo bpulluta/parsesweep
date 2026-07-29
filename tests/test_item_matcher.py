@@ -11,10 +11,8 @@ import pytest
 import pandas as pd
 from psweep.utils.item_matcher import (
     get_nested_value,
-    create_item_key,
     create_item_index,
     map_key_fields_to_columns,
-    match_items_across_sources,
     extract_key_tokens,
     normalize_for_matching
 )
@@ -51,66 +49,6 @@ class TestGetNestedValue:
         """Test when partial path exists but full path doesn't."""
         obj = {"metadata": {"id": "123"}}
         assert get_nested_value(obj, "metadata.jurisdiction.state") is None
-
-
-class TestCreateItemKey:
-    """Test create_item_key function."""
-    
-    def test_single_identifier(self):
-        """Test with single identifier field."""
-        item = {"id": "123"}
-        key = create_item_key(item, ["id"])
-        assert key == ("123",)
-    
-    def test_multiple_identifiers(self):
-        """Test with multiple identifier fields - values normalized to lowercase."""
-        item = {"id": "123", "name": "Test"}
-        key = create_item_key(item, ["id", "name"])
-        assert key == ("123", "test")  # Normalized to lowercase for case-insensitive matching
-    
-    def test_nested_identifier(self):
-        """Test with nested identifier field."""
-        item = {"metadata": {"id": "123"}, "name": "Test"}
-        key = create_item_key(item, ["metadata.id", "name"])
-        assert key == ("123", "test")  # Normalized to lowercase
-    
-    def test_missing_field_in_key(self):
-        """Test when identifier field is missing."""
-        item = {"name": "Test"}
-        key = create_item_key(item, ["id", "name"])
-        assert key == (None, "test")  # Normalized to lowercase
-    
-    def test_whitespace_normalization(self):
-        """Test that string values are stripped and lowercased."""
-        item = {"name": "  Test  "}
-        key = create_item_key(item, ["name"])
-        assert key == ("test",)  # Stripped and lowercased
-
-    def test_fuzzy_fields_normalization(self):
-        """Test fuzzy fields use token-based normalization."""
-        item1 = {"category": "Working hours", "applies_to": "site preparation for drilling"}
-        item2 = {"category": "Working hours", "applies_to": "work in preparation of the site for drilling"}
-        
-        # With fuzzy_fields, both should produce the same key
-        key1 = create_item_key(item1, ["category", "applies_to"], fuzzy_fields=["applies_to"])
-        key2 = create_item_key(item2, ["category", "applies_to"], fuzzy_fields=["applies_to"])
-        
-        assert key1 == key2  # Same key because tokens match
-    
-    def test_fuzzy_fields_vs_standard(self):
-        """Test that fuzzy_fields produces different keys than standard normalization."""
-        item1 = {"applies_to": "site preparation for drilling"}
-        item2 = {"applies_to": "work in preparation of the site for drilling"}
-        
-        # Without fuzzy_fields, keys are different
-        key1_standard = create_item_key(item1, ["applies_to"])
-        key2_standard = create_item_key(item2, ["applies_to"])
-        assert key1_standard != key2_standard
-        
-        # With fuzzy_fields, keys are the same
-        key1_fuzzy = create_item_key(item1, ["applies_to"], fuzzy_fields=["applies_to"])
-        key2_fuzzy = create_item_key(item2, ["applies_to"], fuzzy_fields=["applies_to"])
-        assert key1_fuzzy == key2_fuzzy
 
 
 class TestTokenNormalization:
@@ -244,86 +182,3 @@ class TestMapKeyFieldsToColumns:
         df = pd.DataFrame()
         mapped = map_key_fields_to_columns(df, ["field1"])
         assert mapped == []
-
-
-class TestMatchItemsAcrossSources:
-    """Test match_items_across_sources function."""
-    
-    def test_perfect_match(self):
-        """Test when all items match between sources."""
-        items_a = [
-            {"id": "1", "value": "A1"},
-            {"id": "2", "value": "A2"}
-        ]
-        items_b = [
-            {"id": "1", "value": "B1"},
-            {"id": "2", "value": "B2"}
-        ]
-        
-        matches = match_items_across_sources(items_a, items_b, ["id"])
-        
-        assert len(matches) == 2
-        assert matches[("1",)]["source_a"]["value"] == "A1"
-        assert matches[("1",)]["source_b"]["value"] == "B1"
-        assert matches[("2",)]["source_a"]["value"] == "A2"
-        assert matches[("2",)]["source_b"]["value"] == "B2"
-    
-    def test_items_only_in_source_a(self):
-        """Test items present only in first source."""
-        items_a = [
-            {"id": "1", "value": "A1"},
-            {"id": "2", "value": "A2"}
-        ]
-        items_b = [
-            {"id": "1", "value": "B1"}
-        ]
-        
-        matches = match_items_across_sources(items_a, items_b, ["id"])
-        
-        assert len(matches) == 2
-        assert matches[("1",)]["source_a"] is not None
-        assert matches[("1",)]["source_b"] is not None
-        assert matches[("2",)]["source_a"] is not None
-        assert matches[("2",)]["source_b"] is None
-    
-    def test_items_only_in_source_b(self):
-        """Test items present only in second source."""
-        items_a = [
-            {"id": "1", "value": "A1"}
-        ]
-        items_b = [
-            {"id": "1", "value": "B1"},
-            {"id": "2", "value": "B2"}
-        ]
-        
-        matches = match_items_across_sources(items_a, items_b, ["id"])
-        
-        assert len(matches) == 2
-        assert matches[("1",)]["source_a"] is not None
-        assert matches[("1",)]["source_b"] is not None
-        assert matches[("2",)]["source_a"] is None
-        assert matches[("2",)]["source_b"] is not None
-    
-    def test_composite_key_matching(self):
-        """Test matching with composite keys - keys are normalized to lowercase."""
-        items_a = [
-            {"state": "CA", "city": "LA", "value": 1}
-        ]
-        items_b = [
-            {"state": "CA", "city": "LA", "value": 2},
-            {"state": "CA", "city": "SF", "value": 3}
-        ]
-        
-        matches = match_items_across_sources(items_a, items_b, ["state", "city"])
-        
-        assert len(matches) == 2
-        # Keys are normalized to lowercase
-        assert matches[("ca", "la")]["source_a"]["value"] == 1
-        assert matches[("ca", "la")]["source_b"]["value"] == 2
-        assert matches[("ca", "sf")]["source_a"] is None
-        assert matches[("ca", "sf")]["source_b"]["value"] == 3
-    
-    def test_empty_sources(self):
-        """Test with empty item lists."""
-        matches = match_items_across_sources([], [], ["id"])
-        assert len(matches) == 0

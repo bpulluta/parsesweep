@@ -324,8 +324,8 @@ When the user only has raw documents for a new domain, guide them through the cu
 4. Use the closest existing schema only as a reference for field patterns and domain phrasing.
 5. Keep the separation explicit: schema owns extraction contract and minimal dedup semantics; pack YAML owns runtime modules, QA/QC behavior, and environment/runtime tuning.
 6. Run `pixi run psweep check-schema ...` and fix schema issues.
-7. Scaffold the runtime surface with `pixi run psweep init-domain-pack --name <domain> --schema <schema> --with-workspace --with-config`.
-8. Validate the runtime seam with `pixi run psweep check-runtime --pack schemas/domain_packs/<domain>/pack.yaml --profile default`.
+7. Keep the runtime config-driven: add or update `config/<domain>/run.yaml` instead of inventing pack/runtime commands.
+8. Validate the resolved command inputs with `pixi run psweep discover --config config/<domain>/run.yaml --validate-config`, then smoke-test `extract` and `compile`.
 9. Run `extract` on 1-2 documents first, then `compile`, then optional `compare` QA/QC runs.
 10. Iterate on schema fields, page ranges, and qualitative review until extraction quality is acceptable.
 

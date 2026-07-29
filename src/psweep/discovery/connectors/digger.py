@@ -52,6 +52,11 @@ def _is_navigation_link(link_text: str) -> bool:
     return bool(_NAVIGATION_SKIP_PATTERNS.match(text))
 
 
+def _normalize_budget(value: int, *, minimum: int = 0) -> int:
+    """Clamp an integer budget (max pages/files/depth/timeout) to a minimum."""
+    return max(minimum, int(value))
+
+
 class NullDiggerConnector(BaseDiggerConnector):
     """
     Default digger connector placeholder.
@@ -61,19 +66,11 @@ class NullDiggerConnector(BaseDiggerConnector):
     """
 
     @staticmethod
-    def _normalize_budget(value: int, *, minimum: int = 0) -> int:
-        return max(minimum, int(value))
-
-    @staticmethod
     def _effective_item_limit(
         candidate_urls: list[str], digger_input: DiggerInput
     ) -> int:
-        max_pages = NullDiggerConnector._normalize_budget(
-            digger_input.max_pages
-        )
-        max_files = NullDiggerConnector._normalize_budget(
-            digger_input.max_files
-        )
+        max_pages = _normalize_budget(digger_input.max_pages)
+        max_files = _normalize_budget(digger_input.max_files)
         return min(len(candidate_urls), max_pages, max_files)
 
     @staticmethod
@@ -245,10 +242,10 @@ class NullDiggerConnector(BaseDiggerConnector):
         return seed_candidates, "seed_only"
 
     def discover(self, digger_input: DiggerInput) -> list[DiggerArtifact]:
-        effective_max_depth = self._normalize_budget(digger_input.max_depth)
-        effective_max_pages = self._normalize_budget(digger_input.max_pages)
-        effective_max_files = self._normalize_budget(digger_input.max_files)
-        effective_timeout_seconds = self._normalize_budget(
+        effective_max_depth = _normalize_budget(digger_input.max_depth)
+        effective_max_pages = _normalize_budget(digger_input.max_pages)
+        effective_max_files = _normalize_budget(digger_input.max_files)
+        effective_timeout_seconds = _normalize_budget(
             digger_input.timeout_seconds
         )
         candidate_urls, discovery_mode = self._resolve_candidate_urls(
@@ -336,10 +333,6 @@ class HttpDiggerConnector(BaseDiggerConnector):
         "User-Agent": "ParseSweep/2.0 (+discovery)"
     }
     _USER_AGENT = "ParseSweep/2.0 (+discovery)"
-
-    @staticmethod
-    def _normalize_budget(value: int, *, minimum: int = 0) -> int:
-        return max(minimum, int(value))
 
     @staticmethod
     def _is_http_url(url: str) -> bool:
@@ -830,10 +823,10 @@ class HttpDiggerConnector(BaseDiggerConnector):
 
     def discover(self, digger_input: DiggerInput) -> list[DiggerArtifact]:
         started_at = time.monotonic()
-        effective_max_depth = self._normalize_budget(digger_input.max_depth)
-        effective_max_pages = self._normalize_budget(digger_input.max_pages)
-        effective_max_files = self._normalize_budget(digger_input.max_files)
-        effective_timeout_seconds = self._normalize_budget(
+        effective_max_depth = _normalize_budget(digger_input.max_depth)
+        effective_max_pages = _normalize_budget(digger_input.max_pages)
+        effective_max_files = _normalize_budget(digger_input.max_files)
+        effective_timeout_seconds = _normalize_budget(
             digger_input.timeout_seconds
         )
         extra_params = (

@@ -1,0 +1,258 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$metadata": {
+    "extraction": {
+      "main_data_array": "requirements",
+      "identifier_fields": [
+        "jurisdiction.state",
+        "jurisdiction.county"
+      ],
+      "context_objects": [
+        "jurisdiction",
+        "document_applicability"
+      ]
+    },
+    "compilation": {
+      "deduplication": {
+        "key_fields": [
+          "state",
+          "county",
+          "subdivision",
+          "feature",
+          "specific_subject",
+          "applies_to",
+          "value",
+          "value_type",
+          "units",
+          "condition"
+        ],
+        "ignore_fields": [
+          "details",
+          "notes"
+        ]
+      }
+    }
+  },
+  "title": "Solar Energy Ordinance Extraction Schema",
+  "description": "Regulatory requirements for solar photovoltaic energy generation facilities. SCOPE: utility-scale solar farms, commercial solar installations, ground-mounted solar arrays, solar energy overlay districts, and solar energy generation facilities. EXCLUDE: wind energy, geothermal energy, biomass, battery storage, and other non-solar technologies unless a requirement explicitly applies to solar within the cited section. ALSO EXCLUDE: small residential rooftop solar exemptions unless the document regulates commercial or utility-scale solar. CRITICAL FILTERING: only extract provisions that explicitly mention solar, photovoltaic, PV, solar panels, solar arrays, solar facilities, or clearly apply to solar in context.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "jurisdiction",
+    "requirements",
+    "document_applicability"
+  ],
+  "properties": {
+    "document_applicability": {
+      "type": "object",
+      "description": "Scope verification and filtering transparency for solar ordinances.",
+      "additionalProperties": false,
+      "required": [
+        "applies_to_solar",
+        "extraction_approach"
+      ],
+      "properties": {
+        "applies_to_solar": {
+          "type": "boolean",
+          "description": "Set to true only if the document contains provisions regulating utility-scale or commercial solar facilities. Set to false if it only covers other technologies or only small residential solar exemptions."
+        },
+        "extraction_approach": {
+          "type": "string",
+          "description": "Document which sections were extracted and which sections were excluded. If the document is a zoning code that lists solar as a permitted or conditional use in certain zones, extract only the solar use classification and the zone-specific standards that clearly apply to solar. Use format: 'Extracted [sections]; Excluded [sections]'.",
+          "examples": [
+            "Extracted Section 30 Solar Energy Overlay District; Excluded battery-storage CUP references and general zoning text not specific to solar.",
+            "Extracted definitions and zoning-district permissions for Solar Energy Farm; Excluded private-road and non-solar definitions."
+          ]
+        },
+        "relevant_sections": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Solar-related sections cited exactly as written. Null if none."
+        }
+      }
+    },
+    "jurisdiction": {
+      "type": "object",
+      "description": "Geographic and regulatory context for the ordinance.",
+      "additionalProperties": false,
+      "required": [
+        "state",
+        "county"
+      ],
+      "properties": {
+        "state": {
+          "type": "string",
+          "description": "State name exactly as written in the document."
+        },
+        "county": {
+          "type": "string",
+          "description": "County name exactly as written, keeping the County suffix if present. For municipal ordinances, use the governing county if it is explicit in the document."
+        },
+        "subdivision": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "City, township, or other subdivision if the ordinance applies below the county level. Null if county-wide or not applicable."
+        },
+        "jurisdiction_type": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Jurisdiction type exactly as stated, such as County, City, Township, Town, Village, or Borough."
+        },
+        "year": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "description": "Most relevant ordinance year, typically adoption, amendment, or effective year. Use a four-digit integer when determinable."
+        }
+      }
+    },
+    "requirements": {
+      "type": "array",
+      "description": "Regulatory requirements applicable to solar facilities. EXTRACTION RULES: (1) Split one regulation into separate rows when it covers different features, different facility types, or different dimensional subjects. (2) Create separate rows for participating and non-participating setbacks only if the ordinance distinguishes them. (3) Extract tiered or alternative values as separate rows with appropriate condition and value_type values. (4) Do not create placeholder rows for topics the ordinance does not address. (5) Keep non-solar technologies out unless the solar section explicitly cross-references them in a way that changes the solar requirement.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "feature"
+        ],
+        "properties": {
+          "feature": {
+            "type": "string",
+            "description": "Standardized solar requirement feature name used for cross-jurisdiction comparison.",
+            "enum": [
+              "structures (participating)",
+              "property line (participating)",
+              "structures (non-participating)",
+              "property line (non-participating)",
+              "roads",
+              "railroads",
+              "transmission",
+              "water",
+              "noise",
+              "maximum height",
+              "maximum project size",
+              "minimum lot size",
+              "maximum lot size",
+              "density",
+              "coverage",
+              "moratorium",
+              "decommissioning",
+              "glare",
+              "visual impact",
+              "primary use districts",
+              "special use districts",
+              "accessory use districts",
+              "year"
+            ]
+          },
+          "specific_subject": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Specific dimensional or contextual subject within the feature. Examples: total area, minimum width, minimum depth, screening height, timeline for removal, financial security amount, from centerline, or from right-of-way edge. Use null when the feature itself is already specific enough."
+          },
+          "applies_to": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Solar facility type or scope that the requirement applies to. Use the ordinance's own terminology when practical.",
+            "examples": [
+              "Solar Energy Farm",
+              "Solar Energy System",
+              "Solar Energy Overlay District",
+              "Utility-scale solar facility",
+              "Commercial solar energy facility",
+              "Ground-mounted solar systems",
+              "All solar facilities",
+              null
+            ]
+          },
+          "value": {
+            "type": [
+              "number",
+              "string",
+              "null"
+            ],
+            "description": "Primary extracted value. Use numbers without units for fixed numeric values, strings for formulas, ranges, enumerated zone names, or textual requirements such as Required or Prohibited."
+          },
+          "value_type": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "How the value should be interpreted.",
+            "enum": [
+              "fixed_number",
+              "formula",
+              "range",
+              "alternative_option",
+              "tiered",
+              "minimum",
+              "maximum",
+              null
+            ]
+          },
+          "units": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Unit of measurement written in full words when possible. Use null for zoning districts, yes/no requirements, formulas without a unit, or pure text values.",
+            "examples": [
+              "feet",
+              "meters",
+              "miles",
+              "dBA",
+              "acres",
+              "square feet",
+              "MW",
+              "kW",
+              "percent",
+              "days",
+              "years",
+              "USD",
+              "$",
+              null
+            ]
+          },
+          "condition": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Qualifying condition that changes when the requirement applies, such as for facilities exceeding 25 MW, when screening is not provided, during construction, or when multiple lots are included in the district."
+          },
+          "details": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Concise verbatim or near-verbatim excerpt that captures the operative solar requirement language.",
+            "examples": [
+              "Area within each SEOD must be a minimum of 20 acres.",
+              "Solar Energy Farms are only permitted within the AG zoning district under an approved Interim Use Permit.",
+              "A SEOD must be at least 2640 feet from another SEOD.",
+              null
+            ]
+          },
+          "notes": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional analyst note for nuance, exceptions, or cross-references that help interpret the extracted value."
+          }
+        }
+      }
+    }
+  }
+}

@@ -107,3 +107,5 @@ test-v1/
 config/audit/
 dev_docs/
 config/testing/
+
+.serena/

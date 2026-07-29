@@ -10,9 +10,9 @@ logger = logging.getLogger(__name__)
 
 class Config:
     """
-    Global configuration for the permit toolkit.
+    Global configuration for the ParseSweep toolkit.
 
-    Manages paths for data directories, schemas, API keys, and other settings.
+    Manages paths for schemas, API keys, and other settings.
     Can be initialized from environment variables or set programmatically.
     """
 
@@ -28,12 +28,6 @@ class Config:
             self.project_root = self._detect_project_root()
         else:
             self.project_root = Path(project_root)
-
-        # Data directories - organized by state
-        self.data_root = self.project_root / "data"
-        self.permits_dir = self.data_root / "permits"
-        self.extracted_dir = self.data_root / "extracted"
-        self.outputs_dir = self.data_root / "outputs"
 
         # Schema path
         self.schema_dir = self.project_root / "schemas"
@@ -141,41 +135,11 @@ class Config:
         logger.warning(f"Could not detect project root, using: {current}")
         return current
 
-    def setup_directories(self):
-        """Create necessary directories if they don't exist."""
-        directories = [
-            self.data_root,
-            self.permits_dir,
-            self.extracted_dir,
-            self.outputs_dir,
-        ]
-
-        for directory in directories:
-            directory.mkdir(parents=True, exist_ok=True)
-            logger.debug(f"Ensured directory exists: {directory}")
-
-    def get_permits_dir(self, state: str) -> Path:
-        """Get permits directory for a specific state."""
-        return self.data_root / state / "permits"
-
-    def get_extracted_dir(self, state: str) -> Path:
-        """Get extracted data directory for a specific state."""
-        return self.data_root / state / "extracted"
-
-    def get_visualizations_dir(self, state: str) -> Path:
-        """Get visualizations directory for a specific state."""
-        return self.data_root / state / "visualizations"
-
-    def get_reports_dir(self, state: str) -> Path:
-        """Get reports directory for a specific state."""
-        return self.data_root / state / "reports"
-
     def __repr__(self) -> str:
         has_api_key = bool(self.llm_config.get("api_key"))
         return (
             f"Config(\n"
             f"  project_root={self.project_root},\n"
-            f"  data_root={self.data_root},\n"
             f"  provider={self.llm_config.get('provider')},\n"
             f"  api_key={'***' if has_api_key else 'NOT SET'}\n"
             f")"
@@ -200,9 +164,3 @@ def get_config(project_root: Optional[Path] = None) -> Config:
     if _global_config is None:
         _global_config = Config(project_root)
     return _global_config
-
-
-def set_config(config: Config):
-    """Set the global configuration instance."""
-    global _global_config
-    _global_config = config
