@@ -11,8 +11,8 @@ Required steps:
 3. Identify the 4-8 highest-value fields the user needs in the first extraction pass.
 4. Draft a lean schema under `schemas/personal/` with valid `$metadata.extraction`, top-level context objects, and a compact main data array. Use existing schemas only as references, not as something to copy wholesale.
 5. Run `pixi run psweep check-schema <schema>` and fix schema issues.
-6. Run `pixi run psweep init-domain-pack --name <domain> --schema <schema> --with-workspace --with-config`.
-7. Run `pixi run psweep check-runtime --pack schemas/domain_packs/<domain>/pack.yaml --profile default`.
+6. Update or create `config/<domain>/run.yaml` so the workflow stays config-driven.
+7. Validate the resolved command inputs with `pixi run psweep discover --config config/<domain>/run.yaml --validate-config`, then smoke-test `extract` and `compile`.
 8. Extract 1-2 representative documents first, then compile the results.
 9. Review the row shape and missing/error-prone fields, then expand the schema only where the first pass proved it is needed.
 10. If needed, run QA/QC comparison and qualitative review.
