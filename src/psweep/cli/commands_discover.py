@@ -606,6 +606,7 @@ def discover(
         acknowledged_tos_domains=resolved_acknowledged_tos_domains or None,
     )
 
+    view.phase("Scanning for document sources...")
     try:
         with view.live(discover_live):
             result = DiscoveryEngine().run(request)
@@ -621,6 +622,7 @@ def discover(
         click.echo(str(result.manifest_path))
         return
 
+    view.phase("Writing discovery index...")
     view.success(f"Discovery complete (run_id={result.run_id})")
 
     try:

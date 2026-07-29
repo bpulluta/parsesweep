@@ -8,7 +8,9 @@ from typing import Optional
 
 import click
 
-from psweep.cli.ui import console, print_error
+import contextlib
+
+from psweep.cli.ui import console, create_extraction_progress, print_error
 
 
 @click.command()
@@ -126,124 +128,151 @@ def compare(
         sys.exit(1)
 
     results = []
-    view.phase("Comparing model outputs")
+    view.phase("Loading QA/QC extractions")
 
-    for doc_dir in doc_dirs:
-        model_files = {}
-        for file_path in doc_dir.glob("*.json"):
-            if file_path.name in ignored_qaqc_json_files:
-                continue
-            model_files[file_path.stem] = file_path
+    _progress = create_extraction_progress() if not view.is_quiet else None
+    _progress_ctx = _progress if _progress is not None else contextlib.nullcontext()
+    _task = None
+    _writing_phase_announced = False
 
-        if len(model_files) < 2:
-            view.status(
-                "warning",
-                f"Skipping {doc_dir.name}: needs at least 2 model outputs",
-            )
-            continue
+    with _progress_ctx:
+        if _progress is not None:
+            _task = _progress.add_task("Comparing", total=len(doc_dirs))
 
-        try:
-            result = engine.compare_outputs(model_files, doc_dir.name)
-            report_gen.generate_report(result, doc_dir)
+        for doc_dir in doc_dirs:
+            if _progress is not None:
+                _progress.update(_task, description=f"Comparing {doc_dir.name[:50]}")
 
-            results.append(
-                {
-                    "name": doc_dir.name,
-                    "success": True,
-                    "models": result.models,
-                    "items_per_model": result.summary.get("items_per_model", {}),
-                    "full_agreement_pct": result.summary.get("full_agreement_pct", 0),
-                    "needs_review_count": result.summary.get("needs_review_count", 0),
-                    "total_comparisons": result.summary.get("total_comparisons", 0),
-                    "qualitative_gate": result.summary.get(
-                        "qualitative_advisory_gate"
-                    ),
-                }
-            )
+            model_files = {}
+            for file_path in doc_dir.glob("*.json"):
+                if file_path.name in ignored_qaqc_json_files:
+                    continue
+                model_files[file_path.stem] = file_path
 
-            if not view.is_quiet:
-                agreement_pct = result.summary.get("full_agreement_pct", 0)
-                needs_review = result.summary.get("needs_review_count", 0)
-                total = result.summary.get("total_comparisons", 0)
-
-                level = (
-                    "success"
-                    if agreement_pct >= 80
-                    else "warning"
-                    if agreement_pct >= 50
-                    else "error"
-                )
+            if len(model_files) < 2:
                 view.status(
-                    level,
-                    doc_dir.name,
-                    f"{agreement_pct:.1f}% agreement",
+                    "warning",
+                    f"Skipping {doc_dir.name}: needs at least 2 model outputs",
                 )
-                view.detail(
-                    f"Agreement: {agreement_pct:.1f}% "
-                    f"({total - needs_review}/{total} fields)"
-                )
-                view.detail(f"Needs review: {needs_review} field(s)")
-                qualitative_gate = result.summary.get("qualitative_advisory_gate") or {}
-                if qualitative_gate:
-                    gate_status = str(
-                        qualitative_gate.get("status", "not_applicable")
-                    ).upper()
-                    aligned_pct = float(qualitative_gate.get("aligned_pct", 0.0))
-                    missing_pct = float(
-                        qualitative_gate.get("missing_item_pct", 0.0)
+                if _progress is not None:
+                    _progress.advance(_task)
+                continue
+
+            try:
+                result = engine.compare_outputs(model_files, doc_dir.name)
+
+                if not _writing_phase_announced and not view.is_quiet:
+                    view.phase("Generating comparison reports")
+                    _writing_phase_announced = True
+
+                if _progress is not None:
+                    _progress.update(
+                        _task, description=f"Writing report for {doc_dir.name[:50]}"
                     )
-                    excluded_scope_variants = int(
-                        qualitative_gate.get("excluded_scope_variants", 0) or 0
+
+                report_gen.generate_report(result, doc_dir)
+
+                results.append(
+                    {
+                        "name": doc_dir.name,
+                        "success": True,
+                        "models": result.models,
+                        "items_per_model": result.summary.get("items_per_model", {}),
+                        "full_agreement_pct": result.summary.get("full_agreement_pct", 0),
+                        "needs_review_count": result.summary.get("needs_review_count", 0),
+                        "total_comparisons": result.summary.get("total_comparisons", 0),
+                        "qualitative_gate": result.summary.get(
+                            "qualitative_advisory_gate"
+                        ),
+                    }
+                )
+
+                if not view.is_quiet:
+                    agreement_pct = result.summary.get("full_agreement_pct", 0)
+                    needs_review = result.summary.get("needs_review_count", 0)
+                    total = result.summary.get("total_comparisons", 0)
+
+                    level = (
+                        "success"
+                        if agreement_pct >= 80
+                        else "warning"
+                        if agreement_pct >= 50
+                        else "error"
+                    )
+                    view.status(
+                        level,
+                        doc_dir.name,
+                        f"{agreement_pct:.1f}% agreement",
                     )
                     view.detail(
-                        f"Qualitative advisory gate: {gate_status} "
-                        f"({aligned_pct:.1f}% aligned, {missing_pct:.1f}% missing items)"
+                        f"Agreement: {agreement_pct:.1f}% "
+                        f"({total - needs_review}/{total} fields)"
                     )
-                    if excluded_scope_variants:
-                        view.detail(
-                            f"Excluded scope variants: {excluded_scope_variants} "
-                            "auxiliary row(s)"
+                    view.detail(f"Needs review: {needs_review} field(s)")
+                    qualitative_gate = result.summary.get("qualitative_advisory_gate") or {}
+                    if qualitative_gate:
+                        gate_status = str(
+                            qualitative_gate.get("status", "not_applicable")
+                        ).upper()
+                        aligned_pct = float(qualitative_gate.get("aligned_pct", 0.0))
+                        missing_pct = float(
+                            qualitative_gate.get("missing_item_pct", 0.0)
                         )
-                qualitative_breakdown = (
-                    result.summary.get("qualitative_mismatch_breakdown") or {}
-                )
-                missing_categories = (
-                    qualitative_breakdown.get("missing_item_by_category") or []
-                )
-                scope_variant_categories = (
-                    qualitative_breakdown.get("scope_variant_by_category") or []
-                )
-                text_categories = (
-                    qualitative_breakdown.get("text_difference_by_category") or []
-                )
-                if missing_categories:
-                    summary_text = ", ".join(
-                        f"{entry.get('label')} ({entry.get('count')})"
-                        for entry in missing_categories[:3]
+                        excluded_scope_variants = int(
+                            qualitative_gate.get("excluded_scope_variants", 0) or 0
+                        )
+                        view.detail(
+                            f"Qualitative advisory gate: {gate_status} "
+                            f"({aligned_pct:.1f}% aligned, {missing_pct:.1f}% missing items)"
+                        )
+                        if excluded_scope_variants:
+                            view.detail(
+                                f"Excluded scope variants: {excluded_scope_variants} "
+                                "auxiliary row(s)"
+                            )
+                    qualitative_breakdown = (
+                        result.summary.get("qualitative_mismatch_breakdown") or {}
                     )
-                    view.detail(f"Top missing-item categories: {summary_text}")
-                if scope_variant_categories:
-                    summary_text = ", ".join(
-                        f"{entry.get('label')} ({entry.get('count')})"
-                        for entry in scope_variant_categories[:3]
+                    missing_categories = (
+                        qualitative_breakdown.get("missing_item_by_category") or []
                     )
-                    view.detail(f"Top scope-variant categories: {summary_text}")
-                if text_categories:
-                    summary_text = ", ".join(
-                        f"{entry.get('label')} ({entry.get('count')})"
-                        for entry in text_categories[:3]
+                    scope_variant_categories = (
+                        qualitative_breakdown.get("scope_variant_by_category") or []
                     )
-                    view.detail(f"Top text-difference categories: {summary_text}")
+                    text_categories = (
+                        qualitative_breakdown.get("text_difference_by_category") or []
+                    )
+                    if missing_categories:
+                        summary_text = ", ".join(
+                            f"{entry.get('label')} ({entry.get('count')})"
+                            for entry in missing_categories[:3]
+                        )
+                        view.detail(f"Top missing-item categories: {summary_text}")
+                    if scope_variant_categories:
+                        summary_text = ", ".join(
+                            f"{entry.get('label')} ({entry.get('count')})"
+                            for entry in scope_variant_categories[:3]
+                        )
+                        view.detail(f"Top scope-variant categories: {summary_text}")
+                    if text_categories:
+                        summary_text = ", ".join(
+                            f"{entry.get('label')} ({entry.get('count')})"
+                            for entry in text_categories[:3]
+                        )
+                        view.detail(f"Top text-difference categories: {summary_text}")
 
-        except Exception as exc:
-            results.append(
-                {
-                    "name": doc_dir.name,
-                    "success": False,
-                    "error": str(exc),
-                }
-            )
-            view.status("error", doc_dir.name, str(exc)[:50])
+            except Exception as exc:
+                results.append(
+                    {
+                        "name": doc_dir.name,
+                        "success": False,
+                        "error": str(exc),
+                    }
+                )
+                view.status("error", doc_dir.name, str(exc)[:50])
+
+            if _progress is not None:
+                _progress.advance(_task)
 
     if not view.is_quiet:
         successful = [record for record in results if record.get("success")]

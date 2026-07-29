@@ -1314,7 +1314,9 @@ def extract(
             identifier_fields=identifier_fields,
         )
 
-    if len(doc_files) > 3 and live_dashboard and not view.is_quiet:
+    if live_dashboard and len(doc_files) > 1 and not view.is_quiet:
+        # Enhanced live dashboard — available for any multi-doc run via
+        # --live-dashboard (threshold gate removed).
         live, dashboard = create_live_dashboard(len(doc_files), actual_model)
 
         with live:
@@ -1336,10 +1338,13 @@ def extract(
                     dashboard.complete_document(res["file"], success=False)
 
     elif len(doc_files) > 1 and not view.is_quiet:
+        # Progress bar for every multi-doc run, with inline phase label and
+        # per-doc result rows printed above the bar as each doc finishes.
         progress = create_extraction_progress()
         task = progress.add_task(
             _document_progress_desc(doc_files[0], page_range_map),
             total=len(doc_files),
+            phase="",
         )
 
         with progress:
@@ -1350,37 +1355,58 @@ def extract(
                         description=_document_progress_desc(
                             doc_path, page_range_map
                         ),
+                        phase="",
                     )
 
+                progress.update(task, phase=f"→ {actual_model}")
                 res = _run(doc_path)
+                progress.update(task, phase="", advance=1)
+
                 results.append(res)
                 if res["success"]:
                     total_cost += res["cost"]
                     total_time += res["time"]
-
-                progress.update(task, advance=1)
+                    console.print(
+                        f"  [green]✓[/green] {doc_path.name}"
+                        f"  [dim]→[/dim]  {res['items']} items"
+                        f"  [dim]•[/dim]  [magenta]${res['cost']:.4f}[/magenta]"
+                        f"  [dim]•[/dim]  [dim]{res['time']:.1f}s[/dim]"
+                    )
+                else:
+                    console.print(
+                        f"  [red]✗[/red] {doc_path.name}"
+                        f"  [dim]→[/dim]  [red]Error:[/red] {res['error'][:60]}"
+                    )
     else:
         for doc_path in doc_files:
             if not view.is_quiet:
                 page_range = page_range_map.get(doc_path)
-                detail = None
+                spinner_msg = f"[cyan]Extracting {doc_path.name}"
                 if page_range is not None:
                     start, end = page_range
-                    detail = f"pages {start}-{end}"
-                view.status("info", doc_path.name, detail)
+                    spinner_msg += f" [dim](pages {start}-{end})[/dim]"
+                spinner_msg += "...[/cyan]"
+                with console.status(spinner_msg, spinner="dots"):
+                    res = _run(doc_path)
+            else:
+                res = _run(doc_path)
 
-            res = _run(doc_path)
             results.append(res)
             if res["success"]:
                 total_cost += res["cost"]
                 total_time += res["time"]
-                view.status(
-                    "success",
-                    f"{res['items']} items",
-                    f"${res['cost']:.4f} • {res['time']:.1f}s",
-                )
+                if not view.is_quiet:
+                    console.print(
+                        f"  [green]✓[/green] {doc_path.name}"
+                        f"  [dim]→[/dim]  {res['items']} items"
+                        f"  [dim]•[/dim]  [magenta]${res['cost']:.4f}[/magenta]"
+                        f"  [dim]•[/dim]  [dim]{res['time']:.1f}s[/dim]"
+                    )
             elif not view.is_quiet:
-                view.status("error", "Extraction failed", res["error"][:60])
+                console.print(
+                    f"  [red]✗[/red] {doc_path.name}"
+                    f"  [dim]→[/dim]  [red]Error:[/red] {res['error'][:60]}"
+                )
 
     run_finished_at = (
         datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")

@@ -403,10 +403,16 @@ def print_runtime_config_error(
 
 
 def create_extraction_progress() -> Progress:
-    """Create the standard progress bar for per-document extraction."""
+    """Create the standard progress bar for per-document extraction.
+
+    Tasks added to this progress bar should supply a ``phase`` field
+    (initialised to ``""``) so the inline phase column renders cleanly:
+    ``progress.add_task(..., total=n, phase="")``.
+    """
     return Progress(
         SpinnerColumn(),
         TextColumn("[bold blue]{task.description}"),
+        TextColumn("[cyan]{task.fields[phase]}[/cyan]"),
         BarColumn(),
         TaskProgressColumn(),
         MofNCompleteColumn(),
@@ -440,6 +446,21 @@ def display_yaml(data: dict, title: str = None) -> None:
         console.print(Panel(syntax, title=title, border_style=ui.theme.panel_border))
     else:
         console.print(syntax)
+
+
+def with_status(message: str, *, quiet: bool = False, spinner: str = "dots"):
+    """Context manager: show a spinner unless quiet. Usage::
+
+        with with_status("Loading schema...", quiet=view.is_quiet):
+            data = load_schema(path)
+    """
+    from contextlib import nullcontext
+
+    if quiet:
+        return nullcontext()
+    return console.status(
+        f"[{ui.theme.accent}]{message}[/{ui.theme.accent}]", spinner=spinner
+    )
 
 
 def ask_choice(prompt: str, choices: List[str], default: str = None) -> str:

@@ -19,6 +19,7 @@ from psweep.cli.ui import (
     print_info,
     print_success,
     print_warning,
+    with_status,
 )
 from psweep.compilation.data_compiler import DataCompiler
 from psweep.config import RuntimeConfigError
@@ -573,7 +574,11 @@ def compile(
                 llm_client=synth_client,
                 verbose=view.verbosity.shows_detail,
             )
-            df = synthesizer.synthesize_from_directory(input_dir)
+            quiet = emit_json_report or view.is_quiet
+            with with_status(
+                f"Synthesizing with {synth_client.raw_model}...", quiet=quiet
+            ):
+                df = synthesizer.synthesize_from_directory(input_dir)
             if not emit_json_report:
                 total_rows = synthesizer.llm_calls + synthesizer.deterministic_rows
                 view.status(
@@ -587,10 +592,17 @@ def compile(
                 "main_array_key": (synthesis_cfg.get("group_by") or ["entity"])[0],
             }
         else:
-            df, schema_info = compiler.compile_from_directory(
-                input_dir,
-                apply_deduplication=not dry_run,
-            )
+            quiet = emit_json_report or view.is_quiet
+            if not quiet:
+                _json_files = list(input_dir.glob("*.json"))
+                view.phase(
+                    f"Found {len(_json_files)} extracted JSON file(s) in {input_dir.name}"
+                )
+            with with_status("Loading extracted JSON files...", quiet=quiet):
+                df, schema_info = compiler.compile_from_directory(
+                    input_dir,
+                    apply_deduplication=not dry_run,
+                )
 
         if df.empty:
             print_warning("No data found to compile")
@@ -732,6 +744,10 @@ def compile(
                 "Columns": str(len(df.columns)),
                 "Outputs": ", ".join(output_formats),
             }
+            if not synthesis_active and compiler.duplicates_removed > 0:
+                summary_stats["Duplicates Removed"] = str(compiler.duplicates_removed)
+            if synthesis_active:
+                summary_stats["Model"] = synth_client.raw_model
 
             if schema_info.get("category_field"):
                 category_display = (

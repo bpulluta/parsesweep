@@ -14,7 +14,10 @@ section on verbosity. This centralizes what used to be scattered
 from __future__ import annotations
 
 from contextlib import contextmanager
-from typing import Iterator, Sequence
+from typing import TYPE_CHECKING, Iterator, Sequence
+
+if TYPE_CHECKING:
+    from rich.progress import Progress
 
 from rich.console import Console
 
@@ -76,6 +79,25 @@ class RunView:
         self.console.print(
             f"[{self.theme.accent}]{self.theme.icon_arrow}[/{self.theme.accent}] {title}"
         )
+
+    @contextmanager
+    def spinner(self, message: str, *, spinner: str = "dots") -> Iterator[None]:
+        """Show a spinner with a message while work is in progress."""
+        if self.is_quiet:
+            yield
+            return
+        with self.console.status(
+            f"[{self.theme.accent}]{message}[/{self.theme.accent}]",
+            spinner=spinner,
+        ):
+            yield
+
+    def make_progress(self) -> "Progress | None":
+        """Return a configured Progress bar, or None in quiet mode."""
+        if self.is_quiet:
+            return None
+        from psweep.cli.ui import create_extraction_progress
+        return create_extraction_progress()
 
     @contextmanager
     def live(self, live_display) -> Iterator[None]:
