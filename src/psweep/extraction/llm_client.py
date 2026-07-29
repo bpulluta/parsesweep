@@ -18,8 +18,8 @@ from typing import Dict, Any, Optional, List
 import litellm
 from litellm import completion, completion_cost
 
-from psweep.utils.model_pricing import get_pricing
-from psweep.utils.exceptions import ExtractionError
+from ..utils.model_pricing import get_pricing
+from ..utils.exceptions import ExtractionError
 from .llm_factory import detect_provider
 
 logger = logging.getLogger(__name__)

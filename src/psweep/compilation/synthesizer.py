@@ -30,17 +30,9 @@ from typing import Any
 
 import pandas as pd
 
+from ..utils.item_matcher import get_nested_value as _get_path
+
 logger = logging.getLogger(__name__)
-
-
-def _get_path(obj: dict, dotted: str) -> Any:
-    """Resolve a dotted path within a nested dict; None if any hop is missing."""
-    cur: Any = obj
-    for part in dotted.split("."):
-        if not isinstance(cur, dict):
-            return None
-        cur = cur.get(part)
-    return cur
 
 
 class Synthesizer:
