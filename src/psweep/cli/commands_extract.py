@@ -1488,8 +1488,8 @@ def _run_qa_qc_extraction(
             str(e),
             [
                 "Set QAQC_MODELS in .env with 2+ comma-separated models",
-                "Example: QAQC_MODELS=gpt-4o,gpt-4-turbo,gpt-3.5-turbo",
-                "Or leave empty to use default models for your provider",
+                "Example: QAQC_MODELS=my-gpt-5-deployment,my-gpt-4.1-deployment",
+                "Or for OpenAI: QAQC_MODELS=gpt-5,gpt-4.1",
             ],
         )
         return

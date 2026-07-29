@@ -4,8 +4,6 @@ Report Generator for QA/QC Multi-Model Validation.
 Generates Excel/CSV reports with color-coded comparison results
 for human review.
 
-This module is part of Phase 4 of the QA/QC Multi-Model Implementation Plan.
-
 Usage:
     from psweep.qa_qc.report_generator import ReportGenerator
     from psweep.qa_qc.comparison_engine import ComparisonResult
@@ -18,21 +16,14 @@ Usage:
 
 Output Files:
     processed/qa_qc/{doc_name}/
-        comparison_report.xlsx  # Color-coded Excel with 3 sheets
-        comparison_report.csv   # Plain CSV with all comparisons
-
-Excel Sheets:
-    1. Summary - Key metrics (agreement %, items per model, etc.)
-    2. Context Comparison - Document-level fields (jurisdiction, etc.)
-    3. Item Comparison - Main data array items
+        comparison_report.xlsx  # Color-coded Excel
+        comparison_report.csv   # Plain CSV
 
 Color Coding:
     - Green: Full agreement (N/N)
     - Yellow: Partial agreement (>50%)
     - Red: Low agreement (≤50%) or disagreement
     - Gray: Item missing from one or more models
-
-Status: Phase 4 - COMPLETED
 """
 
 import json
@@ -59,8 +50,6 @@ class ReportGenerator:
 
     Creates actionable reports for human review of multi-model QA/QC results.
     Excel reports include color-coded rows based on agreement level.
-
-    Status: Phase 4 - COMPLETED (v2: Item-centric format)
     """
 
     # Color scheme for Excel formatting
@@ -129,8 +118,8 @@ class ReportGenerator:
         Creates up to 4 sheets:
         1. Summary - Key metrics
         2. Item Comparison - Item-centric comparison (one row per item)
-        3. Potential Duplicates - Items that may be same data with different keys (Phase 8)
-        4. Expected vs Found - Completeness analysis per expected requirement (Phase 8)
+        3. Potential Duplicates - Items that may be same data with different keys
+        4. Expected vs Found - Completeness analysis per expected requirement
         """
         # Build DataFrames
         summary_df = self._build_summary_df(result)
@@ -344,7 +333,7 @@ class ReportGenerator:
                 or [],
             )
 
-        # Phase 8: Add potential duplicates count
+        # Add potential duplicates count
         potential_duplicates_count = summary.get(
             "potential_duplicates_count", 0
         )
@@ -360,7 +349,7 @@ class ReportGenerator:
                 ]
             )
 
-        # Phase 8: Add completeness per model
+        # Add completeness per model
         completeness_per_model = summary.get("completeness_per_model", {})
         if completeness_per_model:
             rows.extend(
@@ -873,13 +862,13 @@ class ReportGenerator:
         df = self._build_item_centric_df(result)
         df.to_csv(output_path, index=False)
 
-    # --- Phase 8: New Methods for Completeness Validation ---
+    # --- Completeness Validation Methods ---
 
     def _build_potential_duplicates_df(
         self, result: ComparisonResult
     ) -> pd.DataFrame:
         """
-        Build DataFrame for potential duplicates (Phase 8).
+        Build DataFrame for potential duplicates.
 
         Shows items that may be the same data extracted with different requirement_type.
         Example: gpt-5 has time__reclamation_deadline_days=60
@@ -920,7 +909,7 @@ class ReportGenerator:
         self, result: ComparisonResult
     ) -> pd.DataFrame:
         """
-        Build DataFrame showing expected vs found requirements (Phase 8).
+        Build DataFrame showing expected vs found requirements.
 
         Shows which expected requirements were found by each model.
         """

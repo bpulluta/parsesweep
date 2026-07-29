@@ -95,7 +95,7 @@ class Synthesizer:
                 continue
             try:
                 raw = json.load(open(f, encoding="utf-8"))
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:  # noqa: BLE001 - unreadable extraction file; skip and log
                 logger.warning("skip unreadable %s: %s", f, exc)
                 continue
             payload = raw.get("payload") if isinstance(raw, dict) else None
