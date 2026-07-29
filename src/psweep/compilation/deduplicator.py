@@ -11,6 +11,7 @@ import logging
 
 from ..utils.exceptions import SchemaMetadataError
 from ..utils.item_matcher import map_key_fields_to_columns
+from ..utils.schema_metadata import HIGH_SEVERITY_TOKENS, MEDIUM_SEVERITY_TOKENS
 
 logger = logging.getLogger(__name__)
 
@@ -23,40 +24,6 @@ PROVENANCE_COLUMNS = frozenset(
         "Error Categories",
         "Error Messages",
         "Notes",
-    }
-)
-
-HIGH_SEVERITY_TOKENS = frozenset(
-    {
-        "value",
-        "unit",
-        "amount",
-        "rate",
-        "cost",
-        "price",
-        "capacity",
-        "limit",
-        "minimum",
-        "maximum",
-        "fee",
-        "charge",
-        "quantity",
-        "output",
-    }
-)
-
-MEDIUM_SEVERITY_TOKENS = frozenset(
-    {
-        "category",
-        "type",
-        "subject",
-        "classification",
-        "period",
-        "season",
-        "term",
-        "description",
-        "details",
-        "section",
     }
 )
 

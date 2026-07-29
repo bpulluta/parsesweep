@@ -17,7 +17,10 @@ from .exceptions import SchemaMetadataError
 logger = logging.getLogger(__name__)
 
 
-HIGH_SEVERITY_SCHEMA_TOKENS = frozenset(
+# Shared severity token sets used to classify how impactful a field
+# difference is (e.g. by both schema metadata inference and compilation
+# deduplication). Single source of truth — do not duplicate elsewhere.
+HIGH_SEVERITY_TOKENS = frozenset(
     {
         "unit",
         "amount",
@@ -36,7 +39,7 @@ HIGH_SEVERITY_SCHEMA_TOKENS = frozenset(
     }
 )
 
-MEDIUM_SEVERITY_SCHEMA_TOKENS = frozenset(
+MEDIUM_SEVERITY_TOKENS = frozenset(
     {
         "category",
         "type",
@@ -417,7 +420,7 @@ class SchemaMetadata:
             return "high"
 
         if any(
-            token in normalized_name for token in HIGH_SEVERITY_SCHEMA_TOKENS
+            token in normalized_name for token in HIGH_SEVERITY_TOKENS
         ):
             return "high"
 
@@ -425,7 +428,7 @@ class SchemaMetadata:
             return "medium"
 
         if any(
-            token in normalized_name for token in MEDIUM_SEVERITY_SCHEMA_TOKENS
+            token in normalized_name for token in MEDIUM_SEVERITY_TOKENS
         ):
             return "medium"
 
