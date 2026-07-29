@@ -9,10 +9,10 @@ As of v2.0, all schemas MUST include a $metadata section.
 from copy import deepcopy
 from pathlib import Path
 from typing import Dict, Any, List, Optional
-import json
 import logging
 
 from .exceptions import SchemaMetadataError
+from ..extraction.schema_utils import load_schema
 
 logger = logging.getLogger(__name__)
 
@@ -119,8 +119,7 @@ class SchemaMetadata:
 
     def _load_schema(self) -> dict:
         """Load and parse JSON schema."""
-        with open(self.schema_path, "r", encoding="utf-8") as f:
-            return json.load(f)
+        return load_schema(self.schema_path)
 
     def _validate_metadata(self) -> None:
         """

@@ -170,7 +170,6 @@ def _build_qaqc_scaffold(
         "value",
         "rate",
         "amount",
-        "ratedCapacityKW",
         "capacity",
         "unit",
         "units",
@@ -1165,16 +1164,13 @@ def init():
     if schemas:
         schema_names = [s.stem for s in schemas]
 
-        # Try to auto-detect based on doc_type
+        # Try to auto-detect based on doc_type via fuzzy stem matching
+        import difflib
+
         suggested_schema = None
-        if doc_type == "tariffs" and any("tariff" in s for s in schema_names):
-            suggested_schema = next(s for s in schema_names if "tariff" in s)
-        elif doc_type == "ordinances" and any(
-            "ordinance" in s for s in schema_names
-        ):
-            suggested_schema = next(
-                s for s in schema_names if "ordinance" in s
-            )
+        close = difflib.get_close_matches(doc_type, schema_names, n=1, cutoff=0.3)
+        if close:
+            suggested_schema = close[0]
 
         if suggested_schema:
             print_info(f"Suggested schema: {suggested_schema}")
@@ -1264,31 +1260,22 @@ def preview(document_path: str):
         )
         console.print(analysis_table)
 
-        # Try to detect schema
+        # Try to detect schema via fuzzy stem matching
         config = get_config()
-        path_lower = str(doc_path).lower()
         matched_schema = None
 
-        for candidate in config.schema_dir.glob("*.json"):
-            candidate_name_lower = candidate.stem.lower()
-            if (
-                any(
-                    keyword in path_lower
-                    for keyword in ["geothermal", "ordinance"]
-                )
-                and "geothermal" in candidate_name_lower
-            ):
-                matched_schema = candidate
-                break
-            elif (
-                any(
-                    keyword in path_lower
-                    for keyword in ["tariff", "rate", "electric"]
-                )
-                and "tariff" in candidate_name_lower
-            ):
-                matched_schema = candidate
-                break
+        candidates = sorted(config.schema_dir.glob("*.json"), key=lambda p: p.stem)
+        if candidates:
+            import difflib
+
+            stems = [c.stem for c in candidates]
+            close = difflib.get_close_matches(
+                Path(doc_path).stem, stems, n=1, cutoff=0.3
+            )
+            if close:
+                matched_schema = next(c for c in candidates if c.stem == close[0])
+            else:
+                matched_schema = candidates[0]
 
         if matched_schema:
             section("Schema Detection")

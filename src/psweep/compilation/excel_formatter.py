@@ -185,7 +185,7 @@ class ExcelFormatter:
                     )
                     if len(cell_value) > max_length:
                         max_length = len(cell_value)
-                except Exception:
+                except Exception:  # noqa: BLE001 - column width is cosmetic; any cell error is non-fatal
                     pass
 
             # Set width with reasonable limits

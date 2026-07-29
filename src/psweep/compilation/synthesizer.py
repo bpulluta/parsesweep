@@ -292,7 +292,7 @@ class Synthesizer:
         if self.comparison == "numeric":
             try:
                 return float(v1) > float(v2)
-            except (TypeError, ValueError):
+            except (TypeError, ValueError):  # noqa: BLE001 - non-numeric values can't be judged; don't flag
                 return False  # non-numeric values can't be judged; don't flag
         if self.comparison == "date":
             p1 = self._date_precision_of(n1, v1, row)
