@@ -51,7 +51,6 @@ class SchemaDetector:
             - type: schema type name (e.g., "Ordinance/Regulation", "Utility Tariff")
             - main_array_key: key containing the main data array
             - id_fields: list of identifier/context field keys
-            - object_keys: all object field keys
 
         Example:
             >>> detector = SchemaDetector(schema_metadata)
@@ -64,12 +63,7 @@ class SchemaDetector:
             "type": self.schema_metadata.get_document_type(),
             "main_array_key": self.schema_metadata.get_main_data_array(),
             "id_fields": self.schema_metadata.get_context_objects(),
-            "object_keys": self._find_object_keys(data),
         }
-
-    def _find_object_keys(self, data: Dict[str, Any]) -> List[str]:
-        """Find all object-type keys in data."""
-        return [k for k, v in data.items() if isinstance(v, dict)]
 
     def extract_context(
         self, data: Dict[str, Any], schema_info: Dict[str, Any]
