@@ -1411,7 +1411,7 @@ def estimate(documents_path: str, workers: int, pages_csv: str):
 
     # Get current model pricing from config
     config = get_config()
-    model_name = config.llm_config.get("model", "gpt-4o-mini")
+    model_name = config.llm_config.get("model", DEFAULT_MODEL)
 
     # Get pricing for the configured model (returns tuple: input_cost, output_cost per 1M tokens)
     input_cost_per_1m, output_cost_per_1m = get_model_pricing(model_name)
