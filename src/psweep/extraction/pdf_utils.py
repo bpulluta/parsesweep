@@ -2,8 +2,7 @@
 
 import logging
 from pathlib import Path
-from typing import Dict, Any, Optional
-import json
+from typing import Optional
 
 try:
     import pymupdf4llm  # PyMuPDF4LLM - optimized for LLMs with table preservation
@@ -460,17 +459,3 @@ def truncate_text(text: str, max_chars: int = 50000) -> str:
         f"Document truncated from {len(text)} to {max_chars} characters"
     )
     return truncated
-
-
-def load_schema(schema_path: Path) -> Dict[str, Any]:
-    """
-    Load JSON schema from file.
-
-    Args:
-        schema_path: Path to the schema file
-
-    Returns:
-        Schema dictionary
-    """
-    with open(schema_path, "r") as f:
-        return json.load(f)
