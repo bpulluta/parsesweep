@@ -141,6 +141,63 @@ pixi run python -m pytest tests/ -q --ignore=tests/test_browser_digger.py
 
 | Item | Reason |
 |------|--------|
-| `utils/config.py` hardcoded LLM model-name defaults (`"gpt-4o-mini"`, etc.) | Requires `llm_factory` refactor; tracked for a dedicated credentials/config cleanup wave |
+| `utils/config.py` hardcoded LLM model-name defaults (`"gpt-4o-mini"`, etc.) | One string literal remains: the OpenAI fallback in `config.py`. Cannot import `DEFAULT_MODEL` from `llm_factory` here (circular dependency). Documented with inline comment. All others resolved in Wave 4. |
 | `qualitative_preferences` list in `utils_commands.py` (contains `"extracted_text"`) | Borderline generic; no active complaint; safe to leave |
 | Discovery module silent exceptions (`digger.py`, `validators.py`) | Discovery is a separate subsystem with its own audit; out of scope here |
+
+---
+
+## Wave 3 — Stale Phase Scaffolding & Deprecated Examples
+
+**Tests:** 652 → 652 (no change)
+
+### `qa_qc/` module — Phase scaffolding removal
+
+Stripped planning artifacts from production docstrings across five files:
+
+| File | What was removed |
+|------|-----------------|
+| `qa_qc/__init__.py` | "QA/QC Multi-Model Implementation Plan", "Status: Phase X - COMPLETED" |
+| `qa_qc/multi_model_extractor.py` | "Phase 2:", "Phase 3:", implementation plan text |
+| `qa_qc/report_generator.py` | Module/class docstring phase scaffolding; inline `# Phase 8:` section headers |
+| `qa_qc/comparison_engine.py` | Module docstring plan; inline `# Phase 8:` and `(Phase 8)` comments |
+| `cli/commands_extract.py` | Help text with deprecated `gpt-3.5-turbo` example |
+
+### Deprecated model examples
+
+Updated `gpt-3.5-turbo` / `gpt-4-turbo` references in docstrings and help text to current models (`gpt-5`, `gpt-4.1`).
+
+### `compilation/synthesizer.py`
+
+Added reason text to existing `noqa: BLE001` annotation.
+
+---
+
+## Wave 4 — `DEFAULT_MODEL` Constant Consolidation
+
+**Tests:** 652 → 659 (net +7 from test collection previously blocked by import errors; no test logic changed)
+
+### Problem
+
+`"gpt-4o-mini"` was hard-coded as a string literal in 11 locations across the runtime as function default arguments and call-site values. `llm_factory.py` had the canonical `DEFAULT_MODEL = "gpt-4o-mini"` constant but nothing imported it.
+
+### Fix
+
+Added `from psweep.extraction.llm_factory import DEFAULT_MODEL` to all downstream files and replaced every string literal default with the constant:
+
+| File | Change |
+|------|--------|
+| `extraction/llm_client.py` | `model: str = DEFAULT_MODEL` in `__init__` |
+| `extraction/document_extractor.py` | `model: str = DEFAULT_MODEL` in `__init__` |
+| `pipeline.py` | `model: str = DEFAULT_MODEL` in `extract_documents` |
+| `cli/cost_tracker.py` | `model: str = DEFAULT_MODEL` in `CostTracker` dataclass |
+| `cli/dashboard.py` | `DEFAULT_MODEL` in `ExtractionDashboard.__init__` and `create_live_dashboard` |
+| `cli/ui.py` | `DEFAULT_MODEL` in `print_cost_estimate` |
+| `cli/commands_extract.py` | `default=DEFAULT_MODEL` for `--model` CLI option |
+| `cli/utils_commands.py` | Wizard default, cost estimate call, and `llm_config.get` fallback |
+| `utils/model_pricing.py` | `DEFAULT_MODEL` as pricing fallback key; replaced hardcoded `0.15`/`0.60` literals in `preview` with `get_model_pricing(DEFAULT_MODEL)` |
+
+### Justified exception
+
+`utils/config.py:110` — `env_vars.get("OPENAI_MODEL", "gpt-4o-mini")` retains the literal string. `config.py` is upstream of `llm_factory.py` (the factory lazy-imports config to avoid a cycle). Importing `DEFAULT_MODEL` here would create a circular dependency. The line is annotated with an inline comment explaining this constraint.
+
