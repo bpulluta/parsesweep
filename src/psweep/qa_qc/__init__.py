@@ -1,23 +1,19 @@
 """
 QA/QC Multi-Model Validation Module.
 
-This module provides multi-model validation for document extraction by:
+Provides multi-model validation for document extraction by:
 1. Running extraction with multiple AI models
 2. Comparing outputs field-by-field
 3. Generating comparison reports highlighting discrepancies
 
-Version: 2.0.0 (New implementation replacing old LangExtract-based QA/QC)
-
 Usage:
     from psweep.qa_qc import ModelDetector, run_multi_model_extraction
 
-    # Get models for QA/QC (auto-detects from environment or uses defaults)
+    # Requires QAQC_MODELS env var — raises ValueError if not set
     models = ModelDetector.get_qa_models()
 
-    # Get current provider
     provider = ModelDetector.get_provider()
 
-    # Run multi-model extraction (Phase 2)
     results = run_multi_model_extraction(
         doc_text="...",
         doc_name="document_name",
@@ -29,10 +25,10 @@ Usage:
     )
 
 Submodules:
-    - model_detector: Auto-detect QA/QC models from environment
-    - multi_model_extractor: Run extraction with multiple models (Phase 2)
-    - comparison_engine: Compare outputs from multiple models (Phase 3)
-    - report_generator: Generate comparison reports (Phase 4)
+    - model_detector: Detect QA/QC models from QAQC_MODELS env var
+    - multi_model_extractor: Run extraction with multiple models
+    - comparison_engine: Compare outputs from multiple models
+    - report_generator: Generate comparison reports
     - utils: QA/QC utilities including companion schema finder
 """
 

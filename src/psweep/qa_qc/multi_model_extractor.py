@@ -4,8 +4,6 @@ Multi-Model Extractor for QA/QC Validation.
 Runs document extraction with multiple AI models and saves outputs
 to organized subfolders for comparison.
 
-This module is part of Phase 2 of the QA/QC Multi-Model Implementation Plan.
-
 Usage:
     from psweep.qa_qc.multi_model_extractor import run_multi_model_extraction
 
@@ -13,7 +11,7 @@ Usage:
         doc_text="Full document text...",
         doc_name="austin_energy_tariff",
         schema=loaded_schema,
-        models=["gpt-4o", "gpt-4-turbo", "gpt-3.5-turbo"],
+        models=["gpt-5", "gpt-4.1"],
         output_dir=Path("processed/qa_qc"),
         api_key="sk-...",
         provider="openai",
@@ -21,12 +19,8 @@ Usage:
 
 Output Structure:
     processed/qa_qc/{doc_name}/
-        gpt-4o.json
-        gpt-4-turbo.json
-        gpt-3.5-turbo.json
+        {model_name}.json  (one file per model)
         metadata.json
-
-Status: Phase 2 - Implemented
 """
 
 import json
@@ -82,7 +76,7 @@ def run_multi_model_extraction(
         doc_text: Full document text to extract from
         doc_name: Document name (without extension, used for output folder)
         schema: JSON schema for extraction
-        models: List of model names (e.g., ["gpt-4o", "gpt-4-turbo"])
+        models: List of model names (e.g., ["gpt-5", "gpt-4.1"])
         output_dir: Base directory for QA/QC outputs (e.g., "processed/")
         api_key: API key for the provider
         provider: LLM provider ("openai", "azure", "anthropic", etc.)

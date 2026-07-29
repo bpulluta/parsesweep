@@ -1,11 +1,9 @@
 """
 Comparison Engine for QA/QC Multi-Model Validation.
 
-Default behavior remains numeric-focused, but runtime QA/QC lanes can now
-select alternative comparison approaches like qualitative text review.
-
-This module is part of Phase 3-5 of the QA/QC Multi-Model Implementation Plan.
-Phase 8 adds: Potential duplicate detection and completeness metrics.
+Compares outputs from multiple models. Default behavior is numeric-focused;
+runtime QA/QC lanes can select qualitative text review instead.
+Includes potential duplicate detection and completeness metrics.
 
 Usage:
     from psweep.qa_qc.comparison_engine import ComparisonEngine
@@ -15,11 +13,9 @@ Usage:
     engine = ComparisonEngine(schema_metadata)
 
     result = engine.compare_outputs(
-        output_files={"gpt-4.1": path1, "gpt-4o": path2},
+        output_files={"gpt-4.1": path1, "gpt-5": path2},
         document_name="austin_energy"
     )
-
-Status: Phase 8 - Added completeness metrics and potential duplicate detection
 """
 
 import json
@@ -210,12 +206,12 @@ class ComparisonEngine:
             item_comparisons.extend(comps)
             item_skipped += skipped
 
-        # 3. Detect potential duplicates (Phase 8)
+        # 3. Detect potential duplicates
         potential_duplicates = self._detect_potential_duplicates(
             indexes, models
         )
 
-        # 4. Calculate completeness (Phase 8)
+        # 4. Calculate completeness
         completeness = self._calculate_completeness(item_arrays, models)
 
         # 5. Calculate summary
@@ -489,9 +485,7 @@ class ComparisonEngine:
             "review_category_counts": self._calculate_review_category_counts(
                 item_comparisons
             ),
-            # Phase 8: Potential duplicates
             "potential_duplicates_count": len(potential_duplicates),
-            # Phase 8: Completeness per model
             "completeness_per_model": {
                 model: {
                     "items_extracted": result.items_extracted,
@@ -1250,7 +1244,7 @@ class ComparisonEngine:
                 fields.add(path)
         return fields
 
-    # --- Phase 8: Potential Duplicate Detection ---
+    # --- Potential Duplicate Detection ---
 
     def _detect_potential_duplicates(
         self, indexes: Dict[str, Dict[Tuple, dict]], models: List[str]
@@ -1317,7 +1311,7 @@ class ComparisonEngine:
 
         return duplicates
 
-    # --- Phase 8: Completeness Calculation ---
+    # --- Completeness Calculation ---
 
     def _calculate_completeness(
         self, item_arrays: Dict[str, List[dict]], models: List[str]
