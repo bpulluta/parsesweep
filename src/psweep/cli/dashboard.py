@@ -17,6 +17,7 @@ from rich.progress import (
 
 from psweep.cli.cost_tracker import CostTracker
 from psweep.cli.ui import console, key_values, events_panel
+from psweep.extraction.llm_factory import DEFAULT_MODEL
 
 
 def _create_live_session(
@@ -52,7 +53,7 @@ class DiscoveryDashboardConfig:
 class ExtractionDashboard:
     """Live dashboard for monitoring document extraction progress."""
 
-    def __init__(self, total_documents: int, model: str = "gpt-4o-mini"):
+    def __init__(self, total_documents: int, model: str = DEFAULT_MODEL):
         """
         Initialize the dashboard.
 
@@ -202,7 +203,7 @@ class ExtractionDashboard:
 
 
 def create_live_dashboard(
-    total_documents: int, model: str = "gpt-4o-mini"
+    total_documents: int, model: str = DEFAULT_MODEL
 ) -> tuple[Live, ExtractionDashboard]:
     """
     Create a live dashboard for extraction monitoring.

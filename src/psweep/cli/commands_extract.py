@@ -34,6 +34,7 @@ from psweep.extraction.document_utils import (
     extract_text_from_document,
     is_supported_document,
 )
+from psweep.extraction.llm_factory import DEFAULT_MODEL
 from psweep.utils.config import get_config
 from psweep.utils.error_taxonomy import (
     build_error_record,
@@ -539,9 +540,7 @@ def _extract_one_document(
 )
 @click.option(
     "--model",
-    default="gpt-4o-mini",
-    show_default=True,
-    help="AI model (e.g., gpt-4o-mini, claude-3.5-sonnet, gemini-1.5-pro)",
+    default=DEFAULT_MODEL,
 )
 @click.option(
     "--provider",

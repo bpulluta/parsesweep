@@ -7,6 +7,8 @@ All prices are per 1M tokens in USD.
 from typing import Dict, Tuple
 import logging
 
+from psweep.extraction.llm_factory import DEFAULT_MODEL
+
 logger = logging.getLogger(__name__)
 
 
@@ -127,12 +129,12 @@ def get_model_pricing(model_name: str) -> Tuple[float, float]:
         )
         return MODEL_PRICING[best_match]
 
-    # Default to gpt-4o-mini pricing if unknown
+    # Default to DEFAULT_MODEL pricing if unknown
     logger.warning(
-        f"Unknown model '{model_name}', using gpt-4o-mini pricing as fallback. "
+        f"Unknown model '{model_name}', using {DEFAULT_MODEL} pricing as fallback. "
         "Please add model to MODEL_PRICING in model_pricing.py"
     )
-    return MODEL_PRICING["gpt-4o-mini"]
+    return MODEL_PRICING[DEFAULT_MODEL]
 
 
 def calculate_cost(

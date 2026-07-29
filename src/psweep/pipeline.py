@@ -31,6 +31,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional, Sequence
 
+from psweep.extraction.llm_factory import DEFAULT_MODEL
+
 logger = logging.getLogger(__name__)
 
 
@@ -153,7 +155,7 @@ def extract_documents(
     schema: str | Path,
     *,
     output_dir: str | Path | None = None,
-    model: str = "gpt-4o-mini",
+    model: str = DEFAULT_MODEL,
     provider: str = "auto",
     max_context: int = 400_000,
     skip_existing: bool = True,

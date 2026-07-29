@@ -105,6 +105,8 @@ class Config:
             )
         elif "OPENAI_API_KEY" in env_vars:
             config["provider"] = "openai"
+            # "gpt-4o-mini" mirrors llm_factory.DEFAULT_MODEL; can't import it
+            # here — config.py is upstream of llm_factory (cycle prevention).
             config["model"] = env_vars.get("OPENAI_MODEL", "gpt-4o-mini")
             config["api_key"] = env_vars["OPENAI_API_KEY"]
 

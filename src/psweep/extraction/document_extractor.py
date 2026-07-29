@@ -17,6 +17,7 @@ from typing import Dict, Any, List, Optional
 from dataclasses import dataclass
 
 from .llm_client import LLMClient
+from .llm_factory import DEFAULT_MODEL
 from .text_processor import TextProcessor
 
 logger = logging.getLogger(__name__)
@@ -60,7 +61,7 @@ class DocumentExtractor:
     def __init__(
         self,
         api_key: str = None,
-        model: str = "gpt-4o-mini",
+        model: str = DEFAULT_MODEL,
         max_context_chars: int = 400000,
         schema_metadata=None,
         provider: str = None,

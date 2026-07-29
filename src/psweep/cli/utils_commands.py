@@ -31,6 +31,7 @@ from psweep.extraction.document_utils import (
     extract_text_from_document,
     is_supported_document,
 )
+from psweep.extraction.llm_factory import DEFAULT_MODEL
 from psweep.cli.ui import (
     ask_choice,
     ask_confirm,
@@ -1106,7 +1107,7 @@ def init():
             "Azure OpenAI Endpoint",
             default="https://your-endpoint.openai.azure.com/",
         )
-        deployment = ask_text("Model Deployment Name", default="gpt-4o-mini")
+        deployment = ask_text("Model Deployment Name", default=DEFAULT_MODEL)
 
         env_content = [
             "# Azure OpenAI Configuration",
@@ -1241,11 +1242,10 @@ def preview(document_path: str):
         # Estimate tokens (rough approximation: 4 chars per token)
         estimated_tokens = text_length // 4
 
-        # Estimate cost for gpt-4o-mini
-        # Input: $0.15/1M tokens, Output: $0.60/1M tokens
-        # Assume output is ~10% of input
-        input_cost = (estimated_tokens / 1_000_000) * 0.15
-        output_cost = (estimated_tokens * 0.1 / 1_000_000) * 0.60
+        # Estimate cost using the default model's pricing
+        input_cost_per_1m, output_cost_per_1m = get_model_pricing(DEFAULT_MODEL)
+        input_cost = (estimated_tokens / 1_000_000) * input_cost_per_1m
+        output_cost = (estimated_tokens * 0.1 / 1_000_000) * output_cost_per_1m
         total_cost = input_cost + output_cost
 
         # Estimate time (rough: 100 tokens per second)
@@ -1293,10 +1293,8 @@ def preview(document_path: str):
             estimated_tokens=estimated_tokens,
             estimated_cost=total_cost,
             estimated_time=estimated_time / 60,  # Convert to minutes
-            model="gpt-4o-mini",
+            model=DEFAULT_MODEL,
         )
-
-        # Show sample content
         section("Sample Content Preview")
         sample = text[:500].replace("\n", " ")
         console.print(f"{sample}...\n")
