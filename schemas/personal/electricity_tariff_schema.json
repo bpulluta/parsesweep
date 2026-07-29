@@ -1,0 +1,250 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$metadata": {
+    "extraction": {
+      "main_data_array": "rate_schedules",
+      "context_objects": [
+        "utility_info"
+      ],
+      "identifier_fields": [
+        "utility_info.utility_name",
+        "utility_info.state"
+      ]
+    },
+    "compilation": {
+      "deduplication": {
+        "key_fields": [
+          "rate_name",
+          "charge_type",
+          "charge_description",
+          "rate",
+          "unit",
+          "rate_structure",
+          "season",
+          "season_months",
+          "time_period",
+          "time_range",
+          "tier_min_kwh",
+          "tier_max_kwh",
+          "measurement_period",
+          "conditions"
+        ],
+        "ignore_fields": [
+          "extracted_text"
+        ]
+      }
+    }
+  },
+  "title": "Electric Utility Rate Tariff Extraction Schema",
+  "description": "Extract electric rate schedules and riders with essential fields only. SCOPE: Residential, commercial, industrial electric rates AND all applicable riders. EXCLUDE: Gas, water, telecommunications, fee schedules, terms/conditions without rates",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "utility_info",
+    "rate_schedules"
+  ],
+  "properties": {
+    "utility_info": {
+      "type": "object",
+      "description": "Essential utility context (repeated for each charge row during compilation)",
+      "additionalProperties": false,
+      "required": [
+        "utility_name",
+        "state"
+      ],
+      "properties": {
+        "utility_name": {
+          "type": "string",
+          "description": "Utility name exactly as written"
+        },
+        "state": {
+          "type": "string",
+          "description": "State name exactly as written"
+        },
+        "tariff_book_name": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Tariff book name (e.g., 'COLO. PUC No. 8 Electric'). Null if not specified"
+        },
+        "effective_date": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Date tariff became effective in YYYY-MM-DD format. Convert from any format (e.g., 'January 1, 2024' → '2024-01-01'). Null if not stated"
+        },
+        "revision_date": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Most recent revision date in YYYY-MM-DD format. Null if not stated"
+        }
+      }
+    },
+    "rate_schedules": {
+      "type": "array",
+      "description": "ALL rate schedules AND riders - each as separate entry. Extract EVERY base schedule (R, RD, RE-TOU, C, C-TOU, SG, etc.) AND every rider (Fuel Adjustment, DSM, RES, Rider A-J, PCA, FCA, etc.). Each rider gets is_rider=true. Most tariffs have 15-30+ entries. EXCLUDE ONLY: Fee schedules and terms/conditions without rates",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "rate_name",
+          "charges"
+        ],
+        "properties": {
+          "rate_name": {
+            "type": "string",
+            "description": "Rate schedule name exactly as written (e.g., 'Schedule R', 'Fuel Adjustment Rider')"
+          },
+          "is_rider": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "True=rider/adjustment (Fuel Adjustment Rider, DSM Rider, Rider A, PCA, etc.), False=base rate (Schedule R, Rate C-TOU, etc.), Null=unclear"
+          },
+          "sector": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Customer sector: 'Residential', 'Commercial', 'Industrial', etc. Null if not specified"
+          },
+          "applicable_riders": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "description": "CRITICAL: List ALL riders/adjustments applying to this schedule. Search the ENTIRE rate schedule section for 'ADJUSTMENTS', 'APPLICABLE RIDERS', 'RATE ADJUSTMENTS' headings (usually near the end). EXAMPLE from real tariff: Text says 'This rate schedule is subject to all applicable Electric Rate Adjustments...for the DSCMA, PCCA, TCA, ECA, and TEPA Non-Base Rate Adjustments' → Extract: ['DSCMA', 'PCCA', 'TCA', 'ECA', 'TEPA']. Extract EVERY acronym/name from comma-separated lists. Include abbreviations (DSM, FAC, PCA, RES, FCA) AND full names (Fuel Adjustment Clause, Renewable Energy Standard). Null ONLY if no adjustments section exists",
+            "items": {
+              "type": "string"
+            }
+          },
+          "rate_calculation_formula": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "How to calculate total rate/bill including ALL charges AND riders. Format: 'Total = [Base Charges] + [All Riders]'. IMPORTANT: If applicable_riders field is populated, MUST include those riders in the formula. Examples: 'Total = Customer Charge + Energy Charge + DSCMA + PCCA + TCA + ECA + TEPA' or 'Total = Customer Charge + Sum(On-Peak kWh × On-Peak Rate + Off-Peak kWh × Off-Peak Rate) + Fuel Adjustment Rider + DSM Rider'. List all charge types found in the charges array, then add all riders from applicable_riders. Null if cannot determine"
+          },
+          "charges": {
+            "type": "array",
+            "description": "All charges for this schedule (each becomes one compiled row)",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "charge_type",
+                "extracted_text"
+              ],
+              "properties": {
+                "charge_type": {
+                  "type": "string",
+                  "description": "Type of charge",
+                  "examples": [
+                    "Customer charge",
+                    "Energy charge",
+                    "Demand charge",
+                    "Fuel adjustment"
+                  ]
+                },
+                "charge_description": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Specific charge name from tariff. Null if not provided"
+                },
+                "rate": {
+                  "type": [
+                    "number",
+                    "string",
+                    "null"
+                  ],
+                  "description": "Rate value (number for fixed, string for variable). Null if not applicable"
+                },
+                "unit": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Unit exactly as written (e.g., '$', '$/kWh', '$/kW'). Null if not applicable"
+                },
+                "rate_structure": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Rate structure: 'Flat', 'Tiered', 'Time-of-use', 'Seasonal'. Null if not applicable"
+                },
+                "season": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Season name exactly as written (e.g., 'Summer', 'Winter'). Null if not seasonal"
+                },
+                "season_months": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Month range exactly as written (e.g., 'June 1 - September 30'). Null if not applicable"
+                },
+                "time_period": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Time-of-use period (e.g., 'On-Peak', 'Off-Peak', 'Mid-Peak'). Null if not TOU"
+                },
+                "time_range": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Clock hours exactly as written (e.g., '7:00 AM - 11:00 PM'). Null if not applicable"
+                },
+                "tier_min_kwh": {
+                  "type": [
+                    "number",
+                    "null"
+                  ],
+                  "description": "Minimum kWh for tiered rate. Null if not tiered"
+                },
+                "tier_max_kwh": {
+                  "type": [
+                    "number",
+                    "null"
+                  ],
+                  "description": "Maximum kWh for tiered rate. Null if not tiered"
+                },
+                "measurement_period": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "How demand is measured (e.g., '15-minute interval'). Null if not applicable"
+                },
+                "conditions": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Special conditions for this charge. Null if none"
+                },
+                "extracted_text": {
+                  "type": "string",
+                  "description": "Complete charge text verbatim from tariff - CRITICAL FOR QA/QC"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
