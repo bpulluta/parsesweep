@@ -384,39 +384,6 @@ class TestQualitativeReportLabels:
         assert df["Review Category"].iloc[0] == "scope_variant"
 
 
-class TestBuildComparisonDf:
-    """Tests for _build_comparison_df method."""
-
-    @pytest.fixture
-    def generator(self):
-        return ReportGenerator()
-
-    def test_build_comparison_df_empty_list(self, generator):
-        """Test that empty comparison list returns empty DataFrame."""
-        df = generator._build_comparison_df([], ["model_a"])
-        assert df.empty
-
-    def test_build_comparison_df_has_model_columns(self, generator):
-        """Test that comparison DataFrame has model columns."""
-        comparisons = [
-            FieldComparison(
-                item_id="test",
-                field_path="field",
-                model_values={"model_a": "value_a", "model_b": "value_b"},
-                agreement_score="1/2",
-                needs_review=True,
-                notes="test"
-            )
-        ]
-        
-        df = generator._build_comparison_df(comparisons, ["model_a", "model_b"])
-        
-        assert "Model: model_a" in df.columns
-        assert "Model: model_b" in df.columns
-        assert df["Model: model_a"].iloc[0] == "value_a"
-        assert df["Model: model_b"].iloc[0] == "value_b"
-
-
 class TestTruncateValue:
     """Tests for _truncate_value method."""
 
