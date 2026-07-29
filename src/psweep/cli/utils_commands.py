@@ -80,13 +80,6 @@ def _display_cli_path(path: Path, repo_root: Path) -> str:
         return path.resolve().as_posix()
 
 
-def _display_cli_reference(reference: str, repo_root: Path) -> str:
-    candidate = Path(reference)
-    if candidate.exists():
-        return _display_cli_path(candidate, repo_root)
-    return reference
-
-
 def _humanize_domain_name(name: str) -> str:
     return name.replace("_", " ").replace("-", " ").strip().title()
 
@@ -673,12 +666,10 @@ def init_domain_schema_cmd(
                     "command": f"pixi run psweep check-schema {_display_cli_path(output_path, repo_root)}",
                 },
                 {
-                    "title": "Scaffold runtime pack and config",
+                    "title": "Create runtime config from template",
                     "command": (
-                        'pixi run psweep init-domain-pack '
-                        f'--name {schema_name.replace("_schema", "")} '
-                        f'--schema {_display_cli_path(output_path, repo_root)} '
-                        '--with-workspace --with-config'
+                        f"mkdir -p config/{schema_name.replace('_schema', '')} && "
+                        f"cp config/TEMPLATE.yaml config/{schema_name.replace('_schema', '')}/run.yaml"
                     ),
                 },
             ],
@@ -1070,115 +1061,6 @@ def _create_config_skeleton(
         page_ranges_path.as_posix(),
         run_config_path.as_posix(),
     ]
-
-
-def _build_onboarding_next_steps(
-    *,
-    repo_root: Path,
-    pack_path: Path,
-    schema_path: Path,
-    profile_ref: str,
-    category_name: str,
-    config_root: Path,
-    document_type: str,
-    create_config: bool,
-    create_sample_assets: bool,
-    has_qaqc: bool,
-    template_mode: str,
-) -> list[dict[str, str]]:
-    pack_ref = _display_cli_path(pack_path, repo_root)
-    schema_ref = _display_cli_path(schema_path, repo_root)
-    profile_display = _display_cli_reference(profile_ref, repo_root)
-    documents_dir = _display_cli_path(
-        repo_root / "documents" / category_name, repo_root
-    )
-    processed_dir = _display_cli_path(
-        repo_root / "extracted" / category_name, repo_root
-    )
-    page_ranges_path = _display_cli_path(
-        config_root / category_name / "page_ranges.csv", repo_root
-    )
-
-    extract_command = _build_scaffold_extract_command(
-        documents_ref=documents_dir,
-        schema_ref=schema_ref,
-        profile_ref=profile_display,
-        page_ranges_ref=page_ranges_path if create_config else None,
-        document_type=document_type,
-        template_mode=template_mode,
-    )
-    next_steps = [
-        {
-            "title": "Add source documents",
-            "detail": f"Place source files under {documents_dir}/ before the first run.",
-        },
-        {
-            "title": "Validate runtime seam",
-            "command": (
-                "pixi run psweep check-runtime "
-                f"--pack {pack_ref} --profile {profile_display}"
-            ),
-        },
-        {
-            "title": "Extract documents",
-            "command": extract_command,
-        },
-        {
-            "title": "Compile extracted records",
-            "command": (
-                "pixi run psweep compile "
-                f"{processed_dir} --schema {schema_ref}"
-            ),
-        },
-    ]
-
-    if create_sample_assets:
-        next_steps.insert(
-            0,
-            {
-                "title": "Review scaffolded sample assets",
-                "detail": (
-                    f"Update {documents_dir}/sample_manifest.csv and replace placeholder files "
-                    f"under {documents_dir}/ before the first run."
-                ),
-            },
-        )
-
-    if template_mode == "recommended" and has_qaqc:
-        next_steps.extend(
-            [
-                {
-                    "title": "Optional multi-model QA/QC run",
-                    "command": _build_scaffold_extract_command(
-                        documents_ref=documents_dir,
-                        schema_ref=schema_ref,
-                        profile_ref=profile_display,
-                        page_ranges_ref=page_ranges_path
-                        if create_config
-                        else None,
-                        document_type=document_type,
-                        template_mode=template_mode,
-                        enable_qaqc=True,
-                    ),
-                },
-                {
-                    "title": "Generate QA/QC comparison reports",
-                    "command": (
-                        "pixi run psweep compare "
-                        f"{processed_dir}/qa_qc --schema {schema_ref}"
-                    ),
-                },
-                {
-                    "title": "Optional qualitative QA/QC review",
-                    "command": (
-                        "pixi run psweep compare "
-                        f"{processed_dir}/qa_qc --schema {schema_ref} --qaqc-lane qualitative"
-                    ),
-                },
-            ]
-        )
-
-    return next_steps
 
 
 @click.command()

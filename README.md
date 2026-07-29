@@ -155,6 +155,19 @@ pixi run psweep compile --config config/my_domain/run.yaml
   --validate-config   Dry run — validate inputs only
 ```
 
+### Curate
+
+```bash
+pixi run psweep curate --config config/my_domain/run.yaml
+pixi run psweep curate --run discovered/my_domain/latest
+
+# Options
+  --config PATH       Config YAML or domain run config
+  --run PATH          Specific run directory
+  --quiet             Minimal output
+  --verbose           Detailed output
+```
+
 ### Discover
 
 ```bash

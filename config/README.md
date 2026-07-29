@@ -242,7 +242,7 @@ These are documented with examples in
 | `query_context_aliases` | Coalesce alias → first non-empty target field for query templates. |
 | `browser_mode` | Download via headless Chrome for bot-protected sites (Akamai); needs Selenium + Chrome. |
 | `document_classifier` | Cheap keyword check; `action: warn` (flag) or `filter`. |
-| `document_review` | LLM grades each download and selects the primary one(s) per target into `curated/` (see [Curate](../README.md#curate-command)); writes an editable `review.csv`. |
+| `document_review` | LLM grades each download and selects the primary one(s) per target into `curated/` (see [Curate](../README.md#curate)); writes an editable `review.csv`. |
 | `partition_by` | Output layout `by_<f1>/<v1>/<v2>/…` from target-metadata fields. |
 
 ### `runtime` Settings
@@ -414,4 +414,3 @@ pixi run psweep extract doc.pdf --pages 615-759
 ## Example `run.yaml`
 
 See `config/geothermal_ordinances/run.yaml` for a complete, real-world example covering discovery, extraction, compilation, and QA/QC. See `TEMPLATE.yaml` for the fully annotated reference with all available knobs.
-
