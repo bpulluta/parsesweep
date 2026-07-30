@@ -170,6 +170,9 @@ compilation:
       - Error Count
       - Error Categories
       - Error Messages
+      - Applies_To_Natural_Gas
+      - Extraction_Approach
+      - Reasoning
     column_renames:
       State: state
       County: county
@@ -180,11 +183,19 @@ compilation:
       Year: year
       Source: source
       Feature: feature
+      "Specific Subject": specific_subject
+      "Applies To": applies_to
+      "Requirement Description": requirement_description
+      "Value Category": value_category
       Value: value
+      "Value Interpretation": value_interpretation
       Units: units
-      Adder: adder
-      "Min Dist": min_dist
-      "Max Dist": max_dist
+      "Range Low": range_low
+      "Range High": range_high
+      Obligation: obligation
+      Condition: condition
+      "Applicable Values": applicable_values
+      "Source Verbatim": source_verbatim
       Summary: summary
       Section: section
       Notes: notes
@@ -195,11 +206,19 @@ compilation:
       - jurisdiction_type
       - FIPS
       - feature
+      - specific_subject
+      - applies_to
+      - requirement_description
+      - value_category
       - value
+      - value_interpretation
       - units
-      - adder
-      - min_dist
-      - max_dist
+      - range_low
+      - range_high
+      - obligation
+      - condition
+      - applicable_values
+      - source_verbatim
       - summary
       - year
       - section

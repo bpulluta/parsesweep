@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$metadata": {
     "domain": "Geothermal Energy Ordinances",
-    "version": "3.0.0",
+    "version": "4.0.0",
     "extraction": {
       "main_data_array": "requirements",
       "identifier_fields": [
@@ -15,13 +15,22 @@
     },
     "compilation": {
       "deduplication": {
-        "key_fields": ["feature", "value", "units", "adder", "section"],
-        "ignore_fields": ["summary", "notes"]
+        "key_fields": ["feature", "specific_subject", "applies_to", "value_category", "value", "value_interpretation", "units", "obligation", "condition"],
+        "ignore_fields": ["source_verbatim", "summary", "reasoning", "notes", "applicable_values", "range_low", "range_high"]
+      },
+      "value_typing": {
+        "value_category_field": "value_category",
+        "value_interpretation_field": "value_interpretation",
+        "obligation_field": "obligation",
+        "applicable_values_field": "applicable_values",
+        "obligation_vocabulary": ["required", "prohibited", "conditional", "allowed", "recommended", "informational"],
+        "value_category_vocabulary": ["quantitative", "qualitative"],
+        "value_interpretation_vocabulary": ["exact", "minimum", "maximum", "range", "formula", "tiered", "enumerated"]
       }
     }
   },
   "title": "Geothermal Energy Ordinance Extraction Schema",
-  "description": "Regulatory requirements for geothermal energy facilities.\n\nSCOPE: Geothermal power plants, exploration wells, production/injection wells, gen-tie lines, pipelines, and commercial geothermal infrastructure.\n\nEXCLUDE: Geothermal heat pumps (GHP), residential HVAC, direct-use heating/cooling, solar, wind, biomass, and other non-geothermal technologies.\n\nWhen extracting from multi-technology renewable energy ordinances, ONLY extract provisions that explicitly apply to geothermal facilities.",
+  "description": "Regulatory requirements for geothermal energy facilities.\n\nSCOPE: Geothermal power plants, exploration wells, production/injection wells, gen-tie lines, pipelines, and commercial geothermal infrastructure.\n\nEXCLUDE: Geothermal heat pumps (GHP), residential HVAC, direct-use heating/cooling, solar, wind, biomass, and other non-geothermal technologies.\n\nWhen extracting from multi-technology renewable energy ordinances, ONLY extract provisions that explicitly apply to geothermal facilities.\n\nEvery requirement row is decomposed on four axes: WHAT is regulated (feature + specific_subject + requirement_description + applies_to), HOW MUCH (value + value_category + value_interpretation + units + range_low/range_high), HOW BINDING (obligation), and WHEN/WHERE (condition + applies_to). Evidence lives in source_verbatim, summary, reasoning, and section.",
   "type": "object",
   "additionalProperties": false,
   "required": ["jurisdiction", "requirements", "document_applicability"],
@@ -77,15 +86,15 @@
     },
     "requirements": {
       "type": "array",
-      "description": "Regulatory requirements for geothermal facilities.\n\nEXTRACTION RULES:\n(1) One row per requirement. Separate rows for different subjects/boundaries.\n(2) Ranges: populate min_dist/max_dist and use range string as value.\n(3) Day/night noise: separate rows with adder='daytime'/'nighttime'.\n(4) PRIORITY FEATURES: property lines distance, residential zones distance, hospitals distance, schools distance, water bodies distance, roads distance, active faults distance, noise, fencing, minimum lot size, height limit, bond requirement, decommissioning, required permits, seismic monitoring, drilling hours.",
+      "description": "Regulatory requirements for geothermal facilities.\n\nEXTRACTION RULES:\n(1) One row per requirement. Separate rows for different subjects/boundaries, distinguished with 'specific_subject'.\n(2) Ranges: put the range string in 'value', set value_interpretation='range', and populate range_low/range_high.\n(3) Tiers: emit one row per tier with value_interpretation='tiered' and the triggering band in 'condition'.\n(4) Day/night noise or drilling hours: separate rows with condition='daytime'/'nighttime'.\n(5) FACILITY SCOPE vs TRIGGER: put the governed facility type in 'applies_to' (e.g., 'Exploration well'); put the situational circumstance in 'condition' (e.g., 'within 1/2 mile of a residence'). Never mix the two.\n(6) PRIORITY FEATURES: property lines distance, residential zones distance, hospitals distance, schools distance, water bodies distance, roads distance, active faults distance, noise, fencing, minimum lot size, height limit, bond requirement, decommissioning, required permits, seismic monitoring, drilling hours.",
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["feature", "summary"],
+        "required": ["feature", "value_category", "obligation", "summary"],
         "properties": {
           "feature": {
             "type": "string",
-            "description": "Standardized feature name for cross-jurisdiction comparison.",
+            "description": "Standardized feature name (the WHAT axis) for cross-jurisdiction comparison.",
             "enum": [
               "property lines distance",
               "residential zones distance",
@@ -113,35 +122,86 @@
               "working hours"
             ]
           },
+          "specific_subject": {
+            "type": ["string", "null"],
+            "description": "Sub-aspect of the feature that distinguishes this record from other rows sharing the same feature (WHAT axis). Participates in the dedup key. Use the ordinance's own framing. Null when the feature is already specific enough.",
+            "examples": ["from occupied residence", "from active fault trace", "bond amount", "drilling start", "drilling end", null]
+          },
+          "applies_to": {
+            "type": ["string", "null"],
+            "description": "Facility type or scope the requirement governs (WHAT/WHERE axis), in the document's own terminology. Describes the kind of facility the rule binds. This is NOT the situational trigger (use 'condition') and NOT the obligation. Null when the requirement applies to all geothermal facilities generally.",
+            "examples": ["Power plant", "Exploration well", "Production well", "Injection well", "Gen-tie line", "All geothermal facilities", null]
+          },
+          "requirement_description": {
+            "type": ["string", "null"],
+            "description": "Clean, obligation-free description of the regulated action or object (WHAT axis). NEVER include obligation language — no 'required', 'shall', 'may', 'must', 'prohibited'. Used for qualitative requirements; null for purely quantitative rows.",
+            "examples": ["Solid perimeter fencing", "Seismic monitoring program", "Decommissioning and site restoration plan", null]
+          },
+          "value_category": {
+            "type": "string",
+            "description": "REQUIRED. How this requirement's value should be interpreted (HOW MUCH axis). 'quantitative' = a measurable magnitude lives in 'value' (distance, dBA, acres, MW, hours, %, $). 'qualitative' = there is no magnitude; the substance lives in 'requirement_description' and 'value' should be null. Independent of 'obligation': a quantitative limit can be conditional and a qualitative item can be required.",
+            "enum": ["quantitative", "qualitative"],
+            "examples": ["quantitative", "qualitative"]
+          },
           "value": {
             "type": ["number", "string", "null"],
-            "description": "Primary quantifiable value. Numbers without units. Ranges as string. Null if procedural.",
-            "examples": [500, 1320, 100, 65, "100-500", "Required", null]
+            "description": "For quantitative requirements, the numeric magnitude ONLY (e.g., 500, 1320, 65). Use a range string (e.g., '100-500') when the provision states a span, set value_interpretation='range', and populate range_low/range_high. For qualitative requirements set value to null and use requirement_description. NEVER embed units or obligation words ('required', 'may', 'shall') in value.",
+            "examples": [500, 1320, 100, 65, "100-500", null]
+          },
+          "value_interpretation": {
+            "type": ["string", "null"],
+            "description": "How the value is bounded or structured (HOW MUCH axis). 'exact' = single fixed value ('shall be 35 feet'); 'minimum' = floor ('at least', 'no less than'); 'maximum' = ceiling ('shall not exceed'); 'range' = a span — populate range_low and range_high; 'formula' = computed ('1.1x turbine height'); 'tiered' = value depends on a band — emit one row per tier; 'enumerated' = a discrete set of allowed values — pair with applicable_values. Null for qualitative requirements (present/absent).",
+            "enum": ["exact", "minimum", "maximum", "range", "formula", "tiered", "enumerated", null],
+            "examples": ["exact", "minimum", "maximum", "range", "formula", "tiered", "enumerated", null]
           },
           "units": {
             "type": ["string", "null"],
-            "description": "Unit of measurement.",
+            "description": "Unit of measurement for a quantitative value. Null for qualitative requirements.",
             "examples": ["feet", "dBA", "acres", "HH:MM (24-hour)", null]
           },
-          "adder": {
+          "range_low": {
+            "type": ["number", "null"],
+            "description": "Lower bound of the span when 'value' is a range (e.g., 100 for '100-500'). Domain-agnostic: works for distances, dBA, MW, acres, etc. Null unless value_interpretation='range'.",
+            "examples": [100, 55, null]
+          },
+          "range_high": {
+            "type": ["number", "null"],
+            "description": "Upper bound of the span when 'value' is a range (e.g., 500 for '100-500'). Domain-agnostic: works for distances, dBA, MW, acres, etc. Null unless value_interpretation='range'.",
+            "examples": [500, 65, null]
+          },
+          "obligation": {
+            "type": "string",
+            "description": "REQUIRED. How binding the requirement is (HOW BINDING axis), classified from the governing verb ONLY. Never place obligation language inside 'value' or 'requirement_description'.\n\n- 'required': mandatory — 'shall', 'must', 'is required', 'no less than'.\n- 'prohibited': forbidden — 'shall not', 'no person shall', 'may not', 'is not permitted', 'prohibited'.\n- 'conditional': discretionary authority — 'may require', 'at the discretion of', 'as a condition of approval', 'unless waived'.\n- 'allowed': explicitly permitted with no mandate — 'is permitted', 'may be located', 'is allowed'.\n- 'recommended': non-binding advisory — 'should', 'encouraged', 'best available technology'.\n- 'informational': definitions, procedures, measured baselines, or referenced external standards with no direct obligation.\n\nWhen multiple verbs appear, precedence: prohibited > required > conditional > recommended > allowed > informational. Cite the trigger word in 'reasoning'.",
+            "enum": ["required", "prohibited", "conditional", "allowed", "recommended", "informational"],
+            "examples": ["required", "prohibited", "conditional", "allowed", "recommended", "informational"]
+          },
+          "condition": {
             "type": ["string", "null"],
-            "description": "Zone-specific or conditional context (e.g., 'exploration wells', 'power plant', 'within 1/2 mile of residence'). Null if general."
+            "description": "Situational trigger or circumstance that governs WHEN or WHERE the requirement applies (WHEN/WHERE axis). This is the condition/circumstance, NOT the facility type (use 'applies_to') and NOT the obligation. Null if the requirement applies unconditionally.",
+            "examples": ["nighttime", "daytime only", "within 1/2 mile of a residence", "during drilling operations", "when screening is absent", null]
           },
-          "min_dist": {
-            "type": ["number", "null"],
-            "description": "Minimum distance when value is a range. Null if not a range."
+          "applicable_values": {
+            "type": ["array", "null"],
+            "description": "Parallel interchangeable atomic values that share an IDENTICAL obligation, condition, and evidence. Use ONLY when (a) the values are categorical/enumerated (e.g., permitted/conditional district codes, acceptable permit types) and (b) all share the same obligation + condition + source. Pair with value_interpretation='enumerated'. Null when a single value applies.",
+            "items": { "type": "string" },
+            "examples": [["A-1", "M-1", "M-2"], ["Conditional use permit", "Special use permit"], null]
           },
-          "max_dist": {
-            "type": ["number", "null"],
-            "description": "Maximum distance when value is a range. Null if not a range."
+          "source_verbatim": {
+            "type": ["string", "null"],
+            "description": "Exact operative clause copied word-for-word from the ordinance (EVIDENCE axis). Never paraphrase — this is the audit anchor. If the passage exceeds 50 words, quote the operative head, insert '…', then the tail. Null only if no single passage can be quoted."
           },
           "summary": {
             "type": ["string", "null"],
-            "description": "Verbatim or closely paraphrased ordinance text supporting this requirement."
+            "description": "Human-readable summary of the requirement (EVIDENCE axis). May be paraphrased for clarity. Use 'source_verbatim' for the exact quote. Include enough context for verification."
+          },
+          "reasoning": {
+            "type": ["string", "null"],
+            "description": "Terse 'trigger → label' rationale (EVIDENCE axis), <=15 words, citing the governing verb and the value_category decision. Goes in ignore_fields and is hidden from compiled output. Null if self-evident.",
+            "examples": ["'may require' → conditional; no magnitude → qualitative", "'shall not exceed' → required; number → quantitative/maximum", null]
           },
           "section": {
             "type": ["string", "null"],
-            "description": "Ordinance section/article reference (e.g., '§ 91703.01', 'Section 6-3N-10-1(C)')."
+            "description": "Ordinance section/article reference (EVIDENCE axis, e.g., '§ 91703.01', 'Section 6-3N-10-1(C)')."
           },
           "notes": {
             "type": ["string", "null"],
