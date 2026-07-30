@@ -105,6 +105,12 @@ discovery:
       A document with even a short geothermal section within a broader
       zoning code IS relevant — accept it.
     keep_top: 2
+    # Comparative dedup: after individual grading, an LLM pass compares all
+    # confirmed-primary docs for the same jurisdiction and drops redundant ones
+    # (same ordinance in an older format or from a less authoritative source).
+    # Genuinely complementary sections are kept. keep_top still caps the final
+    # count of distinct docs per jurisdiction. Default: true.
+    deduplicate_redundant: true
     action: move
   partition_by: [state, jurisdiction]
 
