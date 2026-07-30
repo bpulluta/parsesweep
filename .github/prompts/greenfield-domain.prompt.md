@@ -19,7 +19,7 @@ Required steps:
 11. Iterate on schema fields, page ranges, and wording until the extraction quality is strong.
 
 Output format:
-- Domain Summary: <document type, schema choice, pack name>
+- Domain Summary: <document type, schema path, config path>
 - Files Created or Updated: <list>
 - Validation Commands: <commands + pass/fail>
 - Extraction Findings: <what worked, what needs iteration>
