@@ -12,15 +12,14 @@ ParseSweep is a universal document extraction system that uses LLMs to extract s
 - Prefer runtime quality, repo hygiene, and repeatable onboarding over expanding optional surface area.
 - Keep ownership boundaries explicit:
   - schema: extraction contract, field definitions, identifiers, minimal dedup semantics
-  - pack: reusable domain runtime behavior, QA/QC defaults, compilation presentation
-  - profile: environment/runtime tuning
+  - config (`config/<domain>/run.yaml`): runtime behavior, QA/QC lanes, model tiers, compilation presentation
 - Start new domains with the leanest schema that can support a smoke extraction, then expand through iteration.
 
 ## Documentation Policy
 
 **Repository Documentation:**
 - Main README.md in root for the active product overview, architecture baseline, and core workflows
-- schemas/SCHEMA_BEST_PRACTICES.md for schema authoring and schema-versus-pack guidance
+- schemas/SCHEMA_BEST_PRACTICES.md for schema authoring and runtime-config guidance
 - .github/copilot-instructions.md for repository-specific Copilot operating guidance
 
 **DO NOT commit:**
@@ -285,7 +284,7 @@ OPENAI_API_KEY=sk-your-key
 ## Important Notes
 
 1. **Always use pixi** - Do not use `pip install`, `python`, or `python3` directly
-2. **Model tiers** - Define models in run.yaml `models:` block, not CLI flags. Stages reference tier names (`primary`/`secondary`)
+2. **Model tiers** - Define models in `config/<domain>/run.yaml` `models:` block, not CLI flags. Config sections reference tier names (`primary`/`secondary`) via `model:`
 3. **Schema required** - Always specify `--schema` for production use (see Schema Requirements)
 4. **Sanity checks** - Warnings like "Sanity checks found N issues" are informational, not errors
 5. **Multi-format** - System automatically handles PDFs, DOCX, TXT, XLSX, CSV in the same directory
@@ -322,9 +321,9 @@ When the user only has raw documents for a new domain, guide them through the cu
 2. Start with a lean schema under `schemas/personal/` containing valid `$metadata.extraction`, top-level context objects, and a compact main data array shape. Prefer `pixi run psweep init-domain-schema --name <domain> --reference-schema <closest_schema>` over manually copying a full production schema.
 3. If the user already knows the first 4-8 fields they need, prefer `--include-field ...` on `init-domain-schema` so the starter is trimmed immediately instead of expecting manual JSON edits.
 4. Use the closest existing schema only as a reference for field patterns and domain phrasing.
-5. Keep the separation explicit: schema owns extraction contract and minimal dedup semantics; pack YAML owns runtime modules, QA/QC behavior, and environment/runtime tuning.
+5. Keep the separation explicit: schema owns extraction contract and minimal dedup semantics; `config/<domain>/run.yaml` owns runtime modules, QA/QC behavior, model tiers, and compilation presentation.
 6. Run `pixi run psweep check-schema ...` and fix schema issues.
-7. Keep the runtime config-driven: add or update `config/<domain>/run.yaml` instead of inventing pack/runtime commands.
+7. Add or update `config/<domain>/run.yaml` for runtime settings (models, discovery, QA/QC, compilation output).
 8. Validate the resolved command inputs with `pixi run psweep discover --config config/<domain>/run.yaml --validate-config`, then smoke-test `extract` and `compile`.
 9. Run `extract` on 1-2 documents first, then `compile`, then optional `compare` QA/QC runs.
 10. Iterate on schema fields, page ranges, and qualitative review until extraction quality is acceptable.
