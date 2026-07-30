@@ -44,6 +44,48 @@ _REVIEW_SCHEMA: dict[str, Any] = {
     "required": ["is_primary", "relevance", "doc_kind", "reason"],
 }
 
+_DEDUP_SYSTEM = (
+    "You compare multiple documents discovered for the same jurisdiction and "
+    "identify which are redundant — meaning they cover the same regulatory "
+    "content as another document in the set but are an older, superseded, or "
+    "less authoritative version of it. Your goal: ensure the curated set has "
+    "maximum unique regulatory content with no version redundancy. "
+    "Documents covering genuinely different regulatory provisions (e.g., "
+    "different sections, different topics, complementary rules) are NOT "
+    "redundant even if they are from the same jurisdiction."
+)
+
+_DEDUP_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "redundancy_groups": {
+            "type": "array",
+            "description": (
+                "Each group represents a set of documents where one supersedes "
+                "the others. Only populate when genuine version redundancy "
+                "exists. Leave empty if all documents cover distinct content."
+            ),
+            "items": {
+                "type": "object",
+                "properties": {
+                    "keep_index": {
+                        "type": "integer",
+                        "description": "0-based index of the document to KEEP (most current/authoritative).",
+                    },
+                    "redundant_indices": {
+                        "type": "array",
+                        "items": {"type": "integer"},
+                        "description": "0-based indices of documents to EXCLUDE (superseded/redundant).",
+                    },
+                    "reason": {"type": "string"},
+                },
+                "required": ["keep_index", "redundant_indices", "reason"],
+            },
+        }
+    },
+    "required": ["redundancy_groups"],
+}
+
 
 class DocumentReviewer:
     """Grade downloaded files with an LLM and promote the primary one(s)."""
@@ -59,6 +101,7 @@ class DocumentReviewer:
         action: str = "move",
         max_chars: int = 12000,
         review_keywords: list[str] | None = None,
+        deduplicate_redundant: bool = True,
     ) -> None:
         self._description = document_description
         self._model = model
@@ -70,6 +113,7 @@ class DocumentReviewer:
         self._review_keywords = [
             k.lower() for k in (review_keywords or []) if k and k.strip()
         ]
+        self._deduplicate_redundant = bool(deduplicate_redundant)
         self._client: Any = None
         # Cost accounting
         self._total_cost: float = 0.0
@@ -266,6 +310,89 @@ class DocumentReviewer:
             return None
         return llm
 
+    def _find_redundant_docs(
+        self, primaries: list[dict[str, Any]], target_context: str
+    ) -> set[int]:
+        """Comparative pass: identify redundant docs among confirmed primaries.
+
+        Uses already-available metadata (filename, URL, doc_kind, review_reason)
+        to detect version overlap without re-reading any document. Returns the
+        0-based indices (into ``primaries``) that should be excluded as
+        superseded/redundant.
+
+        Designed to be called only when len(primaries) >= 2. Fails silently:
+        any error returns an empty set so all primaries are kept.
+        """
+        if len(primaries) < 2:
+            return set()
+
+        # Build a numbered list of doc metadata for the LLM.
+        lines: list[str] = [
+            f"Jurisdiction context: {target_context}\n",
+            "Documents to compare (0-based index):\n",
+        ]
+        for i, rec in enumerate(primaries):
+            path = str(rec.get("path") or "")
+            filename = Path(path).name if path else f"doc_{i}"
+            url = str(rec.get("url") or rec.get("final_url") or "unknown")
+            doc_kind = str(rec.get("review_doc_kind") or "unknown")
+            reason = str(rec.get("review_reason") or "")
+            lines.append(
+                f"[{i}] File: {filename}\n"
+                f"    Source: {url}\n"
+                f"    Kind: {doc_kind}\n"
+                f"    Assessment: {reason}\n"
+            )
+
+        user_prompt = (
+            "".join(lines)
+            + "\nFor each group of documents that cover the same regulatory content "
+            "where one supersedes another (older version, less authoritative source, "
+            "or duplicate encoding of the same ordinance), return a redundancy_groups "
+            "entry specifying the keep_index (most current/authoritative) and the "
+            "redundant_indices to exclude. "
+            "Documents covering genuinely different regulatory content are NOT "
+            "redundant — return empty redundancy_groups if all docs are complementary."
+        )
+
+        try:
+            result = self._client.extract(
+                text=user_prompt,
+                schema=_DEDUP_SCHEMA,
+                system_prompt=_DEDUP_SYSTEM,
+                user_prompt=user_prompt,
+            )
+        except Exception:  # noqa: BLE001 - dedup is best-effort
+            return set()
+
+        if isinstance(result, dict):
+            self._total_cost += result.get("cost", 0.0) or 0.0
+            self._total_input_tokens += result.get("input_tokens", 0) or 0
+            self._total_output_tokens += result.get("output_tokens", 0) or 0
+            self._llm_calls += 1
+
+        data = result.get("data") if isinstance(result, dict) else None
+        if not isinstance(data, dict):
+            return set()
+
+        redundant: set[int] = set()
+        n = len(primaries)
+        for group in data.get("redundancy_groups") or []:
+            if not isinstance(group, dict):
+                continue
+            keep = group.get("keep_index")
+            to_drop = group.get("redundant_indices") or []
+            # Validate all indices are in-bounds and keep is not in to_drop.
+            if not isinstance(keep, int) or keep < 0 or keep >= n:
+                continue
+            valid_drop = {
+                idx for idx in to_drop
+                if isinstance(idx, int) and 0 <= idx < n and idx != keep
+            }
+            redundant |= valid_drop
+
+        return redundant
+
     def review(
         self,
         downloads: list[dict[str, Any]],
@@ -349,13 +476,43 @@ class DocumentReviewer:
                 ),
                 reverse=True,
             )
-            for rank, record in enumerate(ranked):
-                keep = rank < self._keep_top and bool(
-                    record.get("review_is_primary")
-                )
-                record["review_selected"] = keep
-                if keep:
-                    selected += 1
+
+            # Comparative dedup: identify redundant docs among the confirmed
+            # primaries BEFORE applying keep_top, so keep_top reflects the
+            # desired number of genuinely distinct/complementary documents.
+            redundant_indices: set[int] = set()
+            if self._deduplicate_redundant:
+                primaries = [
+                    r for r in ranked if bool(r.get("review_is_primary"))
+                ]
+                if len(primaries) >= 2:
+                    redundant_path_set = {
+                        str(primaries[i].get("path"))
+                        for i in self._find_redundant_docs(primaries, target_context)
+                    }
+                    if redundant_path_set:
+                        notes.append(
+                            f"Dedup ({target_key}): excluded "
+                            f"{len(redundant_path_set)} redundant doc(s)."
+                        )
+                    # Mark redundant records so keep_top skips them.
+                    for r in ranked:
+                        if str(r.get("path")) in redundant_path_set:
+                            r["review_redundant"] = True
+
+            non_redundant_rank = 0
+            for record in ranked:
+                is_redundant = bool(record.get("review_redundant"))
+                if is_redundant:
+                    record["review_selected"] = False
+                else:
+                    keep = non_redundant_rank < self._keep_top and bool(
+                        record.get("review_is_primary")
+                    )
+                    record["review_selected"] = keep
+                    if keep:
+                        selected += 1
+                    non_redundant_rank += 1
                 # Files are NOT moved: everything stays in place under
                 # documents/ and the engine materializes the selected set into
                 # curated/. A per-file sidecar records the verdict so a human
