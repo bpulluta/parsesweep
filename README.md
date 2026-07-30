@@ -7,6 +7,8 @@
 
 ParseSweep discovers, extracts, and compiles structured data from documents into Excel/CSV. Define what you need with a JSON schema, configure how to run it with a YAML config, and let the AI handle the rest.
 
+![alt text](src/psweep/img/imagev1.png)
+
 ## What It Does
 
 ```
