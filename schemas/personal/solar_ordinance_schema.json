@@ -1,6 +1,8 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$metadata": {
+    "domain": "Solar Energy Ordinances",
+    "version": "2.0.0",
     "extraction": {
       "main_data_array": "requirements",
       "identifier_fields": [
@@ -14,27 +16,22 @@
     },
     "compilation": {
       "deduplication": {
-        "key_fields": [
-          "state",
-          "county",
-          "subdivision",
-          "feature",
-          "specific_subject",
-          "applies_to",
-          "value",
-          "value_type",
-          "units",
-          "condition"
-        ],
-        "ignore_fields": [
-          "details",
-          "notes"
-        ]
+        "key_fields": ["feature", "specific_subject", "applies_to", "value_category", "value", "value_interpretation", "units", "obligation", "condition"],
+        "ignore_fields": ["source_verbatim", "reasoning", "notes", "applicable_values", "range_low", "range_high"]
+      },
+      "value_typing": {
+        "value_category_field": "value_category",
+        "value_interpretation_field": "value_interpretation",
+        "obligation_field": "obligation",
+        "applicable_values_field": "applicable_values",
+        "obligation_vocabulary": ["required", "prohibited", "conditional", "allowed", "recommended", "informational"],
+        "value_category_vocabulary": ["quantitative", "qualitative"],
+        "value_interpretation_vocabulary": ["exact", "minimum", "maximum", "range", "formula", "tiered", "enumerated"]
       }
     }
   },
   "title": "Solar Energy Ordinance Extraction Schema",
-  "description": "Regulatory requirements for solar photovoltaic energy generation facilities. SCOPE: utility-scale solar farms, commercial solar installations, ground-mounted solar arrays, solar energy overlay districts, and solar energy generation facilities. EXCLUDE: wind energy, geothermal energy, biomass, battery storage, and other non-solar technologies unless a requirement explicitly applies to solar within the cited section. ALSO EXCLUDE: small residential rooftop solar exemptions unless the document regulates commercial or utility-scale solar. CRITICAL FILTERING: only extract provisions that explicitly mention solar, photovoltaic, PV, solar panels, solar arrays, solar facilities, or clearly apply to solar in context.",
+  "description": "Regulatory requirements for solar photovoltaic energy generation facilities. SCOPE: utility-scale solar farms, commercial solar installations, ground-mounted solar arrays, solar energy overlay districts, and solar energy generation facilities. EXCLUDE: wind energy, geothermal energy, biomass, battery storage, and other non-solar technologies unless a requirement explicitly applies to solar within the cited section. ALSO EXCLUDE: small residential rooftop solar exemptions unless the document regulates commercial or utility-scale solar. CRITICAL FILTERING: only extract provisions that explicitly mention solar, photovoltaic, PV, solar panels, solar arrays, solar facilities, or clearly apply to solar in context.\n\nEvery requirement row is decomposed on four axes: WHAT is regulated (feature + specific_subject + requirement_description + applies_to), HOW MUCH (value + value_category + value_interpretation + units + range_low/range_high), HOW BINDING (obligation), and WHEN/WHERE (condition + applies_to). Evidence lives in source_verbatim, reasoning, and section.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -65,10 +62,7 @@
           ]
         },
         "relevant_sections": {
-          "type": [
-            "string",
-            "null"
-          ],
+          "type": ["string", "null"],
           "description": "Solar-related sections cited exactly as written. Null if none."
         }
       }
@@ -91,41 +85,38 @@
           "description": "County name exactly as written, keeping the County suffix if present. For municipal ordinances, use the governing county if it is explicit in the document."
         },
         "subdivision": {
-          "type": [
-            "string",
-            "null"
-          ],
+          "type": ["string", "null"],
           "description": "City, township, or other subdivision if the ordinance applies below the county level. Null if county-wide or not applicable."
         },
         "jurisdiction_type": {
-          "type": [
-            "string",
-            "null"
-          ],
+          "type": ["string", "null"],
           "description": "Jurisdiction type exactly as stated, such as County, City, Township, Town, Village, or Borough."
         },
         "year": {
-          "type": [
-            "integer",
-            "null"
-          ],
+          "type": ["integer", "null"],
           "description": "Most relevant ordinance year, typically adoption, amendment, or effective year. Use a four-digit integer when determinable."
+        },
+        "source": {
+          "type": ["string", "null"],
+          "description": "URL or document reference for the source ordinance. Use the SOURCE_URL from the CONTEXT block at the top of the document if present. Null if not available."
         }
       }
     },
     "requirements": {
       "type": "array",
-      "description": "Regulatory requirements applicable to solar facilities. EXTRACTION RULES: (1) Split one regulation into separate rows when it covers different features, different facility types, or different dimensional subjects. (2) Create separate rows for participating and non-participating setbacks only if the ordinance distinguishes them. (3) Extract tiered or alternative values as separate rows with appropriate condition and value_type values. (4) Do not create placeholder rows for topics the ordinance does not address. (5) Keep non-solar technologies out unless the solar section explicitly cross-references them in a way that changes the solar requirement.",
+      "description": "Regulatory requirements applicable to solar facilities. EXTRACTION RULES: (1) Split one regulation into separate rows when it covers different features, different facility types, or different dimensional subjects; distinguish them with 'specific_subject'. (2) Create separate rows for participating and non-participating setbacks only if the ordinance distinguishes them. (3) Extract tiered values as separate rows with value_interpretation='tiered' and the triggering band in 'condition'. (4) For a set of interchangeable allowed values (e.g., permitted district codes), use a single row with value_interpretation='enumerated' and populate applicable_values instead of repeating rows. (5) FACILITY SCOPE vs TRIGGER: put the governed facility type in 'applies_to' (e.g., 'Solar Energy Farm'); put the situational circumstance in 'condition' (e.g., 'for facilities exceeding 25 MW'). Never mix the two. (6) Do not create placeholder rows for topics the ordinance does not address. (7) Keep non-solar technologies out unless the solar section explicitly cross-references them in a way that changes the solar requirement.",
       "items": {
         "type": "object",
         "additionalProperties": false,
         "required": [
-          "feature"
+          "feature",
+          "value_category",
+          "obligation"
         ],
         "properties": {
           "feature": {
             "type": "string",
-            "description": "Standardized solar requirement feature name used for cross-jurisdiction comparison.",
+            "description": "Standardized solar requirement feature name (the WHAT axis) used for cross-jurisdiction comparison.",
             "enum": [
               "structures (participating)",
               "property line (participating)",
@@ -153,18 +144,13 @@
             ]
           },
           "specific_subject": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Specific dimensional or contextual subject within the feature. Examples: total area, minimum width, minimum depth, screening height, timeline for removal, financial security amount, from centerline, or from right-of-way edge. Use null when the feature itself is already specific enough."
+            "type": ["string", "null"],
+            "description": "Specific dimensional or contextual subject within the feature (WHAT axis). Participates in the dedup key. Examples: total area, minimum width, minimum depth, screening height, timeline for removal, financial security amount, from centerline, or from right-of-way edge. Use null when the feature itself is already specific enough.",
+            "examples": ["total area", "minimum width", "screening height", "financial security amount", "from centerline", "from right-of-way edge", null]
           },
           "applies_to": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Solar facility type or scope that the requirement applies to. Use the ordinance's own terminology when practical.",
+            "type": ["string", "null"],
+            "description": "Solar facility type or scope the requirement governs (WHAT/WHERE axis). Use the ordinance's own terminology when practical. This is NOT the situational trigger (use 'condition') and NOT the obligation.",
             "examples": [
               "Solar Energy Farm",
               "Solar Energy System",
@@ -176,36 +162,30 @@
               null
             ]
           },
-          "value": {
-            "type": [
-              "number",
-              "string",
-              "null"
-            ],
-            "description": "Primary extracted value. Use numbers without units for fixed numeric values, strings for formulas, ranges, enumerated zone names, or textual requirements such as Required or Prohibited."
+          "requirement_description": {
+            "type": ["string", "null"],
+            "description": "Clean, obligation-free description of the regulated action or object (WHAT axis). NEVER include obligation language — no 'required', 'shall', 'may', 'must', 'prohibited'. Used for qualitative requirements; null for purely quantitative rows.",
+            "examples": ["Perimeter screening vegetation", "Decommissioning and site restoration plan", "Glare mitigation plan", null]
           },
-          "value_type": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "How the value should be interpreted.",
-            "enum": [
-              "fixed_number",
-              "formula",
-              "range",
-              "alternative_option",
-              "tiered",
-              "minimum",
-              "maximum",
-              null
-            ]
+          "value_category": {
+            "type": "string",
+            "description": "REQUIRED. How this requirement's value should be interpreted (HOW MUCH axis). 'quantitative' = a measurable magnitude lives in 'value' (distance, dBA, acres, MW, %, $). 'qualitative' = there is no magnitude; the substance lives in 'requirement_description' (or an enumerated set in applicable_values) and 'value' should be null. Independent of 'obligation': a quantitative limit can be conditional and a qualitative item can be required.",
+            "enum": ["quantitative", "qualitative"],
+            "examples": ["quantitative", "qualitative"]
+          },
+          "value": {
+            "type": ["number", "string", "null"],
+            "description": "For quantitative requirements, the numeric magnitude ONLY (e.g., 500, 20, 55). Use a range string (e.g., '100-500') when the provision states a span, set value_interpretation='range', and populate range_low/range_high. For qualitative or enumerated requirements set value to null and use requirement_description or applicable_values. NEVER embed units or obligation words ('required', 'may', 'shall', 'prohibited') in value.",
+            "examples": [500, 20, 55, 2640, "100-500", null]
+          },
+          "value_interpretation": {
+            "type": ["string", "null"],
+            "description": "How the value is bounded or structured (HOW MUCH axis). 'exact' = single fixed value ('shall be 35 feet'); 'minimum' = floor ('at least', 'no less than'); 'maximum' = ceiling ('shall not exceed'); 'range' = a span — populate range_low and range_high; 'formula' = computed ('1.1x panel height'); 'tiered' = value depends on a band — emit one row per tier; 'enumerated' = a discrete set of allowed values (e.g., permitted district codes) — pair with applicable_values. Null for qualitative requirements (present/absent).",
+            "enum": ["exact", "minimum", "maximum", "range", "formula", "tiered", "enumerated", null],
+            "examples": ["exact", "minimum", "maximum", "range", "formula", "tiered", "enumerated", null]
           },
           "units": {
-            "type": [
-              "string",
-              "null"
-            ],
+            "type": ["string", "null"],
             "description": "Unit of measurement written in full words when possible. Use null for zoning districts, yes/no requirements, formulas without a unit, or pure text values.",
             "examples": [
               "feet",
@@ -224,19 +204,36 @@
               null
             ]
           },
-          "condition": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Qualifying condition that changes when the requirement applies, such as for facilities exceeding 25 MW, when screening is not provided, during construction, or when multiple lots are included in the district."
+          "range_low": {
+            "type": ["number", "null"],
+            "description": "Lower bound of the span when 'value' is a range (e.g., 100 for '100-500'). Domain-agnostic: works for distances, dBA, MW, acres, etc. Null unless value_interpretation='range'.",
+            "examples": [100, 55, null]
           },
-          "details": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Concise verbatim or near-verbatim excerpt that captures the operative solar requirement language.",
+          "range_high": {
+            "type": ["number", "null"],
+            "description": "Upper bound of the span when 'value' is a range (e.g., 500 for '100-500'). Domain-agnostic: works for distances, dBA, MW, acres, etc. Null unless value_interpretation='range'.",
+            "examples": [500, 65, null]
+          },
+          "obligation": {
+            "type": "string",
+            "description": "REQUIRED. How binding the requirement is (HOW BINDING axis), classified from the governing verb ONLY. Never place obligation language inside 'value' or 'requirement_description'.\n\n- 'required': mandatory — 'shall', 'must', 'is required', 'no less than'.\n- 'prohibited': forbidden — 'shall not', 'no person shall', 'may not', 'is not permitted', 'prohibited'.\n- 'conditional': discretionary authority — 'may require', 'at the discretion of', 'as a condition of approval', 'unless waived'.\n- 'allowed': explicitly permitted with no mandate — 'is permitted', 'may be located', 'is allowed'.\n- 'recommended': non-binding advisory — 'should', 'encouraged', 'best available technology'.\n- 'informational': definitions, procedures, measured baselines, or referenced external standards with no direct obligation.\n\nWhen multiple verbs appear, precedence: prohibited > required > conditional > recommended > allowed > informational. Cite the trigger word in 'reasoning'.",
+            "enum": ["required", "prohibited", "conditional", "allowed", "recommended", "informational"],
+            "examples": ["required", "prohibited", "conditional", "allowed", "recommended", "informational"]
+          },
+          "condition": {
+            "type": ["string", "null"],
+            "description": "Situational trigger or circumstance that governs WHEN or WHERE the requirement applies (WHEN/WHERE axis). This is the condition/circumstance, NOT the facility type (use 'applies_to') and NOT the obligation. Null if the requirement applies unconditionally.",
+            "examples": ["for facilities exceeding 25 MW", "when screening is not provided", "during construction", "when multiple lots are included in the district", null]
+          },
+          "applicable_values": {
+            "type": ["array", "null"],
+            "description": "Parallel interchangeable atomic values that share an IDENTICAL obligation, condition, and evidence. Use ONLY when (a) the values are categorical/enumerated (e.g., permitted zoning district codes, acceptable permit types) and (b) all share the same obligation + condition + source. Replaces solar's former 'alternative_option'. Pair with value_interpretation='enumerated'. Null when a single value applies.",
+            "items": { "type": "string" },
+            "examples": [["AG", "RE", "R1", "R2"], ["Interim Use Permit", "Conditional Use Permit"], null]
+          },
+          "source_verbatim": {
+            "type": ["string", "null"],
+            "description": "Exact operative clause copied word-for-word from the ordinance (EVIDENCE axis). Never paraphrase — this is the audit anchor. If the passage exceeds 50 words, quote the operative head, insert '…', then the tail. Null only if no single passage can be quoted.",
             "examples": [
               "Area within each SEOD must be a minimum of 20 acres.",
               "Solar Energy Farms are only permitted within the AG zoning district under an approved Interim Use Permit.",
@@ -244,11 +241,17 @@
               null
             ]
           },
+          "reasoning": {
+            "type": ["string", "null"],
+            "description": "Terse 'trigger → label' rationale (EVIDENCE axis), <=15 words, citing the governing verb and the value_category decision. Goes in ignore_fields and is hidden from compiled output. Null if self-evident.",
+            "examples": ["'must be a minimum of' → required; number → quantitative/minimum", "'only permitted within' → allowed; districts → qualitative/enumerated", null]
+          },
+          "section": {
+            "type": ["string", "null"],
+            "description": "Ordinance section/article reference (EVIDENCE axis), cited exactly as written (e.g., 'Section 30-4', 'Article XII § 5')."
+          },
           "notes": {
-            "type": [
-              "string",
-              "null"
-            ],
+            "type": ["string", "null"],
             "description": "Optional analyst note for nuance, exceptions, or cross-references that help interpret the extracted value."
           }
         }

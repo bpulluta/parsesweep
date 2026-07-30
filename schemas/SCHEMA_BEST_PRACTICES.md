@@ -797,6 +797,192 @@ Common adjustments:
 
 ---
 
+## Value Typing and Obligation Classification
+
+Regulatory extraction schemas (ordinances, permits, tariffs) share a common
+problem: a single free-text `value` field ends up carrying *four different kinds
+of information at once* — what is regulated, how much, how binding it is, and
+under what circumstances. That overloading destroys comparability and dedup.
+
+The fix is to decompose every requirement row on **four axes**:
+
+| Axis | Question | Canonical fields |
+|------|----------|------------------|
+| **WHAT** | What is regulated? | `feature` + `specific_subject` + `requirement_description` + `applies_to` |
+| **HOW MUCH** | What magnitude / bound? | `value` + `value_category` + `value_interpretation` + `units` + `range_low` + `range_high` |
+| **HOW BINDING** | Is it mandatory? | `obligation` |
+| **WHEN / WHERE** | Under what circumstance / scope? | `condition` + `applies_to` |
+| **EVIDENCE** | How do we know? | `source_verbatim` + `summary` + `reasoning` + `section` |
+
+### The three classification fields
+
+**`value_category`** (required, `["quantitative", "qualitative"]`)
+- `quantitative`: a measurable magnitude lives in `value` (distance, dBA, acres,
+  MW, hours, %, $).
+- `qualitative`: there is no magnitude; the substance lives in
+  `requirement_description` (or an enumerated set in `applicable_values`), and
+  `value` is null.
+- Independent of obligation — a quantitative limit can be conditional, and a
+  qualitative item can be required.
+
+**`value_interpretation`** (`["exact","minimum","maximum","range","formula","tiered","enumerated", null]`)
+- `exact` — single fixed value ("shall be 35 feet").
+- `minimum` — floor ("at least", "no less than").
+- `maximum` — ceiling ("shall not exceed").
+- `range` — a span; populate `range_low` and `range_high`.
+- `formula` — computed ("1.1× turbine height").
+- `tiered` — value depends on a band; **emit one row per tier** with the band in
+  `condition`.
+- `enumerated` — a discrete set of allowed values; use with `applicable_values`.
+- `null` — qualitative requirements (present / absent).
+
+**`obligation`** (required, `["required","prohibited","conditional","allowed","recommended","informational"]`)
+
+Classify **from the governing verb only** — never from the value.
+
+| Governing language | `obligation` |
+|--------------------|--------------|
+| "shall", "must", "is required", "no less than" | `required` |
+| "shall not", "no person shall", "may not", "is not permitted", "prohibited" | `prohibited` |
+| "may require", "at the discretion of", "as a condition of approval", "unless waived" | `conditional` |
+| "is permitted", "may be located", "is allowed" | `allowed` |
+| "should", "encouraged", "best available technology" | `recommended` |
+| definitions, procedures, measured baselines, external standards | `informational` |
+
+When multiple verbs appear, precedence is:
+`prohibited > required > conditional > recommended > allowed > informational`.
+
+### LLM prompt instructions to embed in field descriptions
+
+- **obligation:** "Never place obligation language inside `value` or
+  `requirement_description`. Classify from the governing verb only. When multiple
+  verbs appear, use precedence prohibited > required > conditional > recommended
+  > allowed > informational. Cite the trigger word in `reasoning`."
+- **source_verbatim:** "Exact word-for-word operative clause; never paraphrase.
+  If it exceeds 50 words, quote the operative head, insert '…', then the tail."
+- **reasoning:** "Terse `trigger → label`, ≤15 words." e.g.
+  `"'may require' → conditional; no magnitude → qualitative"`.
+- **requirement_description:** "No obligation language — never include shall / may
+  / must / required / prohibited."
+
+### Anti-patterns
+
+| ❌ Anti-pattern | ✅ Correct |
+|----------------|-----------|
+| `value = "shall not exceed 55 dBA"` | `value = 55`, `units = "dBA"`, `value_interpretation = "maximum"`, `obligation = "required"` |
+| `value = "Sound barriers may be required"` | `requirement_description = "Sound barriers"`, `value_category = "qualitative"`, `obligation = "conditional"` |
+| `requirement_description = "Fencing is required"` | `requirement_description = "Solid perimeter fencing"`, `obligation = "required"` |
+| One row per permitted district (`AG`, `RE`, `R1`…) | one row, `value_interpretation = "enumerated"`, `applicable_values = ["AG","RE","R1"]` |
+| `applies_to = "nighttime"` | `condition = "nighttime"` (applies_to is the *facility type*, not the trigger) |
+| Paraphrasing in `source_verbatim` | copy the clause verbatim; paraphrase only in `summary` |
+
+### Before / after (natural gas noise limit)
+
+Old overloaded single field:
+
+```
+value = "Compressor stations shall not exceed 55 dBA at night at the property line"
+```
+
+New multi-field decomposition:
+
+```json
+{
+  "feature": "noise",
+  "specific_subject": "nighttime limit",
+  "applies_to": "Compressor station",
+  "value_category": "quantitative",
+  "value": 55,
+  "value_interpretation": "maximum",
+  "units": "dBA",
+  "obligation": "required",
+  "condition": "nighttime",
+  "source_verbatim": "...shall not exceed 55 dBa...at night...at the property line.",
+  "reasoning": "'shall not exceed' → required; number → quantitative/maximum"
+}
+```
+
+---
+
+## Cross-Domain Consistency Guidelines
+
+Regulatory domains (natural gas, geothermal, solar, and future domains) share the
+same requirement-row shape. Keeping field **names and semantics identical** across
+domains lets one compilation, dedup, and QA/QC path serve every domain, and lets
+analysts compare across domains.
+
+### Canonical requirement-row fields (universal — same name in every domain)
+
+| Field | Type | Required | Axis | Notes |
+|-------|------|----------|------|-------|
+| `feature` | string (enum) | ✅ | WHAT | Domain-specific **enum values**, universal field name |
+| `specific_subject` | string \| null | | WHAT | Sub-aspect; participates in dedup key |
+| `applies_to` | string \| null | | WHAT / WHERE | Governed facility type, document's terminology |
+| `requirement_description` | string \| null | | WHAT | Obligation-free description of qualitative rows |
+| `value_category` | string | ✅ | HOW MUCH | `quantitative` / `qualitative` |
+| `value` | number \| string \| null | | HOW MUCH | Magnitude only; no units, no obligation words |
+| `value_interpretation` | string \| null | | HOW MUCH | exact / minimum / maximum / range / formula / tiered / enumerated |
+| `units` | string \| null | | HOW MUCH | Null for qualitative |
+| `range_low` | number \| null | | HOW MUCH | Lower bound when `value` is a range |
+| `range_high` | number \| null | | HOW MUCH | Upper bound when `value` is a range |
+| `obligation` | string | ✅ | HOW BINDING | Full controlled vocabulary |
+| `condition` | string \| null | | WHEN / WHERE | Situational trigger, **not** the facility type |
+| `applicable_values` | array \| null | | HOW MUCH | Enumerated interchangeable values |
+| `source_verbatim` | string \| null | | EVIDENCE | Exact quote; audit anchor |
+| `summary` | string \| null | | EVIDENCE | Paraphrase allowed (omit if domain has no summary lane) |
+| `reasoning` | string \| null | | EVIDENCE | `trigger → label`, hidden from output by default |
+| `section` | string \| null | | EVIDENCE | Ordinance / permit section reference |
+| `notes` | string \| null | | EVIDENCE | Exceptions, cross-references |
+
+### What varies per domain vs. what is universal
+
+- **Varies per domain:** the `feature` **enum values**; the domain-specific
+  **examples** inside each field description; `document_applicability` gate fields;
+  `jurisdiction` / identifier structure; `$metadata.domain` and `version`.
+- **Universal (do not rename):** every field **name** above, the
+  `value_category` / `value_interpretation` / `obligation` vocabularies, the
+  canonical `key_fields` / `ignore_fields`, and the `value_typing` block.
+
+### Canonical `$metadata` blocks
+
+Use the same dedup keys and `value_typing` block in every regulatory domain:
+
+```json
+"deduplication": {
+  "key_fields": ["feature", "specific_subject", "applies_to", "value_category", "value", "value_interpretation", "units", "obligation", "condition"],
+  "ignore_fields": ["source_verbatim", "summary", "reasoning", "notes", "applicable_values", "range_low", "range_high"]
+},
+"value_typing": {
+  "value_category_field": "value_category",
+  "value_interpretation_field": "value_interpretation",
+  "obligation_field": "obligation",
+  "applicable_values_field": "applicable_values",
+  "obligation_vocabulary": ["required", "prohibited", "conditional", "allowed", "recommended", "informational"],
+  "value_category_vocabulary": ["quantitative", "qualitative"],
+  "value_interpretation_vocabulary": ["exact", "minimum", "maximum", "range", "formula", "tiered", "enumerated"]
+}
+```
+
+> Jurisdiction context (state / county / subdivision) does **not** need to be in
+> `key_fields` — compilation automatically groups by jurisdiction and never merges
+> rows across jurisdictions. `ignore_fields` may omit `summary` for a domain that
+> has no summary field.
+
+### Creating a new regulatory domain schema
+
+1. Copy an existing regulatory schema (`natural_gas_pipeline_schema.json` is the
+   reference) as a template.
+2. Replace the `feature` enum with your domain's standardized features.
+3. Update the domain-specific **examples** in `specific_subject`, `applies_to`,
+   `condition`, and `requirement_description` — keep the field names and their
+   instructive descriptions intact.
+4. Set `$metadata.domain` and bump `version`; keep the canonical
+   `key_fields`, `ignore_fields`, and `value_typing` block unchanged.
+5. Adjust `document_applicability` and `jurisdiction` gate fields for the domain.
+6. Validate: `pixi run psweep check-schema schemas/personal/<domain>_schema.json`.
+
+---
+
 ## Production Examples
 
 Reference these working schemas in the `schemas/` directory:
@@ -815,9 +1001,15 @@ Reference these working schemas in the `schemas/` directory:
 
 ### Geothermal Ordinances
 - **File:** `personal/geothermal_ordinance_schema.json`
-- **Pattern:** Requirements-based
+- **Pattern:** Requirements-based, 4-axis value typing
 - **Main array:** `requirements`
 - **Good for:** Regulatory compliance
+
+### Natural Gas Pipelines & Compressor Stations
+- **File:** `personal/natural_gas_pipeline_schema.json`
+- **Pattern:** Requirements-based, 4-axis value typing (reference schema for new regulatory domains)
+- **Main array:** `requirements`
+- **Good for:** Regulatory compliance, cross-jurisdiction comparison
 
 ---
 
@@ -834,6 +1026,9 @@ Reference these working schemas in the `schemas/` directory:
 | **Nesting depth** | 2-3 levels maximum for readable columns |
 | **Context objects** | Include in every row automatically |
 | **Deduplication** | Use `key_fields` to define uniqueness |
+| **Regulatory value typing** | Decompose rows on 4 axes: WHAT / HOW MUCH / HOW BINDING / WHEN·WHERE |
+| **`value_category` / `obligation`** | Required classifier fields for regulatory schemas |
+| **Cross-domain consistency** | Keep canonical field names identical across domains; vary only `feature` enums + examples |
 
 ---
 
