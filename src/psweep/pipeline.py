@@ -326,6 +326,7 @@ def compile_extractions(
     extraction_dir: str | Path,
     schema: str | Path,
     *,
+    config_path: str | Path | None = None,
     output_dir: str | Path | None = None,
     report_format: str = "both",
     dry_run: bool = False,
@@ -338,6 +339,12 @@ def compile_extractions(
         Directory containing ``.json`` extraction files.
     schema:
         Path to the same schema used during extraction.
+    config_path:
+        Optional path to the domain ``run.yaml`` config. When provided, the
+        ``compilation.output`` settings (exclude_fields, column_renames,
+        column_order, etc.) and ``compilation.normalization`` from the config
+        are applied to the output. Matches the behavior of
+        ``pixi run psweep compile --config``.
     output_dir:
         Where to write compiled output. Defaults to ``compiled/<name>/``.
     report_format:
@@ -364,7 +371,28 @@ def compile_extractions(
     if not dry_run:
         out_dir.mkdir(parents=True, exist_ok=True)
 
-    schema_metadata = SchemaMetadata(schema_path)
+    # Build metadata overrides from config when provided — this is how output
+    # settings (exclude_fields, column_renames, column_order, normalization)
+    # reach the compiler when calling the Python API directly.
+    metadata_overrides: dict | None = None
+    if config_path:
+        from psweep.config import load_runtime_config_file, resolve_command_config
+
+        cfg = load_runtime_config_file(Path(config_path))
+        resolved = resolve_command_config(
+            command="compile", cli_values={}, config_data=cfg, strict=False
+        )
+        compilation_overrides: dict = {}
+        config_output = resolved.get("compilation_output")
+        if isinstance(config_output, dict):
+            compilation_overrides["output"] = config_output
+        config_norm = resolved.get("normalization")
+        if isinstance(config_norm, dict):
+            compilation_overrides["normalization"] = config_norm
+        if compilation_overrides:
+            metadata_overrides = {"compilation": compilation_overrides}
+
+    schema_metadata = SchemaMetadata(schema_path, metadata_overrides=metadata_overrides)
     compiler = DataCompiler(
         schema_metadata=schema_metadata,
         verbose=False,

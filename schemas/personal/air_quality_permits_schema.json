@@ -11,7 +11,7 @@
         "permitDetails"
       ]
     },
-    "compilation": {
+    "identity": {
       "deduplication": {
         "key_fields": [
           "permitNumber",
@@ -39,7 +39,7 @@
       "description": "Permit-level metadata extracted exactly from the document. Do not infer or normalize beyond date formatting.",
       "properties": {
         "permitNumber": {
-          "description": "The permit number or registration identifier exactly as written (e.g., '52432', '21050040'). Extract the primary numeric/alphanumeric identifier, excluding labels like 'Registration No.:' or 'Permit'. If multiple identifiers exist, select the primary one and document others in extractionNotes.",
+          "description": "Primary permit/registration identifier exactly as written, without its label. If multiple identifiers exist, select the primary one and note others in extractionNotes.",
           "type": "string"
         },
         "permitIssuanceDate": {
@@ -55,11 +55,11 @@
           "type": "string"
         },
         "facilityAddress": {
-          "description": "Full facility street address exactly as written. Some states include county and zip in the address field (e.g., 'Street, City, County, Zip'), others separate them. Extract the complete address string as it appears.",
+          "description": "Full facility address verbatim, including county and ZIP when present.",
           "type": "string"
         },
         "facilityCounty": {
-          "description": "County name exactly as written in the permit. May appear within the address field in some states or as a separate field in others. Extract the county designation regardless of location.",
+          "description": "County name verbatim, whether shown separately or within the address.",
           "type": "string"
         },
         "facilityState": {
@@ -75,7 +75,7 @@
               "type": "null"
             }
           ],
-          "description": "State-assigned facility identifier at the permit level, exactly as written. This is the overarching facility identifier for the entire permitted facility, distinct from individual equipment identifiers. States use different terminology: Illinois uses 'I.D. No.' (e.g., '031440ANI', '031471AEN'), Virginia uses 'Facility ID No.' or 'Registration No.' (e.g., '51-167-00092', '11790', '52432'), Kentucky uses 'Source ID' (e.g., '21-015-00236'), Michigan uses 'State Registration Number' (e.g., 'B1557', 'P0243'). Extract the identifier value without the label. This is critical for cross-referencing permits in state databases. Leave null if not stated."
+          "description": "Permit-level state facility identifier verbatim, distinct from equipmentFacilityID and referenceNumber. Labels may include 'I.D. No.', 'Facility ID No.', 'Registration No.', 'Source ID', or 'State Registration Number'. Return the value without its label; null if absent."
         },
         "initialConstructionCommencedNotificationRequired": {
           "anyOf": [
@@ -152,7 +152,7 @@
               "type": "null"
             }
           ],
-          "description": "Optional notes for documenting permit-level extraction decisions. Use ONLY when: (1) multiple permit identifiers exist and you selected the primary one; (2) ambiguity in facility name or address required clarification; (3) date format was ambiguous. Leave null if extraction was straightforward."
+          "description": "Use only for multiple permit identifiers, ambiguous facility name/address, or ambiguous date format; otherwise null."
         }
       },
       "required": [
@@ -207,7 +207,7 @@
                 "type": "null"
               }
             ],
-            "description": "Date when this specific equipment was originally permitted or construction commenced, in YYYY-MM-DD format if unambiguous. Often found in equipment lists under columns like 'Original Permit Date', 'Construction Commenced', 'Date Issued', or similar. May differ from permitIssuanceDate when equipment was previously permitted and is being included in a renewal or modification. Extract and convert to YYYY-MM-DD format (e.g., 'September 2007' → '2007-09-01', '8/23/2016' → '2016-08-23', '2/26/2007' → '2007-02-26', '1990' → '1990-01-01', '2004' → '2004-01-01'). For partial dates like 'September 2007' or year-only dates like '1990', use first of month/year. Leave null if not stated."
+            "description": "Date this equipment was originally permitted or construction commenced; it may differ from permitIssuanceDate. Read columns such as 'Original Permit Date', 'Construction Commenced', or 'Date Issued'. Return YYYY-MM-DD; for month/year or year-only dates, use the first day (e.g., 'September 2007' -> '2007-09-01'; '1990' -> '1990-01-01'). Null if absent."
           },
           "equipmentFacilityID": {
             "anyOf": [
@@ -218,7 +218,7 @@
                 "type": "null"
               }
             ],
-            "description": "Equipment-specific facility identifier or unit designation exactly as written in equipment tables. This is distinct from the referenceNumber (permit reference like 'EU-01A') and represents internal facility naming conventions (e.g., '1A', '1B', '2A', 'EPD', 'EPE', 'EPF'). Some states like Kentucky show this in a 'Facility ID' column separate from the 'EU' column. Extract verbatim. Leave null if not stated."
+            "description": "Equipment-specific facility/unit identifier verbatim, distinct from referenceNumber (e.g., Facility ID '1A' versus permit reference 'EU-01A'). Null if absent."
           },
           "make": {
             "anyOf": [
@@ -273,7 +273,7 @@
                 "type": "null"
               }
             ],
-            "description": "Rated horsepower as a number (e.g., 3634, 3633, 1676, 2550). Extract value without units. Do not convert from kW. Leave null if not stated. Use this field when permit states 'HP' or 'hp' without the 'brake' designation. Some states (e.g., Illinois, Kentucky) use 'HP' terminology while others (e.g., Virginia) use 'BHP'. Both represent engine power output. NOTE: If permit mentions 'maximum capacity', treat it as rated capacity and use this field."
+            "description": "Rated horsepower (HP, not BHP), numeric value without units. Do not convert from kW. Treat explicitly stated HP 'maximum capacity' as rated capacity. Null if absent."
           },
           "ratedCapacityMMBtuPerHr": {
             "anyOf": [
@@ -284,7 +284,7 @@
                 "type": "null"
               }
             ],
-            "description": "Rated thermal/heat input capacity in MMBtu/hr (million BTU per hour) as a number (e.g., 15.54, 11.73, 17.85). Extract value without units. Some states like Kentucky explicitly list this in equipment tables under 'Capacity (MMBtu/hr)' column. Do not convert from kW or HP - only extract if explicitly stated. Leave null if not stated."
+            "description": "Explicit rated heat-input capacity in MMBtu/hr, numeric value without units. Do not convert from kW or HP; null if absent."
           },
           "primaryFuelType": {
             "anyOf": [
@@ -295,7 +295,7 @@
                 "type": "null"
               }
             ],
-            "description": "Primary fuel type exactly as written in permit. States use various terms: 'diesel fuel', 'distillate oil', 'no. 2 distillate', 'ultra-low sulfur diesel', 'natural gas', 'propane', etc. Extract verbatim without normalizing. If multiple fuel grades are allowed (e.g., 'Grades No. 1 and 2'), use the fuelGrade field and record the general category here. Leave null if not stated."
+            "description": "Primary fuel type verbatim (e.g., 'diesel fuel', 'No. 2 distillate', 'natural gas'). Do not normalize. Put grades in fuelGrade; null if absent."
           },
           "secondaryFuelType": {
             "anyOf": [

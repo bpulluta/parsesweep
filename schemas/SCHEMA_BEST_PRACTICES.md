@@ -3,7 +3,7 @@
 ## Overview
 
 ParseSweep v2.0+ uses a metadata-driven architecture where:
-- **`$metadata` section** (required) defines extraction and compilation behavior
+- **`$metadata` section** (required) defines extraction and record-identity behavior
 - **Schema properties** define the data structure to extract
 - Your schema design directly determines your spreadsheet output
 
@@ -11,8 +11,10 @@ Design schemas to match how you want to analyze the data.
 
 For authoring, use this mental model:
 
-- `Schema` (`schemas/personal/<domain>_schema.json`): Your primary authoring surface. Start here for fields, descriptions, examples, row shape, identifiers, and deduplication keys.
-- `Runtime config` (`config/<domain>/run.yaml`): Where runtime behavior lives — models, discovery settings, QA/QC lanes, compilation output (column order, renames, exclude_fields). Add or update this file when you need shared runtime behavior for a domain.
+- `Schema` (`schemas/personal/<domain>_schema.json`): The **extraction contract**. Fields, descriptions, examples, row shape, identifiers, and deduplication keys. Field-level enum values belong here (in `properties`), not in `$metadata`.
+- `Runtime config` (`config/<domain>/run.yaml`): **Runtime behavior and presentation**. Models, discovery settings, QA/QC lanes, and all compilation output settings (column order, renames, exclude_fields, default_format, freeze_columns). This file drives *how* a run behaves and *how* output looks.
+
+**Separation rule:** `$metadata` in the schema owns `extraction.*` and `identity.deduplication` (data identity — what makes a record unique). Everything else — output formatting, normalization, synthesis, model tiers — lives only in `config/<domain>/run.yaml`. Output config in `$metadata` is not supported and will be rejected by `check-schema`.
 
 ---
 
@@ -29,7 +31,7 @@ Add or update `config/<domain>/run.yaml` later if you need any of the following:
 - model tier assignments or discovery configuration
 - domain-level runtime overrides you do not want to repeat on the CLI
 
-If none of those apply yet, keep the schema focused on extraction structure and validation.
+If none of those apply yet, keep the schema focused on extraction structure.
 
 ### Fast Iteration Loop
 
@@ -105,7 +107,7 @@ ERROR: Schema missing required $metadata section
       "identifier_fields": ["metadata.document_id"],
       "context_objects": ["metadata"]
     },
-    "compilation": {
+    "identity": {
       "deduplication": {
         "key_fields": ["item_name"],
         "ignore_fields": ["notes"]
@@ -135,7 +137,7 @@ ERROR: Schema missing required $metadata section
 
 ### Complete `$metadata` Structure
 
-This example shows the full metadata surface. Runtime-owned behavior (model tiers, QA/QC lanes, compilation output settings) lives in `config/<domain>/run.yaml`, keeping the schema focused on extraction structure.
+This example shows the full metadata surface that belongs in the schema. All output presentation settings (`column_order`, `exclude_fields`, `column_renames`, `freeze_columns`, `auto_width`, `default_format`) and normalization settings belong in `config/<domain>/run.yaml` — not here.
 
 ```json
 {
@@ -158,54 +160,13 @@ This example shows the full metadata surface. Runtime-owned behavior (model tier
       "document_type": "Utility Tariff"
     },
     
-    "compilation": {
+    "identity": {
       "deduplication": {
         "key_fields": ["rate_name", "charge_type", "season"],
         "ignore_fields": ["notes", "extracted_text"],
         "strategy": "latest",
         "comparison_mode": "exact"
-      },
-      "output": {
-        "default_format": "excel",
-        "column_order": ["utility_name", "rate_name", "charge_type"],
-        "freeze_columns": 2,
-        "auto_width": true
       }
-    },
-    
-    "validation": {
-      "required_fields": ["utility_info", "rate_schedules"],
-      "quality_checks": [
-        {
-          "field": "rate",
-          "type": "numeric",
-          "message": "Rate should be numeric when applicable"
-        }
-      ],
-      "completeness_threshold": 0.8
-    },
-    
-    "qa_qc": {
-      "comparison": {
-        "primary_fields": ["rate", "amount", "unit"],
-        "secondary_fields": ["rate_name", "charge_type", "season"],
-        "field_types": {
-          "rate": "numeric",
-          "amount": "numeric",
-          "unit": "text_normalized",
-          "rate_name": "text_exact",
-          "charge_type": "text_exact",
-          "season": "text_exact"
-        },
-        "numeric_tolerance": 0.0,
-        "fuzzy_threshold": 0.85
-      },
-      "record_matching": {
-        "key_fields": ["rate_name", "charge_type"],
-        "fuzzy_match": true,
-        "match_threshold": 0.8
-      },
-      "ignore_fields": ["notes", "details"]
     }
   }
 }
@@ -217,38 +178,35 @@ This example shows the full metadata surface. Runtime-owned behavior (model tier
 |-------|---------|---------|
 | `extraction.main_data_array` | Array that becomes spreadsheet rows | `"rate_schedules"` |
 | `extraction.identifier_fields` | Fields that identify the source document | `["metadata.permit_id"]` |
-| `compilation.deduplication.key_fields` | Fields that determine record uniqueness | `["name", "type", "date"]` |
+| `identity.deduplication.key_fields` | Fields that determine record uniqueness | `["name", "type", "date"]` |
 
 ### Recommended Fields
 
 | Field | Purpose | Example |
 |-------|---------|---------|
 | `extraction.context_objects` | Top-level objects with metadata | `["metadata", "location"]` |
-| `compilation.deduplication.ignore_fields` | Fields to ignore when deduplicating | `["notes", "timestamp"]` |
+| `identity.deduplication.ignore_fields` | Fields to ignore when deduplicating | `["notes", "timestamp"]` |
 | `domain` | Category for organization | `"Environmental - Air Quality"` |
 | `version` | Schema version (semver) | `"2.1.0"` |
 
-### Optional: QA/QC Configuration
+### Optional: QA/QC Runtime Configuration (in `run.yaml`)
 
-The `qa_qc` section configures multi-model comparison behavior (used with `--enable-qa-qc`):
+QA/QC lane behavior is runtime policy and belongs in `config/<domain>/run.yaml`:
 
-| Field | Purpose | Example |
-|-------|---------|---------|
-| `comparison.primary_fields` | Critical fields for accuracy | `["value", "unit"]` |
-| `comparison.secondary_fields` | Important classification fields | `["category", "type"]` |
-| `comparison.field_types` | How to compare each field | `{"value": "numeric"}` |
-| `record_matching.key_fields` | Fields to match records across models | `["category", "name"]` |
-| `ignore_fields` | Fields to skip during comparison | `["notes", "details"]` |
+```yaml
+qaqc:
+  default_lane: quantitative
+  lanes:
+    quantitative:
+      enabled: true
+      mode: quantitative
+      comparison:
+        primary_fields: [value]
+      record_matching:
+        key_fields: [feature, specific_subject, applies_to]
+```
 
-**Field Type Options:**
-| Type | Description |
-|------|-------------|
-| `numeric` | Compare only numeric content (extract numbers from text) |
-| `text_exact` | Exact string match |
-| `text_normalized` | Normalize before comparing (e.g., "feet" = "ft") |
-| `text_fuzzy` | Similarity matching with threshold |
-
-**JSONPath Notation**: Use dot notation for nested fields: `"parent.child.field"`
+Use `pixi run psweep extract ... --enable-qa-qc` and `pixi run psweep compare ... --config config/<domain>/run.yaml` so lane defaults and matching fields come from the same runtime config.
 
 ---
 
@@ -935,26 +893,18 @@ analysts compare across domains.
   **examples** inside each field description; `document_applicability` gate fields;
   `jurisdiction` / identifier structure; `$metadata.domain` and `version`.
 - **Universal (do not rename):** every field **name** above, the
-  `value_category` / `value_interpretation` / `obligation` vocabularies, the
-  canonical `key_fields` / `ignore_fields`, and the `value_typing` block.
+  `value_category` / `value_interpretation` / `obligation` vocabularies (defined
+  in `properties[*].enum`), and the canonical `key_fields` / `ignore_fields` in
+  `$metadata.identity.deduplication`.
 
 ### Canonical `$metadata` blocks
 
-Use the same dedup keys and `value_typing` block in every regulatory domain:
+Use the same dedup keys in every regulatory domain (vocabularies belong in `properties[*].enum`, not in `$metadata`):
 
 ```json
 "deduplication": {
   "key_fields": ["feature", "specific_subject", "applies_to", "value_category", "value", "value_interpretation", "units", "obligation", "condition"],
   "ignore_fields": ["source_verbatim", "summary", "reasoning", "notes", "applicable_values", "range_low", "range_high"]
-},
-"value_typing": {
-  "value_category_field": "value_category",
-  "value_interpretation_field": "value_interpretation",
-  "obligation_field": "obligation",
-  "applicable_values_field": "applicable_values",
-  "obligation_vocabulary": ["required", "prohibited", "conditional", "allowed", "recommended", "informational"],
-  "value_category_vocabulary": ["quantitative", "qualitative"],
-  "value_interpretation_vocabulary": ["exact", "minimum", "maximum", "range", "formula", "tiered", "enumerated"]
 }
 ```
 
@@ -972,7 +922,7 @@ Use the same dedup keys and `value_typing` block in every regulatory domain:
    `condition`, and `requirement_description` — keep the field names and their
    instructive descriptions intact.
 4. Set `$metadata.domain` and bump `version`; keep the canonical
-   `key_fields`, `ignore_fields`, and `value_typing` block unchanged.
+   `key_fields` and `ignore_fields` in `$metadata.identity.deduplication` unchanged.
 5. Adjust `document_applicability` and `jurisdiction` gate fields for the domain.
 6. Validate: `pixi run psweep check-schema schemas/personal/<domain>_schema.json`.
 

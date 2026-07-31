@@ -338,7 +338,7 @@ def collect_benchmark_metrics(
             key_fields = metadata.get_deduplication_key_fields()
             if not key_fields:
                 raise ValueError(
-                    f"Schema {schema_path} does not define compilation.deduplication.key_fields required for parity scoring"
+                    f"Schema {schema_path} does not define identity.deduplication.key_fields required for parity scoring"
                 )
 
             actual_payload = _extract_record_payload(record)

@@ -280,11 +280,8 @@ def _build_qaqc_scaffold(
 def _build_compilation_scaffold(
     schema_metadata: SchemaMetadata,
 ) -> Dict[str, Any]:
-    compilation_metadata = (
-        schema_metadata.metadata.get("compilation") or {}
-    )
-    deduplication_metadata = compilation_metadata.get("deduplication") or {}
-    output_metadata = compilation_metadata.get("output") or {}
+    identity_metadata = schema_metadata.metadata.get("identity") or {}
+    deduplication_metadata = identity_metadata.get("deduplication") or {}
 
     compilation: Dict[str, Any] = {
         "deduplication": {
@@ -298,18 +295,6 @@ def _build_compilation_scaffold(
             compilation["deduplication"][field_name] = deepcopy(
                 deduplication_metadata[field_name]
             )
-
-    output: Dict[str, Any] = {}
-    for field_name in (
-        "default_format",
-        "freeze_columns",
-        "auto_width",
-    ):
-        if field_name in output_metadata:
-            output[field_name] = deepcopy(output_metadata[field_name])
-
-    if output:
-        compilation["output"] = output
 
     return compilation
 
@@ -397,8 +382,8 @@ def _apply_main_array_field_selection(
             item_schema.pop("required", None)
 
     metadata = schema_data.get("$metadata") or {}
-    compilation = metadata.get("compilation") or {}
-    deduplication = compilation.get("deduplication") or {}
+    identity = metadata.get("identity") or {}
+    deduplication = identity.get("deduplication") or {}
     if deduplication:
         key_fields = [
             field_name
@@ -422,9 +407,9 @@ def _apply_main_array_field_selection(
             deduplication.pop("ignore_fields", None)
 
         if not deduplication:
-            compilation.pop("deduplication", None)
-        if not compilation:
-            metadata.pop("compilation", None)
+            identity.pop("deduplication", None)
+        if not identity:
+            metadata.pop("identity", None)
 
     return schema_data
 
@@ -444,10 +429,8 @@ def _build_schema_starter_from_reference(
 
     reference_metadata = reference_schema.get("$metadata") or {}
     reference_extraction = reference_metadata.get("extraction") or {}
-    reference_compilation = reference_metadata.get("compilation") or {}
-    reference_deduplication = (
-        reference_compilation.get("deduplication") or {}
-    )
+    reference_identity = reference_metadata.get("identity") or {}
+    reference_deduplication = reference_identity.get("deduplication") or {}
     inferred_label = _humanize_domain_name(schema_name)
 
     resolved_document_type = (
@@ -487,7 +470,7 @@ def _build_schema_starter_from_reference(
             reference_deduplication["ignore_fields"]
         )
     if deduplication:
-        starter_metadata["compilation"] = {"deduplication": deduplication}
+        starter_metadata["identity"] = {"deduplication": deduplication}
 
     starter_schema["$metadata"] = starter_metadata
     starter_schema["title"] = f"{resolved_document_type} Starter Schema"
@@ -1536,14 +1519,19 @@ def check_schema_cmd(schema_path: str):
             if isinstance(metadata.get("extraction"), dict)
             else {}
         )
+        identity_metadata = (
+            metadata.get("identity")
+            if isinstance(metadata.get("identity"), dict)
+            else {}
+        )
         compilation_metadata = (
             metadata.get("compilation")
             if isinstance(metadata.get("compilation"), dict)
             else {}
         )
         deduplication_metadata = (
-            compilation_metadata.get("deduplication")
-            if isinstance(compilation_metadata.get("deduplication"), dict)
+            identity_metadata.get("deduplication")
+            if isinstance(identity_metadata.get("deduplication"), dict)
             else {}
         )
         print_success("Has $metadata section")
@@ -1578,6 +1566,33 @@ def check_schema_cmd(schema_path: str):
         else:
             status_item(
                 "info", "No deduplication config (optional in starter schemas)"
+            )
+
+        if isinstance(compilation_metadata.get("deduplication"), dict):
+            issues.append(
+                "$metadata.compilation.deduplication is deprecated; move it to $metadata.identity.deduplication"
+            )
+
+        # Enforce a clean ownership boundary to reduce user confusion.
+        if isinstance(compilation_metadata.get("output"), dict):
+            warnings.append(
+                "$metadata.compilation.output is runtime-owned and should be moved to config/<domain>/run.yaml under compilation.output"
+            )
+        if isinstance(compilation_metadata.get("normalization"), dict):
+            warnings.append(
+                "$metadata.compilation.normalization is runtime-owned and should be moved to config/<domain>/run.yaml under compilation.normalization"
+            )
+        if isinstance(compilation_metadata.get("value_typing"), dict):
+            warnings.append(
+                "$metadata.compilation.value_typing is deprecated; keep vocabularies in schema properties[*].enum"
+            )
+        if isinstance(metadata.get("validation"), dict):
+            warnings.append(
+                "$metadata.validation is deprecated in this runtime; use schema-level JSON Schema constraints (required/type/enum) and runtime QA/QC config"
+            )
+        if isinstance(metadata.get("qa_qc"), dict):
+            warnings.append(
+                "$metadata.qa_qc is deprecated for active workflows; define QA/QC lanes in config/<domain>/run.yaml under 'qaqc'"
             )
     else:
         issues.append(

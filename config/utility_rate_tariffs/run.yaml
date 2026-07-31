@@ -43,11 +43,18 @@ discovery:
     keep_top: 1
     action: move
 
+# Skip/reprocess hygiene: extraction skips files with existing output JSON by
+# default (skip_existing). Iterate freely without --reprocess; only pass
+# --reprocess after changing the schema, model tier, or page targeting.
 extraction:
+  model: primary                           # accurate tier — pin it so extraction
+                                           # never silently falls back to the .env
+                                           # default model if tiers/env change
   input_dir: discovered/utility_rate_tariffs/latest/curated
   schema: schemas/personal/electricity_tariff_schema.json
   output_dir: extracted/utility_rate_tariffs
   pages:                                   # how to select pages from large PDFs
+    # csv: config/utility_rate_tariffs/page_ranges.csv  # manual ranges win over auto_locate
     auto_locate:                           # LLM fallback for uncovered docs
       model: secondary                     # cheap/fast — page finding doesn't need 4.1
       section_description: >-
@@ -55,15 +62,19 @@ extraction:
         monthly customer charge, and other rate components
       trigger_chars: 200000
       max_selected_pages: 30
+      keywords:                            # heuristic pre-filter — trims the LLM
+        - rate schedule                    # candidate index (cheaper, more precise)
+        - residential
+        - energy charge
+        - customer charge
+        - per kwh
+        - service classification
       save_discovered: true                # write discovered ranges for human review
 
 compilation:
   input_dir: extracted/utility_rate_tariffs
   schema: schemas/personal/electricity_tariff_schema.json
   output_dir: compiled/utility_rate_tariffs
-  deduplication:
-    key_fields: [rate_name, charge_type, charge_description, season, time_period]
-    ignore_fields: [extracted_text]
   normalization:
     state_column: State
   output:

@@ -28,7 +28,7 @@ def _write_schema(path: Path) -> None:
                 "identifier_fields": ["metadata.id"],
                 "document_type": "Test Document",
             },
-            "compilation": {
+            "identity": {
                 "deduplication": {
                     "key_fields": ["name"],
                     "ignore_fields": ["notes"],
@@ -417,7 +417,7 @@ def test_preview_deduplication_uses_schema_numeric_fields_for_high_severity(tmp_
                     "identifier_fields": ["metadata.id"],
                     "document_type": "Test Document",
                 },
-                "compilation": {
+                "identity": {
                     "deduplication": {
                         "key_fields": ["name"],
                         "ignore_fields": ["notes"],

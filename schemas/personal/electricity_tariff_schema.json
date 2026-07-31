@@ -11,7 +11,7 @@
         "utility_info.state"
       ]
     },
-    "compilation": {
+    "identity": {
       "deduplication": {
         "key_fields": [
           "rate_name",

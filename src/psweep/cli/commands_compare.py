@@ -16,6 +16,13 @@ from psweep.cli.ui import console, create_extraction_progress, print_error
 @click.command()
 @click.argument("qa_qc_path", type=click.Path(exists=True))
 @click.option(
+    "--config",
+    "config_path",
+    type=click.Path(exists=True),
+    default=None,
+    help="Domain run config file to load QA/QC lanes/defaults.",
+)
+@click.option(
     "--schema",
     "-s",
     type=click.Path(exists=True),
@@ -32,6 +39,7 @@ from psweep.cli.ui import console, create_extraction_progress, print_error
 @click.option("--verbose", "-v", is_flag=True, help="Detailed output")
 def compare(
     qa_qc_path: str,
+    config_path: Optional[str],
     schema: str,
     qaqc_lane: Optional[str],
     quiet: bool,
@@ -65,6 +73,7 @@ def compare(
         _format_runtime_artifact_summary,
         begin_run,
     )
+    from psweep.config import load_runtime_config_file
     from psweep.qa_qc import ComparisonEngine, ReportGenerator
     from psweep.qa_qc.utils import resolve_qaqc_runtime_config
     from psweep.utils.schema_metadata import SchemaMetadata
@@ -77,9 +86,16 @@ def compare(
     try:
         schema_metadata = SchemaMetadata(schema_path)
         runtime_artifact = None
+        runtime_qaqc = None
+        if config_path:
+            config_data = load_runtime_config_file(Path(config_path))
+            config_qaqc = config_data.get("qaqc")
+            if isinstance(config_qaqc, dict):
+                runtime_qaqc = config_qaqc
         qa_qc_config = resolve_qaqc_runtime_config(
             schema_metadata,
             runtime_artifact=runtime_artifact,
+            runtime_qaqc=runtime_qaqc,
             preferred_lane=qaqc_lane,
         )
     except Exception as exc:
