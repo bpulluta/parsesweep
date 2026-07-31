@@ -294,73 +294,39 @@ class TestDomainAllowlistAndFileFilter:
 
     # --- _matches_allowed_domain unit tests ---
 
-    def test_no_allowlist_permits_all_urls(self):
-        assert NullDiggerConnector._matches_allowed_domain(
-            "https://example.org/doc.pdf", None
-        )
-        assert NullDiggerConnector._matches_allowed_domain(
-            "https://anywhere.com/file.pdf", []
-        )
-
-    def test_exact_domain_match_is_allowed(self):
-        assert NullDiggerConnector._matches_allowed_domain(
-            "https://county.gov/doc.pdf", ["county.gov"]
-        )
-
-    def test_subdomain_match_is_allowed(self):
-        assert NullDiggerConnector._matches_allowed_domain(
-            "https://planning.county.gov/doc.pdf", ["county.gov"]
-        )
-
-    def test_unrelated_domain_is_rejected(self):
-        assert not NullDiggerConnector._matches_allowed_domain(
-            "https://evil.com/doc.pdf", ["county.gov"]
-        )
-
-    def test_partial_domain_suffix_is_not_allowed(self):
-        # "notcounty.gov" must not match "county.gov"
-        assert not NullDiggerConnector._matches_allowed_domain(
-            "https://notcounty.gov/doc.pdf", ["county.gov"]
-        )
-
-    def test_multiple_allowed_domains_any_match_passes(self):
-        allowed = ["state.gov", "county.gov"]
-        assert NullDiggerConnector._matches_allowed_domain(
-            "https://plans.county.gov/doc.pdf", allowed
-        )
-        assert NullDiggerConnector._matches_allowed_domain(
-            "https://state.gov/data.pdf", allowed
-        )
-        assert not NullDiggerConnector._matches_allowed_domain(
-            "https://other.org/doc.pdf", allowed
-        )
+    @pytest.mark.parametrize(
+        ("url", "allowed_domains", "expected"),
+        [
+            ("https://example.org/doc.pdf", None, True),
+            ("https://anywhere.com/file.pdf", [], True),
+            ("https://county.gov/doc.pdf", ["county.gov"], True),
+            ("https://planning.county.gov/doc.pdf", ["county.gov"], True),
+            ("https://evil.com/doc.pdf", ["county.gov"], False),
+            ("https://notcounty.gov/doc.pdf", ["county.gov"], False),
+            ("https://plans.county.gov/doc.pdf", ["state.gov", "county.gov"], True),
+            ("https://state.gov/data.pdf", ["state.gov", "county.gov"], True),
+            ("https://other.org/doc.pdf", ["state.gov", "county.gov"], False),
+        ],
+    )
+    def test_matches_allowed_domain(self, url, allowed_domains, expected):
+        assert NullDiggerConnector._matches_allowed_domain(url, allowed_domains) is expected
 
     # --- _matches_file_filter unit tests ---
 
-    def test_no_file_filter_permits_all_urls(self):
-        assert NullDiggerConnector._matches_file_filter("https://example.org/doc.html", None)
-        assert NullDiggerConnector._matches_file_filter("https://example.org/doc.html", [])
-
-    def test_file_filter_matches_extension_pattern(self):
-        assert NullDiggerConnector._matches_file_filter(
-            "https://example.org/doc.pdf", [r"\.pdf$"]
-        )
-        assert not NullDiggerConnector._matches_file_filter(
-            "https://example.org/doc.html", [r"\.pdf$"]
-        )
-
-    def test_file_filter_case_insensitive(self):
-        assert NullDiggerConnector._matches_file_filter(
-            "https://example.org/DOC.PDF", [r"\.pdf$"]
-        )
-
-    def test_file_filter_matches_specific_filename(self):
-        assert NullDiggerConnector._matches_file_filter(
-            "https://example.org/53007.pdf", [r"53007"]
-        )
-        assert not NullDiggerConnector._matches_file_filter(
-            "https://example.org/other.pdf", [r"53007"]
-        )
+    @pytest.mark.parametrize(
+        ("url", "patterns", "expected"),
+        [
+            ("https://example.org/doc.html", None, True),
+            ("https://example.org/doc.html", [], True),
+            ("https://example.org/doc.pdf", [r"\.pdf$"], True),
+            ("https://example.org/doc.html", [r"\.pdf$"], False),
+            ("https://example.org/DOC.PDF", [r"\.pdf$"], True),
+            ("https://example.org/53007.pdf", [r"53007"], True),
+            ("https://example.org/other.pdf", [r"53007"], False),
+        ],
+    )
+    def test_matches_file_filter(self, url, patterns, expected):
+        assert NullDiggerConnector._matches_file_filter(url, patterns) is expected
 
     # --- Integration: allowlist enforcement in seed-only discover ---
 
@@ -501,4 +467,3 @@ class TestDomainAllowlistAndFileFilter:
         artifacts = connector.discover(digger_input)
         # hub doesn't match file filter → empty fallback
         assert artifacts == []
-

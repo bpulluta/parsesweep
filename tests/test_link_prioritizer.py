@@ -37,37 +37,30 @@ def _prioritizer(**kwargs) -> LinkPrioritizer:
 class TestFileTypeScoring:
     """Heuristic file-type signal: PDFs/DOCX rank above HTML; shopping pages penalised."""
 
-    def test_pdf_url_scores_positive(self):
+    @pytest.mark.parametrize(
+        "url",
+        [
+            "https://example.com/spec.pdf",
+            "https://example.com/manual.docx",
+        ],
+    )
+    def test_document_urls_score_positive(self, url):
         p = _prioritizer(top_k=None)
-        ranked, _ = p.prioritize([_candidate("https://example.com/spec.pdf")])
+        ranked, _ = p.prioritize([_candidate(url)])
         assert ranked[0].score.url_signal > 0
 
-    def test_docx_url_scores_positive(self):
+    @pytest.mark.parametrize(
+        ("weaker_url", "stronger_url"),
+        [
+            ("https://example.com/page.html", "https://example.com/doc.pdf"),
+            ("https://shop.example.com/cart/add-to-cart", "https://docs.example.com/spec.pdf"),
+            ("https://example.com/photo.jpg", "https://example.com/manual.pdf"),
+        ],
+    )
+    def test_weaker_urls_rank_below_documents(self, weaker_url, stronger_url):
         p = _prioritizer(top_k=None)
-        ranked, _ = p.prioritize([_candidate("https://example.com/manual.docx")])
-        assert ranked[0].score.url_signal > 0
-
-    def test_html_url_scores_lower_than_pdf(self):
-        p = _prioritizer(top_k=None)
-        pdf = _candidate("https://example.com/doc.pdf")
-        html = _candidate("https://example.com/page.html")
-        ranked, _ = p.prioritize([html, pdf])
-        # PDF should rank first
-        assert ranked[0].url == pdf.url
-
-    def test_shopping_cart_url_penalised(self):
-        p = _prioritizer(top_k=None)
-        cart = _candidate("https://shop.example.com/cart/add-to-cart")
-        pdf = _candidate("https://docs.example.com/spec.pdf")
-        ranked, _ = p.prioritize([cart, pdf])
-        assert ranked[0].url == pdf.url
-
-    def test_image_url_is_least_preferred(self):
-        p = _prioritizer(top_k=None)
-        img = _candidate("https://example.com/photo.jpg")
-        pdf = _candidate("https://example.com/manual.pdf")
-        ranked, _ = p.prioritize([img, pdf])
-        assert ranked[0].url == pdf.url
+        ranked, _ = p.prioritize([_candidate(weaker_url), _candidate(stronger_url)])
+        assert ranked[0].url == stronger_url
 
 
 # ---------------------------------------------------------------------------
@@ -196,33 +189,26 @@ class TestPowerClassScoring:
         reasons = ranked[0].reasons
         assert any("power_class" in r for r in reasons)
 
+    @pytest.mark.parametrize(
+        ("url", "expected_reason"),
+        [
+            ("https://example.com/200kw-spec.pdf", "kw_in_range"),
+            ("https://example.com/300kw-spec.pdf", "kw_in_range"),
+            ("https://example.com/301kw-spec.pdf", "kw_out_of_range"),
+        ],
+    )
+    def test_power_range_boundary_reasoning(self, url, expected_reason):
+        p = _prioritizer(power_range_kw=(200.0, 300.0), top_k=None)
+        ranked, _ = p.prioritize([_candidate(url)])
+        reasons = ranked[0].reasons
+        assert any(expected_reason in r for r in reasons)
+
     def test_out_of_range_boundary_50kw_excluded(self):
         p = _prioritizer(power_range_kw=(200.0, 300.0), top_k=None)
         low = _candidate("https://example.com/50kw-spec.pdf")
         high = _candidate("https://example.com/200kw-spec.pdf")
         ranked, _ = p.prioritize([low, high])
         assert ranked[0].url == high.url
-
-    def test_in_range_boundary_200kw_included(self):
-        p = _prioritizer(power_range_kw=(200.0, 300.0), top_k=None)
-        boundary = _candidate("https://example.com/200kw-spec.pdf")
-        ranked, _ = p.prioritize([boundary])
-        reasons = ranked[0].reasons
-        assert any("kw_in_range" in r for r in reasons)
-
-    def test_in_range_boundary_300kw_included(self):
-        p = _prioritizer(power_range_kw=(200.0, 300.0), top_k=None)
-        boundary = _candidate("https://example.com/300kw-spec.pdf")
-        ranked, _ = p.prioritize([boundary])
-        reasons = ranked[0].reasons
-        assert any("kw_in_range" in r for r in reasons)
-
-    def test_out_of_range_boundary_301kw_excluded(self):
-        p = _prioritizer(power_range_kw=(200.0, 300.0), top_k=None)
-        above = _candidate("https://example.com/301kw-spec.pdf")
-        ranked, _ = p.prioritize([above])
-        reasons = ranked[0].reasons
-        assert any("kw_out_of_range" in r for r in reasons)
 
 
 # ---------------------------------------------------------------------------
