@@ -49,7 +49,7 @@ Turn a raw `documents/<domain>/` folder into a working ParseSweep pipeline with 
     ```bash
     cp config/TEMPLATE.yaml config/<domain>/run.yaml
     ```
-    Populate `domain`, `extraction.schema`, `extraction.input_dir`, `compilation.schema`, `compilation.input_dir`, and `compilation.deduplication.key_fields` at minimum.
+    Populate `domain`, `extraction.schema`, `extraction.input_dir`, `compilation.schema`, `compilation.input_dir`, and `$metadata.identity.deduplication.key_fields` at minimum.
     - `extraction.input_dir` should be `discovered/<domain>/curated` (consolidated across runs).
     - `compilation.output` section owns ALL presentation: column_renames, column_order, exclude_fields, freeze_columns, auto_width.
     - The schema owns ONLY data structure: field definitions, deduplication key_fields.
@@ -79,7 +79,7 @@ Turn a raw `documents/<domain>/` folder into a working ParseSweep pipeline with 
 - Run `extract` and `compile` on a 1–2 document smoke set before touching the full corpus.
 - Do not scale to the full corpus until the smoke set produces acceptable structured output.
 - Use `pixi` for all commands.
-- Key schema fields to always set: `$metadata.extraction.main_data_array`, `$metadata.extraction.identifier_fields`, `$metadata.extraction.context_objects`, `$metadata.compilation.deduplication.key_fields`.
+- Key schema fields to always set: `$metadata.extraction.main_data_array`, `$metadata.extraction.identifier_fields`, `$metadata.extraction.context_objects`, `$metadata.identity.deduplication.key_fields`.
 
 ## Large Documents
 

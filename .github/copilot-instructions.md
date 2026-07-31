@@ -243,7 +243,7 @@ pixi run psweep compare extracted/geothermal_ordinances/qa_qc \
       "identifier_fields": ["path.to.id"],
       "context_objects": ["metadata_object"]
     },
-    "compilation": {
+    "identity": {
       "deduplication": {
         "key_fields": ["unique_fields"],
         "ignore_fields": ["notes", "timestamp"]
@@ -334,7 +334,7 @@ Prefer reusing the product commands and tracked runtime files over ad hoc script
 1. `extraction.main_data_array` - Key for the array of items to extract
 2. `extraction.identifier_fields` - Fields used to identify each document
 3. `extraction.context_objects` - Metadata objects (optional but recommended)
-4. `compilation.deduplication.key_fields` - Fields for deduplication
+4. `identity.deduplication.key_fields` - Fields for deduplication
 
 **CRITICAL: Defining key_fields for deduplication**
 
@@ -384,7 +384,7 @@ pixi run python -c "import pandas as pd; df = pd.read_csv('output.csv'); print(d
       "identifier_fields": ["metadata.id"],
       "context_objects": ["metadata"]
     },
-    "compilation": {
+    "identity": {
       "deduplication": {
         "key_fields": ["name", "type"],
         "ignore_fields": ["notes"]

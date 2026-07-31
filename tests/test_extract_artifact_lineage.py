@@ -93,7 +93,7 @@ def test_init_domain_schema_cli_creates_lean_starter_from_reference(tmp_path) ->
                     'document_type': 'Reference Permit',
                     'normalization': {'trim_strings': True},
                 },
-                'compilation': {
+                'identity': {
                     'deduplication': {
                         'key_fields': ['category', 'citation'],
                         'ignore_fields': ['notes'],
@@ -162,14 +162,14 @@ def test_init_domain_schema_cli_creates_lean_starter_from_reference(tmp_path) ->
     assert metadata['domain'] == 'Starter Domain'
     assert metadata['version'] == '0.1.0'
     assert metadata['extraction']['document_type'] == 'Starter Permit'
-    assert metadata['compilation']['deduplication'] == {
+    assert metadata['identity']['deduplication'] == {
         'key_fields': ['category', 'citation'],
         'ignore_fields': ['notes'],
     }
     assert 'normalization' not in metadata['extraction']
     assert 'output' not in metadata
     assert 'validation' not in metadata
-    assert 'strategy' not in metadata['compilation']['deduplication']
+    assert 'strategy' not in metadata['identity']['deduplication']
     assert starter_schema['title'] == 'Starter Permit Starter Schema'
     assert 'examples' not in json.dumps(starter_schema)
     assert 'enum' not in json.dumps(starter_schema)
@@ -191,7 +191,7 @@ def test_init_domain_schema_cli_can_limit_main_array_fields(tmp_path) -> None:
                     'context_objects': ['jurisdiction'],
                     'document_type': 'Reference Ordinance',
                 },
-                'compilation': {
+                'identity': {
                     'deduplication': {
                         'key_fields': ['feature', 'citation'],
                         'ignore_fields': ['notes'],
@@ -251,8 +251,8 @@ def test_init_domain_schema_cli_can_limit_main_array_fields(tmp_path) -> None:
     requirement_properties = starter_schema['properties']['requirements']['items']['properties']
     assert list(requirement_properties.keys()) == ['feature', 'value']
     assert starter_schema['properties']['requirements']['items']['required'] == ['feature', 'value']
-    assert starter_schema['$metadata']['compilation']['deduplication']['key_fields'] == ['feature']
-    assert 'ignore_fields' not in starter_schema['$metadata']['compilation']['deduplication']
+    assert starter_schema['$metadata']['identity']['deduplication']['key_fields'] == ['feature']
+    assert 'ignore_fields' not in starter_schema['$metadata']['identity']['deduplication']
 
 
 def test_validate_schema_cli_reports_nested_metadata_fields_correctly(tmp_path) -> None:
@@ -267,7 +267,7 @@ def test_validate_schema_cli_reports_nested_metadata_fields_correctly(tmp_path) 
                         'main_data_array': 'items',
                         'identifier_fields': ['jurisdiction.state', 'jurisdiction.county'],
                     },
-                    'compilation': {
+                    'identity': {
                         'deduplication': {
                             'key_fields': ['name'],
                         }
@@ -468,11 +468,13 @@ def test_compile_cli_keeps_dual_output_without_runtime_override(tmp_path) -> Non
                     'identifier_fields': ['metadata.id'],
                     'document_type': 'Test Document',
                 },
-                'compilation': {
+                'identity': {
                     'deduplication': {
                         'key_fields': ['name'],
                         'ignore_fields': [],
                     },
+                },
+                'compilation': {
                     'output': {
                         'default_format': 'excel',
                     },
@@ -557,7 +559,7 @@ def test_compile_cli_dry_run_previews_deduplication_without_writing_outputs(tmp_
                     'identifier_fields': ['metadata.id'],
                     'document_type': 'Test Document',
                 },
-                'compilation': {
+                'identity': {
                     'deduplication': {
                         'key_fields': ['name'],
                         'ignore_fields': ['notes'],
@@ -667,7 +669,7 @@ def test_compile_cli_dry_run_json_report_is_machine_readable(tmp_path) -> None:
                     'identifier_fields': ['metadata.id'],
                     'document_type': 'Test Document',
                 },
-                'compilation': {
+                'identity': {
                     'deduplication': {
                         'key_fields': ['name'],
                         'ignore_fields': ['notes'],
@@ -781,7 +783,7 @@ def test_compile_cli_dry_run_json_report_can_fail_on_suspicious_threshold(tmp_pa
                     'identifier_fields': ['metadata.id'],
                     'document_type': 'Test Document',
                 },
-                'compilation': {
+                'identity': {
                     'deduplication': {
                         'key_fields': ['name'],
                         'ignore_fields': ['notes'],

@@ -124,11 +124,6 @@ VARIABLE_CATALOG: dict[str, list[dict[str, str]]] = {
             "description": "Override destination for compiled output.",
         },
         {
-            "name": "deduplication",
-            "level": "optional",
-            "description": "Deduplication settings: key_fields, ignore_fields, strategy.",
-        },
-        {
             "name": "output",
             "level": "optional",
             "description": "Output formatting: column_order, exclude_fields, column_renames.",
@@ -297,7 +292,6 @@ _ALLOWED_SECTION_FIELDS = {
         "schema",
         "output_dir",
         "output",
-        "deduplication",
         "normalization",
         "dry_run",
         "report_format",
@@ -1589,7 +1583,6 @@ _FIELD_MAP: dict[str, str] = {
     "report_format": "report_format",
     "fail_on_suspicious": "fail_on_suspicious",
     "synthesis": "synthesis",
-    "deduplication": "deduplication",
     "normalization": "normalization",
     "compilation_output": "output",
 }
@@ -1669,6 +1662,12 @@ def resolve_command_config(
     if "model_context_windows" in cfg:
         merged["model_context_windows"] = cfg.get("model_context_windows")
         sources["model_context_windows"] = "config.model_context_windows"
+
+    # Top-level QA/QC lanes and defaults are shared runtime policy used by
+    # both extract and compare workflows.
+    if "qaqc" in cfg:
+        merged["qaqc"] = cfg.get("qaqc")
+        sources["qaqc"] = "config.qaqc"
 
     merged["_config_warnings"] = warnings
     merged["_config_sources"] = sources
