@@ -30,42 +30,26 @@ def _candidate(url: str, reasons: list[str] | None = None) -> DiscoveryCandidate
 
 
 class TestDraftDetection:
-    def test_url_with_draft_keyword_is_excluded(self):
+    @pytest.mark.parametrize(
+        ("url", "reasons", "expected"),
+        [
+            ("https://example.com/geothermal_draft_ordinance.pdf", None, True),
+            ("https://example.com/proposed_amendment_2024.pdf", None, True),
+            ("https://example.com/model-ordinance-geothermal.pdf", None, True),
+            ("https://example.com/ordinance_template.pdf", None, True),
+            ("https://example.com/E-1.pdf", ["Contains draft rate schedule"], True),
+            ("https://www.pge.com/tariffs/ELEC_SCHEDS_E-1.pdf", None, False),
+            (
+                "https://www.xcelenergy.com/Electric_Summation_Sheet_All_Rates_05.01.2024.pdf",
+                None,
+                False,
+            ),
+        ],
+    )
+    def test_draft_detection_patterns(self, url, reasons, expected):
         sel = CandidateSelector(exclude_draft=True)
-        c = _candidate("https://example.com/geothermal_draft_ordinance.pdf")
-        assert sel._is_draft(c)
-
-    def test_url_with_proposed_is_excluded(self):
-        sel = CandidateSelector(exclude_draft=True)
-        c = _candidate("https://example.com/proposed_amendment_2024.pdf")
-        assert sel._is_draft(c)
-
-    def test_url_with_model_ordinance_is_excluded(self):
-        sel = CandidateSelector(exclude_draft=True)
-        c = _candidate("https://example.com/model-ordinance-geothermal.pdf")
-        assert sel._is_draft(c)
-
-    def test_url_with_template_is_excluded(self):
-        sel = CandidateSelector(exclude_draft=True)
-        c = _candidate("https://example.com/ordinance_template.pdf")
-        assert sel._is_draft(c)
-
-    def test_reason_text_with_draft_is_excluded(self):
-        sel = CandidateSelector(exclude_draft=True)
-        c = _candidate("https://example.com/E-1.pdf", reasons=["Contains draft rate schedule"])
-        assert sel._is_draft(c)
-
-    def test_clean_url_is_not_draft(self):
-        sel = CandidateSelector(exclude_draft=True)
-        c = _candidate("https://www.pge.com/tariffs/ELEC_SCHEDS_E-1.pdf")
-        assert not sel._is_draft(c)
-
-    def test_xcel_final_pdf_is_not_draft(self):
-        sel = CandidateSelector(exclude_draft=True)
-        c = _candidate(
-            "https://www.xcelenergy.com/Electric_Summation_Sheet_All_Rates_05.01.2024.pdf"
-        )
-        assert not sel._is_draft(c)
+        c = _candidate(url, reasons=reasons)
+        assert sel._is_draft(c) is expected
 
     def test_exclude_draft_false_ignores_patterns(self):
         sel = CandidateSelector(exclude_draft=False)
@@ -89,35 +73,26 @@ class TestDraftDetection:
 
 
 class TestDateParsing:
-    def test_us_date_mm_dot_dd_dot_yyyy(self):
-        c = _candidate(
-            "https://www.xcelenergy.com/Electric_Summation_Sheet_All_Rates_05.01.2024.pdf"
-        )
-        assert CandidateSelector._parse_date(c) == date(2024, 5, 1)
-
-    def test_us_date_older_version(self):
-        c = _candidate(
-            "https://www.xcelenergy.com/Electric_Summation_Sheet_All_Rates_04.01.2024_FINAL.pdf"
-        )
-        assert CandidateSelector._parse_date(c) == date(2024, 4, 1)
-
-    def test_iso_date_yyyy_mm_dd(self):
-        c = _candidate("https://example.com/tariff_2024-03-15.pdf")
-        assert CandidateSelector._parse_date(c) == date(2024, 3, 15)
-
-    def test_year_only(self):
-        c = _candidate("https://example.com/geothermal_ordinance_2023.pdf")
-        d = CandidateSelector._parse_date(c)
-        assert d == date(2023, 1, 1)
-
-    def test_named_month(self):
-        c = _candidate("https://example.com/rate_schedule_April_2024.pdf")
-        d = CandidateSelector._parse_date(c)
-        assert d == date(2024, 4, 1)
-
-    def test_no_date_returns_none(self):
-        c = _candidate("https://www.pge.com/tariffs/ELEC_SCHEDS_E-1.pdf")
-        assert CandidateSelector._parse_date(c) is None
+    @pytest.mark.parametrize(
+        ("url", "expected"),
+        [
+            (
+                "https://www.xcelenergy.com/Electric_Summation_Sheet_All_Rates_05.01.2024.pdf",
+                date(2024, 5, 1),
+            ),
+            (
+                "https://www.xcelenergy.com/Electric_Summation_Sheet_All_Rates_04.01.2024_FINAL.pdf",
+                date(2024, 4, 1),
+            ),
+            ("https://example.com/tariff_2024-03-15.pdf", date(2024, 3, 15)),
+            ("https://example.com/geothermal_ordinance_2023.pdf", date(2023, 1, 1)),
+            ("https://example.com/rate_schedule_April_2024.pdf", date(2024, 4, 1)),
+            ("https://www.pge.com/tariffs/ELEC_SCHEDS_E-1.pdf", None),
+        ],
+    )
+    def test_parse_date(self, url, expected):
+        c = _candidate(url)
+        assert CandidateSelector._parse_date(c) == expected
 
     def test_invalid_date_values_return_none(self):
         # Month 99 is invalid; should not raise, return None

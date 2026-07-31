@@ -20,22 +20,40 @@ from psweep.qa_qc.comparison_engine import (
 from psweep.qa_qc.utils import resolve_qaqc_runtime_config
 
 
+def _build_schema_metadata_mock(
+    *,
+    main_data_array: str = "requirements",
+    identifier_fields: list[str] | None = None,
+    deduplication_key_fields: list[str] | None = None,
+    context_objects: list[str] | None = None,
+    qa_qc_match_fields: list[str] | None = None,
+    qa_qc_compare_fields: list[str] | None = None,
+    expected_requirements: list[str] | None = None,
+    expected_count_range: tuple[int, int] | None = None,
+) -> MagicMock:
+    mock = MagicMock()
+    mock.get_main_data_array.return_value = main_data_array
+    mock.get_identifier_fields.return_value = identifier_fields or []
+    mock.get_deduplication_key_fields.return_value = deduplication_key_fields or []
+    mock.get_context_objects.return_value = context_objects or []
+    mock.get_qa_qc_match_fields.return_value = qa_qc_match_fields or []
+    mock.get_qa_qc_compare_fields.return_value = qa_qc_compare_fields or []
+    mock.get_expected_requirements.return_value = expected_requirements or []
+    mock.get_expected_count_range.return_value = expected_count_range or (1, 100)
+    return mock
+
+
+def _write_output_files(base_dir: Path, payloads: dict[str, dict]) -> dict[str, Path]:
+    output_files: dict[str, Path] = {}
+    for model_name, payload in payloads.items():
+        path = base_dir / f"{model_name}.json"
+        path.write_text(json.dumps(payload))
+        output_files[model_name] = path
+    return output_files
+
+
 class TestFieldComparison:
     """Tests for FieldComparison dataclass."""
-
-    def test_basic_creation(self):
-        """Test creating a FieldComparison."""
-        fc = FieldComparison(
-            item_id="test_item",
-            field_path="value",
-            model_values={"model_a": 100, "model_b": 100},
-            agreement_score="2/2",
-            needs_review=False,
-            notes=""
-        )
-        assert fc.item_id == "test_item"
-        assert fc.agreement_score == "2/2"
-        assert fc.needs_review is False
 
     def test_disagreement(self):
         """Test FieldComparison with disagreement."""
@@ -53,20 +71,6 @@ class TestFieldComparison:
 
 class TestComparisonResult:
     """Tests for ComparisonResult dataclass."""
-
-    def test_basic_creation(self):
-        """Test creating a ComparisonResult."""
-        result = ComparisonResult(
-            document_name="test_doc",
-            models=["model_a", "model_b"],
-            summary={"total_comparisons": 10},
-            context_comparisons=[],
-            item_comparisons=[]
-        )
-        assert result.document_name == "test_doc"
-        assert len(result.models) == 2
-        assert result.context_comparisons == []
-        assert result.item_comparisons == []
 
 
 class TestComparisonEngine:
@@ -1168,15 +1172,12 @@ class TestComparisonEngine:
         model_a_data = {"requirements": []}
         model_b_data = {"requirements": []}
         
-        path_a = temp_dir / "model_a.json"
-        path_b = temp_dir / "model_b.json"
-        path_a.write_text(json.dumps(model_a_data))
-        path_b.write_text(json.dumps(model_b_data))
-        
         mock_schema_metadata.get_context_objects.return_value = []
         engine = ComparisonEngine(mock_schema_metadata)
         result = engine.compare_outputs(
-            output_files={"model_a": path_a, "model_b": path_b},
+            output_files=_write_output_files(
+                temp_dir, {"model_a": model_a_data, "model_b": model_b_data}
+            ),
             document_name="test_doc"
         )
         
@@ -1258,11 +1259,6 @@ class TestComparisonEngine:
             {"category": "A", "specific_subject": "x", "section": "1", "value": 100}
         ]}
 
-        path_a = temp_dir / "model_a.json"
-        path_b = temp_dir / "model_b.json"
-        path_a.write_text(json.dumps(model_a_data))
-        path_b.write_text(json.dumps(model_b_data))
-
         mock_schema_metadata.get_context_objects.return_value = []
         engine = ComparisonEngine(
             mock_schema_metadata,
@@ -1276,7 +1272,9 @@ class TestComparisonEngine:
             },
         )
         result = engine.compare_outputs(
-            output_files={"model_a": path_a, "model_b": path_b},
+            output_files=_write_output_files(
+                temp_dir, {"model_a": model_a_data, "model_b": model_b_data}
+            ),
             document_name="test_doc"
         )
 
@@ -1291,17 +1289,19 @@ class TestComparisonEngineIntegration:
     @pytest.fixture
     def geothermal_schema_metadata(self):
         """Create mock schema metadata matching geothermal schema."""
-        mock = MagicMock()
-        mock.get_main_data_array.return_value = "requirements"
-        mock.get_identifier_fields.return_value = ["jurisdiction.state", "jurisdiction.county"]
-        mock.get_deduplication_key_fields.return_value = [
-            "category", "specific_subject", "applies_to", "section"
-        ]
-        mock.get_context_objects.return_value = ["jurisdiction"]
-        # QA/QC config from geothermal schema
-        mock.get_qa_qc_match_fields.return_value = ["category", "applies_to"]
-        mock.get_qa_qc_compare_fields.return_value = ["value", "unit"]
-        return mock
+        return _build_schema_metadata_mock(
+            main_data_array="requirements",
+            identifier_fields=["jurisdiction.state", "jurisdiction.county"],
+            deduplication_key_fields=[
+                "category",
+                "specific_subject",
+                "applies_to",
+                "section",
+            ],
+            context_objects=["jurisdiction"],
+            qa_qc_match_fields=["category", "applies_to"],
+            qa_qc_compare_fields=["value", "unit"],
+        )
 
     @pytest.fixture
     def temp_qa_qc_dir(self):
@@ -1360,14 +1360,11 @@ class TestComparisonEngineIntegration:
             ]
         }
         
-        path_a = temp_qa_qc_dir / "gpt-4o.json"
-        path_b = temp_qa_qc_dir / "gpt-4.1.json"
-        path_a.write_text(json.dumps(model_a))
-        path_b.write_text(json.dumps(model_b))
-        
         engine = ComparisonEngine(geothermal_schema_metadata)
         result = engine.compare_outputs(
-            output_files={"gpt-4o": path_a, "gpt-4.1": path_b},
+            output_files=_write_output_files(
+                temp_qa_qc_dir, {"gpt-4o": model_a, "gpt-4.1": model_b}
+            ),
             document_name="Test County"
         )
         
@@ -1387,12 +1384,11 @@ class TestComparisonEngineIntegration:
 
     def test_tariff_nested_charge_projection_comparison(self, temp_qa_qc_dir):
         """Tariff QA/QC projection should flatten nested charges into compareable items."""
-        mock = MagicMock()
-        mock.get_main_data_array.return_value = "rate_schedules"
-        mock.get_identifier_fields.return_value = ["utility_info.utility_name"]
-        mock.get_context_objects.return_value = ["utility_info"]
-        mock.get_expected_requirements.return_value = []
-        mock.get_expected_count_range.return_value = (1, 100)
+        mock = _build_schema_metadata_mock(
+            main_data_array="rate_schedules",
+            identifier_fields=["utility_info.utility_name"],
+            context_objects=["utility_info"],
+        )
 
         model_a = {
             "utility_info": {"utility_name": "Metro Electric", "state": "CO"},
@@ -1437,11 +1433,6 @@ class TestComparisonEngineIntegration:
             ],
         }
 
-        path_a = temp_qa_qc_dir / "gpt-4o.json"
-        path_b = temp_qa_qc_dir / "gpt-4.1.json"
-        path_a.write_text(json.dumps(model_a))
-        path_b.write_text(json.dumps(model_b))
-
         engine = ComparisonEngine(
             mock,
             qa_qc_config={
@@ -1460,7 +1451,9 @@ class TestComparisonEngineIntegration:
             },
         )
         result = engine.compare_outputs(
-            output_files={"gpt-4o": path_a, "gpt-4.1": path_b},
+            output_files=_write_output_files(
+                temp_qa_qc_dir, {"gpt-4o": model_a, "gpt-4.1": model_b}
+            ),
             document_name="Tariff Doc",
         )
 
@@ -1483,19 +1476,19 @@ class TestPotentialDuplicateDetection:
     @pytest.fixture
     def mock_schema_metadata_with_expected(self):
         """Create a mock SchemaMetadata with expected requirements (compound key format)."""
-        mock = MagicMock()
-        mock.get_main_data_array.return_value = "requirements"
-        mock.get_identifier_fields.return_value = ["source.state"]
-        mock.get_context_objects.return_value = ["source"]
-        mock.get_qa_qc_match_fields.return_value = ["requirement_type"]
-        mock.get_qa_qc_compare_fields.return_value = ["value", "source_text"]
-        mock.get_expected_requirements.return_value = [
-            "setback__property_line_ft",
-            "setback__residence_ft",
-            "noise__at_property_line_dba",
-        ]
-        mock.get_expected_count_range.return_value = (3, 10)
-        return mock
+        return _build_schema_metadata_mock(
+            main_data_array="requirements",
+            identifier_fields=["source.state"],
+            context_objects=["source"],
+            qa_qc_match_fields=["requirement_type"],
+            qa_qc_compare_fields=["value", "source_text"],
+            expected_requirements=[
+                "setback__property_line_ft",
+                "setback__residence_ft",
+                "noise__at_property_line_dba",
+            ],
+            expected_count_range=(3, 10),
+        )
 
     @pytest.fixture
     def temp_dir(self):
@@ -1526,14 +1519,11 @@ class TestPotentialDuplicateDetection:
             ]
         }
         
-        path_a = temp_dir / "model_a.json"
-        path_b = temp_dir / "model_b.json"
-        path_a.write_text(json.dumps(model_a))
-        path_b.write_text(json.dumps(model_b))
-        
         engine = ComparisonEngine(mock_schema_metadata_with_expected)
         result = engine.compare_outputs(
-            output_files={"model_a": path_a, "model_b": path_b},
+            output_files=_write_output_files(
+                temp_dir, {"model_a": model_a, "model_b": model_b}
+            ),
             document_name="Test Doc"
         )
         
@@ -1561,14 +1551,11 @@ class TestPotentialDuplicateDetection:
             ]
         }
         
-        path_a = temp_dir / "model_a.json"
-        path_b = temp_dir / "model_b.json"
-        path_a.write_text(json.dumps(model_a))
-        path_b.write_text(json.dumps(model_b))
-        
         engine = ComparisonEngine(mock_schema_metadata_with_expected)
         result = engine.compare_outputs(
-            output_files={"model_a": path_a, "model_b": path_b},
+            output_files=_write_output_files(
+                temp_dir, {"model_a": model_a, "model_b": model_b}
+            ),
             document_name="Test Doc"
         )
         
@@ -1582,19 +1569,19 @@ class TestCompletenessCalculation:
     @pytest.fixture
     def mock_schema_with_expected(self):
         """Create mock with expected requirements (compound key format)."""
-        mock = MagicMock()
-        mock.get_main_data_array.return_value = "requirements"
-        mock.get_identifier_fields.return_value = ["source.state"]
-        mock.get_context_objects.return_value = ["source"]
-        mock.get_qa_qc_match_fields.return_value = ["requirement_type"]
-        mock.get_qa_qc_compare_fields.return_value = ["value", "source_text"]
-        mock.get_expected_requirements.return_value = [
-            "setback__property_line_ft",
-            "setback__residence_ft",
-            "noise__at_property_line_dba",
-        ]
-        mock.get_expected_count_range.return_value = (3, 10)
-        return mock
+        return _build_schema_metadata_mock(
+            main_data_array="requirements",
+            identifier_fields=["source.state"],
+            context_objects=["source"],
+            qa_qc_match_fields=["requirement_type"],
+            qa_qc_compare_fields=["value", "source_text"],
+            expected_requirements=[
+                "setback__property_line_ft",
+                "setback__residence_ft",
+                "noise__at_property_line_dba",
+            ],
+            expected_count_range=(3, 10),
+        )
 
     @pytest.fixture
     def temp_dir(self):
@@ -1614,12 +1601,11 @@ class TestCompletenessCalculation:
             ]
         }
         
-        path = temp_dir / "model.json"
-        path.write_text(json.dumps(model_output))
-        
         engine = ComparisonEngine(mock_schema_with_expected)
         result = engine.compare_outputs(
-            output_files={"model_a": path, "model_b": path},  # Same file twice for simplicity
+            output_files=_write_output_files(
+                temp_dir, {"model_a": model_output, "model_b": model_output}
+            ),
             document_name="Test Doc"
         )
         
@@ -1641,12 +1627,11 @@ class TestCompletenessCalculation:
             ]
         }
         
-        path = temp_dir / "model.json"
-        path.write_text(json.dumps(model_output))
-        
         engine = ComparisonEngine(mock_schema_with_expected)
         result = engine.compare_outputs(
-            output_files={"model_a": path, "model_b": path},
+            output_files=_write_output_files(
+                temp_dir, {"model_a": model_output, "model_b": model_output}
+            ),
             document_name="Test Doc"
         )
         
@@ -1665,12 +1650,11 @@ class TestCompletenessCalculation:
             ]
         }
         
-        path = temp_dir / "model.json"
-        path.write_text(json.dumps(model_output))
-        
         engine = ComparisonEngine(mock_schema_with_expected)
         result = engine.compare_outputs(
-            output_files={"model_a": path, "model_b": path},
+            output_files=_write_output_files(
+                temp_dir, {"model_a": model_output, "model_b": model_output}
+            ),
             document_name="Test Doc"
         )
         
@@ -1679,14 +1663,15 @@ class TestCompletenessCalculation:
         
     def test_no_expected_requirements(self, temp_dir):
         """Test behavior when no expected requirements are configured."""
-        mock = MagicMock()
-        mock.get_main_data_array.return_value = "requirements"
-        mock.get_identifier_fields.return_value = ["source.state"]
-        mock.get_context_objects.return_value = []
-        mock.get_qa_qc_match_fields.return_value = ["requirement_type"]
-        mock.get_qa_qc_compare_fields.return_value = ["value", "source_text"]
-        mock.get_expected_requirements.return_value = []  # No expected requirements
-        mock.get_expected_count_range.return_value = (1, 100)
+        mock = _build_schema_metadata_mock(
+            main_data_array="requirements",
+            identifier_fields=["source.state"],
+            context_objects=[],
+            qa_qc_match_fields=["requirement_type"],
+            qa_qc_compare_fields=["value", "source_text"],
+            expected_requirements=[],
+            expected_count_range=(1, 100),
+        )
         
         model_output = {
             "source": {"state": "CO"},
@@ -1695,12 +1680,11 @@ class TestCompletenessCalculation:
             ]
         }
         
-        path = temp_dir / "model.json"
-        path.write_text(json.dumps(model_output))
-        
         engine = ComparisonEngine(mock)
         result = engine.compare_outputs(
-            output_files={"model_a": path, "model_b": path},
+            output_files=_write_output_files(
+                temp_dir, {"model_a": model_output, "model_b": model_output}
+            ),
             document_name="Test Doc"
         )
         
