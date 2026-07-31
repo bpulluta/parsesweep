@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -77,6 +78,23 @@ def _should_fail_on_suspicious(
     return False
 
 
+def _omit_none(d: Dict[str, Any]) -> Dict[str, Any]:
+    """Return a copy of *d* with all keys whose value is None removed (one level)."""
+    return {k: v for k, v in d.items() if v is not None}
+
+
+def _round_cost(v: float) -> float:
+    return round(v, 6)
+
+
+def _round_secs(v: float) -> float:
+    return round(v, 1)
+
+
+def _round_mb(v: float) -> float:
+    return round(v, 1)
+
+
 def _build_pipeline_accounting(
     *,
     domain: str,
@@ -85,18 +103,57 @@ def _build_pipeline_accounting(
     compilation_stats: Dict[str, Any],
     discovery_input_dir: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """Stitch together discovery + extraction + compilation into a unified accounting."""
-    accounting: Dict[str, Any] = {
-        "domain": domain,
-        "generated_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
-        "stages": {},
-        "totals": {"cost_usd": 0.0, "elapsed_seconds": 0.0, "llm_calls": 0, "tokens": 0},
-    }
+    """Build a unified run_accounting.json for the compile stage.
+
+    Cost model
+    ----------
+    LLM costs (extraction + document-review) accumulate in totals.cost_usd and
+    summary.total_cost_usd.
+
+    Search API (SerpApi and future flat-rate providers) is tracked as query
+    consumption only — it is NOT added to cost_usd because the plan is a
+    monthly flat-rate subscription, not per-query billing. The billing model
+    is explicit in the search_api section so users are never confused.
+
+    Reruns
+    ------
+    Each extraction pass produces one run_manifests/*.manifest.json entry.
+    All runs are listed in extraction.runs[] sorted by completed_at. Costs are
+    cumulative (reprocessed documents incur additional LLM cost). The per-run
+    cost_per_document_usd allows comparing rerun cost efficiency.
+
+    Scale notes
+    -----------
+    The summary block is designed to be the first thing a user reads: six
+    fields cover cost, volume, and efficiency at any scale from a single
+    laptop run to a 100k-site batch.
+    """
+    warnings: List[str] = []
+
+    # Accumulators — built up as stages are processed, then frozen into summary.
+    total_llm_cost: float = 0.0
+    total_llm_calls: int = 0
+    total_tokens: int = 0
+    total_search_queries: int = 0
+    search_api_provider: Optional[str] = None
+    total_docs_extracted: int = 0
+    total_extraction_runs: int = 0
+    discovery_completed_at: Optional[str] = None
+    earliest_extraction_completed_at: Optional[str] = None
+
+    stages: Dict[str, Any] = {}
+
+    # ------------------------------------------------------------------
+    # Discovery stage
+    # ------------------------------------------------------------------
+    # Manifest priority:
+    #   1. Explicit discovery_input_dir (from config) — walk up dir tree.
+    #   2. Auto-detect: discovered/<domain>/latest/manifest.json relative to CWD.
+    #   3. Same relative to extraction_dir ancestors.
+    manifest_candidate: Optional[Path] = None
 
     if discovery_input_dir:
         disc_path = Path(discovery_input_dir)
-        manifest_candidate: Optional[Path] = None
-
         for parent in [disc_path, disc_path.parent, disc_path.parent.parent]:
             candidate = parent / "manifest.json"
             if candidate.exists():
@@ -107,8 +164,7 @@ def _build_pipeline_accounting(
             runs_dir = disc_path.parent / "runs"
             if runs_dir.is_dir():
                 run_dirs = sorted(
-                    [directory for directory in runs_dir.iterdir() if directory.is_dir()],
-                    reverse=True,
+                    (d for d in runs_dir.iterdir() if d.is_dir()), reverse=True
                 )
                 for run_dir in run_dirs:
                     candidate = run_dir / "manifest.json"
@@ -116,173 +172,556 @@ def _build_pipeline_accounting(
                         manifest_candidate = candidate
                         break
 
-        if manifest_candidate is not None:
-            try:
-                disc = json.loads(manifest_candidate.read_text(encoding="utf-8"))
-                timing = disc.get("timing", {})
-                stage_summaries = disc.get("stage_summaries", {})
-                seeker = stage_summaries.get("seeker", {})
-                review = stage_summaries.get("document_review", {})
-                review_costs = review.get("costs", {})
-                downloads = stage_summaries.get("downloads", {})
+    if manifest_candidate is None:
+        for base in [Path.cwd(), extraction_dir.parent, extraction_dir.parent.parent]:
+            candidate = base / "discovered" / domain / "latest" / "manifest.json"
+            if candidate.exists():
+                manifest_candidate = candidate
+                break
 
-                disc_cost = review_costs.get("total_cost_usd", 0.0)
-                disc_elapsed = timing.get("elapsed_seconds", 0.0)
-                disc_tokens = review_costs.get("total_input_tokens", 0) + review_costs.get(
-                    "total_output_tokens", 0
-                )
-                disc_calls = review_costs.get("model_calls", 0)
+    if manifest_candidate is not None:
+        try:
+            disc = json.loads(manifest_candidate.read_text(encoding="utf-8"))
+            if not isinstance(disc, dict):
+                raise ValueError("Discovery manifest is not a JSON object")
 
-                accounting["stages"]["discovery"] = {
-                    "status": "completed",
-                    "manifest_path": str(manifest_candidate),
-                    "targets_total": seeker.get("input_targets"),
-                    "targets_successful": seeker.get("successful_targets"),
-                    "targets_failed": seeker.get("failed_targets"),
-                    "docs_downloaded": downloads.get("downloaded_files"),
-                    "docs_selected": review.get("selected_count"),
-                    "docs_rejected": review.get("rejected_count"),
-                    "cost_usd": disc_cost,
-                    "elapsed_seconds": disc_elapsed,
-                    "llm_calls": disc_calls,
-                    "tokens": disc_tokens,
-                }
-                accounting["totals"]["cost_usd"] += float(disc_cost or 0.0)
-                accounting["totals"]["elapsed_seconds"] += float(disc_elapsed or 0.0)
-                accounting["totals"]["llm_calls"] += int(disc_calls or 0)
-                accounting["totals"]["tokens"] += int(disc_tokens or 0)
-            except Exception:
-                pass
+            timing = disc.get("timing") or {}
+            stage_summaries = disc.get("stage_summaries") or {}
+            seeker = stage_summaries.get("seeker") or {}
+            review = stage_summaries.get("document_review") or {}
+            review_costs = review.get("costs") or {}
+            downloads_raw = stage_summaries.get("downloads") or {}
+            acceptance = stage_summaries.get("acceptance_metrics") or {}
+            udt = acceptance.get("unknown_target_discovery") or {}
 
-    extraction_records = list(extraction_dir.glob("*.json"))
-    if extraction_records:
-        doc_total = 0
-        doc_success = 0
-        ext_cost = 0.0
-        ext_elapsed = 0.0
-        ext_tokens = 0
-        ext_calls = 0
-        provider = model = None
-        run_id = schema_id = artifact_id = None
-        failed_examples: List[Dict[str, Any]] = []
-        error_totals: Dict[str, int] = {}
-        merged_fields_union: set[str] = set()
-        input_chars_total = 0
-        files_with_input_chars = 0
+            disc_elapsed = _round_secs(float(timing.get("elapsed_seconds") or 0.0))
+            discovery_completed_at = timing.get("completed_at") or None
 
-        for record_path in extraction_records:
-            try:
-                rec = json.loads(record_path.read_text(encoding="utf-8"))
-            except Exception:
-                continue
-            if not isinstance(rec, dict):
-                continue
+            # Infer discovery status from manifest if available.
+            disc_status: str = disc.get("status") or "completed"
 
-            metrics = rec.get("processing_metrics") or {}
-            lineage = rec.get("lineage") or {}
-            quality = rec.get("quality") or {}
-            document = rec.get("document") or {}
-
-            if provider is None:
-                provider = lineage.get("provider")
-            if model is None:
-                model = lineage.get("model")
-            if run_id is None:
-                run_id = lineage.get("run_id")
-            if schema_id is None:
-                schema_id = lineage.get("schema_id")
-            if artifact_id is None:
-                artifact_id = lineage.get("artifact_id")
-
-            input_chars = metrics.get("input_chars")
-            if isinstance(input_chars, int):
-                input_chars_total += input_chars
-                files_with_input_chars += 1
-
-            doc_total += 1
-            ext_cost += float(metrics.get("cost_usd", 0.0) or 0.0)
-            ext_elapsed += float(metrics.get("duration_seconds", 0.0) or 0.0)
-            ext_tokens += int(metrics.get("input_tokens") or 0) + int(
-                metrics.get("output_tokens") or 0
+            # --- Document review (LLM) ---
+            rev_cost = _round_cost(float(review_costs.get("total_cost_usd") or 0.0))
+            rev_input_tokens = int(review_costs.get("total_input_tokens") or 0)
+            rev_output_tokens = int(review_costs.get("total_output_tokens") or 0)
+            rev_calls = int(
+                review_costs.get("model_calls")
+                or review_costs.get("llm_calls")
+                or 0
             )
-            ext_calls += 1
+            rev_total_tokens = rev_input_tokens + rev_output_tokens
+            rev_reviewed = int(review_costs.get("documents_reviewed") or rev_calls or 0)
 
-            q_errors = quality.get("errors") or []
-            if q_errors:
-                for err in q_errors:
-                    code = (
-                        err.get("code")
-                        if isinstance(err, dict)
-                        else None
-                    ) or "unspecified_error"
-                    error_totals[code] = error_totals.get(code, 0) + 1
-                if len(failed_examples) < 10:
-                    failed_examples.append(
-                        {
-                            "record": str(record_path),
-                            "source_document_id": document.get("source_document_id"),
-                            "error_codes": list(
-                                {
-                                    (
-                                        e.get("code")
-                                        if isinstance(e, dict)
-                                        else "unspecified_error"
-                                    )
-                                    for e in q_errors
-                                }
-                            ),
-                        }
+            # --- Search API ---
+            seeker_provider = seeker.get("provider") or None
+            seeker_queries = int(seeker.get("queries_executed") or 0)
+            seeker_enabled = bool(seeker.get("enabled"))
+            seeker_candidates = int(seeker.get("candidates_discovered") or 0)
+
+            # targets_total: read from acceptance_metrics (correct field)
+            targets_total = udt.get("target_count")
+            if targets_total is None and disc.get("input"):
+                inp_targets = (disc.get("input") or {}).get("targets") or []
+                if inp_targets:
+                    targets_total = len(inp_targets)
+
+            # --- Downloads ---
+            dl_downloaded_raw = downloads_raw.get("downloaded")
+            dl_downloaded = (
+                int(dl_downloaded_raw) if dl_downloaded_raw is not None else None
+            )
+            dl_failed = downloads_raw.get("failed")
+            dl_total = downloads_raw.get("total")
+            dl_bytes = downloads_raw.get("total_bytes")
+            dl_mb = _round_mb(dl_bytes / 1_048_576) if dl_bytes else None
+
+            review_enabled = (
+                bool(review.get("enabled"))
+                if "enabled" in review
+                else bool(review_costs)
+            ) or rev_calls > 0 or rev_total_tokens > 0 or rev_reviewed > 0
+
+            doc_review_section: Dict[str, Any] = {
+                "enabled": review_enabled,
+                "status": (
+                    "used" if review_enabled else "not_enabled"
+                ),
+                "optional": True,
+                "purpose": "LLM evaluates whether discovered documents match the domain",
+                "documents_reviewed": rev_reviewed,
+                "llm_calls": rev_calls,
+                "input_tokens": rev_input_tokens,
+                "output_tokens": rev_output_tokens,
+                "tokens": rev_total_tokens,
+                "cost_usd": rev_cost,
+                "zero_cost_reason": (
+                    None if rev_cost > 0 else (
+                        "document-review not enabled" if not review_enabled else
+                        "provider reported zero billable cost"
                     )
-            else:
-                doc_success += 1
+                ),
+                "cost_per_review_usd": (
+                    _round_cost(rev_cost / rev_reviewed) if rev_reviewed else 0.0
+                ),
+            }
 
-            notes = rec.get("notes")
-            if isinstance(notes, str):
-                marker = "Merged duplicate from source row(s) with differing values in: "
-                if marker in notes:
-                    merged_part = notes.split(marker, 1)[1].split(";", 1)[0]
-                    for field_name in [
-                        field.strip() for field in merged_part.split(",") if field.strip()
-                    ]:
-                        merged_fields_union.add(field_name)
+            search_api_section: Dict[str, Any] = {
+                "enabled": seeker_enabled,
+                "status": (
+                    "used" if seeker_enabled else "not_enabled"
+                ),
+                "optional": True,
+                "purpose": "Search for candidate documents matching discovery targets",
+                "provider": seeker_provider,
+                "billing_model": "flat_rate_subscription",
+                "cost_usd": 0.0,
+                "zero_cost_reason": (
+                    "flat-rate subscription (not per-query billing)" if seeker_enabled else
+                    "search API not used in this run"
+                ),
+                "queries_used": seeker_queries if seeker_enabled else 0,
+                "candidates_discovered": seeker_candidates if seeker_enabled else 0,
+            }
+
+            downloads_section: Dict[str, Any] = _omit_none({
+                "downloaded": dl_downloaded,
+                "failed": int(dl_failed) if dl_failed is not None else None,
+                "total": int(dl_total) if dl_total is not None else None,
+                "total_mb": dl_mb,
+            })
+
+            # Build discovery stage with all cost fields always visible
+            disc_stage: Dict[str, Any] = {
+                "status": disc_status,
+                "cost_model": "optional_document_review_llm_plus_flat_rate_search",
+                "cost_usd": rev_cost,
+                "zero_cost_reason": (
+                    None if rev_cost > 0 else (
+                        "document-review not enabled" if not review_enabled else
+                        "provider reported zero billable cost"
+                    )
+                ),
+                "llm_calls": rev_calls,
+                "input_tokens": rev_input_tokens,
+                "output_tokens": rev_output_tokens,
+                "tokens": rev_total_tokens,
+                "completed_at": discovery_completed_at,
+                "elapsed_seconds": disc_elapsed,
+                "targets_total": targets_total,
+                "document_review": doc_review_section,
+                "search_api": search_api_section,
+            }
+            # Add optional fields only if present
+            if manifest_candidate:
+                disc_stage["manifest_path"] = str(manifest_candidate)
+            if disc.get("run_id"):
+                disc_stage["run_id"] = disc.get("run_id")
+            if downloads_section:
+                disc_stage["downloads"] = downloads_section
+
+            stages["discovery"] = disc_stage
+
+            # Accumulate
+            total_llm_cost = _round_cost(math.fsum([total_llm_cost, rev_cost]))
+            total_llm_calls += rev_calls
+            total_tokens += rev_total_tokens
+            if seeker_enabled and seeker_queries > 0:
+                total_search_queries += seeker_queries
+                search_api_provider = seeker_provider
+
+        except (json.JSONDecodeError, ValueError, OSError, KeyError) as exc:
+            warnings.append(
+                f"discovery_manifest_parse_error: {manifest_candidate} — {exc}"
+            )
+
+    # ------------------------------------------------------------------
+    # Extraction stage
+    # ------------------------------------------------------------------
+    # Primary source: run_manifests/*.manifest.json (one file per run/rerun).
+    # Fallback: individual extraction record *.json files (legacy / no-config runs).
+    run_manifest_dir = extraction_dir / "run_manifests"
+    run_manifest_files = (
+        sorted(run_manifest_dir.glob("*.manifest.json"))
+        if run_manifest_dir.is_dir()
+        else []
+    )
+
+    # Deduplicate manifests by run_id to prevent double-counting reruns.
+    seen_run_ids: set[str] = set()
+
+    if run_manifest_files:
+        runs_data: List[Dict[str, Any]] = []
+        ext_cost_acc: List[float] = []
+        ext_input_tokens = 0
+        ext_output_tokens = 0
+        ext_docs_billed = 0
+        providers: set[str] = set()
+        models: set[str] = set()
+        schema_ids: set[str] = set()
+        run_completed_ats: List[str] = []
+
+        for mf_path in run_manifest_files:
+            try:
+                mf = json.loads(mf_path.read_text(encoding="utf-8"))
+            except (json.JSONDecodeError, OSError) as exc:
+                warnings.append(f"run_manifest_parse_error: {mf_path.name} — {exc}")
+                continue
+            if not isinstance(mf, dict):
+                continue
+
+            # Clean run_id: strip ".manifest" suffix left by mf_path.stem
+            raw_stem = mf_path.stem  # e.g. "run_abc123.manifest"
+            clean_stem = raw_stem.removesuffix(".manifest") if raw_stem.endswith(".manifest") else raw_stem
+            run_id = mf.get("run_id") or clean_stem
+
+            if run_id in seen_run_ids:
+                warnings.append(f"duplicate_run_manifest_skipped: {mf_path.name}")
+                continue
+            seen_run_ids.add(run_id)
+
+            costs = mf.get("costs") or {}
+            lineage = mf.get("lineage") or {}
+            run_timing = mf.get("timing") or {}
+
+            run_cost = _round_cost(float(costs.get("total_cost_usd") or 0.0))
+            run_input = int(costs.get("total_input_tokens") or 0)
+            run_output = int(costs.get("total_output_tokens") or 0)
+            run_docs = int(costs.get("documents_billed") or 0)
+            run_model = lineage.get("model") or costs.get("model")
+            run_provider = lineage.get("provider")
+            run_schema = lineage.get("schema_id")
+            run_completed = run_timing.get("finished_at") or run_timing.get("completed_at")
+            run_started = run_timing.get("started_at")
+            run_elapsed_raw = run_timing.get("elapsed_seconds")
+            run_elapsed = _round_secs(float(run_elapsed_raw)) if run_elapsed_raw is not None else None
+
+            ext_cost_acc.append(run_cost)
+            ext_input_tokens += run_input
+            ext_output_tokens += run_output
+            ext_docs_billed += run_docs
+            if run_provider:
+                providers.add(str(run_provider))
+            if run_model:
+                models.add(str(run_model))
+            if run_schema:
+                schema_ids.add(str(run_schema))
+            if run_completed:
+                run_completed_ats.append(run_completed)
+
+            run_record: Dict[str, Any] = {
+                "run_id": run_id,
+                "documents_billed": run_docs,
+                "cost_usd": run_cost,
+                "zero_cost_reason": (
+                    None if run_cost > 0 else "provider reported zero billable cost"
+                ),
+                "cost_per_document_usd": (
+                    _round_cost(run_cost / run_docs) if run_docs else 0.0
+                ),
+                "input_tokens": run_input,
+                "output_tokens": run_output,
+                "tokens": run_input + run_output,
+                "elapsed_seconds": run_elapsed,
+            }
+            # Add optional fields
+            if run_model:
+                run_record["model"] = run_model
+            if run_provider:
+                run_record["provider"] = run_provider
+            if run_schema:
+                run_record["schema_id"] = run_schema
+            if run_started:
+                run_record["started_at"] = run_started
+            if run_completed:
+                run_record["completed_at"] = run_completed
+            mode = mf.get("mode")
+            if mode and mode != "single_model":
+                run_record["mode"] = mode
+            runs_data.append(run_record)
+
+        # Sort runs by completed_at (chronological) — works even if some are None.
+        runs_data.sort(key=lambda r: r.get("completed_at") or "")
+
+        ext_cost = _round_cost(math.fsum(ext_cost_acc))
+        ext_tokens = ext_input_tokens + ext_output_tokens
+
+        # Track earliest extraction completed_at for stale-discovery warning.
+        if run_completed_ats:
+            earliest_extraction_completed_at = min(run_completed_ats)
 
         stage_payload: Dict[str, Any] = {
             "status": "completed",
-            "records_dir": str(extraction_dir),
-            "documents_total": doc_total,
-            "documents_successful": doc_success,
-            "documents_failed": max(doc_total - doc_success, 0),
-            "provider": provider,
-            "model": model,
-            "run_id": run_id,
-            "schema_id": schema_id,
-            "artifact_id": artifact_id,
+            "cost_model": "per_document_llm_extraction",
+            "documents_billed": ext_docs_billed,
             "cost_usd": ext_cost,
-            "elapsed_seconds": ext_elapsed,
-            "llm_calls": ext_calls,
+            "zero_cost_reason": (
+                None if ext_cost > 0 else "no documents billed"
+            ),
+            "cost_per_document_usd": (
+                _round_cost(ext_cost / ext_docs_billed) if ext_docs_billed else 0.0
+            ),
+            "input_tokens": ext_input_tokens,
+            "output_tokens": ext_output_tokens,
             "tokens": ext_tokens,
+            "llm_calls": ext_docs_billed,
+            "extraction_runs": len(runs_data),
+            "runs": runs_data,
         }
-        if error_totals:
-            stage_payload["error_summary"] = error_totals
-        if failed_examples:
-            stage_payload["failed_examples"] = failed_examples
-        if merged_fields_union:
-            stage_payload["merged_conflict_fields"] = sorted(merged_fields_union)
-        if files_with_input_chars:
-            stage_payload["avg_input_chars"] = input_chars_total / files_with_input_chars
+        # Add optional fields
+        if providers:
+            stage_payload["provider"] = list(sorted(providers)) if len(providers) > 1 else next(iter(providers), None)
+        if models:
+            stage_payload["model"] = list(sorted(models)) if len(models) > 1 else next(iter(models), None)
+        if schema_ids:
+            stage_payload["schema_id"] = list(sorted(schema_ids)) if len(schema_ids) > 1 else next(iter(schema_ids), None)
+        stage_payload["records_dir"] = str(extraction_dir)
+        if len(runs_data) > 1:
+            stage_payload["note"] = (
+                f"{len(runs_data)} extraction run(s) listed in runs[]; "
+                "costs are cumulative — reruns incur additional LLM cost per document"
+            )
 
-        accounting["stages"]["extraction"] = stage_payload
-        accounting["totals"]["cost_usd"] += ext_cost
-        accounting["totals"]["elapsed_seconds"] += ext_elapsed
-        accounting["totals"]["llm_calls"] += ext_calls
-        accounting["totals"]["tokens"] += ext_tokens
+        stages["extraction"] = stage_payload
+        total_llm_cost = _round_cost(math.fsum([total_llm_cost, ext_cost]))
+        total_llm_calls += ext_docs_billed
+        total_tokens += ext_tokens
+        total_docs_extracted = ext_docs_billed
+        total_extraction_runs = len(runs_data)
 
-    accounting["stages"]["compilation"] = {
+    else:
+        # Fallback: scan individual extraction JSON files.
+        extraction_records = [
+            p for p in extraction_dir.rglob("*.json")
+            if "run_manifests" not in p.parts
+        ]
+        if extraction_records:
+            doc_total = 0
+            doc_success = 0
+            ext_cost_acc2: List[float] = []
+            ext_elapsed = 0.0
+            ext_tokens = 0
+            ext_calls = 0
+            ext_input_tokens = 0
+            ext_output_tokens = 0
+            provider = model = None
+            run_id = schema_id = artifact_id = None
+            failed_examples: List[Dict[str, Any]] = []
+            error_totals: Dict[str, int] = {}
+            merged_fields_union: set[str] = set()
+            input_chars_total = 0
+            files_with_input_chars = 0
+
+            for record_path in extraction_records:
+                try:
+                    rec = json.loads(record_path.read_text(encoding="utf-8"))
+                except (json.JSONDecodeError, OSError):
+                    continue
+                if not isinstance(rec, dict):
+                    continue
+
+                metrics = rec.get("processing_metrics") or {}
+                lineage = rec.get("lineage") or {}
+                quality = rec.get("quality") or {}
+                document = rec.get("document") or {}
+
+                if provider is None:
+                    provider = lineage.get("provider")
+                if model is None:
+                    model = lineage.get("model")
+                if run_id is None:
+                    run_id = lineage.get("run_id")
+                if schema_id is None:
+                    schema_id = lineage.get("schema_id")
+                if artifact_id is None:
+                    artifact_id = lineage.get("artifact_id")
+
+                input_chars = metrics.get("input_chars")
+                if isinstance(input_chars, int):
+                    input_chars_total += input_chars
+                    files_with_input_chars += 1
+
+                doc_total += 1
+                file_cost = float(metrics.get("cost_usd") or 0.0)
+                file_in_tok = int(metrics.get("input_tokens") or 0)
+                file_out_tok = int(metrics.get("output_tokens") or 0)
+                ext_cost_acc2.append(file_cost)
+                ext_elapsed += float(metrics.get("duration_seconds") or 0.0)
+                ext_input_tokens += file_in_tok
+                ext_output_tokens += file_out_tok
+                ext_tokens += file_in_tok + file_out_tok
+                ext_calls += 1
+
+                q_errors = quality.get("errors") or []
+                if q_errors:
+                    for err in q_errors:
+                        code = (
+                            err.get("code") if isinstance(err, dict) else None
+                        ) or "unspecified_error"
+                        error_totals[code] = error_totals.get(code, 0) + 1
+                    if len(failed_examples) < 10:
+                        failed_examples.append(
+                            {
+                                "record": str(record_path),
+                                "source_document_id": document.get("source_document_id"),
+                                "error_codes": list(
+                                    {
+                                        (
+                                            e.get("code")
+                                            if isinstance(e, dict)
+                                            else "unspecified_error"
+                                        )
+                                        for e in q_errors
+                                    }
+                                ),
+                            }
+                        )
+                else:
+                    doc_success += 1
+
+                notes = rec.get("notes")
+                if isinstance(notes, str):
+                    marker = "Merged duplicate from source row(s) with differing values in: "
+                    if marker in notes:
+                        merged_part = notes.split(marker, 1)[1].split(";", 1)[0]
+                        for field_name in [
+                            f.strip() for f in merged_part.split(",") if f.strip()
+                        ]:
+                            merged_fields_union.add(field_name)
+
+            ext_cost_fallback = _round_cost(math.fsum(ext_cost_acc2))
+            stage_payload_fb: Dict[str, Any] = _omit_none({
+                "status": "completed",
+                "records_dir": str(extraction_dir),
+                "documents_total": doc_total,
+                "documents_successful": doc_success,
+                "documents_failed": max(doc_total - doc_success, 0) or None,
+                "provider": provider,
+                "model": model,
+                "run_id": run_id,
+                "schema_id": schema_id,
+                "artifact_id": artifact_id,
+                "cost_usd": ext_cost_fallback,
+                "cost_per_document_usd": (
+                    _round_cost(ext_cost_fallback / doc_total) if doc_total else None
+                ),
+                "input_tokens": ext_input_tokens,
+                "output_tokens": ext_output_tokens,
+                "elapsed_seconds": _round_secs(ext_elapsed),
+                "llm_calls": ext_calls,
+                "tokens": ext_tokens,
+                "avg_input_chars": (
+                    round(input_chars_total / files_with_input_chars)
+                    if files_with_input_chars
+                    else None
+                ),
+            })
+            if error_totals:
+                stage_payload_fb["error_summary"] = error_totals
+            if failed_examples:
+                stage_payload_fb["failed_examples"] = failed_examples
+            if merged_fields_union:
+                stage_payload_fb["merged_conflict_fields"] = sorted(merged_fields_union)
+
+            stages["extraction"] = stage_payload_fb
+            total_llm_cost = _round_cost(math.fsum([total_llm_cost, ext_cost_fallback]))
+            total_llm_calls += ext_calls
+            total_tokens += ext_tokens
+            total_docs_extracted = doc_total
+
+    # ------------------------------------------------------------------
+    # Stale discovery warning
+    # ------------------------------------------------------------------
+    if (
+        discovery_completed_at
+        and earliest_extraction_completed_at
+        and stages.get("discovery")
+    ):
+        try:
+            disc_dt = datetime.fromisoformat(
+                discovery_completed_at.replace("Z", "+00:00")
+            )
+            ext_dt = datetime.fromisoformat(
+                earliest_extraction_completed_at.replace("Z", "+00:00")
+            )
+            age_hours = (ext_dt - disc_dt).total_seconds() / 3600
+            if age_hours > 24:
+                warnings.append(
+                    f"stale_discovery: discovery completed {age_hours:.0f}h before "
+                    "earliest extraction run — document availability may have changed"
+                )
+        except (ValueError, TypeError):
+            pass
+
+    # ------------------------------------------------------------------
+    # Compilation stage
+    # ------------------------------------------------------------------
+    stages["compilation"] = {
         "status": "completed",
+        "cost_model": "optional_synthesis_llm",
+        "cost_usd": 0.0,
+        "zero_cost_reason": "synthesis LLM not enabled in this run",
+        "llm_calls": 0,
+        "tokens": 0,
         "output_dir": str(output_dir),
         **compilation_stats,
     }
-    return accounting
+
+    # ------------------------------------------------------------------
+    # Summary block — designed for quick first-read at any scale
+    # ------------------------------------------------------------------
+    summary: Dict[str, Any] = {
+        "total_cost_usd": total_llm_cost,
+        "zero_cost_reason": (
+            None if total_llm_cost > 0 else "no LLM-billable operations in this run"
+        ),
+        "documents_extracted": total_docs_extracted,
+        "cost_per_document_usd": (
+            _round_cost(total_llm_cost / total_docs_extracted)
+            if total_docs_extracted
+            else 0.0
+        ),
+        "llm_calls_total": total_llm_calls,
+        "tokens_total": total_tokens,
+        "extraction_runs": total_extraction_runs,
+        "search_api_queries": total_search_queries,
+        "cost_breakdown": {
+            "llm_only_usd": total_llm_cost,
+            "search_api_usd": 0.0,
+            "search_api_note": "flat-rate subscription, not per-query billing",
+        },
+    }
+    # Add search provider if we have one
+    if search_api_provider:
+        summary["search_api_provider"] = search_api_provider
+
+    # ------------------------------------------------------------------
+    # Final structure
+    # ------------------------------------------------------------------
+    output: Dict[str, Any] = {
+        "schema_version": "1.0",
+        "domain": domain,
+        "generated_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        "summary": summary,
+        "stages": stages,
+        "totals": {
+            "cost_usd": total_llm_cost,
+            "zero_cost_reason": (
+                None if total_llm_cost > 0 else "no LLM-billable operations"
+            ),
+            "llm_calls": total_llm_calls,
+            "tokens": total_tokens,
+            "discovery_elapsed_seconds": (
+                stages.get("discovery", {}).get("elapsed_seconds")
+            ),
+            "search_api_queries_used": total_search_queries,
+            "search_api_provider": search_api_provider,
+        },
+    }
+
+    if warnings:
+        output["warnings"] = warnings
+
+    return output
 
 
 def _resolve_compilation_output_formats(
@@ -559,8 +998,15 @@ def compile(
             from psweep.compilation.synthesizer import Synthesizer
             from psweep.extraction.llm_factory import build_llm_client
 
+            synth_model = synthesis_cfg.get("model")
+            if not synth_model and not resolved_inputs.get("models") and not config.llm_config.get("model"):
+                raise click.UsageError(
+                    "No model configured for the compilation synthesis stage. "
+                    "Add 'model: primary' under 'compilation.synthesis:' "
+                    "in your run config, or set AZURE_OPENAI_MODEL in your .env file."
+                )
             synth_client = build_llm_client(
-                synthesis_cfg.get("model"),
+                synth_model,
                 models=resolved_inputs.get("models"),
             )
             if not emit_json_report:
@@ -780,28 +1226,37 @@ def compile(
             )
             view.next_steps(["Open the CSV/Excel to review the compiled dataset"])
 
-            try:
-                accounting = _build_pipeline_accounting(
-                    domain=resolved_inputs.get("domain", input_dir.name),
-                    extraction_dir=input_dir,
-                    output_dir=output_dir,
-                    compilation_stats={
-                        "records": len(df),
-                        "columns": len(df.columns),
-                        "duplicates_removed": compiler.duplicates_removed,
-                        "output_format": summary_stats.get("Outputs", ""),
-                    },
-                    discovery_input_dir=resolved_inputs.get("_extraction_input_dir"),
-                )
-                acct_path = output_dir / "run_accounting.json"
-                acct_path.write_text(
-                    json.dumps(accounting, indent=2) + "\n",
-                    encoding="utf-8",
-                )
+        # ------------------------------------------------------------------
+        # Run accounting — always written regardless of verbosity / quiet mode.
+        # This is a structured record of costs, not presentation output.
+        # ------------------------------------------------------------------
+        acct_path = output_dir / "run_accounting.json"
+        try:
+            _summary_stats_for_acct = {
+                "records": len(df),
+                "columns": len(df.columns),
+                "duplicates_removed": compiler.duplicates_removed,
+                "output_format": ", ".join(output_formats),
+            }
+            accounting = _build_pipeline_accounting(
+                domain=resolved_inputs.get("domain", input_dir.name),
+                extraction_dir=input_dir,
+                output_dir=output_dir,
+                compilation_stats=_summary_stats_for_acct,
+                discovery_input_dir=resolved_inputs.get("_extraction_input_dir"),
+            )
+            acct_path.write_text(
+                json.dumps(accounting, indent=2) + "\n",
+                encoding="utf-8",
+            )
+            if not get_verbosity().is_quiet:
                 view.outputs({"Accounting": str(acct_path.absolute())})
-            except Exception:
-                pass
-        else:
+        except (OSError, ValueError) as exc:
+            logging.getLogger(__name__).warning(
+                "run_accounting.json could not be written: %s", exc
+            )
+
+        if get_verbosity().is_quiet:
             for emitted_path in emitted_paths:
                 console.print(str(emitted_path.absolute()))
 

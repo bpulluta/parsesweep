@@ -55,6 +55,10 @@ class SerpApiSeeker(BaseSeekerConnector):
             0.0, float(min_request_interval_seconds)
         )
         self._last_request_monotonic = 0.0
+        # Cumulative count of search API calls made (one per rendered query).
+        # Callers can read this after all discover() calls to get the true
+        # number of queries consumed from the plan (not just seeker-input count).
+        self.queries_run: int = 0
         # Optional on-disk result cache so re-running acquire during tuning does
         # not re-pay SerpApi for identical queries. Keyed on the request params.
         self.cache_dir = cache_dir
@@ -184,6 +188,9 @@ class SerpApiSeeker(BaseSeekerConnector):
                         search_callable, params
                     )
                     self._cache_put(params, results)
+                    self.queries_run += 1
+                # Cache hits do not consume a search API credit; count them
+                # separately so the accounting can distinguish live vs cached.
             except Exception as exc:
                 sanitized_message = self._sanitize_error_message(str(exc))
                 raise RuntimeError(
