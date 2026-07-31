@@ -164,6 +164,123 @@ def test_numeric_comparator_reused_for_non_temporal_domain():
     assert "min (10) is after max (5)" in row["ordering_notes"]
 
 
+def test_strict_fallback_catches_unstated_precision_order_violation():
+    """When precision is unstated, strict fallback compares at day precision."""
+    cfg = {
+        "item_array": "items",
+        "group_by": ["e.id"],
+        "citation_field": "src.url",
+        "reconcile_fields": [
+            {"field": "date_announced", "precision": "precision_announced"},
+            {"field": "date_construction_start",
+             "precision": "precision_construction_start"},
+        ],
+        "ordering_constraint": ["date_announced", "date_construction_start"],
+        "ordering_comparison": "date",
+        "min_sources_for_llm": 2,
+    }
+    recs = [{
+        "e": {"id": "N"},
+        "src": {"url": "u"},
+        "items": [{
+            "date_announced": "2021-06-05",
+            "precision_announced": "day",
+            "date_construction_start": "2021-01-01",
+            # precision_construction_start intentionally omitted
+        }],
+    }]
+    syn = Synthesizer(schema_metadata=None, config=cfg, llm_client=_StubLLM())
+    row = syn._synthesize_group(("N",), recs)
+    assert row["ordering_consistent"] is False
+    assert "date_announced (2021-06-05) is after date_construction_start (2021-01-01)" in row["ordering_notes"]
+
+
+def test_pinned_precision_inference_can_be_opted_back_in():
+    """Domains can opt into legacy pin-based precision inference."""
+    cfg = {
+        "item_array": "items",
+        "group_by": ["e.id"],
+        "citation_field": "src.url",
+        "reconcile_fields": [{"field": "start"}, {"field": "end"}],
+        "ordering_constraint": ["start", "end"],
+        "ordering_comparison": "date",
+        "ordering_infer_precision_from_pins": True,
+        "min_sources_for_llm": 2,
+    }
+    recs = [{
+        "e": {"id": "P"},
+        "src": {"url": "u"},
+        "items": [{
+            "start": "2021-06-05",
+            "end": "2021-01-01",
+        }],
+    }]
+    syn = Synthesizer(schema_metadata=None, config=cfg, llm_client=_StubLLM())
+    row = syn._synthesize_group(("P",), recs)
+    # Legacy behavior: both inferred as year precision -> not flagged.
+    assert row["ordering_consistent"] is True
+
+
+def test_branching_order_constraints_do_not_compare_unrelated_terminals():
+    """Branching constraints avoid forced comparison between terminal alternatives."""
+    cfg = {
+        "item_array": "items",
+        "group_by": ["e.id"],
+        "citation_field": "src.url",
+        "reconcile_fields": [
+            {"field": "date_announced"},
+            {"field": "date_construction_start"},
+            {"field": "date_operational"},
+            {"field": "date_expected_completion"},
+        ],
+        "ordering_constraints": [
+            ["date_announced", "date_construction_start"],
+            ["date_construction_start", "date_operational"],
+            ["date_construction_start", "date_expected_completion"],
+        ],
+        "ordering_comparison": "date",
+        "ordering_infer_precision_from_pins": False,
+        "min_sources_for_llm": 2,
+    }
+    recs = [{
+        "e": {"id": "B"},
+        "src": {"url": "u"},
+        "items": [{
+            "date_announced": "2024-01-01",
+            "date_construction_start": "2025-01-01",
+            "date_operational": "2026-01-01",
+            "date_expected_completion": "2024-12-01",
+        }],
+    }]
+    syn = Synthesizer(schema_metadata=None, config=cfg, llm_client=_StubLLM())
+    row = syn._synthesize_group(("B",), recs)
+    assert row["ordering_consistent"] is False
+    # The violation is only construction -> expected completion.
+    assert "date_construction_start (2025-01-01) is after date_expected_completion (2024-12-01)" in row["ordering_notes"]
+    assert "date_operational (2026-01-01) is after date_expected_completion (2024-12-01)" not in row["ordering_notes"]
+
+
+def test_exclusive_pairs_flag_conflicts():
+    """Mutually exclusive fields are checked via config, domain-neutral."""
+    cfg = {
+        "item_array": "items",
+        "group_by": ["e.id"],
+        "citation_field": "src.url",
+        "reconcile_fields": [{"field": "operational"}, {"field": "expected"}],
+        "ordering_exclusive_pairs": [["operational", "expected"]],
+        "min_sources_for_llm": 2,
+    }
+    recs = [{
+        "e": {"id": "E"},
+        "src": {"url": "u"},
+        "items": [{"operational": "yes", "expected": "soon"}],
+    }]
+    syn = Synthesizer(schema_metadata=None, config=cfg, llm_client=_StubLLM())
+    row = syn._synthesize_group(("E",), recs)
+    assert row["ordering_consistent"] is False
+    assert "exclusive pair conflict" in row["ordering_notes"]
+
+
 def test_relevance_flag_filters_records():
     """Records failing the configured relevance flag are excluded from groups."""
     cfg = {

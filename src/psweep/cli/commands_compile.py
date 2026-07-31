@@ -1157,6 +1157,32 @@ def compile(
         output_formats = _resolve_compilation_output_formats(metadata_overrides or None)
         emitted_paths: List[Path] = []
 
+        # Write accounting immediately after CSV (before Excel which can fail)
+        # This ensures accounting is always generated even if Excel creation fails
+        try:
+            _summary_stats_for_acct = {
+                "records": len(df),
+                "columns": len(df.columns),
+                "duplicates_removed": compiler.duplicates_removed,
+                "output_format": ", ".join(output_formats),
+            }
+            accounting = _build_pipeline_accounting(
+                domain=resolved_inputs.get("domain", input_dir.name),
+                extraction_dir=input_dir,
+                output_dir=output_dir,
+                compilation_stats=_summary_stats_for_acct,
+                discovery_input_dir=resolved_inputs.get("_extraction_input_dir"),
+            )
+            acct_path = output_dir / "run_accounting.json"
+            acct_path.write_text(
+                json.dumps(accounting, indent=2) + "\n",
+                encoding="utf-8",
+            )
+        except (OSError, ValueError) as exc:
+            logging.getLogger(__name__).warning(
+                "run_accounting.json could not be written: %s", exc
+            )
+
         if "csv" in output_formats:
             csv_path = output_dir / f"{base_name}.csv"
             compiler.save_csv(df, csv_path)

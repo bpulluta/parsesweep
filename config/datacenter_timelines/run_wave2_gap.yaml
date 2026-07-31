@@ -1,29 +1,20 @@
-# Test iteration config — 5 diverse sites for rapid query tuning
-domain: datacenter_timelines_test
+domain: datacenter_timelines_wave2
 
-# ── Model tiers ──────────────────────────────────────────────────────────────
 models:
-  primary: compassop-gpt-4.1           # extraction (accuracy-critical)
-  secondary: compassop-gpt-4.1-mini    # discovery review, page targeting (speed/cost)
+  primary: compassop-gpt-4.1
+  secondary: compassop-gpt-4.1-mini
 
 discovery:
-  targets_csv: targets_test5.csv
+  targets_csv: targets_wave2_gap.csv
 
+  # Wave-2 queries focused on filling missing announcement/construction/cancellation dates.
   queries:
-    # Tier 1: Construction & operational status — uses state as reliable location
-    - "{company_name} {state} {city?} data center construction OR completion OR operational OR \"now online\""
-    # Tier 2: Announcement/groundbreaking with tighter phrasing
-    - "{company_name} {state} {city?} data center \"announced\" OR \"broke ground\" OR \"groundbreaking\" OR \"plans to build\""
-    # Tier 3: Directory/structured-data sources (carry "year built" and timelines)
-    - "\"{site_name}\" data center baxtel OR datacentermap OR datacenterhawk"
-    # Tier 4: Timeline, permits, and regulatory filings
-    - "{company_name} {state} {city?} data center timeline OR permit OR \"expected to open\" OR \"target completion\""
-    # Tier 5: Industry news with lifecycle keywords
-    - "{company_name} {state} {city?} data center site:datacenterdynamics.com OR site:datacenterfrontier.com OR site:datacenterknowledge.com"
-    # Tier 6: Project-name anchored announcement recall (helps older/ambiguous sites)
-    - "\"{site_name}\" {company_name?} data center \"announced\" OR \"plans to build\" OR proposed OR unveiled"
-    # Tier 7: Local-government records for dated approvals / withdrawals
+    - "\"{site_name}\" {company_name?} data center announced OR proposed OR unveiled OR \"plans to build\""
+    - "{company_name} {state} {city?} data center \"broke ground\" OR groundbreaking OR \"began construction\" OR \"construction began\""
     - "{company_name} {city?} {state} data center \"special use permit\" OR rezoning OR \"planning commission\" OR \"board of supervisors\" site:.gov"
+    - "\"{site_name}\" OR {company_name} {city?} data center cancelled OR canceled OR withdrawn OR abandoned OR \"court ruling\""
+    - "{company_name} {state} {city?} data center site:datacenterdynamics.com OR site:datacenterfrontier.com OR site:datacenterknowledge.com"
+    - "\"{site_name}\" data center baxtel OR datacentermap OR datacenterhawk"
 
   search:
     provider: serpapi
@@ -42,10 +33,6 @@ discovery:
       - "{city}"
       - "{company_name}"
     exclude:
-      - "cutsheet"
-      - "cut-sheet"
-      - "spec-sheet"
-      - "datasheet"
       - "/login"
       - "/signin"
       - "/careers"
@@ -56,50 +43,26 @@ discovery:
       - "facebook.com"
       - "twitter.com"
       - "x.com/"
-      - "linkedin.com/company"
+      - "linkedin.com"
       - "instagram.com"
       - ".edu"
-      - ".ac."
       - "researchgate"
-      - "ssrn"
-      - "arxiv"
-      - "semanticscholar"
       - "sciencedirect"
       - "springer"
       - "ieee.org"
       - "congress.gov"
       - "senate.gov"
       - "census.gov"
-      - "sec.gov"
-      - "crunchbase"
       - "finance.yahoo"
       - "seekingalpha"
       - "marketwatch"
-      - "investor."
-      - "fraser.stlouisfed.org"
-      - "ugr.es"
-      - "usmodernist.org"
-      - "hartenergy.com"
-      # -- Job sites (no project dates) --
-      - "ziprecruiter.com"
-      - "indeed.com"
-      - "glassdoor.com"
-      - "jobs."
-      - "careers."
-      - "/careers/"
-      - "/jobs/"
-      # -- Broad listings without temporal data --
-      - "linkedin.com"
-      - "servercountry.org"
-
-  request_delay_ms: 400
+  request_delay_ms: 800
 
 extraction:
   model: primary
-  input_dir: discovered/datacenter_timelines_test/latest/curated
+  input_dir: discovered/datacenter_timelines_wave2/latest/curated
   schema: schemas/personal/datacenter_timelines_schema.json
-  output_dir: extracted/datacenter_timelines_test
-
+  output_dir: extracted/datacenter_timelines_wave2
   pages:
     auto_locate:
       section_description: >-
@@ -107,31 +70,24 @@ extraction:
         reached a lifecycle milestone — when it was announced/proposed, when
         construction/groundbreaking occurred or is scheduled, when it opened /
         became operational / was completed, its expected completion date, or when
-        it was cancelled or decommissioned. Not general company background,
-        financials, environmental-impact boilerplate, tables of contents, or
-        unrelated projects.
+        it was cancelled or decommissioned.
       keywords:
         - "data center"
-        - "data centre"
         - "datacenter"
         - "groundbreaking"
-        - "broke ground"
         - "construction"
         - "operational"
         - "completion"
         - "announced"
         - "approved"
         - "permit"
-        - "megawatt"
-        - "MW"
       trigger_chars: 60000
       max_selected_pages: 12
 
 compilation:
-  input_dir: extracted/datacenter_timelines_test
+  input_dir: extracted/datacenter_timelines_wave2
   schema: schemas/personal/datacenter_timelines_schema.json
-  output_dir: compiled/datacenter_timelines_test
-
+  output_dir: compiled/datacenter_timelines_wave2
   synthesis:
     model: primary
     enabled: true

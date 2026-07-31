@@ -1,0 +1,10 @@
+site_name,company_name,city,state,region,stage,demand_capacity_mw,full_address
+IREN: Childress TX,IREN,Childress,TX,West Texas,operational,750,"620 FM1033, Childress, TX 79201, United States"
+Crusoe: Abilene 7,Crusoe,Abilene,TX,West Texas,construction,180,"5502 Spinks Rd, Abilene, TX 79601, USA"
+IREN: Sweetwater 2,IREN,Hamlin,TX,West Texas,construction,200,"FM540, Hamlin, TX 79520, USA"
+Switch Reno Campus (The Citadel),Switch,Sparks,NV,Reno,construction,130,"1 Superloop Circle, Sparks, NV 89437"
+"Amazon: King George, VA",Amazon AWS,King George,VA,AWS US East (N. Virginia),in_doubt,900,"Birchwood Dr, King George, VA"
+Amazon: Project Blue,Amazon AWS,Tucson,AZ,Tucson,in_doubt,60,"11295 S Harrison Rd, Tucson, AZ 85747, United States"
+QTS: Prince William Digital Gateway Campus,QTS Data Centers,Catharpin,VA,Northern Virginia,in_doubt,850,"Pageland Ln & VA-234, Catharpin, VA 20143, USA"
+Lumen Boston (1 Main),Lumen Technologies,Cambridge,MA,Boston,decommissioned,1,"1 Main Street, Cambridge, MA 02142"
+"Amazon: Becker, MN",Amazon AWS,Becker,MN,Minneapolis St Paul,withdrawn,600,"Sherco Power Plant, Becker, MN 55308, United States"

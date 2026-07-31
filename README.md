@@ -187,8 +187,8 @@ Discovery uses a `targets.csv` where each row is a target to search for. All col
 
 ```csv
 label,jurisdiction,state,topic,technology
-"Chaffee County CO","Chaffee County",CO,geothermal ordinance,geothermal electricity
-"Imperial County CA","Imperial County",CA,geothermal ordinance,geothermal electricity
+"Chaffee County CO","Chaffee County",Colorado,geothermal ordinance,geothermal electricity
+"Imperial County CA","Imperial County",California,geothermal ordinance,geothermal electricity
 ```
 
 **Key discovery config sections:**
