@@ -302,6 +302,7 @@ def test_engine_run_download_stage_skips_rejected_discovered_candidates(tmp_path
                 {"url": "https://example.org/review.pdf", "confidence": 0.6},
             ],
             [],
+            0,
         )
 
     monkeypatch.setattr("requests.get", lambda url, **kwargs: FakeResponse(url))
@@ -365,6 +366,7 @@ def test_engine_run_download_stage_preserves_rejected_when_no_better_discovered_
                 {"url": "https://example.org/ordinance-b.pdf", "confidence": 0.1},
             ],
             [],
+            0,
         )
 
     monkeypatch.setattr("requests.get", lambda url, **kwargs: FakeResponse(url))
@@ -1173,6 +1175,7 @@ def test_engine_run_seeker_applies_prioritization_and_emits_lineage(tmp_path: Pa
     class FakeSerpApiSeeker:
         def __init__(self, **kwargs):
             self.kwargs = kwargs
+            self.queries_run = 0
 
         def discover(self, seeker_input):
             return [
@@ -1263,6 +1266,7 @@ def test_engine_run_emits_unknown_target_acceptance_metrics(tmp_path: Path, monk
     class FakeSerpApiSeeker:
         def __init__(self, **kwargs):
             self.kwargs = kwargs
+            self.queries_run = 0
 
         def discover(self, seeker_input):
             template_context = seeker_input.extra_params.get("template_context") or {}
