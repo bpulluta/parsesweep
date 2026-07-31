@@ -1215,6 +1215,14 @@ def extract(
         )
         azure_endpoint = config.llm_config.get("azure_endpoint")
         azure_api_version = config.llm_config.get("azure_api_version")
+
+    if not actual_model:
+        raise click.UsageError(
+            "No model configured for the extraction stage. "
+            "Add a 'models:' block and 'model: primary' under 'extraction:' "
+            "in your run config, or set AZURE_OPENAI_MODEL in your .env file."
+        )
+
     run_id = _generate_run_id(
         schema_path=schema_path,
         provider=provider,

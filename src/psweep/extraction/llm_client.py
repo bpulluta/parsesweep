@@ -61,6 +61,15 @@ class LLMClient:
                      context window LiteLLM cannot infer. Unset models are not
                      guarded.
         """
+        if not model:
+            raise ValueError(
+                "No model name configured for this stage. "
+                "Add a 'models:' block at the top of your run config "
+                "(e.g. 'primary: your-deployment') and set "
+                "'model: primary' under the relevant stage "
+                "(extraction:, compilation.synthesis:, etc.), "
+                "or set AZURE_OPENAI_MODEL / OPENAI_MODEL in your .env file."
+            )
         self.raw_model = model  # Keep original for cost tracking
         self.context_windows = dict(context_windows or {})
         self.provider = provider or detect_provider(model)

@@ -34,6 +34,11 @@
 
 domain: datacenter_timelines
 
+# ── Model tiers ──────────────────────────────────────────────────────────────
+models:
+  primary: compassop-gpt-4.1           # extraction (accuracy-critical)
+  secondary: compassop-gpt-4.1-mini    # discovery review, page targeting (speed/cost)
+
 # COST CONTROL (optional): each LLM stage accepts a `model:` naming the model to
 # use (else it inherits the environment-configured model). See extraction.model
 # and compilation.synthesis.model below.
@@ -69,6 +74,10 @@ discovery:
     - "{company_name} {state} {city?} data center timeline OR permit OR \"expected to open\" OR \"target completion\""
     # Tier 5: Industry news with lifecycle keywords
     - "{company_name} {state} {city?} data center site:datacenterdynamics.com OR site:datacenterfrontier.com OR site:datacenterknowledge.com"
+    # Tier 6: Project-name anchored announcement recall (helps older/ambiguous sites)
+    - "\"{site_name}\" {company_name?} data center \"announced\" OR \"plans to build\" OR proposed OR unveiled"
+    # Tier 7: Local-government records for dated approvals / withdrawals
+    - "{company_name} {city?} {state} data center \"special use permit\" OR rezoning OR \"planning commission\" OR \"board of supervisors\" site:.gov"
 
   search:
     provider: serpapi
@@ -91,8 +100,12 @@ discovery:
   browser_mode: false
 
   selection:
-    max_per_target: 8            # bumped for 5 query tiers (was 6 for 3 queries)
+    max_per_target: 10           # bump for 7 query tiers while keeping costs bounded
     require_supported_document: false   # KEY: allow extension-less HTML news pages
+    target_identity_require_any_templates:
+      - "{site_name}"
+      - "{city}"
+      - "{company_name}"
     # Drop facility spec/cut sheets (they carry no dates) and pure non-content
     # pages. NOTE: data-center DIRECTORIES (baxtel, datacentermap,
     # datacenterHawk) are deliberately NOT excluded — they are our best source
@@ -210,6 +223,7 @@ discovery:
   request_delay_ms: 800
 
 extraction:
+  model: primary
   # Curated set from the latest discover run (all downloads — no document_review).
   input_dir: discovered/datacenter_timelines/latest/curated
   schema: schemas/personal/datacenter_timelines_schema.json
@@ -261,6 +275,7 @@ compilation:
   # just this configuration; the same stage reconciles permit limits, spec
   # values, prices, etc. Runs on `compile` and reuses the `extract` LLM.
   synthesis:
+    model: primary
     enabled: true
     # COST CONTROL. Only pay for an LLM reconciliation call when >= this many
     # sources carry a value to reconcile. 0 sources -> null row; 1 source -> its
@@ -301,23 +316,27 @@ compilation:
       - {field: date_cancelled, evidence: evidence_cancelled, precision: precision_cancelled}
       # Facility retired AFTER operating (decommissioned — distinct from cancelled).
       - {field: date_decommissioned, evidence: evidence_decommissioned, precision: precision_decommissioned}
-    # OPTIONAL chronology check (omit for non-ordered domains). This is ADVISORY
-    # and precision-aware: values are compared only at the coarsest granularity
-    # they share, and a row is NEVER dropped, penalized, or altered to satisfy
-    # it. date_operational (actual) and date_expected_completion (forecast) are
-    # mutually exclusive, so listing both is safe — whichever is null is skipped.
-    # date_cancelled is intentionally NOT in this chain: a cancelled project has
-    # no completion to precede — it is a mutually-exclusive terminal date.
-    ordering_constraint:
-      - date_announced
-      - date_construction_start
-      - date_operational
-      - date_expected_completion
-      - date_decommissioned
+    # OPTIONAL chronology checks (omit for non-ordered domains). These checks are
+    # ADVISORY only: rows are never dropped or rewritten to satisfy ordering.
+    # Use branching constraints for mutually exclusive terminal outcomes so
+    # FACT and FORECAST endpoints are each checked against construction start,
+    # but never ordered against each other.
+    ordering_constraints:
+      - [date_announced, date_construction_start]
+      - [date_construction_start, date_operational]
+      - [date_construction_start, date_expected_completion]
+      - [date_announced, date_decommissioned]
+    # Pairs that cannot both be set in the same reconciled row.
+    ordering_exclusive_pairs:
+      - [date_operational, date_expected_completion]
+      - [date_cancelled, date_decommissioned]
     # Select the precision-aware temporal comparator for the advisory check above
     # (other domains use "numeric" or the default "lexical"). This is what keeps
     # the synthesizer domain-neutral: temporal handling is opt-in, not hardwired.
     ordering_comparison: date
+    # Strict default: when a precision companion field is missing, do not infer
+    # coarse precision from Jan-1/month pins. This catches true out-of-order cases.
+    ordering_infer_precision_from_pins: false
     # OPTIONAL extra free-text outputs the LLM should produce for this domain.
     narrative_fields:
       - current_status

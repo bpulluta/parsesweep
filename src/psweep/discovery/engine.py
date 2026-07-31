@@ -547,12 +547,18 @@ class DiscoveryEngine:
         list[dict[str, object]],
         list[dict[str, object]],
         list[dict[str, object]],
+        int,
     ]:
-        """Call SerpApi seeker and return discovered candidates."""
+        """Call SerpApi seeker and return discovered candidates.
+
+        Returns a 6-tuple: (candidates, notes, errors, prioritizer_lineage,
+        target_selection_metrics, queries_run).  ``queries_run`` is the number
+        of live search API calls that consumed credits (cache hits excluded).
+        """
         if not seeker_state.get("enabled") or not seeker_state.get(
             "available"
         ):
-            return [], current_notes, current_errors, [], []
+            return [], current_notes, current_errors, [], [], 0
 
         notes = list(current_notes)
         errors = list(current_errors)
@@ -613,7 +619,7 @@ class DiscoveryEngine:
                     provider="serpapi",
                 )
             )
-            return [], notes, normalize_error_records(errors), [], []
+            return [], notes, normalize_error_records(errors), [], [], 0
 
         def _to_candidate(
             raw: dict[str, object],
@@ -719,6 +725,7 @@ class DiscoveryEngine:
             normalize_error_records(errors),
             prioritizer_lineage,
             target_selection_metrics,
+            seeker.queries_run,
         )
 
     @staticmethod
@@ -3560,6 +3567,7 @@ class DiscoveryEngine:
         prioritizer_lineage: list[dict[str, object]] = []
         target_selection_metrics: list[dict[str, object]] = []
         seeker_raw_count = 0
+        seeker_queries_run = 0
         if seeker_errors:
             seeker_candidates: list[DiscoveryCandidate] = []
         else:
@@ -3570,6 +3578,7 @@ class DiscoveryEngine:
                 all_errors,
                 prioritizer_lineage,
                 target_selection_metrics,
+                seeker_queries_run,
             ) = self._run_seeker(
                 request, seeker_state, seeker_notes, all_errors
             )
@@ -3868,7 +3877,7 @@ class DiscoveryEngine:
                 "seeker": {
                     "provider": seeker_state.get("provider", "seed_only"),
                     "enabled": bool(seeker_state.get("enabled")),
-                    "queries_executed": len(request.targets or []),
+                    "queries_executed": seeker_queries_run,
                     "candidates_discovered": seeker_raw_count,
                     "candidates_after_prioritization": candidates_after_seeker,
                     "link_prioritization_mode": request.link_prioritization_mode,

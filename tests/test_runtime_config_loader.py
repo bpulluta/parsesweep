@@ -909,3 +909,53 @@ def test_synthesis_min_sources_must_be_non_negative_int(tmp_path: Path):
     )
     with pytest.raises(RuntimeConfigError, match="min_sources_for_llm"):
         load_runtime_config_file(_write(tmp_path, body))
+
+
+def test_synthesis_accepts_branching_ordering_and_exclusive_pairs(tmp_path: Path):
+    body = (
+        "compilation:\n  input_dir: d\n  schema: s.json\n"
+        "  synthesis:\n    group_by: [x]\n"
+        "    reconcile_fields:\n"
+        "      - {field: a}\n"
+        "      - {field: b}\n"
+        "      - {field: c}\n"
+        "    ordering_constraints: [[a, b], [b, c]]\n"
+        "    ordering_exclusive_pairs: [[b, c]]\n"
+        "    ordering_infer_precision_from_pins: false\n"
+    )
+    config_data = load_runtime_config_file(_write(tmp_path, body))
+    resolved = resolve_command_config(
+        command="compile",
+        cli_values={},
+        config_data=config_data,
+        strict=True,
+    )
+    assert resolved["synthesis"]["ordering_constraints"] == [["a", "b"], ["b", "c"]]
+
+
+def test_synthesis_rejects_invalid_ordering_exclusive_pairs_shape(tmp_path: Path):
+    body = (
+        "compilation:\n  input_dir: d\n  schema: s.json\n"
+        "  synthesis:\n    group_by: [x]\n"
+        "    reconcile_fields:\n      - {field: a}\n      - {field: b}\n"
+        "    ordering_exclusive_pairs: [[a, b, c]]\n"
+    )
+    with pytest.raises(
+        RuntimeConfigError,
+        match="ordering_exclusive_pairs must be a list of 2-item string lists",
+    ):
+        load_runtime_config_file(_write(tmp_path, body))
+
+
+def test_synthesis_rejects_unknown_fields_in_ordering_constraints(tmp_path: Path):
+    body = (
+        "compilation:\n  input_dir: d\n  schema: s.json\n"
+        "  synthesis:\n    group_by: [x]\n"
+        "    reconcile_fields:\n      - {field: start}\n"
+        "    ordering_constraints: [[start, missing]]\n"
+    )
+    with pytest.raises(
+        RuntimeConfigError,
+        match="ordering_constraints references field\\(s\\) not in reconcile_fields: missing",
+    ):
+        load_runtime_config_file(_write(tmp_path, body))
