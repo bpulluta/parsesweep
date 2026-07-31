@@ -1,0 +1,4 @@
+site_name,company_name,city,state,region,stage,demand_capacity_mw,full_address
+"Amazon: King George, VA",Amazon AWS,King George,VA,AWS US East (N. Virginia),in_doubt,900.0,"Birchwood Dr, King George, VA"
+Crusoe: Abilene 7,Crusoe,Abilene,TX,West Texas,construction,180.0,"5502 Spinks Rd, Abilene, TX 79601, USA"
+Microsoft Des Moines Project Alluvion,Microsoft Azure,West Des Moines,IA,Des Moines,operational,200.0,"555 White Crane Rd, West Des Moines, IA 50265"
