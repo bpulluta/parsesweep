@@ -11,7 +11,7 @@
       "identifier_fields": ["record_id", "document.source_document_id"],
       "document_type": "Extraction Record"
     },
-    "compilation": {
+    "identity": {
       "deduplication": {
         "key_fields": ["record_id", "lineage.artifact_id", "lineage.run_id"],
         "ignore_fields": ["quality", "processing_metrics"],

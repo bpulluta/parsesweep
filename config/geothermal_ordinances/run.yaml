@@ -115,12 +115,37 @@ discovery:
   partition_by: [state, jurisdiction]
 
 # ── Extraction ───────────────────────────────────────────────────────────────
+# Skip/reprocess hygiene: `psweep extract` skips files that already have output
+# JSON by default (skip_existing). Re-run cheaply after config tweaks without
+# --reprocess; only pass --reprocess when you actually changed the schema, model
+# tier, or page targeting and want to overwrite existing extractions.
 extraction:
-  model: primary
+  model: primary                     # accurate tier — extraction accuracy matters
   input_dir: discovered/geothermal_ordinances/curated
   schema: schemas/personal/geothermal_ordinance_schema.json
   output_dir: extracted/geothermal_ordinances
   max_context: 600000
+  pages:                                   # cost control for oversized municipal codes
+    auto_locate:                           # only engages for docs that would be truncated
+      model: secondary                     # cheap/fast — page finding doesn't need primary
+      section_description: >-
+        the chapter, division, or code sections regulating geothermal energy —
+        setbacks, well spacing/permits, noise limits, lot/overlay standards, and
+        permitted/conditional use tables for geothermal electricity generation
+      trigger_chars: 600000                # == max_context: only target docs that
+                                           # would otherwise be truncated (zero
+                                           # regression for docs read in full today)
+      max_selected_pages: 40               # generous — geothermal rules may span
+                                           # zoning + well-drilling chapters
+      keywords:                            # heuristic pre-filter (cheap, pre-LLM)
+        - geothermal
+        - setback
+        - well
+        - permit
+        - overlay
+        - zoning
+        - energy
+      save_discovered: true                # write discovered ranges for human review
 
 # ── Compilation ──────────────────────────────────────────────────────────────
 compilation:

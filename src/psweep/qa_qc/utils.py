@@ -20,14 +20,17 @@ logger = logging.getLogger(__name__)
 def resolve_qaqc_runtime_config(
     schema_metadata,
     runtime_artifact: Optional[Dict[str, Any]] = None,
+    runtime_qaqc: Optional[Dict[str, Any]] = None,
     preferred_lane: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """Resolve active QA/QC config from the runtime artifact, falling back to schema metadata."""
+    """Resolve active QA/QC config from runtime config, falling back to schema metadata."""
     pack_qaqc = (
         ((runtime_artifact or {}).get("resolved") or {})
         .get("pack", {})
         .get("qaqc")
     )
+    if not isinstance(pack_qaqc, dict) and isinstance(runtime_qaqc, dict):
+        pack_qaqc = runtime_qaqc
 
     if isinstance(pack_qaqc, dict):
         lanes = pack_qaqc.get("lanes") or {}

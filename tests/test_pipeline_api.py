@@ -27,7 +27,7 @@ def test_extract_documents_uses_max_context_chars(
                         "main_data_array": "items",
                         "identifier_fields": ["name"],
                     },
-                    "compilation": {
+                    "identity": {
                         "deduplication": {
                             "key_fields": ["name"],
                             "ignore_fields": [],
@@ -130,7 +130,7 @@ def test_compile_extractions_writes_requested_outputs(tmp_path: Path) -> None:
                         "main_data_array": "items",
                         "identifier_fields": ["name"],
                     },
-                    "compilation": {
+                    "identity": {
                         "deduplication": {
                             "key_fields": ["name"],
                             "ignore_fields": [],
@@ -223,7 +223,7 @@ def test_extract_documents_uses_page_range_csv(tmp_path: Path, monkeypatch) -> N
                         "main_data_array": "items",
                         "identifier_fields": ["name"],
                     },
-                    "compilation": {
+                    "identity": {
                         "deduplication": {
                             "key_fields": ["name"],
                             "ignore_fields": [],
