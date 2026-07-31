@@ -391,27 +391,22 @@ class TestTruncateValue:
     def generator(self):
         return ReportGenerator()
 
-    def test_truncate_value_short_string(self, generator):
-        """Test that short strings are not truncated."""
-        result = generator._truncate_value("short string")
-        assert result == "short string"
+    @pytest.mark.parametrize(
+        ("value", "expected"),
+        [
+            ("short string", "short string"),
+            (None, ""),
+            (12345, "12345"),
+        ],
+    )
+    def test_truncate_value_non_truncating_cases(self, generator, value, expected):
+        assert generator._truncate_value(value) == expected
 
     def test_truncate_value_long_string(self, generator):
-        """Test that long strings are truncated."""
         long_string = "a" * 300
         result = generator._truncate_value(long_string)
         assert len(result) == 200
         assert result.endswith("...")
-
-    def test_truncate_value_none(self, generator):
-        """Test that None returns empty string."""
-        result = generator._truncate_value(None)
-        assert result == ""
-
-    def test_truncate_value_number(self, generator):
-        """Test that numbers are converted to strings."""
-        result = generator._truncate_value(12345)
-        assert result == "12345"
 
 
 class TestGetRowColor:
@@ -421,39 +416,25 @@ class TestGetRowColor:
     def generator(self):
         return ReportGenerator()
 
-    def test_full_agreement_green(self, generator):
-        """Test that full agreement returns green."""
-        color = generator._get_row_color("2/2", "", 2)
-        assert color == generator.COLORS["full_agreement"]
-        
-        color = generator._get_row_color("3/3", "", 3)
-        assert color == generator.COLORS["full_agreement"]
-
-    def test_partial_agreement_yellow(self, generator):
-        """Test that partial agreement (>50%) returns yellow."""
-        color = generator._get_row_color("2/3", "", 3)
-        assert color == generator.COLORS["partial_agreement"]
-
-    def test_low_agreement_red(self, generator):
-        """Test that low agreement (≤50%) returns red."""
-        color = generator._get_row_color("1/3", "", 3)
-        assert color == generator.COLORS["disagreement"]
-        
-        color = generator._get_row_color("1/2", "", 2)
-        assert color == generator.COLORS["disagreement"]
-
-    def test_missing_gray(self, generator):
-        """Test that missing items return gray."""
-        color = generator._get_row_color("1/2", "Item missing from: model_a", 2)
-        assert color == generator.COLORS["missing"]
-
-    def test_invalid_agreement_no_color(self, generator):
-        """Test that invalid agreement returns empty string."""
-        color = generator._get_row_color("invalid", "", 2)
-        assert color == ""
-        
-        color = generator._get_row_color("", "", 2)
-        assert color == ""
+    @pytest.mark.parametrize(
+        ("agreement_score", "notes", "num_models", "expected"),
+        [
+            ("2/2", "", 2, "full_agreement"),
+            ("3/3", "", 3, "full_agreement"),
+            ("2/3", "", 3, "partial_agreement"),
+            ("1/3", "", 3, "disagreement"),
+            ("1/2", "", 2, "disagreement"),
+            ("1/2", "Item missing from: model_a", 2, "missing"),
+            ("invalid", "", 2, None),
+            ("", "", 2, None),
+        ],
+    )
+    def test_get_row_color(self, generator, agreement_score, notes, num_models, expected):
+        color = generator._get_row_color(agreement_score, notes, num_models)
+        if expected is None:
+            assert color == ""
+            return
+        assert color == generator.COLORS[expected]
 
 
 class TestExcelGeneration:

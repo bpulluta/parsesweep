@@ -111,65 +111,25 @@ discovery:
         assert loaded["discovery"]["policy"]["robots_mode"] == "warn"
 
 
-def test_load_runtime_config_file_rejects_invalid_discovery_runtime_controls(tmp_path: Path):
+@pytest.mark.parametrize(
+    ("discovery_block", "match"),
+    [
+        (
+            "  runtime:\n    max_concurrent_downloads: 0\n    min_request_interval_ms: -1\n",
+            "discovery.runtime.max_concurrent_downloads",
+        ),
+        ("  policy:\n    robots_mode: maybe\n", "discovery.policy.robots_mode"),
+        ("  topology:\n    mode: unknown_mode\n", "discovery.topology.mode"),
+        ("  - not\n  - an\n  - object\n", "'discovery' section must be an object"),
+    ],
+)
+def test_load_runtime_config_file_rejects_invalid_discovery_config(
+    tmp_path: Path, discovery_block: str, match: str
+):
     config_path = tmp_path / "run.yaml"
-    config_path.write_text(
-        """
-discovery:
-  runtime:
-    max_concurrent_downloads: 0
-    min_request_interval_ms: -1
-""",
-        encoding="utf-8",
-    )
+    config_path.write_text(f"discovery:\n{discovery_block}", encoding="utf-8")
 
-    with pytest.raises(RuntimeConfigError, match="discovery.runtime.max_concurrent_downloads"):
-        load_runtime_config_file(config_path)
-
-
-def test_load_runtime_config_file_rejects_invalid_discovery_policy_mode(tmp_path: Path):
-    config_path = tmp_path / "run.yaml"
-    config_path.write_text(
-        """
-discovery:
-  policy:
-    robots_mode: maybe
-""",
-        encoding="utf-8",
-    )
-
-    with pytest.raises(RuntimeConfigError, match="discovery.policy.robots_mode"):
-        load_runtime_config_file(config_path)
-
-
-def test_load_runtime_config_file_rejects_invalid_discovery_topology_mode(tmp_path: Path):
-    config_path = tmp_path / "run.yaml"
-    config_path.write_text(
-        """
-discovery:
-  topology:
-    mode: unknown_mode
-""",
-        encoding="utf-8",
-    )
-
-    with pytest.raises(RuntimeConfigError, match="discovery.topology.mode"):
-        load_runtime_config_file(config_path)
-
-
-def test_load_runtime_config_file_rejects_non_object_discovery_section(tmp_path: Path):
-    config_path = tmp_path / "run.yaml"
-    config_path.write_text(
-        """
-discovery:
-  - not
-  - an
-  - object
-""",
-        encoding="utf-8",
-    )
-
-    with pytest.raises(RuntimeConfigError, match="'discovery' section must be an object"):
+    with pytest.raises(RuntimeConfigError, match=match):
         load_runtime_config_file(config_path)
 
 
@@ -709,31 +669,22 @@ def _write(tmp_path: Path, body: str) -> Path:
     return p
 
 
-def test_processing_validator_rejects_non_int_max_context(tmp_path: Path):
+@pytest.mark.parametrize(
+    ("snippet", "match"),
+    [
+        ("max_context: not-an-int\n", "max_context"),
+        ("provider: bogus\n", "provider"),
+        ("pages:\n    auto_locate:\n      trigger_chars: -5\n", "trigger_chars"),
+    ],
+)
+def test_processing_validator_rejects_invalid_fields(
+    tmp_path: Path, snippet: str, match: str
+):
     cfg = _write(
         tmp_path,
-        "extraction:\n  schema: s.json\n  input_dir: d\n  max_context: not-an-int\n",
+        "extraction:\n  schema: s.json\n  input_dir: d\n  " + snippet,
     )
-    with pytest.raises(RuntimeConfigError, match="max_context"):
-        load_runtime_config_file(cfg)
-
-
-def test_processing_validator_rejects_bad_provider(tmp_path: Path):
-    cfg = _write(
-        tmp_path,
-        "extraction:\n  schema: s.json\n  input_dir: d\n  provider: bogus\n",
-    )
-    with pytest.raises(RuntimeConfigError, match="provider"):
-        load_runtime_config_file(cfg)
-
-
-def test_processing_validator_rejects_bad_page_targeting(tmp_path: Path):
-    cfg = _write(
-        tmp_path,
-        "extraction:\n  schema: s.json\n  input_dir: d\n"
-        "  pages:\n    auto_locate:\n      trigger_chars: -5\n",
-    )
-    with pytest.raises(RuntimeConfigError, match="trigger_chars"):
+    with pytest.raises(RuntimeConfigError, match=match):
         load_runtime_config_file(cfg)
 
 
@@ -751,47 +702,48 @@ def test_processing_validator_accepts_valid_block(tmp_path: Path):
     assert loaded["extraction"]["max_context"] == 600000
 
 
-def test_pages_block_normalizes_to_flat_keys(tmp_path: Path):
-    """New unified pages: block expands to pages_csv + page_targeting."""
+@pytest.mark.parametrize(
+    ("pages_block", "expected_csv", "expected_section_description"),
+    [
+        (
+            "  pages:\n    csv: ranges.csv\n    auto_locate:\n      section_description: rate tables\n      trigger_chars: 200000\n",
+            "ranges.csv",
+            "rate tables",
+        ),
+        (
+            "  pages:\n    auto_locate:\n      section_description: the charges section\n",
+            None,
+            "the charges section",
+        ),
+        ("  pages:\n    csv: my_ranges.csv\n", "my_ranges.csv", None),
+    ],
+)
+def test_pages_block_variants(
+    tmp_path: Path,
+    pages_block: str,
+    expected_csv: str | None,
+    expected_section_description: str | None,
+):
     cfg = _write(
         tmp_path,
-        "extraction:\n  schema: s.json\n  input_dir: d\n"
-        "  pages:\n    csv: ranges.csv\n"
-        "    auto_locate:\n      section_description: rate tables\n"
-        "      trigger_chars: 200000\n",
+        "extraction:\n  schema: s.json\n  input_dir: d\n" + pages_block,
     )
     loaded = load_runtime_config_file(cfg)
     ext = loaded["extraction"]
-    assert ext["pages_csv"] == "ranges.csv"
-    assert ext["page_targeting"]["section_description"] == "rate tables"
-    assert ext["page_targeting"]["enabled"] is True
 
+    if expected_csv is None:
+        assert "pages_csv" not in ext
+    else:
+        assert ext["pages_csv"] == expected_csv
 
-def test_pages_block_auto_locate_only(tmp_path: Path):
-    """pages: with only auto_locate (no csv)."""
-    cfg = _write(
-        tmp_path,
-        "extraction:\n  schema: s.json\n  input_dir: d\n"
-        "  pages:\n    auto_locate:\n"
-        "      section_description: the charges section\n",
-    )
-    loaded = load_runtime_config_file(cfg)
-    ext = loaded["extraction"]
-    assert "pages_csv" not in ext
-    assert ext["page_targeting"]["enabled"] is True
-
-
-def test_pages_block_csv_only(tmp_path: Path):
-    """pages: with only csv (no auto_locate)."""
-    cfg = _write(
-        tmp_path,
-        "extraction:\n  schema: s.json\n  input_dir: d\n"
-        "  pages:\n    csv: my_ranges.csv\n",
-    )
-    loaded = load_runtime_config_file(cfg)
-    ext = loaded["extraction"]
-    assert ext["pages_csv"] == "my_ranges.csv"
-    assert "page_targeting" not in ext
+    if expected_section_description is None:
+        assert "page_targeting" not in ext
+    else:
+        assert ext["page_targeting"]["enabled"] is True
+        assert (
+            ext["page_targeting"]["section_description"]
+            == expected_section_description
+        )
 
 
 def test_old_flat_pages_keys_rejected(tmp_path: Path):

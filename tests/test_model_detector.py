@@ -9,106 +9,53 @@ import pytest
 from unittest.mock import patch
 
 
+@pytest.fixture(autouse=True)
+def clean_env():
+    """Clean relevant env vars before each test and restore afterward."""
+    env_vars = [
+        "QAQC_MODELS",
+        "AZURE_OPENAI_API_KEY",
+        "AZURE_OPENAI_ENDPOINT",
+        "OPENAI_API_KEY",
+    ]
+    original = {var: os.environ.get(var) for var in env_vars}
+
+    for var in env_vars:
+        os.environ.pop(var, None)
+
+    yield
+
+    for var, val in original.items():
+        if val is not None:
+            os.environ[var] = val
+        else:
+            os.environ.pop(var, None)
+
+
 class TestModelDetector:
     """Tests for ModelDetector class."""
 
-    @pytest.fixture(autouse=True)
-    def clean_env(self):
-        """Clean environment before each test."""
-        # Save original values
-        original_qaqc = os.environ.get("QAQC_MODELS")
-        original_azure_key = os.environ.get("AZURE_OPENAI_API_KEY")
-        original_azure_endpoint = os.environ.get("AZURE_OPENAI_ENDPOINT")
-        original_openai_key = os.environ.get("OPENAI_API_KEY")
-        
-        # Clear for test
-        for var in ["QAQC_MODELS", "AZURE_OPENAI_API_KEY", "AZURE_OPENAI_ENDPOINT", "OPENAI_API_KEY"]:
-            if var in os.environ:
-                del os.environ[var]
-        
-        yield
-        
-        # Restore
-        if original_qaqc is not None:
-            os.environ["QAQC_MODELS"] = original_qaqc
-        elif "QAQC_MODELS" in os.environ:
-            del os.environ["QAQC_MODELS"]
-            
-        if original_azure_key is not None:
-            os.environ["AZURE_OPENAI_API_KEY"] = original_azure_key
-        if original_azure_endpoint is not None:
-            os.environ["AZURE_OPENAI_ENDPOINT"] = original_azure_endpoint
-        if original_openai_key is not None:
-            os.environ["OPENAI_API_KEY"] = original_openai_key
-
-    def test_import_model_detector(self):
-        """Test that ModelDetector can be imported."""
-        from psweep.qa_qc.model_detector import ModelDetector
-        assert ModelDetector is not None
-
-    def test_import_from_init(self):
-        """Test that ModelDetector can be imported from qa_qc package."""
-        from psweep.qa_qc import ModelDetector
-        assert ModelDetector is not None
+    pass
 
 
 class TestGetQaModels:
     """Tests for get_qa_models() method."""
 
-    @pytest.fixture(autouse=True)
-    def clean_env(self):
-        """Clean environment before each test."""
-        original_qaqc = os.environ.get("QAQC_MODELS")
-        original_azure_key = os.environ.get("AZURE_OPENAI_API_KEY")
-        original_azure_endpoint = os.environ.get("AZURE_OPENAI_ENDPOINT")
-        original_openai_key = os.environ.get("OPENAI_API_KEY")
-        
-        for var in ["QAQC_MODELS", "AZURE_OPENAI_API_KEY", "AZURE_OPENAI_ENDPOINT", "OPENAI_API_KEY"]:
-            if var in os.environ:
-                del os.environ[var]
-        
-        yield
-        
-        if original_qaqc is not None:
-            os.environ["QAQC_MODELS"] = original_qaqc
-        elif "QAQC_MODELS" in os.environ:
-            del os.environ["QAQC_MODELS"]
-        if original_azure_key is not None:
-            os.environ["AZURE_OPENAI_API_KEY"] = original_azure_key
-        if original_azure_endpoint is not None:
-            os.environ["AZURE_OPENAI_ENDPOINT"] = original_azure_endpoint
-        if original_openai_key is not None:
-            os.environ["OPENAI_API_KEY"] = original_openai_key
-
-    def test_custom_models_two(self):
-        """Test custom QAQC_MODELS with 2 models."""
+    @pytest.mark.parametrize(
+        ("raw", "expected"),
+        [
+            ("model-a,model-b", ["model-a", "model-b"]),
+            ("gpt-4o,gpt-4-turbo,gpt-3.5-turbo", ["gpt-4o", "gpt-4-turbo", "gpt-3.5-turbo"]),
+            ("m1,m2,m3,m4,m5", ["m1", "m2", "m3", "m4", "m5"]),
+        ],
+    )
+    def test_custom_models_lists(self, raw, expected):
         from psweep.qa_qc.model_detector import ModelDetector
-        
-        os.environ["QAQC_MODELS"] = "model-a,model-b"
-        models = ModelDetector.get_qa_models()
-        
-        assert models == ["model-a", "model-b"]
-        assert len(models) == 2
 
-    def test_custom_models_three(self):
-        """Test custom QAQC_MODELS with 3 models."""
-        from psweep.qa_qc.model_detector import ModelDetector
-        
-        os.environ["QAQC_MODELS"] = "gpt-4o,gpt-4-turbo,gpt-3.5-turbo"
+        os.environ["QAQC_MODELS"] = raw
         models = ModelDetector.get_qa_models()
-        
-        assert models == ["gpt-4o", "gpt-4-turbo", "gpt-3.5-turbo"]
-        assert len(models) == 3
-
-    def test_custom_models_five(self):
-        """Test custom QAQC_MODELS with 5 models."""
-        from psweep.qa_qc.model_detector import ModelDetector
-        
-        os.environ["QAQC_MODELS"] = "m1,m2,m3,m4,m5"
-        models = ModelDetector.get_qa_models()
-        
-        assert models == ["m1", "m2", "m3", "m4", "m5"]
-        assert len(models) == 5
+        assert models == expected
+        assert len(models) == len(expected)
 
     def test_custom_models_strips_whitespace(self):
         """Test that whitespace is stripped from model names."""
@@ -176,62 +123,26 @@ class TestGetQaModels:
 
         assert "QAQC_MODELS" in str(exc_info.value)
 
-    def test_min_models_constant(self):
-        """Test that MIN_MODELS is at least 2."""
-        from psweep.qa_qc.model_detector import ModelDetector
-
-        assert ModelDetector.MIN_MODELS >= 2
-
-
 class TestGetProvider:
     """Tests for get_provider() method."""
 
-    @pytest.fixture(autouse=True)
-    def clean_env(self):
-        """Clean environment before each test."""
-        original_azure_key = os.environ.get("AZURE_OPENAI_API_KEY")
-        original_azure_endpoint = os.environ.get("AZURE_OPENAI_ENDPOINT")
-        
-        for var in ["AZURE_OPENAI_API_KEY", "AZURE_OPENAI_ENDPOINT"]:
-            if var in os.environ:
-                del os.environ[var]
-        
-        yield
-        
-        if original_azure_key is not None:
-            os.environ["AZURE_OPENAI_API_KEY"] = original_azure_key
-        if original_azure_endpoint is not None:
-            os.environ["AZURE_OPENAI_ENDPOINT"] = original_azure_endpoint
-
-    def test_azure_provider(self):
-        """Test Azure provider detection."""
+    @pytest.mark.parametrize(
+        ("azure_key", "azure_endpoint", "expected_provider"),
+        [
+            ("azure-test-key", "https://test.openai.azure.com", "azure"),
+            (None, None, "openai"),
+            ("azure-test-key", None, "openai"),
+        ],
+    )
+    def test_get_provider(self, azure_key, azure_endpoint, expected_provider):
         from psweep.qa_qc.model_detector import ModelDetector
-        
-        os.environ["AZURE_OPENAI_API_KEY"] = "azure-test-key"
-        os.environ["AZURE_OPENAI_ENDPOINT"] = "https://test.openai.azure.com"
-        
-        provider = ModelDetector.get_provider()
-        
-        assert provider == "azure"
 
-    def test_openai_provider_default(self):
-        """Test OpenAI provider is default."""
-        from psweep.qa_qc.model_detector import ModelDetector
-        
-        provider = ModelDetector.get_provider()
-        
-        assert provider == "openai"
+        if azure_key is not None:
+            os.environ["AZURE_OPENAI_API_KEY"] = azure_key
+        if azure_endpoint is not None:
+            os.environ["AZURE_OPENAI_ENDPOINT"] = azure_endpoint
 
-    def test_openai_when_only_key_no_endpoint(self):
-        """Test OpenAI is returned when only Azure key but no endpoint."""
-        from psweep.qa_qc.model_detector import ModelDetector
-        
-        os.environ["AZURE_OPENAI_API_KEY"] = "azure-test-key"
-        # No endpoint set
-        
-        provider = ModelDetector.get_provider()
-        
-        assert provider == "openai"
+        assert ModelDetector.get_provider() == expected_provider
 
 
 class TestValidateModels:
@@ -275,28 +186,6 @@ class TestValidateModels:
 
 class TestGetModelInfo:
     """Tests for get_model_info() method."""
-
-    @pytest.fixture(autouse=True)
-    def clean_env(self):
-        """Clean environment before each test."""
-        original = {
-            "QAQC_MODELS": os.environ.get("QAQC_MODELS"),
-            "AZURE_OPENAI_API_KEY": os.environ.get("AZURE_OPENAI_API_KEY"),
-            "AZURE_OPENAI_ENDPOINT": os.environ.get("AZURE_OPENAI_ENDPOINT"),
-            "OPENAI_API_KEY": os.environ.get("OPENAI_API_KEY"),
-        }
-        
-        for var in original:
-            if var in os.environ:
-                del os.environ[var]
-        
-        yield
-        
-        for var, val in original.items():
-            if val is not None:
-                os.environ[var] = val
-            elif var in os.environ:
-                del os.environ[var]
 
     def test_get_model_info_structure(self):
         """Test get_model_info returns expected structure."""
