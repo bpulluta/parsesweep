@@ -26,6 +26,18 @@ class ExcelFormatter:
     - Clean borders throughout
     """
 
+    @staticmethod
+    def _sanitize_for_excel(value):
+        """Remove Excel-illegal characters from cell values."""
+        if not isinstance(value, str):
+            return value
+        # Remove control characters (U+0000 to U+001F, except tab/newline/cr)
+        # Excel doesn't allow most control characters
+        return "".join(
+            ch if ord(ch) >= 32 or ch in "\t\n\r" else ""
+            for ch in value
+        )
+    
     def save(
         self,
         df: pd.DataFrame,
@@ -48,9 +60,14 @@ class ExcelFormatter:
         """
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
+        # Sanitize all string values to remove Excel-illegal characters
+        df_clean = df.copy()
+        for col in df_clean.columns:
+            df_clean[col] = df_clean[col].apply(self._sanitize_for_excel)
+
         # Write data
         with pd.ExcelWriter(output_path, engine="openpyxl") as writer:
-            df.to_excel(writer, sheet_name="Data", index=False)
+            df_clean.to_excel(writer, sheet_name="Data", index=False)
 
         # Load workbook for styling
         wb = load_workbook(output_path)
