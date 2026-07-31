@@ -18,7 +18,7 @@ Quick start:
 
 For full config-driven runs (recommended for complex domains):
     >>> from psweep.pipeline import run_pipeline
-    >>> run_pipeline("config/my_domain/run.yaml")
+    >>> run_pipeline("config/my_domain/my_domain.yaml")
 """
 
 from __future__ import annotations
@@ -79,6 +79,39 @@ class PipelineResult:
     compilation: Optional[CompilationResult] = None
 
 
+def _read_config_dict(config_path: str | Path) -> dict:
+    """Load a domain run config file as a plain dict (empty on failure)."""
+    import yaml
+
+    cfg_path = Path(config_path)
+    if not cfg_path.exists():
+        return {}
+    with cfg_path.open() as fh:
+        return yaml.safe_load(fh) or {}
+
+
+def resolve_run_qaqc(config_path: str | Path) -> Optional[dict]:
+    """Resolve QA/QC orchestration settings from a domain run config.
+
+    QA/QC is considered enabled for a ``run`` when the extraction section opts
+    in via ``enable_qaqc: true`` — the same signal the ``extract`` command
+    itself honours. Returns ``None`` when QA/QC is disabled, otherwise a dict
+    describing the follow-up ``compare`` stage inputs.
+    """
+    cfg = _read_config_dict(config_path)
+    extraction = cfg.get("extraction") or {}
+    if not extraction.get("enable_qaqc"):
+        return None
+
+    domain = cfg.get("domain", Path(config_path).parent.name)
+    output_dir = Path(extraction.get("output_dir", f"extracted/{domain}"))
+    return {
+        "lane": extraction.get("qaqc_lane"),
+        "schema": extraction.get("schema"),
+        "qa_qc_dir": output_dir / "qa_qc",
+    }
+
+
 def build_run_stage_commands(
     config_path: str | Path,
     *,
@@ -88,9 +121,17 @@ def build_run_stage_commands(
     reprocess: bool = False,
     extra_flags: Sequence[str] = (),
 ) -> list[tuple[str, list[str]]]:
-    """Build the subprocess commands used to execute a run.yaml pipeline."""
+    """Build the subprocess commands used to execute a run config pipeline.
+
+    When the config enables multi-model QA/QC, the extract stage is run with
+    ``--enable-qa-qc`` and a follow-up ``compare`` stage is appended so the
+    orchestrated ``run`` performs the full discover → extract → compile →
+    compare flow instead of silently ignoring ``enable_qaqc: true``.
+    """
     cfg_path = Path(config_path)
     stage_cmds: list[tuple[str, list[str]]] = []
+
+    qaqc = resolve_run_qaqc(cfg_path)
 
     if not skip_discover:
         stage_cmds.append(
@@ -103,6 +144,8 @@ def build_run_stage_commands(
         extract_flags = [*extra_flags]
         if reprocess:
             extract_flags.append("--reprocess")
+        if qaqc:
+            extract_flags.append("--enable-qa-qc")
         stage_cmds.append(
             (
                 "extract",
@@ -115,6 +158,20 @@ def build_run_stage_commands(
             [*base_cmd, "compile", "--config", str(cfg_path), *extra_flags],
         )
     )
+    if qaqc and (not skip_extract or Path(qaqc["qa_qc_dir"]).exists()):
+        compare_cmd = [
+            *base_cmd,
+            "compare",
+            Path(qaqc["qa_qc_dir"]).as_posix(),
+            "--config",
+            str(cfg_path),
+        ]
+        if qaqc.get("schema"):
+            compare_cmd += ["--schema", str(qaqc["schema"])]
+        if qaqc.get("lane"):
+            compare_cmd += ["--qaqc-lane", str(qaqc["lane"])]
+        compare_cmd += [*extra_flags]
+        stage_cmds.append(("compare", compare_cmd))
     return stage_cmds
 
 
@@ -340,7 +397,8 @@ def compile_extractions(
     schema:
         Path to the same schema used during extraction.
     config_path:
-        Optional path to the domain ``run.yaml`` config. When provided, the
+        Optional path to the domain run config (e.g.
+        ``config/<domain>/<domain>.yaml``). When provided, the
         ``compilation.output`` settings (exclude_fields, column_renames,
         column_order, etc.) and ``compilation.normalization`` from the config
         are applied to the output. Matches the behavior of
@@ -444,16 +502,17 @@ def run_pipeline(
     skip_extract: bool = False,
     reprocess: bool = False,
 ) -> PipelineResult:
-    """Run the full pipeline (discover → extract → compile) from a run.yaml config.
+    """Run the full pipeline (discover → extract → compile) from a run config.
 
     This is a thin subprocess-based orchestrator that mirrors the CLI ``run``
     command. It is suitable for scripting and automation where you want
     programmatic control over the pipeline without the Rich terminal UI.
+    When the config enables QA/QC, a ``compare`` stage runs after ``compile``.
 
     Parameters
     ----------
     config_path:
-        Path to a domain ``run.yaml`` config file.
+        Path to a domain run config file (e.g. ``config/<domain>/<domain>.yaml``).
     skip_discover:
         If True, skip the discovery stage.
     skip_extract:

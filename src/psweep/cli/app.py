@@ -29,7 +29,7 @@ import typer.main
 from typer.core import TyperGroup
 
 from psweep import __version__
-from psweep.pipeline import build_run_stage_commands
+from psweep.pipeline import build_run_stage_commands, resolve_run_qaqc
 
 # ---------------------------------------------------------------------------
 # App
@@ -127,7 +127,7 @@ def callback(
 def run(
     config_path: Annotated[
         Path,
-        typer.Option("--config", help="Path to run.yaml config file.", show_default=False),
+        typer.Option("--config", help="Path to the domain run config file (e.g. config/<domain>/<domain>.yaml).", show_default=False),
     ],
     reprocess: Annotated[
         bool,
@@ -165,11 +165,11 @@ def run(
     ignore all caches.
 
     [bold]Usage:[/bold]
-        psweep run --config config/my_domain/run.yaml
+        psweep run --config config/my_domain/my_domain.yaml
 
     [bold]Adding new targets:[/bold]
         1. Add rows to config/<domain>/targets.csv
-        2. Run: psweep run --config config/<domain>/run.yaml
+        2. Run: psweep run --config config/<domain>/<domain>.yaml
         3. Only new targets are processed; previous results are preserved.
     """
     import yaml
@@ -254,9 +254,31 @@ def run(
     stages_list: list[str] = []
     if not skip_discover:
         stages_list.append("discover")
+
+    qaqc = resolve_run_qaqc(config_path)
+    qaqc_model_count: Optional[int] = None
+    if qaqc:
+        try:
+            from psweep.qa_qc import ModelDetector
+
+            qaqc_model_count = len(ModelDetector.get_qa_models())
+        except Exception:
+            qaqc_model_count = None
+
+    run_qaqc_extract = bool(qaqc) and not skip_extract
+    show_compare = bool(qaqc) and (
+        not skip_extract or Path(qaqc["qa_qc_dir"]).exists()
+    )
+
     if not skip_extract:
-        stages_list.append("extract")
+        if run_qaqc_extract:
+            count = f" ×{qaqc_model_count} models" if qaqc_model_count else ""
+            stages_list.append(f"extract (QA/QC{count})")
+        else:
+            stages_list.append("extract")
     stages_list.append("compile")
+    if show_compare:
+        stages_list.append("compare")
     plan_rows["Stages"] = " → ".join(stages_list)
 
     view.config(plan_rows, title="Run Plan")
@@ -299,6 +321,7 @@ def run(
         "discover": "Discovering documents",
         "extract": "Extracting data",
         "compile": "Compiling results",
+        "compare": "Comparing QA/QC models",
     }
     total_stages = len(stage_cmds)
     for i, (stage_name, cmd) in enumerate(stage_cmds, 1):

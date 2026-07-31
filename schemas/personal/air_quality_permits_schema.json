@@ -75,7 +75,7 @@
               "type": "null"
             }
           ],
-          "description": "Permit-level state facility identifier verbatim, distinct from equipmentFacilityID and referenceNumber. Labels may include 'I.D. No.', 'Facility ID No.', 'Registration No.', 'Source ID', or 'State Registration Number'. Return the value without its label; null if absent."
+          "description": "State facility identifier verbatim; distinct from equipmentFacilityID. Labels vary ('Facility ID No.', 'Registration No.', 'Source ID', etc.). Return value without label; null if absent."
         },
         "initialConstructionCommencedNotificationRequired": {
           "anyOf": [
@@ -141,7 +141,7 @@
               "type": "null"
             }
           ],
-          "description": "Free-text excerpt of right-of-entry language enabling inspection, especially noting timing (e.g., 'whenever the facility is in operation'). Leave null if not stated."
+          "description": "Right-of-entry language enabling inspection, noting timing (e.g., 'whenever the facility is in operation'). Null if absent."
         },
         "extractionNotes": {
           "anyOf": [
@@ -173,7 +173,7 @@
         "description": "One entry per generator unit or group as listed in the permit (e.g., EG01, EG04-EG05, 1510-4).",
         "properties": {
           "referenceNumber": {
-            "description": "Unit or group identifier exactly as used in the permit. May be single unit (e.g., 'EG01', 'EUGEN1', '01A') or group (e.g., 'EG04-EG05', 'EG01 - EG06'). Copy verbatim including spaces and formatting. Do not merge references.",
+            "description": "Unit or group identifier verbatim as used in the permit (e.g., 'EG01', 'EG04-EG05'). Copy with spacing. Do not merge references.",
             "type": "string"
           },
           "numGenerators": {
@@ -185,7 +185,7 @@
                 "type": "null"
               }
             ],
-            "description": "Count of physical engines/generators in this reference. For single units, use 1. For grouped references (e.g., 'EG01-EG06'), extract the count if explicitly stated (e.g., 'six generators' → 6, 'fifteen generators' → 15). If count is ambiguous or not stated, use null. Do NOT infer from reference numbers."
+            "description": "Count of physical generators in this reference. 1 for single units. For grouped references, use the stated count only (e.g., 'six generators' → 6); null if ambiguous or unstated. Do not infer from reference numbers."
           },
           "includedInPermitProject": {
             "anyOf": [
@@ -196,7 +196,7 @@
                 "type": "null"
               }
             ],
-            "description": "True if explicitly stated as 'new' or 'included in this permit action'; false if stated as 'existing' or 'previously permitted'; null if status not mentioned. This indicates whether equipment is being newly permitted or is existing."
+            "description": "True if 'new'/'included in this permit action'; false if 'existing'/'previously permitted'; null if not mentioned."
           },
           "originalPermitDate": {
             "anyOf": [
@@ -207,7 +207,7 @@
                 "type": "null"
               }
             ],
-            "description": "Date this equipment was originally permitted or construction commenced; it may differ from permitIssuanceDate. Read columns such as 'Original Permit Date', 'Construction Commenced', or 'Date Issued'. Return YYYY-MM-DD; for month/year or year-only dates, use the first day (e.g., 'September 2007' -> '2007-09-01'; '1990' -> '1990-01-01'). Null if absent."
+            "description": "Original permit or construction commencement date in YYYY-MM-DD. Partial dates: first day of month/year (e.g., 'September 2007' → '2007-09-01'). Null if absent."
           },
           "equipmentFacilityID": {
             "anyOf": [
@@ -218,7 +218,7 @@
                 "type": "null"
               }
             ],
-            "description": "Equipment-specific facility/unit identifier verbatim, distinct from referenceNumber (e.g., Facility ID '1A' versus permit reference 'EU-01A'). Null if absent."
+            "description": "Equipment facility identifier verbatim; distinct from referenceNumber. Null if absent."
           },
           "make": {
             "anyOf": [
@@ -229,7 +229,7 @@
                 "type": "null"
               }
             ],
-            "description": "Manufacturer name as stated in permit (e.g., 'Cummins', 'Caterpillar', 'MTU', 'Kohler'). If multiple options given (e.g., 'Caterpillar or equivalent'), select first explicitly named. Leave null if not stated. Do not infer from context."
+            "description": "Manufacturer name verbatim (e.g., 'Cummins', 'Caterpillar'). First named if multiple options. Null if absent."
           },
           "model": {
             "anyOf": [
@@ -240,7 +240,7 @@
                 "type": "null"
               }
             ],
-            "description": "Model designation as stated in permit (e.g., 'QSK78-G12', '3516C', '3512'). If multiple options, select first explicitly named. Leave null if not stated. Do not infer."
+            "description": "Model designation verbatim. First named if multiple options. Null if absent."
           },
           "ratedCapacityKW": {
             "anyOf": [
@@ -251,7 +251,7 @@
                 "type": "null"
               }
             ],
-            "description": "Rated electrical output in kilowatts as a number (e.g., 2500, 600, 2000). Extract value without units. If stated in megawatts (MW), convert to kW (×1000) and extract the number. If range given, use typical/nominal value if indicated, otherwise use smallest. Do not convert from HP/BHP. Leave null if not stated."
+            "description": "Rated output in kW as a number. Convert MW to kW (×1000). For ranges, use stated nominal/typical or smallest. No HP/BHP conversions. Null if absent."
           },
           "ratedCapacityBHP": {
             "anyOf": [
@@ -262,7 +262,7 @@
                 "type": "null"
               }
             ],
-            "description": "Rated brake horsepower as a number (e.g., 4060, 967, 1676). Extract value without units. Do not convert from kW. Leave null if not stated. Use this field when permit explicitly states 'BHP' or 'bhp'."
+            "description": "Rated BHP as a number. Use when permit states 'BHP'/'bhp'. Do not convert from kW. Null if absent."
           },
           "ratedCapacityHP": {
             "anyOf": [
@@ -273,7 +273,7 @@
                 "type": "null"
               }
             ],
-            "description": "Rated horsepower (HP, not BHP), numeric value without units. Do not convert from kW. Treat explicitly stated HP 'maximum capacity' as rated capacity. Null if absent."
+            "description": "Rated HP (not BHP) as a number. Do not convert from kW. Null if absent."
           },
           "ratedCapacityMMBtuPerHr": {
             "anyOf": [
@@ -328,7 +328,7 @@
                 "type": "null"
               }
             ],
-            "description": "Fuel grade exactly as stated in the permit. States use various formats: 'Grade No. 2-D', 'Grade No. 1-D S15', 'Grades No. 1 and 2', '#2 diesel', etc. Extract verbatim. If multiple grades are allowed, record them all here. Leave null if not stated."
+            "description": "Fuel grade verbatim. Record all allowed grades. Null if absent."
           },
           "fuelSpecification": {
             "anyOf": [
@@ -350,7 +350,7 @@
                 "type": "null"
               }
             ],
-            "description": "Sulfur content as percentage value. If stated as ppm (e.g., 15 ppm), convert to percent (0.0015). If stated as percent (e.g., 0.15%), extract as decimal (0.0015). States may express this differently - extract the numeric value that represents the actual percentage. Examples: '15 ppm' → 0.0015, '0.0015%' → 0.0015, '0.15%' → 0.0015. Leave null if not stated."
+            "description": "Sulfur content as decimal percentage. Convert ppm to percent (e.g., 15 ppm → 0.0015); percent values already in decimal form (e.g., '0.15%' → 0.0015). Null if absent."
           },
           "fuelCertificationRequired": {
             "anyOf": [
@@ -372,7 +372,7 @@
                 "type": "null"
               }
             ],
-            "description": "Free-text excerpt of permit language describing when fuel changes trigger permit modification (e.g., 'A change in the fuel may require a new or amended permit'). Leave null if not stated."
+            "description": "Permit language on when fuel changes require permit modification. Null if absent."
           },
           "fuelThroughputPerUnitLimit": {
             "anyOf": [
@@ -383,7 +383,7 @@
                 "type": "null"
               }
             ],
-            "description": "Maximum fuel consumption per unit as numeric value only (e.g., gallons per year per unit). For per-unit limits or when only one limit type exists. When permits specify BOTH per-unit AND combined throughput limits, use this for per-unit and fuelThroughputCombinedLimit for aggregate. Leave null if not stated."
+            "description": "Max fuel consumption per unit as a number. When BOTH per-unit and combined limits exist, use this for per-unit; use fuelThroughputCombinedLimit for aggregate. Null if absent."
           },
           "fuelThroughputPerUnitScope": {
             "anyOf": [
@@ -399,7 +399,7 @@
                 "type": "null"
               }
             ],
-            "description": "Scope of per-unit fuel throughput limit: 'per_unit' if applied to each generator individually, 'combined_group' if applied to multiple generators collectively (check fuelThroughputPerUnitGroupRef for the group reference), or 'facility_wide' if applied to all generators. States may use flexible group names like 'FGEMGENS' or specific generator lists. Leave null if not stated."
+            "description": "Scope of the per-unit fuel throughput limit: 'per_unit' per generator, 'combined_group' for a named group, 'facility_wide' for all generators. Null if absent."
           },
           "fuelThroughputPerUnitGroupRef": {
             "anyOf": [
@@ -410,7 +410,7 @@
                 "type": "null"
               }
             ],
-            "description": "Reference to generator group when per-unit throughput applies to a group. May be explicit list (e.g., 'EG01-EG07') or flexible group identifier used by state (e.g., 'FGEMGENS'). Extract exactly as written. Leave null if not applicable."
+            "description": "Generator group reference when per-unit throughput applies to a group (e.g., 'EG01-EG07', 'FGEMGENS'). Verbatim. Null if not applicable."
           },
           "fuelThroughputCombinedLimit": {
             "anyOf": [
@@ -421,7 +421,7 @@
                 "type": "null"
               }
             ],
-            "description": "Combined/aggregate fuel throughput limit when permits specify BOTH per-unit and combined limits. Captures the more restrictive aggregate cap for a group of generators. Leave null if only per-unit limit exists or if not specified."
+            "description": "Aggregate fuel throughput cap when BOTH per-unit and combined limits exist. Null if only per-unit limit or not specified."
           },
           "fuelThroughputCombinedGroupRef": {
             "anyOf": [
@@ -432,7 +432,7 @@
                 "type": "null"
               }
             ],
-            "description": "Reference to generator group when combined fuel throughput limit applies. Extract the specific language describing which units. Leave null if fuelThroughputCombinedLimit not used."
+            "description": "Generator group reference for the combined fuel throughput limit. Verbatim. Null if fuelThroughputCombinedLimit not used."
           },
           "controlTechnology": {
             "anyOf": [
@@ -454,7 +454,7 @@
                 "type": "null"
               }
             ],
-            "description": "Maximum allowed operating hours per unit as numeric value (e.g., 500 hours/year each unit). When permits specify BOTH per-unit AND combined limits, use this field for the per-unit value and operatingHoursCombinedLimit for the aggregate. When only one limit type exists, use this field regardless of scope. See operatingHoursPerUnitRollingWindow for period definition. Leave null if not specified."
+            "description": "Max operating hours per unit as a number. When BOTH per-unit and combined limits exist, use this for per-unit; use operatingHoursCombinedLimit for aggregate. Null if absent."
           },
           "operatingHoursPerUnitRollingWindow": {
             "anyOf": [
@@ -465,7 +465,7 @@
                 "type": "null"
               }
             ],
-            "description": "Rolling window or time period for per-unit operating hours limit exactly as written. States use various formats: 'consecutive 12-month period; calculated monthly', 'running 12 month total', '12-month rolling period', etc. Extract verbatim. Applies to operatingHoursPerUnitLimit unless operatingHoursCombinedRollingWindow specifies differently for combined limit. Leave null if not specified."
+            "description": "Rolling window for the per-unit operating hours limit, verbatim (e.g., 'consecutive 12-month period', 'running 12 month total'). Null if absent."
           },
           "operatingHoursCombinedLimit": {
             "anyOf": [
@@ -476,7 +476,7 @@
                 "type": "null"
               }
             ],
-            "description": "Combined/aggregate operating hours limit when permits specify BOTH per-unit and combined limits (e.g., '500 hours/year each' in operatingHoursPerUnitLimit AND 'total combined runtime for all fourteen...shall not exceed 3,220 hours/year' here). Critical for capturing dual-limit scenarios where individual units have one cap and the group has a more restrictive aggregate cap. Leave null if only per-unit limit exists or if not specified."
+            "description": "Aggregate operating hours cap when BOTH per-unit and combined limits exist (e.g., total runtime for all generators). Null if only per-unit limit or not specified."
           },
           "operatingHoursCombinedGroupRef": {
             "anyOf": [
@@ -487,7 +487,7 @@
                 "type": "null"
               }
             ],
-            "description": "Reference to generator group when combined operating hours limit applies. Extract the specific language describing which units (e.g., 'all fourteen 2,500 kW (3,634 HP) Diesel-Powered Emergency Generator Sets', 'EGC5-EGC8'). Leave null if operatingHoursCombinedLimit not used."
+            "description": "Generator group reference for the combined operating hours limit. Verbatim. Null if operatingHoursCombinedLimit not used."
           },
           "operatingHoursCombinedRollingWindow": {
             "anyOf": [
@@ -498,7 +498,7 @@
                 "type": "null"
               }
             ],
-            "description": "Rolling window for combined operating hours limit if different from operatingHoursRollingWindow. Extract verbatim. Leave null if not specified or if same as operatingHoursRollingWindow."
+            "description": "Rolling window for combined hours limit if different from the per-unit window. Verbatim. Null if not specified."
           },
           "allowedOperatingModes": {
             "anyOf": [
@@ -509,7 +509,7 @@
                 "type": "null"
               }
             ],
-            "description": "Operating modes allowed exactly as written in permit. States use various phrasings: 'emergency only', 'emergency, maintenance and testing', 'emergency and non-emergency with approval', 'any operation other than emergency operation, maintenance and testing, emergency demand response...is prohibited' (extract full prohibition language), or detailed NSPS/MACT operational definitions (40 CFR 60.4211(f), etc.). Extract verbatim regardless of format. Leave null if not specified."
+            "description": "Allowed operating modes verbatim (e.g., 'emergency only', 'emergency, maintenance and testing', NSPS/MACT operational definitions). Null if not specified."
           },
           "opacityLimitPercent": {
             "anyOf": [

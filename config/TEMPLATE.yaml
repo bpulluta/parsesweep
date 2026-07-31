@@ -1,6 +1,6 @@
 # Domain Config Template
-# Copy this file to config/<your_domain>/run.yaml
-# Usage: psweep extract --config config/<your_domain>/run.yaml
+# Copy this file to config/<your_domain>/<your_domain>.yaml
+# Usage: psweep extract --config config/<your_domain>/<your_domain>.yaml
 #
 # Each section is independent — include only what you need:
 #   - extraction: required for the extract command
@@ -11,17 +11,18 @@
 domain: your_domain_name
 
 # ─── MODELS (recommended) ─────────────────────────────────────────────────────
-# Define model tiers so cheap/fast models handle iteration steps (discovery,
-# page targeting, review) while accurate models handle extraction.
-# When omitted, all stages use the model in your .env (AZURE_OPENAI_MODEL).
+# User-defined alias map: keys are alias names (any string), values are
+# concrete deployment/model names. Stages reference aliases via their `model:`
+# key; if no alias matches, the value is used as-is as the model name.
+# When omitted, all stages fall back to the model in your .env (AZURE_OPENAI_MODEL).
 #
-# Stage model-tier safety: PIN every stage's `model:` to a tier explicitly.
-# Extraction should pin `model: primary`; discovery review and page targeting
-# should pin `model: secondary`. Leaving a stage unset lets it silently fall
-# back to the .env default — a hidden cost/accuracy risk if the env changes.
+# Stage model-tier safety: PIN every stage's `model:` to an alias explicitly.
+# Leaving a stage unset lets it silently fall back to the .env default —
+# a hidden cost/accuracy risk whenever the env or alias map changes.
+# Define as many aliases as you need; names are entirely up to you.
 models:
-  primary: your-accurate-model        # used for extraction
-  secondary: your-fast-cheap-model    # used for discovery review, page targeting
+  primary: your-model-name           # alias → concrete deployment name
+  secondary: another-model-name      # add more aliases as needed
 
 # ─── EXTRACTION ──────────────────────────────────────────────────────────────
 extraction:
@@ -38,7 +39,7 @@ extraction:
   # pages:                                 # how to select pages from large PDFs
   #   csv: config/your_domain/page_ranges.csv  # manual ranges per file (wins)
   #   auto_locate:                         # LLM fallback for uncovered large docs
-  #     model: secondary                   # cheap/fast — page finding needn't be primary
+  #     model: secondary                   # pin to an alias — avoid silent .env fallback
   #     section_description: "the section containing your target data"
   #     trigger_chars: 200000              # only targets docs larger than this.
   #                                        # Set == max_context for zero-regression
@@ -93,6 +94,7 @@ compilation:
 #   browser_mode: false                   # true = download via headless Chrome (bot-protected sites)
 #   partition_by: [state, jurisdiction]   # output layout by_<field>/<value>/… from target metadata
 #   document_review:
+#     model: secondary                    # pin to an alias — avoid silent .env fallback
 #     document_description: "the authoritative source document"
 #     keep_top: 1
 #     action: move
