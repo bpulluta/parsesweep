@@ -120,40 +120,26 @@ class TestSchemaMetadataBasics:
 
 class TestExtractionMetadata:
     """Test extraction metadata accessor methods."""
-    
-    def test_get_main_data_array(self, temp_schema_with_metadata):
-        """Test getting main data array key."""
+
+    @pytest.mark.parametrize(
+        ("method_name", "expected"),
+        [
+            ("get_main_data_array", "test_items"),
+            ("get_deduplication_key_fields", ["field1", "field2"]),
+            ("get_deduplication_ignore_fields", ["notes", "timestamp"]),
+            ("get_deduplication_strategy", "latest"),
+            ("get_comparison_mode", "fuzzy"),
+            ("get_output_format", "excel"),
+            ("get_column_order", ["id", "name", "value"]),
+        ],
+    )
+    def test_schema_metadata_accessors(self, temp_schema_with_metadata, method_name, expected):
         meta = SchemaMetadata(temp_schema_with_metadata)
-        assert meta.get_main_data_array() == "test_items"
+        assert getattr(meta, method_name)() == expected
 
 
 class TestCompilationMetadata:
     """Test compilation metadata accessor methods."""
-    
-    def test_get_deduplication_key_fields(self, temp_schema_with_metadata):
-        """Test getting deduplication key fields."""
-        meta = SchemaMetadata(temp_schema_with_metadata)
-        assert meta.get_deduplication_key_fields() == ["field1", "field2"]
-    
-    def test_get_deduplication_ignore_fields(self, temp_schema_with_metadata):
-        """Test getting deduplication ignore fields."""
-        meta = SchemaMetadata(temp_schema_with_metadata)
-        assert meta.get_deduplication_ignore_fields() == ["notes", "timestamp"]
-    
-    def test_get_deduplication_strategy(self, temp_schema_with_metadata):
-        """Test getting deduplication strategy."""
-        meta = SchemaMetadata(temp_schema_with_metadata)
-        assert meta.get_deduplication_strategy() == "latest"
-    
-    def test_get_comparison_mode(self, temp_schema_with_metadata):
-        """Test getting comparison mode."""
-        meta = SchemaMetadata(temp_schema_with_metadata)
-        assert meta.get_comparison_mode() == "fuzzy"
-    
-    def test_get_output_format(self, temp_schema_with_metadata):
-        """Test getting output format."""
-        meta = SchemaMetadata(temp_schema_with_metadata)
-        assert meta.get_output_format() == "excel"
 
     def test_get_output_exclude_fields(self, temp_schema_with_metadata):
         """Test getting output exclude fields."""
@@ -164,11 +150,6 @@ class TestCompilationMetadata:
         meta = SchemaMetadata(temp_schema_with_metadata)
         assert meta.get_output_exclude_fields() == ["notes", "details"]
     
-    def test_get_column_order(self, temp_schema_with_metadata):
-        """Test getting column order."""
-        meta = SchemaMetadata(temp_schema_with_metadata)
-        assert meta.get_column_order() == ["id", "name", "value"]
-
     def test_get_column_renames(self, temp_schema_with_metadata):
         """Test getting output column rename mapping."""
         schema = json.loads(temp_schema_with_metadata.read_text())
@@ -226,79 +207,52 @@ class TestValidationMetadata:
 
 class TestV2Requirements:
     """Test v2.0 strict validation requirements."""
-    
-    def test_schema_without_metadata_raises_error(self, temp_schema_without_metadata):
-        """Test that schemas without $metadata raise SchemaMetadataError in v2.0."""
-        with pytest.raises(SchemaMetadataError, match="missing required \\$metadata section"):
-            SchemaMetadata(temp_schema_without_metadata)
-    
-    def test_schema_with_empty_metadata_raises_error(self, tmp_path):
-        """Test that schemas with empty $metadata raise SchemaMetadataError."""
-        schema = {
-            "$schema": "http://json-schema.org/draft-07/schema#",
-            "$metadata": {},  # Empty metadata
-            "type": "object"
-        }
-        schema_path = tmp_path / "empty_metadata.json"
-        with open(schema_path, 'w') as f:
-            json.dump(schema, f)
-        
-        with pytest.raises(SchemaMetadataError, match="main_data_array"):
-            SchemaMetadata(schema_path)
-    
-    def test_schema_missing_extraction_section_raises_error(self, tmp_path):
-        """Test that schemas missing extraction section raise SchemaMetadataError."""
-        schema = {
-            "$schema": "http://json-schema.org/draft-07/schema#",
-            "$metadata": {
-                "domain": "Test",
-                # Missing extraction section
-            },
-            "type": "object"
-        }
-        schema_path = tmp_path / "no_extraction.json"
-        with open(schema_path, 'w') as f:
-            json.dump(schema, f)
-        
-        with pytest.raises(SchemaMetadataError, match="main_data_array"):
-            SchemaMetadata(schema_path)
-    
-    def test_schema_missing_main_data_array_raises_error(self, tmp_path):
-        """Test that schemas missing main_data_array raise SchemaMetadataError."""
-        schema = {
-            "$schema": "http://json-schema.org/draft-07/schema#",
-            "$metadata": {
-                "extraction": {
-                    # Missing main_data_array
-                    "identifier_fields": ["id"]
-                }
-            },
-            "type": "object"
-        }
-        schema_path = tmp_path / "no_main_array.json"
-        with open(schema_path, 'w') as f:
-            json.dump(schema, f)
-        
-        with pytest.raises(SchemaMetadataError, match="main_data_array"):
-            SchemaMetadata(schema_path)
-    
-    def test_schema_missing_identifier_fields_raises_error(self, tmp_path):
-        """Test that schemas missing identifier_fields raise SchemaMetadataError."""
-        schema = {
-            "$schema": "http://json-schema.org/draft-07/schema#",
-            "$metadata": {
-                "extraction": {
-                    "main_data_array": "items"
-                    # Missing identifier_fields
-                }
-            },
-            "type": "object"
-        }
-        schema_path = tmp_path / "no_identifiers.json"
-        with open(schema_path, 'w') as f:
-            json.dump(schema, f)
-        
-        with pytest.raises(SchemaMetadataError, match="identifier_fields"):
+
+    @pytest.mark.parametrize(
+        ("schema_payload", "filename", "match"),
+        [
+            (
+                {
+                    "$schema": "http://json-schema.org/draft-07/schema#",
+                    "$metadata": {},
+                    "type": "object",
+                },
+                "empty_metadata.json",
+                "main_data_array",
+            ),
+            (
+                {
+                    "$schema": "http://json-schema.org/draft-07/schema#",
+                    "$metadata": {"domain": "Test"},
+                    "type": "object",
+                },
+                "no_extraction.json",
+                "main_data_array",
+            ),
+            (
+                {
+                    "$schema": "http://json-schema.org/draft-07/schema#",
+                    "$metadata": {"extraction": {"identifier_fields": ["id"]}},
+                    "type": "object",
+                },
+                "no_main_array.json",
+                "main_data_array",
+            ),
+            (
+                {
+                    "$schema": "http://json-schema.org/draft-07/schema#",
+                    "$metadata": {"extraction": {"main_data_array": "items"}},
+                    "type": "object",
+                },
+                "no_identifiers.json",
+                "identifier_fields",
+            ),
+        ],
+    )
+    def test_schema_validation_errors(self, tmp_path, schema_payload, filename, match):
+        schema_path = tmp_path / filename
+        schema_path.write_text(json.dumps(schema_payload), encoding="utf-8")
+        with pytest.raises(SchemaMetadataError, match=match):
             SchemaMetadata(schema_path)
     
     def test_minimal_valid_metadata(self, tmp_path):

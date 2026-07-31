@@ -12,6 +12,50 @@ from psweep.discovery import (
 )
 
 
+class _FakeResponse:
+    def __init__(
+        self,
+        *,
+        url: str,
+        content_type: str = "application/pdf",
+        chunks: list[bytes] | None = None,
+        text: str = "",
+        status_code: int = 200,
+    ):
+        self.url = url
+        self.headers = {"Content-Type": content_type}
+        self.text = text
+        self.status_code = status_code
+        self._chunks = chunks or [b"%PDF-1.4\n", b"mock-content"]
+
+    def raise_for_status(self):
+        return None
+
+    def iter_content(self, chunk_size: int = 65536):
+        del chunk_size
+        for chunk in self._chunks:
+            yield chunk
+
+
+def _patch_requests_get(
+    monkeypatch,
+    *,
+    url: str,
+    content_type: str = "application/pdf",
+    chunks: list[bytes] | None = None,
+    text: str = "",
+):
+    monkeypatch.setattr(
+        "requests.get",
+        lambda *_args, **_kwargs: _FakeResponse(
+            url=url,
+            content_type=content_type,
+            chunks=chunks,
+            text=text,
+        ),
+    )
+
+
 def test_candidate_score_weighted_total_and_classification():
     score = CandidateScore(
         url_signal=0.9,
@@ -185,22 +229,17 @@ def test_engine_run_emits_structured_error_when_serpapi_key_missing(tmp_path: Pa
 
 
 def test_engine_run_downloads_supported_candidate_for_non_dry_run(tmp_path: Path, monkeypatch):
-    class FakeResponse:
-        def __init__(self):
-            self.url = "https://example.org/docs/test-ordinance.pdf"
-            self.headers = {"Content-Type": "application/pdf"}
-
-        def raise_for_status(self):
-            return None
-
-        def iter_content(self, chunk_size: int = 65536):
-            yield b"%PDF-1.4\n"
-            yield b"mock-pdf-content"
-
-    def fake_get(*args, **kwargs):
-        return FakeResponse()
-
-    monkeypatch.setattr("requests.get", fake_get)
+    _patch_requests_get(
+        monkeypatch,
+        url="https://example.org/docs/test-ordinance.pdf",
+        chunks=[b"%PDF-1.4\n", b"mock-pdf-content"],
+    )
+    monkeypatch.setattr(
+        DiscoveryEngine,
+        "_escalate_js_shells_to_browser",
+        lambda self, downloads, notes, request: (downloads, notes),
+    )
+    monkeypatch.setattr("time.sleep", lambda *_args, **_kwargs: None)
 
     engine = DiscoveryEngine()
     request = DiscoveryRequest(
@@ -229,21 +268,12 @@ def test_engine_run_downloads_supported_candidate_for_non_dry_run(tmp_path: Path
 
 
 def test_engine_run_skips_unsupported_content_type_for_non_dry_run(tmp_path: Path, monkeypatch):
-    class FakeResponse:
-        def __init__(self):
-            self.url = "https://example.org/landing-page"
-            self.headers = {"Content-Type": "text/html; charset=utf-8"}
-
-        def raise_for_status(self):
-            return None
-
-        def iter_content(self, chunk_size: int = 65536):
-            yield b"<html>not-a-document</html>"
-
-    def fake_get(*args, **kwargs):
-        return FakeResponse()
-
-    monkeypatch.setattr("requests.get", fake_get)
+    _patch_requests_get(
+        monkeypatch,
+        url="https://example.org/landing-page",
+        content_type="text/html; charset=utf-8",
+        chunks=[b"<html>not-a-document</html>"],
+    )
 
     engine = DiscoveryEngine()
     request = DiscoveryRequest(
@@ -254,6 +284,9 @@ def test_engine_run_skips_unsupported_content_type_for_non_dry_run(tmp_path: Pat
         output_documents=tmp_path / "docs",
         output_manifest=tmp_path / "manifest.json",
         dry_run=False,
+        min_request_interval_ms=0,
+        robots_policy_mode="ignore",
+        tos_policy_mode="ignore",
     )
 
     result = engine.run(request)
@@ -438,19 +471,11 @@ def test_engine_run_retries_transient_download_failure_then_succeeds(tmp_path: P
 
 
 def test_engine_run_includes_rate_limit_and_concurrency_constraints(tmp_path: Path, monkeypatch):
-    class FakeResponse:
-        def __init__(self):
-            self.url = "https://example.org/docs/test-ordinance.pdf"
-            self.headers = {"Content-Type": "application/pdf"}
-
-        def raise_for_status(self):
-            return None
-
-        def iter_content(self, chunk_size: int = 65536):
-            yield b"%PDF-1.4\n"
-            yield b"controls"
-
-    monkeypatch.setattr("requests.get", lambda *args, **kwargs: FakeResponse())
+    _patch_requests_get(
+        monkeypatch,
+        url="https://example.org/docs/test-ordinance.pdf",
+        chunks=[b"%PDF-1.4\n", b"controls"],
+    )
 
     engine = DiscoveryEngine()
     request = DiscoveryRequest(
@@ -598,22 +623,16 @@ def test_engine_run_applies_request_rate_limiter_for_downloads(tmp_path: Path, m
 def test_engine_run_uses_configured_request_headers_for_downloads(tmp_path: Path, monkeypatch):
     captured_headers: list[dict[str, str]] = []
 
-    class FakeResponse:
-        def __init__(self):
-            self.url = "https://example.org/docs/test-filing.html"
-            self.headers = {"Content-Type": "text/html; charset=utf-8"}
-
-        def raise_for_status(self):
-            return None
-
-        def iter_content(self, chunk_size: int = 65536):
-            yield b"<html><body><h1>Apple filing summary</h1></body></html>"
-
     def fake_get(url: str, **kwargs):
         captured_headers.append(dict(kwargs.get("headers") or {}))
-        return FakeResponse()
+        return _FakeResponse(
+            url=url,
+            content_type="text/html; charset=utf-8",
+            chunks=[b"<html><body><h1>Apple filing summary</h1></body></html>"],
+        )
 
     monkeypatch.setattr("requests.get", fake_get)
+    monkeypatch.setattr("time.sleep", lambda *_args, **_kwargs: None)
 
     engine = DiscoveryEngine()
     request = DiscoveryRequest(
@@ -624,6 +643,9 @@ def test_engine_run_uses_configured_request_headers_for_downloads(tmp_path: Path
         output_documents=tmp_path / "docs",
         output_manifest=tmp_path / "manifest.json",
         dry_run=False,
+        min_request_interval_ms=0,
+        robots_policy_mode="ignore",
+        tos_policy_mode="ignore",
         request_headers={
             "User-Agent": "ParseSweep/2.0 (Apple SEC validation; contact: example@example.com)",
             "Accept-Language": "en-US,en;q=0.9",
@@ -641,22 +663,17 @@ def test_engine_run_uses_configured_request_headers_for_downloads(tmp_path: Path
 
 
 def test_engine_run_routes_centralized_topology_via_http_digger_live_hub_page(tmp_path: Path, monkeypatch):
-    class FakeResponse:
-        status_code = 200
-
-        def __init__(self):
-            self.headers = {"Content-Type": "text/html; charset=utf-8"}
-            self.text = (
-                '<html><body>'
-                '<a href="/docs/geothermal-ordinance.pdf">Geothermal Ordinance</a>'
-                '<a href="/docs/notice.html">Notice</a>'
-                '</body></html>'
-            )
-
-        def raise_for_status(self):
-            return None
-
-    monkeypatch.setattr("requests.get", lambda *args, **kwargs: FakeResponse())
+    _patch_requests_get(
+        monkeypatch,
+        url="https://county.gov/index.html",
+        content_type="text/html; charset=utf-8",
+        text=(
+            '<html><body>'
+            '<a href="/docs/geothermal-ordinance.pdf">Geothermal Ordinance</a>'
+            '<a href="/docs/notice.html">Notice</a>'
+            '</body></html>'
+        ),
+    )
 
     engine = DiscoveryEngine()
     request = DiscoveryRequest(
@@ -685,19 +702,11 @@ def test_engine_run_routes_centralized_topology_via_http_digger_live_hub_page(tm
 
 
 def test_engine_run_downloads_partitioned_by_explicit_jurisdiction(tmp_path: Path, monkeypatch):
-    class FakeResponse:
-        def __init__(self):
-            self.url = "https://example.org/docs/geothermal.pdf"
-            self.headers = {"Content-Type": "application/pdf"}
-
-        def raise_for_status(self):
-            return None
-
-        def iter_content(self, chunk_size: int = 65536):
-            yield b"%PDF-1.4\n"
-            yield b"jurisdiction-layout"
-
-    monkeypatch.setattr("requests.get", lambda *args, **kwargs: FakeResponse())
+    _patch_requests_get(
+        monkeypatch,
+        url="https://example.org/docs/geothermal.pdf",
+        chunks=[b"%PDF-1.4\n", b"jurisdiction-layout"],
+    )
 
     engine = DiscoveryEngine()
     request = DiscoveryRequest(
@@ -735,19 +744,11 @@ def test_engine_run_downloads_partitioned_by_explicit_jurisdiction(tmp_path: Pat
 
 
 def test_engine_run_auto_partition_infers_jurisdiction_from_query(tmp_path: Path, monkeypatch):
-    class FakeResponse:
-        def __init__(self):
-            self.url = "https://www.chaffeecounty.org/documents/53007.pdf"
-            self.headers = {"Content-Type": "application/pdf"}
-
-        def raise_for_status(self):
-            return None
-
-        def iter_content(self, chunk_size: int = 65536):
-            yield b"%PDF-1.4\n"
-            yield b"query-inference"
-
-    monkeypatch.setattr("requests.get", lambda *args, **kwargs: FakeResponse())
+    _patch_requests_get(
+        monkeypatch,
+        url="https://www.chaffeecounty.org/documents/53007.pdf",
+        chunks=[b"%PDF-1.4\n", b"query-inference"],
+    )
 
     engine = DiscoveryEngine()
     request = DiscoveryRequest(

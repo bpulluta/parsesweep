@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 from click.testing import CliRunner
+import pytest
 
 from psweep.benchmarking.performance import (
     collect_benchmark_metrics,
@@ -510,52 +511,29 @@ def test_benchmark_cli_returns_nonzero_when_gate_fails(tmp_path) -> None:
     assert "Benchmark gates failed" in result.output
 
 
-def test_benchmark_cli_requires_baseline_dir_for_extraction_parity_gate(tmp_path) -> None:
+@pytest.mark.parametrize(
+    ("gate_args", "expected_error"),
+    [
+        (["--min-extraction-parity", "97"], "requires --extraction-baseline-dir"),
+        (["--min-qaqc-signal-quality", "96"], "requires --qaqc-baseline-dir"),
+        (["--min-compilation-correctness", "99.5"], "requires --compilation-baseline-dir"),
+    ],
+)
+def test_benchmark_cli_requires_baseline_dirs_for_gates(
+    tmp_path, gate_args, expected_error
+) -> None:
     runner = CliRunner()
     result = runner.invoke(
         cli,
         [
             "benchmark",
             str(tmp_path),
-            "--min-extraction-parity",
-            "97",
+            *gate_args,
         ],
     )
 
     assert result.exit_code != 0
-    assert "requires --extraction-baseline-dir" in result.output
-
-
-def test_benchmark_cli_requires_baseline_dir_for_qaqc_gate(tmp_path) -> None:
-    runner = CliRunner()
-    result = runner.invoke(
-        cli,
-        [
-            "benchmark",
-            str(tmp_path),
-            "--min-qaqc-signal-quality",
-            "96",
-        ],
-    )
-
-    assert result.exit_code != 0
-    assert "requires --qaqc-baseline-dir" in result.output
-
-
-def test_benchmark_cli_requires_baseline_dir_for_compilation_gate(tmp_path) -> None:
-    runner = CliRunner()
-    result = runner.invoke(
-        cli,
-        [
-            "benchmark",
-            str(tmp_path),
-            "--min-compilation-correctness",
-            "99.5",
-        ],
-    )
-
-    assert result.exit_code != 0
-    assert "requires --compilation-baseline-dir" in result.output
+    assert expected_error in result.output
 
 
 def test_benchmark_cli_requires_schema_for_compilation_baseline(tmp_path) -> None:

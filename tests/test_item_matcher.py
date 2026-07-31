@@ -20,64 +20,50 @@ from psweep.utils.item_matcher import (
 
 class TestGetNestedValue:
     """Test get_nested_value function."""
-    
-    def test_simple_path(self):
-        """Test simple one-level path."""
-        obj = {"name": "Test"}
-        assert get_nested_value(obj, "name") == "Test"
-    
-    def test_nested_path(self):
-        """Test multi-level nested path."""
-        obj = {"metadata": {"jurisdiction": {"state": "CA"}}}
-        assert get_nested_value(obj, "metadata.jurisdiction.state") == "CA"
-    
-    def test_missing_path(self):
-        """Test path that doesn't exist."""
-        obj = {"name": "Test"}
-        assert get_nested_value(obj, "metadata.missing") is None
-    
-    def test_none_object(self):
-        """Test with None object."""
-        assert get_nested_value(None, "path") is None
-    
-    def test_empty_path(self):
-        """Test with empty path."""
-        obj = {"name": "Test"}
-        assert get_nested_value(obj, "") is None
-    
-    def test_partial_path_exists(self):
-        """Test when partial path exists but full path doesn't."""
-        obj = {"metadata": {"id": "123"}}
-        assert get_nested_value(obj, "metadata.jurisdiction.state") is None
+
+    @pytest.mark.parametrize(
+        ("obj", "path", "expected"),
+        [
+            ({"name": "Test"}, "name", "Test"),
+            ({"metadata": {"jurisdiction": {"state": "CA"}}}, "metadata.jurisdiction.state", "CA"),
+            ({"name": "Test"}, "metadata.missing", None),
+            (None, "path", None),
+            ({"name": "Test"}, "", None),
+            ({"metadata": {"id": "123"}}, "metadata.jurisdiction.state", None),
+        ],
+    )
+    def test_get_nested_value(self, obj, path, expected):
+        assert get_nested_value(obj, path) == expected
 
 
 class TestTokenNormalization:
     """Test token-based normalization functions."""
-    
-    def test_extract_key_tokens_basic(self):
-        """Test basic token extraction."""
-        tokens = extract_key_tokens("site preparation for drilling")
-        assert tokens == {"site", "preparation", "drilling"}
-    
-    def test_extract_key_tokens_removes_stop_words(self):
-        """Test that stop words are removed."""
-        tokens = extract_key_tokens("work in preparation of the site for drilling")
-        # 'work', 'in', 'of', 'the', 'for' are stop words
-        assert tokens == {"preparation", "site", "drilling"}
-    
-    def test_normalize_for_matching(self):
-        """Test that normalize_for_matching produces sorted token string."""
-        text1 = "site preparation for drilling"
-        text2 = "work in preparation of the site for drilling"
-        
-        # Both should normalize to the same string
-        assert normalize_for_matching(text1) == normalize_for_matching(text2)
-        assert normalize_for_matching(text1) == "drilling preparation site"
-    
-    def test_extract_key_tokens_empty(self):
-        """Test empty string produces empty set."""
-        assert extract_key_tokens("") == set()
-        assert extract_key_tokens(None) == set()
+
+    @pytest.mark.parametrize(
+        ("value", "expected"),
+        [
+            ("site preparation for drilling", {"site", "preparation", "drilling"}),
+            ("work in preparation of the site for drilling", {"preparation", "site", "drilling"}),
+            ("", set()),
+            (None, set()),
+        ],
+    )
+    def test_extract_key_tokens(self, value, expected):
+        assert extract_key_tokens(value) == expected
+
+    @pytest.mark.parametrize(
+        ("left", "right", "expected"),
+        [
+            (
+                "site preparation for drilling",
+                "work in preparation of the site for drilling",
+                "drilling preparation site",
+            ),
+        ],
+    )
+    def test_normalize_for_matching(self, left, right, expected):
+        assert normalize_for_matching(left) == normalize_for_matching(right)
+        assert normalize_for_matching(left) == expected
 
 
 class TestCreateItemIndex:
