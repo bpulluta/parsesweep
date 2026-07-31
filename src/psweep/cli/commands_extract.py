@@ -43,6 +43,28 @@ from psweep.utils.error_taxonomy import (
 )
 
 
+def _format_extraction_accounting(
+    num_docs: int,
+    total_cost_usd: float,
+    total_llm_calls: int,
+    total_time_sec: float,
+    model: str,
+) -> str:
+    """Format concise extraction accounting summary for terminal display.
+    
+    Args:
+        num_docs: Number of documents successfully extracted
+        total_cost_usd: Total LLM cost in USD
+        total_llm_calls: Total number of LLM calls
+        total_time_sec: Total elapsed time in seconds
+        model: Model name/identifier
+    
+    Returns:
+        Single-line accounting summary
+    """
+    return f"✓ Extraction: {num_docs} docs, {total_llm_calls} calls, ${total_cost_usd:.3f}, {total_time_sec:.1f}s [{model}]"
+
+
 def _generate_run_id(
     *,
     schema_path: Path,
@@ -1476,6 +1498,17 @@ def extract(
                 summary_stats["Total Items"] = str(total_items)
 
         view.summary(summary_stats, title="Extraction Summary")
+
+        # Display concise extraction accounting
+        if successful and not view.is_quiet:
+            accounting_line = _format_extraction_accounting(
+                num_docs=len(successful),
+                total_cost_usd=total_cost,
+                total_llm_calls=len(results),  # Approximation: total calls across all docs
+                total_time_sec=total_time,
+                model=actual_model,
+            )
+            console.print(accounting_line)
 
         for failure in [f for f in failed if f.get("suggestions")][:3]:
             view.error(
