@@ -14,6 +14,11 @@ domain: your_domain_name
 # Define model tiers so cheap/fast models handle iteration steps (discovery,
 # page targeting, review) while accurate models handle extraction.
 # When omitted, all stages use the model in your .env (AZURE_OPENAI_MODEL).
+#
+# Stage model-tier safety: PIN every stage's `model:` to a tier explicitly.
+# Extraction should pin `model: primary`; discovery review and page targeting
+# should pin `model: secondary`. Leaving a stage unset lets it silently fall
+# back to the .env default — a hidden cost/accuracy risk if the env changes.
 models:
   primary: your-accurate-model        # used for extraction
   secondary: your-fast-cheap-model    # used for discovery review, page targeting
@@ -23,16 +28,24 @@ extraction:
   schema: schemas/personal/your_schema.json
   input_dir: documents/your_domain        # source documents folder
   output_dir: extracted/your_domain
-  # model: primary                        # model tier for extraction (primary/secondary)
+  model: primary                          # PIN the tier — don't rely on .env default
+  # Skip/reprocess hygiene: extract skips files with existing output JSON by
+  # default (skip_existing=true). Re-run cheaply after config tweaks with no
+  # flag; only pass --reprocess after changing schema, model tier, or pages.
   # enable_qaqc: false                    # run multi-model QA/QC during extraction
   # qaqc_lane: quantitative               # which QA/QC lane to run (see qaqc: section)
   # max_context: 600000                   # chars per document (default: 400000)
   # pages:                                 # how to select pages from large PDFs
   #   csv: config/your_domain/page_ranges.csv  # manual ranges per file (wins)
   #   auto_locate:                         # LLM fallback for uncovered large docs
+  #     model: secondary                   # cheap/fast — page finding needn't be primary
   #     section_description: "the section containing your target data"
-  #     trigger_chars: 200000              # only targets docs larger than this
+  #     trigger_chars: 200000              # only targets docs larger than this.
+  #                                        # Set == max_context for zero-regression
+  #                                        # targeting (only docs that would be
+  #                                        # truncated get page-targeted).
   #     max_selected_pages: 30
+  #     keywords: [term1, term2]           # heuristic pre-filter; trims LLM candidates
   #     save_discovered: true              # write discovered_page_ranges.csv for review
 
 # ─── COMPILATION ─────────────────────────────────────────────────────────────
@@ -42,9 +55,9 @@ compilation:
   output_dir: compiled/your_domain
   # dry_run: false                        # preview dedup/merges without writing output
   # fail_on_suspicious: false             # fail compile when suspicious dedup groups found
-  deduplication:
-    key_fields: [field1, field2, field3]  # fields that make an item unique
-    ignore_fields: [notes]                # excluded from dedup comparison
+  # Dedup identity is schema-owned at $metadata.identity.deduplication.
+  # Keep uniqueness fields in the schema so every workflow (extract/compile/api)
+  # uses the same record identity contract.
   output:
     default_format: excel                 # excel, csv, or both
     # column_order: [field1, field2, ...]  # custom column ordering

@@ -943,10 +943,6 @@ def compile(
         metadata_overrides: Dict[str, Any] = {}
         compilation_overrides: Dict[str, Any] = {}
 
-        config_dedup = resolved_inputs.get("deduplication")
-        if isinstance(config_dedup, dict):
-            compilation_overrides["deduplication"] = config_dedup
-
         config_output = resolved_inputs.get("compilation_output")
         if isinstance(config_output, dict):
             compilation_overrides["output"] = config_output

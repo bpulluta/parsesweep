@@ -1274,6 +1274,7 @@ def extract(
             runtime_artifact=runtime_artifact,
             run_id=run_id,
             qaqc_lane=qaqc_lane,
+            config_path=config_path,
         )
         return
 
@@ -1540,6 +1541,7 @@ def _run_qa_qc_extraction(
     runtime_artifact: Optional[Dict[str, Any]] = None,
     run_id: Optional[str] = None,
     qaqc_lane: Optional[str] = None,
+    config_path: Optional[str] = None,
 ) -> None:
     """Run QA/QC multi-model extraction for documents."""
     from psweep.qa_qc import ModelDetector, run_multi_model_extraction
@@ -1675,6 +1677,8 @@ def _run_qa_qc_extraction(
             "pixi run psweep compare "
             f"{qa_qc_output.as_posix()} --schema {schema_path.as_posix()}"
         )
+        if config_path:
+            compare_command += f" --config {Path(config_path).as_posix()}"
         if qaqc_lane:
             compare_command += f" --qaqc-lane {qaqc_lane}"
         view.next_steps([f"Run the comparison workflow: {compare_command}"])

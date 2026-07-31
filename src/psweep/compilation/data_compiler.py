@@ -120,11 +120,8 @@ class DataCompiler:
                 print("  Extraction config:")
                 for key, value in metadata["extraction"].items():
                     print(f"    {key}: {value}")
-            if (
-                "compilation" in metadata
-                and "deduplication" in metadata["compilation"]
-            ):
-                dedup = metadata["compilation"]["deduplication"]
+            if "identity" in metadata and "deduplication" in metadata["identity"]:
+                dedup = metadata["identity"]["deduplication"]
                 print("  Deduplication config:")
                 print(f"    Key fields: {dedup.get('key_fields', [])}")
                 print(f"    Ignore fields: {dedup.get('ignore_fields', [])}")
@@ -228,7 +225,7 @@ class DataCompiler:
 
             if self.verbose and self.duplicates_removed > 0:
                 key_fields = (
-                    self.schema_metadata.metadata.get("compilation", {})
+                    self.schema_metadata.metadata.get("identity", {})
                     .get("deduplication", {})
                     .get("key_fields", [])
                 )
@@ -245,9 +242,6 @@ class DataCompiler:
             print("  Column dtypes:")
             for col, dtype in df.dtypes.items():
                 print(f"    {col}: {dtype}")
-
-        # Apply schema-driven column exclusion (optional)
-        df = self._apply_exclude_fields(df)
 
         return df, self.schema_info
 
@@ -328,6 +322,9 @@ class DataCompiler:
     def _prepare_output_dataframe(self, df: pd.DataFrame) -> pd.DataFrame:
         """Apply schema-driven output shaping before saving exports."""
         prepared_df = df.copy()
+
+        # Exclude fields first — applies to every save path (CSV, Excel, synthesis)
+        prepared_df = self._apply_exclude_fields(prepared_df)
 
         column_renames = self.schema_metadata.get_column_renames()
         if column_renames:

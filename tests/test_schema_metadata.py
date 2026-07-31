@@ -23,18 +23,12 @@ def temp_schema_with_metadata(tmp_path):
                 "display_name_template": "{name} - {id}",
                 "document_type": "Test Document"
             },
-            "compilation": {
+            "identity": {
                 "deduplication": {
                     "key_fields": ["field1", "field2"],
                     "ignore_fields": ["notes", "timestamp"],
                     "strategy": "latest",
                     "comparison_mode": "fuzzy"
-                },
-                "output": {
-                    "default_format": "excel",
-                    "column_order": ["id", "name", "value"],
-                    "freeze_columns": 2,
-                    "auto_width": True
                 }
             },
             "validation": {
@@ -130,7 +124,7 @@ class TestExtractionMetadata:
             ("get_deduplication_strategy", "latest"),
             ("get_comparison_mode", "fuzzy"),
             ("get_output_format", "excel"),
-            ("get_column_order", ["id", "name", "value"]),
+            ("get_column_order", []),
         ],
     )
     def test_schema_metadata_accessors(self, temp_schema_with_metadata, method_name, expected):
@@ -142,25 +136,31 @@ class TestCompilationMetadata:
     """Test compilation metadata accessor methods."""
 
     def test_get_output_exclude_fields(self, temp_schema_with_metadata):
-        """Test getting output exclude fields."""
-        schema = json.loads(temp_schema_with_metadata.read_text())
-        schema["$metadata"]["compilation"]["output"]["exclude_fields"] = ["notes", "details"]
-        temp_schema_with_metadata.write_text(json.dumps(schema), encoding="utf-8")
-
-        meta = SchemaMetadata(temp_schema_with_metadata)
+        """Test getting runtime output exclude fields from metadata overrides."""
+        meta = SchemaMetadata(
+            temp_schema_with_metadata,
+            metadata_overrides={
+                "compilation": {
+                    "output": {"exclude_fields": ["notes", "details"]}
+                }
+            },
+        )
         assert meta.get_output_exclude_fields() == ["notes", "details"]
     
     def test_get_column_renames(self, temp_schema_with_metadata):
-        """Test getting output column rename mapping."""
-        schema = json.loads(temp_schema_with_metadata.read_text())
-        schema["$metadata"]["compilation"]["output"]["column_renames"] = {"Name": "charge_name"}
-        temp_schema_with_metadata.write_text(json.dumps(schema), encoding="utf-8")
-
-        meta = SchemaMetadata(temp_schema_with_metadata)
+        """Test getting runtime output column rename mapping from metadata overrides."""
+        meta = SchemaMetadata(
+            temp_schema_with_metadata,
+            metadata_overrides={
+                "compilation": {
+                    "output": {"column_renames": {"Name": "charge_name"}}
+                }
+            },
+        )
         assert meta.get_column_renames() == {"Name": "charge_name"}
 
     def test_metadata_overrides_merge_compilation_output(self, temp_schema_with_metadata):
-        """Runtime metadata overrides should replace schema-owned compilation settings."""
+        """Runtime metadata overrides should drive output settings."""
         meta = SchemaMetadata(
             temp_schema_with_metadata,
             metadata_overrides={
@@ -170,10 +170,12 @@ class TestCompilationMetadata:
                         "default_format": "csv",
                         "column_renames": {"Name": "charge_name"},
                     },
+                },
+                "identity": {
                     "deduplication": {
                         "comparison_mode": "exact",
-                    },
-                }
+                    }
+                },
             },
         )
 
@@ -279,6 +281,32 @@ class TestV2Requirements:
         assert meta.has_metadata() is True
         assert meta.get_main_data_array() == "items"
         assert meta.get_identifier_fields() == ["id"]
+
+    def test_legacy_compilation_deduplication_raises(self, tmp_path):
+        """Legacy compilation.deduplication should fail fast with migration guidance."""
+        schema = {
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "$metadata": {
+                "extraction": {
+                    "main_data_array": "items",
+                    "identifier_fields": ["id"],
+                },
+                "compilation": {
+                    "deduplication": {
+                        "key_fields": ["name"],
+                    }
+                },
+            },
+            "type": "object",
+            "properties": {"items": {"type": "array"}},
+        }
+        schema_path = tmp_path / "legacy_dedup_schema.json"
+        schema_path.write_text(json.dumps(schema), encoding="utf-8")
+
+        with pytest.raises(
+            SchemaMetadataError, match="compilation.deduplication"
+        ):
+            SchemaMetadata(schema_path)
     
     def test_error_message_helpful_for_migration(self, temp_schema_without_metadata):
         """Test that error messages provide helpful migration guidance."""
@@ -334,7 +362,7 @@ class TestExpectedRequirementsMethods:
                     "context_objects": ["document_info"],
                     "identifier_fields": ["document_info.state"]
                 },
-                "compilation": {
+                "identity": {
                     "deduplication": {
                         "key_fields": ["requirement_type"],
                         "ignore_fields": []

@@ -102,7 +102,7 @@ class SchemaMetadata:
                 '      "context_objects": ["context_object_keys"],\n'
                 '      "identifier_fields": ["path.to.identifier"]\n'
                 "    },\n"
-                '    "compilation": {\n'
+                '    "identity": {\n'
                 '      "deduplication": {\n'
                 '        "key_fields": ["unique_fields"],\n'
                 '        "ignore_fields": ["fields_to_ignore"]\n'
@@ -129,6 +129,8 @@ class SchemaMetadata:
             SchemaMetadataError: If required metadata fields are missing
         """
         extraction = self.metadata.get("extraction", {})
+        identity = self.metadata.get("identity", {})
+        legacy_compilation = self.metadata.get("compilation", {})
 
         # Check for required extraction metadata
         if not extraction.get("main_data_array"):
@@ -142,6 +144,30 @@ class SchemaMetadata:
             raise SchemaMetadataError(
                 "Schema metadata missing required field: extraction.identifier_fields\n"
                 "This field specifies the dot-notation paths to identifier fields.",
+                schema_path=str(self.schema_path),
+            )
+
+        # Breaking-change guard: deduplication moved to metadata.identity.
+        if (
+            isinstance(legacy_compilation, dict)
+            and isinstance(legacy_compilation.get("deduplication"), dict)
+        ):
+            raise SchemaMetadataError(
+                "Schema metadata uses deprecated field: compilation.deduplication\n"
+                "Move this block to identity.deduplication.\n"
+                "Example:\n"
+                '"identity": {\n'
+                '  "deduplication": {\n'
+                '    "key_fields": ["field_a"],\n'
+                '    "ignore_fields": ["notes"]\n'
+                "  }\n"
+                "}\n",
+                schema_path=str(self.schema_path),
+            )
+
+        if identity and not isinstance(identity, dict):
+            raise SchemaMetadataError(
+                "Schema metadata field identity must be an object when present.",
                 schema_path=str(self.schema_path),
             )
 
@@ -191,22 +217,22 @@ class SchemaMetadata:
 
     def get_deduplication_key_fields(self) -> List[str]:
         """Get fields that define uniqueness for deduplication."""
-        dedup = self.metadata.get("compilation", {}).get("deduplication", {})
+        dedup = self.metadata.get("identity", {}).get("deduplication", {})
         return dedup.get("key_fields", [])
 
     def get_deduplication_ignore_fields(self) -> List[str]:
         """Get fields to ignore during deduplication comparison."""
-        dedup = self.metadata.get("compilation", {}).get("deduplication", {})
+        dedup = self.metadata.get("identity", {}).get("deduplication", {})
         return dedup.get("ignore_fields", [])
 
     def get_deduplication_strategy(self) -> str:
         """Get deduplication strategy (latest, earliest, merge)."""
-        dedup = self.metadata.get("compilation", {}).get("deduplication", {})
+        dedup = self.metadata.get("identity", {}).get("deduplication", {})
         return dedup.get("strategy", "latest")
 
     def get_comparison_mode(self) -> str:
         """Get comparison mode for deduplication (exact, fuzzy)."""
-        dedup = self.metadata.get("compilation", {}).get("deduplication", {})
+        dedup = self.metadata.get("identity", {}).get("deduplication", {})
         return dedup.get("comparison_mode", "exact")
 
     def get_output_format(self) -> str:

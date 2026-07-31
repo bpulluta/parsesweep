@@ -88,7 +88,7 @@ def test_collect_benchmark_metrics_computes_extraction_parity(tmp_path) -> None:
                     "main_data_array": "items",
                     "identifier_fields": ["document_id"],
                 },
-                "compilation": {
+                "identity": {
                     "deduplication": {
                         "key_fields": ["name", "value"],
                         "ignore_fields": [],
@@ -171,7 +171,7 @@ def test_collect_benchmark_metrics_computes_extraction_parity_from_payload_recor
                     "main_data_array": "items",
                     "identifier_fields": ["document_id"],
                 },
-                "compilation": {
+                "identity": {
                     "deduplication": {
                         "key_fields": ["name", "value"],
                         "ignore_fields": [],
@@ -322,7 +322,7 @@ def test_collect_benchmark_metrics_computes_compilation_correctness(tmp_path) ->
                     "main_data_array": "items",
                     "identifier_fields": ["metadata.id"],
                 },
-                "compilation": {
+                "identity": {
                     "deduplication": {
                         "key_fields": ["name", "state"],
                         "ignore_fields": ["notes"],
@@ -801,7 +801,7 @@ def test_benchmark_cli_reports_extraction_parity_in_quiet_mode(tmp_path) -> None
                     "main_data_array": "items",
                     "identifier_fields": ["document_id"],
                 },
-                "compilation": {
+                "identity": {
                     "deduplication": {
                         "key_fields": ["name", "value"],
                         "ignore_fields": [],
@@ -957,7 +957,7 @@ def test_benchmark_cli_reports_compilation_correctness_in_quiet_mode(tmp_path) -
                     "main_data_array": "items",
                     "identifier_fields": ["metadata.id"],
                 },
-                "compilation": {
+                "identity": {
                     "deduplication": {
                         "key_fields": ["name", "state"],
                         "ignore_fields": ["notes"],

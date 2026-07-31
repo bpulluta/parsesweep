@@ -13,19 +13,10 @@
         "jurisdiction"
       ]
     },
-    "compilation": {
+    "identity": {
       "deduplication": {
         "key_fields": ["feature", "specific_subject", "applies_to", "value_category", "value", "value_interpretation", "units", "obligation", "condition"],
         "ignore_fields": ["source_verbatim", "summary", "reasoning", "notes", "applicable_values", "range_low", "range_high"]
-      },
-      "value_typing": {
-        "value_category_field": "value_category",
-        "value_interpretation_field": "value_interpretation",
-        "obligation_field": "obligation",
-        "applicable_values_field": "applicable_values",
-        "obligation_vocabulary": ["required", "prohibited", "conditional", "allowed", "recommended", "informational"],
-        "value_category_vocabulary": ["quantitative", "qualitative"],
-        "value_interpretation_vocabulary": ["exact", "minimum", "maximum", "range", "formula", "tiered", "enumerated"]
       }
     }
   },
