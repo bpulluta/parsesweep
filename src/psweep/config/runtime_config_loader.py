@@ -783,7 +783,14 @@ _SYNTHESIS_STRING_LIST_FIELDS = (
     "ordering_constraint",
 )
 _ALLOWED_SYNTHESIS_KEYS = (
-    {"enabled", "min_sources_for_llm", "reconcile_fields"}
+    {
+        "enabled",
+        "min_sources_for_llm",
+        "reconcile_fields",
+        "ordering_constraints",
+        "ordering_exclusive_pairs",
+        "ordering_infer_precision_from_pins",
+    }
     | set(_SYNTHESIS_STRING_FIELDS)
     | set(_SYNTHESIS_STRING_LIST_FIELDS)
 )
@@ -832,6 +839,13 @@ def _validate_synthesis_block(syn: Any) -> None:
             f"non-negative integer (got {msl!r})"
         )
 
+    infer_from_pins = syn.get("ordering_infer_precision_from_pins")
+    if infer_from_pins is not None and not isinstance(infer_from_pins, bool):
+        raise RuntimeConfigError(
+            "compilation.synthesis.ordering_infer_precision_from_pins must be a "
+            f"boolean (got {infer_from_pins!r})"
+        )
+
     for name in _SYNTHESIS_STRING_FIELDS:
         if syn.get(name) is not None and not isinstance(syn[name], str):
             raise RuntimeConfigError(
@@ -877,6 +891,62 @@ def _validate_synthesis_block(syn: Any) -> None:
                 "field(s) not in reconcile_fields: "
                 + ", ".join(unknown_ordered)
             )
+
+    ordering_constraints = syn.get("ordering_constraints")
+    if ordering_constraints is not None:
+        if not isinstance(ordering_constraints, list) or not all(
+            isinstance(seq, list)
+            and seq
+            and all(isinstance(item, str) and item for item in seq)
+            for seq in ordering_constraints
+        ):
+            raise RuntimeConfigError(
+                "compilation.synthesis.ordering_constraints must be a list "
+                "of non-empty string lists"
+            )
+        if field_names:
+            unknown_nested = sorted(
+                {
+                    field
+                    for seq in ordering_constraints
+                    for field in seq
+                    if field not in field_names
+                }
+            )
+            if unknown_nested:
+                raise RuntimeConfigError(
+                    "compilation.synthesis.ordering_constraints references "
+                    "field(s) not in reconcile_fields: "
+                    + ", ".join(unknown_nested)
+                )
+
+    ordering_exclusive_pairs = syn.get("ordering_exclusive_pairs")
+    if ordering_exclusive_pairs is not None:
+        if not isinstance(ordering_exclusive_pairs, list) or not all(
+            isinstance(pair, list)
+            and len(pair) == 2
+            and all(isinstance(item, str) and item for item in pair)
+            for pair in ordering_exclusive_pairs
+        ):
+            raise RuntimeConfigError(
+                "compilation.synthesis.ordering_exclusive_pairs must be a list "
+                "of 2-item string lists"
+            )
+        if field_names:
+            unknown_pairs = sorted(
+                {
+                    field
+                    for pair in ordering_exclusive_pairs
+                    for field in pair
+                    if field not in field_names
+                }
+            )
+            if unknown_pairs:
+                raise RuntimeConfigError(
+                    "compilation.synthesis.ordering_exclusive_pairs references "
+                    "field(s) not in reconcile_fields: "
+                    + ", ".join(unknown_pairs)
+                )
 
 
 def _validate_reconcile_fields(reconcile_fields: Any) -> set[str]:

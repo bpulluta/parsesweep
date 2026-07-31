@@ -67,14 +67,34 @@ class Synthesizer:
             for r in rf
             if isinstance(r, dict) and r.get("field") and r.get("precision")
         }
-        # Optional ordering validation (e.g. announced <= construction <=
-        # completion). Only enabled when configured — non-ordered domains omit it.
-        # `ordering_comparison` selects HOW ordered values are compared, keeping
-        # the stage domain-neutral: "lexical" (default string compare), "numeric",
-        # or "date" (the precision-aware temporal comparator). Temporal handling
-        # is therefore an opt-in module, never hardwired.
-        self.ordering = self.cfg.get("ordering_constraint") or []
+        # Optional ordering validation. Fully config-driven:
+        # - ordering_constraint: legacy single sequence ["a", "b", "c"]
+        # - ordering_constraints: list of sequences [["a","b"],["b","d"]]
+        # - ordering_exclusive_pairs: pairs that cannot both be set
+        # Temporal handling stays opt-in and generic via ordering_comparison.
+        legacy_ordering = self.cfg.get("ordering_constraint") or []
+        configured_sequences = self.cfg.get("ordering_constraints")
+        if isinstance(configured_sequences, list) and configured_sequences:
+            self.ordering_constraints = [
+                seq for seq in configured_sequences
+                if isinstance(seq, list) and seq
+            ]
+        elif legacy_ordering:
+            self.ordering_constraints = [legacy_ordering]
+        else:
+            self.ordering_constraints = []
+        # Keep a single-sequence alias for prompt text/backward compatibility.
+        self.ordering = self.ordering_constraints[0] if self.ordering_constraints else []
+        self.ordering_exclusive_pairs = self.cfg.get("ordering_exclusive_pairs") or []
         self.comparison = self.cfg.get("ordering_comparison") or "lexical"
+        # Default strict behavior: if precision is unstated, do NOT infer coarse
+        # year/month from pinned dates. This prevents false negatives.
+        self.infer_precision_from_pins = bool(
+            self.cfg.get("ordering_infer_precision_from_pins", False)
+        )
+        self.has_ordering_checks = bool(
+            self.ordering_constraints or self.ordering_exclusive_pairs
+        )
         # Extra free-text outputs a domain may want (e.g. current_status).
         self.narrative_fields = self.cfg.get("narrative_fields") or []
 
@@ -194,7 +214,7 @@ class Synthesizer:
             "description": "Source URLs that actually supported a resolved value (subset of inputs).",
         }
         required += ["data_confidence", "reasoning", "summary", "citation_urls"]
-        if self.ordering:
+        if self.has_ordering_checks:
             # Only ask for a generic per-field precision object when explicit
             # precision fields were NOT configured (those are emitted above).
             if not self.precision_map:
@@ -226,10 +246,10 @@ class Synthesizer:
             "specific, most recent sources; explain the choice. If a value is not "
             "supported by any source, return null. Do not invent values."
         )
-        if self.ordering:
+        if self.has_ordering_checks:
             base += (
                 "\n\nORDERING (ADVISORY, NOT A CONSTRAINT). The ordered fields "
-                f"usually follow this non-decreasing order: {' <= '.join(self.ordering)}. "
+                f"usually follow configured non-decreasing sequences (e.g. {' <= '.join(self.ordering)}). "
                 "Use it only as a sanity check while resolving conflicts — NEVER "
                 "invent, shift, or drop a value to force this order, and never "
                 "discard a well-sourced value because it appears out of order. "
@@ -270,6 +290,8 @@ class Synthesizer:
         explicit = row.get(pr_field) if pr_field else None
         if explicit in self._PRECISION_RANK:
             return explicit
+        if not self.infer_precision_from_pins:
+            return "day"
         v = str(value)
         if v.endswith("-01-01"):
             return "year"
@@ -305,14 +327,25 @@ class Synthesizer:
         """ADVISORY ordering check. Never fatal: the caller keeps the row
         regardless. Compares consecutive present values with the configured
         comparator (lexical / numeric / date)."""
-        if not self.ordering:
+        if not self.has_ordering_checks:
             return True, ""
-        present = [(f, row.get(f)) for f in self.ordering if row.get(f)]
-        violations = [
-            f"{n1} ({v1}) is after {n2} ({v2})"
-            for (n1, v1), (n2, v2) in zip(present, present[1:])
-            if self._out_of_order(n1, v1, n2, v2, row)
-        ]
+        violations: list[str] = []
+        for sequence in self.ordering_constraints:
+            present = [(f, row.get(f)) for f in sequence if row.get(f)]
+            violations.extend(
+                f"{n1} ({v1}) is after {n2} ({v2})"
+                for (n1, v1), (n2, v2) in zip(present, present[1:])
+                if self._out_of_order(n1, v1, n2, v2, row)
+            )
+        for pair in self.ordering_exclusive_pairs:
+            if not isinstance(pair, list) or len(pair) != 2:
+                continue
+            left, right = pair
+            if row.get(left) and row.get(right):
+                violations.append(
+                    f"exclusive pair conflict: both {left} ({row.get(left)}) and "
+                    f"{right} ({row.get(right)}) are set"
+                )
         if violations:
             return False, "ordering note: " + "; ".join(violations)
         return True, "ordering consistent"
@@ -415,11 +448,11 @@ class Synthesizer:
                 row[pr] = d.get(pr) or ""
         for nf in self.narrative_fields:
             row[nf] = d.get(nf) or ""
-        if self.ordering:
+        if self.has_ordering_checks:
             consistent = bool(d.get("ordering_consistent", True)) and det_ok
             notes = d.get("ordering_notes") or ""
             if not det_ok:
-                notes = (det_note + (" | " + notes if notes else "")).strip()
+                notes = (notes + (" | " + det_note if notes else det_note)).strip()
             row["ordering_consistent"] = consistent
             row["ordering_notes"] = notes
         row["data_confidence"] = d.get("data_confidence") or ""
