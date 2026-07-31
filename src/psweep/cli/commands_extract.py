@@ -1587,6 +1587,19 @@ def _run_qa_qc_extraction(
     total_time = 0.0
     view.phase("Extracting with multiple models")
 
+    # The primary model (first in the QA/QC list) doubles as the compile-ready
+    # deliverable. Its extraction is written to the normal per-document location
+    # so --enable-qa-qc is additive: same primary {output_dir}/{doc}.json a
+    # single-model run produces, plus the multi-model sidecars under qa_qc/.
+    primary_model = qa_models[0]
+    id_declared = (
+        loaded_schema.get("$metadata", {})
+        .get("extraction", {})
+        .get("identifier_fields")
+        or []
+    )
+    primary_identifier_fields = [p.split(".")[-1] for p in id_declared] or None
+
     for doc_idx, doc_path in enumerate(doc_files, 1):
         if not view.is_quiet:
             view.status("info", f"[{doc_idx}/{len(doc_files)}] {doc_path.name}")
@@ -1612,6 +1625,26 @@ def _run_qa_qc_extraction(
                 runtime_artifact=runtime_artifact,
                 run_id=run_id,
             )
+
+            primary_result = model_results.get(primary_model)
+            if (
+                primary_result is not None
+                and primary_result.success
+                and primary_result.result is not None
+            ):
+                _extract_and_save_result(
+                    doc_path=doc_path,
+                    result=primary_result.result,
+                    output_dir=output_dir,
+                    category=output_dir.name,
+                    model=primary_model,
+                    qa_qc_enabled=True,
+                    runtime_artifact=runtime_artifact,
+                    run_id=run_id,
+                    provider=qa_provider,
+                    schema_id=schema_path.as_posix(),
+                    identifier_fields=primary_identifier_fields,
+                )
 
             doc_cost = sum(r.cost for r in model_results.values())
             doc_time = sum(r.processing_time for r in model_results.values())

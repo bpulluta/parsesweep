@@ -53,6 +53,7 @@ class ModelExtractionResult:
     processing_time: float
     error: Optional[str] = None
     error_details: Optional[Dict[str, Any]] = None
+    result: Optional[Any] = None
 
 
 def run_multi_model_extraction(
@@ -185,6 +186,7 @@ def run_multi_model_extraction(
                 data=result.data,
                 cost=result.cost,
                 processing_time=processing_time,
+                result=result,
             )
 
             logger.info(

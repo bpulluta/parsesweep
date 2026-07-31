@@ -47,23 +47,26 @@ discovery:
 # default (skip_existing). Iterate freely without --reprocess; only pass
 # --reprocess after changing the schema, model tier, or page targeting.
 extraction:
-  model: primary                           # accurate tier — pin it so extraction
-                                           # never silently falls back to the .env
-                                           # default model if tiers/env change
+  model: primary                           # pin tier — never silently falls back to
+                                           # the .env default if tiers/env change
   input_dir: discovered/utility_rate_tariffs/latest/curated
   schema: schemas/personal/electricity_tariff_schema.json
   output_dir: extracted/utility_rate_tariffs
-  pages:                                   # how to select pages from large PDFs
+  max_context: 400000                      # explicit; trigger_chars matches so page
+                                           # targeting only fires for docs that would
+                                           # be truncated (zero-regression approach)
+  pages:                                   # page targeting for large PDFs
     # csv: config/utility_rate_tariffs/page_ranges.csv  # manual ranges win over auto_locate
     auto_locate:                           # LLM fallback for uncovered docs
-      model: secondary                     # cheap/fast — page finding doesn't need 4.1
+      model: secondary                     # pin to an alias — avoid silent .env fallback
       section_description: >-
         residential electric rate schedules showing per-kWh energy charges,
         monthly customer charge, and other rate components
-      trigger_chars: 200000
+      trigger_chars: 400000                # == max_context: only target docs that
+                                           # would otherwise be truncated
       max_selected_pages: 30
-      keywords:                            # heuristic pre-filter — trims the LLM
-        - rate schedule                    # candidate index (cheaper, more precise)
+      keywords:                            # heuristic pre-filter (cheap, before LLM)
+        - rate schedule
         - residential
         - energy charge
         - customer charge

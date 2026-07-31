@@ -8,6 +8,7 @@ from psweep.pipeline import (
     build_run_stage_commands,
     compile_extractions,
     extract_documents,
+    resolve_run_qaqc,
 )
 
 
@@ -207,6 +208,56 @@ def test_build_run_stage_commands_preserves_flags(tmp_path: Path) -> None:
             ],
         ),
     ]
+
+
+def test_build_run_stage_commands_wires_qaqc(tmp_path: Path) -> None:
+    config_path = tmp_path / "example.yaml"
+    config_path.write_text(
+        "domain: example\n"
+        "extraction:\n"
+        "  schema: schemas/example.json\n"
+        "  output_dir: extracted/example\n"
+        "  enable_qaqc: true\n"
+        "  qaqc_lane: quantitative\n",
+        encoding="utf-8",
+    )
+
+    resolved = resolve_run_qaqc(config_path)
+    assert resolved is not None
+    assert resolved["qa_qc_dir"] == Path("extracted/example/qa_qc")
+
+    stage_cmds = build_run_stage_commands(
+        config_path,
+        base_cmd=["pixi", "run", "psweep"],
+    )
+
+    stage_names = [name for name, _ in stage_cmds]
+    assert stage_names == ["discover", "extract", "compile", "compare"]
+
+    extract_cmd = dict(stage_cmds)["extract"]
+    assert "--enable-qa-qc" in extract_cmd
+
+    compare_cmd = dict(stage_cmds)["compare"]
+    assert "extracted/example/qa_qc" in compare_cmd
+    assert "--schema" in compare_cmd
+    assert "schemas/example.json" in compare_cmd
+    assert compare_cmd[compare_cmd.index("--qaqc-lane") + 1] == "quantitative"
+
+
+def test_build_run_stage_commands_no_qaqc_when_disabled(tmp_path: Path) -> None:
+    config_path = tmp_path / "example.yaml"
+    config_path.write_text(
+        "domain: example\nextraction:\n  schema: s.json\n", encoding="utf-8"
+    )
+
+    assert resolve_run_qaqc(config_path) is None
+    stage_names = [
+        name
+        for name, _ in build_run_stage_commands(
+            config_path, base_cmd=["pixi", "run", "psweep"]
+        )
+    ]
+    assert stage_names == ["discover", "extract", "compile"]
 
 
 def test_extract_documents_uses_page_range_csv(tmp_path: Path, monkeypatch) -> None:
