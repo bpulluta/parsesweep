@@ -105,10 +105,12 @@ def resolve_run_qaqc(config_path: str | Path) -> Optional[dict]:
 
     domain = cfg.get("domain", Path(config_path).parent.name)
     output_dir = Path(extraction.get("output_dir", f"extracted/{domain}"))
+    qaqc_section = cfg.get("qaqc") or {}
     return {
         "lane": extraction.get("qaqc_lane"),
         "schema": extraction.get("schema"),
         "qa_qc_dir": output_dir / "qa_qc",
+        "models": qaqc_section.get("models") or [],
     }
 
 

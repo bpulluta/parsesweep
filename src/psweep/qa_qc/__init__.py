@@ -6,33 +6,34 @@ Provides multi-model validation for document extraction by:
 2. Comparing outputs field-by-field
 3. Generating comparison reports highlighting discrepancies
 
+Model tiers are resolved exclusively through the unified
+:class:`~psweep.config.model_registry.ModelRegistry` (built from the run
+config's ``models:`` block and the ``qaqc.models:`` reference list). There is
+no environment-variable model source and no provider is threaded directly —
+credentials come from ``registry.to_llm_kwargs``.
+
 Usage:
-    from psweep.qa_qc import ModelDetector, run_multi_model_extraction
+    from psweep.config.model_registry import ModelRegistry
+    from psweep.qa_qc import run_multi_model_extraction
 
-    # Requires QAQC_MODELS env var — raises ValueError if not set
-    models = ModelDetector.get_qa_models()
-
-    provider = ModelDetector.get_provider()
+    registry = ModelRegistry.from_config(config_dict, llm_config)
 
     results = run_multi_model_extraction(
         doc_text="...",
         doc_name="document_name",
         schema=schema,
-        models=models,
+        registry=registry,
+        model_tiers=["primary", "secondary"],
         output_dir=Path("processed/"),
-        api_key="...",
-        provider=provider,
     )
 
 Submodules:
-    - model_detector: Detect QA/QC models from QAQC_MODELS env var
-    - multi_model_extractor: Run extraction with multiple models
+    - multi_model_extractor: Run extraction with multiple models via the registry
     - comparison_engine: Compare outputs from multiple models
     - report_generator: Generate comparison reports
     - utils: QA/QC utilities including companion schema finder
 """
 
-from .model_detector import ModelDetector
 from .multi_model_extractor import (
     run_multi_model_extraction,
     ModelExtractionResult,
@@ -45,7 +46,6 @@ from .comparison_engine import (
 from .report_generator import ReportGenerator
 
 __all__ = [
-    "ModelDetector",
     "run_multi_model_extraction",
     "ModelExtractionResult",
     "ComparisonEngine",

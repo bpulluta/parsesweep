@@ -206,7 +206,26 @@ pixi run psweep extract documents/tariffs/ \
 ```
 
 ### QA/QC Workflow (Multi-Model Validation)
-Validate extractions by running 2+ AI models and comparing outputs:
+Validate extractions by running 2+ AI models and comparing outputs.
+
+**QA/QC models are declared in the run config — never via an environment
+variable.** Add a `qaqc.models:` list that references 2+ distinct tiers from the
+top-level `models:` block:
+
+```yaml
+models:
+  primary: compassop-gpt-4.1
+  secondary: compassop-gpt-4.1-mini
+
+extraction:
+  enable_qaqc: true          # sole on/off gate for multi-model QA/QC
+
+qaqc:
+  models: [primary, secondary]   # >= 2 distinct models (replaces QAQC_MODELS env var)
+  default_lane: quantitative
+```
+
+Then run the config-driven pipeline (or the ad-hoc commands below):
 ```bash
 # Step 1: Run QA/QC extraction on the production schema/runtime path
 pixi run psweep extract documents/geothermal_ordinances/ \

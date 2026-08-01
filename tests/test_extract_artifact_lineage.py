@@ -295,12 +295,11 @@ def test_validate_schema_cli_reports_nested_metadata_fields_correctly(tmp_path) 
 
 
 def test_run_qaqc_extraction_prints_compare_command_with_selected_lane(tmp_path, monkeypatch, capsys) -> None:
+    from psweep.config.model_registry import ModelRegistry
+
     document_path = tmp_path / 'documents' / 'qa_doc.pdf'
     document_path.parent.mkdir(parents=True, exist_ok=True)
     document_path.write_text('placeholder', encoding='utf-8')
-
-    class _DummyConfig:
-        llm_config = {'azure_endpoint': None, 'azure_api_version': None}
 
     class _DummyResult:
         def __init__(self, cost: float, processing_time: float, success: bool = True):
@@ -308,8 +307,9 @@ def test_run_qaqc_extraction_prints_compare_command_with_selected_lane(tmp_path,
             self.processing_time = processing_time
             self.success = success
 
-    monkeypatch.setattr('psweep.qa_qc.ModelDetector.get_qa_models', lambda: ['model-a', 'model-b'])
-    monkeypatch.setattr('psweep.qa_qc.ModelDetector.get_provider', lambda: 'openai')
+    registry = ModelRegistry(
+        llm_config={'provider': 'openai', 'api_key': 'test-key'}
+    )
     monkeypatch.setattr('psweep.extraction.document_utils.extract_text_from_document', lambda *args, **kwargs: 'doc text')
     monkeypatch.setattr(
         'psweep.qa_qc.run_multi_model_extraction',
@@ -325,9 +325,8 @@ def test_run_qaqc_extraction_prints_compare_command_with_selected_lane(tmp_path,
         loaded_schema={'type': 'object'},
         schema_path=REPO_ROOT / 'schemas/personal/geothermal_ordinance_schema.json',
         output_dir=tmp_path / 'extracted',
-        api_key='test-key',
-        provider='openai',
-        config=_DummyConfig(),
+        registry=registry,
+        qaqc_models=['model-a', 'model-b'],
         max_context=400000,
         page_range_map={},
         verbosity='normal',
