@@ -561,16 +561,39 @@ Extraction shows per-file cost in real-time:
 
 ### Cache & Reprocessing
 
+Every stage honors previous work by default and exposes one consistent
+`--reprocess` flag to ignore it and start fresh:
+
 ```bash
-# Default: skips already-extracted files
-pixi run psweep extract --config config/my_domain/run.yaml
+# Default: skip targets/files completed in a previous run
+pixi run psweep discover --config config/my_domain/run.yaml
+pixi run psweep extract  --config config/my_domain/run.yaml
+
+# Re-run discovery from scratch (ignore the checkpoint + refresh search cache)
+pixi run psweep discover --config config/my_domain/run.yaml --reprocess
 
 # Force re-extract (no need to delete files)
 pixi run psweep extract --config config/my_domain/run.yaml --reprocess
 
-# Discovery resumes from checkpoint (delete checkpoint to re-run)
-rm discovered/my_domain/checkpoint.json
+# Whole pipeline fresh — propagates --reprocess to discover and extract
+pixi run psweep run --config config/my_domain/run.yaml --reprocess
 ```
+
+`compile` always rewrites its output, so it needs no flag.
+
+**What `--reprocess` clears, per stage:**
+
+| Stage | `--reprocess` action |
+| --- | --- |
+| `discover` | Deletes the crash-resume checkpoint (`discovered/<domain>/checkpoint.json`) so every target re-runs, and refreshes the SerpApi result cache (`discovered/<domain>/.serpapi_cache/`) with fresh live queries. |
+| `extract` | Re-extracts every document even if a JSON output already exists. |
+| `compile` | No flag — output is always rewritten. |
+
+**Automatic content-keyed caches (no flag, safe to ignore):** extraction also
+keeps an OCR text cache (`documents/<domain>/.text/`) and a page-targeting
+cache (`documents/<domain>/.pages/`). Both are keyed on file content/mtime, so
+they self-invalidate when a source document changes and almost never need
+manual clearing. To force a cold OCR/page re-run, delete those folders.
 
 ---
 

@@ -131,11 +131,12 @@ def run(
     ],
     reprocess: Annotated[
         bool,
-        typer.Option("--reprocess/--skip-existing", help="Re-extract already-processed documents."),
-    ] = False,
-    fresh: Annotated[
-        bool,
-        typer.Option("--fresh", help="Ignore all caches — reprocess everything from scratch."),
+        typer.Option(
+            "--reprocess/--skip-existing",
+            help="Ignore all previous work and start fresh — re-run every "
+            "discovery target (ignoring the checkpoint and search cache) and "
+            "re-extract every document.",
+        ),
     ] = False,
     skip_discover: Annotated[
         bool,
@@ -161,8 +162,8 @@ def run(
     """Run the full pipeline: discover → extract → compile.
 
     Shows what will be reused from previous runs and what is new, then
-    asks for confirmation before proceeding. Use [cyan]--fresh[/cyan] to
-    ignore all caches.
+    asks for confirmation before proceeding. Use [cyan]--reprocess[/cyan] to
+    ignore all previous work and start fresh.
 
     [bold]Usage:[/bold]
         psweep run --config config/my_domain/my_domain.yaml
@@ -200,7 +201,7 @@ def run(
 
     checkpoint_path = Path(f"discovered/{domain}/checkpoint.json")
     checkpointed: list[str] = []
-    if checkpoint_path.exists() and not fresh:
+    if checkpoint_path.exists() and not reprocess:
         try:
             checkpointed = list(
                 json.loads(checkpoint_path.read_text()).get("entries", {}).keys()
@@ -235,21 +236,21 @@ def run(
     # Show run plan
     view.header()
     plan_rows: dict[str, str] = {"Domain": domain}
-    if checkpointed and not fresh:
+    if checkpointed and not reprocess:
         plan_rows["Targets"] = (
             f"{len(target_labels)} total "
             f"({len(checkpointed)} cached, {len(new_targets)} new)"
         )
     else:
         plan_rows["Targets"] = (
-            f"{len(target_labels)} total (all {'fresh' if fresh else 'new'})"
+            f"{len(target_labels)} total (all {'fresh' if reprocess else 'new'})"
         )
-    if curated_count and not fresh:
+    if curated_count and not reprocess:
         plan_rows["Curated"] = f"{curated_count} docs (preserved)"
-    if extracted_count and not fresh and not reprocess:
+    if extracted_count and not reprocess:
         plan_rows["Extracted"] = f"{extracted_count} docs (skip existing)"
-    if fresh:
-        plan_rows["Mode"] = "FRESH (all caches cleared)"
+    if reprocess:
+        plan_rows["Mode"] = "REPROCESS (ignore checkpoint, cache & extractions)"
 
     stages_list: list[str] = []
     if not skip_discover:
@@ -290,13 +291,6 @@ def run(
         if not typer.confirm("Proceed?", default=True):
             view.info("Cancelled.")
             raise typer.Exit(0)
-
-    # Fresh mode: clear caches
-    if fresh:
-        if checkpoint_path.exists():
-            checkpoint_path.unlink()
-        view.success("Checkpoint cleared")
-        reprocess = True
 
     flags: list[str] = []
     if quiet:

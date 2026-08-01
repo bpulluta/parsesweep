@@ -143,6 +143,14 @@ from psweep.discovery import DiscoveryEngine, DiscoveryRequest
     is_flag=True,
     help="Discover and emit manifest scaffold without downloads",
 )
+@click.option(
+    "--skip-existing/--reprocess",
+    "skip_existing",
+    default=True,
+    show_default=True,
+    help="Skip targets completed in a previous run; --reprocess ignores the "
+    "checkpoint and refreshes the search cache to start fresh",
+)
 @click.option("--quiet", "-q", is_flag=True, help="Minimal output")
 @click.option("--verbose", "-v", is_flag=True, help="Detailed output")
 @click.option(
@@ -170,6 +178,7 @@ def discover(
     output_documents: Optional[str],
     output_manifest: Optional[str],
     dry_run: bool,
+    skip_existing: bool,
     quiet: bool,
     verbose: bool,
     debug: bool,
@@ -453,6 +462,8 @@ def discover(
                 else "(auto: run-scoped)",
                 "Mode": "dry-run" if dry_run else "run",
             }
+            if not skip_existing:
+                config_info["Reprocess"] = "yes (ignore checkpoint + cache)"
         else:
             config_info = {
                 "Domain": resolved_domain,
@@ -583,6 +594,7 @@ def discover(
         models=resolved_models,
         seeker_cache=resolved_seeker_cache,
         seeker_cache_ttl_minutes=resolved_seeker_cache_ttl_minutes,
+        reprocess=not skip_existing,
         progress_callback=_discover_progress,
         query_context_aliases=resolved_query_context_aliases,
         partition_by=resolved_partition_by,

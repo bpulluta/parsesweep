@@ -29,6 +29,7 @@ class SerpApiSeeker(BaseSeekerConnector):
         min_request_interval_seconds: float = 0.0,
         cache_dir: str | None = None,
         cache_ttl_seconds: float = 0.0,
+        cache_refresh: bool = False,
     ):
         """
         Initialize SerpApi seeker connector.
@@ -63,6 +64,11 @@ class SerpApiSeeker(BaseSeekerConnector):
         # not re-pay SerpApi for identical queries. Keyed on the request params.
         self.cache_dir = cache_dir
         self.cache_ttl_seconds = max(0.0, float(cache_ttl_seconds))
+        # When True, ignore existing cache entries on read (forcing a fresh
+        # live fetch) while still writing new results. Drives the discover
+        # ``--reprocess`` "start fresh" semantics without discarding the cache
+        # for subsequent tuning runs.
+        self.cache_refresh = bool(cache_refresh)
         self._ensure_prepared()
 
     def _respect_rate_limit(self) -> None:
@@ -228,6 +234,8 @@ class SerpApiSeeker(BaseSeekerConnector):
         return Path(self.cache_dir) / f"{digest}.json"
 
     def _cache_get(self, params: dict[str, Any]) -> dict[str, Any] | None:
+        if self.cache_refresh:
+            return None
         path = self._cache_path(params)
         if path is None or not path.exists():
             return None
