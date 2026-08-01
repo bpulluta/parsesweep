@@ -1260,14 +1260,17 @@ def extract(
     )
 
     if enable_qa_qc:
+        from psweep.config.model_registry import ModelRegistry
+
+        registry = ModelRegistry.from_config(resolved_inputs, config.llm_config)
+        qaqc_models = (resolved_inputs.get("qaqc") or {}).get("models") or []
         _run_qa_qc_extraction(
             doc_files=doc_files,
             loaded_schema=loaded_schema,
             schema_path=schema_path,
             output_dir=output_dir,
-            api_key=api_key,
-            provider=provider,
-            config=config,
+            registry=registry,
+            qaqc_models=qaqc_models,
             max_context=max_context,
             page_range_map=page_range_map,
             verbosity=get_verbosity().value,
@@ -1532,9 +1535,8 @@ def _run_qa_qc_extraction(
     loaded_schema: dict,
     schema_path: Path,
     output_dir: Path,
-    api_key: str,
-    provider: str,
-    config,
+    registry,
+    qaqc_models: List[str],
     max_context: int,
     page_range_map: dict,
     verbosity: str,
@@ -1543,24 +1545,34 @@ def _run_qa_qc_extraction(
     qaqc_lane: Optional[str] = None,
     config_path: Optional[str] = None,
 ) -> None:
-    """Run QA/QC multi-model extraction for documents."""
-    from psweep.qa_qc import ModelDetector, run_multi_model_extraction
+    """Run QA/QC multi-model extraction for documents.
+
+    Model tiers and credentials are resolved through the unified
+    :class:`ModelRegistry`; ``qaqc_models`` is the ``qaqc.models`` reference
+    list from the run config.
+    """
+    from psweep.qa_qc import run_multi_model_extraction
     from psweep.cli.commands import ask_confirm as shared_ask_confirm
 
-    try:
-        qa_models = ModelDetector.get_qa_models()
-        qa_provider = ModelDetector.get_provider()
-    except ValueError as e:
+    qa_model_defs = registry.get_models(list(qaqc_models))
+    qa_models = [definition.model for definition in qa_model_defs]
+    if len(qa_model_defs) < 2:
         print_error(
             "QA/QC Configuration Error",
-            str(e),
+            "QA/QC requires at least 2 distinct models, but qaqc.models "
+            f"resolved to: {qa_models or 'nothing'}",
             [
-                "Set QAQC_MODELS in .env with 2+ comma-separated models",
-                "Example: QAQC_MODELS=my-gpt-5-deployment,my-gpt-4.1-deployment",
-                "Or for OpenAI: QAQC_MODELS=gpt-5,gpt-4.1",
+                "Define qaqc.models: [tier1, tier2] in your run config",
+                "Reference two distinct tiers from your top-level models: block",
+                "Example: qaqc:\n    models: [primary, secondary]",
             ],
         )
         return
+
+    primary_def = qa_model_defs[0]
+    qa_provider = registry.to_llm_kwargs(primary_def.tier).get(
+        "provider", "openai"
+    )
 
     view = RunView("extract", verbosity=Verbosity(verbosity))
     view.header("QA/QC MULTI-MODEL VALIDATION")
@@ -1591,7 +1603,7 @@ def _run_qa_qc_extraction(
     # deliverable. Its extraction is written to the normal per-document location
     # so --enable-qa-qc is additive: same primary {output_dir}/{doc}.json a
     # single-model run produces, plus the multi-model sidecars under qa_qc/.
-    primary_model = qa_models[0]
+    primary_model = primary_def.model
     id_declared = (
         loaded_schema.get("$metadata", {})
         .get("extraction", {})
@@ -1615,12 +1627,9 @@ def _run_qa_qc_extraction(
                 doc_text=text,
                 doc_name=doc_path.stem,
                 schema=loaded_schema,
-                models=qa_models,
+                registry=registry,
+                model_tiers=qaqc_models,
                 output_dir=output_dir,
-                api_key=api_key,
-                provider=qa_provider,
-                azure_endpoint=config.llm_config.get("azure_endpoint"),
-                azure_api_version=config.llm_config.get("azure_api_version"),
                 max_context_chars=max_context,
                 runtime_artifact=runtime_artifact,
                 run_id=run_id,

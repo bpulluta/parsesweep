@@ -258,12 +258,7 @@ def run(
     qaqc = resolve_run_qaqc(config_path)
     qaqc_model_count: Optional[int] = None
     if qaqc:
-        try:
-            from psweep.qa_qc import ModelDetector
-
-            qaqc_model_count = len(ModelDetector.get_qa_models())
-        except Exception:
-            qaqc_model_count = None
+        qaqc_model_count = len(qaqc.get("models") or []) or None
 
     run_qaqc_extract = bool(qaqc) and not skip_extract
     show_compare = bool(qaqc) and (

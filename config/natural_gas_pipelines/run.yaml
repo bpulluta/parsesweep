@@ -233,6 +233,9 @@ compilation:
 
 # ── QA/QC ────────────────────────────────────────────────────────────────────
 qaqc:
+  # QA/QC model tiers — reference tiers from the top-level models: block.
+  # Must resolve to >= 2 distinct models. Replaces the legacy QAQC_MODELS env var.
+  models: [primary, secondary]
   default_lane: quantitative
   lanes:
     quantitative:

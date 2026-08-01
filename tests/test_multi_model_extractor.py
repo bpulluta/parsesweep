@@ -15,6 +15,14 @@ from psweep.qa_qc.multi_model_extractor import (
     run_multi_model_extraction,
     ModelExtractionResult,
 )
+from psweep.config.model_registry import ModelRegistry
+
+
+def _registry(provider="openai", api_key="test-key", **extra):
+    """Build a registry whose to_llm_kwargs yields deterministic LLM kwargs."""
+    llm_config = {"provider": provider, "api_key": api_key}
+    llm_config.update(extra)
+    return ModelRegistry(llm_config=llm_config)
 
 
 # Patch target - the import inside run_multi_model_extraction
@@ -130,10 +138,9 @@ class TestRunMultiModelExtraction:
             doc_text=sample_text,
             doc_name="test_doc",
             schema=sample_schema,
-            models=["gpt-4o", "gpt-3.5-turbo"],
+            registry=_registry(),
+            model_tiers=["gpt-4o", "gpt-3.5-turbo"],
             output_dir=tmp_path,
-            api_key="test-key",
-            provider="openai",
         )
         
         # Verify results
@@ -161,10 +168,9 @@ class TestRunMultiModelExtraction:
             doc_text=sample_text,
             doc_name="my_document",
             schema=sample_schema,
-            models=["gpt-4o"],
+            registry=_registry(),
+            model_tiers=["gpt-4o"],
             output_dir=tmp_path,
-            api_key="test-key",
-            provider="openai",
         )
         
         # Verify directory structure
@@ -187,10 +193,9 @@ class TestRunMultiModelExtraction:
             doc_text=sample_text,
             doc_name="test_doc",
             schema=sample_schema,
-            models=["gpt-4o", "gpt-4-turbo"],
+            registry=_registry(),
+            model_tiers=["gpt-4o", "gpt-4-turbo"],
             output_dir=tmp_path,
-            api_key="test-key",
-            provider="openai",
         )
         
         # Verify JSON files exist
@@ -222,10 +227,9 @@ class TestRunMultiModelExtraction:
             doc_text=sample_text,
             doc_name="test_doc",
             schema=sample_schema,
-            models=["gpt-4o", "gpt-3.5-turbo"],
+            registry=_registry(),
+            model_tiers=["gpt-4o", "gpt-3.5-turbo"],
             output_dir=tmp_path,
-            api_key="test-key",
-            provider="openai",
         )
         
         # Verify metadata file
@@ -270,10 +274,9 @@ class TestRunMultiModelExtraction:
             doc_text=sample_text,
             doc_name="test_doc",
             schema=sample_schema,
-            models=["gpt-4o"],
+            registry=_registry(),
+            model_tiers=["gpt-4o"],
             output_dir=tmp_path,
-            api_key="test-key",
-            provider="openai",
             runtime_artifact=runtime_artifact,
             run_id="run://abc123def4567890",
         )
@@ -318,10 +321,9 @@ class TestRunMultiModelExtraction:
             doc_text=sample_text,
             doc_name="test_doc",
             schema=sample_schema,
-            models=["gpt-4o", "gpt-3.5-turbo"],
+            registry=_registry(),
+            model_tiers=["gpt-4o", "gpt-3.5-turbo"],
             output_dir=tmp_path,
-            api_key="test-key",
-            provider="openai",
             runtime_artifact=runtime_artifact,
             run_id="run://abc123def4567890",
         )
@@ -354,10 +356,9 @@ class TestRunMultiModelExtraction:
             doc_text=sample_text,
             doc_name="test_doc",
             schema=sample_schema,
-            models=["gpt-4o", "gpt-nonexistent"],
+            registry=_registry(),
+            model_tiers=["gpt-4o", "gpt-nonexistent"],
             output_dir=tmp_path,
-            api_key="test-key",
-            provider="openai",
         )
         
         # Verify mixed results
@@ -391,12 +392,9 @@ class TestRunMultiModelExtraction:
             doc_text=sample_text,
             doc_name="test_doc",
             schema=sample_schema,
-            models=["compassop-gpt-4o"],
+            registry=_registry(provider="azure", api_key="azure-key", azure_endpoint="https://test.openai.azure.com/", azure_api_version="2024-02-15-preview"),
+            model_tiers=["compassop-gpt-4o"],
             output_dir=tmp_path,
-            api_key="azure-key",
-            provider="azure",
-            azure_endpoint="https://test.openai.azure.com/",
-            azure_api_version="2024-02-15-preview",
         )
         
         # Verify extractor was created with Azure params
@@ -421,10 +419,9 @@ class TestRunMultiModelExtraction:
             doc_text=sample_text,
             doc_name="test_doc",
             schema=sample_schema,
-            models=["azure/gpt-4o"],  # Contains forward slash
+            registry=_registry(provider="azure"),
+            model_tiers=["azure/gpt-4o"],
             output_dir=tmp_path,
-            api_key="test-key",
-            provider="azure",
         )
         
         # Verify file was created with sanitized name
@@ -460,10 +457,9 @@ class TestRunMultiModelExtraction:
             doc_text=sample_text,
             doc_name="test_doc",
             schema=sample_schema,
-            models=["gpt-4o", "gpt-3.5-turbo"],
+            registry=_registry(),
+            model_tiers=["gpt-4o", "gpt-3.5-turbo"],
             output_dir=tmp_path,
-            api_key="test-key",
-            provider="openai",
         )
         
         # Verify individual costs
@@ -491,10 +487,9 @@ class TestRunMultiModelExtraction:
             doc_text=sample_text,
             doc_name="test_doc",
             schema=sample_schema,
-            models=["gpt-4o"],
+            registry=_registry(),
+            model_tiers=["gpt-4o"],
             output_dir=tmp_path,
-            api_key="test-key",
-            provider="openai",
         )
         
         # Verify extract was called with just text and schema (no enable_qa_qc param)

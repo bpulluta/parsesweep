@@ -4,6 +4,12 @@ Multi-Model Extractor for QA/QC Validation.
 Runs document extraction with multiple AI models and saves outputs
 to organized subfolders for comparison.
 
+Model tiers and credentials are resolved exclusively through the unified
+:class:`~psweep.config.model_registry.ModelRegistry`. Callers pass the registry
+plus the ``qaqc.models`` tier references; this module resolves each tier to a
+concrete model and its LLM kwargs (provider/api_key/endpoint) via
+``registry.to_llm_kwargs`` — never threading a provider directly.
+
 Usage:
     from psweep.qa_qc.multi_model_extractor import run_multi_model_extraction
 
@@ -11,10 +17,9 @@ Usage:
         doc_text="Full document text...",
         doc_name="austin_energy_tariff",
         schema=loaded_schema,
-        models=["gpt-5", "gpt-4.1"],
+        registry=registry,
+        model_tiers=["primary", "secondary"],
         output_dir=Path("processed/qa_qc"),
-        api_key="sk-...",
-        provider="openai",
     )
 
 Output Structure:
@@ -29,9 +34,12 @@ import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, Optional, Sequence
 
 from .utils import sanitize_model_name
+
+if TYPE_CHECKING:
+    from ..config.model_registry import ModelRegistry
 from ..utils.error_taxonomy import (
     build_error_record,
     normalize_error_records,
@@ -60,38 +68,38 @@ def run_multi_model_extraction(
     doc_text: str,
     doc_name: str,
     schema: dict,
-    models: List[str],
+    registry: "ModelRegistry",
+    model_tiers: Sequence[str],
     output_dir: Path,
-    api_key: str,
-    provider: str = "openai",
-    azure_endpoint: Optional[str] = None,
-    azure_api_version: Optional[str] = None,
     max_context_chars: int = 400000,
     runtime_artifact: Optional[Dict[str, Any]] = None,
     run_id: Optional[str] = None,
 ) -> Dict[str, ModelExtractionResult]:
     """
-    Run extraction with multiple models.
+    Run extraction with multiple models resolved through the model registry.
 
     Args:
         doc_text: Full document text to extract from
         doc_name: Document name (without extension, used for output folder)
         schema: JSON schema for extraction
-        models: List of model names (e.g., ["gpt-5", "gpt-4.1"])
+        registry: Unified :class:`ModelRegistry` — the single source of model
+            tier resolution and credential (LLM kwargs) threading.
+        model_tiers: Ordered list of tier/model references (e.g. the
+            ``qaqc.models`` list). Resolved and de-duplicated by concrete model.
         output_dir: Base directory for QA/QC outputs (e.g., "processed/")
-        api_key: API key for the provider
-        provider: LLM provider ("openai", "azure", "anthropic", etc.)
-        azure_endpoint: Azure OpenAI endpoint (if using Azure)
-        azure_api_version: Azure API version (if using Azure)
         max_context_chars: Maximum characters to process
         runtime_artifact: Optional compiled runtime artifact for lineage metadata
         run_id: Optional deterministic run identifier for this invocation
 
     Returns:
-        Dict mapping model name to ModelExtractionResult
+        Dict mapping concrete model name to ModelExtractionResult
     """
     # Import here to avoid circular imports
     from ..extraction import DocumentExtractor
+
+    # Resolve tier references -> concrete model definitions (dedup by model).
+    model_defs = registry.get_models(list(model_tiers))
+    models = [definition.model for definition in model_defs]
 
     # Create output directory for this document
     doc_output_dir = Path(output_dir) / "qa_qc" / doc_name
@@ -104,22 +112,27 @@ def run_multi_model_extraction(
         f"Starting multi-model extraction with {len(models)} models: {models}"
     )
 
-    for model in models:
+    for definition in model_defs:
+        model = definition.model
         model_start = time.time()
         safe_model_name = sanitize_model_name(model)
         output_path = doc_output_dir / f"{safe_model_name}.json"
 
         logger.info(f"Running extraction with {model}...")
 
+        # Resolve credentials/provider through the single, env-driven path.
+        llm_kwargs = registry.to_llm_kwargs(definition.tier)
+        provider = llm_kwargs.get("provider", "openai")
+
         try:
             # Create a new extractor for this model
             extractor = DocumentExtractor(
-                api_key=api_key,
-                model=model,
+                api_key=llm_kwargs.get("api_key"),
+                model=llm_kwargs.get("model", model),
                 max_context_chars=max_context_chars,
                 provider=provider,
-                azure_endpoint=azure_endpoint,
-                azure_api_version=azure_api_version,
+                azure_endpoint=llm_kwargs.get("azure_endpoint"),
+                azure_api_version=llm_kwargs.get("azure_api_version"),
             )
 
             # Run extraction

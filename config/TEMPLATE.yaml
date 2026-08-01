@@ -101,6 +101,9 @@ compilation:
 
 # ─── QA/QC (optional) ────────────────────────────────────────────────────────
 # qaqc:
+#   models: [primary, secondary]          # tiers to contrast — must resolve to
+#                                         # >= 2 distinct models (from models: block).
+#                                         # Declares QA/QC models in-config (no env var).
 #   default_lane: quantitative
 #   lanes:
 #     quantitative:

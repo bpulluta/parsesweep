@@ -4,10 +4,13 @@ from __future__ import annotations
 
 import csv
 import json
+import os
 from pathlib import Path
 from typing import Any
 
 import yaml
+
+from .model_registry import ModelRegistry, ModelRegistryError
 
 
 class RuntimeConfigError(ValueError):
@@ -1101,6 +1104,108 @@ def _apply_split_file_section_overrides(
     return merged
 
 
+def _collect_model_references(
+    config_data: dict[str, Any]
+) -> tuple[list[str], list[tuple[str, Any]]]:
+    """Collect model tier references from runtime config sections.
+
+    Walks the ``discovery``, ``extraction``, and ``qaqc`` sections and gathers:
+
+    * single references — any string value under a ``model`` key (a stage's
+      ``model:`` selector, e.g. ``discovery.document_review.model``);
+    * multi references — any list value under a ``models`` key (e.g. a QA/QC
+      ``models:`` list), returned as ``(dotted-path, list)`` tuples.
+
+    The top-level ``models`` alias map and ``model_context_windows`` are the
+    registry's *definitions*, not references, so they are deliberately excluded
+    (only the three sections above are scanned).
+    """
+    singles: list[str] = []
+    multis: list[tuple[str, Any]] = []
+
+    def _walk(node: Any, path: str) -> None:
+        if isinstance(node, dict):
+            for key, value in node.items():
+                child_path = f"{path}.{key}" if path else str(key)
+                if key == "model" and isinstance(value, str):
+                    singles.append(value)
+                elif key == "models" and isinstance(value, (list, tuple)):
+                    multis.append((child_path, value))
+                else:
+                    _walk(value, child_path)
+        elif isinstance(node, (list, tuple)):
+            for index, item in enumerate(node):
+                _walk(item, f"{path}[{index}]")
+
+    for section_name in ("discovery", "extraction", "qaqc"):
+        section = config_data.get(section_name)
+        if isinstance(section, dict):
+            _walk(section, section_name)
+
+    return singles, multis
+
+
+def _validate_qaqc_activation(config_data: dict[str, Any]) -> None:
+    """Validate QA/QC activation and its declared model list.
+
+    QA/QC models are declared exclusively via ``qaqc.models`` in the run
+    config. The legacy ``QAQC_MODELS`` environment variable is no longer
+    supported: when ``extraction.enable_qaqc`` is true but ``qaqc.models`` is
+    absent, we hard-error (and call out the dead env var if it is still set)
+    rather than silently falling back. The registry separately validates that a
+    declared ``qaqc.models`` resolves to >= 2 distinct models.
+    """
+    qaqc = config_data.get("qaqc")
+    if qaqc is not None and not isinstance(qaqc, dict):
+        raise RuntimeConfigError(
+            "'qaqc' section must be an object in runtime config"
+        )
+    qaqc = qaqc or {}
+    models = qaqc.get("models")
+
+    extraction = config_data.get("extraction") or {}
+    if not isinstance(extraction, dict):
+        return
+    if extraction.get("enable_qaqc") and not models:
+        message = (
+            "extraction.enable_qaqc is true but no qaqc.models defined. "
+            "Set qaqc.models: [model1, model2] with at least 2 distinct models."
+        )
+        if os.getenv("QAQC_MODELS"):
+            message += (
+                " The QAQC_MODELS environment variable is no longer supported; "
+                "declare qaqc.models in your run config instead."
+            )
+        raise RuntimeConfigError(message)
+
+
+def build_model_registry(
+    config_data: dict[str, Any],
+    llm_config: dict[str, Any] | None = None,
+) -> ModelRegistry:
+    """Build and validate a :class:`ModelRegistry` from loaded config.
+
+    This is the single integration point that turns the already-normalized
+    config dict into a registry, then fail-fast validates the tier definitions
+    and every ``model:`` / ``models:`` reference found in the runtime sections.
+
+    ``llm_config`` is optional; when omitted the registry lazily uses the global
+    environment config for provider/credential resolution at call time.
+
+    Raises
+    ------
+    RuntimeConfigError
+        If any tier definition or reference is invalid.
+    """
+    try:
+        registry = ModelRegistry.from_config(config_data, llm_config)
+        singles, multis = _collect_model_references(config_data)
+        registry.validate(references=singles, multi_references=multis)
+    except ModelRegistryError as exc:
+        raise RuntimeConfigError(str(exc)) from exc
+    return registry
+
+
 def load_runtime_config_file(config_path: Path) -> dict[str, Any]:
     """Load a run-level or section-level runtime config file."""
     if not config_path.exists():
@@ -1148,6 +1253,14 @@ def load_runtime_config_file(config_path: Path) -> dict[str, Any]:
             msg = "'compilation' section must be an object in runtime config"
             raise RuntimeConfigError(msg)
         _validate_compilation_section_schema(compilation)
+
+    _validate_qaqc_activation(config_data)
+
+    # Build the unified model registry (single normalization boundary) and
+    # fail-fast validate tier definitions plus every model reference. Stored on
+    # the returned config under a private key so callers can resolve tiers
+    # without re-normalizing. Additive: sections that omit models still work.
+    config_data["_model_registry"] = build_model_registry(config_data)
 
     return config_data
 
@@ -1668,6 +1781,12 @@ def resolve_command_config(
     if "qaqc" in cfg:
         merged["qaqc"] = cfg.get("qaqc")
         sources["qaqc"] = "config.qaqc"
+
+    # The unified model registry (built + validated at load time) is threaded
+    # through so every LLM stage resolves tiers/credentials from one instance.
+    if "_model_registry" in cfg:
+        merged["_model_registry"] = cfg.get("_model_registry")
+        sources["_model_registry"] = "config._model_registry"
 
     merged["_config_warnings"] = warnings
     merged["_config_sources"] = sources
