@@ -122,6 +122,11 @@ class DiscoveryRequest:
     # re-pay for identical queries. TTL in minutes (0 = never expire).
     seeker_cache: bool = False
     seeker_cache_ttl_minutes: float = 0.0
+    # When True, ignore all prior work for this run: skip the checkpoint (do not
+    # prune already-completed targets) and refresh the seeker cache (force live
+    # fetches even when ``seeker_cache`` is enabled). Drives the ``discover
+    # --reprocess`` / ``run --reprocess`` "start fresh" UX.
+    reprocess: bool = False
     # Optional callback for human-friendly progress messages emitted by engine stages.
     progress_callback: Callable[[str], None] | None = None
 
@@ -588,6 +593,7 @@ class DiscoveryEngine:
                     )
                     * 60.0,
                 ),
+                cache_refresh=bool(getattr(request, "reprocess", False)),
             )
             seeker_inputs = DiscoveryEngine._build_seeker_inputs(request)
             # Collect results per-target so selection can be applied independently
@@ -3542,9 +3548,17 @@ class DiscoveryEngine:
             f"run: discovery started (run_id={run_id})",
         )
 
-        # Checkpoint: skip targets that completed in a previous run.
+        # Checkpoint: crash-resume state that skips targets completed in a
+        # previous run. ``--reprocess`` clears it so every target re-runs from a
+        # clean slate (a subsequent crash still resumes correctly because only
+        # this run's completions are recorded).
         checkpoint_path = self._checkpoint_path(manifest_path)
-        completed_checkpoint_keys = self._load_checkpoint(checkpoint_path)
+        if request.reprocess:
+            with contextlib.suppress(OSError):
+                checkpoint_path.unlink(missing_ok=True)
+            completed_checkpoint_keys: dict[str, dict[str, object]] = {}
+        else:
+            completed_checkpoint_keys = self._load_checkpoint(checkpoint_path)
         if completed_checkpoint_keys and request.targets:
             original_target_count = len(request.targets)
             request = dataclass_replace(
@@ -3560,7 +3574,8 @@ class DiscoveryEngine:
             if skipped_count:
                 seeker_notes.append(
                     f"Checkpoint: skipped {skipped_count} already-completed "
-                    f"target(s) (of {original_target_count} total)."
+                    f"target(s) (of {original_target_count} total). "
+                    f"Use --reprocess to include them."
                 )
 
         # Run seeker discovery when SerpApi is enabled and healthy (no init errors).

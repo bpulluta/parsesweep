@@ -139,6 +139,68 @@ def test_acquire_dry_run_writes_manifest(tmp_path):
     assert docs_dir.exists()
 
 
+def test_discover_reprocess_deletes_checkpoint(tmp_path):
+    # Checkpoint lives at manifest.parent.parent.parent/checkpoint.json.
+    run_dir = tmp_path / "runs" / "run-x"
+    run_dir.mkdir(parents=True)
+    manifest_path = run_dir / "manifest.json"
+    checkpoint_path = tmp_path / "checkpoint.json"
+    checkpoint_path.write_text(
+        '{"version": 1, "entries": {"Aurora CO": {"run_id": "old"}}}',
+        encoding="utf-8",
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(
+        cli,
+        [
+            "discover",
+            "--seed-url",
+            "https://example.org/docs",
+            "--output-documents",
+            str(tmp_path / "docs"),
+            "--output-manifest",
+            str(manifest_path),
+            "--dry-run",
+            "--reprocess",
+            "-q",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert not checkpoint_path.exists()
+
+
+def test_discover_default_preserves_checkpoint(tmp_path):
+    run_dir = tmp_path / "runs" / "run-x"
+    run_dir.mkdir(parents=True)
+    manifest_path = run_dir / "manifest.json"
+    checkpoint_path = tmp_path / "checkpoint.json"
+    checkpoint_path.write_text(
+        '{"version": 1, "entries": {"Aurora CO": {"run_id": "old"}}}',
+        encoding="utf-8",
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(
+        cli,
+        [
+            "discover",
+            "--seed-url",
+            "https://example.org/docs",
+            "--output-documents",
+            str(tmp_path / "docs"),
+            "--output-manifest",
+            str(manifest_path),
+            "--dry-run",
+            "-q",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert checkpoint_path.exists()
+
+
 def test_acquire_validate_config_accepts_serpapi_flag(tmp_path):
     runner = CliRunner()
     result = runner.invoke(
@@ -156,6 +218,54 @@ def test_acquire_validate_config_accepts_serpapi_flag(tmp_path):
     assert result.exit_code == 0
     payload = json.loads(result.output)
     assert payload["resolved"]["enable_serpapi"] is True
+
+
+def _run_discover_and_capture_request(extra_args, tmp_path):
+    """Invoke `discover` with DiscoveryEngine.run patched to capture the request."""
+    from unittest.mock import patch
+
+    from psweep.discovery.engine import DiscoveryResult
+
+    captured = {}
+
+    def _fake_run(self, request):
+        captured["request"] = request
+        return DiscoveryResult(
+            run_id="test",
+            manifest_path=tmp_path / "manifest.json",
+            documents_dir=tmp_path / "docs",
+            dry_run=True,
+        )
+
+    with patch(
+        "psweep.discovery.engine.DiscoveryEngine.run", _fake_run
+    ):
+        runner = CliRunner()
+        result = runner.invoke(
+            cli,
+            [
+                "discover",
+                "--seed-url",
+                "https://example.org/docs",
+                "-q",
+                *extra_args,
+            ],
+        )
+    return result, captured.get("request")
+
+
+def test_discover_defaults_to_skip_existing(tmp_path):
+    result, request = _run_discover_and_capture_request([], tmp_path)
+    assert result.exit_code == 0
+    assert request is not None
+    assert request.reprocess is False
+
+
+def test_discover_reprocess_flag_sets_request_reprocess(tmp_path):
+    result, request = _run_discover_and_capture_request(["--reprocess"], tmp_path)
+    assert result.exit_code == 0
+    assert request is not None
+    assert request.reprocess is True
 
 
 def test_acquire_validate_config_accepts_partition_fields(tmp_path):

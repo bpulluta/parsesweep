@@ -11,37 +11,92 @@ models:
 discovery:
   targets_csv: targets.csv
   queries:
-    # Multiple query templates — each target gets all of them.
-    # Variables come from targets.csv columns.
-    - '{utility_name} {state} "schedule of rates" electric tariff filetype:pdf'
-    - '{utility_name} {state} residential electric rate schedule filetype:pdf'
-    - '{city} {state} electric utility tariff "service classification" filetype:pdf'
+    # Geography + utility brand — finds the most likely official tariff
+    - '"{utility_name}" {state} electric tariff filetype:pdf'
+    # Geography-first — works even if utility name is wrong or missing
+    - '{city} {state} electric utility tariff rate schedule filetype:pdf'
+    # PUC/PSC filing search — state regulatory filings for the area
+    - '{city} {state} electric utility "service classification" OR "rate schedule" filetype:pdf'
+    # Utility name + rate schedule keyword (no state filter — catches state subsidiaries)
+    - '"{utility_name}" electric rate schedule "residential" filetype:pdf'
   search:
     provider: serpapi
     max_results: 10
+    cache: true
   selection:
-    max_per_target: 3
-    require_any: [tariff, rate, schedule, kWh, kwh, service classification]
-    exclude: [news, blog, press release, rebate, incentive, program,
-              transportation, solar, EV, vehicle, gas]
-  follow_links: false
-  request_delay_ms: 500
+    primary_per_target: 20
+    exclude_draft: true
+    # Relevance pre-filter: must look like tariff content (keyword match in URL/title/snippet)
+    relevance_require_any_terms:
+      - tariff
+      - rate schedule
+      - rate book
+      - service classification
+      - electric rates
+      - kWh
+      - kwh
+      - energy charge
+      - customer charge
+      - demand charge
+      - rate filing
+    relevance_exclude_any_terms:
+      - press release
+      - news article
+      - meeting minutes
+      - agenda
+      - newsletter
+      - rebate
+      - incentive program
+      - rent guideline
+      - housing
+      - water authority
+      - audit committee
+      - annual report
+      - 10-K
+      - SEC filing
+      - environmental impact
+      - customer notice
+      - bill insert
+    require_supported_document: false
   document_classifier:
-    required_keywords: [tariff, rate, schedule, service classification, kWh, kwh]
-    nice_to_have_keywords: [residential, monthly charge, energy charge, demand charge]
+    required_keywords:
+      - tariff
+      - rate
+      - schedule
+      - kWh
+      - kwh
+      - service classification
+      - energy charge
+      - customer charge
+    nice_to_have_keywords:
+      - residential
+      - monthly charge
+      - demand charge
+      - per kWh
+      - rider
+      - fuel adjustment
     min_required_matches: 1
     action: warn
   document_review:
-    model: secondary                  # cheap/fast — curation doesn't need 4.1
+    model: secondary
     document_description: >-
-      a utility's official electric tariff book, rate schedule filing, or
-      individual rate schedule PDF. Often begins with a table of contents
-      listing service classifications, riders, and charges. May also be a
-      single rate schedule page showing per-kWh charges, monthly customer
-      charges, and demand rates. NOT a customer notice, rebate program,
-      transportation plan, or general company information.
-    keep_top: 1
+      an official electric tariff book, rate schedule filing, or rate schedule PDF
+      for residential and/or commercial customers in {city}, {state}. The filing
+      utility may operate under a different legal or subsidiary name than the
+      well-known brand — accept any document that is clearly the official electric
+      tariff for the {state} service territory that includes {city}. Valid: a
+      complete tariff book, a single service classification rate page, or a rate
+      summary sheet showing per-kWh energy charges, monthly customer charges, and
+      demand rates. REJECT: (1) tariffs for a different state entirely, (2) gas
+      tariffs — electric only, (3) bill inserts or customer notices, (4) rebate or
+      incentive program documents, (5) meeting minutes, annual reports, SEC
+      filings, press releases, (6) housing/rent guidelines, (7) technical
+      interconnection or installation guides, (8) long-range planning reports.
+    keep_top: 2
+    deduplicate_redundant: true
     action: move
+  partition_by: [state, utility_name]
+  partition_by: [state, utility_name]
 
 # Skip/reprocess hygiene: extraction skips files with existing output JSON by
 # default (skip_existing). Iterate freely without --reprocess; only pass

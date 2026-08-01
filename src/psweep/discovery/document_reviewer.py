@@ -30,7 +30,8 @@ _REVIEW_SYSTEM = (
     "TARGET DOCUMENT description the caller provides. Judge each document "
     "strictly against that description: a document is primary only when it IS "
     "the described document, not merely related to it. The description defines "
-    "what counts — do not impose outside assumptions about document type."
+    "what counts — do not impose outside assumptions about document type. "
+    "Return your assessment as a JSON object."
 )
 
 _REVIEW_SCHEMA: dict[str, Any] = {
@@ -52,7 +53,8 @@ _DEDUP_SYSTEM = (
     "maximum unique regulatory content with no version redundancy. "
     "Documents covering genuinely different regulatory provisions (e.g., "
     "different sections, different topics, complementary rules) are NOT "
-    "redundant even if they are from the same jurisdiction."
+    "redundant even if they are from the same jurisdiction. "
+    "Return your assessment as a JSON object."
 )
 
 _DEDUP_SCHEMA: dict[str, Any] = {
@@ -352,7 +354,8 @@ class DocumentReviewer:
             "entry specifying the keep_index (most current/authoritative) and the "
             "redundant_indices to exclude. "
             "Documents covering genuinely different regulatory content are NOT "
-            "redundant — return empty redundancy_groups if all docs are complementary."
+            "redundant — return empty redundancy_groups if all docs are complementary. "
+            "Return your answer as a JSON object."
         )
 
         try:

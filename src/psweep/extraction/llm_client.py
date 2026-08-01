@@ -193,6 +193,11 @@ class LLMClient:
         if not is_reasoning_model:
             api_params["temperature"] = 0
             api_params["response_format"] = {"type": "json_object"}
+            # Azure requires at least one message to contain the word "json"
+            # when response_format=json_object is used.
+            all_content = " ".join(m["content"] for m in messages)
+            if "json" not in all_content.lower():
+                messages[-1]["content"] += "\n\nRespond with a JSON object."
 
         try:
             # Call LiteLLM

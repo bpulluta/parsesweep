@@ -125,6 +125,11 @@ def build_run_stage_commands(
 ) -> list[tuple[str, list[str]]]:
     """Build the subprocess commands used to execute a run config pipeline.
 
+    ``reprocess`` propagates ``--reprocess`` to both the discover stage (ignore
+    the checkpoint and refresh the search cache) and the extract stage
+    (re-extract already-processed documents), giving ``run --reprocess`` a
+    single "start fresh" behavior across stages.
+
     When the config enables multi-model QA/QC, the extract stage is run with
     ``--enable-qa-qc`` and a follow-up ``compare`` stage is appended so the
     orchestrated ``run`` performs the full discover → extract → compile →
@@ -136,10 +141,13 @@ def build_run_stage_commands(
     qaqc = resolve_run_qaqc(cfg_path)
 
     if not skip_discover:
+        discover_flags = [*extra_flags]
+        if reprocess:
+            discover_flags.append("--reprocess")
         stage_cmds.append(
             (
                 "discover",
-                [*base_cmd, "discover", "--config", str(cfg_path), *extra_flags],
+                [*base_cmd, "discover", "--config", str(cfg_path), *discover_flags],
             )
         )
     if not skip_extract:

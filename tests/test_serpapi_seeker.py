@@ -562,3 +562,36 @@ class TestSerpApiResultCache:
                 seeker.discover(si)
                 seeker.discover(si)
                 assert mock_client.search.call_count == 2
+
+    def test_cache_refresh_forces_live_fetch_but_still_writes(self, tmp_path):
+        """--reprocess maps to cache_refresh: ignore cached reads, refresh the
+        cache with fresh results so later runs benefit again."""
+        cache_dir = str(tmp_path / "cache")
+        with patch("serpapi.Client") as mock_client_class:
+            mock_client = MagicMock()
+            mock_client.search.return_value = self._RESPONSE
+            mock_client_class.return_value = mock_client
+
+            with patch.dict(
+                os.environ,
+                {"SERPAPI_API_KEY": "test-api-key", "SERPAPI_SSL_VERIFY": "true"},
+            ):
+                si = SeekerInput(query="geothermal ordinance", max_results=10)
+
+                # Seed the cache with a normal run.
+                SerpApiSeeker(cache_dir=cache_dir).discover(si)
+                assert mock_client.search.call_count == 1
+
+                # cache_refresh must ignore the cached entry (live fetch)...
+                mock_client.search.reset_mock()
+                refreshed = SerpApiSeeker(
+                    cache_dir=cache_dir, cache_refresh=True
+                ).discover(si)
+                assert mock_client.search.call_count == 1
+                assert len(refreshed) == 2
+
+                # ...and still refresh the cache so a later normal run is a hit.
+                mock_client.search.reset_mock()
+                SerpApiSeeker(cache_dir=cache_dir).discover(si)
+                assert mock_client.search.call_count == 0
+
