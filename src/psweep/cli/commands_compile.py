@@ -190,6 +190,22 @@ def _discovery_domain_root_from_manifest(manifest_path: Path, domain: str) -> Op
     return None
 
 
+def _canonical_discovery_manifest_path(
+    *,
+    manifest_path: Path,
+    domain: str,
+    run_id: str,
+) -> str:
+    """Prefer discovered/<domain>/runs/<run_id>/manifest.json over latest symlink."""
+    domain_root = _discovery_domain_root_from_manifest(manifest_path, domain)
+    if domain_root is None:
+        return str(manifest_path)
+    candidate = domain_root / "runs" / run_id / "manifest.json"
+    if candidate.exists():
+        return str(candidate)
+    return str(manifest_path)
+
+
 def _build_pipeline_accounting(
     *,
     domain: str,
@@ -240,6 +256,7 @@ def _build_pipeline_accounting(
     search_api_provider: Optional[str] = None
     total_docs_extracted: int = 0
     total_extraction_runs: int = 0
+    extraction_cost_total: float = 0.0
     discovery_completed_at: Optional[str] = None
     earliest_extraction_completed_at: Optional[str] = None
 
@@ -365,10 +382,13 @@ def _build_pipeline_accounting(
             run_payload: Dict[str, Any] = {
                 "run_id": run_id,
                 "status": user_status,
-                "source_status": source_status,
                 "completed_at": run_completed_at,
                 "elapsed_seconds": run_elapsed if run_elapsed else None,
-                "manifest_path": str(manifest_candidate),
+                "manifest_path": _canonical_discovery_manifest_path(
+                    manifest_path=manifest_candidate,
+                    domain=domain,
+                    run_id=run_id,
+                ),
             }
             if targets_total is not None:
                 run_payload["targets_configured"] = targets_total
@@ -637,6 +657,7 @@ def _build_pipeline_accounting(
         total_tokens += ext_tokens
         total_docs_extracted = ext_docs_billed
         total_extraction_runs = len(runs_data)
+        extraction_cost_total = ext_cost
 
     else:
         # Fallback: scan individual extraction JSON files.
@@ -777,6 +798,7 @@ def _build_pipeline_accounting(
             total_llm_calls += ext_calls
             total_tokens += ext_tokens
             total_docs_extracted = doc_total
+            extraction_cost_total = ext_cost_fallback
 
     # ------------------------------------------------------------------
     # Stale discovery warning
@@ -920,7 +942,7 @@ def _build_pipeline_accounting(
         "cost_scope": "metered_llm_only",
         "documents_extracted": total_docs_extracted,
         "cost_per_document_usd": (
-            _round_cost(total_llm_cost / total_docs_extracted)
+            _round_cost(extraction_cost_total / total_docs_extracted)
             if total_docs_extracted
             else 0.0
         ),
