@@ -1,6 +1,6 @@
 # Domain Config Template
 # Copy this file to config/<your_domain>/<your_domain>.yaml
-# Usage: psweep extract --config config/<your_domain>/<your_domain>.yaml
+# Usage: psweep run --config config/<your_domain>/<your_domain>.yaml
 #
 # Each section is independent — include only what you need:
 #   - extraction: required for the extract command
@@ -33,8 +33,6 @@ extraction:
   # Skip/reprocess hygiene: extract skips files with existing output JSON by
   # default (skip_existing=true). Re-run cheaply after config tweaks with no
   # flag; only pass --reprocess after changing schema, model tier, or pages.
-  # enable_qaqc: false                    # run multi-model QA/QC during extraction
-  # qaqc_lane: quantitative               # which QA/QC lane to run (see qaqc: section)
   # max_context: 600000                   # chars per document (default: 400000)
   # pages:                                 # how to select pages from large PDFs
   #   csv: config/your_domain/page_ranges.csv  # manual ranges per file (wins)
@@ -100,15 +98,28 @@ compilation:
 #     action: move
 
 # ─── QA/QC (optional) ────────────────────────────────────────────────────────
+# Run two models on the same documents and compare their outputs field-by-field.
+# Uncomment the block below to enable. Keep this minimal.
+#
 # qaqc:
-#   models: [primary, secondary]          # tiers to contrast — must resolve to
-#                                         # >= 2 distinct models (from models: block).
-#                                         # Declares QA/QC models in-config (no env var).
-#   default_lane: quantitative
-#   lanes:
-#     quantitative:
-#       enabled: true
-#       record_matching:
-#         key_fields: [field1, field2]
-#       comparison:
-#         primary_fields: [value_field, unit_field]
+#   models: [primary, secondary]      # Two model tiers to contrast.
+#   output_dir: validated/your_domain
+#   report:
+#     include_csv: false
+#     include_missing_in_queue: true
+#     include_low_signal_presence_in_queue: false  # keep obligation-only one-sided rows out of reviewer queue
+#   comparison_approach: mixed            # mixed | numeric_only | text_review
+#   record_matching:
+#     key_fields: [feature, applies_to, specific_subject]
+#     fuzzy_key_fields: [applies_to, specific_subject]
+#     semantic_match_threshold: 0.38
+#   comparison:
+#     primary_fields: [value, units, value_interpretation, obligation]
+#   judge:                                # Optional but recommended for mixed/text_review.
+#     enabled: true
+#     model: judge
+#     apply_on: all                       # none | non_numeric | all
+#     row_equivalence: true
+#     pair_unmatched: true
+#     min_confidence: high
+#     strictness: "If uncertain, mark non-equivalent."

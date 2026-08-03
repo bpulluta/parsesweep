@@ -43,7 +43,7 @@ class DocumentExtractor:
 
     Architecture:
     1. LLM Structured Extraction: Fast extraction with schema-driven parsing
-    2. Multi-Model QA/QC: Validates via multiple models (run separately with --enable-qa-qc)
+    2. Multi-Model QA/QC: Validates via multiple models (run separately via `psweep validate`)
 
     Works with any document type and JSON schema - fully domain-agnostic.
 
@@ -68,6 +68,7 @@ class DocumentExtractor:
         azure_endpoint: str = None,
         azure_api_version: str = None,
         context_windows: Optional[Dict[str, int]] = None,
+        base_url: Optional[str] = None,
     ):
         """
         Initialize document extractor.
@@ -83,6 +84,9 @@ class DocumentExtractor:
             context_windows: Optional {model-name -> max prompt tokens} map for the
                 fail-fast context-budget guard (from ``model_context_windows`` in
                 config). No model names are hardcoded.
+            base_url: Optional endpoint override for OpenAI-compatible proxies
+                (LiteLLM, OpenRouter, vLLM, etc.). When set, all calls are routed
+                through this URL regardless of model name.
         """
         self.api_key = api_key
         self.model = model
@@ -97,6 +101,7 @@ class DocumentExtractor:
             azure_endpoint=azure_endpoint,
             azure_api_version=azure_api_version,
             context_windows=context_windows,
+            base_url=base_url,
         )
 
         # Initialize text processor
@@ -110,7 +115,7 @@ class DocumentExtractor:
         1. LLM Structured Extraction - Fast, schema-driven parsing
         2. Post-processing - Normalization and sanity checks
 
-        For multi-model QA/QC validation, use the CLI with --enable-qa-qc flag.
+        For multi-model QA/QC validation, use the CLI validate stage.
 
         Args:
             text: Full document text to extract from

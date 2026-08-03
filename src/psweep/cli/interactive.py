@@ -33,7 +33,7 @@ _MENU_CHOICES = [
     {"name": "📥  Extract documents   (folder → JSON)", "value": "extract"},
     {"name": "📊  Compile results     (JSON → Excel/CSV)", "value": "compile"},
     {"name": "🌐  Discover documents  (web → curated folder)", "value": "discover"},
-    {"name": "🔍  Compare QA/QC      (multi-model comparison report)", "value": "compare"},
+    {"name": "🧪  Validate QA/QC      (multi-model extract + compare)", "value": "validate"},
     {"name": "─────────────────────────────────────────────────────", "value": "_sep1", "disabled": True},
     {"name": "🛠️   Init domain schema  (guided schema creation)", "value": "init-domain-schema"},
     {"name": "✅  Validate schema     (check $metadata + fields)", "value": "check-schema"},
@@ -48,7 +48,7 @@ _WORKFLOW_DESCRIPTIONS = {
     "extract": "Extract structured data from documents in a folder",
     "compile": "Compile extracted JSON files into Excel/CSV",
     "discover": "Discover and download documents from the web",
-    "compare": "Generate QA/QC comparison reports",
+    "validate": "Run explicit QA/QC validation stage",
     "init-domain-schema": "Create a new schema for a document domain",
     "check-schema": "Validate a schema file",
     "estimate": "Estimate extraction cost before running",
@@ -163,16 +163,16 @@ def _collect_discover_args() -> list[str] | None:
     return ["discover", "--config", config]
 
 
-def _collect_compare_args() -> list[str] | None:
-    """Collect arguments for the `compare` command."""
-    console.print("\n[bold]Compare QA/QC[/bold] — needs the [cyan]QA/QC output folder[/cyan] and schema.")
-    path = _ask_path("QA/QC directory (extracted/.../qa_qc):", default="extracted/")
-    if not path:
+def _collect_validate_args() -> list[str] | None:
+    """Collect arguments for the `validate` command."""
+    console.print("\n[bold]Validate QA/QC[/bold] — runs multi-model extraction and comparison from [cyan]run.yaml[/cyan].")
+    config = _ask_path("Config file path (run.yaml):", default="config/")
+    if not config:
         return None
-    schema = _ask_path("Schema file (.json):", default="schemas/personal/")
-    if not schema:
-        return None
-    return ["compare", path, "--schema", schema]
+    args = ["validate", "--config", config]
+    if _ask_confirm("Regenerate reports only (skip re-extraction)?", default=False):
+        args.append("--compare-only")
+    return args
 
 
 def _collect_init_domain_schema_args() -> list[str] | None:
@@ -214,7 +214,7 @@ _ARG_COLLECTORS: dict[str, Any] = {
     "extract": _collect_extract_args,
     "compile": _collect_compile_args,
     "discover": _collect_discover_args,
-    "compare": _collect_compare_args,
+    "validate": _collect_validate_args,
     "init-domain-schema": _collect_init_domain_schema_args,
     "check-schema": _collect_check_schema_args,
     "estimate": _collect_estimate_args,

@@ -71,7 +71,7 @@ class CompilationResult:
 
 @dataclass
 class PipelineResult:
-    """Combined result from a full discover → extract → compile pipeline run."""
+    """Combined result from a full discover → extract → [validate] → compile run."""
 
     domain: str
     stages_run: list[str]
@@ -93,24 +93,23 @@ def _read_config_dict(config_path: str | Path) -> dict:
 def resolve_run_qaqc(config_path: str | Path) -> Optional[dict]:
     """Resolve QA/QC orchestration settings from a domain run config.
 
-    QA/QC is considered enabled for a ``run`` when the extraction section opts
-    in via ``enable_qaqc: true`` — the same signal the ``extract`` command
-    itself honours. Returns ``None`` when QA/QC is disabled, otherwise a dict
-    describing the follow-up ``compare`` stage inputs.
+    QA/QC is enabled for ``run`` when the top-level ``qaqc.models`` list is
+    present. Returns ``None`` when absent, otherwise a dict describing validate
+    stage inputs.
     """
     cfg = _read_config_dict(config_path)
-    extraction = cfg.get("extraction") or {}
-    if not extraction.get("enable_qaqc"):
+    qaqc_section = cfg.get("qaqc") or {}
+    models = qaqc_section.get("models") or []
+    if len(models) < 2:
         return None
 
     domain = cfg.get("domain", Path(config_path).parent.name)
+    extraction = cfg.get("extraction") or {}
     output_dir = Path(extraction.get("output_dir", f"extracted/{domain}"))
-    qaqc_section = cfg.get("qaqc") or {}
     return {
-        "lane": extraction.get("qaqc_lane"),
         "schema": extraction.get("schema"),
         "qa_qc_dir": output_dir / "qa_qc",
-        "models": qaqc_section.get("models") or [],
+        "models": models,
     }
 
 
@@ -130,10 +129,8 @@ def build_run_stage_commands(
     (re-extract already-processed documents), giving ``run --reprocess`` a
     single "start fresh" behavior across stages.
 
-    When the config enables multi-model QA/QC, the extract stage is run with
-    ``--enable-qa-qc`` and a follow-up ``compare`` stage is appended so the
-    orchestrated ``run`` performs the full discover → extract → compile →
-    compare flow instead of silently ignoring ``enable_qaqc: true``.
+    When the config enables multi-model QA/QC, an explicit ``validate`` stage
+    is appended after extraction.
     """
     cfg_path = Path(config_path)
     stage_cmds: list[tuple[str, list[str]]] = []
@@ -154,12 +151,17 @@ def build_run_stage_commands(
         extract_flags = [*extra_flags]
         if reprocess:
             extract_flags.append("--reprocess")
-        if qaqc:
-            extract_flags.append("--enable-qa-qc")
         stage_cmds.append(
             (
                 "extract",
                 [*base_cmd, "extract", "--config", str(cfg_path), *extract_flags],
+            )
+        )
+    if qaqc and not skip_extract:
+        stage_cmds.append(
+            (
+                "validate",
+                [*base_cmd, "validate", "--config", str(cfg_path), *extra_flags],
             )
         )
     stage_cmds.append(
@@ -168,20 +170,6 @@ def build_run_stage_commands(
             [*base_cmd, "compile", "--config", str(cfg_path), *extra_flags],
         )
     )
-    if qaqc and (not skip_extract or Path(qaqc["qa_qc_dir"]).exists()):
-        compare_cmd = [
-            *base_cmd,
-            "compare",
-            Path(qaqc["qa_qc_dir"]).as_posix(),
-            "--config",
-            str(cfg_path),
-        ]
-        if qaqc.get("schema"):
-            compare_cmd += ["--schema", str(qaqc["schema"])]
-        if qaqc.get("lane"):
-            compare_cmd += ["--qaqc-lane", str(qaqc["lane"])]
-        compare_cmd += [*extra_flags]
-        stage_cmds.append(("compare", compare_cmd))
     return stage_cmds
 
 

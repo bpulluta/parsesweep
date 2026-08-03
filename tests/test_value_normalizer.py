@@ -3,7 +3,13 @@
 
 import pytest
 
-from psweep.utils.value_normalizer import is_numeric_value, normalize_value
+from psweep.utils.value_normalizer import (
+    build_unit_equivalence_index,
+    canonicalize_measurement,
+    canonicalize_unit,
+    is_numeric_value,
+    normalize_value,
+)
 
 
 @pytest.mark.parametrize(
@@ -59,3 +65,31 @@ def test_normalize_value(value, expected):
 )
 def test_is_numeric_value(value, expected):
     assert is_numeric_value(value) is expected
+
+
+def test_canonicalize_unit_with_config_groups():
+    index = build_unit_equivalence_index([["hours", "hrs", "hr"]])
+    assert canonicalize_unit("hrs", index) == "hours"
+    assert canonicalize_unit("hour", index) == "hour"
+
+
+def test_canonicalize_measurement_with_inline_unit_and_config_groups():
+    index = build_unit_equivalence_index([["feet", "ft"]])
+    assert canonicalize_measurement("50 feet", equivalence_index=index) == ("50", "feet")
+    assert canonicalize_measurement("50", "ft", equivalence_index=index) == ("50", "feet")
+
+
+def test_canonicalize_measurement_treats_time_formats_as_equivalent():
+    index = build_unit_equivalence_index([["HH:MM (24-hour)", "a.m./p.m."]])
+    assert canonicalize_measurement("07:00", "HH:MM (24-hour)", index) == (
+        "time:420",
+        "time-format",
+    )
+    assert canonicalize_measurement("7 a.m.", "a.m./p.m.", index) == (
+        "time:420",
+        "time-format",
+    )
+
+
+def test_canonicalize_unit_maps_generic_time_label():
+    assert canonicalize_unit("time") == "time-format"

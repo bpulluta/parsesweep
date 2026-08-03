@@ -470,7 +470,7 @@ class TestRunMultiModelExtraction:
         metadata_path = tmp_path / "qa_qc" / "test_doc" / "metadata.json"
         with open(metadata_path) as f:
             metadata = json.load(f)
-            assert metadata["summary"]["total_cost"] == pytest.approx(0.015, rel=0.01)
+            assert metadata["summary"]["total_cost_usd_incurred_this_run"] == pytest.approx(0.015, rel=0.01)
     
     @patch("psweep.extraction.DocumentExtractor")
     def test_extract_called_correctly(

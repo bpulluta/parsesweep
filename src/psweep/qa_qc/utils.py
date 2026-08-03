@@ -21,9 +21,17 @@ def resolve_qaqc_runtime_config(
     schema_metadata,
     runtime_artifact: Optional[Dict[str, Any]] = None,
     runtime_qaqc: Optional[Dict[str, Any]] = None,
-    preferred_lane: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """Resolve active QA/QC config from runtime config, falling back to schema metadata."""
+    """Resolve active QA/QC config from the run config.
+
+    QA/QC configuration always lives in config/<domain>/run.yaml under
+    ``qaqc``. Schema metadata is intentionally excluded from this path —
+    it owns extraction contracts, not runtime QA/QC behavior.
+
+    Raises:
+        ValueError: If no QA/QC config can be found, if deprecated lane-style
+            keys are present, or if required fields are missing.
+    """
     pack_qaqc = (
         ((runtime_artifact or {}).get("resolved") or {})
         .get("pack", {})
@@ -32,72 +40,116 @@ def resolve_qaqc_runtime_config(
     if not isinstance(pack_qaqc, dict) and isinstance(runtime_qaqc, dict):
         pack_qaqc = runtime_qaqc
 
-    if isinstance(pack_qaqc, dict):
-        lanes = pack_qaqc.get("lanes") or {}
-        lane_name = pack_qaqc.get("default_lane")
-        lane_config = None
+    if not isinstance(pack_qaqc, dict):
+        raise ValueError(
+            "No QA/QC configuration found. "
+            "Add a qaqc: block to your run config YAML:\n"
+            "  qaqc:\n"
+            "    models: [primary, secondary]\n"
+            "    comparison_approach: mixed\n"
+            "    record_matching:\n"
+            "      key_fields: [feature, applies_to, specific_subject]\n"
+            "    comparison:\n"
+            "      primary_fields: [value, units, value_interpretation]\n"
+            "Then run: pixi run psweep validate --config config/<domain>/run.yaml"
+        )
 
-        if preferred_lane:
-            candidate = lanes.get(preferred_lane)
-            if not isinstance(candidate, dict):
-                available_lanes = ", ".join(sorted(lanes)) or "none"
-                raise ValueError(
-                    f"Requested QA/QC lane '{preferred_lane}' is not defined in the runtime pack; available lanes: {available_lanes}"
-                )
-            lane_name = preferred_lane
-            lane_config = candidate
+    if "lanes" in pack_qaqc or "default_lane" in pack_qaqc:
+        raise ValueError(
+            "Deprecated QA/QC lane-style config detected (default_lane/lanes). "
+            "Migrate to the simplified qaqc shape:\n"
+            "  qaqc:\n"
+            "    models: [primary, secondary]\n"
+            "    comparison_approach: mixed\n"
+            "    record_matching:\n"
+            "      key_fields: [feature, applies_to, specific_subject]\n"
+            "    comparison:\n"
+            "      primary_fields: [value, units, value_interpretation, obligation]\n"
+            "    judge:\n"
+            "      enabled: true\n"
+            "      model: judge"
+        )
 
-        if (
-            lane_config is None
-            and lane_name
-            and isinstance(lanes.get(lane_name), dict)
-        ):
-            candidate = lanes[lane_name]
-            if candidate.get("enabled", True):
-                lane_config = candidate
+    record_matching = pack_qaqc.get("record_matching") or {}
+    comparison = pack_qaqc.get("comparison") or {}
+    judge = pack_qaqc.get("judge") or {}
 
-        if lane_config is None and not preferred_lane:
-            for candidate_name, candidate in lanes.items():
-                if isinstance(candidate, dict) and candidate.get(
-                    "enabled", False
-                ):
-                    lane_name = candidate_name
-                    lane_config = candidate
-                    break
+    match_fields = record_matching.get("key_fields")
+    if not match_fields:
+        raise ValueError(
+            "QA/QC config is missing required record_matching.key_fields. "
+            "Add it to your run config:\n"
+            "  qaqc:\n"
+            "    record_matching:\n"
+            "      key_fields: [feature, applies_to, specific_subject]"
+        )
 
-        if lane_config is not None:
-            match_fields = lane_config.get("record_matching", {}).get(
-                "key_fields"
-            )
-            compare_fields = lane_config.get("comparison", {}).get(
-                "primary_fields"
-            )
+    compare_fields = comparison.get("primary_fields") or ["value"]
+    unit_equivalence_groups = comparison.get("unit_equivalence_groups") or []
+    if not isinstance(unit_equivalence_groups, list):
+        raise ValueError(
+            "qaqc.comparison.unit_equivalence_groups must be a list of synonym lists, "
+            "for example: [[\"feet\", \"ft\"], [\"hours\", \"hrs\", \"hr\"]]."
+        )
+    comparison_approach = str(
+        pack_qaqc.get("comparison_approach", "mixed")
+    ).strip().lower()
+    if comparison_approach not in {"mixed", "numeric_only", "text_review"}:
+        raise ValueError(
+            "Unsupported qaqc.comparison_approach. "
+            "Use one of: mixed, numeric_only, text_review."
+        )
 
-            return {
-                "source": "runtime_artifact",
-                "lane_name": lane_name,
-                "mode": lane_config.get("mode", lane_name or "runtime"),
-                "comparison_approach": lane_config.get(
-                    "comparison_approach", "numeric_only"
-                ),
-                "match_fields": list(
-                    match_fields or schema_metadata.get_qa_qc_match_fields()
-                ),
-                "compare_fields": list(
-                    compare_fields
-                    or schema_metadata.get_qa_qc_compare_fields()
-                ),
-                "projection": lane_config.get("projection"),
-            }
+    enable_text_fallback_matching = comparison_approach == "mixed"
+    if "text_fallback_matching" in record_matching:
+        raise ValueError(
+            "record_matching.text_fallback_matching is deprecated. "
+            "Fallback matching is automatic in mixed comparison_approach."
+        )
+
+    enable_judge_pair_matching = bool(judge.get("enabled")) and bool(
+        judge.get("pair_unmatched", True)
+    )
+    if "llm_pair_matching" in record_matching:
+        raise ValueError(
+            "record_matching.llm_pair_matching is deprecated. "
+            "Use judge.pair_unmatched (default true) to control judge pairing."
+        )
+
+    text_fallback_fields = list(
+        record_matching.get("text_fallback_fields")
+        or [
+            "feature",
+            "applies_to",
+            "specific_subject",
+            "requirement_description",
+            "condition",
+            "source_verbatim",
+            "value",
+            "units",
+        ]
+    )
 
     return {
-        "source": "schema_metadata",
-        "lane_name": None,
-        "mode": "schema_metadata",
-        "comparison_approach": "numeric_only",
-        "match_fields": list(schema_metadata.get_qa_qc_match_fields()),
-        "compare_fields": list(schema_metadata.get_qa_qc_compare_fields()),
-        "projection": None,
+        "source": "runtime_artifact",
+        "lane_name": "main",
+        "comparison_approach": comparison_approach,
+        "match_fields": list(match_fields),
+        "compare_fields": list(compare_fields),
+        "unit_equivalence_groups": list(unit_equivalence_groups),
+        "projection": pack_qaqc.get("projection"),
+        "enable_text_fallback_matching": enable_text_fallback_matching,
+        "enable_judge_pair_matching": enable_judge_pair_matching,
+        "text_fallback_fields": text_fallback_fields,
+        "semantic_match_threshold": float(
+            record_matching.get("semantic_match_threshold", 0.38) or 0.38
+        ),
+        "fuzzy_match_fields": list(
+            record_matching.get("fuzzy_key_fields", []) or []
+        ),
+        "scope_variant_keys": [],
+        "judge": judge,
+        "report": pack_qaqc.get("report") or {},
     }
 
 
