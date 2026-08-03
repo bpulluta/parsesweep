@@ -88,11 +88,106 @@ def _round_cost(v: float) -> float:
 
 
 def _round_secs(v: float) -> float:
-    return round(v, 1)
+    return round(v, 3)
 
 
 def _round_mb(v: float) -> float:
     return round(v, 1)
+
+
+def _has_any_files(path: Path) -> bool:
+    """Return True when *path* contains at least one file."""
+    if not path.exists() or not path.is_dir():
+        return False
+    return any(p.is_file() for p in path.rglob("*"))
+
+
+def _discover_domain_roots(
+    *,
+    domain: str,
+    extraction_dir: Path,
+    discovery_input_dir: Optional[str],
+) -> List[Path]:
+    """Return candidate ``discovered/<domain>`` roots for accounting lookup."""
+    roots: List[Path] = []
+    seen: set[str] = set()
+
+    def _add_root(candidate: Path) -> None:
+        key = str(candidate)
+        if key in seen:
+            return
+        seen.add(key)
+        roots.append(candidate)
+
+    for base in [Path.cwd(), extraction_dir.parent, extraction_dir.parent.parent]:
+        _add_root(base / "discovered" / domain)
+
+    if not discovery_input_dir:
+        return roots
+
+    disc_path = Path(discovery_input_dir)
+    if disc_path.is_file():
+        disc_path = disc_path.parent
+
+    for parent in [disc_path, *disc_path.parents]:
+        if parent.name == domain and parent.parent.name == "discovered":
+            _add_root(parent)
+            break
+        if parent.name == "discovered":
+            _add_root(parent / domain)
+            break
+    return roots
+
+
+def _collect_discovery_manifests(
+    *,
+    domain: str,
+    extraction_dir: Path,
+    discovery_input_dir: Optional[str],
+) -> List[Path]:
+    """Collect discovery run manifests (deduplicated, oldest first)."""
+    manifests: List[Path] = []
+    seen: set[str] = set()
+
+    def _add_manifest(path: Path) -> None:
+        key = str(path)
+        if key in seen or not path.exists():
+            return
+        seen.add(key)
+        manifests.append(path)
+
+    for root in _discover_domain_roots(
+        domain=domain,
+        extraction_dir=extraction_dir,
+        discovery_input_dir=discovery_input_dir,
+    ):
+        runs_dir = root / "runs"
+        if runs_dir.is_dir():
+            for manifest in sorted(runs_dir.glob("*/manifest.json")):
+                _add_manifest(manifest)
+        latest_manifest = root / "latest" / "manifest.json"
+        _add_manifest(latest_manifest)
+
+    manifests.sort(key=lambda p: str(p))
+    return manifests
+
+
+def _discovery_domain_root_from_manifest(manifest_path: Path, domain: str) -> Optional[Path]:
+    """Return discovered/<domain> root for known manifest layouts."""
+    parent = manifest_path.parent
+    if (
+        parent.name == "latest"
+        and parent.parent.name == domain
+        and parent.parent.parent.name == "discovered"
+    ):
+        return parent.parent
+    if (
+        parent.parent.name == "runs"
+        and parent.parent.parent.name == domain
+        and parent.parent.parent.parent.name == "discovered"
+    ):
+        return parent.parent.parent
+    return None
 
 
 def _build_pipeline_accounting(
@@ -105,22 +200,29 @@ def _build_pipeline_accounting(
 ) -> Dict[str, Any]:
     """Build a unified run_accounting.json for the compile stage.
 
+    The accounting file records WHAT HAPPENED in a run. It is a factual log,
+    not a system manual: fields only appear when they carry information.
+
     Cost model
     ----------
-    LLM costs (extraction + document-review) accumulate in totals.cost_usd and
-    summary.total_cost_usd.
+    ``summary`` is the quick-read block (cost, volume, efficiency). The
+    per-stage detail lives in ``stages.discovery``, ``stages.extraction``, and
+    ``stages.compilation``. LLM costs (extraction + document-review) accumulate
+    in ``summary.total_cost_usd``.
 
     Search API (SerpApi and future flat-rate providers) is tracked as query
     consumption only — it is NOT added to cost_usd because the plan is a
-    monthly flat-rate subscription, not per-query billing. The billing model
-    is explicit in the search_api section so users are never confused.
+    monthly flat-rate subscription, not per-query billing. Query counts appear
+    in the summary only when queries were actually made.
 
     Reruns
     ------
-    Each extraction pass produces one run_manifests/*.manifest.json entry.
-    All runs are listed in extraction.runs[] sorted by completed_at. Costs are
-    cumulative (reprocessed documents incur additional LLM cost). The per-run
-    cost_per_document_usd allows comparing rerun cost efficiency.
+    Stage histories are cumulative across immutable run manifests:
+    - discovery: discovered/<domain>/runs/*/manifest.json
+    - extraction: extracted/<domain>/run_manifests/*.manifest.json
+    - compilation: compiled/<domain>/run_manifests/*.manifest.json
+    This keeps accounting stable across iterative workflows where users reuse,
+    rerun, or partially reprocess stages.
 
     Scale notes
     -----------
@@ -144,46 +246,36 @@ def _build_pipeline_accounting(
     stages: Dict[str, Any] = {}
 
     # ------------------------------------------------------------------
-    # Discovery stage
+    # Discovery stage (cumulative across all discovery run manifests)
     # ------------------------------------------------------------------
-    # Manifest priority:
-    #   1. Explicit discovery_input_dir (from config) — walk up dir tree.
-    #   2. Auto-detect: discovered/<domain>/latest/manifest.json relative to CWD.
-    #   3. Same relative to extraction_dir ancestors.
-    manifest_candidate: Optional[Path] = None
+    discovery_runs: List[Dict[str, Any]] = []
+    discovery_cost_acc: List[float] = []
+    discovery_input_tokens = 0
+    discovery_output_tokens = 0
+    discovery_llm_calls = 0
+    discovery_queries = 0
+    discovery_candidates = 0
+    discovery_downloaded = 0
+    discovery_failed_downloads = 0
+    discovery_total_downloads = 0
+    discovery_providers: set[str] = set()
+    discovered_run_ids_seen: set[str] = set()
 
-    if discovery_input_dir:
-        disc_path = Path(discovery_input_dir)
-        for parent in [disc_path, disc_path.parent, disc_path.parent.parent]:
-            candidate = parent / "manifest.json"
-            if candidate.exists():
-                manifest_candidate = candidate
-                break
-
-        if manifest_candidate is None:
-            runs_dir = disc_path.parent / "runs"
-            if runs_dir.is_dir():
-                run_dirs = sorted(
-                    (d for d in runs_dir.iterdir() if d.is_dir()), reverse=True
-                )
-                for run_dir in run_dirs:
-                    candidate = run_dir / "manifest.json"
-                    if candidate.exists():
-                        manifest_candidate = candidate
-                        break
-
-    if manifest_candidate is None:
-        for base in [Path.cwd(), extraction_dir.parent, extraction_dir.parent.parent]:
-            candidate = base / "discovered" / domain / "latest" / "manifest.json"
-            if candidate.exists():
-                manifest_candidate = candidate
-                break
-
-    if manifest_candidate is not None:
+    discovery_manifests = _collect_discovery_manifests(
+        domain=domain,
+        extraction_dir=extraction_dir,
+        discovery_input_dir=discovery_input_dir,
+    )
+    for manifest_candidate in discovery_manifests:
         try:
             disc = json.loads(manifest_candidate.read_text(encoding="utf-8"))
             if not isinstance(disc, dict):
                 raise ValueError("Discovery manifest is not a JSON object")
+
+            run_id = str(disc.get("run_id") or manifest_candidate.parent.name)
+            if run_id in discovered_run_ids_seen:
+                continue
+            discovered_run_ids_seen.add(run_id)
 
             timing = disc.get("timing") or {}
             stage_summaries = disc.get("stage_summaries") or {}
@@ -194,13 +286,12 @@ def _build_pipeline_accounting(
             acceptance = stage_summaries.get("acceptance_metrics") or {}
             udt = acceptance.get("unknown_target_discovery") or {}
 
-            disc_elapsed = _round_secs(float(timing.get("elapsed_seconds") or 0.0))
-            discovery_completed_at = timing.get("completed_at") or None
+            run_completed_at = timing.get("completed_at") or None
+            run_elapsed = _round_secs(float(timing.get("elapsed_seconds") or 0.0))
 
-            # Infer discovery status from manifest if available.
-            disc_status: str = disc.get("status") or "completed"
+            source_status = str(disc.get("status") or "scaffold")
+            source_is_dry_run = source_status.startswith("scaffold_dry_run")
 
-            # --- Document review (LLM) ---
             rev_cost = _round_cost(float(review_costs.get("total_cost_usd") or 0.0))
             rev_input_tokens = int(review_costs.get("total_input_tokens") or 0)
             rev_output_tokens = int(review_costs.get("total_output_tokens") or 0)
@@ -212,127 +303,186 @@ def _build_pipeline_accounting(
             rev_total_tokens = rev_input_tokens + rev_output_tokens
             rev_reviewed = int(review_costs.get("documents_reviewed") or rev_calls or 0)
 
-            # --- Search API ---
             seeker_provider = seeker.get("provider") or None
             seeker_queries = int(seeker.get("queries_executed") or 0)
-            seeker_enabled = bool(seeker.get("enabled"))
             seeker_candidates = int(seeker.get("candidates_discovered") or 0)
 
-            # targets_total: read from acceptance_metrics (correct field)
             targets_total = udt.get("target_count")
             if targets_total is None and disc.get("input"):
                 inp_targets = (disc.get("input") or {}).get("targets") or []
                 if inp_targets:
                     targets_total = len(inp_targets)
 
-            # --- Downloads ---
             dl_downloaded_raw = downloads_raw.get("downloaded")
             dl_downloaded = (
-                int(dl_downloaded_raw) if dl_downloaded_raw is not None else None
+                int(dl_downloaded_raw) if dl_downloaded_raw is not None else 0
             )
-            dl_failed = downloads_raw.get("failed")
-            dl_total = downloads_raw.get("total")
+            dl_failed_raw = downloads_raw.get("failed")
+            dl_failed = int(dl_failed_raw) if dl_failed_raw is not None else 0
+            dl_total_raw = downloads_raw.get("total")
+            dl_total = int(dl_total_raw) if dl_total_raw is not None else 0
             dl_bytes = downloads_raw.get("total_bytes")
             dl_mb = _round_mb(dl_bytes / 1_048_576) if dl_bytes else None
 
-            review_enabled = (
-                bool(review.get("enabled"))
-                if "enabled" in review
-                else bool(review_costs)
-            ) or rev_calls > 0 or rev_total_tokens > 0 or rev_reviewed > 0
+            disc_error_summary = disc.get("error_summary") or {}
+            disc_errors_list = disc.get("errors") or []
+            disc_error_total = int(disc_error_summary.get("total_errors") or 0)
+            disc_error_codes = disc_error_summary.get("by_code") or {}
 
-            doc_review_section: Dict[str, Any] = {
-                "enabled": review_enabled,
-                "status": (
-                    "used" if review_enabled else "not_enabled"
-                ),
-                "optional": True,
-                "purpose": "LLM evaluates whether discovered documents match the domain",
-                "documents_reviewed": rev_reviewed,
-                "llm_calls": rev_calls,
-                "input_tokens": rev_input_tokens,
-                "output_tokens": rev_output_tokens,
-                "tokens": rev_total_tokens,
-                "cost_usd": rev_cost,
-                "zero_cost_reason": (
-                    None if rev_cost > 0 else (
-                        "document-review not enabled" if not review_enabled else
-                        "provider reported zero billable cost"
-                    )
-                ),
-                "cost_per_review_usd": (
-                    _round_cost(rev_cost / rev_reviewed) if rev_reviewed else 0.0
-                ),
+            has_activity = (
+                seeker_queries > 0
+                or seeker_candidates > 0
+                or rev_calls > 0
+                or rev_total_tokens > 0
+                or rev_cost > 0
+                or dl_downloaded > 0
+                or dl_failed > 0
+                or dl_total > 0
+            )
+            discovery_domain_root = _discovery_domain_root_from_manifest(
+                manifest_candidate,
+                domain,
+            )
+            has_reuse_evidence = bool(
+                discovery_domain_root
+                and _has_any_files(discovery_domain_root / "curated")
+            )
+            is_reused = (not has_activity) and has_reuse_evidence and not source_is_dry_run
+
+            if source_status == "scaffold_dry_run":
+                user_status = "dry_run"
+            elif source_status == "scaffold_dry_run_with_errors":
+                user_status = "dry_run_with_errors"
+            elif is_reused:
+                user_status = "reused"
+            elif has_activity and disc_error_total > 0:
+                user_status = "completed_with_errors"
+            elif disc_error_total > 0:
+                user_status = "incomplete"
+            else:
+                user_status = "completed"
+
+            run_payload: Dict[str, Any] = {
+                "run_id": run_id,
+                "status": user_status,
+                "source_status": source_status,
+                "completed_at": run_completed_at,
+                "elapsed_seconds": run_elapsed if run_elapsed else None,
+                "manifest_path": str(manifest_candidate),
             }
+            if targets_total is not None:
+                run_payload["targets_configured"] = targets_total
 
-            search_api_section: Dict[str, Any] = {
-                "enabled": seeker_enabled,
-                "status": (
-                    "used" if seeker_enabled else "not_enabled"
-                ),
-                "optional": True,
-                "purpose": "Search for candidate documents matching discovery targets",
-                "provider": seeker_provider,
-                "billing_model": "flat_rate_subscription",
-                "cost_usd": 0.0,
-                "zero_cost_reason": (
-                    "flat-rate subscription (not per-query billing)" if seeker_enabled else
-                    "search API not used in this run"
-                ),
-                "queries_used": seeker_queries if seeker_enabled else 0,
-                "candidates_discovered": seeker_candidates if seeker_enabled else 0,
-            }
+            if seeker_queries > 0 or seeker_candidates > 0:
+                run_payload["search_api"] = _omit_none(
+                    {
+                        "provider": seeker_provider,
+                        "queries_used": seeker_queries if seeker_queries else None,
+                        "candidates_discovered": seeker_candidates if seeker_candidates else None,
+                    }
+                )
 
-            downloads_section: Dict[str, Any] = _omit_none({
-                "downloaded": dl_downloaded,
-                "failed": int(dl_failed) if dl_failed is not None else None,
-                "total": int(dl_total) if dl_total is not None else None,
-                "total_mb": dl_mb,
-            })
+            if rev_calls > 0 or rev_total_tokens > 0 or rev_reviewed > 0 or rev_cost > 0:
+                run_payload["document_review"] = _omit_none(
+                    {
+                        "documents_reviewed": rev_reviewed if rev_reviewed else None,
+                        "llm_calls": rev_calls if rev_calls else None,
+                        "input_tokens": rev_input_tokens if rev_input_tokens else None,
+                        "output_tokens": rev_output_tokens if rev_output_tokens else None,
+                        "tokens": rev_total_tokens if rev_total_tokens else None,
+                        "cost_usd": rev_cost if rev_cost else None,
+                    }
+                )
 
-            # Build discovery stage with all cost fields always visible
-            disc_stage: Dict[str, Any] = {
-                "status": disc_status,
-                "cost_model": "optional_document_review_llm_plus_flat_rate_search",
-                "cost_usd": rev_cost,
-                "zero_cost_reason": (
-                    None if rev_cost > 0 else (
-                        "document-review not enabled" if not review_enabled else
-                        "provider reported zero billable cost"
-                    )
-                ),
-                "llm_calls": rev_calls,
-                "input_tokens": rev_input_tokens,
-                "output_tokens": rev_output_tokens,
-                "tokens": rev_total_tokens,
-                "completed_at": discovery_completed_at,
-                "elapsed_seconds": disc_elapsed,
-                "targets_total": targets_total,
-                "document_review": doc_review_section,
-                "search_api": search_api_section,
-            }
-            # Add optional fields only if present
-            if manifest_candidate:
-                disc_stage["manifest_path"] = str(manifest_candidate)
-            if disc.get("run_id"):
-                disc_stage["run_id"] = disc.get("run_id")
-            if downloads_section:
-                disc_stage["downloads"] = downloads_section
+            if dl_downloaded > 0 or dl_failed > 0 or dl_total > 0:
+                run_payload["downloads"] = _omit_none(
+                    {
+                        "downloaded": dl_downloaded if dl_downloaded else None,
+                        "failed": dl_failed if dl_failed else None,
+                        "total": dl_total if dl_total else None,
+                        "total_mb": dl_mb,
+                    }
+                )
 
-            stages["discovery"] = disc_stage
+            if disc_error_total > 0 and not is_reused:
+                run_payload["errors"] = _omit_none(
+                    {
+                        "total": disc_error_total,
+                        "by_code": disc_error_codes or None,
+                        "messages": [
+                            e.get("message")
+                            for e in disc_errors_list[:3]
+                            if isinstance(e, dict) and e.get("message")
+                        ] or None,
+                    }
+                )
 
-            # Accumulate
-            total_llm_cost = _round_cost(math.fsum([total_llm_cost, rev_cost]))
-            total_llm_calls += rev_calls
-            total_tokens += rev_total_tokens
-            if seeker_enabled and seeker_queries > 0:
-                total_search_queries += seeker_queries
-                search_api_provider = seeker_provider
+            discovery_runs.append(_omit_none(run_payload))
+
+            discovery_cost_acc.append(rev_cost)
+            discovery_input_tokens += rev_input_tokens
+            discovery_output_tokens += rev_output_tokens
+            discovery_llm_calls += rev_calls
+            discovery_queries += seeker_queries
+            discovery_candidates += seeker_candidates
+            discovery_downloaded += dl_downloaded
+            discovery_failed_downloads += dl_failed
+            discovery_total_downloads += dl_total
+            if seeker_provider:
+                discovery_providers.add(str(seeker_provider))
 
         except (json.JSONDecodeError, ValueError, OSError, KeyError) as exc:
             warnings.append(
                 f"discovery_manifest_parse_error: {manifest_candidate} — {exc}"
             )
+
+    if discovery_runs:
+        discovery_runs.sort(key=lambda run: run.get("completed_at") or "")
+        latest_discovery = discovery_runs[-1]
+        discovery_completed_at = latest_discovery.get("completed_at")
+        stages["discovery"] = {
+            "status": latest_discovery.get("status", "completed"),
+            "run_count": len(discovery_runs),
+            "aggregate": _omit_none(
+                {
+                    "metered_llm_cost_usd": _round_cost(math.fsum(discovery_cost_acc)),
+                    "document_review_llm_calls": discovery_llm_calls or None,
+                    "document_review_input_tokens": (
+                        discovery_input_tokens if discovery_input_tokens else None
+                    ),
+                    "document_review_output_tokens": (
+                        discovery_output_tokens if discovery_output_tokens else None
+                    ),
+                    "document_review_tokens": (
+                        discovery_input_tokens + discovery_output_tokens
+                        if (discovery_input_tokens + discovery_output_tokens) > 0
+                        else None
+                    ),
+                    "search_api_queries": discovery_queries or None,
+                    "candidates_discovered": discovery_candidates or None,
+                    "documents_downloaded": discovery_downloaded or None,
+                    "download_failures": discovery_failed_downloads or None,
+                    "download_attempts": discovery_total_downloads or None,
+                    "search_api_providers": (
+                        sorted(discovery_providers) if discovery_providers else None
+                    ),
+                }
+            ),
+            "runs": discovery_runs,
+        }
+        total_llm_cost = _round_cost(
+            math.fsum([total_llm_cost, math.fsum(discovery_cost_acc)])
+        )
+        total_llm_calls += discovery_llm_calls
+        total_tokens += discovery_input_tokens + discovery_output_tokens
+        total_search_queries += discovery_queries
+        if discovery_providers:
+            search_api_provider = ", ".join(sorted(discovery_providers))
+    else:
+        stages["discovery"] = {
+            "status": "not_applicable",
+            "input_source": "local_documents",
+        }
 
     # ------------------------------------------------------------------
     # Extraction stage
@@ -653,27 +803,121 @@ def _build_pipeline_accounting(
             pass
 
     # ------------------------------------------------------------------
-    # Compilation stage
+    # Compilation stage (cumulative across compilation run manifests)
     # ------------------------------------------------------------------
+    compilation_runs: List[Dict[str, Any]] = []
+    compilation_cost_acc: List[float] = []
+    compilation_llm_calls = 0
+    compilation_input_tokens = 0
+    compilation_output_tokens = 0
+    compile_manifest_dir = output_dir / "run_manifests"
+    compile_manifest_files = (
+        sorted(compile_manifest_dir.glob("*.manifest.json"))
+        if compile_manifest_dir.is_dir()
+        else []
+    )
+    seen_compile_run_ids: set[str] = set()
+    for mf_path in compile_manifest_files:
+        try:
+            mf = json.loads(mf_path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError) as exc:
+            warnings.append(f"compile_manifest_parse_error: {mf_path.name} — {exc}")
+            continue
+        if not isinstance(mf, dict):
+            continue
+
+        raw_stem = mf_path.stem
+        clean_stem = (
+            raw_stem.removesuffix(".manifest")
+            if raw_stem.endswith(".manifest")
+            else raw_stem
+        )
+        run_id = str(mf.get("run_id") or clean_stem)
+        if run_id in seen_compile_run_ids:
+            continue
+        seen_compile_run_ids.add(run_id)
+
+        costs = mf.get("costs") or {}
+        lineage = mf.get("lineage") or {}
+        run_timing = mf.get("timing") or {}
+        outputs = mf.get("outputs") or {}
+        status_block = mf.get("status") or {}
+        run_cost = _round_cost(float(costs.get("total_cost_usd") or 0.0))
+        run_input = int(costs.get("total_input_tokens") or 0)
+        run_output = int(costs.get("total_output_tokens") or 0)
+        run_calls = int(costs.get("llm_calls") or 0)
+        run_record: Dict[str, Any] = _omit_none(
+            {
+                "run_id": run_id,
+                "status": (
+                    status_block.get("result")
+                    if isinstance(status_block, dict)
+                    else status_block
+                )
+                or "completed",
+                "mode": mf.get("mode"),
+                "cost_usd": run_cost if run_cost else None,
+                "llm_calls": run_calls if run_calls else None,
+                "input_tokens": run_input if run_input else None,
+                "output_tokens": run_output if run_output else None,
+                "tokens": (run_input + run_output) if (run_input + run_output) else None,
+                "model": lineage.get("model"),
+                "provider": lineage.get("provider"),
+                "schema_id": lineage.get("schema_id"),
+                "started_at": run_timing.get("started_at"),
+                "completed_at": (
+                    run_timing.get("finished_at")
+                    or run_timing.get("completed_at")
+                ),
+                "records": outputs.get("records"),
+                "columns": outputs.get("columns"),
+                "output_formats": outputs.get("output_formats"),
+            }
+        )
+        compilation_runs.append(run_record)
+        compilation_cost_acc.append(run_cost)
+        compilation_llm_calls += run_calls
+        compilation_input_tokens += run_input
+        compilation_output_tokens += run_output
+
     stages["compilation"] = {
         "status": "completed",
-        "cost_model": "optional_synthesis_llm",
-        "cost_usd": 0.0,
-        "zero_cost_reason": "synthesis LLM not enabled in this run",
-        "llm_calls": 0,
-        "tokens": 0,
         "output_dir": str(output_dir),
         **compilation_stats,
     }
+    if compilation_runs:
+        compilation_runs.sort(key=lambda run: run.get("completed_at") or "")
+        stages["compilation"]["run_count"] = len(compilation_runs)
+        stages["compilation"]["runs"] = compilation_runs
+        stages["compilation"]["aggregate"] = _omit_none(
+            {
+                "metered_llm_cost_usd": _round_cost(math.fsum(compilation_cost_acc)),
+                "llm_calls": compilation_llm_calls or None,
+                "input_tokens": (
+                    compilation_input_tokens if compilation_input_tokens else None
+                ),
+                "output_tokens": (
+                    compilation_output_tokens if compilation_output_tokens else None
+                ),
+                "tokens": (
+                    compilation_input_tokens + compilation_output_tokens
+                    if (compilation_input_tokens + compilation_output_tokens) > 0
+                    else None
+                ),
+            }
+        )
+        total_llm_cost = _round_cost(
+            math.fsum([total_llm_cost, math.fsum(compilation_cost_acc)])
+        )
+        total_llm_calls += compilation_llm_calls
+        total_tokens += compilation_input_tokens + compilation_output_tokens
 
     # ------------------------------------------------------------------
     # Summary block — designed for quick first-read at any scale
     # ------------------------------------------------------------------
     summary: Dict[str, Any] = {
         "total_cost_usd": total_llm_cost,
-        "zero_cost_reason": (
-            None if total_llm_cost > 0 else "no LLM-billable operations in this run"
-        ),
+        "cost_scope": "metered_llm_only",
         "documents_extracted": total_docs_extracted,
         "cost_per_document_usd": (
             _round_cost(total_llm_cost / total_docs_extracted)
@@ -683,39 +927,39 @@ def _build_pipeline_accounting(
         "llm_calls_total": total_llm_calls,
         "tokens_total": total_tokens,
         "extraction_runs": total_extraction_runs,
-        "search_api_queries": total_search_queries,
-        "cost_breakdown": {
-            "llm_only_usd": total_llm_cost,
-            "search_api_usd": 0.0,
-            "search_api_note": "flat-rate subscription, not per-query billing",
-        },
     }
-    # Add search provider if we have one
+    # Only include conditional fields when they carry information:
+    if total_llm_cost == 0:
+        summary["zero_cost_reason"] = "no LLM-billable operations in this run"
+    if total_search_queries > 0:
+        summary["search_api_queries"] = total_search_queries
     if search_api_provider:
         summary["search_api_provider"] = search_api_provider
+
+    # Extract domain schema version from the schema file
+    domain_schema_version: Optional[str] = None
+    _schema_id = stages.get("extraction", {}).get("schema_id")
+    if _schema_id and isinstance(_schema_id, str):
+        try:
+            _schema_path = Path(_schema_id)
+            if not _schema_path.is_absolute():
+                _schema_path = Path.cwd() / _schema_id
+            if _schema_path.exists():
+                _schema_data = json.loads(_schema_path.read_text(encoding="utf-8"))
+                domain_schema_version = (_schema_data.get("$metadata") or {}).get("version")
+        except (OSError, json.JSONDecodeError, ValueError):
+            pass
 
     # ------------------------------------------------------------------
     # Final structure
     # ------------------------------------------------------------------
     output: Dict[str, Any] = {
-        "schema_version": "1.0",
+        "accounting_version": "2.0.0",
+        "domain_schema_version": domain_schema_version,
         "domain": domain,
         "generated_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         "summary": summary,
         "stages": stages,
-        "totals": {
-            "cost_usd": total_llm_cost,
-            "zero_cost_reason": (
-                None if total_llm_cost > 0 else "no LLM-billable operations"
-            ),
-            "llm_calls": total_llm_calls,
-            "tokens": total_tokens,
-            "discovery_elapsed_seconds": (
-                stages.get("discovery", {}).get("elapsed_seconds")
-            ),
-            "search_api_queries_used": total_search_queries,
-            "search_api_provider": search_api_provider,
-        },
     }
 
     if warnings:
@@ -747,6 +991,70 @@ def _resolve_compilation_output_formats(
         requested_format,
     )
     return ["csv", "excel"]
+
+
+def _write_compilation_run_manifest(
+    *,
+    output_dir: Path,
+    schema_id: str,
+    synthesis_active: bool,
+    synthesis_model: Optional[str],
+    synthesis_provider: Optional[str],
+    synthesis_llm_calls: int,
+    records: int,
+    columns: int,
+    duplicates_removed: int,
+    output_formats: List[str],
+    started_at: datetime,
+) -> Optional[Path]:
+    """Persist one immutable compilation run manifest for cumulative accounting."""
+    run_manifest_dir = output_dir / "run_manifests"
+    run_manifest_dir.mkdir(parents=True, exist_ok=True)
+
+    completed_at = datetime.now(timezone.utc)
+    run_id = f"compile://{completed_at.strftime('%Y%m%dT%H%M%S%fZ')}"
+    manifest_path = (
+        run_manifest_dir
+        / f"{completed_at.strftime('%Y%m%dT%H%M%S%fZ')}.manifest.json"
+    )
+    manifest = {
+        "manifest_version": "1.0.0",
+        "run_id": run_id,
+        "mode": "synthesis" if synthesis_active else "deterministic",
+        "status": {
+            "result": "success",
+        },
+        "timing": {
+            "started_at": started_at.isoformat().replace("+00:00", "Z"),
+            "finished_at": completed_at.isoformat().replace("+00:00", "Z"),
+            "elapsed_seconds": _round_secs((completed_at - started_at).total_seconds()),
+        },
+        "lineage": {
+            "schema_id": schema_id,
+            "model": synthesis_model,
+            "provider": synthesis_provider,
+        },
+        "costs": {
+            "total_cost_usd": 0.0,
+            "llm_calls": synthesis_llm_calls,
+            "total_input_tokens": 0,
+            "total_output_tokens": 0,
+        },
+        "outputs": {
+            "records": records,
+            "columns": columns,
+            "duplicates_removed": duplicates_removed,
+            "output_formats": output_formats,
+        },
+    }
+    try:
+        manifest_path.write_text(
+            json.dumps(_omit_none(manifest), indent=2) + "\n",
+            encoding="utf-8",
+        )
+        return manifest_path
+    except OSError:
+        return None
 
 
 @click.command()
@@ -988,6 +1296,9 @@ def compile(
         verbose=view.verbosity.shows_detail,
         debug=view.verbosity is Verbosity.DEBUG,
     )
+    synth_client = None
+    synthesizer = None
+    compile_started_at = datetime.now(timezone.utc)
 
     try:
         if synthesis_active:
@@ -1153,32 +1464,6 @@ def compile(
         output_formats = _resolve_compilation_output_formats(metadata_overrides or None)
         emitted_paths: List[Path] = []
 
-        # Write accounting immediately after CSV (before Excel which can fail)
-        # This ensures accounting is always generated even if Excel creation fails
-        try:
-            _summary_stats_for_acct = {
-                "records": len(df),
-                "columns": len(df.columns),
-                "duplicates_removed": compiler.duplicates_removed,
-                "output_format": ", ".join(output_formats),
-            }
-            accounting = _build_pipeline_accounting(
-                domain=resolved_inputs.get("domain", input_dir.name),
-                extraction_dir=input_dir,
-                output_dir=output_dir,
-                compilation_stats=_summary_stats_for_acct,
-                discovery_input_dir=resolved_inputs.get("_extraction_input_dir"),
-            )
-            acct_path = output_dir / "run_accounting.json"
-            acct_path.write_text(
-                json.dumps(accounting, indent=2) + "\n",
-                encoding="utf-8",
-            )
-        except (OSError, ValueError) as exc:
-            logging.getLogger(__name__).warning(
-                "run_accounting.json could not be written: %s", exc
-            )
-
         if "csv" in output_formats:
             csv_path = output_dir / f"{base_name}.csv"
             compiler.save_csv(df, csv_path)
@@ -1252,14 +1537,28 @@ def compile(
         # Run accounting — always written regardless of verbosity / quiet mode.
         # This is a structured record of costs, not presentation output.
         # ------------------------------------------------------------------
+        _summary_stats_for_acct = {
+            "records": len(df),
+            "columns": len(df.columns),
+            "duplicates_removed": compiler.duplicates_removed,
+            "output_format": ", ".join(output_formats),
+        }
+        _write_compilation_run_manifest(
+            output_dir=output_dir,
+            schema_id=str(matched_schema),
+            synthesis_active=synthesis_active,
+            synthesis_model=(getattr(synth_client, "raw_model", None) if synth_client else None),
+            synthesis_provider=(getattr(synth_client, "provider", None) if synth_client else None),
+            synthesis_llm_calls=(int(getattr(synthesizer, "llm_calls", 0)) if synthesizer else 0),
+            records=len(df),
+            columns=len(df.columns),
+            duplicates_removed=compiler.duplicates_removed,
+            output_formats=output_formats,
+            started_at=compile_started_at,
+        )
+
         acct_path = output_dir / "run_accounting.json"
         try:
-            _summary_stats_for_acct = {
-                "records": len(df),
-                "columns": len(df.columns),
-                "duplicates_removed": compiler.duplicates_removed,
-                "output_format": ", ".join(output_formats),
-            }
             accounting = _build_pipeline_accounting(
                 domain=resolved_inputs.get("domain", input_dir.name),
                 extraction_dir=input_dir,
