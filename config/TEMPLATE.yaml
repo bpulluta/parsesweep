@@ -112,3 +112,15 @@ compilation:
 #         key_fields: [field1, field2]
 #       comparison:
 #         primary_fields: [value_field, unit_field]
+#     qualitative:
+#       enabled: false                    # set true to enable text-review lane
+#       mode: text_review
+#       comparison_approach: text_review
+#       record_matching:
+#         key_fields: [category_field, subject_field]
+#       comparison:
+#         primary_fields: [value_field, unit_field, source_text_field]
+#       # scope_variant_keys:             # optional: list of [category, subject] pairs
+#       #   - [category_a, subject_x]     # that differ between models by design and should
+#       #   - [category_b, subject_y]     # be excluded from qualitative gate failure math.
+#       #                                 # Empty list (default) = no exclusions.

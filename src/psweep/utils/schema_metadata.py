@@ -466,56 +466,7 @@ class SchemaMetadata:
             return candidate
         return candidate if order[candidate] > order[current] else current
 
-    # --- QA/QC Metadata ---
-
-    def get_qa_qc_match_fields(self) -> List[str]:
-        """
-        Get fields to use for matching items across models in QA/QC.
-        """
-        qa_qc = self.metadata.get("qa_qc", {})
-        match_fields = qa_qc.get("record_matching", {}).get("key_fields")
-        if not match_fields:
-            raise SchemaMetadataError(
-                "Schema metadata missing required QA/QC field: qa_qc.record_matching.key_fields\n"
-                "This field is required for canonical QA/QC record matching.",
-                schema_path=str(self.schema_path),
-            )
-        return match_fields
-
-    def get_qa_qc_compare_fields(self) -> List[str]:
-        """
-        Get fields to compare for agreement in QA/QC.
-
-        Returns primary_fields from qa_qc.comparison, or ["value"] as default.
-        """
-        qa_qc = self.metadata.get("qa_qc", {})
-        compare_fields = qa_qc.get("comparison", {}).get("primary_fields")
-        if compare_fields:
-            return compare_fields
-        # Default to "value" field
-        return ["value"]
-
-    def get_expected_requirements(self) -> list[str]:
-        """
-        Get expected requirements for completeness validation.
-
-        Returns list of expected requirement_type strings:
-        ["setback__property_line_ft", "setback__residence_ft", ...]
-
-        Returns empty list if not specified.
-        """
-        qa_qc = self.metadata.get("qa_qc", {})
-        return qa_qc.get("expected_requirements", [])
-
-    def get_expected_count_range(self) -> tuple:
-        """
-        Get expected count range for items per document.
-
-        Returns (min_count, max_count) tuple.
-        Defaults to (1, 100) if not specified.
-        """
-        qa_qc = self.metadata.get("qa_qc", {})
-        count_range = qa_qc.get("expected_count_range", [1, 100])
-        if isinstance(count_range, list) and len(count_range) >= 2:
-            return (count_range[0], count_range[1])
-        return (1, 100)
+    # --- QA/QC ---
+    # All QA/QC runtime config (record_matching, comparison fields, expected_requirements,
+    # model tiers, lane behavior) lives in config/<domain>/run.yaml.
+    # Schema metadata carries only the extraction contract — nothing QA/QC-specific.

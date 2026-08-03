@@ -7,13 +7,18 @@ Includes potential duplicate detection and completeness metrics.
 
 Usage:
     from psweep.qa_qc.comparison_engine import ComparisonEngine
+    from psweep.qa_qc.utils import resolve_qaqc_runtime_config
     from psweep.utils.schema_metadata import SchemaMetadata
 
     schema_metadata = SchemaMetadata(schema_path)
-    engine = ComparisonEngine(schema_metadata)
+    qa_qc_config = resolve_qaqc_runtime_config(
+        schema_metadata,
+        runtime_qaqc=run_config["qaqc"],   # from config/<domain>/run.yaml
+    )
+    engine = ComparisonEngine(schema_metadata, qa_qc_config=qa_qc_config)
 
     result = engine.compare_outputs(
-        output_files={"gpt-4.1": path1, "gpt-5": path2},
+        output_files={"gpt-4.1": path1, "claude-haiku-4-5": path2},
         document_name="austin_energy"
     )
 """
@@ -104,31 +109,33 @@ class ComparisonEngine:
     """
     Compare outputs from multiple models using schema metadata plus runtime QA/QC config.
 
-    Uses resolved QA/QC configuration:
-    - runtime artifact pack lanes when available
-    - schema $metadata.qa_qc as a fallback
+    Uses resolved QA/QC configuration always sourced from config/<domain>/run.yaml.
+    Schema metadata carries only the extraction contract (main_data_array, identifier_fields,
+    context_objects, deduplication keys) — no QA/QC runtime settings.
 
-    Why schema-driven?
-    - Different domains have different field names
-    - No hardcoded assumptions about field semantics
-    - User can configure per schema
+    Example usage::
+
+        qa_qc_config = resolve_qaqc_runtime_config(schema_metadata, pack, pack_qaqc, lane)
+        engine = ComparisonEngine(schema_metadata, qa_qc_config=qa_qc_config)
+        result = engine.compare_outputs(output_files, document_name)
     """
 
     def __init__(
-        self, schema_metadata, qa_qc_config: Optional[Dict[str, Any]] = None
+        self, schema_metadata, qa_qc_config: Dict[str, Any]
     ):
         """
-        Initialize with schema metadata.
+        Initialize comparison engine.
 
         Args:
-            schema_metadata: SchemaMetadata instance
+            schema_metadata: SchemaMetadata instance (extraction contract only).
+            qa_qc_config: Resolved QA/QC runtime config from
+                ``resolve_qaqc_runtime_config``. Always sourced from
+                config/<domain>/run.yaml — never from schema metadata.
         """
         self.schema_metadata = schema_metadata
         self.main_data_array = schema_metadata.get_main_data_array()
         self.identifier_fields = schema_metadata.get_identifier_fields()
-        self.qa_qc_config = qa_qc_config or resolve_qaqc_runtime_config(
-            schema_metadata
-        )
+        self.qa_qc_config = qa_qc_config
 
         self.match_fields = list(self.qa_qc_config["match_fields"])
         self.compare_fields = set(self.qa_qc_config["compare_fields"])
@@ -139,6 +146,16 @@ class ComparisonEngine:
         self.lane_name = self.qa_qc_config.get("lane_name")
         self.lane_mode = self.qa_qc_config.get("mode", "schema_metadata")
         self.projection = self.qa_qc_config.get("projection") or None
+        # Configurable scope-variant category/subject pairs for qualitative lanes.
+        # Format: list of [category, subject] pairs (normalized, lowercase).
+        # Scope-variant items are excluded from gate-failure math because they
+        # represent narrow auxiliary rows that differ between models by design.
+        # Empty by default — populate via lane config scope_variant_keys.
+        self._scope_variant_keys: frozenset[tuple] = frozenset(
+            (str(pair[0]).strip().lower(), str(pair[1]).strip().lower())
+            for pair in (self.qa_qc_config.get("scope_variant_keys") or [])
+            if isinstance(pair, (list, tuple)) and len(pair) >= 2
+        )
 
         logger.debug(
             f"ComparisonEngine: main_data_array={self.main_data_array}"
@@ -239,41 +256,17 @@ class ComparisonEngine:
     def _compare_context_object(
         self, ctx_name: str, outputs: Dict[str, dict], models: List[str]
     ) -> Tuple[List[FieldComparison], int]:
-        """Compare a context object across models (numeric only)."""
-        comparisons = []
+        """Compare a context object across models.
+
+        Context objects (jurisdiction, document_applicability, etc.) are
+        informational metadata — they are counted as skipped so the summary
+        can report how many fields were seen but not compared.
+        """
         skipped = 0
-
-        # Get context from each model
-        ctx_values = {m: outputs[m].get(ctx_name, {}) for m in models}
-
-        # Collect all fields
-        all_fields = set()
-        for ctx in ctx_values.values():
+        for ctx in (outputs[m].get(ctx_name, {}) for m in models):
             if isinstance(ctx, dict):
-                all_fields.update(self._get_flat_fields(ctx))
-
-        # Compare each field (numeric only)
-        for field_path in sorted(all_fields):
-            # Skip internal fields
-            if field_path.startswith("_"):
-                skipped += 1
-                continue
-
-            # Get values from each model
-            model_values = {}
-            for model in models:
-                ctx = ctx_values[model]
-                if isinstance(ctx, dict):
-                    model_values[model] = get_nested_value(ctx, field_path)
-                else:
-                    model_values[model] = None
-
-            # For context objects, skip all comparisons (mostly text metadata)
-            # Context like jurisdiction, document_applicability are informational
-            skipped += 1
-            continue
-
-        return comparisons, skipped
+                skipped += len(self._get_flat_fields(ctx))
+        return [], skipped
 
     def _compare_item_fields(
         self,
@@ -674,41 +667,22 @@ class ComparisonEngine:
         return category_label, requirement_label
 
     def _is_text_review_scope_variant(self, item_id: str) -> bool:
-        """Identify narrow qualitative-only auxiliary rows that should not drive gate failure."""
-        category_label, facility_label, subject_label = (
-            self._extract_requirement_triplet(item_id)
+        """Return True when an item matches a configured scope-variant pattern.
+
+        Scope-variant items represent narrow auxiliary rows that models
+        legitimately disagree on by design (e.g. domain-specific auxiliary
+        requirements). They are excluded from qualitative advisory gate math.
+
+        Patterns are declared in the lane config under ``scope_variant_keys``
+        as a list of [category, subject] pairs. No domain-specific patterns
+        are hardcoded here — this is a universal tool.
+        """
+        if not self._scope_variant_keys:
+            return False
+        category_label, _, subject_label = self._extract_requirement_triplet(
+            item_id
         )
-
-        if (category_label, subject_label) in {
-            ("decommissioning", "financial assurance"),
-            ("decommissioning", "facility removal"),
-            ("decommissioning", "well plugging"),
-            ("lighting requirement", "faa part 77 marking and lighting"),
-            ("permit requirement", "all necessary permits"),
-            ("permitted use district", "conditional use"),
-        }:
-            return True
-
-        if category_label == "noise limit":
-            return (
-                facility_label == "power plant"
-                and subject_label == "plant operations"
-            )
-
-        if category_label == "other" and subject_label in {
-            "emergency response/action plan",
-            "insurance",
-            "radio/television interference",
-            "roads and parking",
-            "dust control",
-            "identification/informational signage",
-            "double-walled pipes across public waters",
-            "pipeline siting and configuration",
-            "electric transmission line siting",
-        }:
-            return True
-
-        return False
+        return (category_label, subject_label) in self._scope_variant_keys
 
     def _extract_requirement_triplet(
         self, item_id: str
@@ -1067,58 +1041,13 @@ class ComparisonEngine:
         source_text: str,
         source_tokens: set[str],
     ) -> bool:
-        """Handle safe qualitative parent-child coverage patterns."""
-        candidate_category = self._normalize_match_label(
-            get_nested_value(candidate, self.match_fields[0])
-            if self.match_fields
-            else None
-        )
-        candidate_facility = self._normalize_match_label(
-            get_nested_value(candidate, self.match_fields[1])
-            if len(self.match_fields) > 1
-            else None
-        )
-        candidate_subject = self._normalize_match_label(
-            get_nested_value(candidate, self.match_fields[2])
-            if len(self.match_fields) > 2
-            else None
-        )
-        source_subject = self._normalize_match_label(
-            get_nested_value(source_item, self.match_fields[2])
-            if len(self.match_fields) > 2
-            else None
-        )
+        """Handle qualitative parent-child coverage patterns.
 
-        procedural_prefixes = (
-            "prior to",
-            "upon completion",
-            "when the operation",
-            "drilling operations shall",
-            "closure conditions",
-        )
-        parking_markers = {"parking", "spaces", "roads"}
-
-        if (
-            candidate_category == "decommissioning"
-            and candidate_facility == "all facilities"
-        ):
-            if any(
-                source_text.startswith(prefix)
-                for prefix in procedural_prefixes
-            ):
-                return True
-
-        if (
-            candidate_category == "other"
-            and candidate_subject == "roads and parking"
-        ):
-            if (
-                source_subject == "parking"
-                and "parking" in source_tokens
-                and parking_markers.intersection(source_tokens)
-            ):
-                return True
-
+        Previously contained hardcoded domain-specific patterns. Now returns
+        False so that only the generic text/token-subset logic in
+        _text_review_item_subsumes drives subsumption decisions.
+        Domain-specific patterns can be added back via config if needed.
+        """
         return False
 
     def _build_text_review_signature(
@@ -1319,7 +1248,9 @@ class ComparisonEngine:
         """
         Calculate completeness metrics for each model.
 
-        Compares extracted items against expected requirements from schema.
+        Compares extracted items against expected requirements from qa_qc_config.
+        Expected requirements are an optional list in the run config lane, e.g.:
+            lanes.quantitative.expected_requirements: [...]
 
         Args:
             item_arrays: Dict mapping model -> list of extracted items
@@ -1328,9 +1259,7 @@ class ComparisonEngine:
         Returns:
             Dict mapping model -> CompletenessResult
         """
-        expected_requirements = (
-            self.schema_metadata.get_expected_requirements()
-        )
+        expected_requirements = self.qa_qc_config.get("expected_requirements") or []
         expected_total = len(expected_requirements)
 
         if not expected_requirements:
