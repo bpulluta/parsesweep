@@ -24,6 +24,17 @@ These instructions keep work aligned with the accepted ParseSweep production bas
 - Check if an existing mechanism can be extended (don't add new surface area)
 - Consider: does this scale? Does this add maintenance burden? Is this the simplest solution?
 
+## Complexity Budget (Value Before Features)
+- Default stance: do **not** add new knobs/config unless there is demonstrated user value from a real run.
+- Any new config surface must pass all checks:
+  1) fixes a reproduced issue in current workflows,
+  2) cannot be solved cleanly by existing mechanisms,
+  3) is opt-in or behavior-safe by default,
+  4) has strict validation (no silent no-op on typos),
+  5) includes targeted tests for failure modes and interactions.
+- If a feature adds ongoing maintenance but only solves a one-off case, prefer removing it or keeping it domain-local.
+- If the same pattern is needed by 2+ domains, consolidate into one shared mechanism; do not fork behavior per domain.
+
 ## Default Operating Mode
 - Treat the contract-first runtime as the source of truth for this repository.
 - Do not reintroduce legacy pathways, compatibility layers, or retired architecture unless explicitly requested by the user.

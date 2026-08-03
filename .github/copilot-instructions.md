@@ -10,10 +10,22 @@ ParseSweep is a universal document extraction system that uses LLMs to extract s
 - The contract-first runtime is the active system for this repository.
 - Do not add or revive legacy execution paths, schema adapters, or backward-compatibility scaffolding unless explicitly requested.
 - Prefer runtime quality, repo hygiene, and repeatable onboarding over expanding optional surface area.
+- Apply a strict value-vs-complexity gate before adding new runtime features or config knobs.
 - Keep ownership boundaries explicit:
   - schema: extraction contract, field definitions, identifiers, minimal dedup semantics
   - config (`config/<domain>/run.yaml`): runtime behavior, QA/QC lanes, model tiers, compilation presentation
 - Start new domains with the leanest schema that can support a smoke extraction, then expand through iteration.
+
+### Value-vs-Complexity Gate (Required)
+Before adding new configurability or feature surface, verify:
+1. **Proven need**: issue is reproduced in real runs (not hypothetical).
+2. **Reuse first**: existing mechanism cannot solve it cleanly.
+3. **Safe default**: change is opt-in or preserves baseline behavior.
+4. **Strict validation**: invalid/unknown config fails loudly (no silent fallback/no-op).
+5. **Scalability**: operationally workable for thousands of targets.
+6. **Maintenance**: clear owner, tests, and documentation burden is justified.
+
+If these are not satisfied, prefer simplification or removal over feature addition.
 
 ## Documentation Policy
 

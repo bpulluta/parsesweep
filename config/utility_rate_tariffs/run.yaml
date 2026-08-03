@@ -94,6 +94,8 @@ discovery:
       interconnection or installation guides, (8) long-range planning reports.
     keep_top: 2
     deduplicate_redundant: true
+    deduplication:
+      key_fields: [path_basename, review_doc_kind]
     action: move
   partition_by: [state, utility_name]
   partition_by: [state, utility_name]

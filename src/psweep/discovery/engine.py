@@ -3522,6 +3522,14 @@ class DiscoveryEngine:
             max_chars=int(review_cfg.get("max_chars", 12000) or 12000),
             review_keywords=review_cfg.get("keywords") or classifier_keywords,
             deduplicate_redundant=bool(review_cfg.get("deduplicate_redundant", True)),
+            dedup_key_fields=[
+                str(field)
+                for field in (
+                    (review_cfg.get("deduplication") or {}).get("key_fields") or []
+                )
+                if str(field).strip()
+            ]
+            or None,
         )
         try:
             downloads, notes = reviewer.review(downloads, notes)

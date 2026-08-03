@@ -92,6 +92,44 @@ class TestReviewSelection:
         assert a["review_selected"] is True
         assert b["review_selected"] is True
 
+    def test_filename_variants_are_deduplicated(self, tmp_path: Path):
+        a = _record(
+            tmp_path,
+            "PUCO-13-Schedule-of-Rates-for-Electric-Service.pdf",
+            "County A",
+        )
+        b = _record(
+            tmp_path,
+            "PUCO-13-Scheduleof-Rates-for-Electric-Service.pdf",
+            "County A",
+        )
+        reviewer = DocumentReviewer(
+            document_description="the electric tariff book",
+            keep_top=2,
+            dedup_key_fields=["path_basename", "review_doc_kind"],
+        )
+        _stub_grades(
+            reviewer,
+            {
+                "PUCO-13-Schedule-of-Rates-for-Electric-Service.pdf": {
+                    "is_primary": True,
+                    "relevance": 0.95,
+                    "doc_kind": "electric tariff book",
+                    "reason": "official tariff",
+                },
+                "PUCO-13-Scheduleof-Rates-for-Electric-Service.pdf": {
+                    "is_primary": True,
+                    "relevance": 0.94,
+                    "doc_kind": "electric tariff book",
+                    "reason": "official tariff",
+                },
+            },
+        )
+        reviewer.review([a, b], [])
+
+        assert {a["review_selected"], b["review_selected"]} == {True, False}
+        assert a.get("review_redundant") or b.get("review_redundant")
+
 
 class TestReviewFlagMode:
     def test_flag_mode_does_not_move(self, tmp_path: Path):
