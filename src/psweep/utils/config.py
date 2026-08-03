@@ -43,11 +43,11 @@ class Config:
         Load LLM provider configuration from environment.
 
         Supports:
-        - OpenAI (OPENAI_API_KEY)
+        - Any OpenAI-compatible endpoint (LLM_BASE_URL + LLM_API_KEY) — highest priority
         - Azure OpenAI (AZURE_OPENAI_API_KEY, AZURE_OPENAI_ENDPOINT, etc.)
         - Anthropic Claude (ANTHROPIC_API_KEY)
         - Google Gemini (GEMINI_API_KEY, GOOGLE_API_KEY)
-        - And more via LiteLLM
+        - OpenAI (OPENAI_API_KEY)
 
         Returns:
             dict with provider configuration
@@ -79,8 +79,18 @@ class Config:
         # Merge with actual environment variables (they take precedence)
         env_vars.update(os.environ)
 
-        # Detect provider and model from environment
-        if "AZURE_OPENAI_API_KEY" in env_vars and (
+        # Detect provider and model from environment.
+        # Priority (highest → lowest):
+        #   1. LLM_BASE_URL — generic OpenAI-compatible endpoint override.
+        #      Works with any proxy (LiteLLM, OpenRouter, Azure AI Foundry, vLLM, …).
+        #      Set this + LLM_API_KEY to route all calls through a single endpoint.
+        #   2–5. Direct provider keys (Azure, Anthropic, Gemini, OpenAI).
+        if "LLM_BASE_URL" in env_vars and "LLM_API_KEY" in env_vars:
+            config["provider"] = "openai"  # OpenAI-compatible wire format
+            config["model"] = env_vars.get("LLM_MODEL")
+            config["api_key"] = env_vars["LLM_API_KEY"]
+            config["base_url"] = env_vars["LLM_BASE_URL"]
+        elif "AZURE_OPENAI_API_KEY" in env_vars and (
             "AZURE_OPENAI_MODEL" in env_vars
             or "AZURE_OPENAI_ENDPOINT" in env_vars
         ):
@@ -111,8 +121,9 @@ class Config:
             config["api_key"] = env_vars["OPENAI_API_KEY"]
 
         if config["provider"]:
+            base_url_suffix = f", base_url={config['base_url']}" if config.get("base_url") else ""
             logger.info(
-                f"Loaded LLM config: provider={config['provider']}, model={config['model']}"
+                f"Loaded LLM config: provider={config['provider']}, model={config['model']}{base_url_suffix}"
             )
         else:
             logger.warning("No LLM provider configured in environment")

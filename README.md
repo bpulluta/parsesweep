@@ -505,10 +505,21 @@ discovery:
     model: secondary               # ← resolves to gpt-4.1-mini
 ```
 
+When using an endpoint override (`LLM_BASE_URL`), use whatever model names the proxy advertises:
+
+```yaml
+# Proxy model names — exactly as shown in the proxy's model hub
+models:
+  primary: gpt-5.5
+  secondary: gpt-5-mini
+  # The proxy handles routing to the actual provider — no provider config needed
+```
+
 **Workflow:**
 - Testing/iterating: set both tiers to `mini` (fast + cheap)
 - Production: change only `primary` to the full model (one edit)
 - Stage-level granularity available if needed
+- To switch between proxy and direct provider: change `.env`, not the YAML
 
 ---
 
@@ -605,15 +616,48 @@ PDF, DOCX, DOC, TXT, XLSX, CSV
 
 ## Environment Setup
 
-```bash
-# .env file (created by `psweep init`)
-AZURE_OPENAI_API_KEY=your-key
-AZURE_OPENAI_ENDPOINT=https://your-endpoint.openai.azure.com/
-AZURE_OPENAI_MODEL=your-deployment
+ParseSweep reads credentials from a `.env` file in the project root (or from environment variables). Configure exactly one provider block. Priority is highest → lowest.
 
-# Or OpenAI
-OPENAI_API_KEY=sk-your-key
+### Option 1 — Generic endpoint override (recommended for shared/enterprise deployments)
+
+Works with any OpenAI-compatible proxy: LiteLLM, OpenRouter, Azure AI Foundry, Together AI, vLLM, Ollama, etc. Model names in `run.yaml` must match exactly what the proxy advertises. To switch proxies, change two values — no code or schema changes needed.
+
+```bash
+LLM_BASE_URL=https://your-proxy.example.com/v1
+LLM_API_KEY=sk-your-proxy-key
+LLM_MODEL=gpt-4.1-mini     # optional default; overridden by run.yaml models:
 ```
+
+```yaml
+# run.yaml — use whatever model names your proxy advertises
+models:
+  primary: gpt-5.5
+  secondary: gpt-5-mini
+  # or mix providers served by the same proxy:
+  # fast: claude-sonnet-4-5
+  # smart: gpt-5.5
+```
+
+### Option 2 — Direct provider keys
+
+```bash
+# Azure OpenAI
+AZURE_OPENAI_API_KEY=your-key
+AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com/
+AZURE_OPENAI_API_VERSION=2025-04-01-preview
+AZURE_OPENAI_MODEL=your-deployment-name   # optional default
+
+# OpenAI
+OPENAI_API_KEY=sk-your-key
+
+# Anthropic
+ANTHROPIC_API_KEY=sk-ant-your-key
+
+# Google Gemini
+GEMINI_API_KEY=your-google-key
+```
+
+Copy `.env.example` to `.env` and uncomment one block. Run `psweep init` for interactive setup.
 
 ---
 
@@ -625,7 +669,11 @@ OPENAI_API_KEY=sk-your-key
 
 **Large document timeout** — Add `pages.auto_locate` in your config or increase `max_context`.
 
-**Rate limit errors** — Azure API throttling. Wait and retry, or reduce batch size with `-n`.
+**Rate limit errors** — API throttling (429). Wait and retry, or reduce batch size with `-n`. For proxy deployments, exponential backoff is built in.
+
+**"No LLM provider configured"** — Check `.env` has one of: `LLM_BASE_URL`+`LLM_API_KEY`, `AZURE_OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, or `OPENAI_API_KEY`.
+
+**Wrong model name for proxy** — Model names must match exactly what your proxy's model hub shows. Run `psweep config` to confirm the resolved model.
 
 ---
 
