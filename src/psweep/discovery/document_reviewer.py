@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -104,6 +105,7 @@ class DocumentReviewer:
         max_chars: int = 12000,
         review_keywords: list[str] | None = None,
         deduplicate_redundant: bool = True,
+        dedup_key_fields: list[str] | None = None,
     ) -> None:
         self._description = document_description
         self._model = model
@@ -116,6 +118,11 @@ class DocumentReviewer:
             k.lower() for k in (review_keywords or []) if k and k.strip()
         ]
         self._deduplicate_redundant = bool(deduplicate_redundant)
+        self._dedup_key_fields = [
+            field
+            for field in (dedup_key_fields or [])
+            if field and field.strip()
+        ]
         self._client: Any = None
         # Cost accounting
         self._total_cost: float = 0.0
@@ -219,6 +226,58 @@ class DocumentReviewer:
         parts.append(tail)
         combined = separator.join(parts)
         return combined[: self._max_chars]
+
+    @staticmethod
+    def _normalize_dedup_value(value: object) -> str:
+        """Normalize a dedup field into a stable comparison token."""
+        if value is None:
+            return ""
+        if isinstance(value, (dict, list, tuple, set)):
+            value = json.dumps(value, sort_keys=True, separators=(",", ":"))
+        text = str(value).casefold()
+        return re.sub(r"[^a-z0-9]+", "", text)
+
+    def _dedup_field_value(self, record: dict[str, Any], field: str) -> object:
+        """Return the raw value for one configured dedup field."""
+        if field == "path_basename":
+            return Path(str(record.get("path") or "")).name
+        if field == "path_stem":
+            return Path(str(record.get("path") or "")).stem
+        return record.get(field)
+
+    def _deduplication_key(self, record: dict[str, Any]) -> str:
+        """Build a stable dedup key from configured record fields."""
+        parts = [
+            self._normalize_dedup_value(self._dedup_field_value(record, field))
+            for field in self._dedup_key_fields
+        ]
+        return "\x1f".join(parts)
+
+    def _find_structural_duplicates(
+        self, primaries: list[dict[str, Any]]
+    ) -> set[int]:
+        """Identify obvious duplicates from a configurable structural key."""
+        groups: dict[str, list[int]] = {}
+        for idx, record in enumerate(primaries):
+            key = self._deduplication_key(record)
+            if not key.strip("\x1f"):
+                continue
+            groups.setdefault(key, []).append(idx)
+
+        redundant: set[int] = set()
+        for indices in groups.values():
+            if len(indices) < 2:
+                continue
+            keep = max(
+                indices,
+                key=lambda i: (
+                    float(primaries[i].get("review_relevance") or 0.0),
+                    bool(primaries[i].get("review_is_primary")),
+                    str(primaries[i].get("path") or ""),
+                ),
+            )
+            redundant.update(i for i in indices if i != keep)
+        return redundant
 
     def _grade(
         self, file_path: str, target_context: str = ""
@@ -488,6 +547,28 @@ class DocumentReviewer:
                 primaries = [
                     r for r in ranked if bool(r.get("review_is_primary"))
                 ]
+                if len(primaries) >= 2:
+                    if self._dedup_key_fields:
+                        structural_redundant = self._find_structural_duplicates(primaries)
+                        if structural_redundant:
+                            redundant_path_set = {
+                                str(primaries[i].get("path"))
+                                for i in structural_redundant
+                            }
+                            notes.append(
+                                f"Dedup ({target_key}): excluded "
+                                f"{len(redundant_path_set)} structural duplicate(s)."
+                            )
+                            for r in ranked:
+                                if str(r.get("path")) in redundant_path_set:
+                                    r["review_redundant"] = True
+
+                    primaries = [
+                        r
+                        for r in ranked
+                        if bool(r.get("review_is_primary"))
+                        and not bool(r.get("review_redundant"))
+                    ]
                 if len(primaries) >= 2:
                     redundant_path_set = {
                         str(primaries[i].get("path"))
