@@ -3869,6 +3869,45 @@ class DiscoveryEngine:
                 f"Download index written: {download_index_path.as_posix()}"
             )
 
+        # Reuse mode: when consolidated curated documents already exist, users may
+        # intentionally skip configuring seeker queries. In that case, suppress
+        # non-actionable seeker configuration errors so manifest status reflects a
+        # valid scaffold/reuse workflow rather than a false failure signal.
+        discovery_domain_root: Path | None = None
+        if (
+            manifest_path.parent.parent.name == "runs"
+            and manifest_path.parent.parent.parent.name == request.domain
+            and manifest_path.parent.parent.parent.parent.name == "discovered"
+        ):
+            discovery_domain_root = manifest_path.parent.parent.parent
+        elif (
+            manifest_path.parent.name == "latest"
+            and manifest_path.parent.parent.name == request.domain
+            and manifest_path.parent.parent.parent.name == "discovered"
+        ):
+            discovery_domain_root = manifest_path.parent.parent
+
+        consolidated_curated = (
+            discovery_domain_root / "curated"
+            if discovery_domain_root is not None
+            else None
+        )
+        if consolidated_curated and consolidated_curated.exists() and any(
+            p.is_file() for p in consolidated_curated.rglob("*")
+        ):
+            _reuse_noise_phrases = (
+                "Seeker query cannot be resolved",
+                "No discovery candidates were produced",
+            )
+            all_errors = [
+                err
+                for err in all_errors
+                if not any(
+                    phrase in str((err or {}).get("message") or "")
+                    for phrase in _reuse_noise_phrases
+                )
+            ]
+
         base_status = "scaffold_dry_run" if request.dry_run else "scaffold"
         status = f"{base_status}_with_errors" if all_errors else base_status
         self._emit_progress(
