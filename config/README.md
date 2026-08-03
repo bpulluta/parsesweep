@@ -324,7 +324,7 @@ If a domain needs different discovery behavior, encode it in that domain's `run.
 |----------|------|
 | Required | `input_dir`, `schema` |
 | Optional | `output_dir`, `pages`, `profile`, `provider`, `model`, `limit` |
-| Advanced | `max_context`, `skip_existing`, `enable_qaqc`, `qaqc_lane`, `live_dashboard` |
+| Advanced | `max_context`, `skip_existing`, `live_dashboard` |
 
 ---
 

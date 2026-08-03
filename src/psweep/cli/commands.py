@@ -152,7 +152,6 @@ def _format_runtime_artifact_summary(
 
 from psweep.cli.commands_benchmark import benchmark
 from psweep.cli.commands_check import check
-from psweep.cli.commands_compare import compare
 from psweep.cli.commands_compile import (
     _build_dedup_preview_report,
     _build_pipeline_accounting,
@@ -176,3 +175,4 @@ from psweep.cli.commands_extract import (
     _write_run_manifest,
     extract,
 )
+from psweep.cli.commands_validate import validate

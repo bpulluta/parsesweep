@@ -68,7 +68,9 @@ class TestReportGenerator:
                 model_values={"gpt-4.1": "PRESENT", "gpt-5": "MISSING"},
                 agreement_score="1/2",
                 needs_review=True,
-                notes="Item missing from: gpt-5"
+                notes="Item missing from: gpt-5",
+                present_models=["gpt-4.1"],
+                missing_models=["gpt-5"],
             ),
         ]
         
@@ -76,8 +78,7 @@ class TestReportGenerator:
             document_name="Test Document",
             models=["gpt-4.1", "gpt-5"],
             summary={
-                "qaqc_lane": "qualitative",
-                "qaqc_mode": "qualitative",
+                "qaqc_profile": "qualitative",
                 "comparison_approach": "text_review",
                 "review_category_counts": {"aligned": 1, "missing_item": 1, "scope_variant": 1, "text_difference": 1},
                 "qualitative_mismatch_breakdown": {
@@ -138,7 +139,7 @@ class TestReportGenerator:
             summary_payload = json.loads((output_dir / "comparison_summary.json").read_text(encoding="utf-8"))
 
             assert summary_payload["document_name"] == "Test Document"
-            assert summary_payload["summary"]["qaqc_lane"] == "qualitative"
+            assert summary_payload["summary"]["qaqc_profile"] == "qualitative"
             assert summary_payload["summary"]["qualitative_advisory_gate"]["status"] == "warn"
 
     def test_generate_report_creates_output_dir(self, generator, sample_comparison_result):
@@ -154,7 +155,7 @@ class TestReportGenerator:
             assert excel_path.exists()
 
     def test_csv_contains_all_comparisons(self, generator, sample_comparison_result):
-        """Test that CSV contains item-centric comparisons (one row per item)."""
+        """CSV should expose reviewer queue columns."""
         with tempfile.TemporaryDirectory() as tmpdir:
             output_dir = Path(tmpdir)
             
@@ -171,14 +172,16 @@ class TestReportGenerator:
             # Should have Status column (new format)
             assert "Status" in df.columns
             
-            # Should have Requirement column (compound key format)
+            # Should have requirement key for compatibility
             assert "Requirement" in df.columns
-            assert "QA/QC Lane" in df.columns
-            assert "Comparison Approach" in df.columns
-            assert "Review Category" in df.columns
+            assert "Divergence" in df.columns
+            assert "Seen By" in df.columns
+            assert "Why Flagged" in df.columns
+            assert "Reviewer Verdict" in df.columns
+            assert "Reviewer Notes" in df.columns
 
     def test_csv_contains_agreement_info(self, generator, sample_comparison_result):
-        """Test that CSV contains agreement info in new format."""
+        """CSV queue should include only actionable rows."""
         with tempfile.TemporaryDirectory() as tmpdir:
             output_dir = Path(tmpdir)
             
@@ -188,22 +191,14 @@ class TestReportGenerator:
             
             df = pd.read_csv(csv_path)
             
-            # New format columns
-            assert "Agreement" in df.columns
-            assert "Notes" in df.columns
             assert "Status" in df.columns
-            assert "QA/QC Lane" in df.columns
-            assert "Comparison Approach" in df.columns
-            assert "Review Category" in df.columns
-
-            assert set(df["QA/QC Lane"].dropna()) == {"qualitative"}
-            assert set(df["Comparison Approach"].dropna()) == {"text_review"}
-            assert set(df["Review Category"].dropna()) <= {
-                "aligned",
-                "missing_item",
+            assert "Divergence" in df.columns
+            assert set(df["Divergence"].dropna()) <= {
+                "presence_diff",
+                "semantic_conflict",
+                "field_conflict",
                 "scope_variant",
-                "text_difference",
-                "value_difference",
+                "judge_uncertain",
             }
             
             # Check that Status has valid values
@@ -211,6 +206,88 @@ class TestReportGenerator:
             # Status might also include "ONLY model_name" patterns
             for status in df["Status"].dropna():
                 assert any(s in status for s in valid_statuses + ["ONLY"])
+
+    def test_queue_omits_measurement_shift_false_conflict(self, generator):
+        """Normalized-equivalent measurement rows should not appear in reviewer queue."""
+        result = ComparisonResult(
+            document_name="Doc",
+            models=["flash", "5-mini"],
+            summary={"comparison_approach": "mixed"},
+            item_comparisons=[
+                FieldComparison(
+                    item_id="setback | all facilities | fault trace",
+                    field_path="value",
+                    model_values={"flash": "50", "5-mini": "50 feet"},
+                    agreement_score="2/2",
+                    needs_review=False,
+                    notes="normalized-equivalent measurement",
+                    present_models=["flash", "5-mini"],
+                    row_id="row-1",
+                    match_method="semantic",
+                ),
+                FieldComparison(
+                    item_id="setback | all facilities | fault trace",
+                    field_path="units",
+                    model_values={"flash": "feet", "5-mini": None},
+                    agreement_score="2/2",
+                    needs_review=False,
+                    notes="normalized-equivalent measurement",
+                    present_models=["flash", "5-mini"],
+                    row_id="row-1",
+                    match_method="semantic",
+                ),
+            ],
+        )
+        item_df = generator._build_item_centric_df(result)
+        queue_df = generator._build_review_queue_df(item_df, include_missing=True)
+        assert len(queue_df) == 0
+
+    def test_item_centric_shows_diverging_field_values_when_primary_display_is_identical(
+        self, generator
+    ):
+        """When display value is identical, use diverging non-measurement fields for clarity."""
+        result = ComparisonResult(
+            document_name="Doc",
+            models=["flash", "5-mini"],
+            summary={"comparison_approach": "mixed"},
+            item_comparisons=[
+                FieldComparison(
+                    item_id="noise | all facilities geothermal | continuous level sound",
+                    field_path="value",
+                    model_values={"flash": 70, "5-mini": 70},
+                    agreement_score="2/2",
+                    needs_review=False,
+                    present_models=["flash", "5-mini"],
+                    row_id="row-2",
+                    match_method="semantic",
+                ),
+                FieldComparison(
+                    item_id="noise | all facilities geothermal | continuous level sound",
+                    field_path="units",
+                    model_values={"flash": "decibels", "5-mini": "decibels"},
+                    agreement_score="2/2",
+                    needs_review=False,
+                    present_models=["flash", "5-mini"],
+                    row_id="row-2",
+                    match_method="semantic",
+                ),
+                FieldComparison(
+                    item_id="noise | all facilities geothermal | continuous level sound",
+                    field_path="obligation",
+                    model_values={"flash": "shall", "5-mini": "must"},
+                    agreement_score="1/2",
+                    needs_review=True,
+                    notes="2 different values",
+                    present_models=["flash", "5-mini"],
+                    row_id="row-2",
+                    match_method="semantic",
+                ),
+            ],
+        )
+        df = generator._build_item_centric_df(result)
+        assert len(df) == 1
+        assert df.iloc[0]["flash"] == "obligation=shall"
+        assert df.iloc[0]["5-mini"] == "obligation=must"
 
 
 class TestBuildSummaryDf:
@@ -251,8 +328,8 @@ class TestBuildSummaryDf:
         metrics = df["Metric"].tolist()
         assert "Document" in metrics
         assert "Models" in metrics
-        assert "QA/QC Lane" in metrics
-        assert "QA/QC Mode" in metrics
+        assert "QA/QC Profile" in metrics
+        assert "QA/QC Mode" not in metrics  # removed: was redundant with qaqc_profile
         assert "Comparison Approach" in metrics
         assert "Total Comparisons" in metrics
         assert "Full Agreement %" in metrics
@@ -263,8 +340,7 @@ class TestBuildSummaryDf:
             document_name="Qualitative Report",
             models=["model_a", "model_b"],
             summary={
-                "qaqc_lane": "qualitative",
-                "qaqc_mode": "qualitative",
+                "qaqc_profile": "qualitative",
                 "comparison_approach": "text_review",
                 "review_category_counts": {"text_difference": 1},
                 "qualitative_mismatch_breakdown": {
@@ -302,8 +378,7 @@ class TestBuildSummaryDf:
 
         df = generator._build_summary_df(result)
         values = dict(zip(df["Metric"], df["Value"]))
-        assert values["QA/QC Lane"] == "qualitative"
-        assert values["QA/QC Mode"] == "qualitative"
+        assert values["QA/QC Profile"] == "qualitative"
         assert values["Comparison Approach"] == "text_review"
         assert values["Review Category: text_difference"] == 1
         assert values["Qualitative Gate Mode"] == "advisory"
@@ -327,8 +402,7 @@ class TestQualitativeReportLabels:
             document_name="Qualitative Doc",
             models=["gpt-4.1", "gpt-5"],
             summary={
-                "qaqc_lane": "qualitative",
-                "qaqc_mode": "qualitative",
+                "qaqc_profile": "qualitative",
                 "comparison_approach": "text_review",
             },
             context_comparisons=[],
@@ -348,21 +422,21 @@ class TestQualitativeReportLabels:
         )
 
         df = generator._build_item_centric_df(result)
-        assert "QA/QC Lane" in df.columns
-        assert "Comparison Approach" in df.columns
-        assert "Review Category" in df.columns
-        assert df["QA/QC Lane"].iloc[0] == "qualitative"
-        assert df["Comparison Approach"].iloc[0] == "text_review"
-        assert df["Review Category"].iloc[0] == "text_difference"
+        assert "Divergence" in df.columns
+        assert df["Divergence"].iloc[0] == "semantic_conflict"
 
     def test_item_centric_df_marks_scope_variant_rows(self, generator):
         result = ComparisonResult(
             document_name="Qualitative Scope Variant Doc",
             models=["gpt-4.1", "gpt-5"],
             summary={
-                "qaqc_lane": "qualitative",
-                "qaqc_mode": "qualitative",
+                "qaqc_profile": "qualitative",
                 "comparison_approach": "text_review",
+                "qualitative_mismatch_breakdown": {
+                    "top_scope_variant_requirements": [
+                        {"label": "Other | Pipeline | pipeline siting and configuration", "count": 1}
+                    ]
+                },
             },
             context_comparisons=[],
             item_comparisons=[
@@ -381,7 +455,49 @@ class TestQualitativeReportLabels:
         )
 
         df = generator._build_item_centric_df(result)
-        assert df["Review Category"].iloc[0] == "scope_variant"
+        assert df["Divergence"].iloc[0] == "scope_variant"
+
+
+class TestReviewQueueFallback:
+    @pytest.fixture
+    def generator(self):
+        return ReportGenerator()
+
+    def test_review_queue_does_not_fallback_to_missing_when_disabled(self, generator):
+        df = pd.DataFrame(
+            [
+                {"Divergence": "missing", "Status": "ONLY a"},
+                {"Divergence": "missing", "Status": "ONLY b"},
+            ]
+        )
+        queue = generator._build_review_queue_df(df, include_missing=False)
+        assert len(queue) == 0
+
+    def test_item_centric_presence_uses_engine_presence_not_display(self, generator):
+        result = ComparisonResult(
+            document_name="Presence Regression",
+            models=["model_a", "model_b"],
+            summary={"comparison_approach": "mixed"},
+            context_comparisons=[],
+            item_comparisons=[
+                FieldComparison(
+                    item_id="Setback | Facility | Hospital",
+                    field_path="obligation",
+                    model_values={
+                        "model_a": "prohibited",
+                        "model_b": "prohibited",
+                    },
+                    agreement_score="2/2",
+                    needs_review=False,
+                    notes="",
+                    present_models=["model_a", "model_b"],
+                    missing_models=[],
+                )
+            ],
+        )
+        df = generator._build_item_centric_df(result)
+        assert df.loc[0, "Seen By"] != "-"
+        assert "Missing in:" not in str(df.loc[0, "Why Flagged"])
 
 
 class TestTruncateValue:
@@ -409,28 +525,27 @@ class TestTruncateValue:
         assert result.endswith("...")
 
 
-class TestGetRowColor:
-    """Tests for _get_row_color method."""
+class TestDivergenceFillColor:
+    """Tests for row divergence color mapping."""
 
     @pytest.fixture
     def generator(self):
         return ReportGenerator()
 
     @pytest.mark.parametrize(
-        ("agreement_score", "notes", "num_models", "expected"),
+        ("divergence", "expected"),
         [
-            ("2/2", "", 2, "full_agreement"),
-            ("3/3", "", 3, "full_agreement"),
-            ("2/3", "", 3, "partial_agreement"),
-            ("1/3", "", 3, "disagreement"),
-            ("1/2", "", 2, "disagreement"),
-            ("1/2", "Item missing from: model_a", 2, "missing"),
-            ("invalid", "", 2, None),
-            ("", "", 2, None),
+            ("aligned", "full_agreement"),
+            ("semantic_conflict", "partial_agreement"),
+            ("field_conflict", "disagreement"),
+            ("presence_diff", "missing"),
+            ("scope_variant", "scope_variant"),
+            ("judge_uncertain", "judge_uncertain"),
+            ("unknown", None),
         ],
     )
-    def test_get_row_color(self, generator, agreement_score, notes, num_models, expected):
-        color = generator._get_row_color(agreement_score, notes, num_models)
+    def test_divergence_fill_color(self, generator, divergence, expected):
+        color = generator._divergence_fill_color(divergence)
         if expected is None:
             assert color == ""
             return
@@ -484,8 +599,8 @@ class TestExcelGeneration:
             ],
         )
 
-    def test_excel_has_two_sheets(self, generator, sample_result):
-        """Test that Excel file has Summary and Item Comparison sheets."""
+    def test_excel_has_reviewer_first_sheets(self, generator, sample_result):
+        """Workbook should expose dashboard + review queue architecture."""
         with tempfile.TemporaryDirectory() as tmpdir:
             output_dir = Path(tmpdir)
             
@@ -493,23 +608,22 @@ class TestExcelGeneration:
             
             # Read Excel to check sheets
             xlsx = pd.ExcelFile(excel_path)
-            assert "Summary" in xlsx.sheet_names
-            assert "Item Comparison" in xlsx.sheet_names
-            # Note: Context Comparison removed in favor of item-centric format
+            assert "Dashboard" in xlsx.sheet_names
+            assert "Review Queue" in xlsx.sheet_names
+            assert "All Items" in xlsx.sheet_names
+            assert "Model Reliability" in xlsx.sheet_names
+            assert "Run Manifest" in xlsx.sheet_names
 
-    def test_excel_summary_sheet_content(self, generator, sample_result):
-        """Test that Summary sheet has correct content."""
+    def test_excel_dashboard_sheet_content(self, generator, sample_result):
+        """Dashboard should include document and compared models."""
         with tempfile.TemporaryDirectory() as tmpdir:
             output_dir = Path(tmpdir)
             
             excel_path, _ = generator.generate_report(sample_result, output_dir)
             
-            df = pd.read_excel(excel_path, sheet_name="Summary")
+            df = pd.read_excel(excel_path, sheet_name="Dashboard")
             
-            # Check document name is present
             assert "Excel Test" in df["Value"].values
-            
-            # Check models are present
             assert "model_a, model_b" in df["Value"].values
 
 

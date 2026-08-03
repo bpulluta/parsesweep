@@ -59,6 +59,7 @@ extracted/
 compiled/
 discovered/
 outputs/
+validated/
 
 # ─────────────────────────────────────────────────────────
 # Proprietary Schemas & Documents (Intellectual Property)

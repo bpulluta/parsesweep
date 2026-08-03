@@ -60,26 +60,19 @@ compilation:
   output_dir: compiled/aq_permits_va
 
 qaqc:
-  # QA/QC model tiers — reference tiers from the top-level models: block.
-  # Must resolve to >= 2 distinct models. Replaces the legacy QAQC_MODELS env var.
   models: [primary, secondary]
-  default_lane: quantitative
-  lanes:
-    quantitative:
-      enabled: true
-      mode: quantitative
-      comparison_approach: numeric_only
-      record_matching:
-        key_fields:
-          - referenceNumber
-          - make
-          - model
-      comparison:
-        primary_fields:
-          - ratedCapacityKW
-          - ratedCapacityBHP
-          - ratedCapacityHP
-          - ratedCapacityMMBtuPerHr
-          - operatingHoursPerUnitLimit
-          - operatingHoursCombinedLimit
-          - numGenerators
+  comparison_approach: numeric_only
+  record_matching:
+    key_fields:
+      - referenceNumber
+      - make
+      - model
+  comparison:
+    primary_fields:
+      - ratedCapacityKW
+      - ratedCapacityBHP
+      - ratedCapacityHP
+      - ratedCapacityMMBtuPerHr
+      - operatingHoursPerUnitLimit
+      - operatingHoursCombinedLimit
+      - numGenerators

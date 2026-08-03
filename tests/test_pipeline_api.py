@@ -218,8 +218,8 @@ def test_build_run_stage_commands_wires_qaqc(tmp_path: Path) -> None:
         "extraction:\n"
         "  schema: schemas/example.json\n"
         "  output_dir: extracted/example\n"
-        "  enable_qaqc: true\n"
-        "  qaqc_lane: quantitative\n",
+        "qaqc:\n"
+        "  models: [primary, secondary]\n",
         encoding="utf-8",
     )
 
@@ -233,16 +233,11 @@ def test_build_run_stage_commands_wires_qaqc(tmp_path: Path) -> None:
     )
 
     stage_names = [name for name, _ in stage_cmds]
-    assert stage_names == ["discover", "extract", "compile", "compare"]
+    assert stage_names == ["discover", "extract", "validate", "compile"]
 
-    extract_cmd = dict(stage_cmds)["extract"]
-    assert "--enable-qa-qc" in extract_cmd
-
-    compare_cmd = dict(stage_cmds)["compare"]
-    assert "extracted/example/qa_qc" in compare_cmd
-    assert "--schema" in compare_cmd
-    assert "schemas/example.json" in compare_cmd
-    assert compare_cmd[compare_cmd.index("--qaqc-lane") + 1] == "quantitative"
+    validate_cmd = dict(stage_cmds)["validate"]
+    assert validate_cmd[:4] == ["pixi", "run", "psweep", "validate"]
+    assert validate_cmd[validate_cmd.index("--config") + 1] == str(config_path)
 
 
 def test_build_run_stage_commands_no_qaqc_when_disabled(tmp_path: Path) -> None:
