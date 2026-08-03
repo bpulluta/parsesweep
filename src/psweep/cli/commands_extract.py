@@ -1557,31 +1557,42 @@ def _run_qa_qc_extraction(
     qa_model_defs = registry.get_models(list(qaqc_models))
     qa_models = [definition.model for definition in qa_model_defs]
     if len(qa_model_defs) < 2:
+        hint = (
+            f"resolved to: {qa_models}" if qa_models else "resolved to nothing — qaqc.models is empty or missing"
+        )
         print_error(
             "QA/QC Configuration Error",
-            "QA/QC requires at least 2 distinct models, but qaqc.models "
-            f"resolved to: {qa_models or 'nothing'}",
+            f"QA/QC requires at least 2 distinct models, but {hint}",
             [
-                "Define qaqc.models: [tier1, tier2] in your run config",
-                "Reference two distinct tiers from your top-level models: block",
-                "Example: qaqc:\n    models: [primary, secondary]",
+                "Add a qaqc: section to your run config YAML with at least 2 model tiers:",
+                "  qaqc:",
+                "    models: [primary, secondary]",
+                "Make sure both tiers are defined in the top-level models: block",
+                "Each tier must resolve to a different model name",
+                "See config/testing/qaqc_cross_provider.yaml for a ready-to-use example",
             ],
         )
         return
 
     primary_def = qa_model_defs[0]
-    qa_provider = registry.to_llm_kwargs(primary_def.tier).get(
-        "provider", "openai"
-    )
+    primary_llm_kwargs = registry.to_llm_kwargs(primary_def.tier)
+    qa_provider = primary_llm_kwargs.get("provider", "openai")
+
+    # Build a provider-aware model list for the config display
+    model_provider_labels = []
+    for defn in qa_model_defs:
+        kw = registry.to_llm_kwargs(defn.tier)
+        provider_label = kw.get("provider", "openai")
+        model_provider_labels.append(f"{defn.model} [{provider_label}]")
 
     view = RunView("extract", verbosity=Verbosity(verbosity))
     view.header("QA/QC MULTI-MODEL VALIDATION")
     view.config(
         {
-            "Provider": qa_provider.upper(),
-            "Models": ", ".join(qa_models),
+            "Models": ", ".join(model_provider_labels),
             "Documents": str(len(doc_files)),
             "QA/QC Lane": qaqc_lane or "default",
+            "Endpoint": primary_llm_kwargs.get("base_url") or "direct provider",
         }
     )
     if not view.is_quiet:

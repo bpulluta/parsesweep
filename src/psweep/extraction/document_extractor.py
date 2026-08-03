@@ -68,6 +68,7 @@ class DocumentExtractor:
         azure_endpoint: str = None,
         azure_api_version: str = None,
         context_windows: Optional[Dict[str, int]] = None,
+        base_url: Optional[str] = None,
     ):
         """
         Initialize document extractor.
@@ -83,6 +84,9 @@ class DocumentExtractor:
             context_windows: Optional {model-name -> max prompt tokens} map for the
                 fail-fast context-budget guard (from ``model_context_windows`` in
                 config). No model names are hardcoded.
+            base_url: Optional endpoint override for OpenAI-compatible proxies
+                (LiteLLM, OpenRouter, vLLM, etc.). When set, all calls are routed
+                through this URL regardless of model name.
         """
         self.api_key = api_key
         self.model = model
@@ -97,6 +101,7 @@ class DocumentExtractor:
             azure_endpoint=azure_endpoint,
             azure_api_version=azure_api_version,
             context_windows=context_windows,
+            base_url=base_url,
         )
 
         # Initialize text processor

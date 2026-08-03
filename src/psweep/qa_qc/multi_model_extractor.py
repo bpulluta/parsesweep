@@ -125,7 +125,8 @@ def run_multi_model_extraction(
         provider = llm_kwargs.get("provider", "openai")
 
         try:
-            # Create a new extractor for this model
+            # Create a new extractor for this model, threading base_url for
+            # OpenAI-compatible proxy support (LiteLLM, OpenRouter, etc.)
             extractor = DocumentExtractor(
                 api_key=llm_kwargs.get("api_key"),
                 model=llm_kwargs.get("model", model),
@@ -133,6 +134,7 @@ def run_multi_model_extraction(
                 provider=provider,
                 azure_endpoint=llm_kwargs.get("azure_endpoint"),
                 azure_api_version=llm_kwargs.get("azure_api_version"),
+                base_url=llm_kwargs.get("base_url"),
             )
 
             # Run extraction
