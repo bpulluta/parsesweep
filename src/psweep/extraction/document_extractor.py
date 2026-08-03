@@ -43,7 +43,7 @@ class DocumentExtractor:
 
     Architecture:
     1. LLM Structured Extraction: Fast extraction with schema-driven parsing
-    2. Multi-Model QA/QC: Validates via multiple models (run separately with --enable-qa-qc)
+    2. Multi-Model QA/QC: Validates via multiple models (run separately via `psweep validate`)
 
     Works with any document type and JSON schema - fully domain-agnostic.
 
@@ -115,7 +115,7 @@ class DocumentExtractor:
         1. LLM Structured Extraction - Fast, schema-driven parsing
         2. Post-processing - Normalization and sanity checks
 
-        For multi-model QA/QC validation, use the CLI with --enable-qa-qc flag.
+        For multi-model QA/QC validation, use the CLI validate stage.
 
         Args:
             text: Full document text to extract from

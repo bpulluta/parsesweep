@@ -1,8 +1,8 @@
 """
 Comparison Engine for QA/QC Multi-Model Validation.
 
-Compares outputs from multiple models. Default behavior is numeric-focused;
-runtime QA/QC lanes can select qualitative text review instead.
+Compares outputs from multiple models. Comparison behavior is driven by the
+active runtime QA/QC profile in config/<domain>/run.yaml.
 Includes potential duplicate detection and completeness metrics.
 
 Usage:
@@ -39,7 +39,13 @@ from ..utils.item_matcher import (
     get_nested_value,
     normalize_for_matching,
 )
-from ..utils.value_normalizer import normalize_value, is_numeric_value
+from ..utils.value_normalizer import (
+    build_unit_equivalence_index,
+    canonicalize_measurement,
+    canonicalize_unit,
+    is_numeric_value,
+    normalize_value,
+)
 from .utils import resolve_qaqc_runtime_config
 
 logger = logging.getLogger(__name__)
@@ -55,6 +61,13 @@ class FieldComparison:
     agreement_score: str  # e.g., "3/3", "2/3"
     needs_review: bool
     notes: str = ""
+    present_models: List[str] = field(default_factory=list)
+    missing_models: List[str] = field(default_factory=list)
+    paired_by_judge: bool = False
+    pairing_confidence: str = ""
+    pairing_reason: str = ""
+    row_id: str = ""
+    match_method: str = ""
 
 
 @dataclass
@@ -139,13 +152,42 @@ class ComparisonEngine:
 
         self.match_fields = list(self.qa_qc_config["match_fields"])
         self.compare_fields = set(self.qa_qc_config["compare_fields"])
+        # comparison_approach controls which fields are compared:
+        #   "mixed"        — compare ALL compare_fields (numeric as numeric, categorical/text
+        #                    as case-insensitive string equality). This is the recommended default.
+        #   "numeric_only" — legacy: only compare fields where at least one value is numeric.
+        #   "text_review"  — all fields, plus full deduplication/fallback-matching for
+        #                    free-form narrative rows.
         self.comparison_approach = self.qa_qc_config.get(
-            "comparison_approach", "numeric_only"
+            "comparison_approach", "mixed"
         )
         self.config_source = self.qa_qc_config.get("source", "schema_metadata")
         self.lane_name = self.qa_qc_config.get("lane_name")
-        self.lane_mode = self.qa_qc_config.get("mode", "schema_metadata")
         self.projection = self.qa_qc_config.get("projection") or None
+        self.enable_text_fallback_matching = bool(
+            self.qa_qc_config.get("enable_text_fallback_matching", False)
+        )
+        self.enable_judge_pair_matching = bool(
+            self.qa_qc_config.get("enable_judge_pair_matching", False)
+        )
+        self.fuzzy_match_fields = list(
+            self.qa_qc_config.get("fuzzy_match_fields") or []
+        )
+        self.text_fallback_fields = list(
+            self.qa_qc_config.get("text_fallback_fields") or []
+        )
+        self.unit_equivalence_index = build_unit_equivalence_index(
+            self.qa_qc_config.get("unit_equivalence_groups")
+        )
+        self.semantic_match_threshold = float(
+            self.qa_qc_config.get("semantic_match_threshold", 0.30)
+        )
+        self._judge_config = self.qa_qc_config.get("judge") or {}
+        self._judge_runtime = self.qa_qc_config.get("judge_runtime") or {}
+        self._judge_row_equivalence_enabled = bool(
+            self._judge_config.get("row_equivalence", True)
+        )
+        self._judge_client = None
         # Configurable scope-variant category/subject pairs for qualitative lanes.
         # Format: list of [category, subject] pairs (normalized, lowercase).
         # Scope-variant items are excluded from gate-failure math because they
@@ -181,6 +223,13 @@ class ComparisonEngine:
         """
         # Load outputs
         outputs = self._load_outputs(output_files)
+        self._judge_stats = {
+            "attempted_calls": 0,
+            "successful_calls": 0,
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "total_cost_usd": 0.0,
+        }
 
         if len(outputs) < 2:
             logger.warning(
@@ -209,23 +258,31 @@ class ComparisonEngine:
 
         # 2. Compare main data array items
         item_arrays = self._extract_item_arrays(outputs)
-        item_arrays = self._collapse_text_review_duplicates(item_arrays)
-        item_arrays = self._merge_text_review_duplicate_keys(item_arrays)
-        indexes = self._build_indexes(item_arrays)
-        indexes = self._apply_text_review_fallback_matches(indexes, models)
-        indexes = self._absorb_text_review_subsumed_items(indexes, models)
-        all_keys = self._collect_all_keys(indexes)
+        aligned_rows = self._align_items(item_arrays, models)
 
         item_comparisons = []
-        for key in sorted(all_keys, key=str):
-            items = {m: indexes[m].get(key) for m in models}
-            comps, skipped = self._compare_item_fields(key, items, models)
+        for aligned_row in aligned_rows:
+            comps, skipped = self._compare_item_fields(
+                aligned_row["item_key"],
+                aligned_row["items"],
+                models,
+                row_id=aligned_row["row_id"],
+                match_method=aligned_row["match_method"],
+            )
             item_comparisons.extend(comps)
             item_skipped += skipped
 
         # 3. Detect potential duplicates
         potential_duplicates = self._detect_potential_duplicates(
-            indexes, models
+            {
+                model: {
+                    row["row_id"]: row["items"][model]
+                    for row in aligned_rows
+                    if row["items"].get(model) is not None
+                }
+                for model in models
+            },
+            models,
         )
 
         # 4. Calculate completeness
@@ -273,6 +330,9 @@ class ComparisonEngine:
         item_key: Tuple,
         items: Dict[str, Optional[dict]],
         models: List[str],
+        *,
+        row_id: str = "",
+        match_method: str = "",
     ) -> Tuple[List[FieldComparison], int]:
         """Compare fields for one item across models (numeric only)."""
         comparisons = []
@@ -282,8 +342,8 @@ class ComparisonEngine:
         item_id = self._format_item_id(item_key, items)
 
         # Check which models have this item
-        missing = [m for m in models if not items.get(m)]
-        present = [m for m in models if items.get(m)]
+        missing = [m for m in models if items.get(m) is None]
+        present = [m for m in models if items.get(m) is not None]
 
         # If NO models have this item, skip entirely
         if not present:
@@ -312,7 +372,7 @@ class ComparisonEngine:
             # Get values - show actual value for present items, None for missing
             model_values = {}
             for model in models:
-                if items.get(model):
+                if items.get(model) is not None:
                     model_values[model] = get_nested_value(
                         items[model], field_path
                     )
@@ -324,32 +384,132 @@ class ComparisonEngine:
             if missing:
                 pass
             elif self.comparison_approach == "text_review":
+                # All configured fields compared; deep dedup/fallback matching active.
                 pass
-            else:
-                # Numeric-review lanes compare configured numeric fields and keep
-                # unit/source_text available for report context.
-                if field_name in ("unit", "source_text"):
-                    pass
+            elif self.comparison_approach in ("mixed", "numeric_only"):
+                # "mixed"        — compare ALL compare_fields. Numeric fields get
+                #                  numeric comparison; categorical/text fields get
+                #                  case-insensitive string equality. Fixes the
+                #                  silent-drop bug where obligation/value_interpretation
+                #                  (schema enum fields) were skipped in numeric_only.
+                # "numeric_only" — legacy: only compare fields that contain a numeric
+                #                  value; keep unit/source_text for report context.
+                if self.comparison_approach == "mixed":
+                    pass  # compare everything in compare_fields
                 else:
-                    has_numeric = any(
-                        is_numeric_value(v)
-                        for v in model_values.values()
-                        if v is not None
-                    )
-                    if not has_numeric:
-                        skipped += 1
-                        continue
+                    # numeric_only: skip non-numeric fields (except context fields)
+                    if field_name in ("unit", "source_text"):
+                        pass
+                    else:
+                        has_numeric = any(
+                            is_numeric_value(v)
+                            for v in model_values.values()
+                            if v is not None
+                        )
+                        if not has_numeric:
+                            skipped += 1
+                            continue
+            else:
+                # Unknown approach: default to comparing everything (safe fallback).
+                pass
 
             comparison = self._create_comparison(
                 item_id=item_id,
                 field_path=field_path,
                 model_values=model_values,
                 models=models,
+                present_models=present,
                 missing_models=missing,  # Pass info about which models are missing this item
+                pair_metadata=self._extract_pair_metadata(items, present),
+                row_id=row_id,
+                match_method=match_method,
             )
             comparisons.append(comparison)
 
+        self._resolve_measurement_pair_equivalence(
+            comparisons=comparisons,
+            models=models,
+            missing_models=missing,
+        )
+        self._apply_row_level_judge_resolution(
+            comparisons=comparisons,
+            item_id=item_id,
+            items=items,
+            models=models,
+            missing_models=missing,
+        )
         return comparisons, skipped
+
+    def _apply_row_level_judge_resolution(
+        self,
+        *,
+        comparisons: List[FieldComparison],
+        item_id: str,
+        items: Dict[str, Optional[dict]],
+        models: List[str],
+        missing_models: List[str],
+    ) -> None:
+        """Use judge at row level to clear minor multi-field semantic variance."""
+        if not comparisons:
+            return
+        if not self._judge_row_equivalence_enabled:
+            return
+        apply_on = str(self._judge_config.get("apply_on", "none")).strip().lower()
+        if apply_on != "all":
+            return
+        if missing_models:
+            return
+        if not any(comp.needs_review for comp in comparisons):
+            return
+        if not self._judge_config.get("enabled") or not self._judge_runtime.get("model"):
+            return
+
+        row_payload: Dict[str, str] = {}
+        compare_fields = sorted(self.compare_fields)
+        for model in models:
+            item = items.get(model)
+            if item is None:
+                continue
+            parts: List[str] = []
+            for field_name in compare_fields:
+                value = get_nested_value(item, field_name)
+                if value in (None, ""):
+                    continue
+                parts.append(f"{field_name}={value}")
+            for key_field in self.match_fields:
+                value = get_nested_value(item, key_field)
+                if value in (None, ""):
+                    continue
+                parts.append(f"{key_field}={value}")
+            row_payload[model] = " | ".join(parts)
+
+        if len(row_payload) < 2:
+            return
+
+        try:
+            judge_result = self._judge_text_equivalence(
+                item_id=item_id,
+                field_path="row_equivalence",
+                model_values=row_payload,
+            )
+        except Exception:
+            return
+        if not isinstance(judge_result, dict):
+            return
+        confidence = str(judge_result.get("confidence", "low"))
+        if not (
+            judge_result.get("equivalent") is True
+            and self._judge_meets_confidence_threshold(confidence)
+        ):
+            return
+
+        reason = str(judge_result.get("reason") or "row-level semantic alignment")
+        for comp in comparisons:
+            if not comp.needs_review:
+                continue
+            comp.needs_review = False
+            comp.agreement_score = f"{len(models)}/{len(models)}"
+            comp.notes = f"LLM row judge matched ({confidence}): {reason}"
 
     def _create_comparison(
         self,
@@ -357,16 +517,26 @@ class ComparisonEngine:
         field_path: str,
         model_values: Dict[str, Any],
         models: List[str],
+        present_models: List[str] = None,
         missing_models: List[str] = None,
+        pair_metadata: Optional[Dict[str, Any]] = None,
+        row_id: str = "",
+        match_method: str = "",
     ) -> FieldComparison:
         """Create a FieldComparison with agreement calculation."""
+        present_models = present_models or []
         missing_models = missing_models or []
+        pair_metadata = pair_metadata or {}
 
         # Normalize values for comparison
         normalized = {m: normalize_value(v) for m, v in model_values.items()}
+        field_name = field_path.split(".")[-1].lower()
 
         # Count agreement
-        agreement_count = self._count_agreement(normalized)
+        agreement_count = self._count_agreement_for_field(
+            field_name=field_name,
+            normalized_values=normalized,
+        )
         agreement_score = f"{agreement_count}/{len(models)}"
         needs_review = agreement_count < len(models)
 
@@ -386,6 +556,47 @@ class ComparisonEngine:
                 elif any(v is None for v in normalized.values()):
                     empty = [m for m, v in normalized.items() if v is None]
                     notes = f"Empty in: {', '.join(empty)}"
+                if self._should_attempt_judge(
+                    field_path=field_path,
+                    model_values=model_values,
+                ):
+                    try:
+                        judge_result = self._judge_text_equivalence(
+                            item_id=item_id,
+                            field_path=field_path,
+                            model_values=model_values,
+                        )
+                    except Exception as exc:
+                        judge_result = None
+                        notes = (
+                            f"{notes}; judge_error={str(exc)[:80]}"
+                            if notes
+                            else f"judge_error={str(exc)[:80]}"
+                        )
+                    if judge_result:
+                        judge_conf = str(judge_result.get("confidence", "low"))
+                        judge_reason = str(judge_result.get("reason", "equivalent"))
+                        if (
+                            judge_result.get("equivalent") is True
+                            and self._judge_meets_confidence_threshold(judge_conf)
+                        ):
+                            needs_review = False
+                            agreement_score = f"{len(models)}/{len(models)}"
+                            notes = (
+                                f"LLM judge matched ({judge_conf}): {judge_reason}"
+                            )
+                        elif judge_result.get("equivalent") is False:
+                            notes = (
+                                f"{notes}; LLM judge mismatch ({judge_conf}): {judge_reason}"
+                                if notes
+                                else f"LLM judge mismatch ({judge_conf}): {judge_reason}"
+                            )
+                        else:
+                            notes = (
+                                f"{notes}; LLM judge inconclusive ({judge_conf}): {judge_reason}"
+                                if notes
+                                else f"LLM judge inconclusive ({judge_conf}): {judge_reason}"
+                            )
 
         return FieldComparison(
             item_id=item_id,
@@ -394,7 +605,785 @@ class ComparisonEngine:
             agreement_score=agreement_score,
             needs_review=needs_review,
             notes=notes,
+            present_models=present_models,
+            missing_models=missing_models,
+            paired_by_judge=bool(pair_metadata.get("paired_by_judge", False)),
+            pairing_confidence=str(pair_metadata.get("confidence") or ""),
+            pairing_reason=str(pair_metadata.get("reason") or ""),
+            row_id=row_id,
+            match_method=match_method,
         )
+
+    def _count_agreement_for_field(
+        self, *, field_name: str, normalized_values: Dict[str, Any]
+    ) -> int:
+        """Count agreement with semantic equivalence for value/unit/time fields."""
+        if field_name in {"unit", "units"}:
+            canonicalized = {
+                model: canonicalize_unit(value, self.unit_equivalence_index)
+                for model, value in normalized_values.items()
+            }
+            return self._count_agreement(canonicalized)
+
+        if field_name == "value":
+            values = list(normalized_values.values())
+            if len(values) == 2 and self._values_semantically_equivalent(
+                values[0], values[1]
+            ):
+                return 2
+
+        return self._count_agreement(normalized_values)
+
+    def _resolve_measurement_pair_equivalence(
+        self,
+        *,
+        comparisons: List[FieldComparison],
+        models: List[str],
+        missing_models: List[str],
+    ) -> None:
+        """Clear false conflicts when models encode the same measurement differently."""
+        if missing_models:
+            return
+        if len(models) < 2:
+            return
+
+        value_comp = next(
+            (
+                comp
+                for comp in comparisons
+                if comp.field_path.split(".")[-1].lower() == "value"
+            ),
+            None,
+        )
+        unit_comp = next(
+            (
+                comp
+                for comp in comparisons
+                if comp.field_path.split(".")[-1].lower() in {"unit", "units"}
+            ),
+            None,
+        )
+        if value_comp is None:
+            return
+
+        canonical_signatures: List[Tuple[str, Optional[str]]] = []
+        for model in models:
+            value = value_comp.model_values.get(model)
+            unit = unit_comp.model_values.get(model) if unit_comp is not None else None
+            signature = canonicalize_measurement(
+                value, unit, self.unit_equivalence_index
+            )
+            if signature is None:
+                return
+            canonical_signatures.append(signature)
+
+        if len(set(canonical_signatures)) != 1:
+            return
+
+        for comp in comparisons:
+            if comp.field_path.split(".")[-1].lower() not in {"value", "unit", "units"}:
+                continue
+            if not comp.needs_review:
+                continue
+            comp.needs_review = False
+            comp.agreement_score = f"{len(models)}/{len(models)}"
+            comp.notes = "normalized-equivalent measurement"
+
+    def _align_items(
+        self, item_arrays: Dict[str, List[dict]], models: List[str]
+    ) -> List[Dict[str, Any]]:
+        """Align items across models using exact keys, fallback signatures, then judge pairing."""
+        if self.comparison_approach == "text_review":
+            item_arrays = self._collapse_text_review_duplicates(item_arrays)
+            item_arrays = self._merge_text_review_duplicate_keys(item_arrays)
+
+        exact_groups: Dict[str, Dict[Tuple, List[dict]]] = {model: {} for model in models}
+        for model in models:
+            for item in item_arrays.get(model, []):
+                key = self._build_match_key(
+                    item, use_fuzzy=bool(self.fuzzy_match_fields)
+                )
+                exact_groups[model].setdefault(key, []).append(item)
+
+        aligned_rows: List[Dict[str, Any]] = []
+        row_counter = 0
+        consumed_ids: Dict[str, set[int]] = {model: set() for model in models}
+
+        # Pass 1: exact-key alignment only when key exists in at least 2 models.
+        for key in sorted({k for model in models for k in exact_groups[model].keys()}, key=str):
+            per_model = {model: exact_groups[model].get(key, []) for model in models}
+            contributing_models = [m for m in models if per_model[m]]
+            if len(contributing_models) < 2:
+                continue
+            max_len = max((len(items) for items in per_model.values()), default=0)
+            for idx in range(max_len):
+                row_counter += 1
+                row_items: Dict[str, Optional[dict]] = {}
+                present = 0
+                for model in models:
+                    model_items = per_model[model]
+                    item = model_items[idx] if idx < len(model_items) else None
+                    row_items[model] = item
+                    if item is not None:
+                        consumed_ids[model].add(id(item))
+                        present += 1
+                if present < 2:
+                    continue
+                aligned_rows.append(
+                    {
+                        "row_id": f"row-{row_counter}",
+                        "item_key": key,
+                        "items": row_items,
+                        "match_method": "exact",
+                    }
+                )
+
+        leftovers: Dict[str, List[dict]] = {model: [] for model in models}
+        for model in models:
+            for item in item_arrays.get(model, []):
+                if id(item) not in consumed_ids[model]:
+                    leftovers[model].append(item)
+
+        # Pass 2: text fallback signature matching across leftover one-sided rows.
+        if self._uses_text_fallback_matching():
+            if len(models) == 2 and self.comparison_approach == "mixed":
+                model_a, model_b = models[0], models[1]
+                remaining_a = [
+                    item
+                    for item in leftovers[model_a]
+                    if id(item) not in consumed_ids[model_a]
+                ]
+                remaining_b = [
+                    item
+                    for item in leftovers[model_b]
+                    if id(item) not in consumed_ids[model_b]
+                ]
+                candidate_pairs: List[Tuple[float, dict, dict]] = []
+                for item_a in remaining_a:
+                    for item_b in remaining_b:
+                        score = self._semantic_alignment_score(item_a, item_b)
+                        if score >= self.semantic_match_threshold:
+                            candidate_pairs.append((score, item_a, item_b))
+                candidate_pairs.sort(key=lambda row: row[0], reverse=True)
+                matched_a: set[int] = set()
+                matched_b: set[int] = set()
+                for _, item_a, best_item_b in candidate_pairs:
+                    if id(item_a) in matched_a or id(best_item_b) in matched_b:
+                        continue
+                    row_counter += 1
+                    aligned_rows.append(
+                        {
+                            "row_id": f"row-{row_counter}",
+                            "item_key": self._build_match_key(
+                                item_a, use_fuzzy=True
+                            ),
+                            "items": {
+                                model_a: item_a,
+                                model_b: best_item_b,
+                            },
+                            "match_method": "semantic",
+                        }
+                    )
+                    consumed_ids[model_a].add(id(item_a))
+                    consumed_ids[model_b].add(id(best_item_b))
+                    matched_a.add(id(item_a))
+                    matched_b.add(id(best_item_b))
+            else:
+                sig_groups: Dict[str, Dict[str, List[dict]]] = {}
+                for model in models:
+                    for item in leftovers[model]:
+                        signature = self._build_text_review_signature(item)
+                        if not signature:
+                            continue
+                        sig_groups.setdefault(signature, {}).setdefault(model, []).append(item)
+
+                for signature, per_model_items in sorted(sig_groups.items(), key=lambda x: x[0]):
+                    participating_models = [m for m, items in per_model_items.items() if items]
+                    if len(participating_models) < 2:
+                        continue
+                    max_len = max(len(per_model_items.get(model, [])) for model in models)
+                    for idx in range(max_len):
+                        row_counter += 1
+                        row_items: Dict[str, Optional[dict]] = {model: None for model in models}
+                        present = 0
+                        for model in models:
+                            model_items = per_model_items.get(model, [])
+                            item = model_items[idx] if idx < len(model_items) else None
+                            if item is not None and id(item) not in consumed_ids[model]:
+                                row_items[model] = item
+                                consumed_ids[model].add(id(item))
+                                present += 1
+                        if present < 2:
+                            continue
+                        aligned_rows.append(
+                            {
+                                "row_id": f"row-{row_counter}",
+                                "item_key": ("fallback", signature),
+                                "items": row_items,
+                                "match_method": "fuzzy",
+                            }
+                        )
+
+        # Pass 3: judge pair matching for two-model mixed lanes.
+        if self._uses_judge_pair_matching(models):
+            model_a, model_b = models[0], models[1]
+            remaining_a = [item for item in leftovers[model_a] if id(item) not in consumed_ids[model_a]]
+            remaining_b = [item for item in leftovers[model_b] if id(item) not in consumed_ids[model_b]]
+            max_pair_calls = int((self._judge_config or {}).get("max_pairing_calls", 25) or 25)
+            min_pair_overlap = float((self._judge_config or {}).get("min_pair_overlap", 0.2) or 0.2)
+            pair_calls = 0
+            matched_b_ids: set[int] = set()
+            for item_a in remaining_a:
+                if pair_calls >= max_pair_calls:
+                    break
+                candidates: List[Tuple[float, dict]] = []
+                for item_b in remaining_b:
+                    if id(item_b) in matched_b_ids:
+                        continue
+                    overlap = self._pair_overlap_score(item_a, item_b)
+                    if overlap >= min_pair_overlap:
+                        candidates.append((overlap, item_b))
+                if not candidates:
+                    continue
+                candidates.sort(key=lambda x: x[0], reverse=True)
+                pair_calls += 1
+                candidate = candidates[0][1]
+                judge_match = self._judge_item_pair_equivalence(
+                    model_a=model_a,
+                    item_a=item_a,
+                    model_b=model_b,
+                    item_b=candidate,
+                )
+                if not judge_match or not judge_match.get("equivalent"):
+                    continue
+                row_counter += 1
+                paired_a = dict(item_a)
+                paired_b = dict(candidate)
+                pair_info = {
+                    "paired_by_judge": True,
+                    "confidence": str(judge_match.get("confidence") or ""),
+                    "reason": str(judge_match.get("reason") or ""),
+                }
+                paired_a["_pairing_info"] = pair_info
+                paired_b["_pairing_info"] = pair_info
+                aligned_rows.append(
+                    {
+                        "row_id": f"row-{row_counter}",
+                        "item_key": ("judge_pair", row_counter),
+                        "items": {model_a: paired_a, model_b: paired_b},
+                        "match_method": "judge_pair",
+                    }
+                )
+                consumed_ids[model_a].add(id(item_a))
+                consumed_ids[model_b].add(id(candidate))
+                matched_b_ids.add(id(candidate))
+
+        # Pass 3.5: absorb text-review subsumed one-sided leftovers (coverage by broader rows).
+        if self.comparison_approach == "text_review":
+            for source_model in models:
+                for source_item in item_arrays.get(source_model, []):
+                    if id(source_item) in consumed_ids[source_model]:
+                        continue
+                    source_category = self._normalize_match_label(
+                        get_nested_value(source_item, self.match_fields[0])
+                        if self.match_fields
+                        else None
+                    )
+                    source_text = self._build_text_review_raw_text(source_item)
+                    source_tokens = self._build_text_review_token_set(source_item)
+                    if not source_category or not source_text or len(source_tokens) < 3:
+                        continue
+                    subsumed_everywhere = True
+                    for other_model in models:
+                        if other_model == source_model:
+                            continue
+                        candidates = []
+                        for candidate in item_arrays.get(other_model, []):
+                            candidate_category = self._normalize_match_label(
+                                get_nested_value(candidate, self.match_fields[0])
+                                if self.match_fields
+                                else None
+                            )
+                            if candidate_category != source_category:
+                                continue
+                            if not self._text_review_item_subsumes(
+                                candidate,
+                                source_item,
+                                source_text,
+                                source_tokens,
+                            ):
+                                continue
+                            candidates.append(candidate)
+                        if len(candidates) != 1:
+                            subsumed_everywhere = False
+                            break
+                    if subsumed_everywhere:
+                        consumed_ids[source_model].add(id(source_item))
+
+        # Pass 3.6: absorb mixed-lane one-sided leftovers subsumed by an already aligned row.
+        if self.comparison_approach == "mixed":
+            for source_model in models:
+                for source_item in item_arrays.get(source_model, []):
+                    if id(source_item) in consumed_ids[source_model]:
+                        continue
+                    if self._is_subsumed_by_aligned_row(
+                        source_model=source_model,
+                        source_item=source_item,
+                        aligned_rows=aligned_rows,
+                        models=models,
+                    ):
+                        consumed_ids[source_model].add(id(source_item))
+
+        # Pass 4: unmatched leftovers routed as one-sided presence rows.
+        for model in models:
+            for item in item_arrays.get(model, []):
+                if id(item) in consumed_ids[model]:
+                    continue
+                row_counter += 1
+                row_items = {m: None for m in models}
+                row_items[model] = item
+                match_method = "unmatched"
+                if self._is_scope_split_unmatched(
+                    source_model=model,
+                    source_item=item,
+                    aligned_rows=aligned_rows,
+                    models=models,
+                ):
+                    match_method = "scope_split"
+                aligned_rows.append(
+                    {
+                        "row_id": f"row-{row_counter}",
+                        "item_key": self._build_match_key(item, use_fuzzy=True),
+                        "items": row_items,
+                        "match_method": match_method,
+                    }
+                )
+
+        return aligned_rows
+
+    def _is_subsumed_by_aligned_row(
+        self,
+        *,
+        source_model: str,
+        source_item: dict,
+        aligned_rows: List[Dict[str, Any]],
+        models: List[str],
+    ) -> bool:
+        """Return True if a one-sided mixed-lane row is covered by a broader aligned row."""
+        source_feature = self._normalize_match_label(
+            get_nested_value(source_item, self.match_fields[0])
+            if self.match_fields
+            else None
+        )
+        source_text = self._build_text_review_raw_text(source_item) or ""
+        source_tokens = extract_key_tokens(source_text)
+        source_value = normalize_value(get_nested_value(source_item, "value"))
+        source_obligation = self._normalize_match_label(
+            get_nested_value(source_item, "obligation")
+        )
+        if not source_feature:
+            return False
+        for row in aligned_rows:
+            row_items = row.get("items") or {}
+            peer_source = row_items.get(source_model)
+            if peer_source is None:
+                continue
+            if not any(
+                row_items.get(model) is not None
+                for model in models
+                if model != source_model
+            ):
+                continue
+            peer_feature = self._normalize_match_label(
+                get_nested_value(peer_source, self.match_fields[0])
+                if self.match_fields
+                else None
+            )
+            if peer_feature != source_feature:
+                continue
+            peer_value = normalize_value(get_nested_value(peer_source, "value"))
+            if (
+                source_value is not None
+                and peer_value is not None
+                and not self._values_semantically_equivalent(
+                    source_value, peer_value
+                )
+            ):
+                continue
+            peer_obligation = self._normalize_match_label(
+                get_nested_value(peer_source, "obligation")
+            )
+            if (
+                source_obligation
+                and peer_obligation
+                and source_obligation != peer_obligation
+            ):
+                continue
+            peer_text = self._build_text_review_raw_text(peer_source) or ""
+            peer_tokens = extract_key_tokens(peer_text)
+            if not source_tokens or not peer_tokens:
+                continue
+            overlap = len(source_tokens.intersection(peer_tokens)) / max(
+                1, len(source_tokens.union(peer_tokens))
+            )
+            if overlap >= 0.45:
+                return True
+            if (
+                self._is_temporal_feature(source_feature)
+                and source_value is not None
+                and peer_value is not None
+                and self._values_semantically_equivalent(source_value, peer_value)
+                and overlap >= 0.15
+            ):
+                return True
+        return False
+
+    def _is_scope_split_unmatched(
+        self,
+        *,
+        source_model: str,
+        source_item: dict,
+        aligned_rows: List[Dict[str, Any]],
+        models: List[str],
+    ) -> bool:
+        """Detect likely scope split/merge cases to avoid labeling as pure missing."""
+        source_feature = self._normalize_match_label(
+            get_nested_value(source_item, self.match_fields[0])
+            if self.match_fields
+            else None
+        )
+        source_value = normalize_value(get_nested_value(source_item, "value"))
+        source_obligation = self._normalize_match_label(
+            get_nested_value(source_item, "obligation")
+        )
+        source_tokens = self._build_text_review_token_set(source_item)
+        if not source_feature:
+            return False
+        for row in aligned_rows:
+            row_items = row.get("items") or {}
+            peer_source = row_items.get(source_model)
+            if peer_source is None:
+                continue
+            if not any(
+                row_items.get(model) is not None
+                for model in models
+                if model != source_model
+            ):
+                continue
+            peer_feature = self._normalize_match_label(
+                get_nested_value(peer_source, self.match_fields[0])
+                if self.match_fields
+                else None
+            )
+            if peer_feature != source_feature:
+                continue
+            peer_value = normalize_value(get_nested_value(peer_source, "value"))
+            if (
+                source_value is not None
+                and peer_value is not None
+                and not self._values_semantically_equivalent(
+                    source_value, peer_value
+                )
+            ):
+                continue
+            peer_obligation = self._normalize_match_label(
+                get_nested_value(peer_source, "obligation")
+            )
+            if (
+                source_obligation
+                and peer_obligation
+                and source_obligation != peer_obligation
+            ):
+                continue
+            if source_tokens:
+                peer_tokens = self._build_text_review_token_set(peer_source)
+                if peer_tokens:
+                    overlap = len(source_tokens.intersection(peer_tokens)) / max(
+                        1, len(source_tokens.union(peer_tokens))
+                    )
+                    if overlap >= 0.35:
+                        return True
+                    if (
+                        self._is_temporal_feature(source_feature)
+                        and source_value is not None
+                        and peer_value is not None
+                        and self._values_semantically_equivalent(
+                            source_value, peer_value
+                        )
+                        and overlap >= 0.10
+                    ):
+                        return True
+                    continue
+            return True
+        return False
+
+    def _semantic_alignment_score(self, item_a: dict, item_b: dict) -> float:
+        """Score whether two unmatched rows likely represent the same requirement."""
+        feature_a = self._normalize_match_label(
+            get_nested_value(item_a, self.match_fields[0]) if self.match_fields else None
+        )
+        feature_b = self._normalize_match_label(
+            get_nested_value(item_b, self.match_fields[0]) if self.match_fields else None
+        )
+        feature_score = 0.0
+        if feature_a and feature_b:
+            if feature_a == feature_b:
+                feature_score = 1.0
+            else:
+                tokens_a = extract_key_tokens(feature_a)
+                tokens_b = extract_key_tokens(feature_b)
+                if tokens_a and tokens_b:
+                    feature_score = len(tokens_a.intersection(tokens_b)) / len(
+                        tokens_a.union(tokens_b)
+                    )
+
+        text_a = self._build_text_review_raw_text(item_a) or ""
+        text_b = self._build_text_review_raw_text(item_b) or ""
+        text_tokens_a = extract_key_tokens(text_a)
+        text_tokens_b = extract_key_tokens(text_b)
+        text_score = 0.0
+        if text_tokens_a and text_tokens_b:
+            text_score = len(text_tokens_a.intersection(text_tokens_b)) / len(
+                text_tokens_a.union(text_tokens_b)
+            )
+
+        subject_score = 0.0
+        if len(self.match_fields) > 1:
+            subject_a_parts: List[str] = []
+            subject_b_parts: List[str] = []
+            for field_path in self.match_fields[1:]:
+                val_a = self._normalize_match_label(get_nested_value(item_a, field_path))
+                val_b = self._normalize_match_label(get_nested_value(item_b, field_path))
+                if val_a:
+                    subject_a_parts.append(val_a)
+                if val_b:
+                    subject_b_parts.append(val_b)
+            if subject_a_parts and subject_b_parts:
+                tokens_a = extract_key_tokens(" ".join(subject_a_parts))
+                tokens_b = extract_key_tokens(" ".join(subject_b_parts))
+                if tokens_a and tokens_b:
+                    subject_score = len(tokens_a.intersection(tokens_b)) / len(
+                        tokens_a.union(tokens_b)
+                    )
+
+        value_a = normalize_value(get_nested_value(item_a, "value"))
+        value_b = normalize_value(get_nested_value(item_b, "value"))
+        values_match = value_a is not None and value_b is not None and self._values_semantically_equivalent(value_a, value_b)
+        if (
+            value_a is not None
+            and value_b is not None
+            and not self._values_semantically_equivalent(value_a, value_b)
+            and is_numeric_value(value_a)
+            and is_numeric_value(value_b)
+        ):
+            return 0.0
+
+        units_a = canonicalize_unit(
+            get_nested_value(item_a, "units") or get_nested_value(item_a, "unit"),
+            self.unit_equivalence_index,
+        )
+        units_b = canonicalize_unit(
+            get_nested_value(item_b, "units") or get_nested_value(item_b, "unit"),
+            self.unit_equivalence_index,
+        )
+        units_match = bool(units_a and units_b and units_a == units_b)
+
+        obligation_a = self._normalize_match_label(get_nested_value(item_a, "obligation"))
+        obligation_b = self._normalize_match_label(get_nested_value(item_b, "obligation"))
+        obligation_match = bool(obligation_a and obligation_b and obligation_a == obligation_b)
+
+        score = (0.30 * feature_score) + (0.30 * text_score) + (0.30 * subject_score)
+        if values_match:
+            score += 0.30
+        if units_match:
+            score += 0.10
+        if obligation_match:
+            score += 0.10
+        return min(score, 1.0)
+
+    def _normalize_time_value(self, value: Any) -> Optional[str]:
+        raw = self._normalize_match_label(value)
+        if not raw:
+            return None
+        m = re.fullmatch(r"(\d{1,2}):(\d{2})", raw)
+        if m:
+            hour = int(m.group(1))
+            minute = int(m.group(2))
+            if 0 <= hour <= 23 and 0 <= minute <= 59:
+                return f"{hour:02d}:{minute:02d}"
+        m = re.fullmatch(r"(\d{1,2})(?::(\d{2}))?\s*([ap])\.?m\.?", raw)
+        if m:
+            hour = int(m.group(1))
+            minute = int(m.group(2) or "0")
+            marker = m.group(3)
+            if not (1 <= hour <= 12 and 0 <= minute <= 59):
+                return None
+            if marker == "p" and hour != 12:
+                hour += 12
+            if marker == "a" and hour == 12:
+                hour = 0
+            return f"{hour:02d}:{minute:02d}"
+        return None
+
+    def _values_semantically_equivalent(self, value_a: Any, value_b: Any) -> bool:
+        if value_a == value_b:
+            return True
+        measurement_a = canonicalize_measurement(
+            value_a, equivalence_index=self.unit_equivalence_index
+        )
+        measurement_b = canonicalize_measurement(
+            value_b, equivalence_index=self.unit_equivalence_index
+        )
+        if measurement_a and measurement_b and measurement_a == measurement_b:
+            return True
+        time_a = self._normalize_time_value(value_a)
+        time_b = self._normalize_time_value(value_b)
+        if time_a and time_b and time_a == time_b:
+            return True
+        return False
+
+    def _is_temporal_feature(self, feature_label: str) -> bool:
+        label = str(feature_label or "").lower()
+        return any(token in label for token in ("time", "hour", "hours", "start", "end"))
+
+    def _build_match_key(self, item: dict, *, use_fuzzy: bool) -> Tuple:
+        """Build a normalized match key from configured match fields."""
+        values: List[Any] = []
+        fuzzy_fields = set(self.fuzzy_match_fields if use_fuzzy else [])
+        for field_path in self.match_fields:
+            value = get_nested_value(item, field_path)
+            if value is None:
+                values.append(None)
+                continue
+            if isinstance(value, str):
+                if field_path in fuzzy_fields:
+                    values.append(normalize_for_matching(value))
+                else:
+                    values.append(value.strip().lower())
+                continue
+            values.append(value)
+        return tuple(values)
+
+    def _judge_text_equivalence(
+        self,
+        item_id: str,
+        field_path: str,
+        model_values: Dict[str, Any],
+    ) -> Optional[Dict[str, Any]]:
+        """Optionally run an LLM-as-judge pass for text-review disagreements."""
+        if not self._judge_config.get("enabled"):
+            return None
+        judge_model = self._judge_runtime.get("model")
+        if not judge_model:
+            return None
+
+        values = {k: v for k, v in model_values.items() if v is not None}
+        if len(values) < 2:
+            return None
+        unique_values = {str(v).strip().lower() for v in values.values()}
+        if len(unique_values) <= 1:
+            return {"equivalent": True, "confidence": "high", "reason": "exact_match"}
+
+        from ..extraction.llm_client import LLMClient
+
+        if self._judge_client is None:
+            self._judge_client = LLMClient(
+                api_key=self._judge_runtime.get("api_key"),
+                model=judge_model,
+                provider=self._judge_runtime.get("provider"),
+                azure_endpoint=self._judge_runtime.get("azure_endpoint"),
+                azure_api_version=self._judge_runtime.get("azure_api_version"),
+                base_url=self._judge_runtime.get("base_url"),
+            )
+
+        judge_schema = {
+            "type": "object",
+            "properties": {
+                "equivalent": {"type": "boolean"},
+                "confidence": {
+                    "type": "string",
+                    "enum": ["high", "medium", "low"],
+                },
+                "reason": {"type": "string"},
+            },
+            "required": ["equivalent", "confidence", "reason"],
+        }
+        values_blob = "\n".join(
+            f"- {model}: {value}" for model, value in sorted(values.items())
+        )
+        strictness = (
+            self._judge_config.get("strictness")
+            or "Conservative: if uncertain, mark not equivalent."
+        )
+        prompt = (
+            "You are a strict QA judge. Decide whether values are semantically equivalent.\n"
+            "Never infer unseen facts. If there is any ambiguity, return equivalent=false.\n"
+            f"Policy: {strictness}\n"
+            f"Item: {item_id}\nField: {field_path}\nValues:\n{values_blob}"
+        )
+        self._judge_stats["attempted_calls"] += 1
+        judged = self._judge_client.extract(
+            text=prompt,
+            schema=judge_schema,
+            system_prompt=(
+                "Return only JSON that conforms to schema. "
+                "Be conservative and do not guess."
+            ),
+        )
+        self._judge_stats["successful_calls"] += 1
+        self._judge_stats["input_tokens"] += int(judged.get("input_tokens") or 0)
+        self._judge_stats["output_tokens"] += int(
+            judged.get("output_tokens") or 0
+        )
+        self._judge_stats["total_cost_usd"] += float(judged.get("cost") or 0.0)
+        payload = judged.get("data") if isinstance(judged, dict) else None
+        if not isinstance(payload, dict):
+            return None
+        return payload
+
+    def _should_attempt_judge(
+        self,
+        *,
+        field_path: str,
+        model_values: Dict[str, Any],
+    ) -> bool:
+        """Decide if judge should run for this mismatch while controlling cost."""
+        if not self._judge_config.get("enabled"):
+            return False
+        if not self._judge_runtime.get("model"):
+            return False
+        values = [value for value in model_values.values() if value is not None]
+        if len(values) < 2:
+            return False
+        unique_values = {str(value).strip().lower() for value in values}
+        if len(unique_values) <= 1:
+            return False
+
+        if self.comparison_approach == "text_review":
+            return True
+        if self.comparison_approach != "mixed":
+            return False
+
+        apply_on = str(self._judge_config.get("apply_on", "none")).strip().lower()
+        if apply_on in {"none", "off", "disabled"}:
+            return False
+        if apply_on == "all":
+            return True
+
+        # Cost-optimized default for mixed lanes:
+        # skip numeric-like mismatches and judge only non-numeric text/enum values.
+        has_numeric = any(is_numeric_value(value) for value in values)
+        if apply_on in {"non_numeric", "text", "text_only", "categorical"}:
+            return not has_numeric
+        return False
+
+    def _judge_meets_confidence_threshold(self, confidence: str) -> bool:
+        """Apply configurable minimum judge confidence for auto-match decisions."""
+        threshold = str(
+            self._judge_config.get("min_confidence", "high")
+        ).strip().lower()
+        rank = {"low": 1, "medium": 2, "high": 3}
+        return rank.get(str(confidence).strip().lower(), 0) >= rank.get(threshold, 3)
 
     def _count_agreement(self, model_values: Dict[str, Any]) -> int:
         """Count how many models agree (most common value)."""
@@ -444,8 +1433,7 @@ class ComparisonEngine:
             # Comparison approach
             "comparison_approach": self.comparison_approach,
             "qaqc_config_source": self.config_source,
-            "qaqc_lane": self.lane_name,
-            "qaqc_mode": self.lane_mode,
+            "qaqc_profile": self.lane_name,
             "skipped_non_numeric": context_skipped + item_skipped,
             # Item counts per model
             "items_per_model": {
@@ -493,6 +1481,37 @@ class ComparisonEngine:
             if completeness
             else {},
         }
+        if self._judge_config.get("enabled"):
+            judge_matches = sum(
+                1
+                for c in item_comparisons
+                if c.notes.startswith("LLM judge matched")
+                or c.notes.startswith("LLM row judge matched")
+            )
+            judge_errors = sum(
+                1 for c in item_comparisons if "judge_error=" in (c.notes or "")
+            )
+            summary["judge"] = {
+                "enabled": True,
+                "model": self._judge_runtime.get("model"),
+                "resolved_matches": judge_matches,
+                "errors": judge_errors,
+                "attempted_calls": int(
+                    (self._judge_stats or {}).get("attempted_calls", 0)
+                ),
+                "successful_calls": int(
+                    (self._judge_stats or {}).get("successful_calls", 0)
+                ),
+                "input_tokens": int(
+                    (self._judge_stats or {}).get("input_tokens", 0)
+                ),
+                "output_tokens": int(
+                    (self._judge_stats or {}).get("output_tokens", 0)
+                ),
+                "total_cost_usd": float(
+                    (self._judge_stats or {}).get("total_cost_usd", 0.0)
+                ),
+            }
 
         qualitative_breakdown = self._build_qualitative_mismatch_breakdown(
             item_comparisons
@@ -529,6 +1548,14 @@ class ComparisonEngine:
         """Classify a comparison into a stable benchmark/report review category."""
         if not comparison.needs_review:
             return "aligned"
+
+        if comparison.missing_models:
+            if (
+                self.comparison_approach == "text_review"
+                and self._is_text_review_scope_variant(comparison.item_id)
+            ):
+                return "scope_variant"
+            return "missing_item"
 
         notes_lower = (comparison.notes or "").lower()
         if "item not extracted by" in notes_lower:
@@ -791,7 +1818,11 @@ class ComparisonEngine:
     ) -> Dict[str, Dict[Tuple, dict]]:
         """Build item indexes for matching."""
         return {
-            model: create_item_index(items, self.match_fields)
+            model: create_item_index(
+                items,
+                self.match_fields,
+                fuzzy_fields=self.fuzzy_match_fields,
+            )
             for model, items in item_arrays.items()
         }
 
@@ -800,7 +1831,7 @@ class ComparisonEngine:
         item_arrays: Dict[str, List[dict]],
     ) -> Dict[str, List[dict]]:
         """Collapse repeated qualitative rows within a single model before matching."""
-        if self.comparison_approach != "text_review":
+        if not self._uses_text_fallback_matching():
             return item_arrays
 
         collapsed_arrays: Dict[str, List[dict]] = {}
@@ -824,7 +1855,7 @@ class ComparisonEngine:
         item_arrays: Dict[str, List[dict]],
     ) -> Dict[str, List[dict]]:
         """Merge text-review rows that share the exact same match key within one model."""
-        if self.comparison_approach != "text_review":
+        if not self._uses_text_fallback_matching():
             return item_arrays
 
         merged_arrays: Dict[str, List[dict]] = {}
@@ -891,7 +1922,7 @@ class ComparisonEngine:
         models: List[str],
     ) -> Dict[str, Dict[Tuple, dict]]:
         """Pair unmatched qualitative items by normalized compare text when safe."""
-        if self.comparison_approach != "text_review":
+        if not self._uses_text_fallback_matching():
             return indexes
 
         all_keys = self._collect_all_keys(indexes)
@@ -929,13 +1960,96 @@ class ComparisonEngine:
 
         return indexes
 
+    def _apply_judge_pair_matches(
+        self,
+        indexes: Dict[str, Dict[Tuple, dict]],
+        models: List[str],
+    ) -> Dict[str, Dict[Tuple, dict]]:
+        """Use judge to pair one-sided mixed-lane items before field comparison."""
+        if not self._uses_judge_pair_matching(models):
+            return indexes
+
+        model_a, model_b = models[0], models[1]
+        unmatched_a: List[Tuple[Tuple, dict]] = []
+        unmatched_b: List[Tuple[Tuple, dict]] = []
+        for key in self._collect_all_keys(indexes):
+            present_models = [m for m in models if key in indexes[m]]
+            if len(present_models) != 1:
+                continue
+            owner = present_models[0]
+            if owner == model_a:
+                unmatched_a.append((key, indexes[model_a][key]))
+            elif owner == model_b:
+                unmatched_b.append((key, indexes[model_b][key]))
+
+        if not unmatched_a or not unmatched_b:
+            return indexes
+
+        max_pair_calls = int(
+            (self._judge_config or {}).get("max_pairing_calls", 25) or 25
+        )
+        min_pair_overlap = float(
+            (self._judge_config or {}).get("min_pair_overlap", 0.2) or 0.2
+        )
+        pair_calls = 0
+        matched_b_keys: set[Tuple] = set()
+        pair_counter = 0
+
+        for key_a, item_a in unmatched_a:
+            if pair_calls >= max_pair_calls:
+                break
+            candidates: List[Tuple[Tuple, dict, float]] = []
+            for key_b, item_b in unmatched_b:
+                if key_b in matched_b_keys:
+                    continue
+                overlap = self._pair_overlap_score(item_a, item_b)
+                if overlap < min_pair_overlap:
+                    continue
+                candidates.append((key_b, item_b, overlap))
+            if not candidates:
+                continue
+            candidates.sort(key=lambda row: row[2], reverse=True)
+            key_b, item_b, _ = candidates[0]
+            pair_calls += 1
+            judge_match = self._judge_item_pair_equivalence(
+                model_a=model_a,
+                item_a=item_a,
+                model_b=model_b,
+                item_b=item_b,
+            )
+            if not judge_match or not judge_match.get("equivalent"):
+                continue
+            pair_counter += 1
+            synthetic_key = ("__judge_pair__", str(pair_counter))
+            paired_a = dict(item_a)
+            paired_b = dict(item_b)
+            paired_a["_paired_by_judge"] = True
+            paired_b["_paired_by_judge"] = True
+            paired_a["_pairing_info"] = {
+                "paired_by_judge": True,
+                "confidence": str(judge_match.get("confidence") or ""),
+                "reason": str(judge_match.get("reason") or ""),
+            }
+            paired_b["_pairing_info"] = {
+                "paired_by_judge": True,
+                "confidence": str(judge_match.get("confidence") or ""),
+                "reason": str(judge_match.get("reason") or ""),
+            }
+            indexes[model_a].pop(key_a, None)
+            indexes[model_b].pop(key_b, None)
+            indexes[model_a][synthetic_key] = paired_a
+            indexes[model_b][synthetic_key] = paired_b
+            matched_b_keys.add(key_b)
+
+        return indexes
+
     def _absorb_text_review_subsumed_items(
         self,
         indexes: Dict[str, Dict[Tuple, dict]],
         models: List[str],
     ) -> Dict[str, Dict[Tuple, dict]]:
         """Drop one-sided qualitative rows when every opposing model has a unique broader row covering them."""
-        if self.comparison_approach != "text_review":
+        if not self._uses_text_fallback_matching():
             return indexes
 
         unmatched_keys = [
@@ -1058,7 +2172,7 @@ class ComparisonEngine:
             return None
 
         signature_parts: List[str] = []
-        for field_path in sorted(self.compare_fields):
+        for field_path in self._fallback_signature_paths():
             value = get_nested_value(item, field_path)
             if value is None:
                 continue
@@ -1075,6 +2189,104 @@ class ComparisonEngine:
             return None
         return "||".join(signature_parts)
 
+    def _uses_text_fallback_matching(self) -> bool:
+        """Whether text-signature fallback matching should run for this lane."""
+        if self.comparison_approach == "text_review":
+            return True
+        return self.comparison_approach == "mixed" and self.enable_text_fallback_matching
+
+    def _fallback_signature_paths(self) -> List[str]:
+        """Return field paths used for text fallback signatures."""
+        if self.comparison_approach == "mixed" and self.text_fallback_fields:
+            return sorted(set(self.text_fallback_fields))
+        return sorted(self.compare_fields)
+
+    def _uses_judge_pair_matching(self, models: List[str]) -> bool:
+        """Whether mixed-lane judge-assisted pairing should run."""
+        if len(models) != 2:
+            return False
+        if self.comparison_approach != "mixed":
+            return False
+        if not self.enable_judge_pair_matching:
+            return False
+        if not self._judge_config.get("enabled"):
+            return False
+        if not self._judge_runtime.get("model"):
+            return False
+        return str(self._judge_config.get("apply_on", "none")).strip().lower() in {
+            "all",
+            "non_numeric",
+            "text",
+            "text_only",
+            "categorical",
+        }
+
+    def _pair_overlap_score(self, item_a: dict, item_b: dict) -> float:
+        """Cheap prefilter score before LLM pairing."""
+        text_a = self._build_text_review_raw_text(item_a) or ""
+        text_b = self._build_text_review_raw_text(item_b) or ""
+        tokens_a = extract_key_tokens(text_a)
+        tokens_b = extract_key_tokens(text_b)
+        if not tokens_a or not tokens_b:
+            return 0.0
+        inter = len(tokens_a.intersection(tokens_b))
+        union = len(tokens_a.union(tokens_b))
+        if union <= 0:
+            return 0.0
+        return inter / union
+
+    def _judge_item_pair_equivalence(
+        self,
+        *,
+        model_a: str,
+        item_a: dict,
+        model_b: str,
+        item_b: dict,
+    ) -> Optional[Dict[str, Any]]:
+        """Ask judge if two unmatched items represent the same requirement."""
+        fields = self._fallback_signature_paths()
+        values_a = {field: get_nested_value(item_a, field) for field in fields}
+        values_b = {field: get_nested_value(item_b, field) for field in fields}
+        payload = {
+            model_a: values_a,
+            model_b: values_b,
+        }
+        try:
+            result = self._judge_text_equivalence(
+                item_id="pair_match",
+                field_path="item_identity",
+                model_values={model_a: payload[model_a], model_b: payload[model_b]},
+            )
+        except Exception:
+            return None
+        if not isinstance(result, dict):
+            return None
+        confidence = str(result.get("confidence", "low"))
+        if not self._judge_meets_confidence_threshold(confidence):
+            return None
+        if result.get("equivalent") is not True:
+            return None
+        return {
+            "equivalent": True,
+            "confidence": confidence,
+            "reason": str(result.get("reason") or ""),
+        }
+
+    def _extract_pair_metadata(
+        self,
+        items: Dict[str, Optional[dict]],
+        present_models: List[str],
+    ) -> Dict[str, Any]:
+        """Extract judge-pairing metadata from present model items."""
+        for model in present_models:
+            item = items.get(model)
+            if not isinstance(item, dict):
+                continue
+            info = item.get("_pairing_info")
+            if isinstance(info, dict) and info.get("paired_by_judge"):
+                return info
+        return {}
+
     def _build_text_review_raw_text(
         self, item: Optional[dict]
     ) -> Optional[str]:
@@ -1083,7 +2295,7 @@ class ComparisonEngine:
             return None
 
         text_parts: List[str] = []
-        for field_path in sorted(self.compare_fields):
+        for field_path in self._fallback_signature_paths():
             value = get_nested_value(item, field_path)
             normalized_value = self._normalize_match_label(value)
             if normalized_value:
@@ -1152,6 +2364,18 @@ class ComparisonEngine:
                     str(value) if value else "N/A" for value in match_values
                 )
             return "text review match"
+        if item_key and item_key[0] == "__judge_pair__":
+            for item in items.values():
+                if not item:
+                    continue
+                match_values = [
+                    get_nested_value(item, field_path)
+                    for field_path in self.match_fields
+                ]
+                return " | ".join(
+                    str(value) if value else "N/A" for value in match_values
+                )
+            return "judge matched pair"
 
         return " | ".join(str(v) if v else "N/A" for v in item_key)
 

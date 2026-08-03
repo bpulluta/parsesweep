@@ -29,10 +29,12 @@ Color Coding:
 import json
 import logging
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import pandas as pd
 from openpyxl import load_workbook
+from openpyxl.formatting.rule import FormulaRule
+from openpyxl.worksheet.datavalidation import DataValidation
 from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 
@@ -58,12 +60,23 @@ class ReportGenerator:
         "partial_agreement": "FFEB9C",  # Light yellow
         "disagreement": "FFC7CE",  # Light red
         "missing": "D9D9D9",  # Gray
+        "judge_uncertain": "D9E1F2",  # Light blue
+        "scope_variant": "E2EFDA",  # Light muted green
     }
+    REVIEWER_VERDICTS = [
+        "accept-model-a",
+        "accept-model-b",
+        "accept-model-c",
+    ]
 
     def generate_report(
         self,
         comparison_result: ComparisonResult,
         output_dir: Path,
+        run_metadata: Optional[Dict[str, Any]] = None,
+        include_csv: bool = True,
+        include_missing_in_queue: bool = False,
+        include_low_signal_presence_in_queue: bool = False,
     ) -> Tuple[Path, Path]:
         """
         Generate Excel and CSV reports.
@@ -83,12 +96,25 @@ class ReportGenerator:
         summary_path = output_dir / "comparison_summary.json"
 
         # Generate Excel with formatting
-        self._generate_excel(comparison_result, excel_path)
+        self._generate_excel(
+            comparison_result,
+            excel_path,
+            run_metadata=run_metadata,
+            include_missing_in_queue=include_missing_in_queue,
+            include_low_signal_presence_in_queue=include_low_signal_presence_in_queue,
+        )
         logger.info(f"Generated Excel report: {excel_path}")
 
-        # Generate CSV - now item-centric format
-        self._generate_item_centric_csv(comparison_result, csv_path)
-        logger.info(f"Generated CSV report: {csv_path}")
+        if include_csv:
+            self._generate_item_centric_csv(
+                comparison_result,
+                csv_path,
+                include_missing_in_queue=include_missing_in_queue,
+                include_low_signal_presence_in_queue=include_low_signal_presence_in_queue,
+            )
+            logger.info(f"Generated CSV report: {csv_path}")
+        elif csv_path.exists():
+            csv_path.unlink()
 
         self._write_summary_json(comparison_result, summary_path)
         logger.info(f"Generated summary report: {summary_path}")
@@ -110,44 +136,45 @@ class ReportGenerator:
         )
 
     def _generate_excel(
-        self, result: ComparisonResult, output_path: Path
+        self,
+        result: ComparisonResult,
+        output_path: Path,
+        run_metadata: Optional[Dict[str, Any]] = None,
+        include_missing_in_queue: bool = False,
+        include_low_signal_presence_in_queue: bool = False,
     ) -> None:
-        """
-        Generate Excel with multiple sheets and formatting.
+        """Generate a reviewer-first workbook with explicit queue, diagnostics, and manifest."""
+        all_items_df = self._build_item_centric_df(result)
+        review_queue_df = self._build_review_queue_df(
+            all_items_df,
+            include_missing=include_missing_in_queue,
+            include_low_signal_presence=include_low_signal_presence_in_queue,
+        )
+        dashboard_df = self._build_dashboard_df(
+            result=result,
+            all_items_df=all_items_df,
+            review_queue_df=review_queue_df,
+            run_metadata=run_metadata,
+        )
+        reliability_df = self._build_model_reliability_df(
+            result=result,
+            all_items_df=all_items_df,
+            run_metadata=run_metadata,
+        )
+        manifest_df = self._build_run_manifest_df(
+            result=result,
+            run_metadata=run_metadata,
+        )
 
-        Creates up to 4 sheets:
-        1. Summary - Key metrics
-        2. Item Comparison - Item-centric comparison (one row per item)
-        3. Potential Duplicates - Items that may be same data with different keys
-        4. Expected vs Found - Completeness analysis per expected requirement
-        """
-        # Build DataFrames
-        summary_df = self._build_summary_df(result)
-        item_df = self._build_item_centric_df(result)
-        duplicates_df = self._build_potential_duplicates_df(result)
-        expected_df = self._build_expected_vs_found_df(result)
-
-        # Write to Excel
         with pd.ExcelWriter(output_path, engine="openpyxl") as writer:
-            summary_df.to_excel(writer, sheet_name="Summary", index=False)
-
-            if not item_df.empty:
-                item_df.to_excel(
-                    writer, sheet_name="Item Comparison", index=False
-                )
-
-            if not duplicates_df.empty:
-                duplicates_df.to_excel(
-                    writer, sheet_name="Potential Duplicates", index=False
-                )
-
-            if not expected_df.empty:
-                expected_df.to_excel(
-                    writer, sheet_name="Expected vs Found", index=False
-                )
+            dashboard_df.to_excel(writer, sheet_name="Dashboard", index=False)
+            review_queue_df.to_excel(writer, sheet_name="Review Queue", index=False)
+            all_items_df.to_excel(writer, sheet_name="All Items", index=False)
+            reliability_df.to_excel(writer, sheet_name="Model Reliability", index=False)
+            manifest_df.to_excel(writer, sheet_name="Run Manifest", index=False)
 
         # Apply formatting
-        self._apply_formatting_item_centric(output_path, len(result.models))
+        self._apply_workbook_formatting(output_path)
 
     def _build_summary_df(self, result: ComparisonResult) -> pd.DataFrame:
         """Build summary metrics DataFrame."""
@@ -157,16 +184,12 @@ class ReportGenerator:
             {"Metric": "Document", "Value": result.document_name},
             {"Metric": "Models", "Value": ", ".join(result.models)},
             {
-                "Metric": "QA/QC Lane",
-                "Value": summary.get("qaqc_lane") or "schema fallback",
-            },
-            {
-                "Metric": "QA/QC Mode",
-                "Value": summary.get("qaqc_mode") or "schema_metadata",
+                "Metric": "QA/QC Profile",
+                "Value": summary.get("qaqc_profile") or "unknown",
             },
             {
                 "Metric": "Comparison Approach",
-                "Value": summary.get("comparison_approach") or "numeric_only",
+                "Value": summary.get("comparison_approach") or "mixed",
             },
         ]
 
@@ -177,6 +200,10 @@ class ReportGenerator:
 
         rows.extend(
             [
+                {
+                    "Metric": "Item Rows (full table)",
+                    "Value": len(self._build_item_centric_df(result)),
+                },
                 {
                     "Metric": "Total Comparisons",
                     "Value": summary.get("total_comparisons", 0),
@@ -333,6 +360,40 @@ class ReportGenerator:
                 or [],
             )
 
+        judge = summary.get("judge") or {}
+        if judge.get("enabled"):
+            rows.extend(
+                [
+                    {"Metric": "", "Value": ""},
+                    {"Metric": "--- LLM Judge ---", "Value": ""},
+                    {"Metric": "Judge Model", "Value": judge.get("model") or "unknown"},
+                    {
+                        "Metric": "Judge Calls Attempted",
+                        "Value": int(judge.get("attempted_calls", 0)),
+                    },
+                    {
+                        "Metric": "Judge Calls Successful",
+                        "Value": int(judge.get("successful_calls", 0)),
+                    },
+                    {
+                        "Metric": "Judge Resolved Matches",
+                        "Value": int(judge.get("resolved_matches", 0)),
+                    },
+                    {
+                        "Metric": "Judge Input Tokens",
+                        "Value": int(judge.get("input_tokens", 0)),
+                    },
+                    {
+                        "Metric": "Judge Output Tokens",
+                        "Value": int(judge.get("output_tokens", 0)),
+                    },
+                    {
+                        "Metric": "Judge Cost (USD)",
+                        "Value": f"${float(judge.get('total_cost_usd', 0.0)):.4f}",
+                    },
+                ]
+            )
+
         # Add potential duplicates count
         potential_duplicates_count = summary.get(
             "potential_duplicates_count", 0
@@ -368,7 +429,19 @@ class ReportGenerator:
                         }
                     )
 
-        return pd.DataFrame(rows)
+        df = pd.DataFrame(rows)
+        for col in list(df.columns):
+            if col.endswith(" Source"):
+                values = set(
+                    str(v).strip() for v in df[col].fillna("").tolist()
+                )
+                if values <= {"", "-"}:
+                    df = df.drop(columns=[col])
+        if "Agreement" in df.columns:
+            values = set(str(v).strip() for v in df["Agreement"].fillna("").tolist())
+            if values <= {"", "-"}:
+                df = df.drop(columns=["Agreement"])
+        return df
 
     def _append_breakdown_rows(
         self,
@@ -395,124 +468,14 @@ class ReportGenerator:
             return str_value[: MAX_VALUE_LENGTH - 3] + "..."
         return str_value
 
-    def _format_summary_sheet(self, ws) -> None:
-        """Format the Summary sheet."""
-        # Bold headers
-        for cell in ws[1]:
-            cell.font = Font(bold=True)
-
-        # Bold metric names
-        for row in ws.iter_rows(min_row=2):
-            row[0].font = Font(bold=True)
-
-        # Auto-size columns
-        self._auto_size_columns(ws)
-
-    def _format_comparison_sheet(self, ws, num_models: int) -> None:
-        """Format a comparison sheet with color coding."""
-        if ws.max_row < 2:
-            return
-
-        # Bold headers
-        header_fill = PatternFill(
-            start_color="4472C4", end_color="4472C4", fill_type="solid"
-        )
-        header_font = Font(bold=True, color="FFFFFF")
-
-        for cell in ws[1]:
-            cell.fill = header_fill
-            cell.font = header_font
-            cell.alignment = Alignment(horizontal="center", vertical="center")
-
-        # Find Agreement and Notes columns
-        agreement_col = None
-        notes_col = None
-        for idx, cell in enumerate(ws[1], 1):
-            if cell.value == "Agreement":
-                agreement_col = idx
-            elif cell.value == "Notes":
-                notes_col = idx
-
-        if not agreement_col:
-            self._auto_size_columns(ws)
-            return
-
-        # Apply conditional formatting row by row
-        for row_idx in range(2, ws.max_row + 1):
-            agreement_cell = ws.cell(row_idx, agreement_col)
-            agreement_value = (
-                str(agreement_cell.value) if agreement_cell.value else ""
-            )
-
-            # Check for missing items
-            notes_value = ""
-            if notes_col:
-                notes_cell = ws.cell(row_idx, notes_col)
-                notes_value = (
-                    str(notes_cell.value).lower() if notes_cell.value else ""
-                )
-
-            # Determine color
-            fill_color = self._get_row_color(
-                agreement_value, notes_value, num_models
-            )
-
-            if fill_color:
-                fill = PatternFill(
-                    start_color=fill_color,
-                    end_color=fill_color,
-                    fill_type="solid",
-                )
-                for col_idx in range(1, ws.max_column + 1):
-                    ws.cell(row_idx, col_idx).fill = fill
-
-        # Auto-size columns
-        self._auto_size_columns(ws)
-
-    def _get_row_color(
-        self, agreement: str, notes: str, num_models: int
-    ) -> str:
-        """
-        Determine row color based on agreement level.
-
-        Args:
-            agreement: Agreement score string (e.g., "2/3")
-            notes: Notes string (for detecting missing items)
-            num_models: Total number of models
-
-        Returns:
-            Color hex code or empty string for no fill
-        """
-        # Check for missing items
-        if "missing" in notes.lower():
-            return self.COLORS["missing"]
-
-        # Parse agreement score
-        if "/" not in agreement:
-            return ""
-
-        try:
-            parts = agreement.split("/")
-            agreed = int(parts[0])
-            total = int(parts[1])
-        except (ValueError, IndexError):
-            return ""
-
-        # Determine color based on agreement ratio
-        if agreed == total:
-            return self.COLORS["full_agreement"]
-        elif agreed > total / 2:
-            return self.COLORS["partial_agreement"]
-        else:
-            return self.COLORS["disagreement"]
-
     def _auto_size_columns(self, ws) -> None:
         """Auto-size columns based on content."""
+        sample_rows = min(ws.max_row, 250)
         for column_cells in ws.columns:
             max_length = 0
             column_letter = get_column_letter(column_cells[0].column)
 
-            for cell in column_cells:
+            for cell in list(column_cells)[:sample_rows]:
                 try:
                     cell_length = len(str(cell.value)) if cell.value else 0
                     max_length = max(max_length, cell_length)
@@ -524,343 +487,796 @@ class ReportGenerator:
             ws.column_dimensions[column_letter].width = adjusted_width
 
     def _build_item_centric_df(self, result: ComparisonResult) -> pd.DataFrame:
-        """
-        Build item-centric DataFrame - one row per item, not per field.
-
-        Combines value+unit into a single display (e.g., "1320 feet").
-        Includes source_text columns for each model.
-        Uses single "Requirement" column for compound keys.
-        Used by both Excel and CSV generation.
-        """
+        """Build one row per aligned record with reviewer-first columns."""
         if not result.item_comparisons:
             return pd.DataFrame(
-                columns=["Status", "Requirement", "Agreement", "Notes"]
+                columns=[
+                    "Status",
+                    "Divergence",
+                    "Category",
+                    "Subject",
+                    "Diverging Field(s)",
+                    "Seen By",
+                    "Judge",
+                ]
             )
 
-        # Group comparisons by item_id
-        items_data: Dict[str, Dict[str, Any]] = {}
-        for fc in result.item_comparisons:
-            item_id = fc.item_id
-            if item_id not in items_data:
-                items_data[item_id] = {
-                    "field_comparisons": [],
-                    "models_present": set(),
-                    "models_missing": set(),
-                }
-            items_data[item_id]["field_comparisons"].append(fc)
+        items_data: Dict[str, List[FieldComparison]] = {}
+        for comparison in result.item_comparisons:
+            group_id = comparison.row_id or comparison.item_id
+            items_data.setdefault(group_id, []).append(comparison)
 
-            # Track which models have/don't have this item
-            for model, value in fc.model_values.items():
-                if value is not None and value != "":
-                    items_data[item_id]["models_present"].add(model)
-                else:
-                    items_data[item_id]["models_missing"].add(model)
+        model_labels = self._build_model_labels(result.models)
+        comparison_approach = result.summary.get("comparison_approach") or "mixed"
+        scope_variant_items = self._extract_scope_variant_items(result.summary)
+        rows: List[Dict[str, Any]] = []
 
-        # Build item-centric rows
-        rows = []
-        models = result.models
-        lane_name = result.summary.get("qaqc_lane") or "schema fallback"
-        comparison_approach = (
-            result.summary.get("comparison_approach") or "numeric_only"
-        )
+        for group_id, field_comparisons in sorted(items_data.items()):
+            item_id = field_comparisons[0].item_id
+            req_parts = [part.strip() for part in str(item_id).split("|")]
+            while len(req_parts) < 3:
+                req_parts.append("")
+            category, applies_to, specific_subject = req_parts[:3]
+            subject = " \u203a ".join(
+                [segment for segment in [applies_to, specific_subject] if segment]
+            )
 
-        # Shorten model names for display (e.g., "compassop-gpt-5" -> "gpt-5")
-        short_names = {}
-        for m in models:
-            parts = m.split("-")
-            if len(parts) >= 2:
-                short_names[m] = (
-                    "-".join(parts[-2:]) if "gpt" in m.lower() else parts[-1]
-                )
-            else:
-                short_names[m] = m
-
-        for item_id, data in sorted(items_data.items()):
-            # item_id is the compound key (e.g., "setback__property_line_ft")
-            requirement = item_id
-
-            # Get field values for each model
-            model_fields: Dict[str, Dict[str, Any]] = {m: {} for m in models}
-            for fc in data["field_comparisons"]:
-                field_name = fc.field_path.split(".")[-1].lower()
-                for model, value in fc.model_values.items():
+            model_fields: Dict[str, Dict[str, Any]] = {model: {} for model in result.models}
+            for field_comp in field_comparisons:
+                field_name = field_comp.field_path.split(".")[-1].lower()
+                for model, value in field_comp.model_values.items():
+                    model_fields.setdefault(model, {})
                     model_fields[model][field_name] = value
 
-            # Build combined value display for each model (value only, unit is in requirement type)
-            model_displays = {}
-            model_sources = {}
-            for model in models:
-                fields = model_fields[model]
-                source_text = fields.get("source_text", "")
+            model_displays: Dict[str, str] = {}
+            present_model_set = set()
+            for field_comp in field_comparisons:
+                present_model_set.update(field_comp.present_models or [])
+            for model in result.models:
+                display = self._select_model_display_value(
+                    model_fields.get(model, {}),
+                    comparison_approach=comparison_approach,
+                )
+                model_displays[model] = display
 
-                if comparison_approach == "text_review":
-                    qualitative_values = [
-                        str(value)
-                        for field_name, value in fields.items()
-                        if field_name != "source_text"
-                        and value not in ["", None]
-                    ]
-                    if qualitative_values:
-                        model_displays[model] = " | ".join(qualitative_values)
-                    else:
-                        model_displays[model] = "-"
-                else:
-                    value = fields.get("value", "")
-                    unit = fields.get("unit", "")
-
-                    if value is None or value == "":
-                        model_displays[model] = "-"
-                    elif unit and unit not in ["", None]:
-                        model_displays[model] = f"{value} {unit}"
-                    else:
-                        model_displays[model] = str(value)
-
-                # Truncate source_text for display (80 chars max)
-                if source_text and source_text not in ["", None]:
-                    model_sources[model] = str(source_text)[:80] + (
-                        "..." if len(str(source_text)) > 80 else ""
-                    )
-                else:
-                    model_sources[model] = "-"
-
-            # Determine status
-            all_present = len(data["models_missing"]) == 0
-            all_values_match = (
-                len(set(d for d in model_displays.values() if d != "-")) <= 1
-            )
-
-            if not all_present:
-                # Some models missing
-                present = list(data["models_present"])
-                if len(present) == 1:
-                    status = f"ONLY {short_names[present[0]]}"
-                else:
-                    status = "PARTIAL"
-            elif all_values_match:
-                status = "AGREE"
+            if present_model_set:
+                models_present = [m for m in result.models if m in present_model_set]
+                models_missing = [m for m in result.models if m not in present_model_set]
             else:
+                model_presence = {
+                    model: bool(display and display != "\u2205")
+                    for model, display in model_displays.items()
+                }
+                models_present = [m for m, present in model_presence.items() if present]
+                models_missing = [m for m, present in model_presence.items() if not present]
+            if not models_present:
+                continue
+            seen_by = ", ".join(model_labels[m] for m in models_present) if models_present else "-"
+
+            any_review = any(fc.needs_review for fc in field_comparisons)
+            missing_present = len(models_missing) > 0
+            if missing_present and len(models_present) == 1:
+                status = f"ONLY {model_labels[models_present[0]]}"
+            elif missing_present and any_review:
+                status = "PARTIAL"
+            elif any_review:
                 status = "DIFFER"
-
-            # Calculate agreement percentage
-            non_empty = [d for d in model_displays.values() if d != "-"]
-            if len(non_empty) >= 2:
-                unique_values = set(non_empty)
-                if len(unique_values) == 1:
-                    agreement = "100%"
-                else:
-                    agreement = "0%"
             else:
-                agreement = "-"
+                status = "AGREE"
 
-            # Build notes
-            notes = ""
-            if not all_present:
-                missing_names = [
-                    short_names[m] for m in data["models_missing"]
-                ]
-                notes = f"Not in: {', '.join(missing_names)}"
-            elif not all_values_match:
-                notes = "Values differ"
-
-            review_category = self._determine_review_category(
+            divergence = self._determine_divergence(
                 status=status,
                 comparison_approach=comparison_approach,
-                requirement=requirement,
-                notes=notes,
+                item_id=item_id,
+                scope_variant_items=scope_variant_items,
+                comparisons=field_comparisons,
+            )
+            issue_type = self._determine_issue_type(
+                divergence=divergence,
+                status=status,
+                comparisons=field_comparisons,
+            )
+            judge_status = self._extract_judge_status(field_comparisons)
+            diverging_fields_list = self._collect_diverging_fields(field_comparisons)
+            diverging_fields = ", ".join(diverging_fields_list) if diverging_fields_list else "-"
+            if self._should_show_diverging_field_values(
+                status=status,
+                model_displays=model_displays,
+                model_order=result.models,
+                diverging_fields=diverging_fields_list,
+            ):
+                for model in result.models:
+                    model_displays[model] = self._select_model_display_value(
+                        model_fields.get(model, {}),
+                        comparison_approach=comparison_approach,
+                        preferred_fields=diverging_fields_list,
+                    )
+            why_flagged = self._build_flag_reason(
+                status=status,
+                models_missing=models_missing,
+                model_labels=model_labels,
+                divergence=divergence,
+                issue_type=issue_type,
+                comparisons=field_comparisons,
+                model_order=result.models,
             )
 
-            row = {
+            row: Dict[str, Any] = {
                 "Status": status,
-                "Requirement": requirement,
-                "QA/QC Lane": lane_name,
-                "Comparison Approach": comparison_approach,
-                "Review Category": review_category,
+                "Issue Type": issue_type,
+                "Divergence": divergence,
+                "Queue Signal": self._queue_signal(
+                    status=status,
+                    issue_type=issue_type,
+                    divergence=divergence,
+                    comparisons=field_comparisons,
+                    model_order=result.models,
+                ),
+                "Category": category or "",
+                "Subject": subject,
+                "Seen By": seen_by,
+                "Diverging Field(s)": diverging_fields,
             }
-
-            # Add model value columns with shortened names
-            for model in models:
-                col_name = short_names[model]
-                row[col_name] = model_displays[model]
-
-            row["Agreement"] = agreement
-
-            # Add source_text columns for each model
-            for model in models:
-                col_name = f"{short_names[model]} Source"
-                row[col_name] = model_sources.get(model, "-")
-
-            row["Notes"] = notes
-
+            for model in result.models:
+                row[model_labels[model]] = model_displays.get(model, "\u2205")
+            row["Judge"] = judge_status
+            row["Why Flagged"] = why_flagged
+            row["Reviewer Verdict"] = ""
+            row["Reviewer Notes"] = ""
+            row["Row ID"] = group_id
+            row["Match Method"] = field_comparisons[0].match_method or "exact"
+            row["Requirement"] = str(item_id)
             rows.append(row)
 
-        # Sort: AGREE first, then DIFFER, then ONLY/PARTIAL
-        status_order = {"AGREE": 0, "DIFFER": 1}
         rows.sort(
-            key=lambda r: (status_order.get(r["Status"], 2), r["Requirement"])
+            key=lambda row: (
+                self._divergence_order(row.get("Divergence", "")),
+                row.get("Issue Type", ""),
+                row.get("Category", ""),
+                row.get("Subject", ""),
+                row.get("Requirement", ""),
+            )
         )
+        for idx, row in enumerate(rows, start=1):
+            row["#"] = idx
 
-        return pd.DataFrame(rows)
+        column_order = [
+            "#",
+            "Status",
+            "Category",
+            "Subject",
+            *[model_labels[m] for m in result.models],
+            "Diverging Field(s)",
+            "Seen By",
+            "Judge",
+            "Why Flagged",
+            "Reviewer Verdict",
+            "Reviewer Notes",
+            "Issue Type",
+            "Divergence",
+            "Queue Signal",
+            "Match Method",
+            "Row ID",
+            "Requirement",
+        ]
+        if not rows:
+            return pd.DataFrame(columns=column_order)
+        return pd.DataFrame(rows)[column_order]
 
-    def _determine_review_category(
+    def _build_model_labels(self, models: List[str]) -> Dict[str, str]:
+        """Create collision-safe model labels while preserving full model names."""
+        labels: Dict[str, str] = {}
+        used: set[str] = set()
+        for model in models:
+            candidate = model
+            label = candidate
+            suffix = 2
+            while label in used:
+                label = f"{candidate} ({suffix})"
+                suffix += 1
+            used.add(label)
+            labels[model] = label
+        return labels
+
+    def _extract_scope_variant_items(self, summary: Dict[str, Any]) -> set[str]:
+        """Extract scope-variant requirement labels from summary breakdown."""
+        breakdown = summary.get("qualitative_mismatch_breakdown") or {}
+        items = breakdown.get("top_scope_variant_requirements") or []
+        return {
+            str(entry.get("label")).strip()
+            for entry in items
+            if entry.get("label")
+        }
+
+    def _select_model_display_value(
+        self,
+        fields: Dict[str, Any],
+        *,
+        comparison_approach: str,
+        preferred_fields: Optional[List[str]] = None,
+    ) -> str:
+        """Pick a reviewer-facing value for one model on one item."""
+        if comparison_approach == "text_review":
+            candidates = [
+                fields.get("requirement_description"),
+                fields.get("value"),
+                fields.get("summary"),
+                fields.get("condition"),
+                fields.get("source_verbatim"),
+                fields.get("source_text"),
+            ]
+            for value in candidates:
+                if value not in (None, ""):
+                    return self._truncate_value(value)
+            for field_name, field_value in fields.items():
+                if field_name != "source_text" and field_value not in (None, ""):
+                    return self._truncate_value(field_value)
+            return "\u2205"
+
+        if preferred_fields:
+            for field_name in preferred_fields:
+                field_value = fields.get(str(field_name).lower())
+                if field_value not in (None, ""):
+                    return self._truncate_value(f"{field_name}={field_value}")
+
+        value = fields.get("value")
+        unit = fields.get("unit") or fields.get("units")
+        if value not in (None, "") and unit not in (None, ""):
+            return self._truncate_value(f"{value} {unit}")
+        if value not in (None, ""):
+            return self._truncate_value(value)
+        for fallback_field in (
+            "value_interpretation",
+            "obligation",
+            "condition",
+            "summary",
+            "source_text",
+        ):
+            fallback = fields.get(fallback_field)
+            if fallback not in (None, ""):
+                return self._truncate_value(fallback)
+        if unit not in (None, ""):
+            return self._truncate_value(unit)
+        return "\u2205"
+
+    def _collect_diverging_fields(
+        self, comparisons: List[FieldComparison]
+    ) -> List[str]:
+        fields = [
+            comparison.field_path.split(".")[-1]
+            for comparison in comparisons
+            if comparison.needs_review
+        ]
+        unique_fields: List[str] = []
+        for field in fields:
+            if field not in unique_fields:
+                unique_fields.append(field)
+        return unique_fields
+
+    def _should_show_diverging_field_values(
+        self,
+        *,
+        status: str,
+        model_displays: Dict[str, str],
+        model_order: List[str],
+        diverging_fields: List[str],
+    ) -> bool:
+        if status != "DIFFER":
+            return False
+        if not diverging_fields:
+            return False
+        measure_fields = {"value", "unit", "units"}
+        if all(field.lower() in measure_fields for field in diverging_fields):
+            return False
+        shown_values = [model_displays.get(model, "\u2205") for model in model_order]
+        if not shown_values or any(value == "\u2205" for value in shown_values):
+            return False
+        return len(set(shown_values)) == 1
+
+    def _determine_divergence(
         self,
         *,
         status: str,
         comparison_approach: str,
-        requirement: str,
-        notes: str,
+        item_id: str,
+        scope_variant_items: set[str],
+        comparisons: List[FieldComparison],
     ) -> str:
-        """Map report rows to a stable review category without changing benchmark-facing status."""
+        """Map a row to a triage divergence type."""
         if status == "AGREE":
             return "aligned"
-        if status.startswith("ONLY"):
-            if (
-                comparison_approach == "text_review"
-                and self._is_scope_variant_requirement(requirement, notes)
-            ):
+        if status.startswith("ONLY") or status == "PARTIAL":
+            if comparison_approach == "text_review" and item_id in scope_variant_items:
                 return "scope_variant"
-            return "missing_item"
-        if status == "PARTIAL":
-            return "missing_item"
+            return "presence_diff"
+        if any("judge_error=" in (comparison.notes or "") for comparison in comparisons):
+            return "judge_uncertain"
+        if comparison_approach == "text_review":
+            return "semantic_conflict"
+        return "field_conflict"
+
+    def _determine_issue_type(
+        self,
+        *,
+        divergence: str,
+        status: str,
+        comparisons: List[FieldComparison],
+    ) -> str:
+        if divergence == "aligned":
+            return "ALIGNED"
+        if divergence == "presence_diff":
+            methods = {c.match_method for c in comparisons if c.match_method}
+            if "scope_split" in methods:
+                return "MATCH_AMBIGUITY"
+            if "unmatched" in methods:
+                return "PRESENCE_CANDIDATE"
+            if "fuzzy" in methods:
+                return "MATCH_AMBIGUITY"
+            return "PRESENCE_CANDIDATE"
+        if divergence == "judge_uncertain":
+            return "JUDGE_INCONCLUSIVE"
+        if divergence == "semantic_conflict":
+            return "SEMANTIC_CONFLICT"
+        if divergence == "field_conflict":
+            return "FIELD_CONFLICT"
         if status == "DIFFER":
-            if comparison_approach == "text_review":
-                return "text_difference"
-            return "value_difference"
-        return "review_required"
+            return "FIELD_CONFLICT"
+        return "ALIGNED"
 
-    def _is_scope_variant_requirement(
-        self, requirement: str, notes: str
-    ) -> bool:
-        """Mirror the comparison-engine qualitative scope-variant rules for report rows."""
-        if "not in:" not in (notes or "").lower():
-            return False
+    def _extract_judge_status(self, comparisons: List[FieldComparison]) -> str:
+        """Derive per-item judge status from field comparison notes."""
+        for comparison in comparisons:
+            if comparison.paired_by_judge:
+                confidence = comparison.pairing_confidence or "unknown"
+                reason = (comparison.pairing_reason or "").strip()
+                if reason:
+                    return f"paired ({confidence}): {self._truncate_value(reason)}"
+                return f"paired ({confidence})"
+        for comparison in comparisons:
+            notes = comparison.notes or ""
+            if notes.startswith("LLM row judge matched"):
+                return notes.replace("LLM row judge matched", "row-matched", 1)
+        for comparison in comparisons:
+            notes = comparison.notes or ""
+            if notes.startswith("LLM judge matched"):
+                return notes.replace("LLM judge matched", "matched", 1)
+        for comparison in comparisons:
+            notes = comparison.notes or ""
+            if "LLM judge mismatch" in notes:
+                return notes.replace("LLM judge mismatch", "mismatch", 1)
+        for comparison in comparisons:
+            notes = comparison.notes or ""
+            if "LLM judge inconclusive" in notes:
+                return notes.replace("LLM judge inconclusive", "inconclusive", 1)
+        for comparison in comparisons:
+            notes = comparison.notes or ""
+            if "judge_error=" in notes:
+                return "error"
+        return ""
 
-        parts = [part.strip().lower() for part in requirement.split("|")]
-        while len(parts) < 3:
-            parts.append("")
-        category_label, facility_label, subject_label = parts[:3]
+    def _build_flag_reason(
+        self,
+        *,
+        status: str,
+        models_missing: List[str],
+        model_labels: Dict[str, str],
+        divergence: str,
+        issue_type: str,
+        comparisons: List[FieldComparison],
+        model_order: List[str],
+    ) -> str:
+        """Build concise reviewer-facing reason."""
+        if divergence == "judge_uncertain":
+            return "Judge uncertainty/error; human review required"
+        if issue_type == "MATCH_AMBIGUITY":
+            return "Potential scope split/merge across models"
+        if models_missing:
+            if len(models_missing) >= len(model_labels):
+                return "Presence mismatch unresolved; inspect pairing"
+            missing_names = [model_labels.get(model, model) for model in models_missing]
+            return f"Missing in: {', '.join(sorted(missing_names))}"
+        if status == "DIFFER":
+            for comparison in comparisons:
+                if not comparison.needs_review:
+                    continue
+                field_name = comparison.field_path.split(".")[-1]
+                rendered: List[str] = []
+                for model in model_order:
+                    if model in comparison.model_values:
+                        value = comparison.model_values.get(model)
+                        rendered.append(
+                            f"{model_labels.get(model, model)}={self._truncate_value(value if value not in (None, '') else '∅')}"
+                        )
+                if rendered:
+                    return f"{field_name}: " + " vs ".join(rendered)
+            return "Model values differ"
+        return ""
 
-        if (category_label, subject_label) in {
-            ("decommissioning", "financial assurance"),
-            ("decommissioning", "facility removal"),
-            ("decommissioning", "well plugging"),
-            ("lighting requirement", "faa part 77 marking and lighting"),
-            ("permit requirement", "all necessary permits"),
-            ("permitted use district", "conditional use"),
-        }:
-            return True
+    def _build_diverging_fields(
+        self, comparisons: List[FieldComparison]
+    ) -> str:
+        fields = self._collect_diverging_fields(comparisons)
+        if not fields:
+            return "-"
+        return ", ".join(fields)
 
-        if (
-            category_label == "noise limit"
-            and facility_label == "power plant"
-            and subject_label == "plant operations"
-        ):
-            return True
+    def _divergence_order(self, divergence: str) -> int:
+        order = {
+            "judge_uncertain": 0,
+            "field_conflict": 1,
+            "semantic_conflict": 2,
+            "presence_diff": 3,
+            "scope_variant": 4,
+            "aligned": 5,
+        }
+        return order.get(str(divergence), 9)
 
-        if category_label == "other" and subject_label in {
-            "emergency response/action plan",
-            "insurance",
-            "radio/television interference",
-            "roads and parking",
-            "dust control",
-            "identification/informational signage",
-            "double-walled pipes across public waters",
-            "pipeline siting and configuration",
-            "electric transmission line siting",
-        }:
-            return True
+    def _build_review_queue_df(
+        self,
+        all_items_df: pd.DataFrame,
+        *,
+        include_missing: bool,
+        include_low_signal_presence: bool = False,
+    ) -> pd.DataFrame:
+        """Return reviewer queue rows only, preserving sort order."""
+        if all_items_df.empty:
+            return all_items_df.copy()
+        allowed = {"field_conflict", "semantic_conflict", "judge_uncertain"}
+        if include_missing:
+            allowed.add("presence_diff")
+        queue = all_items_df[
+            all_items_df["Divergence"].astype(str).isin(sorted(allowed))
+        ].copy()
+        if include_missing and not include_low_signal_presence:
+            queue = queue[
+                ~(
+                    queue["Divergence"].astype(str).eq("presence_diff")
+                    & queue["Queue Signal"].astype(str).eq("low")
+                )
+            ].copy()
+        queue["#"] = range(1, len(queue) + 1)
+        return queue
 
-        return False
+    def _queue_signal(
+        self,
+        *,
+        status: str,
+        issue_type: str,
+        divergence: str,
+        comparisons: List[FieldComparison],
+        model_order: List[str],
+    ) -> str:
+        """Classify queue signal strength for one-sided presence rows."""
+        if divergence != "presence_diff" or not status.startswith("ONLY"):
+            return "high"
+        if issue_type != "PRESENCE_CANDIDATE":
+            return "high"
 
-    def _apply_formatting_item_centric(
-        self, excel_path: Path, num_models: int
-    ) -> None:
-        """
-        Apply color coding and formatting to item-centric Excel.
+        diverging_fields = {
+            comparison.field_path.split(".")[-1].lower()
+            for comparison in comparisons
+            if comparison.needs_review
+        }
+        if not diverging_fields:
+            return "low"
+        if diverging_fields != {"obligation"}:
+            return "high"
 
-        Colors rows based on Status:
-        - Green: AGREE
-        - Yellow: PARTIAL or DIFFER
-        - Gray: ONLY (missing from one model)
-        """
+        obligation_values = []
+        for comparison in comparisons:
+            if comparison.field_path.split(".")[-1].lower() != "obligation":
+                continue
+            for model in model_order:
+                value = comparison.model_values.get(model)
+                if value in (None, ""):
+                    continue
+                obligation_values.append(str(value).strip().lower())
+        if not obligation_values:
+            return "low"
+
+        if all(len(value) <= 24 and " " not in value for value in obligation_values):
+            return "low"
+        return "high"
+
+    def _build_dashboard_df(
+        self,
+        *,
+        result: ComparisonResult,
+        all_items_df: pd.DataFrame,
+        review_queue_df: pd.DataFrame,
+        run_metadata: Optional[Dict[str, Any]],
+    ) -> pd.DataFrame:
+        """Build a compact start-here dashboard."""
+        summary = result.summary or {}
+        judge = summary.get("judge") or {}
+        gate = summary.get("qualitative_advisory_gate") or {}
+        metadata_summary = (run_metadata or {}).get("summary") or {}
+
+        rows = [
+            {"Section": "Start Here", "Metric": "Document", "Value": result.document_name},
+            {"Section": "Start Here", "Metric": "Models Compared", "Value": ", ".join(result.models)},
+            {
+                "Section": "Start Here",
+                "Metric": "Rows Requiring Review (record-level queue)",
+                "Value": len(review_queue_df),
+            },
+            {"Section": "Start Here", "Metric": "All Item Rows", "Value": len(all_items_df)},
+            {
+                "Section": "Start Here",
+                "Metric": "Fields Requiring Review (field-level)",
+                "Value": int(summary.get("needs_review_count", 0)),
+            },
+            {"Section": "QA/QC", "Metric": "Profile", "Value": summary.get("qaqc_profile") or "unknown"},
+            {"Section": "QA/QC", "Metric": "Comparison Approach", "Value": summary.get("comparison_approach") or "mixed"},
+            {"Section": "QA/QC", "Metric": "Full Agreement %", "Value": f"{float(summary.get('full_agreement_pct', 0.0)):.1f}%"},
+            {"Section": "QA/QC", "Metric": "Needs Review %", "Value": f"{float(summary.get('needs_review_pct', 0.0)):.1f}%"},
+        ]
+        if gate:
+            rows.extend(
+                [
+                    {"Section": "Qualitative Gate", "Metric": "Status", "Value": str(gate.get("status", "not_applicable")).upper()},
+                    {"Section": "Qualitative Gate", "Metric": "Aligned %", "Value": f"{float(gate.get('aligned_pct', 0.0)):.1f}%"},
+                    {"Section": "Qualitative Gate", "Metric": "Missing Item %", "Value": f"{float(gate.get('missing_item_pct', 0.0)):.1f}%"},
+                    {"Section": "Qualitative Gate", "Metric": "Recommended Action", "Value": gate.get("recommended_action", "")},
+                ]
+            )
+        if judge.get("enabled"):
+            rows.extend(
+                [
+                    {"Section": "Judge", "Metric": "Judge Model", "Value": judge.get("model") or "unknown"},
+                    {"Section": "Judge", "Metric": "Judge Calls Attempted", "Value": int(judge.get("attempted_calls", 0))},
+                    {"Section": "Judge", "Metric": "Judge Calls Successful", "Value": int(judge.get("successful_calls", 0))},
+                    {"Section": "Judge", "Metric": "Judge Resolved Matches", "Value": int(judge.get("resolved_matches", 0))},
+                ]
+            )
+        if metadata_summary:
+            rows.extend(
+                [
+                    {"Section": "Run Diagnostics", "Metric": "Requested Models", "Value": int(metadata_summary.get("total_models", len(result.models)))},
+                    {"Section": "Run Diagnostics", "Metric": "Successful Models", "Value": int(metadata_summary.get("successful", len(result.models)))},
+                    {"Section": "Run Diagnostics", "Metric": "Failed Models", "Value": int(metadata_summary.get("failed", 0))},
+                    {"Section": "Run Diagnostics", "Metric": "Run Status", "Value": run_metadata.get("status", "unknown")},
+                ]
+            )
+        rows.extend(
+            [
+                {"Section": "Legend", "Metric": "field_conflict", "Value": "Material field values differ"},
+                {"Section": "Legend", "Metric": "semantic_conflict", "Value": "Text/semantic values differ"},
+                {"Section": "Legend", "Metric": "presence_diff", "Value": "Record presence differs by model"},
+                {"Section": "Legend", "Metric": "scope_variant", "Value": "Auxiliary scope variance"},
+                {"Section": "Legend", "Metric": "judge_uncertain", "Value": "Judge inconclusive/error"},
+                {"Section": "Legend", "Metric": "aligned", "Value": "Fully aligned"},
+            ]
+        )
+        return pd.DataFrame(rows)
+
+    def _build_model_reliability_df(
+        self,
+        *,
+        result: ComparisonResult,
+        all_items_df: pd.DataFrame,
+        run_metadata: Optional[Dict[str, Any]],
+    ) -> pd.DataFrame:
+        """Build per-model reliability summary, including failed models from metadata."""
+        rows: List[Dict[str, Any]] = []
+        metadata_results = (run_metadata or {}).get("results") or {}
+        seen_map: Dict[str, int] = {}
+        for model in result.models:
+            label = self._build_model_labels([model])[model]
+            if label in all_items_df.columns:
+                seen_map[model] = int((all_items_df[label].astype(str) != "\u2205").sum())
+            else:
+                seen_map[model] = 0
+        for model in sorted(set(list(result.models) + list(metadata_results.keys()))):
+            model_meta = metadata_results.get(model) or {}
+            success = bool(model_meta.get("success", model in result.models))
+            failure_reason = ""
+            if not success:
+                failure_reason = str(model_meta.get("error") or model_meta.get("error_details", {}).get("message") or "")
+            rows.append(
+                {
+                    "Model": model,
+                    "Status": "ok" if success else "failed",
+                    "Items Seen in Comparison": seen_map.get(model, 0),
+                    "Reused Output": bool(model_meta.get("reused", False)),
+                    "Input Tokens": int(model_meta.get("input_tokens", 0) or 0),
+                    "Output Tokens": int(model_meta.get("output_tokens", 0) or 0),
+                    "Cost (USD)": float(model_meta.get("cost", 0.0) or 0.0),
+                    "Failure Reason": failure_reason,
+                }
+            )
+        return pd.DataFrame(rows)
+
+    def _build_run_manifest_df(
+        self,
+        *,
+        result: ComparisonResult,
+        run_metadata: Optional[Dict[str, Any]],
+    ) -> pd.DataFrame:
+        """Build reproducibility/provenance rows for diagnostics."""
+        rows = [
+            {"Key": "document_name", "Value": result.document_name},
+            {"Key": "models_compared", "Value": ", ".join(result.models)},
+            {"Key": "qaqc_profile", "Value": result.summary.get("qaqc_profile") or "unknown"},
+            {"Key": "comparison_approach", "Value": result.summary.get("comparison_approach") or "mixed"},
+        ]
+        judge = result.summary.get("judge") or {}
+        if judge.get("enabled"):
+            rows.extend(
+                [
+                    {"Key": "judge_model", "Value": judge.get("model") or "unknown"},
+                    {"Key": "judge_attempted_calls", "Value": int(judge.get("attempted_calls", 0))},
+                    {"Key": "judge_successful_calls", "Value": int(judge.get("successful_calls", 0))},
+                    {"Key": "judge_total_cost_usd", "Value": float(judge.get("total_cost_usd", 0.0))},
+                ]
+            )
+        def _append_flat(prefix: str, value: Any) -> None:
+            if isinstance(value, dict):
+                for child_key, child_value in sorted(value.items()):
+                    _append_flat(f"{prefix}.{child_key}", child_value)
+                return
+            if isinstance(value, list):
+                rows.append(
+                    {
+                        "Key": prefix,
+                        "Value": json.dumps(value, sort_keys=True),
+                    }
+                )
+                return
+            rows.append({"Key": prefix, "Value": value})
+
+        for key, value in sorted((run_metadata or {}).items()):
+            if key in {"results", "errors", "model_errors"}:
+                continue
+            _append_flat(f"metadata.{key}", value)
+        return pd.DataFrame(rows)
+
+    def _apply_workbook_formatting(self, excel_path: Path) -> None:
+        """Apply formatting, filters, validation, and sheet defaults."""
         wb = load_workbook(excel_path)
-
-        # Format Summary sheet
-        if "Summary" in wb.sheetnames:
-            self._format_summary_sheet(wb["Summary"])
-
-        # Format Item Comparison sheet with item-centric coloring
-        if "Item Comparison" in wb.sheetnames:
-            self._format_item_centric_sheet(wb["Item Comparison"])
-
+        for name in wb.sheetnames:
+            ws = wb[name]
+            self._format_generic_sheet(ws)
+            if name == "Dashboard":
+                self._format_dashboard_sheet(ws)
+            if name in {"Review Queue", "All Items"}:
+                self._format_review_sheet(ws)
+        if "Review Queue" in wb.sheetnames:
+            wb.active = wb.sheetnames.index("Review Queue")
         wb.save(excel_path)
 
-    def _format_item_centric_sheet(self, ws) -> None:
-        """Format the item-centric comparison sheet with color coding."""
+    def _format_dashboard_sheet(self, ws) -> None:
+        """Highlight legend rows and keep dashboard readable."""
         if ws.max_row < 2:
             return
+        section_col = None
+        metric_col = None
+        for idx, cell in enumerate(ws[1], 1):
+            if cell.value == "Section":
+                section_col = idx
+            elif cell.value == "Metric":
+                metric_col = idx
+        if section_col is None or metric_col is None:
+            return
+        for row_idx in range(2, ws.max_row + 1):
+            section = str(ws.cell(row_idx, section_col).value or "")
+            metric = str(ws.cell(row_idx, metric_col).value or "")
+            if section != "Legend":
+                continue
+            color = self._divergence_fill_color(metric)
+            if not color:
+                continue
+            fill = PatternFill(start_color=color, end_color=color, fill_type="solid")
+            for col_idx in range(1, ws.max_column + 1):
+                ws.cell(row_idx, col_idx).fill = fill
 
-        # Bold headers with blue background
+    def _format_generic_sheet(self, ws) -> None:
+        if ws.max_row < 1:
+            return
         header_fill = PatternFill(
             start_color="4472C4", end_color="4472C4", fill_type="solid"
         )
         header_font = Font(bold=True, color="FFFFFF")
-
         for cell in ws[1]:
             cell.fill = header_fill
             cell.font = header_font
             cell.alignment = Alignment(horizontal="center", vertical="center")
-
-        # Find Status column
-        status_col = None
-        for idx, cell in enumerate(ws[1], 1):
-            if cell.value == "Status":
-                status_col = idx
-                break
-
-        if not status_col:
-            self._auto_size_columns(ws)
-            return
-
-        # Apply conditional formatting row by row based on Status
-        for row_idx in range(2, ws.max_row + 1):
-            status_cell = ws.cell(row_idx, status_col)
-            status_value = str(status_cell.value) if status_cell.value else ""
-
-            # Determine color based on status
-            if status_value == "AGREE":
-                fill_color = self.COLORS["full_agreement"]  # Green
-            elif status_value == "DIFFER":
-                fill_color = self.COLORS["disagreement"]  # Red
-            elif status_value == "PARTIAL":
-                fill_color = self.COLORS["partial_agreement"]  # Yellow
-            elif status_value.startswith("ONLY"):
-                fill_color = self.COLORS["missing"]  # Gray
-            else:
-                fill_color = None
-
-            if fill_color:
-                fill = PatternFill(
-                    start_color=fill_color,
-                    end_color=fill_color,
-                    fill_type="solid",
-                )
-                for col_idx in range(1, ws.max_column + 1):
-                    ws.cell(row_idx, col_idx).fill = fill
-
-        # Auto-size columns
         self._auto_size_columns(ws)
 
-    def _generate_item_centric_csv(
-        self, result: ComparisonResult, output_path: Path
-    ) -> None:
-        """
-        Generate ITEM-CENTRIC CSV - one row per item, not per field.
+    def _format_review_sheet(self, ws) -> None:
+        if ws.max_row < 2:
+            return
+        divergence_col = None
+        verdict_col = None
+        for idx, cell in enumerate(ws[1], 1):
+            value = str(cell.value or "")
+            if value == "Divergence":
+                divergence_col = idx
+            elif value == "Reviewer Verdict":
+                verdict_col = idx
+        header_values = [str(cell.value or "") for cell in ws[1]]
+        seen_by_idx = header_values.index("Seen By") + 1 if "Seen By" in header_values else 6
+        reviewer_notes_idx = (
+            header_values.index("Reviewer Notes") + 1
+            if "Reviewer Notes" in header_values
+            else seen_by_idx + 2
+        )
+        ws.freeze_panes = f"{get_column_letter(reviewer_notes_idx + 1)}2"
+        ws.auto_filter.ref = ws.dimensions
+        if divergence_col is not None:
+            data_range = f"A2:{get_column_letter(ws.max_column)}{ws.max_row}"
+            divergence_letter = get_column_letter(divergence_col)
+            for divergence_name in [
+                "aligned",
+                "field_conflict",
+                "semantic_conflict",
+                "presence_diff",
+                "scope_variant",
+                "judge_uncertain",
+            ]:
+                color = self._divergence_fill_color(divergence_name)
+                if not color:
+                    continue
+                fill = PatternFill(start_color=color, end_color=color, fill_type="solid")
+                ws.conditional_formatting.add(
+                    data_range,
+                    FormulaRule(
+                        formula=[f'${divergence_letter}2="{divergence_name}"'],
+                        fill=fill,
+                    ),
+                )
+        if verdict_col is not None:
+            column_letter = get_column_letter(verdict_col)
+            judge_idx = header_values.index("Judge") + 1 if "Judge" in header_values else None
+            model_headers = []
+            if judge_idx is not None:
+                model_headers = header_values[reviewer_notes_idx + 1:judge_idx - 1]
+            dynamic_verdicts = [f"accept-{header}" for header in model_headers if header]
+            verdict_options = dynamic_verdicts or list(self.REVIEWER_VERDICTS)
+            verdict_options = verdict_options + ["accept-both", "reject-all", "needs-escalation"]
+            validation = DataValidation(
+                type="list",
+                formula1=f'"{",".join(verdict_options)}"',
+                allow_blank=True,
+            )
+            validation.error = "Select a valid reviewer verdict from the dropdown."
+            validation.errorTitle = "Invalid Verdict"
+            ws.add_data_validation(validation)
+            validation.add(f"{column_letter}2:{column_letter}{max(ws.max_row, 2)}")
+        # Wrap verbose columns
+        wrap_headers = {"Subject", "Why Flagged", "Reviewer Notes", "Judge"}
+        for idx, cell in enumerate(ws[1], 1):
+            if str(cell.value or "") in wrap_headers:
+                letter = get_column_letter(idx)
+                for row_idx in range(2, ws.max_row + 1):
+                    ws[f"{letter}{row_idx}"].alignment = Alignment(wrap_text=True, vertical="top")
 
-        Uses the shared _build_item_centric_df method for consistency
-        with Excel output.
-        """
-        df = self._build_item_centric_df(result)
-        df.to_csv(output_path, index=False)
+    def _divergence_fill_color(self, divergence: str) -> str:
+        mapping = {
+            "aligned": self.COLORS["full_agreement"],
+            "field_conflict": self.COLORS["disagreement"],
+            "semantic_conflict": self.COLORS["partial_agreement"],
+            "presence_diff": self.COLORS["missing"],
+            "scope_variant": self.COLORS["scope_variant"],
+            "judge_uncertain": self.COLORS["judge_uncertain"],
+        }
+        return mapping.get(str(divergence), "")
+
+    def _generate_item_centric_csv(
+        self,
+        result: ComparisonResult,
+        output_path: Path,
+        include_missing_in_queue: bool,
+        include_low_signal_presence_in_queue: bool = False,
+    ) -> None:
+        """Generate queue-first CSV used for review triage."""
+        all_items = self._build_item_centric_df(result)
+        queue = self._build_review_queue_df(
+            all_items,
+            include_missing=include_missing_in_queue,
+            include_low_signal_presence=include_low_signal_presence_in_queue,
+        )
+        queue.to_csv(output_path, index=False)
 
     # --- Completeness Validation Methods ---
 

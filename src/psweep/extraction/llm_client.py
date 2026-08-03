@@ -13,6 +13,7 @@ No legacy fallbacks - requires LiteLLM to be installed.
 import json
 import logging
 import os
+import re
 from typing import Dict, Any, Optional, List
 
 import litellm
@@ -35,6 +36,8 @@ class LLMClient:
 
     CONTEXT_RESPONSE_RESERVE_TOKENS = 4096
 
+    DEFAULT_TIMEOUT = 120  # seconds; overridable via LLM_TIMEOUT env var
+
     def __init__(
         self,
         api_key: str = None,
@@ -44,6 +47,7 @@ class LLMClient:
         azure_api_version: str = None,
         context_windows: Optional[Dict[str, int]] = None,
         base_url: str = None,
+        timeout: int = None,
     ):
         """
         Initialize LLM client.
@@ -64,6 +68,9 @@ class LLMClient:
             base_url: Optional endpoint override. When set, all calls are routed
                      through this OpenAI-compatible URL regardless of model name.
                      Works with any proxy (LiteLLM, OpenRouter, vLLM, etc.).
+            timeout: Request timeout in seconds. Defaults to LLM_TIMEOUT env var,
+                     then DEFAULT_TIMEOUT (120 s). Set higher for very large docs
+                     or slow proxy routes; set lower for fast fail-fast behaviour.
         """
         if not model:
             raise ValueError(
@@ -78,6 +85,9 @@ class LLMClient:
         self.base_url = base_url
         self._api_key = api_key  # Stored for direct-pass in endpoint-override mode
         self.context_windows = dict(context_windows or {})
+        self.timeout = timeout if timeout is not None else int(
+            os.environ.get("LLM_TIMEOUT", self.DEFAULT_TIMEOUT)
+        )
         self.provider = provider or detect_provider(model)
 
         # Format model name for LiteLLM
@@ -102,8 +112,10 @@ class LLMClient:
         """
         Format model name for LiteLLM.
 
-        In endpoint-override mode (base_url set): model names pass through
-        unchanged — the proxy handles routing and expects its own model identifiers.
+        In endpoint-override mode (base_url set): model names are prefixed with
+        "openai/" so LiteLLM uses /chat/completions instead of a provider-specific
+        path. LiteLLM strips the prefix before forwarding, so the proxy receives
+        the bare model name the user configured.
 
         In direct-provider mode:
         - Azure: "azure/deployment-name"
@@ -111,9 +123,15 @@ class LLMClient:
         - Gemini: "gemini/gemini-1.5-pro" (optional)
         """
         if self.base_url:
-            # Proxy mode: force OpenAI-compatible wire format so LiteLLM routes
-            # through the proxy instead of calling Anthropic/Google directly.
-            # The openai/ prefix is transparent to the proxy — it strips it.
+            # Proxy mode: force OpenAI-compatible routing (/chat/completions).
+            # LiteLLM sniffs provider from the model name: "claude-*" → Anthropic
+            # handler → /v1/messages appended to base_url (doubles any /v1 already
+            # in the URL). Prefixing with "openai/" forces the OpenAI handler.
+            # LiteLLM strips the outer "openai/" before forwarding, so the proxy
+            # receives the model name exactly as configured:
+            #   "claude-haiku-4-5"          → proxy gets "claude-haiku-4-5"
+            #   "anthropic/claude-3-sonnet" → proxy gets "anthropic/claude-3-sonnet"
+            #   "openai/gpt-4o"             → unchanged (already prefixed)
             if not model.startswith("openai/"):
                 return f"openai/{model}"
             return model
@@ -210,10 +228,13 @@ class LLMClient:
         api_params = {
             "model": self.model,
             "messages": messages,
+            "timeout": self.timeout,
         }
 
-        # Endpoint-override mode: pass base_url and api_key directly so LiteLLM
-        # routes through the proxy regardless of how it sniffs the model name.
+        # Endpoint-override mode: route through the proxy's base_url.
+        # The model name already carries an "openai/" prefix (set by
+        # _format_model_for_litellm) so LiteLLM uses /chat/completions —
+        # no custom_llm_provider kwarg needed or wanted.
         if self.base_url:
             api_params["base_url"] = self.base_url
             if self._api_key:
@@ -221,77 +242,122 @@ class LLMClient:
 
         if not is_reasoning_model:
             api_params["temperature"] = 0
+            # response_format is a standard OpenAI-compatible parameter.
+            # Always send it for non-reasoning models — LiteLLM proxies translate
+            # it to each backend's native JSON mode, and litellm.drop_params=True
+            # silently drops it for backends that don't support it.
+            # Diagnostic confirmed: proxies forward this correctly.
             api_params["response_format"] = {"type": "json_object"}
-            # Azure requires at least one message to contain the word "json"
-            # when response_format=json_object is used.
+            # Inject a JSON instruction when the messages don't already mention JSON.
+            # Required by Azure's json_object mode; also reinforces intent for
+            # models that add markdown fences or preamble despite response_format.
             all_content = " ".join(m["content"] for m in messages)
             if "json" not in all_content.lower():
-                messages[-1]["content"] += "\n\nRespond with a JSON object."
+                messages[-1]["content"] += (
+                    "\n\nRespond with ONLY a raw JSON object. "
+                    "No markdown, no code fences, no explanation."
+                )
 
+        # ── API call ─────────────────────────────────────────────────────────
+        # Split from content parsing so the two failure modes produce distinct
+        # error messages: proxy/network errors vs model returned non-JSON text.
         try:
-            # Call LiteLLM
             response = completion(**api_params)
-
-            # Validate response
-            if not response.choices or not response.choices[0].message.content:
-                logger.error(f"Empty response from API (model={self.model})")
-                raise ExtractionError(
-                    f"Empty response from provider={self.provider}, model={self.model}"
-                )
-
-            # Parse JSON response
-            content = response.choices[0].message.content
-            data = json.loads(content)
-
-            # Calculate cost using LiteLLM's built-in tracking
-            try:
-                cost = completion_cost(completion_response=response)
-            except Exception as e:
-                logger.debug(
-                    f"LiteLLM cost calculation failed, using pricing DB: {e}"
-                )
-                cost = self.pricing_db.get_cost(
-                    self.raw_model,  # Use raw model name for pricing lookup
-                    response.usage.prompt_tokens,
-                    response.usage.completion_tokens,
-                )
-
-            # Count extracted items
-            total_items = sum(
-                len(value)
-                for value in data.values()
-                if isinstance(value, list)
-            )
-
-            usage = getattr(response, "usage", None)
-            input_tokens = getattr(usage, "prompt_tokens", None)
-            output_tokens = getattr(usage, "completion_tokens", None)
-
-            logger.info(
-                f"✓ Extracted {total_items} items "
-                f"(tokens: {input_tokens}+{output_tokens}, "
-                f"cost: ${cost:.4f})"
-            )
-
-            return {
-                "data": data,
-                "cost": cost,
-                "input_tokens": input_tokens,
-                "output_tokens": output_tokens,
-            }
-
         except json.JSONDecodeError as e:
-            logger.error(f"Failed to parse JSON response: {e}")
-            logger.debug(f"Response content: {content[:500]}...")
+            # LiteLLM failed to parse the HTTP response body from the proxy.
+            # Common causes: empty body, SSE stream when non-streaming expected,
+            # or an HTML/text error page from a gateway.
+            hint = (
+                f" Verify '{self.raw_model}' is configured in the proxy at {self.base_url!r}."
+                if self.base_url
+                else ""
+            )
             raise ExtractionError(
-                f"Failed to parse JSON response from provider={self.provider}, model={self.model}: {e}"
+                f"Proxy returned a non-JSON response body for model={self.raw_model!r}.{hint}"
+                f" Raw parse error: {e}"
             ) from e
-
         except Exception as e:
             logger.exception(
                 f"LLM extraction failed (provider={self.provider}, model={self.model})"
             )
             raise ExtractionError(str(e)) from e
+
+        # ── Response content ─────────────────────────────────────────────────
+        raw_content = (
+            response.choices[0].message.content if response.choices else None
+        )
+        content = self._clean_json_content(raw_content)
+        if not content:
+            logger.error(
+                f"Empty response from API (model={self.model}): raw={repr(raw_content)}"
+            )
+            raise ExtractionError(
+                f"Empty response from provider={self.provider}, model={self.model}"
+            )
+
+        # ── JSON parsing ──────────────────────────────────────────────────────
+        try:
+            data = json.loads(content)
+        except json.JSONDecodeError as e:
+            logger.error(f"Model returned non-JSON content: {e}")
+            logger.debug(f"Response content (after cleaning): {repr(content[:500])}")
+            logger.debug(f"Raw content: {repr((raw_content or '')[:500])}")
+            raise ExtractionError(
+                f"Model returned non-JSON content "
+                f"(provider={self.provider}, model={self.model}): {e}"
+            ) from e
+
+        # ── Cost tracking ─────────────────────────────────────────────────────
+        try:
+            cost = completion_cost(completion_response=response)
+        except Exception as e:
+            logger.debug(f"LiteLLM cost calculation failed, using pricing DB: {e}")
+            cost = self.pricing_db.get_cost(
+                self.raw_model,
+                response.usage.prompt_tokens,
+                response.usage.completion_tokens,
+            )
+
+        total_items = sum(
+            len(value) for value in data.values() if isinstance(value, list)
+        )
+
+        usage = getattr(response, "usage", None)
+        input_tokens = getattr(usage, "prompt_tokens", None)
+        output_tokens = getattr(usage, "completion_tokens", None)
+
+        logger.info(
+            f"✓ Extracted {total_items} items "
+            f"(tokens: {input_tokens}+{output_tokens}, cost: ${cost:.4f})"
+        )
+
+        return {
+            "data": data,
+            "cost": cost,
+            "input_tokens": input_tokens,
+            "output_tokens": output_tokens,
+        }
+
+    @staticmethod
+    def _clean_json_content(raw: str | None) -> str:
+        """Strip markdown fences and whitespace from a model response.
+
+        Some models/proxies wrap JSON in ```json ... ``` code fences even when
+        asked not to (notably Claude via proxies that don't enforce JSON mode
+        natively). This normalises the content before json.loads so those
+        responses are parsed successfully.
+        """
+        text = (raw or "").strip()
+        if not text:
+            return text
+        # Strip ```json ... ``` or ``` ... ``` fences
+        cleaned = re.sub(
+            r"^```(?:json)?\s*\n?(.*?)\n?\s*```\s*$",
+            r"\1",
+            text,
+            flags=re.DOTALL,
+        ).strip()
+        return cleaned
 
     def _get_context_window_tokens(self) -> Optional[int]:
         """Return the configured context window (prompt tokens) for this model.

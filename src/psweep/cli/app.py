@@ -159,7 +159,7 @@ def run(
         typer.Option("--verbose", "-v", help="Detailed output."),
     ] = False,
 ) -> None:
-    """Run the full pipeline: discover → extract → compile.
+    """Run the full pipeline: discover → extract → validate (optional) → compile.
 
     Shows what will be reused from previous runs and what is new, then
     asks for confirmation before proceeding. Use [cyan]--reprocess[/cyan] to
@@ -261,20 +261,12 @@ def run(
     if qaqc:
         qaqc_model_count = len(qaqc.get("models") or []) or None
 
-    run_qaqc_extract = bool(qaqc) and not skip_extract
-    show_compare = bool(qaqc) and (
-        not skip_extract or Path(qaqc["qa_qc_dir"]).exists()
-    )
-
     if not skip_extract:
-        if run_qaqc_extract:
-            count = f" ×{qaqc_model_count} models" if qaqc_model_count else ""
-            stages_list.append(f"extract (QA/QC{count})")
-        else:
-            stages_list.append("extract")
+        stages_list.append("extract")
+    if bool(qaqc) and not skip_extract:
+        count = f" ×{qaqc_model_count} models" if qaqc_model_count else ""
+        stages_list.append(f"validate{count}")
     stages_list.append("compile")
-    if show_compare:
-        stages_list.append("compare")
     plan_rows["Stages"] = " → ".join(stages_list)
 
     view.config(plan_rows, title="Run Plan")
@@ -309,8 +301,8 @@ def run(
     _stage_labels = {
         "discover": "Discovering documents",
         "extract": "Extracting data",
+        "validate": "Running QA/QC validation",
         "compile": "Compiling results",
-        "compare": "Comparing QA/QC models",
     }
     total_stages = len(stage_cmds)
     for i, (stage_name, cmd) in enumerate(stage_cmds, 1):
@@ -365,11 +357,11 @@ def _build_cli() -> "click.Group":  # type: ignore[name-defined]
     from psweep.cli.commands import (
         benchmark,
         check,
-        compare,
         compile,
         curate,
         discover,
         extract,
+        validate,
     )
     from psweep.cli.utils_commands import (
         check_schema_cmd,
@@ -387,7 +379,7 @@ def _build_cli() -> "click.Group":  # type: ignore[name-defined]
         compile,
         discover,
         curate,
-        compare,
+        validate,
         benchmark,
         init,
         init_domain_schema_cmd,

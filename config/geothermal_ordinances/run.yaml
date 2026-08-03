@@ -5,8 +5,9 @@ domain: geothermal_ordinances
 
 # ── Model tiers ──────────────────────────────────────────────────────────────
 models:
-  primary: compassop-gpt-4.1
-  secondary: compassop-gpt-4.1-mini
+  primary: gpt-5.6-luna
+  secondary: claude-haiku-4-5
+  judge: claude-sonnet-4-6
 
 # ── Discovery ────────────────────────────────────────────────────────────────
 discovery:
@@ -219,20 +220,29 @@ compilation:
 
 # ── QA/QC ────────────────────────────────────────────────────────────────────
 qaqc:
-  # QA/QC model tiers — reference tiers from the top-level models: block.
-  # Must resolve to >= 2 distinct models.
   models: [primary, secondary]
-  default_lane: quantitative
-  lanes:
-    quantitative:
-      enabled: true
-      mode: quantitative
-      comparison_approach: numeric_only
-      record_matching:
-        # Match records across models by: what type of requirement, what it
-        # applies to, and any sub-topic (e.g. "at property line" vs blank).
-        key_fields: [feature, applies_to, specific_subject]
-      comparison:
-        # Compare the extracted value, its units, how to interpret it
-        # (minimum/maximum/exact), and the obligation strength.
-        primary_fields: [value, units, value_interpretation, obligation]
+  report:
+    include_csv: false
+    include_missing_in_queue: true
+    include_low_signal_presence_in_queue: false
+  comparison_approach: mixed
+  record_matching:
+    key_fields: [feature, applies_to, specific_subject]
+    fuzzy_key_fields: [applies_to, specific_subject]
+    semantic_match_threshold: 0.38
+  comparison:
+    primary_fields: [value, units, value_interpretation, obligation]
+    # Optional cross-model unit canonicalization groups (domain-configurable, no code hardcoding).
+    unit_equivalence_groups:
+      - [feet, ft]
+      - [hours, hrs, hr]
+      - [decibels, dB, dBA, dB(A), CNEL dB, CNEL dB(A)]
+      - ["HH:MM (24-hour)", "a.m./p.m."]
+  judge:
+    enabled: true
+    model: judge
+    apply_on: all
+    row_equivalence: true
+    pair_unmatched: true
+    min_confidence: high
+    strictness: "If any ambiguity exists, return equivalent=false for human review."

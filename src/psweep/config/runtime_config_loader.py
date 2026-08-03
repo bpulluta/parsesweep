@@ -95,16 +95,6 @@ VARIABLE_CATALOG: dict[str, list[dict[str, str]]] = {
             "description": "Skip files that already have output JSON.",
         },
         {
-            "name": "enable_qaqc",
-            "level": "advanced",
-            "description": "Enable multi-model QA/QC mode for extraction.",
-        },
-        {
-            "name": "qaqc_lane",
-            "level": "advanced",
-            "description": "Lane hint for follow-up compare workflow.",
-        },
-        {
             "name": "live_dashboard",
             "level": "advanced",
             "description": "Enable live rich dashboard for multi-file runs.",
@@ -212,6 +202,7 @@ _SECTION_ALIASES = {
     "discovery": "discovery",
     "extract": "extraction",
     "extraction": "extraction",
+    "validate": "extraction",
     "compile": "compilation",
     "compilation": "compilation",
 }
@@ -286,8 +277,6 @@ _ALLOWED_SECTION_FIELDS = {
         "limit",
         "skip_existing",
         "max_context",
-        "enable_qaqc",
-        "qaqc_lane",
         "live_dashboard",
     },
     "compilation": {
@@ -716,7 +705,7 @@ def _validate_extraction_section_schema(extraction: dict[str, Any]) -> None:
             )
 
     for name in ("input_dir", "schema", "output_dir", "pages", "pages_csv",
-                 "model", "profile", "qaqc_lane"):
+                 "model", "profile"):
         if name in extraction and extraction[name] is not None:
             if not isinstance(extraction[name], str):
                 raise RuntimeConfigError(
@@ -1150,10 +1139,9 @@ def _validate_qaqc_activation(config_data: dict[str, Any]) -> None:
 
     QA/QC models are declared exclusively via ``qaqc.models`` in the run
     config. The legacy ``QAQC_MODELS`` environment variable is no longer
-    supported: when ``extraction.enable_qaqc`` is true but ``qaqc.models`` is
-    absent, we hard-error (and call out the dead env var if it is still set)
-    rather than silently falling back. The registry separately validates that a
-    declared ``qaqc.models`` resolves to >= 2 distinct models.
+    supported. If a ``qaqc`` section exists but models are missing, this raises
+    immediately. The registry separately validates that declared models resolve
+    to >= 2 distinct model names.
     """
     qaqc = config_data.get("qaqc")
     if qaqc is not None and not isinstance(qaqc, dict):
@@ -1163,12 +1151,9 @@ def _validate_qaqc_activation(config_data: dict[str, Any]) -> None:
     qaqc = qaqc or {}
     models = qaqc.get("models")
 
-    extraction = config_data.get("extraction") or {}
-    if not isinstance(extraction, dict):
-        return
-    if extraction.get("enable_qaqc") and not models:
+    if qaqc and not models:
         message = (
-            "extraction.enable_qaqc is true but no qaqc.models defined. "
+            "qaqc section is present but no qaqc.models defined. "
             "Set qaqc.models: [model1, model2] with at least 2 distinct models."
         )
         if os.getenv("QAQC_MODELS"):
@@ -1690,8 +1675,6 @@ _FIELD_MAP: dict[str, str] = {
     "limit": "limit",
     "skip_existing": "skip_existing",
     "max_context": "max_context",
-    "enable_qa_qc": "enable_qaqc",
-    "qaqc_lane": "qaqc_lane",
     "live_dashboard": "live_dashboard",
     "report_format": "report_format",
     "fail_on_suspicious": "fail_on_suspicious",
@@ -1776,8 +1759,8 @@ def resolve_command_config(
         merged["model_context_windows"] = cfg.get("model_context_windows")
         sources["model_context_windows"] = "config.model_context_windows"
 
-    # Top-level QA/QC lanes and defaults are shared runtime policy used by
-    # both extract and compare workflows.
+    # Top-level QA/QC settings are shared runtime policy used by extraction
+    # and validate report generation workflows.
     if "qaqc" in cfg:
         merged["qaqc"] = cfg.get("qaqc")
         sources["qaqc"] = "config.qaqc"

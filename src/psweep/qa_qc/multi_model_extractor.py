@@ -34,7 +34,7 @@ import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Dict, Optional, Sequence
+from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Sequence
 
 from .utils import sanitize_model_name
 
@@ -59,6 +59,10 @@ class ModelExtractionResult:
     data: Optional[Dict[str, Any]]
     cost: float
     processing_time: float
+    input_tokens: int = 0
+    output_tokens: int = 0
+    reused: bool = False
+    reused_prior_cost_usd: float = 0.0
     error: Optional[str] = None
     error_details: Optional[Dict[str, Any]] = None
     result: Optional[Any] = None
@@ -74,6 +78,8 @@ def run_multi_model_extraction(
     max_context_chars: int = 400000,
     runtime_artifact: Optional[Dict[str, Any]] = None,
     run_id: Optional[str] = None,
+    seed_records_by_model: Optional[Dict[str, Dict[str, Any]]] = None,
+    model_status_callback: Optional[Callable[[Dict[str, Any]], None]] = None,
 ) -> Dict[str, ModelExtractionResult]:
     """
     Run extraction with multiple models resolved through the model registry.
@@ -100,6 +106,7 @@ def run_multi_model_extraction(
     # Resolve tier references -> concrete model definitions (dedup by model).
     model_defs = registry.get_models(list(model_tiers))
     models = [definition.model for definition in model_defs]
+    seed_records_by_model = seed_records_by_model or {}
 
     # Create output directory for this document
     doc_output_dir = Path(output_dir) / "qa_qc" / doc_name
@@ -119,6 +126,44 @@ def run_multi_model_extraction(
         output_path = doc_output_dir / f"{safe_model_name}.json"
 
         logger.info(f"Running extraction with {model}...")
+        if model_status_callback:
+            model_status_callback({"event": "model_start", "model": model})
+
+        seeded_record = seed_records_by_model.get(model)
+        if isinstance(seeded_record, dict) and isinstance(
+            seeded_record.get("payload"), dict
+        ):
+            with open(output_path, "w") as f:
+                json.dump(seeded_record, f, indent=2)
+
+            payload = seeded_record["payload"]
+            metrics = seeded_record.get("processing_metrics") or {}
+            processing_time = time.time() - model_start
+            prior_cost = float(metrics.get("cost_usd") or 0.0)
+            results[model] = ModelExtractionResult(
+                model=model,
+                success=True,
+                output_path=output_path,
+                data=payload,
+                cost=0.0,
+                processing_time=processing_time,
+                input_tokens=int(metrics.get("input_tokens") or 0),
+                output_tokens=int(metrics.get("output_tokens") or 0),
+                reused=True,
+                reused_prior_cost_usd=prior_cost,
+                result=None,
+            )
+            logger.info(f"✓ {model} reused existing extraction output")
+            if model_status_callback:
+                model_status_callback(
+                    {
+                        "event": "model_reused",
+                        "model": model,
+                        "processing_time": processing_time,
+                        "prior_cost": prior_cost,
+                    }
+                )
+            continue
 
         # Resolve credentials/provider through the single, env-driven path.
         llm_kwargs = registry.to_llm_kwargs(definition.tier)
@@ -183,8 +228,8 @@ def run_multi_model_extraction(
                 "processing_metrics": {
                     "duration_seconds": result.processing_time,
                     "cost_usd": result.cost,
-                    "input_tokens": None,
-                    "output_tokens": None,
+                    "input_tokens": int(result.input_tokens or 0),
+                    "output_tokens": int(result.output_tokens or 0),
                 },
             }
 
@@ -201,6 +246,8 @@ def run_multi_model_extraction(
                 data=result.data,
                 cost=result.cost,
                 processing_time=processing_time,
+                input_tokens=int(result.input_tokens or 0),
+                output_tokens=int(result.output_tokens or 0),
                 result=result,
             )
 
@@ -208,6 +255,15 @@ def run_multi_model_extraction(
                 f"✓ {model} completed: {output_path.name} "
                 f"(${result.cost:.4f}, {processing_time:.1f}s)"
             )
+            if model_status_callback:
+                model_status_callback(
+                    {
+                        "event": "model_success",
+                        "model": model,
+                        "cost": float(result.cost or 0.0),
+                        "processing_time": processing_time,
+                    }
+                )
 
         except Exception as e:
             processing_time = time.time() - model_start
@@ -227,16 +283,33 @@ def run_multi_model_extraction(
                 data=None,
                 cost=0.0,
                 processing_time=processing_time,
+                input_tokens=0,
+                output_tokens=0,
                 error=error_msg,
                 error_details=error_details,
             )
 
             logger.error(f"✗ {model} failed: {error_msg}")
+            if model_status_callback:
+                model_status_callback(
+                    {
+                        "event": "model_error",
+                        "model": model,
+                        "error": error_msg,
+                    }
+                )
 
     # Calculate totals
     total_time = time.time() - total_start
     total_cost = sum(r.cost for r in results.values())
     successful = sum(1 for r in results.values() if r.success)
+    reused_outputs = sum(1 for r in results.values() if r.success and r.reused)
+    fresh_extractions = sum(
+        1 for r in results.values() if r.success and not r.reused
+    )
+    reused_prior_cost = sum(r.reused_prior_cost_usd for r in results.values())
+    total_input_tokens = sum(int(r.input_tokens or 0) for r in results.values())
+    total_output_tokens = sum(int(r.output_tokens or 0) for r in results.values())
     error_summary = summarize_error_records(
         r.error_details
         for r in results.values()
@@ -267,8 +340,13 @@ def run_multi_model_extraction(
             "total_models": len(models),
             "successful": successful,
             "failed": len(models) - successful,
+            "fresh_model_extractions": fresh_extractions,
+            "reused_existing_outputs": reused_outputs,
+            "reused_prior_cost_usd": reused_prior_cost,
             "total_errors": error_summary["total_errors"],
-            "total_cost": total_cost,
+            "total_cost_usd_incurred_this_run": total_cost,
+            "total_input_tokens": total_input_tokens,
+            "total_output_tokens": total_output_tokens,
             "total_time": total_time,
         },
         "model_errors": {
@@ -282,6 +360,10 @@ def run_multi_model_extraction(
                 "success": r.success,
                 "output_file": r.output_path.name if r.output_path else None,
                 "cost": r.cost,
+                "reused": r.reused,
+                "reused_prior_cost_usd": r.reused_prior_cost_usd,
+                "input_tokens": int(r.input_tokens or 0),
+                "output_tokens": int(r.output_tokens or 0),
                 "processing_time": r.processing_time,
                 "error": r.error,
                 "error_details": r.error_details,
