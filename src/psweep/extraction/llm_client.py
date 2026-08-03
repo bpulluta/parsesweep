@@ -43,6 +43,7 @@ class LLMClient:
         azure_endpoint: str = None,
         azure_api_version: str = None,
         context_windows: Optional[Dict[str, int]] = None,
+        base_url: str = None,
     ):
         """
         Initialize LLM client.
@@ -60,6 +61,9 @@ class LLMClient:
                      (``model_context_windows`` in run.yaml) for deployments whose
                      context window LiteLLM cannot infer. Unset models are not
                      guarded.
+            base_url: Optional endpoint override. When set, all calls are routed
+                     through this OpenAI-compatible URL regardless of model name.
+                     Works with any proxy (LiteLLM, OpenRouter, vLLM, etc.).
         """
         if not model:
             raise ValueError(
@@ -68,9 +72,11 @@ class LLMClient:
                 "(e.g. 'primary: your-deployment') and set "
                 "'model: primary' under the relevant stage "
                 "(extraction:, compilation.synthesis:, etc.), "
-                "or set AZURE_OPENAI_MODEL / OPENAI_MODEL in your .env file."
+                "or set LLM_MODEL / AZURE_OPENAI_MODEL / OPENAI_MODEL in your .env file."
             )
         self.raw_model = model  # Keep original for cost tracking
+        self.base_url = base_url
+        self._api_key = api_key  # Stored for direct-pass in endpoint-override mode
         self.context_windows = dict(context_windows or {})
         self.provider = provider or detect_provider(model)
 
@@ -87,33 +93,41 @@ class LLMClient:
         # Load pricing database
         self.pricing_db = get_pricing()
 
+        endpoint_info = f", base_url={self.base_url}" if self.base_url else ""
         logger.info(
-            f"Initialized LLM client: provider={self.provider}, model={self.model}"
+            f"Initialized LLM client: provider={self.provider}, model={self.model}{endpoint_info}"
         )
 
     def _format_model_for_litellm(self, model: str, provider: str) -> str:
         """
         Format model name for LiteLLM.
 
-        LiteLLM requires provider prefixes for some models:
+        In endpoint-override mode (base_url set): model names pass through
+        unchanged — the proxy handles routing and expects its own model identifiers.
+
+        In direct-provider mode:
         - Azure: "azure/deployment-name"
         - Anthropic: "claude-3.5-sonnet" (no prefix needed)
         - Gemini: "gemini/gemini-1.5-pro" (optional)
         """
+        if self.base_url:
+            # Proxy mode: force OpenAI-compatible wire format so LiteLLM routes
+            # through the proxy instead of calling Anthropic/Google directly.
+            # The openai/ prefix is transparent to the proxy — it strips it.
+            if not model.startswith("openai/"):
+                return f"openai/{model}"
+            return model
         if provider == "azure":
-            # Azure models must be prefixed with "azure/"
             if not model.startswith("azure/"):
                 return f"azure/{model}"
             return model
         elif provider == "gemini":
-            # Gemini can optionally have "gemini/" prefix
             if not model.startswith("gemini/") and not model.startswith(
                 "google/"
             ):
                 return f"gemini/{model}"
             return model
         else:
-            # OpenAI, Anthropic, etc. don't need prefixes
             return model
 
     def _configure_environment(
@@ -123,10 +137,18 @@ class LLMClient:
         azure_api_version: Optional[str],
     ):
         """Configure environment variables for LiteLLM."""
+        if self.base_url:
+            # Endpoint-override mode: set the proxy URL and key as the OpenAI
+            # environment so LiteLLM routes all calls through this endpoint.
+            os.environ["OPENAI_BASE_URL"] = self.base_url
+            if api_key:
+                os.environ["OPENAI_API_KEY"] = api_key
+            return
+
         if not api_key:
             return
 
-        # Set provider-specific environment variables
+        # Direct-provider mode: set provider-specific environment variables.
         if self.provider == "azure":
             os.environ["AZURE_API_KEY"] = api_key
             if azure_endpoint:
@@ -189,6 +211,13 @@ class LLMClient:
             "model": self.model,
             "messages": messages,
         }
+
+        # Endpoint-override mode: pass base_url and api_key directly so LiteLLM
+        # routes through the proxy regardless of how it sniffs the model name.
+        if self.base_url:
+            api_params["base_url"] = self.base_url
+            if self._api_key:
+                api_params["api_key"] = self._api_key
 
         if not is_reasoning_model:
             api_params["temperature"] = 0

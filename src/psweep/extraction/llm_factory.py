@@ -137,7 +137,11 @@ def resolve_llm_kwargs(
 ) -> dict[str, Any]:
     """Resolve the kwargs needed to construct an ``LLMClient`` for a stage.
 
-    Returns ``{model, api_key, provider, azure_endpoint, azure_api_version}``.
+    Returns ``{model, api_key, provider, base_url?, azure_endpoint?, azure_api_version?}``.
+
+    When ``LLM_BASE_URL`` is configured, all calls are routed through that
+    endpoint regardless of model name. The caller supplies model names exactly
+    as the endpoint advertises them.
     """
     cfg = _get_llm_config(llm_config)
     resolved_model = resolve_model_name(
@@ -146,6 +150,16 @@ def resolve_llm_kwargs(
         llm_config=cfg,
         default_model=default_model,
     )
+
+    # Endpoint-override mode: a generic OpenAI-compatible proxy is configured.
+    # Route everything through it — no provider-specific logic applies.
+    if cfg.get("base_url"):
+        return {
+            "model": resolved_model,
+            "api_key": cfg.get("api_key"),
+            "provider": cfg.get("provider", "openai"),
+            "base_url": cfg["base_url"],
+        }
 
     cfg_provider = cfg.get("provider")
     target = detect_provider(resolved_model)
