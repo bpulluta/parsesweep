@@ -120,12 +120,12 @@
           },
           "requirement_description": {
             "type": ["string", "null"],
-            "description": "Clean, obligation-free description of the regulated action or object (WHAT axis). NEVER include obligation language — no 'required', 'shall', 'may', 'must', 'prohibited'. Used for qualitative requirements; null for purely quantitative rows.",
-            "examples": ["Sound barriers", "Exhaust muffler or exhaust box", "Complaint-response monitoring protocol", "Solid fencing", null]
+            "description": "Clean, obligation-free description of the regulated action or object (WHAT axis). NEVER include obligation language — no 'required', 'shall', 'may', 'must', 'prohibited'. Used for qualitative requirements; null for purely quantitative rows. For qualitative requirements with relative-reference limits (e.g., 'must not exceed pre-development ambient noise levels'), state the reference standard here (e.g., 'Noise shall not exceed pre-development ambient levels within 300 feet') — do NOT leave this null while classifying the row as qualitative.",
+            "examples": ["Sound barriers", "Exhaust muffler or exhaust box", "Complaint-response monitoring protocol", "Solid fencing", "Noise shall not exceed pre-development ambient levels within 300 feet", "Located on a platted lot approved by the city and recorded in county records", null]
           },
           "value_category": {
             "type": "string",
-            "description": "REQUIRED. How this requirement's value should be interpreted (HOW MUCH axis). 'quantitative' = a measurable magnitude lives in 'value' (distance, dBA, acres, MW, hours, %, $). 'qualitative' = there is no magnitude; the substance lives in 'requirement_description' and 'value' should be null. Independent of 'obligation': a quantitative limit can be conditional and a qualitative item can be required.",
+            "description": "REQUIRED. How this requirement's value should be interpreted (HOW MUCH axis). 'quantitative' = a fixed, extractable numeric magnitude lives in 'value' (distance, dBA, acres, MW, hours, %, $). 'qualitative' = there is no fixed numeric magnitude; the substance lives in 'requirement_description' and 'value' must be null. Independent of 'obligation': a quantitative limit can be conditional and a qualitative item can be required.\n\nCRITICAL: If the limit is a relative reference ('shall not exceed pre-development ambient levels', 'shall not exceed neighboring property baseline') or a procedural/approval requirement with no fixed numeric value, classify as 'qualitative' — the reference phrase belongs in 'requirement_description'. NEVER classify as 'quantitative' when 'value' would be null. If your 'reasoning' concludes 'no magnitude → qualitative', set value_category='qualitative'.",
             "enum": ["quantitative", "qualitative"],
             "examples": ["quantitative", "qualitative"]
           },
@@ -163,7 +163,7 @@
           },
           "condition": {
             "type": ["string", "null"],
-            "description": "Situational trigger or circumstance that governs WHEN or WHERE the requirement applies (WHEN/WHERE axis). This is the condition/circumstance, NOT the facility type (use 'applies_to') and NOT the obligation. Null if the requirement applies unconditionally.",
+            "description": "Situational trigger or circumstance that governs WHEN or WHERE the requirement applies (WHEN/WHERE axis). Must be a SHORT phrase only — examples: 'nighttime', 'daytime only', 'capacity exceeds 3 MW', 'when in AG zone', 'after a signed complaint is received'. NEVER put the substance of the requirement here — if a sentence describes what is regulated rather than when/where it applies, it belongs in 'requirement_description' or 'source_verbatim'. Not the facility type (use 'applies_to'). Not the obligation. Null if the requirement applies unconditionally.",
             "examples": ["nighttime", "daytime only", "after a signed complaint is received", "capacity exceeds 3 MW", "when screening is absent", null]
           },
           "applicable_values": {
