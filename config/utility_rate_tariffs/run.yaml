@@ -146,21 +146,14 @@ compilation:
     auto_width: true
 
 qaqc:
-  # QA/QC model tiers — reference tiers from the top-level models: block.
-  # Must resolve to >= 2 distinct models. Replaces the legacy QAQC_MODELS env var.
   models: [primary, secondary]
-  default_lane: quantitative
-  lanes:
-    quantitative:
-      enabled: true
-      mode: quantitative
-      comparison_approach: numeric_only
-      projection:
-        type: nested_array_items
-        source_array: rate_schedules
-        nested_array: charges
-        parent_fields: [rate_name, is_rider, sector]
-      record_matching:
-        key_fields: [rate_name, charge_type, charge_description, season, time_period]
-      comparison:
-        primary_fields: [rate, unit]
+  comparison_approach: numeric_only
+  projection:
+    type: nested_array_items
+    source_array: rate_schedules
+    nested_array: charges
+    parent_fields: [rate_name, is_rider, sector]
+  record_matching:
+    key_fields: [rate_name, charge_type, charge_description, season, time_period]
+  comparison:
+    primary_fields: [rate, unit]

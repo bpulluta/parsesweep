@@ -1,10 +1,11 @@
 """
-Tests for QA/QC Comparison Engine - Simplified Numeric-Only Version.
+Tests for QA/QC Comparison Engine.
 
-Tests the ComparisonEngine class which compares NUMERIC outputs only
-from multiple AI models to identify discrepancies.
+Tests the ComparisonEngine class which compares outputs from multiple AI models
+to identify discrepancies using numeric, categorical, and text comparison approaches.
 """
 
+import copy
 import json
 import pytest
 from pathlib import Path
@@ -89,7 +90,6 @@ class TestComparisonEngine:
     _BASE_QA_QC_CONFIG = {
         "source": "runtime_artifact",
         "lane_name": "quantitative",
-        "mode": "quantitative",
         "comparison_approach": "numeric_only",
         "match_fields": ["category", "specific_subject"],
         "compare_fields": ["value", "unit"],
@@ -123,7 +123,6 @@ class TestComparisonEngine:
             qa_qc_config={
                 "source": "runtime_artifact",
                 "lane_name": "quantitative",
-                "mode": "quantitative",
                 "comparison_approach": "numeric_only",
                 "match_fields": ["category", "facility_type", "specific_subject"],
                 "compare_fields": ["value", "unit"],
@@ -135,23 +134,61 @@ class TestComparisonEngine:
         assert engine.config_source == "runtime_artifact"
         assert engine.lane_name == "quantitative"
 
+    def test_semantic_alignment_score_treats_time_formats_as_equivalent(self):
+        """Mixed-lane semantic matching should treat 07:00 and 7 a.m. as equivalent time."""
+        schema = _build_schema_metadata_mock(
+            deduplication_key_fields=["feature", "applies_to", "specific_subject"]
+        )
+        engine = ComparisonEngine(
+            schema,
+            qa_qc_config={
+                "source": "runtime_artifact",
+                "lane_name": "main",
+                "comparison_approach": "mixed",
+                "match_fields": ["feature", "applies_to", "specific_subject"],
+                "compare_fields": ["value", "units", "value_interpretation", "obligation"],
+                "enable_text_fallback_matching": True,
+            },
+        )
+        item_a = {
+            "feature": "drilling start time",
+            "applies_to": "geothermal well",
+            "specific_subject": "drilling preparation site",
+            "value": "07:00",
+            "units": "HH:MM (24-hour)",
+        }
+        item_b = {
+            "feature": "drilling start time",
+            "applies_to": "300 feet from residences",
+            "specific_subject": "drilling preparation site",
+            "value": "7 a.m.",
+            "units": "a.m./p.m.",
+        }
+        assert engine._values_semantically_equivalent(
+            item_a["value"], item_b["value"]
+        )
+        assert engine._semantic_alignment_score(item_a, item_b) >= 0.38
+
     def test_resolve_qaqc_runtime_config_uses_runtime_artifact_lane(self):
-        """Runtime QA/QC config resolution reads from the compiled pack lane."""
+        """Runtime QA/QC config resolution reads from simplified runtime qaqc block."""
         config = resolve_qaqc_runtime_config(
             MagicMock(),
             runtime_artifact={
                 "resolved": {
                     "pack": {
                         "qaqc": {
-                            "default_lane": "quantitative",
-                            "lanes": {
-                                "quantitative": {
-                                    "enabled": True,
-                                    "mode": "quantitative",
-                                    "comparison_approach": "numeric_only",
-                                    "record_matching": {"key_fields": ["referenceNumber", "make", "model"]},
-                                    "comparison": {"primary_fields": ["ratedCapacityKW", "operatingHoursPerUnitLimit"]},
-                                }
+                            "comparison_approach": "numeric_only",
+                            "record_matching": {
+                                "key_fields": ["referenceNumber", "make", "model"]
+                            },
+                            "comparison": {
+                                "primary_fields": [
+                                    "ratedCapacityKW",
+                                    "operatingHoursPerUnitLimit",
+                                ],
+                                "unit_equivalence_groups": [
+                                    ["hours", "hrs", "hr"]
+                                ],
                             },
                         }
                     }
@@ -160,9 +197,10 @@ class TestComparisonEngine:
         )
 
         assert config["source"] == "runtime_artifact"
-        assert config["lane_name"] == "quantitative"
+        assert config["lane_name"] == "main"
         assert config["match_fields"] == ["referenceNumber", "make", "model"]
         assert config["compare_fields"] == ["ratedCapacityKW", "operatingHoursPerUnitLimit"]
+        assert config["unit_equivalence_groups"] == [["hours", "hrs", "hr"]]
         assert config["projection"] is None
 
     def test_resolve_qaqc_runtime_config_raises_without_config(self):
@@ -170,47 +208,36 @@ class TestComparisonEngine:
         with pytest.raises(ValueError, match="No QA/QC configuration found"):
             resolve_qaqc_runtime_config(MagicMock())
 
-    def test_resolve_qaqc_runtime_config_raises_when_lane_missing_key_fields(self):
-        """resolve_qaqc_runtime_config raises ValueError when lane has no record_matching.key_fields."""
+    def test_resolve_qaqc_runtime_config_raises_when_missing_key_fields(self):
+        """resolve_qaqc_runtime_config raises ValueError when config has no record_matching.key_fields."""
         with pytest.raises(ValueError, match="record_matching.key_fields"):
             resolve_qaqc_runtime_config(
                 MagicMock(),
                 runtime_qaqc={
-                    "default_lane": "quantitative",
-                    "lanes": {
-                        "quantitative": {
-                            "enabled": True,
-                            "mode": "quantitative",
-                            # missing record_matching
-                        }
-                    },
+                    "comparison_approach": "mixed",
+                    "comparison": {"primary_fields": ["value"]},
                 },
             )
 
     def test_resolve_qaqc_runtime_config_includes_projection(self):
-        """Runtime QA/QC config should preserve projection metadata when configured."""
+        """Runtime QA/QC config preserves top-level projection metadata."""
         config = resolve_qaqc_runtime_config(
             MagicMock(),
             runtime_artifact={
                 "resolved": {
                     "pack": {
                         "qaqc": {
-                            "default_lane": "quantitative",
-                            "lanes": {
-                                "quantitative": {
-                                    "enabled": True,
-                                    "mode": "quantitative",
-                                    "comparison_approach": "numeric_only",
-                                    "projection": {
-                                        "type": "nested_array_items",
-                                        "source_array": "rate_schedules",
-                                        "nested_array": "charges",
-                                        "parent_fields": ["rate_name"],
-                                    },
-                                    "record_matching": {"key_fields": ["rate_name", "charge_type"]},
-                                    "comparison": {"primary_fields": ["rate", "unit"]},
-                                }
+                            "comparison_approach": "numeric_only",
+                            "projection": {
+                                "type": "nested_array_items",
+                                "source_array": "rate_schedules",
+                                "nested_array": "charges",
+                                "parent_fields": ["rate_name"],
                             },
+                            "record_matching": {
+                                "key_fields": ["rate_name", "charge_type"]
+                            },
+                            "comparison": {"primary_fields": ["rate", "unit"]},
                         }
                     }
                 }
@@ -224,44 +251,16 @@ class TestComparisonEngine:
             "parent_fields": ["rate_name"],
         }
 
-    def test_resolve_qaqc_runtime_config_can_select_disabled_qualitative_lane(self):
-        """Explicit lane selection should allow evaluating a disabled qualitative lane."""
-        config = resolve_qaqc_runtime_config(
-            MagicMock(),
-            runtime_artifact={
-                "resolved": {
-                    "pack": {
-                        "qaqc": {
-                            "default_lane": "quantitative",
-                            "lanes": {
-                                "quantitative": {
-                                    "enabled": True,
-                                    "mode": "quantitative",
-                                    "comparison_approach": "numeric_only",
-                                    "record_matching": {"key_fields": ["category"]},
-                                    "comparison": {"primary_fields": ["value"]},
-                                },
-                                "qualitative": {
-                                    "enabled": False,
-                                    "mode": "qualitative",
-                                    "comparison_approach": "text_review",
-                                    "record_matching": {"key_fields": ["category"]},
-                                    "comparison": {"primary_fields": ["details"]},
-                                },
-                            },
-                        }
-                    }
-                }
-            },
-            preferred_lane="qualitative",
-        )
-
-        assert config["source"] == "runtime_artifact"
-        assert config["lane_name"] == "qualitative"
-        assert config["mode"] == "qualitative"
-        assert config["comparison_approach"] == "text_review"
-        assert config["match_fields"] == ["category"]
-        assert config["compare_fields"] == ["details"]
+    def test_resolve_qaqc_runtime_config_rejects_legacy_lane_shape(self):
+        """Lane-based QA/QC config is rejected to keep runtime surface minimal."""
+        with pytest.raises(ValueError, match="Deprecated QA/QC lane-style config"):
+            resolve_qaqc_runtime_config(
+                MagicMock(),
+                runtime_qaqc={
+                    "default_lane": "quantitative",
+                    "lanes": {"quantitative": {"enabled": True}},
+                },
+            )
 
     def test_compare_outputs_text_review_compares_configured_text_fields(self, temp_dir):
         """Qualitative text-review lanes should compare configured text fields instead of skipping them."""
@@ -299,7 +298,6 @@ class TestComparisonEngine:
             qa_qc_config={
                 "source": "runtime_artifact",
                 "lane_name": "qualitative",
-                "mode": "qualitative",
                 "comparison_approach": "text_review",
                 "match_fields": ["category", "specific_subject"],
                 "compare_fields": ["details"],
@@ -318,7 +316,7 @@ class TestComparisonEngine:
         assert details_comparison.agreement_score == "1/2"
         assert details_comparison.needs_review is True
         assert result.summary["comparison_approach"] == "text_review"
-        assert result.summary["qaqc_lane"] == "qualitative"
+        assert result.summary["qaqc_profile"] == "qualitative"
         assert result.summary["review_category_counts"] == {"text_difference": 1}
         breakdown = result.summary["qualitative_mismatch_breakdown"]
         assert breakdown["text_difference_by_category"] == [{"label": "permit required", "count": 1}]
@@ -367,7 +365,6 @@ class TestComparisonEngine:
             qa_qc_config={
                 "source": "runtime_artifact",
                 "lane_name": "qualitative",
-                "mode": "qualitative",
                 "comparison_approach": "text_review",
                 "match_fields": ["category", "specific_subject"],
                 "compare_fields": ["details"],
@@ -416,7 +413,6 @@ class TestComparisonEngine:
             qa_qc_config={
                 "source": "runtime_artifact",
                 "lane_name": "qualitative",
-                "mode": "qualitative",
                 "comparison_approach": "text_review",
                 "match_fields": ["category", "specific_subject"],
                 "compare_fields": ["details"],
@@ -463,7 +459,6 @@ class TestComparisonEngine:
             qa_qc_config={
                 "source": "runtime_artifact",
                 "lane_name": "qualitative",
-                "mode": "qualitative",
                 "comparison_approach": "text_review",
                 "match_fields": ["category", "specific_subject"],
                 "compare_fields": ["details"],
@@ -520,7 +515,6 @@ class TestComparisonEngine:
             qa_qc_config={
                 "source": "runtime_artifact",
                 "lane_name": "qualitative",
-                "mode": "qualitative",
                 "comparison_approach": "text_review",
                 "match_fields": ["category", "facility_type", "specific_subject"],
                 "compare_fields": ["details"],
@@ -587,7 +581,6 @@ class TestComparisonEngine:
             qa_qc_config={
                 "source": "runtime_artifact",
                 "lane_name": "qualitative",
-                "mode": "qualitative",
                 "comparison_approach": "text_review",
                 "match_fields": ["category", "facility_type", "specific_subject"],
                 "compare_fields": ["details"],
@@ -655,7 +648,6 @@ class TestComparisonEngine:
             qa_qc_config={
                 "source": "runtime_artifact",
                 "lane_name": "qualitative",
-                "mode": "qualitative",
                 "comparison_approach": "text_review",
                 "match_fields": ["category", "facility_type", "specific_subject"],
                 "compare_fields": ["details"],
@@ -717,7 +709,6 @@ class TestComparisonEngine:
             qa_qc_config={
                 "source": "runtime_artifact",
                 "lane_name": "qualitative",
-                "mode": "qualitative",
                 "comparison_approach": "text_review",
                 "match_fields": ["category", "facility_type", "specific_subject"],
                 "compare_fields": ["details"],
@@ -774,7 +765,6 @@ class TestComparisonEngine:
             qa_qc_config={
                 "source": "runtime_artifact",
                 "lane_name": "qualitative",
-                "mode": "qualitative",
                 "comparison_approach": "text_review",
                 "match_fields": ["category", "facility_type", "specific_subject"],
                 "compare_fields": ["details"],
@@ -831,7 +821,6 @@ class TestComparisonEngine:
             qa_qc_config={
                 "source": "runtime_artifact",
                 "lane_name": "qualitative",
-                "mode": "qualitative",
                 "comparison_approach": "text_review",
                 "match_fields": ["category", "facility_type", "specific_subject"],
                 "compare_fields": ["details"],
@@ -891,7 +880,6 @@ class TestComparisonEngine:
             qa_qc_config={
                 "source": "runtime_artifact",
                 "lane_name": "qualitative",
-                "mode": "qualitative",
                 "comparison_approach": "text_review",
                 "match_fields": ["category", "facility_type", "specific_subject"],
                 "compare_fields": ["details"],
@@ -955,7 +943,6 @@ class TestComparisonEngine:
             qa_qc_config={
                 "source": "runtime_artifact",
                 "lane_name": "qualitative",
-                "mode": "qualitative",
                 "comparison_approach": "text_review",
                 "match_fields": ["category", "facility_type", "specific_subject"],
                 "compare_fields": ["details"],
@@ -1078,6 +1065,469 @@ class TestComparisonEngine:
         
         # Should report skipped fields
         assert result.summary["skipped_non_numeric"] > 0
+
+    def test_compare_outputs_mixed_compares_enum_fields(self, mock_schema_metadata, temp_dir):
+        """mixed approach must compare categorical/enum fields — not silently skip them."""
+        model_a_data = {
+            "jurisdiction": {"state": "Colorado"},
+            "requirements": [
+                {
+                    "category": "Setback", "specific_subject": "property", "section": "1.1",
+                    "value": 100, "unit": "feet", "obligation": "shall",
+                    "value_interpretation": "minimum",
+                },
+            ],
+        }
+        model_b_data = {
+            "jurisdiction": {"state": "Colorado"},
+            "requirements": [
+                {
+                    "category": "Setback", "specific_subject": "property", "section": "1.1",
+                    "value": 100, "unit": "feet", "obligation": "should",  # differs
+                    "value_interpretation": "maximum",  # differs
+                },
+            ],
+        }
+        engine = ComparisonEngine(
+            schema_metadata=mock_schema_metadata,
+            qa_qc_config={
+                "source": "runtime_artifact",
+                "lane_name": "quantitative",
+                "comparison_approach": "mixed",
+                "match_fields": ["category", "specific_subject"],
+                "compare_fields": ["value", "unit", "obligation", "value_interpretation"],
+            },
+        )
+        result = engine.compare_outputs(
+            output_files=_write_output_files(
+                temp_dir, {"model_a": model_a_data, "model_b": model_b_data}
+            ),
+            document_name="test_doc",
+        )
+        compared_field_paths = [fc.field_path for fc in result.item_comparisons]
+        # obligation and value_interpretation must appear in results (not silently dropped)
+        assert any("obligation" in fp for fp in compared_field_paths), (
+            "obligation must be compared in mixed mode — was silently dropped"
+        )
+        assert any("value_interpretation" in fp for fp in compared_field_paths), (
+            "value_interpretation must be compared in mixed mode — was silently dropped"
+        )
+        # The mismatching fields must require review
+        obligation_fc = next(fc for fc in result.item_comparisons if "obligation" in fc.field_path)
+        assert obligation_fc.needs_review, "obligation='shall' vs 'should' must differ"
+
+    def test_compare_outputs_mixed_agrees_on_all_fields(self, mock_schema_metadata, temp_dir):
+        """mixed approach should NOT flag disagreement when all fields match."""
+        model_a_data = {
+            "jurisdiction": {"state": "Colorado"},
+            "requirements": [
+                {
+                    "category": "Setback", "specific_subject": "property", "section": "1.1",
+                    "value": 100, "unit": "feet", "obligation": "shall",
+                    "value_interpretation": "minimum",
+                },
+            ],
+        }
+        engine = ComparisonEngine(
+            schema_metadata=mock_schema_metadata,
+            qa_qc_config={
+                "source": "runtime_artifact",
+                "lane_name": "quantitative",
+                "comparison_approach": "mixed",
+                "match_fields": ["category", "specific_subject"],
+                "compare_fields": ["value", "unit", "obligation", "value_interpretation"],
+            },
+        )
+        result = engine.compare_outputs(
+            output_files=_write_output_files(
+                temp_dir, {"model_a": model_a_data, "model_b": copy.deepcopy(model_a_data)}
+            ),
+            document_name="test_doc",
+        )
+        compared_field_paths = [fc.field_path for fc in result.item_comparisons]
+        assert any("obligation" in fp for fp in compared_field_paths)
+        assert any("value_interpretation" in fp for fp in compared_field_paths)
+        # No field should need review
+        reviewing = [fc for fc in result.item_comparisons if fc.needs_review]
+        assert len(reviewing) == 0, f"All fields match, nothing should need review; got: {reviewing}"
+
+    def test_mixed_judge_skips_numeric_mismatches_by_default(self, mock_schema_metadata, temp_dir):
+        """Cost optimization: mixed judge with apply_on=non_numeric must skip numeric disagreements."""
+        model_a_data = {
+            "requirements": [
+                {
+                    "category": "Setback",
+                    "specific_subject": "property",
+                    "section": "1.1",
+                    "value": 100,
+                    "unit": "feet",
+                }
+            ]
+        }
+        model_b_data = {
+            "requirements": [
+                {
+                    "category": "Setback",
+                    "specific_subject": "property",
+                    "section": "1.1",
+                    "value": 150,
+                    "unit": "feet",
+                }
+            ]
+        }
+        engine = ComparisonEngine(
+            schema_metadata=mock_schema_metadata,
+            qa_qc_config={
+                "source": "runtime_artifact",
+                "lane_name": "quantitative",
+                "comparison_approach": "mixed",
+                "match_fields": ["category", "specific_subject"],
+                "compare_fields": ["value", "unit"],
+                "judge": {
+                    "enabled": True,
+                    "apply_on": "non_numeric",
+                    "min_confidence": "high",
+                },
+                "judge_runtime": {"model": "judge-model"},
+            },
+        )
+        judge_mock = MagicMock(
+            return_value={
+                "equivalent": True,
+                "confidence": "high",
+                "reason": "same meaning",
+            }
+        )
+        engine._judge_text_equivalence = judge_mock
+        result = engine.compare_outputs(
+            output_files=_write_output_files(
+                temp_dir, {"model_a": model_a_data, "model_b": model_b_data}
+            ),
+            document_name="mixed_numeric_skip",
+        )
+        assert judge_mock.call_count == 0
+        value_fc = next(fc for fc in result.item_comparisons if fc.field_path == "value")
+        assert value_fc.needs_review is True
+
+    def test_mixed_judge_can_resolve_non_numeric_mismatch(self, mock_schema_metadata, temp_dir):
+        """Mixed lane judge should run for non-numeric mismatches when enabled."""
+        model_a_data = {
+            "requirements": [
+                {
+                    "category": "Setback",
+                    "specific_subject": "property",
+                    "section": "1.1",
+                    "obligation": "shall",
+                }
+            ]
+        }
+        model_b_data = {
+            "requirements": [
+                {
+                    "category": "Setback",
+                    "specific_subject": "property",
+                    "section": "1.1",
+                    "obligation": "must",
+                }
+            ]
+        }
+        engine = ComparisonEngine(
+            schema_metadata=mock_schema_metadata,
+            qa_qc_config={
+                "source": "runtime_artifact",
+                "lane_name": "quantitative",
+                "comparison_approach": "mixed",
+                "match_fields": ["category", "specific_subject"],
+                "compare_fields": ["obligation"],
+                "judge": {
+                    "enabled": True,
+                    "apply_on": "non_numeric",
+                    "min_confidence": "high",
+                },
+                "judge_runtime": {"model": "judge-model"},
+            },
+        )
+        judge_mock = MagicMock(
+            return_value={
+                "equivalent": True,
+                "confidence": "high",
+                "reason": "same obligation strength",
+            }
+        )
+        engine._judge_text_equivalence = judge_mock
+        result = engine.compare_outputs(
+            output_files=_write_output_files(
+                temp_dir, {"model_a": model_a_data, "model_b": model_b_data}
+            ),
+            document_name="mixed_non_numeric_judged",
+        )
+        assert judge_mock.call_count >= 1
+        obligation_fc = next(fc for fc in result.item_comparisons if "obligation" in fc.field_path)
+        assert obligation_fc.needs_review is False
+        assert "LLM judge matched" in obligation_fc.notes
+
+    def test_mixed_text_fallback_matching_can_align_different_keys(self, temp_dir):
+        """Mixed lanes can optionally use text fallback matching to reduce false missing rows."""
+        mock = MagicMock()
+        mock.get_main_data_array.return_value = "requirements"
+        mock.get_identifier_fields.return_value = []
+        mock.get_context_objects.return_value = []
+
+        shared_detail = "Setback shall be 100 feet from the property line."
+        model_a = {
+            "requirements": [
+                {
+                    "category": "Setback",
+                    "specific_subject": "property line",
+                    "details": shared_detail,
+                }
+            ]
+        }
+        model_b = {
+            "requirements": [
+                {
+                    "category": "Property lines distance",
+                    "specific_subject": "from lot line",
+                    "details": shared_detail,
+                }
+            ]
+        }
+        engine = ComparisonEngine(
+            mock,
+            qa_qc_config={
+                "source": "runtime_artifact",
+                "lane_name": "quantitative",
+                "comparison_approach": "mixed",
+                "match_fields": ["category", "specific_subject"],
+                "compare_fields": ["details"],
+                "enable_text_fallback_matching": True,
+            },
+        )
+        result = engine.compare_outputs(
+            output_files=_write_output_files(
+                temp_dir, {"model_a": model_a, "model_b": model_b}
+            ),
+            document_name="mixed_fallback_doc",
+        )
+
+        missing_rows = [
+            fc for fc in result.item_comparisons if "not extracted" in (fc.notes or "").lower()
+        ]
+        assert not missing_rows
+
+    def test_mixed_measurement_shift_value_and_unit_not_flagged(self, temp_dir):
+        """Same measurement encoded as split vs inline value should not be queued as conflict."""
+        mock = MagicMock()
+        mock.get_main_data_array.return_value = "requirements"
+        mock.get_identifier_fields.return_value = []
+        mock.get_context_objects.return_value = []
+
+        model_a = {
+            "requirements": [
+                {
+                    "category": "Setback",
+                    "specific_subject": "fault trace",
+                    "value": "50",
+                    "units": "feet",
+                }
+            ]
+        }
+        model_b = {
+            "requirements": [
+                {
+                    "category": "Setback",
+                    "specific_subject": "fault trace",
+                    "value": "50 feet",
+                    "units": None,
+                }
+            ]
+        }
+        engine = ComparisonEngine(
+            mock,
+            qa_qc_config={
+                "source": "runtime_artifact",
+                "lane_name": "quantitative",
+                "comparison_approach": "mixed",
+                "match_fields": ["category", "specific_subject"],
+                "compare_fields": ["value", "units"],
+                "unit_equivalence_groups": [["hours", "hrs", "hr"]],
+            },
+        )
+        result = engine.compare_outputs(
+            output_files=_write_output_files(
+                temp_dir, {"model_a": model_a, "model_b": model_b}
+            ),
+            document_name="mixed_measurement_shift",
+        )
+        value_fc = next(fc for fc in result.item_comparisons if fc.field_path == "value")
+        units_fc = next(fc for fc in result.item_comparisons if fc.field_path == "units")
+        assert value_fc.needs_review is False
+        assert units_fc.needs_review is False
+
+    def test_mixed_unit_synonyms_not_flagged(self, temp_dir):
+        """Equivalent unit spellings should not trigger review."""
+        mock = MagicMock()
+        mock.get_main_data_array.return_value = "requirements"
+        mock.get_identifier_fields.return_value = []
+        mock.get_context_objects.return_value = []
+
+        model_a = {
+            "requirements": [
+                {
+                    "category": "Operations",
+                    "specific_subject": "working hours",
+                    "value": 24,
+                    "units": "hours",
+                }
+            ]
+        }
+        model_b = {
+            "requirements": [
+                {
+                    "category": "Operations",
+                    "specific_subject": "working hours",
+                    "value": 24,
+                    "units": "hrs",
+                }
+            ]
+        }
+        engine = ComparisonEngine(
+            mock,
+            qa_qc_config={
+                "source": "runtime_artifact",
+                "lane_name": "quantitative",
+                "comparison_approach": "mixed",
+                "match_fields": ["category", "specific_subject"],
+                "compare_fields": ["value", "units"],
+                "unit_equivalence_groups": [["hours", "hrs", "hr"]],
+            },
+        )
+        result = engine.compare_outputs(
+            output_files=_write_output_files(
+                temp_dir, {"model_a": model_a, "model_b": model_b}
+            ),
+            document_name="mixed_unit_synonyms",
+        )
+        units_fc = next(fc for fc in result.item_comparisons if fc.field_path == "units")
+        assert units_fc.needs_review is False
+
+    def test_mixed_time_formats_not_flagged(self, temp_dir):
+        """Equivalent time values with different format units should not trigger review."""
+        mock = MagicMock()
+        mock.get_main_data_array.return_value = "requirements"
+        mock.get_identifier_fields.return_value = []
+        mock.get_context_objects.return_value = []
+
+        model_a = {
+            "requirements": [
+                {
+                    "category": "Working hours",
+                    "specific_subject": "drilling preparation site",
+                    "value": "07:00",
+                    "units": "HH:MM (24-hour)",
+                }
+            ]
+        }
+        model_b = {
+            "requirements": [
+                {
+                    "category": "Working hours",
+                    "specific_subject": "drilling preparation site",
+                    "value": "7 a.m.",
+                    "units": "a.m./p.m.",
+                }
+            ]
+        }
+        engine = ComparisonEngine(
+            mock,
+            qa_qc_config={
+                "source": "runtime_artifact",
+                "lane_name": "quantitative",
+                "comparison_approach": "mixed",
+                "match_fields": ["category", "specific_subject"],
+                "compare_fields": ["value", "units"],
+            },
+        )
+        result = engine.compare_outputs(
+            output_files=_write_output_files(
+                temp_dir, {"model_a": model_a, "model_b": model_b}
+            ),
+            document_name="mixed_time_formats",
+        )
+        value_fc = next(fc for fc in result.item_comparisons if fc.field_path == "value")
+        units_fc = next(fc for fc in result.item_comparisons if fc.field_path == "units")
+        assert value_fc.needs_review is False
+        assert units_fc.needs_review is False
+
+    def test_mixed_judge_pair_matching_can_reduce_missing_rows(self, temp_dir):
+        """Judge-assisted pair matching should align one-sided rows before field compare."""
+        mock = MagicMock()
+        mock.get_main_data_array.return_value = "requirements"
+        mock.get_identifier_fields.return_value = []
+        mock.get_context_objects.return_value = []
+
+        model_a = {
+            "requirements": [
+                {
+                    "category": "Noise",
+                    "specific_subject": "drilling noise limit",
+                    "value": 65,
+                    "units": "dBA",
+                    "requirement_description": "Noise shall not exceed 65 dBA near residences.",
+                }
+            ]
+        }
+        model_b = {
+            "requirements": [
+                {
+                    "category": "Acoustic limit",
+                    "specific_subject": "project noise cap",
+                    "value": 65,
+                    "units": "CNEL dB(A)",
+                    "requirement_description": "Project noise is limited to 65 dB(A) near homes.",
+                }
+            ]
+        }
+        engine = ComparisonEngine(
+            mock,
+            qa_qc_config={
+                "source": "runtime_artifact",
+                "lane_name": "quantitative",
+                "comparison_approach": "mixed",
+                "match_fields": ["category", "specific_subject"],
+                "compare_fields": ["value", "units"],
+                "enable_text_fallback_matching": True,
+                "enable_judge_pair_matching": True,
+                "text_fallback_fields": [
+                    "requirement_description",
+                    "value",
+                    "units",
+                ],
+                "judge": {
+                    "enabled": True,
+                    "apply_on": "all",
+                    "min_confidence": "high",
+                },
+                "judge_runtime": {"model": "judge-model"},
+            },
+        )
+        engine._judge_text_equivalence = MagicMock(
+            return_value={
+                "equivalent": True,
+                "confidence": "high",
+                "reason": "same requirement",
+            }
+        )
+        result = engine.compare_outputs(
+            output_files=_write_output_files(
+                temp_dir, {"model_a": model_a, "model_b": model_b}
+            ),
+            document_name="mixed_judge_pair_doc",
+        )
+        missing_rows = [
+            fc for fc in result.item_comparisons if "not extracted" in (fc.notes or "").lower()
+        ]
+        assert not missing_rows
 
     def test_compare_outputs_with_missing_item(self, mock_schema_metadata, temp_dir):
         """Test comparison when item is missing from one model."""
@@ -1252,12 +1702,12 @@ class TestComparisonEngine:
         # Check summary structure
         assert result.summary["comparison_approach"] == "numeric_only"
         assert result.summary["qaqc_config_source"] == "runtime_artifact"
-        assert result.summary["qaqc_lane"] == "quantitative"
+        assert result.summary["qaqc_profile"] == "quantitative"
         assert "skipped_non_numeric" in result.summary
         assert "items_per_model" in result.summary
 
-    def test_summary_includes_runtime_lane_metadata(self, mock_schema_metadata, temp_dir):
-        """Runtime QA/QC lane metadata should flow into comparison summaries."""
+    def test_summary_includes_runtime_profile_metadata(self, mock_schema_metadata, temp_dir):
+        """Runtime QA/QC profile metadata should flow into comparison summaries."""
         model_a_data = {"requirements": [
             {"category": "A", "specific_subject": "x", "section": "1", "value": 100}
         ]}
@@ -1271,7 +1721,6 @@ class TestComparisonEngine:
             qa_qc_config={
                 "source": "runtime_artifact",
                 "lane_name": "quantitative",
-                "mode": "quantitative",
                 "comparison_approach": "numeric_only",
                 "match_fields": ["category", "specific_subject"],
                 "compare_fields": ["value"],
@@ -1285,8 +1734,8 @@ class TestComparisonEngine:
         )
 
         assert result.summary["qaqc_config_source"] == "runtime_artifact"
-        assert result.summary["qaqc_lane"] == "quantitative"
-        assert result.summary["qaqc_mode"] == "quantitative"
+        assert result.summary["qaqc_profile"] == "quantitative"
+        assert "qaqc_mode" not in result.summary  # removed: was redundant with qaqc_profile
 
 
 class TestComparisonEngineIntegration:
@@ -1311,7 +1760,6 @@ class TestComparisonEngineIntegration:
     _GEOTHERMAL_QA_QC_CONFIG = {
         "source": "runtime_artifact",
         "lane_name": "quantitative",
-        "mode": "quantitative",
         "comparison_approach": "numeric_only",
         "match_fields": ["category", "applies_to"],
         "compare_fields": ["value", "unit"],
@@ -1452,7 +1900,6 @@ class TestComparisonEngineIntegration:
             qa_qc_config={
                 "source": "runtime_artifact",
                 "lane_name": "quantitative",
-                "mode": "quantitative",
                 "comparison_approach": "numeric_only",
                 "projection": {
                     "type": "nested_array_items",
@@ -1500,7 +1947,6 @@ class TestPotentialDuplicateDetection:
     _DUP_QA_QC_CONFIG = {
         "source": "runtime_artifact",
         "lane_name": "quantitative",
-        "mode": "quantitative",
         "comparison_approach": "numeric_only",
         "match_fields": ["requirement_type"],
         "compare_fields": ["value", "source_text"],
@@ -1595,7 +2041,6 @@ class TestCompletenessCalculation:
     _COMPLETENESS_QA_QC_CONFIG = {
         "source": "runtime_artifact",
         "lane_name": "quantitative",
-        "mode": "quantitative",
         "comparison_approach": "numeric_only",
         "match_fields": ["requirement_type"],
         "compare_fields": ["value", "source_text"],

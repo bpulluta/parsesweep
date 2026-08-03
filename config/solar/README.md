@@ -35,6 +35,8 @@ extraction:
 ## QA/QC (optional)
 
 ```bash
-pixi run psweep extract --config config/solar/run.yaml --enable-qa-qc
-pixi run psweep compare --config config/solar/run.yaml
+pixi run psweep validate --config config/solar/run.yaml
+
+# Rebuild QA/QC reports later without re-running extraction
+pixi run psweep validate --config config/solar/run.yaml --compare-only
 ```

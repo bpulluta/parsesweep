@@ -32,6 +32,7 @@ MODEL_PRICING: Dict[str, Tuple[float, float]] = {
     # Google Gemini Models
     "gemini-3-pro": (2.00, 12.00),  # ≤200K tokens
     "gemini-3-flash": (0.10, 0.40),
+    "gemini-3.5-flash": (0.10, 0.40),
     "gemini-2.5-pro": (1.25, 5.00),  # ≤200K tokens
     "gemini-2.5-flash": (0.075, 0.30),
     "gemini-2.5-flash-lite": (0.0375, 0.15),
@@ -70,6 +71,8 @@ MODEL_PRICING: Dict[str, Tuple[float, float]] = {
     "deepseek-v3.2": (0.28, 0.42),
     "deepseek-r1": (0.55, 2.19),
 }
+
+_UNKNOWN_MODEL_WARNED: set[str] = set()
 
 
 def get_model_pricing(model_name: str) -> Tuple[float, float]:
@@ -130,10 +133,11 @@ def get_model_pricing(model_name: str) -> Tuple[float, float]:
         return MODEL_PRICING[best_match]
 
     # Default to DEFAULT_MODEL pricing if unknown
-    logger.warning(
-        f"Unknown model '{model_name}', using {DEFAULT_MODEL} pricing as fallback. "
-        "Please add model to MODEL_PRICING in model_pricing.py"
-    )
+    if model_lower not in _UNKNOWN_MODEL_WARNED:
+        _UNKNOWN_MODEL_WARNED.add(model_lower)
+        logger.warning(
+            f"Unknown model '{model_name}'; estimating cost using {DEFAULT_MODEL} pricing fallback."
+        )
     return MODEL_PRICING[DEFAULT_MODEL]
 
 

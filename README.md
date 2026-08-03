@@ -120,7 +120,7 @@ psweep compile --config config/tariffs/run.yaml
 | `compile` | Merge extracted JSONs into Excel/CSV with deduplication |
 | `discover` | Find and download documents from the web |
 | `curate` | Filter discovered documents via review |
-| `compare` | Generate QA/QC comparison reports (multi-model) |
+| `validate` | Run QA/QC validation (multi-model extract + report, or report-only) |
 | `benchmark` | Performance profiling across runs |
 | `check` | Validate an extraction result |
 | `check-schema` | Validate a schema file |
@@ -342,25 +342,31 @@ extraction:
 
 ## QA/QC Multi-Model Validation
 
-Run 2+ models on the same documents to compare outputs:
+Run 2+ models on the same documents using the centralized run config:
 
 ```bash
-pixi run psweep extract --config config/my_domain/run.yaml --enable-qa-qc
-pixi run psweep compare extracted/my_domain/qa_qc --schema schemas/personal/my_domain_schema.json
+pixi run psweep validate --config config/my_domain/run.yaml
+
+# Rebuild reports later without re-running extraction
+pixi run psweep validate --config config/my_domain/run.yaml --compare-only
 ```
 
 Configure in the `qaqc:` section of your config:
 
 ```yaml
 qaqc:
-  default_lane: quantitative
-  lanes:
-    quantitative:
-      enabled: true
-      record_matching:
-        key_fields: [field1, field2]
-      comparison:
-        primary_fields: [value, unit]
+  models: [primary, secondary]
+  report:
+    include_missing_in_queue: true
+    include_low_signal_presence_in_queue: false
+  comparison_approach: mixed
+  record_matching:
+    key_fields: [field1, field2]
+  comparison:
+    primary_fields: [value, unit]
+  judge:
+    enabled: true
+    model: judge
 ```
 
 ---
@@ -434,7 +440,7 @@ See `config/TEMPLATE.yaml` for a fully annotated config template.
 | `extraction:` | `extract` | Yes (needs `schema`) |
 | `compilation:` | `compile` | Yes (needs `schema`) |
 | `discovery:` | `discover` | Only for web discovery |
-| `qaqc:` | `compare`, `extract --enable-qa-qc` | Only for QA/QC |
+| `qaqc:` | `validate` | QA/QC validation stage |
 | `domain:` | All | Recommended |
 | `models:` | All | Optional (env default) |
 

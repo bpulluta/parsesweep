@@ -175,16 +175,6 @@ def _build_qaqc_scaffold(
         "unit",
         "units",
     ]
-    qualitative_preferences = [
-        "details",
-        "description",
-        "summary",
-        "extracted_text",
-        "condition",
-        "conditions",
-        "notes",
-    ]
-
     nested_array = _find_nested_object_array_field(main_item_schema)
     projection: Optional[Dict[str, Any]] = None
     if nested_array is not None:
@@ -207,13 +197,6 @@ def _build_qaqc_scaffold(
         quantitative_fields = _pick_fields(
             child_scalar_fields, quantitative_preferences
         )
-        qualitative_fields = _pick_fields(
-            child_scalar_fields, qualitative_preferences, limit=1
-        )
-        if not qualitative_fields:
-            qualitative_fields = _pick_fields(
-                child_scalar_fields, child_scalar_fields, limit=1
-            )
 
         projection = {
             "type": "nested_array_items",
@@ -235,46 +218,18 @@ def _build_qaqc_scaffold(
         quantitative_fields = _pick_fields(
             scalar_fields, quantitative_preferences
         )
-        qualitative_fields = _pick_fields(
-            scalar_fields, qualitative_preferences, limit=1
-        )
-        if not qualitative_fields:
-            qualitative_fields = _pick_fields(
-                scalar_fields, scalar_fields, limit=1
-            )
 
     if not key_fields or not quantitative_fields:
         return None
 
-    quantitative_lane: Dict[str, Any] = {
-        "enabled": True,
-        "mode": "quantitative",
+    scaffold: Dict[str, Any] = {
         "comparison_approach": "numeric_only",
         "record_matching": {"key_fields": deepcopy(key_fields)},
         "comparison": {"primary_fields": quantitative_fields},
     }
     if projection is not None:
-        quantitative_lane["projection"] = projection
-
-    qualitative_lane: Dict[str, Any] = {
-        "enabled": False,
-        "mode": "qualitative",
-        "comparison_approach": "text_review",
-        "record_matching": {"key_fields": deepcopy(key_fields)},
-        "comparison": {
-            "primary_fields": qualitative_fields or quantitative_fields[:1]
-        },
-    }
-    if projection is not None:
-        qualitative_lane["projection"] = deepcopy(projection)
-
-    return {
-        "default_lane": "quantitative",
-        "lanes": {
-            "quantitative": quantitative_lane,
-            "qualitative": qualitative_lane,
-        },
-    }
+        scaffold["projection"] = projection
+    return scaffold
 
 
 def _build_compilation_scaffold(
@@ -843,8 +798,6 @@ def _build_scaffold_extract_command(
     page_ranges_ref: Optional[str] = None,
     document_type: str,
     template_mode: str = "recommended",
-    enable_qaqc: bool = False,
-    qaqc_lane: Optional[str] = None,
 ) -> str:
     command_parts = [
         "pixi run psweep extract",
@@ -857,11 +810,6 @@ def _build_scaffold_extract_command(
         command_parts.extend(_recommended_extract_flags(document_type))
     if page_ranges_ref:
         command_parts.append(f"--pages-csv {page_ranges_ref}")
-    if enable_qaqc:
-        command_parts.append("--enable-qa-qc")
-        if qaqc_lane:
-            command_parts.append(f"--qaqc-lane {qaqc_lane}")
-
     return " ".join(command_parts)
 
 
@@ -913,16 +861,14 @@ def _config_readme_content(
                 "",
                 "Optional QA/QC workflow:",
                 (
-                    '1. Run: '
-                    f'{_build_scaffold_extract_command(documents_ref=f"documents/{category_name}", schema_ref=schema_ref, page_ranges_ref=page_ranges_ref, document_type=document_type, template_mode=template_mode, enable_qaqc=True)}'
+                    f"1. Run: pixi run psweep validate --config {run_config_ref}"
                 ),
                 (
-                    f"2. Run: pixi run psweep compare extracted/{category_name}/qa_qc "
-                    f"--schema {schema_ref}"
+                    f"2. Rebuild reports later without re-extraction: "
+                    f"pixi run psweep validate --config {run_config_ref} --compare-only"
                 ),
                 (
-                    f"3. Optional qualitative review: pixi run psweep compare extracted/{category_name}/qa_qc "
-                    f"--schema {schema_ref} --qaqc-lane qualitative"
+                    "3. Tune qaqc.record_matching and qaqc.judge settings, then rerun --compare-only"
                 ),
             ]
         )
@@ -1592,7 +1538,7 @@ def check_schema_cmd(schema_path: str):
             )
         if isinstance(metadata.get("qa_qc"), dict):
             warnings.append(
-                "$metadata.qa_qc is deprecated for active workflows; define QA/QC lanes in config/<domain>/run.yaml under 'qaqc'"
+                "$metadata.qa_qc is deprecated for active workflows; define QA/QC settings in config/<domain>/run.yaml under 'qaqc'"
             )
     else:
         issues.append(

@@ -332,16 +332,11 @@ def test_run_qaqc_extraction_prints_compare_command_with_selected_lane(tmp_path,
         verbosity='normal',
         runtime_artifact=None,
         run_id='run://test',
-        qaqc_lane='qualitative',
     )
 
     captured = capsys.readouterr().out
-    # The selected lane is shown in the configuration snapshot (rendered as a
-    # key/value table by the shared design system) and echoed in the follow-up
-    # compare command.
-    assert 'QA/QC Lane' in captured and 'qualitative' in captured
-    assert 'pixi run psweep compare' in captured
-    assert '--qaqc-lane qualitative' in captured
+    assert 'pixi run psweep validate' in captured
+    assert '--compare-only' in captured
 
 
 def test_build_dedup_preview_report_includes_duplicate_groups() -> None:

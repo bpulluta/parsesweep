@@ -1,125 +1,82 @@
-"""`compare` command extracted from the legacy CLI monolith."""
+"""Shared QA/QC comparison report generation helpers used by validate."""
 
 from __future__ import annotations
 
-import sys
+import json
 from pathlib import Path
 from typing import Optional
-
-import click
 
 import contextlib
 
 from psweep.cli.ui import console, create_extraction_progress, print_error
 
 
-@click.command()
-@click.argument("qa_qc_path", type=click.Path(exists=True))
-@click.option(
-    "--config",
-    "config_path",
-    type=click.Path(exists=True),
-    default=None,
-    help="Domain run config file to load QA/QC lanes/defaults.",
-)
-@click.option(
-    "--schema",
-    "-s",
-    type=click.Path(exists=True),
-    required=True,
-    help="Path to QA/QC schema file (REQUIRED)",
-)
-@click.option(
-    "--qaqc-lane",
-    type=str,
-    default=None,
-    help="Optional runtime QA/QC lane name to compare, including disabled evaluation lanes such as qualitative",
-)
-@click.option("--quiet", "-q", is_flag=True, help="Minimal output")
-@click.option("--verbose", "-v", is_flag=True, help="Detailed output")
-def compare(
-    qa_qc_path: str,
+def load_runtime_qaqc_config(
+    *,
+    schema_path: Path,
     config_path: Optional[str],
-    schema: str,
-    qaqc_lane: Optional[str],
-    quiet: bool,
-    verbose: bool,
-) -> None:
-    """
-    Generate comparison reports from existing QA/QC extractions.
-
-    This command compares outputs from multiple models that were previously
-    extracted with --enable-qa-qc, without re-running the expensive extractions.
-
-    \b
-    EXAMPLES:
-        # Generate comparison reports for all documents
-        psweep compare extracted/qa_qc_test/qa_qc --schema schemas/personal/geothermal_ordinance_schema.json
-
-        # Compare specific document folder
-        psweep compare "extracted/qa_qc_test/qa_qc/Chaffee County Colorado" --schema schemas/personal/geothermal_ordinance_schema.json
-
-    \b
-    OUTPUT (per document):
-        • comparison_report.xlsx - Color-coded Excel with agreement analysis
-        • comparison_report.csv - Plain CSV for data analysis
-
-    \b
-    WORKFLOW:
-        1. Run extraction with QA/QC: psweep extract docs/ --schema schema.json --enable-qa-qc
-        2. Generate/update reports: psweep compare extracted/docs/qa_qc --schema schema.json
-    """
-    from psweep.cli.commands import (
-        _format_runtime_artifact_summary,
-        begin_run,
-    )
+):
+    """Load schema/runtime QA/QC config for comparison."""
     from psweep.config import load_runtime_config_file
-    from psweep.qa_qc import ComparisonEngine, ReportGenerator
+    from psweep.extraction.llm_factory import resolve_llm_kwargs
     from psweep.qa_qc.utils import resolve_qaqc_runtime_config
+    from psweep.utils.config import get_config
     from psweep.utils.schema_metadata import SchemaMetadata
 
-    qa_qc_path_obj = Path(qa_qc_path)
-    schema_path = Path(schema)
-
-    view = begin_run("compare", quiet=quiet, verbose=verbose)
-
-    try:
-        schema_metadata = SchemaMetadata(schema_path)
-        runtime_artifact = None
-        runtime_qaqc = None
-        if config_path:
-            config_data = load_runtime_config_file(Path(config_path))
-            config_qaqc = config_data.get("qaqc")
-            if isinstance(config_qaqc, dict):
-                runtime_qaqc = config_qaqc
-        qa_qc_config = resolve_qaqc_runtime_config(
-            schema_metadata,
-            runtime_artifact=runtime_artifact,
-            runtime_qaqc=runtime_qaqc,
-            preferred_lane=qaqc_lane,
-        )
-    except Exception as exc:
-        view.error("Failed to load schema", str(exc))
-        sys.exit(1)
-
-    view.header("QA/QC COMPARISON REPORT")
-    view.config(
-        {
-            "Input": str(qa_qc_path_obj),
-            "Schema": str(schema_path),
-            "Runtime": _format_runtime_artifact_summary(runtime_artifact),
-            "QA/QC Config": qa_qc_config["source"],
-            "Requested QA/QC Lane": qaqc_lane or "(default resolution)",
-            "QA/QC Lane": qa_qc_config.get("lane_name") or "schema fallback",
-            "Comparison Approach": qa_qc_config.get("comparison_approach")
-            or "numeric_only",
-            "Match Fields": ", ".join(qa_qc_config["match_fields"]),
-            "Compare Fields": ", ".join(qa_qc_config["compare_fields"]),
-        }
+    schema_metadata = SchemaMetadata(schema_path)
+    runtime_artifact = None
+    runtime_qaqc = None
+    config_data = {}
+    if config_path:
+        config_data = load_runtime_config_file(Path(config_path))
+        config_qaqc = config_data.get("qaqc")
+        if isinstance(config_qaqc, dict):
+            runtime_qaqc = config_qaqc
+    qa_qc_config = resolve_qaqc_runtime_config(
+        schema_metadata,
+        runtime_artifact=runtime_artifact,
+        runtime_qaqc=runtime_qaqc,
     )
+    judge_cfg = qa_qc_config.get("judge") or {}
+    if judge_cfg.get("enabled") and judge_cfg.get("model"):
+        llm_kwargs = resolve_llm_kwargs(
+            judge_cfg.get("model"),
+            models=config_data.get("models"),
+            llm_config=get_config().llm_config,
+        )
+        qa_qc_config["judge_runtime"] = {
+            "model": llm_kwargs.get("model"),
+            "provider": llm_kwargs.get("provider"),
+            "api_key": llm_kwargs.get("api_key"),
+            "base_url": llm_kwargs.get("base_url"),
+            "azure_endpoint": llm_kwargs.get("azure_endpoint"),
+            "azure_api_version": llm_kwargs.get("azure_api_version"),
+        }
+    return schema_metadata, runtime_artifact, qa_qc_config
+
+
+def generate_comparison_reports(
+    *,
+    qa_qc_path_obj: Path,
+    schema_metadata,
+    qa_qc_config: dict,
+    runtime_artifact,
+    view,
+    report_limit: int | None = None,
+) -> int:
+    """Generate comparison reports from previously extracted QA/QC JSON sidecars."""
+    from psweep.qa_qc import ComparisonEngine, ReportGenerator
 
     engine = ComparisonEngine(schema_metadata, qa_qc_config=qa_qc_config)
     report_gen = ReportGenerator()
+    report_cfg = qa_qc_config.get("report") or {}
+    include_csv = bool(report_cfg.get("include_csv", False))
+    include_missing_in_queue = bool(
+        report_cfg.get("include_missing_in_queue", True)
+    )
+    include_low_signal_presence_in_queue = bool(
+        report_cfg.get("include_low_signal_presence_in_queue", False)
+    )
 
     doc_dirs = []
     json_files_in_path = list(qa_qc_path_obj.glob("*.json"))
@@ -137,27 +94,42 @@ def compare(
             "No QA/QC outputs found",
             f"No document directories found in {qa_qc_path_obj}",
             [
-                "Run extraction with --enable-qa-qc first",
+                "Run the validate stage first",
                 "Check the path is correct",
             ],
         )
-        sys.exit(1)
+        return 1
 
     results = []
     view.phase("Loading QA/QC extractions")
 
-    _progress = create_extraction_progress() if not view.is_quiet else None
+    _progress = view.make_progress()
     _progress_ctx = _progress if _progress is not None else contextlib.nullcontext()
     _task = None
     _writing_phase_announced = False
 
+    if report_limit and report_limit > 0:
+        doc_dirs = doc_dirs[:report_limit]
+
+    judge_runtime = qa_qc_config.get("judge_runtime") or {}
+    judge_enabled = bool((qa_qc_config.get("judge") or {}).get("enabled"))
+    judge_model = judge_runtime.get("model") if judge_enabled else None
+
     with _progress_ctx:
         if _progress is not None:
-            _task = _progress.add_task("Comparing", total=len(doc_dirs))
+            _task = _progress.add_task("Comparing", total=len(doc_dirs), phase="")
 
         for doc_dir in doc_dirs:
             if _progress is not None:
-                _progress.update(_task, description=f"Comparing {doc_dir.name[:50]}")
+                _progress.update(
+                    _task,
+                    description=f"Comparing {doc_dir.name[:50]}",
+                    phase=(
+                        f"→ compare + judge ({judge_model})"
+                        if judge_model
+                        else "→ compare"
+                    ),
+                )
 
             model_files = {}
             for file_path in doc_dir.glob("*.json"):
@@ -171,11 +143,20 @@ def compare(
                     f"Skipping {doc_dir.name}: needs at least 2 model outputs",
                 )
                 if _progress is not None:
-                    _progress.advance(_task)
+                    _progress.update(_task, phase="", advance=1)
                 continue
 
             try:
                 result = engine.compare_outputs(model_files, doc_dir.name)
+                run_metadata = None
+                metadata_path = doc_dir / "metadata.json"
+                if metadata_path.exists():
+                    try:
+                        run_metadata = json.loads(
+                            metadata_path.read_text(encoding="utf-8")
+                        )
+                    except Exception:
+                        run_metadata = None
 
                 if not _writing_phase_announced and not view.is_quiet:
                     view.phase("Generating comparison reports")
@@ -183,10 +164,19 @@ def compare(
 
                 if _progress is not None:
                     _progress.update(
-                        _task, description=f"Writing report for {doc_dir.name[:50]}"
+                        _task,
+                        description=f"Writing report for {doc_dir.name[:50]}",
+                        phase="→ report",
                     )
 
-                report_gen.generate_report(result, doc_dir)
+                report_gen.generate_report(
+                    result,
+                    doc_dir,
+                    run_metadata=run_metadata,
+                    include_csv=include_csv,
+                    include_missing_in_queue=include_missing_in_queue,
+                    include_low_signal_presence_in_queue=include_low_signal_presence_in_queue,
+                )
 
                 results.append(
                     {
@@ -200,6 +190,7 @@ def compare(
                         "qualitative_gate": result.summary.get(
                             "qualitative_advisory_gate"
                         ),
+                        "judge": result.summary.get("judge") or {},
                     }
                 )
 
@@ -276,6 +267,14 @@ def compare(
                             for entry in text_categories[:3]
                         )
                         view.detail(f"Top text-difference categories: {summary_text}")
+                    judge = result.summary.get("judge") or {}
+                    if judge.get("enabled"):
+                        view.detail(
+                            "Judge: "
+                            f"{judge.get('resolved_matches', 0)} matches, "
+                            f"{judge.get('attempted_calls', 0)} calls, "
+                            f"${float(judge.get('total_cost_usd', 0.0)):.4f}"
+                        )
 
             except Exception as exc:
                 results.append(
@@ -288,7 +287,7 @@ def compare(
                 view.status("error", doc_dir.name, str(exc)[:50])
 
             if _progress is not None:
-                _progress.advance(_task)
+                _progress.update(_task, phase="", advance=1)
 
     if not view.is_quiet:
         successful = [record for record in results if record.get("success")]
@@ -323,16 +322,30 @@ def compare(
 
             if failed:
                 summary_stats["Failed"] = str(len(failed))
+            judge_runs = [r.get("judge") or {} for r in successful if r.get("judge")]
+            if judge_runs:
+                summary_stats["Judge Calls"] = str(
+                    sum(int(j.get("attempted_calls", 0)) for j in judge_runs)
+                )
+                summary_stats["Judge Cost"] = (
+                    f"${sum(float(j.get('total_cost_usd', 0.0)) for j in judge_runs):.4f}"
+                )
 
             view.summary(summary_stats, title="Comparison Summary")
             view.outputs(
                 {
                     "Reports": str(qa_qc_path_obj),
-                    "Files": "comparison_report.xlsx, comparison_report.csv",
+                    "Files": "comparison_report.xlsx, comparison_summary.json"
+                    + (", comparison_report.csv" if include_csv else ""),
                 }
             )
         else:
             view.warning("No documents were successfully compared")
+            return 1
     else:
         successful = len([record for record in results if record.get("success")])
         console.print(f"{successful} documents compared")
+        if successful == 0:
+            return 1
+
+    return 0
