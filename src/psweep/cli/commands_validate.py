@@ -163,6 +163,11 @@ def validate(
                 f"Expected existing outputs at {qa_qc_output}",
             )
             sys.exit(1)
+        
+        domain = resolved_inputs.get("domain", path.name)
+        discovery_checkpoint = Path.cwd() / "discovered" / domain / "curated" / "checkpoint.json"
+        discovery_checkpoint_path = discovery_checkpoint if discovery_checkpoint.exists() else None
+        
         exit_code = generate_comparison_reports(
             qa_qc_path_obj=qa_qc_output,
             schema_metadata=schema_metadata,
@@ -170,6 +175,8 @@ def validate(
             runtime_artifact=runtime_artifact,
             view=view,
             report_limit=limit,
+            discovery_checkpoint_path=discovery_checkpoint_path,
+            extraction_base_dir=extraction_output_dir,
         )
         if exit_code != 0:
             sys.exit(exit_code)
@@ -279,6 +286,10 @@ def validate(
         sys.exit(1)
 
     view.phase("Stage 3/3: Comparison and report generation")
+    domain = resolved_inputs.get("domain", path.name)
+    discovery_checkpoint = Path.cwd() / "discovered" / domain / "curated" / "checkpoint.json"
+    discovery_checkpoint_path = discovery_checkpoint if discovery_checkpoint.exists() else None
+    
     exit_code = generate_comparison_reports(
         qa_qc_path_obj=qa_qc_output,
         schema_metadata=schema_metadata,
@@ -286,6 +297,8 @@ def validate(
         runtime_artifact=runtime_artifact,
         view=view,
         report_limit=None,
+        discovery_checkpoint_path=discovery_checkpoint_path,
+        extraction_base_dir=extraction_output_dir,
     )
     if exit_code != 0:
         sys.exit(exit_code)
