@@ -789,6 +789,7 @@ def extract(
     limit = resolved_inputs.get("limit", limit)
     skip_existing = resolved_inputs.get("skip_existing", skip_existing)
     max_context = resolved_inputs.get("max_context", max_context)
+    timeout_seconds = resolved_inputs.get("timeout_seconds")
     live_dashboard = resolved_inputs.get("live_dashboard", live_dashboard)
 
     if not path.exists():
@@ -1274,6 +1275,7 @@ def extract(
         azure_endpoint=azure_endpoint,
         azure_api_version=azure_api_version,
         context_windows=context_windows,
+        timeout=timeout_seconds,
     )
 
     view.phase("Extracting documents")
@@ -1501,6 +1503,7 @@ def _run_qa_qc_extraction(
     registry,
     qaqc_models: List[str],
     max_context: int,
+    timeout_seconds: Optional[int],
     page_range_map: dict,
     verbosity: str,
     runtime_artifact: Optional[Dict[str, Any]] = None,
@@ -1705,6 +1708,7 @@ def _run_qa_qc_extraction(
                     model_tiers=qaqc_models,
                     output_dir=output_dir,
                     max_context_chars=max_context,
+                    timeout_seconds=timeout_seconds,
                     runtime_artifact=runtime_artifact,
                     run_id=run_id,
                     seed_records_by_model=seed_records_by_model,

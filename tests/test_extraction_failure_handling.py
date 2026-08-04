@@ -65,3 +65,40 @@ def test_llm_client_no_context_guard_when_window_unset() -> None:
             client.extract(oversized_text, {"type": "object", "properties": {}})
 
     completion_mock.assert_called_once()
+
+
+def test_llm_client_retries_without_temperature_on_provider_rejection() -> None:
+    client = LLMClient(
+        api_key="test-key",
+        model="claude-opus-4-8",
+        provider="openai",
+        base_url="https://proxy.example.com/v1",
+    )
+
+    class _Msg:
+        content = '{"requirements":[]}'
+
+    class _Choice:
+        message = _Msg()
+
+    response = SimpleNamespace(
+        choices=[_Choice()],
+        usage=SimpleNamespace(prompt_tokens=10, completion_tokens=5),
+    )
+
+    with patch("psweep.extraction.llm_client.completion") as completion_mock:
+        completion_mock.side_effect = [
+            RuntimeError("invalid_request_error: `temperature` is deprecated for this model."),
+            response,
+        ]
+        with patch(
+            "psweep.extraction.llm_client.completion_cost", return_value=0.0
+        ):
+            out = client.extract("sample text", {"type": "object", "properties": {}})
+
+    assert out["data"] == {"requirements": []}
+    assert completion_mock.call_count == 2
+    first_kwargs = completion_mock.call_args_list[0].kwargs
+    second_kwargs = completion_mock.call_args_list[1].kwargs
+    assert "temperature" in first_kwargs
+    assert "temperature" not in second_kwargs

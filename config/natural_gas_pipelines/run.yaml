@@ -7,10 +7,9 @@ domain: natural_gas_pipelines
 
 # ── Model tiers ──────────────────────────────────────────────────────────────
 models:
-  primary: gpt-5-mini
-  secondary: claude-haiku-4-5
-  tertiary: gemini-3.5-flash
-  judge: claude-sonnet-4-6
+  primary: gpt-5.6-terra
+  secondary: gemini-3.5-flash
+  judge: claude-sonnet-5
 
 # ── Discovery ────────────────────────────────────────────────────────────────
 discovery:
@@ -235,18 +234,34 @@ compilation:
 
 # ── QA/QC ────────────────────────────────────────────────────────────────────
 qaqc:
-  models: [primary, secondary, tertiary]
+  # Keep QA/QC lean for validation runs; 3-model runs inflate presence-only noise.
+  models: [primary, secondary]
   output_dir: validated/natural_gas_pipelines
   report:
     include_csv: false
     include_missing_in_queue: true
+    include_low_signal_presence_in_queue: false
   comparison_approach: mixed
   record_matching:
-    key_fields: [feature, applies_to, specific_subject]
+    key_fields: [feature, rule_kind, applies_to, specific_subject]
     fuzzy_key_fields: [applies_to, specific_subject]
     semantic_match_threshold: 0.38
+    anchor:
+      fields: [source_verbatim]
+      method: char_ngram
+      ngram: 4
+      auto_threshold: 0.65
+      review_threshold: 0.35
+      max_candidates_per_row: 3
+      min_anchor_chars: 12
   comparison:
     primary_fields: [value, units, value_interpretation, obligation]
+    # Optional cross-model unit canonicalization groups (domain-configurable).
+    unit_equivalence_groups:
+      - [feet, ft]
+      - [hours, hrs, hr]
+      - [decibels, dB, dBA, dB(A), CNEL dB, CNEL dB(A)]
+      - ["HH:MM (24-hour)", "a.m./p.m."]
   judge:
     enabled: true
     model: judge

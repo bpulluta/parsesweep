@@ -44,6 +44,14 @@ def load_runtime_qaqc_config(
             models=config_data.get("models"),
             llm_config=get_config().llm_config,
         )
+        judge_timeout = judge_cfg.get("timeout_seconds")
+        if judge_timeout is not None:
+            if isinstance(judge_timeout, bool) or not isinstance(
+                judge_timeout, int
+            ) or judge_timeout <= 0:
+                raise ValueError(
+                    "qaqc.judge.timeout_seconds must be a positive integer"
+                )
         qa_qc_config["judge_runtime"] = {
             "model": llm_kwargs.get("model"),
             "provider": llm_kwargs.get("provider"),
@@ -51,6 +59,7 @@ def load_runtime_qaqc_config(
             "base_url": llm_kwargs.get("base_url"),
             "azure_endpoint": llm_kwargs.get("azure_endpoint"),
             "azure_api_version": llm_kwargs.get("azure_api_version"),
+            "timeout": judge_timeout,
         }
     return schema_metadata, runtime_artifact, qa_qc_config
 
@@ -147,6 +156,7 @@ def generate_comparison_reports(
                 continue
 
             try:
+                engine.set_judge_cache_path(doc_dir / "judge_cache.json")
                 result = engine.compare_outputs(model_files, doc_dir.name)
                 run_metadata = None
                 metadata_path = doc_dir / "metadata.json"

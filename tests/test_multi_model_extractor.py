@@ -499,3 +499,26 @@ class TestRunMultiModelExtraction:
         assert "schema" in call_kwargs
         # enable_qa_qc param no longer exists - verify it's not passed
         assert "enable_qa_qc" not in call_kwargs
+
+    @patch("psweep.extraction.DocumentExtractor")
+    def test_timeout_is_passed_to_document_extractor(
+        self, mock_extractor_class, sample_schema, sample_text, mock_extraction_result, tmp_path
+    ):
+        """Test that configured timeout is threaded into each model extractor."""
+        mock_extractor = MagicMock()
+        mock_extractor.extract.return_value = mock_extraction_result
+        mock_extractor_class.return_value = mock_extractor
+
+        run_multi_model_extraction(
+            doc_text=sample_text,
+            doc_name="test_doc",
+            schema=sample_schema,
+            registry=_registry(),
+            model_tiers=["gpt-4o", "gpt-3.5-turbo"],
+            output_dir=tmp_path,
+            timeout_seconds=600,
+        )
+
+        assert mock_extractor_class.call_count == 2
+        for call in mock_extractor_class.call_args_list:
+            assert call.kwargs["timeout"] == 600

@@ -17,6 +17,82 @@ from typing import Any, Dict, Optional
 logger = logging.getLogger(__name__)
 
 
+def _parse_anchor_config(
+    anchor_raw: Any, comparison_approach: str, model_count: int
+) -> Optional[Dict[str, Any]]:
+    """Parse and validate the optional record_matching.anchor block.
+
+    Returns None if the block is absent (legacy path preserved unchanged).
+    Raises ValueError with a copy-pasteable fix for any invalid value.
+    """
+    if anchor_raw is None:
+        return None
+    if not isinstance(anchor_raw, dict):
+        raise ValueError(
+            "qaqc.record_matching.anchor must be a mapping. Example:\n"
+            "  record_matching:\n"
+            "    anchor:\n"
+            "      fields: [source_verbatim]\n"
+            "      method: char_ngram\n"
+            "      auto_threshold: 0.65\n"
+            "      review_threshold: 0.35"
+        )
+    # Only supported with exactly 2-model, non-numeric approaches.
+    if comparison_approach == "numeric_only":
+        raise ValueError(
+            "qaqc.record_matching.anchor is not supported with "
+            "comparison_approach: numeric_only."
+        )
+    if model_count != 2:
+        raise ValueError(
+            "qaqc.record_matching.anchor currently supports exactly 2 models. "
+            f"Configured models={model_count}."
+        )
+    fields = anchor_raw.get("fields")
+    if not fields or not isinstance(fields, list) or not all(isinstance(f, str) for f in fields):
+        raise ValueError(
+            "qaqc.record_matching.anchor.fields must be a non-empty list of field name strings, "
+            "e.g. [source_verbatim]."
+        )
+    method = str(anchor_raw.get("method", "char_ngram")).strip()
+    if method != "char_ngram":
+        raise ValueError(
+            f"qaqc.record_matching.anchor.method must be 'char_ngram' (got '{method}')."
+        )
+    ngram = anchor_raw.get("ngram", 4)
+    if isinstance(ngram, bool) or not isinstance(ngram, int) or not (2 <= ngram <= 8):
+        raise ValueError(
+            "qaqc.record_matching.anchor.ngram must be an integer between 2 and 8."
+        )
+    auto_threshold = float(anchor_raw.get("auto_threshold", 0.65) or 0.65)
+    review_threshold = float(anchor_raw.get("review_threshold", 0.35) or 0.35)
+    if not (0.0 < review_threshold < auto_threshold <= 1.0):
+        raise ValueError(
+            "qaqc.record_matching.anchor thresholds must satisfy "
+            "0 < review_threshold < auto_threshold <= 1.0. "
+            f"Got review_threshold={review_threshold}, auto_threshold={auto_threshold}."
+        )
+    max_candidates = anchor_raw.get("max_candidates_per_row", 3)
+    if isinstance(max_candidates, bool) or not isinstance(max_candidates, int) or max_candidates < 1:
+        raise ValueError(
+            "qaqc.record_matching.anchor.max_candidates_per_row must be a positive integer."
+        )
+    min_chars = anchor_raw.get("min_anchor_chars", 12)
+    if isinstance(min_chars, bool) or not isinstance(min_chars, int) or min_chars < 0:
+        raise ValueError(
+            "qaqc.record_matching.anchor.min_anchor_chars must be a non-negative integer."
+        )
+    return {
+        "fields": list(fields),
+        "method": method,
+        "ngram": int(ngram),
+        "auto_threshold": auto_threshold,
+        "review_threshold": review_threshold,
+        "max_candidates_per_row": int(max_candidates),
+        "min_anchor_chars": int(min_chars),
+    }
+
+
 def resolve_qaqc_runtime_config(
     schema_metadata,
     runtime_artifact: Optional[Dict[str, Any]] = None,
@@ -74,6 +150,13 @@ def resolve_qaqc_runtime_config(
     comparison = pack_qaqc.get("comparison") or {}
     judge = pack_qaqc.get("judge") or {}
 
+    max_calls = judge.get("max_calls_per_document")
+    if max_calls is not None:
+        if isinstance(max_calls, bool) or not isinstance(max_calls, int) or max_calls <= 0:
+            raise ValueError(
+                "qaqc.judge.max_calls_per_document must be a positive integer."
+            )
+
     match_fields = record_matching.get("key_fields")
     if not match_fields:
         raise ValueError(
@@ -130,6 +213,12 @@ def resolve_qaqc_runtime_config(
         ]
     )
 
+    models = pack_qaqc.get("models") or []
+    model_count = len(models) if isinstance(models, list) else 0
+    anchor_config = _parse_anchor_config(
+        record_matching.get("anchor"), comparison_approach, model_count
+    )
+
     return {
         "source": "runtime_artifact",
         "lane_name": "main",
@@ -150,6 +239,7 @@ def resolve_qaqc_runtime_config(
         "scope_variant_keys": [],
         "judge": judge,
         "report": pack_qaqc.get("report") or {},
+        "anchor_config": anchor_config,
     }
 
 

@@ -1,6 +1,6 @@
 """AI Model Pricing Database.
 
-Pricing data as of January 2026.
+Pricing data as of August 2026.
 All prices are per 1M tokens in USD.
 """
 
@@ -19,6 +19,16 @@ MODEL_PRICING: Dict[str, Tuple[float, float]] = {
     "gpt-5-pro": (15.00, 120.00),
     "gpt-5-mini": (0.25, 2.00),
     "gpt-5-nano": (0.05, 0.40),
+    "gpt-5.1-batch": (0.69, 5.50),
+    "gpt-5.1-codex-mini": (0.25, 2.00),
+    "gpt-5.3-codex": (1.75, 14.00),
+    "gpt-5.4": (2.50, 15.00),
+    "gpt-5.4-mini": (0.75, 4.50),
+    "gpt-5.4-nano": (0.20, 1.25),
+    "gpt-5.5": (5.00, 30.00),
+    "gpt-5.6-luna": (0.20, 1.20),
+    "gpt-5.6-sol": (5.00, 30.00),
+    "gpt-5.6-terra": (2.00, 12.00),
     "gpt-4.1": (2.00, 8.00),
     "gpt-4.1-mini": (0.40, 1.60),
     "gpt-4.1-nano": (0.10, 0.40),
@@ -31,8 +41,9 @@ MODEL_PRICING: Dict[str, Tuple[float, float]] = {
     "o4-mini": (1.10, 4.40),
     # Google Gemini Models
     "gemini-3-pro": (2.00, 12.00),  # ≤200K tokens
+    "gemini-3-pro-image-preview": (2.00, 12.00),
     "gemini-3-flash": (0.10, 0.40),
-    "gemini-3.5-flash": (0.10, 0.40),
+    "gemini-3.5-flash": (1.50, 9.00),
     "gemini-2.5-pro": (1.25, 5.00),  # ≤200K tokens
     "gemini-2.5-flash": (0.075, 0.30),
     "gemini-2.5-flash-lite": (0.0375, 0.15),
@@ -40,16 +51,45 @@ MODEL_PRICING: Dict[str, Tuple[float, float]] = {
     "gemini-1.5-pro": (1.25, 5.00),
     "gemini-1.5-flash": (0.075, 0.30),
     # Anthropic Claude Models
+    "claude-haiku-4-5": (1.00, 5.00),
+    "claude-haiku-4.5": (1.00, 5.00),
+    "claude-opus-4-6": (5.00, 25.00),
+    "claude-opus-4.6": (5.00, 25.00),
+    "claude-opus-4-7": (5.00, 25.00),
+    "claude-opus-4.7": (5.00, 25.00),
+    "claude-opus-4-8": (5.00, 25.00),
+    "claude-opus-4.8": (5.00, 25.00),
+    "claude-opus-5": (5.00, 25.00),
     "claude-opus-4.5": (5.00, 25.00),
     "claude-opus-4.1": (15.00, 75.00),
-    "claude-sonnet-4.5": (3.00, 15.00),  # ≤200K tokens
+    "claude-sonnet-4-5": (3.00, 15.00),
+    "claude-sonnet-4.5": (3.00, 15.00),
+    "claude-sonnet-4-6": (3.00, 15.00),
+    "claude-sonnet-4.6": (3.00, 15.00),
+    "claude-sonnet-5": (2.00, 10.00),
+    "claude-sonnet-5.0": (2.00, 10.00),
     "claude-sonnet-4": (3.00, 15.00),
     "claude-sonnet-3.7": (3.00, 15.00),
     "claude-3.5-sonnet": (3.00, 15.00),  # Alias
     "claude-3-opus": (15.00, 75.00),  # Legacy
-    "claude-haiku-4.5": (1.00, 5.00),
     "claude-haiku-3.5": (0.25, 1.25),
     "claude-3-haiku": (0.25, 1.25),
+    # Custom HALO models (free internal routing)
+    "halo devstral 123b": (0.00, 0.00),
+    "halo-devstral-123b": (0.00, 0.00),
+    "halo gemma 4": (0.00, 0.00),
+    "halo-gemma-4": (0.00, 0.00),
+    "halo gpt oss 120b": (0.00, 0.00),
+    "halo-gpt-oss-120b": (0.00, 0.00),
+    "halo llama 4 scout": (0.00, 0.00),
+    "halo-llama-4-scout": (0.00, 0.00),
+    "halo neotron 3 nano": (0.00, 0.00),
+    "halo-neotron-3-nano": (0.00, 0.00),
+    "halo neotron 3 super": (0.00, 0.00),
+    "halo-neotron-3-super": (0.00, 0.00),
+    # Embeddings
+    "text-embedding-3-large": (0.13, 0.00),
+    "text-embedding-3-small": (0.02, 0.00),
     # Meta Llama Models
     "llama-4-maverick": (0.28, 0.89),
     "llama-4-scout": (0.19, 0.62),

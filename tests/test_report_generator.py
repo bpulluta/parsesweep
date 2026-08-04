@@ -172,13 +172,17 @@ class TestReportGenerator:
             # Should have Status column (new format)
             assert "Status" in df.columns
             
-            # Should have requirement key for compatibility
-            assert "Requirement" in df.columns
             assert "Divergence" in df.columns
-            assert "Seen By" in df.columns
+            assert "Evidence" in df.columns
             assert "Why Flagged" in df.columns
             assert "Reviewer Verdict" in df.columns
             assert "Reviewer Notes" in df.columns
+            assert "Judge Says" in df.columns
+            # Lean queue: noisy diagnostics stay in All Items, not CSV queue.
+            assert "Row ID" not in df.columns
+            assert "Match Method" not in df.columns
+            assert "Queue Signal" not in df.columns
+            assert "Seen By" not in df.columns
 
     def test_csv_contains_agreement_info(self, generator, sample_comparison_result):
         """CSV queue should include only actionable rows."""
@@ -200,6 +204,7 @@ class TestReportGenerator:
                 "scope_variant",
                 "judge_uncertain",
             }
+            assert "Judge Says" in df.columns
             
             # Check that Status has valid values
             valid_statuses = ["AGREE", "DIFFER", "PARTIAL"]
@@ -288,6 +293,40 @@ class TestReportGenerator:
         assert len(df) == 1
         assert df.iloc[0]["flash"] == "obligation=shall"
         assert df.iloc[0]["5-mini"] == "obligation=must"
+
+    def test_item_centric_shows_same_diverging_field_set_per_model(self, generator):
+        """DIFFER rows should render the same diverging fields for each model."""
+        result = ComparisonResult(
+            document_name="Doc",
+            models=["flash", "5-mini"],
+            summary={"comparison_approach": "mixed"},
+            item_comparisons=[
+                FieldComparison(
+                    item_id="hours | drilling | near residence",
+                    field_path="value",
+                    model_values={"flash": "7 a.m. to 7 p.m.", "5-mini": None},
+                    agreement_score="1/2",
+                    needs_review=True,
+                    present_models=["flash", "5-mini"],
+                    row_id="row-3",
+                    match_method="semantic",
+                ),
+                FieldComparison(
+                    item_id="hours | drilling | near residence",
+                    field_path="units",
+                    model_values={"flash": "hours", "5-mini": "HH:MM (24-hour)"},
+                    agreement_score="1/2",
+                    needs_review=True,
+                    present_models=["flash", "5-mini"],
+                    row_id="row-3",
+                    match_method="semantic",
+                ),
+            ],
+        )
+        df = generator._build_item_centric_df(result)
+        assert len(df) == 1
+        assert df.iloc[0]["flash"] == "value=7 a.m. to 7 p.m.; units=hours"
+        assert df.iloc[0]["5-mini"] == "value=∅; units=HH:MM (24-hour)"
 
 
 class TestBuildSummaryDf:
@@ -496,7 +535,8 @@ class TestReviewQueueFallback:
             ],
         )
         df = generator._build_item_centric_df(result)
-        assert df.loc[0, "Seen By"] != "-"
+        # Seen By removed; verify Status is populated and Why Flagged is clean
+        assert df.loc[0, "Status"] in {"AGREE", "DIFFER", "PARTIAL"} or df.loc[0, "Status"].startswith("ONLY")
         assert "Missing in:" not in str(df.loc[0, "Why Flagged"])
 
 
@@ -625,6 +665,32 @@ class TestExcelGeneration:
             
             assert "Excel Test" in df["Value"].values
             assert "model_a, model_b" in df["Value"].values
+
+    def test_dashboard_legend_only_includes_present_divergence_types(self, generator):
+        result = ComparisonResult(
+            document_name="Legend Test",
+            models=["model_a", "model_b"],
+            summary={"comparison_approach": "mixed"},
+            item_comparisons=[
+                FieldComparison(
+                    item_id="noise | operator",
+                    field_path="value",
+                    model_values={"model_a": "50", "model_b": "55"},
+                    agreement_score="1/2",
+                    needs_review=True,
+                    notes="2 different values",
+                    row_id="row-1",
+                )
+            ],
+        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output_dir = Path(tmpdir)
+            excel_path, _ = generator.generate_report(result, output_dir)
+            df = pd.read_excel(excel_path, sheet_name="Dashboard")
+            legend_metrics = set(df[df["Section"] == "Legend"]["Metric"].tolist())
+            assert "field_conflict" in legend_metrics
+            assert "semantic_conflict" not in legend_metrics
+            assert "scope_variant" not in legend_metrics
 
 
 class TestEmptyComparisons:

@@ -357,11 +357,29 @@ class SchemaMetadata:
             array_data = data[main_array_key]
             if isinstance(array_data, list):
                 return array_data
-            else:
+            if isinstance(array_data, dict):
+                # Some providers occasionally emit array-like objects keyed by
+                # string indices ("0", "1", ...). Normalize these deterministically.
+                try:
+                    normalized = [
+                        array_data[key]
+                        for key in sorted(array_data.keys(), key=int)
+                    ]
+                except (TypeError, ValueError):
+                    logger.warning(
+                        f"Field '{main_array_key}' exists but is not a list. "
+                        "Received dict with non-numeric keys; expected array-like data."
+                    )
+                    return []
                 logger.warning(
-                    f"Field '{main_array_key}' exists but is not a list. "
-                    f"Expected array but got {type(array_data).__name__}."
+                    f"Field '{main_array_key}' was emitted as an object-map; "
+                    "normalizing to list by numeric key order."
                 )
+                return normalized
+            logger.warning(
+                f"Field '{main_array_key}' exists but is not a list. "
+                f"Expected array but got {type(array_data).__name__}."
+            )
         else:
             logger.warning(
                 f"Main data array key '{main_array_key}' not found in extraction data. "
