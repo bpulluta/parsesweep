@@ -169,6 +169,82 @@ class TestComparisonEngine:
         )
         assert engine._semantic_alignment_score(item_a, item_b) >= 0.38
 
+    def test_values_semantically_equivalent_treats_time_ranges_as_equal(self):
+        """Time ranges in 12h and 24h forms should compare as equivalent."""
+        schema = _build_schema_metadata_mock(
+            deduplication_key_fields=["feature", "applies_to", "specific_subject"]
+        )
+        engine = ComparisonEngine(
+            schema,
+            qa_qc_config={
+                "source": "runtime_artifact",
+                "lane_name": "main",
+                "comparison_approach": "mixed",
+                "match_fields": ["feature", "applies_to", "specific_subject"],
+                "compare_fields": ["value", "units"],
+            },
+        )
+        assert engine._values_semantically_equivalent("7 a.m. to 7 p.m.", "07:00-19:00")
+        assert not engine._values_semantically_equivalent("7 a.m. to 6 p.m.", "07:00-19:00")
+
+    def test_count_agreement_handles_temporal_field_names(self):
+        """Time-like field names should compare by normalized time values."""
+        schema = _build_schema_metadata_mock()
+        engine = ComparisonEngine(
+            schema,
+            qa_qc_config={
+                "source": "runtime_artifact",
+                "lane_name": "main",
+                "comparison_approach": "mixed",
+                "match_fields": ["feature"],
+                "compare_fields": ["start_time"],
+            },
+        )
+        agreement = engine._count_agreement_for_field(
+            field_name="start_time",
+            normalized_values={"a": "7 a.m.", "b": "07:00"},
+        )
+        assert agreement == 2
+
+    def test_time_unit_label_detection_is_not_substring_based(self):
+        """Non-time units containing 'hour' substring should not be treated as time labels."""
+        schema = _build_schema_metadata_mock()
+        engine = ComparisonEngine(
+            schema,
+            qa_qc_config={
+                "source": "runtime_artifact",
+                "lane_name": "main",
+                "comparison_approach": "mixed",
+                "match_fields": ["feature"],
+                "compare_fields": ["value", "units"],
+            },
+        )
+        assert engine._is_time_unit_label("HH:MM (24-hour)")
+        assert not engine._is_time_unit_label("kilowatt-hours")
+
+    def test_format_item_id_for_anchor_keys_uses_match_field_labels(self):
+        """Synthetic anchor keys should render user-meaningful requirement labels."""
+        schema = _build_schema_metadata_mock(
+            deduplication_key_fields=["feature", "applies_to", "specific_subject"]
+        )
+        engine = ComparisonEngine(
+            schema,
+            qa_qc_config={
+                "source": "runtime_artifact",
+                "lane_name": "main",
+                "comparison_approach": "mixed",
+                "match_fields": ["feature", "applies_to", "specific_subject"],
+                "compare_fields": ["value", "units"],
+            },
+        )
+        item = {
+            "feature": "working hours",
+            "applies_to": "drilling operations",
+            "specific_subject": "within 300 feet of residences",
+        }
+        label = engine._format_item_id(("anchor_auto", 14), {"m1": item, "m2": None})
+        assert label == "working hours | drilling operations | within 300 feet of residences"
+
     def test_resolve_qaqc_runtime_config_uses_runtime_artifact_lane(self):
         """Runtime QA/QC config resolution reads from simplified runtime qaqc block."""
         config = resolve_qaqc_runtime_config(
@@ -259,6 +335,18 @@ class TestComparisonEngine:
                 runtime_qaqc={
                     "default_lane": "quantitative",
                     "lanes": {"quantitative": {"enabled": True}},
+                },
+            )
+
+    def test_resolve_qaqc_runtime_config_rejects_invalid_judge_max_calls(self):
+        with pytest.raises(ValueError, match="max_calls_per_document"):
+            resolve_qaqc_runtime_config(
+                MagicMock(),
+                runtime_qaqc={
+                    "comparison_approach": "mixed",
+                    "record_matching": {"key_fields": ["feature"]},
+                    "comparison": {"primary_fields": ["value"]},
+                    "judge": {"enabled": True, "max_calls_per_document": 0},
                 },
             )
 
@@ -1266,6 +1354,177 @@ class TestComparisonEngine:
         assert obligation_fc.needs_review is False
         assert "LLM judge matched" in obligation_fc.notes
 
+    def test_judge_winner_is_recorded_for_high_confidence_mismatch(self, mock_schema_metadata, temp_dir):
+        model_a_data = {
+            "requirements": [
+                {
+                    "category": "Noise",
+                    "specific_subject": "operator",
+                    "obligation": "must",
+                    "source_verbatim": "Operator must maintain records.",
+                }
+            ]
+        }
+        model_b_data = {
+            "requirements": [
+                {
+                    "category": "Noise",
+                    "specific_subject": "operator",
+                    "obligation": "should",
+                    "source_verbatim": "Operator should maintain records.",
+                }
+            ]
+        }
+        engine = ComparisonEngine(
+            schema_metadata=mock_schema_metadata,
+            qa_qc_config={
+                "source": "runtime_artifact",
+                "lane_name": "quantitative",
+                "comparison_approach": "mixed",
+                "match_fields": ["category", "specific_subject"],
+                "compare_fields": ["obligation"],
+                "judge": {"enabled": True, "apply_on": "non_numeric", "min_confidence": "high"},
+                "judge_runtime": {"model": "judge-model"},
+            },
+        )
+        engine._judge_text_equivalence = MagicMock(
+            return_value={
+                "equivalent": False,
+                "confidence": "high",
+                "reason": "Model A aligns with verbatim language.",
+                "likely_correct_model": "model_a",
+            }
+        )
+        result = engine.compare_outputs(
+            output_files=_write_output_files(
+                temp_dir, {"model_a": model_a_data, "model_b": model_b_data}
+            ),
+            document_name="judge_winner_doc",
+        )
+        obligation_fc = next(fc for fc in result.item_comparisons if "obligation" in fc.field_path)
+        assert obligation_fc.needs_review is True
+        assert obligation_fc.judge_likely_correct_model == "model_a"
+        assert obligation_fc.judge_confidence == "high"
+
+    def test_judge_budget_caps_calls(self, mock_schema_metadata, temp_dir):
+        model_a_data = {
+            "requirements": [
+                {"category": "A", "specific_subject": "x", "obligation": "must"},
+                {"category": "B", "specific_subject": "x", "obligation": "must"},
+                {"category": "C", "specific_subject": "x", "obligation": "must"},
+            ]
+        }
+        model_b_data = {
+            "requirements": [
+                {"category": "A", "specific_subject": "x", "obligation": "should"},
+                {"category": "B", "specific_subject": "x", "obligation": "should"},
+                {"category": "C", "specific_subject": "x", "obligation": "should"},
+            ]
+        }
+        engine = ComparisonEngine(
+            schema_metadata=mock_schema_metadata,
+            qa_qc_config={
+                "source": "runtime_artifact",
+                "lane_name": "quantitative",
+                "comparison_approach": "mixed",
+                "match_fields": ["category", "specific_subject"],
+                "compare_fields": ["obligation"],
+                "judge": {
+                    "enabled": True,
+                    "apply_on": "non_numeric",
+                    "min_confidence": "high",
+                    "max_calls_per_document": 1,
+                },
+                "judge_runtime": {"model": "judge-model"},
+            },
+        )
+        # Use real budget logic but fake the model call payload.
+        engine._judge_client = MagicMock()
+        engine._judge_client.extract.return_value = {
+            "data": {
+                "equivalent": False,
+                "confidence": "high",
+                "reason": "Different obligation strength.",
+                "likely_correct_model": "unclear",
+            },
+            "input_tokens": 1,
+            "output_tokens": 1,
+            "cost": 0.0,
+        }
+
+        result = engine.compare_outputs(
+            output_files=_write_output_files(
+                temp_dir, {"model_a": model_a_data, "model_b": model_b_data}
+            ),
+            document_name="judge_budget_doc",
+        )
+        assert result.summary["judge"]["attempted_calls"] == 1
+        assert result.summary["judge"]["skipped_budget"] >= 1
+
+    def test_judge_cache_reuses_decisions_across_reruns(self, mock_schema_metadata, temp_dir):
+        model_a_data = {
+            "requirements": [
+                {"category": "A", "specific_subject": "x", "obligation": "required"}
+            ]
+        }
+        model_b_data = {
+            "requirements": [
+                {"category": "A", "specific_subject": "x", "obligation": "allowed"}
+            ]
+        }
+        engine = ComparisonEngine(
+            schema_metadata=mock_schema_metadata,
+            qa_qc_config={
+                "source": "runtime_artifact",
+                "lane_name": "quantitative",
+                "comparison_approach": "mixed",
+                "match_fields": ["category", "specific_subject"],
+                "compare_fields": ["obligation"],
+                "judge": {
+                    "enabled": True,
+                    "apply_on": "non_numeric",
+                    "min_confidence": "high",
+                    "max_calls_per_document": 10,
+                    "reuse_cached_decisions": True,
+                },
+                "judge_runtime": {"model": "judge-model"},
+            },
+        )
+        engine.set_judge_cache_path(temp_dir / "judge_cache.json")
+        engine._judge_client = MagicMock()
+        engine._judge_client.extract.return_value = {
+            "data": {
+                "equivalent": False,
+                "confidence": "high",
+                "reason": "Different obligation strength.",
+                "likely_correct_model": "model_a",
+            },
+            "input_tokens": 11,
+            "output_tokens": 4,
+            "cost": 0.01,
+        }
+
+        first = engine.compare_outputs(
+            output_files=_write_output_files(
+                temp_dir, {"model_a": model_a_data, "model_b": model_b_data}
+            ),
+            document_name="judge_cache_doc",
+        )
+        assert first.summary["judge"]["attempted_calls"] == 1
+        assert first.summary["judge"]["cache_hits"] == 0
+        assert engine._judge_client.extract.call_count == 1
+
+        engine._judge_client.extract.reset_mock()
+        second = engine.compare_outputs(
+            output_files=_write_output_files(
+                temp_dir, {"model_a": model_a_data, "model_b": model_b_data}
+            ),
+            document_name="judge_cache_doc",
+        )
+        assert second.summary["judge"]["attempted_calls"] == 0
+        assert second.summary["judge"]["cache_hits"] >= 1
+        assert engine._judge_client.extract.call_count == 0
+
     def test_mixed_text_fallback_matching_can_align_different_keys(self, temp_dir):
         """Mixed lanes can optionally use text fallback matching to reduce false missing rows."""
         mock = MagicMock()
@@ -1453,6 +1712,54 @@ class TestComparisonEngine:
                 temp_dir, {"model_a": model_a, "model_b": model_b}
             ),
             document_name="mixed_time_formats",
+        )
+        value_fc = next(fc for fc in result.item_comparisons if fc.field_path == "value")
+        units_fc = next(fc for fc in result.item_comparisons if fc.field_path == "units")
+        assert value_fc.needs_review is False
+        assert units_fc.needs_review is False
+
+    def test_mixed_time_ranges_not_flagged(self, temp_dir):
+        """Equivalent time ranges should not trigger value/unit conflicts."""
+        mock = MagicMock()
+        mock.get_main_data_array.return_value = "requirements"
+        mock.get_identifier_fields.return_value = []
+        mock.get_context_objects.return_value = []
+
+        model_a = {
+            "requirements": [
+                {
+                    "category": "Working hours",
+                    "specific_subject": "drilling preparation site",
+                    "value": "7 a.m. to 7 p.m.",
+                    "units": "hours",
+                }
+            ]
+        }
+        model_b = {
+            "requirements": [
+                {
+                    "category": "Working hours",
+                    "specific_subject": "drilling preparation site",
+                    "value": "07:00-19:00",
+                    "units": "HH:MM (24-hour)",
+                }
+            ]
+        }
+        engine = ComparisonEngine(
+            mock,
+            qa_qc_config={
+                "source": "runtime_artifact",
+                "lane_name": "quantitative",
+                "comparison_approach": "mixed",
+                "match_fields": ["category", "specific_subject"],
+                "compare_fields": ["value", "units"],
+            },
+        )
+        result = engine.compare_outputs(
+            output_files=_write_output_files(
+                temp_dir, {"model_a": model_a, "model_b": model_b}
+            ),
+            document_name="mixed_time_ranges",
         )
         value_fc = next(fc for fc in result.item_comparisons if fc.field_path == "value")
         units_fc = next(fc for fc in result.item_comparisons if fc.field_path == "units")
@@ -2160,3 +2467,168 @@ class TestCompletenessCalculation:
         comp = result.completeness["model_a"]
         assert comp.completeness_score == 1.0
         assert comp.expected_total == 0
+
+
+# ── Tests for _extract_item_arrays and _project_item_array ───────────────────
+
+
+class TestExtractItemArrays:
+    """Tests for ComparisonEngine._extract_item_arrays.
+
+    The existing test suite uses MagicMock for schema_metadata, which means
+    extract_main_data_array() returns a MagicMock (not a list) and the
+    fast-path branch (isinstance(items, list)) never fires. These tests use a
+    mock that returns a real list so the fast-path is actually exercised.
+    """
+
+    _BASE_QA_QC_CONFIG = {
+        "source": "runtime_artifact",
+        "lane_name": "quantitative",
+        "comparison_approach": "numeric_only",
+        "match_fields": ["feature"],
+        "compare_fields": ["value"],
+    }
+
+    def _make_metadata(self, main_array: str = "requirements") -> MagicMock:
+        mock = MagicMock()
+        mock.get_main_data_array.return_value = main_array
+        mock.get_identifier_fields.return_value = []
+        mock.get_context_objects.return_value = []
+        return mock
+
+    def test_fast_path_used_when_extract_method_returns_list(self):
+        """When extract_main_data_array returns a list, the fast-path branch fires."""
+        items = [{"feature": "noise", "value": 55}, {"feature": "setback", "value": 300}]
+        meta = self._make_metadata()
+        meta.extract_main_data_array.return_value = items
+
+        engine = ComparisonEngine(meta, qa_qc_config=self._BASE_QA_QC_CONFIG)
+        result = engine._extract_item_arrays({"model_a": {"requirements": items}})
+        assert result["model_a"] == items
+
+    def test_fallback_when_extract_method_not_callable(self):
+        """When schema_metadata has no extract_main_data_array attr, fallback to dict key."""
+        meta = self._make_metadata()
+        del meta.extract_main_data_array  # simulate absent method
+
+        items = [{"feature": "noise", "value": 55}]
+        engine = ComparisonEngine(meta, qa_qc_config=self._BASE_QA_QC_CONFIG)
+        result = engine._extract_item_arrays({"model_a": {"requirements": items}})
+        assert result["model_a"] == items
+
+    def test_fallback_when_extract_method_returns_non_list(self):
+        """When extract_main_data_array returns a non-list, fall back to dict key lookup."""
+        items = [{"feature": "fencing", "value": 6}]
+        meta = self._make_metadata()
+        meta.extract_main_data_array.return_value = "not-a-list"
+
+        engine = ComparisonEngine(meta, qa_qc_config=self._BASE_QA_QC_CONFIG)
+        result = engine._extract_item_arrays({"model_a": {"requirements": items}})
+        # falls back to output.get(main_data_array)
+        assert result["model_a"] == items
+
+    def test_missing_key_returns_empty_list(self):
+        meta = self._make_metadata()
+        meta.extract_main_data_array.return_value = []
+
+        engine = ComparisonEngine(meta, qa_qc_config=self._BASE_QA_QC_CONFIG)
+        result = engine._extract_item_arrays({"model_a": {}})
+        assert result["model_a"] == []
+
+
+class TestProjectItemArray:
+    """Tests for ComparisonEngine._project_item_array dict→list normalization.
+
+    The projection path is active when qa_qc_config contains a 'projection'
+    block. The dict→list branch normalizes object-maps emitted by some
+    LLM providers (keyed "0", "1", ...) into ordered lists.
+    """
+
+    _PROJECTION_QA_QC_CONFIG = {
+        "source": "runtime_artifact",
+        "lane_name": "quantitative",
+        "comparison_approach": "numeric_only",
+        "match_fields": ["charge_type"],
+        "compare_fields": ["value"],
+        "projection": {
+            "type": "nested_array_items",
+            "source_array": "rate_schedules",
+            "nested_array": "charges",
+            "parent_fields": ["rate_name"],
+        },
+    }
+
+    def _make_engine(self, main_array: str = "rate_schedules") -> ComparisonEngine:
+        mock = MagicMock()
+        mock.get_main_data_array.return_value = main_array
+        mock.get_identifier_fields.return_value = []
+        mock.get_context_objects.return_value = []
+        return ComparisonEngine(mock, qa_qc_config=self._PROJECTION_QA_QC_CONFIG)
+
+    def test_list_source_projected_correctly(self):
+        """Normal list source projects parent fields into each child row."""
+        engine = self._make_engine()
+        output = {
+            "rate_schedules": [
+                {
+                    "rate_name": "Schedule A",
+                    "charges": [
+                        {"charge_type": "customer", "value": 10},
+                        {"charge_type": "energy",   "value": 0.05},
+                    ],
+                }
+            ]
+        }
+        rows = engine._project_item_array(output)
+        assert len(rows) == 2
+        assert all(r["rate_name"] == "Schedule A" for r in rows)
+        assert rows[0]["charge_type"] == "customer"
+        assert rows[1]["charge_type"] == "energy"
+
+    def test_dict_map_source_normalized_to_list(self):
+        """Object-map sources (string-keyed "0","1",...) are sorted and normalized."""
+        engine = self._make_engine()
+        output = {
+            "rate_schedules": {
+                "1": {"rate_name": "Schedule B", "charges": [{"charge_type": "demand", "value": 5}]},
+                "0": {"rate_name": "Schedule A", "charges": [{"charge_type": "energy", "value": 0.1}]},
+            }
+        }
+        rows = engine._project_item_array(output)
+        # "0" sorts before "1"
+        assert len(rows) == 2
+        assert rows[0]["rate_name"] == "Schedule A"
+        assert rows[1]["rate_name"] == "Schedule B"
+
+    def test_dict_map_non_numeric_keys_returns_empty(self):
+        """Dict with non-numeric keys (not an object-map) returns empty list safely."""
+        engine = self._make_engine()
+        output = {
+            "rate_schedules": {
+                "residential": {"rate_name": "R1", "charges": []},
+                "commercial":  {"rate_name": "C1", "charges": []},
+            }
+        }
+        rows = engine._project_item_array(output)
+        assert rows == []
+
+    def test_unsupported_projection_type_returns_empty(self):
+        """Unknown projection type logs a warning and returns empty list."""
+        config = {**self._PROJECTION_QA_QC_CONFIG, "projection": {"type": "unknown_type"}}
+        mock = MagicMock()
+        mock.get_main_data_array.return_value = "rate_schedules"
+        mock.get_identifier_fields.return_value = []
+        mock.get_context_objects.return_value = []
+        engine = ComparisonEngine(mock, qa_qc_config=config)
+        assert engine._project_item_array({"rate_schedules": []}) == []
+
+    def test_missing_nested_array_key_skips_parent(self):
+        """Parents without the nested array key are silently skipped."""
+        engine = self._make_engine()
+        output = {
+            "rate_schedules": [
+                {"rate_name": "No charges parent"},  # no "charges" key
+            ]
+        }
+        rows = engine._project_item_array(output)
+        assert rows == []

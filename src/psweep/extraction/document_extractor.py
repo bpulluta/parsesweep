@@ -69,6 +69,7 @@ class DocumentExtractor:
         azure_api_version: str = None,
         context_windows: Optional[Dict[str, int]] = None,
         base_url: Optional[str] = None,
+        timeout: Optional[int] = None,
     ):
         """
         Initialize document extractor.
@@ -87,6 +88,8 @@ class DocumentExtractor:
             base_url: Optional endpoint override for OpenAI-compatible proxies
                 (LiteLLM, OpenRouter, vLLM, etc.). When set, all calls are routed
                 through this URL regardless of model name.
+            timeout: Per-request LLM timeout in seconds. If omitted, LLMClient
+                uses LLM_TIMEOUT env var or its default timeout.
         """
         self.api_key = api_key
         self.model = model
@@ -102,6 +105,7 @@ class DocumentExtractor:
             azure_api_version=azure_api_version,
             context_windows=context_windows,
             base_url=base_url,
+            timeout=timeout,
         )
 
         # Initialize text processor

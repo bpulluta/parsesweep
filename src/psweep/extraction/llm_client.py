@@ -277,10 +277,25 @@ class LLMClient:
                 f" Raw parse error: {e}"
             ) from e
         except Exception as e:
-            logger.exception(
-                f"LLM extraction failed (provider={self.provider}, model={self.model})"
-            )
-            raise ExtractionError(str(e)) from e
+            # Some routed/provider-backed models reject `temperature` entirely.
+            # Retry once without temperature when the provider explicitly says the
+            # parameter is deprecated/unsupported.
+            if self._should_retry_without_temperature(e, api_params):
+                retry_params = dict(api_params)
+                retry_params.pop("temperature", None)
+                try:
+                    response = completion(**retry_params)
+                except Exception as retry_error:
+                    logger.exception(
+                        f"LLM extraction failed after retry without temperature "
+                        f"(provider={self.provider}, model={self.model})"
+                    )
+                    raise ExtractionError(str(retry_error)) from retry_error
+            else:
+                logger.exception(
+                    f"LLM extraction failed (provider={self.provider}, model={self.model})"
+                )
+                raise ExtractionError(str(e)) from e
 
         # ── Response content ─────────────────────────────────────────────────
         raw_content = (
@@ -358,6 +373,21 @@ class LLMClient:
             flags=re.DOTALL,
         ).strip()
         return cleaned
+
+    @staticmethod
+    def _should_retry_without_temperature(
+        error: Exception, api_params: Dict[str, Any]
+    ) -> bool:
+        """Return True when provider rejected `temperature` and retry is safe."""
+        if "temperature" not in api_params:
+            return False
+        message = str(error).lower()
+        if "temperature" not in message:
+            return False
+        return any(
+            token in message
+            for token in ("deprecated", "unsupported", "invalid_request_error")
+        )
 
     def _get_context_window_tokens(self) -> Optional[int]:
         """Return the configured context window (prompt tokens) for this model.

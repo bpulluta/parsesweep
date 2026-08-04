@@ -90,6 +90,14 @@ VARIABLE_CATALOG: dict[str, list[dict[str, str]]] = {
             "description": "Maximum characters to pass to extraction context.",
         },
         {
+            "name": "timeout_seconds",
+            "level": "advanced",
+            "description": (
+                "Per-request LLM timeout for extraction calls (seconds). "
+                "Overrides the default 120s client timeout."
+            ),
+        },
+        {
             "name": "skip_existing",
             "level": "advanced",
             "description": "Skip files that already have output JSON.",
@@ -277,6 +285,7 @@ _ALLOWED_SECTION_FIELDS = {
         "limit",
         "skip_existing",
         "max_context",
+        "timeout_seconds",
         "live_dashboard",
     },
     "compilation": {
@@ -681,7 +690,7 @@ def _validate_extraction_section_schema(extraction: dict[str, Any]) -> None:
                 f"extraction.{name} must be a positive integer (got {value!r})"
             )
 
-    for name in ("max_context", "limit"):
+    for name in ("max_context", "limit", "timeout_seconds"):
         if name in extraction and extraction[name] is not None:
             _require_positive_int(name, extraction[name])
 
@@ -1675,6 +1684,7 @@ _FIELD_MAP: dict[str, str] = {
     "limit": "limit",
     "skip_existing": "skip_existing",
     "max_context": "max_context",
+    "timeout_seconds": "timeout_seconds",
     "live_dashboard": "live_dashboard",
     "report_format": "report_format",
     "fail_on_suspicious": "fail_on_suspicious",

@@ -864,6 +864,31 @@ same requirement-row shape. Keeping field **names and semantics identical** acro
 domains lets one compilation, dedup, and QA/QC path serve every domain, and lets
 analysts compare across domains.
 
+### QA/QC hardening conventions (recommended across all regulatory domains)
+
+These conventions came from live multi-model validation runs and improve
+precision/recall **without adding domain-specific runtime code**:
+
+1. **Add a row-type discriminator when rows mix different requirement kinds.**
+   - Use a canonical field like `rule_kind` (enum) to distinguish
+     `limit`, `deadline`, `duration`, `monitoring`, `equipment_standard`, etc.
+   - Include it in schema dedup keys **and** QA/QC `record_matching.key_fields`
+     in `config/<domain>/run.yaml` so like-for-like rows are compared.
+2. **Encode quantitative vs qualitative constraints in the schema.**
+   - Quantitative rows should require numeric semantics (`value`, `units`,
+     `value_interpretation`).
+   - Qualitative rows should force quantitative-only fields to null.
+3. **Keep schema as contract; keep QA/QC policy in config.**
+   - Schema: field shape, enums, conditional constraints, dedup identity.
+   - Config: model pair, judge model, comparison fields, matching behavior.
+4. **Treat output shape drift as a first-class validation failure.**
+   - `main_data_array` is contractually an array; if provider output drifts
+     (e.g., object-map keyed by `"0"`, `"1"`), normalize deterministically in
+     runtime and log it, then continue comparison.
+5. **Do not choose production models from agreement % alone.**
+   - Use multi-doc runs and source-grounded review of `ONLY model-x` and `DIFFER`
+     rows to determine whether misses are recall gaps or true false positives.
+
 ### Canonical requirement-row fields (universal — same name in every domain)
 
 | Field | Type | Required | Axis | Notes |

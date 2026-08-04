@@ -24,6 +24,7 @@ Usage:
 """
 
 import json
+import hashlib
 import logging
 import re
 from collections import Counter
@@ -34,7 +35,6 @@ from typing import Any, Dict, List, Optional, Tuple
 
 # Import shared utilities
 from ..utils.item_matcher import (
-    create_item_index,
     extract_key_tokens,
     get_nested_value,
     normalize_for_matching,
@@ -68,6 +68,11 @@ class FieldComparison:
     pairing_reason: str = ""
     row_id: str = ""
     match_method: str = ""
+    model_verbatim: Dict[str, str] = field(default_factory=dict)
+    model_summary: Dict[str, str] = field(default_factory=dict)
+    judge_confidence: str = ""
+    judge_reason: str = ""
+    judge_likely_correct_model: str = ""
 
 
 @dataclass
@@ -188,6 +193,15 @@ class ComparisonEngine:
             self._judge_config.get("row_equivalence", True)
         )
         self._judge_client = None
+        self._judge_cache_enabled = bool(
+            self._judge_config.get("reuse_cached_decisions", True)
+        )
+        self._judge_cache_version = str(
+            self._judge_config.get("cache_version", "v1")
+        )
+        self._judge_cache_path: Optional[Path] = None
+        self._judge_cache: Dict[str, Dict[str, Any]] = {}
+        self._judge_cache_dirty = False
         # Configurable scope-variant category/subject pairs for qualitative lanes.
         # Format: list of [category, subject] pairs (normalized, lowercase).
         # Scope-variant items are excluded from gate-failure math because they
@@ -198,12 +212,96 @@ class ComparisonEngine:
             for pair in (self.qa_qc_config.get("scope_variant_keys") or [])
             if isinstance(pair, (list, tuple)) and len(pair) >= 2
         )
+        self.anchor_config = self.qa_qc_config.get("anchor_config")
+        self._shingle_cache: Dict[int, set] = {}
 
         logger.debug(
             f"ComparisonEngine: main_data_array={self.main_data_array}"
         )
         logger.debug(f"ComparisonEngine: match_fields={self.match_fields}")
         logger.debug(f"ComparisonEngine: compare_fields={self.compare_fields}")
+
+    def set_judge_cache_path(self, cache_path: Optional[Path]) -> None:
+        """Configure per-document judge cache path (JSON file)."""
+        if not self._judge_cache_enabled:
+            self._judge_cache_path = None
+            self._judge_cache = {}
+            self._judge_cache_dirty = False
+            return
+        if cache_path == self._judge_cache_path:
+            return
+        self._persist_judge_cache()
+        self._judge_cache_path = cache_path
+        self._judge_cache_dirty = False
+        self._judge_cache = {}
+        if cache_path is None or not cache_path.exists():
+            return
+        try:
+            payload = json.loads(cache_path.read_text(encoding="utf-8"))
+        except Exception as exc:
+            logger.warning(f"Failed to read judge cache {cache_path}: {exc}")
+            return
+        if not isinstance(payload, dict):
+            return
+        if str(payload.get("version")) != self._judge_cache_version:
+            return
+        entries = payload.get("entries")
+        if isinstance(entries, dict):
+            self._judge_cache = {
+                str(key): value for key, value in entries.items() if isinstance(value, dict)
+            }
+
+    def _judge_cache_key(self, *, phase: str, content: Dict[str, Any]) -> str:
+        material = json.dumps(
+            {
+                "version": self._judge_cache_version,
+                "phase": phase,
+                "model": self._judge_runtime.get("model"),
+                "strictness": self._judge_config.get("strictness"),
+                "content": content,
+            },
+            sort_keys=True,
+            ensure_ascii=True,
+        )
+        return hashlib.sha256(material.encode("utf-8")).hexdigest()
+
+    def _get_cached_judge_decision(self, cache_key: str) -> Optional[Dict[str, Any]]:
+        if not self._judge_cache_enabled:
+            return None
+        cached = self._judge_cache.get(cache_key)
+        if not isinstance(cached, dict):
+            return None
+        self._judge_stats["cache_hits"] = int(self._judge_stats.get("cache_hits", 0)) + 1
+        return cached
+
+    def _store_cached_judge_decision(
+        self, cache_key: str, payload: Optional[Dict[str, Any]]
+    ) -> None:
+        if not self._judge_cache_enabled or not isinstance(payload, dict):
+            return
+        self._judge_cache[cache_key] = payload
+        self._judge_cache_dirty = True
+
+    def _persist_judge_cache(self) -> None:
+        if (
+            not self._judge_cache_enabled
+            or self._judge_cache_path is None
+            or not self._judge_cache_dirty
+        ):
+            return
+        payload = {
+            "version": self._judge_cache_version,
+            "entries": self._judge_cache,
+        }
+        try:
+            self._judge_cache_path.parent.mkdir(parents=True, exist_ok=True)
+            self._judge_cache_path.write_text(
+                json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True),
+                encoding="utf-8",
+            )
+            self._judge_cache_dirty = False
+        except Exception as exc:
+            logger.warning(f"Failed to write judge cache {self._judge_cache_path}: {exc}")
 
     def compare_outputs(
         self,
@@ -229,86 +327,90 @@ class ComparisonEngine:
             "input_tokens": 0,
             "output_tokens": 0,
             "total_cost_usd": 0.0,
+            "skipped_budget": 0,
+            "cache_hits": 0,
         }
+        try:
+            if len(outputs) < 2:
+                logger.warning(
+                    f"Only {len(outputs)} valid outputs, need 2+ for comparison"
+                )
+                return ComparisonResult(
+                    document_name=document_name,
+                    models=list(outputs.keys()),
+                    summary={"error": "Need at least 2 valid outputs"},
+                )
 
-        if len(outputs) < 2:
-            logger.warning(
-                f"Only {len(outputs)} valid outputs, need 2+ for comparison"
+            models = list(outputs.keys())
+
+            # Track statistics
+            context_skipped = 0
+            item_skipped = 0
+
+            # 1. Compare context objects (numeric fields only)
+            context_comparisons = []
+            for ctx_name in self.schema_metadata.get_context_objects():
+                comps, skipped = self._compare_context_object(
+                    ctx_name, outputs, models
+                )
+                context_comparisons.extend(comps)
+                context_skipped += skipped
+
+            # 2. Compare main data array items
+            item_arrays = self._extract_item_arrays(outputs)
+            aligned_rows = self._align_items(item_arrays, models)
+
+            item_comparisons = []
+            for aligned_row in aligned_rows:
+                comps, skipped = self._compare_item_fields(
+                    aligned_row["item_key"],
+                    aligned_row["items"],
+                    models,
+                    row_id=aligned_row["row_id"],
+                    match_method=aligned_row["match_method"],
+                )
+                item_comparisons.extend(comps)
+                item_skipped += skipped
+
+            # 3. Detect potential duplicates
+            potential_duplicates = self._detect_potential_duplicates(
+                {
+                    model: {
+                        row["row_id"]: row["items"][model]
+                        for row in aligned_rows
+                        if row["items"].get(model) is not None
+                    }
+                    for model in models
+                },
+                models,
             )
+
+            # 4. Calculate completeness
+            completeness = self._calculate_completeness(item_arrays, models)
+
+            # 5. Calculate summary
+            summary = self._calculate_summary(
+                context_comparisons,
+                item_comparisons,
+                len(models),
+                item_arrays,
+                context_skipped,
+                item_skipped,
+                potential_duplicates,
+                completeness,
+            )
+
             return ComparisonResult(
                 document_name=document_name,
-                models=list(outputs.keys()),
-                summary={"error": "Need at least 2 valid outputs"},
+                models=models,
+                summary=summary,
+                context_comparisons=context_comparisons,
+                item_comparisons=item_comparisons,
+                potential_duplicates=potential_duplicates,
+                completeness=completeness,
             )
-
-        models = list(outputs.keys())
-
-        # Track statistics
-        context_skipped = 0
-        item_skipped = 0
-
-        # 1. Compare context objects (numeric fields only)
-        context_comparisons = []
-        for ctx_name in self.schema_metadata.get_context_objects():
-            comps, skipped = self._compare_context_object(
-                ctx_name, outputs, models
-            )
-            context_comparisons.extend(comps)
-            context_skipped += skipped
-
-        # 2. Compare main data array items
-        item_arrays = self._extract_item_arrays(outputs)
-        aligned_rows = self._align_items(item_arrays, models)
-
-        item_comparisons = []
-        for aligned_row in aligned_rows:
-            comps, skipped = self._compare_item_fields(
-                aligned_row["item_key"],
-                aligned_row["items"],
-                models,
-                row_id=aligned_row["row_id"],
-                match_method=aligned_row["match_method"],
-            )
-            item_comparisons.extend(comps)
-            item_skipped += skipped
-
-        # 3. Detect potential duplicates
-        potential_duplicates = self._detect_potential_duplicates(
-            {
-                model: {
-                    row["row_id"]: row["items"][model]
-                    for row in aligned_rows
-                    if row["items"].get(model) is not None
-                }
-                for model in models
-            },
-            models,
-        )
-
-        # 4. Calculate completeness
-        completeness = self._calculate_completeness(item_arrays, models)
-
-        # 5. Calculate summary
-        summary = self._calculate_summary(
-            context_comparisons,
-            item_comparisons,
-            len(models),
-            item_arrays,
-            context_skipped,
-            item_skipped,
-            potential_duplicates,
-            completeness,
-        )
-
-        return ComparisonResult(
-            document_name=document_name,
-            models=models,
-            summary=summary,
-            context_comparisons=context_comparisons,
-            item_comparisons=item_comparisons,
-            potential_duplicates=potential_duplicates,
-            completeness=completeness,
-        )
+        finally:
+            self._persist_judge_cache()
 
     def _compare_context_object(
         self, ctx_name: str, outputs: Dict[str, dict], models: List[str]
@@ -348,6 +450,17 @@ class ComparisonEngine:
         # If NO models have this item, skip entirely
         if not present:
             return comparisons, skipped
+
+        model_verbatim = {
+            model: self._safe_text(get_nested_value(items.get(model), "source_verbatim"))
+            for model in models
+            if items.get(model) is not None
+        }
+        model_summary = {
+            model: self._safe_text(get_nested_value(items.get(model), "summary"))
+            for model in models
+            if items.get(model) is not None
+        }
 
         # Get all fields from present items
         all_fields = set()
@@ -423,6 +536,8 @@ class ComparisonEngine:
                 pair_metadata=self._extract_pair_metadata(items, present),
                 row_id=row_id,
                 match_method=match_method,
+                model_verbatim=model_verbatim,
+                model_summary=model_summary,
             )
             comparisons.append(comparison)
 
@@ -510,6 +625,8 @@ class ComparisonEngine:
             comp.needs_review = False
             comp.agreement_score = f"{len(models)}/{len(models)}"
             comp.notes = f"LLM row judge matched ({confidence}): {reason}"
+            comp.judge_confidence = confidence
+            comp.judge_reason = reason
 
     def _create_comparison(
         self,
@@ -522,11 +639,15 @@ class ComparisonEngine:
         pair_metadata: Optional[Dict[str, Any]] = None,
         row_id: str = "",
         match_method: str = "",
+        model_verbatim: Optional[Dict[str, str]] = None,
+        model_summary: Optional[Dict[str, str]] = None,
     ) -> FieldComparison:
         """Create a FieldComparison with agreement calculation."""
         present_models = present_models or []
         missing_models = missing_models or []
         pair_metadata = pair_metadata or {}
+        model_verbatim = model_verbatim or {}
+        model_summary = model_summary or {}
 
         # Normalize values for comparison
         normalized = {m: normalize_value(v) for m, v in model_values.items()}
@@ -542,6 +663,9 @@ class ComparisonEngine:
 
         # Generate notes - prioritize explaining WHY there's disagreement
         notes = ""
+        judge_confidence = ""
+        judge_reason = ""
+        judge_likely_correct_model = ""
         if needs_review:
             if missing_models:
                 # Item was missing from some models entirely
@@ -565,6 +689,8 @@ class ComparisonEngine:
                             item_id=item_id,
                             field_path=field_path,
                             model_values=model_values,
+                            model_verbatim=model_verbatim,
+                            model_summary=model_summary,
                         )
                     except Exception as exc:
                         judge_result = None
@@ -576,6 +702,12 @@ class ComparisonEngine:
                     if judge_result:
                         judge_conf = str(judge_result.get("confidence", "low"))
                         judge_reason = str(judge_result.get("reason", "equivalent"))
+                        likely_correct = str(
+                            judge_result.get("likely_correct_model") or ""
+                        ).strip()
+                        if likely_correct in models and judge_conf.lower() == "high":
+                            judge_likely_correct_model = likely_correct
+                        judge_confidence = judge_conf
                         if (
                             judge_result.get("equivalent") is True
                             and self._judge_meets_confidence_threshold(judge_conf)
@@ -612,6 +744,11 @@ class ComparisonEngine:
             pairing_reason=str(pair_metadata.get("reason") or ""),
             row_id=row_id,
             match_method=match_method,
+            model_verbatim=model_verbatim,
+            model_summary=model_summary,
+            judge_confidence=judge_confidence,
+            judge_reason=judge_reason,
+            judge_likely_correct_model=judge_likely_correct_model,
         )
 
     def _count_agreement_for_field(
@@ -627,10 +764,25 @@ class ComparisonEngine:
 
         if field_name == "value":
             values = list(normalized_values.values())
-            if len(values) == 2 and self._values_semantically_equivalent(
-                values[0], values[1]
+            if (
+                len(values) >= 2
+                and all(value is not None for value in values)
+                and all(
+                    self._values_semantically_equivalent(values[0], value)
+                    for value in values[1:]
+                )
             ):
-                return 2
+                return len(values)
+
+        if self._is_temporal_value_field(field_name):
+            values = list(normalized_values.values())
+            normalized_times = [self._normalize_time_value(value) for value in values]
+            if (
+                len(normalized_times) >= 2
+                and all(value is not None for value in normalized_times)
+                and len(set(normalized_times)) == 1
+            ):
+                return len(normalized_times)
 
         return self._count_agreement(normalized_values)
 
@@ -674,10 +826,27 @@ class ComparisonEngine:
                 value, unit, self.unit_equivalence_index
             )
             if signature is None:
-                return
+                canonical_signatures = []
+                break
             canonical_signatures.append(signature)
 
-        if len(set(canonical_signatures)) != 1:
+        equivalent = False
+        if canonical_signatures:
+            equivalent = len(set(canonical_signatures)) == 1
+        elif unit_comp is not None:
+            # Time-window equivalence path: e.g. "7 a.m. to 7 p.m." vs "07:00-19:00".
+            values = [value_comp.model_values.get(model) for model in models]
+            units = [unit_comp.model_values.get(model) for model in models]
+            if all(v not in (None, "") for v in values) and all(
+                self._is_time_unit_label(u) for u in units
+            ):
+                base = values[0]
+                equivalent = all(
+                    self._values_semantically_equivalent(base, value)
+                    for value in values[1:]
+                )
+
+        if not equivalent:
             return
 
         for comp in comparisons:
@@ -689,10 +858,354 @@ class ComparisonEngine:
             comp.agreement_score = f"{len(models)}/{len(models)}"
             comp.notes = "normalized-equivalent measurement"
 
+    def _is_time_unit_label(self, value: Any) -> bool:
+        label = self._normalize_match_label(value) or ""
+        return label in {
+            "hh:mm (24-hour)",
+            "24-hour",
+            "a.m./p.m.",
+            "am/pm",
+            "hour",
+            "hours",
+            "hr",
+            "hrs",
+            "hour basis",
+        }
+
+    def _is_temporal_value_field(self, field_name: str) -> bool:
+        """Return True when a field name represents a time value."""
+        name = str(field_name or "").lower()
+        return any(token in name for token in ("time", "hour", "start", "end"))
+
+    # ── Verbatim-Anchored Alignment (char n-gram containment) ─────────────────
+
+    def _anchor_text(self, item: dict) -> str:
+        """Return the first non-empty anchor text from the configured anchor fields."""
+        for field_path in (self.anchor_config or {}).get("fields", []):
+            val = get_nested_value(item, field_path)
+            if val and isinstance(val, str) and val.strip():
+                return val.strip()
+        return ""
+
+    def _char_ngrams(self, text: str) -> set:
+        """Build a set of char n-grams (normalised) for a text, with caching."""
+        cache_key = id(text) ^ hash(text)
+        cached = self._shingle_cache.get(cache_key)
+        if cached is not None:
+            return cached
+        n = (self.anchor_config or {}).get("ngram", 4)
+        # Normalise: lowercase, collapse whitespace, strip punctuation boundaries
+        t = re.sub(r"\s+", " ", text.lower()).strip()
+        shingles: set = set()
+        for i in range(len(t) - n + 1):
+            shingles.add(t[i : i + n])
+        self._shingle_cache[cache_key] = shingles
+        return shingles
+
+    def _containment(self, shingles_a: set, shingles_b: set) -> float:
+        """Containment score: |A∩B| / min(|A|,|B|).  Robust to partial quotes."""
+        if not shingles_a or not shingles_b:
+            return 0.0
+        return len(shingles_a & shingles_b) / min(len(shingles_a), len(shingles_b))
+
+    def _anchor_score(self, item_a: dict, item_b: dict) -> float:
+        """Score the evidence similarity between two items using verbatim containment."""
+        text_a = self._anchor_text(item_a)
+        text_b = self._anchor_text(item_b)
+        min_chars = (self.anchor_config or {}).get("min_anchor_chars", 12)
+        if len(text_a) < min_chars or len(text_b) < min_chars:
+            return 0.0
+        return self._containment(self._char_ngrams(text_a), self._char_ngrams(text_b))
+
+    def _align_items_anchored(
+        self, item_arrays: Dict[str, List[dict]], models: List[str]
+    ) -> List[Dict[str, Any]]:
+        """Verbatim-anchored alignment using char n-gram containment as primary identity.
+
+        Three bands:
+          - score >= auto_threshold : auto-matched (no judge call needed)
+          - review_threshold <= score < auto_threshold : ambiguous — judge decides
+          - score < review_threshold : unmatched (one-sided presence row)
+
+        Improvements over legacy exact-key Pass 1:
+          - Candidates ranked by score before budget is spent (fixes document-order bug).
+          - Up to max_candidates_per_row retried if judge rejects top candidate.
+          - Rows with anchor text shorter than min_anchor_chars fall directly to unmatched.
+        """
+        cfg = self.anchor_config
+        auto_thr = cfg["auto_threshold"]
+        review_thr = cfg["review_threshold"]
+        max_candidates = cfg["max_candidates_per_row"]
+
+        model_a, model_b = models[0], models[1]
+        items_a = list(item_arrays.get(model_a, []))
+        items_b = list(item_arrays.get(model_b, []))
+
+        # Warn if anchor coverage is too low (>50% of rows lack usable verbatim).
+        def _usable(items: List[dict]) -> int:
+            return sum(
+                1 for it in items
+                if len(self._anchor_text(it)) >= cfg["min_anchor_chars"]
+            )
+
+        for model, items in ((model_a, items_a), (model_b, items_b)):
+            usable = _usable(items)
+            if items and usable / len(items) < 0.5:
+                logger.warning(
+                    f"[anchor] {model}: {usable}/{len(items)} rows have usable "
+                    f"anchor text (>={cfg['min_anchor_chars']} chars). "
+                    "Verbatim-anchored matching may be unreliable."
+                )
+
+        # Build all candidate pairs with score >= review_threshold, sorted desc.
+        candidates: List[Tuple[float, int, int]] = []  # (score, idx_a, idx_b)
+        for idx_a, item_a in enumerate(items_a):
+            for idx_b, item_b in enumerate(items_b):
+                score = self._anchor_score(item_a, item_b)
+                if score >= review_thr:
+                    candidates.append((score, idx_a, idx_b))
+        candidates.sort(key=lambda x: x[0], reverse=True)
+
+        # Greedy 1:1 assignment (auto + judge bands).
+        consumed_a: set = set()
+        consumed_b: set = set()
+        aligned_rows: List[Dict[str, Any]] = []
+        row_counter = 0
+
+        # Track per-row candidate retry state.
+        retried: Dict[int, int] = {}  # idx_a → candidates tried
+
+        for score, idx_a, idx_b in candidates:
+            if idx_a in consumed_a or idx_b in consumed_b:
+                continue
+
+            item_a_obj = items_a[idx_a]
+            item_b_obj = items_b[idx_b]
+
+            if score >= auto_thr:
+                # Auto-match — no LLM call needed.
+                row_counter += 1
+                aligned_rows.append({
+                    "row_id": f"row-{row_counter}",
+                    "item_key": ("anchor_auto", row_counter),
+                    "items": {model_a: item_a_obj, model_b: item_b_obj},
+                    "match_method": "verbatim_auto",
+                    "anchor_score": round(score, 4),
+                })
+                consumed_a.add(idx_a)
+                consumed_b.add(idx_b)
+            else:
+                # Ambiguous band — ask judge (Job 1: same-requirement adjudication).
+                retried[idx_a] = retried.get(idx_a, 0) + 1
+                if retried[idx_a] > max_candidates:
+                    continue
+                judge_result = self._judge_same_requirement(
+                    model_a=model_a, item_a=item_a_obj,
+                    model_b=model_b, item_b=item_b_obj,
+                )
+                if judge_result and judge_result.get("same_requirement"):
+                    confidence = str(judge_result.get("confidence", "low"))
+                    if self._judge_meets_confidence_threshold(confidence):
+                        row_counter += 1
+                        pair_info = {
+                            "paired_by_judge": True,
+                            "confidence": confidence,
+                            "reason": str(judge_result.get("reason") or ""),
+                        }
+                        a_copy = dict(item_a_obj)
+                        b_copy = dict(item_b_obj)
+                        a_copy["_pairing_info"] = pair_info
+                        b_copy["_pairing_info"] = pair_info
+                        aligned_rows.append({
+                            "row_id": f"row-{row_counter}",
+                            "item_key": ("anchor_judge", row_counter),
+                            "items": {model_a: a_copy, model_b: b_copy},
+                            "match_method": "verbatim_judge",
+                            "anchor_score": round(score, 4),
+                        })
+                        consumed_a.add(idx_a)
+                        consumed_b.add(idx_b)
+
+        # Leftover rows → one-sided presence rows.
+        for idx_a, item_a_obj in enumerate(items_a):
+            if idx_a not in consumed_a:
+                row_counter += 1
+                aligned_rows.append({
+                    "row_id": f"row-{row_counter}",
+                    "item_key": ("unmatched", model_a, row_counter),
+                    "items": {model_a: item_a_obj, model_b: None},
+                    "match_method": "unmatched",
+                    "anchor_score": 0.0,
+                })
+        for idx_b, item_b_obj in enumerate(items_b):
+            if idx_b not in consumed_b:
+                row_counter += 1
+                aligned_rows.append({
+                    "row_id": f"row-{row_counter}",
+                    "item_key": ("unmatched", model_b, row_counter),
+                    "items": {model_a: None, model_b: item_b_obj},
+                    "match_method": "unmatched",
+                    "anchor_score": 0.0,
+                })
+
+        matched = sum(1 for r in aligned_rows if r["match_method"] != "unmatched")
+        logger.info(
+            f"[anchor] matched={matched}, unmatched_a={sum(1 for r in aligned_rows if r['match_method']=='unmatched' and r['items'][model_a] is not None)}, "
+            f"unmatched_b={sum(1 for r in aligned_rows if r['match_method']=='unmatched' and r['items'][model_b] is not None)}"
+        )
+        return aligned_rows
+
+    def _judge_same_requirement(
+        self,
+        *,
+        model_a: str,
+        item_a: dict,
+        model_b: str,
+        item_b: dict,
+    ) -> Optional[Dict[str, Any]]:
+        """Job 1 judge: decide whether two rows describe the SAME regulatory requirement.
+
+        Uses source_verbatim as the primary ground-truth anchor. This is intentionally
+        distinct from _judge_text_equivalence (Job 2) which judges field-value correctness.
+        """
+        if not self._judge_config.get("enabled"):
+            return None
+        judge_model = self._judge_runtime.get("model")
+        if not judge_model:
+            return None
+        max_calls = int(self._judge_config.get("max_calls_per_document", 50) or 50)
+        if self._judge_stats.get("attempted_calls", 0) >= max_calls:
+            self._judge_stats["skipped_budget"] = int(
+                self._judge_stats.get("skipped_budget", 0)
+            ) + 1
+            return None
+        cache_key = self._judge_cache_key(
+            phase="same_requirement",
+            content={
+                "model_a": model_a,
+                "model_b": model_b,
+                "item_a": {
+                    "feature": get_nested_value(item_a, "feature"),
+                    "rule_kind": get_nested_value(item_a, "rule_kind"),
+                    "applies_to": get_nested_value(item_a, "applies_to"),
+                    "specific_subject": get_nested_value(item_a, "specific_subject"),
+                    "obligation": get_nested_value(item_a, "obligation"),
+                    "value": get_nested_value(item_a, "value"),
+                    "units": get_nested_value(item_a, "units"),
+                    "section": get_nested_value(item_a, "section"),
+                    "source_verbatim": self._safe_text(
+                        get_nested_value(item_a, "source_verbatim")
+                    ),
+                },
+                "item_b": {
+                    "feature": get_nested_value(item_b, "feature"),
+                    "rule_kind": get_nested_value(item_b, "rule_kind"),
+                    "applies_to": get_nested_value(item_b, "applies_to"),
+                    "specific_subject": get_nested_value(item_b, "specific_subject"),
+                    "obligation": get_nested_value(item_b, "obligation"),
+                    "value": get_nested_value(item_b, "value"),
+                    "units": get_nested_value(item_b, "units"),
+                    "section": get_nested_value(item_b, "section"),
+                    "source_verbatim": self._safe_text(
+                        get_nested_value(item_b, "source_verbatim")
+                    ),
+                },
+            },
+        )
+        cached = self._get_cached_judge_decision(cache_key)
+        if cached is not None:
+            return cached
+
+        def _row_summary(model: str, item: dict) -> str:
+            parts = []
+            for field in ("feature", "rule_kind", "applies_to", "specific_subject",
+                          "obligation", "value", "units", "section"):
+                val = get_nested_value(item, field)
+                if val not in (None, ""):
+                    parts.append(f"{field}={self._clip_judge_text(val, 80)}")
+            verbatim = self._safe_text(get_nested_value(item, "source_verbatim"))
+            return (
+                f"Model {model}:\n"
+                + "  " + " | ".join(parts) + "\n"
+                + f"  source_verbatim=\"{self._clip_judge_text(verbatim, 300)}\""
+            )
+
+        user_prompt = (
+            f"{_row_summary(model_a, item_a)}\n\n"
+            f"{_row_summary(model_b, item_b)}"
+        )
+        system_prompt = (
+            "You are a strict QA adjudicator for regulatory-requirement extraction. "
+            "Two AI models each extracted a row from the SAME source document. "
+            "Decide ONLY whether the two rows describe the SAME underlying regulatory "
+            "requirement — the same obligation arising from the same provision — even "
+            "when the models use different feature labels or phrasing. "
+            "Base your decision primarily on source_verbatim: do they point to the same "
+            "provision and regulate the same thing? "
+            "Do NOT require field values to match — value disagreements are judged separately. "
+            "If the quotes point to different provisions or different obligations, "
+            "answer same_requirement=false. If uncertain, answer false. "
+            "Return only JSON conforming to the schema."
+        )
+        judge_schema = {
+            "type": "object",
+            "properties": {
+                "same_requirement": {"type": "boolean"},
+                "confidence": {"type": "string", "enum": ["high", "medium", "low"]},
+                "reason": {"type": "string"},
+            },
+            "required": ["same_requirement", "confidence", "reason"],
+        }
+
+        from ..extraction.llm_client import LLMClient  # noqa: PLC0415
+        if self._judge_client is None:
+            self._judge_client = LLMClient(
+                api_key=self._judge_runtime.get("api_key"),
+                model=judge_model,
+                provider=self._judge_runtime.get("provider"),
+                azure_endpoint=self._judge_runtime.get("azure_endpoint"),
+                azure_api_version=self._judge_runtime.get("azure_api_version"),
+                base_url=self._judge_runtime.get("base_url"),
+                timeout=self._judge_runtime.get("timeout"),
+            )
+
+        self._judge_stats["attempted_calls"] += 1
+        try:
+            judged = self._judge_client.extract(
+                text=user_prompt,
+                schema=judge_schema,
+                system_prompt=system_prompt,
+            )
+        except Exception as exc:
+            logger.debug(f"[anchor] judge_same_requirement failed: {exc}")
+            return None
+        self._judge_stats["successful_calls"] += 1
+        self._judge_stats["input_tokens"] += int(judged.get("input_tokens") or 0)
+        self._judge_stats["output_tokens"] += int(judged.get("output_tokens") or 0)
+        self._judge_stats["total_cost_usd"] += float(judged.get("cost") or 0.0)
+        payload = judged.get("data") if isinstance(judged, dict) else None
+        if not isinstance(payload, dict):
+            return None
+        self._store_cached_judge_decision(cache_key, payload)
+        return payload
+
     def _align_items(
         self, item_arrays: Dict[str, List[dict]], models: List[str]
     ) -> List[Dict[str, Any]]:
-        """Align items across models using exact keys, fallback signatures, then judge pairing."""
+        """Align items across models using exact keys, fallback signatures, then judge pairing.
+
+        When anchor_config is present (record_matching.anchor configured) and exactly 2
+        models are being compared on a mixed or text_review approach, delegates to the
+        verbatim-anchored aligner which uses char-n-gram containment on source_verbatim
+        as the primary identity signal — far more robust than exact label matching.
+        """
+        if (
+            self.anchor_config
+            and len(models) == 2
+            and self.comparison_approach in {"mixed", "text_review"}
+        ):
+            return self._align_items_anchored(item_arrays, models)
+
         if self.comparison_approach == "text_review":
             item_arrays = self._collapse_text_review_duplicates(item_arrays)
             item_arrays = self._merge_text_review_duplicate_keys(item_arrays)
@@ -1201,10 +1714,8 @@ class ComparisonEngine:
             score += 0.10
         return min(score, 1.0)
 
-    def _normalize_time_value(self, value: Any) -> Optional[str]:
-        raw = self._normalize_match_label(value)
-        if not raw:
-            return None
+    def _normalize_single_time(self, raw: str) -> Optional[str]:
+        """Normalize one time token to HH:MM (24h) if parseable."""
         m = re.fullmatch(r"(\d{1,2}):(\d{2})", raw)
         if m:
             hour = int(m.group(1))
@@ -1223,6 +1734,25 @@ class ComparisonEngine:
             if marker == "a" and hour == 12:
                 hour = 0
             return f"{hour:02d}:{minute:02d}"
+        return None
+
+    def _normalize_time_value(self, value: Any) -> Optional[str]:
+        """Normalize time values and time ranges to canonical 24h forms."""
+        raw = self._normalize_match_label(value)
+        if not raw:
+            return None
+
+        single = self._normalize_single_time(raw)
+        if single:
+            return single
+
+        # Range forms: "7 a.m. to 7 p.m.", "07:00-19:00", "07:00 – 19:00"
+        m = re.fullmatch(r"(.+?)\s*(?:-|–|—|to)\s*(.+)", raw)
+        if m:
+            start = self._normalize_single_time(m.group(1).strip())
+            end = self._normalize_single_time(m.group(2).strip())
+            if start and end:
+                return f"{start}-{end}"
         return None
 
     def _values_semantically_equivalent(self, value_a: Any, value_b: Any) -> bool:
@@ -1269,6 +1799,8 @@ class ComparisonEngine:
         item_id: str,
         field_path: str,
         model_values: Dict[str, Any],
+        model_verbatim: Optional[Dict[str, str]] = None,
+        model_summary: Optional[Dict[str, str]] = None,
     ) -> Optional[Dict[str, Any]]:
         """Optionally run an LLM-as-judge pass for text-review disagreements."""
         if not self._judge_config.get("enabled"):
@@ -1276,6 +1808,17 @@ class ComparisonEngine:
         judge_model = self._judge_runtime.get("model")
         if not judge_model:
             return None
+        max_calls = int(self._judge_config.get("max_calls_per_document", 50) or 50)
+        if self._judge_stats.get("attempted_calls", 0) >= max_calls:
+            self._judge_stats["skipped_budget"] = int(
+                self._judge_stats.get("skipped_budget", 0)
+            ) + 1
+            return {
+                "equivalent": None,
+                "confidence": "low",
+                "reason": "budget_exhausted",
+                "likely_correct_model": "unclear",
+            }
 
         values = {k: v for k, v in model_values.items() if v is not None}
         if len(values) < 2:
@@ -1283,6 +1826,25 @@ class ComparisonEngine:
         unique_values = {str(v).strip().lower() for v in values.values()}
         if len(unique_values) <= 1:
             return {"equivalent": True, "confidence": "high", "reason": "exact_match"}
+        cache_key = self._judge_cache_key(
+            phase="field_equivalence",
+            content={
+                "item_id": item_id,
+                "field_path": field_path,
+                "model_values": {model: values[model] for model in sorted(values)},
+                "model_verbatim": {
+                    model: (model_verbatim or {}).get(model, "")
+                    for model in sorted(values)
+                },
+                "model_summary": {
+                    model: (model_summary or {}).get(model, "")
+                    for model in sorted(values)
+                },
+            },
+        )
+        cached = self._get_cached_judge_decision(cache_key)
+        if cached is not None:
+            return cached
 
         from ..extraction.llm_client import LLMClient
 
@@ -1294,6 +1856,7 @@ class ComparisonEngine:
                 azure_endpoint=self._judge_runtime.get("azure_endpoint"),
                 azure_api_version=self._judge_runtime.get("azure_api_version"),
                 base_url=self._judge_runtime.get("base_url"),
+                timeout=self._judge_runtime.get("timeout"),
             )
 
         judge_schema = {
@@ -1305,19 +1868,41 @@ class ComparisonEngine:
                     "enum": ["high", "medium", "low"],
                 },
                 "reason": {"type": "string"},
+                "likely_correct_model": {
+                    "type": "string",
+                    "enum": sorted([*values.keys(), "unclear"]),
+                },
             },
-            "required": ["equivalent", "confidence", "reason"],
+            "required": ["equivalent", "confidence", "reason", "likely_correct_model"],
         }
-        values_blob = "\n".join(
-            f"- {model}: {value}" for model, value in sorted(values.items())
-        )
+        values_blob_rows = []
+        verbatim = model_verbatim or {}
+        summaries = model_summary or {}
+        for model, value in sorted(values.items()):
+            base = f"- {model}: value={self._clip_judge_text(value)}"
+            if field_path != "row_equivalence":
+                evidence = verbatim.get(model) or summaries.get(model)
+                if evidence:
+                    evidence_label = (
+                        "source_verbatim"
+                        if verbatim.get(model)
+                        else "summary"
+                    )
+                    base += f" | {evidence_label}={self._clip_judge_text(evidence)}"
+            values_blob_rows.append(base)
+        values_blob = "\n".join(values_blob_rows)
         strictness = (
             self._judge_config.get("strictness")
             or "Conservative: if uncertain, mark not equivalent."
         )
         prompt = (
-            "You are a strict QA judge. Decide whether values are semantically equivalent.\n"
-            "Never infer unseen facts. If there is any ambiguity, return equivalent=false.\n"
+            "You are a strict QA judge evaluating field extractions from regulatory documents.\n"
+            "Two models matched to the SAME requirement but disagree on one field.\n"
+            "Decide (a) whether the two values are semantically equivalent, and if not, "
+            "(b) which model's value is better supported by the source evidence.\n"
+            "Use ONLY the provided source_verbatim as evidence. Never infer unseen facts.\n"
+            "It is valid to conclude BOTH values are correct (equivalent=true) or NEITHER "
+            "is supported (equivalent=false, likely_correct_model='unclear').\n"
             f"Policy: {strictness}\n"
             f"Item: {item_id}\nField: {field_path}\nValues:\n{values_blob}"
         )
@@ -1339,6 +1924,7 @@ class ComparisonEngine:
         payload = judged.get("data") if isinstance(judged, dict) else None
         if not isinstance(payload, dict):
             return None
+        self._store_cached_judge_decision(cache_key, payload)
         return payload
 
     def _should_attempt_judge(
@@ -1384,6 +1970,17 @@ class ComparisonEngine:
         ).strip().lower()
         rank = {"low": 1, "medium": 2, "high": 3}
         return rank.get(str(confidence).strip().lower(), 0) >= rank.get(threshold, 3)
+
+    def _clip_judge_text(self, value: Any, limit: int = 320) -> str:
+        text = str(value).strip()
+        if len(text) <= limit:
+            return text
+        return text[: limit - 3] + "..."
+
+    def _safe_text(self, value: Any) -> str:
+        if value in (None, ""):
+            return ""
+        return str(value)
 
     def _count_agreement(self, model_values: Dict[str, Any]) -> int:
         """Count how many models agree (most common value)."""
@@ -1481,6 +2078,48 @@ class ComparisonEngine:
             if completeness
             else {},
         }
+        # Anchor matching metrics — only when verbatim-anchored alignment ran.
+        # Replaces the misleading completeness_score=100.0 for unconfigured expected_requirements.
+        if self.anchor_config and item_comparisons:
+            matched_row_ids = {
+                c.row_id for c in item_comparisons
+                if c.match_method in {"verbatim_auto", "verbatim_judge"}
+                and not c.missing_models
+            }
+            matched_rows = len(matched_row_ids)
+            total_a = len(list(item_arrays.values())[0]) if item_arrays else 0
+            total_b = len(list(item_arrays.values())[1]) if len(item_arrays) >= 2 else 0
+            min_model_rows = min(total_a, total_b) if total_a and total_b else max(total_a, total_b)
+            anchor_match_rate = round(matched_rows / min_model_rows, 3) if min_model_rows > 0 else 0.0
+            one_sided: Dict[str, int] = {}
+            for model in item_arrays:
+                one_sided[model] = len({
+                    c.row_id for c in item_comparisons
+                    if c.match_method == "unmatched" and model in (c.present_models or [])
+                })
+            agreed_fields = sum(
+                1 for c in item_comparisons
+                if not c.needs_review
+                and c.match_method in {"verbatim_auto", "verbatim_judge"}
+                and not c.missing_models
+            )
+            compared_on_matched = sum(
+                1 for c in item_comparisons
+                if c.match_method in {"verbatim_auto", "verbatim_judge"}
+                and not c.missing_models
+            )
+            summary["anchor_metrics"] = {
+                "anchor_match_rate_proxy": anchor_match_rate,
+                "matched_requirement_pairs": matched_rows,
+                "one_sided_counts": one_sided,
+                "precision_proxy": round(agreed_fields / compared_on_matched, 3)
+                if compared_on_matched
+                else None,
+                "note": "proxy metrics — no gold-standard labels; anchor_match_rate = matched_pairs / min(model_row_counts)",
+            }
+            # Remove misleading completeness when expected_requirements not configured.
+            if not self.qa_qc_config.get("expected_requirements"):
+                summary.pop("completeness_per_model", None)
         if self._judge_config.get("enabled"):
             judge_matches = sum(
                 1
@@ -1510,6 +2149,12 @@ class ComparisonEngine:
                 ),
                 "total_cost_usd": float(
                     (self._judge_stats or {}).get("total_cost_usd", 0.0)
+                ),
+                "skipped_budget": int(
+                    (self._judge_stats or {}).get("skipped_budget", 0)
+                ),
+                "cache_hits": int(
+                    (self._judge_stats or {}).get("cache_hits", 0)
                 ),
             }
 
@@ -1764,6 +2409,12 @@ class ComparisonEngine:
                 arrays[model] = self._project_item_array(output)
                 continue
 
+            extractor = getattr(self.schema_metadata, "extract_main_data_array", None)
+            if callable(extractor):
+                items = extractor(output)
+                if isinstance(items, list):
+                    arrays[model] = items
+                    continue
             items = output.get(self.main_data_array, [])
             arrays[model] = items if isinstance(items, list) else []
         return arrays
@@ -1789,6 +2440,14 @@ class ComparisonEngine:
 
         parent_fields = self.projection.get("parent_fields") or []
         nested_items = output.get(source_array_name, [])
+        if isinstance(nested_items, dict):
+            try:
+                nested_items = [
+                    nested_items[key]
+                    for key in sorted(nested_items.keys(), key=int)
+                ]
+            except (TypeError, ValueError):
+                return []
         if not isinstance(nested_items, list):
             return []
 
@@ -1812,19 +2471,6 @@ class ComparisonEngine:
                 projected.append({**parent_projection, **child_item})
 
         return projected
-
-    def _build_indexes(
-        self, item_arrays: Dict[str, List[dict]]
-    ) -> Dict[str, Dict[Tuple, dict]]:
-        """Build item indexes for matching."""
-        return {
-            model: create_item_index(
-                items,
-                self.match_fields,
-                fuzzy_fields=self.fuzzy_match_fields,
-            )
-            for model, items in item_arrays.items()
-        }
 
     def _collapse_text_review_duplicates(
         self,
@@ -1915,213 +2561,6 @@ class ComparisonEngine:
         if len(fragments) == 1:
             return fragments[0]
         return " ".join(fragments)
-
-    def _apply_text_review_fallback_matches(
-        self,
-        indexes: Dict[str, Dict[Tuple, dict]],
-        models: List[str],
-    ) -> Dict[str, Dict[Tuple, dict]]:
-        """Pair unmatched qualitative items by normalized compare text when safe."""
-        if not self._uses_text_fallback_matching():
-            return indexes
-
-        all_keys = self._collect_all_keys(indexes)
-        unmatched_groups: Dict[Tuple, List[Tuple[str, Tuple, dict]]] = (
-            defaultdict(list)
-        )
-
-        for key in all_keys:
-            models_with_key = [
-                model for model in models if key in indexes[model]
-            ]
-            if len(models_with_key) != 1:
-                continue
-
-            model = models_with_key[0]
-            item = indexes[model][key]
-            signature = self._build_text_review_signature(item)
-            if signature is None:
-                continue
-            unmatched_groups[signature].append((model, key, item))
-
-        for signature, group in unmatched_groups.items():
-            models_in_group = [model for model, _, _ in group]
-            if len(set(models_in_group)) < 2:
-                continue
-
-            # Skip ambiguous cases where one model has multiple unmatched items with the same text.
-            if len(set(models_in_group)) != len(models_in_group):
-                continue
-
-            synthetic_key = ("__text_review__", signature)
-            for model, key, item in group:
-                del indexes[model][key]
-                indexes[model][synthetic_key] = item
-
-        return indexes
-
-    def _apply_judge_pair_matches(
-        self,
-        indexes: Dict[str, Dict[Tuple, dict]],
-        models: List[str],
-    ) -> Dict[str, Dict[Tuple, dict]]:
-        """Use judge to pair one-sided mixed-lane items before field comparison."""
-        if not self._uses_judge_pair_matching(models):
-            return indexes
-
-        model_a, model_b = models[0], models[1]
-        unmatched_a: List[Tuple[Tuple, dict]] = []
-        unmatched_b: List[Tuple[Tuple, dict]] = []
-        for key in self._collect_all_keys(indexes):
-            present_models = [m for m in models if key in indexes[m]]
-            if len(present_models) != 1:
-                continue
-            owner = present_models[0]
-            if owner == model_a:
-                unmatched_a.append((key, indexes[model_a][key]))
-            elif owner == model_b:
-                unmatched_b.append((key, indexes[model_b][key]))
-
-        if not unmatched_a or not unmatched_b:
-            return indexes
-
-        max_pair_calls = int(
-            (self._judge_config or {}).get("max_pairing_calls", 25) or 25
-        )
-        min_pair_overlap = float(
-            (self._judge_config or {}).get("min_pair_overlap", 0.2) or 0.2
-        )
-        pair_calls = 0
-        matched_b_keys: set[Tuple] = set()
-        pair_counter = 0
-
-        for key_a, item_a in unmatched_a:
-            if pair_calls >= max_pair_calls:
-                break
-            candidates: List[Tuple[Tuple, dict, float]] = []
-            for key_b, item_b in unmatched_b:
-                if key_b in matched_b_keys:
-                    continue
-                overlap = self._pair_overlap_score(item_a, item_b)
-                if overlap < min_pair_overlap:
-                    continue
-                candidates.append((key_b, item_b, overlap))
-            if not candidates:
-                continue
-            candidates.sort(key=lambda row: row[2], reverse=True)
-            key_b, item_b, _ = candidates[0]
-            pair_calls += 1
-            judge_match = self._judge_item_pair_equivalence(
-                model_a=model_a,
-                item_a=item_a,
-                model_b=model_b,
-                item_b=item_b,
-            )
-            if not judge_match or not judge_match.get("equivalent"):
-                continue
-            pair_counter += 1
-            synthetic_key = ("__judge_pair__", str(pair_counter))
-            paired_a = dict(item_a)
-            paired_b = dict(item_b)
-            paired_a["_paired_by_judge"] = True
-            paired_b["_paired_by_judge"] = True
-            paired_a["_pairing_info"] = {
-                "paired_by_judge": True,
-                "confidence": str(judge_match.get("confidence") or ""),
-                "reason": str(judge_match.get("reason") or ""),
-            }
-            paired_b["_pairing_info"] = {
-                "paired_by_judge": True,
-                "confidence": str(judge_match.get("confidence") or ""),
-                "reason": str(judge_match.get("reason") or ""),
-            }
-            indexes[model_a].pop(key_a, None)
-            indexes[model_b].pop(key_b, None)
-            indexes[model_a][synthetic_key] = paired_a
-            indexes[model_b][synthetic_key] = paired_b
-            matched_b_keys.add(key_b)
-
-        return indexes
-
-    def _absorb_text_review_subsumed_items(
-        self,
-        indexes: Dict[str, Dict[Tuple, dict]],
-        models: List[str],
-    ) -> Dict[str, Dict[Tuple, dict]]:
-        """Drop one-sided qualitative rows when every opposing model has a unique broader row covering them."""
-        if not self._uses_text_fallback_matching():
-            return indexes
-
-        unmatched_keys = [
-            key
-            for key in self._collect_all_keys(indexes)
-            if sum(1 for model in models if key in indexes[model]) == 1
-        ]
-
-        keys_to_remove: List[Tuple[str, Tuple]] = []
-        for key in unmatched_keys:
-            source_models = [
-                model for model in models if key in indexes[model]
-            ]
-            if len(source_models) != 1:
-                continue
-
-            source_model = source_models[0]
-            source_item = indexes[source_model][key]
-            if not self._has_text_review_subsumption(
-                indexes, models, source_model, source_item
-            ):
-                continue
-
-            keys_to_remove.append((source_model, key))
-
-        for model, key in keys_to_remove:
-            indexes[model].pop(key, None)
-
-        return indexes
-
-    def _has_text_review_subsumption(
-        self,
-        indexes: Dict[str, Dict[Tuple, dict]],
-        models: List[str],
-        source_model: str,
-        source_item: dict,
-    ) -> bool:
-        """Return true when each opposing model has a unique broader same-category qualitative row."""
-        source_category = self._normalize_match_label(
-            get_nested_value(source_item, self.match_fields[0])
-            if self.match_fields
-            else None
-        )
-        source_text = self._build_text_review_raw_text(source_item)
-        source_tokens = self._build_text_review_token_set(source_item)
-
-        if not source_category or not source_text or len(source_tokens) < 3:
-            return False
-
-        for model in models:
-            if model == source_model:
-                continue
-
-            candidates = []
-            for candidate in indexes[model].values():
-                candidate_category = self._normalize_match_label(
-                    get_nested_value(candidate, self.match_fields[0])
-                    if self.match_fields
-                    else None
-                )
-                if candidate_category != source_category:
-                    continue
-                if not self._text_review_item_subsumes(
-                    candidate, source_item, source_text, source_tokens
-                ):
-                    continue
-                candidates.append(candidate)
-
-            if len(candidates) != 1:
-                return False
-
-        return True
 
     def _text_review_item_subsumes(
         self,
@@ -2351,8 +2790,15 @@ class ComparisonEngine:
     def _format_item_id(
         self, item_key: Tuple, items: Dict[str, Optional[dict]]
     ) -> str:
-        """Build a readable item identifier, including fallback text-review matches."""
-        if item_key and item_key[0] == "__text_review__":
+        """Build a readable item identifier from configured match fields."""
+        synthetic_prefixes = {
+            "__text_review__",
+            "__judge_pair__",
+            "anchor_auto",
+            "anchor_judge",
+            "unmatched",
+        }
+        if item_key and item_key[0] in synthetic_prefixes:
             for item in items.values():
                 if not item:
                     continue
@@ -2360,23 +2806,15 @@ class ComparisonEngine:
                     get_nested_value(item, field_path)
                     for field_path in self.match_fields
                 ]
-                return " | ".join(
-                    str(value) if value else "N/A" for value in match_values
-                )
-            return "text review match"
-        if item_key and item_key[0] == "__judge_pair__":
-            for item in items.values():
-                if not item:
-                    continue
-                match_values = [
-                    get_nested_value(item, field_path)
-                    for field_path in self.match_fields
-                ]
-                return " | ".join(
-                    str(value) if value else "N/A" for value in match_values
-                )
-            return "judge matched pair"
-
+                if any(value not in (None, "") for value in match_values):
+                    return " | ".join(
+                        str(value) if value else "N/A" for value in match_values
+                    )
+            if item_key[0] == "__text_review__":
+                return "text review match"
+            if item_key[0] == "__judge_pair__":
+                return "judge matched pair"
+            return "unmatched item"
         return " | ".join(str(v) if v else "N/A" for v in item_key)
 
     def _collect_all_keys(self, indexes: Dict[str, Dict[Tuple, dict]]) -> set:

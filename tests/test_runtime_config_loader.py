@@ -27,6 +27,7 @@ extraction:
   schema: schemas/personal/geothermal_ordinance_schema.json
   output_dir: processed/geothermal_ordinances
   max_context: 111111
+  timeout_seconds: 480
 """,
         encoding="utf-8",
     )
@@ -43,6 +44,7 @@ extraction:
     assert resolved["schema"] == "schemas/personal/geothermal_ordinance_schema.json"
     assert resolved["output"] == "processed/geothermal_ordinances"
     assert resolved["max_context"] == 222222
+    assert resolved["timeout_seconds"] == 480
     assert resolved["_config_sources"]["max_context"] == "cli"
 
 
@@ -77,6 +79,26 @@ def test_catalog_for_command_contains_required_and_advanced_fields():
     assert "schema" in names
     assert levels["input_dir"] == "required"
     assert levels["max_context"] == "advanced"
+    assert levels["timeout_seconds"] == "advanced"
+
+
+@pytest.mark.parametrize("timeout_value", [0, -1, True, "600"])
+def test_load_runtime_config_file_rejects_invalid_extraction_timeout(
+    tmp_path: Path, timeout_value
+):
+    config_path = tmp_path / "run.yaml"
+    config_path.write_text(
+        f"""
+extraction:
+  input_dir: documents/geothermal_ordinances
+  schema: schemas/personal/geothermal_ordinance_schema.json
+  timeout_seconds: {timeout_value!r}
+""",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(RuntimeConfigError, match="extraction.timeout_seconds"):
+        load_runtime_config_file(config_path)
 
 
 def test_load_runtime_config_file_accepts_valid_discovery_section(tmp_path: Path):

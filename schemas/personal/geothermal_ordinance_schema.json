@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$metadata": {
     "domain": "Geothermal Energy Ordinances",
-    "version": "4.0.0",
+    "version": "5.0.0",
     "extraction": {
       "main_data_array": "requirements",
       "identifier_fields": [
@@ -15,7 +15,7 @@
     },
     "identity": {
       "deduplication": {
-        "key_fields": ["feature", "specific_subject", "applies_to", "value_category", "value", "value_interpretation", "units", "obligation", "condition"],
+        "key_fields": ["feature", "rule_kind", "specific_subject", "applies_to", "value_category", "value", "value_interpretation", "units", "obligation", "condition"],
         "ignore_fields": ["source_verbatim", "summary", "reasoning", "notes", "applicable_values", "range_low", "range_high"]
       }
     }
@@ -81,7 +81,7 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["feature", "value_category", "obligation", "summary"],
+        "required": ["feature", "rule_kind", "value_category", "obligation", "summary"],
         "properties": {
           "feature": {
             "type": "string",
@@ -113,6 +113,20 @@
               "working hours"
             ]
           },
+          "rule_kind": {
+            "type": "string",
+            "description": "Canonical requirement shape for stronger cross-model alignment in validation. 'limit' for bounded thresholds (noise, distance ceilings), 'location' for siting/setback placement constraints, 'deadline' for due windows, 'duration' for sustained periods, 'equipment_standard' for required hardware/build standards, 'submission' for report/filing deliverables, 'approval' for permit/authorization gates, and 'monitoring' for testing/measurement obligations.",
+            "enum": [
+              "limit",
+              "deadline",
+              "duration",
+              "location",
+              "equipment_standard",
+              "submission",
+              "approval",
+              "monitoring"
+            ]
+          },
           "specific_subject": {
             "type": ["string", "null"],
             "description": "Sub-aspect of the feature that distinguishes this record from other rows sharing the same feature (WHAT axis). Participates in the dedup key. Use the ordinance's own framing. Null when the feature is already specific enough.",
@@ -130,7 +144,7 @@
           },
           "value_category": {
             "type": "string",
-            "description": "REQUIRED. How this requirement's value should be interpreted (HOW MUCH axis). 'quantitative' = a measurable magnitude lives in 'value' (distance, dBA, acres, MW, hours, %, $). 'qualitative' = there is no magnitude; the substance lives in 'requirement_description' and 'value' should be null. Independent of 'obligation': a quantitative limit can be conditional and a qualitative item can be required.",
+            "description": "REQUIRED. How this requirement's value should be interpreted (HOW MUCH axis). 'quantitative' = a measurable magnitude lives in 'value' (distance, dBA, acres, MW, hours, %, $). 'qualitative' = there is no magnitude; the substance lives in 'requirement_description' and 'value' should be null. Independent of 'obligation': a quantitative limit can be conditional and a qualitative item can be required. If one clause contains BOTH a measurable threshold and a prohibition/allowance, emit a quantitative row for the threshold and, when needed, a separate qualitative row for the non-numeric condition.",
             "enum": ["quantitative", "qualitative"],
             "examples": ["quantitative", "qualitative"]
           },
@@ -198,7 +212,43 @@
             "type": ["string", "null"],
             "description": "Additional context: measurement conditions, exceptions, cross-references."
           }
-        }
+        },
+        "allOf": [
+          {
+            "if": {
+              "properties": { "value_category": { "const": "quantitative" } }
+            },
+            "then": {
+              "required": ["value", "value_interpretation"],
+              "properties": {
+                "value": {
+                  "anyOf": [
+                    { "type": "number" },
+                    { "type": "string", "minLength": 1 }
+                  ]
+                },
+                "units": { "type": ["string", "null"] },
+                "value_interpretation": {
+                  "enum": ["exact", "minimum", "maximum", "range", "formula", "tiered", "enumerated"]
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": { "value_category": { "const": "qualitative" } }
+            },
+            "then": {
+              "properties": {
+                "value": { "type": "null" },
+                "units": { "type": "null" },
+                "range_low": { "type": "null" },
+                "range_high": { "type": "null" },
+                "value_interpretation": { "type": "null" }
+              }
+            }
+          }
+        ]
       }
     }
   }

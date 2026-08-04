@@ -5,9 +5,9 @@ domain: geothermal_ordinances
 
 # ── Model tiers ──────────────────────────────────────────────────────────────
 models:
-  primary: gpt-5.6-luna
-  secondary: claude-haiku-4-5
-  judge: claude-sonnet-4-6
+  primary: gpt-5.6-terra
+  secondary: claude-sonnet-4-6
+  judge: claude-sonnet-5
 
 # ── Discovery ────────────────────────────────────────────────────────────────
 discovery:
@@ -126,6 +126,7 @@ extraction:
   schema: schemas/personal/geothermal_ordinance_schema.json
   output_dir: extracted/geothermal_ordinances
   max_context: 600000
+  timeout_seconds: 600              # 4-6 can exceed default 120s on long code chapters
   pages:                                   # cost control for oversized municipal codes
     auto_locate:                           # only engages for docs that would be truncated
       model: secondary                     # cheap/fast — page finding doesn't need primary
@@ -221,18 +222,26 @@ compilation:
 # ── QA/QC ────────────────────────────────────────────────────────────────────
 qaqc:
   models: [primary, secondary]
+  output_dir: validated/geothermal_ordinances
   report:
     include_csv: false
     include_missing_in_queue: true
     include_low_signal_presence_in_queue: false
   comparison_approach: mixed
   record_matching:
-    key_fields: [feature, applies_to, specific_subject]
+    key_fields: [feature, rule_kind, applies_to, specific_subject]
     fuzzy_key_fields: [applies_to, specific_subject]
     semantic_match_threshold: 0.38
+    anchor:
+      fields: [source_verbatim]
+      method: char_ngram
+      ngram: 4
+      auto_threshold: 0.65
+      review_threshold: 0.35
+      max_candidates_per_row: 3
+      min_anchor_chars: 12
   comparison:
     primary_fields: [value, units, value_interpretation, obligation]
-    # Optional cross-model unit canonicalization groups (domain-configurable, no code hardcoding).
     unit_equivalence_groups:
       - [feet, ft]
       - [hours, hrs, hr]
@@ -241,7 +250,10 @@ qaqc:
   judge:
     enabled: true
     model: judge
-    apply_on: all
+    timeout_seconds: 300
+    max_calls_per_document: 30
+    reuse_cached_decisions: true
+    apply_on: non_numeric
     row_equivalence: true
     pair_unmatched: true
     min_confidence: high

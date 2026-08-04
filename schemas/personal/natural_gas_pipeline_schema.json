@@ -5,18 +5,14 @@
     "version": "3.0.0",
     "extraction": {
       "main_data_array": "requirements",
-      "identifier_fields": [
-        "jurisdiction.state",
-        "jurisdiction.county"
-      ],
-      "context_objects": [
-        "jurisdiction"
-      ]
+      "identifier_fields": ["jurisdiction.state", "jurisdiction.county"],
+      "context_objects": ["jurisdiction"]
     },
     "identity": {
       "deduplication": {
         "key_fields": [
           "feature",
+          "rule_kind",
           "specific_subject",
           "applies_to",
           "value_category",
@@ -42,20 +38,13 @@
   "description": "Regulatory requirements for natural gas pipelines, compressor stations, and associated infrastructure.\n\nSCOPE: Natural gas compressor stations, natural gas pipelines (transmission and distribution), metering/regulator stations, oil and gas facilities, and associated equipment.\n\nEXCLUDE: Geothermal wells, wind turbines, solar installations, water/sewer utilities, electric substations, and telecommunications towers.\n\nWhen extracting from multi-use ordinances, ONLY extract provisions that explicitly apply to natural gas or oil and gas facilities.\n\nEvery requirement row is decomposed on four axes: WHAT is regulated (feature + specific_subject + requirement_description + applies_to), HOW MUCH (value + value_category + value_interpretation + units + range_low/range_high), HOW BINDING (obligation), and WHEN/WHERE (condition + applies_to). Evidence lives in source_verbatim, summary, reasoning, and section.",
   "type": "object",
   "additionalProperties": false,
-  "required": [
-    "jurisdiction",
-    "requirements",
-    "document_applicability"
-  ],
+  "required": ["jurisdiction", "requirements", "document_applicability"],
   "properties": {
     "document_applicability": {
       "type": "object",
       "description": "Scope verification (extraction-quality field, excluded from compiled output).",
       "additionalProperties": false,
-      "required": [
-        "applies_to_natural_gas",
-        "extraction_approach"
-      ],
+      "required": ["applies_to_natural_gas", "extraction_approach"],
       "properties": {
         "applies_to_natural_gas": {
           "type": "boolean",
@@ -71,10 +60,7 @@
       "type": "object",
       "description": "Geographic and temporal context. These fields become row-level context in compiled output.",
       "additionalProperties": false,
-      "required": [
-        "state",
-        "county"
-      ],
+      "required": ["state", "county"],
       "properties": {
         "state": {
           "type": "string",
@@ -85,17 +71,11 @@
           "description": "County, city, town, or township name exactly as written."
         },
         "subdivision": {
-          "type": [
-            "string",
-            "null"
-          ],
+          "type": ["string", "null"],
           "description": "Sub-jurisdiction name if applicable. Null if county-level."
         },
         "jurisdiction_type": {
-          "type": [
-            "string",
-            "null"
-          ],
+          "type": ["string", "null"],
           "description": "Type of jurisdiction: County, City, Town, Township, Borough, or Village.",
           "enum": [
             "County",
@@ -108,18 +88,11 @@
           ]
         },
         "year": {
-          "type": [
-            "integer",
-            "string",
-            "null"
-          ],
+          "type": ["integer", "string", "null"],
           "description": "Year the ordinance was adopted or last amended. Null if not stated."
         },
         "source": {
-          "type": [
-            "string",
-            "null"
-          ],
+          "type": ["string", "null"],
           "description": "URL or document reference for the source ordinance. Use the SOURCE_URL from the CONTEXT block at the top of the document if present."
         }
       }
@@ -132,6 +105,7 @@
         "additionalProperties": false,
         "required": [
           "feature",
+          "rule_kind",
           "value_category",
           "obligation",
           "summary"
@@ -158,11 +132,22 @@
               "enclosure"
             ]
           },
+          "rule_kind": {
+            "type": "string",
+            "description": "Canonical requirement shape for stronger cross-model alignment in validation. 'limit' for bounded thresholds, 'deadline' for due windows, 'duration' for sustained periods, 'location' for siting/setback placement constraints, 'equipment_standard' for required hardware/build standards, 'submission' for report/filing deliverables, 'approval' for permit/authorization gates, and 'monitoring' for testing/measurement obligations.",
+            "enum": [
+              "limit",
+              "deadline",
+              "duration",
+              "location",
+              "equipment_standard",
+              "submission",
+              "approval",
+              "monitoring"
+            ]
+          },
           "specific_subject": {
-            "type": [
-              "string",
-              "null"
-            ],
+            "type": ["string", "null"],
             "description": "Sub-aspect of the feature that distinguishes this record from other rows sharing the same feature (WHAT axis). Participates in the dedup key. Use the ordinance's own framing. Null when the feature is already specific enough.",
             "examples": [
               "from property line",
@@ -174,10 +159,7 @@
             ]
           },
           "applies_to": {
-            "type": [
-              "string",
-              "null"
-            ],
+            "type": ["string", "null"],
             "description": "Facility type or scope the requirement governs (WHAT/WHERE axis), in the document's own terminology. Describes the kind of facility the rule binds. This is NOT the situational trigger (use 'condition') and NOT the obligation. Null when the requirement applies to all natural gas facilities generally.",
             "examples": [
               "Compressor station",
@@ -189,10 +171,7 @@
             ]
           },
           "requirement_description": {
-            "type": [
-              "string",
-              "null"
-            ],
+            "type": ["string", "null"],
             "description": "Clean, obligation-free description of the regulated action or object (WHAT axis). NEVER include obligation language \u2014 no 'required', 'shall', 'may', 'must', 'prohibited'. Used for qualitative requirements; null for purely quantitative rows. For qualitative requirements with relative-reference limits (e.g., 'must not exceed pre-development ambient noise levels'), state the reference standard here (e.g., 'Noise shall not exceed pre-development ambient levels within 300 feet') \u2014 do NOT leave this null while classifying the row as qualitative.",
             "examples": [
               "Sound barriers",
@@ -207,38 +186,16 @@
           "value_category": {
             "type": "string",
             "description": "REQUIRED. How this requirement's value should be interpreted (HOW MUCH axis). 'quantitative' = a fixed, extractable numeric magnitude lives in 'value' (distance, dBA, acres, MW, hours, %, $). 'qualitative' = there is no fixed numeric magnitude; the substance lives in 'requirement_description' and 'value' must be null. Independent of 'obligation': a quantitative limit can be conditional and a qualitative item can be required.\n\nCRITICAL: If the limit is a relative reference ('shall not exceed pre-development ambient levels', 'shall not exceed neighboring property baseline') or a procedural/approval requirement with no fixed numeric value, classify as 'qualitative' \u2014 the reference phrase belongs in 'requirement_description'. NEVER classify as 'quantitative' when 'value' would be null. If your 'reasoning' concludes 'no magnitude \u2192 qualitative', set value_category='qualitative'.",
-            "enum": [
-              "quantitative",
-              "qualitative"
-            ],
-            "examples": [
-              "quantitative",
-              "qualitative"
-            ]
+            "enum": ["quantitative", "qualitative"],
+            "examples": ["quantitative", "qualitative"]
           },
           "value": {
-            "type": [
-              "number",
-              "string",
-              "null"
-            ],
+            "type": ["number", "string", "null"],
             "description": "For quantitative requirements, the numeric magnitude ONLY (e.g., 500, 55, 8). Use a range string (e.g., '100-500') when the provision states a span, set value_interpretation='range', and populate range_low/range_high. For qualitative requirements set value to null and describe the requirement in requirement_description. NEVER embed units or obligation words ('required', 'may', 'shall') in value.",
-            "examples": [
-              500,
-              300,
-              60,
-              55,
-              8,
-              20,
-              "100-500",
-              null
-            ]
+            "examples": [500, 300, 60, 55, 8, 20, "100-500", null]
           },
           "value_interpretation": {
-            "type": [
-              "string",
-              "null"
-            ],
+            "type": ["string", "null"],
             "description": "How the value is bounded or structured (HOW MUCH axis). 'exact' = single fixed value ('shall be 35 feet'); 'minimum' = floor ('at least', 'no less than'); 'maximum' = ceiling ('shall not exceed'); 'range' = a span \u2014 populate range_low and range_high; 'formula' = computed ('1.1x turbine height'); 'tiered' = value depends on a band \u2014 emit one row per tier; 'enumerated' = a discrete set of allowed values \u2014 pair with applicable_values. Null for qualitative requirements (present/absent).",
             "enum": [
               "exact",
@@ -262,44 +219,19 @@
             ]
           },
           "units": {
-            "type": [
-              "string",
-              "null"
-            ],
+            "type": ["string", "null"],
             "description": "Unit of measurement for a quantitative value. Null for qualitative requirements.",
-            "examples": [
-              "feet",
-              "dBA",
-              "dBC",
-              "acres",
-              "miles",
-              "inches",
-              null
-            ]
+            "examples": ["feet", "dBA", "dBC", "acres", "miles", "inches", null]
           },
           "range_low": {
-            "type": [
-              "number",
-              "null"
-            ],
+            "type": ["number", "null"],
             "description": "Lower bound of the span when 'value' is a range (e.g., 100 for '100-500'). Domain-agnostic: works for distances, dBA, MW, acres, etc. Null unless value_interpretation='range'.",
-            "examples": [
-              100,
-              55,
-              null
-            ]
+            "examples": [100, 55, null]
           },
           "range_high": {
-            "type": [
-              "number",
-              "null"
-            ],
+            "type": ["number", "null"],
             "description": "Upper bound of the span when 'value' is a range (e.g., 500 for '100-500'). Domain-agnostic: works for distances, dBA, MW, acres, etc. Null unless value_interpretation='range'.",
-            "examples": [
-              500,
-              65,
-              null
-            ]
+            "examples": [500, 65, null]
           },
           "obligation": {
             "type": "string",
@@ -322,10 +254,7 @@
             ]
           },
           "condition": {
-            "type": [
-              "string",
-              "null"
-            ],
+            "type": ["string", "null"],
             "description": "Situational trigger or circumstance that governs WHEN or WHERE the requirement applies (WHEN/WHERE axis). Must be a SHORT phrase only \u2014 examples: 'nighttime', 'daytime only', 'capacity exceeds 3 MW', 'when in AG zone', 'after a signed complaint is received'. NEVER put the substance of the requirement here \u2014 if a sentence describes what is regulated rather than when/where it applies, it belongs in 'requirement_description' or 'source_verbatim'. Not the facility type (use 'applies_to'). Not the obligation. Null if the requirement applies unconditionally.",
             "examples": [
               "nighttime",
@@ -337,39 +266,20 @@
             ]
           },
           "applicable_values": {
-            "type": [
-              "array",
-              "null"
-            ],
+            "type": ["array", "null"],
             "description": "Parallel interchangeable atomic values that share an IDENTICAL obligation, condition, and evidence. Use ONLY when (a) the values are categorical/enumerated (e.g., permitted district codes, acceptable permit types, equipment options) and (b) all share the same obligation + condition + source. Pair with value_interpretation='enumerated'. Null when a single value applies.",
             "items": {
               "type": "string"
             },
             "examples": [
-              [
-                "AG",
-                "RE",
-                "SF 8.5",
-                "R1",
-                "R2",
-                "R3"
-              ],
-              [
-                "Conditional use permit",
-                "Minor use permit"
-              ],
-              [
-                "exhaust muffler",
-                "exhaust box"
-              ],
+              ["AG", "RE", "SF 8.5", "R1", "R2", "R3"],
+              ["Conditional use permit", "Minor use permit"],
+              ["exhaust muffler", "exhaust box"],
               null
             ]
           },
           "source_verbatim": {
-            "type": [
-              "string",
-              "null"
-            ],
+            "type": ["string", "null"],
             "description": "Exact operative clause copied word-for-word from the ordinance (EVIDENCE axis). Never paraphrase \u2014 this is the audit anchor. If the passage exceeds 50 words, quote the operative head, insert '\u2026', then the tail. Null only if no single passage can be quoted.",
             "examples": [
               "...shall not exceed a maximum of 55 dBa.",
@@ -378,17 +288,11 @@
             ]
           },
           "summary": {
-            "type": [
-              "string",
-              "null"
-            ],
+            "type": ["string", "null"],
             "description": "Human-readable summary of the requirement (EVIDENCE axis). May be paraphrased for clarity. Use 'source_verbatim' for the exact quote. Include enough context for verification."
           },
           "reasoning": {
-            "type": [
-              "string",
-              "null"
-            ],
+            "type": ["string", "null"],
             "description": "Terse 'trigger \u2192 label' rationale (EVIDENCE axis), <=15 words, citing the governing verb and the value_category decision. Goes in ignore_fields and is hidden from compiled output. Null if self-evident.",
             "examples": [
               "'may require' \u2192 conditional; no magnitude \u2192 qualitative",
@@ -397,20 +301,83 @@
             ]
           },
           "section": {
-            "type": [
-              "string",
-              "null"
-            ],
+            "type": ["string", "null"],
             "description": "Specific ordinance section/article reference (EVIDENCE axis, e.g., 'Sec. 12-5-106', 'Article 5 \u00a7 552', '\u00a7 270-4.10')."
           },
           "notes": {
-            "type": [
-              "string",
-              "null"
-            ],
+            "type": ["string", "null"],
             "description": "Additional context not captured elsewhere: measurement conditions, exceptions, cross-references."
           }
-        }
+        },
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "value_category": {
+                  "const": "quantitative"
+                }
+              }
+            },
+            "then": {
+            "required": ["value", "value_interpretation"],
+              "properties": {
+                "value": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "string",
+                    "minLength": 1
+                    }
+                  ]
+                },
+                "units": {
+                "type": ["string", "null"]
+                },
+                "value_interpretation": {
+                  "enum": [
+                    "exact",
+                    "minimum",
+                    "maximum",
+                    "range",
+                    "formula",
+                    "tiered",
+                    "enumerated"
+                  ]
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "value_category": {
+                  "const": "qualitative"
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "value": {
+                  "type": "null"
+                },
+                "units": {
+                  "type": "null"
+                },
+                "range_low": {
+                  "type": "null"
+                },
+                "range_high": {
+                  "type": "null"
+                },
+                "value_interpretation": {
+                  "type": "null"
+                }
+              }
+            }
+          }
+        ]
       }
     }
   }

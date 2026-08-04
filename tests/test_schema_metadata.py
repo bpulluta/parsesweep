@@ -207,6 +207,31 @@ class TestValidationMetadata:
         assert meta.get_completeness_threshold() == 0.85
 
 
+class TestExtractionShapeNormalization:
+    """Test normalization for array-like object-map outputs."""
+
+    def test_extract_main_data_array_normalizes_numeric_key_object_map(
+        self, temp_schema_with_metadata
+    ):
+        meta = SchemaMetadata(temp_schema_with_metadata)
+        data = {
+            "test_items": {
+                "10": {"id": "c"},
+                "2": {"id": "b"},
+                "0": {"id": "a"},
+            }
+        }
+        items = meta.extract_main_data_array(data)
+        assert [item["id"] for item in items] == ["a", "b", "c"]
+
+    def test_extract_main_data_array_rejects_non_numeric_object_map(
+        self, temp_schema_with_metadata
+    ):
+        meta = SchemaMetadata(temp_schema_with_metadata)
+        data = {"test_items": {"first": {"id": "a"}, "second": {"id": "b"}}}
+        assert meta.extract_main_data_array(data) == []
+
+
 class TestV2Requirements:
     """Test v2.0 strict validation requirements."""
 

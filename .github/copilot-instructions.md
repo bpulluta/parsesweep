@@ -263,6 +263,27 @@ pixi run psweep compare extracted/geothermal_ordinances/qa_qc \
 
 **Report format:** Both Excel/CSV show one row per item with combined value+unit (e.g., "1320 feet"). Status column: AGREE, DIFFER, ONLY gpt-5, ONLY gpt-4.1.
 
+### QA/QC + schema lessons from live audits (apply across domains)
+
+1. Keep ownership strict:
+   - schema = extraction contract (fields, enums, row identity, conditional constraints)
+   - `run.yaml` = QA/QC policy (models, judge, matching/comparison behavior)
+2. Prefer **two-model** QA/QC for routine validation; add more models only when
+   there is a demonstrated quality gain from real runs.
+3. If requirement rows contain mixed semantic types (limits, deadlines,
+   durations, monitoring, equipment standards), include a row discriminator
+   (e.g., `rule_kind`) and include it in QA/QC matching keys.
+4. Enforce quantitative/qualitative consistency in schema constraints:
+   - quantitative rows require value semantics (`value`, `units`,
+     `value_interpretation`)
+   - qualitative rows keep quantitative-only fields null.
+5. When one model emits object-mapped arrays (e.g., `"requirements": {"0": ...}`),
+   normalize deterministically to list form before compare; do not silently skip.
+6. Determine production model trust from **source-grounded multi-doc review** of
+   `ONLY model` + `DIFFER` rows, not agreement percentage alone.
+7. For cleaner arbitration, prefer a judge model that is independent from the
+   two compared extraction models when practical.
+
 ## Schema Information
 
 **v2.0+ REQUIREMENT: All schemas MUST include $metadata section:**

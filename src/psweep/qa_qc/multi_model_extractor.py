@@ -76,6 +76,7 @@ def run_multi_model_extraction(
     model_tiers: Sequence[str],
     output_dir: Path,
     max_context_chars: int = 400000,
+    timeout_seconds: Optional[int] = None,
     runtime_artifact: Optional[Dict[str, Any]] = None,
     run_id: Optional[str] = None,
     seed_records_by_model: Optional[Dict[str, Dict[str, Any]]] = None,
@@ -94,6 +95,7 @@ def run_multi_model_extraction(
             ``qaqc.models`` list). Resolved and de-duplicated by concrete model.
         output_dir: Base directory for QA/QC outputs (e.g., "processed/")
         max_context_chars: Maximum characters to process
+        timeout_seconds: Per-request LLM timeout for each model extraction.
         runtime_artifact: Optional compiled runtime artifact for lineage metadata
         run_id: Optional deterministic run identifier for this invocation
 
@@ -180,6 +182,7 @@ def run_multi_model_extraction(
                 azure_endpoint=llm_kwargs.get("azure_endpoint"),
                 azure_api_version=llm_kwargs.get("azure_api_version"),
                 base_url=llm_kwargs.get("base_url"),
+                timeout=timeout_seconds,
             )
 
             # Run extraction

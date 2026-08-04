@@ -98,6 +98,7 @@ def validate(
         or (Path.cwd() / "validated" / resolved_inputs.get("domain", path.name))
     )
     max_context = int(resolved_inputs.get("max_context", 400000))
+    timeout_seconds = resolved_inputs.get("timeout_seconds")
     qaqc_models = (resolved_inputs.get("qaqc") or {}).get("models") or []
     registry = resolved_inputs.get("_model_registry")
     qa_qc_output = validation_output_dir / "qa_qc"
@@ -223,6 +224,7 @@ def validate(
             "Extraction Mode": "reuse existing where available"
             if skip_existing
             else "reprocess all models",
+            "LLM Timeout (s)": str(timeout_seconds) if timeout_seconds else "default",
             "Report Output": str(qa_qc_output),
         }
     )
@@ -261,6 +263,7 @@ def validate(
         registry=registry,
         qaqc_models=qaqc_models,
         max_context=max_context,
+        timeout_seconds=timeout_seconds,
         page_range_map=page_range_map,
         verbosity=view.verbosity.value,
         runtime_artifact=None,
