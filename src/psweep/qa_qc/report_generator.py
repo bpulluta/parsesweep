@@ -544,8 +544,8 @@ class ReportGenerator:
                 continue
             ws.column_dimensions[get_column_letter(idx)].width = width
 
-    def _build_item_centric_df(self, result: ComparisonResult) -> pd.DataFrame:
-        """Build one row per aligned record with reviewer-first columns."""
+    def _build_item_centric_df(self, result: ComparisonResult, doc_name: Optional[str] = None) -> pd.DataFrame:
+        """Build one row per aligned record with reviewer-first columns and evidence columns."""
         if not result.item_comparisons:
             return pd.DataFrame(
                 columns=[
@@ -553,11 +553,15 @@ class ReportGenerator:
                     "Divergence",
                     "Category",
                     "Subject",
+                    "Source Document",
                     "Diverging Field(s)",
                     "Seen By",
                     "Judge",
                 ]
             )
+
+        # Use document name from result if not provided
+        doc_name = doc_name or result.document_name
 
         items_data: Dict[str, List[FieldComparison]] = {}
         for comparison in result.item_comparisons:
@@ -695,9 +699,20 @@ class ReportGenerator:
                 "Applies To": applies_to or "",
                 "Specific Subject": specific_subject or "",
                 "Subject": subject,
-                "Seen By": seen_by,
-                "Diverging Field(s)": diverging_fields,
             }
+            
+            # Add evidence columns
+            row["Source Document"] = self._evidence_loader.get_document_path(doc_name) or "N/A"
+            row["Section"] = self._evidence_loader.get_section_for_item(doc_name, item_id) or "N/A"
+            
+            # Add model-specific evidence columns
+            for model in result.models:
+                evidence_text = self._evidence_loader.format_model_evidence(model, str(item_id), truncate=200)
+                row[f"Extracted by {model_labels[model]}"] = evidence_text or "(not extracted)"
+            
+            row["Ground Truth Verbatim"] = ""  # Populated from extracted metadata if available
+            row["Seen By"] = seen_by
+            row["Diverging Field(s)"] = diverging_fields
             # Always include Value Type and Review Value (production default)
             row["Value Type"] = row_value_type
             row["Review Value"] = self._build_review_value_summary(
@@ -1154,8 +1169,11 @@ class ReportGenerator:
             "Applies To",
             "Specific Subject",
             "Subject",
+            "Source Document",
+            "Section",
             "Value Type",
             "Review Value",
+            "Ground Truth Verbatim",
             "Diverging Field(s)",
             "Why Flagged",
             "Evidence",
@@ -1172,12 +1190,13 @@ class ReportGenerator:
         model_columns = [
             col for col in queue.columns if col not in metadata_columns
         ]
-        # Production defaults: always show Subject and Value columns
+        # Production defaults: always show Subject, Value columns, and evidence
         lean_columns = [
             "#",
             "Status",
             "Category",
             "Subject",
+            "Source Document",
             "Value Type",
             "Review Value",
             *model_columns,
@@ -1583,6 +1602,7 @@ class ReportGenerator:
         # Production defaults: always show Value Type, Review Value, and Field details
         detail_columns = [
             "Field",
+            "Source Document",
             "Value Type",
             "Review Value",
             "Ground Truth",
@@ -1590,12 +1610,12 @@ class ReportGenerator:
             *model_label_list,
             "Diverging Field(s)",
             "Judge Says",
-                "Reviewer Verdict",
-                "Model Win",
-                "Evidence",
-                "Notes",
-                "Row ID",
-            ]
+            "Reviewer Verdict",
+            "Model Win",
+            "Evidence",
+            "Notes",
+            "Row ID",
+        ]
 
         if "Final Verdicts" in wb.sheetnames:
             del wb["Final Verdicts"]
