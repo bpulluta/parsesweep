@@ -108,6 +108,10 @@ compilation:
 #     include_csv: false
 #     include_missing_in_queue: true
 #     include_low_signal_presence_in_queue: false  # keep obligation-only one-sided rows out of reviewer queue
+#     identity_columns: compact                     # compact | expanded
+#     include_value_unit_column: true
+#     evidence_detail: full                        # full | compact | off
+#     evidence_max_chars: 200
 #   comparison_approach: mixed            # mixed | numeric_only | text_review
 #   record_matching:
 #     key_fields: [feature, applies_to, specific_subject]
@@ -115,6 +119,11 @@ compilation:
 #     semantic_match_threshold: 0.38
 #   comparison:
 #     primary_fields: [value, units, value_interpretation, obligation]
+#     collapse_percent_context: false   # true = treat "percent above/below ..." as "percent"
+#     unit_equivalence_groups:          # optional unit synonym groups
+#       - [feet, ft]
+#       - [hours, hrs, hr]
+#       - [decibels, dB, dBA, dB(A)]
 #   judge:                                # Optional but recommended for mixed/text_review.
 #     enabled: true
 #     model: judge

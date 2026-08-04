@@ -276,6 +276,7 @@ class TestComparisonEngine:
         assert config["lane_name"] == "main"
         assert config["match_fields"] == ["referenceNumber", "make", "model"]
         assert config["compare_fields"] == ["ratedCapacityKW", "operatingHoursPerUnitLimit"]
+        assert config["collapse_percent_context"] is False
         assert config["unit_equivalence_groups"] == [["hours", "hrs", "hr"]]
         assert config["projection"] is None
 
@@ -347,6 +348,75 @@ class TestComparisonEngine:
                     "record_matching": {"key_fields": ["feature"]},
                     "comparison": {"primary_fields": ["value"]},
                     "judge": {"enabled": True, "max_calls_per_document": 0},
+                },
+            )
+
+    def test_resolve_qaqc_runtime_config_parses_report_options(self):
+        config = resolve_qaqc_runtime_config(
+            MagicMock(),
+            runtime_qaqc={
+                "comparison_approach": "mixed",
+                "record_matching": {"key_fields": ["feature"]},
+                "comparison": {"primary_fields": ["value"]},
+                "report": {
+                    "include_csv": True,
+                    "include_missing_in_queue": False,
+                    "include_low_signal_presence_in_queue": True,
+                    "evidence_detail": "compact",
+                    "evidence_max_chars": 350,
+                    "identity_columns": "expanded",
+                    "include_value_unit_column": False,
+                },
+            },
+        )
+        assert config["report"]["include_csv"] is True
+        assert config["report"]["evidence_detail"] == "compact"
+        assert config["report"]["evidence_max_chars"] == 350
+        assert config["report"]["identity_columns"] == "expanded"
+        assert config["report"]["include_value_unit_column"] is False
+
+    def test_resolve_qaqc_runtime_config_wires_scope_variant_keys(self):
+        config = resolve_qaqc_runtime_config(
+            MagicMock(),
+            runtime_qaqc={
+                "comparison_approach": "mixed",
+                "record_matching": {
+                    "key_fields": ["feature"],
+                    "scope_variant_keys": [["noise", "operator"], ["setback", "exception"]],
+                },
+                "comparison": {"primary_fields": ["value"]},
+            },
+        )
+        assert config["scope_variant_keys"] == [
+            ["noise", "operator"],
+            ["setback", "exception"],
+        ]
+
+    def test_resolve_qaqc_runtime_config_parses_collapse_percent_context(self):
+        config = resolve_qaqc_runtime_config(
+            MagicMock(),
+            runtime_qaqc={
+                "comparison_approach": "mixed",
+                "record_matching": {"key_fields": ["feature"]},
+                "comparison": {
+                    "primary_fields": ["value", "units"],
+                    "collapse_percent_context": True,
+                },
+            },
+        )
+        assert config["collapse_percent_context"] is True
+
+    def test_resolve_qaqc_runtime_config_rejects_non_bool_collapse_percent_context(self):
+        with pytest.raises(ValueError, match="collapse_percent_context"):
+            resolve_qaqc_runtime_config(
+                MagicMock(),
+                runtime_qaqc={
+                    "comparison_approach": "mixed",
+                    "record_matching": {"key_fields": ["feature"]},
+                    "comparison": {
+                        "primary_fields": ["value", "units"],
+                        "collapse_percent_context": "yes",
+                    },
                 },
             )
 
@@ -1760,6 +1830,54 @@ class TestComparisonEngine:
                 temp_dir, {"model_a": model_a, "model_b": model_b}
             ),
             document_name="mixed_time_ranges",
+        )
+        value_fc = next(fc for fc in result.item_comparisons if fc.field_path == "value")
+        units_fc = next(fc for fc in result.item_comparisons if fc.field_path == "units")
+        assert value_fc.needs_review is False
+        assert units_fc.needs_review is False
+
+    def test_mixed_time_ranges_with_and_not_flagged(self, temp_dir):
+        """Equivalent time ranges using 'and' phrasing should not trigger conflicts."""
+        mock = MagicMock()
+        mock.get_main_data_array.return_value = "requirements"
+        mock.get_identifier_fields.return_value = []
+        mock.get_context_objects.return_value = []
+
+        model_a = {
+            "requirements": [
+                {
+                    "category": "Working hours",
+                    "specific_subject": "site preparation",
+                    "value": "7 a.m. and 7 p.m.",
+                    "units": "hours",
+                }
+            ]
+        }
+        model_b = {
+            "requirements": [
+                {
+                    "category": "Working hours",
+                    "specific_subject": "site preparation",
+                    "value": "07:00-19:00",
+                    "units": "HH:MM (24-hour)",
+                }
+            ]
+        }
+        engine = ComparisonEngine(
+            mock,
+            qa_qc_config={
+                "source": "runtime_artifact",
+                "lane_name": "quantitative",
+                "comparison_approach": "mixed",
+                "match_fields": ["category", "specific_subject"],
+                "compare_fields": ["value", "units"],
+            },
+        )
+        result = engine.compare_outputs(
+            output_files=_write_output_files(
+                temp_dir, {"model_a": model_a, "model_b": model_b}
+            ),
+            document_name="mixed_time_ranges_and",
         )
         value_fc = next(fc for fc in result.item_comparisons if fc.field_path == "value")
         units_fc = next(fc for fc in result.item_comparisons if fc.field_path == "units")

@@ -291,8 +291,8 @@ class TestReportGenerator:
         )
         df = generator._build_item_centric_df(result)
         assert len(df) == 1
-        assert df.iloc[0]["flash"] == "obligation=shall"
-        assert df.iloc[0]["5-mini"] == "obligation=must"
+        assert df.iloc[0]["flash"] == "value=70 decibels; obligation=shall"
+        assert df.iloc[0]["5-mini"] == "value=70 decibels; obligation=must"
 
     def test_item_centric_shows_same_diverging_field_set_per_model(self, generator):
         """DIFFER rows should render the same diverging fields for each model."""

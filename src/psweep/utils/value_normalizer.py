@@ -122,11 +122,63 @@ def _normalize_unit_text(raw: str) -> str:
     return raw
 
 
+_UNIT_STOPWORDS = {
+    "above",
+    "below",
+    "over",
+    "under",
+    "within",
+    "outside",
+    "from",
+    "to",
+    "at",
+    "equivalent",
+    "level",
+    "levels",
+}
+
+
+def _normalize_unit_token(token: str) -> str:
+    normalized = token.strip().lower()
+    if not normalized:
+        return normalized
+    if normalized in {"db(a)", "dba"}:
+        return "dba"
+    if normalized in {"db", "decibel", "decibels"}:
+        return "db"
+    if normalized in {"hr", "hrs", "hour", "hours"}:
+        return "hours"
+    if normalized in {"%", "percent", "percentage"}:
+        return "percent"
+    return normalized
+
+
+def _unit_token_key(raw: str, *, collapse_percent_context: bool = False) -> str:
+    """Build an order-insensitive semantic token key for unit equivalence matching."""
+    tokens: list[str] = []
+    for token in _normalize_unit_text(raw).split():
+        if re.fullmatch(r"\d+(?:\.\d+)?", token):
+            continue
+        if token in _UNIT_STOPWORDS:
+            continue
+        normalized = _normalize_unit_token(token)
+        if normalized:
+            tokens.append(normalized)
+    if not tokens:
+        return ""
+    # Percent-based units often carry trailing context ("percent above baseline").
+    if collapse_percent_context and tokens[0] == "percent":
+        return "percent"
+    return " ".join(sorted(set(tokens)))
+
+
 def _looks_like_time_format_label(raw: str) -> bool:
     compact = raw.replace(" ", "")
-    if re.search(r"h{1,2}:m{1,2}", compact):
+    if compact in {"am/pm", "ampm"}:
         return True
-    if re.search(r"([ap]\.?m\.?)", compact):
+    if re.search(r"\bh{1,2}:m{1,2}\b", compact):
+        return True
+    if re.search(r"\b\d{1,2}(?::\d{2})?[ap]\.?m\.?\b", compact):
         return True
     if "12-hour" in raw or "24-hour" in raw:
         return True
@@ -169,7 +221,10 @@ def _parse_time_of_day(raw: str) -> Optional[int]:
 
 
 def canonicalize_unit(
-    unit: Any, equivalence_index: Optional[dict[str, str]] = None
+    unit: Any,
+    equivalence_index: Optional[dict[str, str]] = None,
+    *,
+    collapse_percent_context: bool = False,
 ) -> Optional[str]:
     """Normalize unit labels to a canonical token for semantic comparison."""
     normalized = normalize_value(unit)
@@ -184,6 +239,17 @@ def canonicalize_unit(
         return "time-format"
     if equivalence_index and raw in equivalence_index:
         return equivalence_index[raw]
+    if equivalence_index:
+        token_key = _unit_token_key(raw, collapse_percent_context=collapse_percent_context)
+        if token_key:
+            mapped = equivalence_index.get(f"__tokens__:{token_key}")
+            if mapped:
+                return mapped
+    if (
+        collapse_percent_context
+        and _unit_token_key(raw, collapse_percent_context=True) == "percent"
+    ):
+        return "percent"
     return raw
 
 
@@ -191,10 +257,16 @@ def canonicalize_measurement(
     value: Any,
     unit: Any = None,
     equivalence_index: Optional[dict[str, str]] = None,
+    *,
+    collapse_percent_context: bool = False,
 ) -> Optional[Tuple[str, Optional[str]]]:
     """Return canonical (numeric_value, canonical_unit) when parsable."""
     parsed_value = normalize_value(value)
-    parsed_unit = canonicalize_unit(unit, equivalence_index)
+    parsed_unit = canonicalize_unit(
+        unit,
+        equivalence_index,
+        collapse_percent_context=collapse_percent_context,
+    )
 
     if isinstance(parsed_value, (int, float)):
         number = float(parsed_value)
@@ -220,7 +292,11 @@ def canonicalize_measurement(
 
     number = float(match.group(1))
     canonical_number = str(int(number)) if number.is_integer() else str(number)
-    inline_unit = canonicalize_unit(match.group(2), equivalence_index)
+    inline_unit = canonicalize_unit(
+        match.group(2),
+        equivalence_index,
+        collapse_percent_context=collapse_percent_context,
+    )
     final_unit = parsed_unit or inline_unit
     return canonical_number, final_unit
 
@@ -245,4 +321,7 @@ def build_unit_equivalence_index(groups: Any) -> dict[str, str]:
         canonical = normalized_group[0]
         for token in normalized_group:
             index[token] = canonical
+            token_key = _unit_token_key(token, collapse_percent_context=False)
+            if token_key:
+                index[f"__tokens__:{token_key}"] = canonical
     return index

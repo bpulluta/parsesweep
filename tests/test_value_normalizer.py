@@ -70,7 +70,7 @@ def test_is_numeric_value(value, expected):
 def test_canonicalize_unit_with_config_groups():
     index = build_unit_equivalence_index([["hours", "hrs", "hr"]])
     assert canonicalize_unit("hrs", index) == "hours"
-    assert canonicalize_unit("hour", index) == "hour"
+    assert canonicalize_unit("hour", index) == "hours"
 
 
 def test_canonicalize_measurement_with_inline_unit_and_config_groups():
@@ -93,3 +93,25 @@ def test_canonicalize_measurement_treats_time_formats_as_equivalent():
 
 def test_canonicalize_unit_maps_generic_time_label():
     assert canonicalize_unit("time") == "time-format"
+
+
+def test_canonicalize_unit_is_order_insensitive_for_configured_compound_units():
+    index = build_unit_equivalence_index([["decibels", "CNEL dB(A)"]])
+    assert canonicalize_unit("dB(A) CNEL", index) == "decibels"
+    assert canonicalize_unit("dBA CNEL", index) == "decibels"
+
+
+def test_canonicalize_unit_strips_percent_context_suffix():
+    assert canonicalize_unit("percent above CNEL 65 dB(A)") != "percent"
+    assert (
+        canonicalize_unit(
+            "percent above CNEL 65 dB(A)",
+            collapse_percent_context=True,
+        )
+        == "percent"
+    )
+
+
+@pytest.mark.parametrize("unit_label", ["PM10", "PM2.5", "ampere", "amps", "ambient dB"])
+def test_canonicalize_unit_does_not_misclassify_non_time_units(unit_label):
+    assert canonicalize_unit(unit_label) != "time-format"

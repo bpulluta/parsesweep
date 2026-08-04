@@ -17,6 +17,74 @@ from typing import Any, Dict, Optional
 logger = logging.getLogger(__name__)
 
 
+def _parse_report_config(report_raw: Any) -> Dict[str, Any]:
+    """Parse and validate optional qaqc.report settings."""
+    if report_raw is None:
+        report_raw = {}
+    if not isinstance(report_raw, dict):
+        raise ValueError("qaqc.report must be a mapping/object when provided.")
+
+    allowed_keys = {
+        "include_csv",
+        "include_missing_in_queue",
+        "include_low_signal_presence_in_queue",
+        "evidence_detail",
+        "evidence_max_chars",
+        "identity_columns",
+        "include_value_unit_column",
+    }
+    unknown = set(report_raw.keys()) - allowed_keys
+    if unknown:
+        raise ValueError(
+            "Unknown qaqc.report key(s): "
+            + ", ".join(sorted(unknown))
+            + ". Allowed keys: "
+            + ", ".join(sorted(allowed_keys))
+        )
+
+    def _require_bool(key: str, default: bool) -> bool:
+        value = report_raw.get(key, default)
+        if isinstance(value, bool):
+            return value
+        raise ValueError(f"qaqc.report.{key} must be true or false.")
+
+    evidence_detail = str(report_raw.get("evidence_detail", "full")).strip().lower()
+    if evidence_detail not in {"full", "compact", "off"}:
+        raise ValueError(
+            "qaqc.report.evidence_detail must be one of: full, compact, off."
+        )
+
+    evidence_max_chars = report_raw.get("evidence_max_chars", 200)
+    if (
+        isinstance(evidence_max_chars, bool)
+        or not isinstance(evidence_max_chars, int)
+        or not (50 <= evidence_max_chars <= 2000)
+    ):
+        raise ValueError(
+            "qaqc.report.evidence_max_chars must be an integer between 50 and 2000."
+        )
+
+    identity_columns = str(report_raw.get("identity_columns", "compact")).strip().lower()
+    if identity_columns not in {"compact", "expanded"}:
+        raise ValueError(
+            "qaqc.report.identity_columns must be one of: compact, expanded."
+        )
+
+    return {
+        "include_csv": _require_bool("include_csv", False),
+        "include_missing_in_queue": _require_bool("include_missing_in_queue", True),
+        "include_low_signal_presence_in_queue": _require_bool(
+            "include_low_signal_presence_in_queue", False
+        ),
+        "evidence_detail": evidence_detail,
+        "evidence_max_chars": int(evidence_max_chars),
+        "identity_columns": identity_columns,
+        "include_value_unit_column": _require_bool(
+            "include_value_unit_column", True
+        ),
+    }
+
+
 def _parse_anchor_config(
     anchor_raw: Any, comparison_approach: str, model_count: int
 ) -> Optional[Dict[str, Any]]:
@@ -168,6 +236,11 @@ def resolve_qaqc_runtime_config(
         )
 
     compare_fields = comparison.get("primary_fields") or ["value"]
+    collapse_percent_context = comparison.get("collapse_percent_context", False)
+    if not isinstance(collapse_percent_context, bool):
+        raise ValueError(
+            "qaqc.comparison.collapse_percent_context must be true or false."
+        )
     unit_equivalence_groups = comparison.get("unit_equivalence_groups") or []
     if not isinstance(unit_equivalence_groups, list):
         raise ValueError(
@@ -218,6 +291,28 @@ def resolve_qaqc_runtime_config(
     anchor_config = _parse_anchor_config(
         record_matching.get("anchor"), comparison_approach, model_count
     )
+    raw_scope_variant_keys = record_matching.get("scope_variant_keys") or []
+    if not isinstance(raw_scope_variant_keys, list):
+        raise ValueError(
+            "qaqc.record_matching.scope_variant_keys must be a list of "
+            "[category, subject] pairs."
+        )
+    scope_variant_keys: list[list[str]] = []
+    for pair in raw_scope_variant_keys:
+        if (
+            not isinstance(pair, (list, tuple))
+            or len(pair) < 2
+            or not isinstance(pair[0], str)
+            or not isinstance(pair[1], str)
+            or not pair[0].strip()
+            or not pair[1].strip()
+        ):
+            raise ValueError(
+                "Each qaqc.record_matching.scope_variant_keys entry must be "
+                "[category, subject] with two non-empty strings."
+            )
+        scope_variant_keys.append([pair[0].strip(), pair[1].strip()])
+    report = _parse_report_config(pack_qaqc.get("report"))
 
     return {
         "source": "runtime_artifact",
@@ -225,6 +320,7 @@ def resolve_qaqc_runtime_config(
         "comparison_approach": comparison_approach,
         "match_fields": list(match_fields),
         "compare_fields": list(compare_fields),
+        "collapse_percent_context": collapse_percent_context,
         "unit_equivalence_groups": list(unit_equivalence_groups),
         "projection": pack_qaqc.get("projection"),
         "enable_text_fallback_matching": enable_text_fallback_matching,
@@ -236,9 +332,9 @@ def resolve_qaqc_runtime_config(
         "fuzzy_match_fields": list(
             record_matching.get("fuzzy_key_fields", []) or []
         ),
-        "scope_variant_keys": [],
+        "scope_variant_keys": scope_variant_keys,
         "judge": judge,
-        "report": pack_qaqc.get("report") or {},
+        "report": report,
         "anchor_config": anchor_config,
     }
 
