@@ -184,6 +184,9 @@ class ComparisonEngine:
         self.unit_equivalence_index = build_unit_equivalence_index(
             self.qa_qc_config.get("unit_equivalence_groups")
         )
+        self.collapse_percent_context = bool(
+            self.qa_qc_config.get("collapse_percent_context", False)
+        )
         self.semantic_match_threshold = float(
             self.qa_qc_config.get("semantic_match_threshold", 0.30)
         )
@@ -757,7 +760,11 @@ class ComparisonEngine:
         """Count agreement with semantic equivalence for value/unit/time fields."""
         if field_name in {"unit", "units"}:
             canonicalized = {
-                model: canonicalize_unit(value, self.unit_equivalence_index)
+                model: canonicalize_unit(
+                    value,
+                    self.unit_equivalence_index,
+                    collapse_percent_context=self.collapse_percent_context,
+                )
                 for model, value in normalized_values.items()
             }
             return self._count_agreement(canonicalized)
@@ -823,7 +830,10 @@ class ComparisonEngine:
             value = value_comp.model_values.get(model)
             unit = unit_comp.model_values.get(model) if unit_comp is not None else None
             signature = canonicalize_measurement(
-                value, unit, self.unit_equivalence_index
+                value,
+                unit,
+                self.unit_equivalence_index,
+                collapse_percent_context=self.collapse_percent_context,
             )
             if signature is None:
                 canonical_signatures = []
@@ -1138,12 +1148,12 @@ class ComparisonEngine:
             "You are a strict QA adjudicator for regulatory-requirement extraction. "
             "Two AI models each extracted a row from the SAME source document. "
             "Decide ONLY whether the two rows describe the SAME underlying regulatory "
-            "requirement — the same obligation arising from the same provision — even "
+            "requirement arising from the same provision — even "
             "when the models use different feature labels or phrasing. "
             "Base your decision primarily on source_verbatim: do they point to the same "
             "provision and regulate the same thing? "
             "Do NOT require field values to match — value disagreements are judged separately. "
-            "If the quotes point to different provisions or different obligations, "
+            "If the quotes point to different provisions or regulate materially different conduct, "
             "answer same_requirement=false. If uncertain, answer false. "
             "Return only JSON conforming to the schema."
         )
@@ -1694,10 +1704,12 @@ class ComparisonEngine:
         units_a = canonicalize_unit(
             get_nested_value(item_a, "units") or get_nested_value(item_a, "unit"),
             self.unit_equivalence_index,
+            collapse_percent_context=self.collapse_percent_context,
         )
         units_b = canonicalize_unit(
             get_nested_value(item_b, "units") or get_nested_value(item_b, "unit"),
             self.unit_equivalence_index,
+            collapse_percent_context=self.collapse_percent_context,
         )
         units_match = bool(units_a and units_b and units_a == units_b)
 
@@ -1747,7 +1759,7 @@ class ComparisonEngine:
             return single
 
         # Range forms: "7 a.m. to 7 p.m.", "07:00-19:00", "07:00 – 19:00"
-        m = re.fullmatch(r"(.+?)\s*(?:-|–|—|to)\s*(.+)", raw)
+        m = re.fullmatch(r"(.+?)\s*(?:-|–|—|to|and)\s*(.+)", raw)
         if m:
             start = self._normalize_single_time(m.group(1).strip())
             end = self._normalize_single_time(m.group(2).strip())
@@ -1759,10 +1771,14 @@ class ComparisonEngine:
         if value_a == value_b:
             return True
         measurement_a = canonicalize_measurement(
-            value_a, equivalence_index=self.unit_equivalence_index
+            value_a,
+            equivalence_index=self.unit_equivalence_index,
+            collapse_percent_context=self.collapse_percent_context,
         )
         measurement_b = canonicalize_measurement(
-            value_b, equivalence_index=self.unit_equivalence_index
+            value_b,
+            equivalence_index=self.unit_equivalence_index,
+            collapse_percent_context=self.collapse_percent_context,
         )
         if measurement_a and measurement_b and measurement_a == measurement_b:
             return True

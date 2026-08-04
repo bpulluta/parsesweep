@@ -39,11 +39,13 @@ from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 
 from .comparison_engine import ComparisonResult, FieldComparison
+from .evidence_loader import EvidenceLoader
 
 logger = logging.getLogger(__name__)
 
 # Maximum length for cell values before truncation
 MAX_VALUE_LENGTH = 200
+VERBATIM_TRUNCATION = 200  # Max chars for ground truth verbatim
 
 
 class ReportGenerator:
@@ -63,11 +65,10 @@ class ReportGenerator:
         "judge_uncertain": "D9E1F2",  # Light blue
         "scope_variant": "E2EFDA",  # Light muted green
     }
-    REVIEWER_VERDICTS = [
-        "accept-model-a",
-        "accept-model-b",
-        "accept-model-c",
-    ]
+
+    def __init__(self) -> None:
+        self._evidence_loader = EvidenceLoader()
+        self._max_value_length = MAX_VALUE_LENGTH
 
     def generate_report(
         self,
@@ -77,19 +78,33 @@ class ReportGenerator:
         include_csv: bool = True,
         include_missing_in_queue: bool = False,
         include_low_signal_presence_in_queue: bool = False,
+        discovery_checkpoint_path: Optional[Path] = None,
+        extraction_dir: Optional[Path] = None,
     ) -> Tuple[Path, Path]:
         """
-        Generate Excel and CSV reports.
+        Generate Excel and CSV reports with evidence display.
 
         Args:
             comparison_result: ComparisonResult from comparison engine
             output_dir: Directory to save reports
+            run_metadata: Optional run metadata to include
+            include_csv: Whether to generate CSV report
+            include_missing_in_queue: Include presence_diff rows in Review Queue
+            include_low_signal_presence_in_queue: Include low-signal presence rows
+            discovery_checkpoint_path: Path to discovery checkpoint for document metadata
+            extraction_dir: Path to extraction JSONs for evidence values
 
         Returns:
             Tuple of (excel_path, csv_path)
         """
         output_dir = Path(output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
+
+        # Load evidence metadata and extraction outputs
+        if discovery_checkpoint_path:
+            self._evidence_loader.load_document_metadata(discovery_checkpoint_path)
+        if extraction_dir:
+            self._evidence_loader.load_extraction_outputs(extraction_dir, comparison_result.models)
 
         excel_path = output_dir / "comparison_report.xlsx"
         csv_path = output_dir / "comparison_report.csv"
@@ -466,8 +481,8 @@ class ReportGenerator:
             return ""
 
         str_value = str(value)
-        if len(str_value) > MAX_VALUE_LENGTH:
-            return str_value[: MAX_VALUE_LENGTH - 3] + "..."
+        if len(str_value) > self._max_value_length:
+            return str_value[: self._max_value_length - 3] + "..."
         return str_value
 
     def _auto_size_columns(self, ws) -> None:
@@ -494,6 +509,12 @@ class ReportGenerator:
             "#": 5,
             "Status": 12,
             "Category": 24,
+            "Feature": 24,
+            "Rule Kind": 14,
+            "Applies To": 34,
+            "Specific Subject": 34,
+            "Value Type": 14,
+            "Review Value": 24,
             "Subject": 44,
             "Diverging Field(s)": 24,
             "Seen By": 26,
@@ -551,11 +572,16 @@ class ReportGenerator:
         for group_id, field_comparisons in sorted(items_data.items()):
             item_id = field_comparisons[0].item_id
             req_parts = [part.strip() for part in str(item_id).split("|")]
-            while len(req_parts) < 3:
+            while len(req_parts) < 4:
                 req_parts.append("")
-            category, applies_to, specific_subject = req_parts[:3]
+            feature, rule_kind, applies_to, specific_subject = req_parts[:4]
+            category = feature
             subject = " \u203a ".join(
-                [segment for segment in [applies_to, specific_subject] if segment]
+                [
+                    segment
+                    for segment in [rule_kind, applies_to, specific_subject]
+                    if segment
+                ]
             )
 
             model_fields: Dict[str, Dict[str, Any]] = {model: {} for model in result.models}
@@ -564,6 +590,15 @@ class ReportGenerator:
                 for model, value in field_comp.model_values.items():
                     model_fields.setdefault(model, {})
                     model_fields[model][field_name] = value
+            row_value_type = self._infer_row_value_type(model_fields)
+            model_text: Dict[str, str] = {}
+            for field_comp in field_comparisons:
+                for model, text in (field_comp.model_summary or {}).items():
+                    if text and model not in model_text:
+                        model_text[model] = str(text)
+                for model, text in (field_comp.model_verbatim or {}).items():
+                    if text and model not in model_text:
+                        model_text[model] = str(text)
 
             model_displays: Dict[str, str] = {}
             present_model_set = set()
@@ -573,6 +608,8 @@ class ReportGenerator:
                 display = self._select_model_display_value(
                     model_fields.get(model, {}),
                     comparison_approach=comparison_approach,
+                    row_value_type=row_value_type,
+                    summary_text=model_text.get(model, ""),
                 )
                 model_displays[model] = display
 
@@ -618,12 +655,8 @@ class ReportGenerator:
                 field_comparisons=field_comparisons,
                 model_labels=model_labels,
             )
-            evidence = self._build_model_evidence(
-                field_comparisons=field_comparisons,
-                model_order=result.models,
-                model_labels=model_labels,
-                divergence=divergence,
-            )
+            # Evidence columns will be populated via dedicated columns, not this summary field
+            evidence = ""
             diverging_fields_list = self._collect_diverging_fields(field_comparisons)
             diverging_fields = ", ".join(diverging_fields_list) if diverging_fields_list else "-"
             if status == "DIFFER" and diverging_fields_list:
@@ -631,6 +664,8 @@ class ReportGenerator:
                     model_displays[model] = self._select_model_display_value(
                         model_fields.get(model, {}),
                         comparison_approach=comparison_approach,
+                        row_value_type=row_value_type,
+                        summary_text=model_text.get(model, ""),
                         preferred_fields=diverging_fields_list,
                     )
             why_flagged = self._build_flag_reason(
@@ -655,10 +690,22 @@ class ReportGenerator:
                     model_order=result.models,
                 ),
                 "Category": category or "",
+                "Feature": feature or "",
+                "Rule Kind": rule_kind or "",
+                "Applies To": applies_to or "",
+                "Specific Subject": specific_subject or "",
                 "Subject": subject,
                 "Seen By": seen_by,
                 "Diverging Field(s)": diverging_fields,
             }
+            # Always include Value Type and Review Value (production default)
+            row["Value Type"] = row_value_type
+            row["Review Value"] = self._build_review_value_summary(
+                row_value_type=row_value_type,
+                model_fields=model_fields,
+                model_text=model_text,
+                model_order=result.models,
+            )
             for model in result.models:
                 row[model_labels[model]] = model_displays.get(model, "\u2205")
             row["Evidence"] = evidence
@@ -683,11 +730,14 @@ class ReportGenerator:
         for idx, row in enumerate(rows, start=1):
             row["#"] = idx
 
+        # Production column order: always show Value Type, Review Value
         column_order = [
             "#",
             "Status",
             "Category",
             "Subject",
+            "Value Type",
+            "Review Value",
             *[model_labels[m] for m in result.models],
             "Diverging Field(s)",
             "Evidence",
@@ -731,19 +781,42 @@ class ReportGenerator:
             if entry.get("label")
         }
 
+    def _infer_row_value_type(self, model_fields: Dict[str, Dict[str, Any]]) -> str:
+        """Infer row value type from compared fields."""
+        has_numeric_like = False
+        has_enum_like = False
+        for fields in model_fields.values():
+            app_values = fields.get("applicable_values")
+            if isinstance(app_values, list) and any(v not in (None, "") for v in app_values):
+                has_enum_like = True
+            if str(fields.get("value_interpretation") or "").strip().lower() == "enumerated":
+                has_enum_like = True
+            value = fields.get("value")
+            unit = fields.get("unit") or fields.get("units")
+            if value not in (None, "") or unit not in (None, ""):
+                has_numeric_like = True
+        if has_enum_like:
+            return "enumerated"
+        if has_numeric_like:
+            return "quantitative"
+        return "qualitative"
+
     def _select_model_display_value(
         self,
         fields: Dict[str, Any],
         *,
         comparison_approach: str,
+        row_value_type: Optional[str] = None,
+        summary_text: str = "",
         preferred_fields: Optional[List[str]] = None,
     ) -> str:
         """Pick a reviewer-facing value for one model on one item."""
         if comparison_approach == "text_review":
             candidates = [
                 fields.get("requirement_description"),
-                fields.get("value"),
+                summary_text,
                 fields.get("summary"),
+                fields.get("value"),
                 fields.get("condition"),
                 fields.get("source_verbatim"),
                 fields.get("source_text"),
@@ -759,39 +832,100 @@ class ReportGenerator:
         if preferred_fields:
             rendered_fields: List[str] = []
             max_fields = 3
+            preferred_keys = {str(field).lower() for field in preferred_fields}
+            value = fields.get("value")
+            unit = fields.get("unit") or fields.get("units")
+            include_value_context = preferred_keys.isdisjoint({"value", "unit", "units"})
+            if include_value_context:
+                if value not in (None, "") and unit not in (None, ""):
+                    rendered_fields.append(self._truncate_value(f"value={value} {unit}"))
+                elif value not in (None, ""):
+                    rendered_fields.append(self._truncate_value(f"value={value}"))
             for index, field_name in enumerate(preferred_fields):
                 if index >= max_fields:
                     break
                 field_key = str(field_name).lower()
+                if include_value_context and field_key in {"value", "unit", "units"}:
+                    continue
                 field_value = fields.get(field_key)
                 display_value = "∅" if field_value in (None, "") else field_value
-                rendered_fields.append(
-                    self._truncate_value(f"{field_name}={display_value}")
-                )
+                rendered_fields.append(self._truncate_value(f"{field_name}={display_value}"))
             if rendered_fields:
                 if len(preferred_fields) > max_fields:
                     rendered_fields.append("…")
                 return "; ".join(rendered_fields)
 
+        value_type = row_value_type or "qualitative"
         value = fields.get("value")
         unit = fields.get("unit") or fields.get("units")
+
+        if value_type == "enumerated":
+            app_values = fields.get("applicable_values")
+            if isinstance(app_values, list) and app_values:
+                joined = ", ".join(str(v) for v in app_values if v not in (None, ""))
+                if joined:
+                    return self._truncate_value(joined)
+            if value not in (None, "") and unit not in (None, ""):
+                return self._truncate_value(f"{value} {unit}")
+            if value not in (None, ""):
+                return self._truncate_value(value)
+            if summary_text:
+                return self._truncate_value(summary_text)
+
+        if value_type == "qualitative":
+            for candidate in (
+                fields.get("requirement_description"),
+                summary_text,
+                fields.get("summary"),
+                fields.get("condition"),
+                fields.get("obligation"),
+                fields.get("value_interpretation"),
+                fields.get("source_text"),
+            ):
+                if candidate not in (None, ""):
+                    return self._truncate_value(candidate)
+            return "\u2205"
+
         if value not in (None, "") and unit not in (None, ""):
             return self._truncate_value(f"{value} {unit}")
         if value not in (None, ""):
             return self._truncate_value(value)
-        for fallback_field in (
-            "value_interpretation",
-            "obligation",
-            "condition",
-            "summary",
-            "source_text",
-        ):
+        if unit not in (None, ""):
+            return self._truncate_value(unit)
+        for fallback_field in ("value_interpretation", "obligation", "condition", "summary", "source_text"):
             fallback = fields.get(fallback_field)
             if fallback not in (None, ""):
                 return self._truncate_value(fallback)
-        if unit not in (None, ""):
-            return self._truncate_value(unit)
         return "\u2205"
+
+    def _build_review_value_summary(
+        self,
+        *,
+        row_value_type: str,
+        model_fields: Dict[str, Dict[str, Any]],
+        model_text: Dict[str, str],
+        model_order: List[str],
+    ) -> str:
+        """Build a compact row-level review value summary across models."""
+        unique_values: List[str] = []
+        for model in model_order:
+            rendered = self._select_model_display_value(
+                model_fields.get(model, {}),
+                comparison_approach="mixed",
+                row_value_type=row_value_type,
+                summary_text=model_text.get(model, ""),
+            )
+            if rendered in ("", "\u2205"):
+                continue
+            if rendered not in unique_values:
+                unique_values.append(rendered)
+        if not unique_values:
+            return ""
+        if len(unique_values) == 1:
+            return unique_values[0]
+        if len(unique_values) == 2:
+            return f"{unique_values[0]} | {unique_values[1]}"
+        return f"{unique_values[0]} | {unique_values[1]} | …"
 
     def _collect_diverging_fields(
         self, comparisons: List[FieldComparison]
@@ -925,38 +1059,6 @@ class ReportGenerator:
         trimmed = judge_status.strip()
         return trimmed[:120] + ("…" if len(trimmed) > 120 else "")
 
-    def _build_model_evidence(
-        self,
-        *,
-        field_comparisons: List[FieldComparison],
-        model_order: List[str],
-        model_labels: Dict[str, str],
-        divergence: str,
-    ) -> str:
-        """Build compact side-by-side evidence from source_verbatim/summary."""
-        if divergence not in {"field_conflict", "semantic_conflict", "judge_uncertain"}:
-            return ""
-
-        verbatim: Dict[str, str] = {}
-        summary: Dict[str, str] = {}
-        for comparison in field_comparisons:
-            for model, text in (comparison.model_verbatim or {}).items():
-                if text and model not in verbatim:
-                    verbatim[model] = text
-            for model, text in (comparison.model_summary or {}).items():
-                if text and model not in summary:
-                    summary[model] = text
-
-        snippets: List[str] = []
-        for model in model_order:
-            quote = verbatim.get(model) or summary.get(model)
-            if not quote:
-                continue
-            snippets.append(
-                f"{model_labels.get(model, model)}: {self._truncate_value(quote)}"
-            )
-        return " | ".join(snippets)
-
     def _build_flag_reason(
         self,
         *,
@@ -1047,7 +1149,13 @@ class ReportGenerator:
             "#",
             "Status",
             "Category",
+            "Feature",
+            "Rule Kind",
+            "Applies To",
+            "Specific Subject",
             "Subject",
+            "Value Type",
+            "Review Value",
             "Diverging Field(s)",
             "Why Flagged",
             "Evidence",
@@ -1064,11 +1172,14 @@ class ReportGenerator:
         model_columns = [
             col for col in queue.columns if col not in metadata_columns
         ]
+        # Production defaults: always show Subject and Value columns
         lean_columns = [
             "#",
             "Status",
             "Category",
             "Subject",
+            "Value Type",
+            "Review Value",
             *model_columns,
             "Diverging Field(s)",
             "Why Flagged",
@@ -1336,317 +1447,502 @@ class ReportGenerator:
     def _build_final_verdicts_data(
         self, result: ComparisonResult, all_items_df: pd.DataFrame
     ) -> List[Dict[str, Any]]:
-        """Build one authoritative detail row per item, preserving sort order."""
+        """Build one row per item for the Final Verdicts sheet.
+
+        Uses the raw comparison result to show full extracted values per model
+        (not the diverging-field fragment display used in All Items / Review Queue).
+        Sort: AGREE → DIFFER/PARTIAL → ONLY-model. Within each band: category, subject.
+        Ground Truth is auto-populated only for AGREE rows.
+        """
         model_labels = self._build_model_labels(result.models)
         model_label_list = [model_labels[m] for m in result.models]
-        rows: List[Dict[str, Any]] = []
+        comparison_approach = result.summary.get("comparison_approach") or "mixed"
+
+        # Build metadata maps from all_items_df (status, category, diverging, judge, evidence)
+        status_by_rowid: Dict[str, str] = {}
+        category_by_rowid: Dict[str, str] = {}
+        diverging_by_rowid: Dict[str, str] = {}
+        judge_by_rowid: Dict[str, str] = {}
+        evidence_by_rowid: Dict[str, str] = {}
         for _, item in all_items_df.iterrows():
-            status = self._plain_text(item.get("Status"))
-            judge_decision = self._plain_text(item.get("Judge Says"))
-            model_values = {
-                label: self._plain_text(item.get(label))
-                for label in model_label_list
+            rid = self._plain_text(item.get("Row ID"))
+            status_by_rowid[rid] = self._plain_text(item.get("Status"))
+            category_by_rowid[rid] = self._plain_text(item.get("Category"))
+            diverging_by_rowid[rid] = self._plain_text(item.get("Diverging Field(s)"))
+            judge_by_rowid[rid] = self._plain_text(item.get("Judge Says"))
+            evidence_by_rowid[rid] = self._plain_text(item.get("Evidence"))
+
+        # Group item_comparisons by row_id to reconstruct full per-model values
+        items_data: Dict[str, List[FieldComparison]] = {}
+        for fc in result.item_comparisons:
+            group_id = fc.row_id or fc.item_id
+            items_data.setdefault(group_id, []).append(fc)
+
+        def _status_rank(status: str) -> int:
+            if status == "AGREE":
+                return 0
+            if status in ("DIFFER", "PARTIAL"):
+                return 1
+            return 2  # ONLY <label>
+
+        rows: List[Dict[str, Any]] = []
+        for group_id, field_comparisons in items_data.items():
+            # Reconstruct full field dicts per model (no diverging-field fragments)
+            model_fields: Dict[str, Dict[str, Any]] = {m: {} for m in result.models}
+            for fc in field_comparisons:
+                field_name = fc.field_path.split(".")[-1].lower()
+                for model, value in fc.model_values.items():
+                    if model in model_fields:
+                        model_fields[model][field_name] = value
+            row_value_type = self._infer_row_value_type(model_fields)
+            model_text: Dict[str, str] = {}
+            for fc in field_comparisons:
+                for model, text in (fc.model_summary or {}).items():
+                    if text and model not in model_text:
+                        model_text[model] = str(text)
+                for model, text in (fc.model_verbatim or {}).items():
+                    if text and model not in model_text:
+                        model_text[model] = str(text)
+
+            # Full-value display without preferred_fields → combined value+unit string
+            model_displays: Dict[str, str] = {
+                model_labels[m]: self._select_model_display_value(
+                    model_fields.get(m, {}),
+                    comparison_approach=comparison_approach,
+                    row_value_type=row_value_type,
+                    summary_text=model_text.get(m, ""),
+                )
+                for m in result.models
             }
-            if status == "AGREE" and model_label_list:
-                correct_value = model_values.get(model_label_list[0], "")
-            else:
-                correct_value = ""
-            row: Dict[str, Any] = {
-                "#": self._plain_text(item.get("#")),
-                "Status": status,
-                "Category": self._plain_text(item.get("Category")),
-                "Subject": self._plain_text(item.get("Subject")),
-            }
-            row.update(model_values)
-            row["Diverging Field(s)"] = self._plain_text(
-                item.get("Diverging Field(s)")
+
+            status = status_by_rowid.get(group_id, "")
+            ground_truth = (
+                model_displays.get(model_label_list[0], "") if status == "AGREE" else ""
             )
-            row["Judge Decision"] = judge_decision
+            item_id = field_comparisons[0].item_id
+            req_parts = [p.strip() for p in str(item_id).split("|")]
+            while len(req_parts) < 4:
+                req_parts.append("")
+            feature, rule_kind, applies_to, specific_subject = req_parts[:4]
+            field_display = " \u203a ".join(
+                s for s in [rule_kind, applies_to, specific_subject] if s
+            )
+
+            row: Dict[str, Any] = {
+                "Field": field_display,
+                "Feature": feature,
+                "Rule Kind": rule_kind,
+                "Applies To": applies_to,
+                "Specific Subject": specific_subject,
+                "Ground Truth": ground_truth,
+                "Status": status,
+                "_status_rank": _status_rank(status),
+                "_category": category_by_rowid.get(group_id, feature),
+            }
+            # Always include Value Type and Review Value
+            row["Value Type"] = row_value_type
+            row["Review Value"] = self._build_review_value_summary(
+                row_value_type=row_value_type,
+                model_fields=model_fields,
+                model_text=model_text,
+                model_order=result.models,
+            )
+            row.update(model_displays)
+            row["Diverging Field(s)"] = diverging_by_rowid.get(group_id, "")
+            row["Judge Says"] = judge_by_rowid.get(group_id, "")
             row["Reviewer Verdict"] = ""
             row["Model Win"] = ""
-            row["Correct Value"] = correct_value
-            row["Correct Answer"] = ""
-            row["Evidence"] = self._plain_text(item.get("Evidence"))
-            row["Row ID"] = self._plain_text(item.get("Row ID"))
+            row["Evidence"] = evidence_by_rowid.get(group_id, "")
+            row["Notes"] = ""
+            row["Row ID"] = group_id
             rows.append(row)
+
+        rows.sort(key=lambda r: (r["_status_rank"], r["_category"], r["Field"]))
         return rows
 
     def _write_final_verdicts_sheet(
         self, wb, result: ComparisonResult, all_items_df: pd.DataFrame
     ) -> None:
-        """Write the authoritative Final Verdicts sheet directly via openpyxl."""
+        """Write the Final Verdicts sheet: model scorecard + category-grouped field table.
+
+        Scorecard rows (rows 1-N+5):
+          Row 1: Title banner
+          Row 2: Models / Total Items
+          Row 3: Auto-Agreed | Needs Review
+          Row 4: Reviewer-Decided | Escalations
+          Rows 5..5+N: per-model: Agreed | Only This Model | Missed | Reviewer Wins
+          Final row before spacer: overall DIFFER count
+          Table starts at TABLE_HEADER_ROW (dynamically computed)
+
+        Data table is category-grouped with olive section-header rows interleaved.
+        """
         model_labels = self._build_model_labels(result.models)
         model_label_list = [model_labels[m] for m in result.models]
         data_rows = self._build_final_verdicts_data(result, all_items_df)
 
+        # Production defaults: always show Value Type, Review Value, and Field details
         detail_columns = [
-            "#",
+            "Field",
+            "Value Type",
+            "Review Value",
+            "Ground Truth",
             "Status",
-            "Category",
-            "Subject",
             *model_label_list,
             "Diverging Field(s)",
-            "Judge Decision",
-            "Reviewer Verdict",
-            "Model Win",
-            "Correct Value",
-            "Correct Answer",
-            "Evidence",
-            "Row ID",
-        ]
+            "Judge Says",
+                "Reviewer Verdict",
+                "Model Win",
+                "Evidence",
+                "Notes",
+                "Row ID",
+            ]
 
         if "Final Verdicts" in wb.sheetnames:
             del wb["Final Verdicts"]
         ws = wb.create_sheet("Final Verdicts")
 
-        # --- Scorecard block (rows expand with model count to stay scalable) ---
-        ws.cell(1, 1, "Final Verdicts \u2014 Model Accuracy Scorecard")
-        ws.cell(3, 1, "Metric")
-        ws.cell(3, 2, "Value")
-        ws.cell(4, 1, "Document")
-        ws.cell(4, 2, result.document_name)
-        ws.cell(5, 1, "Models Compared")
-        ws.cell(5, 2, ", ".join(result.models))
-        ws.cell(6, 1, "Total Items")
-        ws.cell(6, 2, len(all_items_df))
+        # ── Scorecard block (dynamically sized for N models) ──────────────────
+        doc_label = result.document_name or "—"
+        total_items = len(all_items_df)
 
-        ws.cell(7, 1, "Auto-Agreed (AGREE rows)")
-        auto_agreed_row = 7
-        ws.cell(8, 1, "Judge-Decided (judge resolved, DIFFER rows)")
-        judge_decided_row = 8
-        ws.cell(9, 1, "Reviewer-Decided (human resolved)")
-        reviewer_decided_row = 9
+        ws.cell(1, 1, f"Final Verdicts \u2014 {doc_label}")
+        ws.cell(2, 1, "Models:")
+        ws.cell(2, 2, ", ".join(result.models))
+        ws.cell(2, 4, "Total Items:")
+        ws.cell(2, 5, total_items)
+        ws.cell(3, 1, "Auto-Agreed")
+        ws.cell(3, 3, "Agreed %")
+        ws.cell(3, 5, "Needs Review")
+        ws.cell(4, 1, "DIFFER / Conflicts")
+        ws.cell(4, 3, "Reviewer-Decided")
+        ws.cell(4, 5, "Escalations")
 
-        per_model_win_rows: Dict[str, int] = {}
-        cursor = 10
-        for label in model_label_list:
-            ws.cell(cursor, 1, f"{label} Wins")
-            per_model_win_rows[label] = cursor
-            cursor += 1
-        ws.cell(cursor, 1, "Escalations (needs-escalation)")
-        escalation_row = cursor
-        cursor += 1
-        ws.cell(cursor, 1, "Unresolved / Pending")
-        unresolved_row = cursor
-        cursor += 1
-        cursor += 1  # blank spacer row before the detail table
+        # Per-model rows start at row 6
+        MODEL_STATS_START = 6
+        ws.cell(MODEL_STATS_START - 1, 1, "Model")
+        ws.cell(MODEL_STATS_START - 1, 2, "Agreed")
+        ws.cell(MODEL_STATS_START - 1, 3, "Only This Model")
+        ws.cell(MODEL_STATS_START - 1, 4, "Missed By This Model")
+        ws.cell(MODEL_STATS_START - 1, 5, "Reviewer Wins")
 
-        # --- Detail table ---
-        detail_header_row = cursor
-        detail_data_start_row = detail_header_row + 1
+        for i, label in enumerate(model_label_list):
+            r = MODEL_STATS_START + i
+            ws.cell(r, 1, label)
+
+        TABLE_HEADER_ROW = MODEL_STATS_START + len(model_label_list) + 1  # +1 spacer
+        data_start_row = TABLE_HEADER_ROW + 1
+
         for col_idx, header in enumerate(detail_columns, start=1):
-            ws.cell(detail_header_row, col_idx, header)
-        for offset, row in enumerate(data_rows):
-            r = detail_data_start_row + offset
+            ws.cell(TABLE_HEADER_ROW, col_idx, header)
+
+        # ── Data rows grouped by category with section-header rows ─────────────
+        current_category = object()
+        current_row = data_start_row
+        data_row_indices: List[int] = []
+
+        for item in data_rows:
+            category = item["_category"] or "Uncategorized"
+            if category != current_category:
+                ws.cell(current_row, 1, category.title())
+                for c in range(2, len(detail_columns) + 1):
+                    ws.cell(current_row, c, "")
+                ws.row_dimensions[current_row].height = 22
+                current_row += 1
+                current_category = category
+
+            data_row_indices.append(current_row)
             for col_idx, header in enumerate(detail_columns, start=1):
-                ws.cell(r, col_idx, row.get(header, ""))
-        detail_data_end_row = detail_header_row + len(data_rows)
+                ws.cell(current_row, col_idx, item.get(header, ""))
+            current_row += 1
 
-        status_col_idx = detail_columns.index("Status") + 1
-        judge_col_idx = detail_columns.index("Judge Decision") + 1
-        verdict_col_idx = detail_columns.index("Reviewer Verdict") + 1
-        model_win_col_idx = detail_columns.index("Model Win") + 1
-        status_letter = get_column_letter(status_col_idx)
-        judge_letter = get_column_letter(judge_col_idx)
-        verdict_letter = get_column_letter(verdict_col_idx)
-
-        placeholder_rows = [
-            auto_agreed_row,
-            judge_decided_row,
-            reviewer_decided_row,
-            *per_model_win_rows.values(),
-            escalation_row,
-            unresolved_row,
-        ]
-        if not data_rows:
-            for row_num in placeholder_rows:
-                ws.cell(row_num, 2, 0)
+        if not data_row_indices:
+            for r in (3, 4):
+                for c in (2, 4):
+                    ws.cell(r, c, 0)
             return
 
-        status_range = (
-            f"${status_letter}${detail_data_start_row}:"
-            f"${status_letter}${detail_data_end_row}"
-        )
-        judge_range = (
-            f"${judge_letter}${detail_data_start_row}:"
-            f"${judge_letter}${detail_data_end_row}"
-        )
-        verdict_range = (
-            f"${verdict_letter}${detail_data_start_row}:"
-            f"${verdict_letter}${detail_data_end_row}"
-        )
+        data_end_row = current_row - 1
 
-        ws.cell(auto_agreed_row, 2, f'=COUNTIF({status_range},"AGREE")')
-        ws.cell(
-            judge_decided_row,
-            2,
-            f'=COUNTIFS({status_range},"DIFFER",{judge_range},"<>")',
-        )
-        accept_terms = [
-            f'COUNTIF({verdict_range},"accept-{label}")'
-            for label in model_label_list
-        ]
-        accept_terms.append(f'COUNTIF({verdict_range},"accept-both")')
-        ws.cell(reviewer_decided_row, 2, "=" + "+".join(accept_terms))
-        for label in model_label_list:
-            ws.cell(
-                per_model_win_rows[label],
-                2,
-                f'=COUNTIF({verdict_range},"accept-{label}")',
-            )
-        ws.cell(escalation_row, 2, f'=COUNTIF({verdict_range},"needs-escalation")')
-        ws.cell(unresolved_row, 2, f"=SUMPRODUCT((LEN({verdict_range})=0)*1)")
+        # ── Resolve column letters ─────────────────────────────────────────────
+        header_to_col = {h: i + 1 for i, h in enumerate(detail_columns)}
+        status_col = header_to_col["Status"]
+        verdict_col = header_to_col["Reviewer Verdict"]
+        model_win_col = header_to_col["Model Win"]
+        status_letter = get_column_letter(status_col)
+        verdict_letter = get_column_letter(verdict_col)
 
-        for r in range(detail_data_start_row, detail_data_end_row + 1):
+        # Use full block for COUNTIF (section-header rows have blank Status → invisible)
+        full_range = f"${status_letter}${data_start_row}:${status_letter}${data_end_row}"
+        verdict_range = f"${verdict_letter}${data_start_row}:${verdict_letter}${data_end_row}"
+
+        # ── Top scorecard formulas ─────────────────────────────────────────────
+        ws.cell(3, 2, f'=COUNTIF({full_range},"AGREE")')
+        ws.cell(3, 4, f'=IF(COUNTA({full_range})>0,ROUND(COUNTIF({full_range},"AGREE")/COUNTA({full_range})*100,1)&"%","—")')
+        ws.cell(3, 6, f'=COUNTA({full_range})-COUNTIF({full_range},"AGREE")')
+        ws.cell(4, 2, f'=COUNTIF({full_range},"DIFFER")')
+        accept_terms = "+".join(
+            f'COUNTIF({verdict_range},"accept-{label}")' for label in model_label_list
+        )
+        ws.cell(4, 4, f'={accept_terms}+COUNTIF({verdict_range},"accept-both")+COUNTIF({verdict_range},"reject-all")')
+        ws.cell(4, 6, f'=COUNTIF({verdict_range},"needs-escalation")')
+
+        # ── Per-model scorecard formulas ───────────────────────────────────────
+        for i, label in enumerate(model_label_list):
+            r = MODEL_STATS_START + i
+            others = [m for m in model_label_list if m != label]
+            # Agreed: item status is AGREE
+            ws.cell(r, 2, f'=COUNTIF({full_range},"AGREE")')
+            # Only This Model: ONLY <label> rows
+            ws.cell(r, 3, f'=COUNTIF({full_range},"ONLY {label}")')
+            # Missed by this model: sum of ONLY <other> rows
+            if others:
+                missed_terms = "+".join(
+                    f'COUNTIF({full_range},"ONLY {o}")' for o in others
+                )
+                ws.cell(r, 4, f"={missed_terms}")
+            else:
+                ws.cell(r, 4, 0)
+            # Reviewer wins for this model
+            ws.cell(r, 5, f'=COUNTIF({verdict_range},"accept-{label}")')
+
+        # ── Model Win formula on each data row ─────────────────────────────────
+        for r in data_row_indices:
             ws.cell(
                 r,
-                model_win_col_idx,
+                model_win_col,
                 self._model_win_formula(
                     f"${status_letter}{r}", f"${verdict_letter}{r}", model_label_list
                 ),
             )
 
     def _format_final_verdicts_sheet(self, ws) -> None:
-        """Style the Final Verdicts scorecard and authoritative detail table."""
-        detail_header_row = None
-        for r in range(1, ws.max_row + 1):
-            row_values = [ws.cell(r, c).value for c in range(1, ws.max_column + 1)]
-            if "Reviewer Verdict" in row_values:
-                detail_header_row = r
-                break
-        if detail_header_row is None:
-            return
-
-        max_col = ws.max_column
-        last_letter = get_column_letter(max_col)
-        headers = {
-            ws.cell(detail_header_row, c).value: c
-            for c in range(1, max_col + 1)
-            if ws.cell(detail_header_row, c).value
-        }
-
+        """Style the Final Verdicts sheet: mini-scorecard, section headers, data rows."""
+        # ── Palette ───────────────────────────────────────────────────────────
+        olive = PatternFill(start_color="4A5D23", end_color="4A5D23", fill_type="solid")
         blue = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
+        white_fill = PatternFill(start_color="FFFFFF", end_color="FFFFFF", fill_type="solid")
+        zebra = PatternFill(start_color="F5F5F5", end_color="F5F5F5", fill_type="solid")
+        amber = PatternFill(start_color="FFF2CC", end_color="FFF2CC", fill_type="solid")
+        green = PatternFill(start_color="C6EFCE", end_color="C6EFCE", fill_type="solid")
+        red = PatternFill(start_color="FFC7CE", end_color="FFC7CE", fill_type="solid")
+        yellow = PatternFill(start_color="FFEB9C", end_color="FFEB9C", fill_type="solid")
         gray = PatternFill(start_color="D9D9D9", end_color="D9D9D9", fill_type="solid")
-        light = PatternFill(start_color="F5F5F5", end_color="F5F5F5", fill_type="solid")
+
         white_bold = Font(bold=True, color="FFFFFF")
         bold = Font(bold=True)
+        olive_bold = Font(bold=True, color="FFFFFF")
 
-        # Title row.
-        ws.merge_cells("A1:D1")
+        # ── Locate the table header row (first row where col 1 = "Field") ───────
+        max_col = ws.max_column
+        last_letter = get_column_letter(max_col)
+
+        TABLE_HEADER_ROW = None
+        for r in range(1, ws.max_row + 1):
+            if ws.cell(r, 1).value == "Field":
+                TABLE_HEADER_ROW = r
+                break
+        if TABLE_HEADER_ROW is None:
+            return
+
+        # Build header→col index map from TABLE_HEADER_ROW
+        headers: Dict[str, int] = {
+            ws.cell(TABLE_HEADER_ROW, c).value: c
+            for c in range(1, max_col + 1)
+            if ws.cell(TABLE_HEADER_ROW, c).value
+        }
+
+        # ── Scorecard rows (rows 1 through TABLE_HEADER_ROW - 1) ─────────────────
+        # Row 1: title banner
+        ws.merge_cells(f"A1:{last_letter}1")
         title_cell = ws.cell(1, 1)
         title_cell.fill = blue
         title_cell.font = white_bold
         title_cell.alignment = Alignment(horizontal="center", vertical="center")
-        ws.row_dimensions[1].height = 28
+        ws.row_dimensions[1].height = 26
 
-        # Scorecard header + alternating data rows.
-        scorecard_header_row = None
-        for r in range(1, detail_header_row):
-            if ws.cell(r, 1).value == "Metric":
-                scorecard_header_row = r
-                break
-        if scorecard_header_row is not None:
-            for c in (1, 2):
-                cell = ws.cell(scorecard_header_row, c)
-                cell.fill = gray
-                cell.font = bold
-            for idx, r in enumerate(
-                range(scorecard_header_row + 1, detail_header_row - 1)
-            ):
-                for c in (1, 2):
-                    cell = ws.cell(r, c)
-                    if idx % 2 == 0:
-                        cell.fill = light
-                    cell.alignment = Alignment(wrap_text=True, vertical="top")
+        # Rows 2-4: summary stat labels/formulas
+        for r in (2, 3, 4):
+            ws.row_dimensions[r].height = 18
+            for c in range(1, max_col + 1):
+                cell = ws.cell(r, c)
+                v = cell.value
+                if v and isinstance(v, str) and not v.startswith("="):
+                    cell.font = bold
+                cell.alignment = Alignment(vertical="center")
 
-        # Blank spacer rows.
-        ws.row_dimensions[2].height = 10
-        ws.row_dimensions[detail_header_row - 1].height = 10
-
-        # Detail header row.
+        # Row 5: per-model stat column headers (teal band)
+        scorecard_header_row = 5
+        teal = PatternFill(start_color="2E6B5E", end_color="2E6B5E", fill_type="solid")
+        scorecard_bg = PatternFill(start_color="EBF0E8", end_color="EBF0E8", fill_type="solid")
         for c in range(1, max_col + 1):
-            cell = ws.cell(detail_header_row, c)
+            cell = ws.cell(scorecard_header_row, c)
+            if cell.value:  # only the label cells, not the wide merged title
+                cell.fill = teal
+                cell.font = white_bold
+                cell.alignment = Alignment(horizontal="center", vertical="center")
+        ws.row_dimensions[scorecard_header_row].height = 20
+
+        # Rows 6..TABLE_HEADER_ROW-2: per-model data rows (alternating zebra)
+        for idx, r in enumerate(range(scorecard_header_row + 1, TABLE_HEADER_ROW - 1)):
+            row_fill = scorecard_bg if idx % 2 == 0 else white_fill
+            for c in range(1, max_col + 1):
+                cell = ws.cell(r, c)
+                cell.fill = row_fill
+                v = cell.value
+                if c == 1 and isinstance(v, str):
+                    cell.font = bold
+                cell.alignment = Alignment(
+                    vertical="center",
+                    horizontal="left" if c == 1 else "right",
+                )
+            ws.row_dimensions[r].height = 18
+
+        # Spacer: TABLE_HEADER_ROW - 1
+        ws.row_dimensions[TABLE_HEADER_ROW - 1].height = 6
+
+        # ── Table header row ──────────────────────────────────────────────────
+        for c in range(1, max_col + 1):
+            cell = ws.cell(TABLE_HEADER_ROW, c)
             cell.fill = blue
             cell.font = white_bold
-            cell.alignment = Alignment(
-                horizontal="center", vertical="center", wrap_text=True
-            )
-        ws.row_dimensions[detail_header_row].height = 24
+            cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+        ws.row_dimensions[TABLE_HEADER_ROW].height = 26
 
-        data_start = detail_header_row + 1
-        data_end = ws.max_row
-        subject_col = headers.get("Subject", 4)
-        diverging_col = headers.get("Diverging Field(s)")
+        # ── Section-header rows + data rows ───────────────────────────────────
+        # Section-header rows: only col 1 has a non-empty string value; model cols are "".
+        # We distinguish them by checking that Status cell (col 3) is empty.
+        status_col = headers.get("Status", 3)
+        gt_col = headers.get("Ground Truth", 2)
+        field_col = headers.get("Field", 1)
+        feature_col = headers.get("Feature")
+        rule_kind_col = headers.get("Rule Kind")
+        applies_to_col = headers.get("Applies To")
+        specific_subject_col = headers.get("Specific Subject")
+        value_type_col = headers.get("Value Type")
+        review_value_col = headers.get("Review Value")
         verdict_col = headers.get("Reviewer Verdict")
         model_win_col = headers.get("Model Win")
+        evidence_col = headers.get("Evidence")
+        diverging_col = headers.get("Diverging Field(s)")
 
-        ws.freeze_panes = f"{get_column_letter(subject_col + 1)}{data_start}"
-        ws.auto_filter.ref = f"A{detail_header_row}:{last_letter}{data_end}"
+        # Model cols are between Status and Diverging Field(s)
+        model_cols = (
+            list(range(status_col + 1, diverging_col)) if diverging_col else []
+        )
 
-        if data_end >= data_start:
-            model_cols = (
-                list(range(subject_col + 1, diverging_col)) if diverging_col else []
-            )
-            wrap_cols = set(model_cols)
-            for name in ("Subject", "Evidence", "Correct Answer", "Correct Value"):
-                if name in headers:
-                    wrap_cols.add(headers[name])
-            for c in wrap_cols:
-                for r in range(data_start, data_end + 1):
-                    ws.cell(r, c).alignment = Alignment(
-                        wrap_text=True, vertical="top"
-                    )
-            for r in range(data_start, data_end + 1):
+        data_row_indices: List[int] = []
+        section_header_rows: List[int] = []
+        zebra_toggle = False
+
+        for r in range(TABLE_HEADER_ROW + 1, ws.max_row + 1):
+            status_val = ws.cell(r, status_col).value
+            field_val = ws.cell(r, field_col).value
+
+            if not status_val and field_val:
+                # Section-header row
+                section_header_rows.append(r)
+                ws.merge_cells(f"A{r}:{last_letter}{r}")
+                cell = ws.cell(r, 1)
+                cell.fill = olive
+                cell.font = olive_bold
+                cell.alignment = Alignment(
+                    horizontal="left", vertical="center", indent=1
+                )
+                ws.row_dimensions[r].height = 22
+                zebra_toggle = False  # reset alternation per section
+            elif status_val or field_val:
+                # Data row
+                data_row_indices.append(r)
+                fill = zebra if zebra_toggle else white_fill
+                zebra_toggle = not zebra_toggle
+
+                for c in range(1, max_col + 1):
+                    cell = ws.cell(r, c)
+                    # Status column — color by value
+                    if c == status_col:
+                        status_color = {
+                            "AGREE": "C6EFCE",
+                            "DIFFER": "FFC7CE",
+                            "PARTIAL": "FFEB9C",
+                        }.get(str(status_val or ""), "D9D9D9")
+                        cell.fill = PatternFill(
+                            start_color=status_color,
+                            end_color=status_color,
+                            fill_type="solid",
+                        )
+                    else:
+                        cell.fill = fill
+                    text_cols = {
+                        field_col,
+                        gt_col,
+                        evidence_col,
+                        feature_col,
+                        rule_kind_col,
+                        applies_to_col,
+                        specific_subject_col,
+                        value_type_col,
+                        review_value_col,
+                    }
+                    if c in text_cols or c in model_cols:
+                        cell.alignment = Alignment(wrap_text=True, vertical="top")
+                    else:
+                        cell.alignment = Alignment(vertical="top")
                 ws.row_dimensions[r].height = 40
 
-            if verdict_col and diverging_col:
-                labels = [
-                    ws.cell(detail_header_row, c).value
-                    for c in range(subject_col + 1, diverging_col)
-                ]
-                verdict_options = [f"accept-{label}" for label in labels if label]
-                verdict_options += ["accept-both", "reject-all", "needs-escalation"]
-                column_letter = get_column_letter(verdict_col)
-                validation = DataValidation(
-                    type="list",
-                    formula1=f'"{",".join(verdict_options)}"',
-                    allow_blank=True,
-                )
-                validation.error = (
-                    "Select a valid reviewer verdict from the dropdown."
-                )
-                validation.errorTitle = "Invalid Verdict"
-                ws.add_data_validation(validation)
-                validation.add(
-                    f"{column_letter}{data_start}:{column_letter}{data_end}"
+        # ── Freeze pane: keep Field column visible while scrolling ────────────
+        first_data = data_row_indices[0] if data_row_indices else TABLE_HEADER_ROW + 1
+        ws.freeze_panes = f"B{first_data}"
+
+        # ── Reviewer Verdict dropdown ─────────────────────────────────────────
+        if verdict_col and data_row_indices:
+            verdict_options = [f"accept-{label}" for label in (
+                ws.cell(TABLE_HEADER_ROW, c).value
+                for c in model_cols
+            ) if label]
+            verdict_options += ["accept-both", "reject-all", "needs-escalation"]
+            verdict_letter = get_column_letter(verdict_col)
+            validation = DataValidation(
+                type="list",
+                formula1=f'"{",".join(verdict_options)}"',
+                allow_blank=True,
+            )
+            validation.error = "Select a valid reviewer verdict from the dropdown."
+            validation.errorTitle = "Invalid Verdict"
+            ws.add_data_validation(validation)
+            validation.add(
+                f"{verdict_letter}{data_row_indices[0]}:{verdict_letter}{data_row_indices[-1]}"
+            )
+
+        # ── Conditional formatting ────────────────────────────────────────────
+        if data_row_indices:
+            data_start = data_row_indices[0]
+            data_end = data_row_indices[-1]
+
+            # Ground Truth: amber when blank (action needed)
+            if gt_col:
+                gt_letter = get_column_letter(gt_col)
+                gt_range = f"{gt_letter}{data_start}:{gt_letter}{data_end}"
+                ws.conditional_formatting.add(
+                    gt_range,
+                    FormulaRule(
+                        formula=[f'LEN(${gt_letter}{data_start})=0'],
+                        fill=amber,
+                    ),
                 )
 
+            # Model Win colors
             if model_win_col:
                 win_letter = get_column_letter(model_win_col)
                 win_range = f"{win_letter}{data_start}:{win_letter}{data_end}"
                 first_ref = f"${win_letter}{data_start}"
-                green = PatternFill(
-                    start_color="C6EFCE", end_color="C6EFCE", fill_type="solid"
-                )
-                red = PatternFill(
-                    start_color="FFC7CE", end_color="FFC7CE", fill_type="solid"
-                )
-                pending = PatternFill(
-                    start_color="D9D9D9", end_color="D9D9D9", fill_type="solid"
-                )
-                yellow = PatternFill(
-                    start_color="FFEB9C", end_color="FFEB9C", fill_type="solid"
-                )
                 ws.conditional_formatting.add(
                     win_range, FormulaRule(formula=[f'{first_ref}="Both"'], fill=green)
                 )
                 ws.conditional_formatting.add(
-                    win_range,
-                    FormulaRule(formula=[f'{first_ref}="Unresolved"'], fill=red),
+                    win_range, FormulaRule(formula=[f'{first_ref}="Unresolved"'], fill=red)
                 )
                 ws.conditional_formatting.add(
-                    win_range,
-                    FormulaRule(formula=[f'{first_ref}="Pending"'], fill=pending),
+                    win_range, FormulaRule(formula=[f'{first_ref}="Pending"'], fill=gray)
                 )
                 ws.conditional_formatting.add(
                     win_range,
@@ -1659,25 +1955,35 @@ class ReportGenerator:
                     ),
                 )
 
+        # ── Column widths ─────────────────────────────────────────────────────
         width_map = {
+            "Field": 34,
+            "Feature": 24,
+            "Rule Kind": 14,
+            "Applies To": 30,
+            "Specific Subject": 34,
+            "Value Type": 14,
+            "Review Value": 24,
+            "Ground Truth": 26,
             "Status": 12,
-            "Category": 20,
-            "Subject": 28,
             "Diverging Field(s)": 18,
-            "Judge Decision": 20,
+            "Judge Says": 20,
             "Reviewer Verdict": 22,
-            "Model Win": 16,
-            "Correct Value": 22,
-            "Correct Answer": 24,
-            "Evidence": 38,
-            "Row ID": 10,
+            "Model Win": 14,
+            "Evidence": 40,
+            "Notes": 24,
+            "Row ID": 0,  # hidden
         }
-        if diverging_col:
-            for c in range(subject_col + 1, diverging_col):
-                ws.column_dimensions[get_column_letter(c)].width = 28
+        for label in model_cols:
+            ws.column_dimensions[get_column_letter(label)].width = 28
         for name, width in width_map.items():
             if name in headers:
-                ws.column_dimensions[get_column_letter(headers[name])].width = width
+                col_letter = get_column_letter(headers[name])
+                if width == 0:
+                    ws.column_dimensions[col_letter].hidden = True
+                else:
+                    ws.column_dimensions[col_letter].width = width
+
         ws.sheet_view.zoomScale = 115
 
     def _apply_workbook_formatting(
@@ -1809,8 +2115,7 @@ class ReportGenerator:
         if verdict_col is not None:
             column_letter = get_column_letter(verdict_col)
             dynamic_verdicts = [f"accept-{h}" for h in model_headers if h]
-            verdict_options = dynamic_verdicts or list(self.REVIEWER_VERDICTS)
-            verdict_options = verdict_options + ["accept-both", "reject-all", "needs-escalation"]
+            verdict_options = dynamic_verdicts + ["accept-both", "reject-all", "needs-escalation"]
             validation = DataValidation(
                 type="list",
                 formula1=f'"{",".join(verdict_options)}"',

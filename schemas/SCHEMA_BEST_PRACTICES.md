@@ -782,6 +782,10 @@ The fix is to decompose every requirement row on **four axes**:
 - `exact` — single fixed value ("shall be 35 feet").
 - `minimum` — floor ("at least", "no less than").
 - `maximum` — ceiling ("shall not exceed").
+- Coverage-radius phrasing ("show/list/include items within one mile") is usually
+  `maximum` (inside a radius cap).
+- Separation phrasing ("no structure within 50 feet of a fault") is usually
+  `minimum` (required standoff distance).
 - `range` — a span; populate `range_low` and `range_high`.
 - `formula` — computed ("1.1× turbine height").
 - `tiered` — value depends on a band; **emit one row per tier** with the band in
@@ -791,12 +795,15 @@ The fix is to decompose every requirement row on **four axes**:
 
 **`obligation`** (required, `["required","prohibited","conditional","allowed","recommended","informational"]`)
 
-Classify **from the governing verb only** — never from the value.
+Classify from the governing clause, with these normalization rules:
+- For **quantitative limits/setbacks/windows**, use `obligation = "required"` and encode direction in `value_interpretation` (`minimum` / `maximum` / `range`) even when wording is negative ("shall not exceed", "shall not be within").
+- Reserve `obligation = "prohibited"` for **qualitative bans** without a measurable threshold.
+- For permit-gated phrasing ("may be permitted only through CUP"), model the permit gate as `obligation = "required"` on the approval row; avoid flipping between `allowed` and `required` for the same gate.
 
 | Governing language | `obligation` |
 |--------------------|--------------|
 | "shall", "must", "is required", "no less than" | `required` |
-| "shall not", "no person shall", "may not", "is not permitted", "prohibited" | `prohibited` |
+| "shall not", "no person shall", "may not", "is not permitted", "prohibited" (non-numeric ban) | `prohibited` |
 | "may require", "at the discretion of", "as a condition of approval", "unless waived" | `conditional` |
 | "is permitted", "may be located", "is allowed" | `allowed` |
 | "should", "encouraged", "best available technology" | `recommended` |
@@ -808,9 +815,9 @@ When multiple verbs appear, precedence is:
 ### LLM prompt instructions to embed in field descriptions
 
 - **obligation:** "Never place obligation language inside `value` or
-  `requirement_description`. Classify from the governing verb only. When multiple
-  verbs appear, use precedence prohibited > required > conditional > recommended
-  > allowed > informational. Cite the trigger word in `reasoning`."
+  `requirement_description`. For quantitative rows, use `required` and encode
+  direction in `value_interpretation` even if wording is negative. Reserve
+  `prohibited` for qualitative bans. Cite trigger language in `reasoning`."
 - **source_verbatim:** "Exact word-for-word operative clause; never paraphrase.
   If it exceeds 50 words, quote the operative head, insert '…', then the tail."
 - **reasoning:** "Terse `trigger → label`, ≤15 words." e.g.
@@ -823,8 +830,11 @@ When multiple verbs appear, precedence is:
 | ❌ Anti-pattern | ✅ Correct |
 |----------------|-----------|
 | `value = "shall not exceed 55 dBA"` | `value = 55`, `units = "dBA"`, `value_interpretation = "maximum"`, `obligation = "required"` |
+| `value = "shall not be within 50 feet of an active fault"` + `obligation = "prohibited"` | `value = 50`, `units = "feet"`, `value_interpretation = "minimum"`, `obligation = "required"` |
+| `value_interpretation = "exact"` for `"within one mile"` in map/reporting scope | `value_interpretation = "maximum"` (coverage radius cap) |
 | `value = "Sound barriers may be required"` | `requirement_description = "Sound barriers"`, `value_category = "qualitative"`, `obligation = "conditional"` |
 | `requirement_description = "Fencing is required"` | `requirement_description = "Solid perimeter fencing"`, `obligation = "required"` |
+| `obligation = "allowed"` for `"...may be permitted only through CUP"` | `obligation = "required"` on the permit-gate approval row |
 | One row per permitted district (`AG`, `RE`, `R1`…) | one row, `value_interpretation = "enumerated"`, `applicable_values = ["AG","RE","R1"]` |
 | `applies_to = "nighttime"` | `condition = "nighttime"` (applies_to is the *facility type*, not the trigger) |
 | Paraphrasing in `source_verbatim` | copy the clause verbatim; paraphrase only in `summary` |

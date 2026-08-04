@@ -8,7 +8,7 @@ domain: natural_gas_pipelines
 # ── Model tiers ──────────────────────────────────────────────────────────────
 models:
   primary: gpt-5.6-terra
-  secondary: gemini-3.5-flash
+  secondary: claude-sonnet-4-6
   judge: claude-sonnet-5
 
 # ── Discovery ────────────────────────────────────────────────────────────────
@@ -161,6 +161,27 @@ extraction:
   schema: schemas/personal/natural_gas_pipeline_schema.json
   output_dir: extracted/natural_gas_pipelines
   max_context: 600000
+  timeout_seconds: 600
+  pages:
+    auto_locate:
+      model: secondary
+      section_description: >-
+        the ordinance sections regulating natural gas facilities and related oil
+        and gas infrastructure — setbacks, noise limits, monitoring timelines,
+        permit/submission requirements, and zoning/approval constraints
+      trigger_chars: 600000
+      max_selected_pages: 40
+      keywords:
+        - natural gas
+        - compressor
+        - pipeline
+        - oil and gas
+        - setback
+        - noise
+        - monitoring
+        - permit
+        - zoning
+      save_discovered: true
 
 # ── Compilation ──────────────────────────────────────────────────────────────
 compilation:
@@ -241,6 +262,10 @@ qaqc:
     include_csv: false
     include_missing_in_queue: true
     include_low_signal_presence_in_queue: false
+    identity_columns: compact
+    include_value_unit_column: true
+    evidence_detail: compact
+    evidence_max_chars: 1000
   comparison_approach: mixed
   record_matching:
     key_fields: [feature, rule_kind, applies_to, specific_subject]
@@ -256,6 +281,9 @@ qaqc:
       min_anchor_chars: 12
   comparison:
     primary_fields: [value, units, value_interpretation, obligation]
+    # Optional: collapse "percent above/below ..." unit variants to "percent".
+    # Keep false unless you explicitly want basis-insensitive percent matching.
+    collapse_percent_context: true
     # Optional cross-model unit canonicalization groups (domain-configurable).
     unit_equivalence_groups:
       - [feet, ft]

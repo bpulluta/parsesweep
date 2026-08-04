@@ -86,10 +86,16 @@ def generate_comparison_reports(
     include_low_signal_presence_in_queue = bool(
         report_cfg.get("include_low_signal_presence_in_queue", False)
     )
+    evidence_detail = str(report_cfg.get("evidence_detail", "full"))
+    evidence_max_chars = int(report_cfg.get("evidence_max_chars", 200))
+    identity_columns = str(report_cfg.get("identity_columns", "compact"))
+    include_value_unit_column = bool(
+        report_cfg.get("include_value_unit_column", True)
+    )
 
     doc_dirs = []
     json_files_in_path = list(qa_qc_path_obj.glob("*.json"))
-    ignored_qaqc_json_files = {"metadata.json", "comparison_summary.json"}
+    ignored_qaqc_json_files = {"metadata.json", "comparison_summary.json", "judge_cache.json"}
 
     if json_files_in_path and any(
         f.name not in ignored_qaqc_json_files for f in json_files_in_path
@@ -186,6 +192,10 @@ def generate_comparison_reports(
                     include_csv=include_csv,
                     include_missing_in_queue=include_missing_in_queue,
                     include_low_signal_presence_in_queue=include_low_signal_presence_in_queue,
+                    evidence_detail=evidence_detail,
+                    evidence_max_chars=evidence_max_chars,
+                    identity_columns=identity_columns,
+                    include_value_unit_column=include_value_unit_column,
                 )
 
                 results.append(
