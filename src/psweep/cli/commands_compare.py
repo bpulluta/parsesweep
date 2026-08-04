@@ -72,6 +72,8 @@ def generate_comparison_reports(
     runtime_artifact,
     view,
     report_limit: int | None = None,
+    discovery_checkpoint_path: Optional[Path] = None,
+    extraction_base_dir: Optional[Path] = None,
 ) -> int:
     """Generate comparison reports from previously extracted QA/QC JSON sidecars."""
     from psweep.qa_qc import ComparisonEngine, ReportGenerator
@@ -85,12 +87,6 @@ def generate_comparison_reports(
     )
     include_low_signal_presence_in_queue = bool(
         report_cfg.get("include_low_signal_presence_in_queue", False)
-    )
-    evidence_detail = str(report_cfg.get("evidence_detail", "full"))
-    evidence_max_chars = int(report_cfg.get("evidence_max_chars", 200))
-    identity_columns = str(report_cfg.get("identity_columns", "compact"))
-    include_value_unit_column = bool(
-        report_cfg.get("include_value_unit_column", True)
     )
 
     doc_dirs = []
@@ -192,10 +188,8 @@ def generate_comparison_reports(
                     include_csv=include_csv,
                     include_missing_in_queue=include_missing_in_queue,
                     include_low_signal_presence_in_queue=include_low_signal_presence_in_queue,
-                    evidence_detail=evidence_detail,
-                    evidence_max_chars=evidence_max_chars,
-                    identity_columns=identity_columns,
-                    include_value_unit_column=include_value_unit_column,
+                    discovery_checkpoint_path=discovery_checkpoint_path,
+                    extraction_dir=extraction_base_dir / doc_dir.name if extraction_base_dir else None,
                 )
 
                 results.append(
