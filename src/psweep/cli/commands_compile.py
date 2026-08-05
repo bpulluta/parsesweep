@@ -1525,15 +1525,10 @@ def compile(
                 summary_stats["Model"] = synth_client.raw_model
 
             if schema_info.get("category_field"):
-                category_display = (
-                    "".join(
-                        [
-                            " " + char if char.isupper() else char
-                            for char in schema_info.get("category_field", "")
-                        ]
-                    )
-                    .strip()
-                    .title()
+                from psweep.utils.normalizers import camel_to_title
+
+                category_display = camel_to_title(
+                    schema_info.get("category_field", "")
                 )
                 if category_display and category_display in df.columns:
                     top_categories = df[category_display].value_counts().head(5)

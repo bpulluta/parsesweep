@@ -4,6 +4,7 @@ from typing import Dict, List, Any
 import logging
 
 from ..exceptions import SchemaMetadataError
+from ..utils.normalizers import camel_to_title
 
 logger = logging.getLogger(__name__)
 
@@ -95,11 +96,7 @@ class SchemaDetector:
                     continue
 
                 # Convert camelCase to Title Case with spaces
-                display_name = (
-                    "".join([" " + c if c.isupper() else c for c in k])
-                    .strip()
-                    .title()
-                )
+                display_name = camel_to_title(k)
                 context[display_name] = v
 
         return context
