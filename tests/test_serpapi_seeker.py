@@ -286,7 +286,11 @@ class TestSerpApiSeekerConnector:
             mock_client.search.side_effect = RuntimeError("API rate limited")
             mock_client_class.return_value = mock_client
 
-            with patch.dict(os.environ, {"SERPAPI_API_KEY": "test-api-key"}):
+            # Patch time.sleep so retry backoff doesn't add real wall-clock delay;
+            # the retry loop is still exercised and must surface the failure.
+            with patch("time.sleep"), patch.dict(
+                os.environ, {"SERPAPI_API_KEY": "test-api-key"}
+            ):
                 seeker = SerpApiSeeker()
                 seeker_input = SeekerInput(query="test query")
                 with pytest.raises(RuntimeError, match="SerpApi search failed"):
