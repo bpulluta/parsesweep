@@ -1,5 +1,10 @@
 """Runtime configuration helpers for CLI workflows."""
 
+from .file_loader import (
+    load_config_file,
+    load_json_file,
+    load_yaml_file,
+)
 from .model_registry import (
     ModelDefinition,
     ModelRegistry,
@@ -15,6 +20,9 @@ from .runtime_config_loader import (
 )
 
 __all__ = [
+    "load_config_file",
+    "load_json_file",
+    "load_yaml_file",
     "ModelDefinition",
     "ModelRegistry",
     "ModelRegistryError",

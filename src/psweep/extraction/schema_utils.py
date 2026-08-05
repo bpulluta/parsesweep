@@ -1,11 +1,12 @@
 """Schema loading utilities."""
 
-import json
 from pathlib import Path
-from typing import Dict, Any
+from typing import Any, Dict, Union
+
+from ..config.file_loader import load_json_file
 
 
-def load_schema(schema_path: Path) -> Dict[str, Any]:
+def load_schema(schema_path: Union[str, Path]) -> Dict[str, Any]:
     """
     Load JSON schema from file.
 
@@ -16,8 +17,6 @@ def load_schema(schema_path: Path) -> Dict[str, Any]:
         Parsed JSON schema as dictionary
 
     Raises:
-        FileNotFoundError: If schema file doesn't exist
-        json.JSONDecodeError: If schema file is not valid JSON
+        ConfigurationError: If the file is missing or not valid JSON
     """
-    with open(schema_path, "r", encoding="utf-8") as f:
-        return json.load(f)
+    return load_json_file(schema_path)

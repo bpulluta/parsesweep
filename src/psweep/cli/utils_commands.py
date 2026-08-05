@@ -63,8 +63,7 @@ def _cli_repo_root() -> Path:
 
 
 def _infer_document_type_from_schema(schema_path: Path) -> str:
-    with schema_path.open("r", encoding="utf-8") as handle:
-        schema = json.load(handle)
+    schema = load_schema(schema_path)
 
     extraction = (schema.get("$metadata") or {}).get("extraction") or {}
     document_type = extraction.get("document_type")

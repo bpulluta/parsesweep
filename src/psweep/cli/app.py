@@ -173,8 +173,7 @@ def run(
         2. Run: psweep run --config config/<domain>/<domain>.yaml
         3. Only new targets are processed; previous results are preserved.
     """
-    import yaml
-
+    from psweep.config import load_yaml_file
     from psweep.cli.run_view import RunView
     from psweep.cli.ui import Verbosity, set_verbosity
 
@@ -186,8 +185,7 @@ def run(
     set_verbosity(resolved_verbosity)
     view = RunView("run", verbosity=resolved_verbosity)
 
-    with config_path.open() as fh:
-        cfg = yaml.safe_load(fh)
+    cfg = load_yaml_file(config_path)
 
     domain = cfg.get("domain", config_path.parent.name)
     discovery_cfg = cfg.get("discovery", {})

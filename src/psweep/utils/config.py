@@ -5,6 +5,8 @@ from pathlib import Path
 from typing import Optional
 import logging
 
+from dotenv import load_dotenv
+
 logger = logging.getLogger(__name__)
 
 
@@ -58,26 +60,18 @@ class Config:
             "api_key": None,
         }
 
-        # Load from environment or .env file
+        # Load .env into os.environ via python-dotenv (does not override
+        # existing environment variables), then read from os.environ so real
+        # environment values take precedence over .env — a single, standard
+        # dotenv path instead of a hand-rolled parser.
         env_file = self.project_root / ".env"
-        env_vars = {}
-
-        # First, collect all env vars from .env file
         if env_file.exists():
             try:
-                with open(env_file) as f:
-                    for line in f:
-                        line = line.strip()
-                        if line and not line.startswith("#") and "=" in line:
-                            key, value = line.split("=", 1)
-                            env_vars[key.strip()] = value.strip()
-                            # Also set in os.environ for LiteLLM
-                            os.environ[key.strip()] = value.strip()
+                load_dotenv(env_file, override=False)
             except Exception as e:
                 logger.warning(f"Error reading .env file: {e}")
 
-        # Merge with actual environment variables (they take precedence)
-        env_vars.update(os.environ)
+        env_vars = os.environ
 
         # Detect provider and model from environment.
         # Priority (highest → lowest):
