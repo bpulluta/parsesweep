@@ -307,7 +307,7 @@ def resolve_qaqc_runtime_config(
             or not pair[0].strip()
             or not pair[1].strip()
         ):
-            raise ValueError(
+             raise ValueError(
                 "Each qaqc.record_matching.scope_variant_keys entry must be "
                 "[category, subject] with two non-empty strings."
             )
@@ -315,8 +315,6 @@ def resolve_qaqc_runtime_config(
     report = _parse_report_config(pack_qaqc.get("report"))
 
     return {
-        "source": "runtime_artifact",
-        "lane_name": "main",
         "comparison_approach": comparison_approach,
         "match_fields": list(match_fields),
         "compare_fields": list(compare_fields),

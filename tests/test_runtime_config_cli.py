@@ -139,7 +139,7 @@ def test_acquire_dry_run_writes_manifest(tmp_path):
     assert docs_dir.exists()
 
 
-def test_discover_reprocess_deletes_checkpoint(tmp_path):
+def test_discover_fresh_deletes_checkpoint(tmp_path):
     # Checkpoint lives at manifest.parent.parent.parent/checkpoint.json.
     run_dir = tmp_path / "runs" / "run-x"
     run_dir.mkdir(parents=True)
@@ -162,7 +162,7 @@ def test_discover_reprocess_deletes_checkpoint(tmp_path):
             "--output-manifest",
             str(manifest_path),
             "--dry-run",
-            "--reprocess",
+            "--fresh",
             "-q",
         ],
     )
@@ -261,8 +261,8 @@ def test_discover_defaults_to_skip_existing(tmp_path):
     assert request.reprocess is False
 
 
-def test_discover_reprocess_flag_sets_request_reprocess(tmp_path):
-    result, request = _run_discover_and_capture_request(["--reprocess"], tmp_path)
+def test_discover_fresh_flag_sets_request_reprocess(tmp_path):
+    result, request = _run_discover_and_capture_request(["--fresh"], tmp_path)
     assert result.exit_code == 0
     assert request is not None
     assert request.reprocess is True

@@ -66,7 +66,7 @@ class SerpApiSeeker(BaseSeekerConnector):
         self.cache_ttl_seconds = max(0.0, float(cache_ttl_seconds))
         # When True, ignore existing cache entries on read (forcing a fresh
         # live fetch) while still writing new results. Drives the discover
-        # ``--reprocess`` "start fresh" semantics without discarding the cache
+        # ``--fresh`` "start fresh" semantics without discarding the cache
         # for subsequent tuning runs.
         self.cache_refresh = bool(cache_refresh)
         self._ensure_prepared()

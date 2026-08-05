@@ -133,7 +133,12 @@ class ComparisonEngine:
 
     Example usage::
 
-        qa_qc_config = resolve_qaqc_runtime_config(schema_metadata, pack, pack_qaqc, lane)
+        from psweep.qa_qc.utils import resolve_qaqc_runtime_config
+        
+        qa_qc_config = resolve_qaqc_runtime_config(
+            schema_metadata=schema_metadata,
+            runtime_qaqc=run_config.get("qaqc", {})
+        )
         engine = ComparisonEngine(schema_metadata, qa_qc_config=qa_qc_config)
         result = engine.compare_outputs(output_files, document_name)
     """
@@ -164,13 +169,11 @@ class ComparisonEngine:
         #   "text_review"  — all fields, plus full deduplication/fallback-matching for
         #                    free-form narrative rows.
         self.comparison_approach = self.qa_qc_config.get(
-            "comparison_approach", "mixed"
+           "comparison_approach", "mixed"
         )
-        self.config_source = self.qa_qc_config.get("source", "schema_metadata")
-        self.lane_name = self.qa_qc_config.get("lane_name")
         self.projection = self.qa_qc_config.get("projection") or None
         self.enable_text_fallback_matching = bool(
-            self.qa_qc_config.get("enable_text_fallback_matching", False)
+           self.qa_qc_config.get("enable_text_fallback_matching", False)
         )
         self.enable_judge_pair_matching = bool(
             self.qa_qc_config.get("enable_judge_pair_matching", False)
@@ -2045,8 +2048,6 @@ class ComparisonEngine:
         summary = {
             # Comparison approach
             "comparison_approach": self.comparison_approach,
-            "qaqc_config_source": self.config_source,
-            "qaqc_profile": self.lane_name,
             "skipped_non_numeric": context_skipped + item_skipped,
             # Item counts per model
             "items_per_model": {
