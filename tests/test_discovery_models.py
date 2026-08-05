@@ -274,6 +274,14 @@ def test_engine_run_skips_unsupported_content_type_for_non_dry_run(tmp_path: Pat
         content_type="text/html; charset=utf-8",
         chunks=[b"<html>not-a-document</html>"],
     )
+    # This test only asserts that unsupported HTML is still recorded as a
+    # download. Browser escalation of the tiny shell page is out of scope and
+    # would otherwise launch a real browser and sleep for ~10s.
+    monkeypatch.setattr(
+        DiscoveryEngine,
+        "_escalate_js_shells_to_browser",
+        lambda self, downloads, notes, request: (downloads, notes),
+    )
 
     engine = DiscoveryEngine()
     request = DiscoveryRequest(

@@ -837,54 +837,6 @@ def test_synthesis_block_accepts_valid_config(tmp_path: Path):
     assert resolved["synthesis"]["group_by"] == ["entity.name"]
 
 
-def test_synthesis_block_rejects_unknown_key(tmp_path: Path):
-    body = (
-        "compilation:\n  input_dir: d\n  schema: s.json\n"
-        "  synthesis:\n    enabled: true\n    group_by: [x]\n    group_bye: [x]\n"
-    )
-    with pytest.raises(RuntimeConfigError, match="Unknown keys in 'compilation.synthesis'"):
-        load_runtime_config_file(_write(tmp_path, body))
-
-
-def test_synthesis_enabled_requires_group_by(tmp_path: Path):
-    body = (
-        "compilation:\n  input_dir: d\n  schema: s.json\n"
-        "  synthesis:\n    enabled: true\n"
-    )
-    with pytest.raises(RuntimeConfigError, match="group_by is required"):
-        load_runtime_config_file(_write(tmp_path, body))
-
-
-def test_synthesis_reconcile_fields_require_field_key(tmp_path: Path):
-    body = (
-        "compilation:\n  input_dir: d\n  schema: s.json\n"
-        "  synthesis:\n    group_by: [x]\n"
-        "    reconcile_fields:\n      - {evidence: ev}\n"
-    )
-    with pytest.raises(RuntimeConfigError, match="non-empty string 'field'"):
-        load_runtime_config_file(_write(tmp_path, body))
-
-
-def test_synthesis_ordering_must_reference_reconciled_fields(tmp_path: Path):
-    body = (
-        "compilation:\n  input_dir: d\n  schema: s.json\n"
-        "  synthesis:\n    group_by: [x]\n"
-        "    reconcile_fields:\n      - {field: start}\n"
-        "    ordering_constraint: [start, missing]\n"
-    )
-    with pytest.raises(RuntimeConfigError, match="not in reconcile_fields: missing"):
-        load_runtime_config_file(_write(tmp_path, body))
-
-
-def test_synthesis_min_sources_must_be_non_negative_int(tmp_path: Path):
-    body = (
-        "compilation:\n  input_dir: d\n  schema: s.json\n"
-        "  synthesis:\n    group_by: [x]\n    min_sources_for_llm: -1\n"
-    )
-    with pytest.raises(RuntimeConfigError, match="min_sources_for_llm"):
-        load_runtime_config_file(_write(tmp_path, body))
-
-
 def test_synthesis_accepts_branching_ordering_and_exclusive_pairs(tmp_path: Path):
     body = (
         "compilation:\n  input_dir: d\n  schema: s.json\n"
@@ -907,29 +859,67 @@ def test_synthesis_accepts_branching_ordering_and_exclusive_pairs(tmp_path: Path
     assert resolved["synthesis"]["ordering_constraints"] == [["a", "b"], ["b", "c"]]
 
 
-def test_synthesis_rejects_invalid_ordering_exclusive_pairs_shape(tmp_path: Path):
-    body = (
-        "compilation:\n  input_dir: d\n  schema: s.json\n"
-        "  synthesis:\n    group_by: [x]\n"
-        "    reconcile_fields:\n      - {field: a}\n      - {field: b}\n"
-        "    ordering_exclusive_pairs: [[a, b, c]]\n"
-    )
-    with pytest.raises(
-        RuntimeConfigError,
-        match="ordering_exclusive_pairs must be a list of 2-item string lists",
-    ):
-        load_runtime_config_file(_write(tmp_path, body))
+@pytest.mark.parametrize(
+    ("case_id", "body", "match"),
+    [
+        (
+            "unknown_key",
+            "compilation:\n  input_dir: d\n  schema: s.json\n"
+            "  synthesis:\n    enabled: true\n    group_by: [x]\n    group_bye: [x]\n",
+            "Unknown keys in 'compilation.synthesis'",
+        ),
+        (
+            "enabled_requires_group_by",
+            "compilation:\n  input_dir: d\n  schema: s.json\n"
+            "  synthesis:\n    enabled: true\n",
+            "group_by is required",
+        ),
+        (
+            "reconcile_fields_require_field_key",
+            "compilation:\n  input_dir: d\n  schema: s.json\n"
+            "  synthesis:\n    group_by: [x]\n"
+            "    reconcile_fields:\n      - {evidence: ev}\n",
+            "non-empty string 'field'",
+        ),
+        (
+            "ordering_must_reference_reconciled_fields",
+            "compilation:\n  input_dir: d\n  schema: s.json\n"
+            "  synthesis:\n    group_by: [x]\n"
+            "    reconcile_fields:\n      - {field: start}\n"
+            "    ordering_constraint: [start, missing]\n",
+            "not in reconcile_fields: missing",
+        ),
+        (
+            "min_sources_must_be_non_negative_int",
+            "compilation:\n  input_dir: d\n  schema: s.json\n"
+            "  synthesis:\n    group_by: [x]\n    min_sources_for_llm: -1\n",
+            "min_sources_for_llm",
+        ),
+        (
+            "invalid_ordering_exclusive_pairs_shape",
+            "compilation:\n  input_dir: d\n  schema: s.json\n"
+            "  synthesis:\n    group_by: [x]\n"
+            "    reconcile_fields:\n      - {field: a}\n      - {field: b}\n"
+            "    ordering_exclusive_pairs: [[a, b, c]]\n",
+            "ordering_exclusive_pairs must be a list of 2-item string lists",
+        ),
+        (
+            "unknown_fields_in_ordering_constraints",
+            "compilation:\n  input_dir: d\n  schema: s.json\n"
+            "  synthesis:\n    group_by: [x]\n"
+            "    reconcile_fields:\n      - {field: start}\n"
+            "    ordering_constraints: [[start, missing]]\n",
+            "ordering_constraints references field\\(s\\) not in reconcile_fields: missing",
+        ),
+    ],
+)
+def test_synthesis_block_rejects_invalid_config(
+    tmp_path: Path, case_id: str, body: str, match: str
+):
+    """compilation.synthesis validation rejects malformed blocks loudly.
 
-
-def test_synthesis_rejects_unknown_fields_in_ordering_constraints(tmp_path: Path):
-    body = (
-        "compilation:\n  input_dir: d\n  schema: s.json\n"
-        "  synthesis:\n    group_by: [x]\n"
-        "    reconcile_fields:\n      - {field: start}\n"
-        "    ordering_constraints: [[start, missing]]\n"
-    )
-    with pytest.raises(
-        RuntimeConfigError,
-        match="ordering_constraints references field\\(s\\) not in reconcile_fields: missing",
-    ):
+    Previously the block was an unchecked passthrough, so typos silently
+    produced empty output. Each case locks one guard.
+    """
+    with pytest.raises(RuntimeConfigError, match=match):
         load_runtime_config_file(_write(tmp_path, body))
