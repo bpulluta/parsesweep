@@ -35,6 +35,8 @@ from psweep.discovery.connectors import (
 from psweep.discovery.connectors.digger import SeleniumDiggerConnector
 from psweep.discovery.engine import DiscoveryEngine, DiscoveryRequest
 
+from discovery_helpers import patch_requests_get
+
 
 # ---------------------------------------------------------------------------
 # Shared HTML-fixture helpers
@@ -338,22 +340,17 @@ class TestDiggerConnectorAbstraction:
 
 class TestHttpDiggerConnector:
     def test_http_digger_fetches_index_page_links(self, monkeypatch):
-        class FakeResponse:
-            status_code = 200
-
-            def __init__(self):
-                self.headers = {"Content-Type": "text/html; charset=utf-8"}
-                self.text = (
-                    '<html><body>'
-                    '<a href="/docs/geothermal-ordinance.pdf">Geothermal Ordinance</a>'
-                    '<a href="/docs/notice.html">Notice</a>'
-                    '</body></html>'
-                )
-
-            def raise_for_status(self):
-                return None
-
-        monkeypatch.setattr("requests.get", lambda *args, **kwargs: FakeResponse())
+        patch_requests_get(
+            monkeypatch,
+            url="https://county.gov/index.html",
+            content_type="text/html; charset=utf-8",
+            text=(
+                '<html><body>'
+                '<a href="/docs/geothermal-ordinance.pdf">Geothermal Ordinance</a>'
+                '<a href="/docs/notice.html">Notice</a>'
+                '</body></html>'
+            ),
+        )
 
         connector = HttpDiggerConnector()
         artifacts = connector.discover(
