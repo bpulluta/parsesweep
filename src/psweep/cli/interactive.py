@@ -117,8 +117,8 @@ def _collect_run_args() -> list[str] | None:
     if not config:
         return None
     args = ["run", "--config", config]
-    if _ask_confirm("Reprocess already-extracted files?", default=False):
-        args.append("--reprocess")
+    if _ask_confirm("Extract all files fresh (default: skip already-extracted)?", default=False):
+        args.append("--fresh")
     return args
 
 

@@ -36,13 +36,11 @@ from psweep.extraction.document_utils import SUPPORTED_EXTENSIONS
     help="Skip QA/QC extraction and only regenerate comparison reports from existing qa_qc outputs.",
 )
 @click.option(
-    "--skip-existing/--reprocess",
-    default=True,
+    "--fresh",
+    is_flag=True,
+    default=False,
     show_default=True,
-    help=(
-        "Reuse existing QA/QC model outputs when available "
-        "(--reprocess forces fresh extraction)."
-    ),
+    help="Re-extract all files (default: skip files already processed)",
 )
 @click.option("--quiet", "-q", is_flag=True, help="Minimal output")
 @click.option("--verbose", "-v", is_flag=True, help="Detailed output")
@@ -51,7 +49,7 @@ def validate(
     config_path: str,
     limit: Optional[int],
     compare_only: bool,
-    skip_existing: bool,
+    fresh: bool,
     quiet: bool,
     verbose: bool,
     debug: bool,
@@ -228,9 +226,9 @@ def validate(
             "Judge Enabled": "yes" if judge_enabled else "no",
             "Judge Model": judge_model,
             "Judge Provider": judge_provider,
-            "Extraction Mode": "reuse existing where available"
-            if skip_existing
-            else "reprocess all models",
+            "Extraction Mode": "reprocess all models"
+            if fresh
+            else "reuse existing where available",
             "LLM Timeout (s)": str(timeout_seconds) if timeout_seconds else "default",
             "Report Output": str(qa_qc_output),
         }
@@ -277,7 +275,7 @@ def validate(
         run_id=run_id,
         config_path=config_path,
         prompt_confirm=not view.is_quiet,
-        skip_existing=skip_existing,
+        skip_existing=not fresh,
         seed_output_dir=extraction_output_dir,
         write_primary_canonical=False,
         view=view,

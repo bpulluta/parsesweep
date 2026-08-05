@@ -13,7 +13,7 @@ def test_validate_help_includes_core_options() -> None:
     assert result.exit_code == 0
     assert "--config" in result.output
     assert "--compare-only" in result.output
-    assert "--skip-existing / --reprocess" in result.output
+    assert "--fresh" in result.output
     assert "--quiet" in result.output
     assert "--verbose" in result.output
 
@@ -54,7 +54,7 @@ def test_validate_compare_only_errors_when_no_qaqc_outputs_found(tmp_path: Path)
     assert "QA/QC output not found" in result.output
 
 
-def test_validate_accepts_reprocess_flag(tmp_path: Path) -> None:
+def test_validate_accepts_fresh_flag(tmp_path: Path) -> None:
     schema_path = Path("schemas/personal/geothermal_ordinance_schema.json")
     assert schema_path.exists()
     (tmp_path / "sample.txt").write_text("test", encoding="utf-8")
@@ -77,7 +77,7 @@ def test_validate_accepts_reprocess_flag(tmp_path: Path) -> None:
     runner = CliRunner()
     result = runner.invoke(
         cli,
-        ["validate", "--config", str(cfg_path), "--compare-only", "--reprocess"],
+        ["validate", "--config", str(cfg_path), "--compare-only", "--fresh"],
     )
     assert result.exit_code == 1
     assert "No such option" not in result.output
