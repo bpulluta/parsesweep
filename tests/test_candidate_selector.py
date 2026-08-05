@@ -7,21 +7,9 @@ from datetime import date
 import pytest
 
 from psweep.discovery.candidate_selector import CandidateSelector
-from psweep.discovery.models import DiscoveryCandidate, CandidateScore
+from psweep.discovery.models import DiscoveryCandidate
 
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-
-def _candidate(url: str, reasons: list[str] | None = None) -> DiscoveryCandidate:
-    return DiscoveryCandidate(
-        url=url,
-        source="test",
-        score=CandidateScore(),
-        reasons=reasons or [],
-    )
+from discovery_helpers import make_candidate as _candidate
 
 
 # ---------------------------------------------------------------------------

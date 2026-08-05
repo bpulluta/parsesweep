@@ -11,49 +11,8 @@ from psweep.discovery import (
     CandidateScore,
 )
 
-
-class _FakeResponse:
-    def __init__(
-        self,
-        *,
-        url: str,
-        content_type: str = "application/pdf",
-        chunks: list[bytes] | None = None,
-        text: str = "",
-        status_code: int = 200,
-    ):
-        self.url = url
-        self.headers = {"Content-Type": content_type}
-        self.text = text
-        self.status_code = status_code
-        self._chunks = chunks or [b"%PDF-1.4\n", b"mock-content"]
-
-    def raise_for_status(self):
-        return None
-
-    def iter_content(self, chunk_size: int = 65536):
-        del chunk_size
-        for chunk in self._chunks:
-            yield chunk
-
-
-def _patch_requests_get(
-    monkeypatch,
-    *,
-    url: str,
-    content_type: str = "application/pdf",
-    chunks: list[bytes] | None = None,
-    text: str = "",
-):
-    monkeypatch.setattr(
-        "requests.get",
-        lambda *_args, **_kwargs: _FakeResponse(
-            url=url,
-            content_type=content_type,
-            chunks=chunks,
-            text=text,
-        ),
-    )
+from discovery_helpers import FakeResponse as _FakeResponse
+from discovery_helpers import patch_requests_get as _patch_requests_get
 
 
 def test_candidate_score_weighted_total_and_classification():
@@ -307,18 +266,6 @@ def test_engine_run_skips_unsupported_content_type_for_non_dry_run(tmp_path: Pat
 
 
 def test_engine_run_download_stage_skips_rejected_discovered_candidates(tmp_path: Path, monkeypatch):
-    class FakeResponse:
-        def __init__(self, url: str):
-            self.url = url
-            self.headers = {"Content-Type": "application/pdf"}
-
-        def raise_for_status(self):
-            return None
-
-        def iter_content(self, chunk_size: int = 65536):
-            yield b"%PDF-1.4\n"
-            yield b"downloaded"
-
     def fake_resolve_serpapi_state(_request: DiscoveryRequest):
         return ({"provider": "serpapi", "enabled": True, "available": True}, [], [])
 
@@ -346,7 +293,7 @@ def test_engine_run_download_stage_skips_rejected_discovered_candidates(tmp_path
             0,
         )
 
-    monkeypatch.setattr("requests.get", lambda url, **kwargs: FakeResponse(url))
+    monkeypatch.setattr("requests.get", lambda url, **kwargs: _FakeResponse(url=url))
     monkeypatch.setattr(DiscoveryEngine, "_resolve_serpapi_state", staticmethod(fake_resolve_serpapi_state))
     monkeypatch.setattr(DiscoveryEngine, "_run_seeker", staticmethod(fake_run_seeker))
 
@@ -371,18 +318,6 @@ def test_engine_run_download_stage_skips_rejected_discovered_candidates(tmp_path
 
 
 def test_engine_run_download_stage_preserves_rejected_when_no_better_discovered_candidates(tmp_path: Path, monkeypatch):
-    class FakeResponse:
-        def __init__(self, url: str):
-            self.url = url
-            self.headers = {"Content-Type": "application/pdf"}
-
-        def raise_for_status(self):
-            return None
-
-        def iter_content(self, chunk_size: int = 65536):
-            yield b"%PDF-1.4\n"
-            yield b"downloaded"
-
     def fake_resolve_serpapi_state(_request: DiscoveryRequest):
         return ({"provider": "serpapi", "enabled": True, "available": True}, [], [])
 
@@ -410,7 +345,7 @@ def test_engine_run_download_stage_preserves_rejected_when_no_better_discovered_
             0,
         )
 
-    monkeypatch.setattr("requests.get", lambda url, **kwargs: FakeResponse(url))
+    monkeypatch.setattr("requests.get", lambda url, **kwargs: _FakeResponse(url=url))
     monkeypatch.setattr(DiscoveryEngine, "_resolve_serpapi_state", staticmethod(fake_resolve_serpapi_state))
     monkeypatch.setattr(DiscoveryEngine, "_run_seeker", staticmethod(fake_run_seeker))
 
@@ -433,25 +368,13 @@ def test_engine_run_download_stage_preserves_rejected_when_no_better_discovered_
 
 
 def test_engine_run_retries_transient_download_failure_then_succeeds(tmp_path: Path, monkeypatch):
-    class FakeResponse:
-        def __init__(self):
-            self.url = "https://example.org/docs/retry-ordinance.pdf"
-            self.headers = {"Content-Type": "application/pdf"}
-
-        def raise_for_status(self):
-            return None
-
-        def iter_content(self, chunk_size: int = 65536):
-            yield b"%PDF-1.4\n"
-            yield b"retry-success"
-
     attempts = {"count": 0}
 
     def flaky_get(*args, **kwargs):
         attempts["count"] += 1
         if attempts["count"] == 1:
             raise RuntimeError("temporary timeout")
-        return FakeResponse()
+        return _FakeResponse(url="https://example.org/docs/retry-ordinance.pdf")
 
     monkeypatch.setattr("requests.get", flaky_get)
 
@@ -538,28 +461,17 @@ def test_engine_run_enforces_tos_acknowledgement_for_downloads(tmp_path: Path, m
 
 
 def test_engine_run_enforces_robots_policy_for_downloads(tmp_path: Path, monkeypatch):
-    class FakeResponse:
-        def __init__(self, url: str):
-            self.url = url
-            self.headers = {"Content-Type": "text/plain"}
-            if url.endswith("/robots.txt"):
-                self.status_code = 200
-                self.text = "User-agent: *\nDisallow: /docs/"
-            else:
-                self.status_code = 200
-                self.text = ""
-
-        def raise_for_status(self):
-            return None
-
-        def iter_content(self, chunk_size: int = 65536):
-            yield b"blocked"
-
     request_urls: list[str] = []
 
     def fake_get(url: str, *args, **kwargs):
         request_urls.append(url)
-        return FakeResponse(url)
+        text = "User-agent: *\nDisallow: /docs/" if url.endswith("/robots.txt") else ""
+        return _FakeResponse(
+            url=url,
+            content_type="text/plain",
+            chunks=[b"blocked"],
+            text=text,
+        )
 
     monkeypatch.setattr("requests.get", fake_get)
 
@@ -587,22 +499,10 @@ def test_engine_run_enforces_robots_policy_for_downloads(tmp_path: Path, monkeyp
 
 
 def test_engine_run_applies_request_rate_limiter_for_downloads(tmp_path: Path, monkeypatch):
-    class FakeResponse:
-        def __init__(self, url: str):
-            self.url = url
-            self.headers = {"Content-Type": "application/pdf"}
-
-        def raise_for_status(self):
-            return None
-
-        def iter_content(self, chunk_size: int = 65536):
-            yield b"%PDF-1.4\n"
-            yield b"rate-limit"
-
     sleep_calls: list[float] = []
     monotonic_values = iter([0.0, 0.0, 0.03, 0.03, 0.05, 0.05, 0.10, 0.10])
 
-    monkeypatch.setattr("requests.get", lambda url, **kwargs: FakeResponse(url))
+    monkeypatch.setattr("requests.get", lambda url, **kwargs: _FakeResponse(url=url))
     monkeypatch.setattr("time.sleep", lambda seconds: sleep_calls.append(seconds))
     monkeypatch.setattr("time.monotonic", lambda: next(monotonic_values, 0.10))
 

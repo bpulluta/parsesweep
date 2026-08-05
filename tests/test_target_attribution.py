@@ -9,18 +9,8 @@ from __future__ import annotations
 
 from psweep.discovery.candidate_selector import CandidateSelector
 from psweep.discovery.link_prioritizer import LinkPrioritizer
-from psweep.discovery.models import (
-    DiscoveryCandidate,
-    CandidateScore,
-)
 
-
-def _candidate(url: str) -> DiscoveryCandidate:
-    return DiscoveryCandidate(
-        url=url,
-        source="test",
-        score=CandidateScore(),
-    )
+from discovery_helpers import make_candidate as _candidate
 
 
 class TestSelectorStampsMetadata:
