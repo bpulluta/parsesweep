@@ -14,7 +14,7 @@ from .data_flattener import DataFlattener
 from .deduplicator import Deduplicator
 from .excel_formatter import ExcelFormatter
 from .csv_exporter import CsvExporter
-from ..utils.exceptions import SchemaMetadataError
+from ..exceptions import SchemaMetadataError
 from ..utils.normalizers import normalize_state_column
 
 

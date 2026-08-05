@@ -20,7 +20,7 @@ import litellm
 from litellm import completion, completion_cost
 
 from ..utils.model_pricing import get_pricing
-from ..utils.exceptions import ExtractionError
+from ..exceptions import ExtractionError
 from .llm_factory import DEFAULT_MODEL, detect_provider
 
 logger = logging.getLogger(__name__)

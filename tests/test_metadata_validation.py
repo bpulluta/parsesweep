@@ -5,7 +5,7 @@ from pathlib import Path
 from psweep.compilation.schema_detector import SchemaDetector
 from psweep.compilation.deduplicator import Deduplicator
 from psweep.compilation.data_compiler import DataCompiler
-from psweep.utils.exceptions import SchemaMetadataError
+from psweep.exceptions import SchemaMetadataError
 
 
 class TestComponentMetadataValidation:

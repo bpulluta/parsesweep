@@ -7,7 +7,7 @@ import pytest
 
 from psweep.extraction.document_extractor import DocumentExtractor
 from psweep.extraction.llm_client import LLMClient
-from psweep.utils.exceptions import ExtractionError
+from psweep.exceptions import ExtractionError
 
 
 def test_document_extractor_propagates_llm_failure() -> None:

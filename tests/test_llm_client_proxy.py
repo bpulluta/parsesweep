@@ -18,7 +18,7 @@ from unittest.mock import MagicMock, patch, call
 import pytest
 
 from psweep.extraction.llm_client import LLMClient
-from psweep.utils.exceptions import ExtractionError
+from psweep.exceptions import ExtractionError
 
 
 BASE_URL = "https://proxy.example.com/v1"
