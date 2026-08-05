@@ -125,7 +125,7 @@ class DiscoveryRequest:
     # When True, ignore all prior work for this run: skip the checkpoint (do not
     # prune already-completed targets) and refresh the seeker cache (force live
     # fetches even when ``seeker_cache`` is enabled). Drives the ``discover
-    # --reprocess`` / ``run --reprocess`` "start fresh" UX.
+    # --fresh`` / ``run --fresh`` "start fresh" UX.
     reprocess: bool = False
     # Optional callback for human-friendly progress messages emitted by engine stages.
     progress_callback: Callable[[str], None] | None = None
@@ -3557,7 +3557,7 @@ class DiscoveryEngine:
         )
 
         # Checkpoint: crash-resume state that skips targets completed in a
-        # previous run. ``--reprocess`` clears it so every target re-runs from a
+        # previous run. ``--fresh`` clears it so every target re-runs from a
         # clean slate (a subsequent crash still resumes correctly because only
         # this run's completions are recorded).
         checkpoint_path = self._checkpoint_path(manifest_path)
@@ -3583,7 +3583,7 @@ class DiscoveryEngine:
                 seeker_notes.append(
                     f"Checkpoint: skipped {skipped_count} already-completed "
                     f"target(s) (of {original_target_count} total). "
-                    f"Use --reprocess to include them."
+                    f"Use --fresh to include them."
                 )
 
         # Run seeker discovery when SerpApi is enabled and healthy (no init errors).

@@ -30,10 +30,16 @@ class EvidenceLoader:
 
         Returns:
             {doc_id: {file_path, sections, page_count, ...}}
+            
+        Raises:
+            FileNotFoundError: If checkpoint path is provided but doesn't exist.
+            json.JSONDecodeError: If checkpoint JSON is malformed.
         """
         if not discovery_checkpoint_path.exists():
-            logger.warning(f"Discovery checkpoint not found: {discovery_checkpoint_path}")
-            return {}
+            raise FileNotFoundError(
+                f"Discovery checkpoint missing (required for evidence display): {discovery_checkpoint_path}. "
+                f"Run discovery first or provide a valid checkpoint path."
+            )
 
         try:
             with open(discovery_checkpoint_path) as f:
@@ -51,9 +57,16 @@ class EvidenceLoader:
                     }
             self._doc_metadata_cache = metadata
             return metadata
+        except json.JSONDecodeError as e:
+            raise json.JSONDecodeError(
+                f"Failed to parse discovery checkpoint JSON (may be corrupt): {discovery_checkpoint_path}",
+                e.doc,
+                e.pos,
+            )
         except Exception as e:
-            logger.error(f"Failed to load discovery checkpoint: {e}")
-            return {}
+            raise RuntimeError(
+                f"Failed to load discovery checkpoint from {discovery_checkpoint_path}: {e}"
+            ) from e
 
     def load_extraction_outputs(self, extraction_dir: Path, models: list) -> Dict[str, Dict[str, Any]]:
         """
@@ -65,55 +78,120 @@ class EvidenceLoader:
 
         Returns:
             {model_name: {extracted JSON structure}}
+            
+        Raises:
+            RuntimeError: If required model extraction files are missing or corrupt.
         """
         outputs = {}
+        missing_models = []
+        failed_models = {}
+        
         for model in models:
             json_path = extraction_dir / f"{model}.json"
             if json_path.exists():
                 try:
                     with open(json_path) as f:
                         outputs[model] = json.load(f)
+                except json.JSONDecodeError as e:
+                    failed_models[model] = f"Corrupt JSON: {e}"
                 except Exception as e:
-                    logger.warning(f"Failed to load extraction for {model}: {e}")
+                    failed_models[model] = str(e)
+            else:
+                missing_models.append(model)
+        
+        # Fail loudly if any critical extractions are missing or corrupt
+        if missing_models or failed_models:
+            error_parts = []
+            if missing_models:
+                error_parts.append(f"Missing extraction files: {', '.join(missing_models)}")
+            if failed_models:
+                error_details = "; ".join(f"{m}: {e}" for m, e in failed_models.items())
+                error_parts.append(f"Corrupt extraction files: {error_details}")
+            raise RuntimeError(
+                f"Cannot load extraction outputs from {extraction_dir}: {' | '.join(error_parts)}"
+            )
+        
         self._model_outputs_cache = outputs
         return outputs
 
     def _extract_main_data_array(self) -> Optional[str]:
-        """Extract main_data_array name from schema $metadata."""
+        """Extract main_data_array name from schema $metadata.
+        
+        Raises:
+            ValueError: If schema is provided but missing required $metadata structure.
+        """
+        if not self._schema:
+            logger.warning("No schema provided to EvidenceLoader; evidence columns will be empty")
+            return None
+            
         try:
             metadata = self._schema.get("$metadata", {})
+            if not metadata:
+                raise ValueError(
+                    "Schema is missing required '$metadata' section. "
+                    "All v2.0+ schemas must declare $metadata.extraction.main_data_array"
+                )
             extraction = metadata.get("extraction", {})
-            return extraction.get("main_data_array")
+            if not extraction:
+                raise ValueError(
+                    "Schema $metadata is missing required 'extraction' block. "
+                    "Must declare: $metadata.extraction.main_data_array"
+                )
+            main_array = extraction.get("main_data_array")
+            if not main_array:
+                raise ValueError(
+                    "Schema $metadata.extraction is missing required 'main_data_array' field. "
+                    "This field must declare which array key contains the extracted records."
+                )
+            return main_array
+        except ValueError:
+            raise
         except Exception as e:
-            logger.debug(f"Could not extract main_data_array from schema: {e}")
-            return None
+            raise RuntimeError(
+                f"Failed to extract main_data_array from schema: {e}. "
+                f"Schema structure may be corrupted."
+            ) from e
 
     def _get_main_data_array(self, output: Dict[str, Any]) -> Optional[list]:
-        """Navigate to main data array in extraction output (schema-driven, no fallback)."""
-        if not self._main_data_array:
-            logger.warning("No main_data_array declared in schema $metadata.extraction")
-            return None
+        """Navigate to main data array in extraction output.
         
-        # Check top-level first
+        Schema MUST declare the correct location via $metadata.extraction.main_data_array.
+        No heuristics or fallbacks - if the declared location doesn't exist, fail loudly.
+        """
+        if not self._main_data_array:
+            # This should have been caught in __init__, but double-check
+            raise ValueError(
+                "Schema did not declare main_data_array. Cannot locate extracted records. "
+                "Ensure schema has $metadata.extraction.main_data_array field."
+            )
+        
+        # Check top-level first (most common case)
         if self._main_data_array in output and isinstance(output[self._main_data_array], list):
             return output[self._main_data_array]
         
-        # Check inside 'payload' wrapper (for schemas like data center timelines)
+        # Check inside 'payload' wrapper (for specific schemas like data center timelines)
+        # This is NOT a fallback heuristic - if schema declares array is at payload.X,
+        # we must look there. If it's not there either, the extraction is broken.
         if "payload" in output and isinstance(output["payload"], dict):
             if self._main_data_array in output["payload"] and isinstance(output["payload"][self._main_data_array], list):
                 return output["payload"][self._main_data_array]
         
-        logger.warning(
-            f"Main data array '{self._main_data_array}' not found in extraction output. "
-            "Check schema $metadata.extraction.main_data_array is correct."
+        # Array not found at any expected location - fail loudly
+        raise ValueError(
+            f"Extraction output does not contain main_data_array '{self._main_data_array}'. "
+            f"Expected either at top-level or in payload.{self._main_data_array}. "
+            f"Schema $metadata.extraction.main_data_array may be incorrect or extraction may be corrupted. "
+            f"Available keys: {', '.join(output.keys())}"
         )
-        return None
 
     def get_document_path(self, doc_id: str) -> Optional[str]:
-        """Get file path for a document."""
+        """Get file path for a document. Returns None if metadata not loaded or doc not found."""
         if not self._doc_metadata_cache:
             return None
-        entry = self._doc_metadata_cache.get(doc_id, {})
+        entry = self._doc_metadata_cache.get(doc_id)
+        if not entry:
+            logger.warning(f"Document '{doc_id}' not found in metadata cache")
+            return None
         return entry.get("file_path")
 
     def get_section_for_item(self, doc_id: str, item_path: str) -> Optional[str]:
@@ -129,7 +207,11 @@ class EvidenceLoader:
         """
         if not self._doc_metadata_cache:
             return None
-        entry = self._doc_metadata_cache.get(doc_id, {})
+        entry = self._doc_metadata_cache.get(doc_id)
+        if not entry:
+            logger.warning(f"Document '{doc_id}' not found in metadata cache")
+            return None
+        
         sections = entry.get("sections", [])
         # Simple heuristic: find the most relevant section based on item path
         if sections and isinstance(sections, list):
@@ -145,21 +227,26 @@ class EvidenceLoader:
             item_id: Item identifier (e.g., "facilities|requirements|structures_distance")
 
         Returns:
-            {value: ..., obligation: ..., units: ..., or empty dict if not found}
+            {value: ..., obligation: ..., units: ...} or empty dict if not found
         """
         if model_name not in self._model_outputs_cache:
+            logger.warning(f"Extraction output for model '{model_name}' not found in cache")
             return {}
 
         output = self._model_outputs_cache[model_name]
         extracted = {}
 
-        # Navigate to the main data array using schema-aware or fallback heuristics
-        array = self._get_main_data_array(output)
-        if array:
-            for item in array:
-                if self._matches_item_id(item, item_id):
-                    extracted = self._collect_item_values(item)
-                    break
+        # Navigate to the main data array
+        try:
+            array = self._get_main_data_array(output)
+            if array:
+                for item in array:
+                    if self._matches_item_id(item, item_id):
+                        extracted = self._collect_item_values(item)
+                        break
+        except ValueError:
+            # Schema or extraction structure issue - log and continue
+            pass
         
         return extracted
 

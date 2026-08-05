@@ -594,7 +594,7 @@ def discover(
         models=resolved_models,
         seeker_cache=resolved_seeker_cache,
         seeker_cache_ttl_minutes=resolved_seeker_cache_ttl_minutes,
-        reprocess=not fresh,
+        reprocess=fresh,
         progress_callback=_discover_progress,
         query_context_aliases=resolved_query_context_aliases,
         partition_by=resolved_partition_by,

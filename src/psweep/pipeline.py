@@ -125,9 +125,9 @@ def build_run_stage_commands(
     """Build the subprocess commands used to execute a run config pipeline.
 
     ``reprocess`` propagates a "start fresh" signal to both the discover stage
-    (``--reprocess``: ignore the checkpoint and refresh the search cache) and the
+    (``--fresh``: ignore the checkpoint and refresh the search cache) and the
     extract stage (``--fresh``: re-extract already-processed documents), giving
-    ``run --reprocess`` a single "start fresh" behavior across stages.
+    ``run --fresh`` a single "start fresh" behavior across stages.
 
     When the config enables multi-model QA/QC, an explicit ``validate`` stage
     is appended after extraction.
@@ -140,7 +140,7 @@ def build_run_stage_commands(
     if not skip_discover:
         discover_flags = [*extra_flags]
         if reprocess:
-            discover_flags.append("--reprocess")
+            discover_flags.append("--fresh")
         stage_cmds.append(
             (
                 "discover",

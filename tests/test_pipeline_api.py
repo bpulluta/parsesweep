@@ -180,7 +180,7 @@ def test_build_run_stage_commands_preserves_flags(tmp_path: Path) -> None:
                 "--config",
                 str(config_path),
                 "-q",
-                "--reprocess",
+                "--fresh",
             ],
         ),
         (

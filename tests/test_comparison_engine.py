@@ -88,8 +88,6 @@ class TestComparisonEngine:
 
     # Standard qa_qc_config for tests that just need a working engine.
     _BASE_QA_QC_CONFIG = {
-        "source": "runtime_artifact",
-        "lane_name": "quantitative",
         "comparison_approach": "numeric_only",
         "match_fields": ["category", "specific_subject"],
         "compare_fields": ["value", "unit"],
@@ -121,9 +119,7 @@ class TestComparisonEngine:
         engine = ComparisonEngine(
             mock,
             qa_qc_config={
-                "source": "runtime_artifact",
-                "lane_name": "quantitative",
-                "comparison_approach": "numeric_only",
+                                "comparison_approach": "numeric_only",
                 "match_fields": ["category", "facility_type", "specific_subject"],
                 "compare_fields": ["value", "unit"],
             },
@@ -131,8 +127,6 @@ class TestComparisonEngine:
 
         assert engine.match_fields == ["category", "facility_type", "specific_subject"]
         assert engine.compare_fields == {"value", "unit"}
-        assert engine.config_source == "runtime_artifact"
-        assert engine.lane_name == "quantitative"
 
     def test_semantic_alignment_score_treats_time_formats_as_equivalent(self):
         """Mixed-lane semantic matching should treat 07:00 and 7 a.m. as equivalent time."""
@@ -142,9 +136,7 @@ class TestComparisonEngine:
         engine = ComparisonEngine(
             schema,
             qa_qc_config={
-                "source": "runtime_artifact",
-                "lane_name": "main",
-                "comparison_approach": "mixed",
+                                "comparison_approach": "mixed",
                 "match_fields": ["feature", "applies_to", "specific_subject"],
                 "compare_fields": ["value", "units", "value_interpretation", "obligation"],
                 "enable_text_fallback_matching": True,
@@ -177,9 +169,7 @@ class TestComparisonEngine:
         engine = ComparisonEngine(
             schema,
             qa_qc_config={
-                "source": "runtime_artifact",
-                "lane_name": "main",
-                "comparison_approach": "mixed",
+                                "comparison_approach": "mixed",
                 "match_fields": ["feature", "applies_to", "specific_subject"],
                 "compare_fields": ["value", "units"],
             },
@@ -193,9 +183,7 @@ class TestComparisonEngine:
         engine = ComparisonEngine(
             schema,
             qa_qc_config={
-                "source": "runtime_artifact",
-                "lane_name": "main",
-                "comparison_approach": "mixed",
+                                "comparison_approach": "mixed",
                 "match_fields": ["feature"],
                 "compare_fields": ["start_time"],
             },
@@ -212,9 +200,7 @@ class TestComparisonEngine:
         engine = ComparisonEngine(
             schema,
             qa_qc_config={
-                "source": "runtime_artifact",
-                "lane_name": "main",
-                "comparison_approach": "mixed",
+                                "comparison_approach": "mixed",
                 "match_fields": ["feature"],
                 "compare_fields": ["value", "units"],
             },
@@ -230,9 +216,7 @@ class TestComparisonEngine:
         engine = ComparisonEngine(
             schema,
             qa_qc_config={
-                "source": "runtime_artifact",
-                "lane_name": "main",
-                "comparison_approach": "mixed",
+                                "comparison_approach": "mixed",
                 "match_fields": ["feature", "applies_to", "specific_subject"],
                 "compare_fields": ["value", "units"],
             },
@@ -272,8 +256,6 @@ class TestComparisonEngine:
             },
         )
 
-        assert config["source"] == "runtime_artifact"
-        assert config["lane_name"] == "main"
         assert config["match_fields"] == ["referenceNumber", "make", "model"]
         assert config["compare_fields"] == ["ratedCapacityKW", "operatingHoursPerUnitLimit"]
         assert config["collapse_percent_context"] is False
@@ -454,9 +436,7 @@ class TestComparisonEngine:
         engine = ComparisonEngine(
             mock,
             qa_qc_config={
-                "source": "runtime_artifact",
-                "lane_name": "qualitative",
-                "comparison_approach": "text_review",
+                                "comparison_approach": "text_review",
                 "match_fields": ["category", "specific_subject"],
                 "compare_fields": ["details"],
             },
@@ -474,7 +454,6 @@ class TestComparisonEngine:
         assert details_comparison.agreement_score == "1/2"
         assert details_comparison.needs_review is True
         assert result.summary["comparison_approach"] == "text_review"
-        assert result.summary["qaqc_profile"] == "qualitative"
         assert result.summary["review_category_counts"] == {"text_difference": 1}
         breakdown = result.summary["qualitative_mismatch_breakdown"]
         assert breakdown["text_difference_by_category"] == [{"label": "permit required", "count": 1}]
@@ -521,9 +500,7 @@ class TestComparisonEngine:
         engine = ComparisonEngine(
             mock,
             qa_qc_config={
-                "source": "runtime_artifact",
-                "lane_name": "qualitative",
-                "comparison_approach": "text_review",
+                                "comparison_approach": "text_review",
                 "match_fields": ["category", "specific_subject"],
                 "compare_fields": ["details"],
             },
@@ -569,9 +546,7 @@ class TestComparisonEngine:
         engine = ComparisonEngine(
             mock,
             qa_qc_config={
-                "source": "runtime_artifact",
-                "lane_name": "qualitative",
-                "comparison_approach": "text_review",
+                                "comparison_approach": "text_review",
                 "match_fields": ["category", "specific_subject"],
                 "compare_fields": ["details"],
             },
@@ -615,9 +590,7 @@ class TestComparisonEngine:
         engine = ComparisonEngine(
             mock,
             qa_qc_config={
-                "source": "runtime_artifact",
-                "lane_name": "qualitative",
-                "comparison_approach": "text_review",
+                                "comparison_approach": "text_review",
                 "match_fields": ["category", "specific_subject"],
                 "compare_fields": ["details"],
             },
@@ -671,9 +644,7 @@ class TestComparisonEngine:
         engine = ComparisonEngine(
             mock,
             qa_qc_config={
-                "source": "runtime_artifact",
-                "lane_name": "qualitative",
-                "comparison_approach": "text_review",
+                                "comparison_approach": "text_review",
                 "match_fields": ["category", "facility_type", "specific_subject"],
                 "compare_fields": ["details"],
                 # scope_variant_keys: domain-specific pairs that differ between models
@@ -737,9 +708,7 @@ class TestComparisonEngine:
         engine = ComparisonEngine(
             mock,
             qa_qc_config={
-                "source": "runtime_artifact",
-                "lane_name": "qualitative",
-                "comparison_approach": "text_review",
+                                "comparison_approach": "text_review",
                 "match_fields": ["category", "facility_type", "specific_subject"],
                 "compare_fields": ["details"],
             },
@@ -804,9 +773,7 @@ class TestComparisonEngine:
         engine = ComparisonEngine(
             mock,
             qa_qc_config={
-                "source": "runtime_artifact",
-                "lane_name": "qualitative",
-                "comparison_approach": "text_review",
+                                "comparison_approach": "text_review",
                 "match_fields": ["category", "facility_type", "specific_subject"],
                 "compare_fields": ["details"],
             },
@@ -865,9 +832,7 @@ class TestComparisonEngine:
         engine = ComparisonEngine(
             mock,
             qa_qc_config={
-                "source": "runtime_artifact",
-                "lane_name": "qualitative",
-                "comparison_approach": "text_review",
+                                "comparison_approach": "text_review",
                 "match_fields": ["category", "facility_type", "specific_subject"],
                 "compare_fields": ["details"],
             },
@@ -921,9 +886,7 @@ class TestComparisonEngine:
         engine = ComparisonEngine(
             mock,
             qa_qc_config={
-                "source": "runtime_artifact",
-                "lane_name": "qualitative",
-                "comparison_approach": "text_review",
+                                "comparison_approach": "text_review",
                 "match_fields": ["category", "facility_type", "specific_subject"],
                 "compare_fields": ["details"],
             },
@@ -977,9 +940,7 @@ class TestComparisonEngine:
         engine = ComparisonEngine(
             mock,
             qa_qc_config={
-                "source": "runtime_artifact",
-                "lane_name": "qualitative",
-                "comparison_approach": "text_review",
+                                "comparison_approach": "text_review",
                 "match_fields": ["category", "facility_type", "specific_subject"],
                 "compare_fields": ["details"],
                 # No scope_variant_keys — items that don't match are missing_item.
@@ -1036,9 +997,7 @@ class TestComparisonEngine:
         engine = ComparisonEngine(
             mock,
             qa_qc_config={
-                "source": "runtime_artifact",
-                "lane_name": "qualitative",
-                "comparison_approach": "text_review",
+                                "comparison_approach": "text_review",
                 "match_fields": ["category", "facility_type", "specific_subject"],
                 "compare_fields": ["details"],
                 # No scope_variant_keys — items that don't match are missing_item.
@@ -1099,9 +1058,7 @@ class TestComparisonEngine:
         engine = ComparisonEngine(
             mock,
             qa_qc_config={
-                "source": "runtime_artifact",
-                "lane_name": "qualitative",
-                "comparison_approach": "text_review",
+                                "comparison_approach": "text_review",
                 "match_fields": ["category", "facility_type", "specific_subject"],
                 "compare_fields": ["details"],
             },
@@ -1249,9 +1206,7 @@ class TestComparisonEngine:
         engine = ComparisonEngine(
             schema_metadata=mock_schema_metadata,
             qa_qc_config={
-                "source": "runtime_artifact",
-                "lane_name": "quantitative",
-                "comparison_approach": "mixed",
+                                "comparison_approach": "mixed",
                 "match_fields": ["category", "specific_subject"],
                 "compare_fields": ["value", "unit", "obligation", "value_interpretation"],
             },
@@ -1289,9 +1244,7 @@ class TestComparisonEngine:
         engine = ComparisonEngine(
             schema_metadata=mock_schema_metadata,
             qa_qc_config={
-                "source": "runtime_artifact",
-                "lane_name": "quantitative",
-                "comparison_approach": "mixed",
+                                "comparison_approach": "mixed",
                 "match_fields": ["category", "specific_subject"],
                 "compare_fields": ["value", "unit", "obligation", "value_interpretation"],
             },
@@ -1336,9 +1289,7 @@ class TestComparisonEngine:
         engine = ComparisonEngine(
             schema_metadata=mock_schema_metadata,
             qa_qc_config={
-                "source": "runtime_artifact",
-                "lane_name": "quantitative",
-                "comparison_approach": "mixed",
+                                "comparison_approach": "mixed",
                 "match_fields": ["category", "specific_subject"],
                 "compare_fields": ["value", "unit"],
                 "judge": {
@@ -1392,9 +1343,7 @@ class TestComparisonEngine:
         engine = ComparisonEngine(
             schema_metadata=mock_schema_metadata,
             qa_qc_config={
-                "source": "runtime_artifact",
-                "lane_name": "quantitative",
-                "comparison_approach": "mixed",
+                                "comparison_approach": "mixed",
                 "match_fields": ["category", "specific_subject"],
                 "compare_fields": ["obligation"],
                 "judge": {
@@ -1448,9 +1397,7 @@ class TestComparisonEngine:
         engine = ComparisonEngine(
             schema_metadata=mock_schema_metadata,
             qa_qc_config={
-                "source": "runtime_artifact",
-                "lane_name": "quantitative",
-                "comparison_approach": "mixed",
+                                "comparison_approach": "mixed",
                 "match_fields": ["category", "specific_subject"],
                 "compare_fields": ["obligation"],
                 "judge": {"enabled": True, "apply_on": "non_numeric", "min_confidence": "high"},
@@ -1494,9 +1441,7 @@ class TestComparisonEngine:
         engine = ComparisonEngine(
             schema_metadata=mock_schema_metadata,
             qa_qc_config={
-                "source": "runtime_artifact",
-                "lane_name": "quantitative",
-                "comparison_approach": "mixed",
+                                "comparison_approach": "mixed",
                 "match_fields": ["category", "specific_subject"],
                 "compare_fields": ["obligation"],
                 "judge": {
@@ -1545,9 +1490,7 @@ class TestComparisonEngine:
         engine = ComparisonEngine(
             schema_metadata=mock_schema_metadata,
             qa_qc_config={
-                "source": "runtime_artifact",
-                "lane_name": "quantitative",
-                "comparison_approach": "mixed",
+                                "comparison_approach": "mixed",
                 "match_fields": ["category", "specific_subject"],
                 "compare_fields": ["obligation"],
                 "judge": {
@@ -1624,9 +1567,7 @@ class TestComparisonEngine:
         engine = ComparisonEngine(
             mock,
             qa_qc_config={
-                "source": "runtime_artifact",
-                "lane_name": "quantitative",
-                "comparison_approach": "mixed",
+                                "comparison_approach": "mixed",
                 "match_fields": ["category", "specific_subject"],
                 "compare_fields": ["details"],
                 "enable_text_fallback_matching": True,
@@ -1674,9 +1615,7 @@ class TestComparisonEngine:
         engine = ComparisonEngine(
             mock,
             qa_qc_config={
-                "source": "runtime_artifact",
-                "lane_name": "quantitative",
-                "comparison_approach": "mixed",
+                                "comparison_approach": "mixed",
                 "match_fields": ["category", "specific_subject"],
                 "compare_fields": ["value", "units"],
                 "unit_equivalence_groups": [["hours", "hrs", "hr"]],
@@ -1723,9 +1662,7 @@ class TestComparisonEngine:
         engine = ComparisonEngine(
             mock,
             qa_qc_config={
-                "source": "runtime_artifact",
-                "lane_name": "quantitative",
-                "comparison_approach": "mixed",
+                                "comparison_approach": "mixed",
                 "match_fields": ["category", "specific_subject"],
                 "compare_fields": ["value", "units"],
                 "unit_equivalence_groups": [["hours", "hrs", "hr"]],
@@ -1770,9 +1707,7 @@ class TestComparisonEngine:
         engine = ComparisonEngine(
             mock,
             qa_qc_config={
-                "source": "runtime_artifact",
-                "lane_name": "quantitative",
-                "comparison_approach": "mixed",
+                                "comparison_approach": "mixed",
                 "match_fields": ["category", "specific_subject"],
                 "compare_fields": ["value", "units"],
             },
@@ -1818,9 +1753,7 @@ class TestComparisonEngine:
         engine = ComparisonEngine(
             mock,
             qa_qc_config={
-                "source": "runtime_artifact",
-                "lane_name": "quantitative",
-                "comparison_approach": "mixed",
+                                "comparison_approach": "mixed",
                 "match_fields": ["category", "specific_subject"],
                 "compare_fields": ["value", "units"],
             },
@@ -1866,9 +1799,7 @@ class TestComparisonEngine:
         engine = ComparisonEngine(
             mock,
             qa_qc_config={
-                "source": "runtime_artifact",
-                "lane_name": "quantitative",
-                "comparison_approach": "mixed",
+                                "comparison_approach": "mixed",
                 "match_fields": ["category", "specific_subject"],
                 "compare_fields": ["value", "units"],
             },
@@ -1916,9 +1847,7 @@ class TestComparisonEngine:
         engine = ComparisonEngine(
             mock,
             qa_qc_config={
-                "source": "runtime_artifact",
-                "lane_name": "quantitative",
-                "comparison_approach": "mixed",
+                                "comparison_approach": "mixed",
                 "match_fields": ["category", "specific_subject"],
                 "compare_fields": ["value", "units"],
                 "enable_text_fallback_matching": True,
@@ -2126,8 +2055,6 @@ class TestComparisonEngine:
         
         # Check summary structure
         assert result.summary["comparison_approach"] == "numeric_only"
-        assert result.summary["qaqc_config_source"] == "runtime_artifact"
-        assert result.summary["qaqc_profile"] == "quantitative"
         assert "skipped_non_numeric" in result.summary
         assert "items_per_model" in result.summary
 
@@ -2144,9 +2071,7 @@ class TestComparisonEngine:
         engine = ComparisonEngine(
             mock_schema_metadata,
             qa_qc_config={
-                "source": "runtime_artifact",
-                "lane_name": "quantitative",
-                "comparison_approach": "numeric_only",
+                                "comparison_approach": "numeric_only",
                 "match_fields": ["category", "specific_subject"],
                 "compare_fields": ["value"],
             },
@@ -2158,8 +2083,6 @@ class TestComparisonEngine:
             document_name="test_doc"
         )
 
-        assert result.summary["qaqc_config_source"] == "runtime_artifact"
-        assert result.summary["qaqc_profile"] == "quantitative"
         assert "qaqc_mode" not in result.summary  # removed: was redundant with qaqc_profile
 
 
@@ -2183,8 +2106,6 @@ class TestComparisonEngineIntegration:
 
     # QA/QC config for geothermal tests — lives in run config, not schema.
     _GEOTHERMAL_QA_QC_CONFIG = {
-        "source": "runtime_artifact",
-        "lane_name": "quantitative",
         "comparison_approach": "numeric_only",
         "match_fields": ["category", "applies_to"],
         "compare_fields": ["value", "unit"],
@@ -2323,9 +2244,7 @@ class TestComparisonEngineIntegration:
         engine = ComparisonEngine(
             mock,
             qa_qc_config={
-                "source": "runtime_artifact",
-                "lane_name": "quantitative",
-                "comparison_approach": "numeric_only",
+                                "comparison_approach": "numeric_only",
                 "projection": {
                     "type": "nested_array_items",
                     "source_array": "rate_schedules",
@@ -2370,8 +2289,6 @@ class TestPotentialDuplicateDetection:
 
     # QA/QC config for duplicate-detection tests — lives in run config.
     _DUP_QA_QC_CONFIG = {
-        "source": "runtime_artifact",
-        "lane_name": "quantitative",
         "comparison_approach": "numeric_only",
         "match_fields": ["requirement_type"],
         "compare_fields": ["value", "source_text"],
@@ -2464,8 +2381,6 @@ class TestCompletenessCalculation:
 
     # QA/QC config for completeness tests — expected_requirements live here, not in schema.
     _COMPLETENESS_QA_QC_CONFIG = {
-        "source": "runtime_artifact",
-        "lane_name": "quantitative",
         "comparison_approach": "numeric_only",
         "match_fields": ["requirement_type"],
         "compare_fields": ["value", "source_text"],
@@ -2600,8 +2515,6 @@ class TestExtractItemArrays:
     """
 
     _BASE_QA_QC_CONFIG = {
-        "source": "runtime_artifact",
-        "lane_name": "quantitative",
         "comparison_approach": "numeric_only",
         "match_fields": ["feature"],
         "compare_fields": ["value"],
@@ -2663,8 +2576,6 @@ class TestProjectItemArray:
     """
 
     _PROJECTION_QA_QC_CONFIG = {
-        "source": "runtime_artifact",
-        "lane_name": "quantitative",
         "comparison_approach": "numeric_only",
         "match_fields": ["charge_type"],
         "compare_fields": ["value"],

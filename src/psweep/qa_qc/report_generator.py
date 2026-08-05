@@ -701,10 +701,20 @@ class ReportGenerator:
                 "Subject": subject,
             }
             
-            # Add evidence columns
-            source_document = self._evidence_loader.get_document_path(doc_name) or doc_name or ""
+            # Add evidence columns - gracefully degrade if evidence loader unavailable
+            source_document = ""
+            section = "—"
+            if self._evidence_loader:
+                doc_path = self._evidence_loader.get_document_path(doc_name)
+                if doc_path:
+                    source_document = doc_path
+                section = self._evidence_loader.get_section_for_item(doc_name, item_id) or "—"
+            
+            if not source_document:
+                source_document = doc_name or ""
+            
             row["Source Document"] = source_document
-            row["Section"] = self._evidence_loader.get_section_for_item(doc_name, item_id) or "—"
+            row["Section"] = section
 
             ground_truth_verbatim = self._extract_ground_truth_verbatim(field_comparisons)
             row["Ground Truth Verbatim"] = ground_truth_verbatim
@@ -714,6 +724,7 @@ class ReportGenerator:
                 evidence_text = self._evidence_loader.format_model_evidence(model, str(item_id), truncate=200)
                 row[f"Extracted by {model_labels[model]}"] = evidence_text or "(not extracted)"
 
+            # Evidence column: prioritize verbatim, fallback to source document
             row["Evidence"] = ground_truth_verbatim or source_document
             row["Seen By"] = seen_by
             row["Diverging Field(s)"] = diverging_fields
@@ -727,7 +738,6 @@ class ReportGenerator:
             )
             for model in result.models:
                 row[model_labels[model]] = model_displays.get(model, "\u2205")
-                row["Evidence"] = row["Evidence"] or evidence
             row["Judge Says"] = self._build_judge_says(judge_status, likely_correct)
             row["Why Flagged"] = why_flagged
             row["Reviewer Verdict"] = ""
