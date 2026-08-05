@@ -9,7 +9,9 @@ from __future__ import annotations
 import pytest
 
 from psweep.discovery.link_prioritizer import LinkPrioritizer
-from psweep.discovery.models import DiscoveryCandidate, CandidateScore
+from psweep.discovery.models import CandidateScore, DiscoveryCandidate
+
+from discovery_helpers import make_candidate
 
 
 # ---------------------------------------------------------------------------
@@ -17,11 +19,11 @@ from psweep.discovery.models import DiscoveryCandidate, CandidateScore
 # ---------------------------------------------------------------------------
 
 def _candidate(url: str, reasons: list[str] | None = None) -> DiscoveryCandidate:
-    return DiscoveryCandidate(
-        url=url,
-        source="test",
+    # Prioritizer tests assume a non-default baseline score.
+    return make_candidate(
+        url,
+        reasons=reasons,
         score=CandidateScore(url_signal=0.5, trust_signal=0.4),
-        reasons=reasons or [],
     )
 
 
