@@ -61,42 +61,31 @@ class ContentSampler:
 
     @classmethod
     def _extract_text_from_pdf(cls, file_path: str) -> str:
-        """Extract text from PDF file, with OCR fallback for scanned PDFs."""
+        """Extract sample text from a PDF, with OCR fallback for scanned PDFs.
+
+        Routes all PDF reading through the single source of truth
+        (``extraction.pdf_utils``): first reuse the shared full-text cache, then
+        read the first ``_SAMPLE_PAGES`` pages via ``extract_pages_text``, and
+        finally OCR image-based PDFs that yield no embedded text.
+        """
+        from pathlib import Path
+
+        from ..extraction.document_utils import read_text_cache
+        from ..extraction.pdf_utils import extract_pages_text
+
+        path = Path(file_path)
+
         # Prefer the shared full-text cache: if the extraction stage (or a prior
         # review) already extracted/OCR'd this file, reuse it instead of redoing.
         try:
-            from pathlib import Path
-
-            from ..extraction.document_utils import read_text_cache
-
-            cached = read_text_cache(Path(file_path))
+            cached = read_text_cache(path)
             if cached is not None:
                 return cached
         except Exception:  # noqa: BLE001 - cache is optional
             pass
 
-        max_pages = cls._SAMPLE_PAGES
-        text = ""
-        try:
-            import pdftotext
-
-            with open(file_path, "rb") as f:
-                pdf = pdftotext.PDF(f)
-                text = "\n".join(pdf[: min(max_pages, len(pdf))])
-        except Exception as e:
-            # Fallback to PyMuPDF if pdftotext fails
-            try:
-                import fitz
-
-                doc = fitz.open(file_path)
-                text = "".join(
-                    doc[page_num].get_text() + "\n"
-                    for page_num in range(min(max_pages, len(doc)))
-                )
-            except Exception as fallback_e:
-                raise ValueError(
-                    f"Failed to extract PDF text: {e}, fallback error: {fallback_e}"
-                )
+        pages = extract_pages_text(path)
+        text = "\n".join(pages[: cls._SAMPLE_PAGES])
 
         # Image-based (scanned) PDF: no embedded text → OCR fallback.
         if len(text.strip()) < cls.MIN_EXTRACTION_LENGTH:
