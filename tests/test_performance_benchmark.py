@@ -1,10 +1,11 @@
 """Tests for run-manifest benchmark profile aggregation and gate evaluation."""
 
-import json
 from pathlib import Path
 
 from click.testing import CliRunner
 import pytest
+
+from _helpers import write_json as _write_json
 
 from psweep.benchmarking.performance import (
     collect_benchmark_metrics,
@@ -13,11 +14,6 @@ from psweep.benchmarking.performance import (
     load_benchmark_snapshot,
 )
 from psweep.cli.main import cli
-
-
-def _write_json(path: Path, content: dict) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(content, indent=2), encoding="utf-8")
 
 
 def test_collect_benchmark_metrics_aggregates_run_and_record_metrics(tmp_path) -> None:

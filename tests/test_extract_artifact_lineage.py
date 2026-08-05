@@ -7,6 +7,7 @@ from types import SimpleNamespace
 from click.testing import CliRunner
 import pytest
 
+from _helpers import write_json as _write_json
 from psweep.cli.commands import (
     _build_dedup_preview_report,
     _context_budget_suggestions_for_process,
@@ -27,11 +28,6 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 def _write_file(path: Path, content: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(content, encoding='utf-8')
-
-
-def _write_json(path: Path, content: dict) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(content, indent=2), encoding='utf-8')
 
 
 def test_resolve_schema_ref_passes_json_through(tmp_path) -> None:

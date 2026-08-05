@@ -11,9 +11,7 @@ from psweep.compilation.deduplicator import Deduplicator
 from psweep.utils.schema_metadata import SchemaMetadata
 
 
-def _write_json(path: Path, content: dict) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(content, indent=2), encoding="utf-8")
+from _helpers import write_json as _write_json
 
 
 def _write_schema(path: Path) -> None:

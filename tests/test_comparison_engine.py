@@ -1585,37 +1585,49 @@ class TestComparisonEngine:
         ]
         assert not missing_rows
 
-    def test_mixed_measurement_shift_value_and_unit_not_flagged(self, temp_dir):
-        """Same measurement encoded as split vs inline value should not be queued as conflict."""
-        mock = MagicMock()
-        mock.get_main_data_array.return_value = "requirements"
-        mock.get_identifier_fields.return_value = []
-        mock.get_context_objects.return_value = []
+    @pytest.mark.parametrize(
+        ("case_id", "model_a", "model_b"),
+        [
+            (
+                "measurement_shift_split_vs_inline",
+                {"value": "50", "units": "feet"},
+                {"value": "50 feet", "units": None},
+            ),
+            (
+                "unit_synonyms_hours_vs_hrs",
+                {"value": 24, "units": "hours"},
+                {"value": 24, "units": "hrs"},
+            ),
+            (
+                "time_formats_24h_vs_ampm",
+                {"value": "07:00", "units": "HH:MM (24-hour)"},
+                {"value": "7 a.m.", "units": "a.m./p.m."},
+            ),
+            (
+                "time_ranges_ampm_vs_24h",
+                {"value": "7 a.m. to 7 p.m.", "units": "hours"},
+                {"value": "07:00-19:00", "units": "HH:MM (24-hour)"},
+            ),
+            (
+                "time_ranges_with_and_phrasing",
+                {"value": "7 a.m. and 7 p.m.", "units": "hours"},
+                {"value": "07:00-19:00", "units": "HH:MM (24-hour)"},
+            ),
+        ],
+    )
+    def test_mixed_equivalent_value_unit_not_flagged(
+        self, temp_dir, case_id, model_a, model_b
+    ):
+        """Semantically equivalent value/unit encodings must not be queued as conflicts.
 
-        model_a = {
-            "requirements": [
-                {
-                    "category": "Setback",
-                    "specific_subject": "fault trace",
-                    "value": "50",
-                    "units": "feet",
-                }
-            ]
-        }
-        model_b = {
-            "requirements": [
-                {
-                    "category": "Setback",
-                    "specific_subject": "fault trace",
-                    "value": "50 feet",
-                    "units": None,
-                }
-            ]
-        }
+        Covers split-vs-inline measurements, unit synonyms, and equivalent time
+        formats/ranges across the two compared models under the mixed lane.
+        """
+        base = {"category": "Working hours", "specific_subject": "site preparation"}
         engine = ComparisonEngine(
-            mock,
+            _build_schema_metadata_mock(),
             qa_qc_config={
-                                "comparison_approach": "mixed",
+                "comparison_approach": "mixed",
                 "match_fields": ["category", "specific_subject"],
                 "compare_fields": ["value", "units"],
                 "unit_equivalence_groups": [["hours", "hrs", "hr"]],
@@ -1623,193 +1635,15 @@ class TestComparisonEngine:
         )
         result = engine.compare_outputs(
             output_files=_write_output_files(
-                temp_dir, {"model_a": model_a, "model_b": model_b}
+                temp_dir,
+                {
+                    "model_a": {"requirements": [{**base, **model_a}]},
+                    "model_b": {"requirements": [{**base, **model_b}]},
+                },
             ),
-            document_name="mixed_measurement_shift",
+            document_name=f"mixed_{case_id}",
         )
-        value_fc = next(fc for fc in result.item_comparisons if fc.field_path == "value")
-        units_fc = next(fc for fc in result.item_comparisons if fc.field_path == "units")
-        assert value_fc.needs_review is False
-        assert units_fc.needs_review is False
 
-    def test_mixed_unit_synonyms_not_flagged(self, temp_dir):
-        """Equivalent unit spellings should not trigger review."""
-        mock = MagicMock()
-        mock.get_main_data_array.return_value = "requirements"
-        mock.get_identifier_fields.return_value = []
-        mock.get_context_objects.return_value = []
-
-        model_a = {
-            "requirements": [
-                {
-                    "category": "Operations",
-                    "specific_subject": "working hours",
-                    "value": 24,
-                    "units": "hours",
-                }
-            ]
-        }
-        model_b = {
-            "requirements": [
-                {
-                    "category": "Operations",
-                    "specific_subject": "working hours",
-                    "value": 24,
-                    "units": "hrs",
-                }
-            ]
-        }
-        engine = ComparisonEngine(
-            mock,
-            qa_qc_config={
-                                "comparison_approach": "mixed",
-                "match_fields": ["category", "specific_subject"],
-                "compare_fields": ["value", "units"],
-                "unit_equivalence_groups": [["hours", "hrs", "hr"]],
-            },
-        )
-        result = engine.compare_outputs(
-            output_files=_write_output_files(
-                temp_dir, {"model_a": model_a, "model_b": model_b}
-            ),
-            document_name="mixed_unit_synonyms",
-        )
-        units_fc = next(fc for fc in result.item_comparisons if fc.field_path == "units")
-        assert units_fc.needs_review is False
-
-    def test_mixed_time_formats_not_flagged(self, temp_dir):
-        """Equivalent time values with different format units should not trigger review."""
-        mock = MagicMock()
-        mock.get_main_data_array.return_value = "requirements"
-        mock.get_identifier_fields.return_value = []
-        mock.get_context_objects.return_value = []
-
-        model_a = {
-            "requirements": [
-                {
-                    "category": "Working hours",
-                    "specific_subject": "drilling preparation site",
-                    "value": "07:00",
-                    "units": "HH:MM (24-hour)",
-                }
-            ]
-        }
-        model_b = {
-            "requirements": [
-                {
-                    "category": "Working hours",
-                    "specific_subject": "drilling preparation site",
-                    "value": "7 a.m.",
-                    "units": "a.m./p.m.",
-                }
-            ]
-        }
-        engine = ComparisonEngine(
-            mock,
-            qa_qc_config={
-                                "comparison_approach": "mixed",
-                "match_fields": ["category", "specific_subject"],
-                "compare_fields": ["value", "units"],
-            },
-        )
-        result = engine.compare_outputs(
-            output_files=_write_output_files(
-                temp_dir, {"model_a": model_a, "model_b": model_b}
-            ),
-            document_name="mixed_time_formats",
-        )
-        value_fc = next(fc for fc in result.item_comparisons if fc.field_path == "value")
-        units_fc = next(fc for fc in result.item_comparisons if fc.field_path == "units")
-        assert value_fc.needs_review is False
-        assert units_fc.needs_review is False
-
-    def test_mixed_time_ranges_not_flagged(self, temp_dir):
-        """Equivalent time ranges should not trigger value/unit conflicts."""
-        mock = MagicMock()
-        mock.get_main_data_array.return_value = "requirements"
-        mock.get_identifier_fields.return_value = []
-        mock.get_context_objects.return_value = []
-
-        model_a = {
-            "requirements": [
-                {
-                    "category": "Working hours",
-                    "specific_subject": "drilling preparation site",
-                    "value": "7 a.m. to 7 p.m.",
-                    "units": "hours",
-                }
-            ]
-        }
-        model_b = {
-            "requirements": [
-                {
-                    "category": "Working hours",
-                    "specific_subject": "drilling preparation site",
-                    "value": "07:00-19:00",
-                    "units": "HH:MM (24-hour)",
-                }
-            ]
-        }
-        engine = ComparisonEngine(
-            mock,
-            qa_qc_config={
-                                "comparison_approach": "mixed",
-                "match_fields": ["category", "specific_subject"],
-                "compare_fields": ["value", "units"],
-            },
-        )
-        result = engine.compare_outputs(
-            output_files=_write_output_files(
-                temp_dir, {"model_a": model_a, "model_b": model_b}
-            ),
-            document_name="mixed_time_ranges",
-        )
-        value_fc = next(fc for fc in result.item_comparisons if fc.field_path == "value")
-        units_fc = next(fc for fc in result.item_comparisons if fc.field_path == "units")
-        assert value_fc.needs_review is False
-        assert units_fc.needs_review is False
-
-    def test_mixed_time_ranges_with_and_not_flagged(self, temp_dir):
-        """Equivalent time ranges using 'and' phrasing should not trigger conflicts."""
-        mock = MagicMock()
-        mock.get_main_data_array.return_value = "requirements"
-        mock.get_identifier_fields.return_value = []
-        mock.get_context_objects.return_value = []
-
-        model_a = {
-            "requirements": [
-                {
-                    "category": "Working hours",
-                    "specific_subject": "site preparation",
-                    "value": "7 a.m. and 7 p.m.",
-                    "units": "hours",
-                }
-            ]
-        }
-        model_b = {
-            "requirements": [
-                {
-                    "category": "Working hours",
-                    "specific_subject": "site preparation",
-                    "value": "07:00-19:00",
-                    "units": "HH:MM (24-hour)",
-                }
-            ]
-        }
-        engine = ComparisonEngine(
-            mock,
-            qa_qc_config={
-                                "comparison_approach": "mixed",
-                "match_fields": ["category", "specific_subject"],
-                "compare_fields": ["value", "units"],
-            },
-        )
-        result = engine.compare_outputs(
-            output_files=_write_output_files(
-                temp_dir, {"model_a": model_a, "model_b": model_b}
-            ),
-            document_name="mixed_time_ranges_and",
-        )
         value_fc = next(fc for fc in result.item_comparisons if fc.field_path == "value")
         units_fc = next(fc for fc in result.item_comparisons if fc.field_path == "units")
         assert value_fc.needs_review is False
