@@ -81,13 +81,12 @@ class PipelineResult:
 
 def _read_config_dict(config_path: str | Path) -> dict:
     """Load a domain run config file as a plain dict (empty on failure)."""
-    import yaml
+    from psweep.config import load_yaml_file
 
     cfg_path = Path(config_path)
     if not cfg_path.exists():
         return {}
-    with cfg_path.open() as fh:
-        return yaml.safe_load(fh) or {}
+    return load_yaml_file(cfg_path)
 
 
 def resolve_run_qaqc(config_path: str | Path) -> Optional[dict]:
@@ -527,15 +526,14 @@ def run_pipeline(
     psweep.exceptions.PipelineError
         If any stage fails.
     """
-    import yaml
+    from psweep.config import load_yaml_file
     from psweep.exceptions import PipelineError
 
     cfg_path = Path(config_path)
     if not cfg_path.exists():
         raise FileNotFoundError(f"Config not found: {cfg_path}")
 
-    with cfg_path.open() as fh:
-        cfg = yaml.safe_load(fh)
+    cfg = load_yaml_file(cfg_path)
 
     domain = cfg.get("domain", cfg_path.parent.name)
     stage_cmds = build_run_stage_commands(
