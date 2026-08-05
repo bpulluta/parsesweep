@@ -702,15 +702,19 @@ class ReportGenerator:
             }
             
             # Add evidence columns
-            row["Source Document"] = self._evidence_loader.get_document_path(doc_name) or "N/A"
-            row["Section"] = self._evidence_loader.get_section_for_item(doc_name, item_id) or "N/A"
-            
+            source_document = self._evidence_loader.get_document_path(doc_name) or doc_name or ""
+            row["Source Document"] = source_document
+            row["Section"] = self._evidence_loader.get_section_for_item(doc_name, item_id) or "—"
+
+            ground_truth_verbatim = self._extract_ground_truth_verbatim(field_comparisons)
+            row["Ground Truth Verbatim"] = ground_truth_verbatim
+
             # Add model-specific evidence columns
             for model in result.models:
                 evidence_text = self._evidence_loader.format_model_evidence(model, str(item_id), truncate=200)
                 row[f"Extracted by {model_labels[model]}"] = evidence_text or "(not extracted)"
-            
-            row["Ground Truth Verbatim"] = ""  # Populated from extracted metadata if available
+
+            row["Evidence"] = ground_truth_verbatim or source_document
             row["Seen By"] = seen_by
             row["Diverging Field(s)"] = diverging_fields
             # Always include Value Type and Review Value (production default)
@@ -723,7 +727,7 @@ class ReportGenerator:
             )
             for model in result.models:
                 row[model_labels[model]] = model_displays.get(model, "\u2205")
-            row["Evidence"] = evidence
+                row["Evidence"] = row["Evidence"] or evidence
             row["Judge Says"] = self._build_judge_says(judge_status, likely_correct)
             row["Why Flagged"] = why_flagged
             row["Reviewer Verdict"] = ""
@@ -751,6 +755,9 @@ class ReportGenerator:
             "Status",
             "Category",
             "Subject",
+            "Source Document",
+            "Section",
+            "Ground Truth Verbatim",
             "Value Type",
             "Review Value",
             *[model_labels[m] for m in result.models],
@@ -1112,6 +1119,22 @@ class ReportGenerator:
             return "Model values differ"
         return ""
 
+    def _extract_ground_truth_verbatim(
+        self, comparisons: List[FieldComparison]
+    ) -> str:
+        """Return the source verbatim text surfaced in the comparison payload."""
+        for comparison in comparisons:
+                    for text in (comparison.model_verbatim or {}).values():
+                        cleaned = str(text or "").strip()
+                        if cleaned and cleaned != "∅":
+                            return cleaned
+        for comparison in comparisons:
+                    for text in (comparison.model_summary or {}).values():
+                        cleaned = str(text or "").strip()
+                        if cleaned and cleaned != "∅":
+                            return cleaned
+        return ""
+
     def _build_diverging_fields(
         self, comparisons: List[FieldComparison]
     ) -> str:
@@ -1197,6 +1220,8 @@ class ReportGenerator:
             "Category",
             "Subject",
             "Source Document",
+            "Section",
+            "Ground Truth Verbatim",
             "Value Type",
             "Review Value",
             *model_columns,
@@ -1483,6 +1508,9 @@ class ReportGenerator:
         diverging_by_rowid: Dict[str, str] = {}
         judge_by_rowid: Dict[str, str] = {}
         evidence_by_rowid: Dict[str, str] = {}
+        source_doc_by_rowid: Dict[str, str] = {}
+        section_by_rowid: Dict[str, str] = {}
+        ground_truth_by_rowid: Dict[str, str] = {}
         for _, item in all_items_df.iterrows():
             rid = self._plain_text(item.get("Row ID"))
             status_by_rowid[rid] = self._plain_text(item.get("Status"))
@@ -1490,6 +1518,9 @@ class ReportGenerator:
             diverging_by_rowid[rid] = self._plain_text(item.get("Diverging Field(s)"))
             judge_by_rowid[rid] = self._plain_text(item.get("Judge Says"))
             evidence_by_rowid[rid] = self._plain_text(item.get("Evidence"))
+            source_doc_by_rowid[rid] = self._plain_text(item.get("Source Document"))
+            section_by_rowid[rid] = self._plain_text(item.get("Section"))
+            ground_truth_by_rowid[rid] = self._plain_text(item.get("Ground Truth Verbatim"))
 
         # Group item_comparisons by row_id to reconstruct full per-model values
         items_data: Dict[str, List[FieldComparison]] = {}
@@ -1558,6 +1589,9 @@ class ReportGenerator:
                 "_status_rank": _status_rank(status),
                 "_category": category_by_rowid.get(group_id, feature),
             }
+            row["Source Document"] = source_doc_by_rowid.get(group_id, "") or result.document_name
+            row["Section"] = section_by_rowid.get(group_id, "")
+            row["Ground Truth Verbatim"] = ground_truth_by_rowid.get(group_id, "")
             # Always include Value Type and Review Value
             row["Value Type"] = row_value_type
             row["Review Value"] = self._build_review_value_summary(
@@ -1571,7 +1605,7 @@ class ReportGenerator:
             row["Judge Says"] = judge_by_rowid.get(group_id, "")
             row["Reviewer Verdict"] = ""
             row["Model Win"] = ""
-            row["Evidence"] = evidence_by_rowid.get(group_id, "")
+            row["Evidence"] = evidence_by_rowid.get(group_id, "") or row["Ground Truth Verbatim"]
             row["Notes"] = ""
             row["Row ID"] = group_id
             rows.append(row)
@@ -1603,6 +1637,8 @@ class ReportGenerator:
         detail_columns = [
             "Field",
             "Source Document",
+            "Section",
+            "Ground Truth Verbatim",
             "Value Type",
             "Review Value",
             "Ground Truth",

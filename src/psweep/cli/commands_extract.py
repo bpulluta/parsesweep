@@ -585,10 +585,11 @@ def _extract_one_document(
 )
 @click.option("--limit", "-n", type=int, help="Process only first N files")
 @click.option(
-    "--skip-existing/--reprocess",
-    default=True,
+    "--fresh",
+    is_flag=True,
+    default=False,
     show_default=True,
-    help="Skip files already processed",
+    help="Re-extract all files (default: skip files already processed)",
 )
 @click.option(
     "--max-context",
@@ -663,7 +664,7 @@ def extract(
     provider: str,
     profile_name: str,
     limit: Optional[int],
-    skip_existing: bool,
+    fresh: bool,
     max_context: int,
     quiet: bool,
     verbose: bool,
@@ -698,9 +699,9 @@ def extract(
             "provider",
             "model",
             "limit",
-            "skip_existing",
             "max_context",
             "live_dashboard",
+            "fresh",
         ]
     )
 
@@ -787,7 +788,9 @@ def extract(
     provider = resolved_inputs.get("provider", provider)
     model = resolved_inputs.get("model", model)
     limit = resolved_inputs.get("limit", limit)
-    skip_existing = resolved_inputs.get("skip_existing", skip_existing)
+    skip_existing = resolved_inputs.get("skip_existing", True)
+    if fresh:
+        skip_existing = False
     max_context = resolved_inputs.get("max_context", max_context)
     timeout_seconds = resolved_inputs.get("timeout_seconds")
     live_dashboard = resolved_inputs.get("live_dashboard", live_dashboard)
@@ -914,7 +917,7 @@ def extract(
             skipped = original_count - len(doc_files)
             if skipped > 0 and len(doc_files) > 0 and not get_verbosity().is_quiet:
                 print_info(
-                    f"Skipping {skipped} already processed file{'s' if skipped != 1 else ''} (use --reprocess to extract again)"
+                    f"Skipping {skipped} already processed file{'s' if skipped != 1 else ''} (use --fresh to extract again)"
                 )
     else:
         if not is_supported_document(path):
@@ -953,12 +956,12 @@ def extract(
             skipped = original_count - len(doc_files)
             if skipped > 0 and not get_verbosity().is_quiet:
                 print_info(
-                    f'Skipping {skipped} already processed file{"s" if skipped != 1 else ""} (use --reprocess to extract again)'
+                    f'Skipping {skipped} already processed file{"s" if skipped != 1 else ""} (use --fresh to extract again)'
                 )
         if not doc_files:
             print_error(
                 "No new files to process from download index",
-                "All discovered files have already been processed. Use --reprocess to extract again.",
+                "All discovered files have already been processed. Use --fresh to extract again.",
             )
             sys.exit(0)
         if not get_verbosity().is_quiet:
@@ -1063,7 +1066,7 @@ def extract(
             view.success(f"All {original_count} file(s) already processed")
             view.outputs({"Output directory": str(output_dir)})
             view.next_steps(
-                ["Re-extract everything with the --reprocess flag"]
+                ["Re-extract everything with the --fresh flag"]
             )
         return
 
@@ -1266,6 +1269,7 @@ def extract(
             identifier_fields = None
 
     context_windows = resolved_inputs.get("model_context_windows") or None
+    enable_qa_qc = False  # Regular extract command is single-model only
     extractor = DocumentExtractor(
         api_key=api_key,
         model=actual_model,
