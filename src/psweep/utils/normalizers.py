@@ -269,3 +269,52 @@ def normalize_state_column(df, column_name: str = "State") -> None:
     logger.debug(
         f"Normalized {column_name}: {unique_states} unique states across {original_count} rows"
     )
+
+
+def humanize_field_name(field_name: str) -> str:
+    """
+    Convert any naming style to clean Title Case.
+
+    Handles snake_case, camelCase, and mixed formats, replacing underscores
+    with spaces and splitting camelCase boundaries before capitalizing each
+    word. This is the canonical column-label humanizer.
+
+    Args:
+        field_name: Raw field name
+
+    Returns:
+        Clean Title Case column name
+
+    Examples:
+        >>> humanize_field_name("charge_type")
+        'Charge Type'
+        >>> humanize_field_name("annualConsumption")
+        'Annual Consumption'
+    """
+    name = field_name.replace("_", " ")
+    name = "".join([" " + c if c.isupper() else c for c in name]).strip()
+    return " ".join(word.capitalize() for word in name.split())
+
+
+def camel_to_title(name: str) -> str:
+    """
+    Split camelCase boundaries and Title Case the result, preserving any
+    existing separators (e.g. underscores) untouched.
+
+    Unlike :func:`humanize_field_name`, this does not rewrite underscores;
+    it is used where established display keys must keep their literal
+    separators.
+
+    Args:
+        name: Raw field name
+
+    Returns:
+        Title-cased name with spaces inserted at camelCase boundaries
+
+    Examples:
+        >>> camel_to_title("facilityName")
+        'Facility Name'
+        >>> camel_to_title("utility_name")
+        'Utility_Name'
+    """
+    return "".join([" " + c if c.isupper() else c for c in name]).strip().title()

@@ -14,6 +14,8 @@ general default, so a schema that declares nothing keeps the legacy behavior.
 import pandas as pd
 from typing import Dict, List, Any
 
+from ..utils.normalizers import humanize_field_name
+
 # --- General defaults (used when the schema declares no override) -------------
 # These are broadly useful field-name conventions, not domain rules: any schema
 # may override them via ``compilation.flattening`` without touching code.
@@ -49,30 +51,6 @@ DEFAULT_UNIT_NORMALIZATIONS = {
     "db(a)": "dBA",
     "DB(A)": "dBA",
 }
-
-
-def humanize_field_name(field_name: str) -> str:
-    """
-    Convert any naming style to clean Title Case.
-
-    Handles snake_case, camelCase, and mixed formats.
-
-    Args:
-        field_name: Raw field name
-
-    Returns:
-        Clean Title Case column name
-
-    Examples:
-        >>> humanize_field_name("charge_type")
-        "Charge Type"
-        >>> humanize_field_name("annualConsumption")
-        "Annual Consumption"
-    """
-    # Handle camelCase and snake_case
-    name = field_name.replace("_", " ")
-    name = "".join([" " + c if c.isupper() else c for c in name]).strip()
-    return " ".join(word.capitalize() for word in name.split())
 
 
 class DataFlattener:
