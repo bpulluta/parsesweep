@@ -66,8 +66,8 @@ class ReportGenerator:
         "scope_variant": "E2EFDA",  # Light muted green
     }
 
-    def __init__(self) -> None:
-        self._evidence_loader = EvidenceLoader()
+    def __init__(self, schema: Optional[Dict[str, Any]] = None) -> None:
+        self._evidence_loader = EvidenceLoader(schema=schema)
         self._max_value_length = MAX_VALUE_LENGTH
 
     def generate_report(

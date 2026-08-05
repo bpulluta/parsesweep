@@ -74,12 +74,13 @@ def generate_comparison_reports(
     report_limit: int | None = None,
     discovery_checkpoint_path: Optional[Path] = None,
     extraction_base_dir: Optional[Path] = None,
+    schema: Optional[Dict[str, Any]] = None,
 ) -> int:
     """Generate comparison reports from previously extracted QA/QC JSON sidecars."""
     from psweep.qa_qc import ComparisonEngine, ReportGenerator
 
     engine = ComparisonEngine(schema_metadata, qa_qc_config=qa_qc_config)
-    report_gen = ReportGenerator()
+    report_gen = ReportGenerator(schema=schema)
     report_cfg = qa_qc_config.get("report") or {}
     include_csv = bool(report_cfg.get("include_csv", False))
     include_missing_in_queue = bool(
