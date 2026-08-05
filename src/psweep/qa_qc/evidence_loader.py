@@ -21,12 +21,21 @@ class EvidenceLoader:
     def __init__(self, schema: Optional[Dict[str, Any]] = None):
         self._doc_metadata_cache: Dict[str, Dict[str, Any]] = {}
         self._model_outputs_cache: Dict[str, Dict[str, Any]] = {}
+        # Path-keyed guards so a source file is parsed once even when the loader
+        # is reused across many documents in a single run (the discovery
+        # checkpoint in particular is shared by every document).
+        self._metadata_source: Optional[Path] = None
+        self._extraction_source: Optional[Path] = None
         self._schema = schema or {}
         self._main_data_array = self._extract_main_data_array()
 
     def load_document_metadata(self, discovery_checkpoint_path: Path) -> Dict[str, Dict[str, Any]]:
         """
         Load document metadata from discovery checkpoint.
+
+        Cached by checkpoint path: the discovery checkpoint is shared by every
+        document in a run, so it is read and parsed only once even when this
+        loader is reused across many report generations.
 
         Returns:
             {doc_id: {file_path, sections, page_count, ...}}
@@ -35,6 +44,12 @@ class EvidenceLoader:
             FileNotFoundError: If checkpoint path is provided but doesn't exist.
             json.JSONDecodeError: If checkpoint JSON is malformed.
         """
+        if (
+            self._metadata_source == discovery_checkpoint_path
+            and self._doc_metadata_cache
+        ):
+            return self._doc_metadata_cache
+
         if not discovery_checkpoint_path.exists():
             raise FileNotFoundError(
                 f"Discovery checkpoint missing (required for evidence display): {discovery_checkpoint_path}. "
@@ -56,6 +71,7 @@ class EvidenceLoader:
                         "mime_type": entry.get("mime_type", ""),
                     }
             self._doc_metadata_cache = metadata
+            self._metadata_source = discovery_checkpoint_path
             return metadata
         except json.JSONDecodeError as e:
             raise json.JSONDecodeError(
@@ -85,7 +101,13 @@ class EvidenceLoader:
         outputs = {}
         missing_models = []
         failed_models = {}
-        
+
+        if (
+            self._extraction_source == extraction_dir
+            and self._model_outputs_cache
+        ):
+            return self._model_outputs_cache
+
         for model in models:
             json_path = extraction_dir / f"{model}.json"
             if json_path.exists():
@@ -112,6 +134,7 @@ class EvidenceLoader:
             )
         
         self._model_outputs_cache = outputs
+        self._extraction_source = extraction_dir
         return outputs
 
     def _extract_main_data_array(self) -> Optional[str]:
