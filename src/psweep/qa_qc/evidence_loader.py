@@ -18,9 +18,11 @@ logger = logging.getLogger(__name__)
 class EvidenceLoader:
     """Load and cache evidence metadata and extracted values for report generation."""
 
-    def __init__(self):
+    def __init__(self, schema: Optional[Dict[str, Any]] = None):
         self._doc_metadata_cache: Dict[str, Dict[str, Any]] = {}
         self._model_outputs_cache: Dict[str, Dict[str, Any]] = {}
+        self._schema = schema or {}
+        self._main_data_array = self._extract_main_data_array()
 
     def load_document_metadata(self, discovery_checkpoint_path: Path) -> Dict[str, Dict[str, Any]]:
         """
@@ -76,6 +78,37 @@ class EvidenceLoader:
         self._model_outputs_cache = outputs
         return outputs
 
+    def _extract_main_data_array(self) -> Optional[str]:
+        """Extract main_data_array name from schema $metadata."""
+        try:
+            metadata = self._schema.get("$metadata", {})
+            extraction = metadata.get("extraction", {})
+            return extraction.get("main_data_array")
+        except Exception as e:
+            logger.debug(f"Could not extract main_data_array from schema: {e}")
+            return None
+
+    def _get_main_data_array(self, output: Dict[str, Any]) -> Optional[list]:
+        """Navigate to main data array in extraction output (schema-driven, no fallback)."""
+        if not self._main_data_array:
+            logger.warning("No main_data_array declared in schema $metadata.extraction")
+            return None
+        
+        # Check top-level first
+        if self._main_data_array in output and isinstance(output[self._main_data_array], list):
+            return output[self._main_data_array]
+        
+        # Check inside 'payload' wrapper (for schemas like data center timelines)
+        if "payload" in output and isinstance(output["payload"], dict):
+            if self._main_data_array in output["payload"] and isinstance(output["payload"][self._main_data_array], list):
+                return output["payload"][self._main_data_array]
+        
+        logger.warning(
+            f"Main data array '{self._main_data_array}' not found in extraction output. "
+            "Check schema $metadata.extraction.main_data_array is correct."
+        )
+        return None
+
     def get_document_path(self, doc_id: str) -> Optional[str]:
         """Get file path for a document."""
         if not self._doc_metadata_cache:
@@ -118,17 +151,16 @@ class EvidenceLoader:
             return {}
 
         output = self._model_outputs_cache[model_name]
-        # Navigate to the correct item in the extraction JSON
-        # This is a simplified version; adjust based on actual schema
         extracted = {}
 
-        # Search through the main data array (schema-dependent)
-        for key in ["facilities", "requirements", "ordinances", "rules"]:
-            if key in output and isinstance(output[key], list):
-                for item in output[key]:
-                    if self._matches_item_id(item, item_id):
-                        extracted = self._collect_item_values(item)
-                        break
+        # Navigate to the main data array using schema-aware or fallback heuristics
+        array = self._get_main_data_array(output)
+        if array:
+            for item in array:
+                if self._matches_item_id(item, item_id):
+                    extracted = self._collect_item_values(item)
+                    break
+        
         return extracted
 
     def _matches_item_id(self, item: Dict[str, Any], item_id: str) -> bool:

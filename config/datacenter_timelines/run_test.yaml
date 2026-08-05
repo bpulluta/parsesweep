@@ -3,8 +3,9 @@ domain: datacenter_timelines_test
 
 # ── Model tiers ──────────────────────────────────────────────────────────────
 models:
-  primary: compassop-gpt-4.1           # extraction (accuracy-critical)
-  secondary: compassop-gpt-4.1-mini    # discovery review, page targeting (speed/cost)
+  primary: gpt-5.6-terra               # extraction (accuracy-critical)
+  secondary: claude-sonnet-4-6         # validation/QA/QC
+  judge: claude-sonnet-5               # arbitration
 
 discovery:
   targets_csv: targets_test5.csv
@@ -93,6 +94,32 @@ discovery:
       - "servercountry.org"
 
   request_delay_ms: 400
+
+# ── QA/QC (Validation) ───────────────────────────────────────────────────────
+qaqc:
+  models: [primary, secondary]
+  output_dir: validated/datacenter_timelines_test
+  report:
+    include_csv: false
+    include_missing_in_queue: true
+    include_low_signal_presence_in_queue: false
+    identity_columns: compact
+    include_value_unit_column: true
+  comparison_approach: mixed
+  record_matching:
+    key_fields: [queried_site_name, project_name, lifecycle_status]
+    fuzzy_key_fields: [project_name]
+    semantic_match_threshold: 0.38
+    anchor:
+      fields: [project_name]
+      method: char_ngram
+      ngram: 4
+      auto_threshold: 0.65
+      review_threshold: 0.35
+      max_candidates_per_row: 3
+      min_anchor_chars: 8
+  comparison:
+    primary_fields: [date_announced, date_operational, date_expected_completion, lifecycle_status]
 
 extraction:
   model: primary

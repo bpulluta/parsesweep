@@ -166,6 +166,12 @@ def validate(
         discovery_checkpoint = Path.cwd() / "discovered" / domain / "curated" / "checkpoint.json"
         discovery_checkpoint_path = discovery_checkpoint if discovery_checkpoint.exists() else None
         
+        # Load schema for evidence display
+        try:
+            schema_dict = load_schema(schema_path)
+        except Exception:
+            schema_dict = None
+        
         exit_code = generate_comparison_reports(
             qa_qc_path_obj=qa_qc_output,
             schema_metadata=schema_metadata,
@@ -175,6 +181,7 @@ def validate(
             report_limit=limit,
             discovery_checkpoint_path=discovery_checkpoint_path,
             extraction_base_dir=extraction_output_dir,
+            schema=schema_dict,
         )
         if exit_code != 0:
             sys.exit(exit_code)
@@ -297,6 +304,7 @@ def validate(
         report_limit=None,
         discovery_checkpoint_path=discovery_checkpoint_path,
         extraction_base_dir=extraction_output_dir,
+        schema=loaded_schema,
     )
     if exit_code != 0:
         sys.exit(exit_code)
