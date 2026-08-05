@@ -3,7 +3,7 @@
 from typing import Dict, List, Any
 import logging
 
-from ..utils.exceptions import SchemaMetadataError
+from ..exceptions import SchemaMetadataError
 
 logger = logging.getLogger(__name__)
 

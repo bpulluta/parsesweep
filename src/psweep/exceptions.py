@@ -33,6 +33,27 @@ class SchemaError(ParseSweepError):
     """Raised when a schema file is missing, malformed, or fails $metadata validation."""
 
 
+class SchemaMetadataError(SchemaError):
+    """Raised when a schema's ``$metadata`` section is missing or invalid."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        schema_path: str | None = None,
+        hint: str | None = None,
+    ) -> None:
+        self.schema_path = schema_path
+        full_message = (
+            f"{message}\n\nSchema file: {schema_path}" if schema_path else message
+        )
+        super().__init__(full_message, hint=hint)
+
+
+class SchemaValidationError(SchemaError):
+    """Raised when a schema's structure fails validation."""
+
+
 class ExtractionError(ParseSweepError):
     """Raised when document extraction fails at the engine level."""
 

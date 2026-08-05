@@ -4,7 +4,7 @@ import json
 import pytest
 from pathlib import Path
 from psweep.utils.schema_metadata import SchemaMetadata
-from psweep.utils.exceptions import SchemaMetadataError
+from psweep.exceptions import SchemaMetadataError
 
 
 @pytest.fixture

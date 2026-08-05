@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Dict, Any, List, Optional
 import logging
 
-from .exceptions import SchemaMetadataError
+from psweep.exceptions import SchemaMetadataError
 from ..extraction.schema_utils import load_schema
 
 logger = logging.getLogger(__name__)
