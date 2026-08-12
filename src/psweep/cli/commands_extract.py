@@ -565,6 +565,8 @@ def _extract_one_document(
 @click.option(
     "--model",
     default=DEFAULT_MODEL,
+    show_default=True,
+    help="LLM model name or alias from run.yaml models: block. Default is gpt-4o-mini (cheap, fast). Use your deployment name for Azure (e.g. gpt-4o).",
 )
 @click.option(
     "--provider",
@@ -594,7 +596,7 @@ def _extract_one_document(
 @click.option(
     "--max-context",
     type=int,
-    default=400000,
+    default=600000,
     show_default=True,
     help="Max document characters to process",
 )
