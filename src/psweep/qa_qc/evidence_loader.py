@@ -37,10 +37,12 @@ class EvidenceLoader:
         document in a run, so it is read and parsed only once even when this
         loader is reused across many report generations.
 
-        Returns:
+        Returns
+        -------
             {doc_id: {file_path, sections, page_count, ...}}
             
-        Raises:
+        Raises
+        ------
             FileNotFoundError: If checkpoint path is provided but doesn't exist.
             json.JSONDecodeError: If checkpoint JSON is malformed.
         """
@@ -92,10 +94,12 @@ class EvidenceLoader:
             extraction_dir: Path to qa_qc/<doc_id>/ directory
             models: List of model names (e.g., ['gpt-5.6-terra', 'claude-sonnet-4-6'])
 
-        Returns:
+        Returns
+        -------
             {model_name: {extracted JSON structure}}
             
-        Raises:
+        Raises
+        ------
             RuntimeError: If required model extraction files are missing or corrupt.
         """
         outputs = {}
@@ -140,7 +144,8 @@ class EvidenceLoader:
     def _extract_main_data_array(self) -> Optional[str]:
         """Extract main_data_array name from schema $metadata.
         
-        Raises:
+        Raises
+        ------
             ValueError: If schema is provided but missing required $metadata structure.
         """
         if not self._schema:
@@ -225,7 +230,8 @@ class EvidenceLoader:
             doc_id: Document identifier
             item_path: Item path in extraction JSON (e.g., "facilities › requirements › structures_distance")
 
-        Returns:
+        Returns
+        -------
             Section name if available, else None
         """
         if not self._doc_metadata_cache:
@@ -249,7 +255,8 @@ class EvidenceLoader:
             model_name: Name of the model
             item_id: Item identifier (e.g., "facilities|requirements|structures_distance")
 
-        Returns:
+        Returns
+        -------
             {value: ..., obligation: ..., units: ...} or empty dict if not found
         """
         if model_name not in self._model_outputs_cache:
@@ -306,7 +313,8 @@ class EvidenceLoader:
             item_id: Item identifier
             truncate: Maximum chars for any single value
 
-        Returns:
+        Returns
+        -------
             Formatted string like "value=1 mile; obligation=required; units=distance"
             or "(not extracted)" if not found
         """

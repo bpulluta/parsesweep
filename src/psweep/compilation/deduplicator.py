@@ -47,7 +47,8 @@ class Deduplicator:
         Args:
             schema_metadata: SchemaMetadata instance (required in v2.0+)
 
-        Raises:
+        Raises
+        ------
             SchemaMetadataError: If schema_metadata is not provided
         """
         if not schema_metadata:
@@ -74,7 +75,8 @@ class Deduplicator:
         Args:
             df: DataFrame to deduplicate
 
-        Returns:
+        Returns
+        -------
             DataFrame with duplicates removed
 
         Example:
@@ -321,7 +323,8 @@ class Deduplicator:
         Args:
             df: DataFrame to analyze
 
-        Returns:
+        Returns
+        -------
             List of column names that are metadata
         """
         # Use metadata-specified ignore fields (required in v2.0+)
@@ -357,7 +360,8 @@ class Deduplicator:
             df: Full DataFrame
             compare_cols: Columns to compare for duplicates
 
-        Returns:
+        Returns
+        -------
             List of row indices to drop
         """
         checked = set()
@@ -505,7 +509,8 @@ class Deduplicator:
             required_cols: Required match columns
             fuzzy_cols: Fuzzy match columns
 
-        Returns:
+        Returns
+        -------
             Formatted note string
         """
         num_merged = len(duplicate_indices) - 1

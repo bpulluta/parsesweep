@@ -94,7 +94,8 @@ class ReportGenerator:
             discovery_checkpoint_path: Path to discovery checkpoint for document metadata
             extraction_dir: Path to extraction JSONs for evidence values
 
-        Returns:
+        Returns
+        -------
             Tuple of (excel_path, csv_path)
         """
         output_dir = Path(output_dir)

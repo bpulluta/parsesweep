@@ -18,10 +18,12 @@ def is_numeric_value(value: Any) -> bool:
     Args:
         value: Value to check
 
-    Returns:
+    Returns
+    -------
         True if value contains at least one digit
 
-    Examples:
+    Examples
+    --------
         >>> is_numeric_value("30")
         True
         >>> is_numeric_value("$15.00")
@@ -61,10 +63,12 @@ def normalize_value(value: Any) -> Any:
     Args:
         value: Value to normalize
 
-    Returns:
+    Returns
+    -------
         Normalized value
 
-    Examples:
+    Examples
+    --------
         >>> normalize_value("$5.00")
         5.0
         >>> normalize_value("  text  ")

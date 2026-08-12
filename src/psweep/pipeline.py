@@ -56,6 +56,13 @@ class ExtractionRunResult:
 
     @property
     def success_rate(self) -> float:
+        """Fraction of documents extracted without error.
+
+        Returns
+        -------
+        float
+            ``successful / total``, or ``0.0`` when ``total`` is zero.
+        """
         return self.successful / self.total if self.total else 0.0
 
 
@@ -180,7 +187,8 @@ def build_run_stage_commands(
 def detect_api_provider() -> tuple[str | None, bool, str | None]:
     """Auto-detect which LLM provider to use from environment variables.
 
-    Returns:
+    Returns
+    -------
         (provider_name, is_valid, error_message)
         provider_name is 'azure', 'openai', or None.
     """

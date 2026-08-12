@@ -1154,11 +1154,21 @@ def compile(
     verbose: bool,
     debug: bool,
 ) -> None:
-    """
-    Compile extracted JSON files into clean Excel/CSV output.
+    """Compile extracted JSON files into clean Excel/CSV output.
 
-    Works with ANY schema type - automatically detects structure and creates
-    clean, readable output with intelligent deduplication.
+    Reads per-document JSON files from EXTRACTED_DIR (or the configured
+    input_dir), deduplicates records using the schema's identity rules, and
+    writes a consolidated Excel and/or CSV file to the output directory.
+
+    Defaults: output format=excel, dry_run=false, fail_on_suspicious=false.
+
+    Examples
+    --------
+    ::
+
+        psweep compile extracted/my_domain/ --schema schemas/my_schema.json
+        psweep compile --config config/my_domain/my_domain.yaml
+        psweep compile extracted/ --schema s.json --dry-run --verbose
     """
     from psweep.cli.commands import (
         _explicit_cli_overrides,

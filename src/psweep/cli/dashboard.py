@@ -212,7 +212,8 @@ def create_live_dashboard(
         total_documents: Total number of documents to process
         model: Model name for cost tracking
 
-    Returns:
+    Returns
+    -------
         Tuple of (Live instance, ExtractionDashboard instance)
     """
     dashboard = ExtractionDashboard(total_documents, model)

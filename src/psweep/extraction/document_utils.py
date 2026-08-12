@@ -224,7 +224,8 @@ def is_supported_document(file_path: Path) -> bool:
     Args:
         file_path: Path to the file
 
-    Returns:
+    Returns
+    -------
         True if file format is supported
     """
     return file_path.suffix.lower() in SUPPORTED_EXTENSIONS
@@ -242,10 +243,12 @@ def extract_text_from_document(
         file_path: Path to the document
         page_range: Optional tuple (start_page, end_page) for PDF files only (1-indexed)
 
-    Returns:
+    Returns
+    -------
         Extracted text content
 
-    Raises:
+    Raises
+    ------
         ValueError: If file format is not supported
         RuntimeError: If extraction fails
     """
@@ -311,7 +314,8 @@ def _extract_from_docx(docx_path: Path) -> str:
     Args:
         docx_path: Path to DOCX file
 
-    Returns:
+    Returns
+    -------
         Extracted text
     """
     try:
@@ -359,7 +363,8 @@ def _extract_from_txt(txt_path: Path) -> str:
     Args:
         txt_path: Path to TXT file
 
-    Returns:
+    Returns
+    -------
         File contents
     """
     try:
@@ -392,7 +397,8 @@ def _extract_from_xlsx(xlsx_path: Path) -> str:
     Args:
         xlsx_path: Path to XLSX file
 
-    Returns:
+    Returns
+    -------
         Formatted text with sheet names and cell values
     """
     try:
@@ -438,7 +444,8 @@ def _extract_from_csv(csv_path: Path) -> str:
     Args:
         csv_path: Path to CSV file
 
-    Returns:
+    Returns
+    -------
         Formatted text with CSV contents
     """
     try:

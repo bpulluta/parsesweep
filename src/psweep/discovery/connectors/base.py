@@ -38,7 +38,8 @@ class BaseSeekerConnector(ABC):
             "reasons": list[str],
         }
 
-        Raises:
+        Raises
+        ------
             RuntimeError: If provider is unavailable or API key is missing.
             ValueError: If query is invalid.
         """
@@ -99,7 +100,8 @@ class BaseDiggerConnector(ABC):
         """
         Discover candidate artifacts from seed pages within crawl budgets.
 
-        Returns:
+        Returns
+        -------
             Normalized digger artifacts for downstream validation/scoring.
         """
         pass

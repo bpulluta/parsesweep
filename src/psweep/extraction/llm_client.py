@@ -198,7 +198,8 @@ class LLMClient:
             system_prompt: Optional custom system prompt
             user_prompt: Optional custom user prompt (overrides default)
 
-        Returns:
+        Returns
+        -------
             dict with 'data' (extracted data) and 'cost' (API cost in USD)
         """
         # Use default prompts if not provided

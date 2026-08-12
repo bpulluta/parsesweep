@@ -203,10 +203,12 @@ def normalize_state(state: Optional[str]) -> Optional[str]:
     Args:
         state: State name or abbreviation
 
-    Returns:
+    Returns
+    -------
         2-letter state abbreviation, or original value if not recognized
 
-    Examples:
+    Examples
+    --------
         >>> normalize_state("Utah")
         "UT"
         >>> normalize_state("UT")
@@ -249,14 +251,14 @@ def normalize_state_column(df, column_name: str = "State") -> None:
         df: pandas DataFrame
         column_name: Name of the state column (default: "State")
 
-    Examples:
+    Examples
+    --------
         >>> import pandas as pd
         >>> df = pd.DataFrame({"State": ["Utah", "California", "NY"]})
         >>> normalize_state_column(df)
         >>> df["State"].tolist()
         ["UT", "CA", "NY"]
     """
-
     if column_name not in df.columns:
         return
 
@@ -282,10 +284,12 @@ def humanize_field_name(field_name: str) -> str:
     Args:
         field_name: Raw field name
 
-    Returns:
+    Returns
+    -------
         Clean Title Case column name
 
-    Examples:
+    Examples
+    --------
         >>> humanize_field_name("charge_type")
         'Charge Type'
         >>> humanize_field_name("annualConsumption")
@@ -308,10 +312,12 @@ def camel_to_title(name: str) -> str:
     Args:
         name: Raw field name
 
-    Returns:
+    Returns
+    -------
         Title-cased name with spaces inserted at camelCase boundaries
 
-    Examples:
+    Examples
+    --------
         >>> camel_to_title("facilityName")
         'Facility Name'
         >>> camel_to_title("utility_name")

@@ -77,7 +77,8 @@ class SchemaMetadata:
             schema_path: Path to JSON schema file
             metadata_overrides: Optional runtime metadata overrides merged onto $metadata
 
-        Raises:
+        Raises
+        ------
             SchemaMetadataError: If schema lacks required $metadata section
         """
         self.schema_path = Path(schema_path)
@@ -125,7 +126,8 @@ class SchemaMetadata:
         """
         Validate that metadata includes required fields.
 
-        Raises:
+        Raises
+        ------
             SchemaMetadataError: If required metadata fields are missing
         """
         extraction = self.metadata.get("extraction", {})
@@ -344,10 +346,12 @@ class SchemaMetadata:
         Args:
             data: Extracted data dictionary
 
-        Returns:
+        Returns
+        -------
             List of data items, or empty list if not found
 
-        Raises:
+        Raises
+        ------
             SchemaMetadataError: If main data array key not specified
         """
         main_array_key = self.get_main_data_array()

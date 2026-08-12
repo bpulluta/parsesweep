@@ -51,7 +51,8 @@ class Config:
         - Google Gemini (GEMINI_API_KEY, GOOGLE_API_KEY)
         - OpenAI (OPENAI_API_KEY)
 
-        Returns:
+        Returns
+        -------
             dict with provider configuration
         """
         config = {
@@ -164,7 +165,8 @@ def get_config(project_root: Optional[Path] = None) -> Config:
     Args:
         project_root: Optional project root (used only on first call)
 
-    Returns:
+    Returns
+    -------
         Config instance
     """
     global _global_config

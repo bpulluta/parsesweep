@@ -321,7 +321,8 @@ class ComparisonEngine:
             output_files: Dict mapping model name to output file path
             document_name: Name of the document being compared
 
-        Returns:
+        Returns
+        -------
             ComparisonResult with summary and field comparisons based on the
             resolved QA/QC comparison approach
         """
@@ -2871,7 +2872,8 @@ class ComparisonEngine:
             indexes: Dict mapping model -> {key_tuple: item_dict}
             models: List of model names
 
-        Returns:
+        Returns
+        -------
             List of PotentialDuplicate instances
         """
         # First, find all keys and which models have them
@@ -2935,7 +2937,8 @@ class ComparisonEngine:
             item_arrays: Dict mapping model -> list of extracted items
             models: List of model names
 
-        Returns:
+        Returns
+        -------
             Dict mapping model -> CompletenessResult
         """
         expected_requirements = self.qa_qc_config.get("expected_requirements") or []

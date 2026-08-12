@@ -125,7 +125,8 @@ class DocumentExtractor:
             text: Full document text to extract from
             schema: JSON schema defining structure to extract (must have 'type' and 'properties')
 
-        Returns:
+        Returns
+        -------
             ExtractionResult containing:
                 - data: Extracted structured data matching schema
                 - completeness_score: 0-1 confidence score
@@ -185,7 +186,8 @@ class DocumentExtractor:
             text: Document text to extract from
             schema: JSON schema for validation
 
-        Returns:
+        Returns
+        -------
             Dict with 'data', 'cost' (USD), and 'input_tokens'/'output_tokens'
         """
         # Use text processor to optimize text for extraction

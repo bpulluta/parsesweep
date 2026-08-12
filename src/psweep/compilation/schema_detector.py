@@ -30,7 +30,8 @@ class SchemaDetector:
         Args:
             schema_metadata: SchemaMetadata instance (required in v2.0+)
 
-        Raises:
+        Raises
+        ------
             SchemaMetadataError: If schema_metadata is not provided
         """
         if not schema_metadata:
@@ -47,7 +48,8 @@ class SchemaDetector:
         Args:
             data: Sample data from first extraction file
 
-        Returns:
+        Returns
+        -------
             Dict with:
             - type: schema type name (e.g., "Ordinance/Regulation", "Utility Tariff")
             - main_array_key: key containing the main data array
@@ -76,7 +78,8 @@ class SchemaDetector:
             data: Extraction data
             schema_info: Schema structure info from detect_structure()
 
-        Returns:
+        Returns
+        -------
             Dict of context fields with human-readable names
 
         Example:
@@ -105,7 +108,8 @@ class SchemaDetector:
         """
         Get list of field names to exclude from compiled output.
 
-        Returns:
+        Returns
+        -------
             List of field names (in snake_case) to exclude
         """
         return self.schema_metadata.get_output_exclude_fields()

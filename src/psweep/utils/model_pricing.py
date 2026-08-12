@@ -127,7 +127,8 @@ def get_model_pricing(model_name: str) -> Tuple[float, float]:
     Args:
         model_name: Model name (e.g., "gpt-4o-mini", "claude-3.5-sonnet", "compassop-gpt-4.1-mini")
 
-    Returns:
+    Returns
+    -------
         (input_cost_per_1m, output_cost_per_1m) tuple
     """
     model_lower = model_name.lower()
@@ -192,7 +193,8 @@ def calculate_cost(
         prompt_tokens: Number of input tokens
         completion_tokens: Number of output tokens
 
-    Returns:
+    Returns
+    -------
         Cost in USD
     """
     input_cost_per_1m, output_cost_per_1m = get_model_pricing(model_name)

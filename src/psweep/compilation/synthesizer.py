@@ -285,7 +285,8 @@ class Synthesizer:
 
     def _date_precision_of(self, field: str, value: str, row: dict) -> str:
         """Resolved date precision: explicit precision field, else inferred from
-        the pinned date pattern (a conservative fallback). Temporal comparator only."""
+        the pinned date pattern (a conservative fallback). Temporal comparator only.
+        """
         pr_field = self.precision_map.get(field)
         explicit = row.get(pr_field) if pr_field else None
         if explicit in self._PRECISION_RANK:
@@ -326,7 +327,8 @@ class Synthesizer:
     def _check_ordering(self, row: dict) -> tuple[bool, str]:
         """ADVISORY ordering check. Never fatal: the caller keeps the row
         regardless. Compares consecutive present values with the configured
-        comparator (lexical / numeric / date)."""
+        comparator (lexical / numeric / date).
+        """
         if not self.has_ordering_checks:
             return True, ""
         violations: list[str] = []
@@ -463,6 +465,22 @@ class Synthesizer:
         return row
 
     def synthesize_from_directory(self, json_dir: str) -> pd.DataFrame:
+        """Load extracted JSON records from a directory and synthesize them.
+
+        Reads all extraction output JSON files under ``json_dir``, groups them
+        by the configured ``group_by`` identity fields, reconciles each group
+        (optionally via LLM), and returns one row per group.
+
+        Parameters
+        ----------
+        json_dir : str
+            Path to a directory containing per-document extraction JSON files.
+
+        Returns
+        -------
+        pd.DataFrame
+            One synthesized row per unique entity group.
+        """
         records = self._load_records(json_dir)
         groups = self._group(records)
         rows = [

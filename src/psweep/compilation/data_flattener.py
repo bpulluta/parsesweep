@@ -114,7 +114,8 @@ class DataFlattener:
         Args:
             item: Dictionary with potentially nested structure
 
-        Returns:
+        Returns
+        -------
             Flattened dictionary suitable for DataFrame row
         """
         flattened = {}
@@ -145,10 +146,12 @@ class DataFlattener:
         Args:
             name: Raw field name
 
-        Returns:
+        Returns
+        -------
             Clean Title Case column name
 
-        Examples:
+        Examples
+        --------
             >>> flattener.make_column_name("charge_type")
             "Charge Type"
             >>> flattener.make_column_name("annualConsumption")
@@ -171,7 +174,8 @@ class DataFlattener:
             key: Column name for this array
             items: Array data to process
 
-        Returns:
+        Returns
+        -------
             Dictionary with column(s) for this array
         """
         if not items:
@@ -198,7 +202,8 @@ class DataFlattener:
             key: Parent key for this array
             items: List of dictionaries
 
-        Returns:
+        Returns
+        -------
             Dictionary with either expanded columns or summary string
         """
         num_items = len(items)
@@ -241,7 +246,8 @@ class DataFlattener:
             parent_key: Parent field name
             items: List of objects to expand
 
-        Returns:
+        Returns
+        -------
             Dictionary with multiple columns (one per field per item)
         """
         result = {}
@@ -304,7 +310,8 @@ class DataFlattener:
             idx: Index in the array
             total: Total items in array
 
-        Returns:
+        Returns
+        -------
             Suffix string (e.g., " Summer", " Tier 1", " 2")
         """
         if total == 1:
@@ -329,7 +336,8 @@ class DataFlattener:
         Args:
             items: List of objects to summarize
 
-        Returns:
+        Returns
+        -------
             Semicolon-separated summary string
         """
         summaries = []
@@ -367,7 +375,8 @@ class DataFlattener:
             obj: Dictionary to search
             possible_keys: List of keys to try in order
 
-        Returns:
+        Returns
+        -------
             First non-null value found, or None
         """
         for key in possible_keys:
@@ -386,7 +395,8 @@ class DataFlattener:
         Args:
             df: DataFrame with potential unit column
 
-        Returns:
+        Returns
+        -------
             DataFrame with normalized units
         """
         if not self.unit_normalizations:
