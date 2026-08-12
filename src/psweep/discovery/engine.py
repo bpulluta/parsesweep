@@ -3539,6 +3539,19 @@ class DiscoveryEngine:
             return downloads, notes, reviewer.get_costs()
 
     def run(self, request: DiscoveryRequest) -> DiscoveryResult:
+        """Execute a full discovery run for the given request.
+
+        Parameters
+        ----------
+        request : DiscoveryRequest
+            Fully resolved discovery configuration and seed inputs.
+
+        Returns
+        -------
+        DiscoveryResult
+            Run outcome including the manifest path, downloaded documents
+            directory, and any errors encountered.
+        """
         started_at = datetime.now(timezone.utc)
         run_id = self._build_run_id(request, started_at)
         documents_dir, manifest_path = self._resolve_output_paths(

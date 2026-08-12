@@ -240,7 +240,8 @@ def get_logger(
         log_file: Optional file path for log output
         verbose: Enable verbose (DEBUG) logging
 
-    Returns:
+    Returns
+    -------
         ProductionLogger instance
     """
     return ProductionLogger(name, log_file, verbose)

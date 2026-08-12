@@ -61,7 +61,8 @@ def _format_extraction_accounting(
         total_time_sec: Total elapsed time in seconds
         model: Model name/identifier
     
-    Returns:
+    Returns
+    -------
         Single-line accounting summary
     """
     return f"✓ Extraction: {num_docs} docs, {total_llm_calls} calls, ${total_cost_usd:.3f}, {total_time_sec:.1f}s [{model}]"
@@ -679,7 +680,23 @@ def extract(
     filter_state: Optional[str] = None,
     filter_jurisdiction: Optional[str] = None,
 ):
-    """Extract structured data from documents."""
+    """Extract structured data from documents using an LLM.
+
+    Reads PDF, DOCX, TXT, and XLSX files from PATH (or the configured
+    input_dir) and writes one JSON file per document to the output directory.
+    Already-processed files are skipped by default; pass --fresh to re-extract
+    everything.
+
+    Defaults: model=gpt-4o-mini, max-context=600000 chars, output=extracted/<domain>.
+
+    Examples
+    --------
+    ::
+
+        psweep extract docs/ --schema schemas/my_schema.json
+        psweep extract --config config/my_domain/my_domain.yaml --fresh
+        psweep extract docs/ --schema s.json --model gpt-4o --provider azure
+    """
     from psweep.cli.commands import (
         _explicit_cli_overrides,
         _print_effective_config,

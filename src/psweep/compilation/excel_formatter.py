@@ -112,7 +112,8 @@ class ExcelFormatter:
             df: Source DataFrame
             ws: Worksheet object
 
-        Returns:
+        Returns
+        -------
             List of column letters that should be centered
         """
         center_aligned_cols = []

@@ -41,7 +41,8 @@ def _extract_with_ocr(pdf_path: Path) -> str:
     Args:
         pdf_path: Path to the PDF file
 
-    Returns:
+    Returns
+    -------
         Extracted text via OCR
     """
     if not PYMUPDF_AVAILABLE:
@@ -123,7 +124,8 @@ def _validate_extraction_quality(text: str, pdf_path: Path) -> bool:
         text: Extracted text
         pdf_path: Path to PDF for metadata
 
-    Returns:
+    Returns
+    -------
         True if extraction quality is acceptable, False otherwise
     """
     # Check 1: Minimum length threshold
@@ -181,7 +183,8 @@ def extract_text_from_pdf(
             can decide whether the (expensive) OCR path ran — used to cache only
             OCR results and re-extract cheap native PDFs fresh.
 
-    Returns:
+    Returns
+    -------
         Extracted text string, or ``(text, meta)`` when ``return_meta`` is True.
     """
     text = ""
@@ -336,7 +339,8 @@ def _cleanup_ocr_errors(text: str) -> str:
     Args:
         text: Raw extracted text
 
-    Returns:
+    Returns
+    -------
         Text with common OCR errors corrected
     """
     import re
@@ -440,7 +444,8 @@ def truncate_text(text: str, max_chars: int = 50000) -> str:
         text: Text to truncate
         max_chars: Maximum characters to keep (~12,500 tokens)
 
-    Returns:
+    Returns
+    -------
         Truncated text
     """
     if len(text) <= max_chars:

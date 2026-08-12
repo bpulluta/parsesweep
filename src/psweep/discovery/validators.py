@@ -249,7 +249,8 @@ class ContentSampler:
             nice_to_have_keywords: List of keywords that improve score
             min_required_matches: Minimum required keyword matches to pass
 
-        Returns:
+        Returns
+        -------
             ContentSamplingResult with validation details
         """
         reasons: list[str] = []

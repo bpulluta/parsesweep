@@ -154,10 +154,12 @@ class SerpApiSeeker(BaseSeekerConnector):
         Args:
             seeker_input: Query and constraints
 
-        Returns:
+        Returns
+        -------
             List of normalized candidate dictionaries with url, source, title, snippet.
 
-        Raises:
+        Raises
+        ------
             ValueError: If query is empty or invalid.
             RuntimeError: If SerpApi API call fails.
         """

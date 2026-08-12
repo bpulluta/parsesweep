@@ -172,7 +172,8 @@ def resolve_qaqc_runtime_config(
     ``qaqc``. Schema metadata is intentionally excluded from this path —
     it owns extraction contracts, not runtime QA/QC behavior.
 
-    Raises:
+    Raises
+    ------
         ValueError: If no QA/QC config can be found, if deprecated lane-style
             keys are present, or if required fields are missing.
     """
@@ -344,7 +345,8 @@ def sanitize_model_name(model_name: str) -> str:
     Args:
         model_name: Model name (e.g., "gpt-4o", "claude-3.5-sonnet")
 
-    Returns:
+    Returns
+    -------
         Sanitized name safe for filenames
     """
     # Replace characters that might cause issues in filenames

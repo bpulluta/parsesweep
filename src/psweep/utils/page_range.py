@@ -17,10 +17,12 @@ def parse_page_range(page_spec: str) -> Tuple[int, int]:
     Args:
         page_spec: Page range string (e.g., "615-759")
 
-    Returns:
+    Returns
+    -------
         Tuple of (start_page, end_page) as 1-indexed integers
 
-    Raises:
+    Raises
+    ------
         ValueError: If format is invalid
     """
     # Try different separators
@@ -68,10 +70,12 @@ def load_pages_csv(csv_path: Path) -> Dict[str, Optional[Tuple[int, int]]]:
     Args:
         csv_path: Path to CSV file
 
-    Returns:
+    Returns
+    -------
         Dictionary mapping file paths to page ranges (or None for full document)
 
-    Raises:
+    Raises
+    ------
         ValueError: If CSV format is invalid
     """
     if not csv_path.exists():

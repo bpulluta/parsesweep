@@ -26,7 +26,8 @@ class TextProcessor:
         Args:
             text: Full document text
 
-        Returns:
+        Returns
+        -------
             Tuple of (optimized_text, was_truncated)
         """
         original_length = len(text)
@@ -54,7 +55,8 @@ class TextProcessor:
             data: Extracted data dictionary
             schema: JSON schema defining expected structure
 
-        Returns:
+        Returns
+        -------
             Normalized data with all schema fields present
         """
         # Get schema properties
@@ -92,7 +94,8 @@ class TextProcessor:
         Args:
             data: Extracted data dictionary
 
-        Returns:
+        Returns
+        -------
             Data with normalized string fields
         """
 
@@ -129,7 +132,8 @@ class TextProcessor:
             data: Extracted data dictionary
             schema_metadata: Optional SchemaMetadata for identifier field lookup
 
-        Returns:
+        Returns
+        -------
             List of warning messages
         """
         warnings = []
@@ -205,7 +209,8 @@ class TextProcessor:
             data: Extracted data dictionary
             validation_notes: List of validation notes (unused but kept for compatibility)
 
-        Returns:
+        Returns
+        -------
             Score from 0-1 indicating data completeness
         """
         score = 0.3  # Base score for successful extraction

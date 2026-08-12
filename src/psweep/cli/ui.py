@@ -451,8 +451,8 @@ def display_yaml(data: dict, title: str = None) -> None:
 def with_status(message: str, *, quiet: bool = False, spinner: str = "dots"):
     """Context manager: show a spinner unless quiet. Usage::
 
-        with with_status("Loading schema...", quiet=view.is_quiet):
-            data = load_schema(path)
+    with with_status("Loading schema...", quiet=view.is_quiet):
+        data = load_schema(path)
     """
     from contextlib import nullcontext
 

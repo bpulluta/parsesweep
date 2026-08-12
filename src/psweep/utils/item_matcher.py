@@ -88,10 +88,12 @@ def extract_key_tokens(text: str) -> Set[str]:
     Args:
         text: Text string to tokenize
 
-    Returns:
+    Returns
+    -------
         Set of normalized key tokens
 
-    Examples:
+    Examples
+    --------
         >>> extract_key_tokens("site preparation for drilling")
         {'site', 'preparation', 'drilling'}
         >>> extract_key_tokens("work in preparation of the site for drilling")
@@ -124,10 +126,12 @@ def normalize_for_matching(value: str) -> str:
     Args:
         value: String value to normalize
 
-    Returns:
+    Returns
+    -------
         Normalized string with sorted key tokens
 
-    Examples:
+    Examples
+    --------
         >>> normalize_for_matching("site preparation for drilling")
         'drilling preparation site'
         >>> normalize_for_matching("work in preparation of the site for drilling")
@@ -145,10 +149,12 @@ def get_nested_value(obj: Dict[str, Any], dot_path: str) -> Any:
         obj: Dictionary to extract value from
         dot_path: Dot-notation path (e.g., "metadata.jurisdiction.state")
 
-    Returns:
+    Returns
+    -------
         Value at the path, or None if path doesn't exist
 
-    Examples:
+    Examples
+    --------
         >>> obj = {"metadata": {"jurisdiction": {"state": "CA"}}}
         >>> get_nested_value(obj, "metadata.jurisdiction.state")
         "CA"
@@ -191,10 +197,12 @@ def create_item_index(
         identifier_fields: List of dot-notation field paths to use as keys
         fuzzy_fields: Optional list of fields to apply token normalization
 
-    Returns:
+    Returns
+    -------
         Dictionary mapping identifier tuples to items
 
-    Examples:
+    Examples
+    --------
         >>> items = [
         ...     {"id": "1", "name": "Item 1"},
         ...     {"id": "2", "name": "Item 2"}
@@ -249,10 +257,12 @@ def map_key_fields_to_columns(
         key_fields: Key field names from schema (dot-notation paths)
         warn_on_missing: Whether to log a warning for each unmapped key field
 
-    Returns:
+    Returns
+    -------
         List of actual DataFrame column names that match key_fields
 
-    Examples:
+    Examples
+    --------
         >>> df = pd.DataFrame(columns=["State", "Rate Name", "Charge Type"])
         >>> map_key_fields_to_columns(df, ["jurisdiction.state", "rate_name"])
         ["State", "Rate Name"]

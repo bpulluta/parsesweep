@@ -99,7 +99,8 @@ def run_multi_model_extraction(
         runtime_artifact: Optional compiled runtime artifact for lineage metadata
         run_id: Optional deterministic run identifier for this invocation
 
-    Returns:
+    Returns
+    -------
         Dict mapping concrete model name to ModelExtractionResult
     """
     # Import here to avoid circular imports

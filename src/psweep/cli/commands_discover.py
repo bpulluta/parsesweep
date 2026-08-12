@@ -186,7 +186,24 @@ def discover(
     verbose: bool,
     debug: bool,
 ):
-    """Discover and download source documents from web targets."""
+    """Discover and download source documents from web targets.
+
+    Searches for documents matching the configured queries, scores and filters
+    candidates, then downloads accepted files to the discovery output directory.
+    Supports seeding from a CSV of targets, direct seed URLs, or a SerpApi
+    search query. Resumes from a checkpoint on subsequent runs; pass --fresh to
+    re-run all targets from scratch.
+
+    Defaults: partition-mode=auto, robots-policy-mode=warn, tos-policy-mode=warn.
+
+    Examples
+    --------
+    ::
+
+        psweep discover --config config/my_domain/my_domain.yaml
+        psweep discover --seed-url https://example.com/docs --domain my_domain
+        psweep discover --config cfg.yaml --dry-run --verbose
+    """
     from psweep.cli.commands import (
         _explicit_cli_overrides,
         _print_effective_config,

@@ -40,7 +40,8 @@ class DataCompiler:
             verbose: Whether to print informational messages (default: True)
             debug: Whether to print debug-level details (default: False)
 
-        Raises:
+        Raises
+        ------
             SchemaMetadataError: If schema_metadata is not provided
         """
         if not schema_metadata:
@@ -72,7 +73,8 @@ class DataCompiler:
         Load all JSON files and compile into DataFrame.
         Searches recursively through nested subdirectories.
 
-        Returns:
+        Returns
+        -------
             Tuple of (DataFrame, schema_info dict)
         """
         # First try direct children, then search recursively for nested structures.
