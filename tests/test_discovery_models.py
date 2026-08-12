@@ -387,6 +387,11 @@ def test_engine_run_retries_transient_download_failure_then_succeeds(tmp_path: P
         output_documents=tmp_path / "docs",
         output_manifest=tmp_path / "manifest.json",
         dry_run=False,
+        # This test isolates download-retry behavior; keep policy checks off so
+        # the mocked requests.get counts only download attempts, not the
+        # robots.txt fetch that warn/enforce modes would perform.
+        robots_policy_mode="ignore",
+        tos_policy_mode="ignore",
         retry_max_attempts=3,
         retry_initial_backoff_seconds=0,
         retry_max_backoff_seconds=0,

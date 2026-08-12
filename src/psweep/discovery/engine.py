@@ -34,12 +34,20 @@ from .link_prioritizer import LinkPrioritizer
 from .models import DiscoveryCandidate, DiscoveryManifest, CandidateScore
 from .retry import compute_backoff, is_transient_error
 from .urls import normalize_url_text, url_host
-from .policies import DiscoveryPolicyEvaluator
+from .policies import (
+    DEFAULT_ROBOTS_POLICY_MODE,
+    DEFAULT_TOS_POLICY_MODE,
+    DiscoveryPolicyEvaluator,
+)
 from psweep.utils.error_taxonomy import (
     build_error_record,
     normalize_error_records,
     summarize_error_records,
 )
+
+# Single source of truth for the download-organization default. Referenced by
+# ``DiscoveryRequest`` and the ``discover`` CLI option/fallback.
+DEFAULT_PARTITION_MODE = "auto"
 
 
 @dataclass(slots=True)
@@ -55,7 +63,7 @@ class DiscoveryRequest:
     dry_run: bool
     state: str | None = None
     jurisdiction: str | None = None
-    partition_mode: str = "auto"
+    partition_mode: str = DEFAULT_PARTITION_MODE
     digger_provider: str = "seed_only"
     topology_mode: str | None = None
     hub_pages: list[str] | None = None
@@ -74,8 +82,8 @@ class DiscoveryRequest:
     max_concurrent_downloads: int = 5
     min_request_interval_ms: int = 0
     request_headers: dict[str, str] | None = None
-    robots_policy_mode: str = "ignore"
-    tos_policy_mode: str = "ignore"
+    robots_policy_mode: str = DEFAULT_ROBOTS_POLICY_MODE
+    tos_policy_mode: str = DEFAULT_TOS_POLICY_MODE
     acknowledged_tos_domains: list[str] | None = None
     targets: list[dict[str, object]] | None = None
     query_templates: list[str] | None = None
@@ -1419,11 +1427,13 @@ class DiscoveryEngine:
             )
             return ("fields", source_meta, partition_dir)
 
-        requested_mode = (request.partition_mode or "auto").strip().lower()
+        requested_mode = (
+            request.partition_mode or DEFAULT_PARTITION_MODE
+        ).strip().lower()
         mode = (
             requested_mode
             if requested_mode in {"auto", "jurisdiction", "host"}
-            else "auto"
+            else DEFAULT_PARTITION_MODE
         )
 
         inferred_jurisdiction, inferred_state = (

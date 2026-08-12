@@ -21,7 +21,13 @@ from psweep.cli.ui import (
     print_success,
 )
 from psweep.config import RuntimeConfigError
-from psweep.discovery import DiscoveryEngine, DiscoveryRequest
+from psweep.discovery import (
+    DEFAULT_PARTITION_MODE,
+    DEFAULT_ROBOTS_POLICY_MODE,
+    DEFAULT_TOS_POLICY_MODE,
+    DiscoveryEngine,
+    DiscoveryRequest,
+)
 
 
 @click.command()
@@ -82,7 +88,7 @@ from psweep.discovery import DiscoveryEngine, DiscoveryRequest
 @click.option(
     "--partition-mode",
     type=click.Choice(["auto", "jurisdiction", "host"], case_sensitive=False),
-    default="auto",
+    default=DEFAULT_PARTITION_MODE,
     show_default=True,
     help="Download organization mode: auto prefers jurisdiction when available, else host",
 )
@@ -112,14 +118,14 @@ from psweep.discovery import DiscoveryEngine, DiscoveryRequest
 @click.option(
     "--robots-policy-mode",
     type=click.Choice(["ignore", "warn", "enforce"], case_sensitive=False),
-    default="warn",
+    default=DEFAULT_ROBOTS_POLICY_MODE,
     show_default=True,
     help="Robots policy mode for target-site requests",
 )
 @click.option(
     "--tos-policy-mode",
     type=click.Choice(["ignore", "warn", "enforce"], case_sensitive=False),
-    default="warn",
+    default=DEFAULT_TOS_POLICY_MODE,
     show_default=True,
     help="Terms acknowledgement mode for target-site requests",
 )
@@ -194,7 +200,7 @@ def discover(
     search query. Resumes from a checkpoint on subsequent runs; pass --fresh to
     re-run all targets from scratch.
 
-    Defaults: partition-mode=auto, robots-policy-mode=warn, tos-policy-mode=warn.
+    Run ``psweep discover --help`` for every option and its resolved default.
 
     Examples
     --------
@@ -283,7 +289,8 @@ def discover(
     resolved_state = resolved_inputs.get("state", state)
     resolved_jurisdiction = resolved_inputs.get("jurisdiction", jurisdiction)
     resolved_partition_mode = (
-        resolved_inputs.get("partition_mode", partition_mode) or "auto"
+        resolved_inputs.get("partition_mode", partition_mode)
+        or DEFAULT_PARTITION_MODE
     ).lower()
     resolved_digger_provider = (
         (
@@ -392,13 +399,16 @@ def discover(
     )
     resolved_robots_policy_mode = str(
         resolved_inputs.get(
-            "robots_policy_mode", robots_policy_mode or "ignore"
+            "robots_policy_mode",
+            robots_policy_mode or DEFAULT_ROBOTS_POLICY_MODE,
         )
-        or "ignore"
+        or DEFAULT_ROBOTS_POLICY_MODE
     ).lower()
     resolved_tos_policy_mode = str(
-        resolved_inputs.get("tos_policy_mode", tos_policy_mode or "ignore")
-        or "ignore"
+        resolved_inputs.get(
+            "tos_policy_mode", tos_policy_mode or DEFAULT_TOS_POLICY_MODE
+        )
+        or DEFAULT_TOS_POLICY_MODE
     ).lower()
     resolved_acknowledged_tos_domains = list(
         resolved_inputs.get("acknowledged_tos_domains")

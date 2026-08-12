@@ -40,38 +40,45 @@ Two parallel improvements to the tool:
 
 ---
 
-## Phase 1 — Defaults Hardening
+## Phase 1 — Defaults Hardening ✅ (redone with single-source-of-truth)
 
-> Safe changes only. Verify with `pixi run pytest` after this phase.
-> Commit message: `fix: defaults hardening and --help improvements (phase 1)`
+> Verified with `pixi run python -m pytest` (857 passed).
+> Commit message: `fix: single-source defaults hardening + accurate --help (phase 1)`
+>
+> **Design:** every user-facing default is one named constant referenced by the
+> dataclass field, the CLI option, the CLI resolution fallback, and (for policy)
+> the evaluator signature — so `--help` provably matches runtime behavior. The
+> earlier commit `850d27a` hardcoded literals in the decorators, which silently
+> flipped the effective robots/ToS default from `ignore` to `warn` while the
+> `DiscoveryRequest`/`policies.py` layers still said `ignore` (three conflicting
+> sources). This redo makes `warn` the single intentional default everywhere.
 
-- [ ] **`extract --model`**: add `help=` text + `show_default=True`
-  - File: `src/psweep/cli/commands_extract.py` lines 565–568
-  - New help: `"LLM model name or alias from run.yaml models: block. Default is gpt-4o-mini (cheap, fast). Use your deployment name for Azure (e.g. gpt-4o)."`
+- [x] **Shared default constants** (single source):
+  - `DEFAULT_ROBOTS_POLICY_MODE = "warn"`, `DEFAULT_TOS_POLICY_MODE = "warn"`
+    in `src/psweep/discovery/policies.py` (used by `evaluate()` + dataclass + CLI)
+  - `DEFAULT_PARTITION_MODE = "auto"` in `src/psweep/discovery/engine.py`
+  - re-exported from `src/psweep/discovery/__init__.py`
 
-- [ ] **`--max-context` default**: raise 400000 → 600000
-  - File: `src/psweep/cli/commands_extract.py` line 597
-  - Rationale: TEMPLATE.yaml example uses 600000; 400k silently truncates many PDFs
+- [x] **`extract --model`**: `show_default=True` renders `DEFAULT_MODEL`; help text
+  no longer restates the literal (was a stale duplicate)
 
-- [ ] **`discover` Choice options**: set explicit defaults + `show_default=True`
-  - File: `src/psweep/cli/commands_discover.py`
-  - `--partition-mode` → `default="auto"`
-  - `--robots-policy-mode` → `default="warn"`
-  - `--tos-policy-mode` → `default="warn"`
+- [x] **`--max-context` default**: 400000 → 600000 (decorator is its single source)
 
-- [ ] **Provider/model mismatch warning**: emit `logging.warning()` when
-  provider resolves to `"azure"` but model is still `DEFAULT_MODEL` (`"gpt-4o-mini"`)
-  - File: `src/psweep/extraction/llm_factory.py` in `build_llm_client()`
-  - Message: `"Provider resolved to azure but model is still '%s'. Pin your model in run.yaml models: block or pass --model."`
+- [x] **`discover` Choice options**: `default=<constant>` + `show_default=True`;
+  resolution fallbacks reference the same constants (no behavioral leak)
 
-- [ ] **TEMPLATE.yaml**: add `# default: X` inline comments to every key
-  that has a non-obvious default
-  - File: `config/TEMPLATE.yaml`
+- [x] **Provider/model mismatch warning**: `logging.warning()` in
+  `llm_factory.build_llm_client()` when provider=azure but model=`DEFAULT_MODEL`
 
-- [ ] **README broken image**: fix `![alt text]` on line 10 pointing to
-  `src/psweep/img/imagev1.png` (check if file exists; fix alt text and path)
+- [x] **TEMPLATE.yaml**: `# default: X` inline comments (verified accurate)
 
-- [ ] Run `pixi run pytest` — all tests must pass before moving on
+- [x] **README broken image**: alt text fixed
+
+- [x] **Tests**: `tests/test_defaults_single_source.py` locks the constant⇄dataclass
+  ⇄CLI⇄evaluator contract; download-retry and topology tests pinned to
+  `robots/tos = ignore` so the new `warn` default doesn't pull them onto the network
+
+- [x] Run `pixi run python -m pytest` — 857 passed
 
 ---
 

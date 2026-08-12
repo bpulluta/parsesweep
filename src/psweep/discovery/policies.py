@@ -6,6 +6,13 @@ from dataclasses import dataclass, field
 from urllib.parse import urlparse
 from urllib.robotparser import RobotFileParser
 
+# Single source of truth for the user-facing policy defaults. Referenced by the
+# ``DiscoveryRequest`` dataclass, the CLI options, the CLI resolution fallbacks,
+# and ``DiscoveryPolicyEvaluator.evaluate`` so every layer agrees on one value.
+# ``warn`` surfaces robots.txt / ToS concerns without blocking a run.
+DEFAULT_ROBOTS_POLICY_MODE = "warn"
+DEFAULT_TOS_POLICY_MODE = "warn"
+
 
 @dataclass(slots=True)
 class PolicyCheckResult:
@@ -115,8 +122,8 @@ class DiscoveryPolicyEvaluator:
         url: str,
         ssl_verify: bool,
         request_headers: dict[str, str] | None = None,
-        robots_policy_mode: str = "ignore",
-        tos_policy_mode: str = "ignore",
+        robots_policy_mode: str = DEFAULT_ROBOTS_POLICY_MODE,
+        tos_policy_mode: str = DEFAULT_TOS_POLICY_MODE,
         acknowledged_tos_domains: list[str] | None = None,
     ) -> PolicyCheckResult:
         result = PolicyCheckResult()
