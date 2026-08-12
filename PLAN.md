@@ -1,7 +1,7 @@
 # ParseSweep: Defaults + Embedded Documentation — Work Plan
 
 > **Branch:** `feat/defaults-and-docs`
-> **Tracking issue:** https://github.com/bpulluta/parsesweep/issues/TBD (update after creating)
+> **Tracking issue:** https://github.com/bpulluta/parsesweep/issues/3
 > **Status:** In progress
 >
 > **For agents picking this up in a new chat:**
