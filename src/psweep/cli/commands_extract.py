@@ -567,7 +567,8 @@ def _extract_one_document(
     "--model",
     default=DEFAULT_MODEL,
     show_default=True,
-    help="LLM model name or alias from run.yaml models: block. Default is gpt-4o-mini (cheap, fast). Use your deployment name for Azure (e.g. gpt-4o).",
+    help="LLM model name, or an alias defined in the run.yaml models: block. "
+    "For Azure, use your deployment name (e.g. gpt-4o).",
 )
 @click.option(
     "--provider",
@@ -685,9 +686,8 @@ def extract(
     Reads PDF, DOCX, TXT, and XLSX files from PATH (or the configured
     input_dir) and writes one JSON file per document to the output directory.
     Already-processed files are skipped by default; pass --fresh to re-extract
-    everything.
-
-    Defaults: model=gpt-4o-mini, max-context=600000 chars, output=extracted/<domain>.
+    everything. Output defaults to ``extracted/<domain>/`` when --output is
+    omitted; run ``psweep extract --help`` for every option and its default.
 
     Examples
     --------
