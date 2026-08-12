@@ -82,7 +82,8 @@ from psweep.discovery import DiscoveryEngine, DiscoveryRequest
 @click.option(
     "--partition-mode",
     type=click.Choice(["auto", "jurisdiction", "host"], case_sensitive=False),
-    default=None,
+    default="auto",
+    show_default=True,
     help="Download organization mode: auto prefers jurisdiction when available, else host",
 )
 @click.option(
@@ -111,13 +112,15 @@ from psweep.discovery import DiscoveryEngine, DiscoveryRequest
 @click.option(
     "--robots-policy-mode",
     type=click.Choice(["ignore", "warn", "enforce"], case_sensitive=False),
-    default=None,
+    default="warn",
+    show_default=True,
     help="Robots policy mode for target-site requests",
 )
 @click.option(
     "--tos-policy-mode",
     type=click.Choice(["ignore", "warn", "enforce"], case_sensitive=False),
-    default=None,
+    default="warn",
+    show_default=True,
     help="Terms acknowledgement mode for target-site requests",
 )
 @click.option(

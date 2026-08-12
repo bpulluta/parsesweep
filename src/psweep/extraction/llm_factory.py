@@ -45,6 +45,7 @@ per-stage selection is therefore best-effort, not guaranteed.
 
 from __future__ import annotations
 
+import logging
 import os
 from typing import Any
 
@@ -213,11 +214,16 @@ def build_llm_client(
     """Build a configured ``LLMClient`` for a stage's ``model`` value."""
     from .llm_client import LLMClient
 
-    return LLMClient(
-        **resolve_llm_kwargs(
-            stage_value,
-            models=models,
-            llm_config=llm_config,
-            default_model=default_model,
-        )
+    kwargs = resolve_llm_kwargs(
+        stage_value,
+        models=models,
+        llm_config=llm_config,
+        default_model=default_model,
     )
+    if kwargs.get("provider") == "azure" and kwargs.get("model") == DEFAULT_MODEL:
+        logging.warning(
+            "Provider resolved to azure but model is still '%s'. "
+            "Pin your model in run.yaml models: block or pass --model.",
+            DEFAULT_MODEL,
+        )
+    return LLMClient(**kwargs)
