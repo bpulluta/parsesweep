@@ -20,7 +20,12 @@ from psweep.discovery import (
     DiscoveryRequest,
 )
 from psweep.discovery.policies import DiscoveryPolicyEvaluator
-from psweep.extraction.llm_factory import DEFAULT_MODEL
+from psweep.extraction.llm_factory import DEFAULT_MAX_CONTEXT, DEFAULT_MODEL
+from psweep.extraction.page_locator import (
+    DEFAULT_MAX_SELECTED_PAGES,
+    DEFAULT_PAGE_TRIGGER_CHARS,
+    PageLocator,
+)
 
 
 def _option_defaults(command_name: str) -> dict[str, object]:
@@ -61,7 +66,39 @@ def test_discover_cli_option_defaults_match_constants():
 
 
 def test_extract_cli_option_defaults_are_single_sourced():
-    """extract --model is sourced from DEFAULT_MODEL; --max-context is 600k."""
+    """extract --model and --max-context come from the shared constants."""
     defaults = _option_defaults("extract")
     assert defaults["model"] == DEFAULT_MODEL
-    assert defaults["max_context"] == 600000
+    assert defaults["max_context"] == DEFAULT_MAX_CONTEXT
+
+
+def test_max_context_default_is_single_sourced_across_layers():
+    """CLI, public pipeline API, and DocumentExtractor share DEFAULT_MAX_CONTEXT.
+
+    Guards against the pre-audit drift where ``extract``/``run`` used 600k but
+    ``validate`` and the library API used 400k — validating on less context than
+    extraction produced.
+    """
+    from psweep.extraction.document_extractor import DocumentExtractor
+    from psweep.pipeline import extract_documents
+    from psweep.validation.multi_model_extractor import (
+        run_multi_model_extraction,
+    )
+
+    assert DEFAULT_MAX_CONTEXT == 600000
+    for func, param in (
+        (extract_documents, "max_context"),
+        (DocumentExtractor.__init__, "max_context_chars"),
+        (run_multi_model_extraction, "max_context_chars"),
+    ):
+        sig = inspect.signature(func)
+        assert sig.parameters[param].default == DEFAULT_MAX_CONTEXT
+
+
+def test_page_target_defaults_are_single_sourced():
+    """PageLocator defaults come from the shared page-target constants."""
+    params = inspect.signature(PageLocator.__init__).parameters
+    assert params["trigger_chars"].default == DEFAULT_PAGE_TRIGGER_CHARS
+    assert params["max_selected_pages"].default == DEFAULT_MAX_SELECTED_PAGES
+    assert DEFAULT_PAGE_TRIGGER_CHARS == 200_000
+    assert DEFAULT_MAX_SELECTED_PAGES == 30

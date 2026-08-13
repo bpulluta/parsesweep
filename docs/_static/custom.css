@@ -1,0 +1,33 @@
+/* ParseSweep docs — small brand layer on top of Furo's tokens.
+   Furo's CSS variables already carry the teal brand (set in conf.py); this file
+   only adds what those variables cannot reach: an amber accent on admonitions
+   and treating the ASCII pipeline diagram on the landing page as a figure. */
+
+:root {
+  --psweep-accent: #b45309; /* amber-700 — AA on light */
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --psweep-accent: #fbbf24; /* amber-400 — high contrast on dark */
+  }
+}
+body[data-theme="dark"] {
+  --psweep-accent: #fbbf24;
+}
+body[data-theme="light"] {
+  --psweep-accent: #b45309;
+}
+
+/* Tip / note admonitions get the warm accent edge so callouts stand out from
+   the teal links without competing with them. */
+.admonition.tip,
+.admonition.note,
+.admonition.hint {
+  border-left-color: var(--psweep-accent);
+}
+
+/* The discover -> extract -> compile diagram on the landing page is a plain
+   code block; give it a figure-like frame so it reads as a diagram, not code. */
+.highlight pre {
+  border-radius: 6px;
+}

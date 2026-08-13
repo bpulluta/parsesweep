@@ -54,21 +54,86 @@ GEMINI_API_KEY=...
 See the [Configuration Reference](config-reference.md) for the annotated config
 template and [Schema Authoring](schemas/index.md) for schema best practices.
 
-## Your first extraction
+## Start minimal
 
-Every command takes `--config`, and each command reads its own section:
+You do not need a full config to begin. The smallest useful setup is a schema
+with two required metadata keys plus a two-line config.
 
-```bash
-# Extract structured JSON from local documents
-pixi run psweep extract --config config/my_domain/run.yaml
+**1. A minimal schema** (`schemas/personal/my_schema.json`). Only
+`$metadata.extraction.main_data_array` and `identifier_fields` are required —
+everything else is optional:
 
-# Compile the extractions into an Excel/CSV spreadsheet
-pixi run psweep compile --config config/my_domain/run.yaml
+```json
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$metadata": {
+    "extraction": {
+      "main_data_array": "items",
+      "identifier_fields": ["item_name"]
+    }
+  },
+  "type": "object",
+  "properties": {
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "item_name": {"type": "string", "description": "Name of the item"},
+          "value": {"type": "number", "description": "The value to extract"}
+        }
+      }
+    }
+  }
+}
 ```
 
-Or run the whole pipeline (discover → extract → compile) at once:
+The field `description`s are the LLM's extraction instructions — write them
+precisely. See [Schema Authoring](schemas/index.md) for the full guide.
+
+**2. A minimal config** (`config/my_domain/run.yaml`). Only `schema` and
+`input_dir` are required; `model`, `output_dir`, `max_context`, and everything
+else fall back to sensible defaults:
+
+```yaml
+extraction:
+  schema: schemas/personal/my_schema.json
+  input_dir: documents/my_domain
+```
+
+**3. Run it** (schema-only mode skips the config entirely, ideal for a first test):
 
 ```bash
+# Quick test: point extract straight at a folder + schema, limit to 2 docs
+pixi run psweep extract documents/my_domain/ \
+  --schema schemas/personal/my_schema.json -n 2
+
+# Or the config-driven run (picks up every setting)
+pixi run psweep extract --config config/my_domain/run.yaml
+```
+
+## Inspect, then iterate
+
+Extraction writes one JSON per document to `extracted/<domain>/`. Open a couple
+and check the results, then tune **one knob at a time**:
+
+- Output looks **truncated / missing later sections** → raise `max_context` or
+  turn on page targeting.
+- Documents are **large or slow/expensive** → add `pages.auto_locate`.
+- The compiled sheet has **duplicate rows** → set the schema's dedup key fields.
+- Discovery finds **too many or too few** documents → tune keywords.
+
+Each of these has a default you can see and a knob you can change — the
+[Tuning & Iteration guide](tuning.md) maps every symptom to the exact setting,
+and the [Configuration Reference](config-reference.md) lists every default.
+
+## Compile and run the whole pipeline
+
+```bash
+# Merge the per-document JSON into one Excel/CSV
+pixi run psweep compile --config config/my_domain/run.yaml
+
+# Or run discover → extract → compile in one shot
 pixi run psweep run --config config/my_domain/run.yaml
 ```
 
