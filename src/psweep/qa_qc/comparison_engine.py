@@ -5,7 +5,10 @@ Compares outputs from multiple models. Comparison behavior is driven by the
 active runtime QA/QC profile in config/<domain>/run.yaml.
 Includes potential duplicate detection and completeness metrics.
 
-Usage:
+Examples
+--------
+.. code-block:: python
+
     from psweep.qa_qc.comparison_engine import ComparisonEngine
     from psweep.qa_qc.utils import resolve_qaqc_runtime_config
     from psweep.utils.schema_metadata import SchemaMetadata
@@ -80,8 +83,10 @@ class PotentialDuplicate:
     """
     Represents items that might be the same data with different keys.
 
-    Example: gpt-5 has time__reclamation_deadline_days=60
-             gpt-4.1 has time__permit_validity_days=60
+    Examples
+    --------
+    gpt-5 has time__reclamation_deadline_days=60
+    gpt-4.1 has time__permit_validity_days=60
     Same value extracted with different requirement_type - likely same source data.
     """
 
@@ -131,10 +136,12 @@ class ComparisonEngine:
     Schema metadata carries only the extraction contract (main_data_array, identifier_fields,
     context_objects, deduplication keys) — no QA/QC runtime settings.
 
-    Example usage::
+    Examples
+    --------
+    .. code-block:: python
 
         from psweep.qa_qc.utils import resolve_qaqc_runtime_config
-        
+
         qa_qc_config = resolve_qaqc_runtime_config(
             schema_metadata=schema_metadata,
             runtime_qaqc=run_config.get("qaqc", {})
@@ -149,11 +156,14 @@ class ComparisonEngine:
         """
         Initialize comparison engine.
 
-        Args:
-            schema_metadata: SchemaMetadata instance (extraction contract only).
-            qa_qc_config: Resolved QA/QC runtime config from
-                ``resolve_qaqc_runtime_config``. Always sourced from
-                config/<domain>/run.yaml — never from schema metadata.
+        Parameters
+        ----------
+        schema_metadata
+            SchemaMetadata instance (extraction contract only).
+        qa_qc_config : Dict[str, Any]
+            Resolved QA/QC runtime config from
+            ``resolve_qaqc_runtime_config``. Always sourced from
+            config/<domain>/run.yaml — never from schema metadata.
         """
         self.schema_metadata = schema_metadata
         self.main_data_array = schema_metadata.get_main_data_array()
@@ -317,12 +327,16 @@ class ComparisonEngine:
         """
         Compare outputs from multiple models.
 
-        Args:
-            output_files: Dict mapping model name to output file path
-            document_name: Name of the document being compared
+        Parameters
+        ----------
+        output_files : Dict[str, Path]
+            Dict mapping model name to output file path
+        document_name : str
+            Name of the document being compared
 
         Returns
         -------
+        ComparisonResult
             ComparisonResult with summary and field comparisons based on the
             resolved QA/QC comparison approach
         """
@@ -2864,17 +2878,23 @@ class ComparisonEngine:
         Finds ONLY items (items unique to one model) that have the same
         (value, unit) combination as ONLY items from other models.
 
-        Example: gpt-5 has time_limit.reclamation_period=60days
-                 gpt-4.1 has time_limit.drilling_operations=60days
-        These might be the same source data, categorized differently.
-
-        Args:
-            indexes: Dict mapping model -> {key_tuple: item_dict}
-            models: List of model names
+        Parameters
+        ----------
+        indexes : Dict[str, Dict[Tuple, dict]]
+            Dict mapping model -> {key_tuple: item_dict}
+        models : List[str]
+            List of model names
 
         Returns
         -------
+        List[PotentialDuplicate]
             List of PotentialDuplicate instances
+
+        Examples
+        --------
+        gpt-5 has time_limit.reclamation_period=60days
+        gpt-4.1 has time_limit.drilling_operations=60days
+        These might be the same source data, categorized differently.
         """
         # First, find all keys and which models have them
         all_keys = self._collect_all_keys(indexes)
@@ -2931,14 +2951,21 @@ class ComparisonEngine:
 
         Compares extracted items against expected requirements from qa_qc_config.
         Expected requirements are an optional list in the run config lane, e.g.:
+
+        .. code-block:: python
+
             lanes.quantitative.expected_requirements: [...]
 
-        Args:
-            item_arrays: Dict mapping model -> list of extracted items
-            models: List of model names
+        Parameters
+        ----------
+        item_arrays : Dict[str, List[dict]]
+            Dict mapping model -> list of extracted items
+        models : List[str]
+            List of model names
 
         Returns
         -------
+        Dict[str, CompletenessResult]
             Dict mapping model -> CompletenessResult
         """
         expected_requirements = self.qa_qc_config.get("expected_requirements") or []

@@ -10,7 +10,10 @@ plus the ``qaqc.models`` tier references; this module resolves each tier to a
 concrete model and its LLM kwargs (provider/api_key/endpoint) via
 ``registry.to_llm_kwargs`` — never threading a provider directly.
 
-Usage:
+Examples
+--------
+.. code-block:: python
+
     from psweep.qa_qc.multi_model_extractor import run_multi_model_extraction
 
     output_files = run_multi_model_extraction(
@@ -22,7 +25,10 @@ Usage:
         output_dir=Path("processed/qa_qc"),
     )
 
-Output Structure:
+Notes
+-----
+Output Structure::
+
     processed/qa_qc/{doc_name}/
         {model_name}.json  (one file per model)
         metadata.json
@@ -85,22 +91,34 @@ def run_multi_model_extraction(
     """
     Run extraction with multiple models resolved through the model registry.
 
-    Args:
-        doc_text: Full document text to extract from
-        doc_name: Document name (without extension, used for output folder)
-        schema: JSON schema for extraction
-        registry: Unified :class:`ModelRegistry` — the single source of model
-            tier resolution and credential (LLM kwargs) threading.
-        model_tiers: Ordered list of tier/model references (e.g. the
-            ``qaqc.models`` list). Resolved and de-duplicated by concrete model.
-        output_dir: Base directory for QA/QC outputs (e.g., "processed/")
-        max_context_chars: Maximum characters to process
-        timeout_seconds: Per-request LLM timeout for each model extraction.
-        runtime_artifact: Optional compiled runtime artifact for lineage metadata
-        run_id: Optional deterministic run identifier for this invocation
+    Parameters
+    ----------
+    doc_text : str
+        Full document text to extract from
+    doc_name : str
+        Document name (without extension, used for output folder)
+    schema : dict
+        JSON schema for extraction
+    registry : ModelRegistry
+        Unified :class:`ModelRegistry` — the single source of model
+        tier resolution and credential (LLM kwargs) threading.
+    model_tiers : Sequence[str]
+        Ordered list of tier/model references (e.g. the
+        ``qaqc.models`` list). Resolved and de-duplicated by concrete model.
+    output_dir : Path
+        Base directory for QA/QC outputs (e.g., "processed/")
+    max_context_chars : int
+        Maximum characters to process
+    timeout_seconds : Optional[int]
+        Per-request LLM timeout for each model extraction.
+    runtime_artifact : Optional[Dict[str, Any]]
+        Optional compiled runtime artifact for lineage metadata
+    run_id : Optional[str]
+        Optional deterministic run identifier for this invocation
 
     Returns
     -------
+    Dict[str, ModelExtractionResult]
         Dict mapping concrete model name to ModelExtractionResult
     """
     # Import here to avoid circular imports

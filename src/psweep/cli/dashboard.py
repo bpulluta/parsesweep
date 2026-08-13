@@ -57,9 +57,12 @@ class ExtractionDashboard:
         """
         Initialize the dashboard.
 
-        Args:
-            total_documents: Total number of documents to process
-            model: Model name for cost tracking
+        Parameters
+        ----------
+        total_documents : int
+            Total number of documents to process
+        model : str
+            Model name for cost tracking
         """
         self.total_documents = total_documents
         self.cost_tracker = CostTracker(model=model)
@@ -162,12 +165,18 @@ class ExtractionDashboard:
         """
         Mark a document as completed.
 
-        Args:
-            document_name: Name of the document
-            success: Whether processing was successful
-            cost: Cost of processing
-            input_tokens: Number of input tokens
-            output_tokens: Number of output tokens
+        Parameters
+        ----------
+        document_name : str
+            Name of the document
+        success : bool
+            Whether processing was successful
+        cost : float
+            Cost of processing
+        input_tokens : int
+            Number of input tokens
+        output_tokens : int
+            Number of output tokens
         """
         self.processed += 1
 
@@ -208,12 +217,16 @@ def create_live_dashboard(
     """
     Create a live dashboard for extraction monitoring.
 
-    Args:
-        total_documents: Total number of documents to process
-        model: Model name for cost tracking
+    Parameters
+    ----------
+    total_documents : int
+        Total number of documents to process
+    model : str
+        Model name for cost tracking
 
     Returns
     -------
+    tuple[Live, ExtractionDashboard]
         Tuple of (Live instance, ExtractionDashboard instance)
     """
     dashboard = ExtractionDashboard(total_documents, model)

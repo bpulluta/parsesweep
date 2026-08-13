@@ -39,12 +39,15 @@ class EvidenceLoader:
 
         Returns
         -------
+        Dict[str, Dict[str, Any]]
             {doc_id: {file_path, sections, page_count, ...}}
-            
+
         Raises
         ------
-            FileNotFoundError: If checkpoint path is provided but doesn't exist.
-            json.JSONDecodeError: If checkpoint JSON is malformed.
+        FileNotFoundError
+            If checkpoint path is provided but doesn't exist.
+        json.JSONDecodeError
+            If checkpoint JSON is malformed.
         """
         if (
             self._metadata_source == discovery_checkpoint_path
@@ -90,17 +93,22 @@ class EvidenceLoader:
         """
         Load extraction JSON outputs for all models in a directory.
 
-        Args:
-            extraction_dir: Path to qa_qc/<doc_id>/ directory
-            models: List of model names (e.g., ['gpt-5.6-terra', 'claude-sonnet-4-6'])
+        Parameters
+        ----------
+        extraction_dir : Path
+            Path to qa_qc/<doc_id>/ directory
+        models : list
+            List of model names (e.g., ['gpt-5.6-terra', 'claude-sonnet-4-6'])
 
         Returns
         -------
+        Dict[str, Dict[str, Any]]
             {model_name: {extracted JSON structure}}
-            
+
         Raises
         ------
-            RuntimeError: If required model extraction files are missing or corrupt.
+        RuntimeError
+            If required model extraction files are missing or corrupt.
         """
         outputs = {}
         missing_models = []
@@ -143,10 +151,11 @@ class EvidenceLoader:
 
     def _extract_main_data_array(self) -> Optional[str]:
         """Extract main_data_array name from schema $metadata.
-        
+
         Raises
         ------
-            ValueError: If schema is provided but missing required $metadata structure.
+        ValueError
+            If schema is provided but missing required $metadata structure.
         """
         if not self._schema:
             logger.warning("No schema provided to EvidenceLoader; evidence columns will be empty")
@@ -226,12 +235,16 @@ class EvidenceLoader:
         """
         Get section/heading for an extracted item.
 
-        Args:
-            doc_id: Document identifier
-            item_path: Item path in extraction JSON (e.g., "facilities › requirements › structures_distance")
+        Parameters
+        ----------
+        doc_id : str
+            Document identifier
+        item_path : str
+            Item path in extraction JSON (e.g., "facilities › requirements › structures_distance")
 
         Returns
         -------
+        Optional[str]
             Section name if available, else None
         """
         if not self._doc_metadata_cache:
@@ -251,12 +264,16 @@ class EvidenceLoader:
         """
         Extract structured values (value, obligation, units) from model output.
 
-        Args:
-            model_name: Name of the model
-            item_id: Item identifier (e.g., "facilities|requirements|structures_distance")
+        Parameters
+        ----------
+        model_name : str
+            Name of the model
+        item_id : str
+            Item identifier (e.g., "facilities|requirements|structures_distance")
 
         Returns
         -------
+        Dict[str, Any]
             {value: ..., obligation: ..., units: ...} or empty dict if not found
         """
         if model_name not in self._model_outputs_cache:
@@ -308,13 +325,18 @@ class EvidenceLoader:
         """
         Format extracted model values as readable string.
 
-        Args:
-            model_name: Name of the model
-            item_id: Item identifier
-            truncate: Maximum chars for any single value
+        Parameters
+        ----------
+        model_name : str
+            Name of the model
+        item_id : str
+            Item identifier
+        truncate : int
+            Maximum chars for any single value
 
         Returns
         -------
+        str
             Formatted string like "value=1 mile; obligation=required; units=distance"
             or "(not extracted)" if not found
         """

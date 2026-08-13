@@ -4,7 +4,10 @@ Report Generator for QA/QC Multi-Model Validation.
 Generates Excel/CSV reports with color-coded comparison results
 for human review.
 
-Usage:
+Examples
+--------
+.. code-block:: python
+
     from psweep.qa_qc.report_generator import ReportGenerator
     from psweep.qa_qc.comparison_engine import ComparisonResult
 
@@ -14,16 +17,20 @@ Usage:
         output_dir=Path("processed/qa_qc/austin_energy")
     )
 
-Output Files:
+Notes
+-----
+Output Files::
+
     processed/qa_qc/{doc_name}/
         comparison_report.xlsx  # Color-coded Excel
         comparison_report.csv   # Plain CSV
 
 Color Coding:
-    - Green: Full agreement (N/N)
-    - Yellow: Partial agreement (>50%)
-    - Red: Low agreement (≤50%) or disagreement
-    - Gray: Item missing from one or more models
+
+- Green: Full agreement (N/N)
+- Yellow: Partial agreement (>50%)
+- Red: Low agreement (≤50%) or disagreement
+- Gray: Item missing from one or more models
 """
 
 import json
@@ -84,18 +91,28 @@ class ReportGenerator:
         """
         Generate Excel and CSV reports with evidence display.
 
-        Args:
-            comparison_result: ComparisonResult from comparison engine
-            output_dir: Directory to save reports
-            run_metadata: Optional run metadata to include
-            include_csv: Whether to generate CSV report
-            include_missing_in_queue: Include presence_diff rows in Review Queue
-            include_low_signal_presence_in_queue: Include low-signal presence rows
-            discovery_checkpoint_path: Path to discovery checkpoint for document metadata
-            extraction_dir: Path to extraction JSONs for evidence values
+        Parameters
+        ----------
+        comparison_result : ComparisonResult
+            ComparisonResult from comparison engine
+        output_dir : Path
+            Directory to save reports
+        run_metadata : Optional[Dict[str, Any]]
+            Optional run metadata to include
+        include_csv : bool
+            Whether to generate CSV report
+        include_missing_in_queue : bool
+            Include presence_diff rows in Review Queue
+        include_low_signal_presence_in_queue : bool
+            Include low-signal presence rows
+        discovery_checkpoint_path : Optional[Path]
+            Path to discovery checkpoint for document metadata
+        extraction_dir : Optional[Path]
+            Path to extraction JSONs for evidence values
 
         Returns
         -------
+        Tuple[Path, Path]
             Tuple of (excel_path, csv_path)
         """
         output_dir = Path(output_dir)
@@ -2244,8 +2261,11 @@ class ReportGenerator:
         Build DataFrame for potential duplicates.
 
         Shows items that may be the same data extracted with different requirement_type.
-        Example: gpt-5 has time__reclamation_deadline_days=60
-                 gpt-4.1 has time__permit_validity_days=60
+
+        Examples
+        --------
+        gpt-5 has time__reclamation_deadline_days=60
+        gpt-4.1 has time__permit_validity_days=60
         """
         if not result.potential_duplicates:
             return pd.DataFrame()

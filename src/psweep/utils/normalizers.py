@@ -194,31 +194,35 @@ def normalize_state(state: Optional[str]) -> Optional[str]:
     Normalize US state name to 2-letter abbreviation.
 
     Handles:
+
     - Full state names (case-insensitive): "Utah" → "UT"
     - Already abbreviated: "UT" → "UT"
     - Leading/trailing whitespace
     - Invalid/unknown states → returns original value with warning
     - None/empty → returns original value
 
-    Args:
-        state: State name or abbreviation
+    Parameters
+    ----------
+    state : Optional[str]
+        State name or abbreviation
 
     Returns
     -------
+    Optional[str]
         2-letter state abbreviation, or original value if not recognized
 
     Examples
     --------
-        >>> normalize_state("Utah")
-        "UT"
-        >>> normalize_state("UT")
-        "UT"
-        >>> normalize_state("New York")
-        "NY"
-        >>> normalize_state("california")
-        "CA"
-        >>> normalize_state(None)
-        None
+    >>> normalize_state("Utah")
+    "UT"
+    >>> normalize_state("UT")
+    "UT"
+    >>> normalize_state("New York")
+    "NY"
+    >>> normalize_state("california")
+    "CA"
+    >>> normalize_state(None)
+    None
     """
     if not state or not isinstance(state, str):
         return state
@@ -247,17 +251,20 @@ def normalize_state_column(df, column_name: str = "State") -> None:
     Modifies the DataFrame to replace full state names with abbreviations.
     Only processes columns that exist in the DataFrame.
 
-    Args:
-        df: pandas DataFrame
-        column_name: Name of the state column (default: "State")
+    Parameters
+    ----------
+    df
+        pandas DataFrame
+    column_name : str
+        Name of the state column (default: "State")
 
     Examples
     --------
-        >>> import pandas as pd
-        >>> df = pd.DataFrame({"State": ["Utah", "California", "NY"]})
-        >>> normalize_state_column(df)
-        >>> df["State"].tolist()
-        ["UT", "CA", "NY"]
+    >>> import pandas as pd
+    >>> df = pd.DataFrame({"State": ["Utah", "California", "NY"]})
+    >>> normalize_state_column(df)
+    >>> df["State"].tolist()
+    ["UT", "CA", "NY"]
     """
     if column_name not in df.columns:
         return
@@ -281,19 +288,22 @@ def humanize_field_name(field_name: str) -> str:
     with spaces and splitting camelCase boundaries before capitalizing each
     word. This is the canonical column-label humanizer.
 
-    Args:
-        field_name: Raw field name
+    Parameters
+    ----------
+    field_name : str
+        Raw field name
 
     Returns
     -------
+    str
         Clean Title Case column name
 
     Examples
     --------
-        >>> humanize_field_name("charge_type")
-        'Charge Type'
-        >>> humanize_field_name("annualConsumption")
-        'Annual Consumption'
+    >>> humanize_field_name("charge_type")
+    'Charge Type'
+    >>> humanize_field_name("annualConsumption")
+    'Annual Consumption'
     """
     name = field_name.replace("_", " ")
     name = "".join([" " + c if c.isupper() else c for c in name]).strip()
@@ -309,18 +319,21 @@ def camel_to_title(name: str) -> str:
     it is used where established display keys must keep their literal
     separators.
 
-    Args:
-        name: Raw field name
+    Parameters
+    ----------
+    name : str
+        Raw field name
 
     Returns
     -------
+    str
         Title-cased name with spaces inserted at camelCase boundaries
 
     Examples
     --------
-        >>> camel_to_title("facilityName")
-        'Facility Name'
-        >>> camel_to_title("utility_name")
-        'Utility_Name'
+    >>> camel_to_title("facilityName")
+    'Facility Name'
+    >>> camel_to_title("utility_name")
+    'Utility_Name'
     """
     return "".join([" " + c if c.isupper() else c for c in name]).strip().title()

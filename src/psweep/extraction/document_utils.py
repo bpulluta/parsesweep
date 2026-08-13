@@ -221,11 +221,14 @@ def is_supported_document(file_path: Path) -> bool:
     """
     Check if a file is a supported document format.
 
-    Args:
-        file_path: Path to the file
+    Parameters
+    ----------
+    file_path : Path
+        Path to the file
 
     Returns
     -------
+    bool
         True if file format is supported
     """
     return file_path.suffix.lower() in SUPPORTED_EXTENSIONS
@@ -239,18 +242,24 @@ def extract_text_from_document(
 
     Supports: PDF, DOCX, TXT, XLSX, CSV, DOC, HTML
 
-    Args:
-        file_path: Path to the document
-        page_range: Optional tuple (start_page, end_page) for PDF files only (1-indexed)
+    Parameters
+    ----------
+    file_path : Path
+        Path to the document
+    page_range : Optional[tuple]
+        Optional tuple (start_page, end_page) for PDF files only (1-indexed)
 
     Returns
     -------
+    str
         Extracted text content
 
     Raises
     ------
-        ValueError: If file format is not supported
-        RuntimeError: If extraction fails
+    ValueError
+        If file format is not supported
+    RuntimeError
+        If extraction fails
     """
     if not file_path.exists():
         raise FileNotFoundError(f"File not found: {file_path}")
@@ -311,11 +320,14 @@ def _extract_from_docx(docx_path: Path) -> str:
     """
     Extract text from DOCX file.
 
-    Args:
-        docx_path: Path to DOCX file
+    Parameters
+    ----------
+    docx_path : Path
+        Path to DOCX file
 
     Returns
     -------
+    str
         Extracted text
     """
     try:
@@ -360,11 +372,14 @@ def _extract_from_txt(txt_path: Path) -> str:
     """
     Extract text from TXT file.
 
-    Args:
-        txt_path: Path to TXT file
+    Parameters
+    ----------
+    txt_path : Path
+        Path to TXT file
 
     Returns
     -------
+    str
         File contents
     """
     try:
@@ -394,11 +409,14 @@ def _extract_from_xlsx(xlsx_path: Path) -> str:
     """
     Extract text from Excel XLSX file.
 
-    Args:
-        xlsx_path: Path to XLSX file
+    Parameters
+    ----------
+    xlsx_path : Path
+        Path to XLSX file
 
     Returns
     -------
+    str
         Formatted text with sheet names and cell values
     """
     try:
@@ -441,11 +459,14 @@ def _extract_from_csv(csv_path: Path) -> str:
     """
     Extract text from CSV file.
 
-    Args:
-        csv_path: Path to CSV file
+    Parameters
+    ----------
+    csv_path : Path
+        Path to CSV file
 
     Returns
     -------
+    str
         Formatted text with CSV contents
     """
     try:

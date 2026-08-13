@@ -22,8 +22,10 @@ class Config:
         """
         Initialize configuration.
 
-        Args:
-            project_root: Root directory of the project (auto-detected if None)
+        Parameters
+        ----------
+        project_root : Optional[Path]
+            Root directory of the project (auto-detected if None)
         """
         if project_root is None:
             # Try to detect project root
@@ -45,6 +47,7 @@ class Config:
         Load LLM provider configuration from environment.
 
         Supports:
+
         - Any OpenAI-compatible endpoint (LLM_BASE_URL + LLM_API_KEY) — highest priority
         - Azure OpenAI (AZURE_OPENAI_API_KEY, AZURE_OPENAI_ENDPOINT, etc.)
         - Anthropic Claude (ANTHROPIC_API_KEY)
@@ -53,6 +56,7 @@ class Config:
 
         Returns
         -------
+        dict
             dict with provider configuration
         """
         config = {
@@ -162,11 +166,14 @@ def get_config(project_root: Optional[Path] = None) -> Config:
     """
     Get the global configuration instance.
 
-    Args:
-        project_root: Optional project root (used only on first call)
+    Parameters
+    ----------
+    project_root : Optional[Path]
+        Optional project root (used only on first call)
 
     Returns
     -------
+    Config
         Config instance
     """
     global _global_config

@@ -44,12 +44,15 @@ class Deduplicator:
         """
         Initialize deduplicator.
 
-        Args:
-            schema_metadata: SchemaMetadata instance (required in v2.0+)
+        Parameters
+        ----------
+        schema_metadata
+            SchemaMetadata instance (required in v2.0+)
 
         Raises
         ------
-            SchemaMetadataError: If schema_metadata is not provided
+        SchemaMetadataError
+            If schema_metadata is not provided
         """
         if not schema_metadata:
             raise SchemaMetadataError(
@@ -72,16 +75,20 @@ class Deduplicator:
         Supports fuzzy matching: treats empty/null values in optional fields
         (like 'condition') as wildcards that match any value.
 
-        Args:
-            df: DataFrame to deduplicate
+        Parameters
+        ----------
+        df : pd.DataFrame
+            DataFrame to deduplicate
 
         Returns
         -------
+        pd.DataFrame
             DataFrame with duplicates removed
 
-        Example:
-            >>> dedup = Deduplicator(schema_metadata)
-            >>> clean_df = dedup.deduplicate(df)
+        Examples
+        --------
+        >>> dedup = Deduplicator(schema_metadata)
+        >>> clean_df = dedup.deduplicate(df)
         """
         if df.empty:
             return df
@@ -320,11 +327,14 @@ class Deduplicator:
 
         Uses schema metadata (required in v2.0+).
 
-        Args:
-            df: DataFrame to analyze
+        Parameters
+        ----------
+        df : pd.DataFrame
+            DataFrame to analyze
 
         Returns
         -------
+        List[str]
             List of column names that are metadata
         """
         # Use metadata-specified ignore fields (required in v2.0+)
@@ -349,19 +359,25 @@ class Deduplicator:
 
         Fuzzy matching treats empty/null values in optional fields (like 'Condition')
         as wildcards that can match any value. For example:
+
         - Row A: category="Height limit", condition=""
         - Row B: category="Height limit", condition="total height"
+
         These are considered duplicates (A's empty condition matches B's filled condition).
 
         IMPORTANT: Deduplication only happens within the same jurisdiction.
         Different jurisdictions are never merged, even if requirements are identical.
 
-        Args:
-            df: Full DataFrame
-            compare_cols: Columns to compare for duplicates
+        Parameters
+        ----------
+        df : pd.DataFrame
+            Full DataFrame
+        compare_cols : List[str]
+            Columns to compare for duplicates
 
         Returns
         -------
+        List[Dict[str, Any]]
             List of row indices to drop
         """
         checked = set()
@@ -502,15 +518,22 @@ class Deduplicator:
         """
         Generate detailed merge note showing which fields matched.
 
-        Args:
-            df: Full DataFrame
-            keep_idx: Index of row being kept
-            duplicate_indices: All duplicate indices (including kept)
-            required_cols: Required match columns
-            fuzzy_cols: Fuzzy match columns
+        Parameters
+        ----------
+        df : pd.DataFrame
+            Full DataFrame
+        keep_idx : int
+            Index of row being kept
+        duplicate_indices : List[int]
+            All duplicate indices (including kept)
+        required_cols : List[str]
+            Required match columns
+        fuzzy_cols : List[str]
+            Fuzzy match columns
 
         Returns
         -------
+        str
             Formatted note string
         """
         num_merged = len(duplicate_indices) - 1
