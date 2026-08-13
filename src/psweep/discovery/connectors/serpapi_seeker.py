@@ -34,12 +34,15 @@ class SerpApiSeeker(BaseSeekerConnector):
         """
         Initialize SerpApi seeker connector.
 
-        Args:
-            api_key: Optional override for SERPAPI_API_KEY env var.
-                     If not provided, falls back to SERPAPI_API_KEY or SERPAPI_KEY.
-            ssl_verify: Optional override for TLS verification behavior.
-                        If omitted, defaults to env-driven value from
-                        SERPAPI_SSL_VERIFY / PSWEEP_SSL_VERIFY (default: false).
+        Parameters
+        ----------
+        api_key : str | None
+            Optional override for SERPAPI_API_KEY env var.
+            If not provided, falls back to SERPAPI_API_KEY or SERPAPI_KEY.
+        ssl_verify : bool | None
+            Optional override for TLS verification behavior.
+            If omitted, defaults to env-driven value from
+            SERPAPI_SSL_VERIFY / PSWEEP_SSL_VERIFY (default: false).
         """
         self.api_key = (
             api_key or os.getenv("SERPAPI_API_KEY") or os.getenv("SERPAPI_KEY")
@@ -151,15 +154,22 @@ class SerpApiSeeker(BaseSeekerConnector):
 
         Normalizes organic search results to discovery candidates.
 
-        Args:
-            seeker_input: Query and constraints
+        Parameters
+        ----------
+        seeker_input : SeekerInput
+            Query and constraints
 
-        Returns:
+        Returns
+        -------
+        list[dict[str, Any]]
             List of normalized candidate dictionaries with url, source, title, snippet.
 
-        Raises:
-            ValueError: If query is empty or invalid.
-            RuntimeError: If SerpApi API call fails.
+        Raises
+        ------
+        ValueError
+            If query is empty or invalid.
+        RuntimeError
+            If SerpApi API call fails.
         """
         template_context = {}
         if isinstance(seeker_input.extra_params, dict):
@@ -379,6 +389,7 @@ class SerpApiSeeker(BaseSeekerConnector):
         Render a query template containing required and optional tokens.
 
         Supported syntax:
+
         - {field}: required token, raises when missing
         - {field?}: optional token, removed when missing
         """
@@ -411,6 +422,7 @@ class SerpApiSeeker(BaseSeekerConnector):
         Resolve one or more rendered search queries.
 
         Resolution order:
+
         1. Explicit seeker_input.query (highest priority)
         2. Selected query family templates (`use_query_family` + `query_families`)
         3. Top-level query_templates fallback

@@ -58,6 +58,7 @@ class DataFlattener:
     Flatten nested JSON structures into spreadsheet-friendly rows.
 
     Provides smart handling of:
+
     - Nested objects → flattened columns
     - Arrays of primitives → comma-separated strings
     - Arrays of objects → expanded columns or readable summaries
@@ -66,11 +67,15 @@ class DataFlattener:
 
     def __init__(self, schema_metadata=None):
         """
-        Args:
-            schema_metadata: Optional SchemaMetadata. When provided, its
-                ``compilation.flattening`` block overrides the module defaults.
-                When omitted (e.g. callers that only use ``make_column_name``),
-                the documented defaults apply.
+        Initialize the flattener with optional schema-driven config.
+
+        Parameters
+        ----------
+        schema_metadata
+            Optional SchemaMetadata. When provided, its
+            ``compilation.flattening`` block overrides the module defaults.
+            When omitted (e.g. callers that only use ``make_column_name``),
+            the documented defaults apply.
         """
         cfg = (
             schema_metadata.get_flattening_config() if schema_metadata else {}
@@ -106,15 +111,20 @@ class DataFlattener:
         Intelligently flatten a data item for spreadsheet output.
 
         Automatically chooses the best representation for nested structures:
+
         - Simple values → direct columns
         - Nested objects → flattened columns
         - Arrays of primitives → comma-separated
         - Arrays of objects → smart expansion or summary
 
-        Args:
-            item: Dictionary with potentially nested structure
+        Parameters
+        ----------
+        item : Dict
+            Dictionary with potentially nested structure
 
-        Returns:
+        Returns
+        -------
+        Dict
             Flattened dictionary suitable for DataFrame row
         """
         flattened = {}
@@ -142,17 +152,22 @@ class DataFlattener:
 
         Handles snake_case, camelCase, and mixed formats.
 
-        Args:
-            name: Raw field name
+        Parameters
+        ----------
+        name : str
+            Raw field name
 
-        Returns:
+        Returns
+        -------
+        str
             Clean Title Case column name
 
-        Examples:
-            >>> flattener.make_column_name("charge_type")
-            "Charge Type"
-            >>> flattener.make_column_name("annualConsumption")
-            "Annual Consumption"
+        Examples
+        --------
+        >>> flattener.make_column_name("charge_type")
+        "Charge Type"
+        >>> flattener.make_column_name("annualConsumption")
+        "Annual Consumption"
         """
         return humanize_field_name(name)
 
@@ -161,17 +176,23 @@ class DataFlattener:
         Intelligently handle array data based on its structure.
 
         Decision logic:
+
         - Empty → empty string
         - Simple values → comma-separated
         - Few objects (< expand_max_items) with few fields (< expand_max_fields)
           → expand to columns
         - Many/complex objects → readable summary
 
-        Args:
-            key: Column name for this array
-            items: Array data to process
+        Parameters
+        ----------
+        key : str
+            Column name for this array
+        items : List
+            Array data to process
 
-        Returns:
+        Returns
+        -------
+        Dict
             Dictionary with column(s) for this array
         """
         if not items:
@@ -189,16 +210,22 @@ class DataFlattener:
         Smart handling of arrays of objects.
 
         Universal decision logic:
+
         - Small, consistent arrays → expand to columns (good for analysis)
         - Large or inconsistent arrays → readable summary (good for context)
 
         Works for any domain: tariffs, permits, requirements, etc.
 
-        Args:
-            key: Parent key for this array
-            items: List of dictionaries
+        Parameters
+        ----------
+        key : str
+            Parent key for this array
+        items : List[Dict]
+            List of dictionaries
 
-        Returns:
+        Returns
+        -------
+        Dict
             Dictionary with either expanded columns or summary string
         """
         num_items = len(items)
@@ -231,17 +258,23 @@ class DataFlattener:
         Expand array of objects into structured columns for analysis.
 
         Automatically creates clean column names by:
+
         1. Grouping items by their type/category field
         2. Adding distinguishing context (season, period, tier, etc.)
         3. Expanding each item's fields into separate columns
 
         Works for any data: charges, requirements, fees, tiers, etc.
 
-        Args:
-            parent_key: Parent field name
-            items: List of objects to expand
+        Parameters
+        ----------
+        parent_key : str
+            Parent field name
+        items : List[Dict]
+            List of objects to expand
 
-        Returns:
+        Returns
+        -------
+        Dict
             Dictionary with multiple columns (one per field per item)
         """
         result = {}
@@ -299,12 +332,18 @@ class DataFlattener:
         Looks for the configured distinguishing fields in order, skipping
         placeholder values. Falls back to numbering if none is found.
 
-        Args:
-            obj: Object to analyze
-            idx: Index in the array
-            total: Total items in array
+        Parameters
+        ----------
+        obj : Dict
+            Object to analyze
+        idx : int
+            Index in the array
+        total : int
+            Total items in array
 
-        Returns:
+        Returns
+        -------
+        str
             Suffix string (e.g., " Summer", " Tier 1", " 2")
         """
         if total == 1:
@@ -326,10 +365,14 @@ class DataFlattener:
         Builds concise "Type: Value Unit" format from common field patterns.
         Automatically detects type, value, unit, and contextual fields.
 
-        Args:
-            items: List of objects to summarize
+        Parameters
+        ----------
+        items : List[Dict]
+            List of objects to summarize
 
-        Returns:
+        Returns
+        -------
+        str
             Semicolon-separated summary string
         """
         summaries = []
@@ -363,11 +406,16 @@ class DataFlattener:
 
         Useful for finding data in objects with varying field names.
 
-        Args:
-            obj: Dictionary to search
-            possible_keys: List of keys to try in order
+        Parameters
+        ----------
+        obj : Dict
+            Dictionary to search
+        possible_keys : List[str]
+            List of keys to try in order
 
-        Returns:
+        Returns
+        -------
+        Any
             First non-null value found, or None
         """
         for key in possible_keys:
@@ -383,10 +431,14 @@ class DataFlattener:
         using the configured ``unit_normalizations`` map (general measurement
         defaults unless the schema overrides them).
 
-        Args:
-            df: DataFrame with potential unit column
+        Parameters
+        ----------
+        df : pd.DataFrame
+            DataFrame with potential unit column
 
-        Returns:
+        Returns
+        -------
+        pd.DataFrame
             DataFrame with normalized units
         """
         if not self.unit_normalizations:

@@ -35,11 +35,16 @@ class CostTracker:
         """
         Add a request to the tracker.
 
-        Args:
-            input_tokens: Number of input tokens used
-            output_tokens: Number of output tokens generated
-            document_name: Optional document identifier
-            cost: Optional explicit cost (if provided, used instead of calculation)
+        Parameters
+        ----------
+        input_tokens : int
+            Number of input tokens used
+        output_tokens : int
+            Number of output tokens generated
+        document_name : str
+            Optional document identifier
+        cost : float
+            Optional explicit cost (if provided, used instead of calculation)
         """
         self.total_input_tokens += input_tokens
         self.total_output_tokens += output_tokens

@@ -24,6 +24,13 @@ class CandidateScore:
     )
 
     def weighted_total(self) -> float:
+        """Compute the weighted sum of all signal scores, clamped to [0, 1].
+
+        Returns
+        -------
+        float
+            Weighted score in the range ``[0.0, 1.0]``.
+        """
         weighted = (
             self.url_signal * self.weights.get("url_signal", 0.0)
             + self.anchor_signal * self.weights.get("anchor_signal", 0.0)
@@ -33,6 +40,14 @@ class CandidateScore:
         return max(0.0, min(1.0, weighted))
 
     def acceptance_class(self) -> str:
+        """Classify the weighted score into an acceptance tier.
+
+        Returns
+        -------
+        str
+            ``"accepted"`` (≥ 0.75), ``"needs_review"`` (≥ 0.45), or
+            ``"rejected"`` (< 0.45).
+        """
         total = self.weighted_total()
         if total >= 0.75:
             return "accepted"
@@ -41,6 +56,14 @@ class CandidateScore:
         return "rejected"
 
     def to_dict(self) -> dict[str, Any]:
+        """Serialize the score signals and derived fields to a plain dict.
+
+        Returns
+        -------
+        dict[str, Any]
+            Keys: ``url_signal``, ``anchor_signal``, ``content_signal``,
+            ``trust_signal``, ``weights``, ``total``, ``acceptance_class``.
+        """
         total = self.weighted_total()
         return {
             "url_signal": self.url_signal,
@@ -71,6 +94,15 @@ class DiscoveryCandidate:
     snippet: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
+        """Serialize this candidate to a plain dict for JSON output.
+
+        Returns
+        -------
+        dict[str, Any]
+            Flat representation suitable for writing to the discovery manifest.
+            ``status`` falls back to ``score.acceptance_class()`` when not
+            explicitly set.
+        """
         effective_status = self.status or self.score.acceptance_class()
         return {
             "url": self.url,
@@ -107,6 +139,14 @@ class DiscoveryManifest:
     candidate_summary: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
+        """Serialize the full manifest to a JSON-compatible dict.
+
+        Returns
+        -------
+        dict[str, Any]
+            Complete manifest representation, including all candidates
+            serialized via ``DiscoveryCandidate.to_dict()``.
+        """
         return {
             "manifest_version": self.manifest_version,
             "run_id": self.run_id,

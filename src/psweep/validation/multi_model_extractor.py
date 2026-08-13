@@ -6,12 +6,15 @@ to organized subfolders for comparison.
 
 Model tiers and credentials are resolved exclusively through the unified
 :class:`~psweep.config.model_registry.ModelRegistry`. Callers pass the registry
-plus the ``qaqc.models`` tier references; this module resolves each tier to a
+plus the ``validation.models`` tier references; this module resolves each tier to a
 concrete model and its LLM kwargs (provider/api_key/endpoint) via
 ``registry.to_llm_kwargs`` — never threading a provider directly.
 
-Usage:
-    from psweep.qa_qc.multi_model_extractor import run_multi_model_extraction
+Examples
+--------
+.. code-block:: python
+
+    from psweep.validation.multi_model_extractor import run_multi_model_extraction
 
     output_files = run_multi_model_extraction(
         doc_text="Full document text...",
@@ -19,11 +22,14 @@ Usage:
         schema=loaded_schema,
         registry=registry,
         model_tiers=["primary", "secondary"],
-        output_dir=Path("processed/qa_qc"),
+        output_dir=Path("processed/validation"),
     )
 
-Output Structure:
-    processed/qa_qc/{doc_name}/
+Notes
+-----
+Output Structure::
+
+    processed/validation/{doc_name}/
         {model_name}.json  (one file per model)
         metadata.json
 """
@@ -85,21 +91,34 @@ def run_multi_model_extraction(
     """
     Run extraction with multiple models resolved through the model registry.
 
-    Args:
-        doc_text: Full document text to extract from
-        doc_name: Document name (without extension, used for output folder)
-        schema: JSON schema for extraction
-        registry: Unified :class:`ModelRegistry` — the single source of model
-            tier resolution and credential (LLM kwargs) threading.
-        model_tiers: Ordered list of tier/model references (e.g. the
-            ``qaqc.models`` list). Resolved and de-duplicated by concrete model.
-        output_dir: Base directory for QA/QC outputs (e.g., "processed/")
-        max_context_chars: Maximum characters to process
-        timeout_seconds: Per-request LLM timeout for each model extraction.
-        runtime_artifact: Optional compiled runtime artifact for lineage metadata
-        run_id: Optional deterministic run identifier for this invocation
+    Parameters
+    ----------
+    doc_text : str
+        Full document text to extract from
+    doc_name : str
+        Document name (without extension, used for output folder)
+    schema : dict
+        JSON schema for extraction
+    registry : ModelRegistry
+        Unified :class:`ModelRegistry` — the single source of model
+        tier resolution and credential (LLM kwargs) threading.
+    model_tiers : Sequence[str]
+        Ordered list of tier/model references (e.g. the
+        ``validation.models`` list). Resolved and de-duplicated by concrete model.
+    output_dir : Path
+        Base directory for QA/QC outputs (e.g., "processed/")
+    max_context_chars : int
+        Maximum characters to process
+    timeout_seconds : Optional[int]
+        Per-request LLM timeout for each model extraction.
+    runtime_artifact : Optional[Dict[str, Any]]
+        Optional compiled runtime artifact for lineage metadata
+    run_id : Optional[str]
+        Optional deterministic run identifier for this invocation
 
-    Returns:
+    Returns
+    -------
+    Dict[str, ModelExtractionResult]
         Dict mapping concrete model name to ModelExtractionResult
     """
     # Import here to avoid circular imports
@@ -111,7 +130,7 @@ def run_multi_model_extraction(
     seed_records_by_model = seed_records_by_model or {}
 
     # Create output directory for this document
-    doc_output_dir = Path(output_dir) / "qa_qc" / doc_name
+    doc_output_dir = Path(output_dir) / "validation" / doc_name
     doc_output_dir.mkdir(parents=True, exist_ok=True)
 
     results: Dict[str, ModelExtractionResult] = {}
@@ -273,7 +292,7 @@ def run_multi_model_extraction(
             error_msg = str(e)
             error_details = build_error_record(
                 e,
-                stage="qa_qc",
+                stage="validation",
                 document_path=doc_name,
                 model=model,
                 provider=provider,

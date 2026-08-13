@@ -254,7 +254,7 @@ compilation:
       - notes
 
 # ── QA/QC ────────────────────────────────────────────────────────────────────
-qaqc:
+validation:
   # Keep QA/QC lean for validation runs; 3-model runs inflate presence-only noise.
   models: [primary, secondary]
   output_dir: validated/natural_gas_pipelines

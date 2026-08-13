@@ -152,7 +152,7 @@ def _pick_fields(
     return selected
 
 
-def _build_qaqc_scaffold(
+def _build_validation_scaffold(
     schema_metadata: SchemaMetadata,
 ) -> Optional[Dict[str, Any]]:
     schema_root = schema_metadata.schema
@@ -820,7 +820,7 @@ def _config_readme_content(
     schema_ref: str,
     page_ranges_ref: str,
     run_config_ref: str,
-    has_qaqc: bool,
+    has_validation: bool,
     template_mode: str,
 ) -> str:
     workflow_lines = [
@@ -854,7 +854,7 @@ def _config_readme_content(
             ]
         )
 
-    if template_mode == "recommended" and has_qaqc:
+    if template_mode == "recommended" and has_validation:
         workflow_lines.extend(
             [
                 "",
@@ -867,7 +867,7 @@ def _config_readme_content(
                     f"pixi run psweep validate --config {run_config_ref} --compare-only"
                 ),
                 (
-                    "3. Tune qaqc.record_matching and qaqc.judge settings, then rerun --compare-only"
+                    "3. Tune validation.record_matching and validation.judge settings, then rerun --compare-only"
                 ),
             ]
         )
@@ -943,7 +943,7 @@ def _create_config_skeleton(
     document_type: str,
     domain_name: str,
     schema_ref: str,
-    has_qaqc: bool,
+    has_validation: bool,
     template_mode: str,
     force: bool,
 ) -> list[str]:
@@ -961,7 +961,7 @@ def _create_config_skeleton(
             schema_ref=schema_ref,
             page_ranges_ref=_display_cli_path(page_ranges_path, repo_root),
             run_config_ref=_display_cli_path(run_config_path, repo_root),
-            has_qaqc=has_qaqc,
+            has_validation=has_validation,
             template_mode=template_mode,
         ),
         force=force,
@@ -1537,7 +1537,7 @@ def check_schema_cmd(schema_path: str):
             )
         if isinstance(metadata.get("qa_qc"), dict):
             warnings.append(
-                "$metadata.qa_qc is deprecated for active workflows; define QA/QC settings in config/<domain>/run.yaml under 'qaqc'"
+                "$metadata.qa_qc is deprecated for active workflows; define QA/QC settings in config/<domain>/run.yaml under 'validation'"
             )
     else:
         issues.append(

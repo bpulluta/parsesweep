@@ -220,7 +220,7 @@ compilation:
     auto_width: true
 
 # ── QA/QC ────────────────────────────────────────────────────────────────────
-qaqc:
+validation:
   models: [primary, secondary]
   output_dir: validated/geothermal_ordinances
   report:

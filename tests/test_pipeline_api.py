@@ -8,7 +8,7 @@ from psweep.pipeline import (
     build_run_stage_commands,
     compile_extractions,
     extract_documents,
-    resolve_run_qaqc,
+    resolve_run_validation,
 )
 
 
@@ -211,21 +211,21 @@ def test_build_run_stage_commands_preserves_flags(tmp_path: Path) -> None:
     ]
 
 
-def test_build_run_stage_commands_wires_qaqc(tmp_path: Path) -> None:
+def test_build_run_stage_commands_wires_validation(tmp_path: Path) -> None:
     config_path = tmp_path / "example.yaml"
     config_path.write_text(
         "domain: example\n"
         "extraction:\n"
         "  schema: schemas/example.json\n"
         "  output_dir: extracted/example\n"
-        "qaqc:\n"
+        "validation:\n"
         "  models: [primary, secondary]\n",
         encoding="utf-8",
     )
 
-    resolved = resolve_run_qaqc(config_path)
+    resolved = resolve_run_validation(config_path)
     assert resolved is not None
-    assert resolved["qa_qc_dir"] == Path("extracted/example/qa_qc")
+    assert resolved["validation_dir"] == Path("extracted/example/validation")
 
     stage_cmds = build_run_stage_commands(
         config_path,
@@ -240,13 +240,13 @@ def test_build_run_stage_commands_wires_qaqc(tmp_path: Path) -> None:
     assert validate_cmd[validate_cmd.index("--config") + 1] == str(config_path)
 
 
-def test_build_run_stage_commands_no_qaqc_when_disabled(tmp_path: Path) -> None:
+def test_build_run_stage_commands_no_validation_when_disabled(tmp_path: Path) -> None:
     config_path = tmp_path / "example.yaml"
     config_path.write_text(
         "domain: example\nextraction:\n  schema: s.json\n", encoding="utf-8"
     )
 
-    assert resolve_run_qaqc(config_path) is None
+    assert resolve_run_validation(config_path) is None
     stage_names = [
         name
         for name, _ in build_run_stage_commands(

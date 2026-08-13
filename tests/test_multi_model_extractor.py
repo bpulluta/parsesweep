@@ -1,5 +1,5 @@
 """
-Tests for qa_qc/multi_model_extractor.py
+Tests for validation/multi_model_extractor.py
 
 Tests the multi-model extraction functionality that runs the same document
 through multiple AI models for QA/QC validation.
@@ -11,7 +11,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 from dataclasses import asdict
 
-from psweep.qa_qc.multi_model_extractor import (
+from psweep.validation.multi_model_extractor import (
     run_multi_model_extraction,
     ModelExtractionResult,
 )
@@ -174,7 +174,7 @@ class TestRunMultiModelExtraction:
         )
         
         # Verify directory structure
-        expected_dir = tmp_path / "qa_qc" / "my_document"
+        expected_dir = tmp_path / "validation" / "my_document"
         assert expected_dir.exists()
         assert expected_dir.is_dir()
     
@@ -199,7 +199,7 @@ class TestRunMultiModelExtraction:
         )
         
         # Verify JSON files exist
-        output_dir = tmp_path / "qa_qc" / "test_doc"
+        output_dir = tmp_path / "validation" / "test_doc"
         assert (output_dir / "gpt-4o.json").exists()
         assert (output_dir / "gpt-4-turbo.json").exists()
         
@@ -233,7 +233,7 @@ class TestRunMultiModelExtraction:
         )
         
         # Verify metadata file
-        metadata_path = tmp_path / "qa_qc" / "test_doc" / "metadata.json"
+        metadata_path = tmp_path / "validation" / "test_doc" / "metadata.json"
         assert metadata_path.exists()
         
         with open(metadata_path) as f:
@@ -281,7 +281,7 @@ class TestRunMultiModelExtraction:
             run_id="run://abc123def4567890",
         )
 
-        output_path = tmp_path / "qa_qc" / "test_doc" / "gpt-4o.json"
+        output_path = tmp_path / "validation" / "test_doc" / "gpt-4o.json"
         with open(output_path) as f:
             data = json.load(f)
 
@@ -328,7 +328,7 @@ class TestRunMultiModelExtraction:
             run_id="run://abc123def4567890",
         )
 
-        metadata_path = tmp_path / "qa_qc" / "test_doc" / "metadata.json"
+        metadata_path = tmp_path / "validation" / "test_doc" / "metadata.json"
         with open(metadata_path) as f:
             metadata = json.load(f)
 
@@ -367,7 +367,7 @@ class TestRunMultiModelExtraction:
         assert "API error" in results["gpt-nonexistent"].error
         
         # Verify metadata shows partial status
-        metadata_path = tmp_path / "qa_qc" / "test_doc" / "metadata.json"
+        metadata_path = tmp_path / "validation" / "test_doc" / "metadata.json"
         with open(metadata_path) as f:
             metadata = json.load(f)
             assert metadata["status"] == "partial"
@@ -425,7 +425,7 @@ class TestRunMultiModelExtraction:
         )
         
         # Verify file was created with sanitized name
-        output_dir = tmp_path / "qa_qc" / "test_doc"
+        output_dir = tmp_path / "validation" / "test_doc"
         assert (output_dir / "azure-gpt-4o.json").exists()  # Slash replaced with dash
     
     @patch("psweep.extraction.DocumentExtractor")
@@ -467,7 +467,7 @@ class TestRunMultiModelExtraction:
         assert results["gpt-3.5-turbo"].cost == 0.005
         
         # Verify total cost in metadata
-        metadata_path = tmp_path / "qa_qc" / "test_doc" / "metadata.json"
+        metadata_path = tmp_path / "validation" / "test_doc" / "metadata.json"
         with open(metadata_path) as f:
             metadata = json.load(f)
             assert metadata["summary"]["total_cost_usd_incurred_this_run"] == pytest.approx(0.015, rel=0.01)
@@ -476,7 +476,7 @@ class TestRunMultiModelExtraction:
     def test_extract_called_correctly(
         self, mock_extractor_class, sample_schema, sample_text, mock_extraction_result, tmp_path
     ):
-        """Test that extract is called correctly without old enable_qa_qc param."""
+        """Test that extract is called correctly without old enable_validation param."""
         # Setup mock
         mock_extractor = MagicMock()
         mock_extractor.extract.return_value = mock_extraction_result
@@ -492,13 +492,13 @@ class TestRunMultiModelExtraction:
             output_dir=tmp_path,
         )
         
-        # Verify extract was called with just text and schema (no enable_qa_qc param)
+        # Verify extract was called with just text and schema (no enable_validation param)
         mock_extractor.extract.assert_called_once()
         call_kwargs = mock_extractor.extract.call_args.kwargs
         assert "text" in call_kwargs
         assert "schema" in call_kwargs
-        # enable_qa_qc param no longer exists - verify it's not passed
-        assert "enable_qa_qc" not in call_kwargs
+        # enable_validation param no longer exists - verify it's not passed
+        assert "enable_validation" not in call_kwargs
 
     @patch("psweep.extraction.DocumentExtractor")
     def test_timeout_is_passed_to_document_extractor(

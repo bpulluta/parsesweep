@@ -16,6 +16,7 @@ class SchemaDetector:
     Requires schema metadata for operation (v2.0+).
 
     Identifies:
+
     - Main data arrays (e.g., requirements, rate_schedules)
     - Identifier/context fields (e.g., jurisdiction, utility_details)
     - Schema patterns from metadata
@@ -27,11 +28,15 @@ class SchemaDetector:
         """
         Initialize detector.
 
-        Args:
-            schema_metadata: SchemaMetadata instance (required in v2.0+)
+        Parameters
+        ----------
+        schema_metadata
+            SchemaMetadata instance (required in v2.0+)
 
-        Raises:
-            SchemaMetadataError: If schema_metadata is not provided
+        Raises
+        ------
+        SchemaMetadataError
+            If schema_metadata is not provided
         """
         if not schema_metadata:
             raise SchemaMetadataError(
@@ -44,20 +49,26 @@ class SchemaDetector:
         """
         Automatically detect schema structure using metadata.
 
-        Args:
-            data: Sample data from first extraction file
+        Parameters
+        ----------
+        data : Dict[str, Any]
+            Sample data from first extraction file
 
-        Returns:
+        Returns
+        -------
+        Dict[str, Any]
             Dict with:
+
             - type: schema type name (e.g., "Ordinance/Regulation", "Utility Tariff")
             - main_array_key: key containing the main data array
             - id_fields: list of identifier/context field keys
 
-        Example:
-            >>> detector = SchemaDetector(schema_metadata)
-            >>> info = detector.detect_structure({"requirements": [...], "jurisdiction_details": {...}})
-            >>> print(info['main_array_key'])
-            'requirements'
+        Examples
+        --------
+        >>> detector = SchemaDetector(schema_metadata)
+        >>> info = detector.detect_structure({"requirements": [...], "jurisdiction_details": {...}})
+        >>> print(info['main_array_key'])
+        'requirements'
         """
         # Use metadata (required in v2.0+)
         return {
@@ -72,16 +83,22 @@ class SchemaDetector:
         """
         Extract context/identifier fields from the document.
 
-        Args:
-            data: Extraction data
-            schema_info: Schema structure info from detect_structure()
+        Parameters
+        ----------
+        data : Dict[str, Any]
+            Extraction data
+        schema_info : Dict[str, Any]
+            Schema structure info from detect_structure()
 
-        Returns:
+        Returns
+        -------
+        Dict[str, Any]
             Dict of context fields with human-readable names
 
-        Example:
-            >>> context = detector.extract_context(data, schema_info)
-            >>> # Returns: {"Jurisdiction": "Austin", "State": "TX"}
+        Examples
+        --------
+        >>> context = detector.extract_context(data, schema_info)
+        >>> # Returns: {"Jurisdiction": "Austin", "State": "TX"}
         """
         context = {}
 
@@ -105,7 +122,9 @@ class SchemaDetector:
         """
         Get list of field names to exclude from compiled output.
 
-        Returns:
+        Returns
+        -------
+        List[str]
             List of field names (in snake_case) to exclude
         """
         return self.schema_metadata.get_output_exclude_fields()

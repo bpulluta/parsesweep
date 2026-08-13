@@ -20,7 +20,7 @@ def test_build_error_record_classifies_file_not_found() -> None:
 def test_build_error_record_marks_retryable_timeout() -> None:
     error = build_error_record(
         RuntimeError("Request timeout while calling provider"),
-        stage="qa_qc",
+        stage="validation",
         document_path="doc-1",
         model="gpt-4o",
         provider="openai",
@@ -54,7 +54,7 @@ def test_summarize_error_records_aggregates_by_category_and_code() -> None:
                 "source": {"document_path": "a.pdf", "model": "gpt-5", "provider": "azure"},
             },
             {
-                "stage": "qa_qc",
+                "stage": "validation",
                 "category": "internal",
                 "code": "unexpected_processing_error",
                 "message": "Unknown failure",

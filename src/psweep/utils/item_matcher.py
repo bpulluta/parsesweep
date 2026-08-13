@@ -79,23 +79,29 @@ def extract_key_tokens(text: str) -> Set[str]:
     Extract key tokens from text for fuzzy matching.
 
     Normalizes text by:
+
     - Converting to lowercase
     - Removing punctuation
     - Splitting into words
     - Removing stop words
     - Keeping only meaningful content words
 
-    Args:
-        text: Text string to tokenize
+    Parameters
+    ----------
+    text : str
+        Text string to tokenize
 
-    Returns:
+    Returns
+    -------
+    Set[str]
         Set of normalized key tokens
 
-    Examples:
-        >>> extract_key_tokens("site preparation for drilling")
-        {'site', 'preparation', 'drilling'}
-        >>> extract_key_tokens("work in preparation of the site for drilling")
-        {'preparation', 'site', 'drilling'}
+    Examples
+    --------
+    >>> extract_key_tokens("site preparation for drilling")
+    {'site', 'preparation', 'drilling'}
+    >>> extract_key_tokens("work in preparation of the site for drilling")
+    {'preparation', 'site', 'drilling'}
     """
     if not text:
         return set()
@@ -116,22 +122,28 @@ def normalize_for_matching(value: str) -> str:
 
     Extracts key tokens and joins them sorted, enabling matching
     despite verbosity differences like:
+
     - "site preparation for drilling"
     - "work in preparation of the site for drilling"
 
     Both normalize to: "drilling preparation site"
 
-    Args:
-        value: String value to normalize
+    Parameters
+    ----------
+    value : str
+        String value to normalize
 
-    Returns:
+    Returns
+    -------
+    str
         Normalized string with sorted key tokens
 
-    Examples:
-        >>> normalize_for_matching("site preparation for drilling")
-        'drilling preparation site'
-        >>> normalize_for_matching("work in preparation of the site for drilling")
-        'drilling preparation site'
+    Examples
+    --------
+    >>> normalize_for_matching("site preparation for drilling")
+    'drilling preparation site'
+    >>> normalize_for_matching("work in preparation of the site for drilling")
+    'drilling preparation site'
     """
     tokens = extract_key_tokens(value)
     return " ".join(sorted(tokens))
@@ -141,19 +153,25 @@ def get_nested_value(obj: Dict[str, Any], dot_path: str) -> Any:
     """
     Get value from nested dictionary using dot-notation path.
 
-    Args:
-        obj: Dictionary to extract value from
-        dot_path: Dot-notation path (e.g., "metadata.jurisdiction.state")
+    Parameters
+    ----------
+    obj : Dict[str, Any]
+        Dictionary to extract value from
+    dot_path : str
+        Dot-notation path (e.g., "metadata.jurisdiction.state")
 
-    Returns:
+    Returns
+    -------
+    Any
         Value at the path, or None if path doesn't exist
 
-    Examples:
-        >>> obj = {"metadata": {"jurisdiction": {"state": "CA"}}}
-        >>> get_nested_value(obj, "metadata.jurisdiction.state")
-        "CA"
-        >>> get_nested_value(obj, "metadata.missing")
-        None
+    Examples
+    --------
+    >>> obj = {"metadata": {"jurisdiction": {"state": "CA"}}}
+    >>> get_nested_value(obj, "metadata.jurisdiction.state")
+    "CA"
+    >>> get_nested_value(obj, "metadata.missing")
+    None
     """
     if not obj or not dot_path:
         return None
@@ -182,26 +200,34 @@ def create_item_index(
     Create an index of items by their identifier fields.
 
     Values are normalized for consistent matching:
+
     - Strings: lowercase, stripped whitespace
     - Fuzzy fields: token-normalized (removes stop words, sorts keywords)
     - None values preserved
 
-    Args:
-        items: List of data items (dicts)
-        identifier_fields: List of dot-notation field paths to use as keys
-        fuzzy_fields: Optional list of fields to apply token normalization
+    Parameters
+    ----------
+    items : List[Dict[str, Any]]
+        List of data items (dicts)
+    identifier_fields : List[str]
+        List of dot-notation field paths to use as keys
+    fuzzy_fields : Optional[List[str]]
+        Optional list of fields to apply token normalization
 
-    Returns:
+    Returns
+    -------
+    Dict[Tuple, Dict[str, Any]]
         Dictionary mapping identifier tuples to items
 
-    Examples:
-        >>> items = [
-        ...     {"id": "1", "name": "Item 1"},
-        ...     {"id": "2", "name": "Item 2"}
-        ... ]
-        >>> index = create_item_index(items, ["id"])
-        >>> index[("1",)]["name"]
-        "Item 1"
+    Examples
+    --------
+    >>> items = [
+    ...     {"id": "1", "name": "Item 1"},
+    ...     {"id": "2", "name": "Item 2"}
+    ... ]
+    >>> index = create_item_index(items, ["id"])
+    >>> index[("1",)]["name"]
+    "Item 1"
     """
     index = {}
     fuzzy_set = set(fuzzy_fields) if fuzzy_fields else set()
@@ -244,18 +270,25 @@ def map_key_fields_to_columns(
 
     This function is extracted from deduplicator for reuse in QA/QC.
 
-    Args:
-        df: DataFrame to map columns from
-        key_fields: Key field names from schema (dot-notation paths)
-        warn_on_missing: Whether to log a warning for each unmapped key field
+    Parameters
+    ----------
+    df : pd.DataFrame
+        DataFrame to map columns from
+    key_fields : List[str]
+        Key field names from schema (dot-notation paths)
+    warn_on_missing : bool
+        Whether to log a warning for each unmapped key field
 
-    Returns:
+    Returns
+    -------
+    List[str]
         List of actual DataFrame column names that match key_fields
 
-    Examples:
-        >>> df = pd.DataFrame(columns=["State", "Rate Name", "Charge Type"])
-        >>> map_key_fields_to_columns(df, ["jurisdiction.state", "rate_name"])
-        ["State", "Rate Name"]
+    Examples
+    --------
+    >>> df = pd.DataFrame(columns=["State", "Rate Name", "Charge Type"])
+    >>> map_key_fields_to_columns(df, ["jurisdiction.state", "rate_name"])
+    ["State", "Rate Name"]
     """
     mapped_cols = []
 

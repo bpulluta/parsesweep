@@ -13,7 +13,7 @@ from psweep.cli.commands import (
     _context_budget_suggestions_for_process,
     _extract_and_save_result,
     _generate_run_id,
-    _run_qa_qc_extraction,
+    _run_validation_extraction,
     _resolve_compilation_output_formats,
     _resolve_schema_ref,
     _should_fail_on_suspicious,
@@ -290,7 +290,7 @@ def test_validate_schema_cli_reports_nested_metadata_fields_correctly(tmp_path) 
     assert "$metadata.extraction missing 'main_data_array'" not in result.output
 
 
-def test_run_qaqc_extraction_prints_compare_command_with_selected_lane(tmp_path, monkeypatch, capsys) -> None:
+def test_run_validation_extraction_prints_compare_command_with_selected_lane(tmp_path, monkeypatch, capsys) -> None:
     from psweep.config.model_registry import ModelRegistry
 
     document_path = tmp_path / 'documents' / 'qa_doc.pdf'
@@ -308,7 +308,7 @@ def test_run_qaqc_extraction_prints_compare_command_with_selected_lane(tmp_path,
     )
     monkeypatch.setattr('psweep.extraction.document_utils.extract_text_from_document', lambda *args, **kwargs: 'doc text')
     monkeypatch.setattr(
-        'psweep.qa_qc.run_multi_model_extraction',
+        'psweep.validation.run_multi_model_extraction',
         lambda **kwargs: {
             'model-a': _DummyResult(cost=0.1, processing_time=1.0),
             'model-b': _DummyResult(cost=0.2, processing_time=1.5),
@@ -316,13 +316,13 @@ def test_run_qaqc_extraction_prints_compare_command_with_selected_lane(tmp_path,
     )
     monkeypatch.setattr('psweep.cli.commands.ask_confirm', lambda *args, **kwargs: True)
 
-    _run_qa_qc_extraction(
+    _run_validation_extraction(
         doc_files=[document_path],
         loaded_schema={'type': 'object'},
         schema_path=REPO_ROOT / 'schemas/personal/geothermal_ordinance_schema.json',
         output_dir=tmp_path / 'extracted',
         registry=registry,
-        qaqc_models=['model-a', 'model-b'],
+        validation_models=['model-a', 'model-b'],
         max_context=400000,
         timeout_seconds=None,
         page_range_map={},
@@ -886,7 +886,7 @@ def test_extract_and_save_result_includes_lineage_fields(tmp_path) -> None:
         output_dir=tmp_path,
         category='tariffs',
         model='gpt-5',
-        qa_qc_enabled=False,
+        validation_enabled=False,
         runtime_artifact=runtime_artifact,
         run_id='run://deterministic1234',
         provider='azure',
@@ -948,7 +948,7 @@ def test_extract_and_save_result_persists_structured_processing_errors(tmp_path)
         output_dir=tmp_path,
         category='tariffs',
         model='gpt-5',
-        qa_qc_enabled=False,
+        validation_enabled=False,
         runtime_artifact=None,
         run_id='run://deterministic1234',
         provider='azure',
@@ -965,7 +965,7 @@ def test_generate_run_id_is_deterministic_for_same_inputs() -> None:
         schema_path=Path('schemas/personal/electricity_tariff_schema.json'),
         provider='azure',
         model='gpt-5',
-        enable_qa_qc=False,
+        enable_validation=False,
         doc_files=[Path('documents/tariffs/a.pdf'), Path('documents/tariffs/b.pdf')],
         artifact_id='artifact://runtime/abc123def4567890',
     )
@@ -973,7 +973,7 @@ def test_generate_run_id_is_deterministic_for_same_inputs() -> None:
         schema_path=Path('schemas/personal/electricity_tariff_schema.json'),
         provider='azure',
         model='gpt-5',
-        enable_qa_qc=False,
+        enable_validation=False,
         doc_files=[Path('documents/tariffs/b.pdf'), Path('documents/tariffs/a.pdf')],
         artifact_id='artifact://runtime/abc123def4567890',
     )

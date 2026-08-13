@@ -236,8 +236,8 @@ def test_collect_benchmark_metrics_computes_extraction_parity_from_payload_recor
     assert metrics["extraction_parity"] == 100.0
 
 
-def test_collect_benchmark_metrics_computes_qaqc_signal_quality(tmp_path) -> None:
-    actual_report = tmp_path / "processed/qa_qc/test-doc/comparison_report.csv"
+def test_collect_benchmark_metrics_computes_validation_signal_quality(tmp_path) -> None:
+    actual_report = tmp_path / "processed/validation/test-doc/comparison_report.csv"
     actual_report.parent.mkdir(parents=True, exist_ok=True)
     actual_report.write_text(
         "Status,Requirement,Agreement,Notes\n"
@@ -246,7 +246,7 @@ def test_collect_benchmark_metrics_computes_qaqc_signal_quality(tmp_path) -> Non
         encoding="utf-8",
     )
 
-    expected_report = tmp_path / "expected/qa_qc/test-doc/comparison_report.csv"
+    expected_report = tmp_path / "expected/validation/test-doc/comparison_report.csv"
     expected_report.parent.mkdir(parents=True, exist_ok=True)
     expected_report.write_text(
         "Status,Requirement,Agreement,Notes\n"
@@ -256,21 +256,21 @@ def test_collect_benchmark_metrics_computes_qaqc_signal_quality(tmp_path) -> Non
     )
 
     metrics = collect_benchmark_metrics(
-        tmp_path / "processed/qa_qc",
+        tmp_path / "processed/validation",
         repo_root=tmp_path,
-        qaqc_baseline_dir=tmp_path / "expected/qa_qc",
+        validation_baseline_dir=tmp_path / "expected/validation",
     )
 
-    assert metrics["expected_qaqc_items"] == 2
-    assert metrics["actual_qaqc_items"] == 2
-    assert metrics["correct_qaqc_classifications"] == 1
-    assert metrics["scored_qaqc_reports"] == 1
-    assert metrics["qaqc_signal_quality"] == 50.0
+    assert metrics["expected_validation_items"] == 2
+    assert metrics["actual_validation_items"] == 2
+    assert metrics["correct_validation_classifications"] == 1
+    assert metrics["scored_validation_reports"] == 1
+    assert metrics["validation_signal_quality"] == 50.0
 
 
-def test_collect_benchmark_metrics_computes_qaqc_qualitative_pass_rate(tmp_path) -> None:
+def test_collect_benchmark_metrics_computes_validation_qualitative_pass_rate(tmp_path) -> None:
     _write_json(
-        tmp_path / "processed/qa_qc/test-doc-pass/comparison_summary.json",
+        tmp_path / "processed/validation/test-doc-pass/comparison_summary.json",
         {
             "document_name": "test-doc-pass",
             "summary": {
@@ -284,7 +284,7 @@ def test_collect_benchmark_metrics_computes_qaqc_qualitative_pass_rate(tmp_path)
         },
     )
     _write_json(
-        tmp_path / "processed/qa_qc/test-doc-warn/comparison_summary.json",
+        tmp_path / "processed/validation/test-doc-warn/comparison_summary.json",
         {
             "document_name": "test-doc-warn",
             "summary": {
@@ -299,13 +299,13 @@ def test_collect_benchmark_metrics_computes_qaqc_qualitative_pass_rate(tmp_path)
     )
 
     metrics = collect_benchmark_metrics(
-        tmp_path / "processed/qa_qc",
+        tmp_path / "processed/validation",
         repo_root=tmp_path,
     )
 
-    assert metrics["scored_qaqc_qualitative_reports"] == 2
-    assert metrics["qaqc_qualitative_gate_counts"] == {"pass": 1, "warn": 1}
-    assert metrics["qaqc_qualitative_pass_rate"] == 50.0
+    assert metrics["scored_validation_qualitative_reports"] == 2
+    assert metrics["validation_qualitative_gate_counts"] == {"pass": 1, "warn": 1}
+    assert metrics["validation_qualitative_pass_rate"] == 50.0
 
 
 def test_collect_benchmark_metrics_computes_compilation_correctness(tmp_path) -> None:
@@ -386,8 +386,8 @@ def test_compare_benchmark_to_baseline_returns_median_deltas() -> None:
 def test_evaluate_benchmark_gates_returns_pass_fail_summary() -> None:
     metrics = {
         "extraction_parity": 98.0,
-        "qaqc_signal_quality": 97.0,
-        "qaqc_qualitative_pass_rate": 100.0,
+        "validation_signal_quality": 97.0,
+        "validation_qualitative_pass_rate": 100.0,
         "compilation_correctness": 99.6,
         "failure_rate": 0.05,
         "average_document_duration_seconds": 8.0,
@@ -398,8 +398,8 @@ def test_evaluate_benchmark_gates_returns_pass_fail_summary() -> None:
     gate_result = evaluate_benchmark_gates(
         metrics,
         min_extraction_parity=97.0,
-        min_qaqc_signal_quality=96.0,
-        min_qaqc_qualitative_pass_rate=100.0,
+        min_validation_signal_quality=96.0,
+        min_validation_qualitative_pass_rate=100.0,
         min_compilation_correctness=99.5,
         max_failure_rate=0.10,
         max_average_seconds_per_document=10.0,
@@ -414,8 +414,8 @@ def test_evaluate_benchmark_gates_returns_pass_fail_summary() -> None:
 def test_evaluate_benchmark_gates_detects_failures() -> None:
     metrics = {
         "extraction_parity": 92.0,
-        "qaqc_signal_quality": 90.0,
-        "qaqc_qualitative_pass_rate": 50.0,
+        "validation_signal_quality": 90.0,
+        "validation_qualitative_pass_rate": 50.0,
         "compilation_correctness": 95.0,
         "failure_rate": 0.20,
         "average_document_duration_seconds": 12.0,
@@ -426,8 +426,8 @@ def test_evaluate_benchmark_gates_detects_failures() -> None:
     gate_result = evaluate_benchmark_gates(
         metrics,
         min_extraction_parity=97.0,
-        min_qaqc_signal_quality=96.0,
-        min_qaqc_qualitative_pass_rate=100.0,
+        min_validation_signal_quality=96.0,
+        min_validation_qualitative_pass_rate=100.0,
         min_compilation_correctness=99.5,
         max_failure_rate=0.10,
         max_average_seconds_per_document=10.0,
@@ -437,8 +437,8 @@ def test_evaluate_benchmark_gates_detects_failures() -> None:
 
     assert gate_result["overall_passed"] is False
     assert gate_result["gates"]["min_extraction_parity"]["passed"] is False
-    assert gate_result["gates"]["min_qaqc_signal_quality"]["passed"] is False
-    assert gate_result["gates"]["min_qaqc_qualitative_pass_rate"]["passed"] is False
+    assert gate_result["gates"]["min_validation_signal_quality"]["passed"] is False
+    assert gate_result["gates"]["min_validation_qualitative_pass_rate"]["passed"] is False
     assert gate_result["gates"]["min_compilation_correctness"]["passed"] is False
     assert gate_result["gates"]["max_failure_rate"]["passed"] is False
     assert gate_result["gates"]["max_average_seconds_per_document"]["passed"] is False
@@ -511,7 +511,7 @@ def test_benchmark_cli_returns_nonzero_when_gate_fails(tmp_path) -> None:
     ("gate_args", "expected_error"),
     [
         (["--min-extraction-parity", "97"], "requires --extraction-baseline-dir"),
-        (["--min-qaqc-signal-quality", "96"], "requires --qaqc-baseline-dir"),
+        (["--min-validation-signal-quality", "96"], "requires --validation-baseline-dir"),
         (["--min-compilation-correctness", "99.5"], "requires --compilation-baseline-dir"),
     ],
 )
@@ -874,8 +874,8 @@ def test_benchmark_cli_reports_extraction_parity_in_quiet_mode(tmp_path) -> None
     assert '"min_extraction_parity"' in result.output
 
 
-def test_benchmark_cli_reports_qaqc_signal_quality_in_quiet_mode(tmp_path) -> None:
-    actual_report = tmp_path / "processed/qa_qc/test-doc/comparison_report.csv"
+def test_benchmark_cli_reports_validation_signal_quality_in_quiet_mode(tmp_path) -> None:
+    actual_report = tmp_path / "processed/validation/test-doc/comparison_report.csv"
     actual_report.parent.mkdir(parents=True, exist_ok=True)
     actual_report.write_text(
         "Status,Requirement,Agreement,Notes\n"
@@ -883,7 +883,7 @@ def test_benchmark_cli_reports_qaqc_signal_quality_in_quiet_mode(tmp_path) -> No
         encoding="utf-8",
     )
 
-    expected_report = tmp_path / "expected/qa_qc/test-doc/comparison_report.csv"
+    expected_report = tmp_path / "expected/validation/test-doc/comparison_report.csv"
     expected_report.parent.mkdir(parents=True, exist_ok=True)
     expected_report.write_text(
         "Status,Requirement,Agreement,Notes\n"
@@ -896,23 +896,23 @@ def test_benchmark_cli_reports_qaqc_signal_quality_in_quiet_mode(tmp_path) -> No
         cli,
         [
             "benchmark",
-            str(tmp_path / "processed/qa_qc"),
-            "--qaqc-baseline-dir",
-            str(tmp_path / "expected/qa_qc"),
-            "--min-qaqc-signal-quality",
+            str(tmp_path / "processed/validation"),
+            "--validation-baseline-dir",
+            str(tmp_path / "expected/validation"),
+            "--min-validation-signal-quality",
             "96",
             "--quiet",
         ],
     )
 
     assert result.exit_code == 0
-    assert '"qaqc_signal_quality": 100.0' in result.output
-    assert '"min_qaqc_signal_quality"' in result.output
+    assert '"validation_signal_quality": 100.0' in result.output
+    assert '"min_validation_signal_quality"' in result.output
 
 
-def test_benchmark_cli_reports_qaqc_qualitative_pass_rate_in_quiet_mode(tmp_path) -> None:
+def test_benchmark_cli_reports_validation_qualitative_pass_rate_in_quiet_mode(tmp_path) -> None:
     _write_json(
-        tmp_path / "processed/qa_qc/test-doc/comparison_summary.json",
+        tmp_path / "processed/validation/test-doc/comparison_summary.json",
         {
             "document_name": "test-doc",
             "summary": {
@@ -931,16 +931,16 @@ def test_benchmark_cli_reports_qaqc_qualitative_pass_rate_in_quiet_mode(tmp_path
         cli,
         [
             "benchmark",
-            str(tmp_path / "processed/qa_qc"),
-            "--min-qaqc-qualitative-pass-rate",
+            str(tmp_path / "processed/validation"),
+            "--min-validation-qualitative-pass-rate",
             "100",
             "--quiet",
         ],
     )
 
     assert result.exit_code == 0
-    assert '"qaqc_qualitative_pass_rate": 100.0' in result.output
-    assert '"min_qaqc_qualitative_pass_rate"' in result.output
+    assert '"validation_qualitative_pass_rate": 100.0' in result.output
+    assert '"min_validation_qualitative_pass_rate"' in result.output
 
 
 def test_benchmark_cli_reports_compilation_correctness_in_quiet_mode(tmp_path) -> None:

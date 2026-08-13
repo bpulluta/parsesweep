@@ -6,6 +6,13 @@ from dataclasses import dataclass, field
 from urllib.parse import urlparse
 from urllib.robotparser import RobotFileParser
 
+# Single source of truth for the user-facing policy defaults. Referenced by the
+# ``DiscoveryRequest`` dataclass, the CLI options, the CLI resolution fallbacks,
+# and ``DiscoveryPolicyEvaluator.evaluate`` so every layer agrees on one value.
+# ``warn`` surfaces robots.txt / ToS concerns without blocking a run.
+DEFAULT_ROBOTS_POLICY_MODE = "warn"
+DEFAULT_TOS_POLICY_MODE = "warn"
+
 
 @dataclass(slots=True)
 class PolicyCheckResult:
@@ -115,10 +122,35 @@ class DiscoveryPolicyEvaluator:
         url: str,
         ssl_verify: bool,
         request_headers: dict[str, str] | None = None,
-        robots_policy_mode: str = "ignore",
-        tos_policy_mode: str = "ignore",
+        robots_policy_mode: str = DEFAULT_ROBOTS_POLICY_MODE,
+        tos_policy_mode: str = DEFAULT_TOS_POLICY_MODE,
         acknowledged_tos_domains: list[str] | None = None,
     ) -> PolicyCheckResult:
+        """Evaluate robots.txt and ToS-acknowledgement policy for a URL.
+
+        Parameters
+        ----------
+        url:
+            The target URL to check.
+        ssl_verify:
+            Whether TLS verification is used when fetching ``robots.txt``.
+        request_headers:
+            Optional headers for the ``robots.txt`` request (a default
+            User-Agent is used when omitted).
+        robots_policy_mode:
+            ``ignore``, ``warn``, or ``enforce`` (unknown values normalize to
+            ``ignore``). Non-``ignore`` modes fetch and consult ``robots.txt``.
+        tos_policy_mode:
+            ``ignore``, ``warn``, or ``enforce`` for terms acknowledgement.
+        acknowledged_tos_domains:
+            Hosts/parent domains the caller has acknowledged terms for.
+
+        Returns
+        -------
+        PolicyCheckResult
+            ``allowed`` is ``False`` only under ``enforce`` when a control is
+            violated; ``warn`` records ``warning_codes`` but stays allowed.
+        """
         result = PolicyCheckResult()
         parsed = urlparse(url)
         host = (parsed.hostname or "").strip().lower()

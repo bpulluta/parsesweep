@@ -28,6 +28,7 @@ class ContentSampler:
     """Samples and validates content from downloaded files for keyword presence.
 
     Supports:
+
     - PDF: uses pdftotext or PyMuPDF
     - DOCX/DOC: uses python-docx
     - XLSX: uses openpyxl
@@ -110,7 +111,9 @@ class ContentSampler:
     def _extract_text_from_doc(file_path: str) -> str:
         """Extract text from DOC file (legacy Word).
 
-        Note: python-docx doesn't support legacy .doc files.
+        Notes
+        -----
+        python-docx doesn't support legacy .doc files.
         This requires python-docx[oxml] or external converter.
         """
         try:
@@ -243,13 +246,20 @@ class ContentSampler:
     ) -> ContentSamplingResult:
         """Validate content of a file by checking for keywords.
 
-        Args:
-            file_path: Path to the file to validate
-            required_keywords: List of keywords that must be present
-            nice_to_have_keywords: List of keywords that improve score
-            min_required_matches: Minimum required keyword matches to pass
+        Parameters
+        ----------
+        file_path : str
+            Path to the file to validate
+        required_keywords : list[str] | None
+            List of keywords that must be present
+        nice_to_have_keywords : list[str] | None
+            List of keywords that improve score
+        min_required_matches : int
+            Minimum required keyword matches to pass
 
-        Returns:
+        Returns
+        -------
+        ContentSamplingResult
             ContentSamplingResult with validation details
         """
         reasons: list[str] = []

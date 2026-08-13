@@ -18,11 +18,11 @@ logger = logging.getLogger(__name__)
 
 
 def _parse_report_config(report_raw: Any) -> Dict[str, Any]:
-    """Parse and validate optional qaqc.report settings."""
+    """Parse and validate optional validation.report settings."""
     if report_raw is None:
         report_raw = {}
     if not isinstance(report_raw, dict):
-        raise ValueError("qaqc.report must be a mapping/object when provided.")
+        raise ValueError("validation.report must be a mapping/object when provided.")
 
     allowed_keys = {
         "include_csv",
@@ -36,7 +36,7 @@ def _parse_report_config(report_raw: Any) -> Dict[str, Any]:
     unknown = set(report_raw.keys()) - allowed_keys
     if unknown:
         raise ValueError(
-            "Unknown qaqc.report key(s): "
+            "Unknown validation.report key(s): "
             + ", ".join(sorted(unknown))
             + ". Allowed keys: "
             + ", ".join(sorted(allowed_keys))
@@ -46,12 +46,12 @@ def _parse_report_config(report_raw: Any) -> Dict[str, Any]:
         value = report_raw.get(key, default)
         if isinstance(value, bool):
             return value
-        raise ValueError(f"qaqc.report.{key} must be true or false.")
+        raise ValueError(f"validation.report.{key} must be true or false.")
 
     evidence_detail = str(report_raw.get("evidence_detail", "full")).strip().lower()
     if evidence_detail not in {"full", "compact", "off"}:
         raise ValueError(
-            "qaqc.report.evidence_detail must be one of: full, compact, off."
+            "validation.report.evidence_detail must be one of: full, compact, off."
         )
 
     evidence_max_chars = report_raw.get("evidence_max_chars", 200)
@@ -61,13 +61,13 @@ def _parse_report_config(report_raw: Any) -> Dict[str, Any]:
         or not (50 <= evidence_max_chars <= 2000)
     ):
         raise ValueError(
-            "qaqc.report.evidence_max_chars must be an integer between 50 and 2000."
+            "validation.report.evidence_max_chars must be an integer between 50 and 2000."
         )
 
     identity_columns = str(report_raw.get("identity_columns", "compact")).strip().lower()
     if identity_columns not in {"compact", "expanded"}:
         raise ValueError(
-            "qaqc.report.identity_columns must be one of: compact, expanded."
+            "validation.report.identity_columns must be one of: compact, expanded."
         )
 
     return {
@@ -97,7 +97,7 @@ def _parse_anchor_config(
         return None
     if not isinstance(anchor_raw, dict):
         raise ValueError(
-            "qaqc.record_matching.anchor must be a mapping. Example:\n"
+            "validation.record_matching.anchor must be a mapping. Example:\n"
             "  record_matching:\n"
             "    anchor:\n"
             "      fields: [source_verbatim]\n"
@@ -108,47 +108,47 @@ def _parse_anchor_config(
     # Only supported with exactly 2-model, non-numeric approaches.
     if comparison_approach == "numeric_only":
         raise ValueError(
-            "qaqc.record_matching.anchor is not supported with "
+            "validation.record_matching.anchor is not supported with "
             "comparison_approach: numeric_only."
         )
     if model_count != 2:
         raise ValueError(
-            "qaqc.record_matching.anchor currently supports exactly 2 models. "
+            "validation.record_matching.anchor currently supports exactly 2 models. "
             f"Configured models={model_count}."
         )
     fields = anchor_raw.get("fields")
     if not fields or not isinstance(fields, list) or not all(isinstance(f, str) for f in fields):
         raise ValueError(
-            "qaqc.record_matching.anchor.fields must be a non-empty list of field name strings, "
+            "validation.record_matching.anchor.fields must be a non-empty list of field name strings, "
             "e.g. [source_verbatim]."
         )
     method = str(anchor_raw.get("method", "char_ngram")).strip()
     if method != "char_ngram":
         raise ValueError(
-            f"qaqc.record_matching.anchor.method must be 'char_ngram' (got '{method}')."
+            f"validation.record_matching.anchor.method must be 'char_ngram' (got '{method}')."
         )
     ngram = anchor_raw.get("ngram", 4)
     if isinstance(ngram, bool) or not isinstance(ngram, int) or not (2 <= ngram <= 8):
         raise ValueError(
-            "qaqc.record_matching.anchor.ngram must be an integer between 2 and 8."
+            "validation.record_matching.anchor.ngram must be an integer between 2 and 8."
         )
     auto_threshold = float(anchor_raw.get("auto_threshold", 0.65) or 0.65)
     review_threshold = float(anchor_raw.get("review_threshold", 0.35) or 0.35)
     if not (0.0 < review_threshold < auto_threshold <= 1.0):
         raise ValueError(
-            "qaqc.record_matching.anchor thresholds must satisfy "
+            "validation.record_matching.anchor thresholds must satisfy "
             "0 < review_threshold < auto_threshold <= 1.0. "
             f"Got review_threshold={review_threshold}, auto_threshold={auto_threshold}."
         )
     max_candidates = anchor_raw.get("max_candidates_per_row", 3)
     if isinstance(max_candidates, bool) or not isinstance(max_candidates, int) or max_candidates < 1:
         raise ValueError(
-            "qaqc.record_matching.anchor.max_candidates_per_row must be a positive integer."
+            "validation.record_matching.anchor.max_candidates_per_row must be a positive integer."
         )
     min_chars = anchor_raw.get("min_anchor_chars", 12)
     if isinstance(min_chars, bool) or not isinstance(min_chars, int) or min_chars < 0:
         raise ValueError(
-            "qaqc.record_matching.anchor.min_anchor_chars must be a non-negative integer."
+            "validation.record_matching.anchor.min_anchor_chars must be a non-negative integer."
         )
     return {
         "fields": list(fields),
@@ -161,34 +161,36 @@ def _parse_anchor_config(
     }
 
 
-def resolve_qaqc_runtime_config(
+def resolve_validation_runtime_config(
     schema_metadata,
     runtime_artifact: Optional[Dict[str, Any]] = None,
-    runtime_qaqc: Optional[Dict[str, Any]] = None,
+    runtime_validation: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Resolve active QA/QC config from the run config.
 
     QA/QC configuration always lives in config/<domain>/run.yaml under
-    ``qaqc``. Schema metadata is intentionally excluded from this path —
+    ``validation``. Schema metadata is intentionally excluded from this path —
     it owns extraction contracts, not runtime QA/QC behavior.
 
-    Raises:
-        ValueError: If no QA/QC config can be found, if deprecated lane-style
-            keys are present, or if required fields are missing.
+    Raises
+    ------
+    ValueError
+        If no QA/QC config can be found, if deprecated lane-style
+        keys are present, or if required fields are missing.
     """
-    pack_qaqc = (
+    pack_validation = (
         ((runtime_artifact or {}).get("resolved") or {})
         .get("pack", {})
-        .get("qaqc")
+        .get("validation")
     )
-    if not isinstance(pack_qaqc, dict) and isinstance(runtime_qaqc, dict):
-        pack_qaqc = runtime_qaqc
+    if not isinstance(pack_validation, dict) and isinstance(runtime_validation, dict):
+        pack_validation = runtime_validation
 
-    if not isinstance(pack_qaqc, dict):
+    if not isinstance(pack_validation, dict):
         raise ValueError(
             "No QA/QC configuration found. "
-            "Add a qaqc: block to your run config YAML:\n"
-            "  qaqc:\n"
+            "Add a validation: block to your run config YAML:\n"
+            "  validation:\n"
             "    models: [primary, secondary]\n"
             "    comparison_approach: mixed\n"
             "    record_matching:\n"
@@ -198,11 +200,11 @@ def resolve_qaqc_runtime_config(
             "Then run: pixi run psweep validate --config config/<domain>/run.yaml"
         )
 
-    if "lanes" in pack_qaqc or "default_lane" in pack_qaqc:
+    if "lanes" in pack_validation or "default_lane" in pack_validation:
         raise ValueError(
             "Deprecated QA/QC lane-style config detected (default_lane/lanes). "
-            "Migrate to the simplified qaqc shape:\n"
-            "  qaqc:\n"
+            "Migrate to the simplified validation shape:\n"
+            "  validation:\n"
             "    models: [primary, secondary]\n"
             "    comparison_approach: mixed\n"
             "    record_matching:\n"
@@ -214,15 +216,15 @@ def resolve_qaqc_runtime_config(
             "      model: judge"
         )
 
-    record_matching = pack_qaqc.get("record_matching") or {}
-    comparison = pack_qaqc.get("comparison") or {}
-    judge = pack_qaqc.get("judge") or {}
+    record_matching = pack_validation.get("record_matching") or {}
+    comparison = pack_validation.get("comparison") or {}
+    judge = pack_validation.get("judge") or {}
 
     max_calls = judge.get("max_calls_per_document")
     if max_calls is not None:
         if isinstance(max_calls, bool) or not isinstance(max_calls, int) or max_calls <= 0:
             raise ValueError(
-                "qaqc.judge.max_calls_per_document must be a positive integer."
+                "validation.judge.max_calls_per_document must be a positive integer."
             )
 
     match_fields = record_matching.get("key_fields")
@@ -230,7 +232,7 @@ def resolve_qaqc_runtime_config(
         raise ValueError(
             "QA/QC config is missing required record_matching.key_fields. "
             "Add it to your run config:\n"
-            "  qaqc:\n"
+            "  validation:\n"
             "    record_matching:\n"
             "      key_fields: [feature, applies_to, specific_subject]"
         )
@@ -239,20 +241,20 @@ def resolve_qaqc_runtime_config(
     collapse_percent_context = comparison.get("collapse_percent_context", False)
     if not isinstance(collapse_percent_context, bool):
         raise ValueError(
-            "qaqc.comparison.collapse_percent_context must be true or false."
+            "validation.comparison.collapse_percent_context must be true or false."
         )
     unit_equivalence_groups = comparison.get("unit_equivalence_groups") or []
     if not isinstance(unit_equivalence_groups, list):
         raise ValueError(
-            "qaqc.comparison.unit_equivalence_groups must be a list of synonym lists, "
+            "validation.comparison.unit_equivalence_groups must be a list of synonym lists, "
             "for example: [[\"feet\", \"ft\"], [\"hours\", \"hrs\", \"hr\"]]."
         )
     comparison_approach = str(
-        pack_qaqc.get("comparison_approach", "mixed")
+        pack_validation.get("comparison_approach", "mixed")
     ).strip().lower()
     if comparison_approach not in {"mixed", "numeric_only", "text_review"}:
         raise ValueError(
-            "Unsupported qaqc.comparison_approach. "
+            "Unsupported validation.comparison_approach. "
             "Use one of: mixed, numeric_only, text_review."
         )
 
@@ -286,7 +288,7 @@ def resolve_qaqc_runtime_config(
         ]
     )
 
-    models = pack_qaqc.get("models") or []
+    models = pack_validation.get("models") or []
     model_count = len(models) if isinstance(models, list) else 0
     anchor_config = _parse_anchor_config(
         record_matching.get("anchor"), comparison_approach, model_count
@@ -294,7 +296,7 @@ def resolve_qaqc_runtime_config(
     raw_scope_variant_keys = record_matching.get("scope_variant_keys") or []
     if not isinstance(raw_scope_variant_keys, list):
         raise ValueError(
-            "qaqc.record_matching.scope_variant_keys must be a list of "
+            "validation.record_matching.scope_variant_keys must be a list of "
             "[category, subject] pairs."
         )
     scope_variant_keys: list[list[str]] = []
@@ -308,11 +310,11 @@ def resolve_qaqc_runtime_config(
             or not pair[1].strip()
         ):
              raise ValueError(
-                "Each qaqc.record_matching.scope_variant_keys entry must be "
+                "Each validation.record_matching.scope_variant_keys entry must be "
                 "[category, subject] with two non-empty strings."
             )
         scope_variant_keys.append([pair[0].strip(), pair[1].strip()])
-    report = _parse_report_config(pack_qaqc.get("report"))
+    report = _parse_report_config(pack_validation.get("report"))
 
     return {
         "comparison_approach": comparison_approach,
@@ -320,7 +322,7 @@ def resolve_qaqc_runtime_config(
         "compare_fields": list(compare_fields),
         "collapse_percent_context": collapse_percent_context,
         "unit_equivalence_groups": list(unit_equivalence_groups),
-        "projection": pack_qaqc.get("projection"),
+        "projection": pack_validation.get("projection"),
         "enable_text_fallback_matching": enable_text_fallback_matching,
         "enable_judge_pair_matching": enable_judge_pair_matching,
         "text_fallback_fields": text_fallback_fields,
@@ -341,10 +343,14 @@ def sanitize_model_name(model_name: str) -> str:
     """
     Sanitize model name for use as filename.
 
-    Args:
-        model_name: Model name (e.g., "gpt-4o", "claude-3.5-sonnet")
+    Parameters
+    ----------
+    model_name : str
+        Model name (e.g., "gpt-4o", "claude-3.5-sonnet")
 
-    Returns:
+    Returns
+    -------
+    str
         Sanitized name safe for filenames
     """
     # Replace characters that might cause issues in filenames

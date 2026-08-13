@@ -25,7 +25,7 @@ from psweep.cli.ui import console
 _BENCHMARK_PROFILE_PATH_FIELDS = {
     "path",
     "extraction_baseline_dir",
-    "qaqc_baseline_dir",
+    "validation_baseline_dir",
     "compilation_baseline_dir",
     "compilation_schema",
     "baseline_snapshot",
@@ -82,7 +82,7 @@ def _coalesce_benchmark_option(
     help="Directory containing expected extraction JSON records for parity scoring. Files should mirror benchmark output relative paths or record filenames.",
 )
 @click.option(
-    "--qaqc-baseline-dir",
+    "--validation-baseline-dir",
     type=click.Path(exists=True, file_okay=False, path_type=Path),
     default=None,
     help="Directory containing expected QA/QC comparison_report.csv files for signal-quality scoring. Files should mirror benchmark document-folder relative paths.",
@@ -124,13 +124,13 @@ def _coalesce_benchmark_option(
     help="Minimum required extraction parity percentage (0-100) when expected extraction records are provided.",
 )
 @click.option(
-    "--min-qaqc-signal-quality",
+    "--min-validation-signal-quality",
     type=float,
     default=None,
     help="Minimum required QA/QC signal quality percentage (0-100) when expected comparison reports are provided.",
 )
 @click.option(
-    "--min-qaqc-qualitative-pass-rate",
+    "--min-validation-qualitative-pass-rate",
     type=float,
     default=None,
     help="Minimum required percentage (0-100) of qualitative QA/QC comparison summaries whose advisory gate status is pass.",
@@ -183,15 +183,15 @@ def benchmark(
     path: Optional[Path],
     gate_profile: Optional[Path],
     extraction_baseline_dir: Optional[Path],
-    qaqc_baseline_dir: Optional[Path],
+    validation_baseline_dir: Optional[Path],
     compilation_baseline_dir: Optional[Path],
     compilation_schema: Optional[Path],
     baseline_snapshot: Optional[Path],
     write_snapshot: Optional[Path],
     snapshot_label: Optional[str],
     min_extraction_parity: Optional[float],
-    min_qaqc_signal_quality: Optional[float],
-    min_qaqc_qualitative_pass_rate: Optional[float],
+    min_validation_signal_quality: Optional[float],
+    min_validation_qualitative_pass_rate: Optional[float],
     min_compilation_correctness: Optional[float],
     max_failure_rate: Optional[float],
     max_average_seconds_per_document: Optional[float],
@@ -215,8 +215,8 @@ def benchmark(
     extraction_baseline_dir = _coalesce_benchmark_option(
         extraction_baseline_dir, profile_values, "extraction_baseline_dir"
     )
-    qaqc_baseline_dir = _coalesce_benchmark_option(
-        qaqc_baseline_dir, profile_values, "qaqc_baseline_dir"
+    validation_baseline_dir = _coalesce_benchmark_option(
+        validation_baseline_dir, profile_values, "validation_baseline_dir"
     )
     compilation_baseline_dir = _coalesce_benchmark_option(
         compilation_baseline_dir, profile_values, "compilation_baseline_dir"
@@ -236,11 +236,11 @@ def benchmark(
     min_extraction_parity = _coalesce_benchmark_option(
         min_extraction_parity, profile_values, "min_extraction_parity"
     )
-    min_qaqc_signal_quality = _coalesce_benchmark_option(
-        min_qaqc_signal_quality, profile_values, "min_qaqc_signal_quality"
+    min_validation_signal_quality = _coalesce_benchmark_option(
+        min_validation_signal_quality, profile_values, "min_validation_signal_quality"
     )
-    min_qaqc_qualitative_pass_rate = _coalesce_benchmark_option(
-        min_qaqc_qualitative_pass_rate, profile_values, "min_qaqc_qualitative_pass_rate"
+    min_validation_qualitative_pass_rate = _coalesce_benchmark_option(
+        min_validation_qualitative_pass_rate, profile_values, "min_validation_qualitative_pass_rate"
     )
     min_compilation_correctness = _coalesce_benchmark_option(
         min_compilation_correctness, profile_values, "min_compilation_correctness"
@@ -276,9 +276,9 @@ def benchmark(
         raise click.UsageError(
             "--min-extraction-parity requires --extraction-baseline-dir"
         )
-    if min_qaqc_signal_quality is not None and qaqc_baseline_dir is None:
+    if min_validation_signal_quality is not None and validation_baseline_dir is None:
         raise click.UsageError(
-            "--min-qaqc-signal-quality requires --qaqc-baseline-dir"
+            "--min-validation-signal-quality requires --validation-baseline-dir"
         )
     if min_compilation_correctness is not None and compilation_baseline_dir is None:
         raise click.UsageError(
@@ -293,7 +293,7 @@ def benchmark(
         benchmark_path,
         repo_root=Path.cwd(),
         extraction_baseline_dir=extraction_baseline_dir,
-        qaqc_baseline_dir=qaqc_baseline_dir,
+        validation_baseline_dir=validation_baseline_dir,
         compilation_baseline_dir=compilation_baseline_dir,
         compilation_schema_path=compilation_schema,
     )
@@ -316,8 +316,8 @@ def benchmark(
     gate_result = evaluate_benchmark_gates(
         metrics,
         min_extraction_parity=min_extraction_parity,
-        min_qaqc_signal_quality=min_qaqc_signal_quality,
-        min_qaqc_qualitative_pass_rate=min_qaqc_qualitative_pass_rate,
+        min_validation_signal_quality=min_validation_signal_quality,
+        min_validation_qualitative_pass_rate=min_validation_qualitative_pass_rate,
         min_compilation_correctness=min_compilation_correctness,
         max_failure_rate=max_failure_rate,
         max_average_seconds_per_document=max_average_seconds_per_document,
@@ -363,11 +363,11 @@ def benchmark(
         "Extraction Parity": f"{metrics['extraction_parity']:.2f}%"
         if metrics["extraction_parity"] is not None
         else "N/A",
-        "QA/QC Signal Quality": f"{metrics['qaqc_signal_quality']:.2f}%"
-        if metrics["qaqc_signal_quality"] is not None
+        "QA/QC Signal Quality": f"{metrics['validation_signal_quality']:.2f}%"
+        if metrics["validation_signal_quality"] is not None
         else "N/A",
-        "QA/QC Qualitative Pass Rate": f"{metrics['qaqc_qualitative_pass_rate']:.2f}%"
-        if metrics["qaqc_qualitative_pass_rate"] is not None
+        "QA/QC Qualitative Pass Rate": f"{metrics['validation_qualitative_pass_rate']:.2f}%"
+        if metrics["validation_qualitative_pass_rate"] is not None
         else "N/A",
         "Compilation Correctness": f"{metrics['compilation_correctness']:.2f}%"
         if metrics["compilation_correctness"] is not None
@@ -419,9 +419,9 @@ def benchmark(
     if verbose and metrics["error_categories"]:
         view.summary(metrics["error_categories"], title="Error Categories")
 
-    if verbose and metrics["qaqc_qualitative_gate_counts"]:
+    if verbose and metrics["validation_qualitative_gate_counts"]:
         view.summary(
-            metrics["qaqc_qualitative_gate_counts"],
+            metrics["validation_qualitative_gate_counts"],
             title="QA/QC Qualitative Gates",
         )
 
