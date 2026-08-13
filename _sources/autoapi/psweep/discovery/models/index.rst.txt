@@ -56,34 +56,6 @@ Module Contents
 
 
 
-   .. py:attribute:: anchor_signal
-      :type:  float
-      :value: 0.0
-
-
-
-   .. py:attribute:: content_signal
-      :type:  float
-      :value: 0.0
-
-
-
-   .. py:attribute:: trust_signal
-      :type:  float
-      :value: 0.0
-
-
-
-   .. py:attribute:: url_signal
-      :type:  float
-      :value: 0.0
-
-
-
-   .. py:attribute:: weights
-      :type:  dict[str, float]
-
-
 .. py:class:: DiscoveryCandidate
 
    Normalized candidate URL and validation/scoring details.
@@ -100,72 +72,6 @@ Module Contents
 
 
 
-   .. py:attribute:: canonical_url
-      :type:  str | None
-      :value: None
-
-
-
-   .. py:attribute:: content_hash
-      :type:  str | None
-      :value: None
-
-
-
-   .. py:attribute:: extension
-      :type:  str | None
-      :value: None
-
-
-
-   .. py:attribute:: mime_type
-      :type:  str | None
-      :value: None
-
-
-
-   .. py:attribute:: reasons
-      :type:  list[str]
-      :value: []
-
-
-
-   .. py:attribute:: score
-      :type:  CandidateScore
-
-
-   .. py:attribute:: snippet
-      :type:  str | None
-      :value: None
-
-
-
-   .. py:attribute:: source
-      :type:  str
-
-
-   .. py:attribute:: status
-      :type:  str | None
-      :value: None
-
-
-
-   .. py:attribute:: target_metadata
-      :type:  dict[str, Any] | None
-      :value: None
-
-
-
-   .. py:attribute:: title
-      :type:  str | None
-      :value: None
-
-
-
-   .. py:attribute:: url
-      :type:  str
-
-
 .. py:class:: DiscoveryManifest
 
    Run-level manifest model for discovery outputs and provenance.
@@ -179,75 +85,5 @@ Module Contents
                 serialized via ``DiscoveryCandidate.to_dict()``.
       :rtype: dict[str, Any]
 
-
-
-   .. py:attribute:: candidate_summary
-      :type:  dict[str, Any]
-
-
-   .. py:attribute:: candidates
-      :type:  list[DiscoveryCandidate]
-      :value: []
-
-
-
-   .. py:attribute:: constraints
-      :type:  dict[str, Any]
-
-
-   .. py:attribute:: downloads
-      :type:  list[dict[str, Any]]
-      :value: []
-
-
-
-   .. py:attribute:: error_summary
-      :type:  dict[str, Any]
-
-
-   .. py:attribute:: errors
-      :type:  list[dict[str, Any]]
-      :value: []
-
-
-
-   .. py:attribute:: input
-      :type:  dict[str, Any]
-
-
-   .. py:attribute:: lineage
-      :type:  dict[str, Any]
-
-
-   .. py:attribute:: manifest_version
-      :type:  str
-      :value: '1.0.0'
-
-
-
-   .. py:attribute:: notes
-      :type:  list[str]
-      :value: []
-
-
-
-   .. py:attribute:: run_id
-      :type:  str
-
-
-   .. py:attribute:: stage_summaries
-      :type:  dict[str, Any]
-
-
-   .. py:attribute:: started_at
-      :type:  str
-
-
-   .. py:attribute:: status
-      :type:  str
-
-
-   .. py:attribute:: timing
-      :type:  dict[str, Any]
 
 

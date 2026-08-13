@@ -11,15 +11,6 @@ psweep.utils.normalizers
 
 
 
-Attributes
-----------
-
-.. autoapisummary::
-
-   psweep.utils.normalizers.US_STATES
-   psweep.utils.normalizers.logger
-
-
 Functions
 ---------
 
@@ -130,8 +121,4 @@ Module Contents
    >>> df["State"].tolist()
    ["UT", "CA", "NY"]
 
-
-.. py:data:: US_STATES
-
-.. py:data:: logger
 

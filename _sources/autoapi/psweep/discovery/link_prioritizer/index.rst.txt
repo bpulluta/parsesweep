@@ -69,26 +69,6 @@ Module Contents
 
 
 
-   .. py:attribute:: candidate
-      :type:  psweep.discovery.models.DiscoveryCandidate
-
-
-   .. py:attribute:: original_rank
-      :type:  int
-      :value: 0
-
-
-
-   .. py:attribute:: priority_reasons
-      :type:  list[str]
-      :value: []
-
-
-
-   .. py:attribute:: priority_score
-      :type:  PriorityScore
-
-
 .. py:class:: PriorityScore
 
    Detailed breakdown of a heuristic priority assessment.
@@ -97,36 +77,6 @@ Module Contents
    .. py:method:: to_dict() -> dict[str, Any]
 
       Serialize the priority score components to a rounded plain dict.
-
-
-
-   .. py:attribute:: confidence
-      :type:  float
-      :value: 0.0
-
-
-
-   .. py:attribute:: domain_authority_score
-      :type:  float
-      :value: 0.0
-
-
-
-   .. py:attribute:: file_type_score
-      :type:  float
-      :value: 0.0
-
-
-
-   .. py:attribute:: keyword_score
-      :type:  float
-      :value: 0.0
-
-
-
-   .. py:attribute:: power_class_score
-      :type:  float
-      :value: 0.0
 
 
 

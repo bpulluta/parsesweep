@@ -11,15 +11,6 @@ psweep.compilation.deduplicator
 
 
 
-Attributes
-----------
-
-.. autoapisummary::
-
-   psweep.compilation.deduplicator.PROVENANCE_COLUMNS
-   psweep.compilation.deduplicator.logger
-
-
 Classes
 -------
 
@@ -78,14 +69,4 @@ Module Contents
       Preview deduplication effects without mutating or writing outputs.
 
 
-
-   .. py:attribute:: field_severity_hints
-
-
-   .. py:attribute:: schema_metadata
-
-
-.. py:data:: PROVENANCE_COLUMNS
-
-.. py:data:: logger
 

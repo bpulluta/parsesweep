@@ -13,15 +13,6 @@ psweep.utils.item_matcher
 
 
 
-Attributes
-----------
-
-.. autoapisummary::
-
-   psweep.utils.item_matcher.STOP_WORDS
-   psweep.utils.item_matcher.logger
-
-
 Functions
 ---------
 
@@ -167,8 +158,4 @@ Module Contents
    >>> normalize_for_matching("work in preparation of the site for drilling")
    'drilling preparation site'
 
-
-.. py:data:: STOP_WORDS
-
-.. py:data:: logger
 

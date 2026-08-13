@@ -15,14 +15,6 @@ psweep.config.file_loader
 
 
 
-Attributes
-----------
-
-.. autoapisummary::
-
-   psweep.config.file_loader.PathLike
-
-
 Functions
 ---------
 
@@ -50,6 +42,4 @@ Module Contents
 
    Load and parse a YAML file, raising ``ConfigurationError`` on failure.
 
-
-.. py:data:: PathLike
 

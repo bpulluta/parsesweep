@@ -70,46 +70,6 @@ Module Contents
 
 
 
-   .. py:attribute:: failed
-      :type:  int
-      :value: 0
-
-
-
-   .. py:attribute:: skipped
-      :type:  int
-      :value: 0
-
-
-
-   .. py:attribute:: start_time
-      :type:  float
-
-
-   .. py:attribute:: successful
-      :type:  int
-      :value: 0
-
-
-
-   .. py:attribute:: total_cost
-      :type:  float
-      :value: 0.0
-
-
-
-   .. py:attribute:: total_files
-      :type:  int
-      :value: 0
-
-
-
-   .. py:attribute:: total_time
-      :type:  float
-      :value: 0.0
-
-
-
 .. py:class:: ProductionLogger(name: str, log_file: Optional[pathlib.Path] = None, verbose: bool = False)
 
    Production-ready logger with structured output and progress tracking.
@@ -189,17 +149,6 @@ Module Contents
    .. py:method:: warning(text: str)
 
       Print warning message.
-
-
-
-   .. py:attribute:: COLORS
-
-
-   .. py:attribute:: logger
-
-
-   .. py:attribute:: verbose
-      :value: False
 
 
 

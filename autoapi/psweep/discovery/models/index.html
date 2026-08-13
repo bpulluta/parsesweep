@@ -5,13 +5,14 @@
     <meta name="color-scheme" content="light dark"><meta name="viewport" content="width=device-width, initial-scale=1" />
 <link rel="index" title="Index" href="../../../../genindex.html"><link rel="search" title="Search" href="../../../../search.html"><link rel="next" title="psweep.discovery.policies" href="../policies/index.html"><link rel="prev" title="psweep.discovery.link_prioritizer" href="../link_prioritizer/index.html">
 
-    <!-- Generated with Sphinx 9.1.0 and Furo 2025.12.19 -->
+    <link rel="shortcut icon" href="../../../../_static/favicon.svg"><!-- Generated with Sphinx 9.1.0 and Furo 2025.12.19 -->
         <title>psweep.discovery.models - ParseSweep 2.0.1</title>
       <link rel="stylesheet" type="text/css" href="../../../../_static/pygments.css?v=d111a655" />
     <link rel="stylesheet" type="text/css" href="../../../../_static/styles/furo.css?v=7bdb33bb" />
     <link rel="stylesheet" type="text/css" href="../../../../_static/graphviz.css?v=4ae1632d" />
     <link rel="stylesheet" type="text/css" href="../../../../_static/copybutton.css?v=76b2166b" />
     <link rel="stylesheet" type="text/css" href="../../../../_static/styles/furo-extensions.css?v=8dab3a3b" />
+    <link rel="stylesheet" type="text/css" href="../../../../_static/custom.css?v=579eeedf" />
     
     
 
@@ -20,18 +21,24 @@
   body {
     --color-code-background: #f2f2f2;
   --color-code-foreground: #1e1e1e;
+  --color-brand-primary: #0f766e;
+  --color-brand-content: #0e7490;
   
   }
   @media not print {
     body[data-theme="dark"] {
       --color-code-background: #202020;
   --color-code-foreground: #d0d0d0;
+  --color-brand-primary: #5eead4;
+  --color-brand-content: #2dd4bf;
   
     }
     @media (prefers-color-scheme: dark) {
       body:not([data-theme="light"]) {
         --color-code-background: #202020;
   --color-code-foreground: #d0d0d0;
+  --color-brand-primary: #5eead4;
+  --color-brand-content: #2dd4bf;
   
       }
     }
@@ -197,9 +204,16 @@
 <li class="toctree-l1"><a class="reference internal" href="../../../../getting-started.html">Getting Started</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../../commands/index.html">Command Reference</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../../config-reference.html">Configuration Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../tuning.html">Tuning &amp; Iteration</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../../schemas/index.html">Schema Authoring</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../schemas/index.html#schema-design-best-practices">Schema Design Best Practices</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Reference</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../changelog.html">Changelog</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../contributing.html">Contributing</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">API</span></p>
 <ul class="current">
 <li class="toctree-l1 current has-children"><a class="reference internal" href="../../../index.html">API Reference</a><input aria-label="Toggle navigation of API Reference" checked="" class="toctree-checkbox" id="toctree-checkbox-1" name="toctree-checkbox-1" role="switch" type="checkbox"/><label for="toctree-checkbox-1"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul class="current">
 <li class="toctree-l2 current has-children"><a class="reference internal" href="../../index.html">psweep</a><input aria-label="Toggle navigation of psweep" checked="" class="toctree-checkbox" id="toctree-checkbox-2" name="toctree-checkbox-2" role="switch" type="checkbox"/><label for="toctree-checkbox-2"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul class="current">
@@ -287,8 +301,6 @@
 </li>
 </ul>
 </li>
-<li class="toctree-l1"><a class="reference internal" href="../../../../changelog.html">Changelog</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../../contributing.html">Contributing</a></li>
 </ul>
 
 </div>
@@ -309,12 +321,16 @@
         </a>
         <div class="content-icon-container">
           <div class="view-this-page">
-  <a class="muted-link" href="../../../../_sources/autoapi/psweep/discovery/models/index.rst.txt" title="View this page">
+  <a class="muted-link" href="https://github.com/bpulluta/parsesweep/blob/main/docs/autoapi/psweep/discovery/models/index.rst?plain=true" title="View this page">
     <svg><use href="#svg-eye"></use></svg>
     <span class="visually-hidden">View this page</span>
   </a>
-</div>
-<div class="theme-toggle-container theme-toggle-content">
+</div><div class="edit-this-page">
+  <a class="muted-link" href="https://github.com/bpulluta/parsesweep/edit/main/docs/autoapi/psweep/discovery/models/index.rst" rel="edit" title="Edit this page">
+    <svg><use href="#svg-pencil"></use></svg>
+    <span class="visually-hidden">Edit this page</span>
+  </a>
+</div><div class="theme-toggle-container theme-toggle-content">
             <button class="theme-toggle" aria-label="Toggle Light / Dark / Auto color theme">
               <svg class="theme-icon-when-auto-light"><use href="#svg-sun-with-moon"></use></svg>
               <svg class="theme-icon-when-auto-dark"><use href="#svg-moon-with-sun"></use></svg>
@@ -398,31 +414,6 @@
 </dl>
 </dd></dl>
 
-<dl class="py attribute">
-<dt class="sig sig-object py" id="psweep.discovery.models.CandidateScore.anchor_signal">
-<span class="sig-name descname"><span class="pre">anchor_signal</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">float</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">0.0</span></span><a class="headerlink" href="#psweep.discovery.models.CandidateScore.anchor_signal" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="psweep.discovery.models.CandidateScore.content_signal">
-<span class="sig-name descname"><span class="pre">content_signal</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">float</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">0.0</span></span><a class="headerlink" href="#psweep.discovery.models.CandidateScore.content_signal" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="psweep.discovery.models.CandidateScore.trust_signal">
-<span class="sig-name descname"><span class="pre">trust_signal</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">float</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">0.0</span></span><a class="headerlink" href="#psweep.discovery.models.CandidateScore.trust_signal" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="psweep.discovery.models.CandidateScore.url_signal">
-<span class="sig-name descname"><span class="pre">url_signal</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">float</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">0.0</span></span><a class="headerlink" href="#psweep.discovery.models.CandidateScore.url_signal" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="psweep.discovery.models.CandidateScore.weights">
-<span class="sig-name descname"><span class="pre">weights</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">float</span><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#psweep.discovery.models.CandidateScore.weights" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
-
 </dd></dl>
 
 <dl class="py class">
@@ -445,66 +436,6 @@ explicitly set.</p>
 </dl>
 </dd></dl>
 
-<dl class="py attribute">
-<dt class="sig sig-object py" id="psweep.discovery.models.DiscoveryCandidate.canonical_url">
-<span class="sig-name descname"><span class="pre">canonical_url</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></span><a class="headerlink" href="#psweep.discovery.models.DiscoveryCandidate.canonical_url" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="psweep.discovery.models.DiscoveryCandidate.content_hash">
-<span class="sig-name descname"><span class="pre">content_hash</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></span><a class="headerlink" href="#psweep.discovery.models.DiscoveryCandidate.content_hash" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="psweep.discovery.models.DiscoveryCandidate.extension">
-<span class="sig-name descname"><span class="pre">extension</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></span><a class="headerlink" href="#psweep.discovery.models.DiscoveryCandidate.extension" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="psweep.discovery.models.DiscoveryCandidate.mime_type">
-<span class="sig-name descname"><span class="pre">mime_type</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></span><a class="headerlink" href="#psweep.discovery.models.DiscoveryCandidate.mime_type" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="psweep.discovery.models.DiscoveryCandidate.reasons">
-<span class="sig-name descname"><span class="pre">reasons</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">list</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">[]</span></span><a class="headerlink" href="#psweep.discovery.models.DiscoveryCandidate.reasons" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="psweep.discovery.models.DiscoveryCandidate.score">
-<span class="sig-name descname"><span class="pre">score</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#psweep.discovery.models.CandidateScore" title="psweep.discovery.models.CandidateScore"><span class="pre">CandidateScore</span></a></span><a class="headerlink" href="#psweep.discovery.models.DiscoveryCandidate.score" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="psweep.discovery.models.DiscoveryCandidate.snippet">
-<span class="sig-name descname"><span class="pre">snippet</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></span><a class="headerlink" href="#psweep.discovery.models.DiscoveryCandidate.snippet" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="psweep.discovery.models.DiscoveryCandidate.source">
-<span class="sig-name descname"><span class="pre">source</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></span><a class="headerlink" href="#psweep.discovery.models.DiscoveryCandidate.source" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="psweep.discovery.models.DiscoveryCandidate.status">
-<span class="sig-name descname"><span class="pre">status</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></span><a class="headerlink" href="#psweep.discovery.models.DiscoveryCandidate.status" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="psweep.discovery.models.DiscoveryCandidate.target_metadata">
-<span class="sig-name descname"><span class="pre">target_metadata</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></span><a class="headerlink" href="#psweep.discovery.models.DiscoveryCandidate.target_metadata" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="psweep.discovery.models.DiscoveryCandidate.title">
-<span class="sig-name descname"><span class="pre">title</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></span><a class="headerlink" href="#psweep.discovery.models.DiscoveryCandidate.title" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="psweep.discovery.models.DiscoveryCandidate.url">
-<span class="sig-name descname"><span class="pre">url</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></span><a class="headerlink" href="#psweep.discovery.models.DiscoveryCandidate.url" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
-
 </dd></dl>
 
 <dl class="py class">
@@ -525,81 +456,6 @@ serialized via <code class="docutils literal notranslate"><span class="pre">Disc
 </dd>
 </dl>
 </dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="psweep.discovery.models.DiscoveryManifest.candidate_summary">
-<span class="sig-name descname"><span class="pre">candidate_summary</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#psweep.discovery.models.DiscoveryManifest.candidate_summary" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="psweep.discovery.models.DiscoveryManifest.candidates">
-<span class="sig-name descname"><span class="pre">candidates</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">list</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="#psweep.discovery.models.DiscoveryCandidate" title="psweep.discovery.models.DiscoveryCandidate"><span class="pre">DiscoveryCandidate</span></a><span class="p"><span class="pre">]</span></span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">[]</span></span><a class="headerlink" href="#psweep.discovery.models.DiscoveryManifest.candidates" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="psweep.discovery.models.DiscoveryManifest.constraints">
-<span class="sig-name descname"><span class="pre">constraints</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#psweep.discovery.models.DiscoveryManifest.constraints" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="psweep.discovery.models.DiscoveryManifest.downloads">
-<span class="sig-name descname"><span class="pre">downloads</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">list</span><span class="p"><span class="pre">[</span></span><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">[]</span></span><a class="headerlink" href="#psweep.discovery.models.DiscoveryManifest.downloads" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="psweep.discovery.models.DiscoveryManifest.error_summary">
-<span class="sig-name descname"><span class="pre">error_summary</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#psweep.discovery.models.DiscoveryManifest.error_summary" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="psweep.discovery.models.DiscoveryManifest.errors">
-<span class="sig-name descname"><span class="pre">errors</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">list</span><span class="p"><span class="pre">[</span></span><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">[]</span></span><a class="headerlink" href="#psweep.discovery.models.DiscoveryManifest.errors" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="psweep.discovery.models.DiscoveryManifest.input">
-<span class="sig-name descname"><span class="pre">input</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#psweep.discovery.models.DiscoveryManifest.input" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="psweep.discovery.models.DiscoveryManifest.lineage">
-<span class="sig-name descname"><span class="pre">lineage</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#psweep.discovery.models.DiscoveryManifest.lineage" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="psweep.discovery.models.DiscoveryManifest.manifest_version">
-<span class="sig-name descname"><span class="pre">manifest_version</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'1.0.0'</span></span><a class="headerlink" href="#psweep.discovery.models.DiscoveryManifest.manifest_version" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="psweep.discovery.models.DiscoveryManifest.notes">
-<span class="sig-name descname"><span class="pre">notes</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">list</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">[]</span></span><a class="headerlink" href="#psweep.discovery.models.DiscoveryManifest.notes" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="psweep.discovery.models.DiscoveryManifest.run_id">
-<span class="sig-name descname"><span class="pre">run_id</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></span><a class="headerlink" href="#psweep.discovery.models.DiscoveryManifest.run_id" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="psweep.discovery.models.DiscoveryManifest.stage_summaries">
-<span class="sig-name descname"><span class="pre">stage_summaries</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#psweep.discovery.models.DiscoveryManifest.stage_summaries" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="psweep.discovery.models.DiscoveryManifest.started_at">
-<span class="sig-name descname"><span class="pre">started_at</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></span><a class="headerlink" href="#psweep.discovery.models.DiscoveryManifest.started_at" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="psweep.discovery.models.DiscoveryManifest.status">
-<span class="sig-name descname"><span class="pre">status</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></span><a class="headerlink" href="#psweep.discovery.models.DiscoveryManifest.status" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="psweep.discovery.models.DiscoveryManifest.timing">
-<span class="sig-name descname"><span class="pre">timing</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#psweep.discovery.models.DiscoveryManifest.timing" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
 
 </dd></dl>
 
@@ -643,7 +499,10 @@ serialized via <code class="docutils literal notranslate"><span class="pre">Disc
             
           </div>
           <div class="right-details">
-            
+            <div class="icons">
+              <a class="muted-link " href="https://github.com/bpulluta/parsesweep" aria-label="GitHub"><svg stroke="currentColor" fill="currentColor" stroke-width="0" viewBox="0 0 16 16" width="1em" height="1em"><path fill-rule="evenodd" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg></a>
+              
+            </div>
           </div>
         </div>
         
@@ -668,46 +527,14 @@ serialized via <code class="docutils literal notranslate"><span class="pre">Disc
 <li><a class="reference internal" href="#psweep.discovery.models.CandidateScore.acceptance_class"><code class="docutils literal notranslate"><span class="pre">CandidateScore.acceptance_class()</span></code></a></li>
 <li><a class="reference internal" href="#psweep.discovery.models.CandidateScore.to_dict"><code class="docutils literal notranslate"><span class="pre">CandidateScore.to_dict()</span></code></a></li>
 <li><a class="reference internal" href="#psweep.discovery.models.CandidateScore.weighted_total"><code class="docutils literal notranslate"><span class="pre">CandidateScore.weighted_total()</span></code></a></li>
-<li><a class="reference internal" href="#psweep.discovery.models.CandidateScore.anchor_signal"><code class="docutils literal notranslate"><span class="pre">CandidateScore.anchor_signal</span></code></a></li>
-<li><a class="reference internal" href="#psweep.discovery.models.CandidateScore.content_signal"><code class="docutils literal notranslate"><span class="pre">CandidateScore.content_signal</span></code></a></li>
-<li><a class="reference internal" href="#psweep.discovery.models.CandidateScore.trust_signal"><code class="docutils literal notranslate"><span class="pre">CandidateScore.trust_signal</span></code></a></li>
-<li><a class="reference internal" href="#psweep.discovery.models.CandidateScore.url_signal"><code class="docutils literal notranslate"><span class="pre">CandidateScore.url_signal</span></code></a></li>
-<li><a class="reference internal" href="#psweep.discovery.models.CandidateScore.weights"><code class="docutils literal notranslate"><span class="pre">CandidateScore.weights</span></code></a></li>
 </ul>
 </li>
 <li><a class="reference internal" href="#psweep.discovery.models.DiscoveryCandidate"><code class="docutils literal notranslate"><span class="pre">DiscoveryCandidate</span></code></a><ul>
 <li><a class="reference internal" href="#psweep.discovery.models.DiscoveryCandidate.to_dict"><code class="docutils literal notranslate"><span class="pre">DiscoveryCandidate.to_dict()</span></code></a></li>
-<li><a class="reference internal" href="#psweep.discovery.models.DiscoveryCandidate.canonical_url"><code class="docutils literal notranslate"><span class="pre">DiscoveryCandidate.canonical_url</span></code></a></li>
-<li><a class="reference internal" href="#psweep.discovery.models.DiscoveryCandidate.content_hash"><code class="docutils literal notranslate"><span class="pre">DiscoveryCandidate.content_hash</span></code></a></li>
-<li><a class="reference internal" href="#psweep.discovery.models.DiscoveryCandidate.extension"><code class="docutils literal notranslate"><span class="pre">DiscoveryCandidate.extension</span></code></a></li>
-<li><a class="reference internal" href="#psweep.discovery.models.DiscoveryCandidate.mime_type"><code class="docutils literal notranslate"><span class="pre">DiscoveryCandidate.mime_type</span></code></a></li>
-<li><a class="reference internal" href="#psweep.discovery.models.DiscoveryCandidate.reasons"><code class="docutils literal notranslate"><span class="pre">DiscoveryCandidate.reasons</span></code></a></li>
-<li><a class="reference internal" href="#psweep.discovery.models.DiscoveryCandidate.score"><code class="docutils literal notranslate"><span class="pre">DiscoveryCandidate.score</span></code></a></li>
-<li><a class="reference internal" href="#psweep.discovery.models.DiscoveryCandidate.snippet"><code class="docutils literal notranslate"><span class="pre">DiscoveryCandidate.snippet</span></code></a></li>
-<li><a class="reference internal" href="#psweep.discovery.models.DiscoveryCandidate.source"><code class="docutils literal notranslate"><span class="pre">DiscoveryCandidate.source</span></code></a></li>
-<li><a class="reference internal" href="#psweep.discovery.models.DiscoveryCandidate.status"><code class="docutils literal notranslate"><span class="pre">DiscoveryCandidate.status</span></code></a></li>
-<li><a class="reference internal" href="#psweep.discovery.models.DiscoveryCandidate.target_metadata"><code class="docutils literal notranslate"><span class="pre">DiscoveryCandidate.target_metadata</span></code></a></li>
-<li><a class="reference internal" href="#psweep.discovery.models.DiscoveryCandidate.title"><code class="docutils literal notranslate"><span class="pre">DiscoveryCandidate.title</span></code></a></li>
-<li><a class="reference internal" href="#psweep.discovery.models.DiscoveryCandidate.url"><code class="docutils literal notranslate"><span class="pre">DiscoveryCandidate.url</span></code></a></li>
 </ul>
 </li>
 <li><a class="reference internal" href="#psweep.discovery.models.DiscoveryManifest"><code class="docutils literal notranslate"><span class="pre">DiscoveryManifest</span></code></a><ul>
 <li><a class="reference internal" href="#psweep.discovery.models.DiscoveryManifest.to_dict"><code class="docutils literal notranslate"><span class="pre">DiscoveryManifest.to_dict()</span></code></a></li>
-<li><a class="reference internal" href="#psweep.discovery.models.DiscoveryManifest.candidate_summary"><code class="docutils literal notranslate"><span class="pre">DiscoveryManifest.candidate_summary</span></code></a></li>
-<li><a class="reference internal" href="#psweep.discovery.models.DiscoveryManifest.candidates"><code class="docutils literal notranslate"><span class="pre">DiscoveryManifest.candidates</span></code></a></li>
-<li><a class="reference internal" href="#psweep.discovery.models.DiscoveryManifest.constraints"><code class="docutils literal notranslate"><span class="pre">DiscoveryManifest.constraints</span></code></a></li>
-<li><a class="reference internal" href="#psweep.discovery.models.DiscoveryManifest.downloads"><code class="docutils literal notranslate"><span class="pre">DiscoveryManifest.downloads</span></code></a></li>
-<li><a class="reference internal" href="#psweep.discovery.models.DiscoveryManifest.error_summary"><code class="docutils literal notranslate"><span class="pre">DiscoveryManifest.error_summary</span></code></a></li>
-<li><a class="reference internal" href="#psweep.discovery.models.DiscoveryManifest.errors"><code class="docutils literal notranslate"><span class="pre">DiscoveryManifest.errors</span></code></a></li>
-<li><a class="reference internal" href="#psweep.discovery.models.DiscoveryManifest.input"><code class="docutils literal notranslate"><span class="pre">DiscoveryManifest.input</span></code></a></li>
-<li><a class="reference internal" href="#psweep.discovery.models.DiscoveryManifest.lineage"><code class="docutils literal notranslate"><span class="pre">DiscoveryManifest.lineage</span></code></a></li>
-<li><a class="reference internal" href="#psweep.discovery.models.DiscoveryManifest.manifest_version"><code class="docutils literal notranslate"><span class="pre">DiscoveryManifest.manifest_version</span></code></a></li>
-<li><a class="reference internal" href="#psweep.discovery.models.DiscoveryManifest.notes"><code class="docutils literal notranslate"><span class="pre">DiscoveryManifest.notes</span></code></a></li>
-<li><a class="reference internal" href="#psweep.discovery.models.DiscoveryManifest.run_id"><code class="docutils literal notranslate"><span class="pre">DiscoveryManifest.run_id</span></code></a></li>
-<li><a class="reference internal" href="#psweep.discovery.models.DiscoveryManifest.stage_summaries"><code class="docutils literal notranslate"><span class="pre">DiscoveryManifest.stage_summaries</span></code></a></li>
-<li><a class="reference internal" href="#psweep.discovery.models.DiscoveryManifest.started_at"><code class="docutils literal notranslate"><span class="pre">DiscoveryManifest.started_at</span></code></a></li>
-<li><a class="reference internal" href="#psweep.discovery.models.DiscoveryManifest.status"><code class="docutils literal notranslate"><span class="pre">DiscoveryManifest.status</span></code></a></li>
-<li><a class="reference internal" href="#psweep.discovery.models.DiscoveryManifest.timing"><code class="docutils literal notranslate"><span class="pre">DiscoveryManifest.timing</span></code></a></li>
 </ul>
 </li>
 </ul>
@@ -728,6 +555,6 @@ serialized via <code class="docutils literal notranslate"><span class="pre">Disc
     <script src="../../../../_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="../../../../_static/scripts/furo.js?v=46bd48cc"></script>
     <script src="../../../../_static/clipboard.min.js?v=a7894cd8"></script>
-    <script src="../../../../_static/copybutton.js?v=f281be69"></script>
+    <script src="../../../../_static/copybutton.js?v=a5fa425f"></script>
     </body>
 </html>

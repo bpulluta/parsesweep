@@ -3,15 +3,16 @@
   <head><meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <meta name="color-scheme" content="light dark"><meta name="viewport" content="width=device-width, initial-scale=1" />
-<link rel="index" title="Index" href="../genindex.html"><link rel="search" title="Search" href="../search.html"><link rel="next" title="API Reference" href="../autoapi/index.html"><link rel="prev" title="Configuration Reference" href="../config-reference.html">
+<link rel="index" title="Index" href="../genindex.html"><link rel="search" title="Search" href="../search.html"><link rel="next" title="Changelog" href="../changelog.html"><link rel="prev" title="Tuning &amp; Iteration" href="../tuning.html">
 
-    <!-- Generated with Sphinx 9.1.0 and Furo 2025.12.19 -->
+    <link rel="shortcut icon" href="../_static/favicon.svg"><!-- Generated with Sphinx 9.1.0 and Furo 2025.12.19 -->
         <title>Schema Authoring - ParseSweep 2.0.1</title>
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=d111a655" />
     <link rel="stylesheet" type="text/css" href="../_static/styles/furo.css?v=7bdb33bb" />
     <link rel="stylesheet" type="text/css" href="../_static/graphviz.css?v=4ae1632d" />
     <link rel="stylesheet" type="text/css" href="../_static/copybutton.css?v=76b2166b" />
     <link rel="stylesheet" type="text/css" href="../_static/styles/furo-extensions.css?v=8dab3a3b" />
+    <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=579eeedf" />
     
     
 
@@ -20,18 +21,24 @@
   body {
     --color-code-background: #f2f2f2;
   --color-code-foreground: #1e1e1e;
+  --color-brand-primary: #0f766e;
+  --color-brand-content: #0e7490;
   
   }
   @media not print {
     body[data-theme="dark"] {
       --color-code-background: #202020;
   --color-code-foreground: #d0d0d0;
+  --color-brand-primary: #5eead4;
+  --color-brand-content: #2dd4bf;
   
     }
     @media (prefers-color-scheme: dark) {
       body:not([data-theme="light"]) {
         --color-code-background: #202020;
   --color-code-foreground: #d0d0d0;
+  --color-brand-primary: #5eead4;
+  --color-brand-content: #2dd4bf;
   
       }
     }
@@ -197,9 +204,16 @@
 <li class="toctree-l1"><a class="reference internal" href="../getting-started.html">Getting Started</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../commands/index.html">Command Reference</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../config-reference.html">Configuration Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../tuning.html">Tuning &amp; Iteration</a></li>
 <li class="toctree-l1 current current-page"><a class="current reference internal" href="#">Schema Authoring</a></li>
+<li class="toctree-l1"><a class="reference internal" href="#schema-design-best-practices">Schema Design Best Practices</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Reference</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html">Changelog</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../contributing.html">Contributing</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">API</span></p>
 <ul>
 <li class="toctree-l1 has-children"><a class="reference internal" href="../autoapi/index.html">API Reference</a><input aria-label="Toggle navigation of API Reference" class="toctree-checkbox" id="toctree-checkbox-1" name="toctree-checkbox-1" role="switch" type="checkbox"/><label for="toctree-checkbox-1"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l2 has-children"><a class="reference internal" href="../autoapi/psweep/index.html">psweep</a><input aria-label="Toggle navigation of psweep" class="toctree-checkbox" id="toctree-checkbox-2" name="toctree-checkbox-2" role="switch" type="checkbox"/><label for="toctree-checkbox-2"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
@@ -287,8 +301,6 @@
 </li>
 </ul>
 </li>
-<li class="toctree-l1"><a class="reference internal" href="../changelog.html">Changelog</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../contributing.html">Contributing</a></li>
 </ul>
 
 </div>
@@ -309,12 +321,16 @@
         </a>
         <div class="content-icon-container">
           <div class="view-this-page">
-  <a class="muted-link" href="../_sources/schemas/index.md.txt" title="View this page">
+  <a class="muted-link" href="https://github.com/bpulluta/parsesweep/blob/main/docs/schemas/index.md?plain=true" title="View this page">
     <svg><use href="#svg-eye"></use></svg>
     <span class="visually-hidden">View this page</span>
   </a>
-</div>
-<div class="theme-toggle-container theme-toggle-content">
+</div><div class="edit-this-page">
+  <a class="muted-link" href="https://github.com/bpulluta/parsesweep/edit/main/docs/schemas/index.md" rel="edit" title="Edit this page">
+    <svg><use href="#svg-pencil"></use></svg>
+    <span class="visually-hidden">Edit this page</span>
+  </a>
+</div><div class="theme-toggle-container theme-toggle-content">
             <button class="theme-toggle" aria-label="Toggle Light / Dark / Auto color theme">
               <svg class="theme-icon-when-auto-light"><use href="#svg-sun-with-moon"></use></svg>
               <svg class="theme-icon-when-auto-dark"><use href="#svg-moon-with-sun"></use></svg>
@@ -333,1042 +349,1313 @@
 descriptions the LLM uses as extraction instructions. Well-written field
 descriptions are the single biggest lever on extraction quality.</p>
 <p>The full best-practices guide is embedded below.</p>
-<div class="literal-block-wrapper docutils container" id="id1">
-<div class="code-block-caption"><span class="caption-text">schemas/SCHEMA_BEST_PRACTICES.md</span><a class="headerlink" href="#id1" title="Link to this code">¶</a></div>
-<div class="highlight-text notranslate"><div class="highlight"><pre><span></span># Schema Design Best Practices
-
-## Overview
-
-ParseSweep v2.0+ uses a metadata-driven architecture where:
-- **`$metadata` section** (required) defines extraction and record-identity behavior
-- **Schema properties** define the data structure to extract
-- Your schema design directly determines your spreadsheet output
-
-Design schemas to match how you want to analyze the data.
-
-For authoring, use this mental model:
-
-- `Schema` (`schemas/personal/&lt;domain&gt;_schema.json`): The **extraction contract**. Fields, descriptions, examples, row shape, identifiers, and deduplication keys. Field-level enum values belong here (in `properties`), not in `$metadata`.
-- `Runtime config` (`config/&lt;domain&gt;/run.yaml`): **Runtime behavior and presentation**. Models, discovery settings, QA/QC lanes, and all compilation output settings (column order, renames, exclude_fields, default_format, freeze_columns). This file drives *how* a run behaves and *how* output looks.
-
-**Separation rule:** `$metadata` in the schema owns `extraction.*` and `identity.deduplication` (data identity — what makes a record unique). Everything else — output formatting, normalization, synthesis, model tiers — lives only in `config/&lt;domain&gt;/run.yaml`. Output config in `$metadata` is not supported and will be rejected by `check-schema`.
-
----
-
-## Authoring Workflow
-
-### Start With the Schema
-
-Most new extraction setups should begin with a schema only. That keeps iteration fast and local to one file.
-
-Add or update `config/&lt;domain&gt;/run.yaml` later if you need any of the following:
-
-- shared QA/QC lanes for a domain
-- shared compilation output settings such as column order or renames
-- model tier assignments or discovery configuration
-- domain-level runtime overrides you do not want to repeat on the CLI
-
-If none of those apply yet, keep the schema focused on extraction structure.
-
-### Fast Iteration Loop
-
-Use a short loop while evolving a schema:
-
-```bash
-# 1. Validate schema structure
-pixi run psweep check-schema schemas/my_schema.json
-
-# 2. Extract a tiny sample
-pixi run psweep extract documents/sample/ \
-  --schema schemas/my_schema.json \
-  -n 2 \
-  --reprocess
-
-# 3. Consolidate the sample
-pixi run psweep compile extracted/sample/ \
-  --schema schemas/my_schema.json \
-  --verbose
-
-# 4. Preview deduplication before writing outputs
-pixi run psweep compile extracted/sample/ \
-  --schema schemas/my_schema.json \
-  --dry-run \
-  --report-format json \
-  --fail-on-suspicious high
-```
-
-Review after each pass:
-
-- Did `main_data_array` create the right rows?
-- Did `identifier_fields` identify the document correctly?
-- Did your new fields extract consistently?
-- Do `key_fields` keep distinct records separate?
-- Does the dry-run dedup report show any merges you did not intend?
-- Does the dry-run dedup report flag suspicious groups where non-key values disagree?
-- Are any suspicious groups ranked `high` severity because numeric or unit fields disagree?
-- Should the iteration loop fail automatically until those `high` severity groups are resolved?
-- If a `run.yaml` config exists, did verbose output show the resolved config you expected?
-
-The severity ranking is schema-aware: fields declared as numeric in your schema can be ranked `high` severity even if the flattened column name is not obviously numeric.
-
-This loop is the safest way to add fields and tune descriptions without re-running a full batch.
-
-### Do You Need a `run.yaml` config?
-
-Use this decision rule:
-
-- `No`: You are still defining fields, examples, descriptions, identifiers, or deduplication keys for one schema.
-- `Yes`: You want shared runtime QA/QC behavior, shared compilation presentation (column order, renames), or domain-level model/discovery settings.
-
-Keep authoring friction low by delaying `config/&lt;domain&gt;/run.yaml` until you actually need shared runtime behavior.
-
----
-
-## 🔴 Required: The `$metadata` Section
-
-Every schema MUST include a `$metadata` section. Without it, extraction will fail:
-```
-ERROR: Schema missing required $metadata section
-```
-
-### Minimal Valid Schema
-
-```json
-{
-  &quot;$schema&quot;: &quot;http://json-schema.org/draft-07/schema#&quot;,
-  &quot;$metadata&quot;: {
-    &quot;domain&quot;: &quot;Your Domain&quot;,
-    &quot;version&quot;: &quot;1.0.0&quot;,
-    &quot;extraction&quot;: {
-      &quot;main_data_array&quot;: &quot;items&quot;,
-      &quot;identifier_fields&quot;: [&quot;metadata.document_id&quot;],
-      &quot;context_objects&quot;: [&quot;metadata&quot;]
-    },
-    &quot;identity&quot;: {
-      &quot;deduplication&quot;: {
-        &quot;key_fields&quot;: [&quot;item_name&quot;],
-        &quot;ignore_fields&quot;: [&quot;notes&quot;]
-      }
-    }
-  },
-  &quot;type&quot;: &quot;object&quot;,
-  &quot;properties&quot;: {
-    &quot;metadata&quot;: {
-      &quot;type&quot;: &quot;object&quot;,
-      &quot;properties&quot;: {
-        &quot;document_id&quot;: {&quot;type&quot;: &quot;string&quot;}
-      }
-    },
-    &quot;items&quot;: {
-      &quot;type&quot;: &quot;array&quot;,
-      &quot;items&quot;: {
-        &quot;type&quot;: &quot;object&quot;,
-        &quot;properties&quot;: {
-          &quot;item_name&quot;: {&quot;type&quot;: &quot;string&quot;}
-        }
-      }
-    }
-  }
-}
-```
-
-### Complete `$metadata` Structure
-
-This example shows the full metadata surface that belongs in the schema. All output presentation settings (`column_order`, `exclude_fields`, `column_renames`, `freeze_columns`, `auto_width`, `default_format`) and normalization settings belong in `config/&lt;domain&gt;/run.yaml` — not here.
-
-```json
-{
-  &quot;$metadata&quot;: {
-    &quot;domain&quot;: &quot;Energy - Utility Tariffs&quot;,
-    &quot;version&quot;: &quot;1.0.0&quot;,
-    &quot;description&quot;: &quot;Extract rate schedules and charges from utility tariff documents&quot;,
-    
-    &quot;extraction&quot;: {
-      &quot;main_data_array&quot;: &quot;rate_schedules&quot;,
-      &quot;identifier_fields&quot;: [
-        &quot;utility_info.utility_name&quot;,
-        &quot;utility_info.state&quot;
-      ],
-      &quot;context_objects&quot;: [
-        &quot;utility_info&quot;,
-        &quot;document_applicability&quot;
-      ],
-      &quot;display_name_template&quot;: &quot;{utility_name} ({state})&quot;,
-      &quot;document_type&quot;: &quot;Utility Tariff&quot;
-    },
-    
-    &quot;identity&quot;: {
-      &quot;deduplication&quot;: {
-        &quot;key_fields&quot;: [&quot;rate_name&quot;, &quot;charge_type&quot;, &quot;season&quot;],
-        &quot;ignore_fields&quot;: [&quot;notes&quot;, &quot;extracted_text&quot;],
-        &quot;strategy&quot;: &quot;latest&quot;,
-        &quot;comparison_mode&quot;: &quot;exact&quot;
-      }
-    }
-  }
-}
-```
-
-### Required Fields
-
-| Field | Purpose | Example |
-|-------|---------|---------|
-| `extraction.main_data_array` | Array that becomes spreadsheet rows | `&quot;rate_schedules&quot;` |
-| `extraction.identifier_fields` | Fields that identify the source document | `[&quot;metadata.permit_id&quot;]` |
-| `identity.deduplication.key_fields` | Fields that determine record uniqueness | `[&quot;name&quot;, &quot;type&quot;, &quot;date&quot;]` |
-
-### Recommended Fields
-
-| Field | Purpose | Example |
-|-------|---------|---------|
-| `extraction.context_objects` | Top-level objects with metadata | `[&quot;metadata&quot;, &quot;location&quot;]` |
-| `identity.deduplication.ignore_fields` | Fields to ignore when deduplicating | `[&quot;notes&quot;, &quot;timestamp&quot;]` |
-| `domain` | Category for organization | `&quot;Environmental - Air Quality&quot;` |
-| `version` | Schema version (semver) | `&quot;2.1.0&quot;` |
-
-### Optional: Validation (QA/QC) Runtime Configuration (in `run.yaml`)
-
-Validation behavior is runtime policy and belongs in the `validation` section of
-`config/&lt;domain&gt;/run.yaml` (the `validate` command reads it, mirroring how
-`compile` reads `compilation`):
-
-```yaml
-validation:
-  models: [primary, secondary]      # two model tiers to contrast
-  output_dir: validated/&lt;domain&gt;
-  comparison_approach: mixed        # mixed | numeric_only | text_review
-  record_matching:
-    key_fields: [feature, specific_subject, applies_to]
-    semantic_match_threshold: 0.38
-  comparison:
-    primary_fields: [value, units]
-  judge:
-    enabled: true
-    model: judge
-    apply_on: all                   # none | non_numeric | all
-```
-
-Run `pixi run psweep validate --config config/&lt;domain&gt;/run.yaml` so both models
-and all matching/comparison settings come from the same runtime config.
-
----
-
-## The Golden Rule: Main Array = Rows
-
-The array specified in `$metadata.extraction.main_data_array` becomes rows in your spreadsheet.
-
-**Example:**
-```json
-{
-  &quot;$metadata&quot;: {
-    &quot;extraction&quot;: {
-      &quot;main_data_array&quot;: &quot;rate_schedules&quot;,
-      &quot;context_objects&quot;: [&quot;utility_info&quot;]
-    }
-  },
-  &quot;utility_info&quot;: {
-    &quot;utility_name&quot;: &quot;Metro Electric&quot;,
-    &quot;state&quot;: &quot;CA&quot;
-  },
-  &quot;rate_schedules&quot;: [
-    {&quot;rate_name&quot;: &quot;Schedule R&quot;, &quot;type&quot;: &quot;Residential&quot;},
-    {&quot;rate_name&quot;: &quot;Schedule C&quot;, &quot;type&quot;: &quot;Commercial&quot;}
-  ]
-}
-```
-
-**Result**: 2 rows in spreadsheet
-- Row 1: Metro Electric (CA) - Schedule R - Residential
-- Row 2: Metro Electric (CA) - Schedule C - Commercial
-
-Context objects (`utility_info`) are included in every row.
-
----
-
-## Data Structure Design
-
-### Nested Arrays: Automatic Expansion vs Summarization
-
-The compiler automatically decides based on array characteristics:
-
-#### ✅ Expands to Columns (Best for Analysis)
-
-**Criteria:**
-- ≤15 items
-- ≤20 fields per item
-- Consistent structure (same fields across items)
-
-**Example:**
-```json
-&quot;charges&quot;: [
-  {&quot;type&quot;: &quot;Customer&quot;, &quot;rate&quot;: 7.10, &quot;unit&quot;: &quot;$&quot;},
-  {&quot;type&quot;: &quot;Energy&quot;, &quot;rate&quot;: 0.1038, &quot;unit&quot;: &quot;$/kWh&quot;},
-  {&quot;type&quot;: &quot;Demand&quot;, &quot;rate&quot;: 5.00, &quot;unit&quot;: &quot;$/kW&quot;}
-]
-```
-
-**Result:** Separate columns for each charge type
-- `Charges Customer Rate` = 7.10
-- `Charges Customer Unit` = $
-- `Charges Energy Rate` = 0.1038
-- `Charges Energy Unit` = $/kWh
-- `Charges Demand Rate` = 5.00
-- `Charges Demand Unit` = $/kW
-
-#### ✅ Summarizes to Text (Best for Context)
-
-**Criteria:**
-- &gt;15 items, OR
-- &gt;20 fields per item, OR
-- Inconsistent structure
-
-**Example:**
-```json
-&quot;permit_history&quot;: [
-  {&quot;date&quot;: &quot;2023-01-15&quot;, &quot;action&quot;: &quot;Applied&quot;, &quot;officer&quot;: &quot;J. Smith&quot;},
-  {&quot;date&quot;: &quot;2023-02-20&quot;, &quot;action&quot;: &quot;Reviewed&quot;, &quot;officer&quot;: &quot;M. Jones&quot;},
-  ... 28 more items
-]
-```
-
-**Result:** Single column with summary text
-- `Permit History` = &quot;Applied: 2023-01-15 (J. Smith); Reviewed: 2023-02-20 (M. Jones); ...&quot;
-
----
-
-## Design Patterns
-
-### Pattern 1: Entity-Based (Recommended)
-
-**Best for:** Most use cases where you have a clear primary entity
-
-✅ **Good:**
-```json
-{
-  &quot;$metadata&quot;: {
-    &quot;extraction&quot;: {
-      &quot;main_data_array&quot;: &quot;rate_schedules&quot;,
-      &quot;context_objects&quot;: [&quot;utility_info&quot;]
-    }
-  },
-  &quot;utility_info&quot;: {
-    &quot;utility_name&quot;: &quot;Metro Electric&quot;,
-    &quot;state&quot;: &quot;CA&quot;
-  },
-  &quot;rate_schedules&quot;: [
-    {
-      &quot;rate_name&quot;: &quot;Residential&quot;,
-      &quot;charges&quot;: [
-        {&quot;type&quot;: &quot;Customer&quot;, &quot;rate&quot;: 7.10},
-        {&quot;type&quot;: &quot;Energy&quot;, &quot;rate&quot;: 0.1038}
-      ]
-    }
-  ]
-}
-```
-
-**Result:** One row per rate schedule, with charges expanded as columns
-
-❌ **Bad:**
-```json
-{
-  &quot;$metadata&quot;: {
-    &quot;extraction&quot;: {
-      &quot;main_data_array&quot;: &quot;charges&quot;
-    }
-  },
-  &quot;charges&quot;: [
-    {&quot;rate_name&quot;: &quot;Residential&quot;, &quot;type&quot;: &quot;Customer&quot;, &quot;rate&quot;: 7.10},
-    {&quot;rate_name&quot;: &quot;Residential&quot;, &quot;type&quot;: &quot;Energy&quot;, &quot;rate&quot;: 0.1038},
-    {&quot;rate_name&quot;: &quot;Commercial&quot;, &quot;type&quot;: &quot;Customer&quot;, &quot;rate&quot;: 9.50},
-    ... 50 more charges
-  ]
-}
-```
-
-**Problem:** Creates 50+ rows instead of a few organized rate schedules
-
-### Pattern 2: Include Distinguishing Context
-
-Always include fields that differentiate similar items.
-
-✅ **Good:**
-```json
-{
-  &quot;type&quot;: &quot;Energy&quot;,
-  &quot;rate&quot;: 0.1038,
-  &quot;season&quot;: &quot;Summer&quot;,
-  &quot;time_period&quot;: &quot;On-peak&quot;,
-  &quot;tier&quot;: &quot;1&quot;
-}
-```
-
-**Result:** Clear column names
-- `Charges Energy Summer On-Peak Tier 1 Rate`
-
-❌ **Bad:**
-```json
-{
-  &quot;type&quot;: &quot;Energy&quot;,
-  &quot;rate&quot;: 0.1038
-}
-```
-
-**Problem:** Lost context - which season? which time period?
-
-### Pattern 3: Consistent Field Structure
-
-Use the same fields across all items in an array.
-
-✅ **Good:**
-```json
-&quot;requirements&quot;: [
-  {&quot;category&quot;: &quot;Setback&quot;, &quot;value&quot;: 1320, &quot;unit&quot;: &quot;feet&quot;},
-  {&quot;category&quot;: &quot;Height&quot;, &quot;value&quot;: 35, &quot;unit&quot;: &quot;feet&quot;},
-  {&quot;category&quot;: &quot;Noise&quot;, &quot;value&quot;: 50, &quot;unit&quot;: &quot;dBA&quot;}
-]
-```
-
-**Result:** Clean expansion with predictable columns
-
-❌ **Bad:**
-```json
-&quot;requirements&quot;: [
-  {&quot;category&quot;: &quot;Setback&quot;, &quot;distance&quot;: 1320, &quot;from&quot;: &quot;residence&quot;},
-  {&quot;category&quot;: &quot;Height&quot;, &quot;max_height&quot;: 35},
-  {&quot;category&quot;: &quot;Noise&quot;, &quot;limit_day&quot;: 50, &quot;limit_night&quot;: 45}
-]
-```
-
-**Problem:** Inconsistent fields → forced to summarize instead of expand
-
----
-
-## Optimization Guidelines
-
-### For Quantitative Analysis
-
-**Goal:** Structured, analyzable columns
-
-1. **Keep nested arrays small** (≤15 items)
-2. **Use consistent field names** across all array items
-3. **Include distinguishing context** (season, tier, period, type)
-4. **Separate values from units**
-
-**Example:**
-```json
-&quot;charges&quot;: [
-  {
-    &quot;charge_type&quot;: &quot;Energy&quot;,
-    &quot;rate&quot;: 0.1038,
-    &quot;unit&quot;: &quot;$/kWh&quot;,
-    &quot;season&quot;: &quot;Summer&quot;,
-    &quot;time_period&quot;: &quot;On-peak&quot;,
-    &quot;tier&quot;: &quot;1&quot;
-  }
-]
-```
-
----
-
-## Temporal Metadata Best Practices
-
-**Why it matters:** Most documents have a critical time dimension - when they were enacted, when they&#39;re effective, when they expire. Without temporal metadata, you can&#39;t determine if data is current, track changes over time, or perform temporal analysis.
-
-### Common Temporal Fields by Document Type
-
-| Document Type | Critical Temporal Fields |
-|---------------|--------------------------|
-| **Ordinances/Regulations** | `date_adopted`, `date_effective`, `date_last_amended`, `supersedes` |
-| **Permits** | `permit_issuance_date`, `permit_expiration_date`, `renewal_date` |
-| **Tariffs/Rate Schedules** | `effective_date`, `revision_date`, `filing_date`, `supersedes` |
-| **Journal Articles** | `publication_date`, `received_date`, `revised_date`, `accepted_date` |
-| **Financial Filings** | `filing_date`, `fiscal_year_end`, `period_start`, `period_end` |
-| **Contracts** | `execution_date`, `effective_date`, `expiration_date`, `renewal_date` |
-
-### Design Recommendations
-
-**1. Place in context objects** - Temporal fields typically describe the document, not individual data items, so include them in context objects (metadata, jurisdiction, utility_info, etc.)
-
-**2. Allow as-written formats** - Documents use varied date formats. Capture exactly as written for accuracy:
-```json
-&quot;date_adopted&quot;: {
-  &quot;type&quot;: [&quot;string&quot;, &quot;null&quot;],
-  &quot;description&quot;: &quot;Date adopted, exactly as written (e.g., &#39;May 17, 2013&#39;, &#39;10/6/2015&#39;)&quot;
-}
-```
-
-**3. Make fields nullable** - Not all documents state all dates explicitly:
-```json
-&quot;type&quot;: [&quot;string&quot;, &quot;null&quot;],
-&quot;description&quot;: &quot;... Null if not stated.&quot;
-```
-
-**4. Include in column_order** - Place temporal fields early in Excel output for visibility:
-```json
-&quot;column_order&quot;: [
-  &quot;utility_name&quot;,
-  &quot;state&quot;,
-  &quot;effective_date&quot;,
-  &quot;revision_date&quot;,
-  &quot;rate_name&quot;,
-  ...
-]
-```
-
-**5. Provide extraction guidance** - Help the LLM find temporal information:
-```json
-&quot;description&quot;: &quot;Date the ordinance became effective, exactly as written. Look for phrases like &#39;effective date&#39;, &#39;shall become effective on&#39;, &#39;in effect as of&#39;. Null if not stated.&quot;
-```
-
-### Example: Ordinance Schema
-
-```json
-{
-  &quot;jurisdiction&quot;: {
-    &quot;type&quot;: &quot;object&quot;,
-    &quot;properties&quot;: {
-      &quot;state&quot;: {&quot;type&quot;: &quot;string&quot;},
-      &quot;county&quot;: {&quot;type&quot;: &quot;string&quot;},
-      &quot;ordinance_code&quot;: {&quot;type&quot;: [&quot;string&quot;, &quot;null&quot;]},
-      &quot;date_adopted&quot;: {
-        &quot;type&quot;: [&quot;string&quot;, &quot;null&quot;],
-        &quot;description&quot;: &quot;Date adopted by legislative body, exactly as written (e.g., &#39;May 17, 2013&#39;). Look for &#39;adopted on&#39;, &#39;enacted on&#39;, &#39;passed on&#39;. Null if not stated.&quot;
-      },
-      &quot;date_effective&quot;: {
-        &quot;type&quot;: [&quot;string&quot;, &quot;null&quot;],
-        &quot;description&quot;: &quot;Date became law, exactly as written. Look for &#39;effective date&#39;, &#39;shall become effective on&#39;. Null if not stated.&quot;
-      },
-      &quot;date_last_amended&quot;: {
-        &quot;type&quot;: [&quot;string&quot;, &quot;null&quot;],
-        &quot;description&quot;: &quot;Most recent amendment date. Look for &#39;amended on&#39;, &#39;as amended&#39;, &#39;last revised&#39;. Null if not stated.&quot;
-      },
-      &quot;supersedes&quot;: {
-        &quot;type&quot;: [&quot;string&quot;, &quot;null&quot;],
-        &quot;description&quot;: &quot;Previous ordinance this replaces. Look for &#39;replaces&#39;, &#39;supersedes&#39;, &#39;repeals and replaces&#39;. Null if not stated.&quot;
-      }
-    }
-  }
-}
-```
-
-### When to Use Structured vs As-Written Dates
-
-**Structured (YYYY-MM-DD):**
-- ✅ When dates are consistently formatted in source documents
-- ✅ When downstream analysis requires date arithmetic
-- ✅ For permits, filings with standardized formats
-- Example: `&quot;permit_issuance_date&quot;: &quot;2024-01-15&quot;`
-
-**As-Written:**
-- ✅ When date formats vary widely across documents
-- ✅ When preserving exact source text is important
-- ✅ For ordinances, legal documents with varied formats
-- Example: `&quot;date_adopted&quot;: &quot;May 17, 2013&quot;`
-
-**Hybrid Approach:**
-```json
-&quot;effective_date_raw&quot;: &quot;January 1st, 2024&quot;,
-&quot;effective_date_normalized&quot;: &quot;2024-01-01&quot;
-```
-
----
-
-### For Qualitative/Contextual Data
-
-**Goal:** Readable summaries
-
-1. **Use descriptive name/type fields**
-2. **Let large arrays summarize automatically**
-3. **Include important details in text**
-
-**Example:**
-```json
-&quot;inspection_notes&quot;: [
-  {
-    &quot;date&quot;: &quot;2024-01-15&quot;,
-    &quot;inspector&quot;: &quot;J. Smith&quot;,
-    &quot;findings&quot;: &quot;Equipment in good condition&quot;,
-    &quot;action_required&quot;: &quot;None&quot;
-  },
-  ... many more notes
-]
-```
-
----
-
-## Common Mistakes
-
-### ❌ Missing `$metadata` Section
-
-**Problem:** Extraction fails immediately
-
-```json
-{
-  &quot;$schema&quot;: &quot;http://json-schema.org/draft-07/schema#&quot;,
-  &quot;type&quot;: &quot;object&quot;,
-  &quot;properties&quot;: {
-    &quot;items&quot;: {&quot;type&quot;: &quot;array&quot;}
-  }
-}
-```
-
-**Error:** `Schema missing required $metadata section`
-
-✅ **Solution:** Always include complete `$metadata`
-
-### ❌ Flat Structure Instead of Nested
-
-**Problem:** Hard to extend, loses organization
-
-```json
-{
-  &quot;rate_name&quot;: &quot;Schedule R&quot;,
-  &quot;customer_charge&quot;: 7.1,
-  &quot;energy_charge_summer&quot;: 0.1038,
-  &quot;energy_charge_winter&quot;: 0.0857,
-  &quot;demand_charge_summer&quot;: 5.0
-}
-```
-
-✅ **Better:**
-```json
-{
-  &quot;rate_name&quot;: &quot;Schedule R&quot;,
-  &quot;charges&quot;: [
-    {&quot;type&quot;: &quot;Customer&quot;, &quot;rate&quot;: 7.1},
-    {&quot;type&quot;: &quot;Energy&quot;, &quot;season&quot;: &quot;Summer&quot;, &quot;rate&quot;: 0.1038},
-    {&quot;type&quot;: &quot;Energy&quot;, &quot;season&quot;: &quot;Winter&quot;, &quot;rate&quot;: 0.0857},
-    {&quot;type&quot;: &quot;Demand&quot;, &quot;season&quot;: &quot;Summer&quot;, &quot;rate&quot;: 5.0}
-  ]
-}
-```
-
-### ❌ Excessive Nesting
-
-**Problem:** Creates unreadable column names
-
-```json
-{
-  &quot;rate_schedules&quot;: [
-    {
-      &quot;details&quot;: {
-        &quot;info&quot;: {
-          &quot;basics&quot;: {
-            &quot;rate_name&quot;: &quot;Schedule R&quot;
-          }
-        }
-      }
-    }
-  ]
-}
-```
-
-**Result:** `Rate Schedules Details Info Basics Rate Name` (too long!)
-
-✅ **Better:** Keep to 2-3 levels maximum
-```json
-{
-  &quot;rate_schedules&quot;: [
-    {
-      &quot;rate_name&quot;: &quot;Schedule R&quot;,
-      &quot;effective_date&quot;: &quot;2024-01-01&quot;
-    }
-  ]
-}
-```
-
-### ❌ Single-Item Arrays
-
-**Problem:** Unnecessary complexity
-
-```json
-{
-  &quot;rate_name&quot;: [&quot;Schedule R&quot;],
-  &quot;effective_date&quot;: [&quot;2024-01-01&quot;]
-}
-```
-
-✅ **Better:** Use simple values
-```json
-{
-  &quot;rate_name&quot;: &quot;Schedule R&quot;,
-  &quot;effective_date&quot;: &quot;2024-01-01&quot;
-}
-```
-
-### ❌ Wrong Main Array Selection
-
-**Problem:** Creates too many or too few rows
-
-```json
-{
-  &quot;$metadata&quot;: {
-    &quot;extraction&quot;: {
-      &quot;main_data_array&quot;: &quot;charges&quot;  // ❌ Too granular
-    }
-  },
-  &quot;rate_schedules&quot;: [
-    {
-      &quot;rate_name&quot;: &quot;Schedule R&quot;,
-      &quot;charges&quot;: [
-        {&quot;type&quot;: &quot;Customer&quot;, &quot;rate&quot;: 7.1},
-        {&quot;type&quot;: &quot;Energy&quot;, &quot;rate&quot;: 0.1038},
-        ... 20 more charges
-      ]
-    }
-  ]
-}
-```
-
-**Result:** 20+ rows per rate schedule instead of 1 row with expanded charge columns
-
-✅ **Better:**
-```json
-{
-  &quot;$metadata&quot;: {
-    &quot;extraction&quot;: {
-      &quot;main_data_array&quot;: &quot;rate_schedules&quot;  // ✅ Right level
-    }
-  }
-}
-```
-
----
-
-## Testing Your Schema
-
-### 1. Validate Schema Structure
-
-```bash
-pixi run psweep check-schema schemas/your_schema.json
-```
-
-Checks for:
-- Required `$metadata` section
-- Valid JSONPath in identifier_fields
-- Proper field references
-
-### 2. Test on Sample Documents
-
-```bash
-# Extract 1-2 sample documents
-pixi run psweep extract documents/samples/ \
-  --schema schemas/your_schema.json \
-  --limit 2
-
-# Review JSON outputs
-ls -la extracted/samples/
-cat extracted/samples/sample_001.json
-```
-
-Check:
-- Is the `main_data_array` populated correctly?
-- Are nested arrays the right size?
-- Are field names consistent?
-
-### 3. Test Consolidation
-
-```bash
-# Consolidate to Excel/CSV
-pixi run psweep compile extracted/samples/
-
-# Review outputs
-open compiled/samples/*.xlsx
-```
-
-Verify:
-- Correct number of rows
-- Nested arrays expanded/summarized as expected
-- Column names are clear and readable
-- Data properly deduplicated
-
-### 4. Iterate and Refine
-
-Common adjustments:
-- Change `main_data_array` to different level
-- Adjust nested array structure
-- Add/modify `key_fields` for better deduplication
-- Reorganize data to reduce nesting depth
-
----
-
-## Value Typing and Obligation Classification
-
-Regulatory extraction schemas (ordinances, permits, tariffs) share a common
-problem: a single free-text `value` field ends up carrying *four different kinds
-of information at once* — what is regulated, how much, how binding it is, and
-under what circumstances. That overloading destroys comparability and dedup.
-
-The fix is to decompose every requirement row on **four axes**:
-
-| Axis | Question | Canonical fields |
-|------|----------|------------------|
-| **WHAT** | What is regulated? | `feature` + `specific_subject` + `requirement_description` + `applies_to` |
-| **HOW MUCH** | What magnitude / bound? | `value` + `value_category` + `value_interpretation` + `units` + `range_low` + `range_high` |
-| **HOW BINDING** | Is it mandatory? | `obligation` |
-| **WHEN / WHERE** | Under what circumstance / scope? | `condition` + `applies_to` |
-| **EVIDENCE** | How do we know? | `source_verbatim` + `summary` + `reasoning` + `section` |
-
-### The three classification fields
-
-**`value_category`** (required, `[&quot;quantitative&quot;, &quot;qualitative&quot;]`)
-- `quantitative`: a measurable magnitude lives in `value` (distance, dBA, acres,
-  MW, hours, %, $).
-- `qualitative`: there is no magnitude; the substance lives in
-  `requirement_description` (or an enumerated set in `applicable_values`), and
-  `value` is null.
-- Independent of obligation — a quantitative limit can be conditional, and a
-  qualitative item can be required.
-
-**`value_interpretation`** (`[&quot;exact&quot;,&quot;minimum&quot;,&quot;maximum&quot;,&quot;range&quot;,&quot;formula&quot;,&quot;tiered&quot;,&quot;enumerated&quot;, null]`)
-- `exact` — single fixed value (&quot;shall be 35 feet&quot;).
-- `minimum` — floor (&quot;at least&quot;, &quot;no less than&quot;).
-- `maximum` — ceiling (&quot;shall not exceed&quot;).
-- Coverage-radius phrasing (&quot;show/list/include items within one mile&quot;) is usually
-  `maximum` (inside a radius cap).
-- Separation phrasing (&quot;no structure within 50 feet of a fault&quot;) is usually
-  `minimum` (required standoff distance).
-- `range` — a span; populate `range_low` and `range_high`.
-- `formula` — computed (&quot;1.1× turbine height&quot;).
-- `tiered` — value depends on a band; **emit one row per tier** with the band in
-  `condition`.
-- `enumerated` — a discrete set of allowed values; use with `applicable_values`.
-- `null` — qualitative requirements (present / absent).
-
-**`obligation`** (required, `[&quot;required&quot;,&quot;prohibited&quot;,&quot;conditional&quot;,&quot;allowed&quot;,&quot;recommended&quot;,&quot;informational&quot;]`)
-
-Classify from the governing clause, with these normalization rules:
-- For **quantitative limits/setbacks/windows**, use `obligation = &quot;required&quot;` and encode direction in `value_interpretation` (`minimum` / `maximum` / `range`) even when wording is negative (&quot;shall not exceed&quot;, &quot;shall not be within&quot;).
-- Reserve `obligation = &quot;prohibited&quot;` for **qualitative bans** without a measurable threshold.
-- For permit-gated phrasing (&quot;may be permitted only through CUP&quot;), model the permit gate as `obligation = &quot;required&quot;` on the approval row; avoid flipping between `allowed` and `required` for the same gate.
-
-| Governing language | `obligation` |
-|--------------------|--------------|
-| &quot;shall&quot;, &quot;must&quot;, &quot;is required&quot;, &quot;no less than&quot; | `required` |
-| &quot;shall not&quot;, &quot;no person shall&quot;, &quot;may not&quot;, &quot;is not permitted&quot;, &quot;prohibited&quot; (non-numeric ban) | `prohibited` |
-| &quot;may require&quot;, &quot;at the discretion of&quot;, &quot;as a condition of approval&quot;, &quot;unless waived&quot; | `conditional` |
-| &quot;is permitted&quot;, &quot;may be located&quot;, &quot;is allowed&quot; | `allowed` |
-| &quot;should&quot;, &quot;encouraged&quot;, &quot;best available technology&quot; | `recommended` |
-| definitions, procedures, measured baselines, external standards | `informational` |
-
-When multiple verbs appear, precedence is:
-`prohibited &gt; required &gt; conditional &gt; recommended &gt; allowed &gt; informational`.
-
-### LLM prompt instructions to embed in field descriptions
-
-- **obligation:** &quot;Never place obligation language inside `value` or
-  `requirement_description`. For quantitative rows, use `required` and encode
-  direction in `value_interpretation` even if wording is negative. Reserve
-  `prohibited` for qualitative bans. Cite trigger language in `reasoning`.&quot;
-- **source_verbatim:** &quot;Exact word-for-word operative clause; never paraphrase.
-  If it exceeds 50 words, quote the operative head, insert &#39;…&#39;, then the tail.&quot;
-- **reasoning:** &quot;Terse `trigger → label`, ≤15 words.&quot; e.g.
-  `&quot;&#39;may require&#39; → conditional; no magnitude → qualitative&quot;`.
-- **requirement_description:** &quot;No obligation language — never include shall / may
-  / must / required / prohibited.&quot;
-
-### Anti-patterns
-
-| ❌ Anti-pattern | ✅ Correct |
-|----------------|-----------|
-| `value = &quot;shall not exceed 55 dBA&quot;` | `value = 55`, `units = &quot;dBA&quot;`, `value_interpretation = &quot;maximum&quot;`, `obligation = &quot;required&quot;` |
-| `value = &quot;shall not be within 50 feet of an active fault&quot;` + `obligation = &quot;prohibited&quot;` | `value = 50`, `units = &quot;feet&quot;`, `value_interpretation = &quot;minimum&quot;`, `obligation = &quot;required&quot;` |
-| `value_interpretation = &quot;exact&quot;` for `&quot;within one mile&quot;` in map/reporting scope | `value_interpretation = &quot;maximum&quot;` (coverage radius cap) |
-| `value = &quot;Sound barriers may be required&quot;` | `requirement_description = &quot;Sound barriers&quot;`, `value_category = &quot;qualitative&quot;`, `obligation = &quot;conditional&quot;` |
-| `requirement_description = &quot;Fencing is required&quot;` | `requirement_description = &quot;Solid perimeter fencing&quot;`, `obligation = &quot;required&quot;` |
-| `obligation = &quot;allowed&quot;` for `&quot;...may be permitted only through CUP&quot;` | `obligation = &quot;required&quot;` on the permit-gate approval row |
-| One row per permitted district (`AG`, `RE`, `R1`…) | one row, `value_interpretation = &quot;enumerated&quot;`, `applicable_values = [&quot;AG&quot;,&quot;RE&quot;,&quot;R1&quot;]` |
-| `applies_to = &quot;nighttime&quot;` | `condition = &quot;nighttime&quot;` (applies_to is the *facility type*, not the trigger) |
-| Paraphrasing in `source_verbatim` | copy the clause verbatim; paraphrase only in `summary` |
-
-### Before / after (natural gas noise limit)
-
-Old overloaded single field:
-
-```
-value = &quot;Compressor stations shall not exceed 55 dBA at night at the property line&quot;
-```
-
-New multi-field decomposition:
-
-```json
-{
-  &quot;feature&quot;: &quot;noise&quot;,
-  &quot;specific_subject&quot;: &quot;nighttime limit&quot;,
-  &quot;applies_to&quot;: &quot;Compressor station&quot;,
-  &quot;value_category&quot;: &quot;quantitative&quot;,
-  &quot;value&quot;: 55,
-  &quot;value_interpretation&quot;: &quot;maximum&quot;,
-  &quot;units&quot;: &quot;dBA&quot;,
-  &quot;obligation&quot;: &quot;required&quot;,
-  &quot;condition&quot;: &quot;nighttime&quot;,
-  &quot;source_verbatim&quot;: &quot;...shall not exceed 55 dBa...at night...at the property line.&quot;,
-  &quot;reasoning&quot;: &quot;&#39;shall not exceed&#39; → required; number → quantitative/maximum&quot;
-}
-```
-
----
-
-## Cross-Domain Consistency Guidelines
-
-Regulatory domains (natural gas, geothermal, solar, and future domains) share the
-same requirement-row shape. Keeping field **names and semantics identical** across
-domains lets one compilation, dedup, and QA/QC path serve every domain, and lets
-analysts compare across domains.
-
-### QA/QC hardening conventions (recommended across all regulatory domains)
-
-These conventions came from live multi-model validation runs and improve
-precision/recall **without adding domain-specific runtime code**:
-
-1. **Add a row-type discriminator when rows mix different requirement kinds.**
-   - Use a canonical field like `rule_kind` (enum) to distinguish
-     `limit`, `deadline`, `duration`, `monitoring`, `equipment_standard`, etc.
-   - Include it in schema dedup keys **and** QA/QC `record_matching.key_fields`
-     in `config/&lt;domain&gt;/run.yaml` so like-for-like rows are compared.
-2. **Encode quantitative vs qualitative constraints in the schema.**
-   - Quantitative rows should require numeric semantics (`value`, `units`,
-     `value_interpretation`).
-   - Qualitative rows should force quantitative-only fields to null.
-3. **Keep schema as contract; keep QA/QC policy in config.**
-   - Schema: field shape, enums, conditional constraints, dedup identity.
-   - Config: model pair, judge model, comparison fields, matching behavior.
-4. **Treat output shape drift as a first-class validation failure.**
-   - `main_data_array` is contractually an array; if provider output drifts
-     (e.g., object-map keyed by `&quot;0&quot;`, `&quot;1&quot;`), normalize deterministically in
-     runtime and log it, then continue comparison.
-5. **Do not choose production models from agreement % alone.**
-   - Use multi-doc runs and source-grounded review of `ONLY model-x` and `DIFFER`
-     rows to determine whether misses are recall gaps or true false positives.
-
-### Canonical requirement-row fields (universal — same name in every domain)
-
-| Field | Type | Required | Axis | Notes |
-|-------|------|----------|------|-------|
-| `feature` | string (enum) | ✅ | WHAT | Domain-specific **enum values**, universal field name |
-| `specific_subject` | string \| null | | WHAT | Sub-aspect; participates in dedup key |
-| `applies_to` | string \| null | | WHAT / WHERE | Governed facility type, document&#39;s terminology |
-| `requirement_description` | string \| null | | WHAT | Obligation-free description of qualitative rows |
-| `value_category` | string | ✅ | HOW MUCH | `quantitative` / `qualitative` |
-| `value` | number \| string \| null | | HOW MUCH | Magnitude only; no units, no obligation words |
-| `value_interpretation` | string \| null | | HOW MUCH | exact / minimum / maximum / range / formula / tiered / enumerated |
-| `units` | string \| null | | HOW MUCH | Null for qualitative |
-| `range_low` | number \| null | | HOW MUCH | Lower bound when `value` is a range |
-| `range_high` | number \| null | | HOW MUCH | Upper bound when `value` is a range |
-| `obligation` | string | ✅ | HOW BINDING | Full controlled vocabulary |
-| `condition` | string \| null | | WHEN / WHERE | Situational trigger, **not** the facility type |
-| `applicable_values` | array \| null | | HOW MUCH | Enumerated interchangeable values |
-| `source_verbatim` | string \| null | | EVIDENCE | Exact quote; audit anchor |
-| `summary` | string \| null | | EVIDENCE | Paraphrase allowed (omit if domain has no summary lane) |
-| `reasoning` | string \| null | | EVIDENCE | `trigger → label`, hidden from output by default |
-| `section` | string \| null | | EVIDENCE | Ordinance / permit section reference |
-| `notes` | string \| null | | EVIDENCE | Exceptions, cross-references |
-
-### What varies per domain vs. what is universal
-
-- **Varies per domain:** the `feature` **enum values**; the domain-specific
-  **examples** inside each field description; `document_applicability` gate fields;
-  `jurisdiction` / identifier structure; `$metadata.domain` and `version`.
-- **Universal (do not rename):** every field **name** above, the
-  `value_category` / `value_interpretation` / `obligation` vocabularies (defined
-  in `properties[*].enum`), and the canonical `key_fields` / `ignore_fields` in
-  `$metadata.identity.deduplication`.
-
-### Canonical `$metadata` blocks
-
-Use the same dedup keys in every regulatory domain (vocabularies belong in `properties[*].enum`, not in `$metadata`):
-
-```json
-&quot;deduplication&quot;: {
-  &quot;key_fields&quot;: [&quot;feature&quot;, &quot;specific_subject&quot;, &quot;applies_to&quot;, &quot;value_category&quot;, &quot;value&quot;, &quot;value_interpretation&quot;, &quot;units&quot;, &quot;obligation&quot;, &quot;condition&quot;],
-  &quot;ignore_fields&quot;: [&quot;source_verbatim&quot;, &quot;summary&quot;, &quot;reasoning&quot;, &quot;notes&quot;, &quot;applicable_values&quot;, &quot;range_low&quot;, &quot;range_high&quot;]
-}
-```
-
-&gt; Jurisdiction context (state / county / subdivision) does **not** need to be in
-&gt; `key_fields` — compilation automatically groups by jurisdiction and never merges
-&gt; rows across jurisdictions. `ignore_fields` may omit `summary` for a domain that
-&gt; has no summary field.
-
-### Creating a new regulatory domain schema
-
-1. Copy an existing regulatory schema (`natural_gas_pipeline_schema.json` is the
-   reference) as a template.
-2. Replace the `feature` enum with your domain&#39;s standardized features.
-3. Update the domain-specific **examples** in `specific_subject`, `applies_to`,
-   `condition`, and `requirement_description` — keep the field names and their
-   instructive descriptions intact.
-4. Set `$metadata.domain` and bump `version`; keep the canonical
-   `key_fields` and `ignore_fields` in `$metadata.identity.deduplication` unchanged.
-5. Adjust `document_applicability` and `jurisdiction` gate fields for the domain.
-6. Validate: `pixi run psweep check-schema schemas/personal/&lt;domain&gt;_schema.json`.
-
----
-
-## Production Examples
-
-Reference these working schemas in the `schemas/` directory:
-
-### Air Quality Permits
-- **File:** `air_quality_permits_schema.json`
-- **Pattern:** Permit-based with equipment nested
-- **Main array:** `equipment`
-- **Good for:** Environmental compliance tracking
-
-### Electricity Tariffs
-- **File:** `electricity_tariff_schema.json`
-- **Pattern:** Rate schedule with charges nested
-- **Main array:** `rate_schedules`
-- **Good for:** Utility rate analysis
-
-### Geothermal Ordinances
-- **File:** `personal/geothermal_ordinance_schema.json`
-- **Pattern:** Requirements-based, 4-axis value typing
-- **Main array:** `requirements`
-- **Good for:** Regulatory compliance
-
-### Natural Gas Pipelines &amp; Compressor Stations
-- **File:** `personal/natural_gas_pipeline_schema.json`
-- **Pattern:** Requirements-based, 4-axis value typing (reference schema for new regulatory domains)
-- **Main array:** `requirements`
-- **Good for:** Regulatory compliance, cross-jurisdiction comparison
-
----
-
-## Quick Reference
-
-| Aspect | Guideline |
-|--------|-----------|
-| **`$metadata` section** | Required - extraction fails without it |
-| **`main_data_array`** | Becomes spreadsheet rows - choose entity level carefully |
-| **Nested arrays ≤15 items** | Expands to columns (good for analysis) |
-| **Nested arrays &gt;15 items** | Summarizes to text (good for context) |
-| **Field consistency** | Same fields across items → clean expansion |
-| **Distinguishing fields** | Include season/period/tier for clarity |
-| **Nesting depth** | 2-3 levels maximum for readable columns |
-| **Context objects** | Include in every row automatically |
-| **Deduplication** | Use `key_fields` to define uniqueness |
-| **Regulatory value typing** | Decompose rows on 4 axes: WHAT / HOW MUCH / HOW BINDING / WHEN·WHERE |
-| **`value_category` / `obligation`** | Required classifier fields for regulatory schemas |
-| **Cross-domain consistency** | Keep canonical field names identical across domains; vary only `feature` enums + examples |
-
----
-
-## Tips for Success
-
-1. **Start with the end in mind** - Design your schema based on how you want to analyze the data in Excel
-2. **Use production schemas as templates** - Copy and modify rather than starting from scratch
-3. **Test early and often** - Extract 1-2 documents before processing hundreds
-4. **Keep it simple** - Fewer levels of nesting = clearer outputs
-5. **Be consistent** - Same structure across all items in an array enables expansion
-6. **Include context** - Add fields that distinguish similar items (season, type, tier)
-7. **Validate first** - Use `check-schema` command before extraction
-
-**Remember:** Good schema design = good data analysis. Take time to structure your schema correctly.
+</section>
+<section id="schema-design-best-practices">
+<h1>Schema Design Best Practices<a class="headerlink" href="#schema-design-best-practices" title="Link to this heading">¶</a></h1>
+<section id="overview">
+<h2>Overview<a class="headerlink" href="#overview" title="Link to this heading">¶</a></h2>
+<p>ParseSweep v2.0+ uses a metadata-driven architecture where:</p>
+<ul class="simple">
+<li><p><strong><code class="docutils literal notranslate"><span class="pre">$metadata</span></code> section</strong> (required) defines extraction and record-identity behavior</p></li>
+<li><p><strong>Schema properties</strong> define the data structure to extract</p></li>
+<li><p>Your schema design directly determines your spreadsheet output</p></li>
+</ul>
+<p>Design schemas to match how you want to analyze the data.</p>
+<p>For authoring, use this mental model:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">Schema</span></code> (<code class="docutils literal notranslate"><span class="pre">schemas/personal/&lt;domain&gt;_schema.json</span></code>): The <strong>extraction contract</strong>. Fields, descriptions, examples, row shape, identifiers, and deduplication keys. Field-level enum values belong here (in <code class="docutils literal notranslate"><span class="pre">properties</span></code>), not in <code class="docutils literal notranslate"><span class="pre">$metadata</span></code>.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">Runtime</span> <span class="pre">config</span></code> (<code class="docutils literal notranslate"><span class="pre">config/&lt;domain&gt;/run.yaml</span></code>): <strong>Runtime behavior and presentation</strong>. Models, discovery settings, QA/QC lanes, and all compilation output settings (column order, renames, exclude_fields, default_format, freeze_columns). This file drives <em>how</em> a run behaves and <em>how</em> output looks.</p></li>
+</ul>
+<p><strong>Separation rule:</strong> <code class="docutils literal notranslate"><span class="pre">$metadata</span></code> in the schema owns <code class="docutils literal notranslate"><span class="pre">extraction.*</span></code> and <code class="docutils literal notranslate"><span class="pre">identity.deduplication</span></code> (data identity — what makes a record unique). Everything else — output formatting, normalization, synthesis, model tiers — lives only in <code class="docutils literal notranslate"><span class="pre">config/&lt;domain&gt;/run.yaml</span></code>. Output config in <code class="docutils literal notranslate"><span class="pre">$metadata</span></code> is not supported and will be rejected by <code class="docutils literal notranslate"><span class="pre">check-schema</span></code>.</p>
+</section>
+<hr class="docutils" />
+<section id="authoring-workflow">
+<h2>Authoring Workflow<a class="headerlink" href="#authoring-workflow" title="Link to this heading">¶</a></h2>
+<section id="start-with-the-schema">
+<h3>Start With the Schema<a class="headerlink" href="#start-with-the-schema" title="Link to this heading">¶</a></h3>
+<p>Most new extraction setups should begin with a schema only. That keeps iteration fast and local to one file.</p>
+<p>Add or update <code class="docutils literal notranslate"><span class="pre">config/&lt;domain&gt;/run.yaml</span></code> later if you need any of the following:</p>
+<ul class="simple">
+<li><p>shared QA/QC lanes for a domain</p></li>
+<li><p>shared compilation output settings such as column order or renames</p></li>
+<li><p>model tier assignments or discovery configuration</p></li>
+<li><p>domain-level runtime overrides you do not want to repeat on the CLI</p></li>
+</ul>
+<p>If none of those apply yet, keep the schema focused on extraction structure.</p>
+</section>
+<section id="fast-iteration-loop">
+<h3>Fast Iteration Loop<a class="headerlink" href="#fast-iteration-loop" title="Link to this heading">¶</a></h3>
+<p>Use a short loop while evolving a schema:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="c1"># 1. Validate schema structure</span>
+pixi<span class="w"> </span>run<span class="w"> </span>psweep<span class="w"> </span>check-schema<span class="w"> </span>schemas/my_schema.json
+
+<span class="c1"># 2. Extract a tiny sample</span>
+pixi<span class="w"> </span>run<span class="w"> </span>psweep<span class="w"> </span>extract<span class="w"> </span>documents/sample/<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--schema<span class="w"> </span>schemas/my_schema.json<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>-n<span class="w"> </span><span class="m">2</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--fresh
+
+<span class="c1"># 3. Consolidate the sample</span>
+pixi<span class="w"> </span>run<span class="w"> </span>psweep<span class="w"> </span>compile<span class="w"> </span>extracted/sample/<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--schema<span class="w"> </span>schemas/my_schema.json<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--verbose
+
+<span class="c1"># 4. Preview deduplication before writing outputs</span>
+pixi<span class="w"> </span>run<span class="w"> </span>psweep<span class="w"> </span>compile<span class="w"> </span>extracted/sample/<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--schema<span class="w"> </span>schemas/my_schema.json<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--dry-run<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--report-format<span class="w"> </span>json<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--fail-on-suspicious<span class="w"> </span>high
 </pre></div>
 </div>
+<p>Review after each pass:</p>
+<ul class="simple">
+<li><p>Did <code class="docutils literal notranslate"><span class="pre">main_data_array</span></code> create the right rows?</p></li>
+<li><p>Did <code class="docutils literal notranslate"><span class="pre">identifier_fields</span></code> identify the document correctly?</p></li>
+<li><p>Did your new fields extract consistently?</p></li>
+<li><p>Do <code class="docutils literal notranslate"><span class="pre">key_fields</span></code> keep distinct records separate?</p></li>
+<li><p>Does the dry-run dedup report show any merges you did not intend?</p></li>
+<li><p>Does the dry-run dedup report flag suspicious groups where non-key values disagree?</p></li>
+<li><p>Are any suspicious groups ranked <code class="docutils literal notranslate"><span class="pre">high</span></code> severity because numeric or unit fields disagree?</p></li>
+<li><p>Should the iteration loop fail automatically until those <code class="docutils literal notranslate"><span class="pre">high</span></code> severity groups are resolved?</p></li>
+<li><p>If a <code class="docutils literal notranslate"><span class="pre">run.yaml</span></code> config exists, did verbose output show the resolved config you expected?</p></li>
+</ul>
+<p>The severity ranking is schema-aware: fields declared as numeric in your schema can be ranked <code class="docutils literal notranslate"><span class="pre">high</span></code> severity even if the flattened column name is not obviously numeric.</p>
+<p>This loop is the safest way to add fields and tune descriptions without re-running a full batch.</p>
+</section>
+<section id="do-you-need-a-run-yaml-config">
+<h3>Do You Need a <code class="docutils literal notranslate"><span class="pre">run.yaml</span></code> config?<a class="headerlink" href="#do-you-need-a-run-yaml-config" title="Link to this heading">¶</a></h3>
+<p>Use this decision rule:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">No</span></code>: You are still defining fields, examples, descriptions, identifiers, or deduplication keys for one schema.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">Yes</span></code>: You want shared runtime QA/QC behavior, shared compilation presentation (column order, renames), or domain-level model/discovery settings.</p></li>
+</ul>
+<p>Keep authoring friction low by delaying <code class="docutils literal notranslate"><span class="pre">config/&lt;domain&gt;/run.yaml</span></code> until you actually need shared runtime behavior.</p>
+</section>
+</section>
+<hr class="docutils" />
+<section id="required-the-metadata-section">
+<h2>🔴 Required: The <code class="docutils literal notranslate"><span class="pre">$metadata</span></code> Section<a class="headerlink" href="#required-the-metadata-section" title="Link to this heading">¶</a></h2>
+<p>Every schema MUST include a <code class="docutils literal notranslate"><span class="pre">$metadata</span></code> section. Without it, extraction will fail:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>ERROR: Schema missing required $metadata section
+</pre></div>
 </div>
+<section id="minimal-valid-schema">
+<h3>Minimal Valid Schema<a class="headerlink" href="#minimal-valid-schema" title="Link to this heading">¶</a></h3>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;$schema&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;http://json-schema.org/draft-07/schema#&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;$metadata&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;domain&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Your Domain&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;version&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;1.0.0&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;extraction&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">      </span><span class="nt">&quot;main_data_array&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;items&quot;</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">&quot;identifier_fields&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;metadata.document_id&quot;</span><span class="p">],</span>
+<span class="w">      </span><span class="nt">&quot;context_objects&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;metadata&quot;</span><span class="p">]</span>
+<span class="w">    </span><span class="p">},</span>
+<span class="w">    </span><span class="nt">&quot;identity&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">      </span><span class="nt">&quot;deduplication&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="nt">&quot;key_fields&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;item_name&quot;</span><span class="p">],</span>
+<span class="w">        </span><span class="nt">&quot;ignore_fields&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;notes&quot;</span><span class="p">]</span>
+<span class="w">      </span><span class="p">}</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">  </span><span class="p">},</span>
+<span class="w">  </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;object&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;properties&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;metadata&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">      </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;object&quot;</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">&quot;properties&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="nt">&quot;document_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;string&quot;</span><span class="p">}</span>
+<span class="w">      </span><span class="p">}</span>
+<span class="w">    </span><span class="p">},</span>
+<span class="w">    </span><span class="nt">&quot;items&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">      </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;array&quot;</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">&quot;items&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;object&quot;</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">&quot;properties&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">          </span><span class="nt">&quot;item_name&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;string&quot;</span><span class="p">}</span>
+<span class="w">        </span><span class="p">}</span>
+<span class="w">      </span><span class="p">}</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+</section>
+<section id="complete-metadata-structure">
+<h3>Complete <code class="docutils literal notranslate"><span class="pre">$metadata</span></code> Structure<a class="headerlink" href="#complete-metadata-structure" title="Link to this heading">¶</a></h3>
+<p>This example shows the full metadata surface that belongs in the schema. All output presentation settings (<code class="docutils literal notranslate"><span class="pre">column_order</span></code>, <code class="docutils literal notranslate"><span class="pre">exclude_fields</span></code>, <code class="docutils literal notranslate"><span class="pre">column_renames</span></code>, <code class="docutils literal notranslate"><span class="pre">freeze_columns</span></code>, <code class="docutils literal notranslate"><span class="pre">auto_width</span></code>, <code class="docutils literal notranslate"><span class="pre">default_format</span></code>) and normalization settings belong in <code class="docutils literal notranslate"><span class="pre">config/&lt;domain&gt;/run.yaml</span></code> — not here.</p>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;$metadata&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;domain&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Energy - Utility Tariffs&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;version&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;1.0.0&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Extract rate schedules and charges from utility tariff documents&quot;</span><span class="p">,</span>
+<span class="w">    </span>
+<span class="w">    </span><span class="nt">&quot;extraction&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">      </span><span class="nt">&quot;main_data_array&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;rate_schedules&quot;</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">&quot;identifier_fields&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">        </span><span class="s2">&quot;utility_info.utility_name&quot;</span><span class="p">,</span>
+<span class="w">        </span><span class="s2">&quot;utility_info.state&quot;</span>
+<span class="w">      </span><span class="p">],</span>
+<span class="w">      </span><span class="nt">&quot;context_objects&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">        </span><span class="s2">&quot;utility_info&quot;</span><span class="p">,</span>
+<span class="w">        </span><span class="s2">&quot;document_applicability&quot;</span>
+<span class="w">      </span><span class="p">],</span>
+<span class="w">      </span><span class="nt">&quot;display_name_template&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;{utility_name} ({state})&quot;</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">&quot;document_type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Utility Tariff&quot;</span>
+<span class="w">    </span><span class="p">},</span>
+<span class="w">    </span>
+<span class="w">    </span><span class="nt">&quot;identity&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">      </span><span class="nt">&quot;deduplication&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="nt">&quot;key_fields&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;rate_name&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;charge_type&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;season&quot;</span><span class="p">],</span>
+<span class="w">        </span><span class="nt">&quot;ignore_fields&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;notes&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;extracted_text&quot;</span><span class="p">],</span>
+<span class="w">        </span><span class="nt">&quot;strategy&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;latest&quot;</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">&quot;comparison_mode&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;exact&quot;</span>
+<span class="w">      </span><span class="p">}</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+</section>
+<section id="required-fields">
+<h3>Required Fields<a class="headerlink" href="#required-fields" title="Link to this heading">¶</a></h3>
+<div class="table-wrapper colwidths-auto docutils container">
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Field</p></th>
+<th class="head"><p>Purpose</p></th>
+<th class="head"><p>Example</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">extraction.main_data_array</span></code></p></td>
+<td><p>Array that becomes spreadsheet rows</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;rate_schedules&quot;</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">extraction.identifier_fields</span></code></p></td>
+<td><p>Fields that identify the source document</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">[&quot;metadata.permit_id&quot;]</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">identity.deduplication.key_fields</span></code></p></td>
+<td><p>Fields that determine record uniqueness</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">[&quot;name&quot;,</span> <span class="pre">&quot;type&quot;,</span> <span class="pre">&quot;date&quot;]</span></code></p></td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+<section id="recommended-fields">
+<h3>Recommended Fields<a class="headerlink" href="#recommended-fields" title="Link to this heading">¶</a></h3>
+<div class="table-wrapper colwidths-auto docutils container">
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Field</p></th>
+<th class="head"><p>Purpose</p></th>
+<th class="head"><p>Example</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">extraction.context_objects</span></code></p></td>
+<td><p>Top-level objects with metadata</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">[&quot;metadata&quot;,</span> <span class="pre">&quot;location&quot;]</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">identity.deduplication.ignore_fields</span></code></p></td>
+<td><p>Fields to ignore when deduplicating</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">[&quot;notes&quot;,</span> <span class="pre">&quot;timestamp&quot;]</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">domain</span></code></p></td>
+<td><p>Category for organization</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;Environmental</span> <span class="pre">-</span> <span class="pre">Air</span> <span class="pre">Quality&quot;</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">version</span></code></p></td>
+<td><p>Schema version (semver)</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;2.1.0&quot;</span></code></p></td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+<section id="optional-validation-qa-qc-runtime-configuration-in-run-yaml">
+<h3>Optional: Validation (QA/QC) Runtime Configuration (in <code class="docutils literal notranslate"><span class="pre">run.yaml</span></code>)<a class="headerlink" href="#optional-validation-qa-qc-runtime-configuration-in-run-yaml" title="Link to this heading">¶</a></h3>
+<p>Validation behavior is runtime policy and belongs in the <code class="docutils literal notranslate"><span class="pre">validation</span></code> section of
+<code class="docutils literal notranslate"><span class="pre">config/&lt;domain&gt;/run.yaml</span></code> (the <code class="docutils literal notranslate"><span class="pre">validate</span></code> command reads it, mirroring how
+<code class="docutils literal notranslate"><span class="pre">compile</span></code> reads <code class="docutils literal notranslate"><span class="pre">compilation</span></code>):</p>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">validation</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">models</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">primary</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">secondary</span><span class="p p-Indicator">]</span><span class="w">      </span><span class="c1"># two model tiers to contrast</span>
+<span class="w">  </span><span class="nt">output_dir</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">validated/&lt;domain&gt;</span>
+<span class="w">  </span><span class="nt">comparison_approach</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">mixed</span><span class="w">        </span><span class="c1"># mixed | numeric_only | text_review</span>
+<span class="w">  </span><span class="nt">record_matching</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">key_fields</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">feature</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">specific_subject</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">applies_to</span><span class="p p-Indicator">]</span>
+<span class="w">    </span><span class="nt">semantic_match_threshold</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">0.38</span>
+<span class="w">  </span><span class="nt">comparison</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">primary_fields</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">value</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">units</span><span class="p p-Indicator">]</span>
+<span class="w">  </span><span class="nt">judge</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">enabled</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+<span class="w">    </span><span class="nt">model</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">judge</span>
+<span class="w">    </span><span class="nt">apply_on</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">all</span><span class="w">                   </span><span class="c1"># none | non_numeric | all</span>
+</pre></div>
+</div>
+<p>Run <code class="docutils literal notranslate"><span class="pre">pixi</span> <span class="pre">run</span> <span class="pre">psweep</span> <span class="pre">validate</span> <span class="pre">--config</span> <span class="pre">config/&lt;domain&gt;/run.yaml</span></code> so both models
+and all matching/comparison settings come from the same runtime config.</p>
+</section>
+</section>
+<hr class="docutils" />
+<section id="the-golden-rule-main-array-rows">
+<h2>The Golden Rule: Main Array = Rows<a class="headerlink" href="#the-golden-rule-main-array-rows" title="Link to this heading">¶</a></h2>
+<p>The array specified in <code class="docutils literal notranslate"><span class="pre">$metadata.extraction.main_data_array</span></code> becomes rows in your spreadsheet.</p>
+<p><strong>Example:</strong></p>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;$metadata&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;extraction&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">      </span><span class="nt">&quot;main_data_array&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;rate_schedules&quot;</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">&quot;context_objects&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;utility_info&quot;</span><span class="p">]</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">  </span><span class="p">},</span>
+<span class="w">  </span><span class="nt">&quot;utility_info&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;utility_name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Metro Electric&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;state&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;CA&quot;</span>
+<span class="w">  </span><span class="p">},</span>
+<span class="w">  </span><span class="nt">&quot;rate_schedules&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">    </span><span class="p">{</span><span class="nt">&quot;rate_name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Schedule R&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Residential&quot;</span><span class="p">},</span>
+<span class="w">    </span><span class="p">{</span><span class="nt">&quot;rate_name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Schedule C&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Commercial&quot;</span><span class="p">}</span>
+<span class="w">  </span><span class="p">]</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p><strong>Result</strong>: 2 rows in spreadsheet</p>
+<ul class="simple">
+<li><p>Row 1: Metro Electric (CA) - Schedule R - Residential</p></li>
+<li><p>Row 2: Metro Electric (CA) - Schedule C - Commercial</p></li>
+</ul>
+<p>Context objects (<code class="docutils literal notranslate"><span class="pre">utility_info</span></code>) are included in every row.</p>
+</section>
+<hr class="docutils" />
+<section id="data-structure-design">
+<h2>Data Structure Design<a class="headerlink" href="#data-structure-design" title="Link to this heading">¶</a></h2>
+<section id="nested-arrays-automatic-expansion-vs-summarization">
+<h3>Nested Arrays: Automatic Expansion vs Summarization<a class="headerlink" href="#nested-arrays-automatic-expansion-vs-summarization" title="Link to this heading">¶</a></h3>
+<p>The compiler automatically decides based on array characteristics:</p>
+<section id="expands-to-columns-best-for-analysis">
+<h4>✅ Expands to Columns (Best for Analysis)<a class="headerlink" href="#expands-to-columns-best-for-analysis" title="Link to this heading">¶</a></h4>
+<p><strong>Criteria:</strong></p>
+<ul class="simple">
+<li><p>≤15 items</p></li>
+<li><p>≤20 fields per item</p></li>
+<li><p>Consistent structure (same fields across items)</p></li>
+</ul>
+<p><strong>Example:</strong></p>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="nt">&quot;charges&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">  </span><span class="p">{</span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Customer&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;rate&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">7.10</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;unit&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;$&quot;</span><span class="p">},</span>
+<span class="w">  </span><span class="p">{</span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Energy&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;rate&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.1038</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;unit&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;$/kWh&quot;</span><span class="p">},</span>
+<span class="w">  </span><span class="p">{</span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Demand&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;rate&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">5.00</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;unit&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;$/kW&quot;</span><span class="p">}</span>
+<span class="p">]</span>
+</pre></div>
+</div>
+<p><strong>Result:</strong> Separate columns for each charge type</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">Charges</span> <span class="pre">Customer</span> <span class="pre">Rate</span></code> = 7.10</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">Charges</span> <span class="pre">Customer</span> <span class="pre">Unit</span></code> = $</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">Charges</span> <span class="pre">Energy</span> <span class="pre">Rate</span></code> = 0.1038</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">Charges</span> <span class="pre">Energy</span> <span class="pre">Unit</span></code> = $/kWh</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">Charges</span> <span class="pre">Demand</span> <span class="pre">Rate</span></code> = 5.00</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">Charges</span> <span class="pre">Demand</span> <span class="pre">Unit</span></code> = $/kW</p></li>
+</ul>
+</section>
+<section id="summarizes-to-text-best-for-context">
+<h4>✅ Summarizes to Text (Best for Context)<a class="headerlink" href="#summarizes-to-text-best-for-context" title="Link to this heading">¶</a></h4>
+<p><strong>Criteria:</strong></p>
+<ul>
+<li><blockquote>
+<div><p>15 items, OR</p>
+</div></blockquote>
+</li>
+<li><blockquote>
+<div><p>20 fields per item, OR</p>
+</div></blockquote>
+</li>
+<li><p>Inconsistent structure</p></li>
+</ul>
+<p><strong>Example:</strong></p>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="nt">&quot;permit_history&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">  </span><span class="p">{</span><span class="nt">&quot;date&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;2023-01-15&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;action&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Applied&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;officer&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;J. Smith&quot;</span><span class="p">},</span>
+<span class="w">  </span><span class="p">{</span><span class="nt">&quot;date&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;2023-02-20&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;action&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Reviewed&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;officer&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;M. Jones&quot;</span><span class="p">},</span>
+<span class="w">  </span><span class="err">...</span><span class="w"> </span><span class="mi">28</span><span class="w"> </span><span class="err">more</span><span class="w"> </span><span class="err">i</span><span class="kc">te</span><span class="err">ms</span>
+<span class="p">]</span>
+</pre></div>
+</div>
+<p><strong>Result:</strong> Single column with summary text</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">Permit</span> <span class="pre">History</span></code> = “Applied: 2023-01-15 (J. Smith); Reviewed: 2023-02-20 (M. Jones); …”</p></li>
+</ul>
+</section>
+</section>
+</section>
+<hr class="docutils" />
+<section id="design-patterns">
+<h2>Design Patterns<a class="headerlink" href="#design-patterns" title="Link to this heading">¶</a></h2>
+<section id="pattern-1-entity-based-recommended">
+<h3>Pattern 1: Entity-Based (Recommended)<a class="headerlink" href="#pattern-1-entity-based-recommended" title="Link to this heading">¶</a></h3>
+<p><strong>Best for:</strong> Most use cases where you have a clear primary entity</p>
+<p>✅ <strong>Good:</strong></p>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;$metadata&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;extraction&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">      </span><span class="nt">&quot;main_data_array&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;rate_schedules&quot;</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">&quot;context_objects&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;utility_info&quot;</span><span class="p">]</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">  </span><span class="p">},</span>
+<span class="w">  </span><span class="nt">&quot;utility_info&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;utility_name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Metro Electric&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;state&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;CA&quot;</span>
+<span class="w">  </span><span class="p">},</span>
+<span class="w">  </span><span class="nt">&quot;rate_schedules&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">    </span><span class="p">{</span>
+<span class="w">      </span><span class="nt">&quot;rate_name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Residential&quot;</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">&quot;charges&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">        </span><span class="p">{</span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Customer&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;rate&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">7.10</span><span class="p">},</span>
+<span class="w">        </span><span class="p">{</span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Energy&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;rate&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.1038</span><span class="p">}</span>
+<span class="w">      </span><span class="p">]</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">  </span><span class="p">]</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p><strong>Result:</strong> One row per rate schedule, with charges expanded as columns</p>
+<p>❌ <strong>Bad:</strong></p>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;$metadata&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;extraction&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">      </span><span class="nt">&quot;main_data_array&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;charges&quot;</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">  </span><span class="p">},</span>
+<span class="w">  </span><span class="nt">&quot;charges&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">    </span><span class="p">{</span><span class="nt">&quot;rate_name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Residential&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Customer&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;rate&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">7.10</span><span class="p">},</span>
+<span class="w">    </span><span class="p">{</span><span class="nt">&quot;rate_name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Residential&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Energy&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;rate&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.1038</span><span class="p">},</span>
+<span class="w">    </span><span class="p">{</span><span class="nt">&quot;rate_name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Commercial&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Customer&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;rate&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">9.50</span><span class="p">},</span>
+<span class="w">    </span><span class="err">...</span><span class="w"> </span><span class="mi">50</span><span class="w"> </span><span class="err">more</span><span class="w"> </span><span class="err">charges</span>
+<span class="w">  </span><span class="p">]</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p><strong>Problem:</strong> Creates 50+ rows instead of a few organized rate schedules</p>
+</section>
+<section id="pattern-2-include-distinguishing-context">
+<h3>Pattern 2: Include Distinguishing Context<a class="headerlink" href="#pattern-2-include-distinguishing-context" title="Link to this heading">¶</a></h3>
+<p>Always include fields that differentiate similar items.</p>
+<p>✅ <strong>Good:</strong></p>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Energy&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;rate&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.1038</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;season&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Summer&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;time_period&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;On-peak&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;tier&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;1&quot;</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p><strong>Result:</strong> Clear column names</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">Charges</span> <span class="pre">Energy</span> <span class="pre">Summer</span> <span class="pre">On-Peak</span> <span class="pre">Tier</span> <span class="pre">1</span> <span class="pre">Rate</span></code></p></li>
+</ul>
+<p>❌ <strong>Bad:</strong></p>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Energy&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;rate&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.1038</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p><strong>Problem:</strong> Lost context - which season? which time period?</p>
+</section>
+<section id="pattern-3-consistent-field-structure">
+<h3>Pattern 3: Consistent Field Structure<a class="headerlink" href="#pattern-3-consistent-field-structure" title="Link to this heading">¶</a></h3>
+<p>Use the same fields across all items in an array.</p>
+<p>✅ <strong>Good:</strong></p>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="nt">&quot;requirements&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">  </span><span class="p">{</span><span class="nt">&quot;category&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Setback&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;value&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1320</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;unit&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;feet&quot;</span><span class="p">},</span>
+<span class="w">  </span><span class="p">{</span><span class="nt">&quot;category&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Height&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;value&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">35</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;unit&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;feet&quot;</span><span class="p">},</span>
+<span class="w">  </span><span class="p">{</span><span class="nt">&quot;category&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Noise&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;value&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">50</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;unit&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;dBA&quot;</span><span class="p">}</span>
+<span class="p">]</span>
+</pre></div>
+</div>
+<p><strong>Result:</strong> Clean expansion with predictable columns</p>
+<p>❌ <strong>Bad:</strong></p>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="nt">&quot;requirements&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">  </span><span class="p">{</span><span class="nt">&quot;category&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Setback&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;distance&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1320</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;from&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;residence&quot;</span><span class="p">},</span>
+<span class="w">  </span><span class="p">{</span><span class="nt">&quot;category&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Height&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;max_height&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">35</span><span class="p">},</span>
+<span class="w">  </span><span class="p">{</span><span class="nt">&quot;category&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Noise&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;limit_day&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">50</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;limit_night&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">45</span><span class="p">}</span>
+<span class="p">]</span>
+</pre></div>
+</div>
+<p><strong>Problem:</strong> Inconsistent fields → forced to summarize instead of expand</p>
+</section>
+</section>
+<hr class="docutils" />
+<section id="optimization-guidelines">
+<h2>Optimization Guidelines<a class="headerlink" href="#optimization-guidelines" title="Link to this heading">¶</a></h2>
+<section id="for-quantitative-analysis">
+<h3>For Quantitative Analysis<a class="headerlink" href="#for-quantitative-analysis" title="Link to this heading">¶</a></h3>
+<p><strong>Goal:</strong> Structured, analyzable columns</p>
+<ol class="arabic simple">
+<li><p><strong>Keep nested arrays small</strong> (≤15 items)</p></li>
+<li><p><strong>Use consistent field names</strong> across all array items</p></li>
+<li><p><strong>Include distinguishing context</strong> (season, tier, period, type)</p></li>
+<li><p><strong>Separate values from units</strong></p></li>
+</ol>
+<p><strong>Example:</strong></p>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="nt">&quot;charges&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">  </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;charge_type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Energy&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;rate&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.1038</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;unit&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;$/kWh&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;season&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Summer&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;time_period&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;On-peak&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;tier&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;1&quot;</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">]</span>
+</pre></div>
+</div>
+</section>
+</section>
+<hr class="docutils" />
+<section id="temporal-metadata-best-practices">
+<h2>Temporal Metadata Best Practices<a class="headerlink" href="#temporal-metadata-best-practices" title="Link to this heading">¶</a></h2>
+<p><strong>Why it matters:</strong> Most documents have a critical time dimension - when they were enacted, when they’re effective, when they expire. Without temporal metadata, you can’t determine if data is current, track changes over time, or perform temporal analysis.</p>
+<section id="common-temporal-fields-by-document-type">
+<h3>Common Temporal Fields by Document Type<a class="headerlink" href="#common-temporal-fields-by-document-type" title="Link to this heading">¶</a></h3>
+<div class="table-wrapper colwidths-auto docutils container">
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Document Type</p></th>
+<th class="head"><p>Critical Temporal Fields</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><strong>Ordinances/Regulations</strong></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">date_adopted</span></code>, <code class="docutils literal notranslate"><span class="pre">date_effective</span></code>, <code class="docutils literal notranslate"><span class="pre">date_last_amended</span></code>, <code class="docutils literal notranslate"><span class="pre">supersedes</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p><strong>Permits</strong></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">permit_issuance_date</span></code>, <code class="docutils literal notranslate"><span class="pre">permit_expiration_date</span></code>, <code class="docutils literal notranslate"><span class="pre">renewal_date</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p><strong>Tariffs/Rate Schedules</strong></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">effective_date</span></code>, <code class="docutils literal notranslate"><span class="pre">revision_date</span></code>, <code class="docutils literal notranslate"><span class="pre">filing_date</span></code>, <code class="docutils literal notranslate"><span class="pre">supersedes</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p><strong>Journal Articles</strong></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">publication_date</span></code>, <code class="docutils literal notranslate"><span class="pre">received_date</span></code>, <code class="docutils literal notranslate"><span class="pre">revised_date</span></code>, <code class="docutils literal notranslate"><span class="pre">accepted_date</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p><strong>Financial Filings</strong></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">filing_date</span></code>, <code class="docutils literal notranslate"><span class="pre">fiscal_year_end</span></code>, <code class="docutils literal notranslate"><span class="pre">period_start</span></code>, <code class="docutils literal notranslate"><span class="pre">period_end</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p><strong>Contracts</strong></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">execution_date</span></code>, <code class="docutils literal notranslate"><span class="pre">effective_date</span></code>, <code class="docutils literal notranslate"><span class="pre">expiration_date</span></code>, <code class="docutils literal notranslate"><span class="pre">renewal_date</span></code></p></td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+<section id="design-recommendations">
+<h3>Design Recommendations<a class="headerlink" href="#design-recommendations" title="Link to this heading">¶</a></h3>
+<p><strong>1. Place in context objects</strong> - Temporal fields typically describe the document, not individual data items, so include them in context objects (metadata, jurisdiction, utility_info, etc.)</p>
+<p><strong>2. Allow as-written formats</strong> - Documents use varied date formats. Capture exactly as written for accuracy:</p>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="nt">&quot;date_adopted&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;string&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;null&quot;</span><span class="p">],</span>
+<span class="w">  </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Date adopted, exactly as written (e.g., &#39;May 17, 2013&#39;, &#39;10/6/2015&#39;)&quot;</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p><strong>3. Make fields nullable</strong> - Not all documents state all dates explicitly:</p>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;string&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;null&quot;</span><span class="p">],</span>
+<span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;... Null if not stated.&quot;</span>
+</pre></div>
+</div>
+<p><strong>4. Include in column_order</strong> - Place temporal fields early in Excel output for visibility:</p>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="nt">&quot;column_order&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">  </span><span class="s2">&quot;utility_name&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="s2">&quot;state&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="s2">&quot;effective_date&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="s2">&quot;revision_date&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="s2">&quot;rate_name&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="err">...</span>
+<span class="p">]</span>
+</pre></div>
+</div>
+<p><strong>5. Provide extraction guidance</strong> - Help the LLM find temporal information:</p>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Date the ordinance became effective, exactly as written. Look for phrases like &#39;effective date&#39;, &#39;shall become effective on&#39;, &#39;in effect as of&#39;. Null if not stated.&quot;</span>
+</pre></div>
+</div>
+</section>
+<section id="example-ordinance-schema">
+<h3>Example: Ordinance Schema<a class="headerlink" href="#example-ordinance-schema" title="Link to this heading">¶</a></h3>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;jurisdiction&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;object&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;properties&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">      </span><span class="nt">&quot;state&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;string&quot;</span><span class="p">},</span>
+<span class="w">      </span><span class="nt">&quot;county&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;string&quot;</span><span class="p">},</span>
+<span class="w">      </span><span class="nt">&quot;ordinance_code&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;string&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;null&quot;</span><span class="p">]},</span>
+<span class="w">      </span><span class="nt">&quot;date_adopted&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;string&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;null&quot;</span><span class="p">],</span>
+<span class="w">        </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Date adopted by legislative body, exactly as written (e.g., &#39;May 17, 2013&#39;). Look for &#39;adopted on&#39;, &#39;enacted on&#39;, &#39;passed on&#39;. Null if not stated.&quot;</span>
+<span class="w">      </span><span class="p">},</span>
+<span class="w">      </span><span class="nt">&quot;date_effective&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;string&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;null&quot;</span><span class="p">],</span>
+<span class="w">        </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Date became law, exactly as written. Look for &#39;effective date&#39;, &#39;shall become effective on&#39;. Null if not stated.&quot;</span>
+<span class="w">      </span><span class="p">},</span>
+<span class="w">      </span><span class="nt">&quot;date_last_amended&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;string&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;null&quot;</span><span class="p">],</span>
+<span class="w">        </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Most recent amendment date. Look for &#39;amended on&#39;, &#39;as amended&#39;, &#39;last revised&#39;. Null if not stated.&quot;</span>
+<span class="w">      </span><span class="p">},</span>
+<span class="w">      </span><span class="nt">&quot;supersedes&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;string&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;null&quot;</span><span class="p">],</span>
+<span class="w">        </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Previous ordinance this replaces. Look for &#39;replaces&#39;, &#39;supersedes&#39;, &#39;repeals and replaces&#39;. Null if not stated.&quot;</span>
+<span class="w">      </span><span class="p">}</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+</section>
+<section id="when-to-use-structured-vs-as-written-dates">
+<h3>When to Use Structured vs As-Written Dates<a class="headerlink" href="#when-to-use-structured-vs-as-written-dates" title="Link to this heading">¶</a></h3>
+<p><strong>Structured (YYYY-MM-DD):</strong></p>
+<ul class="simple">
+<li><p>✅ When dates are consistently formatted in source documents</p></li>
+<li><p>✅ When downstream analysis requires date arithmetic</p></li>
+<li><p>✅ For permits, filings with standardized formats</p></li>
+<li><p>Example: <code class="docutils literal notranslate"><span class="pre">&quot;permit_issuance_date&quot;:</span> <span class="pre">&quot;2024-01-15&quot;</span></code></p></li>
+</ul>
+<p><strong>As-Written:</strong></p>
+<ul class="simple">
+<li><p>✅ When date formats vary widely across documents</p></li>
+<li><p>✅ When preserving exact source text is important</p></li>
+<li><p>✅ For ordinances, legal documents with varied formats</p></li>
+<li><p>Example: <code class="docutils literal notranslate"><span class="pre">&quot;date_adopted&quot;:</span> <span class="pre">&quot;May</span> <span class="pre">17,</span> <span class="pre">2013&quot;</span></code></p></li>
+</ul>
+<p><strong>Hybrid Approach:</strong></p>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="nt">&quot;effective_date_raw&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;January 1st, 2024&quot;</span><span class="p">,</span>
+<span class="nt">&quot;effective_date_normalized&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;2024-01-01&quot;</span>
+</pre></div>
+</div>
+</section>
+<hr class="docutils" />
+<section id="for-qualitative-contextual-data">
+<h3>For Qualitative/Contextual Data<a class="headerlink" href="#for-qualitative-contextual-data" title="Link to this heading">¶</a></h3>
+<p><strong>Goal:</strong> Readable summaries</p>
+<ol class="arabic simple">
+<li><p><strong>Use descriptive name/type fields</strong></p></li>
+<li><p><strong>Let large arrays summarize automatically</strong></p></li>
+<li><p><strong>Include important details in text</strong></p></li>
+</ol>
+<p><strong>Example:</strong></p>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="nt">&quot;inspection_notes&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">  </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;date&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;2024-01-15&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;inspector&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;J. Smith&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;findings&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Equipment in good condition&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;action_required&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;None&quot;</span>
+<span class="w">  </span><span class="p">},</span>
+<span class="w">  </span><span class="err">...</span><span class="w"> </span><span class="err">ma</span><span class="kc">n</span><span class="err">y</span><span class="w"> </span><span class="err">more</span><span class="w"> </span><span class="kc">n</span><span class="err">o</span><span class="kc">tes</span>
+<span class="p">]</span>
+</pre></div>
+</div>
+</section>
+</section>
+<hr class="docutils" />
+<section id="common-mistakes">
+<h2>Common Mistakes<a class="headerlink" href="#common-mistakes" title="Link to this heading">¶</a></h2>
+<section id="missing-metadata-section">
+<h3>❌ Missing <code class="docutils literal notranslate"><span class="pre">$metadata</span></code> Section<a class="headerlink" href="#missing-metadata-section" title="Link to this heading">¶</a></h3>
+<p><strong>Problem:</strong> Extraction fails immediately</p>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;$schema&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;http://json-schema.org/draft-07/schema#&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;object&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;properties&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;items&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;array&quot;</span><span class="p">}</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p><strong>Error:</strong> <code class="docutils literal notranslate"><span class="pre">Schema</span> <span class="pre">missing</span> <span class="pre">required</span> <span class="pre">$metadata</span> <span class="pre">section</span></code></p>
+<p>✅ <strong>Solution:</strong> Always include complete <code class="docutils literal notranslate"><span class="pre">$metadata</span></code></p>
+</section>
+<section id="flat-structure-instead-of-nested">
+<h3>❌ Flat Structure Instead of Nested<a class="headerlink" href="#flat-structure-instead-of-nested" title="Link to this heading">¶</a></h3>
+<p><strong>Problem:</strong> Hard to extend, loses organization</p>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;rate_name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Schedule R&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;customer_charge&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">7.1</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;energy_charge_summer&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.1038</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;energy_charge_winter&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.0857</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;demand_charge_summer&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">5.0</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p>✅ <strong>Better:</strong></p>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;rate_name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Schedule R&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;charges&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">    </span><span class="p">{</span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Customer&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;rate&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">7.1</span><span class="p">},</span>
+<span class="w">    </span><span class="p">{</span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Energy&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;season&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Summer&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;rate&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.1038</span><span class="p">},</span>
+<span class="w">    </span><span class="p">{</span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Energy&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;season&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Winter&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;rate&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.0857</span><span class="p">},</span>
+<span class="w">    </span><span class="p">{</span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Demand&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;season&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Summer&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;rate&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">5.0</span><span class="p">}</span>
+<span class="w">  </span><span class="p">]</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+</section>
+<section id="excessive-nesting">
+<h3>❌ Excessive Nesting<a class="headerlink" href="#excessive-nesting" title="Link to this heading">¶</a></h3>
+<p><strong>Problem:</strong> Creates unreadable column names</p>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;rate_schedules&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">    </span><span class="p">{</span>
+<span class="w">      </span><span class="nt">&quot;details&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="nt">&quot;info&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">          </span><span class="nt">&quot;basics&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">            </span><span class="nt">&quot;rate_name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Schedule R&quot;</span>
+<span class="w">          </span><span class="p">}</span>
+<span class="w">        </span><span class="p">}</span>
+<span class="w">      </span><span class="p">}</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">  </span><span class="p">]</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p><strong>Result:</strong> <code class="docutils literal notranslate"><span class="pre">Rate</span> <span class="pre">Schedules</span> <span class="pre">Details</span> <span class="pre">Info</span> <span class="pre">Basics</span> <span class="pre">Rate</span> <span class="pre">Name</span></code> (too long!)</p>
+<p>✅ <strong>Better:</strong> Keep to 2-3 levels maximum</p>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;rate_schedules&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">    </span><span class="p">{</span>
+<span class="w">      </span><span class="nt">&quot;rate_name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Schedule R&quot;</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">&quot;effective_date&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;2024-01-01&quot;</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">  </span><span class="p">]</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+</section>
+<section id="single-item-arrays">
+<h3>❌ Single-Item Arrays<a class="headerlink" href="#single-item-arrays" title="Link to this heading">¶</a></h3>
+<p><strong>Problem:</strong> Unnecessary complexity</p>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;rate_name&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;Schedule R&quot;</span><span class="p">],</span>
+<span class="w">  </span><span class="nt">&quot;effective_date&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;2024-01-01&quot;</span><span class="p">]</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p>✅ <strong>Better:</strong> Use simple values</p>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;rate_name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Schedule R&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;effective_date&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;2024-01-01&quot;</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+</section>
+<section id="wrong-main-array-selection">
+<h3>❌ Wrong Main Array Selection<a class="headerlink" href="#wrong-main-array-selection" title="Link to this heading">¶</a></h3>
+<p><strong>Problem:</strong> Creates too many or too few rows</p>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;$metadata&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;extraction&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">      </span><span class="nt">&quot;main_data_array&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;charges&quot;</span><span class="w">  </span><span class="c1">// ❌ Too granular</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">  </span><span class="p">},</span>
+<span class="w">  </span><span class="nt">&quot;rate_schedules&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">    </span><span class="p">{</span>
+<span class="w">      </span><span class="nt">&quot;rate_name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Schedule R&quot;</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">&quot;charges&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">        </span><span class="p">{</span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Customer&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;rate&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">7.1</span><span class="p">},</span>
+<span class="w">        </span><span class="p">{</span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Energy&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;rate&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.1038</span><span class="p">},</span>
+<span class="w">        </span><span class="err">...</span><span class="w"> </span><span class="mi">20</span><span class="w"> </span><span class="err">more</span><span class="w"> </span><span class="err">charges</span>
+<span class="w">      </span><span class="p">]</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">  </span><span class="p">]</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p><strong>Result:</strong> 20+ rows per rate schedule instead of 1 row with expanded charge columns</p>
+<p>✅ <strong>Better:</strong></p>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;$metadata&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;extraction&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">      </span><span class="nt">&quot;main_data_array&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;rate_schedules&quot;</span><span class="w">  </span><span class="c1">// ✅ Right level</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+</section>
+</section>
+<hr class="docutils" />
+<section id="testing-your-schema">
+<h2>Testing Your Schema<a class="headerlink" href="#testing-your-schema" title="Link to this heading">¶</a></h2>
+<section id="validate-schema-structure">
+<h3>1. Validate Schema Structure<a class="headerlink" href="#validate-schema-structure" title="Link to this heading">¶</a></h3>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>pixi<span class="w"> </span>run<span class="w"> </span>psweep<span class="w"> </span>check-schema<span class="w"> </span>schemas/your_schema.json
+</pre></div>
+</div>
+<p>Checks for:</p>
+<ul class="simple">
+<li><p>Required <code class="docutils literal notranslate"><span class="pre">$metadata</span></code> section</p></li>
+<li><p>Valid JSONPath in identifier_fields</p></li>
+<li><p>Proper field references</p></li>
+</ul>
+</section>
+<section id="test-on-sample-documents">
+<h3>2. Test on Sample Documents<a class="headerlink" href="#test-on-sample-documents" title="Link to this heading">¶</a></h3>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="c1"># Extract 1-2 sample documents</span>
+pixi<span class="w"> </span>run<span class="w"> </span>psweep<span class="w"> </span>extract<span class="w"> </span>documents/samples/<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--schema<span class="w"> </span>schemas/your_schema.json<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--limit<span class="w"> </span><span class="m">2</span>
+
+<span class="c1"># Review JSON outputs</span>
+ls<span class="w"> </span>-la<span class="w"> </span>extracted/samples/
+cat<span class="w"> </span>extracted/samples/sample_001.json
+</pre></div>
+</div>
+<p>Check:</p>
+<ul class="simple">
+<li><p>Is the <code class="docutils literal notranslate"><span class="pre">main_data_array</span></code> populated correctly?</p></li>
+<li><p>Are nested arrays the right size?</p></li>
+<li><p>Are field names consistent?</p></li>
+</ul>
+</section>
+<section id="test-consolidation">
+<h3>3. Test Consolidation<a class="headerlink" href="#test-consolidation" title="Link to this heading">¶</a></h3>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="c1"># Consolidate to Excel/CSV</span>
+pixi<span class="w"> </span>run<span class="w"> </span>psweep<span class="w"> </span>compile<span class="w"> </span>extracted/samples/
+
+<span class="c1"># Review outputs</span>
+open<span class="w"> </span>compiled/samples/*.xlsx
+</pre></div>
+</div>
+<p>Verify:</p>
+<ul class="simple">
+<li><p>Correct number of rows</p></li>
+<li><p>Nested arrays expanded/summarized as expected</p></li>
+<li><p>Column names are clear and readable</p></li>
+<li><p>Data properly deduplicated</p></li>
+</ul>
+</section>
+<section id="iterate-and-refine">
+<h3>4. Iterate and Refine<a class="headerlink" href="#iterate-and-refine" title="Link to this heading">¶</a></h3>
+<p>Common adjustments:</p>
+<ul class="simple">
+<li><p>Change <code class="docutils literal notranslate"><span class="pre">main_data_array</span></code> to different level</p></li>
+<li><p>Adjust nested array structure</p></li>
+<li><p>Add/modify <code class="docutils literal notranslate"><span class="pre">key_fields</span></code> for better deduplication</p></li>
+<li><p>Reorganize data to reduce nesting depth</p></li>
+</ul>
+</section>
+</section>
+<hr class="docutils" />
+<section id="value-typing-and-obligation-classification">
+<h2>Value Typing and Obligation Classification<a class="headerlink" href="#value-typing-and-obligation-classification" title="Link to this heading">¶</a></h2>
+<p>Regulatory extraction schemas (ordinances, permits, tariffs) share a common
+problem: a single free-text <code class="docutils literal notranslate"><span class="pre">value</span></code> field ends up carrying <em>four different kinds
+of information at once</em> — what is regulated, how much, how binding it is, and
+under what circumstances. That overloading destroys comparability and dedup.</p>
+<p>The fix is to decompose every requirement row on <strong>four axes</strong>:</p>
+<div class="table-wrapper colwidths-auto docutils container">
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Axis</p></th>
+<th class="head"><p>Question</p></th>
+<th class="head"><p>Canonical fields</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><strong>WHAT</strong></p></td>
+<td><p>What is regulated?</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">feature</span></code> + <code class="docutils literal notranslate"><span class="pre">specific_subject</span></code> + <code class="docutils literal notranslate"><span class="pre">requirement_description</span></code> + <code class="docutils literal notranslate"><span class="pre">applies_to</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p><strong>HOW MUCH</strong></p></td>
+<td><p>What magnitude / bound?</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">value</span></code> + <code class="docutils literal notranslate"><span class="pre">value_category</span></code> + <code class="docutils literal notranslate"><span class="pre">value_interpretation</span></code> + <code class="docutils literal notranslate"><span class="pre">units</span></code> + <code class="docutils literal notranslate"><span class="pre">range_low</span></code> + <code class="docutils literal notranslate"><span class="pre">range_high</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p><strong>HOW BINDING</strong></p></td>
+<td><p>Is it mandatory?</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">obligation</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p><strong>WHEN / WHERE</strong></p></td>
+<td><p>Under what circumstance / scope?</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">condition</span></code> + <code class="docutils literal notranslate"><span class="pre">applies_to</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p><strong>EVIDENCE</strong></p></td>
+<td><p>How do we know?</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">source_verbatim</span></code> + <code class="docutils literal notranslate"><span class="pre">summary</span></code> + <code class="docutils literal notranslate"><span class="pre">reasoning</span></code> + <code class="docutils literal notranslate"><span class="pre">section</span></code></p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<section id="the-three-classification-fields">
+<h3>The three classification fields<a class="headerlink" href="#the-three-classification-fields" title="Link to this heading">¶</a></h3>
+<p><strong><code class="docutils literal notranslate"><span class="pre">value_category</span></code></strong> (required, <code class="docutils literal notranslate"><span class="pre">[&quot;quantitative&quot;,</span> <span class="pre">&quot;qualitative&quot;]</span></code>)</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">quantitative</span></code>: a measurable magnitude lives in <code class="docutils literal notranslate"><span class="pre">value</span></code> (distance, dBA, acres,
+MW, hours, %, $).</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">qualitative</span></code>: there is no magnitude; the substance lives in
+<code class="docutils literal notranslate"><span class="pre">requirement_description</span></code> (or an enumerated set in <code class="docutils literal notranslate"><span class="pre">applicable_values</span></code>), and
+<code class="docutils literal notranslate"><span class="pre">value</span></code> is null.</p></li>
+<li><p>Independent of obligation — a quantitative limit can be conditional, and a
+qualitative item can be required.</p></li>
+</ul>
+<p><strong><code class="docutils literal notranslate"><span class="pre">value_interpretation</span></code></strong> (<code class="docutils literal notranslate"><span class="pre">[&quot;exact&quot;,&quot;minimum&quot;,&quot;maximum&quot;,&quot;range&quot;,&quot;formula&quot;,&quot;tiered&quot;,&quot;enumerated&quot;,</span> <span class="pre">null]</span></code>)</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">exact</span></code> — single fixed value (“shall be 35 feet”).</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">minimum</span></code> — floor (“at least”, “no less than”).</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">maximum</span></code> — ceiling (“shall not exceed”).</p></li>
+<li><p>Coverage-radius phrasing (“show/list/include items within one mile”) is usually
+<code class="docutils literal notranslate"><span class="pre">maximum</span></code> (inside a radius cap).</p></li>
+<li><p>Separation phrasing (“no structure within 50 feet of a fault”) is usually
+<code class="docutils literal notranslate"><span class="pre">minimum</span></code> (required standoff distance).</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">range</span></code> — a span; populate <code class="docutils literal notranslate"><span class="pre">range_low</span></code> and <code class="docutils literal notranslate"><span class="pre">range_high</span></code>.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">formula</span></code> — computed (“1.1× turbine height”).</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">tiered</span></code> — value depends on a band; <strong>emit one row per tier</strong> with the band in
+<code class="docutils literal notranslate"><span class="pre">condition</span></code>.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">enumerated</span></code> — a discrete set of allowed values; use with <code class="docutils literal notranslate"><span class="pre">applicable_values</span></code>.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">null</span></code> — qualitative requirements (present / absent).</p></li>
+</ul>
+<p><strong><code class="docutils literal notranslate"><span class="pre">obligation</span></code></strong> (required, <code class="docutils literal notranslate"><span class="pre">[&quot;required&quot;,&quot;prohibited&quot;,&quot;conditional&quot;,&quot;allowed&quot;,&quot;recommended&quot;,&quot;informational&quot;]</span></code>)</p>
+<p>Classify from the governing clause, with these normalization rules:</p>
+<ul class="simple">
+<li><p>For <strong>quantitative limits/setbacks/windows</strong>, use <code class="docutils literal notranslate"><span class="pre">obligation</span> <span class="pre">=</span> <span class="pre">&quot;required&quot;</span></code> and encode direction in <code class="docutils literal notranslate"><span class="pre">value_interpretation</span></code> (<code class="docutils literal notranslate"><span class="pre">minimum</span></code> / <code class="docutils literal notranslate"><span class="pre">maximum</span></code> / <code class="docutils literal notranslate"><span class="pre">range</span></code>) even when wording is negative (“shall not exceed”, “shall not be within”).</p></li>
+<li><p>Reserve <code class="docutils literal notranslate"><span class="pre">obligation</span> <span class="pre">=</span> <span class="pre">&quot;prohibited&quot;</span></code> for <strong>qualitative bans</strong> without a measurable threshold.</p></li>
+<li><p>For permit-gated phrasing (“may be permitted only through CUP”), model the permit gate as <code class="docutils literal notranslate"><span class="pre">obligation</span> <span class="pre">=</span> <span class="pre">&quot;required&quot;</span></code> on the approval row; avoid flipping between <code class="docutils literal notranslate"><span class="pre">allowed</span></code> and <code class="docutils literal notranslate"><span class="pre">required</span></code> for the same gate.</p></li>
+</ul>
+<div class="table-wrapper colwidths-auto docutils container">
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Governing language</p></th>
+<th class="head"><p><code class="docutils literal notranslate"><span class="pre">obligation</span></code></p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>“shall”, “must”, “is required”, “no less than”</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">required</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p>“shall not”, “no person shall”, “may not”, “is not permitted”, “prohibited” (non-numeric ban)</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">prohibited</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p>“may require”, “at the discretion of”, “as a condition of approval”, “unless waived”</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">conditional</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p>“is permitted”, “may be located”, “is allowed”</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">allowed</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p>“should”, “encouraged”, “best available technology”</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">recommended</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p>definitions, procedures, measured baselines, external standards</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">informational</span></code></p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>When multiple verbs appear, precedence is:
+<code class="docutils literal notranslate"><span class="pre">prohibited</span> <span class="pre">&gt;</span> <span class="pre">required</span> <span class="pre">&gt;</span> <span class="pre">conditional</span> <span class="pre">&gt;</span> <span class="pre">recommended</span> <span class="pre">&gt;</span> <span class="pre">allowed</span> <span class="pre">&gt;</span> <span class="pre">informational</span></code>.</p>
+</section>
+<section id="llm-prompt-instructions-to-embed-in-field-descriptions">
+<h3>LLM prompt instructions to embed in field descriptions<a class="headerlink" href="#llm-prompt-instructions-to-embed-in-field-descriptions" title="Link to this heading">¶</a></h3>
+<ul class="simple">
+<li><p><strong>obligation:</strong> “Never place obligation language inside <code class="docutils literal notranslate"><span class="pre">value</span></code> or
+<code class="docutils literal notranslate"><span class="pre">requirement_description</span></code>. For quantitative rows, use <code class="docutils literal notranslate"><span class="pre">required</span></code> and encode
+direction in <code class="docutils literal notranslate"><span class="pre">value_interpretation</span></code> even if wording is negative. Reserve
+<code class="docutils literal notranslate"><span class="pre">prohibited</span></code> for qualitative bans. Cite trigger language in <code class="docutils literal notranslate"><span class="pre">reasoning</span></code>.”</p></li>
+<li><p><strong>source_verbatim:</strong> “Exact word-for-word operative clause; never paraphrase.
+If it exceeds 50 words, quote the operative head, insert ‘…’, then the tail.”</p></li>
+<li><p><strong>reasoning:</strong> “Terse <code class="docutils literal notranslate"><span class="pre">trigger</span> <span class="pre">→</span> <span class="pre">label</span></code>, ≤15 words.” e.g.
+<code class="docutils literal notranslate"><span class="pre">&quot;'may</span> <span class="pre">require'</span> <span class="pre">→</span> <span class="pre">conditional;</span> <span class="pre">no</span> <span class="pre">magnitude</span> <span class="pre">→</span> <span class="pre">qualitative&quot;</span></code>.</p></li>
+<li><p><strong>requirement_description:</strong> “No obligation language — never include shall / may
+/ must / required / prohibited.”</p></li>
+</ul>
+</section>
+<section id="anti-patterns">
+<h3>Anti-patterns<a class="headerlink" href="#anti-patterns" title="Link to this heading">¶</a></h3>
+<div class="table-wrapper colwidths-auto docutils container">
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>❌ Anti-pattern</p></th>
+<th class="head"><p>✅ Correct</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">value</span> <span class="pre">=</span> <span class="pre">&quot;shall</span> <span class="pre">not</span> <span class="pre">exceed</span> <span class="pre">55</span> <span class="pre">dBA&quot;</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">value</span> <span class="pre">=</span> <span class="pre">55</span></code>, <code class="docutils literal notranslate"><span class="pre">units</span> <span class="pre">=</span> <span class="pre">&quot;dBA&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">value_interpretation</span> <span class="pre">=</span> <span class="pre">&quot;maximum&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">obligation</span> <span class="pre">=</span> <span class="pre">&quot;required&quot;</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">value</span> <span class="pre">=</span> <span class="pre">&quot;shall</span> <span class="pre">not</span> <span class="pre">be</span> <span class="pre">within</span> <span class="pre">50</span> <span class="pre">feet</span> <span class="pre">of</span> <span class="pre">an</span> <span class="pre">active</span> <span class="pre">fault&quot;</span></code> + <code class="docutils literal notranslate"><span class="pre">obligation</span> <span class="pre">=</span> <span class="pre">&quot;prohibited&quot;</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">value</span> <span class="pre">=</span> <span class="pre">50</span></code>, <code class="docutils literal notranslate"><span class="pre">units</span> <span class="pre">=</span> <span class="pre">&quot;feet&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">value_interpretation</span> <span class="pre">=</span> <span class="pre">&quot;minimum&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">obligation</span> <span class="pre">=</span> <span class="pre">&quot;required&quot;</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">value_interpretation</span> <span class="pre">=</span> <span class="pre">&quot;exact&quot;</span></code> for <code class="docutils literal notranslate"><span class="pre">&quot;within</span> <span class="pre">one</span> <span class="pre">mile&quot;</span></code> in map/reporting scope</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">value_interpretation</span> <span class="pre">=</span> <span class="pre">&quot;maximum&quot;</span></code> (coverage radius cap)</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">value</span> <span class="pre">=</span> <span class="pre">&quot;Sound</span> <span class="pre">barriers</span> <span class="pre">may</span> <span class="pre">be</span> <span class="pre">required&quot;</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">requirement_description</span> <span class="pre">=</span> <span class="pre">&quot;Sound</span> <span class="pre">barriers&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">value_category</span> <span class="pre">=</span> <span class="pre">&quot;qualitative&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">obligation</span> <span class="pre">=</span> <span class="pre">&quot;conditional&quot;</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">requirement_description</span> <span class="pre">=</span> <span class="pre">&quot;Fencing</span> <span class="pre">is</span> <span class="pre">required&quot;</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">requirement_description</span> <span class="pre">=</span> <span class="pre">&quot;Solid</span> <span class="pre">perimeter</span> <span class="pre">fencing&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">obligation</span> <span class="pre">=</span> <span class="pre">&quot;required&quot;</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">obligation</span> <span class="pre">=</span> <span class="pre">&quot;allowed&quot;</span></code> for <code class="docutils literal notranslate"><span class="pre">&quot;...may</span> <span class="pre">be</span> <span class="pre">permitted</span> <span class="pre">only</span> <span class="pre">through</span> <span class="pre">CUP&quot;</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">obligation</span> <span class="pre">=</span> <span class="pre">&quot;required&quot;</span></code> on the permit-gate approval row</p></td>
+</tr>
+<tr class="row-even"><td><p>One row per permitted district (<code class="docutils literal notranslate"><span class="pre">AG</span></code>, <code class="docutils literal notranslate"><span class="pre">RE</span></code>, <code class="docutils literal notranslate"><span class="pre">R1</span></code>…)</p></td>
+<td><p>one row, <code class="docutils literal notranslate"><span class="pre">value_interpretation</span> <span class="pre">=</span> <span class="pre">&quot;enumerated&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">applicable_values</span> <span class="pre">=</span> <span class="pre">[&quot;AG&quot;,&quot;RE&quot;,&quot;R1&quot;]</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">applies_to</span> <span class="pre">=</span> <span class="pre">&quot;nighttime&quot;</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">condition</span> <span class="pre">=</span> <span class="pre">&quot;nighttime&quot;</span></code> (applies_to is the <em>facility type</em>, not the trigger)</p></td>
+</tr>
+<tr class="row-even"><td><p>Paraphrasing in <code class="docutils literal notranslate"><span class="pre">source_verbatim</span></code></p></td>
+<td><p>copy the clause verbatim; paraphrase only in <code class="docutils literal notranslate"><span class="pre">summary</span></code></p></td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+<section id="before-after-natural-gas-noise-limit">
+<h3>Before / after (natural gas noise limit)<a class="headerlink" href="#before-after-natural-gas-noise-limit" title="Link to this heading">¶</a></h3>
+<p>Old overloaded single field:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">value</span> <span class="o">=</span> <span class="s2">&quot;Compressor stations shall not exceed 55 dBA at night at the property line&quot;</span>
+</pre></div>
+</div>
+<p>New multi-field decomposition:</p>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;feature&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;noise&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;specific_subject&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;nighttime limit&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;applies_to&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Compressor station&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;value_category&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;quantitative&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;value&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">55</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;value_interpretation&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;maximum&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;units&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;dBA&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;obligation&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;required&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;condition&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;nighttime&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;source_verbatim&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;...shall not exceed 55 dBa...at night...at the property line.&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;reasoning&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;&#39;shall not exceed&#39; → required; number → quantitative/maximum&quot;</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+</section>
+</section>
+<hr class="docutils" />
+<section id="cross-domain-consistency-guidelines">
+<h2>Cross-Domain Consistency Guidelines<a class="headerlink" href="#cross-domain-consistency-guidelines" title="Link to this heading">¶</a></h2>
+<p>Regulatory domains (natural gas, geothermal, solar, and future domains) share the
+same requirement-row shape. Keeping field <strong>names and semantics identical</strong> across
+domains lets one compilation, dedup, and QA/QC path serve every domain, and lets
+analysts compare across domains.</p>
+<section id="qa-qc-hardening-conventions-recommended-across-all-regulatory-domains">
+<h3>QA/QC hardening conventions (recommended across all regulatory domains)<a class="headerlink" href="#qa-qc-hardening-conventions-recommended-across-all-regulatory-domains" title="Link to this heading">¶</a></h3>
+<p>These conventions came from live multi-model validation runs and improve
+precision/recall <strong>without adding domain-specific runtime code</strong>:</p>
+<ol class="arabic simple">
+<li><p><strong>Add a row-type discriminator when rows mix different requirement kinds.</strong></p>
+<ul class="simple">
+<li><p>Use a canonical field like <code class="docutils literal notranslate"><span class="pre">rule_kind</span></code> (enum) to distinguish
+<code class="docutils literal notranslate"><span class="pre">limit</span></code>, <code class="docutils literal notranslate"><span class="pre">deadline</span></code>, <code class="docutils literal notranslate"><span class="pre">duration</span></code>, <code class="docutils literal notranslate"><span class="pre">monitoring</span></code>, <code class="docutils literal notranslate"><span class="pre">equipment_standard</span></code>, etc.</p></li>
+<li><p>Include it in schema dedup keys <strong>and</strong> QA/QC <code class="docutils literal notranslate"><span class="pre">record_matching.key_fields</span></code>
+in <code class="docutils literal notranslate"><span class="pre">config/&lt;domain&gt;/run.yaml</span></code> so like-for-like rows are compared.</p></li>
+</ul>
+</li>
+<li><p><strong>Encode quantitative vs qualitative constraints in the schema.</strong></p>
+<ul class="simple">
+<li><p>Quantitative rows should require numeric semantics (<code class="docutils literal notranslate"><span class="pre">value</span></code>, <code class="docutils literal notranslate"><span class="pre">units</span></code>,
+<code class="docutils literal notranslate"><span class="pre">value_interpretation</span></code>).</p></li>
+<li><p>Qualitative rows should force quantitative-only fields to null.</p></li>
+</ul>
+</li>
+<li><p><strong>Keep schema as contract; keep QA/QC policy in config.</strong></p>
+<ul class="simple">
+<li><p>Schema: field shape, enums, conditional constraints, dedup identity.</p></li>
+<li><p>Config: model pair, judge model, comparison fields, matching behavior.</p></li>
+</ul>
+</li>
+<li><p><strong>Treat output shape drift as a first-class validation failure.</strong></p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">main_data_array</span></code> is contractually an array; if provider output drifts
+(e.g., object-map keyed by <code class="docutils literal notranslate"><span class="pre">&quot;0&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">&quot;1&quot;</span></code>), normalize deterministically in
+runtime and log it, then continue comparison.</p></li>
+</ul>
+</li>
+<li><p><strong>Do not choose production models from agreement % alone.</strong></p>
+<ul class="simple">
+<li><p>Use multi-doc runs and source-grounded review of <code class="docutils literal notranslate"><span class="pre">ONLY</span> <span class="pre">model-x</span></code> and <code class="docutils literal notranslate"><span class="pre">DIFFER</span></code>
+rows to determine whether misses are recall gaps or true false positives.</p></li>
+</ul>
+</li>
+</ol>
+</section>
+<section id="canonical-requirement-row-fields-universal-same-name-in-every-domain">
+<h3>Canonical requirement-row fields (universal — same name in every domain)<a class="headerlink" href="#canonical-requirement-row-fields-universal-same-name-in-every-domain" title="Link to this heading">¶</a></h3>
+<div class="table-wrapper colwidths-auto docutils container">
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Field</p></th>
+<th class="head"><p>Type</p></th>
+<th class="head"><p>Required</p></th>
+<th class="head"><p>Axis</p></th>
+<th class="head"><p>Notes</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">feature</span></code></p></td>
+<td><p>string (enum)</p></td>
+<td><p>✅</p></td>
+<td><p>WHAT</p></td>
+<td><p>Domain-specific <strong>enum values</strong>, universal field name</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">specific_subject</span></code></p></td>
+<td><p>string | null</p></td>
+<td><p></p></td>
+<td><p>WHAT</p></td>
+<td><p>Sub-aspect; participates in dedup key</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">applies_to</span></code></p></td>
+<td><p>string | null</p></td>
+<td><p></p></td>
+<td><p>WHAT / WHERE</p></td>
+<td><p>Governed facility type, document’s terminology</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">requirement_description</span></code></p></td>
+<td><p>string | null</p></td>
+<td><p></p></td>
+<td><p>WHAT</p></td>
+<td><p>Obligation-free description of qualitative rows</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">value_category</span></code></p></td>
+<td><p>string</p></td>
+<td><p>✅</p></td>
+<td><p>HOW MUCH</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">quantitative</span></code> / <code class="docutils literal notranslate"><span class="pre">qualitative</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">value</span></code></p></td>
+<td><p>number | string | null</p></td>
+<td><p></p></td>
+<td><p>HOW MUCH</p></td>
+<td><p>Magnitude only; no units, no obligation words</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">value_interpretation</span></code></p></td>
+<td><p>string | null</p></td>
+<td><p></p></td>
+<td><p>HOW MUCH</p></td>
+<td><p>exact / minimum / maximum / range / formula / tiered / enumerated</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">units</span></code></p></td>
+<td><p>string | null</p></td>
+<td><p></p></td>
+<td><p>HOW MUCH</p></td>
+<td><p>Null for qualitative</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">range_low</span></code></p></td>
+<td><p>number | null</p></td>
+<td><p></p></td>
+<td><p>HOW MUCH</p></td>
+<td><p>Lower bound when <code class="docutils literal notranslate"><span class="pre">value</span></code> is a range</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">range_high</span></code></p></td>
+<td><p>number | null</p></td>
+<td><p></p></td>
+<td><p>HOW MUCH</p></td>
+<td><p>Upper bound when <code class="docutils literal notranslate"><span class="pre">value</span></code> is a range</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">obligation</span></code></p></td>
+<td><p>string</p></td>
+<td><p>✅</p></td>
+<td><p>HOW BINDING</p></td>
+<td><p>Full controlled vocabulary</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">condition</span></code></p></td>
+<td><p>string | null</p></td>
+<td><p></p></td>
+<td><p>WHEN / WHERE</p></td>
+<td><p>Situational trigger, <strong>not</strong> the facility type</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">applicable_values</span></code></p></td>
+<td><p>array | null</p></td>
+<td><p></p></td>
+<td><p>HOW MUCH</p></td>
+<td><p>Enumerated interchangeable values</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">source_verbatim</span></code></p></td>
+<td><p>string | null</p></td>
+<td><p></p></td>
+<td><p>EVIDENCE</p></td>
+<td><p>Exact quote; audit anchor</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">summary</span></code></p></td>
+<td><p>string | null</p></td>
+<td><p></p></td>
+<td><p>EVIDENCE</p></td>
+<td><p>Paraphrase allowed (omit if domain has no summary lane)</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">reasoning</span></code></p></td>
+<td><p>string | null</p></td>
+<td><p></p></td>
+<td><p>EVIDENCE</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">trigger</span> <span class="pre">→</span> <span class="pre">label</span></code>, hidden from output by default</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">section</span></code></p></td>
+<td><p>string | null</p></td>
+<td><p></p></td>
+<td><p>EVIDENCE</p></td>
+<td><p>Ordinance / permit section reference</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">notes</span></code></p></td>
+<td><p>string | null</p></td>
+<td><p></p></td>
+<td><p>EVIDENCE</p></td>
+<td><p>Exceptions, cross-references</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+<section id="what-varies-per-domain-vs-what-is-universal">
+<h3>What varies per domain vs. what is universal<a class="headerlink" href="#what-varies-per-domain-vs-what-is-universal" title="Link to this heading">¶</a></h3>
+<ul class="simple">
+<li><p><strong>Varies per domain:</strong> the <code class="docutils literal notranslate"><span class="pre">feature</span></code> <strong>enum values</strong>; the domain-specific
+<strong>examples</strong> inside each field description; <code class="docutils literal notranslate"><span class="pre">document_applicability</span></code> gate fields;
+<code class="docutils literal notranslate"><span class="pre">jurisdiction</span></code> / identifier structure; <code class="docutils literal notranslate"><span class="pre">$metadata.domain</span></code> and <code class="docutils literal notranslate"><span class="pre">version</span></code>.</p></li>
+<li><p><strong>Universal (do not rename):</strong> every field <strong>name</strong> above, the
+<code class="docutils literal notranslate"><span class="pre">value_category</span></code> / <code class="docutils literal notranslate"><span class="pre">value_interpretation</span></code> / <code class="docutils literal notranslate"><span class="pre">obligation</span></code> vocabularies (defined
+in <code class="docutils literal notranslate"><span class="pre">properties[*].enum</span></code>), and the canonical <code class="docutils literal notranslate"><span class="pre">key_fields</span></code> / <code class="docutils literal notranslate"><span class="pre">ignore_fields</span></code> in
+<code class="docutils literal notranslate"><span class="pre">$metadata.identity.deduplication</span></code>.</p></li>
+</ul>
+</section>
+<section id="canonical-metadata-blocks">
+<h3>Canonical <code class="docutils literal notranslate"><span class="pre">$metadata</span></code> blocks<a class="headerlink" href="#canonical-metadata-blocks" title="Link to this heading">¶</a></h3>
+<p>Use the same dedup keys in every regulatory domain (vocabularies belong in <code class="docutils literal notranslate"><span class="pre">properties[*].enum</span></code>, not in <code class="docutils literal notranslate"><span class="pre">$metadata</span></code>):</p>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="nt">&quot;deduplication&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;key_fields&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;feature&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;specific_subject&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;applies_to&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;value_category&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;value&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;value_interpretation&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;units&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;obligation&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;condition&quot;</span><span class="p">],</span>
+<span class="w">  </span><span class="nt">&quot;ignore_fields&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;source_verbatim&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;summary&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;reasoning&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;notes&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;applicable_values&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;range_low&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;range_high&quot;</span><span class="p">]</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<blockquote>
+<div><p>Jurisdiction context (state / county / subdivision) does <strong>not</strong> need to be in
+<code class="docutils literal notranslate"><span class="pre">key_fields</span></code> — compilation automatically groups by jurisdiction and never merges
+rows across jurisdictions. <code class="docutils literal notranslate"><span class="pre">ignore_fields</span></code> may omit <code class="docutils literal notranslate"><span class="pre">summary</span></code> for a domain that
+has no summary field.</p>
+</div></blockquote>
+</section>
+<section id="creating-a-new-regulatory-domain-schema">
+<h3>Creating a new regulatory domain schema<a class="headerlink" href="#creating-a-new-regulatory-domain-schema" title="Link to this heading">¶</a></h3>
+<ol class="arabic simple">
+<li><p>Copy an existing regulatory schema (<code class="docutils literal notranslate"><span class="pre">natural_gas_pipeline_schema.json</span></code> is the
+reference) as a template.</p></li>
+<li><p>Replace the <code class="docutils literal notranslate"><span class="pre">feature</span></code> enum with your domain’s standardized features.</p></li>
+<li><p>Update the domain-specific <strong>examples</strong> in <code class="docutils literal notranslate"><span class="pre">specific_subject</span></code>, <code class="docutils literal notranslate"><span class="pre">applies_to</span></code>,
+<code class="docutils literal notranslate"><span class="pre">condition</span></code>, and <code class="docutils literal notranslate"><span class="pre">requirement_description</span></code> — keep the field names and their
+instructive descriptions intact.</p></li>
+<li><p>Set <code class="docutils literal notranslate"><span class="pre">$metadata.domain</span></code> and bump <code class="docutils literal notranslate"><span class="pre">version</span></code>; keep the canonical
+<code class="docutils literal notranslate"><span class="pre">key_fields</span></code> and <code class="docutils literal notranslate"><span class="pre">ignore_fields</span></code> in <code class="docutils literal notranslate"><span class="pre">$metadata.identity.deduplication</span></code> unchanged.</p></li>
+<li><p>Adjust <code class="docutils literal notranslate"><span class="pre">document_applicability</span></code> and <code class="docutils literal notranslate"><span class="pre">jurisdiction</span></code> gate fields for the domain.</p></li>
+<li><p>Validate: <code class="docutils literal notranslate"><span class="pre">pixi</span> <span class="pre">run</span> <span class="pre">psweep</span> <span class="pre">check-schema</span> <span class="pre">schemas/personal/&lt;domain&gt;_schema.json</span></code>.</p></li>
+</ol>
+</section>
+</section>
+<hr class="docutils" />
+<section id="production-examples">
+<h2>Production Examples<a class="headerlink" href="#production-examples" title="Link to this heading">¶</a></h2>
+<p>Reference these working schemas in the <code class="docutils literal notranslate"><span class="pre">schemas/</span></code> directory:</p>
+<section id="air-quality-permits">
+<h3>Air Quality Permits<a class="headerlink" href="#air-quality-permits" title="Link to this heading">¶</a></h3>
+<ul class="simple">
+<li><p><strong>File:</strong> <code class="docutils literal notranslate"><span class="pre">air_quality_permits_schema.json</span></code></p></li>
+<li><p><strong>Pattern:</strong> Permit-based with equipment nested</p></li>
+<li><p><strong>Main array:</strong> <code class="docutils literal notranslate"><span class="pre">equipment</span></code></p></li>
+<li><p><strong>Good for:</strong> Environmental compliance tracking</p></li>
+</ul>
+</section>
+<section id="electricity-tariffs">
+<h3>Electricity Tariffs<a class="headerlink" href="#electricity-tariffs" title="Link to this heading">¶</a></h3>
+<ul class="simple">
+<li><p><strong>File:</strong> <code class="docutils literal notranslate"><span class="pre">electricity_tariff_schema.json</span></code></p></li>
+<li><p><strong>Pattern:</strong> Rate schedule with charges nested</p></li>
+<li><p><strong>Main array:</strong> <code class="docutils literal notranslate"><span class="pre">rate_schedules</span></code></p></li>
+<li><p><strong>Good for:</strong> Utility rate analysis</p></li>
+</ul>
+</section>
+<section id="geothermal-ordinances">
+<h3>Geothermal Ordinances<a class="headerlink" href="#geothermal-ordinances" title="Link to this heading">¶</a></h3>
+<ul class="simple">
+<li><p><strong>File:</strong> <code class="docutils literal notranslate"><span class="pre">personal/geothermal_ordinance_schema.json</span></code></p></li>
+<li><p><strong>Pattern:</strong> Requirements-based, 4-axis value typing</p></li>
+<li><p><strong>Main array:</strong> <code class="docutils literal notranslate"><span class="pre">requirements</span></code></p></li>
+<li><p><strong>Good for:</strong> Regulatory compliance</p></li>
+</ul>
+</section>
+<section id="natural-gas-pipelines-compressor-stations">
+<h3>Natural Gas Pipelines &amp; Compressor Stations<a class="headerlink" href="#natural-gas-pipelines-compressor-stations" title="Link to this heading">¶</a></h3>
+<ul class="simple">
+<li><p><strong>File:</strong> <code class="docutils literal notranslate"><span class="pre">personal/natural_gas_pipeline_schema.json</span></code></p></li>
+<li><p><strong>Pattern:</strong> Requirements-based, 4-axis value typing (reference schema for new regulatory domains)</p></li>
+<li><p><strong>Main array:</strong> <code class="docutils literal notranslate"><span class="pre">requirements</span></code></p></li>
+<li><p><strong>Good for:</strong> Regulatory compliance, cross-jurisdiction comparison</p></li>
+</ul>
+</section>
+</section>
+<hr class="docutils" />
+<section id="quick-reference">
+<h2>Quick Reference<a class="headerlink" href="#quick-reference" title="Link to this heading">¶</a></h2>
+<div class="table-wrapper colwidths-auto docutils container">
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Aspect</p></th>
+<th class="head"><p>Guideline</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><strong><code class="docutils literal notranslate"><span class="pre">$metadata</span></code> section</strong></p></td>
+<td><p>Required - extraction fails without it</p></td>
+</tr>
+<tr class="row-odd"><td><p><strong><code class="docutils literal notranslate"><span class="pre">main_data_array</span></code></strong></p></td>
+<td><p>Becomes spreadsheet rows - choose entity level carefully</p></td>
+</tr>
+<tr class="row-even"><td><p><strong>Nested arrays ≤15 items</strong></p></td>
+<td><p>Expands to columns (good for analysis)</p></td>
+</tr>
+<tr class="row-odd"><td><p><strong>Nested arrays &gt;15 items</strong></p></td>
+<td><p>Summarizes to text (good for context)</p></td>
+</tr>
+<tr class="row-even"><td><p><strong>Field consistency</strong></p></td>
+<td><p>Same fields across items → clean expansion</p></td>
+</tr>
+<tr class="row-odd"><td><p><strong>Distinguishing fields</strong></p></td>
+<td><p>Include season/period/tier for clarity</p></td>
+</tr>
+<tr class="row-even"><td><p><strong>Nesting depth</strong></p></td>
+<td><p>2-3 levels maximum for readable columns</p></td>
+</tr>
+<tr class="row-odd"><td><p><strong>Context objects</strong></p></td>
+<td><p>Include in every row automatically</p></td>
+</tr>
+<tr class="row-even"><td><p><strong>Deduplication</strong></p></td>
+<td><p>Use <code class="docutils literal notranslate"><span class="pre">key_fields</span></code> to define uniqueness</p></td>
+</tr>
+<tr class="row-odd"><td><p><strong>Regulatory value typing</strong></p></td>
+<td><p>Decompose rows on 4 axes: WHAT / HOW MUCH / HOW BINDING / WHEN·WHERE</p></td>
+</tr>
+<tr class="row-even"><td><p><strong><code class="docutils literal notranslate"><span class="pre">value_category</span></code> / <code class="docutils literal notranslate"><span class="pre">obligation</span></code></strong></p></td>
+<td><p>Required classifier fields for regulatory schemas</p></td>
+</tr>
+<tr class="row-odd"><td><p><strong>Cross-domain consistency</strong></p></td>
+<td><p>Keep canonical field names identical across domains; vary only <code class="docutils literal notranslate"><span class="pre">feature</span></code> enums + examples</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+<hr class="docutils" />
+<section id="tips-for-success">
+<h2>Tips for Success<a class="headerlink" href="#tips-for-success" title="Link to this heading">¶</a></h2>
+<ol class="arabic simple">
+<li><p><strong>Start with the end in mind</strong> - Design your schema based on how you want to analyze the data in Excel</p></li>
+<li><p><strong>Use production schemas as templates</strong> - Copy and modify rather than starting from scratch</p></li>
+<li><p><strong>Test early and often</strong> - Extract 1-2 documents before processing hundreds</p></li>
+<li><p><strong>Keep it simple</strong> - Fewer levels of nesting = clearer outputs</p></li>
+<li><p><strong>Be consistent</strong> - Same structure across all items in an array enables expansion</p></li>
+<li><p><strong>Include context</strong> - Add fields that distinguish similar items (season, type, tier)</p></li>
+<li><p><strong>Validate first</strong> - Use <code class="docutils literal notranslate"><span class="pre">check-schema</span></code> command before extraction</p></li>
+</ol>
+<p><strong>Remember:</strong> Good schema design = good data analysis. Take time to structure your schema correctly.</p>
+</section>
 </section>
 
         </article>
@@ -1376,23 +1663,23 @@ Reference these working schemas in the `schemas/` directory:
       <footer>
         
         <div class="related-pages">
-          <a class="next-page" href="../autoapi/index.html">
+          <a class="next-page" href="../changelog.html">
               <div class="page-info">
                 <div class="context">
                   <span>Next</span>
                 </div>
-                <div class="title">API Reference</div>
+                <div class="title">Changelog</div>
               </div>
               <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
             </a>
-          <a class="prev-page" href="../config-reference.html">
+          <a class="prev-page" href="../tuning.html">
               <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
               <div class="page-info">
                 <div class="context">
                   <span>Previous</span>
                 </div>
                 
-                <div class="title">Configuration Reference</div>
+                <div class="title">Tuning &amp; Iteration</div>
                 
               </div>
             </a>
@@ -1408,7 +1695,10 @@ Reference these working schemas in the `schemas/` directory:
             
           </div>
           <div class="right-details">
-            
+            <div class="icons">
+              <a class="muted-link " href="https://github.com/bpulluta/parsesweep" aria-label="GitHub"><svg stroke="currentColor" fill="currentColor" stroke-width="0" viewBox="0 0 16 16" width="1em" height="1em"><path fill-rule="evenodd" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg></a>
+              
+            </div>
           </div>
         </div>
         
@@ -1425,6 +1715,6 @@ Reference these working schemas in the `schemas/` directory:
     <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="../_static/scripts/furo.js?v=46bd48cc"></script>
     <script src="../_static/clipboard.min.js?v=a7894cd8"></script>
-    <script src="../_static/copybutton.js?v=f281be69"></script>
+    <script src="../_static/copybutton.js?v=a5fa425f"></script>
     </body>
 </html>

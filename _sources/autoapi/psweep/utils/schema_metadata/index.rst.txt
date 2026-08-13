@@ -14,16 +14,6 @@ psweep.utils.schema_metadata
 
 
 
-Attributes
-----------
-
-.. autoapisummary::
-
-   psweep.utils.schema_metadata.HIGH_SEVERITY_TOKENS
-   psweep.utils.schema_metadata.MEDIUM_SEVERITY_TOKENS
-   psweep.utils.schema_metadata.logger
-
-
 Classes
 -------
 
@@ -227,19 +217,4 @@ Module Contents
       Check if schema includes metadata section.
 
 
-
-   .. py:attribute:: metadata
-
-
-   .. py:attribute:: schema
-
-
-   .. py:attribute:: schema_path
-
-
-.. py:data:: HIGH_SEVERITY_TOKENS
-
-.. py:data:: MEDIUM_SEVERITY_TOKENS
-
-.. py:data:: logger
 

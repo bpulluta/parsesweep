@@ -18,14 +18,6 @@ psweep.validation.utils
 
 
 
-Attributes
-----------
-
-.. autoapisummary::
-
-   psweep.validation.utils.logger
-
-
 Functions
 ---------
 
@@ -60,6 +52,4 @@ Module Contents
    :returns: Sanitized name safe for filenames
    :rtype: str
 
-
-.. py:data:: logger
 

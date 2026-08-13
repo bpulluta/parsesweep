@@ -5,13 +5,14 @@
     <meta name="color-scheme" content="light dark"><meta name="viewport" content="width=device-width, initial-scale=1" />
 <link rel="index" title="Index" href="../../../../genindex.html"><link rel="search" title="Search" href="../../../../search.html"><link rel="next" title="psweep.extraction.document_utils" href="../document_utils/index.html"><link rel="prev" title="psweep.extraction" href="../index.html">
 
-    <!-- Generated with Sphinx 9.1.0 and Furo 2025.12.19 -->
+    <link rel="shortcut icon" href="../../../../_static/favicon.svg"><!-- Generated with Sphinx 9.1.0 and Furo 2025.12.19 -->
         <title>psweep.extraction.document_extractor - ParseSweep 2.0.1</title>
       <link rel="stylesheet" type="text/css" href="../../../../_static/pygments.css?v=d111a655" />
     <link rel="stylesheet" type="text/css" href="../../../../_static/styles/furo.css?v=7bdb33bb" />
     <link rel="stylesheet" type="text/css" href="../../../../_static/graphviz.css?v=4ae1632d" />
     <link rel="stylesheet" type="text/css" href="../../../../_static/copybutton.css?v=76b2166b" />
     <link rel="stylesheet" type="text/css" href="../../../../_static/styles/furo-extensions.css?v=8dab3a3b" />
+    <link rel="stylesheet" type="text/css" href="../../../../_static/custom.css?v=579eeedf" />
     
     
 
@@ -20,18 +21,24 @@
   body {
     --color-code-background: #f2f2f2;
   --color-code-foreground: #1e1e1e;
+  --color-brand-primary: #0f766e;
+  --color-brand-content: #0e7490;
   
   }
   @media not print {
     body[data-theme="dark"] {
       --color-code-background: #202020;
   --color-code-foreground: #d0d0d0;
+  --color-brand-primary: #5eead4;
+  --color-brand-content: #2dd4bf;
   
     }
     @media (prefers-color-scheme: dark) {
       body:not([data-theme="light"]) {
         --color-code-background: #202020;
   --color-code-foreground: #d0d0d0;
+  --color-brand-primary: #5eead4;
+  --color-brand-content: #2dd4bf;
   
       }
     }
@@ -197,9 +204,16 @@
 <li class="toctree-l1"><a class="reference internal" href="../../../../getting-started.html">Getting Started</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../../commands/index.html">Command Reference</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../../config-reference.html">Configuration Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../tuning.html">Tuning &amp; Iteration</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../../schemas/index.html">Schema Authoring</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../schemas/index.html#schema-design-best-practices">Schema Design Best Practices</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Reference</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../changelog.html">Changelog</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../contributing.html">Contributing</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">API</span></p>
 <ul class="current">
 <li class="toctree-l1 current has-children"><a class="reference internal" href="../../../index.html">API Reference</a><input aria-label="Toggle navigation of API Reference" checked="" class="toctree-checkbox" id="toctree-checkbox-1" name="toctree-checkbox-1" role="switch" type="checkbox"/><label for="toctree-checkbox-1"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul class="current">
 <li class="toctree-l2 current has-children"><a class="reference internal" href="../../index.html">psweep</a><input aria-label="Toggle navigation of psweep" checked="" class="toctree-checkbox" id="toctree-checkbox-2" name="toctree-checkbox-2" role="switch" type="checkbox"/><label for="toctree-checkbox-2"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul class="current">
@@ -287,8 +301,6 @@
 </li>
 </ul>
 </li>
-<li class="toctree-l1"><a class="reference internal" href="../../../../changelog.html">Changelog</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../../contributing.html">Contributing</a></li>
 </ul>
 
 </div>
@@ -309,12 +321,16 @@
         </a>
         <div class="content-icon-container">
           <div class="view-this-page">
-  <a class="muted-link" href="../../../../_sources/autoapi/psweep/extraction/document_extractor/index.rst.txt" title="View this page">
+  <a class="muted-link" href="https://github.com/bpulluta/parsesweep/blob/main/docs/autoapi/psweep/extraction/document_extractor/index.rst?plain=true" title="View this page">
     <svg><use href="#svg-eye"></use></svg>
     <span class="visually-hidden">View this page</span>
   </a>
-</div>
-<div class="theme-toggle-container theme-toggle-content">
+</div><div class="edit-this-page">
+  <a class="muted-link" href="https://github.com/bpulluta/parsesweep/edit/main/docs/autoapi/psweep/extraction/document_extractor/index.rst" rel="edit" title="Edit this page">
+    <svg><use href="#svg-pencil"></use></svg>
+    <span class="visually-hidden">Edit this page</span>
+  </a>
+</div><div class="theme-toggle-container theme-toggle-content">
             <button class="theme-toggle" aria-label="Toggle Light / Dark / Auto color theme">
               <svg class="theme-icon-when-auto-light"><use href="#svg-sun-with-moon"></use></svg>
               <svg class="theme-icon-when-auto-dark"><use href="#svg-moon-with-sun"></use></svg>
@@ -338,18 +354,6 @@
 <p>Supports any document type with a defined JSON schema - fully domain-agnostic.</p>
 <p>Cost: ~$0.002-0.004 per document (varies by length and model)
 Accuracy: 90%+ on validation set</p>
-<section id="attributes">
-<h2>Attributes<a class="headerlink" href="#attributes" title="Link to this heading">¶</a></h2>
-<div class="table-wrapper autosummary longtable docutils container">
-<table class="autosummary longtable docutils align-default">
-<tbody>
-<tr class="row-odd"><td><p><a class="reference internal" href="#psweep.extraction.document_extractor.logger" title="psweep.extraction.document_extractor.logger"><code class="xref py py-obj docutils literal notranslate"><span class="pre">logger</span></code></a></p></td>
-<td><p></p></td>
-</tr>
-</tbody>
-</table>
-</div>
-</section>
 <section id="classes">
 <h2>Classes<a class="headerlink" href="#classes" title="Link to this heading">¶</a></h2>
 <div class="table-wrapper autosummary longtable docutils container">
@@ -369,7 +373,7 @@ Accuracy: 90%+ on validation set</p>
 <h2>Module Contents<a class="headerlink" href="#module-contents" title="Link to this heading">¶</a></h2>
 <dl class="py class">
 <dt class="sig sig-object py" id="psweep.extraction.document_extractor.DocumentExtractor">
-<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">psweep.extraction.document_extractor.</span></span><span class="sig-name descname"><span class="pre">DocumentExtractor</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">api_key</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">model</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">DEFAULT_MODEL</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_context_chars</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">400000</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">schema_metadata</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">provider</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">azure_endpoint</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">azure_api_version</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">context_windows</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">int</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">base_url</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">timeout</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#psweep.extraction.document_extractor.DocumentExtractor" title="Link to this definition">¶</a></dt>
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">psweep.extraction.document_extractor.</span></span><span class="sig-name descname"><span class="pre">DocumentExtractor</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">api_key</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">model</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">DEFAULT_MODEL</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_context_chars</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">DEFAULT_MAX_CONTEXT</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">schema_metadata</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">provider</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">azure_endpoint</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">azure_api_version</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">context_windows</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">int</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">base_url</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">timeout</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#psweep.extraction.document_extractor.DocumentExtractor" title="Link to this definition">¶</a></dt>
 <dd><p>Universal document extractor with traceability and configurable context.</p>
 <p>Architecture:</p>
 <ol class="arabic simple">
@@ -452,88 +456,13 @@ uses LLM_TIMEOUT env var or its default timeout.</p></li>
 </div>
 </dd></dl>
 
-<dl class="py attribute">
-<dt class="sig sig-object py" id="psweep.extraction.document_extractor.DocumentExtractor.api_key">
-<span class="sig-name descname"><span class="pre">api_key</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></span><a class="headerlink" href="#psweep.extraction.document_extractor.DocumentExtractor.api_key" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="psweep.extraction.document_extractor.DocumentExtractor.client">
-<span class="sig-name descname"><span class="pre">client</span></span><a class="headerlink" href="#psweep.extraction.document_extractor.DocumentExtractor.client" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="psweep.extraction.document_extractor.DocumentExtractor.max_context_chars">
-<span class="sig-name descname"><span class="pre">max_context_chars</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">400000</span></span><a class="headerlink" href="#psweep.extraction.document_extractor.DocumentExtractor.max_context_chars" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="psweep.extraction.document_extractor.DocumentExtractor.model">
-<span class="sig-name descname"><span class="pre">model</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'gpt-4o-mini'</span></span><a class="headerlink" href="#psweep.extraction.document_extractor.DocumentExtractor.model" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="psweep.extraction.document_extractor.DocumentExtractor.processor">
-<span class="sig-name descname"><span class="pre">processor</span></span><a class="headerlink" href="#psweep.extraction.document_extractor.DocumentExtractor.processor" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="psweep.extraction.document_extractor.DocumentExtractor.schema_metadata">
-<span class="sig-name descname"><span class="pre">schema_metadata</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></span><a class="headerlink" href="#psweep.extraction.document_extractor.DocumentExtractor.schema_metadata" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
-
 </dd></dl>
 
 <dl class="py class">
 <dt class="sig sig-object py" id="psweep.extraction.document_extractor.ExtractionResult">
 <span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">psweep.extraction.document_extractor.</span></span><span class="sig-name descname"><span class="pre">ExtractionResult</span></span><a class="headerlink" href="#psweep.extraction.document_extractor.ExtractionResult" title="Link to this definition">¶</a></dt>
 <dd><p>Result from document extraction.</p>
-<dl class="py attribute">
-<dt class="sig sig-object py" id="psweep.extraction.document_extractor.ExtractionResult.completeness_score">
-<span class="sig-name descname"><span class="pre">completeness_score</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">float</span></span><a class="headerlink" href="#psweep.extraction.document_extractor.ExtractionResult.completeness_score" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="psweep.extraction.document_extractor.ExtractionResult.cost">
-<span class="sig-name descname"><span class="pre">cost</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">float</span></span><a class="headerlink" href="#psweep.extraction.document_extractor.ExtractionResult.cost" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="psweep.extraction.document_extractor.ExtractionResult.data">
-<span class="sig-name descname"><span class="pre">data</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#psweep.extraction.document_extractor.ExtractionResult.data" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="psweep.extraction.document_extractor.ExtractionResult.input_tokens">
-<span class="sig-name descname"><span class="pre">input_tokens</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></span><a class="headerlink" href="#psweep.extraction.document_extractor.ExtractionResult.input_tokens" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="psweep.extraction.document_extractor.ExtractionResult.output_tokens">
-<span class="sig-name descname"><span class="pre">output_tokens</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></span><a class="headerlink" href="#psweep.extraction.document_extractor.ExtractionResult.output_tokens" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="psweep.extraction.document_extractor.ExtractionResult.processing_time">
-<span class="sig-name descname"><span class="pre">processing_time</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">float</span></span><a class="headerlink" href="#psweep.extraction.document_extractor.ExtractionResult.processing_time" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="psweep.extraction.document_extractor.ExtractionResult.validation_notes">
-<span class="sig-name descname"><span class="pre">validation_notes</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#psweep.extraction.document_extractor.ExtractionResult.validation_notes" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="psweep.extraction.document_extractor.ExtractionResult.validation_report">
-<span class="sig-name descname"><span class="pre">validation_report</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Any</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></span><a class="headerlink" href="#psweep.extraction.document_extractor.ExtractionResult.validation_report" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
-
 </dd></dl>
-
-<dl class="py data">
-<dt class="sig sig-object py" id="psweep.extraction.document_extractor.logger">
-<span class="sig-prename descclassname"><span class="pre">psweep.extraction.document_extractor.</span></span><span class="sig-name descname"><span class="pre">logger</span></span><a class="headerlink" href="#psweep.extraction.document_extractor.logger" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
 
 </section>
 </section>
@@ -575,7 +504,10 @@ uses LLM_TIMEOUT env var or its default timeout.</p></li>
             
           </div>
           <div class="right-details">
-            
+            <div class="icons">
+              <a class="muted-link " href="https://github.com/bpulluta/parsesweep" aria-label="GitHub"><svg stroke="currentColor" fill="currentColor" stroke-width="0" viewBox="0 0 16 16" width="1em" height="1em"><path fill-rule="evenodd" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg></a>
+              
+            </div>
           </div>
         </div>
         
@@ -594,31 +526,13 @@ uses LLM_TIMEOUT env var or its default timeout.</p></li>
           <div class="toc-tree">
             <ul>
 <li><a class="reference internal" href="#">psweep.extraction.document_extractor</a><ul>
-<li><a class="reference internal" href="#attributes">Attributes</a></li>
 <li><a class="reference internal" href="#classes">Classes</a></li>
 <li><a class="reference internal" href="#module-contents">Module Contents</a><ul>
 <li><a class="reference internal" href="#psweep.extraction.document_extractor.DocumentExtractor"><code class="docutils literal notranslate"><span class="pre">DocumentExtractor</span></code></a><ul>
 <li><a class="reference internal" href="#psweep.extraction.document_extractor.DocumentExtractor.extract"><code class="docutils literal notranslate"><span class="pre">DocumentExtractor.extract()</span></code></a></li>
-<li><a class="reference internal" href="#psweep.extraction.document_extractor.DocumentExtractor.api_key"><code class="docutils literal notranslate"><span class="pre">DocumentExtractor.api_key</span></code></a></li>
-<li><a class="reference internal" href="#psweep.extraction.document_extractor.DocumentExtractor.client"><code class="docutils literal notranslate"><span class="pre">DocumentExtractor.client</span></code></a></li>
-<li><a class="reference internal" href="#psweep.extraction.document_extractor.DocumentExtractor.max_context_chars"><code class="docutils literal notranslate"><span class="pre">DocumentExtractor.max_context_chars</span></code></a></li>
-<li><a class="reference internal" href="#psweep.extraction.document_extractor.DocumentExtractor.model"><code class="docutils literal notranslate"><span class="pre">DocumentExtractor.model</span></code></a></li>
-<li><a class="reference internal" href="#psweep.extraction.document_extractor.DocumentExtractor.processor"><code class="docutils literal notranslate"><span class="pre">DocumentExtractor.processor</span></code></a></li>
-<li><a class="reference internal" href="#psweep.extraction.document_extractor.DocumentExtractor.schema_metadata"><code class="docutils literal notranslate"><span class="pre">DocumentExtractor.schema_metadata</span></code></a></li>
 </ul>
 </li>
-<li><a class="reference internal" href="#psweep.extraction.document_extractor.ExtractionResult"><code class="docutils literal notranslate"><span class="pre">ExtractionResult</span></code></a><ul>
-<li><a class="reference internal" href="#psweep.extraction.document_extractor.ExtractionResult.completeness_score"><code class="docutils literal notranslate"><span class="pre">ExtractionResult.completeness_score</span></code></a></li>
-<li><a class="reference internal" href="#psweep.extraction.document_extractor.ExtractionResult.cost"><code class="docutils literal notranslate"><span class="pre">ExtractionResult.cost</span></code></a></li>
-<li><a class="reference internal" href="#psweep.extraction.document_extractor.ExtractionResult.data"><code class="docutils literal notranslate"><span class="pre">ExtractionResult.data</span></code></a></li>
-<li><a class="reference internal" href="#psweep.extraction.document_extractor.ExtractionResult.input_tokens"><code class="docutils literal notranslate"><span class="pre">ExtractionResult.input_tokens</span></code></a></li>
-<li><a class="reference internal" href="#psweep.extraction.document_extractor.ExtractionResult.output_tokens"><code class="docutils literal notranslate"><span class="pre">ExtractionResult.output_tokens</span></code></a></li>
-<li><a class="reference internal" href="#psweep.extraction.document_extractor.ExtractionResult.processing_time"><code class="docutils literal notranslate"><span class="pre">ExtractionResult.processing_time</span></code></a></li>
-<li><a class="reference internal" href="#psweep.extraction.document_extractor.ExtractionResult.validation_notes"><code class="docutils literal notranslate"><span class="pre">ExtractionResult.validation_notes</span></code></a></li>
-<li><a class="reference internal" href="#psweep.extraction.document_extractor.ExtractionResult.validation_report"><code class="docutils literal notranslate"><span class="pre">ExtractionResult.validation_report</span></code></a></li>
-</ul>
-</li>
-<li><a class="reference internal" href="#psweep.extraction.document_extractor.logger"><code class="docutils literal notranslate"><span class="pre">logger</span></code></a></li>
+<li><a class="reference internal" href="#psweep.extraction.document_extractor.ExtractionResult"><code class="docutils literal notranslate"><span class="pre">ExtractionResult</span></code></a></li>
 </ul>
 </li>
 </ul>
@@ -637,6 +551,6 @@ uses LLM_TIMEOUT env var or its default timeout.</p></li>
     <script src="../../../../_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="../../../../_static/scripts/furo.js?v=46bd48cc"></script>
     <script src="../../../../_static/clipboard.min.js?v=a7894cd8"></script>
-    <script src="../../../../_static/copybutton.js?v=f281be69"></script>
+    <script src="../../../../_static/copybutton.js?v=a5fa425f"></script>
     </body>
 </html>

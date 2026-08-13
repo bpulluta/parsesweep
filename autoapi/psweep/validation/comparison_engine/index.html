@@ -5,13 +5,14 @@
     <meta name="color-scheme" content="light dark"><meta name="viewport" content="width=device-width, initial-scale=1" />
 <link rel="index" title="Index" href="../../../../genindex.html"><link rel="search" title="Search" href="../../../../search.html"><link rel="next" title="psweep.validation.evidence_loader" href="../evidence_loader/index.html"><link rel="prev" title="psweep.validation" href="../index.html">
 
-    <!-- Generated with Sphinx 9.1.0 and Furo 2025.12.19 -->
+    <link rel="shortcut icon" href="../../../../_static/favicon.svg"><!-- Generated with Sphinx 9.1.0 and Furo 2025.12.19 -->
         <title>psweep.validation.comparison_engine - ParseSweep 2.0.1</title>
       <link rel="stylesheet" type="text/css" href="../../../../_static/pygments.css?v=d111a655" />
     <link rel="stylesheet" type="text/css" href="../../../../_static/styles/furo.css?v=7bdb33bb" />
     <link rel="stylesheet" type="text/css" href="../../../../_static/graphviz.css?v=4ae1632d" />
     <link rel="stylesheet" type="text/css" href="../../../../_static/copybutton.css?v=76b2166b" />
     <link rel="stylesheet" type="text/css" href="../../../../_static/styles/furo-extensions.css?v=8dab3a3b" />
+    <link rel="stylesheet" type="text/css" href="../../../../_static/custom.css?v=579eeedf" />
     
     
 
@@ -20,18 +21,24 @@
   body {
     --color-code-background: #f2f2f2;
   --color-code-foreground: #1e1e1e;
+  --color-brand-primary: #0f766e;
+  --color-brand-content: #0e7490;
   
   }
   @media not print {
     body[data-theme="dark"] {
       --color-code-background: #202020;
   --color-code-foreground: #d0d0d0;
+  --color-brand-primary: #5eead4;
+  --color-brand-content: #2dd4bf;
   
     }
     @media (prefers-color-scheme: dark) {
       body:not([data-theme="light"]) {
         --color-code-background: #202020;
   --color-code-foreground: #d0d0d0;
+  --color-brand-primary: #5eead4;
+  --color-brand-content: #2dd4bf;
   
       }
     }
@@ -197,9 +204,16 @@
 <li class="toctree-l1"><a class="reference internal" href="../../../../getting-started.html">Getting Started</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../../commands/index.html">Command Reference</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../../config-reference.html">Configuration Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../tuning.html">Tuning &amp; Iteration</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../../schemas/index.html">Schema Authoring</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../schemas/index.html#schema-design-best-practices">Schema Design Best Practices</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Reference</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../changelog.html">Changelog</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../contributing.html">Contributing</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">API</span></p>
 <ul class="current">
 <li class="toctree-l1 current has-children"><a class="reference internal" href="../../../index.html">API Reference</a><input aria-label="Toggle navigation of API Reference" checked="" class="toctree-checkbox" id="toctree-checkbox-1" name="toctree-checkbox-1" role="switch" type="checkbox"/><label for="toctree-checkbox-1"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul class="current">
 <li class="toctree-l2 current has-children"><a class="reference internal" href="../../index.html">psweep</a><input aria-label="Toggle navigation of psweep" checked="" class="toctree-checkbox" id="toctree-checkbox-2" name="toctree-checkbox-2" role="switch" type="checkbox"/><label for="toctree-checkbox-2"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul class="current">
@@ -287,8 +301,6 @@
 </li>
 </ul>
 </li>
-<li class="toctree-l1"><a class="reference internal" href="../../../../changelog.html">Changelog</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../../contributing.html">Contributing</a></li>
 </ul>
 
 </div>
@@ -309,12 +321,16 @@
         </a>
         <div class="content-icon-container">
           <div class="view-this-page">
-  <a class="muted-link" href="../../../../_sources/autoapi/psweep/validation/comparison_engine/index.rst.txt" title="View this page">
+  <a class="muted-link" href="https://github.com/bpulluta/parsesweep/blob/main/docs/autoapi/psweep/validation/comparison_engine/index.rst?plain=true" title="View this page">
     <svg><use href="#svg-eye"></use></svg>
     <span class="visually-hidden">View this page</span>
   </a>
-</div>
-<div class="theme-toggle-container theme-toggle-content">
+</div><div class="edit-this-page">
+  <a class="muted-link" href="https://github.com/bpulluta/parsesweep/edit/main/docs/autoapi/psweep/validation/comparison_engine/index.rst" rel="edit" title="Edit this page">
+    <svg><use href="#svg-pencil"></use></svg>
+    <span class="visually-hidden">Edit this page</span>
+  </a>
+</div><div class="theme-toggle-container theme-toggle-content">
             <button class="theme-toggle" aria-label="Toggle Light / Dark / Auto color theme">
               <svg class="theme-icon-when-auto-light"><use href="#svg-sun-with-moon"></use></svg>
               <svg class="theme-icon-when-auto-dark"><use href="#svg-moon-with-sun"></use></svg>
@@ -351,18 +367,6 @@ Includes potential duplicate detection and completeness metrics.</p>
 <span class="p">)</span>
 </pre></div>
 </div>
-<section id="attributes">
-<h2>Attributes<a class="headerlink" href="#attributes" title="Link to this heading">¶</a></h2>
-<div class="table-wrapper autosummary longtable docutils container">
-<table class="autosummary longtable docutils align-default">
-<tbody>
-<tr class="row-odd"><td><p><a class="reference internal" href="#psweep.validation.comparison_engine.logger" title="psweep.validation.comparison_engine.logger"><code class="xref py py-obj docutils literal notranslate"><span class="pre">logger</span></code></a></p></td>
-<td><p></p></td>
-</tr>
-</tbody>
-</table>
-</div>
-</section>
 <section id="classes">
 <h2>Classes<a class="headerlink" href="#classes" title="Link to this heading">¶</a></h2>
 <div class="table-wrapper autosummary longtable docutils container">
@@ -445,132 +449,17 @@ resolved QA/QC comparison approach</p>
 <dd><p>Configure per-document judge cache path (JSON file).</p>
 </dd></dl>
 
-<dl class="py attribute">
-<dt class="sig sig-object py" id="psweep.validation.comparison_engine.ComparisonEngine.anchor_config">
-<span class="sig-name descname"><span class="pre">anchor_config</span></span><a class="headerlink" href="#psweep.validation.comparison_engine.ComparisonEngine.anchor_config" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="psweep.validation.comparison_engine.ComparisonEngine.collapse_percent_context">
-<span class="sig-name descname"><span class="pre">collapse_percent_context</span></span><a class="headerlink" href="#psweep.validation.comparison_engine.ComparisonEngine.collapse_percent_context" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="psweep.validation.comparison_engine.ComparisonEngine.compare_fields">
-<span class="sig-name descname"><span class="pre">compare_fields</span></span><a class="headerlink" href="#psweep.validation.comparison_engine.ComparisonEngine.compare_fields" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="psweep.validation.comparison_engine.ComparisonEngine.comparison_approach">
-<span class="sig-name descname"><span class="pre">comparison_approach</span></span><a class="headerlink" href="#psweep.validation.comparison_engine.ComparisonEngine.comparison_approach" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="psweep.validation.comparison_engine.ComparisonEngine.enable_judge_pair_matching">
-<span class="sig-name descname"><span class="pre">enable_judge_pair_matching</span></span><a class="headerlink" href="#psweep.validation.comparison_engine.ComparisonEngine.enable_judge_pair_matching" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="psweep.validation.comparison_engine.ComparisonEngine.enable_text_fallback_matching">
-<span class="sig-name descname"><span class="pre">enable_text_fallback_matching</span></span><a class="headerlink" href="#psweep.validation.comparison_engine.ComparisonEngine.enable_text_fallback_matching" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="psweep.validation.comparison_engine.ComparisonEngine.fuzzy_match_fields">
-<span class="sig-name descname"><span class="pre">fuzzy_match_fields</span></span><a class="headerlink" href="#psweep.validation.comparison_engine.ComparisonEngine.fuzzy_match_fields" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="psweep.validation.comparison_engine.ComparisonEngine.identifier_fields">
-<span class="sig-name descname"><span class="pre">identifier_fields</span></span><a class="headerlink" href="#psweep.validation.comparison_engine.ComparisonEngine.identifier_fields" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="psweep.validation.comparison_engine.ComparisonEngine.main_data_array">
-<span class="sig-name descname"><span class="pre">main_data_array</span></span><a class="headerlink" href="#psweep.validation.comparison_engine.ComparisonEngine.main_data_array" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="psweep.validation.comparison_engine.ComparisonEngine.match_fields">
-<span class="sig-name descname"><span class="pre">match_fields</span></span><a class="headerlink" href="#psweep.validation.comparison_engine.ComparisonEngine.match_fields" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="psweep.validation.comparison_engine.ComparisonEngine.projection">
-<span class="sig-name descname"><span class="pre">projection</span></span><a class="headerlink" href="#psweep.validation.comparison_engine.ComparisonEngine.projection" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="psweep.validation.comparison_engine.ComparisonEngine.schema_metadata">
-<span class="sig-name descname"><span class="pre">schema_metadata</span></span><a class="headerlink" href="#psweep.validation.comparison_engine.ComparisonEngine.schema_metadata" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="psweep.validation.comparison_engine.ComparisonEngine.semantic_match_threshold">
-<span class="sig-name descname"><span class="pre">semantic_match_threshold</span></span><a class="headerlink" href="#psweep.validation.comparison_engine.ComparisonEngine.semantic_match_threshold" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="psweep.validation.comparison_engine.ComparisonEngine.text_fallback_fields">
-<span class="sig-name descname"><span class="pre">text_fallback_fields</span></span><a class="headerlink" href="#psweep.validation.comparison_engine.ComparisonEngine.text_fallback_fields" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="psweep.validation.comparison_engine.ComparisonEngine.unit_equivalence_index">
-<span class="sig-name descname"><span class="pre">unit_equivalence_index</span></span><a class="headerlink" href="#psweep.validation.comparison_engine.ComparisonEngine.unit_equivalence_index" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="psweep.validation.comparison_engine.ComparisonEngine.validation_config">
-<span class="sig-name descname"><span class="pre">validation_config</span></span><a class="headerlink" href="#psweep.validation.comparison_engine.ComparisonEngine.validation_config" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
-
 </dd></dl>
 
 <dl class="py class">
 <dt class="sig sig-object py" id="psweep.validation.comparison_engine.ComparisonResult">
 <span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">psweep.validation.comparison_engine.</span></span><span class="sig-name descname"><span class="pre">ComparisonResult</span></span><a class="headerlink" href="#psweep.validation.comparison_engine.ComparisonResult" title="Link to this definition">¶</a></dt>
 <dd><p>Full comparison result for a document.</p>
-<dl class="py attribute">
-<dt class="sig sig-object py" id="psweep.validation.comparison_engine.ComparisonResult.completeness">
-<span class="sig-name descname"><span class="pre">completeness</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference internal" href="#psweep.validation.comparison_engine.CompletenessResult" title="psweep.validation.comparison_engine.CompletenessResult"><span class="pre">CompletenessResult</span></a><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#psweep.validation.comparison_engine.ComparisonResult.completeness" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="psweep.validation.comparison_engine.ComparisonResult.context_comparisons">
-<span class="sig-name descname"><span class="pre">context_comparisons</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">List</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="#psweep.validation.comparison_engine.FieldComparison" title="psweep.validation.comparison_engine.FieldComparison"><span class="pre">FieldComparison</span></a><span class="p"><span class="pre">]</span></span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">[]</span></span><a class="headerlink" href="#psweep.validation.comparison_engine.ComparisonResult.context_comparisons" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="psweep.validation.comparison_engine.ComparisonResult.document_name">
-<span class="sig-name descname"><span class="pre">document_name</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></span><a class="headerlink" href="#psweep.validation.comparison_engine.ComparisonResult.document_name" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
-
 <dl class="py property">
 <dt class="sig sig-object py" id="psweep.validation.comparison_engine.ComparisonResult.field_comparisons">
 <span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">field_comparisons</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">List</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="#psweep.validation.comparison_engine.FieldComparison" title="psweep.validation.comparison_engine.FieldComparison"><span class="pre">FieldComparison</span></a><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#psweep.validation.comparison_engine.ComparisonResult.field_comparisons" title="Link to this definition">¶</a></dt>
 <dd><p>All field comparisons (context + items combined).</p>
 </dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="psweep.validation.comparison_engine.ComparisonResult.item_comparisons">
-<span class="sig-name descname"><span class="pre">item_comparisons</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">List</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="#psweep.validation.comparison_engine.FieldComparison" title="psweep.validation.comparison_engine.FieldComparison"><span class="pre">FieldComparison</span></a><span class="p"><span class="pre">]</span></span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">[]</span></span><a class="headerlink" href="#psweep.validation.comparison_engine.ComparisonResult.item_comparisons" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="psweep.validation.comparison_engine.ComparisonResult.models">
-<span class="sig-name descname"><span class="pre">models</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#psweep.validation.comparison_engine.ComparisonResult.models" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="psweep.validation.comparison_engine.ComparisonResult.potential_duplicates">
-<span class="sig-name descname"><span class="pre">potential_duplicates</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">List</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="#psweep.validation.comparison_engine.PotentialDuplicate" title="psweep.validation.comparison_engine.PotentialDuplicate"><span class="pre">PotentialDuplicate</span></a><span class="p"><span class="pre">]</span></span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">[]</span></span><a class="headerlink" href="#psweep.validation.comparison_engine.ComparisonResult.potential_duplicates" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="psweep.validation.comparison_engine.ComparisonResult.summary">
-<span class="sig-name descname"><span class="pre">summary</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#psweep.validation.comparison_engine.ComparisonResult.summary" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
 
 </dd></dl>
 
@@ -578,132 +467,12 @@ resolved QA/QC comparison approach</p>
 <dt class="sig sig-object py" id="psweep.validation.comparison_engine.CompletenessResult">
 <span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">psweep.validation.comparison_engine.</span></span><span class="sig-name descname"><span class="pre">CompletenessResult</span></span><a class="headerlink" href="#psweep.validation.comparison_engine.CompletenessResult" title="Link to this definition">¶</a></dt>
 <dd><p>Completeness metrics for a single model’s extraction.</p>
-<dl class="py attribute">
-<dt class="sig sig-object py" id="psweep.validation.comparison_engine.CompletenessResult.completeness_score">
-<span class="sig-name descname"><span class="pre">completeness_score</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">float</span></span><a class="headerlink" href="#psweep.validation.comparison_engine.CompletenessResult.completeness_score" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="psweep.validation.comparison_engine.CompletenessResult.expected_found">
-<span class="sig-name descname"><span class="pre">expected_found</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span></span><a class="headerlink" href="#psweep.validation.comparison_engine.CompletenessResult.expected_found" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="psweep.validation.comparison_engine.CompletenessResult.expected_total">
-<span class="sig-name descname"><span class="pre">expected_total</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span></span><a class="headerlink" href="#psweep.validation.comparison_engine.CompletenessResult.expected_total" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="psweep.validation.comparison_engine.CompletenessResult.items_extracted">
-<span class="sig-name descname"><span class="pre">items_extracted</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span></span><a class="headerlink" href="#psweep.validation.comparison_engine.CompletenessResult.items_extracted" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="psweep.validation.comparison_engine.CompletenessResult.missing_expected">
-<span class="sig-name descname"><span class="pre">missing_expected</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#psweep.validation.comparison_engine.CompletenessResult.missing_expected" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="psweep.validation.comparison_engine.CompletenessResult.model">
-<span class="sig-name descname"><span class="pre">model</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></span><a class="headerlink" href="#psweep.validation.comparison_engine.CompletenessResult.model" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
-
 </dd></dl>
 
 <dl class="py class">
 <dt class="sig sig-object py" id="psweep.validation.comparison_engine.FieldComparison">
 <span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">psweep.validation.comparison_engine.</span></span><span class="sig-name descname"><span class="pre">FieldComparison</span></span><a class="headerlink" href="#psweep.validation.comparison_engine.FieldComparison" title="Link to this definition">¶</a></dt>
 <dd><p>Represents comparison of a single field across models.</p>
-<dl class="py attribute">
-<dt class="sig sig-object py" id="psweep.validation.comparison_engine.FieldComparison.agreement_score">
-<span class="sig-name descname"><span class="pre">agreement_score</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></span><a class="headerlink" href="#psweep.validation.comparison_engine.FieldComparison.agreement_score" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="psweep.validation.comparison_engine.FieldComparison.field_path">
-<span class="sig-name descname"><span class="pre">field_path</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></span><a class="headerlink" href="#psweep.validation.comparison_engine.FieldComparison.field_path" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="psweep.validation.comparison_engine.FieldComparison.item_id">
-<span class="sig-name descname"><span class="pre">item_id</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></span><a class="headerlink" href="#psweep.validation.comparison_engine.FieldComparison.item_id" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="psweep.validation.comparison_engine.FieldComparison.judge_confidence">
-<span class="sig-name descname"><span class="pre">judge_confidence</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">''</span></span><a class="headerlink" href="#psweep.validation.comparison_engine.FieldComparison.judge_confidence" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="psweep.validation.comparison_engine.FieldComparison.judge_likely_correct_model">
-<span class="sig-name descname"><span class="pre">judge_likely_correct_model</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">''</span></span><a class="headerlink" href="#psweep.validation.comparison_engine.FieldComparison.judge_likely_correct_model" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="psweep.validation.comparison_engine.FieldComparison.judge_reason">
-<span class="sig-name descname"><span class="pre">judge_reason</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">''</span></span><a class="headerlink" href="#psweep.validation.comparison_engine.FieldComparison.judge_reason" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="psweep.validation.comparison_engine.FieldComparison.match_method">
-<span class="sig-name descname"><span class="pre">match_method</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">''</span></span><a class="headerlink" href="#psweep.validation.comparison_engine.FieldComparison.match_method" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="psweep.validation.comparison_engine.FieldComparison.missing_models">
-<span class="sig-name descname"><span class="pre">missing_models</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">[]</span></span><a class="headerlink" href="#psweep.validation.comparison_engine.FieldComparison.missing_models" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="psweep.validation.comparison_engine.FieldComparison.model_summary">
-<span class="sig-name descname"><span class="pre">model_summary</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#psweep.validation.comparison_engine.FieldComparison.model_summary" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="psweep.validation.comparison_engine.FieldComparison.model_values">
-<span class="sig-name descname"><span class="pre">model_values</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#psweep.validation.comparison_engine.FieldComparison.model_values" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="psweep.validation.comparison_engine.FieldComparison.model_verbatim">
-<span class="sig-name descname"><span class="pre">model_verbatim</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#psweep.validation.comparison_engine.FieldComparison.model_verbatim" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="psweep.validation.comparison_engine.FieldComparison.needs_review">
-<span class="sig-name descname"><span class="pre">needs_review</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">bool</span></span><a class="headerlink" href="#psweep.validation.comparison_engine.FieldComparison.needs_review" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="psweep.validation.comparison_engine.FieldComparison.notes">
-<span class="sig-name descname"><span class="pre">notes</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">''</span></span><a class="headerlink" href="#psweep.validation.comparison_engine.FieldComparison.notes" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="psweep.validation.comparison_engine.FieldComparison.paired_by_judge">
-<span class="sig-name descname"><span class="pre">paired_by_judge</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">bool</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">False</span></span><a class="headerlink" href="#psweep.validation.comparison_engine.FieldComparison.paired_by_judge" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="psweep.validation.comparison_engine.FieldComparison.pairing_confidence">
-<span class="sig-name descname"><span class="pre">pairing_confidence</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">''</span></span><a class="headerlink" href="#psweep.validation.comparison_engine.FieldComparison.pairing_confidence" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="psweep.validation.comparison_engine.FieldComparison.pairing_reason">
-<span class="sig-name descname"><span class="pre">pairing_reason</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">''</span></span><a class="headerlink" href="#psweep.validation.comparison_engine.FieldComparison.pairing_reason" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="psweep.validation.comparison_engine.FieldComparison.present_models">
-<span class="sig-name descname"><span class="pre">present_models</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">[]</span></span><a class="headerlink" href="#psweep.validation.comparison_engine.FieldComparison.present_models" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="psweep.validation.comparison_engine.FieldComparison.row_id">
-<span class="sig-name descname"><span class="pre">row_id</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">''</span></span><a class="headerlink" href="#psweep.validation.comparison_engine.FieldComparison.row_id" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
-
 </dd></dl>
 
 <dl class="py class">
@@ -714,32 +483,7 @@ resolved QA/QC comparison approach</p>
 <p>gpt-5 has time__reclamation_deadline_days=60
 gpt-4.1 has time__permit_validity_days=60
 Same value extracted with different requirement_type - likely same source data.</p>
-<dl class="py attribute">
-<dt class="sig sig-object py" id="psweep.validation.comparison_engine.PotentialDuplicate.items">
-<span class="sig-name descname"><span class="pre">items</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">dict</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#psweep.validation.comparison_engine.PotentialDuplicate.items" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="psweep.validation.comparison_engine.PotentialDuplicate.reason">
-<span class="sig-name descname"><span class="pre">reason</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'Same</span> <span class="pre">value</span> <span class="pre">extracted</span> <span class="pre">with</span> <span class="pre">different</span> <span class="pre">requirement_type'</span></span><a class="headerlink" href="#psweep.validation.comparison_engine.PotentialDuplicate.reason" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="psweep.validation.comparison_engine.PotentialDuplicate.unit">
-<span class="sig-name descname"><span class="pre">unit</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></span><a class="headerlink" href="#psweep.validation.comparison_engine.PotentialDuplicate.unit" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="psweep.validation.comparison_engine.PotentialDuplicate.value">
-<span class="sig-name descname"><span class="pre">value</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Any</span></span><a class="headerlink" href="#psweep.validation.comparison_engine.PotentialDuplicate.value" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
-
 </dd></dl>
-
-<dl class="py data">
-<dt class="sig sig-object py" id="psweep.validation.comparison_engine.logger">
-<span class="sig-prename descclassname"><span class="pre">psweep.validation.comparison_engine.</span></span><span class="sig-name descname"><span class="pre">logger</span></span><a class="headerlink" href="#psweep.validation.comparison_engine.logger" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
 
 </section>
 </section>
@@ -781,7 +525,10 @@ Same value extracted with different requirement_type - likely same source data.<
             
           </div>
           <div class="right-details">
-            
+            <div class="icons">
+              <a class="muted-link " href="https://github.com/bpulluta/parsesweep" aria-label="GitHub"><svg stroke="currentColor" fill="currentColor" stroke-width="0" viewBox="0 0 16 16" width="1em" height="1em"><path fill-rule="evenodd" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg></a>
+              
+            </div>
           </div>
         </div>
         
@@ -800,79 +547,20 @@ Same value extracted with different requirement_type - likely same source data.<
           <div class="toc-tree">
             <ul>
 <li><a class="reference internal" href="#">psweep.validation.comparison_engine</a><ul>
-<li><a class="reference internal" href="#attributes">Attributes</a></li>
 <li><a class="reference internal" href="#classes">Classes</a></li>
 <li><a class="reference internal" href="#module-contents">Module Contents</a><ul>
 <li><a class="reference internal" href="#psweep.validation.comparison_engine.ComparisonEngine"><code class="docutils literal notranslate"><span class="pre">ComparisonEngine</span></code></a><ul>
 <li><a class="reference internal" href="#psweep.validation.comparison_engine.ComparisonEngine.compare_outputs"><code class="docutils literal notranslate"><span class="pre">ComparisonEngine.compare_outputs()</span></code></a></li>
 <li><a class="reference internal" href="#psweep.validation.comparison_engine.ComparisonEngine.set_judge_cache_path"><code class="docutils literal notranslate"><span class="pre">ComparisonEngine.set_judge_cache_path()</span></code></a></li>
-<li><a class="reference internal" href="#psweep.validation.comparison_engine.ComparisonEngine.anchor_config"><code class="docutils literal notranslate"><span class="pre">ComparisonEngine.anchor_config</span></code></a></li>
-<li><a class="reference internal" href="#psweep.validation.comparison_engine.ComparisonEngine.collapse_percent_context"><code class="docutils literal notranslate"><span class="pre">ComparisonEngine.collapse_percent_context</span></code></a></li>
-<li><a class="reference internal" href="#psweep.validation.comparison_engine.ComparisonEngine.compare_fields"><code class="docutils literal notranslate"><span class="pre">ComparisonEngine.compare_fields</span></code></a></li>
-<li><a class="reference internal" href="#psweep.validation.comparison_engine.ComparisonEngine.comparison_approach"><code class="docutils literal notranslate"><span class="pre">ComparisonEngine.comparison_approach</span></code></a></li>
-<li><a class="reference internal" href="#psweep.validation.comparison_engine.ComparisonEngine.enable_judge_pair_matching"><code class="docutils literal notranslate"><span class="pre">ComparisonEngine.enable_judge_pair_matching</span></code></a></li>
-<li><a class="reference internal" href="#psweep.validation.comparison_engine.ComparisonEngine.enable_text_fallback_matching"><code class="docutils literal notranslate"><span class="pre">ComparisonEngine.enable_text_fallback_matching</span></code></a></li>
-<li><a class="reference internal" href="#psweep.validation.comparison_engine.ComparisonEngine.fuzzy_match_fields"><code class="docutils literal notranslate"><span class="pre">ComparisonEngine.fuzzy_match_fields</span></code></a></li>
-<li><a class="reference internal" href="#psweep.validation.comparison_engine.ComparisonEngine.identifier_fields"><code class="docutils literal notranslate"><span class="pre">ComparisonEngine.identifier_fields</span></code></a></li>
-<li><a class="reference internal" href="#psweep.validation.comparison_engine.ComparisonEngine.main_data_array"><code class="docutils literal notranslate"><span class="pre">ComparisonEngine.main_data_array</span></code></a></li>
-<li><a class="reference internal" href="#psweep.validation.comparison_engine.ComparisonEngine.match_fields"><code class="docutils literal notranslate"><span class="pre">ComparisonEngine.match_fields</span></code></a></li>
-<li><a class="reference internal" href="#psweep.validation.comparison_engine.ComparisonEngine.projection"><code class="docutils literal notranslate"><span class="pre">ComparisonEngine.projection</span></code></a></li>
-<li><a class="reference internal" href="#psweep.validation.comparison_engine.ComparisonEngine.schema_metadata"><code class="docutils literal notranslate"><span class="pre">ComparisonEngine.schema_metadata</span></code></a></li>
-<li><a class="reference internal" href="#psweep.validation.comparison_engine.ComparisonEngine.semantic_match_threshold"><code class="docutils literal notranslate"><span class="pre">ComparisonEngine.semantic_match_threshold</span></code></a></li>
-<li><a class="reference internal" href="#psweep.validation.comparison_engine.ComparisonEngine.text_fallback_fields"><code class="docutils literal notranslate"><span class="pre">ComparisonEngine.text_fallback_fields</span></code></a></li>
-<li><a class="reference internal" href="#psweep.validation.comparison_engine.ComparisonEngine.unit_equivalence_index"><code class="docutils literal notranslate"><span class="pre">ComparisonEngine.unit_equivalence_index</span></code></a></li>
-<li><a class="reference internal" href="#psweep.validation.comparison_engine.ComparisonEngine.validation_config"><code class="docutils literal notranslate"><span class="pre">ComparisonEngine.validation_config</span></code></a></li>
 </ul>
 </li>
 <li><a class="reference internal" href="#psweep.validation.comparison_engine.ComparisonResult"><code class="docutils literal notranslate"><span class="pre">ComparisonResult</span></code></a><ul>
-<li><a class="reference internal" href="#psweep.validation.comparison_engine.ComparisonResult.completeness"><code class="docutils literal notranslate"><span class="pre">ComparisonResult.completeness</span></code></a></li>
-<li><a class="reference internal" href="#psweep.validation.comparison_engine.ComparisonResult.context_comparisons"><code class="docutils literal notranslate"><span class="pre">ComparisonResult.context_comparisons</span></code></a></li>
-<li><a class="reference internal" href="#psweep.validation.comparison_engine.ComparisonResult.document_name"><code class="docutils literal notranslate"><span class="pre">ComparisonResult.document_name</span></code></a></li>
 <li><a class="reference internal" href="#psweep.validation.comparison_engine.ComparisonResult.field_comparisons"><code class="docutils literal notranslate"><span class="pre">ComparisonResult.field_comparisons</span></code></a></li>
-<li><a class="reference internal" href="#psweep.validation.comparison_engine.ComparisonResult.item_comparisons"><code class="docutils literal notranslate"><span class="pre">ComparisonResult.item_comparisons</span></code></a></li>
-<li><a class="reference internal" href="#psweep.validation.comparison_engine.ComparisonResult.models"><code class="docutils literal notranslate"><span class="pre">ComparisonResult.models</span></code></a></li>
-<li><a class="reference internal" href="#psweep.validation.comparison_engine.ComparisonResult.potential_duplicates"><code class="docutils literal notranslate"><span class="pre">ComparisonResult.potential_duplicates</span></code></a></li>
-<li><a class="reference internal" href="#psweep.validation.comparison_engine.ComparisonResult.summary"><code class="docutils literal notranslate"><span class="pre">ComparisonResult.summary</span></code></a></li>
 </ul>
 </li>
-<li><a class="reference internal" href="#psweep.validation.comparison_engine.CompletenessResult"><code class="docutils literal notranslate"><span class="pre">CompletenessResult</span></code></a><ul>
-<li><a class="reference internal" href="#psweep.validation.comparison_engine.CompletenessResult.completeness_score"><code class="docutils literal notranslate"><span class="pre">CompletenessResult.completeness_score</span></code></a></li>
-<li><a class="reference internal" href="#psweep.validation.comparison_engine.CompletenessResult.expected_found"><code class="docutils literal notranslate"><span class="pre">CompletenessResult.expected_found</span></code></a></li>
-<li><a class="reference internal" href="#psweep.validation.comparison_engine.CompletenessResult.expected_total"><code class="docutils literal notranslate"><span class="pre">CompletenessResult.expected_total</span></code></a></li>
-<li><a class="reference internal" href="#psweep.validation.comparison_engine.CompletenessResult.items_extracted"><code class="docutils literal notranslate"><span class="pre">CompletenessResult.items_extracted</span></code></a></li>
-<li><a class="reference internal" href="#psweep.validation.comparison_engine.CompletenessResult.missing_expected"><code class="docutils literal notranslate"><span class="pre">CompletenessResult.missing_expected</span></code></a></li>
-<li><a class="reference internal" href="#psweep.validation.comparison_engine.CompletenessResult.model"><code class="docutils literal notranslate"><span class="pre">CompletenessResult.model</span></code></a></li>
-</ul>
-</li>
-<li><a class="reference internal" href="#psweep.validation.comparison_engine.FieldComparison"><code class="docutils literal notranslate"><span class="pre">FieldComparison</span></code></a><ul>
-<li><a class="reference internal" href="#psweep.validation.comparison_engine.FieldComparison.agreement_score"><code class="docutils literal notranslate"><span class="pre">FieldComparison.agreement_score</span></code></a></li>
-<li><a class="reference internal" href="#psweep.validation.comparison_engine.FieldComparison.field_path"><code class="docutils literal notranslate"><span class="pre">FieldComparison.field_path</span></code></a></li>
-<li><a class="reference internal" href="#psweep.validation.comparison_engine.FieldComparison.item_id"><code class="docutils literal notranslate"><span class="pre">FieldComparison.item_id</span></code></a></li>
-<li><a class="reference internal" href="#psweep.validation.comparison_engine.FieldComparison.judge_confidence"><code class="docutils literal notranslate"><span class="pre">FieldComparison.judge_confidence</span></code></a></li>
-<li><a class="reference internal" href="#psweep.validation.comparison_engine.FieldComparison.judge_likely_correct_model"><code class="docutils literal notranslate"><span class="pre">FieldComparison.judge_likely_correct_model</span></code></a></li>
-<li><a class="reference internal" href="#psweep.validation.comparison_engine.FieldComparison.judge_reason"><code class="docutils literal notranslate"><span class="pre">FieldComparison.judge_reason</span></code></a></li>
-<li><a class="reference internal" href="#psweep.validation.comparison_engine.FieldComparison.match_method"><code class="docutils literal notranslate"><span class="pre">FieldComparison.match_method</span></code></a></li>
-<li><a class="reference internal" href="#psweep.validation.comparison_engine.FieldComparison.missing_models"><code class="docutils literal notranslate"><span class="pre">FieldComparison.missing_models</span></code></a></li>
-<li><a class="reference internal" href="#psweep.validation.comparison_engine.FieldComparison.model_summary"><code class="docutils literal notranslate"><span class="pre">FieldComparison.model_summary</span></code></a></li>
-<li><a class="reference internal" href="#psweep.validation.comparison_engine.FieldComparison.model_values"><code class="docutils literal notranslate"><span class="pre">FieldComparison.model_values</span></code></a></li>
-<li><a class="reference internal" href="#psweep.validation.comparison_engine.FieldComparison.model_verbatim"><code class="docutils literal notranslate"><span class="pre">FieldComparison.model_verbatim</span></code></a></li>
-<li><a class="reference internal" href="#psweep.validation.comparison_engine.FieldComparison.needs_review"><code class="docutils literal notranslate"><span class="pre">FieldComparison.needs_review</span></code></a></li>
-<li><a class="reference internal" href="#psweep.validation.comparison_engine.FieldComparison.notes"><code class="docutils literal notranslate"><span class="pre">FieldComparison.notes</span></code></a></li>
-<li><a class="reference internal" href="#psweep.validation.comparison_engine.FieldComparison.paired_by_judge"><code class="docutils literal notranslate"><span class="pre">FieldComparison.paired_by_judge</span></code></a></li>
-<li><a class="reference internal" href="#psweep.validation.comparison_engine.FieldComparison.pairing_confidence"><code class="docutils literal notranslate"><span class="pre">FieldComparison.pairing_confidence</span></code></a></li>
-<li><a class="reference internal" href="#psweep.validation.comparison_engine.FieldComparison.pairing_reason"><code class="docutils literal notranslate"><span class="pre">FieldComparison.pairing_reason</span></code></a></li>
-<li><a class="reference internal" href="#psweep.validation.comparison_engine.FieldComparison.present_models"><code class="docutils literal notranslate"><span class="pre">FieldComparison.present_models</span></code></a></li>
-<li><a class="reference internal" href="#psweep.validation.comparison_engine.FieldComparison.row_id"><code class="docutils literal notranslate"><span class="pre">FieldComparison.row_id</span></code></a></li>
-</ul>
-</li>
-<li><a class="reference internal" href="#psweep.validation.comparison_engine.PotentialDuplicate"><code class="docutils literal notranslate"><span class="pre">PotentialDuplicate</span></code></a><ul>
-<li><a class="reference internal" href="#psweep.validation.comparison_engine.PotentialDuplicate.items"><code class="docutils literal notranslate"><span class="pre">PotentialDuplicate.items</span></code></a></li>
-<li><a class="reference internal" href="#psweep.validation.comparison_engine.PotentialDuplicate.reason"><code class="docutils literal notranslate"><span class="pre">PotentialDuplicate.reason</span></code></a></li>
-<li><a class="reference internal" href="#psweep.validation.comparison_engine.PotentialDuplicate.unit"><code class="docutils literal notranslate"><span class="pre">PotentialDuplicate.unit</span></code></a></li>
-<li><a class="reference internal" href="#psweep.validation.comparison_engine.PotentialDuplicate.value"><code class="docutils literal notranslate"><span class="pre">PotentialDuplicate.value</span></code></a></li>
-</ul>
-</li>
-<li><a class="reference internal" href="#psweep.validation.comparison_engine.logger"><code class="docutils literal notranslate"><span class="pre">logger</span></code></a></li>
+<li><a class="reference internal" href="#psweep.validation.comparison_engine.CompletenessResult"><code class="docutils literal notranslate"><span class="pre">CompletenessResult</span></code></a></li>
+<li><a class="reference internal" href="#psweep.validation.comparison_engine.FieldComparison"><code class="docutils literal notranslate"><span class="pre">FieldComparison</span></code></a></li>
+<li><a class="reference internal" href="#psweep.validation.comparison_engine.PotentialDuplicate"><code class="docutils literal notranslate"><span class="pre">PotentialDuplicate</span></code></a></li>
 </ul>
 </li>
 </ul>
@@ -891,6 +579,6 @@ Same value extracted with different requirement_type - likely same source data.<
     <script src="../../../../_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="../../../../_static/scripts/furo.js?v=46bd48cc"></script>
     <script src="../../../../_static/clipboard.min.js?v=a7894cd8"></script>
-    <script src="../../../../_static/copybutton.js?v=f281be69"></script>
+    <script src="../../../../_static/copybutton.js?v=a5fa425f"></script>
     </body>
 </html>

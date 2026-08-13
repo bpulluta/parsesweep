@@ -33,14 +33,6 @@ psweep.validation.comparison_engine
 
 
 
-Attributes
-----------
-
-.. autoapisummary::
-
-   psweep.validation.comparison_engine.logger
-
-
 Classes
 -------
 
@@ -107,71 +99,9 @@ Module Contents
 
 
 
-   .. py:attribute:: anchor_config
-
-
-   .. py:attribute:: collapse_percent_context
-
-
-   .. py:attribute:: compare_fields
-
-
-   .. py:attribute:: comparison_approach
-
-
-   .. py:attribute:: enable_judge_pair_matching
-
-
-   .. py:attribute:: enable_text_fallback_matching
-
-
-   .. py:attribute:: fuzzy_match_fields
-
-
-   .. py:attribute:: identifier_fields
-
-
-   .. py:attribute:: main_data_array
-
-
-   .. py:attribute:: match_fields
-
-
-   .. py:attribute:: projection
-
-
-   .. py:attribute:: schema_metadata
-
-
-   .. py:attribute:: semantic_match_threshold
-
-
-   .. py:attribute:: text_fallback_fields
-
-
-   .. py:attribute:: unit_equivalence_index
-
-
-   .. py:attribute:: validation_config
-
-
 .. py:class:: ComparisonResult
 
    Full comparison result for a document.
-
-
-   .. py:attribute:: completeness
-      :type:  Dict[str, CompletenessResult]
-
-
-   .. py:attribute:: context_comparisons
-      :type:  List[FieldComparison]
-      :value: []
-
-
-
-   .. py:attribute:: document_name
-      :type:  str
 
 
    .. py:property:: field_comparisons
@@ -181,152 +111,14 @@ Module Contents
       All field comparisons (context + items combined).
 
 
-   .. py:attribute:: item_comparisons
-      :type:  List[FieldComparison]
-      :value: []
-
-
-
-   .. py:attribute:: models
-      :type:  List[str]
-
-
-   .. py:attribute:: potential_duplicates
-      :type:  List[PotentialDuplicate]
-      :value: []
-
-
-
-   .. py:attribute:: summary
-      :type:  Dict[str, Any]
-
-
 .. py:class:: CompletenessResult
 
    Completeness metrics for a single model's extraction.
 
 
-   .. py:attribute:: completeness_score
-      :type:  float
-
-
-   .. py:attribute:: expected_found
-      :type:  int
-
-
-   .. py:attribute:: expected_total
-      :type:  int
-
-
-   .. py:attribute:: items_extracted
-      :type:  int
-
-
-   .. py:attribute:: missing_expected
-      :type:  List[str]
-
-
-   .. py:attribute:: model
-      :type:  str
-
-
 .. py:class:: FieldComparison
 
    Represents comparison of a single field across models.
-
-
-   .. py:attribute:: agreement_score
-      :type:  str
-
-
-   .. py:attribute:: field_path
-      :type:  str
-
-
-   .. py:attribute:: item_id
-      :type:  str
-
-
-   .. py:attribute:: judge_confidence
-      :type:  str
-      :value: ''
-
-
-
-   .. py:attribute:: judge_likely_correct_model
-      :type:  str
-      :value: ''
-
-
-
-   .. py:attribute:: judge_reason
-      :type:  str
-      :value: ''
-
-
-
-   .. py:attribute:: match_method
-      :type:  str
-      :value: ''
-
-
-
-   .. py:attribute:: missing_models
-      :type:  List[str]
-      :value: []
-
-
-
-   .. py:attribute:: model_summary
-      :type:  Dict[str, str]
-
-
-   .. py:attribute:: model_values
-      :type:  Dict[str, Any]
-
-
-   .. py:attribute:: model_verbatim
-      :type:  Dict[str, str]
-
-
-   .. py:attribute:: needs_review
-      :type:  bool
-
-
-   .. py:attribute:: notes
-      :type:  str
-      :value: ''
-
-
-
-   .. py:attribute:: paired_by_judge
-      :type:  bool
-      :value: False
-
-
-
-   .. py:attribute:: pairing_confidence
-      :type:  str
-      :value: ''
-
-
-
-   .. py:attribute:: pairing_reason
-      :type:  str
-      :value: ''
-
-
-
-   .. py:attribute:: present_models
-      :type:  List[str]
-      :value: []
-
-
-
-   .. py:attribute:: row_id
-      :type:  str
-      :value: ''
-
 
 
 .. py:class:: PotentialDuplicate
@@ -339,24 +131,4 @@ Module Contents
    gpt-4.1 has time__permit_validity_days=60
    Same value extracted with different requirement_type - likely same source data.
 
-
-   .. py:attribute:: items
-      :type:  List[Tuple[str, dict]]
-
-
-   .. py:attribute:: reason
-      :type:  str
-      :value: 'Same value extracted with different requirement_type'
-
-
-
-   .. py:attribute:: unit
-      :type:  str
-
-
-   .. py:attribute:: value
-      :type:  Any
-
-
-.. py:data:: logger
 

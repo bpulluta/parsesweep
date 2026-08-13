@@ -27,14 +27,6 @@ psweep.compilation.synthesizer
 
 
 
-Attributes
-----------
-
-.. autoapisummary::
-
-   psweep.compilation.synthesizer.logger
-
-
 Classes
 -------
 
@@ -66,63 +58,4 @@ Module Contents
       :rtype: pd.DataFrame
 
 
-
-   .. py:attribute:: cfg
-
-
-   .. py:attribute:: client
-
-
-   .. py:attribute:: comparison
-
-
-   .. py:attribute:: deterministic_rows
-      :value: 0
-
-
-
-   .. py:attribute:: evidence_map
-
-
-   .. py:attribute:: fields
-
-
-   .. py:attribute:: has_ordering_checks
-
-
-   .. py:attribute:: infer_precision_from_pins
-
-
-   .. py:attribute:: llm_calls
-      :value: 0
-
-
-
-   .. py:attribute:: main_array
-
-
-   .. py:attribute:: min_sources_for_llm
-
-
-   .. py:attribute:: narrative_fields
-
-
-   .. py:attribute:: ordering
-
-
-   .. py:attribute:: ordering_exclusive_pairs
-
-
-   .. py:attribute:: precision_map
-
-
-   .. py:attribute:: sm
-
-
-   .. py:attribute:: verbose
-      :value: False
-
-
-
-.. py:data:: logger
 

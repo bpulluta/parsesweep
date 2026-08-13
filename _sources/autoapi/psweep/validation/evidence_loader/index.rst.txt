@@ -12,14 +12,6 @@ psweep.validation.evidence_loader
 
 
 
-Attributes
-----------
-
-.. autoapisummary::
-
-   psweep.validation.evidence_loader.logger
-
-
 Classes
 -------
 
@@ -118,6 +110,4 @@ Module Contents
       :raises RuntimeError: If required model extraction files are missing or corrupt.
 
 
-
-.. py:data:: logger
 

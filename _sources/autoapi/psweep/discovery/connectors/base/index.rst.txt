@@ -106,113 +106,13 @@ Module Contents
 
 
 
-   .. py:attribute:: extension
-      :type:  str | None
-      :value: None
-
-
-
-   .. py:attribute:: metadata
-      :type:  dict[str, Any] | None
-      :value: None
-
-
-
-   .. py:attribute:: mime_type
-      :type:  str | None
-      :value: None
-
-
-
-   .. py:attribute:: source
-      :type:  str
-
-
-   .. py:attribute:: status
-      :type:  str
-      :value: 'discovered'
-
-
-
-   .. py:attribute:: url
-      :type:  str
-
-
 .. py:class:: DiggerInput
 
    Normalized input for digger stage link/document discovery.
 
 
-   .. py:attribute:: allowed_domains
-      :type:  list[str] | None
-      :value: None
-
-
-
-   .. py:attribute:: extra_params
-      :type:  dict[str, Any] | None
-      :value: None
-
-
-
-   .. py:attribute:: include_link_text_patterns
-      :type:  list[str] | None
-      :value: None
-
-
-
-   .. py:attribute:: include_url_patterns
-      :type:  list[str] | None
-      :value: None
-
-
-
-   .. py:attribute:: max_depth
-      :type:  int
-      :value: 2
-
-
-
-   .. py:attribute:: max_files
-      :type:  int
-      :value: 20
-
-
-
-   .. py:attribute:: max_pages
-      :type:  int
-      :value: 50
-
-
-
-   .. py:attribute:: seed_urls
-      :type:  list[str]
-
-
-   .. py:attribute:: timeout_seconds
-      :type:  int
-      :value: 30
-
-
-
 .. py:class:: SeekerInput
 
    Normalized input for seeker stage discovery.
-
-
-   .. py:attribute:: extra_params
-      :type:  dict[str, Any] | None
-      :value: None
-
-
-
-   .. py:attribute:: max_results
-      :type:  int
-      :value: 10
-
-
-
-   .. py:attribute:: query
-      :type:  str
 
 

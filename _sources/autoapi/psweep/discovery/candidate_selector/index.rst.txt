@@ -26,14 +26,6 @@ psweep.discovery.candidate_selector
 
 
 
-Attributes
-----------
-
-.. autoapisummary::
-
-   psweep.discovery.candidate_selector.DEFAULT_DRAFT_PATTERNS
-
-
 Classes
 -------
 
@@ -83,10 +75,5 @@ Module Contents
                   only when ``include_metrics=True``).
       :rtype: tuple
 
-
-
-.. py:data:: DEFAULT_DRAFT_PATTERNS
-   :type:  list[str]
-   :value: ['\\bdraft\\b', '\\bproposed\\b', '\\bpreliminary\\b', 'for[\\s_\\-]?review',...
 
 

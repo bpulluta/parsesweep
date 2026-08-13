@@ -3,10 +3,10 @@
   <head><meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <meta name="color-scheme" content="light dark"><meta name="viewport" content="width=device-width, initial-scale=1" />
-<link rel="index" title="Index" href="genindex.html"><link rel="search" title="Search" href="search.html"><link rel="next" title="API Reference" href="autoapi/index.html"><link rel="prev" title="Changelog" href="changelog.html">
+<link rel="index" title="Index" href="genindex.html"><link rel="search" title="Search" href="search.html"><link rel="next" title="Schema Authoring" href="schemas/index.html"><link rel="prev" title="Configuration Reference" href="config-reference.html">
 
     <link rel="shortcut icon" href="_static/favicon.svg"><!-- Generated with Sphinx 9.1.0 and Furo 2025.12.19 -->
-        <title>Contributing - ParseSweep 2.0.1</title>
+        <title>Tuning &amp; Iteration - ParseSweep 2.0.1</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=d111a655" />
     <link rel="stylesheet" type="text/css" href="_static/styles/furo.css?v=7bdb33bb" />
     <link rel="stylesheet" type="text/css" href="_static/graphviz.css?v=4ae1632d" />
@@ -181,7 +181,7 @@
           <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
         </button>
       </div>
-      <label class="toc-overlay-icon toc-header-icon no-toc" for="__toc">
+      <label class="toc-overlay-icon toc-header-icon" for="__toc">
         <span class="icon"><svg><use href="#svg-toc"></use></svg></span>
       </label>
     </div>
@@ -200,18 +200,18 @@
 </form>
 <div id="searchbox"></div><div class="sidebar-scroll"><div class="sidebar-tree">
   <p class="caption" role="heading"><span class="caption-text">Guides</span></p>
-<ul>
+<ul class="current">
 <li class="toctree-l1"><a class="reference internal" href="getting-started.html">Getting Started</a></li>
 <li class="toctree-l1"><a class="reference internal" href="commands/index.html">Command Reference</a></li>
 <li class="toctree-l1"><a class="reference internal" href="config-reference.html">Configuration Reference</a></li>
-<li class="toctree-l1"><a class="reference internal" href="tuning.html">Tuning &amp; Iteration</a></li>
+<li class="toctree-l1 current current-page"><a class="current reference internal" href="#">Tuning &amp; Iteration</a></li>
 <li class="toctree-l1"><a class="reference internal" href="schemas/index.html">Schema Authoring</a></li>
 <li class="toctree-l1"><a class="reference internal" href="schemas/index.html#schema-design-best-practices">Schema Design Best Practices</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Reference</span></p>
-<ul class="current">
+<ul>
 <li class="toctree-l1"><a class="reference internal" href="changelog.html">Changelog</a></li>
-<li class="toctree-l1 current current-page"><a class="current reference internal" href="#">Contributing</a></li>
+<li class="toctree-l1"><a class="reference internal" href="contributing.html">Contributing</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">API</span></p>
 <ul>
@@ -321,12 +321,12 @@
         </a>
         <div class="content-icon-container">
           <div class="view-this-page">
-  <a class="muted-link" href="https://github.com/bpulluta/parsesweep/blob/main/docs/contributing.md?plain=true" title="View this page">
+  <a class="muted-link" href="https://github.com/bpulluta/parsesweep/blob/main/docs/tuning.md?plain=true" title="View this page">
     <svg><use href="#svg-eye"></use></svg>
     <span class="visually-hidden">View this page</span>
   </a>
 </div><div class="edit-this-page">
-  <a class="muted-link" href="https://github.com/bpulluta/parsesweep/edit/main/docs/contributing.md" rel="edit" title="Edit this page">
+  <a class="muted-link" href="https://github.com/bpulluta/parsesweep/edit/main/docs/tuning.md" rel="edit" title="Edit this page">
     <svg><use href="#svg-pencil"></use></svg>
     <span class="visually-hidden">Edit this page</span>
   </a>
@@ -338,117 +338,159 @@
               <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
             </button>
           </div>
-          <label class="toc-overlay-icon toc-content-icon no-toc" for="__toc">
+          <label class="toc-overlay-icon toc-content-icon" for="__toc">
             <span class="icon"><svg><use href="#svg-toc"></use></svg></span>
           </label>
         </div>
         <article role="main" id="furo-main-content">
-          <section id="contributing">
-<h1>Contributing<a class="headerlink" href="#contributing" title="Link to this heading">¶</a></h1>
-<div class="literal-block-wrapper docutils container" id="id1">
-<div class="code-block-caption"><span class="caption-text">CONTRIBUTING.md</span><a class="headerlink" href="#id1" title="Link to this code">¶</a></div>
-<div class="highlight-markdown notranslate"><div class="highlight"><pre><span></span><span class="gh"># Contributing to ParseSweep</span>
-
-Thanks for helping improve ParseSweep. This guide covers local setup, the
-branching model, testing, building the docs, and authoring schemas.
-
-<span class="gu">## Setup</span>
-
-ParseSweep uses [<span class="nt">pixi</span>](<span class="na">https://pixi.sh</span>) to manage every environment. There is
-no <span class="sb">`pip install`</span> step — pixi resolves the default, <span class="sb">`dev`</span>, and <span class="sb">`docs`</span>
-environments from <span class="sb">`pixi.toml`</span>.
-
-<span class="sb">```bash</span>
-<span class="c1"># Install pixi if you don&#39;t have it</span>
-curl<span class="w"> </span>-fsSL<span class="w"> </span>https://pixi.sh/install.sh<span class="w"> </span><span class="p">|</span><span class="w"> </span>bash
-
-<span class="c1"># Clone and install</span>
-git<span class="w"> </span>clone<span class="w"> </span>https://github.com/bpulluta/parsesweep.git<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="nb">cd</span><span class="w"> </span>parsesweep
-pixi<span class="w"> </span>install
-<span class="sb">```</span>
-
-Configure LLM credentials in a <span class="sb">`.env`</span> file (see
-[<span class="nt">Getting Started</span>](<span class="na">docs/getting-started.md</span>)) before running the pipeline.
-
-<span class="gu">## Branching</span>
-
-<span class="k">-</span><span class="w"> </span>Always work on a feature branch — never commit directly to <span class="sb">`main`</span>.
-<span class="k">-</span><span class="w"> </span>Name branches by intent, e.g. <span class="sb">`feat/…`</span>, <span class="sb">`fix/…`</span>, <span class="sb">`docs/…`</span>, <span class="sb">`refactor/…`</span>.
-<span class="k">-</span><span class="w"> </span>Keep changes phase-gated and test-first. Open a PR against <span class="sb">`main`</span>.
-
-<span class="gu">## Testing</span>
-
-Run the full suite before opening a PR:
-
-<span class="sb">```bash</span>
-pixi<span class="w"> </span>run<span class="w"> </span>-e<span class="w"> </span>dev<span class="w"> </span>pytest
-<span class="sb">```</span>
-
-Lint and format with ruff (docstrings are enforced NumPy-style):
-
-<span class="sb">```bash</span>
-pixi<span class="w"> </span>run<span class="w"> </span>-e<span class="w"> </span>dev<span class="w"> </span>ruff<span class="w"> </span>check<span class="w"> </span>src/
-pixi<span class="w"> </span>run<span class="w"> </span>-e<span class="w"> </span>dev<span class="w"> </span>ruff<span class="w"> </span>format<span class="w"> </span>--check<span class="w"> </span>src/
-<span class="sb">```</span>
-
-A change is not done until tests pass and <span class="sb">`ruff check src/`</span> reports 0
-violations. If a test is skipped or a check is blocked, say so explicitly in
-the PR.
-
-<span class="gu">## Building the docs</span>
-
-Docs live in <span class="sb">`docs/`</span> and build with Sphinx in the <span class="sb">`docs`</span> environment. The API
-reference is generated from NumPy docstrings (autoapi) and the CLI reference
-from the live Click objects (sphinx-click), so **the code is the source of
-truth** — write clear docstrings rather than separate prose.
-
-<span class="sb">```bash</span>
-pixi<span class="w"> </span>run<span class="w"> </span>-e<span class="w"> </span>docs<span class="w"> </span>docs-build<span class="w">     </span><span class="c1"># sphinx-build -W (warnings are errors)</span>
-pixi<span class="w"> </span>run<span class="w"> </span>-e<span class="w"> </span>docs<span class="w"> </span>docs-serve<span class="w">     </span><span class="c1"># serve docs/_build/html at :8000</span>
-pixi<span class="w"> </span>run<span class="w"> </span>-e<span class="w"> </span>docs<span class="w"> </span>docs-clean<span class="w">     </span><span class="c1"># remove docs/_build</span>
-<span class="sb">```</span>
-
-The build runs with <span class="sb">`-W`</span>, so a broken docstring or dead cross-reference fails
-the build (and the CI check). Fix warnings; don&#39;t suppress them.
-
-<span class="gu">## Authoring schemas</span>
-
-Each domain is defined by two files:
-
-| File | Role |
-|------|------|
-| <span class="gs">**Schema**</span> (JSON) | <span class="ge">*What*</span> to extract — field names, types, descriptions |
-| <span class="gs">**Config**</span> (YAML) | <span class="ge">*How*</span> to run — paths, page targeting, dedup, output |
-
-Guidelines:
-
-<span class="k">-</span><span class="w"> </span>Don&#39;t duplicate information between the schema and the config.
-<span class="k">-</span><span class="w"> </span>Keep user-facing config minimal — derive what you can from what&#39;s already
-  specified.
-<span class="k">-</span><span class="w"> </span>Field descriptions are the LLM&#39;s instructions; write them precisely.
-
-See [<span class="nt">Schema Authoring</span>](<span class="na">docs/schemas/index.md</span>) for the full best-practices guide
-and [<span class="nt">Configuration Reference</span>](<span class="na">docs/config-reference.md</span>) for the annotated
-config template.
-
-<span class="gu">## Code quality standards</span>
-
-These apply to every change:
-
-<span class="k">-</span><span class="w"> </span>No legacy code, backward-compatibility layers, or dead paths — remove old
-  code when you replace it.
-<span class="k">-</span><span class="w"> </span>Single source of truth for every concept; no redundancy.
-<span class="k">-</span><span class="w"> </span>Nothing hardcoded that belongs in a schema or config.
-<span class="k">-</span><span class="w"> </span>Must scale from 10 targets to 100,000.
-<span class="k">-</span><span class="w"> </span>Keep the product cohesive: consistent CLI style, config patterns, and naming.
-
-<span class="gu">## Changelog</span>
-
-Add an entry under <span class="sb">`## [Unreleased]`</span> in [<span class="nt">CHANGELOG.md</span>](<span class="na">CHANGELOG.md</span>) for any
-user-facing change (Added / Changed / Fixed / Removed).
+          <section id="tuning-iteration">
+<h1>Tuning &amp; Iteration<a class="headerlink" href="#tuning-iteration" title="Link to this heading">¶</a></h1>
+<p>ParseSweep is built to be tuned incrementally: start from the
+<a class="reference internal" href="getting-started.html#start-minimal"><span class="std std-ref">minimal config</span></a>, run it, inspect the output,
+then change <strong>one knob at a time</strong>. This page maps each symptom you might see to
+the exact setting that fixes it, its default, and how to change it.</p>
+<section id="extraction-quality">
+<h2>Extraction quality<a class="headerlink" href="#extraction-quality" title="Link to this heading">¶</a></h2>
+<section id="output-is-truncated-or-misses-later-sections">
+<h3>Output is truncated or misses later sections<a class="headerlink" href="#output-is-truncated-or-misses-later-sections" title="Link to this heading">¶</a></h3>
+<p>Large documents overflow the context window and get cut off before the section
+you want. Two levers, cheapest first:</p>
+<ol class="arabic">
+<li><p><strong>Page targeting</strong> (recommended for big PDFs) — let the LLM find and extract
+only the relevant pages:</p>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">extraction</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">pages</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">auto_locate</span><span class="p">:</span>
+<span class="w">      </span><span class="nt">section_description</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;the</span><span class="nv"> </span><span class="s">section</span><span class="nv"> </span><span class="s">containing</span><span class="nv"> </span><span class="s">rate</span><span class="nv"> </span><span class="s">tables&quot;</span>
+<span class="w">      </span><span class="nt">trigger_chars</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">200000</span><span class="w">        </span><span class="c1"># default: 200000 — only docs above this size</span>
+<span class="w">      </span><span class="nt">max_selected_pages</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">30</span><span class="w">       </span><span class="c1"># default: 30</span>
+<span class="w">      </span><span class="nt">keywords</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">rate</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">schedule</span><span class="p p-Indicator">]</span><span class="w">   </span><span class="c1"># optional heuristic pre-filter</span>
 </pre></div>
 </div>
+</li>
+<li><p><strong>Raise the context budget</strong> (brute force, more expensive):</p>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">extraction</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">max_context</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1000000</span><span class="w">             </span><span class="c1"># default: 600000</span>
+</pre></div>
 </div>
+<p>Set <code class="docutils literal notranslate"><span class="pre">trigger_chars</span></code> equal to <code class="docutils literal notranslate"><span class="pre">max_context</span></code> for zero-regression targeting —
+only documents that <em>would</em> be truncated get page-targeted.</p>
+</li>
+</ol>
+<p>For a one-off file you already know, skip config and pass <code class="docutils literal notranslate"><span class="pre">--pages</span> <span class="pre">615-759</span></code> on
+the <code class="docutils literal notranslate"><span class="pre">extract</span></code> command, or provide a <code class="docutils literal notranslate"><span class="pre">pages.csv</span></code> with per-file ranges (CSV
+ranges always win over <code class="docutils literal notranslate"><span class="pre">auto_locate</span></code>).</p>
+</section>
+<section id="fields-come-back-empty-or-wrong">
+<h3>Fields come back empty or wrong<a class="headerlink" href="#fields-come-back-empty-or-wrong" title="Link to this heading">¶</a></h3>
+<p>The field <code class="docutils literal notranslate"><span class="pre">description</span></code>s in your schema are the model’s instructions. Sharpen
+them before touching anything else — see
+<a class="reference internal" href="schemas/index.html"><span class="std std-doc">Schema Authoring</span></a>. If a whole document type is weak,
+try a stronger model tier (below).</p>
+</section>
+<section id="extraction-times-out-on-huge-documents">
+<h3>Extraction times out on huge documents<a class="headerlink" href="#extraction-times-out-on-huge-documents" title="Link to this heading">¶</a></h3>
+<p>Raise the per-request timeout (default <code class="docutils literal notranslate"><span class="pre">120</span></code> seconds):</p>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">extraction</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">timeout_seconds</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">300</span>
+</pre></div>
+</div>
+</section>
+</section>
+<section id="cost-and-speed">
+<h2>Cost and speed<a class="headerlink" href="#cost-and-speed" title="Link to this heading">¶</a></h2>
+<section id="runs-are-too-slow-or-too-expensive">
+<h3>Runs are too slow or too expensive<a class="headerlink" href="#runs-are-too-slow-or-too-expensive" title="Link to this heading">¶</a></h3>
+<ul>
+<li><p><strong>Use page targeting</strong> so you send fewer characters per document (above).</p></li>
+<li><p><strong>Pick a cheaper model tier</strong> per stage. Define aliases once, reference them
+per stage:</p>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">models</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">fast</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">gpt-4o-mini</span>
+<span class="w">  </span><span class="nt">strong</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">gpt-4o</span>
+<span class="nt">extraction</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">model</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">fast</span><span class="w">          </span><span class="c1"># cheap for bulk extraction</span>
+<span class="nt">validation</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">models</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">fast</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">strong</span><span class="p p-Indicator">]</span>
+</pre></div>
+</div>
+</li>
+<li><p><strong>Limit a test run</strong> with <code class="docutils literal notranslate"><span class="pre">-n</span> <span class="pre">5</span></code> on <code class="docutils literal notranslate"><span class="pre">extract</span></code> to iterate quickly before a
+full pass.</p></li>
+</ul>
+<p>Cached work is reused automatically: <code class="docutils literal notranslate"><span class="pre">extract</span></code> skips documents that already
+have output JSON. Pass <code class="docutils literal notranslate"><span class="pre">--fresh</span></code> to force a re-run after you change the schema,
+model tier, or page settings.</p>
+</section>
+</section>
+<section id="compilation">
+<h2>Compilation<a class="headerlink" href="#compilation" title="Link to this heading">¶</a></h2>
+<section id="the-compiled-sheet-has-duplicate-rows">
+<h3>The compiled sheet has duplicate rows<a class="headerlink" href="#the-compiled-sheet-has-duplicate-rows" title="Link to this heading">¶</a></h3>
+<p>Deduplication identity is <strong>schema-owned</strong> so every stage agrees on what makes a
+row unique. Set it in the schema, not the config:</p>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="nt">&quot;$metadata&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;identity&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;deduplication&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">      </span><span class="nt">&quot;key_fields&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;item_name&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;customer_class&quot;</span><span class="p">],</span>
+<span class="w">      </span><span class="nt">&quot;ignore_fields&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;notes&quot;</span><span class="p">]</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p>Preview what would be merged without writing output: <code class="docutils literal notranslate"><span class="pre">psweep</span> <span class="pre">compile</span> <span class="pre">--dry-run</span></code>.</p>
+</section>
+<section id="many-documents-describe-the-same-entity">
+<h3>Many documents describe the same entity<a class="headerlink" href="#many-documents-describe-the-same-entity" title="Link to this heading">¶</a></h3>
+<p>Turn on <strong>synthesis</strong> to reconcile many per-document records into one
+authoritative row per entity:</p>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">compilation</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">synthesis</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">enabled</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+<span class="w">    </span><span class="nt">min_sources_for_llm</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">2</span><span class="w">           </span><span class="c1"># default: 2 — skip the LLM when only 1 source</span>
+<span class="w">    </span><span class="nt">group_by</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">&quot;entity.key_field&quot;</span><span class="p p-Indicator">]</span>
+</pre></div>
+</div>
+</section>
+</section>
+<section id="discovery-web-acquisition">
+<h2>Discovery (web acquisition)<a class="headerlink" href="#discovery-web-acquisition" title="Link to this heading">¶</a></h2>
+<section id="too-many-irrelevant-documents">
+<h3>Too many irrelevant documents<a class="headerlink" href="#too-many-irrelevant-documents" title="Link to this heading">¶</a></h3>
+<p>Tighten selection and classification keywords:</p>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">discovery</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">selection</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">exclude</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">news</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">blog</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">press release</span><span class="p p-Indicator">]</span>
+<span class="w">  </span><span class="nt">document_classifier</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">required_keywords</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">ordinance</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">permit</span><span class="p p-Indicator">]</span>
+</pre></div>
+</div>
+</section>
+<section id="too-few-documents">
+<h3>Too few documents<a class="headerlink" href="#too-few-documents" title="Link to this heading">¶</a></h3>
+<p>Broaden your search queries and loosen <code class="docutils literal notranslate"><span class="pre">selection.max_per_target</span></code>, or enable
+<code class="docutils literal notranslate"><span class="pre">document_review</span></code> to keep the most authoritative results rather than filtering
+hard up front.</p>
+</section>
+<section id="crawl-politeness-policy">
+<h3>Crawl politeness / policy<a class="headerlink" href="#crawl-politeness-policy" title="Link to this heading">¶</a></h3>
+<p><code class="docutils literal notranslate"><span class="pre">robots_mode</span></code> and <code class="docutils literal notranslate"><span class="pre">tos_mode</span></code> both default to <code class="docutils literal notranslate"><span class="pre">warn</span></code> (log and continue). Set
+<code class="docutils literal notranslate"><span class="pre">block</span></code> to enforce, or <code class="docutils literal notranslate"><span class="pre">ignore</span></code> to silence. Throttle with
+<code class="docutils literal notranslate"><span class="pre">runtime.min_request_interval_ms</span></code> and <code class="docutils literal notranslate"><span class="pre">runtime.max_concurrent_downloads</span></code>.</p>
+</section>
+</section>
+<section id="re-running-after-changes">
+<h2>Re-running after changes<a class="headerlink" href="#re-running-after-changes" title="Link to this heading">¶</a></h2>
+<p>Every stage honors previous work by default. Pass <code class="docutils literal notranslate"><span class="pre">--fresh</span></code> to ignore caches
+and start over:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>pixi<span class="w"> </span>run<span class="w"> </span>psweep<span class="w"> </span>extract<span class="w"> </span>--config<span class="w"> </span>config/my_domain/run.yaml<span class="w"> </span>--fresh
+pixi<span class="w"> </span>run<span class="w"> </span>psweep<span class="w"> </span>run<span class="w">     </span>--config<span class="w"> </span>config/my_domain/run.yaml<span class="w"> </span>--fresh
+</pre></div>
+</div>
+<p>See the <a class="reference internal" href="config-reference.html"><span class="std std-doc">Configuration Reference</span></a> for the full defaults
+table and the <a class="reference internal" href="commands/index.html"><span class="std std-doc">Command Reference</span></a> for every option.</p>
+</section>
 </section>
 
         </article>
@@ -456,23 +498,23 @@ user-facing change (Added / Changed / Fixed / Removed).
       <footer>
         
         <div class="related-pages">
-          <a class="next-page" href="autoapi/index.html">
+          <a class="next-page" href="schemas/index.html">
               <div class="page-info">
                 <div class="context">
                   <span>Next</span>
                 </div>
-                <div class="title">API Reference</div>
+                <div class="title">Schema Authoring</div>
               </div>
               <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
             </a>
-          <a class="prev-page" href="changelog.html">
+          <a class="prev-page" href="config-reference.html">
               <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
               <div class="page-info">
                 <div class="context">
                   <span>Previous</span>
                 </div>
                 
-                <div class="title">Changelog</div>
+                <div class="title">Configuration Reference</div>
                 
               </div>
             </a>
@@ -497,8 +539,48 @@ user-facing change (Added / Changed / Fixed / Removed).
         
       </footer>
     </div>
-    <aside class="toc-drawer no-toc">
+    <aside class="toc-drawer">
       
+      
+      <div class="toc-sticky toc-scroll">
+        <div class="toc-title-container">
+          <span class="toc-title">
+            On this page
+          </span>
+        </div>
+        <div class="toc-tree-container">
+          <div class="toc-tree">
+            <ul>
+<li><a class="reference internal" href="#">Tuning &amp; Iteration</a><ul>
+<li><a class="reference internal" href="#extraction-quality">Extraction quality</a><ul>
+<li><a class="reference internal" href="#output-is-truncated-or-misses-later-sections">Output is truncated or misses later sections</a></li>
+<li><a class="reference internal" href="#fields-come-back-empty-or-wrong">Fields come back empty or wrong</a></li>
+<li><a class="reference internal" href="#extraction-times-out-on-huge-documents">Extraction times out on huge documents</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#cost-and-speed">Cost and speed</a><ul>
+<li><a class="reference internal" href="#runs-are-too-slow-or-too-expensive">Runs are too slow or too expensive</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#compilation">Compilation</a><ul>
+<li><a class="reference internal" href="#the-compiled-sheet-has-duplicate-rows">The compiled sheet has duplicate rows</a></li>
+<li><a class="reference internal" href="#many-documents-describe-the-same-entity">Many documents describe the same entity</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#discovery-web-acquisition">Discovery (web acquisition)</a><ul>
+<li><a class="reference internal" href="#too-many-irrelevant-documents">Too many irrelevant documents</a></li>
+<li><a class="reference internal" href="#too-few-documents">Too few documents</a></li>
+<li><a class="reference internal" href="#crawl-politeness-policy">Crawl politeness / policy</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#re-running-after-changes">Re-running after changes</a></li>
+</ul>
+</li>
+</ul>
+
+          </div>
+        </div>
+      </div>
       
       
     </aside>

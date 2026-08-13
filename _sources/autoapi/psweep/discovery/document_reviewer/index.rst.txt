@@ -22,14 +22,6 @@ psweep.discovery.document_reviewer
 
 
 
-Attributes
-----------
-
-.. autoapisummary::
-
-   psweep.discovery.document_reviewer.REVIEW_CACHE_DIRNAME
-
-
 Classes
 -------
 
@@ -60,9 +52,5 @@ Module Contents
       promoted file(s) are relocated to a ``reviewed/`` subfolder and their
       ``path``/``relative_path`` updated; in ``flag`` mode files stay put.
 
-
-
-.. py:data:: REVIEW_CACHE_DIRNAME
-   :value: '.review'
 
 

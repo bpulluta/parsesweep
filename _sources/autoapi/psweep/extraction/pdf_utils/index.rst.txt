@@ -9,17 +9,6 @@ psweep.extraction.pdf_utils
 
 
 
-Attributes
-----------
-
-.. autoapisummary::
-
-   psweep.extraction.pdf_utils.PYMUPDF4LLM_AVAILABLE
-   psweep.extraction.pdf_utils.PYMUPDF_AVAILABLE
-   psweep.extraction.pdf_utils.PYPDF_AVAILABLE
-   psweep.extraction.pdf_utils.logger
-
-
 Functions
 ---------
 
@@ -85,18 +74,4 @@ Module Contents
    :returns: Truncated text
    :rtype: str
 
-
-.. py:data:: PYMUPDF4LLM_AVAILABLE
-   :value: True
-
-
-.. py:data:: PYMUPDF_AVAILABLE
-   :value: True
-
-
-.. py:data:: PYPDF_AVAILABLE
-   :value: True
-
-
-.. py:data:: logger
 

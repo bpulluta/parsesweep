@@ -9,15 +9,6 @@ psweep.discovery.policies
 
 
 
-Attributes
-----------
-
-.. autoapisummary::
-
-   psweep.discovery.policies.DEFAULT_ROBOTS_POLICY_MODE
-   psweep.discovery.policies.DEFAULT_TOS_POLICY_MODE
-
-
 Classes
 -------
 
@@ -54,45 +45,8 @@ Module Contents
 
 
 
-   .. py:attribute:: DEFAULT_USER_AGENT
-      :value: 'ParseSweep/2.0 (+discovery)'
-
-
-
 .. py:class:: PolicyCheckResult
 
    Outcome of evaluating discovery policy controls for a target URL.
-
-
-   .. py:attribute:: allowed
-      :type:  bool
-      :value: True
-
-
-
-   .. py:attribute:: blocking_code
-      :type:  str | None
-      :value: None
-
-
-
-   .. py:attribute:: messages
-      :type:  list[str]
-      :value: []
-
-
-
-   .. py:attribute:: warning_codes
-      :type:  list[str]
-      :value: []
-
-
-
-.. py:data:: DEFAULT_ROBOTS_POLICY_MODE
-   :value: 'warn'
-
-
-.. py:data:: DEFAULT_TOS_POLICY_MODE
-   :value: 'warn'
 
 

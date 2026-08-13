@@ -9,14 +9,6 @@ psweep.utils.config
 
 
 
-Attributes
-----------
-
-.. autoapisummary::
-
-   psweep.utils.config.logger
-
-
 Classes
 -------
 
@@ -49,15 +41,6 @@ Module Contents
    :type project_root: Optional[Path]
 
 
-   .. py:attribute:: default_schema
-
-
-   .. py:attribute:: llm_config
-
-
-   .. py:attribute:: schema_dir
-
-
 .. py:function:: get_config(project_root: Optional[pathlib.Path] = None) -> Config
 
    Get the global configuration instance.
@@ -68,6 +51,4 @@ Module Contents
    :returns: Config instance
    :rtype: Config
 
-
-.. py:data:: logger
 

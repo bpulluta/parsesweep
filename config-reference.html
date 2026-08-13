@@ -3,15 +3,16 @@
   <head><meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <meta name="color-scheme" content="light dark"><meta name="viewport" content="width=device-width, initial-scale=1" />
-<link rel="index" title="Index" href="genindex.html"><link rel="search" title="Search" href="search.html"><link rel="next" title="Schema Authoring" href="schemas/index.html"><link rel="prev" title="Command Reference" href="commands/index.html">
+<link rel="index" title="Index" href="genindex.html"><link rel="search" title="Search" href="search.html"><link rel="next" title="Tuning &amp; Iteration" href="tuning.html"><link rel="prev" title="Command Reference" href="commands/index.html">
 
-    <!-- Generated with Sphinx 9.1.0 and Furo 2025.12.19 -->
+    <link rel="shortcut icon" href="_static/favicon.svg"><!-- Generated with Sphinx 9.1.0 and Furo 2025.12.19 -->
         <title>Configuration Reference - ParseSweep 2.0.1</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=d111a655" />
     <link rel="stylesheet" type="text/css" href="_static/styles/furo.css?v=7bdb33bb" />
     <link rel="stylesheet" type="text/css" href="_static/graphviz.css?v=4ae1632d" />
     <link rel="stylesheet" type="text/css" href="_static/copybutton.css?v=76b2166b" />
     <link rel="stylesheet" type="text/css" href="_static/styles/furo-extensions.css?v=8dab3a3b" />
+    <link rel="stylesheet" type="text/css" href="_static/custom.css?v=579eeedf" />
     
     
 
@@ -20,18 +21,24 @@
   body {
     --color-code-background: #f2f2f2;
   --color-code-foreground: #1e1e1e;
+  --color-brand-primary: #0f766e;
+  --color-brand-content: #0e7490;
   
   }
   @media not print {
     body[data-theme="dark"] {
       --color-code-background: #202020;
   --color-code-foreground: #d0d0d0;
+  --color-brand-primary: #5eead4;
+  --color-brand-content: #2dd4bf;
   
     }
     @media (prefers-color-scheme: dark) {
       body:not([data-theme="light"]) {
         --color-code-background: #202020;
   --color-code-foreground: #d0d0d0;
+  --color-brand-primary: #5eead4;
+  --color-brand-content: #2dd4bf;
   
       }
     }
@@ -174,7 +181,7 @@
           <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
         </button>
       </div>
-      <label class="toc-overlay-icon toc-header-icon no-toc" for="__toc">
+      <label class="toc-overlay-icon toc-header-icon" for="__toc">
         <span class="icon"><svg><use href="#svg-toc"></use></svg></span>
       </label>
     </div>
@@ -197,9 +204,16 @@
 <li class="toctree-l1"><a class="reference internal" href="getting-started.html">Getting Started</a></li>
 <li class="toctree-l1"><a class="reference internal" href="commands/index.html">Command Reference</a></li>
 <li class="toctree-l1 current current-page"><a class="current reference internal" href="#">Configuration Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="tuning.html">Tuning &amp; Iteration</a></li>
 <li class="toctree-l1"><a class="reference internal" href="schemas/index.html">Schema Authoring</a></li>
+<li class="toctree-l1"><a class="reference internal" href="schemas/index.html#schema-design-best-practices">Schema Design Best Practices</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Reference</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html">Changelog</a></li>
+<li class="toctree-l1"><a class="reference internal" href="contributing.html">Contributing</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">API</span></p>
 <ul>
 <li class="toctree-l1 has-children"><a class="reference internal" href="autoapi/index.html">API Reference</a><input aria-label="Toggle navigation of API Reference" class="toctree-checkbox" id="toctree-checkbox-1" name="toctree-checkbox-1" role="switch" type="checkbox"/><label for="toctree-checkbox-1"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l2 has-children"><a class="reference internal" href="autoapi/psweep/index.html">psweep</a><input aria-label="Toggle navigation of psweep" class="toctree-checkbox" id="toctree-checkbox-2" name="toctree-checkbox-2" role="switch" type="checkbox"/><label for="toctree-checkbox-2"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
@@ -287,8 +301,6 @@
 </li>
 </ul>
 </li>
-<li class="toctree-l1"><a class="reference internal" href="changelog.html">Changelog</a></li>
-<li class="toctree-l1"><a class="reference internal" href="contributing.html">Contributing</a></li>
 </ul>
 
 </div>
@@ -309,12 +321,16 @@
         </a>
         <div class="content-icon-container">
           <div class="view-this-page">
-  <a class="muted-link" href="_sources/config-reference.md.txt" title="View this page">
+  <a class="muted-link" href="https://github.com/bpulluta/parsesweep/blob/main/docs/config-reference.md?plain=true" title="View this page">
     <svg><use href="#svg-eye"></use></svg>
     <span class="visually-hidden">View this page</span>
   </a>
-</div>
-<div class="theme-toggle-container theme-toggle-content">
+</div><div class="edit-this-page">
+  <a class="muted-link" href="https://github.com/bpulluta/parsesweep/edit/main/docs/config-reference.md" rel="edit" title="Edit this page">
+    <svg><use href="#svg-pencil"></use></svg>
+    <span class="visually-hidden">Edit this page</span>
+  </a>
+</div><div class="theme-toggle-container theme-toggle-content">
             <button class="theme-toggle" aria-label="Toggle Light / Dark / Auto color theme">
               <svg class="theme-icon-when-auto-light"><use href="#svg-sun-with-moon"></use></svg>
               <svg class="theme-icon-when-auto-dark"><use href="#svg-moon-with-sun"></use></svg>
@@ -322,7 +338,7 @@
               <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
             </button>
           </div>
-          <label class="toc-overlay-icon toc-content-icon no-toc" for="__toc">
+          <label class="toc-overlay-icon toc-content-icon" for="__toc">
             <span class="icon"><svg><use href="#svg-toc"></use></svg></span>
           </label>
         </div>
@@ -332,13 +348,127 @@
 <p>A ParseSweep run is driven by a single YAML config. Each command reads only its
 own section, so a config can contain any subset of <code class="docutils literal notranslate"><span class="pre">extraction</span></code>, <code class="docutils literal notranslate"><span class="pre">compilation</span></code>,
 <code class="docutils literal notranslate"><span class="pre">discovery</span></code>, and <code class="docutils literal notranslate"><span class="pre">validation</span></code>.</p>
-<p>Copy the annotated template below to <code class="docutils literal notranslate"><span class="pre">config/&lt;your_domain&gt;/&lt;your_domain&gt;.yaml</span></code>
-and edit the sections you need.</p>
+<section id="start-small-add-as-you-need">
+<h2>Start small, add as you need<a class="headerlink" href="#start-small-add-as-you-need" title="Link to this heading">¶</a></h2>
+<p>Only two keys are required to extract — <code class="docutils literal notranslate"><span class="pre">schema</span></code> and <code class="docutils literal notranslate"><span class="pre">input_dir</span></code>:</p>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">extraction</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">schema</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">schemas/personal/my_schema.json</span>
+<span class="w">  </span><span class="nt">input_dir</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">documents/my_domain</span>
+</pre></div>
+</div>
+<p>Everything else has a default (see the table below). Add a key only when you
+have a reason to change its default — the <a class="reference internal" href="tuning.html"><span class="std std-doc">Tuning &amp; Iteration guide</span></a>
+tells you which key to reach for and when.</p>
+</section>
+<section id="defaults-at-a-glance">
+<h2>Defaults at a glance<a class="headerlink" href="#defaults-at-a-glance" title="Link to this heading">¶</a></h2>
+<p>These are the values that apply when you omit a key. They come from single
+source-of-truth constants in the code, so <code class="docutils literal notranslate"><span class="pre">--help</span></code> and runtime never drift.</p>
+<div class="table-wrapper colwidths-auto docutils container">
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Setting</p></th>
+<th class="head"><p>Section</p></th>
+<th class="head"><p>Default</p></th>
+<th class="head"><p>Change it when…</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">model</span></code></p></td>
+<td><p>extraction</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">.env</span></code> model → <code class="docutils literal notranslate"><span class="pre">gpt-4o-mini</span></code></p></td>
+<td><p>You want a stronger/cheaper tier</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">max_context</span></code></p></td>
+<td><p>extraction</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">600000</span></code></p></td>
+<td><p>Output is truncated on large docs</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">output_dir</span></code></p></td>
+<td><p>extraction</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">extracted/&lt;domain&gt;</span></code></p></td>
+<td><p>You want a custom location</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">skip_existing</span></code></p></td>
+<td><p>extraction</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">true</span></code></p></td>
+<td><p>Never (use <code class="docutils literal notranslate"><span class="pre">--fresh</span></code> to re-run)</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">timeout_seconds</span></code></p></td>
+<td><p>extraction</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">120</span></code> (<code class="docutils literal notranslate"><span class="pre">LLM_TIMEOUT</span></code> env)</p></td>
+<td><p>Very large docs time out</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">provider</span></code></p></td>
+<td><p>extraction</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">auto</span></code></p></td>
+<td><p>Auto-detection picks the wrong one</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">pages.auto_locate.trigger_chars</span></code></p></td>
+<td><p>extraction</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">200000</span></code></p></td>
+<td><p>Target only docs above a size</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">pages.auto_locate.max_selected_pages</span></code></p></td>
+<td><p>extraction</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">30</span></code></p></td>
+<td><p>Sections span more/fewer pages</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">output.default_format</span></code></p></td>
+<td><p>compilation</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">excel</span></code></p></td>
+<td><p>You want <code class="docutils literal notranslate"><span class="pre">csv</span></code> or <code class="docutils literal notranslate"><span class="pre">both</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">synthesis.min_sources_for_llm</span></code></p></td>
+<td><p>compilation</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">2</span></code></p></td>
+<td><p>Tune when the LLM reconciler runs</p></td>
+</tr>
+<tr class="row-even"><td><p>dedup <code class="docutils literal notranslate"><span class="pre">key_fields</span></code></p></td>
+<td><p>schema <code class="docutils literal notranslate"><span class="pre">$metadata.identity.deduplication</span></code></p></td>
+<td><p>none</p></td>
+<td><p>Compiled sheet has duplicate rows</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">partition_mode</span></code></p></td>
+<td><p>discovery</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">auto</span></code></p></td>
+<td><p>You need a specific output layout</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">policy.robots_mode</span></code></p></td>
+<td><p>discovery</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">warn</span></code></p></td>
+<td><p>Enforce (<code class="docutils literal notranslate"><span class="pre">block</span></code>) or silence (<code class="docutils literal notranslate"><span class="pre">ignore</span></code>)</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">policy.tos_mode</span></code></p></td>
+<td><p>discovery</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">warn</span></code></p></td>
+<td><p>Enforce (<code class="docutils literal notranslate"><span class="pre">block</span></code>) or silence (<code class="docutils literal notranslate"><span class="pre">ignore</span></code>)</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>The <a class="reference internal" href="commands/index.html"><span class="std std-doc">Command Reference</span></a> also renders every CLI option’s
+default directly from the live command definitions.</p>
+<section id="advanced-column-flattening-overrides">
+<h3>Advanced: column-flattening overrides<a class="headerlink" href="#advanced-column-flattening-overrides" title="Link to this heading">¶</a></h3>
+<p>When compiling nested records into flat spreadsheet columns, ParseSweep uses a
+set of heuristic field-name defaults (which fields name a <em>type</em>, hold a
+<em>value</em>, carry a <em>unit</em>, and so on). These ship tuned for tabular/rate-style
+data; if your domain names fields differently, override them per-schema in the
+schema’s <code class="docutils literal notranslate"><span class="pre">$metadata.compilation.flattening</span></code> block (e.g. <code class="docutils literal notranslate"><span class="pre">type_fields</span></code>,
+<code class="docutils literal notranslate"><span class="pre">value_fields</span></code>, <code class="docutils literal notranslate"><span class="pre">unit_fields</span></code>, <code class="docutils literal notranslate"><span class="pre">skip_fields</span></code>) — no code changes needed. Every
+knob falls back to the built-in default when omitted.</p>
+</section>
+</section>
+<section id="annotated-template">
+<h2>Annotated template<a class="headerlink" href="#annotated-template" title="Link to this heading">¶</a></h2>
+<p>Copy the annotated template below to <code class="docutils literal notranslate"><span class="pre">config/&lt;your_domain&gt;/run.yaml</span></code> and edit
+the sections you need. It documents every knob inline.</p>
 <div class="literal-block-wrapper docutils container" id="id1">
 <div class="code-block-caption"><span class="caption-text">config/TEMPLATE.yaml</span><a class="headerlink" href="#id1" title="Link to this code">¶</a></div>
 <div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="c1"># Domain Config Template</span>
-<span class="c1"># Copy this file to config/&lt;your_domain&gt;/&lt;your_domain&gt;.yaml</span>
-<span class="c1"># Usage: psweep run --config config/&lt;your_domain&gt;/&lt;your_domain&gt;.yaml</span>
+<span class="c1"># Copy this file to config/&lt;your_domain&gt;/run.yaml</span>
+<span class="c1"># Usage: psweep run --config config/&lt;your_domain&gt;/run.yaml</span>
 <span class="c1">#</span>
 <span class="c1"># Each section is independent — include only what you need:</span>
 <span class="c1">#   - extraction: required for the extract command</span>
@@ -368,9 +498,9 @@ and edit the sections you need.</p>
 <span class="w">  </span><span class="nt">input_dir</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">documents/your_domain</span><span class="w">        </span><span class="c1"># source documents folder</span>
 <span class="w">  </span><span class="nt">output_dir</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">extracted/your_domain</span>
 <span class="w">  </span><span class="nt">model</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">primary</span><span class="w">                          </span><span class="c1"># PIN the tier — don&#39;t rely on .env default</span>
-<span class="w">  </span><span class="c1"># Skip/reprocess hygiene: extract skips files with existing output JSON by</span>
+<span class="w">  </span><span class="c1"># Skip/refresh hygiene: extract skips files with existing output JSON by</span>
 <span class="w">  </span><span class="c1"># default (skip_existing=true). Re-run cheaply after config tweaks with no</span>
-<span class="w">  </span><span class="c1"># flag; only pass --reprocess after changing schema, model tier, or pages.</span>
+<span class="w">  </span><span class="c1"># flag; only pass --fresh after changing schema, model tier, or pages.</span>
 <span class="w">  </span><span class="c1"># max_context: 600000                   # chars per document (default: 600000)</span>
 <span class="w">  </span><span class="c1"># pages:                                 # how to select pages from large PDFs</span>
 <span class="w">  </span><span class="c1">#   csv: config/your_domain/page_ranges.csv  # manual ranges per file (wins)</span>
@@ -474,18 +604,19 @@ and edit the sections you need.</p>
 </div>
 </div>
 </section>
+</section>
 
         </article>
       </div>
       <footer>
         
         <div class="related-pages">
-          <a class="next-page" href="schemas/index.html">
+          <a class="next-page" href="tuning.html">
               <div class="page-info">
                 <div class="context">
                   <span>Next</span>
                 </div>
-                <div class="title">Schema Authoring</div>
+                <div class="title">Tuning &amp; Iteration</div>
               </div>
               <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
             </a>
@@ -512,14 +643,41 @@ and edit the sections you need.</p>
             
           </div>
           <div class="right-details">
-            
+            <div class="icons">
+              <a class="muted-link " href="https://github.com/bpulluta/parsesweep" aria-label="GitHub"><svg stroke="currentColor" fill="currentColor" stroke-width="0" viewBox="0 0 16 16" width="1em" height="1em"><path fill-rule="evenodd" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg></a>
+              
+            </div>
           </div>
         </div>
         
       </footer>
     </div>
-    <aside class="toc-drawer no-toc">
+    <aside class="toc-drawer">
       
+      
+      <div class="toc-sticky toc-scroll">
+        <div class="toc-title-container">
+          <span class="toc-title">
+            On this page
+          </span>
+        </div>
+        <div class="toc-tree-container">
+          <div class="toc-tree">
+            <ul>
+<li><a class="reference internal" href="#">Configuration Reference</a><ul>
+<li><a class="reference internal" href="#start-small-add-as-you-need">Start small, add as you need</a></li>
+<li><a class="reference internal" href="#defaults-at-a-glance">Defaults at a glance</a><ul>
+<li><a class="reference internal" href="#advanced-column-flattening-overrides">Advanced: column-flattening overrides</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#annotated-template">Annotated template</a></li>
+</ul>
+</li>
+</ul>
+
+          </div>
+        </div>
+      </div>
       
       
     </aside>
@@ -529,6 +687,6 @@ and edit the sections you need.</p>
     <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/scripts/furo.js?v=46bd48cc"></script>
     <script src="_static/clipboard.min.js?v=a7894cd8"></script>
-    <script src="_static/copybutton.js?v=f281be69"></script>
+    <script src="_static/copybutton.js?v=a5fa425f"></script>
     </body>
 </html>

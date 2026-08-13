@@ -29,14 +29,6 @@ psweep.pipeline
 
 
 
-Attributes
-----------
-
-.. autoapisummary::
-
-   psweep.pipeline.logger
-
-
 Classes
 -------
 
@@ -68,43 +60,9 @@ Module Contents
    Summary of a compilation run.
 
 
-   .. py:attribute:: deduplicated
-      :type:  bool
-
-
-   .. py:attribute:: output_dir
-      :type:  pathlib.Path
-
-
-   .. py:attribute:: output_files
-      :type:  list[pathlib.Path]
-
-
-   .. py:attribute:: total_rows
-      :type:  int
-
-
 .. py:class:: ExtractionRunResult
 
    Summary of a batch document extraction run.
-
-
-   .. py:attribute:: errors
-      :type:  list[dict]
-      :value: []
-
-
-
-   .. py:attribute:: failed
-      :type:  int
-
-
-   .. py:attribute:: output_dir
-      :type:  pathlib.Path
-
-
-   .. py:attribute:: schema_path
-      :type:  pathlib.Path
 
 
    .. py:property:: success_rate
@@ -117,45 +75,9 @@ Module Contents
       :rtype: float
 
 
-   .. py:attribute:: successful
-      :type:  int
-
-
-   .. py:attribute:: total
-      :type:  int
-
-
-   .. py:attribute:: total_cost
-      :type:  float
-
-
-   .. py:attribute:: total_items
-      :type:  int
-
-
 .. py:class:: PipelineResult
 
    Combined result from a full discover → extract → [validate] → compile run.
-
-
-   .. py:attribute:: compilation
-      :type:  Optional[CompilationResult]
-      :value: None
-
-
-
-   .. py:attribute:: domain
-      :type:  str
-
-
-   .. py:attribute:: extraction
-      :type:  Optional[ExtractionRunResult]
-      :value: None
-
-
-
-   .. py:attribute:: stages_run
-      :type:  list[str]
 
 
 .. py:function:: build_run_stage_commands(config_path: str | pathlib.Path, *, base_cmd: Sequence[str], skip_discover: bool = False, skip_extract: bool = False, reprocess: bool = False, extra_flags: Sequence[str] = ()) -> list[tuple[str, list[str]]]
@@ -198,7 +120,7 @@ Module Contents
              * *provider_name is 'azure', 'openai', or None.*
 
 
-.. py:function:: extract_documents(documents_path: str | pathlib.Path, schema: str | pathlib.Path, *, output_dir: str | pathlib.Path | None = None, model: str = DEFAULT_MODEL, provider: str = 'auto', max_context: int = 400000, skip_existing: bool = True, limit: int | None = None, pages_csv: str | pathlib.Path | None = None) -> ExtractionRunResult
+.. py:function:: extract_documents(documents_path: str | pathlib.Path, schema: str | pathlib.Path, *, output_dir: str | pathlib.Path | None = None, model: str = DEFAULT_MODEL, provider: str = 'auto', max_context: int = DEFAULT_MAX_CONTEXT, skip_existing: bool = True, limit: int | None = None, pages_csv: str | pathlib.Path | None = None) -> ExtractionRunResult
 
    Extract structured data from all documents in a folder.
 
@@ -253,6 +175,4 @@ Module Contents
 
    :raises psweep.exceptions.PipelineError: If any stage fails.
 
-
-.. py:data:: logger
 

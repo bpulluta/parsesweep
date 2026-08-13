@@ -9,14 +9,6 @@ psweep.extraction.text_processor
 
 
 
-Attributes
-----------
-
-.. autoapisummary::
-
-   psweep.extraction.text_processor.logger
-
-
 Classes
 -------
 
@@ -118,11 +110,4 @@ Module Contents
       :rtype: List[str]
 
 
-
-   .. py:attribute:: max_chars
-      :value: 400000
-
-
-
-.. py:data:: logger
 

@@ -12,15 +12,6 @@ psweep.utils.model_pricing
 
 
 
-Attributes
-----------
-
-.. autoapisummary::
-
-   psweep.utils.model_pricing.MODEL_PRICING
-   psweep.utils.model_pricing.logger
-
-
 Classes
 -------
 
@@ -89,9 +80,4 @@ Module Contents
 
    Get the global pricing instance.
 
-
-.. py:data:: MODEL_PRICING
-   :type:  Dict[str, Tuple[float, float]]
-
-.. py:data:: logger
 

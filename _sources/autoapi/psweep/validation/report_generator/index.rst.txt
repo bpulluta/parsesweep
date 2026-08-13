@@ -40,16 +40,6 @@ psweep.validation.report_generator
 
 
 
-Attributes
-----------
-
-.. autoapisummary::
-
-   psweep.validation.report_generator.MAX_VALUE_LENGTH
-   psweep.validation.report_generator.VERBATIM_TRUNCATION
-   psweep.validation.report_generator.logger
-
-
 Classes
 -------
 
@@ -94,17 +84,4 @@ Module Contents
       :rtype: Tuple[Path, Path]
 
 
-
-   .. py:attribute:: COLORS
-
-
-.. py:data:: MAX_VALUE_LENGTH
-   :value: 200
-
-
-.. py:data:: VERBATIM_TRUNCATION
-   :value: 200
-
-
-.. py:data:: logger
 

@@ -18,14 +18,6 @@ psweep.extraction.llm_client
 
 
 
-Attributes
-----------
-
-.. autoapisummary::
-
-   psweep.extraction.llm_client.logger
-
-
 Classes
 -------
 
@@ -91,45 +83,4 @@ Module Contents
       :rtype: Dict[str, Any]
 
 
-
-   .. py:attribute:: CONTEXT_RESPONSE_RESERVE_TOKENS
-      :value: 4096
-
-
-
-   .. py:attribute:: DEFAULT_TIMEOUT
-      :value: 120
-
-
-
-   .. py:attribute:: base_url
-      :value: None
-
-
-
-   .. py:attribute:: context_windows
-
-
-   .. py:attribute:: model
-      :value: 'openai/gpt-4o-mini'
-
-
-
-   .. py:attribute:: pricing_db
-
-
-   .. py:attribute:: provider
-      :value: 'azure'
-
-
-
-   .. py:attribute:: raw_model
-      :value: 'gpt-4o-mini'
-
-
-
-   .. py:attribute:: timeout
-
-
-.. py:data:: logger
 

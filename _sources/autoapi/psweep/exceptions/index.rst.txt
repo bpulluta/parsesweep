@@ -89,11 +89,6 @@ Module Contents
    Initialize self.  See help(type(self)) for accurate signature.
 
 
-   .. py:attribute:: document
-      :value: None
-
-
-
 .. py:exception:: ParseSweepError(message: str, *, hint: str | None = None)
 
    Bases: :py:obj:`Exception`
@@ -102,11 +97,6 @@ Module Contents
    Base exception for all ParseSweep errors.
 
    Initialize self.  See help(type(self)) for accurate signature.
-
-
-   .. py:attribute:: hint
-      :value: None
-
 
 
 .. py:exception:: PipelineError(message: str, *, stage: str | None = None, hint: str | None = None)
@@ -119,11 +109,6 @@ Module Contents
    Carries the failed stage name for structured error reporting.
 
    Initialize self.  See help(type(self)) for accurate signature.
-
-
-   .. py:attribute:: stage
-      :value: None
-
 
 
 .. py:exception:: SchemaError(message: str, *, hint: str | None = None)
@@ -144,11 +129,6 @@ Module Contents
    Raised when a schema's ``$metadata`` section is missing or invalid.
 
    Initialize self.  See help(type(self)) for accurate signature.
-
-
-   .. py:attribute:: schema_path
-      :value: None
-
 
 
 .. py:exception:: SchemaValidationError(message: str, *, hint: str | None = None)

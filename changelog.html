@@ -3,15 +3,16 @@
   <head><meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <meta name="color-scheme" content="light dark"><meta name="viewport" content="width=device-width, initial-scale=1" />
-<link rel="index" title="Index" href="genindex.html"><link rel="search" title="Search" href="search.html"><link rel="next" title="Contributing" href="contributing.html"><link rel="prev" title="psweep.validation.utils" href="autoapi/psweep/validation/utils/index.html">
+<link rel="index" title="Index" href="genindex.html"><link rel="search" title="Search" href="search.html"><link rel="next" title="Contributing" href="contributing.html"><link rel="prev" title="Schema Authoring" href="schemas/index.html">
 
-    <!-- Generated with Sphinx 9.1.0 and Furo 2025.12.19 -->
+    <link rel="shortcut icon" href="_static/favicon.svg"><!-- Generated with Sphinx 9.1.0 and Furo 2025.12.19 -->
         <title>Changelog - ParseSweep 2.0.1</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=d111a655" />
     <link rel="stylesheet" type="text/css" href="_static/styles/furo.css?v=7bdb33bb" />
     <link rel="stylesheet" type="text/css" href="_static/graphviz.css?v=4ae1632d" />
     <link rel="stylesheet" type="text/css" href="_static/copybutton.css?v=76b2166b" />
     <link rel="stylesheet" type="text/css" href="_static/styles/furo-extensions.css?v=8dab3a3b" />
+    <link rel="stylesheet" type="text/css" href="_static/custom.css?v=579eeedf" />
     
     
 
@@ -20,18 +21,24 @@
   body {
     --color-code-background: #f2f2f2;
   --color-code-foreground: #1e1e1e;
+  --color-brand-primary: #0f766e;
+  --color-brand-content: #0e7490;
   
   }
   @media not print {
     body[data-theme="dark"] {
       --color-code-background: #202020;
   --color-code-foreground: #d0d0d0;
+  --color-brand-primary: #5eead4;
+  --color-brand-content: #2dd4bf;
   
     }
     @media (prefers-color-scheme: dark) {
       body:not([data-theme="light"]) {
         --color-code-background: #202020;
   --color-code-foreground: #d0d0d0;
+  --color-brand-primary: #5eead4;
+  --color-brand-content: #2dd4bf;
   
       }
     }
@@ -174,7 +181,7 @@
           <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
         </button>
       </div>
-      <label class="toc-overlay-icon toc-header-icon no-toc" for="__toc">
+      <label class="toc-overlay-icon toc-header-icon" for="__toc">
         <span class="icon"><svg><use href="#svg-toc"></use></svg></span>
       </label>
     </div>
@@ -197,10 +204,17 @@
 <li class="toctree-l1"><a class="reference internal" href="getting-started.html">Getting Started</a></li>
 <li class="toctree-l1"><a class="reference internal" href="commands/index.html">Command Reference</a></li>
 <li class="toctree-l1"><a class="reference internal" href="config-reference.html">Configuration Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="tuning.html">Tuning &amp; Iteration</a></li>
 <li class="toctree-l1"><a class="reference internal" href="schemas/index.html">Schema Authoring</a></li>
+<li class="toctree-l1"><a class="reference internal" href="schemas/index.html#schema-design-best-practices">Schema Design Best Practices</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Reference</span></p>
 <ul class="current">
+<li class="toctree-l1 current current-page"><a class="current reference internal" href="#">Changelog</a></li>
+<li class="toctree-l1"><a class="reference internal" href="contributing.html">Contributing</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">API</span></p>
+<ul>
 <li class="toctree-l1 has-children"><a class="reference internal" href="autoapi/index.html">API Reference</a><input aria-label="Toggle navigation of API Reference" class="toctree-checkbox" id="toctree-checkbox-1" name="toctree-checkbox-1" role="switch" type="checkbox"/><label for="toctree-checkbox-1"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l2 has-children"><a class="reference internal" href="autoapi/psweep/index.html">psweep</a><input aria-label="Toggle navigation of psweep" class="toctree-checkbox" id="toctree-checkbox-2" name="toctree-checkbox-2" role="switch" type="checkbox"/><label for="toctree-checkbox-2"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l3 has-children"><a class="reference internal" href="autoapi/psweep/benchmarking/index.html">psweep.benchmarking</a><input aria-label="Toggle navigation of psweep.benchmarking" class="toctree-checkbox" id="toctree-checkbox-3" name="toctree-checkbox-3" role="switch" type="checkbox"/><label for="toctree-checkbox-3"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
@@ -287,8 +301,6 @@
 </li>
 </ul>
 </li>
-<li class="toctree-l1 current current-page"><a class="current reference internal" href="#">Changelog</a></li>
-<li class="toctree-l1"><a class="reference internal" href="contributing.html">Contributing</a></li>
 </ul>
 
 </div>
@@ -309,12 +321,16 @@
         </a>
         <div class="content-icon-container">
           <div class="view-this-page">
-  <a class="muted-link" href="_sources/changelog.md.txt" title="View this page">
+  <a class="muted-link" href="https://github.com/bpulluta/parsesweep/blob/main/docs/changelog.md?plain=true" title="View this page">
     <svg><use href="#svg-eye"></use></svg>
     <span class="visually-hidden">View this page</span>
   </a>
-</div>
-<div class="theme-toggle-container theme-toggle-content">
+</div><div class="edit-this-page">
+  <a class="muted-link" href="https://github.com/bpulluta/parsesweep/edit/main/docs/changelog.md" rel="edit" title="Edit this page">
+    <svg><use href="#svg-pencil"></use></svg>
+    <span class="visually-hidden">Edit this page</span>
+  </a>
+</div><div class="theme-toggle-container theme-toggle-content">
             <button class="theme-toggle" aria-label="Toggle Light / Dark / Auto color theme">
               <svg class="theme-icon-when-auto-light"><use href="#svg-sun-with-moon"></use></svg>
               <svg class="theme-icon-when-auto-dark"><use href="#svg-moon-with-sun"></use></svg>
@@ -322,60 +338,59 @@
               <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
             </button>
           </div>
-          <label class="toc-overlay-icon toc-content-icon no-toc" for="__toc">
+          <label class="toc-overlay-icon toc-content-icon" for="__toc">
             <span class="icon"><svg><use href="#svg-toc"></use></svg></span>
           </label>
         </div>
         <article role="main" id="furo-main-content">
           <section id="changelog">
 <h1>Changelog<a class="headerlink" href="#changelog" title="Link to this heading">¶</a></h1>
-<div class="literal-block-wrapper docutils container" id="id1">
-<div class="code-block-caption"><span class="caption-text">CHANGELOG.md</span><a class="headerlink" href="#id1" title="Link to this code">¶</a></div>
-<div class="highlight-markdown notranslate"><div class="highlight"><pre><span></span><span class="gh"># Changelog</span>
-
-All notable changes to ParseSweep are documented in this file.
-
-The format is based on [<span class="nt">Keep a Changelog</span>](<span class="na">https://keepachangelog.com/en/1.1.0/</span>),
-and this project adheres to [<span class="nt">Semantic Versioning</span>](<span class="na">https://semver.org/spec/v2.0.0.html</span>).
-
-<span class="gu">## [Unreleased]</span>
-
-<span class="gu">### Added</span>
-<span class="k">-</span><span class="w"> </span>Embedded documentation: NumPy docstrings rendered to a Sphinx site
-  (autoapi + sphinx-click) and published to GitHub Pages via CI.
-<span class="k">-</span><span class="w"> </span>Provider/model mismatch warning in <span class="sb">`llm_factory.build_llm_client()`</span> when
-  <span class="sb">`--provider azure`</span> is used with the default OpenAI model.
-<span class="k">-</span><span class="w"> </span><span class="sb">`CONTRIBUTING.md`</span> and this <span class="sb">`CHANGELOG.md`</span>.
-
-<span class="gu">### Changed</span>
-<span class="k">-</span><span class="w"> </span>Single-source-of-truth defaults: every user-facing default is one named
-  constant referenced by the dataclass field, the CLI option, the CLI
-  resolution fallback, and (for policies) the evaluator signature, so <span class="sb">`--help`</span>
-  provably matches runtime behavior.
-<span class="k">-</span><span class="w"> </span><span class="sb">`extract --model`</span> now shows its default in <span class="sb">`--help`</span> (<span class="sb">`show_default=True`</span>).
-<span class="k">-</span><span class="w"> </span><span class="sb">`--max-context`</span> default raised from 400000 to 600000 to match the config
-  template&#39;s recommendation.
-<span class="k">-</span><span class="w"> </span><span class="sb">`discover`</span> Choice options (<span class="sb">`--partition-mode`</span>, <span class="sb">`--robots-policy-mode`</span>,
-  <span class="sb">`--tos-policy-mode`</span>) now show their defaults in <span class="sb">`--help`</span>.
-<span class="k">-</span><span class="w"> </span>Robots and ToS policy default is now <span class="sb">`warn`</span> everywhere (previously the
-  effective default drifted between <span class="sb">`ignore`</span> and <span class="sb">`warn`</span> across layers).
-<span class="k">-</span><span class="w"> </span>Docs toolchain switched from MkDocs to Sphinx.
-
-<span class="gu">### Fixed</span>
-<span class="k">-</span><span class="w"> </span>Standardized all docstrings to NumPy style — <span class="sb">`ruff check src/`</span> reports 0
-  enforced pydocstyle (D) violations (was 58).
-<span class="k">-</span><span class="w"> </span>README broken-image alt text.
-
-<span class="gu">## [2.0.1]</span>
-
-Baseline release: contract-first discover → extract → compile pipeline with
-CLI, YAML config, and JSON-schema-driven extraction.
-
-[<span class="nl">Unreleased</span>]: <span class="na">https://github.com/bpulluta/parsesweep/compare/v2.0.1...HEAD</span>
-[<span class="nl">2.0.1</span>]: <span class="na">https://github.com/bpulluta/parsesweep/releases/tag/v2.0.1</span>
-</pre></div>
-</div>
-</div>
+<p>All notable changes to ParseSweep are documented in this file.</p>
+<p>The format is based on <a class="reference external" href="https://keepachangelog.com/en/1.1.0/">Keep a Changelog</a>,
+and this project adheres to <a class="reference external" href="https://semver.org/spec/v2.0.0.html">Semantic Versioning</a>.</p>
+<section id="unreleased">
+<h2><a class="reference external" href="https://github.com/bpulluta/parsesweep/compare/v2.0.1...HEAD">Unreleased</a><a class="headerlink" href="#unreleased" title="Link to this heading">¶</a></h2>
+<section id="added">
+<h3>Added<a class="headerlink" href="#added" title="Link to this heading">¶</a></h3>
+<ul class="simple">
+<li><p>Embedded documentation: NumPy docstrings rendered to a Sphinx site
+(autoapi + sphinx-click) and published to GitHub Pages via CI.</p></li>
+<li><p>Provider/model mismatch warning in <code class="docutils literal notranslate"><span class="pre">llm_factory.build_llm_client()</span></code> when
+<code class="docutils literal notranslate"><span class="pre">--provider</span> <span class="pre">azure</span></code> is used with the default OpenAI model.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">CONTRIBUTING.md</span></code> and this <code class="docutils literal notranslate"><span class="pre">CHANGELOG.md</span></code>.</p></li>
+</ul>
+</section>
+<section id="changed">
+<h3>Changed<a class="headerlink" href="#changed" title="Link to this heading">¶</a></h3>
+<ul class="simple">
+<li><p>Single-source-of-truth defaults: every user-facing default is one named
+constant referenced by the dataclass field, the CLI option, the CLI
+resolution fallback, and (for policies) the evaluator signature, so <code class="docutils literal notranslate"><span class="pre">--help</span></code>
+provably matches runtime behavior.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">extract</span> <span class="pre">--model</span></code> now shows its default in <code class="docutils literal notranslate"><span class="pre">--help</span></code> (<code class="docutils literal notranslate"><span class="pre">show_default=True</span></code>).</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">--max-context</span></code> default raised from 400000 to 600000 to match the config
+template’s recommendation.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">discover</span></code> Choice options (<code class="docutils literal notranslate"><span class="pre">--partition-mode</span></code>, <code class="docutils literal notranslate"><span class="pre">--robots-policy-mode</span></code>,
+<code class="docutils literal notranslate"><span class="pre">--tos-policy-mode</span></code>) now show their defaults in <code class="docutils literal notranslate"><span class="pre">--help</span></code>.</p></li>
+<li><p>Robots and ToS policy default is now <code class="docutils literal notranslate"><span class="pre">warn</span></code> everywhere (previously the
+effective default drifted between <code class="docutils literal notranslate"><span class="pre">ignore</span></code> and <code class="docutils literal notranslate"><span class="pre">warn</span></code> across layers).</p></li>
+<li><p>Docs toolchain switched from MkDocs to Sphinx.</p></li>
+</ul>
+</section>
+<section id="fixed">
+<h3>Fixed<a class="headerlink" href="#fixed" title="Link to this heading">¶</a></h3>
+<ul class="simple">
+<li><p>Standardized all docstrings to NumPy style — <code class="docutils literal notranslate"><span class="pre">ruff</span> <span class="pre">check</span> <span class="pre">src/</span></code> reports 0
+enforced pydocstyle (D) violations (was 58).</p></li>
+<li><p>README broken-image alt text.</p></li>
+</ul>
+</section>
+</section>
+<section id="id1">
+<h2><a class="reference external" href="https://github.com/bpulluta/parsesweep/releases/tag/v2.0.1">2.0.1</a><a class="headerlink" href="#id1" title="Link to this heading">¶</a></h2>
+<p>Baseline release: contract-first discover → extract → compile pipeline with
+CLI, YAML config, and JSON-schema-driven extraction.</p>
+</section>
 </section>
 
         </article>
@@ -392,14 +407,14 @@ CLI, YAML config, and JSON-schema-driven extraction.
               </div>
               <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
             </a>
-          <a class="prev-page" href="autoapi/psweep/validation/utils/index.html">
+          <a class="prev-page" href="schemas/index.html">
               <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
               <div class="page-info">
                 <div class="context">
                   <span>Previous</span>
                 </div>
                 
-                <div class="title">psweep.validation.utils</div>
+                <div class="title">Schema Authoring</div>
                 
               </div>
             </a>
@@ -415,14 +430,42 @@ CLI, YAML config, and JSON-schema-driven extraction.
             
           </div>
           <div class="right-details">
-            
+            <div class="icons">
+              <a class="muted-link " href="https://github.com/bpulluta/parsesweep" aria-label="GitHub"><svg stroke="currentColor" fill="currentColor" stroke-width="0" viewBox="0 0 16 16" width="1em" height="1em"><path fill-rule="evenodd" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg></a>
+              
+            </div>
           </div>
         </div>
         
       </footer>
     </div>
-    <aside class="toc-drawer no-toc">
+    <aside class="toc-drawer">
       
+      
+      <div class="toc-sticky toc-scroll">
+        <div class="toc-title-container">
+          <span class="toc-title">
+            On this page
+          </span>
+        </div>
+        <div class="toc-tree-container">
+          <div class="toc-tree">
+            <ul>
+<li><a class="reference internal" href="#">Changelog</a><ul>
+<li><a class="reference internal" href="#unreleased">Unreleased</a><ul>
+<li><a class="reference internal" href="#added">Added</a></li>
+<li><a class="reference internal" href="#changed">Changed</a></li>
+<li><a class="reference internal" href="#fixed">Fixed</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#id1">2.0.1</a></li>
+</ul>
+</li>
+</ul>
+
+          </div>
+        </div>
+      </div>
       
       
     </aside>
@@ -432,6 +475,6 @@ CLI, YAML config, and JSON-schema-driven extraction.
     <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/scripts/furo.js?v=46bd48cc"></script>
     <script src="_static/clipboard.min.js?v=a7894cd8"></script>
-    <script src="_static/copybutton.js?v=f281be69"></script>
+    <script src="_static/copybutton.js?v=a5fa425f"></script>
     </body>
 </html>

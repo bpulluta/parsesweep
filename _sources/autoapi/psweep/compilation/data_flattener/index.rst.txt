@@ -17,23 +17,6 @@ psweep.compilation.data_flattener
 
 
 
-Attributes
-----------
-
-.. autoapisummary::
-
-   psweep.compilation.data_flattener.DEFAULT_DISTINGUISHING_FIELDS
-   psweep.compilation.data_flattener.DEFAULT_EXPAND_MAX_FIELDS
-   psweep.compilation.data_flattener.DEFAULT_EXPAND_MAX_ITEMS
-   psweep.compilation.data_flattener.DEFAULT_PLACEHOLDER_VALUES
-   psweep.compilation.data_flattener.DEFAULT_SEASON_FIELDS
-   psweep.compilation.data_flattener.DEFAULT_SKIP_FIELDS
-   psweep.compilation.data_flattener.DEFAULT_TYPE_FIELDS
-   psweep.compilation.data_flattener.DEFAULT_UNIT_FIELDS
-   psweep.compilation.data_flattener.DEFAULT_UNIT_NORMALIZATIONS
-   psweep.compilation.data_flattener.DEFAULT_VALUE_FIELDS
-
-
 Classes
 -------
 
@@ -233,73 +216,5 @@ Module Contents
       :returns: Semicolon-separated summary string
       :rtype: str
 
-
-
-   .. py:attribute:: distinguishing_fields
-
-
-   .. py:attribute:: expand_max_fields
-
-
-   .. py:attribute:: expand_max_items
-
-
-   .. py:attribute:: placeholder_values
-
-
-   .. py:attribute:: season_fields
-
-
-   .. py:attribute:: skip_fields
-
-
-   .. py:attribute:: type_fields
-
-
-   .. py:attribute:: unit_fields
-
-
-   .. py:attribute:: unit_normalizations
-
-
-   .. py:attribute:: value_fields
-
-
-.. py:data:: DEFAULT_DISTINGUISHING_FIELDS
-   :value: ['season', 'time_period', 'tier', 'period']
-
-
-.. py:data:: DEFAULT_EXPAND_MAX_FIELDS
-   :value: 20
-
-
-.. py:data:: DEFAULT_EXPAND_MAX_ITEMS
-   :value: 15
-
-
-.. py:data:: DEFAULT_PLACEHOLDER_VALUES
-   :value: ['none', 'null', 'year-round', '']
-
-
-.. py:data:: DEFAULT_SEASON_FIELDS
-   :value: ['season', 'period']
-
-
-.. py:data:: DEFAULT_SKIP_FIELDS
-   :value: ['details', 'description', 'charge_description', 'conditions', 'notes', 'comments']
-
-
-.. py:data:: DEFAULT_TYPE_FIELDS
-   :value: ['type', 'charge_type', 'category', 'fee_type', 'name']
-
-
-.. py:data:: DEFAULT_UNIT_FIELDS
-   :value: ['unit', 'units']
-
-
-.. py:data:: DEFAULT_UNIT_NORMALIZATIONS
-
-.. py:data:: DEFAULT_VALUE_FIELDS
-   :value: ['rate', 'value', 'amount', 'cost']
 
 

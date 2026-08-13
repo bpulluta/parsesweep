@@ -9,14 +9,6 @@ psweep.config.runtime_config_loader
 
 
 
-Attributes
-----------
-
-.. autoapisummary::
-
-   psweep.config.runtime_config_loader.VARIABLE_CATALOG
-
-
 Exceptions
 ----------
 
@@ -77,7 +69,4 @@ Module Contents
 
    Resolve command inputs from runtime config and CLI overrides.
 
-
-.. py:data:: VARIABLE_CATALOG
-   :type:  dict[str, list[dict[str, str]]]
 

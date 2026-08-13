@@ -5,13 +5,14 @@
     <meta name="color-scheme" content="light dark"><meta name="viewport" content="width=device-width, initial-scale=1" />
 <link rel="index" title="Index" href="genindex.html"><link rel="search" title="Search" href="search.html"><link rel="next" title="Command Reference" href="commands/index.html"><link rel="prev" title="ParseSweep" href="index.html">
 
-    <!-- Generated with Sphinx 9.1.0 and Furo 2025.12.19 -->
+    <link rel="shortcut icon" href="_static/favicon.svg"><!-- Generated with Sphinx 9.1.0 and Furo 2025.12.19 -->
         <title>Getting Started - ParseSweep 2.0.1</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=d111a655" />
     <link rel="stylesheet" type="text/css" href="_static/styles/furo.css?v=7bdb33bb" />
     <link rel="stylesheet" type="text/css" href="_static/graphviz.css?v=4ae1632d" />
     <link rel="stylesheet" type="text/css" href="_static/copybutton.css?v=76b2166b" />
     <link rel="stylesheet" type="text/css" href="_static/styles/furo-extensions.css?v=8dab3a3b" />
+    <link rel="stylesheet" type="text/css" href="_static/custom.css?v=579eeedf" />
     
     
 
@@ -20,18 +21,24 @@
   body {
     --color-code-background: #f2f2f2;
   --color-code-foreground: #1e1e1e;
+  --color-brand-primary: #0f766e;
+  --color-brand-content: #0e7490;
   
   }
   @media not print {
     body[data-theme="dark"] {
       --color-code-background: #202020;
   --color-code-foreground: #d0d0d0;
+  --color-brand-primary: #5eead4;
+  --color-brand-content: #2dd4bf;
   
     }
     @media (prefers-color-scheme: dark) {
       body:not([data-theme="light"]) {
         --color-code-background: #202020;
   --color-code-foreground: #d0d0d0;
+  --color-brand-primary: #5eead4;
+  --color-brand-content: #2dd4bf;
   
       }
     }
@@ -197,9 +204,16 @@
 <li class="toctree-l1 current current-page"><a class="current reference internal" href="#">Getting Started</a></li>
 <li class="toctree-l1"><a class="reference internal" href="commands/index.html">Command Reference</a></li>
 <li class="toctree-l1"><a class="reference internal" href="config-reference.html">Configuration Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="tuning.html">Tuning &amp; Iteration</a></li>
 <li class="toctree-l1"><a class="reference internal" href="schemas/index.html">Schema Authoring</a></li>
+<li class="toctree-l1"><a class="reference internal" href="schemas/index.html#schema-design-best-practices">Schema Design Best Practices</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Reference</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html">Changelog</a></li>
+<li class="toctree-l1"><a class="reference internal" href="contributing.html">Contributing</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">API</span></p>
 <ul>
 <li class="toctree-l1 has-children"><a class="reference internal" href="autoapi/index.html">API Reference</a><input aria-label="Toggle navigation of API Reference" class="toctree-checkbox" id="toctree-checkbox-1" name="toctree-checkbox-1" role="switch" type="checkbox"/><label for="toctree-checkbox-1"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l2 has-children"><a class="reference internal" href="autoapi/psweep/index.html">psweep</a><input aria-label="Toggle navigation of psweep" class="toctree-checkbox" id="toctree-checkbox-2" name="toctree-checkbox-2" role="switch" type="checkbox"/><label for="toctree-checkbox-2"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
@@ -287,8 +301,6 @@
 </li>
 </ul>
 </li>
-<li class="toctree-l1"><a class="reference internal" href="changelog.html">Changelog</a></li>
-<li class="toctree-l1"><a class="reference internal" href="contributing.html">Contributing</a></li>
 </ul>
 
 </div>
@@ -309,12 +321,16 @@
         </a>
         <div class="content-icon-container">
           <div class="view-this-page">
-  <a class="muted-link" href="_sources/getting-started.md.txt" title="View this page">
+  <a class="muted-link" href="https://github.com/bpulluta/parsesweep/blob/main/docs/getting-started.md?plain=true" title="View this page">
     <svg><use href="#svg-eye"></use></svg>
     <span class="visually-hidden">View this page</span>
   </a>
-</div>
-<div class="theme-toggle-container theme-toggle-content">
+</div><div class="edit-this-page">
+  <a class="muted-link" href="https://github.com/bpulluta/parsesweep/edit/main/docs/getting-started.md" rel="edit" title="Edit this page">
+    <svg><use href="#svg-pencil"></use></svg>
+    <span class="visually-hidden">Edit this page</span>
+  </a>
+</div><div class="theme-toggle-container theme-toggle-content">
             <button class="theme-toggle" aria-label="Toggle Light / Dark / Auto color theme">
               <svg class="theme-icon-when-auto-light"><use href="#svg-sun-with-moon"></use></svg>
               <svg class="theme-icon-when-auto-dark"><use href="#svg-moon-with-sun"></use></svg>
@@ -388,18 +404,79 @@ override:</p>
 <p>See the <a class="reference internal" href="config-reference.html"><span class="std std-doc">Configuration Reference</span></a> for the annotated config
 template and <a class="reference internal" href="schemas/index.html"><span class="std std-doc">Schema Authoring</span></a> for schema best practices.</p>
 </section>
-<section id="your-first-extraction">
-<h2>Your first extraction<a class="headerlink" href="#your-first-extraction" title="Link to this heading">¶</a></h2>
-<p>Every command takes <code class="docutils literal notranslate"><span class="pre">--config</span></code>, and each command reads its own section:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="c1"># Extract structured JSON from local documents</span>
-pixi<span class="w"> </span>run<span class="w"> </span>psweep<span class="w"> </span>extract<span class="w"> </span>--config<span class="w"> </span>config/my_domain/run.yaml
-
-<span class="c1"># Compile the extractions into an Excel/CSV spreadsheet</span>
-pixi<span class="w"> </span>run<span class="w"> </span>psweep<span class="w"> </span>compile<span class="w"> </span>--config<span class="w"> </span>config/my_domain/run.yaml
+<section id="start-minimal">
+<h2>Start minimal<a class="headerlink" href="#start-minimal" title="Link to this heading">¶</a></h2>
+<p>You do not need a full config to begin. The smallest useful setup is a schema
+with two required metadata keys plus a two-line config.</p>
+<p><strong>1. A minimal schema</strong> (<code class="docutils literal notranslate"><span class="pre">schemas/personal/my_schema.json</span></code>). Only
+<code class="docutils literal notranslate"><span class="pre">$metadata.extraction.main_data_array</span></code> and <code class="docutils literal notranslate"><span class="pre">identifier_fields</span></code> are required —
+everything else is optional:</p>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;$schema&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;http://json-schema.org/draft-07/schema#&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;$metadata&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;extraction&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">      </span><span class="nt">&quot;main_data_array&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;items&quot;</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">&quot;identifier_fields&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;item_name&quot;</span><span class="p">]</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">  </span><span class="p">},</span>
+<span class="w">  </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;object&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;properties&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;items&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">      </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;array&quot;</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">&quot;items&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;object&quot;</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">&quot;properties&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">          </span><span class="nt">&quot;item_name&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;string&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Name of the item&quot;</span><span class="p">},</span>
+<span class="w">          </span><span class="nt">&quot;value&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;number&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;The value to extract&quot;</span><span class="p">}</span>
+<span class="w">        </span><span class="p">}</span>
+<span class="w">      </span><span class="p">}</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
 </pre></div>
 </div>
-<p>Or run the whole pipeline (discover → extract → compile) at once:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>pixi<span class="w"> </span>run<span class="w"> </span>psweep<span class="w"> </span>run<span class="w"> </span>--config<span class="w"> </span>config/my_domain/run.yaml
+<p>The field <code class="docutils literal notranslate"><span class="pre">description</span></code>s are the LLM’s extraction instructions — write them
+precisely. See <a class="reference internal" href="schemas/index.html"><span class="std std-doc">Schema Authoring</span></a> for the full guide.</p>
+<p><strong>2. A minimal config</strong> (<code class="docutils literal notranslate"><span class="pre">config/my_domain/run.yaml</span></code>). Only <code class="docutils literal notranslate"><span class="pre">schema</span></code> and
+<code class="docutils literal notranslate"><span class="pre">input_dir</span></code> are required; <code class="docutils literal notranslate"><span class="pre">model</span></code>, <code class="docutils literal notranslate"><span class="pre">output_dir</span></code>, <code class="docutils literal notranslate"><span class="pre">max_context</span></code>, and everything
+else fall back to sensible defaults:</p>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">extraction</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">schema</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">schemas/personal/my_schema.json</span>
+<span class="w">  </span><span class="nt">input_dir</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">documents/my_domain</span>
+</pre></div>
+</div>
+<p><strong>3. Run it</strong> (schema-only mode skips the config entirely, ideal for a first test):</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="c1"># Quick test: point extract straight at a folder + schema, limit to 2 docs</span>
+pixi<span class="w"> </span>run<span class="w"> </span>psweep<span class="w"> </span>extract<span class="w"> </span>documents/my_domain/<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--schema<span class="w"> </span>schemas/personal/my_schema.json<span class="w"> </span>-n<span class="w"> </span><span class="m">2</span>
+
+<span class="c1"># Or the config-driven run (picks up every setting)</span>
+pixi<span class="w"> </span>run<span class="w"> </span>psweep<span class="w"> </span>extract<span class="w"> </span>--config<span class="w"> </span>config/my_domain/run.yaml
+</pre></div>
+</div>
+</section>
+<section id="inspect-then-iterate">
+<h2>Inspect, then iterate<a class="headerlink" href="#inspect-then-iterate" title="Link to this heading">¶</a></h2>
+<p>Extraction writes one JSON per document to <code class="docutils literal notranslate"><span class="pre">extracted/&lt;domain&gt;/</span></code>. Open a couple
+and check the results, then tune <strong>one knob at a time</strong>:</p>
+<ul class="simple">
+<li><p>Output looks <strong>truncated / missing later sections</strong> → raise <code class="docutils literal notranslate"><span class="pre">max_context</span></code> or
+turn on page targeting.</p></li>
+<li><p>Documents are <strong>large or slow/expensive</strong> → add <code class="docutils literal notranslate"><span class="pre">pages.auto_locate</span></code>.</p></li>
+<li><p>The compiled sheet has <strong>duplicate rows</strong> → set the schema’s dedup key fields.</p></li>
+<li><p>Discovery finds <strong>too many or too few</strong> documents → tune keywords.</p></li>
+</ul>
+<p>Each of these has a default you can see and a knob you can change — the
+<a class="reference internal" href="tuning.html"><span class="std std-doc">Tuning &amp; Iteration guide</span></a> maps every symptom to the exact setting,
+and the <a class="reference internal" href="config-reference.html"><span class="std std-doc">Configuration Reference</span></a> lists every default.</p>
+</section>
+<section id="compile-and-run-the-whole-pipeline">
+<h2>Compile and run the whole pipeline<a class="headerlink" href="#compile-and-run-the-whole-pipeline" title="Link to this heading">¶</a></h2>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="c1"># Merge the per-document JSON into one Excel/CSV</span>
+pixi<span class="w"> </span>run<span class="w"> </span>psweep<span class="w"> </span>compile<span class="w"> </span>--config<span class="w"> </span>config/my_domain/run.yaml
+
+<span class="c1"># Or run discover → extract → compile in one shot</span>
+pixi<span class="w"> </span>run<span class="w"> </span>psweep<span class="w"> </span>run<span class="w"> </span>--config<span class="w"> </span>config/my_domain/run.yaml
 </pre></div>
 </div>
 <p>See the <a class="reference internal" href="commands/index.html"><span class="std std-doc">Command Reference</span></a> for every command, option, and
@@ -444,7 +521,10 @@ its default.</p>
             
           </div>
           <div class="right-details">
-            
+            <div class="icons">
+              <a class="muted-link " href="https://github.com/bpulluta/parsesweep" aria-label="GitHub"><svg stroke="currentColor" fill="currentColor" stroke-width="0" viewBox="0 0 16 16" width="1em" height="1em"><path fill-rule="evenodd" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg></a>
+              
+            </div>
           </div>
         </div>
         
@@ -466,7 +546,9 @@ its default.</p>
 <li><a class="reference internal" href="#install">Install</a></li>
 <li><a class="reference internal" href="#configure-credentials">Configure credentials</a></li>
 <li><a class="reference internal" href="#two-files-per-domain">Two files per domain</a></li>
-<li><a class="reference internal" href="#your-first-extraction">Your first extraction</a></li>
+<li><a class="reference internal" href="#start-minimal">Start minimal</a></li>
+<li><a class="reference internal" href="#inspect-then-iterate">Inspect, then iterate</a></li>
+<li><a class="reference internal" href="#compile-and-run-the-whole-pipeline">Compile and run the whole pipeline</a></li>
 </ul>
 </li>
 </ul>
@@ -483,6 +565,6 @@ its default.</p>
     <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/scripts/furo.js?v=46bd48cc"></script>
     <script src="_static/clipboard.min.js?v=a7894cd8"></script>
-    <script src="_static/copybutton.js?v=f281be69"></script>
+    <script src="_static/copybutton.js?v=a5fa425f"></script>
     </body>
 </html>

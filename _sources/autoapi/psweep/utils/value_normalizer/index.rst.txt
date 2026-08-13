@@ -9,14 +9,6 @@ psweep.utils.value_normalizer
 
 
 
-Attributes
-----------
-
-.. autoapisummary::
-
-   psweep.utils.value_normalizer.logger
-
-
 Functions
 ---------
 
@@ -106,6 +98,4 @@ Module Contents
    >>> normalize_value(None)
    None
 
-
-.. py:data:: logger
 

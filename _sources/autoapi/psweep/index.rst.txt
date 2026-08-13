@@ -62,19 +62,3 @@ Submodules
    /autoapi/psweep/validation/index
 
 
-Attributes
-----------
-
-.. autoapisummary::
-
-   psweep.PACKAGE_ROOT
-   psweep.PROJECT_ROOT
-
-
-Package Contents
-----------------
-
-.. py:data:: PACKAGE_ROOT
-
-.. py:data:: PROJECT_ROOT
-

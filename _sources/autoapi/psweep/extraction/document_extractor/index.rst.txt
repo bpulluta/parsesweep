@@ -19,14 +19,6 @@ psweep.extraction.document_extractor
 
 
 
-Attributes
-----------
-
-.. autoapisummary::
-
-   psweep.extraction.document_extractor.logger
-
-
 Classes
 -------
 
@@ -39,7 +31,7 @@ Classes
 Module Contents
 ---------------
 
-.. py:class:: DocumentExtractor(api_key: str = None, model: str = DEFAULT_MODEL, max_context_chars: int = 400000, schema_metadata=None, provider: str = None, azure_endpoint: str = None, azure_api_version: str = None, context_windows: Optional[Dict[str, int]] = None, base_url: Optional[str] = None, timeout: Optional[int] = None)
+.. py:class:: DocumentExtractor(api_key: str = None, model: str = DEFAULT_MODEL, max_context_chars: int = DEFAULT_MAX_CONTEXT, schema_metadata=None, provider: str = None, azure_endpoint: str = None, azure_api_version: str = None, context_windows: Optional[Dict[str, int]] = None, base_url: Optional[str] = None, timeout: Optional[int] = None)
 
    Universal document extractor with traceability and configurable context.
 
@@ -124,74 +116,8 @@ Module Contents
 
 
 
-   .. py:attribute:: api_key
-      :value: None
-
-
-
-   .. py:attribute:: client
-
-
-   .. py:attribute:: max_context_chars
-      :value: 400000
-
-
-
-   .. py:attribute:: model
-      :value: 'gpt-4o-mini'
-
-
-
-   .. py:attribute:: processor
-
-
-   .. py:attribute:: schema_metadata
-      :value: None
-
-
-
 .. py:class:: ExtractionResult
 
    Result from document extraction.
 
-
-   .. py:attribute:: completeness_score
-      :type:  float
-
-
-   .. py:attribute:: cost
-      :type:  float
-
-
-   .. py:attribute:: data
-      :type:  Dict[str, Any]
-
-
-   .. py:attribute:: input_tokens
-      :type:  Optional[int]
-      :value: None
-
-
-
-   .. py:attribute:: output_tokens
-      :type:  Optional[int]
-      :value: None
-
-
-
-   .. py:attribute:: processing_time
-      :type:  float
-
-
-   .. py:attribute:: validation_notes
-      :type:  List[str]
-
-
-   .. py:attribute:: validation_report
-      :type:  Optional[Any]
-      :value: None
-
-
-
-.. py:data:: logger
 

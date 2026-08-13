@@ -5,13 +5,14 @@
     <meta name="color-scheme" content="light dark"><meta name="viewport" content="width=device-width, initial-scale=1" />
 <link rel="index" title="Index" href="../../../../genindex.html"><link rel="search" title="Search" href="../../../../search.html"><link rel="next" title="psweep.discovery.candidate_selector" href="../candidate_selector/index.html"><link rel="prev" title="psweep.discovery" href="../index.html">
 
-    <!-- Generated with Sphinx 9.1.0 and Furo 2025.12.19 -->
+    <link rel="shortcut icon" href="../../../../_static/favicon.svg"><!-- Generated with Sphinx 9.1.0 and Furo 2025.12.19 -->
         <title>psweep.discovery.browser - ParseSweep 2.0.1</title>
       <link rel="stylesheet" type="text/css" href="../../../../_static/pygments.css?v=d111a655" />
     <link rel="stylesheet" type="text/css" href="../../../../_static/styles/furo.css?v=7bdb33bb" />
     <link rel="stylesheet" type="text/css" href="../../../../_static/graphviz.css?v=4ae1632d" />
     <link rel="stylesheet" type="text/css" href="../../../../_static/copybutton.css?v=76b2166b" />
     <link rel="stylesheet" type="text/css" href="../../../../_static/styles/furo-extensions.css?v=8dab3a3b" />
+    <link rel="stylesheet" type="text/css" href="../../../../_static/custom.css?v=579eeedf" />
     
     
 
@@ -20,18 +21,24 @@
   body {
     --color-code-background: #f2f2f2;
   --color-code-foreground: #1e1e1e;
+  --color-brand-primary: #0f766e;
+  --color-brand-content: #0e7490;
   
   }
   @media not print {
     body[data-theme="dark"] {
       --color-code-background: #202020;
   --color-code-foreground: #d0d0d0;
+  --color-brand-primary: #5eead4;
+  --color-brand-content: #2dd4bf;
   
     }
     @media (prefers-color-scheme: dark) {
       body:not([data-theme="light"]) {
         --color-code-background: #202020;
   --color-code-foreground: #d0d0d0;
+  --color-brand-primary: #5eead4;
+  --color-brand-content: #2dd4bf;
   
       }
     }
@@ -197,9 +204,16 @@
 <li class="toctree-l1"><a class="reference internal" href="../../../../getting-started.html">Getting Started</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../../commands/index.html">Command Reference</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../../config-reference.html">Configuration Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../tuning.html">Tuning &amp; Iteration</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../../schemas/index.html">Schema Authoring</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../schemas/index.html#schema-design-best-practices">Schema Design Best Practices</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Reference</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../changelog.html">Changelog</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../contributing.html">Contributing</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">API</span></p>
 <ul class="current">
 <li class="toctree-l1 current has-children"><a class="reference internal" href="../../../index.html">API Reference</a><input aria-label="Toggle navigation of API Reference" checked="" class="toctree-checkbox" id="toctree-checkbox-1" name="toctree-checkbox-1" role="switch" type="checkbox"/><label for="toctree-checkbox-1"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul class="current">
 <li class="toctree-l2 current has-children"><a class="reference internal" href="../../index.html">psweep</a><input aria-label="Toggle navigation of psweep" checked="" class="toctree-checkbox" id="toctree-checkbox-2" name="toctree-checkbox-2" role="switch" type="checkbox"/><label for="toctree-checkbox-2"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul class="current">
@@ -287,8 +301,6 @@
 </li>
 </ul>
 </li>
-<li class="toctree-l1"><a class="reference internal" href="../../../../changelog.html">Changelog</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../../contributing.html">Contributing</a></li>
 </ul>
 
 </div>
@@ -309,12 +321,16 @@
         </a>
         <div class="content-icon-container">
           <div class="view-this-page">
-  <a class="muted-link" href="../../../../_sources/autoapi/psweep/discovery/browser/index.rst.txt" title="View this page">
+  <a class="muted-link" href="https://github.com/bpulluta/parsesweep/blob/main/docs/autoapi/psweep/discovery/browser/index.rst?plain=true" title="View this page">
     <svg><use href="#svg-eye"></use></svg>
     <span class="visually-hidden">View this page</span>
   </a>
-</div>
-<div class="theme-toggle-container theme-toggle-content">
+</div><div class="edit-this-page">
+  <a class="muted-link" href="https://github.com/bpulluta/parsesweep/edit/main/docs/autoapi/psweep/discovery/browser/index.rst" rel="edit" title="Edit this page">
+    <svg><use href="#svg-pencil"></use></svg>
+    <span class="visually-hidden">Edit this page</span>
+  </a>
+</div><div class="theme-toggle-container theme-toggle-content">
             <button class="theme-toggle" aria-label="Toggle Light / Dark / Auto color theme">
               <svg class="theme-icon-when-auto-light"><use href="#svg-sun-with-moon"></use></svg>
               <svg class="theme-icon-when-auto-dark"><use href="#svg-moon-with-sun"></use></svg>
@@ -424,11 +440,6 @@ Navigates to the URL’s origin first to satisfy same-origin policy.</p>
 <dd><p>Navigate to <em>url</em> and return the rendered page source.</p>
 </dd></dl>
 
-<dl class="py attribute">
-<dt class="sig sig-object py" id="psweep.discovery.browser.BrowserSession.user_agent">
-<span class="sig-name descname"><span class="pre">user_agent</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'Mozilla/5.0</span> <span class="pre">(Macintosh;</span> <span class="pre">Intel</span> <span class="pre">Mac</span> <span class="pre">OS</span> <span class="pre">X</span> <span class="pre">10_15_7)</span> <span class="pre">AppleWebKit/537.36</span> <span class="pre">(KHTML,</span> <span class="pre">like</span> <span class="pre">Gecko)...</span></span><a class="headerlink" href="#psweep.discovery.browser.BrowserSession.user_agent" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
-
 </dd></dl>
 
 <dl class="py function">
@@ -477,7 +488,10 @@ Navigates to the URL’s origin first to satisfy same-origin policy.</p>
             
           </div>
           <div class="right-details">
-            
+            <div class="icons">
+              <a class="muted-link " href="https://github.com/bpulluta/parsesweep" aria-label="GitHub"><svg stroke="currentColor" fill="currentColor" stroke-width="0" viewBox="0 0 16 16" width="1em" height="1em"><path fill-rule="evenodd" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg></a>
+              
+            </div>
           </div>
         </div>
         
@@ -506,7 +520,6 @@ Navigates to the URL’s origin first to satisfy same-origin policy.</p>
 <li><a class="reference internal" href="#psweep.discovery.browser.BrowserSession.current_links"><code class="docutils literal notranslate"><span class="pre">BrowserSession.current_links()</span></code></a></li>
 <li><a class="reference internal" href="#psweep.discovery.browser.BrowserSession.download_bytes"><code class="docutils literal notranslate"><span class="pre">BrowserSession.download_bytes()</span></code></a></li>
 <li><a class="reference internal" href="#psweep.discovery.browser.BrowserSession.fetch_html"><code class="docutils literal notranslate"><span class="pre">BrowserSession.fetch_html()</span></code></a></li>
-<li><a class="reference internal" href="#psweep.discovery.browser.BrowserSession.user_agent"><code class="docutils literal notranslate"><span class="pre">BrowserSession.user_agent</span></code></a></li>
 </ul>
 </li>
 <li><a class="reference internal" href="#psweep.discovery.browser.browser_available"><code class="docutils literal notranslate"><span class="pre">browser_available()</span></code></a></li>
@@ -528,6 +541,6 @@ Navigates to the URL’s origin first to satisfy same-origin policy.</p>
     <script src="../../../../_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="../../../../_static/scripts/furo.js?v=46bd48cc"></script>
     <script src="../../../../_static/clipboard.min.js?v=a7894cd8"></script>
-    <script src="../../../../_static/copybutton.js?v=f281be69"></script>
+    <script src="../../../../_static/copybutton.js?v=a5fa425f"></script>
     </body>
 </html>

@@ -94,11 +94,6 @@ Module Contents
 
 
 
-   .. py:attribute:: user_agent
-      :value: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko)...
-
-
-
 .. py:function:: browser_available() -> bool
 
    Return True if Selenium is importable (Chrome resolved lazily).

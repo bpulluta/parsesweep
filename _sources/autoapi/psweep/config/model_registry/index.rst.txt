@@ -37,15 +37,6 @@ psweep.config.model_registry
 
 
 
-Attributes
-----------
-
-.. autoapisummary::
-
-   psweep.config.model_registry.KNOWN_PROVIDERS
-   psweep.config.model_registry.MIN_MULTI_MODELS
-
-
 Exceptions
 ----------
 
@@ -96,30 +87,6 @@ Module Contents
    :ivar params: Optional extra generation parameters declared in long-form config.
                  Frozen semantics: treat as read-only after construction.
 
-
-
-   .. py:attribute:: context_window
-      :type:  int | None
-      :value: None
-
-
-
-   .. py:attribute:: model
-      :type:  str
-
-
-   .. py:attribute:: params
-      :type:  Mapping[str, Any]
-
-
-   .. py:attribute:: provider
-      :type:  str | None
-      :value: None
-
-
-
-   .. py:attribute:: tier
-      :type:  str
 
 
 .. py:class:: ModelRegistry(tiers: Mapping[str, ModelDefinition] | None = None, defaults: Mapping[str, str] | None = None, llm_config: Mapping[str, Any] | None = None, *, context_windows: Mapping[str, int] | None = None, resolve_kwargs: Callable[Ellipsis, dict[str, Any]] | None = None)
@@ -230,12 +197,5 @@ Module Contents
 
       :raises ModelRegistryError: With a clear, actionable message on the first violation found.
 
-
-
-.. py:data:: KNOWN_PROVIDERS
-   :type:  frozenset[str]
-
-.. py:data:: MIN_MULTI_MODELS
-   :value: 2
 
 

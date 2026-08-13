@@ -73,52 +73,8 @@ Module Contents
 
 
 
-   .. py:attribute:: MAX_SAMPLE_CHARS
-      :value: 10000
-
-
-
-   .. py:attribute:: MIN_EXTRACTION_LENGTH
-      :value: 50
-
-
-
 .. py:class:: ContentSamplingResult
 
    Result of content sampling validation.
-
-
-   .. py:attribute:: confidence_score
-      :type:  float
-
-
-   .. py:attribute:: error
-      :type:  str | None
-      :value: None
-
-
-
-   .. py:attribute:: keywords_found
-      :type:  list[str]
-
-
-   .. py:attribute:: keywords_missing
-      :type:  list[str]
-
-
-   .. py:attribute:: reasons
-      :type:  list[str]
-
-
-   .. py:attribute:: sample_length
-      :type:  int
-
-
-   .. py:attribute:: success
-      :type:  bool
-
-
-   .. py:attribute:: text_extracted
-      :type:  str | None
 
 

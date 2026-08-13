@@ -9,16 +9,6 @@ psweep.extraction.document_utils
 
 
 
-Attributes
-----------
-
-.. autoapisummary::
-
-   psweep.extraction.document_utils.SUPPORTED_EXTENSIONS
-   psweep.extraction.document_utils.TEXT_CACHE_DIRNAME
-   psweep.extraction.document_utils.logger
-
-
 Functions
 ---------
 
@@ -78,12 +68,4 @@ Module Contents
    re-extract and are left uncached so a later table-aware extraction is never
    served a flattened copy); ``method`` is recorded for transparency.
 
-
-.. py:data:: SUPPORTED_EXTENSIONS
-
-.. py:data:: TEXT_CACHE_DIRNAME
-   :value: '.text'
-
-
-.. py:data:: logger
 

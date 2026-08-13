@@ -51,14 +51,6 @@ psweep.extraction.llm_factory
 
 
 
-Attributes
-----------
-
-.. autoapisummary::
-
-   psweep.extraction.llm_factory.DEFAULT_MODEL
-
-
 Functions
 ---------
 
@@ -111,9 +103,5 @@ Module Contents
 
    ``stage_value`` may be a named alias (a key in ``models``) or an explicit
    model string. See the module docstring for the full precedence chain.
-
-
-.. py:data:: DEFAULT_MODEL
-   :value: 'gpt-4o-mini'
 
 

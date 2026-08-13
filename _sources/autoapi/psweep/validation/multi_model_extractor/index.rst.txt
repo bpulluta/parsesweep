@@ -41,14 +41,6 @@ psweep.validation.multi_model_extractor
 
 
 
-Attributes
-----------
-
-.. autoapisummary::
-
-   psweep.validation.multi_model_extractor.logger
-
-
 Classes
 -------
 
@@ -73,73 +65,7 @@ Module Contents
    Result from a single model extraction.
 
 
-   .. py:attribute:: cost
-      :type:  float
-
-
-   .. py:attribute:: data
-      :type:  Optional[Dict[str, Any]]
-
-
-   .. py:attribute:: error
-      :type:  Optional[str]
-      :value: None
-
-
-
-   .. py:attribute:: error_details
-      :type:  Optional[Dict[str, Any]]
-      :value: None
-
-
-
-   .. py:attribute:: input_tokens
-      :type:  int
-      :value: 0
-
-
-
-   .. py:attribute:: model
-      :type:  str
-
-
-   .. py:attribute:: output_path
-      :type:  Optional[pathlib.Path]
-
-
-   .. py:attribute:: output_tokens
-      :type:  int
-      :value: 0
-
-
-
-   .. py:attribute:: processing_time
-      :type:  float
-
-
-   .. py:attribute:: result
-      :type:  Optional[Any]
-      :value: None
-
-
-
-   .. py:attribute:: reused
-      :type:  bool
-      :value: False
-
-
-
-   .. py:attribute:: reused_prior_cost_usd
-      :type:  float
-      :value: 0.0
-
-
-
-   .. py:attribute:: success
-      :type:  bool
-
-
-.. py:function:: run_multi_model_extraction(doc_text: str, doc_name: str, schema: dict, registry: psweep.config.model_registry.ModelRegistry, model_tiers: Sequence[str], output_dir: pathlib.Path, max_context_chars: int = 400000, timeout_seconds: Optional[int] = None, runtime_artifact: Optional[Dict[str, Any]] = None, run_id: Optional[str] = None, seed_records_by_model: Optional[Dict[str, Dict[str, Any]]] = None, model_status_callback: Optional[Callable[[Dict[str, Any]], None]] = None) -> Dict[str, ModelExtractionResult]
+.. py:function:: run_multi_model_extraction(doc_text: str, doc_name: str, schema: dict, registry: psweep.config.model_registry.ModelRegistry, model_tiers: Sequence[str], output_dir: pathlib.Path, max_context_chars: int = DEFAULT_MAX_CONTEXT, timeout_seconds: Optional[int] = None, runtime_artifact: Optional[Dict[str, Any]] = None, run_id: Optional[str] = None, seed_records_by_model: Optional[Dict[str, Dict[str, Any]]] = None, model_status_callback: Optional[Callable[[Dict[str, Any]], None]] = None) -> Dict[str, ModelExtractionResult]
 
    Run extraction with multiple models resolved through the model registry.
 
@@ -169,6 +95,4 @@ Module Contents
    :returns: Dict mapping concrete model name to ModelExtractionResult
    :rtype: Dict[str, ModelExtractionResult]
 
-
-.. py:data:: logger
 

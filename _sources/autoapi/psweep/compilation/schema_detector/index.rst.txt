@@ -9,14 +9,6 @@ psweep.compilation.schema_detector
 
 
 
-Attributes
-----------
-
-.. autoapisummary::
-
-   psweep.compilation.schema_detector.logger
-
-
 Classes
 -------
 
@@ -90,9 +82,4 @@ Module Contents
       >>> # Returns: {"Jurisdiction": "Austin", "State": "TX"}
 
 
-
-   .. py:attribute:: schema_metadata
-
-
-.. py:data:: logger
 
