@@ -50,16 +50,19 @@ class RunView:
 
     @property
     def is_quiet(self) -> bool:
+        """True when this run is operating under quiet verbosity."""
         return self.verbosity.is_quiet
 
     # -- context: what will run -------------------------------------------
 
     def header(self, title: str | None = None) -> None:
+        """Print the command header (skipped in quiet mode)."""
         if self.is_quiet:
             return
         self.ui.header(title or self.command.title())
 
     def config(self, rows: Rows, title: str | None = "Configuration") -> None:
+        """Print the resolved configuration table (skipped in quiet mode)."""
         if self.is_quiet:
             return
         self.console.print(self.ui.key_values(rows, title=title))
@@ -111,14 +114,17 @@ class RunView:
     # -- messages ---------------------------------------------------------
 
     def info(self, message: str) -> None:
+        """Print a compact info message (skipped in quiet mode)."""
         if not self.is_quiet:
             self.ui.message(level="info", message=message, compact=True)
 
     def success(self, message: str) -> None:
+        """Print a compact success message (skipped in quiet mode)."""
         if not self.is_quiet:
             self.ui.message(level="success", message=message, compact=True)
 
     def warning(self, message: str, details: str | None = None) -> None:
+        """Print a warning; surfaces under normal verbosity, quiet suppresses."""
         # Warnings surface even under normal verbosity; only quiet suppresses.
         if not self.is_quiet:
             self.ui.message(level="warning", message=message, details=details)
@@ -129,6 +135,7 @@ class RunView:
         details: str | None = None,
         suggestions: Sequence[str] | None = None,
     ) -> None:
+        """Print an error with optional details/suggestions; always surfaces."""
         # Errors always surface, even in quiet mode.
         self.ui.message(
             level="error",
@@ -138,6 +145,7 @@ class RunView:
         )
 
     def status(self, level: str, text: str, detail: str | None = None) -> None:
+        """Print a per-item status row (skipped in quiet mode)."""
         if not self.is_quiet:
             self.ui.status_item(level, text, detail)
 
@@ -149,11 +157,13 @@ class RunView:
     def runtime_config_error(
         self, exc: Exception, warnings: Sequence[str] | None = None
     ) -> None:
+        """Print a runtime-config resolution error with optional warnings."""
         self.ui.runtime_config_error(exc, warnings)
 
     # -- outcome: what happened -------------------------------------------
 
     def summary(self, rows: Rows, title: str = "Summary") -> None:
+        """Print the outcome summary panel (skipped in quiet mode)."""
         if self.is_quiet:
             return
         self.console.print()
@@ -181,6 +191,7 @@ class RunView:
         self.console.print(self.ui.events_panel(shown, title=title))
 
     def warnings(self, items: Sequence[str], *, title: str = "Warnings") -> None:
+        """Print each warning as a status row (skipped in quiet mode)."""
         if self.is_quiet or not items:
             return
         for item in items:
@@ -189,11 +200,13 @@ class RunView:
     # -- follow-up: what to do next ---------------------------------------
 
     def outputs(self, mapping: Rows, title: str = "Output") -> None:
+        """Print produced output paths (skipped in quiet mode)."""
         if self.is_quiet:
             return
         self.ui.outputs(mapping, title=title)
 
     def next_steps(self, steps: Sequence[str], title: str = "Next Steps") -> None:
+        """Print suggested next steps (skipped in quiet mode)."""
         if self.is_quiet:
             return
         self.ui.next_steps(steps, title=title)

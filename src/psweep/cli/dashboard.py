@@ -277,6 +277,7 @@ class DiscoveryDashboard:
         )
 
     def push_event(self, message: str) -> None:
+        """Add an event to the panel, deduping consecutive repeats."""
         text = str(message or "").strip()
         if not text:
             return
@@ -405,6 +406,7 @@ class DiscoveryDashboard:
         self.layout["events"].update(events_panel(list(self.recent_events)))
 
     def get_layout(self) -> Layout:
+        """Return the refreshed Rich layout for the live dashboard."""
         self._update_layout()
         return self.layout
 

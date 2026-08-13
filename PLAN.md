@@ -82,37 +82,44 @@ Two parallel improvements to the tool:
 
 ---
 
-## Phase 2 — Docstring Standardization
+## Phase 2 — Docstring Standardization ✅ (reviewed + completed to 0 D)
 
-> Commit message: `docs: add/complete NumPy docstrings (phase 2)`
-> Run `pixi run ruff check src/` before and after to track D violations.
+> Commit messages: `docs: add/complete NumPy docstrings (phase 2)` (90e804f) +
+> `docs: complete NumPy docstrings to zero D violations (phase 2)`
+>
+> **Enforced metric:** `pixi run ruff check src/` reports **0 pydocstyle (D)
+> violations** (was 58). Note `ruff --select D` re-enables config-ignored codes
+> (D105/D205/D400/D401) and inflates the count — the enforced number is the one
+> that matters. W505 (doc-line >72) is pre-existing, unenforced style debt
+> across the whole codebase and is intentionally left as-is for consistency.
 
-### 2A — Public API targets (highest priority, ~8 items)
+### 2A — Public API targets ✅ (from 90e804f; reviewed for accuracy)
 
-- [ ] `src/psweep/pipeline.py:58` — `ExtractionRunResult.success_rate`
-- [ ] `src/psweep/discovery/engine.py:3541` — `DiscoveryEngine.run` method
-- [ ] `src/psweep/discovery/models.py:26,35,43,73,109`
-  — `weighted_total`, `acceptance_class`, `to_dict` (×3)
-- [ ] `src/psweep/compilation/synthesizer.py:465` — public method
+- [x] `pipeline.py` — `ExtractionRunResult.success_rate` (documents 0.0 floor)
+- [x] `discovery/engine.py` — `DiscoveryEngine.run`
+- [x] `discovery/models.py` — `weighted_total`, `acceptance_class` (thresholds
+  verified against code), `to_dict` (×3)
+- [x] `compilation/synthesizer.py` — `synthesize_from_directory`
 
-### 2B — CLI command functions (feed Sphinx CLI reference)
+### 2B — CLI command docstrings ✅
 
-Each Click command function docstring should have:
-- One-line summary
-- Extended description (what it does, when to use it)
-- `Examples` section with shell commands
-- `Defaults` note (model, max-context, output path)
+- [x] extract / compile / discover / run — summary + description + Examples.
+  Removed the `Defaults: …` literal lines (same single-source anti-pattern
+  fixed in Phase 1): per-option defaults come from `--help`/sphinx-click, not a
+  hand-maintained restatement.
 
-Files to update:
-- [ ] `src/psweep/cli/commands_extract.py` — `extract()` function docstring
-- [ ] `src/psweep/cli/commands_compile.py` — `compile()` function docstring
-- [ ] `src/psweep/cli/commands_discover.py` — `discover()` function docstring
-- [ ] `src/psweep/cli/app.py` — `run()` Typer command docstring
+### 2C — Docstring completeness + format ✅
 
-### 2C — Auto-fix formatting violations
-
-- [ ] Run `pixi run ruff check --select D --fix src/` to clear auto-fixable D406/D407/D301 violations (~110 items)
-- [ ] Manually fix remaining non-auto-fixable D violations
+- [x] Documented 46 undocumented public methods/functions (D102/D103) across
+  cli (`ui.py`, `run_view.py`, `dashboard.py`, `app.py`), discovery
+  (`connectors/digger.py`, `connectors/base.py`, `browser.py`,
+  `link_prioritizer.py`, `policies.py`)
+- [x] Reformatted `candidate_selector.select` tuple-return docstring (cleared 5
+  section-format violations; also completed missing params)
+- [x] **D301 / Click conflict:** the `\b` no-rewrap marker in Click command
+  docstrings must stay a real escape, so the `r"""` auto-fix would break
+  `--help`. Resolved with a per-file-ignore for `src/psweep/cli/**` (framework
+  conflict, documented in `pyproject.toml`) — verified `--help` still renders
 
 ---
 

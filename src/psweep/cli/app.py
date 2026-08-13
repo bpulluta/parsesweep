@@ -48,6 +48,7 @@ class ParseSweepTyperGroup(TyperGroup):
         windows_expand_args: bool = True,
         **extra: Any,
     ) -> Any:
+        """Run the group, keeping ClickException rendering for bridged cmds."""
         try:
             return super().main(
                 args=args,

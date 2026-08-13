@@ -242,6 +242,7 @@ class NullDiggerConnector(BaseDiggerConnector):
         return seed_candidates, "seed_only"
 
     def discover(self, digger_input: DiggerInput) -> list[DiggerArtifact]:
+        """Return artifacts for the seed URLs without crawling (seed-only)."""
         effective_max_depth = _normalize_budget(digger_input.max_depth)
         effective_max_pages = _normalize_budget(digger_input.max_pages)
         effective_max_files = _normalize_budget(digger_input.max_files)
@@ -281,6 +282,7 @@ class NullDiggerConnector(BaseDiggerConnector):
         return artifacts
 
     def supports_provider(self, provider: str) -> bool:
+        """Return True for the seed-only / null provider names."""
         return provider.lower() in {"null", "seed_only", "none"}
 
 
@@ -822,6 +824,7 @@ class HttpDiggerConnector(BaseDiggerConnector):
         return artifacts, pages_fetched
 
     def discover(self, digger_input: DiggerInput) -> list[DiggerArtifact]:
+        """Crawl seed URLs over HTTP and return discovered artifacts."""
         started_at = time.monotonic()
         effective_max_depth = _normalize_budget(digger_input.max_depth)
         effective_max_pages = _normalize_budget(digger_input.max_pages)
@@ -896,6 +899,7 @@ class HttpDiggerConnector(BaseDiggerConnector):
         return artifacts
 
     def supports_provider(self, provider: str) -> bool:
+        """Return True for the HTTP-crawl provider names."""
         return provider.lower() in {
             "http",
             "requests",
@@ -924,9 +928,11 @@ class SeleniumDiggerConnector(BaseDiggerConnector):
     }
 
     def supports_provider(self, provider: str) -> bool:
+        """Return True for the headless-browser provider names."""
         return provider.lower() in self._PROVIDERS
 
     def discover(self, digger_input: DiggerInput) -> list[DiggerArtifact]:
+        """Crawl seed URLs via a headless browser and return artifacts."""
         from ..browser import BrowserSession
 
         max_depth = max(0, int(digger_input.max_depth))

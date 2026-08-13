@@ -1160,7 +1160,7 @@ def compile(
     input_dir), deduplicates records using the schema's identity rules, and
     writes a consolidated Excel and/or CSV file to the output directory.
 
-    Defaults: output format=excel, dry_run=false, fail_on_suspicious=false.
+    Run ``psweep compile --help`` for every option and its default.
 
     Examples
     --------

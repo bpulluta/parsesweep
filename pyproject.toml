@@ -164,6 +164,12 @@ convention = "numpy"
 "__init__.py" = [
   "F401", # unused-import
 ]
+"src/psweep/cli/**.py" = [
+  # Click uses a literal "\b" in command docstrings to mark paragraphs as
+  # no-rewrap in --help output. It must stay a real escape (backspace), so the
+  # docstring cannot be a raw string; D301 conflicts with this framework idiom.
+  "D301", # escape-sequence-in-docstring
+]
 "tests/**.py" = [
   "ARG001", # unused-function-argument
   "ARG002", # unused-method-argument

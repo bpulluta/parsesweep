@@ -78,6 +78,7 @@ class DiggerArtifact:
     metadata: dict[str, Any] | None = None
 
     def to_dict(self) -> dict[str, Any]:
+        """Serialize this discovered artifact to a plain dict."""
         return {
             "url": self.url,
             "source": self.source,
