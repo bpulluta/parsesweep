@@ -1119,7 +1119,9 @@ def extract(
             "Files": f"{len(doc_files)} document{'s' if len(doc_files) != 1 else ''}",
         }
 
-    provider_name = config.llm_config.get("provider", "unknown").title()
+    # `provider` can be present-but-None when no credentials resolve a provider;
+    # guard so the banner never crashes with AttributeError on None.title().
+    provider_name = (config.llm_config.get("provider") or "unknown").title()
     if model and resolved_inputs.get("models"):
         from psweep.extraction.llm_factory import resolve_model_name
 
