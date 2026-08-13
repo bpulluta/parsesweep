@@ -6,7 +6,5 @@ descriptions are the single biggest lever on extraction quality.
 
 The full best-practices guide is embedded below.
 
-```{literalinclude} ../../schemas/SCHEMA_BEST_PRACTICES.md
-:language: text
-:caption: schemas/SCHEMA_BEST_PRACTICES.md
+```{include} ../../schemas/SCHEMA_BEST_PRACTICES.md
 ```
