@@ -115,7 +115,10 @@ config/testing/
 .agents/
 AGENTS.md
 .claude/
-.github/
+.github/*
+!.github/workflows/
+!.github/workflows/*.yml
+!.github/workflows/*.yaml
 
 # Sphinx build output (source under docs/ IS tracked)
 docs/_build/
