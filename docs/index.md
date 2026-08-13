@@ -34,12 +34,18 @@ schemas/index
 ```
 
 ```{toctree}
-:maxdepth: 2
+:maxdepth: 1
 :caption: Reference
 
-autoapi/index
 changelog
 contributing
+```
+
+```{toctree}
+:maxdepth: 1
+:caption: API
+
+autoapi/index
 ```
 
 ## Indices
