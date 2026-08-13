@@ -73,6 +73,10 @@ def test_extract_fresh_reprocesses_existing(tmp_path: Path, monkeypatch) -> None
         "psweep.cli.commands_extract._extract_one_document", _fake_extract_one
     )
     monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    # Reset the cached global config so get_config() re-reads the environment
+    # with the monkeypatched OPENAI_API_KEY rather than returning a stale
+    # instance that was populated before the key was set.
+    monkeypatch.setattr("psweep.utils.config._global_config", None)
 
     runner = CliRunner()
     result = runner.invoke(
