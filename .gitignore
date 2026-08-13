@@ -112,6 +112,10 @@ dev_docs/
 config/testing/
 
 .serena/
+.agents/
+AGENTS.md
+.claude/
+.github/
 
 # Sphinx build output (source under docs/ IS tracked)
 docs/_build/
