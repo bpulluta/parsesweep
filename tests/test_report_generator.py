@@ -11,8 +11,8 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from psweep.qa_qc.comparison_engine import ComparisonResult, FieldComparison
-from psweep.qa_qc.report_generator import ReportGenerator
+from psweep.validation.comparison_engine import ComparisonResult, FieldComparison
+from psweep.validation.report_generator import ReportGenerator
 
 
 class TestReportGenerator:
@@ -78,7 +78,7 @@ class TestReportGenerator:
             document_name="Test Document",
             models=["gpt-4.1", "gpt-5"],
             summary={
-                "qaqc_profile": "qualitative",
+                "validation_profile": "qualitative",
                 "comparison_approach": "text_review",
                 "review_category_counts": {"aligned": 1, "missing_item": 1, "scope_variant": 1, "text_difference": 1},
                 "qualitative_mismatch_breakdown": {
@@ -139,7 +139,7 @@ class TestReportGenerator:
             summary_payload = json.loads((output_dir / "comparison_summary.json").read_text(encoding="utf-8"))
 
             assert summary_payload["document_name"] == "Test Document"
-            assert summary_payload["summary"]["qaqc_profile"] == "qualitative"
+            assert summary_payload["summary"]["validation_profile"] == "qualitative"
             assert summary_payload["summary"]["qualitative_advisory_gate"]["status"] == "warn"
 
     def test_generate_report_creates_output_dir(self, generator, sample_comparison_result):
@@ -368,18 +368,18 @@ class TestBuildSummaryDf:
         assert "Document" in metrics
         assert "Models" in metrics
         assert "QA/QC Profile" in metrics
-        assert "QA/QC Mode" not in metrics  # removed: was redundant with qaqc_profile
+        assert "QA/QC Mode" not in metrics  # removed: was redundant with validation_profile
         assert "Comparison Approach" in metrics
         assert "Total Comparisons" in metrics
         assert "Full Agreement %" in metrics
 
-    def test_build_summary_df_includes_qaqc_metadata(self, generator):
+    def test_build_summary_df_includes_validation_metadata(self, generator):
         """Summary sheet should expose lane and comparison metadata for qualitative runs."""
         result = ComparisonResult(
             document_name="Qualitative Report",
             models=["model_a", "model_b"],
             summary={
-                "qaqc_profile": "qualitative",
+                "validation_profile": "qualitative",
                 "comparison_approach": "text_review",
                 "review_category_counts": {"text_difference": 1},
                 "qualitative_mismatch_breakdown": {
@@ -441,7 +441,7 @@ class TestQualitativeReportLabels:
             document_name="Qualitative Doc",
             models=["gpt-4.1", "gpt-5"],
             summary={
-                "qaqc_profile": "qualitative",
+                "validation_profile": "qualitative",
                 "comparison_approach": "text_review",
             },
             context_comparisons=[],
@@ -469,7 +469,7 @@ class TestQualitativeReportLabels:
             document_name="Qualitative Scope Variant Doc",
             models=["gpt-4.1", "gpt-5"],
             summary={
-                "qaqc_profile": "qualitative",
+                "validation_profile": "qualitative",
                 "comparison_approach": "text_review",
                 "qualitative_mismatch_breakdown": {
                     "top_scope_variant_requirements": [

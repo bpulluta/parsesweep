@@ -189,24 +189,30 @@ This example shows the full metadata surface that belongs in the schema. All out
 | `domain` | Category for organization | `"Environmental - Air Quality"` |
 | `version` | Schema version (semver) | `"2.1.0"` |
 
-### Optional: QA/QC Runtime Configuration (in `run.yaml`)
+### Optional: Validation (QA/QC) Runtime Configuration (in `run.yaml`)
 
-QA/QC lane behavior is runtime policy and belongs in `config/<domain>/run.yaml`:
+Validation behavior is runtime policy and belongs in the `validation` section of
+`config/<domain>/run.yaml` (the `validate` command reads it, mirroring how
+`compile` reads `compilation`):
 
 ```yaml
-qaqc:
-  default_lane: quantitative
-  lanes:
-    quantitative:
-      enabled: true
-      mode: quantitative
-      comparison:
-        primary_fields: [value]
-      record_matching:
-        key_fields: [feature, specific_subject, applies_to]
+validation:
+  models: [primary, secondary]      # two model tiers to contrast
+  output_dir: validated/<domain>
+  comparison_approach: mixed        # mixed | numeric_only | text_review
+  record_matching:
+    key_fields: [feature, specific_subject, applies_to]
+    semantic_match_threshold: 0.38
+  comparison:
+    primary_fields: [value, units]
+  judge:
+    enabled: true
+    model: judge
+    apply_on: all                   # none | non_numeric | all
 ```
 
-Use `pixi run psweep extract ... --enable-qa-qc` and `pixi run psweep compare ... --config config/<domain>/run.yaml` so lane defaults and matching fields come from the same runtime config.
+Run `pixi run psweep validate --config config/<domain>/run.yaml` so both models
+and all matching/comparison settings come from the same runtime config.
 
 ---
 

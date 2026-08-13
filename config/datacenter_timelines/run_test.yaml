@@ -96,7 +96,7 @@ discovery:
   request_delay_ms: 400
 
 # ── QA/QC (Validation) ───────────────────────────────────────────────────────
-qaqc:
+validation:
   models: [primary, secondary]
   output_dir: validated/datacenter_timelines_test
   report:

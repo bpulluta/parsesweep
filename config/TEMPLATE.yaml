@@ -6,7 +6,7 @@
 #   - extraction: required for the extract command
 #   - compilation: required for the compile command
 #   - discovery: only if you need web document discovery
-#   - qaqc: only if you use multi-model QA/QC validation
+#   - validation: only if you use multi-model QA/QC validation
 
 domain: your_domain_name
 
@@ -101,7 +101,7 @@ compilation:
 # Run two models on the same documents and compare their outputs field-by-field.
 # Uncomment the block below to enable. Keep this minimal.
 #
-# qaqc:
+# validation:
 #   models: [primary, secondary]      # Two model tiers to contrast.
 #   output_dir: validated/your_domain
 #   report:

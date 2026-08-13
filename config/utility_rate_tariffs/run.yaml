@@ -145,7 +145,7 @@ compilation:
     freeze_columns: 2
     auto_width: true
 
-qaqc:
+validation:
   models: [primary, secondary]
   comparison_approach: numeric_only
   projection:

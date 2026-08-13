@@ -36,7 +36,7 @@ from psweep.extraction.document_utils import (
     is_supported_document,
 )
 from psweep.extraction.llm_factory import DEFAULT_MODEL
-from psweep.qa_qc.utils import sanitize_model_name
+from psweep.validation.utils import sanitize_model_name
 from psweep.utils.config import get_config
 from psweep.utils.error_taxonomy import (
     build_error_record,
@@ -80,7 +80,7 @@ def _generate_run_id(
     schema_path: Path,
     provider: str,
     model: str,
-    enable_qa_qc: bool,
+    enable_validation: bool,
     doc_files: List[Path],
     artifact_id: Optional[str],
 ) -> str:
@@ -89,7 +89,7 @@ def _generate_run_id(
         "schema": schema_path.as_posix(),
         "provider": provider,
         "model": model,
-        "mode": "qa_qc" if enable_qa_qc else "single_model",
+        "mode": "validation" if enable_validation else "single_model",
         "documents": sorted(path.as_posix() for path in doc_files),
         "artifact_id": artifact_id,
     }
@@ -468,7 +468,7 @@ def _extract_one_document(
     output_dir: Path,
     category: str,
     actual_model: str,
-    enable_qa_qc: bool,
+    enable_validation: bool,
     runtime_artifact,
     run_id,
     provider,
@@ -489,7 +489,7 @@ def _extract_one_document(
             doc_output_dir,
             category,
             actual_model,
-            enable_qa_qc,
+            enable_validation,
             runtime_artifact=runtime_artifact,
             run_id=run_id,
             provider=provider,
@@ -1264,7 +1264,7 @@ def extract(
         schema_path=schema_path,
         provider=provider,
         model=actual_model,
-        enable_qa_qc=False,
+        enable_validation=False,
         doc_files=doc_files,
         artifact_id=runtime_artifact.get("artifact_id")
         if runtime_artifact
@@ -1295,7 +1295,7 @@ def extract(
             identifier_fields = None
 
     context_windows = resolved_inputs.get("model_context_windows") or None
-    enable_qa_qc = False  # Regular extract command is single-model only
+    enable_validation = False  # Regular extract command is single-model only
     extractor = DocumentExtractor(
         api_key=api_key,
         model=actual_model,
@@ -1335,7 +1335,7 @@ def extract(
             output_dir=output_dir,
             category=category,
             actual_model=actual_model,
-            enable_qa_qc=enable_qa_qc,
+            enable_validation=enable_validation,
             runtime_artifact=runtime_artifact,
             run_id=run_id,
             provider=provider,
@@ -1525,13 +1525,13 @@ def extract(
         )
 
 
-def _run_qa_qc_extraction(
+def _run_validation_extraction(
     doc_files: List[Path],
     loaded_schema: dict,
     schema_path: Path,
     output_dir: Path,
     registry,
-    qaqc_models: List[str],
+    validation_models: List[str],
     max_context: int,
     timeout_seconds: Optional[int],
     page_range_map: dict,
@@ -1548,29 +1548,29 @@ def _run_qa_qc_extraction(
     """Run QA/QC multi-model extraction for documents.
 
     Model tiers and credentials are resolved through the unified
-    :class:`ModelRegistry`; ``qaqc_models`` is the ``qaqc.models`` reference
+    :class:`ModelRegistry`; ``validation_models`` is the ``validation.models`` reference
     list from the run config.
     """
-    from psweep.qa_qc import run_multi_model_extraction
+    from psweep.validation import run_multi_model_extraction
     from psweep.cli.commands import ask_confirm as shared_ask_confirm
 
-    qa_model_defs = registry.get_models(list(qaqc_models))
+    qa_model_defs = registry.get_models(list(validation_models))
     qa_models = [definition.model for definition in qa_model_defs]
     seed_output_dir = seed_output_dir or output_dir
     if len(qa_model_defs) < 2:
         hint = (
-            f"resolved to: {qa_models}" if qa_models else "resolved to nothing — qaqc.models is empty or missing"
+            f"resolved to: {qa_models}" if qa_models else "resolved to nothing — validation.models is empty or missing"
         )
         print_error(
             "QA/QC Configuration Error",
             f"QA/QC requires at least 2 distinct models, but {hint}",
             [
-                "Add a qaqc: section to your run config YAML with at least 2 model tiers:",
-                "  qaqc:",
+                "Add a validation: section to your run config YAML with at least 2 model tiers:",
+                "  validation:",
                 "    models: [primary, secondary]",
                 "Make sure both tiers are defined in the top-level models: block",
                 "Each tier must resolve to a different model name",
-                "See config/testing/qaqc_cross_provider.yaml for a ready-to-use example",
+                "See config/testing/validation_cross_provider.yaml for a ready-to-use example",
             ],
         )
         return None
@@ -1618,7 +1618,7 @@ def _run_qa_qc_extraction(
 
     # The primary model (first in the QA/QC list) doubles as a compile-ready
     # deliverable. Its extraction is written to the normal per-document location,
-    # plus multi-model sidecars under qa_qc/ for comparison.
+    # plus multi-model sidecars under validation/ for comparison.
     primary_model = primary_def.model
     id_declared = (
         loaded_schema.get("$metadata", {})
@@ -1686,7 +1686,7 @@ def _run_qa_qc_extraction(
                                     str(exc)[:80],
                                 )
 
-                    qa_doc_dir = output_dir / "qa_qc" / doc_path.stem
+                    qa_doc_dir = output_dir / "validation" / doc_path.stem
                     if qa_doc_dir.exists():
                         for model_name in qa_models:
                             if model_name in seed_records_by_model:
@@ -1735,7 +1735,7 @@ def _run_qa_qc_extraction(
                     doc_name=doc_path.stem,
                     schema=loaded_schema,
                     registry=registry,
-                    model_tiers=qaqc_models,
+                    model_tiers=validation_models,
                     output_dir=output_dir,
                     max_context_chars=max_context,
                     timeout_seconds=timeout_seconds,
@@ -1758,7 +1758,7 @@ def _run_qa_qc_extraction(
                         output_dir=seed_output_dir,
                         category=seed_output_dir.name,
                         model=primary_model,
-                        qa_qc_enabled=True,
+                        validation_enabled=True,
                         runtime_artifact=runtime_artifact,
                         run_id=run_id,
                         provider=qa_provider,
@@ -1839,8 +1839,8 @@ def _run_qa_qc_extraction(
 
         view.summary(summary_stats, title="QA/QC Extraction Summary")
 
-        qa_qc_output = output_dir / "qa_qc"
-        view.outputs({"QA/QC outputs": str(qa_qc_output.absolute())})
+        validation_output = output_dir / "validation"
+        view.outputs({"QA/QC outputs": str(validation_output.absolute())})
 
         validate_compare_command = "pixi run psweep validate"
         if config_path:
@@ -1852,7 +1852,7 @@ def _run_qa_qc_extraction(
             [f"Rebuild QA/QC reports with validate (no re-extraction): {validate_compare_command}"]
         )
 
-    return output_dir / "qa_qc"
+    return output_dir / "validation"
 
 
 def _extract_and_save_result(
@@ -1861,7 +1861,7 @@ def _extract_and_save_result(
     output_dir: Path,
     category: str,
     model: str,
-    qa_qc_enabled: bool,
+    validation_enabled: bool,
     runtime_artifact: Optional[Dict[str, Any]] = None,
     run_id: Optional[str] = None,
     provider: Optional[str] = None,

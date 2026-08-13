@@ -9,7 +9,7 @@ Provides multi-model validation for document extraction by:
 
 Model tiers are resolved exclusively through the unified
 :class:`~psweep.config.model_registry.ModelRegistry` (built from the run
-config's ``models:`` block and the ``qaqc.models:`` reference list). There is
+config's ``models:`` block and the ``validation.models:`` reference list). There is
 no environment-variable model source and no provider is threaded directly —
 credentials come from ``registry.to_llm_kwargs``.
 
@@ -18,7 +18,7 @@ Examples
 .. code-block:: python
 
     from psweep.config.model_registry import ModelRegistry
-    from psweep.qa_qc import run_multi_model_extraction
+    from psweep.validation import run_multi_model_extraction
 
     registry = ModelRegistry.from_config(config_dict, llm_config)
 

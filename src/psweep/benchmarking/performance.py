@@ -71,19 +71,19 @@ def _resolve_expected_record_path(
     return expected_dir / actual_record_path.name
 
 
-def _find_qaqc_report_paths(path: Path) -> List[Path]:
+def _find_validation_report_paths(path: Path) -> List[Path]:
     if path.is_file():
         return [path] if path.name == "comparison_report.csv" else []
     return sorted(path.rglob("comparison_report.csv"))
 
 
-def _find_qaqc_summary_paths(path: Path) -> List[Path]:
+def _find_validation_summary_paths(path: Path) -> List[Path]:
     if path.is_file():
         return [path] if path.name == "comparison_summary.json" else []
     return sorted(path.rglob("comparison_summary.json"))
 
 
-def _load_qaqc_qualitative_gate(
+def _load_validation_qualitative_gate(
     summary_path: Path,
 ) -> Optional[Dict[str, Any]]:
     summary = _load_json(summary_path)
@@ -91,7 +91,7 @@ def _load_qaqc_qualitative_gate(
     return gate if isinstance(gate, dict) else None
 
 
-def _resolve_expected_qaqc_report_path(
+def _resolve_expected_validation_report_path(
     actual_report_path: Path, benchmark_path: Path, expected_dir: Path
 ) -> Path:
     try:
@@ -111,7 +111,7 @@ def _resolve_expected_qaqc_report_path(
     return fallback
 
 
-def _load_qaqc_status_index(report_path: Path) -> Dict[str, str]:
+def _load_validation_status_index(report_path: Path) -> Dict[str, str]:
     with report_path.open("r", encoding="utf-8", newline="") as handle:
         reader = csv.DictReader(handle)
         if (
@@ -232,7 +232,7 @@ def collect_benchmark_metrics(
     *,
     repo_root: Optional[Path] = None,
     extraction_baseline_dir: Optional[Path] = None,
-    qaqc_baseline_dir: Optional[Path] = None,
+    validation_baseline_dir: Optional[Path] = None,
     compilation_baseline_dir: Optional[Path] = None,
     compilation_schema_path: Optional[Path] = None,
 ) -> Dict[str, Any]:
@@ -254,12 +254,12 @@ def collect_benchmark_metrics(
     total_actual_items = 0
     total_correct_items = 0
     scored_records = 0
-    total_expected_qaqc_items = 0
-    total_actual_qaqc_items = 0
-    total_correct_qaqc_items = 0
-    scored_qaqc_reports = 0
+    total_expected_validation_items = 0
+    total_actual_validation_items = 0
+    total_correct_validation_items = 0
+    scored_validation_reports = 0
     qualitative_gate_counts: Dict[str, int] = {}
-    scored_qaqc_qualitative_reports = 0
+    scored_validation_qualitative_reports = 0
     total_expected_rows = 0
     total_actual_rows = 0
     total_correct_rows = 0
@@ -356,36 +356,36 @@ def collect_benchmark_metrics(
             )
             scored_records += 1
 
-    if qaqc_baseline_dir is not None:
-        report_paths = _find_qaqc_report_paths(path)
+    if validation_baseline_dir is not None:
+        report_paths = _find_validation_report_paths(path)
         if not report_paths:
             raise FileNotFoundError(
                 f"No QA/QC comparison_report.csv files found under {path}"
             )
 
         for report_path in report_paths:
-            expected_report_path = _resolve_expected_qaqc_report_path(
-                report_path, benchmark_root, qaqc_baseline_dir
+            expected_report_path = _resolve_expected_validation_report_path(
+                report_path, benchmark_root, validation_baseline_dir
             )
             if not expected_report_path.exists():
                 raise FileNotFoundError(
                     f"Expected QA/QC baseline report not found for {report_path.parent.name}: {expected_report_path}"
                 )
 
-            actual_statuses = _load_qaqc_status_index(report_path)
-            expected_statuses = _load_qaqc_status_index(expected_report_path)
+            actual_statuses = _load_validation_status_index(report_path)
+            expected_statuses = _load_validation_status_index(expected_report_path)
 
-            total_actual_qaqc_items += len(actual_statuses)
-            total_expected_qaqc_items += len(expected_statuses)
-            total_correct_qaqc_items += sum(
+            total_actual_validation_items += len(actual_statuses)
+            total_expected_validation_items += len(expected_statuses)
+            total_correct_validation_items += sum(
                 1
                 for requirement, expected_status in expected_statuses.items()
                 if actual_statuses.get(requirement) == expected_status
             )
-            scored_qaqc_reports += 1
+            scored_validation_reports += 1
 
-    for summary_path in _find_qaqc_summary_paths(path):
-        qualitative_gate = _load_qaqc_qualitative_gate(summary_path)
+    for summary_path in _find_validation_summary_paths(path):
+        qualitative_gate = _load_validation_qualitative_gate(summary_path)
         if not qualitative_gate:
             continue
 
@@ -397,7 +397,7 @@ def collect_benchmark_metrics(
         qualitative_gate_counts[gate_status] = (
             qualitative_gate_counts.get(gate_status, 0) + 1
         )
-        scored_qaqc_qualitative_reports += 1
+        scored_validation_qualitative_reports += 1
 
     if compilation_baseline_dir is not None:
         if compilation_schema_path is None:
@@ -499,18 +499,18 @@ def collect_benchmark_metrics(
             if total_expected_items == 0
             else (total_correct_items / total_expected_items) * 100.0
         )
-    qaqc_signal_quality = None
-    if qaqc_baseline_dir is not None:
-        qaqc_signal_quality = (
+    validation_signal_quality = None
+    if validation_baseline_dir is not None:
+        validation_signal_quality = (
             0.0
-            if total_expected_qaqc_items == 0
-            else (total_correct_qaqc_items / total_expected_qaqc_items) * 100.0
+            if total_expected_validation_items == 0
+            else (total_correct_validation_items / total_expected_validation_items) * 100.0
         )
-    qaqc_qualitative_pass_rate = None
-    if scored_qaqc_qualitative_reports > 0:
-        qaqc_qualitative_pass_rate = (
+    validation_qualitative_pass_rate = None
+    if scored_validation_qualitative_reports > 0:
+        validation_qualitative_pass_rate = (
             qualitative_gate_counts.get("pass", 0)
-            / scored_qaqc_qualitative_reports
+            / scored_validation_qualitative_reports
         ) * 100.0
     compilation_correctness = None
     if compilation_baseline_dir is not None:
@@ -541,16 +541,16 @@ def collect_benchmark_metrics(
         "actual_items": total_actual_items,
         "scored_records": scored_records,
         "extraction_parity": extraction_parity,
-        "correct_qaqc_classifications": total_correct_qaqc_items,
-        "expected_qaqc_items": total_expected_qaqc_items,
-        "actual_qaqc_items": total_actual_qaqc_items,
-        "scored_qaqc_reports": scored_qaqc_reports,
-        "qaqc_signal_quality": qaqc_signal_quality,
-        "scored_qaqc_qualitative_reports": scored_qaqc_qualitative_reports,
-        "qaqc_qualitative_gate_counts": dict(
+        "correct_validation_classifications": total_correct_validation_items,
+        "expected_validation_items": total_expected_validation_items,
+        "actual_validation_items": total_actual_validation_items,
+        "scored_validation_reports": scored_validation_reports,
+        "validation_signal_quality": validation_signal_quality,
+        "scored_validation_qualitative_reports": scored_validation_qualitative_reports,
+        "validation_qualitative_gate_counts": dict(
             sorted(qualitative_gate_counts.items())
         ),
-        "qaqc_qualitative_pass_rate": qaqc_qualitative_pass_rate,
+        "validation_qualitative_pass_rate": validation_qualitative_pass_rate,
         "correct_rows": total_correct_rows,
         "expected_rows": total_expected_rows,
         "actual_rows": total_actual_rows,
@@ -644,8 +644,8 @@ def evaluate_benchmark_gates(
     metrics: Dict[str, Any],
     *,
     min_extraction_parity: Optional[float] = None,
-    min_qaqc_signal_quality: Optional[float] = None,
-    min_qaqc_qualitative_pass_rate: Optional[float] = None,
+    min_validation_signal_quality: Optional[float] = None,
+    min_validation_qualitative_pass_rate: Optional[float] = None,
     min_compilation_correctness: Optional[float] = None,
     max_failure_rate: Optional[float] = None,
     max_average_seconds_per_document: Optional[float] = None,
@@ -666,21 +666,21 @@ def evaluate_benchmark_gates(
             "passed": actual is not None and actual >= min_extraction_parity,
         }
 
-    if min_qaqc_signal_quality is not None:
-        actual = metrics.get("qaqc_signal_quality")
-        gates["min_qaqc_signal_quality"] = {
-            "threshold": min_qaqc_signal_quality,
+    if min_validation_signal_quality is not None:
+        actual = metrics.get("validation_signal_quality")
+        gates["min_validation_signal_quality"] = {
+            "threshold": min_validation_signal_quality,
             "actual": actual,
-            "passed": actual is not None and actual >= min_qaqc_signal_quality,
+            "passed": actual is not None and actual >= min_validation_signal_quality,
         }
 
-    if min_qaqc_qualitative_pass_rate is not None:
-        actual = metrics.get("qaqc_qualitative_pass_rate")
-        gates["min_qaqc_qualitative_pass_rate"] = {
-            "threshold": min_qaqc_qualitative_pass_rate,
+    if min_validation_qualitative_pass_rate is not None:
+        actual = metrics.get("validation_qualitative_pass_rate")
+        gates["min_validation_qualitative_pass_rate"] = {
+            "threshold": min_validation_qualitative_pass_rate,
             "actual": actual,
             "passed": actual is not None
-            and actual >= min_qaqc_qualitative_pass_rate,
+            and actual >= min_validation_qualitative_pass_rate,
         }
 
     if min_compilation_correctness is not None:

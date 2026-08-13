@@ -29,7 +29,7 @@ import typer.main
 from typer.core import TyperGroup
 
 from psweep import __version__
-from psweep.pipeline import build_run_stage_commands, resolve_run_qaqc
+from psweep.pipeline import build_run_stage_commands, resolve_run_validation
 
 # ---------------------------------------------------------------------------
 # App
@@ -255,15 +255,15 @@ def run(
     if not skip_discover:
         stages_list.append("discover")
 
-    qaqc = resolve_run_qaqc(config_path)
-    qaqc_model_count: Optional[int] = None
-    if qaqc:
-        qaqc_model_count = len(qaqc.get("models") or []) or None
+    validation = resolve_run_validation(config_path)
+    validation_model_count: Optional[int] = None
+    if validation:
+        validation_model_count = len(validation.get("models") or []) or None
 
     if not skip_extract:
         stages_list.append("extract")
-    if bool(qaqc) and not skip_extract:
-        count = f" ×{qaqc_model_count} models" if qaqc_model_count else ""
+    if bool(validation) and not skip_extract:
+        count = f" ×{validation_model_count} models" if validation_model_count else ""
         stages_list.append(f"validate{count}")
     stages_list.append("compile")
     plan_rows["Stages"] = " → ".join(stages_list)

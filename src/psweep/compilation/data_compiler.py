@@ -86,8 +86,8 @@ class DataCompiler:
             Tuple of (DataFrame, schema_info dict)
         """
         # First try direct children, then search recursively for nested structures.
-        # The recursive fallback deliberately skips the qa_qc/ subtree: a QA/QC
-        # run writes per-model sidecars under qa_qc/, which are compiled and
+        # The recursive fallback deliberately skips the validation/ subtree: a QA/QC
+        # run writes per-model sidecars under validation/, which are compiled and
         # validated separately via `compare`. Ingesting them here would
         # double-count every model's extraction into the primary output.
         json_files = list(json_dir.glob("*.json"))
@@ -95,7 +95,7 @@ class DataCompiler:
             json_files = [
                 path
                 for path in json_dir.rglob("*.json")
-                if "qa_qc" not in path.relative_to(json_dir).parts
+                if "validation" not in path.relative_to(json_dir).parts
             ]
         if not json_files:
             print(f"No JSON files found in {json_dir}")

@@ -96,16 +96,16 @@ def _read_config_dict(config_path: str | Path) -> dict:
     return load_yaml_file(cfg_path)
 
 
-def resolve_run_qaqc(config_path: str | Path) -> Optional[dict]:
+def resolve_run_validation(config_path: str | Path) -> Optional[dict]:
     """Resolve QA/QC orchestration settings from a domain run config.
 
-    QA/QC is enabled for ``run`` when the top-level ``qaqc.models`` list is
+    QA/QC is enabled for ``run`` when the top-level ``validation.models`` list is
     present. Returns ``None`` when absent, otherwise a dict describing validate
     stage inputs.
     """
     cfg = _read_config_dict(config_path)
-    qaqc_section = cfg.get("qaqc") or {}
-    models = qaqc_section.get("models") or []
+    validation_section = cfg.get("validation") or {}
+    models = validation_section.get("models") or []
     if len(models) < 2:
         return None
 
@@ -114,7 +114,7 @@ def resolve_run_qaqc(config_path: str | Path) -> Optional[dict]:
     output_dir = Path(extraction.get("output_dir", f"extracted/{domain}"))
     return {
         "schema": extraction.get("schema"),
-        "qa_qc_dir": output_dir / "qa_qc",
+        "validation_dir": output_dir / "validation",
         "models": models,
     }
 
@@ -141,7 +141,7 @@ def build_run_stage_commands(
     cfg_path = Path(config_path)
     stage_cmds: list[tuple[str, list[str]]] = []
 
-    qaqc = resolve_run_qaqc(cfg_path)
+    validation = resolve_run_validation(cfg_path)
 
     if not skip_discover:
         discover_flags = [*extra_flags]
@@ -163,7 +163,7 @@ def build_run_stage_commands(
                 [*base_cmd, "extract", "--config", str(cfg_path), *extract_flags],
             )
         )
-    if qaqc and not skip_extract:
+    if validation and not skip_extract:
         stage_cmds.append(
             (
                 "validate",

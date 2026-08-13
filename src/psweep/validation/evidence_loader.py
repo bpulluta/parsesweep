@@ -96,7 +96,7 @@ class EvidenceLoader:
         Parameters
         ----------
         extraction_dir : Path
-            Path to qa_qc/<doc_id>/ directory
+            Path to validation/<doc_id>/ directory
         models : list
             List of model names (e.g., ['gpt-5.6-terra', 'claude-sonnet-4-6'])
 
