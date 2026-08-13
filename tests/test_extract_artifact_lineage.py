@@ -36,12 +36,22 @@ def test_resolve_schema_ref_passes_json_through(tmp_path) -> None:
     assert _resolve_schema_ref(schema) == schema
 
 
-def test_context_budget_suggestions_for_process_use_matching_repo_page_ranges_config() -> None:
+def test_context_budget_suggestions_for_process_use_matching_repo_page_ranges_config(tmp_path) -> None:
+    # Hermetic: build a repo layout in tmp_path so the suggestion is inserted
+    # based on a file we control, not an untracked config in the real repo.
+    (tmp_path / 'config' / 'tariffs').mkdir(parents=True)
+    (tmp_path / 'config' / 'tariffs' / 'page_ranges.csv').write_text(
+        'file,start,end\n', encoding='utf-8'
+    )
+    document_path = tmp_path / 'documents' / 'tariffs' / 'PSCo_Electric_Entire_Tariff.pdf'
+    document_path.parent.mkdir(parents=True, exist_ok=True)
+    document_path.write_text('placeholder', encoding='utf-8')
+
     suggestions = _context_budget_suggestions_for_process(
         error_record={'code': 'context_window_exceeded'},
         schema_path=Path('schemas/personal/electricity_tariff_schema.json'),
-        document_path=Path('documents/tariffs/PSCo_Electric_Entire_Tariff.pdf'),
-        repo_root=REPO_ROOT,
+        document_path=document_path,
+        repo_root=tmp_path,
     )
 
     assert suggestions is not None
