@@ -31,6 +31,11 @@ logger = logging.getLogger(__name__)
 
 PAGE_CACHE_DIRNAME = ".pages"
 
+# Single source of truth for the ``pages.auto_locate`` defaults, shared by the
+# CLI resolver and PageLocator so ``--help``/docs and runtime never drift.
+DEFAULT_PAGE_TRIGGER_CHARS = 200_000
+DEFAULT_MAX_SELECTED_PAGES = 30
+
 # Generic English words to ignore when deriving keywords from a description.
 _STOPWORDS = {
     "the", "a", "an", "and", "or", "of", "for", "to", "in", "on", "with",
@@ -75,8 +80,8 @@ class PageLocator:
         model: str | None = None,
         models: dict[str, str] | None = None,
         default_model: str | None = None,
-        trigger_chars: int = 200_000,
-        max_selected_pages: int = 30,
+        trigger_chars: int = DEFAULT_PAGE_TRIGGER_CHARS,
+        max_selected_pages: int = DEFAULT_MAX_SELECTED_PAGES,
         keywords: list[str] | None = None,
         context_pages: int = 1,
         snippet_chars: int = 600,

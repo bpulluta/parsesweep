@@ -98,8 +98,10 @@ temp/
 # Data Directories (Contains Large Files - Not Version Controlled)
 # ─────────────────────────────────────────────────────────
 # User documents, validation data, and generated outputs should not be tracked
+# (generated validation output lives under validated/, ignored above; do NOT add
+# a bare `validation/` here — it would also match the src/psweep/validation
+# source package).
 documents/
-validation/
 tools/
 output*/
 .github/prompts/resume-web-acquisition.prompt.md

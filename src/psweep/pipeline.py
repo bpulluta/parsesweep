@@ -31,7 +31,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional, Sequence
 
-from psweep.extraction.llm_factory import DEFAULT_MODEL
+from psweep.extraction.llm_factory import DEFAULT_MAX_CONTEXT, DEFAULT_MODEL
 
 logger = logging.getLogger(__name__)
 
@@ -219,7 +219,7 @@ def extract_documents(
     output_dir: str | Path | None = None,
     model: str = DEFAULT_MODEL,
     provider: str = "auto",
-    max_context: int = 400_000,
+    max_context: int = DEFAULT_MAX_CONTEXT,
     skip_existing: bool = True,
     limit: int | None = None,
     pages_csv: str | Path | None = None,

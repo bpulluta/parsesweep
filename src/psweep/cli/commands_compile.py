@@ -1167,7 +1167,7 @@ def compile(
     ::
 
         psweep compile extracted/my_domain/ --schema schemas/my_schema.json
-        psweep compile --config config/my_domain/my_domain.yaml
+        psweep compile --config config/my_domain/run.yaml
         psweep compile extracted/ --schema s.json --dry-run --verbose
     """
     from psweep.cli.commands import (
