@@ -6,6 +6,7 @@ finds the page range that holds a described section so extraction can target
 only those pages.
 
 Strategy (cheap first, LLM second):
+
 1. Heuristic pre-filter — score each page by keyword hits and keep the dense
    pages plus a little context around them.
 2. LLM confirm — send a compact index (page number + snippet) of just the

@@ -120,15 +120,19 @@ def get_model_pricing(model_name: str) -> Tuple[float, float]:
     Get pricing for a model.
 
     Handles:
+
     - Exact matches: "gpt-4o-mini" -> (0.15, 0.60)
     - Partial matches: "gpt-4o" in "azure/gpt-4o" -> (5.00, 15.00)
     - Azure deployments: "compassop-gpt-4.1-mini" -> (0.40, 1.60)
 
-    Args:
-        model_name: Model name (e.g., "gpt-4o-mini", "claude-3.5-sonnet", "compassop-gpt-4.1-mini")
+    Parameters
+    ----------
+    model_name : str
+        Model name (e.g., "gpt-4o-mini", "claude-3.5-sonnet", "compassop-gpt-4.1-mini")
 
     Returns
     -------
+    Tuple[float, float]
         (input_cost_per_1m, output_cost_per_1m) tuple
     """
     model_lower = model_name.lower()
@@ -188,13 +192,18 @@ def calculate_cost(
     """
     Calculate API cost for a model.
 
-    Args:
-        model_name: Model name
-        prompt_tokens: Number of input tokens
-        completion_tokens: Number of output tokens
+    Parameters
+    ----------
+    model_name : str
+        Model name
+    prompt_tokens : int
+        Number of input tokens
+    completion_tokens : int
+        Number of output tokens
 
     Returns
     -------
+    float
         Cost in USD
     """
     input_cost_per_1m, output_cost_per_1m = get_model_pricing(model_name)

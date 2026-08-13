@@ -174,8 +174,9 @@ def resolve_qaqc_runtime_config(
 
     Raises
     ------
-        ValueError: If no QA/QC config can be found, if deprecated lane-style
-            keys are present, or if required fields are missing.
+    ValueError
+        If no QA/QC config can be found, if deprecated lane-style
+        keys are present, or if required fields are missing.
     """
     pack_qaqc = (
         ((runtime_artifact or {}).get("resolved") or {})
@@ -342,11 +343,14 @@ def sanitize_model_name(model_name: str) -> str:
     """
     Sanitize model name for use as filename.
 
-    Args:
-        model_name: Model name (e.g., "gpt-4o", "claude-3.5-sonnet")
+    Parameters
+    ----------
+    model_name : str
+        Model name (e.g., "gpt-4o", "claude-3.5-sonnet")
 
     Returns
     -------
+    str
         Sanitized name safe for filenames
     """
     # Replace characters that might cause issues in filenames

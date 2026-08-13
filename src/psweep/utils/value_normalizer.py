@@ -15,29 +15,32 @@ def is_numeric_value(value: Any) -> bool:
     Used for focused QA/QC comparison to prioritize numeric values
     over text-only values like "Required", "Exempt", etc.
 
-    Args:
-        value: Value to check
+    Parameters
+    ----------
+    value : Any
+        Value to check
 
     Returns
     -------
+    bool
         True if value contains at least one digit
 
     Examples
     --------
-        >>> is_numeric_value("30")
-        True
-        >>> is_numeric_value("$15.00")
-        True
-        >>> is_numeric_value("100 feet")
-        True
-        >>> is_numeric_value("Required")
-        False
-        >>> is_numeric_value("Exempt")
-        False
-        >>> is_numeric_value(None)
-        False
-        >>> is_numeric_value("")
-        False
+    >>> is_numeric_value("30")
+    True
+    >>> is_numeric_value("$15.00")
+    True
+    >>> is_numeric_value("100 feet")
+    True
+    >>> is_numeric_value("Required")
+    False
+    >>> is_numeric_value("Exempt")
+    False
+    >>> is_numeric_value(None)
+    False
+    >>> is_numeric_value("")
+    False
     """
     if value is None:
         return False
@@ -55,28 +58,32 @@ def normalize_value(value: Any) -> Any:
     Normalize a value for comparison purposes.
 
     Handles:
+
     - Numeric strings with currency symbols: "$5.00" → 5.0
     - Whitespace normalization: "  text  " → "text"
     - None/empty values → None
     - Numbers → numeric type
 
-    Args:
-        value: Value to normalize
+    Parameters
+    ----------
+    value : Any
+        Value to normalize
 
     Returns
     -------
+    Any
         Normalized value
 
     Examples
     --------
-        >>> normalize_value("$5.00")
-        5.0
-        >>> normalize_value("  text  ")
-        "text"
-        >>> normalize_value("")
-        None
-        >>> normalize_value(None)
-        None
+    >>> normalize_value("$5.00")
+    5.0
+    >>> normalize_value("  text  ")
+    "text"
+    >>> normalize_value("")
+    None
+    >>> normalize_value(None)
+    None
     """
     # Handle None and empty values
     if value is None:

@@ -23,6 +23,7 @@ class DataCompiler:
     Universal data compiler that automatically handles any extraction schema.
 
     Simply point it at extracted JSON files and it:
+
     - Detects schema structure automatically
     - Intelligently flattens nested data for spreadsheets
     - Creates readable, analysis-ready output
@@ -35,14 +36,19 @@ class DataCompiler:
         """
         Initialize compiler.
 
-        Args:
-            schema_metadata: SchemaMetadata instance (required in v2.0+)
-            verbose: Whether to print informational messages (default: True)
-            debug: Whether to print debug-level details (default: False)
+        Parameters
+        ----------
+        schema_metadata
+            SchemaMetadata instance (required in v2.0+)
+        verbose
+            Whether to print informational messages (default: True)
+        debug
+            Whether to print debug-level details (default: False)
 
         Raises
         ------
-            SchemaMetadataError: If schema_metadata is not provided
+        SchemaMetadataError
+            If schema_metadata is not provided
         """
         if not schema_metadata:
             raise SchemaMetadataError(
@@ -71,10 +77,12 @@ class DataCompiler:
     ) -> Tuple[pd.DataFrame, Dict]:
         """
         Load all JSON files and compile into DataFrame.
+
         Searches recursively through nested subdirectories.
 
         Returns
         -------
+        Tuple[pd.DataFrame, Dict]
             Tuple of (DataFrame, schema_info dict)
         """
         # First try direct children, then search recursively for nested structures.

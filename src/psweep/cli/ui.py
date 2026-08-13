@@ -198,16 +198,16 @@ class TerminalUI:
 
         Parameters
         ----------
-        level:
+        level : str
             Message level (``success``, ``warning``, ``error``, ``info``);
             selects the color, icon, and label.
-        message:
+        message : str
             The primary message text.
-        details:
+        details : str | None
             Optional secondary line rendered in a muted style.
-        suggestions:
+        suggestions : List[str] | None
             Optional list of follow-up suggestions.
-        compact:
+        compact : bool
             When ``True`` and no details/suggestions are given, print a single
             inline line instead of a bordered panel.
         """
@@ -270,11 +270,16 @@ class TerminalUI:
     ) -> RenderableType:
         """The one key/value renderer for config, metrics, and summaries.
 
-        Args:
-            data: mapping or sequence of ``(key, value)`` pairs.
-            title: optional title (shown above the table, or as a panel title).
-            as_panel: wrap the table in a bordered panel.
-            border: panel border color (defaults to the theme accent).
+        Parameters
+        ----------
+        data : Rows
+            mapping or sequence of ``(key, value)`` pairs.
+        title : str | None
+            optional title (shown above the table, or as a panel title).
+        as_panel : bool
+            wrap the table in a bordered panel.
+        border : str | None
+            panel border color (defaults to the theme accent).
         """
         table = Table(
             title=None if as_panel else title,
@@ -484,10 +489,14 @@ def display_yaml(data: dict, title: str = None) -> None:
 
 
 def with_status(message: str, *, quiet: bool = False, spinner: str = "dots"):
-    """Context manager: show a spinner unless quiet. Usage::
+    """Context manager: show a spinner unless quiet.
 
-    with with_status("Loading schema...", quiet=view.is_quiet):
-        data = load_schema(path)
+    Examples
+    --------
+    .. code-block:: python
+
+        with with_status("Loading schema...", quiet=view.is_quiet):
+            data = load_schema(path)
     """
     from contextlib import nullcontext
 

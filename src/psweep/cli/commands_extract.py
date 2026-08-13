@@ -53,16 +53,23 @@ def _format_extraction_accounting(
     model: str,
 ) -> str:
     """Format concise extraction accounting summary for terminal display.
-    
-    Args:
-        num_docs: Number of documents successfully extracted
-        total_cost_usd: Total LLM cost in USD
-        total_llm_calls: Total number of LLM calls
-        total_time_sec: Total elapsed time in seconds
-        model: Model name/identifier
-    
+
+    Parameters
+    ----------
+    num_docs : int
+        Number of documents successfully extracted
+    total_cost_usd : float
+        Total LLM cost in USD
+    total_llm_calls : int
+        Total number of LLM calls
+    total_time_sec : float
+        Total elapsed time in seconds
+    model : str
+        Model name/identifier
+
     Returns
     -------
+    str
         Single-line accounting summary
     """
     return f"✓ Extraction: {num_docs} docs, {total_llm_calls} calls, ${total_cost_usd:.3f}, {total_time_sec:.1f}s [{model}]"

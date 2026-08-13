@@ -17,6 +17,7 @@ class ExcelFormatter:
     Export DataFrame to professionally formatted Excel file.
 
     Features:
+
     - Dark blue header with white bold text
     - Alternating row colors (white/light gray) for readability
     - Text wrapping enabled for long content
@@ -48,15 +49,21 @@ class ExcelFormatter:
         """
         Save DataFrame to professionally formatted Excel file.
 
-        Args:
-            df: DataFrame to export
-            output_path: Path for output Excel file
-            freeze_columns: Number of leading columns to freeze
-            auto_width: Whether to auto-size columns
+        Parameters
+        ----------
+        df : pd.DataFrame
+            DataFrame to export
+        output_path : Path
+            Path for output Excel file
+        freeze_columns : int
+            Number of leading columns to freeze
+        auto_width : bool
+            Whether to auto-size columns
 
-        Example:
-            >>> formatter = ExcelFormatter()
-            >>> formatter.save(df, Path("output.xlsx"))
+        Examples
+        --------
+        >>> formatter = ExcelFormatter()
+        >>> formatter.save(df, Path("output.xlsx"))
         """
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -108,12 +115,16 @@ class ExcelFormatter:
 
         Short/categorical columns get centered, long text gets left-aligned.
 
-        Args:
-            df: Source DataFrame
-            ws: Worksheet object
+        Parameters
+        ----------
+        df : pd.DataFrame
+            Source DataFrame
+        ws
+            Worksheet object
 
         Returns
         -------
+        list
             List of column letters that should be centered
         """
         center_aligned_cols = []
@@ -144,9 +155,12 @@ class ExcelFormatter:
         """
         Apply alternating row colors and cell formatting.
 
-        Args:
-            ws: Worksheet object
-            center_aligned_cols: List of column letters to center-align
+        Parameters
+        ----------
+        ws
+            Worksheet object
+        center_aligned_cols : list
+            List of column letters to center-align
         """
         # Define fills
         white_fill = PatternFill(
@@ -188,9 +202,12 @@ class ExcelFormatter:
         """
         Auto-adjust column widths with smart sizing.
 
-        Args:
-            ws: Worksheet object
-            center_aligned_cols: List of column letters that are centered
+        Parameters
+        ----------
+        ws
+            Worksheet object
+        center_aligned_cols : list
+            List of column letters that are centered
         """
         for column in ws.columns:
             max_length = 0

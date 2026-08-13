@@ -52,25 +52,34 @@ class LLMClient:
         """
         Initialize LLM client.
 
-        Args:
-            api_key: API key for the provider (will auto-set environment variables)
-            model: Model name (e.g., "gpt-4o-mini", "claude-3.5-sonnet", "gemini-1.5-pro")
-            provider: Explicit provider ("openai", "azure", "anthropic", "gemini")
-                     If None, auto-detects from model name
-            azure_endpoint: Azure OpenAI endpoint (for Azure provider)
-            azure_api_version: Azure API version (for Azure provider)
-            context_windows: Optional {model-name -> max prompt tokens} map used to
-                     fail fast before an over-budget request. Domain/deployment
-                     names are NOT hardcoded — supply this from config
-                     (``model_context_windows`` in run.yaml) for deployments whose
-                     context window LiteLLM cannot infer. Unset models are not
-                     guarded.
-            base_url: Optional endpoint override. When set, all calls are routed
-                     through this OpenAI-compatible URL regardless of model name.
-                     Works with any proxy (LiteLLM, OpenRouter, vLLM, etc.).
-            timeout: Request timeout in seconds. Defaults to LLM_TIMEOUT env var,
-                     then DEFAULT_TIMEOUT (120 s). Set higher for very large docs
-                     or slow proxy routes; set lower for fast fail-fast behaviour.
+        Parameters
+        ----------
+        api_key : str
+            API key for the provider (will auto-set environment variables)
+        model : str
+            Model name (e.g., "gpt-4o-mini", "claude-3.5-sonnet", "gemini-1.5-pro")
+        provider : str
+            Explicit provider ("openai", "azure", "anthropic", "gemini")
+            If None, auto-detects from model name
+        azure_endpoint : str
+            Azure OpenAI endpoint (for Azure provider)
+        azure_api_version : str
+            Azure API version (for Azure provider)
+        context_windows : Optional[Dict[str, int]]
+            Optional {model-name -> max prompt tokens} map used to
+            fail fast before an over-budget request. Domain/deployment
+            names are NOT hardcoded — supply this from config
+            (``model_context_windows`` in run.yaml) for deployments whose
+            context window LiteLLM cannot infer. Unset models are not
+            guarded.
+        base_url : str
+            Optional endpoint override. When set, all calls are routed
+            through this OpenAI-compatible URL regardless of model name.
+            Works with any proxy (LiteLLM, OpenRouter, vLLM, etc.).
+        timeout : int
+            Request timeout in seconds. Defaults to LLM_TIMEOUT env var,
+            then DEFAULT_TIMEOUT (120 s). Set higher for very large docs
+            or slow proxy routes; set lower for fast fail-fast behaviour.
         """
         if not model:
             raise ValueError(
@@ -118,6 +127,7 @@ class LLMClient:
         the bare model name the user configured.
 
         In direct-provider mode:
+
         - Azure: "azure/deployment-name"
         - Anthropic: "claude-3.5-sonnet" (no prefix needed)
         - Gemini: "gemini/gemini-1.5-pro" (optional)
@@ -192,14 +202,20 @@ class LLMClient:
         """
         Extract structured data using LLM.
 
-        Args:
-            text: Document text to extract from
-            schema: JSON schema for extraction
-            system_prompt: Optional custom system prompt
-            user_prompt: Optional custom user prompt (overrides default)
+        Parameters
+        ----------
+        text : str
+            Document text to extract from
+        schema : Dict[str, Any]
+            JSON schema for extraction
+        system_prompt : str
+            Optional custom system prompt
+        user_prompt : str
+            Optional custom user prompt (overrides default)
 
         Returns
         -------
+        Dict[str, Any]
             dict with 'data' (extracted data) and 'cost' (API cost in USD)
         """
         # Use default prompts if not provided

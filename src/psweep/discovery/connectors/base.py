@@ -29,19 +29,25 @@ class BaseSeekerConnector(ABC):
         """
         Discover candidate URLs from a query.
 
-        Returns list of normalized candidates with:
-        {
-            "url": str,
-            "source": str,
-            "title": str | None,
-            "snippet": str | None,
-            "reasons": list[str],
-        }
+        Returns
+        -------
+        list[dict[str, Any]]
+            Normalized candidate records, each shaped like::
+
+                {
+                    "url": str,
+                    "source": str,
+                    "title": str | None,
+                    "snippet": str | None,
+                    "reasons": list[str],
+                }
 
         Raises
         ------
-            RuntimeError: If provider is unavailable or API key is missing.
-            ValueError: If query is invalid.
+        RuntimeError
+            If the provider is unavailable or the API key is missing.
+        ValueError
+            If the query is invalid.
         """
         pass
 

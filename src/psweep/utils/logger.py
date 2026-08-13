@@ -66,6 +66,7 @@ class ProductionLogger:
     Production-ready logger with structured output and progress tracking.
 
     Features:
+
     - Colored console output
     - Progress indicators
     - Cost tracking
@@ -91,10 +92,14 @@ class ProductionLogger:
         """
         Initialize production logger.
 
-        Args:
-            name: Logger name
-            log_file: Optional file path for log output
-            verbose: Enable verbose (DEBUG) logging
+        Parameters
+        ----------
+        name : str
+            Logger name
+        log_file : Optional[Path]
+            Optional file path for log output
+        verbose : bool
+            Enable verbose (DEBUG) logging
         """
         self.logger = logging.getLogger(name)
         self.logger.setLevel(logging.DEBUG if verbose else logging.INFO)
@@ -235,13 +240,18 @@ def get_logger(
     """
     Get a production logger instance.
 
-    Args:
-        name: Logger name
-        log_file: Optional file path for log output
-        verbose: Enable verbose (DEBUG) logging
+    Parameters
+    ----------
+    name : str
+        Logger name
+    log_file : Optional[Path]
+        Optional file path for log output
+    verbose : bool
+        Enable verbose (DEBUG) logging
 
     Returns
     -------
+    ProductionLogger
         ProductionLogger instance
     """
     return ProductionLogger(name, log_file, verbose)
