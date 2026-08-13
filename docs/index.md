@@ -37,6 +37,8 @@ schemas/index
 :caption: Reference
 
 autoapi/index
+changelog
+contributing
 ```
 
 ## Indices
