@@ -171,7 +171,7 @@ from psweep.cli.commands_extract import (
     _generate_run_id,
     _resolve_schema_ref,
     _row_matches_filters,
-    _run_qa_qc_extraction,
+    _run_validation_extraction,
     _write_run_manifest,
     extract,
 )

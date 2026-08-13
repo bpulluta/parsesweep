@@ -10,13 +10,19 @@ def load_schema(schema_path: Union[str, Path]) -> Dict[str, Any]:
     """
     Load JSON schema from file.
 
-    Args:
-        schema_path: Path to JSON schema file
+    Parameters
+    ----------
+    schema_path : Union[str, Path]
+        Path to JSON schema file
 
-    Returns:
+    Returns
+    -------
+    Dict[str, Any]
         Parsed JSON schema as dictionary
 
-    Raises:
-        ConfigurationError: If the file is missing or not valid JSON
+    Raises
+    ------
+    ConfigurationError
+        If the file is missing or not valid JSON
     """
     return load_json_file(schema_path)

@@ -112,6 +112,7 @@ class PriorityScore:
     confidence: float = 0.0  # 0-1, normalised aggregate
 
     def to_dict(self) -> dict[str, Any]:
+        """Serialize the priority score components to a rounded plain dict."""
         return {
             "file_type_score": round(self.file_type_score, 4),
             "domain_authority_score": round(self.domain_authority_score, 4),
@@ -131,6 +132,7 @@ class PrioritizedCandidate:
     original_rank: int = 0  # position before prioritization (lineage)
 
     def to_lineage_dict(self) -> dict[str, Any]:
+        """Serialize this candidate's priority metadata for manifest lineage."""
         return {
             "url": self.candidate.url,
             "original_rank": self.original_rank,

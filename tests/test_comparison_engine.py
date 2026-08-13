@@ -13,12 +13,12 @@ from unittest.mock import MagicMock
 import tempfile
 import shutil
 
-from psweep.qa_qc.comparison_engine import (
+from psweep.validation.comparison_engine import (
     ComparisonEngine,
     ComparisonResult,
     FieldComparison,
 )
-from psweep.qa_qc.utils import resolve_qaqc_runtime_config
+from psweep.validation.utils import resolve_validation_runtime_config
 
 
 def _build_schema_metadata_mock(
@@ -31,7 +31,7 @@ def _build_schema_metadata_mock(
     """Build a minimal schema_metadata mock (extraction contract only).
 
     QA/QC runtime config (match_fields, compare_fields, expected_requirements)
-    lives in run config YAML — pass qa_qc_config directly to ComparisonEngine.
+    lives in run config YAML — pass validation_config directly to ComparisonEngine.
     """
     mock = MagicMock()
     mock.get_main_data_array.return_value = main_data_array
@@ -86,7 +86,7 @@ class TestComparisonEngine:
         mock.get_context_objects.return_value = ["jurisdiction"]
         return mock
 
-    # Standard qa_qc_config for tests that just need a working engine.
+    # Standard validation_config for tests that just need a working engine.
     _BASE_QA_QC_CONFIG = {
         "comparison_approach": "numeric_only",
         "match_fields": ["category", "specific_subject"],
@@ -100,17 +100,17 @@ class TestComparisonEngine:
         yield Path(tmp)
         shutil.rmtree(tmp)
 
-    def test_init_requires_qaqc_config(self, mock_schema_metadata):
-        """Engine initializes correctly when qa_qc_config is provided."""
-        engine = ComparisonEngine(mock_schema_metadata, qa_qc_config=self._BASE_QA_QC_CONFIG)
+    def test_init_requires_validation_config(self, mock_schema_metadata):
+        """Engine initializes correctly when validation_config is provided."""
+        engine = ComparisonEngine(mock_schema_metadata, validation_config=self._BASE_QA_QC_CONFIG)
         assert engine.main_data_array == "requirements"
         assert "category" in engine.match_fields
         assert "specific_subject" in engine.match_fields
         assert "value" in engine.compare_fields
         assert "unit" in engine.compare_fields
 
-    def test_runtime_qaqc_config_sets_match_and_compare_fields(self):
-        """qa_qc_config drives match_fields and compare_fields — schema has no say."""
+    def test_runtime_validation_config_sets_match_and_compare_fields(self):
+        """validation_config drives match_fields and compare_fields — schema has no say."""
         mock = MagicMock()
         mock.get_main_data_array.return_value = "items"
         mock.get_identifier_fields.return_value = []
@@ -118,7 +118,7 @@ class TestComparisonEngine:
 
         engine = ComparisonEngine(
             mock,
-            qa_qc_config={
+            validation_config={
                                 "comparison_approach": "numeric_only",
                 "match_fields": ["category", "facility_type", "specific_subject"],
                 "compare_fields": ["value", "unit"],
@@ -135,7 +135,7 @@ class TestComparisonEngine:
         )
         engine = ComparisonEngine(
             schema,
-            qa_qc_config={
+            validation_config={
                                 "comparison_approach": "mixed",
                 "match_fields": ["feature", "applies_to", "specific_subject"],
                 "compare_fields": ["value", "units", "value_interpretation", "obligation"],
@@ -168,7 +168,7 @@ class TestComparisonEngine:
         )
         engine = ComparisonEngine(
             schema,
-            qa_qc_config={
+            validation_config={
                                 "comparison_approach": "mixed",
                 "match_fields": ["feature", "applies_to", "specific_subject"],
                 "compare_fields": ["value", "units"],
@@ -182,7 +182,7 @@ class TestComparisonEngine:
         schema = _build_schema_metadata_mock()
         engine = ComparisonEngine(
             schema,
-            qa_qc_config={
+            validation_config={
                                 "comparison_approach": "mixed",
                 "match_fields": ["feature"],
                 "compare_fields": ["start_time"],
@@ -199,7 +199,7 @@ class TestComparisonEngine:
         schema = _build_schema_metadata_mock()
         engine = ComparisonEngine(
             schema,
-            qa_qc_config={
+            validation_config={
                                 "comparison_approach": "mixed",
                 "match_fields": ["feature"],
                 "compare_fields": ["value", "units"],
@@ -215,7 +215,7 @@ class TestComparisonEngine:
         )
         engine = ComparisonEngine(
             schema,
-            qa_qc_config={
+            validation_config={
                                 "comparison_approach": "mixed",
                 "match_fields": ["feature", "applies_to", "specific_subject"],
                 "compare_fields": ["value", "units"],
@@ -229,14 +229,14 @@ class TestComparisonEngine:
         label = engine._format_item_id(("anchor_auto", 14), {"m1": item, "m2": None})
         assert label == "working hours | drilling operations | within 300 feet of residences"
 
-    def test_resolve_qaqc_runtime_config_uses_runtime_artifact_lane(self):
-        """Runtime QA/QC config resolution reads from simplified runtime qaqc block."""
-        config = resolve_qaqc_runtime_config(
+    def test_resolve_validation_runtime_config_uses_runtime_artifact_lane(self):
+        """Runtime QA/QC config resolution reads from simplified runtime validation block."""
+        config = resolve_validation_runtime_config(
             MagicMock(),
             runtime_artifact={
                 "resolved": {
                     "pack": {
-                        "qaqc": {
+                        "validation": {
                             "comparison_approach": "numeric_only",
                             "record_matching": {
                                 "key_fields": ["referenceNumber", "make", "model"]
@@ -262,30 +262,30 @@ class TestComparisonEngine:
         assert config["unit_equivalence_groups"] == [["hours", "hrs", "hr"]]
         assert config["projection"] is None
 
-    def test_resolve_qaqc_runtime_config_raises_without_config(self):
-        """resolve_qaqc_runtime_config raises ValueError when no config is provided."""
+    def test_resolve_validation_runtime_config_raises_without_config(self):
+        """resolve_validation_runtime_config raises ValueError when no config is provided."""
         with pytest.raises(ValueError, match="No QA/QC configuration found"):
-            resolve_qaqc_runtime_config(MagicMock())
+            resolve_validation_runtime_config(MagicMock())
 
-    def test_resolve_qaqc_runtime_config_raises_when_missing_key_fields(self):
-        """resolve_qaqc_runtime_config raises ValueError when config has no record_matching.key_fields."""
+    def test_resolve_validation_runtime_config_raises_when_missing_key_fields(self):
+        """resolve_validation_runtime_config raises ValueError when config has no record_matching.key_fields."""
         with pytest.raises(ValueError, match="record_matching.key_fields"):
-            resolve_qaqc_runtime_config(
+            resolve_validation_runtime_config(
                 MagicMock(),
-                runtime_qaqc={
+                runtime_validation={
                     "comparison_approach": "mixed",
                     "comparison": {"primary_fields": ["value"]},
                 },
             )
 
-    def test_resolve_qaqc_runtime_config_includes_projection(self):
+    def test_resolve_validation_runtime_config_includes_projection(self):
         """Runtime QA/QC config preserves top-level projection metadata."""
-        config = resolve_qaqc_runtime_config(
+        config = resolve_validation_runtime_config(
             MagicMock(),
             runtime_artifact={
                 "resolved": {
                     "pack": {
-                        "qaqc": {
+                        "validation": {
                             "comparison_approach": "numeric_only",
                             "projection": {
                                 "type": "nested_array_items",
@@ -310,22 +310,22 @@ class TestComparisonEngine:
             "parent_fields": ["rate_name"],
         }
 
-    def test_resolve_qaqc_runtime_config_rejects_legacy_lane_shape(self):
+    def test_resolve_validation_runtime_config_rejects_legacy_lane_shape(self):
         """Lane-based QA/QC config is rejected to keep runtime surface minimal."""
         with pytest.raises(ValueError, match="Deprecated QA/QC lane-style config"):
-            resolve_qaqc_runtime_config(
+            resolve_validation_runtime_config(
                 MagicMock(),
-                runtime_qaqc={
+                runtime_validation={
                     "default_lane": "quantitative",
                     "lanes": {"quantitative": {"enabled": True}},
                 },
             )
 
-    def test_resolve_qaqc_runtime_config_rejects_invalid_judge_max_calls(self):
+    def test_resolve_validation_runtime_config_rejects_invalid_judge_max_calls(self):
         with pytest.raises(ValueError, match="max_calls_per_document"):
-            resolve_qaqc_runtime_config(
+            resolve_validation_runtime_config(
                 MagicMock(),
-                runtime_qaqc={
+                runtime_validation={
                     "comparison_approach": "mixed",
                     "record_matching": {"key_fields": ["feature"]},
                     "comparison": {"primary_fields": ["value"]},
@@ -333,10 +333,10 @@ class TestComparisonEngine:
                 },
             )
 
-    def test_resolve_qaqc_runtime_config_parses_report_options(self):
-        config = resolve_qaqc_runtime_config(
+    def test_resolve_validation_runtime_config_parses_report_options(self):
+        config = resolve_validation_runtime_config(
             MagicMock(),
-            runtime_qaqc={
+            runtime_validation={
                 "comparison_approach": "mixed",
                 "record_matching": {"key_fields": ["feature"]},
                 "comparison": {"primary_fields": ["value"]},
@@ -357,10 +357,10 @@ class TestComparisonEngine:
         assert config["report"]["identity_columns"] == "expanded"
         assert config["report"]["include_value_unit_column"] is False
 
-    def test_resolve_qaqc_runtime_config_wires_scope_variant_keys(self):
-        config = resolve_qaqc_runtime_config(
+    def test_resolve_validation_runtime_config_wires_scope_variant_keys(self):
+        config = resolve_validation_runtime_config(
             MagicMock(),
-            runtime_qaqc={
+            runtime_validation={
                 "comparison_approach": "mixed",
                 "record_matching": {
                     "key_fields": ["feature"],
@@ -374,10 +374,10 @@ class TestComparisonEngine:
             ["setback", "exception"],
         ]
 
-    def test_resolve_qaqc_runtime_config_parses_collapse_percent_context(self):
-        config = resolve_qaqc_runtime_config(
+    def test_resolve_validation_runtime_config_parses_collapse_percent_context(self):
+        config = resolve_validation_runtime_config(
             MagicMock(),
-            runtime_qaqc={
+            runtime_validation={
                 "comparison_approach": "mixed",
                 "record_matching": {"key_fields": ["feature"]},
                 "comparison": {
@@ -388,11 +388,11 @@ class TestComparisonEngine:
         )
         assert config["collapse_percent_context"] is True
 
-    def test_resolve_qaqc_runtime_config_rejects_non_bool_collapse_percent_context(self):
+    def test_resolve_validation_runtime_config_rejects_non_bool_collapse_percent_context(self):
         with pytest.raises(ValueError, match="collapse_percent_context"):
-            resolve_qaqc_runtime_config(
+            resolve_validation_runtime_config(
                 MagicMock(),
-                runtime_qaqc={
+                runtime_validation={
                     "comparison_approach": "mixed",
                     "record_matching": {"key_fields": ["feature"]},
                     "comparison": {
@@ -435,7 +435,7 @@ class TestComparisonEngine:
 
         engine = ComparisonEngine(
             mock,
-            qa_qc_config={
+            validation_config={
                                 "comparison_approach": "text_review",
                 "match_fields": ["category", "specific_subject"],
                 "compare_fields": ["details"],
@@ -499,7 +499,7 @@ class TestComparisonEngine:
 
         engine = ComparisonEngine(
             mock,
-            qa_qc_config={
+            validation_config={
                                 "comparison_approach": "text_review",
                 "match_fields": ["category", "specific_subject"],
                 "compare_fields": ["details"],
@@ -545,7 +545,7 @@ class TestComparisonEngine:
 
         engine = ComparisonEngine(
             mock,
-            qa_qc_config={
+            validation_config={
                                 "comparison_approach": "text_review",
                 "match_fields": ["category", "specific_subject"],
                 "compare_fields": ["details"],
@@ -589,7 +589,7 @@ class TestComparisonEngine:
 
         engine = ComparisonEngine(
             mock,
-            qa_qc_config={
+            validation_config={
                                 "comparison_approach": "text_review",
                 "match_fields": ["category", "specific_subject"],
                 "compare_fields": ["details"],
@@ -643,7 +643,7 @@ class TestComparisonEngine:
 
         engine = ComparisonEngine(
             mock,
-            qa_qc_config={
+            validation_config={
                                 "comparison_approach": "text_review",
                 "match_fields": ["category", "facility_type", "specific_subject"],
                 "compare_fields": ["details"],
@@ -707,7 +707,7 @@ class TestComparisonEngine:
 
         engine = ComparisonEngine(
             mock,
-            qa_qc_config={
+            validation_config={
                                 "comparison_approach": "text_review",
                 "match_fields": ["category", "facility_type", "specific_subject"],
                 "compare_fields": ["details"],
@@ -772,7 +772,7 @@ class TestComparisonEngine:
 
         engine = ComparisonEngine(
             mock,
-            qa_qc_config={
+            validation_config={
                                 "comparison_approach": "text_review",
                 "match_fields": ["category", "facility_type", "specific_subject"],
                 "compare_fields": ["details"],
@@ -831,7 +831,7 @@ class TestComparisonEngine:
 
         engine = ComparisonEngine(
             mock,
-            qa_qc_config={
+            validation_config={
                                 "comparison_approach": "text_review",
                 "match_fields": ["category", "facility_type", "specific_subject"],
                 "compare_fields": ["details"],
@@ -885,7 +885,7 @@ class TestComparisonEngine:
 
         engine = ComparisonEngine(
             mock,
-            qa_qc_config={
+            validation_config={
                                 "comparison_approach": "text_review",
                 "match_fields": ["category", "facility_type", "specific_subject"],
                 "compare_fields": ["details"],
@@ -939,7 +939,7 @@ class TestComparisonEngine:
 
         engine = ComparisonEngine(
             mock,
-            qa_qc_config={
+            validation_config={
                                 "comparison_approach": "text_review",
                 "match_fields": ["category", "facility_type", "specific_subject"],
                 "compare_fields": ["details"],
@@ -996,7 +996,7 @@ class TestComparisonEngine:
 
         engine = ComparisonEngine(
             mock,
-            qa_qc_config={
+            validation_config={
                                 "comparison_approach": "text_review",
                 "match_fields": ["category", "facility_type", "specific_subject"],
                 "compare_fields": ["details"],
@@ -1057,7 +1057,7 @@ class TestComparisonEngine:
 
         engine = ComparisonEngine(
             mock,
-            qa_qc_config={
+            validation_config={
                                 "comparison_approach": "text_review",
                 "match_fields": ["category", "facility_type", "specific_subject"],
                 "compare_fields": ["details"],
@@ -1094,7 +1094,7 @@ class TestComparisonEngine:
         path_a.write_text(json.dumps(model_a_data))
         path_b.write_text(json.dumps(model_b_data))
         
-        engine = ComparisonEngine(mock_schema_metadata, qa_qc_config=self._BASE_QA_QC_CONFIG)
+        engine = ComparisonEngine(mock_schema_metadata, validation_config=self._BASE_QA_QC_CONFIG)
         result = engine.compare_outputs(
             output_files={"model_a": path_a, "model_b": path_b},
             document_name="test_doc"
@@ -1127,7 +1127,7 @@ class TestComparisonEngine:
         path_a.write_text(json.dumps(model_a_data))
         path_b.write_text(json.dumps(model_b_data))
         
-        engine = ComparisonEngine(mock_schema_metadata, qa_qc_config=self._BASE_QA_QC_CONFIG)
+        engine = ComparisonEngine(mock_schema_metadata, validation_config=self._BASE_QA_QC_CONFIG)
         result = engine.compare_outputs(
             output_files={"model_a": path_a, "model_b": path_b},
             document_name="test_doc"
@@ -1166,7 +1166,7 @@ class TestComparisonEngine:
         path_a.write_text(json.dumps(model_a_data))
         path_b.write_text(json.dumps(model_b_data))
         
-        engine = ComparisonEngine(mock_schema_metadata, qa_qc_config=self._BASE_QA_QC_CONFIG)
+        engine = ComparisonEngine(mock_schema_metadata, validation_config=self._BASE_QA_QC_CONFIG)
         result = engine.compare_outputs(
             output_files={"model_a": path_a, "model_b": path_b},
             document_name="test_doc"
@@ -1205,7 +1205,7 @@ class TestComparisonEngine:
         }
         engine = ComparisonEngine(
             schema_metadata=mock_schema_metadata,
-            qa_qc_config={
+            validation_config={
                                 "comparison_approach": "mixed",
                 "match_fields": ["category", "specific_subject"],
                 "compare_fields": ["value", "unit", "obligation", "value_interpretation"],
@@ -1243,7 +1243,7 @@ class TestComparisonEngine:
         }
         engine = ComparisonEngine(
             schema_metadata=mock_schema_metadata,
-            qa_qc_config={
+            validation_config={
                                 "comparison_approach": "mixed",
                 "match_fields": ["category", "specific_subject"],
                 "compare_fields": ["value", "unit", "obligation", "value_interpretation"],
@@ -1288,7 +1288,7 @@ class TestComparisonEngine:
         }
         engine = ComparisonEngine(
             schema_metadata=mock_schema_metadata,
-            qa_qc_config={
+            validation_config={
                                 "comparison_approach": "mixed",
                 "match_fields": ["category", "specific_subject"],
                 "compare_fields": ["value", "unit"],
@@ -1342,7 +1342,7 @@ class TestComparisonEngine:
         }
         engine = ComparisonEngine(
             schema_metadata=mock_schema_metadata,
-            qa_qc_config={
+            validation_config={
                                 "comparison_approach": "mixed",
                 "match_fields": ["category", "specific_subject"],
                 "compare_fields": ["obligation"],
@@ -1396,7 +1396,7 @@ class TestComparisonEngine:
         }
         engine = ComparisonEngine(
             schema_metadata=mock_schema_metadata,
-            qa_qc_config={
+            validation_config={
                                 "comparison_approach": "mixed",
                 "match_fields": ["category", "specific_subject"],
                 "compare_fields": ["obligation"],
@@ -1440,7 +1440,7 @@ class TestComparisonEngine:
         }
         engine = ComparisonEngine(
             schema_metadata=mock_schema_metadata,
-            qa_qc_config={
+            validation_config={
                                 "comparison_approach": "mixed",
                 "match_fields": ["category", "specific_subject"],
                 "compare_fields": ["obligation"],
@@ -1489,7 +1489,7 @@ class TestComparisonEngine:
         }
         engine = ComparisonEngine(
             schema_metadata=mock_schema_metadata,
-            qa_qc_config={
+            validation_config={
                                 "comparison_approach": "mixed",
                 "match_fields": ["category", "specific_subject"],
                 "compare_fields": ["obligation"],
@@ -1566,7 +1566,7 @@ class TestComparisonEngine:
         }
         engine = ComparisonEngine(
             mock,
-            qa_qc_config={
+            validation_config={
                                 "comparison_approach": "mixed",
                 "match_fields": ["category", "specific_subject"],
                 "compare_fields": ["details"],
@@ -1626,7 +1626,7 @@ class TestComparisonEngine:
         base = {"category": "Working hours", "specific_subject": "site preparation"}
         engine = ComparisonEngine(
             _build_schema_metadata_mock(),
-            qa_qc_config={
+            validation_config={
                 "comparison_approach": "mixed",
                 "match_fields": ["category", "specific_subject"],
                 "compare_fields": ["value", "units"],
@@ -1680,7 +1680,7 @@ class TestComparisonEngine:
         }
         engine = ComparisonEngine(
             mock,
-            qa_qc_config={
+            validation_config={
                                 "comparison_approach": "mixed",
                 "match_fields": ["category", "specific_subject"],
                 "compare_fields": ["value", "units"],
@@ -1739,7 +1739,7 @@ class TestComparisonEngine:
         path_a.write_text(json.dumps(model_a_data))
         path_b.write_text(json.dumps(model_b_data))
         
-        engine = ComparisonEngine(mock_schema_metadata, qa_qc_config=self._BASE_QA_QC_CONFIG)
+        engine = ComparisonEngine(mock_schema_metadata, validation_config=self._BASE_QA_QC_CONFIG)
         result = engine.compare_outputs(
             output_files={"model_a": path_a, "model_b": path_b},
             document_name="test_doc"
@@ -1774,7 +1774,7 @@ class TestComparisonEngine:
             (temp_dir / f"model_{model}.json").write_text(json.dumps(data))
         
         mock_schema_metadata.get_context_objects.return_value = []
-        engine = ComparisonEngine(mock_schema_metadata, qa_qc_config=self._BASE_QA_QC_CONFIG)
+        engine = ComparisonEngine(mock_schema_metadata, validation_config=self._BASE_QA_QC_CONFIG)
         result = engine.compare_outputs(
             output_files={
                 "model_a": temp_dir / "model_a.json",
@@ -1802,7 +1802,7 @@ class TestComparisonEngine:
         path_b = temp_dir / "nonexistent.json"  # Does not exist
         
         mock_schema_metadata.get_context_objects.return_value = []
-        engine = ComparisonEngine(mock_schema_metadata, qa_qc_config=self._BASE_QA_QC_CONFIG)
+        engine = ComparisonEngine(mock_schema_metadata, validation_config=self._BASE_QA_QC_CONFIG)
         result = engine.compare_outputs(
             output_files={"model_a": path_a, "model_b": path_b},
             document_name="test_doc"
@@ -1817,7 +1817,7 @@ class TestComparisonEngine:
         model_b_data = {"requirements": []}
         
         mock_schema_metadata.get_context_objects.return_value = []
-        engine = ComparisonEngine(mock_schema_metadata, qa_qc_config=self._BASE_QA_QC_CONFIG)
+        engine = ComparisonEngine(mock_schema_metadata, validation_config=self._BASE_QA_QC_CONFIG)
         result = engine.compare_outputs(
             output_files=_write_output_files(
                 temp_dir, {"model_a": model_a_data, "model_b": model_b_data}
@@ -1830,7 +1830,7 @@ class TestComparisonEngine:
 
     def test_get_flat_fields(self, mock_schema_metadata):
         """Test flattening nested dict to field paths."""
-        engine = ComparisonEngine(mock_schema_metadata, qa_qc_config=self._BASE_QA_QC_CONFIG)
+        engine = ComparisonEngine(mock_schema_metadata, validation_config=self._BASE_QA_QC_CONFIG)
         
         nested = {
             "category": "Setback",
@@ -1849,7 +1849,7 @@ class TestComparisonEngine:
 
     def test_count_agreement(self, mock_schema_metadata):
         """Test agreement counting."""
-        engine = ComparisonEngine(mock_schema_metadata, qa_qc_config=self._BASE_QA_QC_CONFIG)
+        engine = ComparisonEngine(mock_schema_metadata, validation_config=self._BASE_QA_QC_CONFIG)
         
         # All agree
         assert engine._count_agreement({"a": 100, "b": 100, "c": 100}) == 3
@@ -1881,7 +1881,7 @@ class TestComparisonEngine:
         path_b.write_text(json.dumps(model_b_data))
         
         mock_schema_metadata.get_context_objects.return_value = []
-        engine = ComparisonEngine(mock_schema_metadata, qa_qc_config=self._BASE_QA_QC_CONFIG)
+        engine = ComparisonEngine(mock_schema_metadata, validation_config=self._BASE_QA_QC_CONFIG)
         result = engine.compare_outputs(
             output_files={"model_a": path_a, "model_b": path_b},
             document_name="test_doc"
@@ -1904,7 +1904,7 @@ class TestComparisonEngine:
         mock_schema_metadata.get_context_objects.return_value = []
         engine = ComparisonEngine(
             mock_schema_metadata,
-            qa_qc_config={
+            validation_config={
                                 "comparison_approach": "numeric_only",
                 "match_fields": ["category", "specific_subject"],
                 "compare_fields": ["value"],
@@ -1917,7 +1917,7 @@ class TestComparisonEngine:
             document_name="test_doc"
         )
 
-        assert "qaqc_mode" not in result.summary  # removed: was redundant with qaqc_profile
+        assert "validation_mode" not in result.summary  # removed: was redundant with validation_profile
 
 
 class TestComparisonEngineIntegration:
@@ -1946,15 +1946,15 @@ class TestComparisonEngineIntegration:
     }
 
     @pytest.fixture
-    def temp_qa_qc_dir(self):
+    def temp_validation_dir(self):
         """Create temp directory structure mimicking QA/QC output."""
         tmp = tempfile.mkdtemp()
-        doc_dir = Path(tmp) / "qa_qc" / "Test County"
+        doc_dir = Path(tmp) / "validation" / "Test County"
         doc_dir.mkdir(parents=True)
         yield doc_dir
         shutil.rmtree(tmp)
 
-    def test_realistic_geothermal_comparison(self, geothermal_schema_metadata, temp_qa_qc_dir):
+    def test_realistic_geothermal_comparison(self, geothermal_schema_metadata, temp_validation_dir):
         """Test with realistic geothermal ordinance data."""
         # Model A output
         model_a = {
@@ -2002,10 +2002,10 @@ class TestComparisonEngineIntegration:
             ]
         }
         
-        engine = ComparisonEngine(geothermal_schema_metadata, qa_qc_config=self._GEOTHERMAL_QA_QC_CONFIG)
+        engine = ComparisonEngine(geothermal_schema_metadata, validation_config=self._GEOTHERMAL_QA_QC_CONFIG)
         result = engine.compare_outputs(
             output_files=_write_output_files(
-                temp_qa_qc_dir, {"gpt-4o": model_a, "gpt-4.1": model_b}
+                temp_validation_dir, {"gpt-4o": model_a, "gpt-4.1": model_b}
             ),
             document_name="Test County"
         )
@@ -2024,7 +2024,7 @@ class TestComparisonEngineIntegration:
         # Text fields (category, section, "Required" value, etc.) should be skipped
         assert result.summary["skipped_non_numeric"] > 0
 
-    def test_tariff_nested_charge_projection_comparison(self, temp_qa_qc_dir):
+    def test_tariff_nested_charge_projection_comparison(self, temp_validation_dir):
         """Tariff QA/QC projection should flatten nested charges into compareable items."""
         mock = _build_schema_metadata_mock(
             main_data_array="rate_schedules",
@@ -2077,7 +2077,7 @@ class TestComparisonEngineIntegration:
 
         engine = ComparisonEngine(
             mock,
-            qa_qc_config={
+            validation_config={
                                 "comparison_approach": "numeric_only",
                 "projection": {
                     "type": "nested_array_items",
@@ -2091,7 +2091,7 @@ class TestComparisonEngineIntegration:
         )
         result = engine.compare_outputs(
             output_files=_write_output_files(
-                temp_qa_qc_dir, {"gpt-4o": model_a, "gpt-4.1": model_b}
+                temp_validation_dir, {"gpt-4o": model_a, "gpt-4.1": model_b}
             ),
             document_name="Tariff Doc",
         )
@@ -2157,7 +2157,7 @@ class TestPotentialDuplicateDetection:
             ]
         }
         
-        engine = ComparisonEngine(mock_schema_metadata_with_expected, qa_qc_config=self._DUP_QA_QC_CONFIG)
+        engine = ComparisonEngine(mock_schema_metadata_with_expected, validation_config=self._DUP_QA_QC_CONFIG)
         result = engine.compare_outputs(
             output_files=_write_output_files(
                 temp_dir, {"model_a": model_a, "model_b": model_b}
@@ -2189,7 +2189,7 @@ class TestPotentialDuplicateDetection:
             ]
         }
         
-        engine = ComparisonEngine(mock_schema_metadata_with_expected, qa_qc_config=self._DUP_QA_QC_CONFIG)
+        engine = ComparisonEngine(mock_schema_metadata_with_expected, validation_config=self._DUP_QA_QC_CONFIG)
         result = engine.compare_outputs(
             output_files=_write_output_files(
                 temp_dir, {"model_a": model_a, "model_b": model_b}
@@ -2206,7 +2206,7 @@ class TestCompletenessCalculation:
 
     @pytest.fixture
     def mock_schema_with_expected(self):
-        """Create mock (extraction contract only; expected_requirements in qa_qc_config)."""
+        """Create mock (extraction contract only; expected_requirements in validation_config)."""
         return _build_schema_metadata_mock(
             main_data_array="requirements",
             identifier_fields=["source.state"],
@@ -2243,7 +2243,7 @@ class TestCompletenessCalculation:
             ]
         }
         
-        engine = ComparisonEngine(mock_schema_with_expected, qa_qc_config=self._COMPLETENESS_QA_QC_CONFIG)
+        engine = ComparisonEngine(mock_schema_with_expected, validation_config=self._COMPLETENESS_QA_QC_CONFIG)
         result = engine.compare_outputs(
             output_files=_write_output_files(
                 temp_dir, {"model_a": model_output, "model_b": model_output}
@@ -2269,7 +2269,7 @@ class TestCompletenessCalculation:
             ]
         }
         
-        engine = ComparisonEngine(mock_schema_with_expected, qa_qc_config=self._COMPLETENESS_QA_QC_CONFIG)
+        engine = ComparisonEngine(mock_schema_with_expected, validation_config=self._COMPLETENESS_QA_QC_CONFIG)
         result = engine.compare_outputs(
             output_files=_write_output_files(
                 temp_dir, {"model_a": model_output, "model_b": model_output}
@@ -2292,7 +2292,7 @@ class TestCompletenessCalculation:
             ]
         }
         
-        engine = ComparisonEngine(mock_schema_with_expected, qa_qc_config=self._COMPLETENESS_QA_QC_CONFIG)
+        engine = ComparisonEngine(mock_schema_with_expected, validation_config=self._COMPLETENESS_QA_QC_CONFIG)
         result = engine.compare_outputs(
             output_files=_write_output_files(
                 temp_dir, {"model_a": model_output, "model_b": model_output}
@@ -2322,7 +2322,7 @@ class TestCompletenessCalculation:
             ]
         }
 
-        engine = ComparisonEngine(mock, qa_qc_config=no_expected_config)
+        engine = ComparisonEngine(mock, validation_config=no_expected_config)
         result = engine.compare_outputs(
             output_files=_write_output_files(
                 temp_dir, {"model_a": model_output, "model_b": model_output}
@@ -2367,7 +2367,7 @@ class TestExtractItemArrays:
         meta = self._make_metadata()
         meta.extract_main_data_array.return_value = items
 
-        engine = ComparisonEngine(meta, qa_qc_config=self._BASE_QA_QC_CONFIG)
+        engine = ComparisonEngine(meta, validation_config=self._BASE_QA_QC_CONFIG)
         result = engine._extract_item_arrays({"model_a": {"requirements": items}})
         assert result["model_a"] == items
 
@@ -2377,7 +2377,7 @@ class TestExtractItemArrays:
         del meta.extract_main_data_array  # simulate absent method
 
         items = [{"feature": "noise", "value": 55}]
-        engine = ComparisonEngine(meta, qa_qc_config=self._BASE_QA_QC_CONFIG)
+        engine = ComparisonEngine(meta, validation_config=self._BASE_QA_QC_CONFIG)
         result = engine._extract_item_arrays({"model_a": {"requirements": items}})
         assert result["model_a"] == items
 
@@ -2387,7 +2387,7 @@ class TestExtractItemArrays:
         meta = self._make_metadata()
         meta.extract_main_data_array.return_value = "not-a-list"
 
-        engine = ComparisonEngine(meta, qa_qc_config=self._BASE_QA_QC_CONFIG)
+        engine = ComparisonEngine(meta, validation_config=self._BASE_QA_QC_CONFIG)
         result = engine._extract_item_arrays({"model_a": {"requirements": items}})
         # falls back to output.get(main_data_array)
         assert result["model_a"] == items
@@ -2396,7 +2396,7 @@ class TestExtractItemArrays:
         meta = self._make_metadata()
         meta.extract_main_data_array.return_value = []
 
-        engine = ComparisonEngine(meta, qa_qc_config=self._BASE_QA_QC_CONFIG)
+        engine = ComparisonEngine(meta, validation_config=self._BASE_QA_QC_CONFIG)
         result = engine._extract_item_arrays({"model_a": {}})
         assert result["model_a"] == []
 
@@ -2404,7 +2404,7 @@ class TestExtractItemArrays:
 class TestProjectItemArray:
     """Tests for ComparisonEngine._project_item_array dict→list normalization.
 
-    The projection path is active when qa_qc_config contains a 'projection'
+    The projection path is active when validation_config contains a 'projection'
     block. The dict→list branch normalizes object-maps emitted by some
     LLM providers (keyed "0", "1", ...) into ordered lists.
     """
@@ -2426,7 +2426,7 @@ class TestProjectItemArray:
         mock.get_main_data_array.return_value = main_array
         mock.get_identifier_fields.return_value = []
         mock.get_context_objects.return_value = []
-        return ComparisonEngine(mock, qa_qc_config=self._PROJECTION_QA_QC_CONFIG)
+        return ComparisonEngine(mock, validation_config=self._PROJECTION_QA_QC_CONFIG)
 
     def test_list_source_projected_correctly(self):
         """Normal list source projects parent fields into each child row."""
@@ -2482,7 +2482,7 @@ class TestProjectItemArray:
         mock.get_main_data_array.return_value = "rate_schedules"
         mock.get_identifier_fields.return_value = []
         mock.get_context_objects.return_value = []
-        engine = ComparisonEngine(mock, qa_qc_config=config)
+        engine = ComparisonEngine(mock, validation_config=config)
         assert engine._project_item_array({"rate_schedules": []}) == []
 
     def test_missing_nested_array_key_skips_parent(self):

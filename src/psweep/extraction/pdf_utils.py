@@ -38,10 +38,14 @@ def _extract_with_ocr(pdf_path: Path) -> str:
     PyMuPDF 1.23+ has built-in OCR support via get_textpage_ocr().
     This is used as a fallback when normal text extraction yields insufficient text.
 
-    Args:
-        pdf_path: Path to the PDF file
+    Parameters
+    ----------
+    pdf_path : Path
+        Path to the PDF file
 
-    Returns:
+    Returns
+    -------
+    str
         Extracted text via OCR
     """
     if not PYMUPDF_AVAILABLE:
@@ -116,14 +120,20 @@ def _validate_extraction_quality(text: str, pdf_path: Path) -> bool:
     Validate extraction quality to detect truncation or corruption.
 
     Heuristics:
+
     1. Minimum character threshold (multi-page documents should have substantial text)
     2. Content-to-page ratio check (detect image-heavy PDFs with poor OCR)
 
-    Args:
-        text: Extracted text
-        pdf_path: Path to PDF for metadata
+    Parameters
+    ----------
+    text : str
+        Extracted text
+    pdf_path : Path
+        Path to PDF for metadata
 
-    Returns:
+    Returns
+    -------
+    bool
         True if extraction quality is acceptable, False otherwise
     """
     # Check 1: Minimum length threshold
@@ -166,6 +176,7 @@ def extract_text_from_pdf(
     Extract text from a PDF file with adaptive method selection.
 
     Strategy:
+
     1. Try PyMuPDF4LLM for markdown/table structure (if prefer_markdown=True)
     2. Validate extraction quality (content length, key terms)
     3. Fall back to PyMuPDF if quality check fails
@@ -173,15 +184,22 @@ def extract_text_from_pdf(
 
     This ensures optimal extraction method is used based on PDF characteristics.
 
-    Args:
-        pdf_path: Path to the PDF file
-        prefer_markdown: If True, try PyMuPDF4LLM first for table preservation
-        page_range: Optional tuple (start_page, end_page) to extract only specific pages (1-indexed)
-        return_meta: If True, return ``(text, {"used_ocr": bool})`` so callers
-            can decide whether the (expensive) OCR path ran — used to cache only
-            OCR results and re-extract cheap native PDFs fresh.
+    Parameters
+    ----------
+    pdf_path : Path
+        Path to the PDF file
+    prefer_markdown : bool
+        If True, try PyMuPDF4LLM first for table preservation
+    page_range : Optional[tuple]
+        Optional tuple (start_page, end_page) to extract only specific pages (1-indexed)
+    return_meta : bool
+        If True, return ``(text, {"used_ocr": bool})`` so callers
+        can decide whether the (expensive) OCR path ran — used to cache only
+        OCR results and re-extract cheap native PDFs fresh.
 
-    Returns:
+    Returns
+    -------
+    str or tuple
         Extracted text string, or ``(text, meta)`` when ``return_meta`` is True.
     """
     text = ""
@@ -327,16 +345,21 @@ def _cleanup_ocr_errors(text: str) -> str:
     Fix common OCR errors using scalable rule-based approach.
 
     Strategy:
+
     1. General pattern rules (O→C, I→l, ^→/, CamelCase splitting)
     2. Context-aware fixes (units, symbols, abbreviations)
     3. Small domain dictionary for exceptions
 
     This scales to new states/documents without hardcoding every variant.
 
-    Args:
-        text: Raw extracted text
+    Parameters
+    ----------
+    text : str
+        Raw extracted text
 
-    Returns:
+    Returns
+    -------
+    str
         Text with common OCR errors corrected
     """
     import re
@@ -436,11 +459,16 @@ def truncate_text(text: str, max_chars: int = 50000) -> str:
     Keeps the beginning (70%) and end (30%) of the document
     to preserve both header information and summary sections.
 
-    Args:
-        text: Text to truncate
-        max_chars: Maximum characters to keep (~12,500 tokens)
+    Parameters
+    ----------
+    text : str
+        Text to truncate
+    max_chars : int
+        Maximum characters to keep (~12,500 tokens)
 
-    Returns:
+    Returns
+    -------
+    str
         Truncated text
     """
     if len(text) <= max_chars:

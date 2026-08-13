@@ -35,6 +35,10 @@ def test_distributed_topology_with_static_fixture_links(tmp_path: Path):
         output_documents=tmp_path / "docs",
         output_manifest=tmp_path / "manifest.json",
         dry_run=True,
+        # Routing/topology test — keep policy checks off so it stays offline
+        # and deterministic (warn/enforce would fetch robots.txt per host).
+        robots_policy_mode="ignore",
+        tos_policy_mode="ignore",
         topology_mode="distributed",
         allowed_domains=["chaffeecounty.org"],
         include_url_patterns=[r"\.pdf$"],
@@ -66,6 +70,10 @@ def test_centralized_topology_with_index_fixture_links(tmp_path: Path):
         output_documents=tmp_path / "docs",
         output_manifest=tmp_path / "manifest.json",
         dry_run=True,
+        # Routing/topology test — keep policy checks off so it stays offline
+        # and deterministic (warn/enforce would fetch robots.txt per host).
+        robots_policy_mode="ignore",
+        tos_policy_mode="ignore",
         topology_mode="centralized",
         hub_pages=["https://docs.county.gov/index.html"],
         allowed_domains=["docs.county.gov"],
@@ -98,6 +106,10 @@ def test_hybrid_topology_with_combined_fixture_sources(tmp_path: Path):
         output_documents=tmp_path / "docs",
         output_manifest=tmp_path / "manifest.json",
         dry_run=True,
+        # Routing/topology test — keep policy checks off so it stays offline
+        # and deterministic (warn/enforce would fetch robots.txt per host).
+        robots_policy_mode="ignore",
+        tos_policy_mode="ignore",
         topology_mode="hybrid",
         hub_pages=["https://docs.county.gov/index.html"],
         allowed_domains=["docs.county.gov", "chaffeecounty.org"],

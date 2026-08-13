@@ -72,6 +72,7 @@ class Verbosity(str, Enum):
 
     @property
     def is_quiet(self) -> bool:
+        """True when the QUIET verbosity level is active."""
         return self is Verbosity.QUIET
 
 
@@ -119,6 +120,7 @@ class UITheme:
     rule_width: int = 72
 
     def color_for(self, level: str) -> str:
+        """Return the theme color for a message *level* (accent as fallback)."""
         return {
             "success": self.success,
             "warning": self.warning,
@@ -127,6 +129,7 @@ class UITheme:
         }.get(level, self.accent)
 
     def icon_for(self, level: str) -> str:
+        """Return the theme icon for a message *level* (bullet as fallback)."""
         return {
             "success": self.icon_ok,
             "warning": self.icon_warn,
@@ -157,6 +160,7 @@ class TerminalUI:
     # -- flow: structure ---------------------------------------------------
 
     def header(self, title: str) -> None:
+        """Print a top-level command header as a bordered panel."""
         self.console.print()
         self.console.print(
             Panel.fit(
@@ -190,6 +194,23 @@ class TerminalUI:
         suggestions: List[str] | None = None,
         compact: bool = False,
     ) -> None:
+        """Print a leveled message, compact inline or as a detailed panel.
+
+        Parameters
+        ----------
+        level : str
+            Message level (``success``, ``warning``, ``error``, ``info``);
+            selects the color, icon, and label.
+        message : str
+            The primary message text.
+        details : str | None
+            Optional secondary line rendered in a muted style.
+        suggestions : List[str] | None
+            Optional list of follow-up suggestions.
+        compact : bool
+            When ``True`` and no details/suggestions are given, print a single
+            inline line instead of a bordered panel.
+        """
         color = self.theme.color_for(level)
         icon = self.theme.icon_for(level)
         label = {
@@ -249,11 +270,16 @@ class TerminalUI:
     ) -> RenderableType:
         """The one key/value renderer for config, metrics, and summaries.
 
-        Args:
-            data: mapping or sequence of ``(key, value)`` pairs.
-            title: optional title (shown above the table, or as a panel title).
-            as_panel: wrap the table in a bordered panel.
-            border: panel border color (defaults to the theme accent).
+        Parameters
+        ----------
+        data : Rows
+            mapping or sequence of ``(key, value)`` pairs.
+        title : str | None
+            optional title (shown above the table, or as a panel title).
+        as_panel : bool
+            wrap the table in a bordered panel.
+        border : str | None
+            panel border color (defaults to the theme accent).
         """
         table = Table(
             title=None if as_panel else title,
@@ -278,6 +304,7 @@ class TerminalUI:
     def events_panel(
         self, events: Iterable[str], title: str = "Recent Events"
     ) -> Panel:
+        """Build a bordered panel listing recent event strings."""
         event_table = Table(show_header=False, box=None, padding=(0, 1))
         event_table.add_column(title, style=self.theme.muted)
         for event in events:
@@ -339,38 +366,46 @@ ui = TerminalUI(console)
 
 
 def print_header(title: str) -> None:
+    """Print a top-level command header (module-level wrapper)."""
     ui.header(title)
 
 
 def section(title: str) -> None:
+    """Print a subsection heading (module-level wrapper)."""
     ui.section(title)
 
 
 def rule() -> None:
+    """Print the canonical horizontal divider (module-level wrapper)."""
     ui.rule()
 
 
 def print_error(
     message: str, details: str = None, suggestions: List[str] = None
 ) -> None:
+    """Print an error message with optional details and suggestions."""
     ui.message(
         level="error", message=message, details=details, suggestions=suggestions
     )
 
 
 def print_warning(message: str, details: str = None) -> None:
+    """Print a warning message with optional details."""
     ui.message(level="warning", message=message, details=details)
 
 
 def print_success(message: str) -> None:
+    """Print a compact success message."""
     ui.message(level="success", message=message, compact=True)
 
 
 def print_info(message: str) -> None:
+    """Print a compact informational message."""
     ui.message(level="info", message=message, compact=True)
 
 
 def status_item(level: str, text: str, detail: str = None) -> None:
+    """Print a single per-item status row (module-level wrapper)."""
     ui.status_item(level, text, detail)
 
 
@@ -381,24 +416,29 @@ def key_values(
     as_panel: bool = False,
     border: str = None,
 ) -> RenderableType:
+    """Render key/value rows as a table or panel (module-level wrapper)."""
     return ui.key_values(data, title=title, as_panel=as_panel, border=border)
 
 
 def events_panel(events: Iterable[str], title: str = "Recent Events") -> Panel:
+    """Build a panel listing recent event strings (module-level wrapper)."""
     return ui.events_panel(events, title=title)
 
 
 def print_outputs(mapping: Rows, title: str = "Output") -> None:
+    """Print a mapping of output labels to paths (module-level wrapper)."""
     ui.outputs(mapping, title=title)
 
 
 def print_next_steps(steps: Sequence[str], title: str = "Next Steps") -> None:
+    """Print a list of suggested next steps (module-level wrapper)."""
     ui.next_steps(steps, title=title)
 
 
 def print_runtime_config_error(
     exc: Exception, warnings: Sequence[str] = None
 ) -> None:
+    """Print a runtime-config error with optional warnings (wrapper)."""
     ui.runtime_config_error(exc, warnings)
 
 
@@ -449,7 +489,11 @@ def display_yaml(data: dict, title: str = None) -> None:
 
 
 def with_status(message: str, *, quiet: bool = False, spinner: str = "dots"):
-    """Context manager: show a spinner unless quiet. Usage::
+    """Context manager: show a spinner unless quiet.
+
+    Examples
+    --------
+    .. code-block:: python
 
         with with_status("Loading schema...", quiet=view.is_quiet):
             data = load_schema(path)

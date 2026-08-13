@@ -10,18 +10,25 @@ def parse_page_range(page_spec: str) -> Tuple[int, int]:
     Parse a page range specification string.
 
     Supports formats:
+
     - "100-200" (dash separator)
     - "100:200" (colon separator)
     - "100,200" (comma separator)
 
-    Args:
-        page_spec: Page range string (e.g., "615-759")
+    Parameters
+    ----------
+    page_spec : str
+        Page range string (e.g., "615-759")
 
-    Returns:
+    Returns
+    -------
+    Tuple[int, int]
         Tuple of (start_page, end_page) as 1-indexed integers
 
-    Raises:
-        ValueError: If format is invalid
+    Raises
+    ------
+    ValueError
+        If format is invalid
     """
     # Try different separators
     for sep in ["-", ":", ","]:
@@ -58,6 +65,9 @@ def load_pages_csv(csv_path: Path) -> Dict[str, Optional[Tuple[int, int]]]:
     Load page range mappings from CSV file.
 
     CSV format:
+
+    .. code-block:: text
+
         file_path,start_page,end_page
         tariff1.pdf,615,759
         tariff2.pdf,400,550
@@ -65,14 +75,20 @@ def load_pages_csv(csv_path: Path) -> Dict[str, Optional[Tuple[int, int]]]:
 
     Empty start/end pages mean process full document.
 
-    Args:
-        csv_path: Path to CSV file
+    Parameters
+    ----------
+    csv_path : Path
+        Path to CSV file
 
-    Returns:
+    Returns
+    -------
+    Dict[str, Optional[Tuple[int, int]]]
         Dictionary mapping file paths to page ranges (or None for full document)
 
-    Raises:
-        ValueError: If CSV format is invalid
+    Raises
+    ------
+    ValueError
+        If CSV format is invalid
     """
     if not csv_path.exists():
         raise FileNotFoundError(f"CSV file not found: {csv_path}")

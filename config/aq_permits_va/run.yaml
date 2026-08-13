@@ -59,7 +59,7 @@ compilation:
   schema: schemas/personal/air_quality_permits_schema.json
   output_dir: compiled/aq_permits_va
 
-qaqc:
+validation:
   models: [primary, secondary]
   comparison_approach: numeric_only
   record_matching:

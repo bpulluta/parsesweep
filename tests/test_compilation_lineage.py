@@ -84,19 +84,19 @@ def test_compilation_includes_run_id_from_extraction_record_payload(tmp_path) ->
     assert df.iloc[0]["Artifact Id"] == "artifact://runtime/abc123"
 
 
-def test_compilation_includes_run_id_from_qaqc_extraction_record(tmp_path) -> None:
+def test_compilation_includes_run_id_from_validation_extraction_record(tmp_path) -> None:
     schema_path = tmp_path / "schema.json"
     _write_schema(schema_path)
 
-    extracted_dir = tmp_path / "processed/qa_qc/test_doc"
+    extracted_dir = tmp_path / "processed/validation/test_doc"
     _write_json(
         extracted_dir / "gpt-4o.json",
         {
-            "record_id": "record-qaqc-1",
+            "record_id": "record-validation-1",
             "contract_version": "1.0.0",
             "document": {
                 "source_document_id": "T-2",
-                "source_path": "documents/qa_qc/test_doc.pdf",
+                "source_path": "documents/validation/test_doc.pdf",
                 "source_filename": "test_doc.pdf",
             },
             "lineage": {
@@ -193,7 +193,7 @@ def test_compilation_skips_non_record_metadata_files(tmp_path) -> None:
     schema_path = tmp_path / "schema.json"
     _write_schema(schema_path)
 
-    extracted_dir = tmp_path / "processed/qa_qc/test_doc"
+    extracted_dir = tmp_path / "processed/validation/test_doc"
     _write_json(
         extracted_dir / "metadata.json",
         {
@@ -205,11 +205,11 @@ def test_compilation_skips_non_record_metadata_files(tmp_path) -> None:
     _write_json(
         extracted_dir / "gpt-4o.json",
         {
-            "record_id": "record-qaqc-2",
+            "record_id": "record-validation-2",
             "contract_version": "1.0.0",
             "document": {
                 "source_document_id": "T-4",
-                "source_path": "documents/qa_qc/test_doc.pdf",
+                "source_path": "documents/validation/test_doc.pdf",
                 "source_filename": "test_doc.pdf",
             },
             "lineage": {

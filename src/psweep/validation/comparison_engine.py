@@ -5,17 +5,20 @@ Compares outputs from multiple models. Comparison behavior is driven by the
 active runtime QA/QC profile in config/<domain>/run.yaml.
 Includes potential duplicate detection and completeness metrics.
 
-Usage:
-    from psweep.qa_qc.comparison_engine import ComparisonEngine
-    from psweep.qa_qc.utils import resolve_qaqc_runtime_config
+Examples
+--------
+.. code-block:: python
+
+    from psweep.validation.comparison_engine import ComparisonEngine
+    from psweep.validation.utils import resolve_validation_runtime_config
     from psweep.utils.schema_metadata import SchemaMetadata
 
     schema_metadata = SchemaMetadata(schema_path)
-    qa_qc_config = resolve_qaqc_runtime_config(
+    validation_config = resolve_validation_runtime_config(
         schema_metadata,
-        runtime_qaqc=run_config["qaqc"],   # from config/<domain>/run.yaml
+        runtime_validation=run_config["validation"],   # from config/<domain>/run.yaml
     )
-    engine = ComparisonEngine(schema_metadata, qa_qc_config=qa_qc_config)
+    engine = ComparisonEngine(schema_metadata, validation_config=validation_config)
 
     result = engine.compare_outputs(
         output_files={"gpt-4.1": path1, "claude-haiku-4-5": path2},
@@ -46,7 +49,7 @@ from ..utils.value_normalizer import (
     is_numeric_value,
     normalize_value,
 )
-from .utils import resolve_qaqc_runtime_config
+from .utils import resolve_validation_runtime_config
 
 logger = logging.getLogger(__name__)
 
@@ -80,8 +83,10 @@ class PotentialDuplicate:
     """
     Represents items that might be the same data with different keys.
 
-    Example: gpt-5 has time__reclamation_deadline_days=60
-             gpt-4.1 has time__permit_validity_days=60
+    Examples
+    --------
+    gpt-5 has time__reclamation_deadline_days=60
+    gpt-4.1 has time__permit_validity_days=60
     Same value extracted with different requirement_type - likely same source data.
     """
 
@@ -131,70 +136,75 @@ class ComparisonEngine:
     Schema metadata carries only the extraction contract (main_data_array, identifier_fields,
     context_objects, deduplication keys) — no QA/QC runtime settings.
 
-    Example usage::
+    Examples
+    --------
+    .. code-block:: python
 
-        from psweep.qa_qc.utils import resolve_qaqc_runtime_config
-        
-        qa_qc_config = resolve_qaqc_runtime_config(
+        from psweep.validation.utils import resolve_validation_runtime_config
+
+        validation_config = resolve_validation_runtime_config(
             schema_metadata=schema_metadata,
-            runtime_qaqc=run_config.get("qaqc", {})
+            runtime_validation=run_config.get("validation", {})
         )
-        engine = ComparisonEngine(schema_metadata, qa_qc_config=qa_qc_config)
+        engine = ComparisonEngine(schema_metadata, validation_config=validation_config)
         result = engine.compare_outputs(output_files, document_name)
     """
 
     def __init__(
-        self, schema_metadata, qa_qc_config: Dict[str, Any]
+        self, schema_metadata, validation_config: Dict[str, Any]
     ):
         """
         Initialize comparison engine.
 
-        Args:
-            schema_metadata: SchemaMetadata instance (extraction contract only).
-            qa_qc_config: Resolved QA/QC runtime config from
-                ``resolve_qaqc_runtime_config``. Always sourced from
-                config/<domain>/run.yaml — never from schema metadata.
+        Parameters
+        ----------
+        schema_metadata
+            SchemaMetadata instance (extraction contract only).
+        validation_config : Dict[str, Any]
+            Resolved QA/QC runtime config from
+            ``resolve_validation_runtime_config``. Always sourced from
+            config/<domain>/run.yaml — never from schema metadata.
         """
         self.schema_metadata = schema_metadata
         self.main_data_array = schema_metadata.get_main_data_array()
         self.identifier_fields = schema_metadata.get_identifier_fields()
-        self.qa_qc_config = qa_qc_config
+        self.validation_config = validation_config
 
-        self.match_fields = list(self.qa_qc_config["match_fields"])
-        self.compare_fields = set(self.qa_qc_config["compare_fields"])
+        self.match_fields = list(self.validation_config["match_fields"])
+        self.compare_fields = set(self.validation_config["compare_fields"])
         # comparison_approach controls which fields are compared:
         #   "mixed"        — compare ALL compare_fields (numeric as numeric, categorical/text
         #                    as case-insensitive string equality). This is the recommended default.
         #   "numeric_only" — legacy: only compare fields where at least one value is numeric.
         #   "text_review"  — all fields, plus full deduplication/fallback-matching for
         #                    free-form narrative rows.
-        self.comparison_approach = self.qa_qc_config.get(
+        self.comparison_approach = self.validation_config.get(
            "comparison_approach", "mixed"
         )
-        self.projection = self.qa_qc_config.get("projection") or None
+        self.projection = self.validation_config.get("projection") or None
         self.enable_text_fallback_matching = bool(
-           self.qa_qc_config.get("enable_text_fallback_matching", False)
+           self.validation_config.get("enable_text_fallback_matching", False)
         )
         self.enable_judge_pair_matching = bool(
-            self.qa_qc_config.get("enable_judge_pair_matching", False)
+            self.validation_config.get("enable_judge_pair_matching", False)
         )
         self.fuzzy_match_fields = list(
-            self.qa_qc_config.get("fuzzy_match_fields") or []
+            self.validation_config.get("fuzzy_match_fields") or []
         )
         self.text_fallback_fields = list(
-            self.qa_qc_config.get("text_fallback_fields") or []
+            self.validation_config.get("text_fallback_fields") or []
         )
         self.unit_equivalence_index = build_unit_equivalence_index(
-            self.qa_qc_config.get("unit_equivalence_groups")
+            self.validation_config.get("unit_equivalence_groups")
         )
         self.collapse_percent_context = bool(
-            self.qa_qc_config.get("collapse_percent_context", False)
+            self.validation_config.get("collapse_percent_context", False)
         )
         self.semantic_match_threshold = float(
-            self.qa_qc_config.get("semantic_match_threshold", 0.30)
+            self.validation_config.get("semantic_match_threshold", 0.30)
         )
-        self._judge_config = self.qa_qc_config.get("judge") or {}
-        self._judge_runtime = self.qa_qc_config.get("judge_runtime") or {}
+        self._judge_config = self.validation_config.get("judge") or {}
+        self._judge_runtime = self.validation_config.get("judge_runtime") or {}
         self._judge_row_equivalence_enabled = bool(
             self._judge_config.get("row_equivalence", True)
         )
@@ -215,10 +225,10 @@ class ComparisonEngine:
         # Empty by default — populate via lane config scope_variant_keys.
         self._scope_variant_keys: frozenset[tuple] = frozenset(
             (str(pair[0]).strip().lower(), str(pair[1]).strip().lower())
-            for pair in (self.qa_qc_config.get("scope_variant_keys") or [])
+            for pair in (self.validation_config.get("scope_variant_keys") or [])
             if isinstance(pair, (list, tuple)) and len(pair) >= 2
         )
-        self.anchor_config = self.qa_qc_config.get("anchor_config")
+        self.anchor_config = self.validation_config.get("anchor_config")
         self._shingle_cache: Dict[int, set] = {}
 
         logger.debug(
@@ -317,11 +327,16 @@ class ComparisonEngine:
         """
         Compare outputs from multiple models.
 
-        Args:
-            output_files: Dict mapping model name to output file path
-            document_name: Name of the document being compared
+        Parameters
+        ----------
+        output_files : Dict[str, Path]
+            Dict mapping model name to output file path
+        document_name : str
+            Name of the document being compared
 
-        Returns:
+        Returns
+        -------
+        ComparisonResult
             ComparisonResult with summary and field comparisons based on the
             resolved QA/QC comparison approach
         """
@@ -483,7 +498,7 @@ class ComparisonEngine:
             # Get field name (last part of path)
             field_name = field_path.split(".")[-1].lower()
 
-            # Only compare fields specified in schema qa_qc.comparison.primary_fields
+            # Only compare fields specified in schema validation.comparison.primary_fields
             if field_name not in self.compare_fields:
                 skipped += 1
                 continue
@@ -2135,7 +2150,7 @@ class ComparisonEngine:
                 "note": "proxy metrics — no gold-standard labels; anchor_match_rate = matched_pairs / min(model_row_counts)",
             }
             # Remove misleading completeness when expected_requirements not configured.
-            if not self.qa_qc_config.get("expected_requirements"):
+            if not self.validation_config.get("expected_requirements"):
                 summary.pop("completeness_per_model", None)
         if self._judge_config.get("enabled"):
             judge_matches = sum(
@@ -2863,16 +2878,23 @@ class ComparisonEngine:
         Finds ONLY items (items unique to one model) that have the same
         (value, unit) combination as ONLY items from other models.
 
-        Example: gpt-5 has time_limit.reclamation_period=60days
-                 gpt-4.1 has time_limit.drilling_operations=60days
-        These might be the same source data, categorized differently.
+        Parameters
+        ----------
+        indexes : Dict[str, Dict[Tuple, dict]]
+            Dict mapping model -> {key_tuple: item_dict}
+        models : List[str]
+            List of model names
 
-        Args:
-            indexes: Dict mapping model -> {key_tuple: item_dict}
-            models: List of model names
-
-        Returns:
+        Returns
+        -------
+        List[PotentialDuplicate]
             List of PotentialDuplicate instances
+
+        Examples
+        --------
+        gpt-5 has time_limit.reclamation_period=60days
+        gpt-4.1 has time_limit.drilling_operations=60days
+        These might be the same source data, categorized differently.
         """
         # First, find all keys and which models have them
         all_keys = self._collect_all_keys(indexes)
@@ -2927,18 +2949,26 @@ class ComparisonEngine:
         """
         Calculate completeness metrics for each model.
 
-        Compares extracted items against expected requirements from qa_qc_config.
+        Compares extracted items against expected requirements from validation_config.
         Expected requirements are an optional list in the run config lane, e.g.:
+
+        .. code-block:: python
+
             lanes.quantitative.expected_requirements: [...]
 
-        Args:
-            item_arrays: Dict mapping model -> list of extracted items
-            models: List of model names
+        Parameters
+        ----------
+        item_arrays : Dict[str, List[dict]]
+            Dict mapping model -> list of extracted items
+        models : List[str]
+            List of model names
 
-        Returns:
+        Returns
+        -------
+        Dict[str, CompletenessResult]
             Dict mapping model -> CompletenessResult
         """
-        expected_requirements = self.qa_qc_config.get("expected_requirements") or []
+        expected_requirements = self.validation_config.get("expected_requirements") or []
         expected_total = len(expected_requirements)
 
         if not expected_requirements:

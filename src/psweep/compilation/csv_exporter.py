@@ -20,13 +20,17 @@ class CsvExporter:
         """
         Save DataFrame to CSV file.
 
-        Args:
-            df: DataFrame to export
-            output_path: Path for output CSV file
+        Parameters
+        ----------
+        df : pd.DataFrame
+            DataFrame to export
+        output_path : Path
+            Path for output CSV file
 
-        Example:
-            >>> exporter = CsvExporter()
-            >>> exporter.save(df, Path("output.csv"))
+        Examples
+        --------
+        >>> exporter = CsvExporter()
+        >>> exporter.save(df, Path("output.csv"))
         """
         output_path.parent.mkdir(parents=True, exist_ok=True)
         df.to_csv(output_path, index=False)

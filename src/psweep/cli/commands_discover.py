@@ -21,7 +21,13 @@ from psweep.cli.ui import (
     print_success,
 )
 from psweep.config import RuntimeConfigError
-from psweep.discovery import DiscoveryEngine, DiscoveryRequest
+from psweep.discovery import (
+    DEFAULT_PARTITION_MODE,
+    DEFAULT_ROBOTS_POLICY_MODE,
+    DEFAULT_TOS_POLICY_MODE,
+    DiscoveryEngine,
+    DiscoveryRequest,
+)
 
 
 @click.command()
@@ -82,7 +88,8 @@ from psweep.discovery import DiscoveryEngine, DiscoveryRequest
 @click.option(
     "--partition-mode",
     type=click.Choice(["auto", "jurisdiction", "host"], case_sensitive=False),
-    default=None,
+    default=DEFAULT_PARTITION_MODE,
+    show_default=True,
     help="Download organization mode: auto prefers jurisdiction when available, else host",
 )
 @click.option(
@@ -111,13 +118,15 @@ from psweep.discovery import DiscoveryEngine, DiscoveryRequest
 @click.option(
     "--robots-policy-mode",
     type=click.Choice(["ignore", "warn", "enforce"], case_sensitive=False),
-    default=None,
+    default=DEFAULT_ROBOTS_POLICY_MODE,
+    show_default=True,
     help="Robots policy mode for target-site requests",
 )
 @click.option(
     "--tos-policy-mode",
     type=click.Choice(["ignore", "warn", "enforce"], case_sensitive=False),
-    default=None,
+    default=DEFAULT_TOS_POLICY_MODE,
+    show_default=True,
     help="Terms acknowledgement mode for target-site requests",
 )
 @click.option(
@@ -183,7 +192,24 @@ def discover(
     verbose: bool,
     debug: bool,
 ):
-    """Discover and download source documents from web targets."""
+    """Discover and download source documents from web targets.
+
+    Searches for documents matching the configured queries, scores and filters
+    candidates, then downloads accepted files to the discovery output directory.
+    Supports seeding from a CSV of targets, direct seed URLs, or a SerpApi
+    search query. Resumes from a checkpoint on subsequent runs; pass --fresh to
+    re-run all targets from scratch.
+
+    Run ``psweep discover --help`` for every option and its resolved default.
+
+    Examples
+    --------
+    ::
+
+        psweep discover --config config/my_domain/my_domain.yaml
+        psweep discover --seed-url https://example.com/docs --domain my_domain
+        psweep discover --config cfg.yaml --dry-run --verbose
+    """
     from psweep.cli.commands import (
         _explicit_cli_overrides,
         _print_effective_config,
@@ -263,7 +289,8 @@ def discover(
     resolved_state = resolved_inputs.get("state", state)
     resolved_jurisdiction = resolved_inputs.get("jurisdiction", jurisdiction)
     resolved_partition_mode = (
-        resolved_inputs.get("partition_mode", partition_mode) or "auto"
+        resolved_inputs.get("partition_mode", partition_mode)
+        or DEFAULT_PARTITION_MODE
     ).lower()
     resolved_digger_provider = (
         (
@@ -372,13 +399,16 @@ def discover(
     )
     resolved_robots_policy_mode = str(
         resolved_inputs.get(
-            "robots_policy_mode", robots_policy_mode or "ignore"
+            "robots_policy_mode",
+            robots_policy_mode or DEFAULT_ROBOTS_POLICY_MODE,
         )
-        or "ignore"
+        or DEFAULT_ROBOTS_POLICY_MODE
     ).lower()
     resolved_tos_policy_mode = str(
-        resolved_inputs.get("tos_policy_mode", tos_policy_mode or "ignore")
-        or "ignore"
+        resolved_inputs.get(
+            "tos_policy_mode", tos_policy_mode or DEFAULT_TOS_POLICY_MODE
+        )
+        or DEFAULT_TOS_POLICY_MODE
     ).lower()
     resolved_acknowledged_tos_domains = list(
         resolved_inputs.get("acknowledged_tos_domains")

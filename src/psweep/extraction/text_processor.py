@@ -13,9 +13,11 @@ class TextProcessor:
         """
         Initialize text processor.
 
-        Args:
-            max_chars: Maximum characters to extract from document (default: 400000).
-                      Proven reliable for fast processing. Increase for very long documents.
+        Parameters
+        ----------
+        max_chars : int
+            Maximum characters to extract from document (default: 400000).
+            Proven reliable for fast processing. Increase for very long documents.
         """
         self.max_chars = max_chars
 
@@ -23,10 +25,14 @@ class TextProcessor:
         """
         Optimize text for extraction by truncating if needed.
 
-        Args:
-            text: Full document text
+        Parameters
+        ----------
+        text : str
+            Full document text
 
-        Returns:
+        Returns
+        -------
+        Tuple[str, bool]
             Tuple of (optimized_text, was_truncated)
         """
         original_length = len(text)
@@ -50,11 +56,16 @@ class TextProcessor:
         This prevents data loss when OpenAI omits optional fields.
         Works generically with any schema structure.
 
-        Args:
-            data: Extracted data dictionary
-            schema: JSON schema defining expected structure
+        Parameters
+        ----------
+        data : Dict[str, Any]
+            Extracted data dictionary
+        schema : Dict[str, Any]
+            JSON schema defining expected structure
 
-        Returns:
+        Returns
+        -------
+        Dict[str, Any]
             Normalized data with all schema fields present
         """
         # Get schema properties
@@ -89,10 +100,14 @@ class TextProcessor:
         Cleans whitespace, removes extra spaces, and standardizes formatting.
         Works generically with any schema structure.
 
-        Args:
-            data: Extracted data dictionary
+        Parameters
+        ----------
+        data : Dict[str, Any]
+            Extracted data dictionary
 
-        Returns:
+        Returns
+        -------
+        Dict[str, Any]
             Data with normalized string fields
         """
 
@@ -125,11 +140,16 @@ class TextProcessor:
         Generic checks that work for any schema type. Uses schema_metadata
         identifier_fields (when available) to build human-readable item labels.
 
-        Args:
-            data: Extracted data dictionary
-            schema_metadata: Optional SchemaMetadata for identifier field lookup
+        Parameters
+        ----------
+        data : Dict[str, Any]
+            Extracted data dictionary
+        schema_metadata
+            Optional SchemaMetadata for identifier field lookup
 
-        Returns:
+        Returns
+        -------
+        List[str]
             List of warning messages
         """
         warnings = []
@@ -197,15 +217,21 @@ class TextProcessor:
         Calculate completeness score based on fields populated.
 
         Generic scoring that works for any schema:
+
         - 0.3: Base score for successful extraction
         - 0.2: Has context fields (entity identifiers, location, etc.)
         - 0.5: Has item arrays with populated fields
 
-        Args:
-            data: Extracted data dictionary
-            validation_notes: List of validation notes (unused but kept for compatibility)
+        Parameters
+        ----------
+        data : Dict[str, Any]
+            Extracted data dictionary
+        validation_notes : List[str]
+            List of validation notes (unused but kept for compatibility)
 
-        Returns:
+        Returns
+        -------
+        float
             Score from 0-1 indicating data completeness
         """
         score = 0.3  # Base score for successful extraction

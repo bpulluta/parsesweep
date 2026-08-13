@@ -4,7 +4,10 @@ All public-facing errors raised by the engines and pipeline layer are
 subclasses of :class:`ParseSweepError`. The CLI catches them and renders
 them via Rich; the programmatic API lets them propagate naturally.
 
-Usage:
+Examples
+--------
+.. code-block:: python
+
     from psweep.exceptions import ExtractionError, ConfigurationError
 """
 

@@ -29,18 +29,25 @@ class BaseSeekerConnector(ABC):
         """
         Discover candidate URLs from a query.
 
-        Returns list of normalized candidates with:
-        {
-            "url": str,
-            "source": str,
-            "title": str | None,
-            "snippet": str | None,
-            "reasons": list[str],
-        }
+        Returns
+        -------
+        list[dict[str, Any]]
+            Normalized candidate records, each shaped like::
 
-        Raises:
-            RuntimeError: If provider is unavailable or API key is missing.
-            ValueError: If query is invalid.
+                {
+                    "url": str,
+                    "source": str,
+                    "title": str | None,
+                    "snippet": str | None,
+                    "reasons": list[str],
+                }
+
+        Raises
+        ------
+        RuntimeError
+            If the provider is unavailable or the API key is missing.
+        ValueError
+            If the query is invalid.
         """
         pass
 
@@ -77,6 +84,7 @@ class DiggerArtifact:
     metadata: dict[str, Any] | None = None
 
     def to_dict(self) -> dict[str, Any]:
+        """Serialize this discovered artifact to a plain dict."""
         return {
             "url": self.url,
             "source": self.source,
@@ -99,7 +107,8 @@ class BaseDiggerConnector(ABC):
         """
         Discover candidate artifacts from seed pages within crawl budgets.
 
-        Returns:
+        Returns
+        -------
             Normalized digger artifacts for downstream validation/scoring.
         """
         pass

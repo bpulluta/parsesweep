@@ -73,12 +73,17 @@ class SchemaMetadata:
         """
         Initialize with schema file path.
 
-        Args:
-            schema_path: Path to JSON schema file
-            metadata_overrides: Optional runtime metadata overrides merged onto $metadata
+        Parameters
+        ----------
+        schema_path : Path
+            Path to JSON schema file
+        metadata_overrides : Optional[Dict[str, Any]]
+            Optional runtime metadata overrides merged onto $metadata
 
-        Raises:
-            SchemaMetadataError: If schema lacks required $metadata section
+        Raises
+        ------
+        SchemaMetadataError
+            If schema lacks required $metadata section
         """
         self.schema_path = Path(schema_path)
         self.schema = self._load_schema()
@@ -125,8 +130,10 @@ class SchemaMetadata:
         """
         Validate that metadata includes required fields.
 
-        Raises:
-            SchemaMetadataError: If required metadata fields are missing
+        Raises
+        ------
+        SchemaMetadataError
+            If required metadata fields are missing
         """
         extraction = self.metadata.get("extraction", {})
         identity = self.metadata.get("identity", {})
@@ -341,14 +348,20 @@ class SchemaMetadata:
         """
         Extract main data array from extraction results.
 
-        Args:
-            data: Extracted data dictionary
+        Parameters
+        ----------
+        data : dict
+            Extracted data dictionary
 
-        Returns:
+        Returns
+        -------
+        List[Dict[str, Any]]
             List of data items, or empty list if not found
 
-        Raises:
-            SchemaMetadataError: If main data array key not specified
+        Raises
+        ------
+        SchemaMetadataError
+            If main data array key not specified
         """
         main_array_key = self.get_main_data_array()
 

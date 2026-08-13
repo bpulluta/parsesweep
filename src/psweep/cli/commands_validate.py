@@ -21,7 +21,7 @@ from psweep.extraction.document_utils import SUPPORTED_EXTENSIONS
     "config_path",
     type=click.Path(exists=True),
     required=True,
-    help="Domain run config file with extraction + qaqc sections.",
+    help="Domain run config file with extraction + validation sections.",
 )
 @click.option(
     "--limit",
@@ -33,7 +33,7 @@ from psweep.extraction.document_utils import SUPPORTED_EXTENSIONS
 @click.option(
     "--compare-only",
     is_flag=True,
-    help="Skip QA/QC extraction and only regenerate comparison reports from existing qa_qc outputs.",
+    help="Skip QA/QC extraction and only regenerate comparison reports from existing validation outputs.",
 )
 @click.option(
     "--fresh",
@@ -61,13 +61,13 @@ def validate(
     )
     from psweep.cli.commands_compare import (
         generate_comparison_reports,
-        load_runtime_qaqc_config,
+        load_runtime_validation_config,
     )
     from psweep.cli.commands_extract import (
         _apply_page_targeting,
         _generate_run_id,
         _resolve_schema_ref,
-        _run_qa_qc_extraction,
+        _run_validation_extraction,
     )
 
     view = begin_run("validate", quiet=quiet, verbose=verbose, debug=debug)
@@ -90,16 +90,16 @@ def validate(
         resolved_inputs.get("output")
         or (Path.cwd() / "extracted" / resolved_inputs.get("domain", path.name))
     )
-    qaqc_cfg = resolved_inputs.get("qaqc") or {}
+    validation_cfg = resolved_inputs.get("validation") or {}
     validation_output_dir = Path(
-        qaqc_cfg.get("output_dir")
+        validation_cfg.get("output_dir")
         or (Path.cwd() / "validated" / resolved_inputs.get("domain", path.name))
     )
     max_context = int(resolved_inputs.get("max_context", 400000))
     timeout_seconds = resolved_inputs.get("timeout_seconds")
-    qaqc_models = (resolved_inputs.get("qaqc") or {}).get("models") or []
+    validation_models = (resolved_inputs.get("validation") or {}).get("models") or []
     registry = resolved_inputs.get("_model_registry")
-    qa_qc_output = validation_output_dir / "qa_qc"
+    validation_output = validation_output_dir / "validation"
 
     if registry is None and not compare_only:
         view.error(
@@ -107,10 +107,10 @@ def validate(
             "Run validate with --config so qa/qc models resolve from the config models block.",
         )
         sys.exit(1)
-    if len(qaqc_models) < 2 and not compare_only:
+    if len(validation_models) < 2 and not compare_only:
         view.error(
             "QA/QC configuration error",
-            "qaqc.models must resolve to at least 2 model tiers.",
+            "validation.models must resolve to at least 2 model tiers.",
         )
         sys.exit(1)
     if not schema_path.exists():
@@ -118,7 +118,7 @@ def validate(
         sys.exit(1)
 
     try:
-        schema_metadata, runtime_artifact, qa_qc_config = load_runtime_qaqc_config(
+        schema_metadata, runtime_artifact, validation_config = load_runtime_validation_config(
             schema_path=schema_path,
             config_path=config_path,
         )
@@ -126,19 +126,19 @@ def validate(
         view.error("Failed to load QA/QC config", str(exc))
         sys.exit(1)
 
-    judge_runtime = qa_qc_config.get("judge_runtime") or {}
-    judge_enabled = bool((qa_qc_config.get("judge") or {}).get("enabled"))
+    judge_runtime = validation_config.get("judge_runtime") or {}
+    judge_enabled = bool((validation_config.get("judge") or {}).get("enabled"))
     judge_model = judge_runtime.get("model") or "(disabled)"
     judge_provider = judge_runtime.get("provider") or "-"
-    report_cfg = qa_qc_config.get("report") or {}
+    report_cfg = validation_config.get("report") or {}
 
     if compare_only:
         view.header("VALIDATE — QA/QC")
         view.config(
             {
                 "Mode": "reports-only (no extraction)",
-                "QA/QC Output": str(qa_qc_output),
-                "Comparison Approach": qa_qc_config.get("comparison_approach")
+                "QA/QC Output": str(validation_output),
+                "Comparison Approach": validation_config.get("comparison_approach")
                 or "mixed",
                 "Judge Enabled": "yes" if judge_enabled else "no",
                 "Judge Model": judge_model,
@@ -155,10 +155,10 @@ def validate(
                 else "no",
             }
         )
-        if not qa_qc_output.exists():
+        if not validation_output.exists():
             view.error(
                 "QA/QC output not found",
-                f"Expected existing outputs at {qa_qc_output}",
+                f"Expected existing outputs at {validation_output}",
             )
             sys.exit(1)
         
@@ -173,9 +173,9 @@ def validate(
             schema_dict = None
         
         exit_code = generate_comparison_reports(
-            qa_qc_path_obj=qa_qc_output,
+            validation_path_obj=validation_output,
             schema_metadata=schema_metadata,
-            qa_qc_config=qa_qc_config,
+            validation_config=validation_config,
             runtime_artifact=runtime_artifact,
             view=view,
             report_limit=limit,
@@ -215,7 +215,7 @@ def validate(
 
     model_labels = []
     if registry is not None:
-        for definition in registry.get_models(list(qaqc_models)):
+        for definition in registry.get_models(list(validation_models)):
             llm_kwargs = registry.to_llm_kwargs(definition.tier)
             provider = llm_kwargs.get("provider", "openai")
             model_labels.append(f"{definition.model} [{provider}]")
@@ -227,8 +227,8 @@ def validate(
             "Documents": str(len(doc_files)),
             "Models": ", ".join(model_labels)
             if model_labels
-            else ", ".join(qaqc_models),
-            "Comparison Approach": qa_qc_config.get("comparison_approach")
+            else ", ".join(validation_models),
+            "Comparison Approach": validation_config.get("comparison_approach")
             or "mixed",
             "Judge Enabled": "yes" if judge_enabled else "no",
             "Judge Model": judge_model,
@@ -237,7 +237,7 @@ def validate(
             if fresh
             else "reuse existing where available",
             "LLM Timeout (s)": str(timeout_seconds) if timeout_seconds else "default",
-            "Report Output": str(qa_qc_output),
+            "Report Output": str(validation_output),
         }
     )
 
@@ -261,19 +261,19 @@ def validate(
     run_id = _generate_run_id(
         schema_path=schema_path,
         provider="mixed",
-        model="qa_qc",
-        enable_qa_qc=True,
+        model="validation",
+        enable_validation=True,
         doc_files=doc_files,
         artifact_id=None,
     )
     view.phase("Stage 2/3: Multi-model extraction")
-    qa_qc_output = _run_qa_qc_extraction(
+    validation_output = _run_validation_extraction(
         doc_files=doc_files,
         loaded_schema=loaded_schema,
         schema_path=schema_path,
         output_dir=validation_output_dir,
         registry=registry,
-        qaqc_models=qaqc_models,
+        validation_models=validation_models,
         max_context=max_context,
         timeout_seconds=timeout_seconds,
         page_range_map=page_range_map,
@@ -287,7 +287,7 @@ def validate(
         write_primary_canonical=False,
         view=view,
     )
-    if qa_qc_output is None:
+    if validation_output is None:
         sys.exit(1)
 
     view.phase("Stage 3/3: Comparison and report generation")
@@ -296,9 +296,9 @@ def validate(
     discovery_checkpoint_path = discovery_checkpoint if discovery_checkpoint.exists() else None
     
     exit_code = generate_comparison_reports(
-        qa_qc_path_obj=qa_qc_output,
+        validation_path_obj=validation_output,
         schema_metadata=schema_metadata,
-        qa_qc_config=qa_qc_config,
+        validation_config=validation_config,
         runtime_artifact=runtime_artifact,
         view=view,
         report_limit=None,

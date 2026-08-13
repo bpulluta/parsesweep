@@ -6,7 +6,7 @@
 #   - extraction: required for the extract command
 #   - compilation: required for the compile command
 #   - discovery: only if you need web document discovery
-#   - qaqc: only if you use multi-model QA/QC validation
+#   - validation: only if you use multi-model QA/QC validation
 
 domain: your_domain_name
 
@@ -33,17 +33,17 @@ extraction:
   # Skip/reprocess hygiene: extract skips files with existing output JSON by
   # default (skip_existing=true). Re-run cheaply after config tweaks with no
   # flag; only pass --reprocess after changing schema, model tier, or pages.
-  # max_context: 600000                   # chars per document (default: 400000)
+  # max_context: 600000                   # chars per document (default: 600000)
   # pages:                                 # how to select pages from large PDFs
   #   csv: config/your_domain/page_ranges.csv  # manual ranges per file (wins)
   #   auto_locate:                         # LLM fallback for uncovered large docs
   #     model: secondary                   # pin to an alias — avoid silent .env fallback
   #     section_description: "the section containing your target data"
-  #     trigger_chars: 200000              # only targets docs larger than this.
+  #     trigger_chars: 200000              # default: 200000 — only targets docs larger than this.
   #                                        # Set == max_context for zero-regression
   #                                        # targeting (only docs that would be
   #                                        # truncated get page-targeted).
-  #     max_selected_pages: 30
+  #     max_selected_pages: 30             # default: 30
   #     keywords: [term1, term2]           # heuristic pre-filter; trims LLM candidates
   #     save_discovered: true              # write discovered_page_ranges.csv for review
 
@@ -52,8 +52,8 @@ compilation:
   schema: schemas/personal/your_schema.json
   input_dir: extracted/your_domain        # matches extraction output_dir
   output_dir: compiled/your_domain
-  # dry_run: false                        # preview dedup/merges without writing output
-  # fail_on_suspicious: false             # fail compile when suspicious dedup groups found
+  # dry_run: false                        # default: false — preview dedup/merges without writing output
+  # fail_on_suspicious: false             # default: false — fail compile when suspicious dedup groups found
   # Dedup identity is schema-owned at $metadata.identity.deduplication.
   # Keep uniqueness fields in the schema so every workflow (extract/compile/api)
   # uses the same record identity contract.
@@ -89,7 +89,7 @@ compilation:
 #   selection:
 #     max_per_target: 3
 #     exclude: [news, blog, press release]
-#   browser_mode: false                   # true = download via headless Chrome (bot-protected sites)
+#   browser_mode: false                   # default: false — set true to download via headless Chrome (bot-protected sites)
 #   partition_by: [state, jurisdiction]   # output layout by_<field>/<value>/… from target metadata
 #   document_review:
 #     model: secondary                    # pin to an alias — avoid silent .env fallback
@@ -101,7 +101,7 @@ compilation:
 # Run two models on the same documents and compare their outputs field-by-field.
 # Uncomment the block below to enable. Keep this minimal.
 #
-# qaqc:
+# validation:
 #   models: [primary, secondary]      # Two model tiers to contrast.
 #   output_dir: validated/your_domain
 #   report:
