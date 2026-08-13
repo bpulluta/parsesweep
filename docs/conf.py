@@ -42,6 +42,12 @@ napoleon_use_ivar = True
 
 exclude_patterns = ["_build", "Thumbs.db", ".DS_Store"]
 
+# The embedded schema guide contains illustrative JSON snippets with ``...``
+# placeholders and ``//`` comments that are not strictly valid JSON. Tolerate
+# the resulting Pygments lexing failures so the ``-W`` build still fails loudly
+# on the warnings that matter (broken refs, missing toctree entries, etc.).
+suppress_warnings = ["misc.highlighting_failure"]
+
 # -- MyST (Markdown) ---------------------------------------------------------
 myst_enable_extensions = [
     "colon_fence",

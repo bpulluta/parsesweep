@@ -29,6 +29,7 @@ Each step runs independently via the same config file.
 getting-started
 commands/index
 config-reference
+tuning
 schemas/index
 ```
 
