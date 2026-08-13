@@ -16,6 +16,11 @@ concurrency:
 jobs:
   test:
     runs-on: ubuntu-latest
+    # CLI tests assert on plain-text error output; keep Rich color off so ANSI
+    # codes don't split asserted substrings. (conftest.py also enforces this.)
+    env:
+      NO_COLOR: "1"
+      TERM: dumb
     steps:
       - uses: actions/checkout@v4
 
