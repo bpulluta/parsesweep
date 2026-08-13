@@ -1,6 +1,6 @@
 # Domain Config Template
-# Copy this file to config/<your_domain>/<your_domain>.yaml
-# Usage: psweep run --config config/<your_domain>/<your_domain>.yaml
+# Copy this file to config/<your_domain>/run.yaml
+# Usage: psweep run --config config/<your_domain>/run.yaml
 #
 # Each section is independent — include only what you need:
 #   - extraction: required for the extract command
@@ -30,9 +30,9 @@ extraction:
   input_dir: documents/your_domain        # source documents folder
   output_dir: extracted/your_domain
   model: primary                          # PIN the tier — don't rely on .env default
-  # Skip/reprocess hygiene: extract skips files with existing output JSON by
+  # Skip/refresh hygiene: extract skips files with existing output JSON by
   # default (skip_existing=true). Re-run cheaply after config tweaks with no
-  # flag; only pass --reprocess after changing schema, model tier, or pages.
+  # flag; only pass --fresh after changing schema, model tier, or pages.
   # max_context: 600000                   # chars per document (default: 600000)
   # pages:                                 # how to select pages from large PDFs
   #   csv: config/your_domain/page_ranges.csv  # manual ranges per file (wins)

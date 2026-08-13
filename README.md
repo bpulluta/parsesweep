@@ -81,8 +81,7 @@ compilation:
   schema: schemas/personal/my_schema.json
   input_dir: extracted/my_domain          # default: matches extraction output_dir
   output_dir: compiled/my_domain
-  deduplication:
-    key_fields: [name, type, value]
+  # Dedup identity is schema-owned ($metadata.identity.deduplication.key_fields)
   output:
     default_format: excel
 
@@ -139,8 +138,7 @@ pixi run psweep extract --config config/my_domain/run.yaml
   --config PATH       Config YAML (required for full features)
   --schema PATH       Schema-only mode (quick testing without a config file)
   -n N                Limit to N files
-  --reprocess         Re-extract existing files
-  --enable-qa-qc      Run multi-model QA/QC
+  --fresh             Re-extract existing files (ignore cached output)
   --live-dashboard    Real-time progress display
   --validate-config   Dry run — validate inputs only
 ```
@@ -177,8 +175,8 @@ pixi run psweep discover --config config/my_domain/run.yaml
 
 # Options
   --config PATH       Config YAML (required)
-  --dry-run           Show plan without downloading
-  --max-downloads N   Limit downloads
+  --dry-run                     Show plan without downloading
+  --max-concurrent-downloads N  Limit parallel downloads
 ```
 
 ### Discovery Configuration
@@ -297,8 +295,7 @@ compilation:
   schema: schemas/personal/my_schema.json
   input_dir: extracted/my_domain
   output_dir: compiled/my_domain
-  deduplication:
-    key_fields: [field1, field2]
+  # Dedup identity is schema-owned ($metadata.identity.deduplication.key_fields)
 ```
 
 ### 3. Extract and Compile
@@ -351,10 +348,10 @@ pixi run psweep validate --config config/my_domain/run.yaml
 pixi run psweep validate --config config/my_domain/run.yaml --compare-only
 ```
 
-Configure in the `qaqc:` section of your config:
+Configure in the `validation:` section of your config:
 
 ```yaml
-qaqc:
+validation:
   models: [primary, secondary]
   report:
     include_missing_in_queue: true
@@ -423,7 +420,7 @@ parsesweep/
     ├── discovery/             # Web document discovery
     ├── extraction/            # Document extraction
     ├── compilation/           # Data compilation + synthesis
-    ├── qa_qc/                 # QA/QC comparison
+    ├── validation/            # QA/QC multi-model comparison
     └── utils/                 # Shared utilities
 ```
 
@@ -440,7 +437,7 @@ See `config/TEMPLATE.yaml` for a fully annotated config template.
 | `extraction:` | `extract` | Yes (needs `schema`) |
 | `compilation:` | `compile` | Yes (needs `schema`) |
 | `discovery:` | `discover` | Only for web discovery |
-| `qaqc:` | `validate` | QA/QC validation stage |
+| `validation:` | `validate` | QA/QC validation stage |
 | `domain:` | All | Recommended |
 | `models:` | All | Optional (env default) |
 
@@ -467,9 +464,8 @@ compilation:
   schema: path/to/schema.json      # required
   input_dir: extracted/domain      # required (or pass as CLI argument)
   output_dir: compiled/domain      # default: compiled/<domain>
-  deduplication:
-    key_fields: [f1, f2, f3]       # what makes a row unique
-    ignore_fields: [notes]         # excluded from comparison
+  # Dedup identity is schema-owned — set $metadata.identity.deduplication
+  # .key_fields in the schema, not here (used by extract/compile/api alike).
   normalization:
     state_column: State            # auto-abbreviate state names
   output:
@@ -576,10 +572,10 @@ Extraction shows per-file cost in real-time:
 }
 ```
 
-### Cache & Reprocessing
+### Caching & Re-runs
 
 Every stage honors previous work by default and exposes one consistent
-`--reprocess` flag to ignore it and start fresh:
+`--fresh` flag to ignore it and start over:
 
 ```bash
 # Default: skip targets/files completed in a previous run
@@ -587,20 +583,20 @@ pixi run psweep discover --config config/my_domain/run.yaml
 pixi run psweep extract  --config config/my_domain/run.yaml
 
 # Re-run discovery from scratch (ignore the checkpoint + refresh search cache)
-pixi run psweep discover --config config/my_domain/run.yaml --reprocess
+pixi run psweep discover --config config/my_domain/run.yaml --fresh
 
 # Force re-extract (no need to delete files)
-pixi run psweep extract --config config/my_domain/run.yaml --reprocess
+pixi run psweep extract --config config/my_domain/run.yaml --fresh
 
-# Whole pipeline fresh — propagates --reprocess to discover and extract
-pixi run psweep run --config config/my_domain/run.yaml --reprocess
+# Whole pipeline fresh — propagates --fresh to discover and extract
+pixi run psweep run --config config/my_domain/run.yaml --fresh
 ```
 
 `compile` always rewrites its output, so it needs no flag.
 
-**What `--reprocess` clears, per stage:**
+**What `--fresh` clears, per stage:**
 
-| Stage | `--reprocess` action |
+| Stage | `--fresh` action |
 | --- | --- |
 | `discover` | Deletes the crash-resume checkpoint (`discovered/<domain>/checkpoint.json`) so every target re-runs, and refreshes the SerpApi result cache (`discovered/<domain>/.serpapi_cache/`) with fresh live queries. |
 | `extract` | Re-extracts every document even if a JSON output already exists. |
