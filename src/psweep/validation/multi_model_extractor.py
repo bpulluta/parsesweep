@@ -42,6 +42,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Sequence
 
+from ..extraction.llm_factory import DEFAULT_MAX_CONTEXT
 from .utils import sanitize_model_name
 
 if TYPE_CHECKING:
@@ -81,7 +82,7 @@ def run_multi_model_extraction(
     registry: "ModelRegistry",
     model_tiers: Sequence[str],
     output_dir: Path,
-    max_context_chars: int = 400000,
+    max_context_chars: int = DEFAULT_MAX_CONTEXT,
     timeout_seconds: Optional[int] = None,
     runtime_artifact: Optional[Dict[str, Any]] = None,
     run_id: Optional[str] = None,
