@@ -222,7 +222,7 @@ _ALLOWED_TOP_LEVEL = {
     "discovery",
     "extraction",
     "compilation",
-    "qaqc",
+    "validation",
 }
 _ALLOWED_SECTION_FIELDS = {
     "discovery": {
@@ -336,7 +336,7 @@ _ACQUISITION_OBJECT_FIELDS = {
 
 _ALLOWED_POLICY_MODES = {"ignore", "warn", "enforce"}
 
-_SECTION_NAMES = ("discovery", "extraction", "compilation", "qaqc")
+_SECTION_NAMES = ("discovery", "extraction", "compilation", "validation")
 _CONFIG_SUFFIXES = (".yaml", ".yml", ".json")
 
 
@@ -1075,6 +1075,17 @@ def _apply_split_file_section_overrides(
     merged = dict(config_data)
     config_dir = config_path.parent
 
+    stray_qaqc = _find_single_section_override_file(
+        config_dir=config_dir,
+        section_name="qaqc",
+    )
+    if stray_qaqc is not None:
+        msg = (
+            "The 'qaqc' section override file was renamed to 'validation'. "
+            f"Rename {stray_qaqc.name} to 'validation{stray_qaqc.suffix}'."
+        )
+        raise RuntimeConfigError(msg)
+
     for section_name in _SECTION_NAMES:
         override_path = _find_single_section_override_file(
             config_dir=config_dir,
@@ -1107,7 +1118,7 @@ def _collect_model_references(
 ) -> tuple[list[str], list[tuple[str, Any]]]:
     """Collect model tier references from runtime config sections.
 
-    Walks the ``discovery``, ``extraction``, and ``qaqc`` sections and gathers:
+    Walks the ``discovery``, ``extraction``, and ``validation`` sections and gathers:
 
     * single references — any string value under a ``model`` key (a stage's
       ``model:`` selector, e.g. ``discovery.document_review.model``);
@@ -1135,7 +1146,7 @@ def _collect_model_references(
             for index, item in enumerate(node):
                 _walk(item, f"{path}[{index}]")
 
-    for section_name in ("discovery", "extraction", "qaqc"):
+    for section_name in ("discovery", "extraction", "validation"):
         section = config_data.get(section_name)
         if isinstance(section, dict):
             _walk(section, section_name)
@@ -1143,32 +1154,32 @@ def _collect_model_references(
     return singles, multis
 
 
-def _validate_qaqc_activation(config_data: dict[str, Any]) -> None:
+def _validate_validation_activation(config_data: dict[str, Any]) -> None:
     """Validate QA/QC activation and its declared model list.
 
-    QA/QC models are declared exclusively via ``qaqc.models`` in the run
+    QA/QC models are declared exclusively via ``validation.models`` in the run
     config. The legacy ``QAQC_MODELS`` environment variable is no longer
-    supported. If a ``qaqc`` section exists but models are missing, this raises
+    supported. If a ``validation`` section exists but models are missing, this raises
     immediately. The registry separately validates that declared models resolve
     to >= 2 distinct model names.
     """
-    qaqc = config_data.get("qaqc")
-    if qaqc is not None and not isinstance(qaqc, dict):
+    validation = config_data.get("validation")
+    if validation is not None and not isinstance(validation, dict):
         raise RuntimeConfigError(
-            "'qaqc' section must be an object in runtime config"
+            "'validation' section must be an object in runtime config"
         )
-    qaqc = qaqc or {}
-    models = qaqc.get("models")
+    validation = validation or {}
+    models = validation.get("models")
 
-    if qaqc and not models:
+    if validation and not models:
         message = (
-            "qaqc section is present but no qaqc.models defined. "
-            "Set qaqc.models: [model1, model2] with at least 2 distinct models."
+            "validation section is present but no validation.models defined. "
+            "Set validation.models: [model1, model2] with at least 2 distinct models."
         )
         if os.getenv("QAQC_MODELS"):
             message += (
                 " The QAQC_MODELS environment variable is no longer supported; "
-                "declare qaqc.models in your run config instead."
+                "declare validation.models in your run config instead."
             )
         raise RuntimeConfigError(message)
 
@@ -1200,6 +1211,19 @@ def build_model_registry(
     return registry
 
 
+def _reject_renamed_qaqc_section(
+    config_data: dict[str, Any], config_path: Path
+) -> None:
+    """Reject the pre-rename ``qaqc`` section with a clear migration error."""
+    if "qaqc" in config_data:
+        msg = (
+            "The 'qaqc' config section was renamed to 'validation'. "
+            "Rename the 'qaqc:' block to 'validation:' in "
+            f"{config_path.as_posix()}."
+        )
+        raise RuntimeConfigError(msg)
+
+
 def load_runtime_config_file(config_path: Path) -> dict[str, Any]:
     """Load a run-level or section-level runtime config file."""
     if not config_path.exists():
@@ -1212,6 +1236,8 @@ def load_runtime_config_file(config_path: Path) -> dict[str, Any]:
             config_path=config_path,
             config_data=config_data,
         )
+
+    _reject_renamed_qaqc_section(config_data, config_path)
 
     unknown_top = [key for key in config_data if key not in _ALLOWED_TOP_LEVEL]
     if unknown_top:
@@ -1248,7 +1274,7 @@ def load_runtime_config_file(config_path: Path) -> dict[str, Any]:
             raise RuntimeConfigError(msg)
         _validate_compilation_section_schema(compilation)
 
-    _validate_qaqc_activation(config_data)
+    _validate_validation_activation(config_data)
 
     # Build the unified model registry (single normalization boundary) and
     # fail-fast validate tier definitions plus every model reference. Stored on
@@ -1771,9 +1797,9 @@ def resolve_command_config(
 
     # Top-level QA/QC settings are shared runtime policy used by extraction
     # and validate report generation workflows.
-    if "qaqc" in cfg:
-        merged["qaqc"] = cfg.get("qaqc")
-        sources["qaqc"] = "config.qaqc"
+    if "validation" in cfg:
+        merged["validation"] = cfg.get("validation")
+        sources["validation"] = "config.validation"
 
     # The unified model registry (built + validated at load time) is threaded
     # through so every LLM stage resolves tiers/credentials from one instance.

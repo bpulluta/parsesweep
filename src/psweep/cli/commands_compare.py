@@ -11,7 +11,7 @@ import contextlib
 from psweep.cli.ui import console, create_extraction_progress, print_error
 
 
-def load_runtime_qaqc_config(
+def load_runtime_validation_config(
     *,
     schema_path: Path,
     config_path: Optional[str],
@@ -19,25 +19,25 @@ def load_runtime_qaqc_config(
     """Load schema/runtime QA/QC config for comparison."""
     from psweep.config import load_runtime_config_file
     from psweep.extraction.llm_factory import resolve_llm_kwargs
-    from psweep.qa_qc.utils import resolve_qaqc_runtime_config
+    from psweep.validation.utils import resolve_validation_runtime_config
     from psweep.utils.config import get_config
     from psweep.utils.schema_metadata import SchemaMetadata
 
     schema_metadata = SchemaMetadata(schema_path)
     runtime_artifact = None
-    runtime_qaqc = None
+    runtime_validation = None
     config_data = {}
     if config_path:
         config_data = load_runtime_config_file(Path(config_path))
-        config_qaqc = config_data.get("qaqc")
-        if isinstance(config_qaqc, dict):
-            runtime_qaqc = config_qaqc
-    qa_qc_config = resolve_qaqc_runtime_config(
+        config_validation = config_data.get("validation")
+        if isinstance(config_validation, dict):
+            runtime_validation = config_validation
+    validation_config = resolve_validation_runtime_config(
         schema_metadata,
         runtime_artifact=runtime_artifact,
-        runtime_qaqc=runtime_qaqc,
+        runtime_validation=runtime_validation,
     )
-    judge_cfg = qa_qc_config.get("judge") or {}
+    judge_cfg = validation_config.get("judge") or {}
     if judge_cfg.get("enabled") and judge_cfg.get("model"):
         llm_kwargs = resolve_llm_kwargs(
             judge_cfg.get("model"),
@@ -50,9 +50,9 @@ def load_runtime_qaqc_config(
                 judge_timeout, int
             ) or judge_timeout <= 0:
                 raise ValueError(
-                    "qaqc.judge.timeout_seconds must be a positive integer"
+                    "validation.judge.timeout_seconds must be a positive integer"
                 )
-        qa_qc_config["judge_runtime"] = {
+        validation_config["judge_runtime"] = {
             "model": llm_kwargs.get("model"),
             "provider": llm_kwargs.get("provider"),
             "api_key": llm_kwargs.get("api_key"),
@@ -61,14 +61,14 @@ def load_runtime_qaqc_config(
             "azure_api_version": llm_kwargs.get("azure_api_version"),
             "timeout": judge_timeout,
         }
-    return schema_metadata, runtime_artifact, qa_qc_config
+    return schema_metadata, runtime_artifact, validation_config
 
 
 def generate_comparison_reports(
     *,
-    qa_qc_path_obj: Path,
+    validation_path_obj: Path,
     schema_metadata,
-    qa_qc_config: dict,
+    validation_config: dict,
     runtime_artifact,
     view,
     report_limit: int | None = None,
@@ -77,11 +77,11 @@ def generate_comparison_reports(
     schema: Optional[Dict[str, Any]] = None,
 ) -> int:
     """Generate comparison reports from previously extracted QA/QC JSON sidecars."""
-    from psweep.qa_qc import ComparisonEngine, ReportGenerator
+    from psweep.validation import ComparisonEngine, ReportGenerator
 
-    engine = ComparisonEngine(schema_metadata, qa_qc_config=qa_qc_config)
+    engine = ComparisonEngine(schema_metadata, validation_config=validation_config)
     report_gen = ReportGenerator(schema=schema)
-    report_cfg = qa_qc_config.get("report") or {}
+    report_cfg = validation_config.get("report") or {}
     include_csv = bool(report_cfg.get("include_csv", False))
     include_missing_in_queue = bool(
         report_cfg.get("include_missing_in_queue", True)
@@ -91,20 +91,20 @@ def generate_comparison_reports(
     )
 
     doc_dirs = []
-    json_files_in_path = list(qa_qc_path_obj.glob("*.json"))
-    ignored_qaqc_json_files = {"metadata.json", "comparison_summary.json", "judge_cache.json"}
+    json_files_in_path = list(validation_path_obj.glob("*.json"))
+    ignored_validation_json_files = {"metadata.json", "comparison_summary.json", "judge_cache.json"}
 
     if json_files_in_path and any(
-        f.name not in ignored_qaqc_json_files for f in json_files_in_path
+        f.name not in ignored_validation_json_files for f in json_files_in_path
     ):
-        doc_dirs = [qa_qc_path_obj]
+        doc_dirs = [validation_path_obj]
     else:
-        doc_dirs = [d for d in sorted(qa_qc_path_obj.iterdir()) if d.is_dir()]
+        doc_dirs = [d for d in sorted(validation_path_obj.iterdir()) if d.is_dir()]
 
     if not doc_dirs:
         print_error(
             "No QA/QC outputs found",
-            f"No document directories found in {qa_qc_path_obj}",
+            f"No document directories found in {validation_path_obj}",
             [
                 "Run the validate stage first",
                 "Check the path is correct",
@@ -123,8 +123,8 @@ def generate_comparison_reports(
     if report_limit and report_limit > 0:
         doc_dirs = doc_dirs[:report_limit]
 
-    judge_runtime = qa_qc_config.get("judge_runtime") or {}
-    judge_enabled = bool((qa_qc_config.get("judge") or {}).get("enabled"))
+    judge_runtime = validation_config.get("judge_runtime") or {}
+    judge_enabled = bool((validation_config.get("judge") or {}).get("enabled"))
     judge_model = judge_runtime.get("model") if judge_enabled else None
 
     with _progress_ctx:
@@ -145,7 +145,7 @@ def generate_comparison_reports(
 
             model_files = {}
             for file_path in doc_dir.glob("*.json"):
-                if file_path.name in ignored_qaqc_json_files:
+                if file_path.name in ignored_validation_json_files:
                     continue
                 model_files[file_path.stem] = file_path
 
@@ -349,7 +349,7 @@ def generate_comparison_reports(
             view.summary(summary_stats, title="Comparison Summary")
             view.outputs(
                 {
-                    "Reports": str(qa_qc_path_obj),
+                    "Reports": str(validation_path_obj),
                     "Files": "comparison_report.xlsx, comparison_summary.json"
                     + (", comparison_report.csv" if include_csv else ""),
                 }

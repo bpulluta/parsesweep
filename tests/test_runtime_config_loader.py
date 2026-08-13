@@ -18,6 +18,20 @@ def test_load_runtime_config_file_rejects_unknown_top_level(tmp_path: Path):
         load_runtime_config_file(config_path)
 
 
+def test_load_runtime_config_file_rejects_renamed_qaqc_section(tmp_path: Path):
+    """A pre-rename 'qaqc:' section fails with a clear migration message."""
+    config_path = tmp_path / "run.yaml"
+    config_path.write_text(
+        "domain: x\nqaqc:\n  models: [a, b]\n", encoding="utf-8"
+    )
+
+    with pytest.raises(
+        RuntimeConfigError,
+        match="'qaqc' config section was renamed to 'validation'",
+    ):
+        load_runtime_config_file(config_path)
+
+
 def test_resolve_command_config_merges_cli_and_file_values(tmp_path: Path):
     config_path = tmp_path / "run.yaml"
     config_path.write_text(

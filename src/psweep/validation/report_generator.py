@@ -8,20 +8,20 @@ Examples
 --------
 .. code-block:: python
 
-    from psweep.qa_qc.report_generator import ReportGenerator
-    from psweep.qa_qc.comparison_engine import ComparisonResult
+    from psweep.validation.report_generator import ReportGenerator
+    from psweep.validation.comparison_engine import ComparisonResult
 
     generator = ReportGenerator()
     excel_path, csv_path = generator.generate_report(
         comparison_result=result,
-        output_dir=Path("processed/qa_qc/austin_energy")
+        output_dir=Path("processed/validation/austin_energy")
     )
 
 Notes
 -----
 Output Files::
 
-    processed/qa_qc/{doc_name}/
+    processed/validation/{doc_name}/
         comparison_report.xlsx  # Color-coded Excel
         comparison_report.csv   # Plain CSV
 
@@ -220,7 +220,7 @@ class ReportGenerator:
             {"Metric": "Models", "Value": ", ".join(result.models)},
             {
                 "Metric": "QA/QC Profile",
-                "Value": summary.get("qaqc_profile") or "unknown",
+                "Value": summary.get("validation_profile") or "unknown",
             },
             {
                 "Metric": "Comparison Approach",
@@ -1332,7 +1332,7 @@ class ReportGenerator:
                 "Metric": "Fields Requiring Review (field-level)",
                 "Value": int(summary.get("needs_review_count", 0)),
             },
-            {"Section": "QA/QC", "Metric": "Profile", "Value": summary.get("qaqc_profile") or "unknown"},
+            {"Section": "QA/QC", "Metric": "Profile", "Value": summary.get("validation_profile") or "unknown"},
             {"Section": "QA/QC", "Metric": "Comparison Approach", "Value": summary.get("comparison_approach") or "mixed"},
             {"Section": "QA/QC", "Metric": "Full Agreement %", "Value": f"{float(summary.get('full_agreement_pct', 0.0)):.1f}%"},
             {"Section": "QA/QC", "Metric": "Needs Review %", "Value": f"{float(summary.get('needs_review_pct', 0.0)):.1f}%"},
@@ -1461,7 +1461,7 @@ class ReportGenerator:
         rows = [
             {"Key": "document_name", "Value": result.document_name},
             {"Key": "models_compared", "Value": ", ".join(result.models)},
-            {"Key": "qaqc_profile", "Value": result.summary.get("qaqc_profile") or "unknown"},
+            {"Key": "validation_profile", "Value": result.summary.get("validation_profile") or "unknown"},
             {"Key": "comparison_approach", "Value": result.summary.get("comparison_approach") or "mixed"},
         ]
         judge = result.summary.get("judge") or {}

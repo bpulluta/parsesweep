@@ -8,7 +8,7 @@ once per source path instead of re-read on every call.
 import json
 from pathlib import Path
 
-from psweep.qa_qc.evidence_loader import EvidenceLoader
+from psweep.validation.evidence_loader import EvidenceLoader
 
 
 def _write_json(path: Path, payload: dict) -> None:

@@ -351,7 +351,7 @@ def test_validate_rejects_non_string_reference():
 def test_validate_multi_reference_requires_two_distinct_models():
     cfg = {"models": {"a": "gpt-5", "b": "gpt-4.1"}}
     registry = ModelRegistry.from_config(cfg, OPENAI_CFG)
-    registry.validate(multi_references=[("qaqc.models", ["a", "b"])])
+    registry.validate(multi_references=[("validation.models", ["a", "b"])])
 
 
 def test_validate_multi_reference_rejects_single_model():
@@ -360,32 +360,32 @@ def test_validate_multi_reference_rejects_single_model():
         ModelRegistryError,
         match=f"at least {MIN_MULTI_MODELS} distinct",
     ):
-        registry.validate(multi_references=[("qaqc.models", ["gpt-5"])])
+        registry.validate(multi_references=[("validation.models", ["gpt-5"])])
 
 
 def test_validate_multi_reference_rejects_duplicate_resolved_models():
     cfg = {"models": {"a": "gpt-5", "b": "gpt-5"}}
     registry = ModelRegistry.from_config(cfg, OPENAI_CFG)
     with pytest.raises(ModelRegistryError, match="distinct models"):
-        registry.validate(multi_references=[("qaqc.models", ["a", "b"])])
+        registry.validate(multi_references=[("validation.models", ["a", "b"])])
 
 
 def test_validate_multi_reference_rejects_none_list():
     registry = ModelRegistry.from_config({}, OPENAI_CFG)
     with pytest.raises(ModelRegistryError, match="at least"):
-        registry.validate(multi_references=[("qaqc.models", None)])
+        registry.validate(multi_references=[("validation.models", None)])
 
 
 def test_validate_multi_reference_rejects_non_list():
     registry = ModelRegistry.from_config({}, OPENAI_CFG)
     with pytest.raises(ModelRegistryError, match="must be a list"):
-        registry.validate(multi_references=[("qaqc.models", "gpt-5")])
+        registry.validate(multi_references=[("validation.models", "gpt-5")])
 
 
 def test_validate_multi_reference_rejects_blank_entry():
     registry = ModelRegistry.from_config({}, OPENAI_CFG)
     with pytest.raises(ModelRegistryError, match="non-empty strings"):
-        registry.validate(multi_references=[("qaqc.models", ["gpt-5", " "])])
+        registry.validate(multi_references=[("validation.models", ["gpt-5", " "])])
 
 
 # ── immutability ────────────────────────────────────────────────────────────

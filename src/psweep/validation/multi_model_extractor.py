@@ -6,7 +6,7 @@ to organized subfolders for comparison.
 
 Model tiers and credentials are resolved exclusively through the unified
 :class:`~psweep.config.model_registry.ModelRegistry`. Callers pass the registry
-plus the ``qaqc.models`` tier references; this module resolves each tier to a
+plus the ``validation.models`` tier references; this module resolves each tier to a
 concrete model and its LLM kwargs (provider/api_key/endpoint) via
 ``registry.to_llm_kwargs`` — never threading a provider directly.
 
@@ -14,7 +14,7 @@ Examples
 --------
 .. code-block:: python
 
-    from psweep.qa_qc.multi_model_extractor import run_multi_model_extraction
+    from psweep.validation.multi_model_extractor import run_multi_model_extraction
 
     output_files = run_multi_model_extraction(
         doc_text="Full document text...",
@@ -22,14 +22,14 @@ Examples
         schema=loaded_schema,
         registry=registry,
         model_tiers=["primary", "secondary"],
-        output_dir=Path("processed/qa_qc"),
+        output_dir=Path("processed/validation"),
     )
 
 Notes
 -----
 Output Structure::
 
-    processed/qa_qc/{doc_name}/
+    processed/validation/{doc_name}/
         {model_name}.json  (one file per model)
         metadata.json
 """
@@ -104,7 +104,7 @@ def run_multi_model_extraction(
         tier resolution and credential (LLM kwargs) threading.
     model_tiers : Sequence[str]
         Ordered list of tier/model references (e.g. the
-        ``qaqc.models`` list). Resolved and de-duplicated by concrete model.
+        ``validation.models`` list). Resolved and de-duplicated by concrete model.
     output_dir : Path
         Base directory for QA/QC outputs (e.g., "processed/")
     max_context_chars : int
@@ -130,7 +130,7 @@ def run_multi_model_extraction(
     seed_records_by_model = seed_records_by_model or {}
 
     # Create output directory for this document
-    doc_output_dir = Path(output_dir) / "qa_qc" / doc_name
+    doc_output_dir = Path(output_dir) / "validation" / doc_name
     doc_output_dir.mkdir(parents=True, exist_ok=True)
 
     results: Dict[str, ModelExtractionResult] = {}
@@ -292,7 +292,7 @@ def run_multi_model_extraction(
             error_msg = str(e)
             error_details = build_error_record(
                 e,
-                stage="qa_qc",
+                stage="validation",
                 document_path=doc_name,
                 model=model,
                 provider=provider,

@@ -9,7 +9,7 @@ from psweep.cli.commands_extract import (
     _generate_run_id,
     _resolve_schema_ref,
     _row_matches_filters,
-    _run_qa_qc_extraction,
+    _run_validation_extraction,
     _write_run_manifest,
     extract,
 )
@@ -29,5 +29,5 @@ def test_extract_facade_reexports_canonical_symbols():
     assert commands._row_matches_filters is _row_matches_filters
     assert commands._extract_one_document is _extract_one_document
     assert commands._extract_and_save_result is _extract_and_save_result
-    assert commands._run_qa_qc_extraction is _run_qa_qc_extraction
+    assert commands._run_validation_extraction is _run_validation_extraction
     assert commands._apply_page_targeting is _apply_page_targeting
