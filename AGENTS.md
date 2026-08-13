@@ -49,7 +49,7 @@ These instructions keep work aligned with the accepted ParseSweep production bas
 ## Commands
 - Use `pixi` for all repo commands.
 - Full pipeline: `pixi run psweep run --config config/<domain>/run.yaml`
-- Run tests: `pixi run pytest`
+- Run tests: `pixi run test`
 
 ## Common Pitfall Warning
 - Avoid tool flows that hang on "Reading changed files" when simple terminal commands are sufficient.
