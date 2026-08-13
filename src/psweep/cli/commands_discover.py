@@ -206,7 +206,7 @@ def discover(
     --------
     ::
 
-        psweep discover --config config/my_domain/my_domain.yaml
+        psweep discover --config config/my_domain/run.yaml
         psweep discover --seed-url https://example.com/docs --domain my_domain
         psweep discover --config cfg.yaml --dry-run --verbose
     """

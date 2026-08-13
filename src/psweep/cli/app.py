@@ -128,7 +128,7 @@ def callback(
 def run(
     config_path: Annotated[
         Path,
-        typer.Option("--config", help="Path to the domain run config file (e.g. config/<domain>/<domain>.yaml).", show_default=False),
+        typer.Option("--config", help="Path to the domain run config file (e.g. config/<domain>/run.yaml).", show_default=False),
     ],
     fresh: Annotated[
         bool,
@@ -167,11 +167,11 @@ def run(
     ignore all previous work and start fresh.
 
     [bold]Usage:[/bold]
-        psweep run --config config/my_domain/my_domain.yaml
+        psweep run --config config/my_domain/run.yaml
 
     [bold]Adding new targets:[/bold]
         1. Add rows to config/<domain>/targets.csv
-        2. Run: psweep run --config config/<domain>/<domain>.yaml
+        2. Run: psweep run --config config/<domain>/run.yaml
         3. Only new targets are processed; previous results are preserved.
     """
     from psweep.config import load_yaml_file

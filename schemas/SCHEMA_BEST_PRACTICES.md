@@ -45,7 +45,7 @@ pixi run psweep check-schema schemas/my_schema.json
 pixi run psweep extract documents/sample/ \
   --schema schemas/my_schema.json \
   -n 2 \
-  --reprocess
+  --fresh
 
 # 3. Consolidate the sample
 pixi run psweep compile extracted/sample/ \

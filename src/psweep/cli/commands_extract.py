@@ -711,7 +711,7 @@ def extract(
     ::
 
         psweep extract docs/ --schema schemas/my_schema.json
-        psweep extract --config config/my_domain/my_domain.yaml --fresh
+        psweep extract --config config/my_domain/run.yaml --fresh
         psweep extract docs/ --schema s.json --model gpt-4o --provider azure
     """
     from psweep.cli.commands import (
