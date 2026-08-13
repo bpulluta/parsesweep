@@ -110,4 +110,6 @@ dev_docs/
 config/testing/
 
 .serena/
-docs/
+
+# Sphinx build output (source under docs/ IS tracked)
+docs/_build/
