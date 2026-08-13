@@ -32,7 +32,12 @@ pytest = ">=9.0.2,<10"
 
 # PyPI-only dependencies
 [pypi-dependencies]
-typer = ">=0.12.0"
+# Cap below 0.22: at >=0.22 the resolver pulls the split `typer` (0.27) wheel
+# alongside `typer-slim`, and the two provide the same `typer` namespace. Which
+# one wins is platform-dependent, and the newer TyperGroup fails sphinx-click's
+# isinstance(click.Group) check on linux (breaks the docs build). Pin to the
+# consistent 0.21.x line that resolves to a single typer everywhere.
+typer = ">=0.12.0,<0.22"
 InquirerPy = ">=0.3.4"
 pymupdf4llm = ">=0.0.5"
 pymupdf = ">=1.23.0"
