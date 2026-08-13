@@ -43,6 +43,16 @@ source-of-truth constants in the code, so `--help` and runtime never drift.
 The [Command Reference](commands/index.md) also renders every CLI option's
 default directly from the live command definitions.
 
+### Advanced: column-flattening overrides
+
+When compiling nested records into flat spreadsheet columns, ParseSweep uses a
+set of heuristic field-name defaults (which fields name a *type*, hold a
+*value*, carry a *unit*, and so on). These ship tuned for tabular/rate-style
+data; if your domain names fields differently, override them per-schema in the
+schema's `$metadata.compilation.flattening` block (e.g. `type_fields`,
+`value_fields`, `unit_fields`, `skip_fields`) — no code changes needed. Every
+knob falls back to the built-in default when omitted.
+
 ## Annotated template
 
 Copy the annotated template below to `config/<your_domain>/run.yaml` and edit
