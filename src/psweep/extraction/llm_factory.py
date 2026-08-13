@@ -51,6 +51,13 @@ from typing import Any
 
 DEFAULT_MODEL = "gpt-4o-mini"
 
+# Maximum document characters sent to the LLM in a single extraction. The one
+# source of truth for the ``max_context`` default across the CLI, the public
+# ``pipeline`` API, the multi-model validator, and ``DocumentExtractor`` — so
+# ``extract`` and ``validate`` operate on the same context window (see
+# tests/test_defaults_single_source.py).
+DEFAULT_MAX_CONTEXT = 600000
+
 # Provider -> ambient env var holding that provider's API key. Used only on the
 # cross-provider fallback path (resolved model's provider != configured one).
 _PROVIDER_ENV_KEY: dict[str, str] = {

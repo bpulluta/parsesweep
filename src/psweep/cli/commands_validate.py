@@ -12,6 +12,7 @@ from dotenv import load_dotenv
 from psweep.cli.ui import print_error
 from psweep.config import RuntimeConfigError
 from psweep.extraction import load_schema
+from psweep.extraction.llm_factory import DEFAULT_MAX_CONTEXT
 from psweep.extraction.document_utils import SUPPORTED_EXTENSIONS
 
 
@@ -95,7 +96,7 @@ def validate(
         validation_cfg.get("output_dir")
         or (Path.cwd() / "validated" / resolved_inputs.get("domain", path.name))
     )
-    max_context = int(resolved_inputs.get("max_context", 400000))
+    max_context = int(resolved_inputs.get("max_context", DEFAULT_MAX_CONTEXT))
     timeout_seconds = resolved_inputs.get("timeout_seconds")
     validation_models = (resolved_inputs.get("validation") or {}).get("models") or []
     registry = resolved_inputs.get("_model_registry")

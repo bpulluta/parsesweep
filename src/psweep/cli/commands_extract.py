@@ -35,7 +35,7 @@ from psweep.extraction.document_utils import (
     extract_text_from_document,
     is_supported_document,
 )
-from psweep.extraction.llm_factory import DEFAULT_MODEL
+from psweep.extraction.llm_factory import DEFAULT_MAX_CONTEXT, DEFAULT_MODEL
 from psweep.validation.utils import sanitize_model_name
 from psweep.utils.config import get_config
 from psweep.utils.error_taxonomy import (
@@ -384,7 +384,11 @@ def _apply_page_targeting(
     output_dir: Path | None = None,
 ) -> None:
     """Fill page_range_map for large PDFs via LLM-assisted page targeting."""
-    from psweep.extraction.page_locator import PageLocator
+    from psweep.extraction.page_locator import (
+        DEFAULT_MAX_SELECTED_PAGES,
+        DEFAULT_PAGE_TRIGGER_CHARS,
+        PageLocator,
+    )
     from psweep.extraction.pdf_utils import extract_pages_text
 
     description = str(config.get("section_description") or "").strip()
@@ -395,13 +399,19 @@ def _apply_page_targeting(
         )
         return
 
-    trigger_chars = int(config.get("trigger_chars", 200_000) or 200_000)
+    trigger_chars = int(
+        config.get("trigger_chars", DEFAULT_PAGE_TRIGGER_CHARS)
+        or DEFAULT_PAGE_TRIGGER_CHARS
+    )
     locator = PageLocator(
         description,
         model=config.get("model"),
         models=models,
         trigger_chars=trigger_chars,
-        max_selected_pages=int(config.get("max_selected_pages", 30) or 30),
+        max_selected_pages=int(
+            config.get("max_selected_pages", DEFAULT_MAX_SELECTED_PAGES)
+            or DEFAULT_MAX_SELECTED_PAGES
+        ),
         keywords=config.get("keywords"),
     )
 
@@ -605,7 +615,7 @@ def _extract_one_document(
 @click.option(
     "--max-context",
     type=int,
-    default=600000,
+    default=DEFAULT_MAX_CONTEXT,
     show_default=True,
     help="Max document characters to process",
 )
