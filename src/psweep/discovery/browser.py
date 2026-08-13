@@ -258,6 +258,7 @@ class BrowserSession:
         return base64.b64decode(payload.get("data") or ""), payload.get("ct")
 
     def close(self) -> None:
+        """Quit the underlying browser driver and release its resources."""
         if self._driver is not None:
             try:
                 self._driver.quit()

@@ -152,13 +152,24 @@ class CandidateSelector:
         primary_per_target:
             Maximum number of candidates to select for each target.
             Defaults to ``1``.
+        target_contexts:
+            Optional per-target metadata (parallel to *candidates_by_target*)
+            used to enrich selection notes and metrics.
+        include_metrics:
+            When ``True``, also return the per-target selection metrics.
 
         Returns
         -------
-        selected:
-            Flat list of selected candidates, one group per target in order.
-        notes:
-            Human-readable selection log entries for the manifest.
+        tuple
+            ``(selected, notes)``, or ``(selected, notes, target_metrics)``
+            when ``include_metrics=True``, where:
+
+            - ``selected`` is the flat list of selected candidates, one group
+              per target in input order;
+            - ``notes`` holds human-readable selection log entries for the
+              manifest;
+            - ``target_metrics`` holds per-target selection metrics (present
+              only when ``include_metrics=True``).
         """
         selected: list[DiscoveryCandidate] = []
         notes: list[str] = []
@@ -375,11 +386,11 @@ class CandidateSelector:
     # ------------------------------------------------------------------
 
     def _is_draft(self, candidate: DiscoveryCandidate) -> bool:
-        """Return ``True`` if the candidate URL or any reason string matches a draft pattern.
+        """Return ``True`` if the URL or any reason matches a draft pattern.
 
         Normalises path separators and underscores to spaces before matching so
-        that ``\\bdraft\\b`` catches ``some_draft_doc.pdf`` as well as
-        ``some draft doc.pdf``.
+        that a word-boundary ``draft`` pattern catches ``some_draft_doc.pdf`` as
+        well as ``some draft doc.pdf``.
         """
         parts = [candidate.url or ""] + list(candidate.reasons or [])
         combined = re.sub(r"[_\-/]", " ", " ".join(parts))
