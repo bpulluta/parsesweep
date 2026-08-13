@@ -123,14 +123,36 @@ Two parallel improvements to the tool:
 
 ---
 
-## Phase 3 — Sphinx Setup
+## Phase 3 — Sphinx Setup ✅ (autoapi + sphinx-click; 0-warning `-W` build)
 
 > Commit message: `build: add Sphinx docs infrastructure (phase 3)`
-> Verify with `pixi run docs-build` — must complete without errors.
+> Verified: `pixi run -e docs docs-build` → **build succeeded, 0 warnings**
+> (built with `-W`, warnings-as-errors). `pixi run -e dev ruff check src/` →
+> **0 enforced D violations**. `pixi run python -m pytest` → **857 passed**.
+>
+> **Docs tasks run in the `docs` pixi environment** (`pixi run -e docs docs-build`),
+> since Sphinx lives in `[feature.docs]`, not the default env.
+>
+> **Design decisions beyond the original outline:**
+> - **API reference = autoapi (static, no import); CLI reference = sphinx-click**
+>   (renders every command/option/**default** from the live Click objects, so
+>   `--help` and the docs never drift). The `cli/` package is excluded from
+>   autoapi (`autoapi_ignore`) to avoid duplicating sphinx-click and to sidestep
+>   Click's `\b`/`EXAMPLES:` help idioms, which are not valid reStructuredText.
+> - **`sphinx.ext.napoleon`** renders the NumPy docstrings; `napoleon_use_ivar`
+>   stops dataclass `Attributes` sections colliding with autoapi's attribute
+>   docs. `imported-members` is intentionally **omitted** (re-exports would be
+>   documented twice → duplicate-object + ambiguous-xref warnings).
+> - **Docstring cleanup (prereq for a 0-warning build):** converted **93
+>   Google-style sections across 33 files** (`Args:`/`Usage:`/`Returns:` …) to
+>   NumPy, matching the ruff-enforced convention Phase 2 standardized. Kept
+>   enforced D at 0 and all 857 tests green.
+> - **`.gitignore`:** the whole `docs/` tree was previously ignored — now only
+>   `docs/_build/` is, so the docs source is tracked.
 
 ### 3A — Dependencies
 
-- [ ] Update `pyproject.toml` `[project.optional-dependencies] docs`:
+- [x] Update `pyproject.toml` `[project.optional-dependencies] docs`:
   Replace `mkdocs>=1.5.0` and `mkdocs-material>=9.4.0` with:
   ```toml
   docs = [
@@ -143,10 +165,10 @@ Two parallel improvements to the tool:
   ]
   ```
 
-- [ ] Add `[feature.docs]` to `pixi.toml` with the same deps under
+- [x] Add `[feature.docs]` to `pixi.toml` with the same deps under
   `[feature.docs.pypi-dependencies]`
 
-- [ ] Add tasks to `pixi.toml`:
+- [x] Add tasks to `pixi.toml`:
   ```toml
   [tasks]
   docs-build = "sphinx-build -b html docs docs/_build/html -W"
@@ -192,14 +214,14 @@ html_theme = "furo"
 exclude_patterns = ["_build"]
 ```
 
-- [ ] Create `docs/conf.py`
-- [ ] Create `docs/index.md` (landing page, links to all sections)
-- [ ] Create `docs/getting-started.md` (install, .env setup, first extraction)
-- [ ] Create `docs/commands/index.md` (uses sphinx-click directive)
-- [ ] Create `docs/config-reference.md` (literalinclude TEMPLATE.yaml)
-- [ ] Create `docs/schemas/index.md` (literalinclude SCHEMA_BEST_PRACTICES.md)
-- [ ] Add `docs/_build/` to `.gitignore`
-- [ ] Run `pixi run docs-build` — must pass with 0 errors
+- [x] Create `docs/conf.py`
+- [x] Create `docs/index.md` (landing page, links to all sections)
+- [x] Create `docs/getting-started.md` (install, .env setup, first extraction)
+- [x] Create `docs/commands/index.md` (uses sphinx-click directive)
+- [x] Create `docs/config-reference.md` (literalinclude TEMPLATE.yaml)
+- [x] Create `docs/schemas/index.md` (literalinclude SCHEMA_BEST_PRACTICES.md)
+- [x] Add `docs/_build/` to `.gitignore`
+- [x] Run `pixi run docs-build` — must pass with 0 errors
 
 ---
 
