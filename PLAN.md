@@ -225,14 +225,20 @@ exclude_patterns = ["_build"]
 
 ---
 
-## Phase 4 — GitHub Actions → GitHub Pages
+## Phase 4 — GitHub Actions → GitHub Pages ✅
 
 > Commit message: `ci: add docs build and GitHub Pages publish workflow (phase 4)`
 > ⚠️ Requires GitHub repo to be PUBLIC (or GitHub Pro for private).
+>
+> **Implementation note:** the run step is `pixi run -e docs docs-build` (not
+> `pixi run docs-build`) because CI installs only the `docs` environment
+> (`environments: docs`) — matching the Phase 3 decision that docs tasks run in
+> that env. Added `permissions: contents: write` (peaceiris pushes to
+> `gh-pages`) and a `concurrency` group so overlapping pushes don't race.
 
 ### 4A — Workflow file
 
-- [ ] Create `.github/workflows/docs.yml`:
+- [x] Create `.github/workflows/docs.yml`:
   ```yaml
   name: Docs
   on:
@@ -267,15 +273,17 @@ exclude_patterns = ["_build"]
 
 ---
 
-## Phase 5 — Contributing & Changelog
+## Phase 5 — Contributing & Changelog ✅
 
 > Commit message: `docs: add CHANGELOG and CONTRIBUTING (phase 5)`
+> Verified: `pixi run -e docs docs-build` → **build succeeded, 0 warnings**.
 
-- [ ] Create `CHANGELOG.md` at repo root (start with v2.0.1 entry)
-- [ ] Create `CONTRIBUTING.md` covering: setup, branching, testing, doc build,
-  schema authoring
-- [ ] Update `docs/changelog.md` and `docs/contributing.md` to include those
-  files via `literalinclude`
+- [x] Create `CHANGELOG.md` at repo root (Keep a Changelog format; `[Unreleased]`
+  captures the defaults+docs work, `[2.0.1]` baseline)
+- [x] Create `CONTRIBUTING.md` covering: setup, branching, testing, doc build,
+  schema authoring, code-quality standards
+- [x] Create `docs/changelog.md` and `docs/contributing.md` that include those
+  files via `literalinclude`, wired into the `index.md` Reference toctree
 
 ---
 
