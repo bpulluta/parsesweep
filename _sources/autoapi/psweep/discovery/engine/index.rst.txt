@@ -1,0 +1,468 @@
+psweep.discovery.engine
+=======================
+
+.. py:module:: psweep.discovery.engine
+
+.. autoapi-nested-parse::
+
+   Scaffold discovery engine for initial CLI integration.
+
+
+
+Attributes
+----------
+
+.. autoapisummary::
+
+   psweep.discovery.engine.DEFAULT_PARTITION_MODE
+
+
+Classes
+-------
+
+.. autoapisummary::
+
+   psweep.discovery.engine.DiscoveryEngine
+   psweep.discovery.engine.DiscoveryRequest
+   psweep.discovery.engine.DiscoveryResult
+
+
+Module Contents
+---------------
+
+.. py:class:: DiscoveryEngine
+
+   Initial discovery engine that emits deterministic scaffold artifacts.
+
+
+   .. py:method:: run(request: DiscoveryRequest) -> DiscoveryResult
+
+      Execute a full discovery run for the given request.
+
+      :param request: Fully resolved discovery configuration and seed inputs.
+      :type request: DiscoveryRequest
+
+      :returns: Run outcome including the manifest path, downloaded documents
+                directory, and any errors encountered.
+      :rtype: DiscoveryResult
+
+
+
+.. py:class:: DiscoveryRequest
+
+   Normalized command inputs for a discovery run.
+
+
+   .. py:attribute:: acknowledged_tos_domains
+      :type:  list[str] | None
+      :value: None
+
+
+
+   .. py:attribute:: allowed_domains
+      :type:  list[str] | None
+      :value: None
+
+
+
+   .. py:attribute:: browser_mode
+      :type:  bool
+      :value: False
+
+
+
+   .. py:attribute:: digger_provider
+      :type:  str
+      :value: 'seed_only'
+
+
+
+   .. py:attribute:: document_classifier
+      :type:  dict[str, object] | None
+      :value: None
+
+
+
+   .. py:attribute:: document_review
+      :type:  dict[str, object] | None
+      :value: None
+
+
+
+   .. py:attribute:: domain
+      :type:  str
+
+
+   .. py:attribute:: dry_run
+      :type:  bool
+
+
+   .. py:attribute:: enable_serpapi
+      :type:  bool
+
+
+   .. py:attribute:: hub_pages
+      :type:  list[str] | None
+      :value: None
+
+
+
+   .. py:attribute:: include_link_text_patterns
+      :type:  list[str] | None
+      :value: None
+
+
+
+   .. py:attribute:: include_url_patterns
+      :type:  list[str] | None
+      :value: None
+
+
+
+   .. py:attribute:: index_links
+      :type:  list[dict[str, object] | str] | None
+      :value: None
+
+
+
+   .. py:attribute:: index_page_mode
+      :type:  dict[str, object] | None
+      :value: None
+
+
+
+   .. py:attribute:: jurisdiction
+      :type:  str | None
+      :value: None
+
+
+
+   .. py:attribute:: link_prioritization_domain_scores
+      :type:  dict[str, float] | None
+      :value: None
+
+
+
+   .. py:attribute:: link_prioritization_keywords
+      :type:  list[str] | None
+      :value: None
+
+
+
+   .. py:attribute:: link_prioritization_mode
+      :type:  str
+      :value: 'heuristic'
+
+
+
+   .. py:attribute:: link_top_k
+      :type:  int
+      :value: 0
+
+
+
+   .. py:attribute:: max_concurrent_downloads
+      :type:  int
+      :value: 5
+
+
+
+   .. py:attribute:: max_depth
+      :type:  int | None
+      :value: None
+
+
+
+   .. py:attribute:: max_files
+      :type:  int | None
+      :value: None
+
+
+
+   .. py:attribute:: max_pages
+      :type:  int | None
+      :value: None
+
+
+
+   .. py:attribute:: min_request_interval_ms
+      :type:  int
+      :value: 0
+
+
+
+   .. py:attribute:: models
+      :type:  dict[str, object] | None
+      :value: None
+
+
+
+   .. py:attribute:: output_documents
+      :type:  pathlib.Path | None
+
+
+   .. py:attribute:: output_manifest
+      :type:  pathlib.Path | None
+
+
+   .. py:attribute:: partition_by
+      :type:  list[str] | None
+      :value: None
+
+
+
+   .. py:attribute:: partition_mode
+      :type:  str
+      :value: 'auto'
+
+
+
+   .. py:attribute:: power_range_kw
+      :type:  list[float] | None
+      :value: None
+
+
+
+   .. py:attribute:: progress_callback
+      :type:  Callable[[str], None] | None
+      :value: None
+
+
+
+   .. py:attribute:: query
+      :type:  str | None
+
+
+   .. py:attribute:: query_context_aliases
+      :type:  dict[str, list[str]] | None
+      :value: None
+
+
+
+   .. py:attribute:: query_families
+      :type:  dict[str, list[str]] | None
+      :value: None
+
+
+
+   .. py:attribute:: query_templates
+      :type:  list[str] | None
+      :value: None
+
+
+
+   .. py:attribute:: reprocess
+      :type:  bool
+      :value: False
+
+
+
+   .. py:attribute:: request_headers
+      :type:  dict[str, str] | None
+      :value: None
+
+
+
+   .. py:attribute:: retry_initial_backoff_seconds
+      :type:  float
+      :value: 1.0
+
+
+
+   .. py:attribute:: retry_max_attempts
+      :type:  int
+      :value: 3
+
+
+
+   .. py:attribute:: retry_max_backoff_seconds
+      :type:  float
+      :value: 8.0
+
+
+
+   .. py:attribute:: robots_policy_mode
+      :type:  str
+      :value: 'warn'
+
+
+
+   .. py:attribute:: seed_urls
+      :type:  list[str]
+
+
+   .. py:attribute:: seeker_cache
+      :type:  bool
+      :value: False
+
+
+
+   .. py:attribute:: seeker_cache_ttl_minutes
+      :type:  float
+      :value: 0.0
+
+
+
+   .. py:attribute:: seeker_extra_params
+      :type:  dict[str, object] | None
+      :value: None
+
+
+
+   .. py:attribute:: seeker_max_results
+      :type:  int
+      :value: 10
+
+
+
+   .. py:attribute:: selection_draft_patterns
+      :type:  list[str] | None
+      :value: None
+
+
+
+   .. py:attribute:: selection_exclude_draft
+      :type:  bool
+      :value: True
+
+
+
+   .. py:attribute:: selection_primary_per_target
+      :type:  int
+      :value: 1
+
+
+
+   .. py:attribute:: selection_relevance_allowed_domain_patterns
+      :type:  list[str] | None
+      :value: None
+
+
+
+   .. py:attribute:: selection_relevance_exclude_any_terms
+      :type:  list[str] | None
+      :value: None
+
+
+
+   .. py:attribute:: selection_relevance_require_any_terms
+      :type:  list[str] | None
+      :value: None
+
+
+
+   .. py:attribute:: selection_relevance_require_legal_marker_terms
+      :type:  list[str] | None
+      :value: None
+
+
+
+   .. py:attribute:: selection_require_supported_document
+      :type:  bool
+      :value: True
+
+
+
+   .. py:attribute:: selection_target_identity_exclude_any_templates
+      :type:  list[str] | None
+      :value: None
+
+
+
+   .. py:attribute:: selection_target_identity_require_all_templates
+      :type:  list[str] | None
+      :value: None
+
+
+
+   .. py:attribute:: selection_target_identity_require_any_templates
+      :type:  list[str] | None
+      :value: None
+
+
+
+   .. py:attribute:: state
+      :type:  str | None
+      :value: None
+
+
+
+   .. py:attribute:: targets
+      :type:  list[dict[str, object]] | None
+      :value: None
+
+
+
+   .. py:attribute:: timeout_seconds
+      :type:  int | None
+      :value: None
+
+
+
+   .. py:attribute:: topology_mode
+      :type:  str | None
+      :value: None
+
+
+
+   .. py:attribute:: tos_policy_mode
+      :type:  str
+      :value: 'warn'
+
+
+
+   .. py:attribute:: use_query_family
+      :type:  str | None
+      :value: None
+
+
+
+.. py:class:: DiscoveryResult
+
+   Minimal result payload for the scaffold engine.
+
+
+   .. py:attribute:: curated_count
+      :type:  int
+      :value: 0
+
+
+
+   .. py:attribute:: curated_dir
+      :type:  pathlib.Path | None
+      :value: None
+
+
+
+   .. py:attribute:: documents_dir
+      :type:  pathlib.Path
+
+
+   .. py:attribute:: download_index_path
+      :type:  pathlib.Path | None
+      :value: None
+
+
+
+   .. py:attribute:: dry_run
+      :type:  bool
+
+
+   .. py:attribute:: manifest_path
+      :type:  pathlib.Path
+
+
+   .. py:attribute:: review_index_path
+      :type:  pathlib.Path | None
+      :value: None
+
+
+
+   .. py:attribute:: run_id
+      :type:  str
+
+
+.. py:data:: DEFAULT_PARTITION_MODE
+   :value: 'auto'
+
+

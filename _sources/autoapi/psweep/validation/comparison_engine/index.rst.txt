@@ -1,0 +1,362 @@
+psweep.validation.comparison_engine
+===================================
+
+.. py:module:: psweep.validation.comparison_engine
+
+.. autoapi-nested-parse::
+
+   Comparison Engine for QA/QC Multi-Model Validation.
+
+   Compares outputs from multiple models. Comparison behavior is driven by the
+   active runtime QA/QC profile in config/<domain>/run.yaml.
+   Includes potential duplicate detection and completeness metrics.
+
+   .. rubric:: Examples
+
+   .. code-block:: python
+
+       from psweep.validation.comparison_engine import ComparisonEngine
+       from psweep.validation.utils import resolve_validation_runtime_config
+       from psweep.utils.schema_metadata import SchemaMetadata
+
+       schema_metadata = SchemaMetadata(schema_path)
+       validation_config = resolve_validation_runtime_config(
+           schema_metadata,
+           runtime_validation=run_config["validation"],   # from config/<domain>/run.yaml
+       )
+       engine = ComparisonEngine(schema_metadata, validation_config=validation_config)
+
+       result = engine.compare_outputs(
+           output_files={"gpt-4.1": path1, "claude-haiku-4-5": path2},
+           document_name="austin_energy"
+       )
+
+
+
+Attributes
+----------
+
+.. autoapisummary::
+
+   psweep.validation.comparison_engine.logger
+
+
+Classes
+-------
+
+.. autoapisummary::
+
+   psweep.validation.comparison_engine.ComparisonEngine
+   psweep.validation.comparison_engine.ComparisonResult
+   psweep.validation.comparison_engine.CompletenessResult
+   psweep.validation.comparison_engine.FieldComparison
+   psweep.validation.comparison_engine.PotentialDuplicate
+
+
+Module Contents
+---------------
+
+.. py:class:: ComparisonEngine(schema_metadata, validation_config: Dict[str, Any])
+
+   Compare outputs from multiple models using schema metadata plus runtime QA/QC config.
+
+   Uses resolved QA/QC configuration always sourced from config/<domain>/run.yaml.
+   Schema metadata carries only the extraction contract (main_data_array, identifier_fields,
+   context_objects, deduplication keys) — no QA/QC runtime settings.
+
+   .. rubric:: Examples
+
+   .. code-block:: python
+
+       from psweep.validation.utils import resolve_validation_runtime_config
+
+       validation_config = resolve_validation_runtime_config(
+           schema_metadata=schema_metadata,
+           runtime_validation=run_config.get("validation", {})
+       )
+       engine = ComparisonEngine(schema_metadata, validation_config=validation_config)
+       result = engine.compare_outputs(output_files, document_name)
+
+   Initialize comparison engine.
+
+   :param schema_metadata: SchemaMetadata instance (extraction contract only).
+   :param validation_config: Resolved QA/QC runtime config from
+                             ``resolve_validation_runtime_config``. Always sourced from
+                             config/<domain>/run.yaml — never from schema metadata.
+   :type validation_config: Dict[str, Any]
+
+
+   .. py:method:: compare_outputs(output_files: Dict[str, pathlib.Path], document_name: str) -> ComparisonResult
+
+      Compare outputs from multiple models.
+
+      :param output_files: Dict mapping model name to output file path
+      :type output_files: Dict[str, Path]
+      :param document_name: Name of the document being compared
+      :type document_name: str
+
+      :returns: ComparisonResult with summary and field comparisons based on the
+                resolved QA/QC comparison approach
+      :rtype: ComparisonResult
+
+
+
+   .. py:method:: set_judge_cache_path(cache_path: Optional[pathlib.Path]) -> None
+
+      Configure per-document judge cache path (JSON file).
+
+
+
+   .. py:attribute:: anchor_config
+
+
+   .. py:attribute:: collapse_percent_context
+
+
+   .. py:attribute:: compare_fields
+
+
+   .. py:attribute:: comparison_approach
+
+
+   .. py:attribute:: enable_judge_pair_matching
+
+
+   .. py:attribute:: enable_text_fallback_matching
+
+
+   .. py:attribute:: fuzzy_match_fields
+
+
+   .. py:attribute:: identifier_fields
+
+
+   .. py:attribute:: main_data_array
+
+
+   .. py:attribute:: match_fields
+
+
+   .. py:attribute:: projection
+
+
+   .. py:attribute:: schema_metadata
+
+
+   .. py:attribute:: semantic_match_threshold
+
+
+   .. py:attribute:: text_fallback_fields
+
+
+   .. py:attribute:: unit_equivalence_index
+
+
+   .. py:attribute:: validation_config
+
+
+.. py:class:: ComparisonResult
+
+   Full comparison result for a document.
+
+
+   .. py:attribute:: completeness
+      :type:  Dict[str, CompletenessResult]
+
+
+   .. py:attribute:: context_comparisons
+      :type:  List[FieldComparison]
+      :value: []
+
+
+
+   .. py:attribute:: document_name
+      :type:  str
+
+
+   .. py:property:: field_comparisons
+      :type: List[FieldComparison]
+
+
+      All field comparisons (context + items combined).
+
+
+   .. py:attribute:: item_comparisons
+      :type:  List[FieldComparison]
+      :value: []
+
+
+
+   .. py:attribute:: models
+      :type:  List[str]
+
+
+   .. py:attribute:: potential_duplicates
+      :type:  List[PotentialDuplicate]
+      :value: []
+
+
+
+   .. py:attribute:: summary
+      :type:  Dict[str, Any]
+
+
+.. py:class:: CompletenessResult
+
+   Completeness metrics for a single model's extraction.
+
+
+   .. py:attribute:: completeness_score
+      :type:  float
+
+
+   .. py:attribute:: expected_found
+      :type:  int
+
+
+   .. py:attribute:: expected_total
+      :type:  int
+
+
+   .. py:attribute:: items_extracted
+      :type:  int
+
+
+   .. py:attribute:: missing_expected
+      :type:  List[str]
+
+
+   .. py:attribute:: model
+      :type:  str
+
+
+.. py:class:: FieldComparison
+
+   Represents comparison of a single field across models.
+
+
+   .. py:attribute:: agreement_score
+      :type:  str
+
+
+   .. py:attribute:: field_path
+      :type:  str
+
+
+   .. py:attribute:: item_id
+      :type:  str
+
+
+   .. py:attribute:: judge_confidence
+      :type:  str
+      :value: ''
+
+
+
+   .. py:attribute:: judge_likely_correct_model
+      :type:  str
+      :value: ''
+
+
+
+   .. py:attribute:: judge_reason
+      :type:  str
+      :value: ''
+
+
+
+   .. py:attribute:: match_method
+      :type:  str
+      :value: ''
+
+
+
+   .. py:attribute:: missing_models
+      :type:  List[str]
+      :value: []
+
+
+
+   .. py:attribute:: model_summary
+      :type:  Dict[str, str]
+
+
+   .. py:attribute:: model_values
+      :type:  Dict[str, Any]
+
+
+   .. py:attribute:: model_verbatim
+      :type:  Dict[str, str]
+
+
+   .. py:attribute:: needs_review
+      :type:  bool
+
+
+   .. py:attribute:: notes
+      :type:  str
+      :value: ''
+
+
+
+   .. py:attribute:: paired_by_judge
+      :type:  bool
+      :value: False
+
+
+
+   .. py:attribute:: pairing_confidence
+      :type:  str
+      :value: ''
+
+
+
+   .. py:attribute:: pairing_reason
+      :type:  str
+      :value: ''
+
+
+
+   .. py:attribute:: present_models
+      :type:  List[str]
+      :value: []
+
+
+
+   .. py:attribute:: row_id
+      :type:  str
+      :value: ''
+
+
+
+.. py:class:: PotentialDuplicate
+
+   Represents items that might be the same data with different keys.
+
+   .. rubric:: Examples
+
+   gpt-5 has time__reclamation_deadline_days=60
+   gpt-4.1 has time__permit_validity_days=60
+   Same value extracted with different requirement_type - likely same source data.
+
+
+   .. py:attribute:: items
+      :type:  List[Tuple[str, dict]]
+
+
+   .. py:attribute:: reason
+      :type:  str
+      :value: 'Same value extracted with different requirement_type'
+
+
+
+   .. py:attribute:: unit
+      :type:  str
+
+
+   .. py:attribute:: value
+      :type:  Any
+
+
+.. py:data:: logger
+

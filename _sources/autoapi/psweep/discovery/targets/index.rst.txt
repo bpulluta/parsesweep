@@ -1,0 +1,41 @@
+psweep.discovery.targets
+========================
+
+.. py:module:: psweep.discovery.targets
+
+.. autoapi-nested-parse::
+
+   Target-provider package: pluggable sources for discovery targets.
+
+
+
+Submodules
+----------
+
+.. toctree::
+   :maxdepth: 1
+
+   /autoapi/psweep/discovery/targets/base/index
+   /autoapi/psweep/discovery/targets/providers/index
+
+
+Functions
+---------
+
+.. autoapisummary::
+
+   psweep.discovery.targets.resolve_target_provider
+
+
+Package Contents
+----------------
+
+.. py:function:: resolve_target_provider(spec: dict[str, Any], *, config_dir: pathlib.Path) -> base.BaseTargetProvider
+
+   Build a target provider from a ``targets`` config dict.
+
+   The dict must carry a ``source`` key of ``dataset`` or ``cross_product``
+   (``csv``/``inline`` are handled directly by the config loader from their
+   shorthand forms). Relative dataset paths resolve against ``config_dir``.
+
+

@@ -1,0 +1,140 @@
+psweep.discovery.targets.providers
+==================================
+
+.. py:module:: psweep.discovery.targets.providers
+
+.. autoapi-nested-parse::
+
+   Concrete target providers: csv, inline, dataset, cross_product.
+
+   Each provider turns a configured source into ``list[dict]`` targets. The
+   cross-product provider is the scalable path: it takes N named dimensions
+   (each a value list or an entity dataset) and emits every combination, so a
+   domain scales to thousands of targets from a compact config.
+
+
+
+Classes
+-------
+
+.. autoapisummary::
+
+   psweep.discovery.targets.providers.CrossProductTargetProvider
+   psweep.discovery.targets.providers.CsvTargetProvider
+   psweep.discovery.targets.providers.DatasetTargetProvider
+   psweep.discovery.targets.providers.InlineTargetProvider
+
+
+Functions
+---------
+
+.. autoapisummary::
+
+   psweep.discovery.targets.providers.load_rows_from_file
+
+
+Module Contents
+---------------
+
+.. py:class:: CrossProductTargetProvider(dimensions: list[dict[str, Any]], *, config_dir: pathlib.Path, filters: dict[str, list[Any]] | None = None, limit: int | None = None)
+
+   Bases: :py:obj:`psweep.discovery.targets.base.BaseTargetProvider`
+
+
+   Cartesian product of named dimensions: one target per combination.
+
+   Each dimension is either a value list (``{name, values}``) or an entity
+   dataset (``{name, dataset, [column], [limit]}``). Value dimensions
+   contribute ``{name: value}``; dataset dimensions contribute the whole row
+   (or ``{name: row[column]}`` when ``column`` is given). An optional
+   ``filter`` (``{field: [allowed]}``) and total ``limit`` are applied last.
+
+
+   .. py:method:: provide() -> list[dict[str, object]]
+
+      Return the filtered, capped cross-product of all dimensions.
+
+
+
+   .. py:method:: supports_source(source_type: str) -> bool
+      :classmethod:
+
+
+      Return True for the ``cross_product`` source.
+
+
+
+.. py:class:: CsvTargetProvider(csv_path: pathlib.Path)
+
+   Bases: :py:obj:`psweep.discovery.targets.base.BaseTargetProvider`
+
+
+   One target per row of an authored targets CSV.
+
+
+   .. py:method:: provide() -> list[dict[str, object]]
+
+      Return one target per CSV row.
+
+
+
+   .. py:method:: supports_source(source_type: str) -> bool
+      :classmethod:
+
+
+      Return True for the ``csv`` source.
+
+
+
+.. py:class:: DatasetTargetProvider(path: pathlib.Path, limit: int | None = None)
+
+   Bases: :py:obj:`psweep.discovery.targets.base.BaseTargetProvider`
+
+
+   One target per entity row loaded from a dataset file (csv/json).
+
+
+   .. py:method:: provide() -> list[dict[str, object]]
+
+      Return one target per dataset row (optionally capped).
+
+
+
+   .. py:method:: supports_source(source_type: str) -> bool
+      :classmethod:
+
+
+      Return True for the ``dataset`` source.
+
+
+
+.. py:class:: InlineTargetProvider(rows: list[dict[str, Any]])
+
+   Bases: :py:obj:`psweep.discovery.targets.base.BaseTargetProvider`
+
+
+   Pass-through provider for inline target lists.
+
+
+   .. py:method:: provide() -> list[dict[str, object]]
+
+      Return the inline target rows unchanged.
+
+
+
+   .. py:method:: supports_source(source_type: str) -> bool
+      :classmethod:
+
+
+      Return True for the ``inline`` source.
+
+
+
+.. py:function:: load_rows_from_file(path: pathlib.Path) -> list[dict[str, Any]]
+
+   Load entity rows from a ``.csv`` or ``.json`` file.
+
+   CSV headers (or JSON object keys) become target fields; empty CSV cells
+   become ``None``. JSON must be a list of objects.
+
+

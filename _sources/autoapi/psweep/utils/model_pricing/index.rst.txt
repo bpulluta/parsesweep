@@ -1,0 +1,97 @@
+psweep.utils.model_pricing
+==========================
+
+.. py:module:: psweep.utils.model_pricing
+
+.. autoapi-nested-parse::
+
+   AI Model Pricing Database.
+
+   Pricing data as of August 2026.
+   All prices are per 1M tokens in USD.
+
+
+
+Attributes
+----------
+
+.. autoapisummary::
+
+   psweep.utils.model_pricing.MODEL_PRICING
+   psweep.utils.model_pricing.logger
+
+
+Classes
+-------
+
+.. autoapisummary::
+
+   psweep.utils.model_pricing.ModelPricing
+
+
+Functions
+---------
+
+.. autoapisummary::
+
+   psweep.utils.model_pricing.calculate_cost
+   psweep.utils.model_pricing.get_model_pricing
+   psweep.utils.model_pricing.get_pricing
+
+
+Module Contents
+---------------
+
+.. py:class:: ModelPricing
+
+   Simple wrapper for pricing lookup (for LLMClient compatibility).
+
+
+   .. py:method:: get_cost(model_name: str, input_tokens: int, output_tokens: int) -> float
+
+      Calculate cost for a model.
+
+
+
+.. py:function:: calculate_cost(model_name: str, prompt_tokens: int, completion_tokens: int) -> float
+
+   Calculate API cost for a model.
+
+   :param model_name: Model name
+   :type model_name: str
+   :param prompt_tokens: Number of input tokens
+   :type prompt_tokens: int
+   :param completion_tokens: Number of output tokens
+   :type completion_tokens: int
+
+   :returns: Cost in USD
+   :rtype: float
+
+
+.. py:function:: get_model_pricing(model_name: str) -> Tuple[float, float]
+
+   Get pricing for a model.
+
+   Handles:
+
+   - Exact matches: "gpt-4o-mini" -> (0.15, 0.60)
+   - Partial matches: "gpt-4o" in "azure/gpt-4o" -> (5.00, 15.00)
+   - Azure deployments: "compassop-gpt-4.1-mini" -> (0.40, 1.60)
+
+   :param model_name: Model name (e.g., "gpt-4o-mini", "claude-3.5-sonnet", "compassop-gpt-4.1-mini")
+   :type model_name: str
+
+   :returns: (input_cost_per_1m, output_cost_per_1m) tuple
+   :rtype: Tuple[float, float]
+
+
+.. py:function:: get_pricing() -> ModelPricing
+
+   Get the global pricing instance.
+
+
+.. py:data:: MODEL_PRICING
+   :type:  Dict[str, Tuple[float, float]]
+
+.. py:data:: logger
+

@@ -1,0 +1,76 @@
+psweep.discovery.targets.base
+=============================
+
+.. py:module:: psweep.discovery.targets.base
+
+.. autoapi-nested-parse::
+
+   Target-provider abstraction for the discovery module.
+
+   A *target* is a plain ``dict[str, object]`` of context injected into query
+   templates. Providers generate that list from different sources — an authored
+   CSV, an inline list, an entity dataset, or a cross-product of dimensions — so
+   the pipeline can scale to thousands of targets (e.g. every US county, or a
+   manufacturer x power-class matrix) without hand-authoring each row.
+
+   Mirrors the connector pattern (ABC + ``supports_*`` + a ``resolve_*`` factory).
+   Everything downstream only needs ``list[dict]``, so any provider that emits
+   dicts works with the unchanged pipeline.
+
+
+
+Exceptions
+----------
+
+.. autoapisummary::
+
+   psweep.discovery.targets.base.TargetProviderError
+
+
+Classes
+-------
+
+.. autoapisummary::
+
+   psweep.discovery.targets.base.BaseTargetProvider
+
+
+Module Contents
+---------------
+
+.. py:exception:: TargetProviderError
+
+   Bases: :py:obj:`ValueError`
+
+
+   Raised when a target source is misconfigured or unreadable.
+
+   Initialize self.  See help(type(self)) for accurate signature.
+
+
+.. py:class:: BaseTargetProvider
+
+   Bases: :py:obj:`abc.ABC`
+
+
+   Produces discovery targets from a configured source.
+
+
+   .. py:method:: provide() -> list[dict[str, object]]
+      :abstractmethod:
+
+
+      Return the generated target rows (each a template context dict).
+
+
+
+   .. py:method:: supports_source(source_type: str) -> bool
+      :classmethod:
+
+      :abstractmethod:
+
+
+      Return True if this provider handles the given ``source`` type.
+
+
+

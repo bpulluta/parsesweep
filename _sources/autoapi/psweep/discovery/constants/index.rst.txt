@@ -1,0 +1,56 @@
+psweep.discovery.constants
+==========================
+
+.. py:module:: psweep.discovery.constants
+
+.. autoapi-nested-parse::
+
+   Shared constants for the discovery module.
+
+   Single source of truth for file-type sets, MIME mapping, and the routing-reason
+   string literals that are produced in one place and matched by equality in
+   another. Centralizing these removes the historical duplication/drift across
+   engine, selector, prioritizer, and connectors.
+
+
+
+Attributes
+----------
+
+.. autoapisummary::
+
+   psweep.discovery.constants.DEFAULT_QUERY_CONTEXT_ALIASES
+   psweep.discovery.constants.DOCUMENT_EXTENSIONS
+   psweep.discovery.constants.DOWNLOADABLE_EXTENSIONS
+   psweep.discovery.constants.MIME_TO_EXTENSION
+   psweep.discovery.constants.ROUTE_REASON_CENTRALIZED
+   psweep.discovery.constants.ROUTE_REASON_DISTRIBUTED
+   psweep.discovery.constants.SEEKER_ONLY_SCORE_WEIGHTS
+
+
+Module Contents
+---------------
+
+.. py:data:: DEFAULT_QUERY_CONTEXT_ALIASES
+   :type:  dict[str, list[str]]
+
+.. py:data:: DOCUMENT_EXTENSIONS
+   :type:  frozenset[str]
+
+.. py:data:: DOWNLOADABLE_EXTENSIONS
+   :type:  frozenset[str]
+
+.. py:data:: MIME_TO_EXTENSION
+   :type:  dict[str, str]
+
+.. py:data:: ROUTE_REASON_CENTRALIZED
+   :value: 'Routed via centralized hub sweep'
+
+
+.. py:data:: ROUTE_REASON_DISTRIBUTED
+   :value: 'Routed via distributed digger path'
+
+
+.. py:data:: SEEKER_ONLY_SCORE_WEIGHTS
+   :type:  dict[str, float]
+

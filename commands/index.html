@@ -1,0 +1,1567 @@
+<!doctype html>
+<html class="no-js" lang="en" data-content_root="../">
+  <head><meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <meta name="color-scheme" content="light dark"><meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="index" title="Index" href="../genindex.html"><link rel="search" title="Search" href="../search.html"><link rel="next" title="Configuration Reference" href="../config-reference.html"><link rel="prev" title="Getting Started" href="../getting-started.html">
+
+    <!-- Generated with Sphinx 9.1.0 and Furo 2025.12.19 -->
+        <title>Command Reference - ParseSweep 2.0.1</title>
+      <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=d111a655" />
+    <link rel="stylesheet" type="text/css" href="../_static/styles/furo.css?v=7bdb33bb" />
+    <link rel="stylesheet" type="text/css" href="../_static/graphviz.css?v=4ae1632d" />
+    <link rel="stylesheet" type="text/css" href="../_static/copybutton.css?v=76b2166b" />
+    <link rel="stylesheet" type="text/css" href="../_static/styles/furo-extensions.css?v=8dab3a3b" />
+    
+    
+
+
+<style>
+  body {
+    --color-code-background: #f2f2f2;
+  --color-code-foreground: #1e1e1e;
+  
+  }
+  @media not print {
+    body[data-theme="dark"] {
+      --color-code-background: #202020;
+  --color-code-foreground: #d0d0d0;
+  
+    }
+    @media (prefers-color-scheme: dark) {
+      body:not([data-theme="light"]) {
+        --color-code-background: #202020;
+  --color-code-foreground: #d0d0d0;
+  
+      }
+    }
+  }
+</style></head>
+  <body>
+    
+    <script>
+      document.body.dataset.theme = localStorage.getItem("theme") || "auto";
+    </script>
+    
+
+<svg xmlns="http://www.w3.org/2000/svg" style="display: none;">
+  <symbol id="svg-toc" viewBox="0 0 24 24">
+    <title>Contents</title>
+    <svg stroke="currentColor" fill="currentColor" stroke-width="0" viewBox="0 0 1024 1024">
+      <path d="M408 442h480c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8H408c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8zm-8 204c0 4.4 3.6 8 8 8h480c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8H408c-4.4 0-8 3.6-8 8v56zm504-486H120c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h784c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zm0 632H120c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h784c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zM115.4 518.9L271.7 642c5.8 4.6 14.4.5 14.4-6.9V388.9c0-7.4-8.5-11.5-14.4-6.9L115.4 505.1a8.74 8.74 0 0 0 0 13.8z"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-menu" viewBox="0 0 24 24">
+    <title>Menu</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather-menu">
+      <line x1="3" y1="12" x2="21" y2="12"></line>
+      <line x1="3" y1="6" x2="21" y2="6"></line>
+      <line x1="3" y1="18" x2="21" y2="18"></line>
+    </svg>
+  </symbol>
+  <symbol id="svg-arrow-right" viewBox="0 0 24 24">
+    <title>Expand</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather-chevron-right">
+      <polyline points="9 18 15 12 9 6"></polyline>
+    </svg>
+  </symbol>
+  <symbol id="svg-sun" viewBox="0 0 24 24">
+    <title>Light mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="feather-sun">
+      <circle cx="12" cy="12" r="5"></circle>
+      <line x1="12" y1="1" x2="12" y2="3"></line>
+      <line x1="12" y1="21" x2="12" y2="23"></line>
+      <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+      <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+      <line x1="1" y1="12" x2="3" y2="12"></line>
+      <line x1="21" y1="12" x2="23" y2="12"></line>
+      <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+      <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+    </svg>
+  </symbol>
+  <symbol id="svg-moon" viewBox="0 0 24 24">
+    <title>Dark mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-moon">
+      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+      <path d="M12 3c.132 0 .263 0 .393 0a7.5 7.5 0 0 0 7.92 12.446a9 9 0 1 1 -8.313 -12.454z" />
+    </svg>
+  </symbol>
+  <symbol id="svg-sun-with-moon" viewBox="0 0 24 24">
+    <title>Auto light/dark, in light mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round"
+      class="icon-custom-derived-from-feather-sun-and-tabler-moon">
+      <path style="opacity: 50%" d="M 5.411 14.504 C 5.471 14.504 5.532 14.504 5.591 14.504 C 3.639 16.319 4.383 19.569 6.931 20.352 C 7.693 20.586 8.512 20.551 9.25 20.252 C 8.023 23.207 4.056 23.725 2.11 21.184 C 0.166 18.642 1.702 14.949 4.874 14.536 C 5.051 14.512 5.231 14.5 5.411 14.5 L 5.411 14.504 Z"/>
+      <line x1="14.5" y1="3.25" x2="14.5" y2="1.25"/>
+      <line x1="14.5" y1="15.85" x2="14.5" y2="17.85"/>
+      <line x1="10.044" y1="5.094" x2="8.63" y2="3.68"/>
+      <line x1="19" y1="14.05" x2="20.414" y2="15.464"/>
+      <line x1="8.2" y1="9.55" x2="6.2" y2="9.55"/>
+      <line x1="20.8" y1="9.55" x2="22.8" y2="9.55"/>
+      <line x1="10.044" y1="14.006" x2="8.63" y2="15.42"/>
+      <line x1="19" y1="5.05" x2="20.414" y2="3.636"/>
+      <circle cx="14.5" cy="9.55" r="3.6"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-moon-with-sun" viewBox="0 0 24 24">
+    <title>Auto light/dark, in dark mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round"
+      class="icon-custom-derived-from-feather-sun-and-tabler-moon">
+      <path d="M 8.282 7.007 C 8.385 7.007 8.494 7.007 8.595 7.007 C 5.18 10.184 6.481 15.869 10.942 17.24 C 12.275 17.648 13.706 17.589 15 17.066 C 12.851 22.236 5.91 23.143 2.505 18.696 C -0.897 14.249 1.791 7.786 7.342 7.063 C 7.652 7.021 7.965 7 8.282 7 L 8.282 7.007 Z"/>
+      <line style="opacity: 50%" x1="18" y1="3.705" x2="18" y2="2.5"/>
+      <line style="opacity: 50%" x1="18" y1="11.295" x2="18" y2="12.5"/>
+      <line style="opacity: 50%" x1="15.316" y1="4.816" x2="14.464" y2="3.964"/>
+      <line style="opacity: 50%" x1="20.711" y1="10.212" x2="21.563" y2="11.063"/>
+      <line style="opacity: 50%" x1="14.205" y1="7.5" x2="13.001" y2="7.5"/>
+      <line style="opacity: 50%" x1="21.795" y1="7.5" x2="23" y2="7.5"/>
+      <line style="opacity: 50%" x1="15.316" y1="10.184" x2="14.464" y2="11.036"/>
+      <line style="opacity: 50%" x1="20.711" y1="4.789" x2="21.563" y2="3.937"/>
+      <circle style="opacity: 50%" cx="18" cy="7.5" r="2.169"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-pencil" viewBox="0 0 24 24">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-pencil-code">
+      <path d="M4 20h4l10.5 -10.5a2.828 2.828 0 1 0 -4 -4l-10.5 10.5v4" />
+      <path d="M13.5 6.5l4 4" />
+      <path d="M20 21l2 -2l-2 -2" />
+      <path d="M17 17l-2 2l2 2" />
+    </svg>
+  </symbol>
+  <symbol id="svg-eye" viewBox="0 0 24 24">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-eye-code">
+      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+      <path d="M10 12a2 2 0 1 0 4 0a2 2 0 0 0 -4 0" />
+      <path
+        d="M11.11 17.958c-3.209 -.307 -5.91 -2.293 -8.11 -5.958c2.4 -4 5.4 -6 9 -6c3.6 0 6.6 2 9 6c-.21 .352 -.427 .688 -.647 1.008" />
+      <path d="M20 21l2 -2l-2 -2" />
+      <path d="M17 17l-2 2l2 2" />
+    </svg>
+  </symbol>
+</svg>
+
+<input type="checkbox" class="sidebar-toggle" name="__navigation" id="__navigation" aria-label="Toggle site navigation sidebar">
+<input type="checkbox" class="sidebar-toggle" name="__toc" id="__toc" aria-label="Toggle table of contents sidebar">
+<label class="overlay sidebar-overlay" for="__navigation"></label>
+<label class="overlay toc-overlay" for="__toc"></label>
+
+<a class="skip-to-content muted-link" href="#furo-main-content">Skip to content</a>
+
+
+
+<div class="page">
+  <header class="mobile-header">
+    <div class="header-left">
+      <label class="nav-overlay-icon" for="__navigation">
+        <span class="icon"><svg><use href="#svg-menu"></use></svg></span>
+      </label>
+    </div>
+    <div class="header-center">
+      <a href="../index.html"><div class="brand">ParseSweep 2.0.1</div></a>
+    </div>
+    <div class="header-right">
+      <div class="theme-toggle-container theme-toggle-header">
+        <button class="theme-toggle" aria-label="Toggle Light / Dark / Auto color theme">
+          <svg class="theme-icon-when-auto-light"><use href="#svg-sun-with-moon"></use></svg>
+          <svg class="theme-icon-when-auto-dark"><use href="#svg-moon-with-sun"></use></svg>
+          <svg class="theme-icon-when-dark"><use href="#svg-moon"></use></svg>
+          <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
+        </button>
+      </div>
+      <label class="toc-overlay-icon toc-header-icon" for="__toc">
+        <span class="icon"><svg><use href="#svg-toc"></use></svg></span>
+      </label>
+    </div>
+  </header>
+  <aside class="sidebar-drawer">
+    <div class="sidebar-container">
+      
+      <div class="sidebar-sticky"><a class="sidebar-brand" href="../index.html">
+  
+  <span class="sidebar-brand-text">ParseSweep 2.0.1</span>
+  
+</a><form class="sidebar-search-container" method="get" action="../search.html" role="search">
+  <input class="sidebar-search" placeholder="Search" name="q" aria-label="Search">
+  <input type="hidden" name="check_keywords" value="yes">
+  <input type="hidden" name="area" value="default">
+</form>
+<div id="searchbox"></div><div class="sidebar-scroll"><div class="sidebar-tree">
+  <p class="caption" role="heading"><span class="caption-text">Guides</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="../getting-started.html">Getting Started</a></li>
+<li class="toctree-l1 current current-page"><a class="current reference internal" href="#">Command Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../config-reference.html">Configuration Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../schemas/index.html">Schema Authoring</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Reference</span></p>
+<ul>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../autoapi/index.html">API Reference</a><input aria-label="Toggle navigation of API Reference" class="toctree-checkbox" id="toctree-checkbox-1" name="toctree-checkbox-1" role="switch" type="checkbox"/><label for="toctree-checkbox-1"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../autoapi/psweep/index.html">psweep</a><input aria-label="Toggle navigation of psweep" class="toctree-checkbox" id="toctree-checkbox-2" name="toctree-checkbox-2" role="switch" type="checkbox"/><label for="toctree-checkbox-2"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../autoapi/psweep/benchmarking/index.html">psweep.benchmarking</a><input aria-label="Toggle navigation of psweep.benchmarking" class="toctree-checkbox" id="toctree-checkbox-3" name="toctree-checkbox-3" role="switch" type="checkbox"/><label for="toctree-checkbox-3"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/benchmarking/performance/index.html">psweep.benchmarking.performance</a></li>
+</ul>
+</li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../autoapi/psweep/compilation/index.html">psweep.compilation</a><input aria-label="Toggle navigation of psweep.compilation" class="toctree-checkbox" id="toctree-checkbox-4" name="toctree-checkbox-4" role="switch" type="checkbox"/><label for="toctree-checkbox-4"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/compilation/csv_exporter/index.html">psweep.compilation.csv_exporter</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/compilation/data_compiler/index.html">psweep.compilation.data_compiler</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/compilation/data_flattener/index.html">psweep.compilation.data_flattener</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/compilation/deduplicator/index.html">psweep.compilation.deduplicator</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/compilation/excel_formatter/index.html">psweep.compilation.excel_formatter</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/compilation/schema_detector/index.html">psweep.compilation.schema_detector</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/compilation/synthesizer/index.html">psweep.compilation.synthesizer</a></li>
+</ul>
+</li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../autoapi/psweep/config/index.html">psweep.config</a><input aria-label="Toggle navigation of psweep.config" class="toctree-checkbox" id="toctree-checkbox-5" name="toctree-checkbox-5" role="switch" type="checkbox"/><label for="toctree-checkbox-5"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/config/file_loader/index.html">psweep.config.file_loader</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/config/model_registry/index.html">psweep.config.model_registry</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/config/runtime_config_loader/index.html">psweep.config.runtime_config_loader</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../autoapi/psweep/core/index.html">psweep.core</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../autoapi/psweep/discovery/index.html">psweep.discovery</a><input aria-label="Toggle navigation of psweep.discovery" class="toctree-checkbox" id="toctree-checkbox-6" name="toctree-checkbox-6" role="switch" type="checkbox"/><label for="toctree-checkbox-6"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/discovery/browser/index.html">psweep.discovery.browser</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/discovery/candidate_selector/index.html">psweep.discovery.candidate_selector</a></li>
+<li class="toctree-l4 has-children"><a class="reference internal" href="../autoapi/psweep/discovery/connectors/index.html">psweep.discovery.connectors</a><input aria-label="Toggle navigation of psweep.discovery.connectors" class="toctree-checkbox" id="toctree-checkbox-7" name="toctree-checkbox-7" role="switch" type="checkbox"/><label for="toctree-checkbox-7"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l5"><a class="reference internal" href="../autoapi/psweep/discovery/connectors/base/index.html">psweep.discovery.connectors.base</a></li>
+<li class="toctree-l5"><a class="reference internal" href="../autoapi/psweep/discovery/connectors/digger/index.html">psweep.discovery.connectors.digger</a></li>
+<li class="toctree-l5"><a class="reference internal" href="../autoapi/psweep/discovery/connectors/serpapi_seeker/index.html">psweep.discovery.connectors.serpapi_seeker</a></li>
+</ul>
+</li>
+<li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/discovery/constants/index.html">psweep.discovery.constants</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/discovery/document_reviewer/index.html">psweep.discovery.document_reviewer</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/discovery/engine/index.html">psweep.discovery.engine</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/discovery/link_prioritizer/index.html">psweep.discovery.link_prioritizer</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/discovery/models/index.html">psweep.discovery.models</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/discovery/policies/index.html">psweep.discovery.policies</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/discovery/retry/index.html">psweep.discovery.retry</a></li>
+<li class="toctree-l4 has-children"><a class="reference internal" href="../autoapi/psweep/discovery/targets/index.html">psweep.discovery.targets</a><input aria-label="Toggle navigation of psweep.discovery.targets" class="toctree-checkbox" id="toctree-checkbox-8" name="toctree-checkbox-8" role="switch" type="checkbox"/><label for="toctree-checkbox-8"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l5"><a class="reference internal" href="../autoapi/psweep/discovery/targets/base/index.html">psweep.discovery.targets.base</a></li>
+<li class="toctree-l5"><a class="reference internal" href="../autoapi/psweep/discovery/targets/providers/index.html">psweep.discovery.targets.providers</a></li>
+</ul>
+</li>
+<li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/discovery/urls/index.html">psweep.discovery.urls</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/discovery/validators/index.html">psweep.discovery.validators</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../autoapi/psweep/exceptions/index.html">psweep.exceptions</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../autoapi/psweep/extraction/index.html">psweep.extraction</a><input aria-label="Toggle navigation of psweep.extraction" class="toctree-checkbox" id="toctree-checkbox-9" name="toctree-checkbox-9" role="switch" type="checkbox"/><label for="toctree-checkbox-9"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/extraction/document_extractor/index.html">psweep.extraction.document_extractor</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/extraction/document_utils/index.html">psweep.extraction.document_utils</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/extraction/llm_client/index.html">psweep.extraction.llm_client</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/extraction/llm_factory/index.html">psweep.extraction.llm_factory</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/extraction/page_locator/index.html">psweep.extraction.page_locator</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/extraction/pdf_utils/index.html">psweep.extraction.pdf_utils</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/extraction/record_writer/index.html">psweep.extraction.record_writer</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/extraction/schema_utils/index.html">psweep.extraction.schema_utils</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/extraction/text_processor/index.html">psweep.extraction.text_processor</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../autoapi/psweep/pipeline/index.html">psweep.pipeline</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../autoapi/psweep/utils/index.html">psweep.utils</a><input aria-label="Toggle navigation of psweep.utils" class="toctree-checkbox" id="toctree-checkbox-10" name="toctree-checkbox-10" role="switch" type="checkbox"/><label for="toctree-checkbox-10"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/utils/config/index.html">psweep.utils.config</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/utils/error_taxonomy/index.html">psweep.utils.error_taxonomy</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/utils/item_matcher/index.html">psweep.utils.item_matcher</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/utils/logger/index.html">psweep.utils.logger</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/utils/model_pricing/index.html">psweep.utils.model_pricing</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/utils/normalizers/index.html">psweep.utils.normalizers</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/utils/page_range/index.html">psweep.utils.page_range</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/utils/schema_metadata/index.html">psweep.utils.schema_metadata</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/utils/value_normalizer/index.html">psweep.utils.value_normalizer</a></li>
+</ul>
+</li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../autoapi/psweep/validation/index.html">psweep.validation</a><input aria-label="Toggle navigation of psweep.validation" class="toctree-checkbox" id="toctree-checkbox-11" name="toctree-checkbox-11" role="switch" type="checkbox"/><label for="toctree-checkbox-11"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/validation/comparison_engine/index.html">psweep.validation.comparison_engine</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/validation/evidence_loader/index.html">psweep.validation.evidence_loader</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/validation/multi_model_extractor/index.html">psweep.validation.multi_model_extractor</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/validation/report_generator/index.html">psweep.validation.report_generator</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/validation/utils/index.html">psweep.validation.utils</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html">Changelog</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../contributing.html">Contributing</a></li>
+</ul>
+
+</div>
+</div>
+
+      </div>
+      
+    </div>
+  </aside>
+  <div class="main">
+    <div class="content">
+      <div class="article-container">
+        <a href="#" class="back-to-top muted-link">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+            <path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8v12z"></path>
+          </svg>
+          <span>Back to top</span>
+        </a>
+        <div class="content-icon-container">
+          <div class="view-this-page">
+  <a class="muted-link" href="../_sources/commands/index.md.txt" title="View this page">
+    <svg><use href="#svg-eye"></use></svg>
+    <span class="visually-hidden">View this page</span>
+  </a>
+</div>
+<div class="theme-toggle-container theme-toggle-content">
+            <button class="theme-toggle" aria-label="Toggle Light / Dark / Auto color theme">
+              <svg class="theme-icon-when-auto-light"><use href="#svg-sun-with-moon"></use></svg>
+              <svg class="theme-icon-when-auto-dark"><use href="#svg-moon-with-sun"></use></svg>
+              <svg class="theme-icon-when-dark"><use href="#svg-moon"></use></svg>
+              <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
+            </button>
+          </div>
+          <label class="toc-overlay-icon toc-content-icon" for="__toc">
+            <span class="icon"><svg><use href="#svg-toc"></use></svg></span>
+          </label>
+        </div>
+        <article role="main" id="furo-main-content">
+          <section id="command-reference">
+<h1>Command Reference<a class="headerlink" href="#command-reference" title="Link to this heading">¶</a></h1>
+<p>Every command is generated directly from the CLI itself, so the options and
+their <strong>defaults shown here always match runtime behavior</strong>.</p>
+<section id="psweep">
+<h2>psweep<a class="headerlink" href="#psweep" title="Link to this heading">¶</a></h2>
+<p>📄 [bold]ParseSweep[/bold] — AI-powered structured data extraction from documents.</p>
+<p>[dim]Run [cyan]psweep[/cyan] with no arguments for an interactive guided menu.[/dim]</p>
+<p class="rubric">Usage</p>
+<div class="highlight-shell notranslate"><div class="highlight"><pre><span></span>psweep<span class="w"> </span><span class="o">[</span>OPTIONS<span class="o">]</span><span class="w"> </span>COMMAND<span class="w"> </span><span class="o">[</span>ARGS<span class="o">]</span>...
+</pre></div>
+</div>
+<p class="rubric">Options</p>
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-psweep-V">
+<span id="cmdoption-psweep-version"></span><span class="sig-name descname"><span class="pre">-V</span></span><span class="sig-prename descclassname"></span><span class="sig-prename descclassname"><span class="pre">,</span> </span><span class="sig-name descname"><span class="pre">--version</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-psweep-V" title="Link to this definition">¶</a></dt>
+<dd><p>Show version and exit.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Default<span class="colon">:</span></dt>
+<dd class="field-odd"><p><code class="docutils literal notranslate"><span class="pre">False</span></code></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-psweep-install-completion">
+<span class="sig-name descname"><span class="pre">--install-completion</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-psweep-install-completion" title="Link to this definition">¶</a></dt>
+<dd><p>Install completion for the current shell.</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-psweep-show-completion">
+<span class="sig-name descname"><span class="pre">--show-completion</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-psweep-show-completion" title="Link to this definition">¶</a></dt>
+<dd><p>Show completion for the current shell, to copy it or customize the installation.</p>
+</dd></dl>
+
+<section id="psweep-benchmark">
+<h3>benchmark<a class="headerlink" href="#psweep-benchmark" title="Link to this heading">¶</a></h3>
+<p>Build a performance profile from run manifests and evaluate benchmark gates.</p>
+<p class="rubric">Usage</p>
+<div class="highlight-shell notranslate"><div class="highlight"><pre><span></span>psweep<span class="w"> </span>benchmark<span class="w"> </span><span class="o">[</span>OPTIONS<span class="o">]</span><span class="w"> </span><span class="o">[</span>PATH<span class="o">]</span>
+</pre></div>
+</div>
+<p class="rubric">Options</p>
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-psweep-benchmark-gate-profile">
+<span class="sig-name descname"><span class="pre">--gate-profile</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;gate_profile&gt;</span></span><a class="headerlink" href="#cmdoption-psweep-benchmark-gate-profile" title="Link to this definition">¶</a></dt>
+<dd><p>JSON file containing benchmark input paths and gate thresholds for reproducible release evaluation.</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-psweep-benchmark-extraction-baseline-dir">
+<span class="sig-name descname"><span class="pre">--extraction-baseline-dir</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;extraction_baseline_dir&gt;</span></span><a class="headerlink" href="#cmdoption-psweep-benchmark-extraction-baseline-dir" title="Link to this definition">¶</a></dt>
+<dd><p>Directory containing expected extraction JSON records for parity scoring. Files should mirror benchmark output relative paths or record filenames.</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-psweep-benchmark-validation-baseline-dir">
+<span class="sig-name descname"><span class="pre">--validation-baseline-dir</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;validation_baseline_dir&gt;</span></span><a class="headerlink" href="#cmdoption-psweep-benchmark-validation-baseline-dir" title="Link to this definition">¶</a></dt>
+<dd><p>Directory containing expected QA/QC comparison_report.csv files for signal-quality scoring. Files should mirror benchmark document-folder relative paths.</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-psweep-benchmark-compilation-baseline-dir">
+<span class="sig-name descname"><span class="pre">--compilation-baseline-dir</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;compilation_baseline_dir&gt;</span></span><a class="headerlink" href="#cmdoption-psweep-benchmark-compilation-baseline-dir" title="Link to this definition">¶</a></dt>
+<dd><p>Directory containing expected compiled CSV outputs for row-correctness scoring. Files should mirror benchmark CSV relative paths or filenames.</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-psweep-benchmark-compilation-schema">
+<span class="sig-name descname"><span class="pre">--compilation-schema</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;compilation_schema&gt;</span></span><a class="headerlink" href="#cmdoption-psweep-benchmark-compilation-schema" title="Link to this definition">¶</a></dt>
+<dd><p>Schema used to generate compiled outputs. Required for compilation correctness scoring.</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-psweep-benchmark-baseline-snapshot">
+<span class="sig-name descname"><span class="pre">--baseline-snapshot</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;baseline_snapshot&gt;</span></span><a class="headerlink" href="#cmdoption-psweep-benchmark-baseline-snapshot" title="Link to this definition">¶</a></dt>
+<dd><p>Path to a saved benchmark snapshot used for median throughput/cost delta comparison.</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-psweep-benchmark-write-snapshot">
+<span class="sig-name descname"><span class="pre">--write-snapshot</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;write_snapshot&gt;</span></span><a class="headerlink" href="#cmdoption-psweep-benchmark-write-snapshot" title="Link to this definition">¶</a></dt>
+<dd><p>Write the current benchmark metrics to a snapshot JSON file.</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-psweep-benchmark-snapshot-label">
+<span class="sig-name descname"><span class="pre">--snapshot-label</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;snapshot_label&gt;</span></span><a class="headerlink" href="#cmdoption-psweep-benchmark-snapshot-label" title="Link to this definition">¶</a></dt>
+<dd><p>Optional label to store in a written benchmark snapshot.</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-psweep-benchmark-min-extraction-parity">
+<span class="sig-name descname"><span class="pre">--min-extraction-parity</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;min_extraction_parity&gt;</span></span><a class="headerlink" href="#cmdoption-psweep-benchmark-min-extraction-parity" title="Link to this definition">¶</a></dt>
+<dd><p>Minimum required extraction parity percentage (0-100) when expected extraction records are provided.</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-psweep-benchmark-min-validation-signal-quality">
+<span class="sig-name descname"><span class="pre">--min-validation-signal-quality</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;min_validation_signal_quality&gt;</span></span><a class="headerlink" href="#cmdoption-psweep-benchmark-min-validation-signal-quality" title="Link to this definition">¶</a></dt>
+<dd><p>Minimum required QA/QC signal quality percentage (0-100) when expected comparison reports are provided.</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-psweep-benchmark-min-validation-qualitative-pass-rate">
+<span class="sig-name descname"><span class="pre">--min-validation-qualitative-pass-rate</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;min_validation_qualitative_pass_rate&gt;</span></span><a class="headerlink" href="#cmdoption-psweep-benchmark-min-validation-qualitative-pass-rate" title="Link to this definition">¶</a></dt>
+<dd><p>Minimum required percentage (0-100) of qualitative QA/QC comparison summaries whose advisory gate status is pass.</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-psweep-benchmark-min-compilation-correctness">
+<span class="sig-name descname"><span class="pre">--min-compilation-correctness</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;min_compilation_correctness&gt;</span></span><a class="headerlink" href="#cmdoption-psweep-benchmark-min-compilation-correctness" title="Link to this definition">¶</a></dt>
+<dd><p>Minimum required compilation correctness percentage (0-100) when expected compiled CSVs are provided.</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-psweep-benchmark-max-failure-rate">
+<span class="sig-name descname"><span class="pre">--max-failure-rate</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;max_failure_rate&gt;</span></span><a class="headerlink" href="#cmdoption-psweep-benchmark-max-failure-rate" title="Link to this definition">¶</a></dt>
+<dd><p>Maximum allowed failed-document rate (0-1).</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-psweep-benchmark-max-average-seconds-per-document">
+<span class="sig-name descname"><span class="pre">--max-average-seconds-per-document</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;max_average_seconds_per_document&gt;</span></span><a class="headerlink" href="#cmdoption-psweep-benchmark-max-average-seconds-per-document" title="Link to this definition">¶</a></dt>
+<dd><p>Maximum allowed average processing seconds per document.</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-psweep-benchmark-min-documents-per-minute">
+<span class="sig-name descname"><span class="pre">--min-documents-per-minute</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;min_documents_per_minute&gt;</span></span><a class="headerlink" href="#cmdoption-psweep-benchmark-min-documents-per-minute" title="Link to this definition">¶</a></dt>
+<dd><p>Minimum required successful document throughput.</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-psweep-benchmark-max-total-errors">
+<span class="sig-name descname"><span class="pre">--max-total-errors</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;max_total_errors&gt;</span></span><a class="headerlink" href="#cmdoption-psweep-benchmark-max-total-errors" title="Link to this definition">¶</a></dt>
+<dd><p>Maximum allowed total structured errors across manifests.</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-psweep-benchmark-max-throughput-delta-percent">
+<span class="sig-name descname"><span class="pre">--max-throughput-delta-percent</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;max_throughput_delta_percent&gt;</span></span><a class="headerlink" href="#cmdoption-psweep-benchmark-max-throughput-delta-percent" title="Link to this definition">¶</a></dt>
+<dd><p>Maximum allowed median time-per-document increase versus the baseline snapshot.</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-psweep-benchmark-max-cost-delta-percent">
+<span class="sig-name descname"><span class="pre">--max-cost-delta-percent</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;max_cost_delta_percent&gt;</span></span><a class="headerlink" href="#cmdoption-psweep-benchmark-max-cost-delta-percent" title="Link to this definition">¶</a></dt>
+<dd><p>Maximum allowed median cost-per-document increase versus the baseline snapshot.</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-psweep-benchmark-q">
+<span id="cmdoption-psweep-benchmark-quiet"></span><span class="sig-name descname"><span class="pre">-q</span></span><span class="sig-prename descclassname"></span><span class="sig-prename descclassname"><span class="pre">,</span> </span><span class="sig-name descname"><span class="pre">--quiet</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-psweep-benchmark-q" title="Link to this definition">¶</a></dt>
+<dd><p>Minimal output (machine-readable)</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-psweep-benchmark-v">
+<span id="cmdoption-psweep-benchmark-verbose"></span><span class="sig-name descname"><span class="pre">-v</span></span><span class="sig-prename descclassname"></span><span class="sig-prename descclassname"><span class="pre">,</span> </span><span class="sig-name descname"><span class="pre">--verbose</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-psweep-benchmark-v" title="Link to this definition">¶</a></dt>
+<dd><p>Detailed output</p>
+</dd></dl>
+
+<p class="rubric">Arguments</p>
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-psweep-benchmark-arg-PATH">
+<span class="sig-name descname"><span class="pre">PATH</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-psweep-benchmark-arg-PATH" title="Link to this definition">¶</a></dt>
+<dd><p>Optional argument</p>
+</dd></dl>
+
+</section>
+<section id="psweep-check">
+<h3>check<a class="headerlink" href="#psweep-check" title="Link to this heading">¶</a></h3>
+<p>Check an extraction result against the schema.</p>
+<div class="line-block">
+<div class="line">EXAMPLES:</div>
+<div class="line-block">
+<div class="line">psweep check extracted/data/doc.json</div>
+<div class="line">psweep check extracted/data/doc.json –show-data</div>
+</div>
+</div>
+<p class="rubric">Usage</p>
+<div class="highlight-shell notranslate"><div class="highlight"><pre><span></span>psweep<span class="w"> </span>check<span class="w"> </span><span class="o">[</span>OPTIONS<span class="o">]</span><span class="w"> </span>EXTRACTION_FILE
+</pre></div>
+</div>
+<p class="rubric">Options</p>
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-psweep-check-v">
+<span id="cmdoption-psweep-check-verbose"></span><span class="sig-name descname"><span class="pre">-v</span></span><span class="sig-prename descclassname"></span><span class="sig-prename descclassname"><span class="pre">,</span> </span><span class="sig-name descname"><span class="pre">--verbose</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-psweep-check-v" title="Link to this definition">¶</a></dt>
+<dd><p>Enable verbose logging</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-psweep-check-show-data">
+<span class="sig-name descname"><span class="pre">--show-data</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-psweep-check-show-data" title="Link to this definition">¶</a></dt>
+<dd><p>Display extracted data with syntax highlighting</p>
+</dd></dl>
+
+<p class="rubric">Arguments</p>
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-psweep-check-arg-EXTRACTION_FILE">
+<span class="sig-name descname"><span class="pre">EXTRACTION_FILE</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-psweep-check-arg-EXTRACTION_FILE" title="Link to this definition">¶</a></dt>
+<dd><p>Required argument</p>
+</dd></dl>
+
+</section>
+<section id="psweep-check-schema">
+<h3>check-schema<a class="headerlink" href="#psweep-check-schema" title="Link to this heading">¶</a></h3>
+<p>Check a JSON schema file.</p>
+<p>Checks schema syntax, structure, and ParseSweep-specific
+metadata requirements.</p>
+<div class="line-block">
+<div class="line">EXAMPLES:</div>
+<div class="line-block">
+<div class="line">psweep check-schema schemas/my_schema.json</div>
+<div class="line">psweep check-schema schemas/example_utility_rate_schema.json</div>
+</div>
+</div>
+<p class="rubric">Usage</p>
+<div class="highlight-shell notranslate"><div class="highlight"><pre><span></span>psweep<span class="w"> </span>check-schema<span class="w"> </span><span class="o">[</span>OPTIONS<span class="o">]</span><span class="w"> </span>SCHEMA_PATH
+</pre></div>
+</div>
+<p class="rubric">Arguments</p>
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-psweep-check-schema-arg-SCHEMA_PATH">
+<span class="sig-name descname"><span class="pre">SCHEMA_PATH</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-psweep-check-schema-arg-SCHEMA_PATH" title="Link to this definition">¶</a></dt>
+<dd><p>Required argument</p>
+</dd></dl>
+
+</section>
+<section id="psweep-compile">
+<h3>compile<a class="headerlink" href="#psweep-compile" title="Link to this heading">¶</a></h3>
+<p>Compile extracted JSON files into clean Excel/CSV output.</p>
+<p>Reads per-document JSON files from EXTRACTED_DIR (or the configured
+input_dir), deduplicates records using the schema’s identity rules, and
+writes a consolidated Excel and/or CSV file to the output directory.</p>
+<p>Run <code class="docutils literal notranslate"><span class="pre">psweep</span> <span class="pre">compile</span> <span class="pre">--help</span></code> for every option and its default.</p>
+<section id="examples">
+<h4>Examples<a class="headerlink" href="#examples" title="Link to this heading">¶</a></h4>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">psweep</span> <span class="nb">compile</span> <span class="n">extracted</span><span class="o">/</span><span class="n">my_domain</span><span class="o">/</span> <span class="o">--</span><span class="n">schema</span> <span class="n">schemas</span><span class="o">/</span><span class="n">my_schema</span><span class="o">.</span><span class="n">json</span>
+<span class="n">psweep</span> <span class="nb">compile</span> <span class="o">--</span><span class="n">config</span> <span class="n">config</span><span class="o">/</span><span class="n">my_domain</span><span class="o">/</span><span class="n">my_domain</span><span class="o">.</span><span class="n">yaml</span>
+<span class="n">psweep</span> <span class="nb">compile</span> <span class="n">extracted</span><span class="o">/</span> <span class="o">--</span><span class="n">schema</span> <span class="n">s</span><span class="o">.</span><span class="n">json</span> <span class="o">--</span><span class="n">dry</span><span class="o">-</span><span class="n">run</span> <span class="o">--</span><span class="n">verbose</span>
+</pre></div>
+</div>
+<p class="rubric">Usage</p>
+<div class="highlight-shell notranslate"><div class="highlight"><pre><span></span>psweep<span class="w"> </span>compile<span class="w"> </span><span class="o">[</span>OPTIONS<span class="o">]</span><span class="w"> </span><span class="o">[</span>EXTRACTED_DIR<span class="o">]</span>
+</pre></div>
+</div>
+<p class="rubric">Options</p>
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-psweep-compile-config">
+<span class="sig-name descname"><span class="pre">--config</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;config_path&gt;</span></span><a class="headerlink" href="#cmdoption-psweep-compile-config" title="Link to this definition">¶</a></dt>
+<dd><p>Domain config file (RECOMMENDED — includes schema, page targeting, dedup)</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-psweep-compile-show-effective-config">
+<span class="sig-name descname"><span class="pre">--show-effective-config</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-psweep-compile-show-effective-config" title="Link to this definition">¶</a></dt>
+<dd><p>Print resolved command inputs with source attribution and continue</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-psweep-compile-validate-config">
+<span class="sig-name descname"><span class="pre">--validate-config</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-psweep-compile-validate-config" title="Link to this definition">¶</a></dt>
+<dd><p>Validate resolved command inputs and exit without compiling</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-psweep-compile-config-strict">
+<span class="sig-name descname"><span class="pre">--config-strict</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-psweep-compile-config-strict" title="Link to this definition">¶</a></dt>
+<dd><p>Fail on unknown keys in runtime config sections</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-psweep-compile-s">
+<span id="cmdoption-psweep-compile-schema"></span><span class="sig-name descname"><span class="pre">-s</span></span><span class="sig-prename descclassname"></span><span class="sig-prename descclassname"><span class="pre">,</span> </span><span class="sig-name descname"><span class="pre">--schema</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;schema&gt;</span></span><a class="headerlink" href="#cmdoption-psweep-compile-s" title="Link to this definition">¶</a></dt>
+<dd><p>Schema file (for quick testing without a config YAML)</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-psweep-compile-o">
+<span id="cmdoption-psweep-compile-output"></span><span class="sig-name descname"><span class="pre">-o</span></span><span class="sig-prename descclassname"></span><span class="sig-prename descclassname"><span class="pre">,</span> </span><span class="sig-name descname"><span class="pre">--output</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;output&gt;</span></span><a class="headerlink" href="#cmdoption-psweep-compile-o" title="Link to this definition">¶</a></dt>
+<dd><p>Output directory (auto-detected if not specified)</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-psweep-compile-dry-run">
+<span class="sig-name descname"><span class="pre">--dry-run</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-psweep-compile-dry-run" title="Link to this definition">¶</a></dt>
+<dd><p>Preview compilation and deduplication without writing output files</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-psweep-compile-report-format">
+<span class="sig-name descname"><span class="pre">--report-format</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;report_format&gt;</span></span><a class="headerlink" href="#cmdoption-psweep-compile-report-format" title="Link to this definition">¶</a></dt>
+<dd><p>Dry-run preview output format</p>
+<dl class="field-list simple">
+<dt class="field-odd">Default<span class="colon">:</span></dt>
+<dd class="field-odd"><p><code class="docutils literal notranslate"><span class="pre">'text'</span></code></p>
+</dd>
+<dt class="field-even">Options<span class="colon">:</span></dt>
+<dd class="field-even"><p>text | json</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-psweep-compile-fail-on-suspicious">
+<span class="sig-name descname"><span class="pre">--fail-on-suspicious</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;fail_on_suspicious&gt;</span></span><a class="headerlink" href="#cmdoption-psweep-compile-fail-on-suspicious" title="Link to this definition">¶</a></dt>
+<dd><p>With –dry-run, exit non-zero when suspicious duplicate groups meet this severity threshold</p>
+<dl class="field-list simple">
+<dt class="field-odd">Default<span class="colon">:</span></dt>
+<dd class="field-odd"><p><code class="docutils literal notranslate"><span class="pre">'none'</span></code></p>
+</dd>
+<dt class="field-even">Options<span class="colon">:</span></dt>
+<dd class="field-even"><p>none | high | medium | low</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-psweep-compile-q">
+<span id="cmdoption-psweep-compile-quiet"></span><span class="sig-name descname"><span class="pre">-q</span></span><span class="sig-prename descclassname"></span><span class="sig-prename descclassname"><span class="pre">,</span> </span><span class="sig-name descname"><span class="pre">--quiet</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-psweep-compile-q" title="Link to this definition">¶</a></dt>
+<dd><p>Minimal output (machine-readable)</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-psweep-compile-v">
+<span id="cmdoption-psweep-compile-verbose"></span><span class="sig-name descname"><span class="pre">-v</span></span><span class="sig-prename descclassname"></span><span class="sig-prename descclassname"><span class="pre">,</span> </span><span class="sig-name descname"><span class="pre">--verbose</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-psweep-compile-v" title="Link to this definition">¶</a></dt>
+<dd><p>Detailed output with statistics</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-psweep-compile-debug">
+<span class="sig-name descname"><span class="pre">--debug</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-psweep-compile-debug" title="Link to this definition">¶</a></dt>
+<dd><p>Debug mode with full logs</p>
+</dd></dl>
+
+<p class="rubric">Arguments</p>
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-psweep-compile-arg-EXTRACTED_DIR">
+<span class="sig-name descname"><span class="pre">EXTRACTED_DIR</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-psweep-compile-arg-EXTRACTED_DIR" title="Link to this definition">¶</a></dt>
+<dd><p>Optional argument</p>
+</dd></dl>
+
+</section>
+</section>
+<section id="psweep-config">
+<h3>config<a class="headerlink" href="#psweep-config" title="Link to this heading">¶</a></h3>
+<p>Show current configuration.</p>
+<p>Displays environment settings, paths, and available schemas.</p>
+<div class="line-block">
+<div class="line">EXAMPLE:</div>
+<div class="line-block">
+<div class="line">psweep config</div>
+<div class="line">psweep config –show-runtime-catalog</div>
+</div>
+</div>
+<p class="rubric">Usage</p>
+<div class="highlight-shell notranslate"><div class="highlight"><pre><span></span>psweep<span class="w"> </span>config<span class="w"> </span><span class="o">[</span>OPTIONS<span class="o">]</span>
+</pre></div>
+</div>
+<p class="rubric">Options</p>
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-psweep-config-show-runtime-catalog">
+<span class="sig-name descname"><span class="pre">--show-runtime-catalog</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-psweep-config-show-runtime-catalog" title="Link to this definition">¶</a></dt>
+<dd><p>Display runtime variable catalog grouped by required/optional/advanced</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-psweep-config-format">
+<span class="sig-name descname"><span class="pre">--format</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;output_format&gt;</span></span><a class="headerlink" href="#cmdoption-psweep-config-format" title="Link to this definition">¶</a></dt>
+<dd><p>Output format for catalog rendering</p>
+<dl class="field-list simple">
+<dt class="field-odd">Default<span class="colon">:</span></dt>
+<dd class="field-odd"><p><code class="docutils literal notranslate"><span class="pre">'text'</span></code></p>
+</dd>
+<dt class="field-even">Options<span class="colon">:</span></dt>
+<dd class="field-even"><p>text | json</p>
+</dd>
+</dl>
+</dd></dl>
+
+</section>
+<section id="psweep-curate">
+<h3>curate<a class="headerlink" href="#psweep-curate" title="Link to this heading">¶</a></h3>
+<p>Rebuild a run’s curated/ set from human edits in review.csv.</p>
+<p class="rubric">Usage</p>
+<div class="highlight-shell notranslate"><div class="highlight"><pre><span></span>psweep<span class="w"> </span>curate<span class="w"> </span><span class="o">[</span>OPTIONS<span class="o">]</span><span class="w"> </span><span class="o">[</span>TARGET<span class="o">]</span>
+</pre></div>
+</div>
+<p class="rubric">Options</p>
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-psweep-curate-config">
+<span class="sig-name descname"><span class="pre">--config</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;config_path&gt;</span></span><a class="headerlink" href="#cmdoption-psweep-curate-config" title="Link to this definition">¶</a></dt>
+<dd><p>Path to runtime config file (.yaml/.yml/.json) — used to locate the domain’s latest run</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-psweep-curate-run">
+<span class="sig-name descname"><span class="pre">--run</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;run_dir_opt&gt;</span></span><a class="headerlink" href="#cmdoption-psweep-curate-run" title="Link to this definition">¶</a></dt>
+<dd><p>Path to a specific run directory (defaults to the domain’s latest/)</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-psweep-curate-quiet">
+<span class="sig-name descname"><span class="pre">--quiet</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-psweep-curate-quiet" title="Link to this definition">¶</a></dt>
+<dd><p>Minimal output</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-psweep-curate-verbose">
+<span class="sig-name descname"><span class="pre">--verbose</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-psweep-curate-verbose" title="Link to this definition">¶</a></dt>
+<dd><p>Detailed output</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-psweep-curate-debug">
+<span class="sig-name descname"><span class="pre">--debug</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-psweep-curate-debug" title="Link to this definition">¶</a></dt>
+<dd><p>Debug output with tracebacks</p>
+</dd></dl>
+
+<p class="rubric">Arguments</p>
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-psweep-curate-arg-TARGET">
+<span class="sig-name descname"><span class="pre">TARGET</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-psweep-curate-arg-TARGET" title="Link to this definition">¶</a></dt>
+<dd><p>Optional argument</p>
+</dd></dl>
+
+</section>
+<section id="psweep-discover">
+<h3>discover<a class="headerlink" href="#psweep-discover" title="Link to this heading">¶</a></h3>
+<p>Discover and download source documents from web targets.</p>
+<p>Searches for documents matching the configured queries, scores and filters
+candidates, then downloads accepted files to the discovery output directory.
+Supports seeding from a CSV of targets, direct seed URLs, or a SerpApi
+search query. Resumes from a checkpoint on subsequent runs; pass –fresh to
+re-run all targets from scratch.</p>
+<p>Run <code class="docutils literal notranslate"><span class="pre">psweep</span> <span class="pre">discover</span> <span class="pre">--help</span></code> for every option and its resolved default.</p>
+<section id="id1">
+<h4>Examples<a class="headerlink" href="#id1" title="Link to this heading">¶</a></h4>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">psweep</span> <span class="n">discover</span> <span class="o">--</span><span class="n">config</span> <span class="n">config</span><span class="o">/</span><span class="n">my_domain</span><span class="o">/</span><span class="n">my_domain</span><span class="o">.</span><span class="n">yaml</span>
+<span class="n">psweep</span> <span class="n">discover</span> <span class="o">--</span><span class="n">seed</span><span class="o">-</span><span class="n">url</span> <span class="n">https</span><span class="p">:</span><span class="o">//</span><span class="n">example</span><span class="o">.</span><span class="n">com</span><span class="o">/</span><span class="n">docs</span> <span class="o">--</span><span class="n">domain</span> <span class="n">my_domain</span>
+<span class="n">psweep</span> <span class="n">discover</span> <span class="o">--</span><span class="n">config</span> <span class="n">cfg</span><span class="o">.</span><span class="n">yaml</span> <span class="o">--</span><span class="n">dry</span><span class="o">-</span><span class="n">run</span> <span class="o">--</span><span class="n">verbose</span>
+</pre></div>
+</div>
+<p class="rubric">Usage</p>
+<div class="highlight-shell notranslate"><div class="highlight"><pre><span></span>psweep<span class="w"> </span>discover<span class="w"> </span><span class="o">[</span>OPTIONS<span class="o">]</span><span class="w"> </span><span class="o">[</span>TARGET<span class="o">]</span>
+</pre></div>
+</div>
+<p class="rubric">Options</p>
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-psweep-discover-config">
+<span class="sig-name descname"><span class="pre">--config</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;config_path&gt;</span></span><a class="headerlink" href="#cmdoption-psweep-discover-config" title="Link to this definition">¶</a></dt>
+<dd><p>Domain config file (RECOMMENDED — includes schema, page targeting, dedup)</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-psweep-discover-show-effective-config">
+<span class="sig-name descname"><span class="pre">--show-effective-config</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-psweep-discover-show-effective-config" title="Link to this definition">¶</a></dt>
+<dd><p>Print resolved command inputs with source attribution and continue</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-psweep-discover-validate-config">
+<span class="sig-name descname"><span class="pre">--validate-config</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-psweep-discover-validate-config" title="Link to this definition">¶</a></dt>
+<dd><p>Validate resolved command inputs and exit without running discovery</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-psweep-discover-config-strict">
+<span class="sig-name descname"><span class="pre">--config-strict</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-psweep-discover-config-strict" title="Link to this definition">¶</a></dt>
+<dd><p>Fail on unknown keys in runtime config sections</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-psweep-discover-domain">
+<span class="sig-name descname"><span class="pre">--domain</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;domain&gt;</span></span><a class="headerlink" href="#cmdoption-psweep-discover-domain" title="Link to this definition">¶</a></dt>
+<dd><p>Domain key for discovery output structure</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-psweep-discover-seed-url">
+<span class="sig-name descname"><span class="pre">--seed-url</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;seed_urls&gt;</span></span><a class="headerlink" href="#cmdoption-psweep-discover-seed-url" title="Link to this definition">¶</a></dt>
+<dd><p>Seed URL for discovery (repeatable)</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-psweep-discover-query">
+<span class="sig-name descname"><span class="pre">--query</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;query&gt;</span></span><a class="headerlink" href="#cmdoption-psweep-discover-query" title="Link to this definition">¶</a></dt>
+<dd><p>Discovery query hint for seeker stage</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-psweep-discover-state">
+<span class="sig-name descname"><span class="pre">--state</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;state&gt;</span></span><a class="headerlink" href="#cmdoption-psweep-discover-state" title="Link to this definition">¶</a></dt>
+<dd><p>Optional state hint used for jurisdiction-based output organization (for example: CA, Colorado)</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-psweep-discover-jurisdiction">
+<span class="sig-name descname"><span class="pre">--jurisdiction</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;jurisdiction&gt;</span></span><a class="headerlink" href="#cmdoption-psweep-discover-jurisdiction" title="Link to this definition">¶</a></dt>
+<dd><p>Optional jurisdiction hint used for output organization (for example: Imperial County)</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-psweep-discover-partition-mode">
+<span class="sig-name descname"><span class="pre">--partition-mode</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;partition_mode&gt;</span></span><a class="headerlink" href="#cmdoption-psweep-discover-partition-mode" title="Link to this definition">¶</a></dt>
+<dd><p>Download organization mode: auto prefers jurisdiction when available, else host</p>
+<dl class="field-list simple">
+<dt class="field-odd">Default<span class="colon">:</span></dt>
+<dd class="field-odd"><p><code class="docutils literal notranslate"><span class="pre">'auto'</span></code></p>
+</dd>
+<dt class="field-even">Options<span class="colon">:</span></dt>
+<dd class="field-even"><p>auto | jurisdiction | host</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-psweep-discover-digger-provider">
+<span class="sig-name descname"><span class="pre">--digger-provider</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;digger_provider&gt;</span></span><a class="headerlink" href="#cmdoption-psweep-discover-digger-provider" title="Link to this definition">¶</a></dt>
+<dd><p>Digger provider (for example: seed_only, http, crawlee_playwright)</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-psweep-discover-enable-serpapi">
+<span id="cmdoption-psweep-discover-disable-serpapi"></span><span class="sig-name descname"><span class="pre">--enable-serpapi</span></span><span class="sig-prename descclassname"></span><span class="sig-prename descclassname"><span class="pre">,</span> </span><span class="sig-name descname"><span class="pre">--disable-serpapi</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-psweep-discover-enable-serpapi" title="Link to this definition">¶</a></dt>
+<dd><p>Enable optional SerpApi seeker provider</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-psweep-discover-max-concurrent-downloads">
+<span class="sig-name descname"><span class="pre">--max-concurrent-downloads</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;max_concurrent_downloads&gt;</span></span><a class="headerlink" href="#cmdoption-psweep-discover-max-concurrent-downloads" title="Link to this definition">¶</a></dt>
+<dd><p>Maximum parallel downloads during discover runs</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-psweep-discover-min-request-interval-ms">
+<span class="sig-name descname"><span class="pre">--min-request-interval-ms</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;min_request_interval_ms&gt;</span></span><a class="headerlink" href="#cmdoption-psweep-discover-min-request-interval-ms" title="Link to this definition">¶</a></dt>
+<dd><p>Minimum delay between outbound discovery requests in milliseconds</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-psweep-discover-robots-policy-mode">
+<span class="sig-name descname"><span class="pre">--robots-policy-mode</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;robots_policy_mode&gt;</span></span><a class="headerlink" href="#cmdoption-psweep-discover-robots-policy-mode" title="Link to this definition">¶</a></dt>
+<dd><p>Robots policy mode for target-site requests</p>
+<dl class="field-list simple">
+<dt class="field-odd">Default<span class="colon">:</span></dt>
+<dd class="field-odd"><p><code class="docutils literal notranslate"><span class="pre">'warn'</span></code></p>
+</dd>
+<dt class="field-even">Options<span class="colon">:</span></dt>
+<dd class="field-even"><p>ignore | warn | enforce</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-psweep-discover-tos-policy-mode">
+<span class="sig-name descname"><span class="pre">--tos-policy-mode</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;tos_policy_mode&gt;</span></span><a class="headerlink" href="#cmdoption-psweep-discover-tos-policy-mode" title="Link to this definition">¶</a></dt>
+<dd><p>Terms acknowledgement mode for target-site requests</p>
+<dl class="field-list simple">
+<dt class="field-odd">Default<span class="colon">:</span></dt>
+<dd class="field-odd"><p><code class="docutils literal notranslate"><span class="pre">'warn'</span></code></p>
+</dd>
+<dt class="field-even">Options<span class="colon">:</span></dt>
+<dd class="field-even"><p>ignore | warn | enforce</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-psweep-discover-acknowledge-tos-domain">
+<span class="sig-name descname"><span class="pre">--acknowledge-tos-domain</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;acknowledged_tos_domains&gt;</span></span><a class="headerlink" href="#cmdoption-psweep-discover-acknowledge-tos-domain" title="Link to this definition">¶</a></dt>
+<dd><p>Host or parent domain acknowledged for target-site terms checks (repeatable)</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-psweep-discover-output-documents">
+<span class="sig-name descname"><span class="pre">--output-documents</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;output_documents&gt;</span></span><a class="headerlink" href="#cmdoption-psweep-discover-output-documents" title="Link to this definition">¶</a></dt>
+<dd><p>Directory for discovered documents (defaults to run-scoped deterministic path)</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-psweep-discover-output-manifest">
+<span class="sig-name descname"><span class="pre">--output-manifest</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;output_manifest&gt;</span></span><a class="headerlink" href="#cmdoption-psweep-discover-output-manifest" title="Link to this definition">¶</a></dt>
+<dd><p>Path to discovery manifest JSON (defaults to run-scoped deterministic path)</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-psweep-discover-dry-run">
+<span class="sig-name descname"><span class="pre">--dry-run</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-psweep-discover-dry-run" title="Link to this definition">¶</a></dt>
+<dd><p>Discover and emit manifest scaffold without downloads</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-psweep-discover-fresh">
+<span class="sig-name descname"><span class="pre">--fresh</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-psweep-discover-fresh" title="Link to this definition">¶</a></dt>
+<dd><p>Refresh all targets (default: skip targets completed in a previous run) and ignore the checkpoint to refresh the search cache</p>
+<dl class="field-list simple">
+<dt class="field-odd">Default<span class="colon">:</span></dt>
+<dd class="field-odd"><p><code class="docutils literal notranslate"><span class="pre">False</span></code></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-psweep-discover-q">
+<span id="cmdoption-psweep-discover-quiet"></span><span class="sig-name descname"><span class="pre">-q</span></span><span class="sig-prename descclassname"></span><span class="sig-prename descclassname"><span class="pre">,</span> </span><span class="sig-name descname"><span class="pre">--quiet</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-psweep-discover-q" title="Link to this definition">¶</a></dt>
+<dd><p>Minimal output</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-psweep-discover-v">
+<span id="cmdoption-psweep-discover-verbose"></span><span class="sig-name descname"><span class="pre">-v</span></span><span class="sig-prename descclassname"></span><span class="sig-prename descclassname"><span class="pre">,</span> </span><span class="sig-name descname"><span class="pre">--verbose</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-psweep-discover-v" title="Link to this definition">¶</a></dt>
+<dd><p>Detailed output</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-psweep-discover-debug">
+<span class="sig-name descname"><span class="pre">--debug</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-psweep-discover-debug" title="Link to this definition">¶</a></dt>
+<dd><p>Debug output with diagnostic context</p>
+</dd></dl>
+
+<p class="rubric">Arguments</p>
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-psweep-discover-arg-TARGET">
+<span class="sig-name descname"><span class="pre">TARGET</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-psweep-discover-arg-TARGET" title="Link to this definition">¶</a></dt>
+<dd><p>Optional argument</p>
+</dd></dl>
+
+</section>
+</section>
+<section id="psweep-estimate">
+<h3>estimate<a class="headerlink" href="#psweep-estimate" title="Link to this heading">¶</a></h3>
+<p>Estimate cost and time for batch document extraction.</p>
+<p>Analyzes all documents in a directory and provides detailed
+cost and time estimates before you commit to processing.</p>
+<div class="line-block">
+<div class="line">EXAMPLES:</div>
+<div class="line-block">
+<div class="line">psweep estimate documents/tariffs/</div>
+<div class="line">psweep estimate documents/permits/ –workers 8</div>
+<div class="line">psweep estimate documents/tariffs/ –pages-csv config/tariffs/page_ranges.csv</div>
+</div>
+</div>
+<p class="rubric">Usage</p>
+<div class="highlight-shell notranslate"><div class="highlight"><pre><span></span>psweep<span class="w"> </span>estimate<span class="w"> </span><span class="o">[</span>OPTIONS<span class="o">]</span><span class="w"> </span>DOCUMENTS_PATH
+</pre></div>
+</div>
+<p class="rubric">Options</p>
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-psweep-estimate-w">
+<span id="cmdoption-psweep-estimate-workers"></span><span class="sig-name descname"><span class="pre">-w</span></span><span class="sig-prename descclassname"></span><span class="sig-prename descclassname"><span class="pre">,</span> </span><span class="sig-name descname"><span class="pre">--workers</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;workers&gt;</span></span><a class="headerlink" href="#cmdoption-psweep-estimate-w" title="Link to this definition">¶</a></dt>
+<dd><p>Number of parallel workers</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-psweep-estimate-pages-csv">
+<span class="sig-name descname"><span class="pre">--pages-csv</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;pages_csv&gt;</span></span><a class="headerlink" href="#cmdoption-psweep-estimate-pages-csv" title="Link to this definition">¶</a></dt>
+<dd><p>CSV file mapping documents to page ranges</p>
+</dd></dl>
+
+<p class="rubric">Arguments</p>
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-psweep-estimate-arg-DOCUMENTS_PATH">
+<span class="sig-name descname"><span class="pre">DOCUMENTS_PATH</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-psweep-estimate-arg-DOCUMENTS_PATH" title="Link to this definition">¶</a></dt>
+<dd><p>Required argument</p>
+</dd></dl>
+
+</section>
+<section id="psweep-extract">
+<h3>extract<a class="headerlink" href="#psweep-extract" title="Link to this heading">¶</a></h3>
+<p>Extract structured data from documents using an LLM.</p>
+<p>Reads PDF, DOCX, TXT, and XLSX files from PATH (or the configured
+input_dir) and writes one JSON file per document to the output directory.
+Already-processed files are skipped by default; pass –fresh to re-extract
+everything. Output defaults to <code class="docutils literal notranslate"><span class="pre">extracted/&lt;domain&gt;/</span></code> when –output is
+omitted; run <code class="docutils literal notranslate"><span class="pre">psweep</span> <span class="pre">extract</span> <span class="pre">--help</span></code> for every option and its default.</p>
+<section id="id2">
+<h4>Examples<a class="headerlink" href="#id2" title="Link to this heading">¶</a></h4>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">psweep</span> <span class="n">extract</span> <span class="n">docs</span><span class="o">/</span> <span class="o">--</span><span class="n">schema</span> <span class="n">schemas</span><span class="o">/</span><span class="n">my_schema</span><span class="o">.</span><span class="n">json</span>
+<span class="n">psweep</span> <span class="n">extract</span> <span class="o">--</span><span class="n">config</span> <span class="n">config</span><span class="o">/</span><span class="n">my_domain</span><span class="o">/</span><span class="n">my_domain</span><span class="o">.</span><span class="n">yaml</span> <span class="o">--</span><span class="n">fresh</span>
+<span class="n">psweep</span> <span class="n">extract</span> <span class="n">docs</span><span class="o">/</span> <span class="o">--</span><span class="n">schema</span> <span class="n">s</span><span class="o">.</span><span class="n">json</span> <span class="o">--</span><span class="n">model</span> <span class="n">gpt</span><span class="o">-</span><span class="mi">4</span><span class="n">o</span> <span class="o">--</span><span class="n">provider</span> <span class="n">azure</span>
+</pre></div>
+</div>
+<p class="rubric">Usage</p>
+<div class="highlight-shell notranslate"><div class="highlight"><pre><span></span>psweep<span class="w"> </span>extract<span class="w"> </span><span class="o">[</span>OPTIONS<span class="o">]</span><span class="w"> </span><span class="o">[</span>PATH<span class="o">]</span>
+</pre></div>
+</div>
+<p class="rubric">Options</p>
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-psweep-extract-config">
+<span class="sig-name descname"><span class="pre">--config</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;config_path&gt;</span></span><a class="headerlink" href="#cmdoption-psweep-extract-config" title="Link to this definition">¶</a></dt>
+<dd><p>Domain config file (RECOMMENDED — includes schema, page targeting, dedup)</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-psweep-extract-show-effective-config">
+<span class="sig-name descname"><span class="pre">--show-effective-config</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-psweep-extract-show-effective-config" title="Link to this definition">¶</a></dt>
+<dd><p>Print resolved command inputs with source attribution and continue</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-psweep-extract-validate-config">
+<span class="sig-name descname"><span class="pre">--validate-config</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-psweep-extract-validate-config" title="Link to this definition">¶</a></dt>
+<dd><p>Validate resolved command inputs and exit without extracting</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-psweep-extract-config-strict">
+<span class="sig-name descname"><span class="pre">--config-strict</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-psweep-extract-config-strict" title="Link to this definition">¶</a></dt>
+<dd><p>Fail on unknown keys in runtime config sections</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-psweep-extract-o">
+<span id="cmdoption-psweep-extract-output"></span><span class="sig-name descname"><span class="pre">-o</span></span><span class="sig-prename descclassname"></span><span class="sig-prename descclassname"><span class="pre">,</span> </span><span class="sig-name descname"><span class="pre">--output</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;output&gt;</span></span><a class="headerlink" href="#cmdoption-psweep-extract-o" title="Link to this definition">¶</a></dt>
+<dd><p>Output directory (auto-detected if not specified)</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-psweep-extract-s">
+<span id="cmdoption-psweep-extract-schema"></span><span class="sig-name descname"><span class="pre">-s</span></span><span class="sig-prename descclassname"></span><span class="sig-prename descclassname"><span class="pre">,</span> </span><span class="sig-name descname"><span class="pre">--schema</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;schema&gt;</span></span><a class="headerlink" href="#cmdoption-psweep-extract-s" title="Link to this definition">¶</a></dt>
+<dd><p>Schema file (for quick testing without a config YAML)</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-psweep-extract-category">
+<span class="sig-name descname"><span class="pre">--category</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;category&gt;</span></span><a class="headerlink" href="#cmdoption-psweep-extract-category" title="Link to this definition">¶</a></dt>
+<dd><p>Category name (auto-detected from path if not specified)</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-psweep-extract-model">
+<span class="sig-name descname"><span class="pre">--model</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;model&gt;</span></span><a class="headerlink" href="#cmdoption-psweep-extract-model" title="Link to this definition">¶</a></dt>
+<dd><p>LLM model name, or an alias defined in the run.yaml models: block. For Azure, use your deployment name (e.g. gpt-4o).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Default<span class="colon">:</span></dt>
+<dd class="field-odd"><p><code class="docutils literal notranslate"><span class="pre">'gpt-4o-mini'</span></code></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-psweep-extract-provider">
+<span class="sig-name descname"><span class="pre">--provider</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;provider&gt;</span></span><a class="headerlink" href="#cmdoption-psweep-extract-provider" title="Link to this definition">¶</a></dt>
+<dd><p>LLM provider (auto-detects from .env)</p>
+<dl class="field-list simple">
+<dt class="field-odd">Default<span class="colon">:</span></dt>
+<dd class="field-odd"><p><code class="docutils literal notranslate"><span class="pre">'auto'</span></code></p>
+</dd>
+<dt class="field-even">Options<span class="colon">:</span></dt>
+<dd class="field-even"><p>openai | azure | anthropic | gemini | auto</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-psweep-extract-profile">
+<span class="sig-name descname"><span class="pre">--profile</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;profile_name&gt;</span></span><a class="headerlink" href="#cmdoption-psweep-extract-profile" title="Link to this definition">¶</a></dt>
+<dd><p>Runtime profile to compile into artifact lineage (for example: default, dev, staging, prod)</p>
+<dl class="field-list simple">
+<dt class="field-odd">Default<span class="colon">:</span></dt>
+<dd class="field-odd"><p><code class="docutils literal notranslate"><span class="pre">'default'</span></code></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-psweep-extract-n">
+<span id="cmdoption-psweep-extract-limit"></span><span class="sig-name descname"><span class="pre">-n</span></span><span class="sig-prename descclassname"></span><span class="sig-prename descclassname"><span class="pre">,</span> </span><span class="sig-name descname"><span class="pre">--limit</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;limit&gt;</span></span><a class="headerlink" href="#cmdoption-psweep-extract-n" title="Link to this definition">¶</a></dt>
+<dd><p>Process only first N files</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-psweep-extract-fresh">
+<span class="sig-name descname"><span class="pre">--fresh</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-psweep-extract-fresh" title="Link to this definition">¶</a></dt>
+<dd><p>Re-extract all files (default: skip files already processed)</p>
+<dl class="field-list simple">
+<dt class="field-odd">Default<span class="colon">:</span></dt>
+<dd class="field-odd"><p><code class="docutils literal notranslate"><span class="pre">False</span></code></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-psweep-extract-max-context">
+<span class="sig-name descname"><span class="pre">--max-context</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;max_context&gt;</span></span><a class="headerlink" href="#cmdoption-psweep-extract-max-context" title="Link to this definition">¶</a></dt>
+<dd><p>Max document characters to process</p>
+<dl class="field-list simple">
+<dt class="field-odd">Default<span class="colon">:</span></dt>
+<dd class="field-odd"><p><code class="docutils literal notranslate"><span class="pre">600000</span></code></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-psweep-extract-q">
+<span id="cmdoption-psweep-extract-quiet"></span><span class="sig-name descname"><span class="pre">-q</span></span><span class="sig-prename descclassname"></span><span class="sig-prename descclassname"><span class="pre">,</span> </span><span class="sig-name descname"><span class="pre">--quiet</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-psweep-extract-q" title="Link to this definition">¶</a></dt>
+<dd><p>Minimal output (machine-readable)</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-psweep-extract-v">
+<span id="cmdoption-psweep-extract-verbose"></span><span class="sig-name descname"><span class="pre">-v</span></span><span class="sig-prename descclassname"></span><span class="sig-prename descclassname"><span class="pre">,</span> </span><span class="sig-name descname"><span class="pre">--verbose</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-psweep-extract-v" title="Link to this definition">¶</a></dt>
+<dd><p>Detailed output with statistics</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-psweep-extract-debug">
+<span class="sig-name descname"><span class="pre">--debug</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-psweep-extract-debug" title="Link to this definition">¶</a></dt>
+<dd><p>Debug mode with full logs</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-psweep-extract-live-dashboard">
+<span class="sig-name descname"><span class="pre">--live-dashboard</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-psweep-extract-live-dashboard" title="Link to this definition">¶</a></dt>
+<dd><p>Show live dashboard during extraction</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-psweep-extract-pages">
+<span class="sig-name descname"><span class="pre">--pages</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;pages&gt;</span></span><a class="headerlink" href="#cmdoption-psweep-extract-pages" title="Link to this definition">¶</a></dt>
+<dd><p>Page range to extract (e.g., “615-759”). Only for single PDF files.</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-psweep-extract-pages-csv">
+<span class="sig-name descname"><span class="pre">--pages-csv</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;pages_csv&gt;</span></span><a class="headerlink" href="#cmdoption-psweep-extract-pages-csv" title="Link to this definition">¶</a></dt>
+<dd><p>CSV file mapping documents to page ranges</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-psweep-extract-from-index">
+<span class="sig-name descname"><span class="pre">--from-index</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;from_index&gt;</span></span><a class="headerlink" href="#cmdoption-psweep-extract-from-index" title="Link to this definition">¶</a></dt>
+<dd><p>Load discovered files from a download_index.csv (bypasses PATH argument)</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-psweep-extract-filter">
+<span class="sig-name descname"><span class="pre">--filter</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;index_filters&gt;</span></span><a class="headerlink" href="#cmdoption-psweep-extract-filter" title="Link to this definition">¶</a></dt>
+<dd><p>With –from-index: keep only rows where COLUMN matches VALUE (format: column=value; repeatable; matches any download_index.csv column)</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-psweep-extract-filter-state">
+<span class="sig-name descname"><span class="pre">--filter-state</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;filter_state&gt;</span></span><a class="headerlink" href="#cmdoption-psweep-extract-filter-state" title="Link to this definition">¶</a></dt>
+<dd><p>Back-compat alias for –filter source_state=VALUE</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-psweep-extract-filter-jurisdiction">
+<span class="sig-name descname"><span class="pre">--filter-jurisdiction</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;filter_jurisdiction&gt;</span></span><a class="headerlink" href="#cmdoption-psweep-extract-filter-jurisdiction" title="Link to this definition">¶</a></dt>
+<dd><p>Back-compat alias for –filter source_jurisdiction=VALUE</p>
+</dd></dl>
+
+<p class="rubric">Arguments</p>
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-psweep-extract-arg-PATH">
+<span class="sig-name descname"><span class="pre">PATH</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-psweep-extract-arg-PATH" title="Link to this definition">¶</a></dt>
+<dd><p>Optional argument</p>
+</dd></dl>
+
+</section>
+</section>
+<section id="psweep-init">
+<h3>init<a class="headerlink" href="#psweep-init" title="Link to this heading">¶</a></h3>
+<p>Interactive project setup wizard.</p>
+<p>Guides you through setting up your ParseSweep project including:
+- API credentials configuration
+- Document type selection
+- Schema selection
+- Directory structure creation</p>
+<div class="line-block">
+<div class="line">EXAMPLE:</div>
+<div class="line-block">
+<div class="line">psweep init</div>
+</div>
+</div>
+<p class="rubric">Usage</p>
+<div class="highlight-shell notranslate"><div class="highlight"><pre><span></span>psweep<span class="w"> </span>init<span class="w"> </span><span class="o">[</span>OPTIONS<span class="o">]</span>
+</pre></div>
+</div>
+</section>
+<section id="psweep-init-domain-schema">
+<h3>init-domain-schema<a class="headerlink" href="#psweep-init-domain-schema" title="Link to this heading">¶</a></h3>
+<p>Create a lean starter schema for a new domain.</p>
+<p>This command is the documents-first entry point for greenfield onboarding.
+It derives a compact starter schema from the closest existing reference schema,
+preserving only the minimal extraction contract and core row shape needed for
+the first smoke extraction pass.</p>
+<p class="rubric">Usage</p>
+<div class="highlight-shell notranslate"><div class="highlight"><pre><span></span>psweep<span class="w"> </span>init-domain-schema<span class="w"> </span><span class="o">[</span>OPTIONS<span class="o">]</span>
+</pre></div>
+</div>
+<p class="rubric">Options</p>
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-psweep-init-domain-schema-interactive">
+<span class="sig-name descname"><span class="pre">--interactive</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-psweep-init-domain-schema-interactive" title="Link to this definition">¶</a></dt>
+<dd><p>Prompt for missing starter-schema values</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-psweep-init-domain-schema-name">
+<span class="sig-name descname"><span class="pre">--name</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;schema_name&gt;</span></span><a class="headerlink" href="#cmdoption-psweep-init-domain-schema-name" title="Link to this definition">¶</a></dt>
+<dd><p>Base schema name (used for the output file)</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-psweep-init-domain-schema-reference-schema">
+<span class="sig-name descname"><span class="pre">--reference-schema</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;reference_schema&gt;</span></span><a class="headerlink" href="#cmdoption-psweep-init-domain-schema-reference-schema" title="Link to this definition">¶</a></dt>
+<dd><p>Existing schema file used as the closest reference for a lean starter</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-psweep-init-domain-schema-domain">
+<span class="sig-name descname"><span class="pre">--domain</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;domain_name&gt;</span></span><a class="headerlink" href="#cmdoption-psweep-init-domain-schema-domain" title="Link to this definition">¶</a></dt>
+<dd><p>Override the metadata domain label</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-psweep-init-domain-schema-document-type">
+<span class="sig-name descname"><span class="pre">--document-type</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;document_type&gt;</span></span><a class="headerlink" href="#cmdoption-psweep-init-domain-schema-document-type" title="Link to this definition">¶</a></dt>
+<dd><p>Override the human-readable document type</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-psweep-init-domain-schema-include-field">
+<span class="sig-name descname"><span class="pre">--include-field</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;include_fields&gt;</span></span><a class="headerlink" href="#cmdoption-psweep-init-domain-schema-include-field" title="Link to this definition">¶</a></dt>
+<dd><p>Limit the starter schema to these main-array item fields; repeat the option to keep multiple fields</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-psweep-init-domain-schema-output">
+<span class="sig-name descname"><span class="pre">--output</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;output&gt;</span></span><a class="headerlink" href="#cmdoption-psweep-init-domain-schema-output" title="Link to this definition">¶</a></dt>
+<dd><p>Output schema path (defaults to schemas/personal/&lt;name&gt;_schema.json)</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-psweep-init-domain-schema-force">
+<span class="sig-name descname"><span class="pre">--force</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-psweep-init-domain-schema-force" title="Link to this definition">¶</a></dt>
+<dd><p>Overwrite an existing schema file if it already exists</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-psweep-init-domain-schema-report-format">
+<span class="sig-name descname"><span class="pre">--report-format</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;report_format&gt;</span></span><a class="headerlink" href="#cmdoption-psweep-init-domain-schema-report-format" title="Link to this definition">¶</a></dt>
+<dd><p>Output format for scaffold results</p>
+<dl class="field-list simple">
+<dt class="field-odd">Default<span class="colon">:</span></dt>
+<dd class="field-odd"><p><code class="docutils literal notranslate"><span class="pre">'text'</span></code></p>
+</dd>
+<dt class="field-even">Options<span class="colon">:</span></dt>
+<dd class="field-even"><p>text | json</p>
+</dd>
+</dl>
+</dd></dl>
+
+</section>
+<section id="psweep-preview">
+<h3>preview<a class="headerlink" href="#psweep-preview" title="Link to this heading">¶</a></h3>
+<p>Preview a document before extraction.</p>
+<p>Shows document information, estimated costs, and sample content
+without performing the full extraction.</p>
+<div class="line-block">
+<div class="line">EXAMPLES:</div>
+<div class="line-block">
+<div class="line">psweep preview documents/sample.pdf</div>
+<div class="line">psweep preview documents/tariffs/rate_schedule.docx</div>
+</div>
+</div>
+<p class="rubric">Usage</p>
+<div class="highlight-shell notranslate"><div class="highlight"><pre><span></span>psweep<span class="w"> </span>preview<span class="w"> </span><span class="o">[</span>OPTIONS<span class="o">]</span><span class="w"> </span>DOCUMENT_PATH
+</pre></div>
+</div>
+<p class="rubric">Arguments</p>
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-psweep-preview-arg-DOCUMENT_PATH">
+<span class="sig-name descname"><span class="pre">DOCUMENT_PATH</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-psweep-preview-arg-DOCUMENT_PATH" title="Link to this definition">¶</a></dt>
+<dd><p>Required argument</p>
+</dd></dl>
+
+</section>
+<section id="psweep-run">
+<h3>run<a class="headerlink" href="#psweep-run" title="Link to this heading">¶</a></h3>
+<p>Run the full pipeline: discover → extract → validate (optional) → compile.</p>
+<p>Shows what will be reused from previous runs and what is new, then
+asks for confirmation before proceeding. Use [cyan]–fresh[/cyan] to
+ignore all previous work and start fresh.</p>
+<dl class="simple">
+<dt>[bold]Usage:[/bold]</dt><dd><p>psweep run –config config/my_domain/my_domain.yaml</p>
+</dd>
+<dt>[bold]Adding new targets:[/bold]</dt><dd><ol class="arabic simple">
+<li><p>Add rows to config/&lt;domain&gt;/targets.csv</p></li>
+<li><p>Run: psweep run –config config/&lt;domain&gt;/&lt;domain&gt;.yaml</p></li>
+<li><p>Only new targets are processed; previous results are preserved.</p></li>
+</ol>
+</dd>
+</dl>
+<p class="rubric">Usage</p>
+<div class="highlight-shell notranslate"><div class="highlight"><pre><span></span>psweep<span class="w"> </span>run<span class="w"> </span><span class="o">[</span>OPTIONS<span class="o">]</span>
+</pre></div>
+</div>
+<p class="rubric">Options</p>
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-psweep-run-config">
+<span class="sig-name descname"><span class="pre">--config</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;config_path&gt;</span></span><a class="headerlink" href="#cmdoption-psweep-run-config" title="Link to this definition">¶</a></dt>
+<dd><p><strong>Required</strong> Path to the domain run config file (e.g. config/&lt;domain&gt;/&lt;domain&gt;.yaml).</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-psweep-run-fresh">
+<span class="sig-name descname"><span class="pre">--fresh</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-psweep-run-fresh" title="Link to this definition">¶</a></dt>
+<dd><p>Ignore all previous work and start fresh — re-run every discovery target (ignoring the checkpoint and search cache) and re-extract every document.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Default<span class="colon">:</span></dt>
+<dd class="field-odd"><p><code class="docutils literal notranslate"><span class="pre">False</span></code></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-psweep-run-skip-discover">
+<span class="sig-name descname"><span class="pre">--skip-discover</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-psweep-run-skip-discover" title="Link to this definition">¶</a></dt>
+<dd><p>Skip discovery (use existing curated docs).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Default<span class="colon">:</span></dt>
+<dd class="field-odd"><p><code class="docutils literal notranslate"><span class="pre">False</span></code></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-psweep-run-skip-extract">
+<span class="sig-name descname"><span class="pre">--skip-extract</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-psweep-run-skip-extract" title="Link to this definition">¶</a></dt>
+<dd><p>Skip extraction (compile from existing JSON).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Default<span class="colon">:</span></dt>
+<dd class="field-odd"><p><code class="docutils literal notranslate"><span class="pre">False</span></code></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-psweep-run-y">
+<span id="cmdoption-psweep-run-yes"></span><span class="sig-name descname"><span class="pre">-y</span></span><span class="sig-prename descclassname"></span><span class="sig-prename descclassname"><span class="pre">,</span> </span><span class="sig-name descname"><span class="pre">--yes</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-psweep-run-y" title="Link to this definition">¶</a></dt>
+<dd><p>Skip confirmation prompt.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Default<span class="colon">:</span></dt>
+<dd class="field-odd"><p><code class="docutils literal notranslate"><span class="pre">False</span></code></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-psweep-run-q">
+<span id="cmdoption-psweep-run-quiet"></span><span class="sig-name descname"><span class="pre">-q</span></span><span class="sig-prename descclassname"></span><span class="sig-prename descclassname"><span class="pre">,</span> </span><span class="sig-name descname"><span class="pre">--quiet</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-psweep-run-q" title="Link to this definition">¶</a></dt>
+<dd><p>Minimal output.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Default<span class="colon">:</span></dt>
+<dd class="field-odd"><p><code class="docutils literal notranslate"><span class="pre">False</span></code></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-psweep-run-v">
+<span id="cmdoption-psweep-run-verbose"></span><span class="sig-name descname"><span class="pre">-v</span></span><span class="sig-prename descclassname"></span><span class="sig-prename descclassname"><span class="pre">,</span> </span><span class="sig-name descname"><span class="pre">--verbose</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-psweep-run-v" title="Link to this definition">¶</a></dt>
+<dd><p>Detailed output.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Default<span class="colon">:</span></dt>
+<dd class="field-odd"><p><code class="docutils literal notranslate"><span class="pre">False</span></code></p>
+</dd>
+</dl>
+</dd></dl>
+
+</section>
+<section id="psweep-validate">
+<h3>validate<a class="headerlink" href="#psweep-validate" title="Link to this heading">¶</a></h3>
+<p>Run explicit QA/QC validation: multi-model extraction + comparison.</p>
+<p class="rubric">Usage</p>
+<div class="highlight-shell notranslate"><div class="highlight"><pre><span></span>psweep<span class="w"> </span>validate<span class="w"> </span><span class="o">[</span>OPTIONS<span class="o">]</span>
+</pre></div>
+</div>
+<p class="rubric">Options</p>
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-psweep-validate-config">
+<span class="sig-name descname"><span class="pre">--config</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;config_path&gt;</span></span><a class="headerlink" href="#cmdoption-psweep-validate-config" title="Link to this definition">¶</a></dt>
+<dd><p><strong>Required</strong> Domain run config file with extraction + validation sections.</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-psweep-validate-n">
+<span id="cmdoption-psweep-validate-limit"></span><span class="sig-name descname"><span class="pre">-n</span></span><span class="sig-prename descclassname"></span><span class="sig-prename descclassname"><span class="pre">,</span> </span><span class="sig-name descname"><span class="pre">--limit</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;limit&gt;</span></span><a class="headerlink" href="#cmdoption-psweep-validate-n" title="Link to this definition">¶</a></dt>
+<dd><p>Process only first N documents</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-psweep-validate-compare-only">
+<span class="sig-name descname"><span class="pre">--compare-only</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-psweep-validate-compare-only" title="Link to this definition">¶</a></dt>
+<dd><p>Skip QA/QC extraction and only regenerate comparison reports from existing validation outputs.</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-psweep-validate-fresh">
+<span class="sig-name descname"><span class="pre">--fresh</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-psweep-validate-fresh" title="Link to this definition">¶</a></dt>
+<dd><p>Re-extract all files (default: skip files already processed)</p>
+<dl class="field-list simple">
+<dt class="field-odd">Default<span class="colon">:</span></dt>
+<dd class="field-odd"><p><code class="docutils literal notranslate"><span class="pre">False</span></code></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-psweep-validate-q">
+<span id="cmdoption-psweep-validate-quiet"></span><span class="sig-name descname"><span class="pre">-q</span></span><span class="sig-prename descclassname"></span><span class="sig-prename descclassname"><span class="pre">,</span> </span><span class="sig-name descname"><span class="pre">--quiet</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-psweep-validate-q" title="Link to this definition">¶</a></dt>
+<dd><p>Minimal output</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-psweep-validate-v">
+<span id="cmdoption-psweep-validate-verbose"></span><span class="sig-name descname"><span class="pre">-v</span></span><span class="sig-prename descclassname"></span><span class="sig-prename descclassname"><span class="pre">,</span> </span><span class="sig-name descname"><span class="pre">--verbose</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-psweep-validate-v" title="Link to this definition">¶</a></dt>
+<dd><p>Detailed output</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-psweep-validate-debug">
+<span class="sig-name descname"><span class="pre">--debug</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-psweep-validate-debug" title="Link to this definition">¶</a></dt>
+<dd><p>Debug mode with full logs</p>
+</dd></dl>
+
+</section>
+</section>
+</section>
+
+        </article>
+      </div>
+      <footer>
+        
+        <div class="related-pages">
+          <a class="next-page" href="../config-reference.html">
+              <div class="page-info">
+                <div class="context">
+                  <span>Next</span>
+                </div>
+                <div class="title">Configuration Reference</div>
+              </div>
+              <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
+            </a>
+          <a class="prev-page" href="../getting-started.html">
+              <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
+              <div class="page-info">
+                <div class="context">
+                  <span>Previous</span>
+                </div>
+                
+                <div class="title">Getting Started</div>
+                
+              </div>
+            </a>
+        </div>
+        <div class="bottom-of-page">
+          <div class="left-details">
+            <div class="copyright">
+                Copyright &#169; 2026, Byron Pullutasig
+            </div>
+            Made with <a href="https://www.sphinx-doc.org/">Sphinx</a> and <a class="muted-link" href="https://pradyunsg.me">@pradyunsg</a>'s
+            
+            <a href="https://github.com/pradyunsg/furo">Furo</a>
+            
+          </div>
+          <div class="right-details">
+            
+          </div>
+        </div>
+        
+      </footer>
+    </div>
+    <aside class="toc-drawer">
+      
+      
+      <div class="toc-sticky toc-scroll">
+        <div class="toc-title-container">
+          <span class="toc-title">
+            On this page
+          </span>
+        </div>
+        <div class="toc-tree-container">
+          <div class="toc-tree">
+            <ul>
+<li><a class="reference internal" href="#">Command Reference</a><ul>
+<li><a class="reference internal" href="#psweep">psweep</a><ul>
+<li><a class="reference internal" href="#psweep-benchmark">benchmark</a></li>
+<li><a class="reference internal" href="#psweep-check">check</a></li>
+<li><a class="reference internal" href="#psweep-check-schema">check-schema</a></li>
+<li><a class="reference internal" href="#psweep-compile">compile</a><ul>
+<li><a class="reference internal" href="#examples">Examples</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#psweep-config">config</a></li>
+<li><a class="reference internal" href="#psweep-curate">curate</a></li>
+<li><a class="reference internal" href="#psweep-discover">discover</a><ul>
+<li><a class="reference internal" href="#id1">Examples</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#psweep-estimate">estimate</a></li>
+<li><a class="reference internal" href="#psweep-extract">extract</a><ul>
+<li><a class="reference internal" href="#id2">Examples</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#psweep-init">init</a></li>
+<li><a class="reference internal" href="#psweep-init-domain-schema">init-domain-schema</a></li>
+<li><a class="reference internal" href="#psweep-preview">preview</a></li>
+<li><a class="reference internal" href="#psweep-run">run</a></li>
+<li><a class="reference internal" href="#psweep-validate">validate</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+
+          </div>
+        </div>
+      </div>
+      
+      
+    </aside>
+  </div>
+</div><script src="../_static/documentation_options.js?v=f5cff4aa"></script>
+    <script src="../_static/doctools.js?v=fd6eb6e6"></script>
+    <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="../_static/scripts/furo.js?v=46bd48cc"></script>
+    <script src="../_static/clipboard.min.js?v=a7894cd8"></script>
+    <script src="../_static/copybutton.js?v=f281be69"></script>
+    </body>
+</html>

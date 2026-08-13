@@ -1,0 +1,73 @@
+psweep.utils.config
+===================
+
+.. py:module:: psweep.utils.config
+
+.. autoapi-nested-parse::
+
+   Configuration management for the ParseSweep toolkit.
+
+
+
+Attributes
+----------
+
+.. autoapisummary::
+
+   psweep.utils.config.logger
+
+
+Classes
+-------
+
+.. autoapisummary::
+
+   psweep.utils.config.Config
+
+
+Functions
+---------
+
+.. autoapisummary::
+
+   psweep.utils.config.get_config
+
+
+Module Contents
+---------------
+
+.. py:class:: Config(project_root: Optional[pathlib.Path] = None)
+
+   Global configuration for the ParseSweep toolkit.
+
+   Manages paths for schemas, API keys, and other settings.
+   Can be initialized from environment variables or set programmatically.
+
+   Initialize configuration.
+
+   :param project_root: Root directory of the project (auto-detected if None)
+   :type project_root: Optional[Path]
+
+
+   .. py:attribute:: default_schema
+
+
+   .. py:attribute:: llm_config
+
+
+   .. py:attribute:: schema_dir
+
+
+.. py:function:: get_config(project_root: Optional[pathlib.Path] = None) -> Config
+
+   Get the global configuration instance.
+
+   :param project_root: Optional project root (used only on first call)
+   :type project_root: Optional[Path]
+
+   :returns: Config instance
+   :rtype: Config
+
+
+.. py:data:: logger
+

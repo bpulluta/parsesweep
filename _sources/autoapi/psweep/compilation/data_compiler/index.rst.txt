@@ -1,0 +1,117 @@
+psweep.compilation.data_compiler
+================================
+
+.. py:module:: psweep.compilation.data_compiler
+
+.. autoapi-nested-parse::
+
+   Universal DataCompiler - Works with ANY schema automatically.
+
+   Clean, simple, and intelligent. No configuration needed.
+
+
+
+Classes
+-------
+
+.. autoapisummary::
+
+   psweep.compilation.data_compiler.DataCompiler
+
+
+Module Contents
+---------------
+
+.. py:class:: DataCompiler(schema_metadata, verbose=True, debug=False)
+
+   Universal data compiler that automatically handles any extraction schema.
+
+   Simply point it at extracted JSON files and it:
+
+   - Detects schema structure automatically
+   - Intelligently flattens nested data for spreadsheets
+   - Creates readable, analysis-ready output
+   - Handles both simple and complex nested structures
+
+   No configuration required - just works.
+
+   Initialize compiler.
+
+   :param schema_metadata: SchemaMetadata instance (required in v2.0+)
+   :param verbose: Whether to print informational messages (default: True)
+   :param debug: Whether to print debug-level details (default: False)
+
+   :raises SchemaMetadataError: If schema_metadata is not provided
+
+
+   .. py:method:: compile_from_directory(json_dir: pathlib.Path, *, apply_deduplication: bool = True) -> Tuple[pandas.DataFrame, Dict]
+
+      Load all JSON files and compile into DataFrame.
+
+      Searches recursively through nested subdirectories.
+
+      :returns: Tuple of (DataFrame, schema_info dict)
+      :rtype: Tuple[pd.DataFrame, Dict]
+
+
+
+   .. py:method:: save_csv(df: pandas.DataFrame, output_path: pathlib.Path)
+
+      Save DataFrame to CSV.
+
+
+
+   .. py:method:: save_excel(df: pandas.DataFrame, output_path: pathlib.Path)
+
+      Save DataFrame to Excel with professional formatting.
+
+
+
+   .. py:attribute:: csv_exporter
+
+
+   .. py:attribute:: debug
+      :value: False
+
+
+
+   .. py:attribute:: deduplicator
+
+
+   .. py:attribute:: detector
+
+
+   .. py:attribute:: duplicates_removed
+      :value: 0
+
+
+
+   .. py:attribute:: excel_formatter
+
+
+   .. py:attribute:: file_count
+      :value: 0
+
+
+
+   .. py:attribute:: flattener
+
+
+   .. py:attribute:: schema_info
+      :value: None
+
+
+
+   .. py:attribute:: schema_metadata
+
+
+   .. py:attribute:: total_items
+      :value: 0
+
+
+
+   .. py:attribute:: verbose
+      :value: True
+
+
+

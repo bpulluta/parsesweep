@@ -1,0 +1,128 @@
+psweep.compilation.synthesizer
+==============================
+
+.. py:module:: psweep.compilation.synthesizer
+
+.. autoapi-nested-parse::
+
+   Per-entity cross-source reconciliation stage for compilation.
+
+   Groups per-document extraction records by an entity key, then reconciles them
+   into ONE row per entity — resolving conflicting values across sources, grading
+   confidence, citing the sources that supported each value, and (optionally)
+   validating an ordering constraint over selected fields.
+
+   This is the domain-neutral alternative to the tabular deduplicator: where
+   `Deduplicator` keeps the single most-complete row (lossy), the synthesizer
+   merges across sources. It is NOT specific to any domain — every field it groups
+   on, reconciles, orders, or narrates is declared in `compilation.synthesis`
+   config as a path into the extraction payload. Timelines (announced/construction/
+   completion dates with a chronology constraint) are just one configuration; the
+   same stage reconciles, e.g., permit limits across filings, spec values across
+   datasheets, or prices across sources.
+
+   Cost control: the LLM is called ONLY when >= `min_sources_for_llm` sources carry
+   a value to reconcile. With 0 or 1 such source the answer is deterministic (nulls,
+   or that single source's values) and no API call is made.
+
+
+
+Attributes
+----------
+
+.. autoapisummary::
+
+   psweep.compilation.synthesizer.logger
+
+
+Classes
+-------
+
+.. autoapisummary::
+
+   psweep.compilation.synthesizer.Synthesizer
+
+
+Module Contents
+---------------
+
+.. py:class:: Synthesizer(schema_metadata, config: dict, llm_client, verbose: bool = False)
+
+   Reconcile many per-document records into one row per entity.
+
+
+   .. py:method:: synthesize_from_directory(json_dir: str) -> pandas.DataFrame
+
+      Load extracted JSON records from a directory and synthesize them.
+
+      Reads all extraction output JSON files under ``json_dir``, groups them
+      by the configured ``group_by`` identity fields, reconciles each group
+      (optionally via LLM), and returns one row per group.
+
+      :param json_dir: Path to a directory containing per-document extraction JSON files.
+      :type json_dir: str
+
+      :returns: One synthesized row per unique entity group.
+      :rtype: pd.DataFrame
+
+
+
+   .. py:attribute:: cfg
+
+
+   .. py:attribute:: client
+
+
+   .. py:attribute:: comparison
+
+
+   .. py:attribute:: deterministic_rows
+      :value: 0
+
+
+
+   .. py:attribute:: evidence_map
+
+
+   .. py:attribute:: fields
+
+
+   .. py:attribute:: has_ordering_checks
+
+
+   .. py:attribute:: infer_precision_from_pins
+
+
+   .. py:attribute:: llm_calls
+      :value: 0
+
+
+
+   .. py:attribute:: main_array
+
+
+   .. py:attribute:: min_sources_for_llm
+
+
+   .. py:attribute:: narrative_fields
+
+
+   .. py:attribute:: ordering
+
+
+   .. py:attribute:: ordering_exclusive_pairs
+
+
+   .. py:attribute:: precision_map
+
+
+   .. py:attribute:: sm
+
+
+   .. py:attribute:: verbose
+      :value: False
+
+
+
+.. py:data:: logger
+

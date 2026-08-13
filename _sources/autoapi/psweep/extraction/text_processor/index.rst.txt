@@ -1,0 +1,128 @@
+psweep.extraction.text_processor
+================================
+
+.. py:module:: psweep.extraction.text_processor
+
+.. autoapi-nested-parse::
+
+   Text processing utilities for extraction.
+
+
+
+Attributes
+----------
+
+.. autoapisummary::
+
+   psweep.extraction.text_processor.logger
+
+
+Classes
+-------
+
+.. autoapisummary::
+
+   psweep.extraction.text_processor.TextProcessor
+
+
+Module Contents
+---------------
+
+.. py:class:: TextProcessor(max_chars: int = 400000)
+
+   Handles text optimization and preparation for extraction.
+
+   Initialize text processor.
+
+   :param max_chars: Maximum characters to extract from document (default: 400000).
+                     Proven reliable for fast processing. Increase for very long documents.
+   :type max_chars: int
+
+
+   .. py:method:: calculate_completeness(data: Dict[str, Any], validation_notes: List[str]) -> float
+
+      Calculate completeness score based on fields populated.
+
+      Generic scoring that works for any schema:
+
+      - 0.3: Base score for successful extraction
+      - 0.2: Has context fields (entity identifiers, location, etc.)
+      - 0.5: Has item arrays with populated fields
+
+      :param data: Extracted data dictionary
+      :type data: Dict[str, Any]
+      :param validation_notes: List of validation notes (unused but kept for compatibility)
+      :type validation_notes: List[str]
+
+      :returns: Score from 0-1 indicating data completeness
+      :rtype: float
+
+
+
+   .. py:method:: normalize_string_fields(data: Dict[str, Any]) -> Dict[str, Any]
+
+      Normalize string fields for consistency.
+
+      Cleans whitespace, removes extra spaces, and standardizes formatting.
+      Works generically with any schema structure.
+
+      :param data: Extracted data dictionary
+      :type data: Dict[str, Any]
+
+      :returns: Data with normalized string fields
+      :rtype: Dict[str, Any]
+
+
+
+   .. py:method:: normalize_with_schema(data: Dict[str, Any], schema: Dict[str, Any]) -> Dict[str, Any]
+
+      Ensure all schema fields are present in extracted data, filling missing fields with null.
+
+      This prevents data loss when OpenAI omits optional fields.
+      Works generically with any schema structure.
+
+      :param data: Extracted data dictionary
+      :type data: Dict[str, Any]
+      :param schema: JSON schema defining expected structure
+      :type schema: Dict[str, Any]
+
+      :returns: Normalized data with all schema fields present
+      :rtype: Dict[str, Any]
+
+
+
+   .. py:method:: optimize(text: str) -> Tuple[str, bool]
+
+      Optimize text for extraction by truncating if needed.
+
+      :param text: Full document text
+      :type text: str
+
+      :returns: Tuple of (optimized_text, was_truncated)
+      :rtype: Tuple[str, bool]
+
+
+
+   .. py:method:: run_sanity_checks(data: Dict[str, Any], schema_metadata=None) -> List[str]
+
+      Run post-extraction sanity checks to catch obvious errors.
+
+      Generic checks that work for any schema type. Uses schema_metadata
+      identifier_fields (when available) to build human-readable item labels.
+
+      :param data: Extracted data dictionary
+      :type data: Dict[str, Any]
+      :param schema_metadata: Optional SchemaMetadata for identifier field lookup
+
+      :returns: List of warning messages
+      :rtype: List[str]
+
+
+
+   .. py:attribute:: max_chars
+      :value: 400000
+
+
+
+.. py:data:: logger
+

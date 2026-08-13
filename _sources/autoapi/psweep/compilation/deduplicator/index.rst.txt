@@ -1,0 +1,91 @@
+psweep.compilation.deduplicator
+===============================
+
+.. py:module:: psweep.compilation.deduplicator
+
+.. autoapi-nested-parse::
+
+   Row deduplication for compiled data.
+
+   Intelligently removes truly duplicate rows while preserving unique data.
+
+
+
+Attributes
+----------
+
+.. autoapisummary::
+
+   psweep.compilation.deduplicator.PROVENANCE_COLUMNS
+   psweep.compilation.deduplicator.logger
+
+
+Classes
+-------
+
+.. autoapisummary::
+
+   psweep.compilation.deduplicator.Deduplicator
+
+
+Module Contents
+---------------
+
+.. py:class:: Deduplicator(schema_metadata)
+
+   Remove duplicate rows from compiled data.
+
+   Uses schema metadata to intelligently identify which fields to
+   ignore during deduplication (v2.0+ requires metadata).
+
+   Intelligently identifies and removes rows that are truly identical
+   in all identifying fields, while excluding metadata columns from
+   comparison and preserving the most complete row from each duplicate group.
+
+   Initialize deduplicator.
+
+   :param schema_metadata: SchemaMetadata instance (required in v2.0+)
+
+   :raises SchemaMetadataError: If schema_metadata is not provided
+
+
+   .. py:method:: deduplicate(df: pandas.DataFrame) -> pandas.DataFrame
+
+      Remove duplicate rows using key_fields from schema metadata.
+
+      Uses schema-defined key_fields to identify duplicates. Two rows are
+      duplicates if they match on all key_fields, regardless of differences
+      in other fields (like State formatting, Section references, etc.).
+
+      Supports fuzzy matching: treats empty/null values in optional fields
+      (like 'condition') as wildcards that match any value.
+
+      :param df: DataFrame to deduplicate
+      :type df: pd.DataFrame
+
+      :returns: DataFrame with duplicates removed
+      :rtype: pd.DataFrame
+
+      .. rubric:: Examples
+
+      >>> dedup = Deduplicator(schema_metadata)
+      >>> clean_df = dedup.deduplicate(df)
+
+
+
+   .. py:method:: preview_deduplication(df: pandas.DataFrame) -> Dict[str, Any]
+
+      Preview deduplication effects without mutating or writing outputs.
+
+
+
+   .. py:attribute:: field_severity_hints
+
+
+   .. py:attribute:: schema_metadata
+
+
+.. py:data:: PROVENANCE_COLUMNS
+
+.. py:data:: logger
+

@@ -1,0 +1,124 @@
+psweep.discovery.validators
+===========================
+
+.. py:module:: psweep.discovery.validators
+
+.. autoapi-nested-parse::
+
+   Content sampling for downloaded discovery files.
+
+   Extracts text from PDF/DOCX/DOC/XLSX/CSV/TXT and validates keyword
+   presence for post-download document classification.
+
+
+
+Classes
+-------
+
+.. autoapisummary::
+
+   psweep.discovery.validators.ContentSampler
+   psweep.discovery.validators.ContentSamplingResult
+
+
+Module Contents
+---------------
+
+.. py:class:: ContentSampler
+
+   Samples and validates content from downloaded files for keyword presence.
+
+   Supports:
+
+   - PDF: uses pdftotext or PyMuPDF
+   - DOCX/DOC: uses python-docx
+   - XLSX: uses openpyxl
+   - CSV: direct extraction
+   - TXT: direct read
+
+
+   .. py:method:: extract_text(file_path: str) -> str
+      :classmethod:
+
+
+      Extract text from file based on extension.
+
+
+
+   .. py:method:: extract_text_from_string(html_content: str) -> str
+      :classmethod:
+
+
+      Extract text from an HTML string (no file needed).
+
+
+
+   .. py:method:: validate_content(file_path: str, required_keywords: list[str] | None = None, nice_to_have_keywords: list[str] | None = None, min_required_matches: int = 1) -> ContentSamplingResult
+      :classmethod:
+
+
+      Validate content of a file by checking for keywords.
+
+      :param file_path: Path to the file to validate
+      :type file_path: str
+      :param required_keywords: List of keywords that must be present
+      :type required_keywords: list[str] | None
+      :param nice_to_have_keywords: List of keywords that improve score
+      :type nice_to_have_keywords: list[str] | None
+      :param min_required_matches: Minimum required keyword matches to pass
+      :type min_required_matches: int
+
+      :returns: ContentSamplingResult with validation details
+      :rtype: ContentSamplingResult
+
+
+
+   .. py:attribute:: MAX_SAMPLE_CHARS
+      :value: 10000
+
+
+
+   .. py:attribute:: MIN_EXTRACTION_LENGTH
+      :value: 50
+
+
+
+.. py:class:: ContentSamplingResult
+
+   Result of content sampling validation.
+
+
+   .. py:attribute:: confidence_score
+      :type:  float
+
+
+   .. py:attribute:: error
+      :type:  str | None
+      :value: None
+
+
+
+   .. py:attribute:: keywords_found
+      :type:  list[str]
+
+
+   .. py:attribute:: keywords_missing
+      :type:  list[str]
+
+
+   .. py:attribute:: reasons
+      :type:  list[str]
+
+
+   .. py:attribute:: sample_length
+      :type:  int
+
+
+   .. py:attribute:: success
+      :type:  bool
+
+
+   .. py:attribute:: text_extracted
+      :type:  str | None
+
+

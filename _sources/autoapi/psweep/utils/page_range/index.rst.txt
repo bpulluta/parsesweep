@@ -1,0 +1,66 @@
+psweep.utils.page_range
+=======================
+
+.. py:module:: psweep.utils.page_range
+
+.. autoapi-nested-parse::
+
+   Utilities for handling page range specifications.
+
+
+
+Functions
+---------
+
+.. autoapisummary::
+
+   psweep.utils.page_range.load_pages_csv
+   psweep.utils.page_range.parse_page_range
+
+
+Module Contents
+---------------
+
+.. py:function:: load_pages_csv(csv_path: pathlib.Path) -> Dict[str, Optional[Tuple[int, int]]]
+
+   Load page range mappings from CSV file.
+
+   CSV format:
+
+   .. code-block:: text
+
+       file_path,start_page,end_page
+       tariff1.pdf,615,759
+       tariff2.pdf,400,550
+       small_doc.pdf,,
+
+   Empty start/end pages mean process full document.
+
+   :param csv_path: Path to CSV file
+   :type csv_path: Path
+
+   :returns: Dictionary mapping file paths to page ranges (or None for full document)
+   :rtype: Dict[str, Optional[Tuple[int, int]]]
+
+   :raises ValueError: If CSV format is invalid
+
+
+.. py:function:: parse_page_range(page_spec: str) -> Tuple[int, int]
+
+   Parse a page range specification string.
+
+   Supports formats:
+
+   - "100-200" (dash separator)
+   - "100:200" (colon separator)
+   - "100,200" (comma separator)
+
+   :param page_spec: Page range string (e.g., "615-759")
+   :type page_spec: str
+
+   :returns: Tuple of (start_page, end_page) as 1-indexed integers
+   :rtype: Tuple[int, int]
+
+   :raises ValueError: If format is invalid
+
+

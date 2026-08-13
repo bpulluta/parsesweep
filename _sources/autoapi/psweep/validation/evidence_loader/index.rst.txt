@@ -1,0 +1,123 @@
+psweep.validation.evidence_loader
+=================================
+
+.. py:module:: psweep.validation.evidence_loader
+
+.. autoapi-nested-parse::
+
+   Evidence loader for QA/QC reports.
+
+   Loads source documents, extraction JSON outputs, and discovery metadata
+   to populate evidence columns in comparison reports.
+
+
+
+Attributes
+----------
+
+.. autoapisummary::
+
+   psweep.validation.evidence_loader.logger
+
+
+Classes
+-------
+
+.. autoapisummary::
+
+   psweep.validation.evidence_loader.EvidenceLoader
+
+
+Module Contents
+---------------
+
+.. py:class:: EvidenceLoader(schema: Optional[Dict[str, Any]] = None)
+
+   Load and cache evidence metadata and extracted values for report generation.
+
+
+   .. py:method:: extract_model_values(model_name: str, item_id: str) -> Dict[str, Any]
+
+      Extract structured values (value, obligation, units) from model output.
+
+      :param model_name: Name of the model
+      :type model_name: str
+      :param item_id: Item identifier (e.g., "facilities|requirements|structures_distance")
+      :type item_id: str
+
+      :returns: {value: ..., obligation: ..., units: ...} or empty dict if not found
+      :rtype: Dict[str, Any]
+
+
+
+   .. py:method:: format_model_evidence(model_name: str, item_id: str, truncate: int = 200) -> str
+
+      Format extracted model values as readable string.
+
+      :param model_name: Name of the model
+      :type model_name: str
+      :param item_id: Item identifier
+      :type item_id: str
+      :param truncate: Maximum chars for any single value
+      :type truncate: int
+
+      :returns: Formatted string like "value=1 mile; obligation=required; units=distance"
+                or "(not extracted)" if not found
+      :rtype: str
+
+
+
+   .. py:method:: get_document_path(doc_id: str) -> Optional[str]
+
+      Get file path for a document. Returns None if metadata not loaded or doc not found.
+
+
+
+   .. py:method:: get_section_for_item(doc_id: str, item_path: str) -> Optional[str]
+
+      Get section/heading for an extracted item.
+
+      :param doc_id: Document identifier
+      :type doc_id: str
+      :param item_path: Item path in extraction JSON (e.g., "facilities › requirements › structures_distance")
+      :type item_path: str
+
+      :returns: Section name if available, else None
+      :rtype: Optional[str]
+
+
+
+   .. py:method:: load_document_metadata(discovery_checkpoint_path: pathlib.Path) -> Dict[str, Dict[str, Any]]
+
+      Load document metadata from discovery checkpoint.
+
+      Cached by checkpoint path: the discovery checkpoint is shared by every
+      document in a run, so it is read and parsed only once even when this
+      loader is reused across many report generations.
+
+      :returns: {doc_id: {file_path, sections, page_count, ...}}
+      :rtype: Dict[str, Dict[str, Any]]
+
+      :raises FileNotFoundError: If checkpoint path is provided but doesn't exist.
+      :raises json.JSONDecodeError: If checkpoint JSON is malformed.
+
+
+
+   .. py:method:: load_extraction_outputs(extraction_dir: pathlib.Path, models: list) -> Dict[str, Dict[str, Any]]
+
+      Load extraction JSON outputs for all models in a directory.
+
+      :param extraction_dir: Path to validation/<doc_id>/ directory
+      :type extraction_dir: Path
+      :param models: List of model names (e.g., ['gpt-5.6-terra', 'claude-sonnet-4-6'])
+      :type models: list
+
+      :returns: {model_name: {extracted JSON structure}}
+      :rtype: Dict[str, Dict[str, Any]]
+
+      :raises RuntimeError: If required model extraction files are missing or corrupt.
+
+
+
+.. py:data:: logger
+

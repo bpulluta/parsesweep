@@ -1,0 +1,47 @@
+psweep.discovery.urls
+=====================
+
+.. py:module:: psweep.discovery.urls
+
+.. autoapi-nested-parse::
+
+   Shared URL helpers for the discovery module.
+
+   These were previously duplicated (byte-for-byte in some cases) across the
+   engine and the candidate selector. Centralizing them removes the drift risk.
+
+   Note: the link prioritizer keeps its own length-guarded extension parser
+   (a scoring heuristic) and the engine keeps its MIME-aware extension resolver
+   (download gating) — those serve different purposes and are intentionally
+   not folded in here.
+
+
+
+Functions
+---------
+
+.. autoapisummary::
+
+   psweep.discovery.urls.normalize_url_text
+   psweep.discovery.urls.url_extension
+   psweep.discovery.urls.url_host
+
+
+Module Contents
+---------------
+
+.. py:function:: normalize_url_text(text: str) -> str
+
+   Lowercase and turn ``_``, ``-``, ``/`` into spaces for term matching.
+
+
+.. py:function:: url_extension(url: str) -> str
+
+   Return the lowercase file extension of the URL path (``""`` if none).
+
+
+.. py:function:: url_host(url: str) -> str
+
+   Return the lowercase hostname of *url*, or ``""`` if unparseable.
+
+

@@ -1,0 +1,103 @@
+psweep.discovery.connectors.serpapi_seeker
+==========================================
+
+.. py:module:: psweep.discovery.connectors.serpapi_seeker
+
+.. autoapi-nested-parse::
+
+   SerpApi-based seeker connector for web search discovery.
+
+
+
+Classes
+-------
+
+.. autoapisummary::
+
+   psweep.discovery.connectors.serpapi_seeker.SerpApiSeeker
+
+
+Module Contents
+---------------
+
+.. py:class:: SerpApiSeeker(api_key: str | None = None, ssl_verify: bool | None = None, retry_max_attempts: int = 3, retry_initial_backoff_seconds: float = 1.0, retry_max_backoff_seconds: float = 8.0, min_request_interval_seconds: float = 0.0, cache_dir: str | None = None, cache_ttl_seconds: float = 0.0, cache_refresh: bool = False)
+
+   Bases: :py:obj:`psweep.discovery.connectors.base.BaseSeekerConnector`
+
+
+   SerpApi-based seeker connector for Google Search discovery.
+
+   Normalizes SerpApi organic search results to discovery candidates.
+   Handles API key management and error scenarios gracefully.
+
+   Initialize SerpApi seeker connector.
+
+   :param api_key: Optional override for SERPAPI_API_KEY env var.
+                   If not provided, falls back to SERPAPI_API_KEY or SERPAPI_KEY.
+   :type api_key: str | None
+   :param ssl_verify: Optional override for TLS verification behavior.
+                      If omitted, defaults to env-driven value from
+                      SERPAPI_SSL_VERIFY / PSWEEP_SSL_VERIFY (default: false).
+   :type ssl_verify: bool | None
+
+
+   .. py:method:: discover(seeker_input: psweep.discovery.connectors.base.SeekerInput) -> list[dict[str, Any]]
+
+      Execute search query against Google via SerpApi.
+
+      Normalizes organic search results to discovery candidates.
+
+      :param seeker_input: Query and constraints
+      :type seeker_input: SeekerInput
+
+      :returns: List of normalized candidate dictionaries with url, source, title, snippet.
+      :rtype: list[dict[str, Any]]
+
+      :raises ValueError: If query is empty or invalid.
+      :raises RuntimeError: If SerpApi API call fails.
+
+
+
+   .. py:method:: supports_provider(provider: str) -> bool
+
+      Check if this connector supports the provider.
+
+
+
+   .. py:attribute:: api_key
+
+
+   .. py:attribute:: cache_dir
+      :value: None
+
+
+
+   .. py:attribute:: cache_refresh
+      :value: False
+
+
+
+   .. py:attribute:: cache_ttl_seconds
+
+
+   .. py:attribute:: min_request_interval_seconds
+
+
+   .. py:attribute:: queries_run
+      :type:  int
+      :value: 0
+
+
+
+   .. py:attribute:: retry_initial_backoff_seconds
+
+
+   .. py:attribute:: retry_max_attempts
+
+
+   .. py:attribute:: retry_max_backoff_seconds
+
+
+   .. py:attribute:: ssl_verify
+
+

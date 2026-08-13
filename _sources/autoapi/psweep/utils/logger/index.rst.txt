@@ -1,0 +1,220 @@
+psweep.utils.logger
+===================
+
+.. py:module:: psweep.utils.logger
+
+.. autoapi-nested-parse::
+
+   Production logging system with progress tracking and cost reporting.
+
+
+
+Classes
+-------
+
+.. autoapisummary::
+
+   psweep.utils.logger.ExtractionMetrics
+   psweep.utils.logger.ProductionLogger
+
+
+Functions
+---------
+
+.. autoapisummary::
+
+   psweep.utils.logger.get_logger
+
+
+Module Contents
+---------------
+
+.. py:class:: ExtractionMetrics
+
+   Track metrics for extraction operations.
+
+
+   .. py:method:: add_failure()
+
+      Record a failed extraction.
+
+
+
+   .. py:method:: add_skip()
+
+      Record a skipped file.
+
+
+
+   .. py:method:: add_success(cost: float, duration: float)
+
+      Record a successful extraction.
+
+
+
+   .. py:method:: get_avg_time_per_file() -> float
+
+      Get average processing time per successful file.
+
+
+
+   .. py:method:: get_elapsed_time() -> float
+
+      Get total elapsed time.
+
+
+
+   .. py:method:: get_summary() -> dict
+
+      Get summary statistics.
+
+
+
+   .. py:attribute:: failed
+      :type:  int
+      :value: 0
+
+
+
+   .. py:attribute:: skipped
+      :type:  int
+      :value: 0
+
+
+
+   .. py:attribute:: start_time
+      :type:  float
+
+
+   .. py:attribute:: successful
+      :type:  int
+      :value: 0
+
+
+
+   .. py:attribute:: total_cost
+      :type:  float
+      :value: 0.0
+
+
+
+   .. py:attribute:: total_files
+      :type:  int
+      :value: 0
+
+
+
+   .. py:attribute:: total_time
+      :type:  float
+      :value: 0.0
+
+
+
+.. py:class:: ProductionLogger(name: str, log_file: Optional[pathlib.Path] = None, verbose: bool = False)
+
+   Production-ready logger with structured output and progress tracking.
+
+   Features:
+
+   - Colored console output
+   - Progress indicators
+   - Cost tracking
+   - Time reporting
+   - File logging
+
+   Initialize production logger.
+
+   :param name: Logger name
+   :type name: str
+   :param log_file: Optional file path for log output
+   :type log_file: Optional[Path]
+   :param verbose: Enable verbose (DEBUG) logging
+   :type verbose: bool
+
+
+   .. py:method:: debug(text: str)
+
+      Print debug message.
+
+
+
+   .. py:method:: error(text: str)
+
+      Print error message.
+
+
+
+   .. py:method:: file_result(filename: str, status: str, cost: float = 0.0, duration: float = 0.0, details: str = '')
+
+      Log result for a single file.
+
+
+
+   .. py:method:: header(text: str)
+
+      Print a bold header.
+
+
+
+   .. py:method:: info(text: str)
+
+      Print info message.
+
+
+
+   .. py:method:: metrics_summary(metrics: ExtractionMetrics)
+
+      Print extraction metrics summary.
+
+
+
+   .. py:method:: progress(current: int, total: int, text: str = '')
+
+      Print progress indicator.
+
+
+
+   .. py:method:: section(text: str)
+
+      Print a section header.
+
+
+
+   .. py:method:: success(text: str)
+
+      Print success message.
+
+
+
+   .. py:method:: warning(text: str)
+
+      Print warning message.
+
+
+
+   .. py:attribute:: COLORS
+
+
+   .. py:attribute:: logger
+
+
+   .. py:attribute:: verbose
+      :value: False
+
+
+
+.. py:function:: get_logger(name: str = 'psweep', log_file: Optional[pathlib.Path] = None, verbose: bool = False) -> ProductionLogger
+
+   Get a production logger instance.
+
+   :param name: Logger name
+   :type name: str
+   :param log_file: Optional file path for log output
+   :type log_file: Optional[Path]
+   :param verbose: Enable verbose (DEBUG) logging
+   :type verbose: bool
+
+   :returns: ProductionLogger instance
+   :rtype: ProductionLogger
+
+

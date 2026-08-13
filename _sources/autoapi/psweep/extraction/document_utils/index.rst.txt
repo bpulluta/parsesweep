@@ -1,0 +1,89 @@
+psweep.extraction.document_utils
+================================
+
+.. py:module:: psweep.extraction.document_utils
+
+.. autoapi-nested-parse::
+
+   Universal document text extraction for multiple file formats.
+
+
+
+Attributes
+----------
+
+.. autoapisummary::
+
+   psweep.extraction.document_utils.SUPPORTED_EXTENSIONS
+   psweep.extraction.document_utils.TEXT_CACHE_DIRNAME
+   psweep.extraction.document_utils.logger
+
+
+Functions
+---------
+
+.. autoapisummary::
+
+   psweep.extraction.document_utils.extract_text_from_document
+   psweep.extraction.document_utils.is_supported_document
+   psweep.extraction.document_utils.read_text_cache
+   psweep.extraction.document_utils.write_text_cache
+
+
+Module Contents
+---------------
+
+.. py:function:: extract_text_from_document(file_path: pathlib.Path, page_range: Optional[tuple] = None) -> str
+
+   Extract text from any supported document format.
+
+   Supports: PDF, DOCX, TXT, XLSX, CSV, DOC, HTML
+
+   :param file_path: Path to the document
+   :type file_path: Path
+   :param page_range: Optional tuple (start_page, end_page) for PDF files only (1-indexed)
+   :type page_range: Optional[tuple]
+
+   :returns: Extracted text content
+   :rtype: str
+
+   :raises ValueError: If file format is not supported
+   :raises RuntimeError: If extraction fails
+
+
+.. py:function:: is_supported_document(file_path: pathlib.Path) -> bool
+
+   Check if a file is a supported document format.
+
+   :param file_path: Path to the file
+   :type file_path: Path
+
+   :returns: True if file format is supported
+   :rtype: bool
+
+
+.. py:function:: read_text_cache(file_path: pathlib.Path) -> Optional[str]
+
+   Return cached full-document text if present and still valid, else None.
+
+   Validity is keyed on the source file's size and mtime, so a re-downloaded or
+   edited document is re-extracted rather than served stale.
+
+
+.. py:function:: write_text_cache(file_path: pathlib.Path, text: str, method: str = 'ocr') -> None
+
+   Persist expensively-extracted ``text`` next to ``file_path``.
+
+   Best-effort. Only the OCR path is cached (native-text documents are cheap to
+   re-extract and are left uncached so a later table-aware extraction is never
+   served a flattened copy); ``method`` is recorded for transparency.
+
+
+.. py:data:: SUPPORTED_EXTENSIONS
+
+.. py:data:: TEXT_CACHE_DIRNAME
+   :value: '.text'
+
+
+.. py:data:: logger
+

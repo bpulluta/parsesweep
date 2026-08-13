@@ -1,0 +1,51 @@
+psweep.benchmarking.performance
+===============================
+
+.. py:module:: psweep.benchmarking.performance
+
+.. autoapi-nested-parse::
+
+   Performance and quality profile aggregation for benchmark gates.
+
+
+
+Functions
+---------
+
+.. autoapisummary::
+
+   psweep.benchmarking.performance.collect_benchmark_metrics
+   psweep.benchmarking.performance.compare_benchmark_to_baseline
+   psweep.benchmarking.performance.evaluate_benchmark_gates
+   psweep.benchmarking.performance.load_benchmark_snapshot
+   psweep.benchmarking.performance.write_benchmark_snapshot
+
+
+Module Contents
+---------------
+
+.. py:function:: collect_benchmark_metrics(path: pathlib.Path, *, repo_root: Optional[pathlib.Path] = None, extraction_baseline_dir: Optional[pathlib.Path] = None, validation_baseline_dir: Optional[pathlib.Path] = None, compilation_baseline_dir: Optional[pathlib.Path] = None, compilation_schema_path: Optional[pathlib.Path] = None) -> Dict[str, Any]
+
+   Collect a deterministic performance and optional extraction-parity profile.
+
+
+.. py:function:: compare_benchmark_to_baseline(metrics: Dict[str, Any], baseline_snapshot: Dict[str, Any]) -> Dict[str, Any]
+
+   Compute rubric-aligned benchmark deltas against a baseline snapshot.
+
+
+.. py:function:: evaluate_benchmark_gates(metrics: Dict[str, Any], *, min_extraction_parity: Optional[float] = None, min_validation_signal_quality: Optional[float] = None, min_validation_qualitative_pass_rate: Optional[float] = None, min_compilation_correctness: Optional[float] = None, max_failure_rate: Optional[float] = None, max_average_seconds_per_document: Optional[float] = None, min_documents_per_minute: Optional[float] = None, max_total_errors: Optional[int] = None, max_throughput_delta_percent: Optional[float] = None, max_cost_delta_percent: Optional[float] = None, baseline_comparison: Optional[Dict[str, Any]] = None) -> Dict[str, Any]
+
+   Evaluate threshold-based benchmark gates against aggregated metrics.
+
+
+.. py:function:: load_benchmark_snapshot(path: pathlib.Path) -> Dict[str, Any]
+
+   Load a previously captured benchmark snapshot.
+
+
+.. py:function:: write_benchmark_snapshot(path: pathlib.Path, *, metrics: Dict[str, Any], source_path: pathlib.Path, label: Optional[str] = None) -> pathlib.Path
+
+   Persist benchmark metrics as a reusable snapshot for later gate comparisons.
+
+

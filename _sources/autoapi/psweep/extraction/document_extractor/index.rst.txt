@@ -1,0 +1,197 @@
+psweep.extraction.document_extractor
+====================================
+
+.. py:module:: psweep.extraction.document_extractor
+
+.. autoapi-nested-parse::
+
+   Universal document extractor for structured data extraction.
+
+   Architecture:
+
+   1. OpenAI Structured - Fast, accurate extraction with schema-driven parsing
+   2. Multi-Model QA/QC - Validates results using multiple AI models (separate command)
+
+   Supports any document type with a defined JSON schema - fully domain-agnostic.
+
+   Cost: ~$0.002-0.004 per document (varies by length and model)
+   Accuracy: 90%+ on validation set
+
+
+
+Attributes
+----------
+
+.. autoapisummary::
+
+   psweep.extraction.document_extractor.logger
+
+
+Classes
+-------
+
+.. autoapisummary::
+
+   psweep.extraction.document_extractor.DocumentExtractor
+   psweep.extraction.document_extractor.ExtractionResult
+
+
+Module Contents
+---------------
+
+.. py:class:: DocumentExtractor(api_key: str = None, model: str = DEFAULT_MODEL, max_context_chars: int = 400000, schema_metadata=None, provider: str = None, azure_endpoint: str = None, azure_api_version: str = None, context_windows: Optional[Dict[str, int]] = None, base_url: Optional[str] = None, timeout: Optional[int] = None)
+
+   Universal document extractor with traceability and configurable context.
+
+   Architecture:
+
+   1. LLM Structured Extraction: Fast extraction with schema-driven parsing
+   2. Multi-Model QA/QC: Validates via multiple models (run separately via `psweep validate`)
+
+   Works with any document type and JSON schema - fully domain-agnostic.
+
+   Architecture:
+
+   - LLMClient: Handles all API calls via LiteLLM (100+ providers)
+   - TextProcessor: Optimizes text and normalizes output
+
+   .. rubric:: Examples
+
+   >>> extractor = DocumentExtractor(api_key="sk-...")
+   >>> result = extractor.extract(text, schema)
+   >>> print(f"Extracted: {result.data}")
+   >>> print(f"Confidence: {result.completeness_score:.0%}")
+
+   Initialize document extractor.
+
+   :param api_key: API key for the LLM provider
+   :type api_key: str
+   :param model: Model to use (default: gpt-4o-mini)
+   :type model: str
+   :param max_context_chars: Maximum characters to extract from document (default: 400000)
+   :type max_context_chars: int
+   :param schema_metadata: Optional SchemaMetadata for metadata-driven processing
+   :param provider: LLM provider ("openai", "azure", "anthropic", "gemini", etc.)
+   :type provider: str
+   :param azure_endpoint: Azure OpenAI endpoint URL (for Azure provider)
+   :type azure_endpoint: str
+   :param azure_api_version: Azure API version (for Azure provider)
+   :type azure_api_version: str
+   :param context_windows: Optional {model-name -> max prompt tokens} map for the
+                           fail-fast context-budget guard (from ``model_context_windows`` in
+                           config). No model names are hardcoded.
+   :type context_windows: Optional[Dict[str, int]]
+   :param base_url: Optional endpoint override for OpenAI-compatible proxies
+                    (LiteLLM, OpenRouter, vLLM, etc.). When set, all calls are routed
+                    through this URL regardless of model name.
+   :type base_url: Optional[str]
+   :param timeout: Per-request LLM timeout in seconds. If omitted, LLMClient
+                   uses LLM_TIMEOUT env var or its default timeout.
+   :type timeout: Optional[int]
+
+
+   .. py:method:: extract(text: str, schema: Dict[str, Any]) -> ExtractionResult
+
+      Extract structured data from document.
+
+      This method orchestrates:
+
+      1. LLM Structured Extraction - Fast, schema-driven parsing
+      2. Post-processing - Normalization and sanity checks
+
+      For multi-model QA/QC validation, use the CLI validate stage.
+
+      :param text: Full document text to extract from
+      :type text: str
+      :param schema: JSON schema defining structure to extract (must have 'type' and 'properties')
+      :type schema: Dict[str, Any]
+
+      :returns: ExtractionResult containing:
+
+                - data: Extracted structured data matching schema
+                - completeness_score: 0-1 confidence score
+                - cost: Total API cost in USD
+                - processing_time: Total time in seconds
+                - validation_notes: List of warnings/insights
+                - validation_report: Reserved for future use
+      :rtype: ExtractionResult
+
+      .. rubric:: Examples
+
+      >>> result = extractor.extract(pdf_text, tariff_schema)
+      >>> if result.completeness_score > 0.8:
+      >>>     print("High confidence extraction!")
+
+
+
+   .. py:attribute:: api_key
+      :value: None
+
+
+
+   .. py:attribute:: client
+
+
+   .. py:attribute:: max_context_chars
+      :value: 400000
+
+
+
+   .. py:attribute:: model
+      :value: 'gpt-4o-mini'
+
+
+
+   .. py:attribute:: processor
+
+
+   .. py:attribute:: schema_metadata
+      :value: None
+
+
+
+.. py:class:: ExtractionResult
+
+   Result from document extraction.
+
+
+   .. py:attribute:: completeness_score
+      :type:  float
+
+
+   .. py:attribute:: cost
+      :type:  float
+
+
+   .. py:attribute:: data
+      :type:  Dict[str, Any]
+
+
+   .. py:attribute:: input_tokens
+      :type:  Optional[int]
+      :value: None
+
+
+
+   .. py:attribute:: output_tokens
+      :type:  Optional[int]
+      :value: None
+
+
+
+   .. py:attribute:: processing_time
+      :type:  float
+
+
+   .. py:attribute:: validation_notes
+      :type:  List[str]
+
+
+   .. py:attribute:: validation_report
+      :type:  Optional[Any]
+      :value: None
+
+
+
+.. py:data:: logger
+

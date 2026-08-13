@@ -1,0 +1,26 @@
+psweep.compilation
+==================
+
+.. py:module:: psweep.compilation
+
+.. autoapi-nested-parse::
+
+   Compilation package - convert extracted JSON to datasets.
+
+
+
+Submodules
+----------
+
+.. toctree::
+   :maxdepth: 1
+
+   /autoapi/psweep/compilation/csv_exporter/index
+   /autoapi/psweep/compilation/data_compiler/index
+   /autoapi/psweep/compilation/data_flattener/index
+   /autoapi/psweep/compilation/deduplicator/index
+   /autoapi/psweep/compilation/excel_formatter/index
+   /autoapi/psweep/compilation/schema_detector/index
+   /autoapi/psweep/compilation/synthesizer/index
+
+

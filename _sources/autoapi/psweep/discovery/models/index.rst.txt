@@ -1,0 +1,253 @@
+psweep.discovery.models
+=======================
+
+.. py:module:: psweep.discovery.models
+
+.. autoapi-nested-parse::
+
+   Typed discovery models for candidates, scoring, and manifests.
+
+
+
+Classes
+-------
+
+.. autoapisummary::
+
+   psweep.discovery.models.CandidateScore
+   psweep.discovery.models.DiscoveryCandidate
+   psweep.discovery.models.DiscoveryManifest
+
+
+Module Contents
+---------------
+
+.. py:class:: CandidateScore
+
+   Score signals and acceptance classification for a candidate URL.
+
+
+   .. py:method:: acceptance_class() -> str
+
+      Classify the weighted score into an acceptance tier.
+
+      :returns: ``"accepted"`` (≥ 0.75), ``"needs_review"`` (≥ 0.45), or
+                ``"rejected"`` (< 0.45).
+      :rtype: str
+
+
+
+   .. py:method:: to_dict() -> dict[str, Any]
+
+      Serialize the score signals and derived fields to a plain dict.
+
+      :returns: Keys: ``url_signal``, ``anchor_signal``, ``content_signal``,
+                ``trust_signal``, ``weights``, ``total``, ``acceptance_class``.
+      :rtype: dict[str, Any]
+
+
+
+   .. py:method:: weighted_total() -> float
+
+      Compute the weighted sum of all signal scores, clamped to [0, 1].
+
+      :returns: Weighted score in the range ``[0.0, 1.0]``.
+      :rtype: float
+
+
+
+   .. py:attribute:: anchor_signal
+      :type:  float
+      :value: 0.0
+
+
+
+   .. py:attribute:: content_signal
+      :type:  float
+      :value: 0.0
+
+
+
+   .. py:attribute:: trust_signal
+      :type:  float
+      :value: 0.0
+
+
+
+   .. py:attribute:: url_signal
+      :type:  float
+      :value: 0.0
+
+
+
+   .. py:attribute:: weights
+      :type:  dict[str, float]
+
+
+.. py:class:: DiscoveryCandidate
+
+   Normalized candidate URL and validation/scoring details.
+
+
+   .. py:method:: to_dict() -> dict[str, Any]
+
+      Serialize this candidate to a plain dict for JSON output.
+
+      :returns: Flat representation suitable for writing to the discovery manifest.
+                ``status`` falls back to ``score.acceptance_class()`` when not
+                explicitly set.
+      :rtype: dict[str, Any]
+
+
+
+   .. py:attribute:: canonical_url
+      :type:  str | None
+      :value: None
+
+
+
+   .. py:attribute:: content_hash
+      :type:  str | None
+      :value: None
+
+
+
+   .. py:attribute:: extension
+      :type:  str | None
+      :value: None
+
+
+
+   .. py:attribute:: mime_type
+      :type:  str | None
+      :value: None
+
+
+
+   .. py:attribute:: reasons
+      :type:  list[str]
+      :value: []
+
+
+
+   .. py:attribute:: score
+      :type:  CandidateScore
+
+
+   .. py:attribute:: snippet
+      :type:  str | None
+      :value: None
+
+
+
+   .. py:attribute:: source
+      :type:  str
+
+
+   .. py:attribute:: status
+      :type:  str | None
+      :value: None
+
+
+
+   .. py:attribute:: target_metadata
+      :type:  dict[str, Any] | None
+      :value: None
+
+
+
+   .. py:attribute:: title
+      :type:  str | None
+      :value: None
+
+
+
+   .. py:attribute:: url
+      :type:  str
+
+
+.. py:class:: DiscoveryManifest
+
+   Run-level manifest model for discovery outputs and provenance.
+
+
+   .. py:method:: to_dict() -> dict[str, Any]
+
+      Serialize the full manifest to a JSON-compatible dict.
+
+      :returns: Complete manifest representation, including all candidates
+                serialized via ``DiscoveryCandidate.to_dict()``.
+      :rtype: dict[str, Any]
+
+
+
+   .. py:attribute:: candidate_summary
+      :type:  dict[str, Any]
+
+
+   .. py:attribute:: candidates
+      :type:  list[DiscoveryCandidate]
+      :value: []
+
+
+
+   .. py:attribute:: constraints
+      :type:  dict[str, Any]
+
+
+   .. py:attribute:: downloads
+      :type:  list[dict[str, Any]]
+      :value: []
+
+
+
+   .. py:attribute:: error_summary
+      :type:  dict[str, Any]
+
+
+   .. py:attribute:: errors
+      :type:  list[dict[str, Any]]
+      :value: []
+
+
+
+   .. py:attribute:: input
+      :type:  dict[str, Any]
+
+
+   .. py:attribute:: lineage
+      :type:  dict[str, Any]
+
+
+   .. py:attribute:: manifest_version
+      :type:  str
+      :value: '1.0.0'
+
+
+
+   .. py:attribute:: notes
+      :type:  list[str]
+      :value: []
+
+
+
+   .. py:attribute:: run_id
+      :type:  str
+
+
+   .. py:attribute:: stage_summaries
+      :type:  dict[str, Any]
+
+
+   .. py:attribute:: started_at
+      :type:  str
+
+
+   .. py:attribute:: status
+      :type:  str
+
+
+   .. py:attribute:: timing
+      :type:  dict[str, Any]
+
+

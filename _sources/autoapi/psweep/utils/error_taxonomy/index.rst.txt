@@ -1,0 +1,39 @@
+psweep.utils.error_taxonomy
+===========================
+
+.. py:module:: psweep.utils.error_taxonomy
+
+.. autoapi-nested-parse::
+
+   Structured error taxonomy helpers for deterministic runtime reporting.
+
+
+
+Functions
+---------
+
+.. autoapisummary::
+
+   psweep.utils.error_taxonomy.build_error_record
+   psweep.utils.error_taxonomy.normalize_error_records
+   psweep.utils.error_taxonomy.summarize_error_records
+
+
+Module Contents
+---------------
+
+.. py:function:: build_error_record(exc: BaseException, *, stage: str, document_path: Optional[str] = None, model: Optional[str] = None, provider: Optional[str] = None) -> Dict[str, Any]
+
+   Convert a runtime exception into the canonical error payload.
+
+
+.. py:function:: normalize_error_records(errors: Optional[Iterable[Dict[str, Any]]]) -> List[Dict[str, Any]]
+
+   Return a deterministic list of canonical error records.
+
+
+.. py:function:: summarize_error_records(errors: Optional[Iterable[Dict[str, Any]]]) -> Dict[str, Any]
+
+   Aggregate deterministic error totals for manifests and metadata.
+
+

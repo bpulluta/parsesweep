@@ -1,0 +1,65 @@
+psweep.validation.utils
+=======================
+
+.. py:module:: psweep.validation.utils
+
+.. autoapi-nested-parse::
+
+   Utility functions for QA/QC Multi-Model Validation.
+
+   Common utilities used across QA/QC modules.
+
+   Note: Most utilities are in the shared utils/ directory:
+       - utils/item_matcher.py - Item matching logic
+       - utils/value_normalizer.py - Value normalization
+       - utils/schema_metadata.py - Schema metadata parsing
+
+   This file contains QA/QC-specific utilities.
+
+
+
+Attributes
+----------
+
+.. autoapisummary::
+
+   psweep.validation.utils.logger
+
+
+Functions
+---------
+
+.. autoapisummary::
+
+   psweep.validation.utils.resolve_validation_runtime_config
+   psweep.validation.utils.sanitize_model_name
+
+
+Module Contents
+---------------
+
+.. py:function:: resolve_validation_runtime_config(schema_metadata, runtime_artifact: Optional[Dict[str, Any]] = None, runtime_validation: Optional[Dict[str, Any]] = None) -> Dict[str, Any]
+
+   Resolve active QA/QC config from the run config.
+
+   QA/QC configuration always lives in config/<domain>/run.yaml under
+   ``validation``. Schema metadata is intentionally excluded from this path —
+   it owns extraction contracts, not runtime QA/QC behavior.
+
+   :raises ValueError: If no QA/QC config can be found, if deprecated lane-style
+       keys are present, or if required fields are missing.
+
+
+.. py:function:: sanitize_model_name(model_name: str) -> str
+
+   Sanitize model name for use as filename.
+
+   :param model_name: Model name (e.g., "gpt-4o", "claude-3.5-sonnet")
+   :type model_name: str
+
+   :returns: Sanitized name safe for filenames
+   :rtype: str
+
+
+.. py:data:: logger
+

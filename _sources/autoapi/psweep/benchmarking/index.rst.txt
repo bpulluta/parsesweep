@@ -1,0 +1,20 @@
+psweep.benchmarking
+===================
+
+.. py:module:: psweep.benchmarking
+
+.. autoapi-nested-parse::
+
+   Benchmarking utilities for modernization validation.
+
+
+
+Submodules
+----------
+
+.. toctree::
+   :maxdepth: 1
+
+   /autoapi/psweep/benchmarking/performance/index
+
+

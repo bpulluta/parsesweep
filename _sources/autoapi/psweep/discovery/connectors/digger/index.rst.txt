@@ -1,0 +1,107 @@
+psweep.discovery.connectors.digger
+==================================
+
+.. py:module:: psweep.discovery.connectors.digger
+
+.. autoapi-nested-parse::
+
+   Digger connector abstraction and lightweight provider resolver.
+
+
+
+Classes
+-------
+
+.. autoapisummary::
+
+   psweep.discovery.connectors.digger.HttpDiggerConnector
+   psweep.discovery.connectors.digger.NullDiggerConnector
+   psweep.discovery.connectors.digger.SeleniumDiggerConnector
+
+
+Functions
+---------
+
+.. autoapisummary::
+
+   psweep.discovery.connectors.digger.resolve_digger_connector
+
+
+Module Contents
+---------------
+
+.. py:class:: HttpDiggerConnector
+
+   Bases: :py:obj:`psweep.discovery.connectors.base.BaseDiggerConnector`
+
+
+   HTTP-based digger provider for real discovery from live hub/seed pages.
+
+
+   .. py:method:: discover(digger_input: psweep.discovery.connectors.base.DiggerInput) -> list[psweep.discovery.connectors.base.DiggerArtifact]
+
+      Crawl seed URLs over HTTP and return discovered artifacts.
+
+
+
+   .. py:method:: supports_provider(provider: str) -> bool
+
+      Return True for the HTTP-crawl provider names.
+
+
+
+.. py:class:: NullDiggerConnector
+
+   Bases: :py:obj:`psweep.discovery.connectors.base.BaseDiggerConnector`
+
+
+   Default digger connector placeholder.
+
+   This connector keeps the runtime contract stable while concrete
+   crawlers (for example Crawlee/Playwright) are implemented in later slices.
+
+
+   .. py:method:: discover(digger_input: psweep.discovery.connectors.base.DiggerInput) -> list[psweep.discovery.connectors.base.DiggerArtifact]
+
+      Return artifacts for the seed URLs without crawling (seed-only).
+
+
+
+   .. py:method:: supports_provider(provider: str) -> bool
+
+      Return True for the seed-only / null provider names.
+
+
+
+.. py:class:: SeleniumDiggerConnector
+
+   Bases: :py:obj:`psweep.discovery.connectors.base.BaseDiggerConnector`
+
+
+   Browser-based digger for bot-protected sites (Akamai/Cloudflare).
+
+   Drives a real headless Chrome (via :mod:`..browser`) to crawl pages that
+   reject requests-based clients at the edge, extracting document links with
+   the same filtering the HTTP digger uses (including extension-less links via
+   ``include_url_patterns``). Discovered artifacts carry ``source_seed``
+   provenance. Downloads for these sites must also go through the browser
+   (``browser_mode: true``) since edge managers fingerprint the TLS layer.
+
+
+   .. py:method:: discover(digger_input: psweep.discovery.connectors.base.DiggerInput) -> list[psweep.discovery.connectors.base.DiggerArtifact]
+
+      Crawl seed URLs via a headless browser and return artifacts.
+
+
+
+   .. py:method:: supports_provider(provider: str) -> bool
+
+      Return True for the headless-browser provider names.
+
+
+
+.. py:function:: resolve_digger_connector(provider: str | None = None) -> psweep.discovery.connectors.base.BaseDiggerConnector
+
+   Resolve digger connector by provider name.
+
+

@@ -1,0 +1,106 @@
+psweep.discovery.browser
+========================
+
+.. py:module:: psweep.discovery.browser
+
+.. autoapi-nested-parse::
+
+   Headless-browser session for bot-protected sites (e.g. Akamai/Cloudflare).
+
+   Requests-based fetching is blocked at the edge by bot managers that inspect
+   TLS fingerprints and require JS challenge execution. A real Chrome instance
+   passes those challenges. This module wraps Selenium Chrome with sensible
+   anti-automation defaults and exposes:
+
+   - ``fetch_html(url)``      — return rendered page HTML (for crawling)
+   - ``current_links()``      — anchors on the current page (for link discovery)
+   - ``download_bytes(url)``  — fetch a file THROUGH the browser (real TLS), the
+                                only reliable way past edge managers (Akamai) that
+                                block ``requests`` even with transplanted cookies
+
+   Selenium/Chrome are optional; :func:`browser_available` reports readiness and
+   :class:`BrowserUnavailableError` is raised on use when they are missing.
+
+
+
+Exceptions
+----------
+
+.. autoapisummary::
+
+   psweep.discovery.browser.BrowserUnavailableError
+
+
+Classes
+-------
+
+.. autoapisummary::
+
+   psweep.discovery.browser.BrowserSession
+
+
+Functions
+---------
+
+.. autoapisummary::
+
+   psweep.discovery.browser.browser_available
+
+
+Module Contents
+---------------
+
+.. py:exception:: BrowserUnavailableError
+
+   Bases: :py:obj:`RuntimeError`
+
+
+   Raised when Selenium or a usable Chrome/driver is not available.
+
+   Initialize self.  See help(type(self)) for accurate signature.
+
+
+.. py:class:: BrowserSession(*, headless: bool = True, user_agent: str = _DEFAULT_UA, page_load_timeout: int = 45)
+
+   Context-managed headless Chrome session with anti-automation flags.
+
+
+   .. py:method:: close() -> None
+
+      Quit the underlying browser driver and release its resources.
+
+
+
+   .. py:method:: current_links() -> list[dict[str, str]]
+
+      Return ``[{url, text}]`` for every anchor on the current page.
+
+
+
+   .. py:method:: download_bytes(url: str, *, timeout_seconds: int = 60) -> tuple[bytes, str | None]
+
+      Fetch *url* through the browser and return ``(bytes, content_type)``.
+
+      Runs a same-origin ``fetch()`` inside the page so the request uses the
+      browser's real TLS fingerprint and session — the only reliable way past
+      edge bot managers (Akamai) that block ``requests`` even with cookies.
+      Navigates to the URL's origin first to satisfy same-origin policy.
+
+
+
+   .. py:method:: fetch_html(url: str, *, settle_seconds: float = 2.0) -> str
+
+      Navigate to *url* and return the rendered page source.
+
+
+
+   .. py:attribute:: user_agent
+      :value: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko)...
+
+
+
+.. py:function:: browser_available() -> bool
+
+   Return True if Selenium is importable (Chrome resolved lazily).
+
+

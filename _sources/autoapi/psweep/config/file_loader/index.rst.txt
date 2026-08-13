@@ -1,0 +1,55 @@
+psweep.config.file_loader
+=========================
+
+.. py:module:: psweep.config.file_loader
+
+.. autoapi-nested-parse::
+
+   Centralized JSON/YAML file loading with consistent error reporting.
+
+   Single source of truth for reading config and schema files from disk. Every
+   caller that loads a ``.json``, ``.yaml``, or ``.yml`` config/schema file should
+   route through here so missing-file and malformed-content failures surface with
+   one uniform, actionable message instead of a bare ``FileNotFoundError`` or
+   ``json.JSONDecodeError``.
+
+
+
+Attributes
+----------
+
+.. autoapisummary::
+
+   psweep.config.file_loader.PathLike
+
+
+Functions
+---------
+
+.. autoapisummary::
+
+   psweep.config.file_loader.load_config_file
+   psweep.config.file_loader.load_json_file
+   psweep.config.file_loader.load_yaml_file
+
+
+Module Contents
+---------------
+
+.. py:function:: load_config_file(path: PathLike) -> Dict[str, Any]
+
+   Load a config file, dispatching on extension (.json/.yaml/.yml).
+
+
+.. py:function:: load_json_file(path: PathLike) -> Dict[str, Any]
+
+   Load and parse a JSON file, raising ``ConfigurationError`` on failure.
+
+
+.. py:function:: load_yaml_file(path: PathLike) -> Dict[str, Any]
+
+   Load and parse a YAML file, raising ``ConfigurationError`` on failure.
+
+
+.. py:data:: PathLike
+

@@ -1,0 +1,92 @@
+psweep.discovery.candidate_selector
+===================================
+
+.. py:module:: psweep.discovery.candidate_selector
+
+.. autoapi-nested-parse::
+
+   Per-target candidate selection: draft filtering and recency-based version selection.
+
+   After the SerpApi seeker discovers candidates per target, this module decides
+   which candidates to actually stage for download.  The two core guards are:
+
+   1. **Draft filter** – exclude documents whose URL or snippet text contains
+      signals indicating they are not the current enacted/production version
+      (e.g., "draft", "proposed", "preliminary", "superseded").
+
+   2. **Recency selection** – within each target's candidate pool, prefer the
+      most recent version by parsing effective dates out of the URL filename
+      or path segments.  When no date is detectable the candidate is still
+      included (date-less candidates rank behind dated ones).
+
+   Both guards are applied per-target so that a utility or jurisdiction with
+   many candidates does not crowd out others, and so that version conflicts
+   (e.g., April-2024 vs May-2024 tariff summation sheets) resolve to the
+   single latest copy.
+
+
+
+Attributes
+----------
+
+.. autoapisummary::
+
+   psweep.discovery.candidate_selector.DEFAULT_DRAFT_PATTERNS
+
+
+Classes
+-------
+
+.. autoapisummary::
+
+   psweep.discovery.candidate_selector.CandidateSelector
+
+
+Module Contents
+---------------
+
+.. py:class:: CandidateSelector(exclude_draft: bool = True, draft_patterns: list[str] | None = None, relevance_require_any_terms: list[str] | None = None, relevance_require_legal_marker_terms: list[str] | None = None, relevance_exclude_any_terms: list[str] | None = None, require_supported_document: bool = True, target_identity_require_any_templates: list[str] | None = None, target_identity_require_all_templates: list[str] | None = None, target_identity_exclude_any_templates: list[str] | None = None)
+
+   Selects the best candidate(s) per target from seeker output.
+
+   :param exclude_draft: When ``True`` (default), candidates matching any draft pattern in
+                         their URL or reason strings are excluded before recency ranking.
+   :param draft_patterns: Override the default draft detection regex patterns.  Each entry is
+                          a case-insensitive ``re.search`` pattern string.
+
+
+   .. py:method:: select(candidates_by_target: list[list[psweep.discovery.models.DiscoveryCandidate]], primary_per_target: int = 1, target_contexts: list[dict[str, object]] | None = None, include_metrics: bool = False) -> tuple[list[psweep.discovery.models.DiscoveryCandidate], list[str]] | tuple[list[psweep.discovery.models.DiscoveryCandidate], list[str], list[dict[str, Any]]]
+
+      Select up to *primary_per_target* candidates per target.
+
+      Steps per target:
+      1. Draft filter (if ``exclude_draft=True``).
+      2. Sort by parsed effective date descending (most recent first).
+      3. Take the top *primary_per_target* candidates.
+
+      :param candidates_by_target: Parallel list where index *i* holds the candidates returned by
+                                   the seeker for target *i*.
+      :param primary_per_target: Maximum number of candidates to select for each target.
+                                 Defaults to ``1``.
+      :param target_contexts: Optional per-target metadata (parallel to *candidates_by_target*)
+                              used to enrich selection notes and metrics.
+      :param include_metrics: When ``True``, also return the per-target selection metrics.
+
+      :returns: ``(selected, notes)``, or ``(selected, notes, target_metrics)``
+                when ``include_metrics=True``, where:
+
+                - ``selected`` is the flat list of selected candidates, one group
+                  per target in input order;
+                - ``notes`` holds human-readable selection log entries for the
+                  manifest;
+                - ``target_metrics`` holds per-target selection metrics (present
+                  only when ``include_metrics=True``).
+      :rtype: tuple
+
+
+
+.. py:data:: DEFAULT_DRAFT_PATTERNS
+   :type:  list[str]
+   :value: ['\\bdraft\\b', '\\bproposed\\b', '\\bpreliminary\\b', 'for[\\s_\\-]?review',...
+
+

@@ -1,0 +1,258 @@
+psweep.pipeline
+===============
+
+.. py:module:: psweep.pipeline
+
+.. autoapi-nested-parse::
+
+   Pure Python pipeline API for ParseSweep.
+
+   This module provides high-level orchestration functions that call the
+   underlying engines (DocumentExtractor, DataCompiler, DiscoveryEngine)
+   without any CLI, Rich, or Typer dependencies. Use these functions to
+   integrate ParseSweep into your own Python code, scripts, or a future
+   REST API layer.
+
+   Quick start:
+       >>> from psweep.pipeline import extract_documents, compile_extractions
+       >>> result = extract_documents(
+       ...     "documents/my_domain/",
+       ...     schema="schemas/personal/my_schema.json",
+       ... )
+       >>> print(f"Extracted {result.successful}/{result.total} documents")
+       >>> compiled = compile_extractions(result.output_dir, schema=result.schema_path)
+       >>> print(f"Compiled to {compiled.output_files}")
+
+   For full config-driven runs (recommended for complex domains):
+       >>> from psweep.pipeline import run_pipeline
+       >>> run_pipeline("config/my_domain/my_domain.yaml")
+
+
+
+Attributes
+----------
+
+.. autoapisummary::
+
+   psweep.pipeline.logger
+
+
+Classes
+-------
+
+.. autoapisummary::
+
+   psweep.pipeline.CompilationResult
+   psweep.pipeline.ExtractionRunResult
+   psweep.pipeline.PipelineResult
+
+
+Functions
+---------
+
+.. autoapisummary::
+
+   psweep.pipeline.build_run_stage_commands
+   psweep.pipeline.compile_extractions
+   psweep.pipeline.detect_api_provider
+   psweep.pipeline.extract_documents
+   psweep.pipeline.resolve_run_validation
+   psweep.pipeline.run_pipeline
+
+
+Module Contents
+---------------
+
+.. py:class:: CompilationResult
+
+   Summary of a compilation run.
+
+
+   .. py:attribute:: deduplicated
+      :type:  bool
+
+
+   .. py:attribute:: output_dir
+      :type:  pathlib.Path
+
+
+   .. py:attribute:: output_files
+      :type:  list[pathlib.Path]
+
+
+   .. py:attribute:: total_rows
+      :type:  int
+
+
+.. py:class:: ExtractionRunResult
+
+   Summary of a batch document extraction run.
+
+
+   .. py:attribute:: errors
+      :type:  list[dict]
+      :value: []
+
+
+
+   .. py:attribute:: failed
+      :type:  int
+
+
+   .. py:attribute:: output_dir
+      :type:  pathlib.Path
+
+
+   .. py:attribute:: schema_path
+      :type:  pathlib.Path
+
+
+   .. py:property:: success_rate
+      :type: float
+
+
+      Fraction of documents extracted without error.
+
+      :returns: ``successful / total``, or ``0.0`` when ``total`` is zero.
+      :rtype: float
+
+
+   .. py:attribute:: successful
+      :type:  int
+
+
+   .. py:attribute:: total
+      :type:  int
+
+
+   .. py:attribute:: total_cost
+      :type:  float
+
+
+   .. py:attribute:: total_items
+      :type:  int
+
+
+.. py:class:: PipelineResult
+
+   Combined result from a full discover → extract → [validate] → compile run.
+
+
+   .. py:attribute:: compilation
+      :type:  Optional[CompilationResult]
+      :value: None
+
+
+
+   .. py:attribute:: domain
+      :type:  str
+
+
+   .. py:attribute:: extraction
+      :type:  Optional[ExtractionRunResult]
+      :value: None
+
+
+
+   .. py:attribute:: stages_run
+      :type:  list[str]
+
+
+.. py:function:: build_run_stage_commands(config_path: str | pathlib.Path, *, base_cmd: Sequence[str], skip_discover: bool = False, skip_extract: bool = False, reprocess: bool = False, extra_flags: Sequence[str] = ()) -> list[tuple[str, list[str]]]
+
+   Build the subprocess commands used to execute a run config pipeline.
+
+   ``reprocess`` propagates a "start fresh" signal to both the discover stage
+   (``--fresh``: ignore the checkpoint and refresh the search cache) and the
+   extract stage (``--fresh``: re-extract already-processed documents), giving
+   ``run --fresh`` a single "start fresh" behavior across stages.
+
+   When the config enables multi-model QA/QC, an explicit ``validate`` stage
+   is appended after extraction.
+
+
+.. py:function:: compile_extractions(extraction_dir: str | pathlib.Path, schema: str | pathlib.Path, *, config_path: str | pathlib.Path | None = None, output_dir: str | pathlib.Path | None = None, report_format: str = 'both', dry_run: bool = False) -> CompilationResult
+
+   Compile extracted JSON files into Excel/CSV output.
+
+   :param extraction_dir: Directory containing ``.json`` extraction files.
+   :param schema: Path to the same schema used during extraction.
+   :param config_path: Optional path to the domain run config (e.g.
+                       ``config/<domain>/<domain>.yaml``). When provided, the
+                       ``compilation.output`` settings (exclude_fields, column_renames,
+                       column_order, etc.) and ``compilation.normalization`` from the config
+                       are applied to the output. Matches the behavior of
+                       ``pixi run psweep compile --config``.
+   :param output_dir: Where to write compiled output. Defaults to ``compiled/<name>/``.
+   :param report_format: ``"xlsx"``, ``"csv"``, or ``"both"`` (default).
+   :param dry_run: If True, parse and validate but write no output files.
+
+   :rtype: CompilationResult
+
+
+.. py:function:: detect_api_provider() -> tuple[str | None, bool, str | None]
+
+   Auto-detect which LLM provider to use from environment variables.
+
+   :returns: * *(provider_name, is_valid, error_message)*
+             * *provider_name is 'azure', 'openai', or None.*
+
+
+.. py:function:: extract_documents(documents_path: str | pathlib.Path, schema: str | pathlib.Path, *, output_dir: str | pathlib.Path | None = None, model: str = DEFAULT_MODEL, provider: str = 'auto', max_context: int = 400000, skip_existing: bool = True, limit: int | None = None, pages_csv: str | pathlib.Path | None = None) -> ExtractionRunResult
+
+   Extract structured data from all documents in a folder.
+
+   This is a pure Python function — no CLI, no Rich, no sys.exit. It calls
+   :class:`psweep.extraction.DocumentExtractor` for each supported document,
+   persists per-document JSON, and returns an aggregated result.
+
+   :param documents_path: Folder containing PDF/DOCX/TXT/XLSX/CSV documents.
+   :param schema: Path to a valid ParseSweep v2.0+ JSON schema with ``$metadata``.
+   :param output_dir: Where to write extracted JSON files. Defaults to
+                      ``extracted/<documents_path.name>/``.
+   :param model: LLM model identifier (e.g. ``gpt-4o-mini``, ``claude-3.5-sonnet``).
+   :param provider: LLM provider. ``"auto"`` detects from environment variables.
+   :param max_context: Maximum characters to send to the LLM per document.
+   :param skip_existing: If True, skip documents whose output JSON already exists.
+   :param limit: Cap the number of documents processed (useful for testing).
+   :param pages_csv: Optional CSV mapping filenames to page ranges.
+
+   :returns: Aggregated counts, cost, and output location.
+   :rtype: ExtractionRunResult
+
+   :raises psweep.exceptions.APIKeyError: If no LLM credentials are found.
+   :raises psweep.exceptions.SchemaError: If the schema is invalid or missing ``$metadata``.
+   :raises psweep.exceptions.ExtractionError: If a document fails to extract (per-document errors are collected and
+       returned in ``result.errors`` rather than raised, unless *all* fail).
+
+
+.. py:function:: resolve_run_validation(config_path: str | pathlib.Path) -> Optional[dict]
+
+   Resolve QA/QC orchestration settings from a domain run config.
+
+   QA/QC is enabled for ``run`` when the top-level ``validation.models`` list is
+   present. Returns ``None`` when absent, otherwise a dict describing validate
+   stage inputs.
+
+
+.. py:function:: run_pipeline(config_path: str | pathlib.Path, *, skip_discover: bool = False, skip_extract: bool = False, reprocess: bool = False) -> PipelineResult
+
+   Run the full pipeline (discover → extract → compile) from a run config.
+
+   This is a thin subprocess-based orchestrator that mirrors the CLI ``run``
+   command. It is suitable for scripting and automation where you want
+   programmatic control over the pipeline without the Rich terminal UI.
+   When the config enables QA/QC, a ``compare`` stage runs after ``compile``.
+
+   :param config_path: Path to a domain run config file (e.g. ``config/<domain>/<domain>.yaml``).
+   :param skip_discover: If True, skip the discovery stage.
+   :param skip_extract: If True, skip the extraction stage (compile from existing JSON).
+   :param reprocess: If True, re-extract already-processed documents.
+
+   :rtype: PipelineResult
+
+   :raises psweep.exceptions.PipelineError: If any stage fails.
+
+
+.. py:data:: logger
+

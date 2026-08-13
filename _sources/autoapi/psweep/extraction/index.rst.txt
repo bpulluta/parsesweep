@@ -1,0 +1,28 @@
+psweep.extraction
+=================
+
+.. py:module:: psweep.extraction
+
+.. autoapi-nested-parse::
+
+   Extraction module for document data extraction.
+
+
+
+Submodules
+----------
+
+.. toctree::
+   :maxdepth: 1
+
+   /autoapi/psweep/extraction/document_extractor/index
+   /autoapi/psweep/extraction/document_utils/index
+   /autoapi/psweep/extraction/llm_client/index
+   /autoapi/psweep/extraction/llm_factory/index
+   /autoapi/psweep/extraction/page_locator/index
+   /autoapi/psweep/extraction/pdf_utils/index
+   /autoapi/psweep/extraction/record_writer/index
+   /autoapi/psweep/extraction/schema_utils/index
+   /autoapi/psweep/extraction/text_processor/index
+
+

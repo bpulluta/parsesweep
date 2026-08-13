@@ -1,0 +1,132 @@
+psweep.discovery.link_prioritizer
+=================================
+
+.. py:module:: psweep.discovery.link_prioritizer
+
+.. autoapi-nested-parse::
+
+   Heuristic link prioritizer for discovery candidate ranking.
+
+   Reduces web discovery noise by scoring and ranking candidate URLs before
+   download, enabling 1000+ link automation without manual selection.
+
+
+
+Classes
+-------
+
+.. autoapisummary::
+
+   psweep.discovery.link_prioritizer.LinkPrioritizer
+   psweep.discovery.link_prioritizer.PrioritizedCandidate
+   psweep.discovery.link_prioritizer.PriorityScore
+
+
+Module Contents
+---------------
+
+.. py:class:: LinkPrioritizer(keywords: list[str] | None = None, domain_authority_overrides: dict[str, float] | None = None, top_k: int | None = 5, power_range_kw: tuple[float, float] | None = None)
+
+   Heuristic ranker for discovery candidate URLs.
+
+   Scores candidates before download using file-type, domain authority,
+   keyword, and power-class signals.  Returns top-K ranked candidates and
+   a full lineage list so nothing is permanently discarded.
+
+   :param keywords: Domain/query keywords used to boost URLs that contain them.
+                    Sourced from schema keywords or config.
+   :param domain_authority_overrides: Extra ``{domain_substring: score_adjustment}`` entries that
+                                      supplement the built-in authority table.
+   :param top_k: Maximum number of candidates to surface after ranking. ``None``
+                 returns all candidates in ranked order.
+   :param power_range_kw: Optional ``(min_kw, max_kw)`` tuple.  URLs containing a numeric kW
+                          value inside this range receive a bonus; values outside the range
+                          receive a penalty.
+
+
+   .. py:method:: prioritize(candidates: list[psweep.discovery.models.DiscoveryCandidate]) -> tuple[list[psweep.discovery.models.DiscoveryCandidate], list[dict[str, Any]]]
+
+      Rank candidates by heuristic score and return top-K.
+
+      :param candidates: Input candidates (from seeker or digger stage).
+
+      :returns: * *ranked_top_k* -- Top-K candidates sorted by heuristic confidence descending,
+                  with updated ``score.url_signal`` and ``score.anchor_signal``
+                  reflecting the priority assessment.
+                * *lineage* -- Full list of all candidates (including those outside top-K) with
+                  their priority scores and original ranks, preserving provenance.
+
+
+
+.. py:class:: PrioritizedCandidate
+
+   An discovery candidate augmented with heuristic priority metadata.
+
+
+   .. py:method:: to_lineage_dict() -> dict[str, Any]
+
+      Serialize this candidate's priority metadata for manifest lineage.
+
+
+
+   .. py:attribute:: candidate
+      :type:  psweep.discovery.models.DiscoveryCandidate
+
+
+   .. py:attribute:: original_rank
+      :type:  int
+      :value: 0
+
+
+
+   .. py:attribute:: priority_reasons
+      :type:  list[str]
+      :value: []
+
+
+
+   .. py:attribute:: priority_score
+      :type:  PriorityScore
+
+
+.. py:class:: PriorityScore
+
+   Detailed breakdown of a heuristic priority assessment.
+
+
+   .. py:method:: to_dict() -> dict[str, Any]
+
+      Serialize the priority score components to a rounded plain dict.
+
+
+
+   .. py:attribute:: confidence
+      :type:  float
+      :value: 0.0
+
+
+
+   .. py:attribute:: domain_authority_score
+      :type:  float
+      :value: 0.0
+
+
+
+   .. py:attribute:: file_type_score
+      :type:  float
+      :value: 0.0
+
+
+
+   .. py:attribute:: keyword_score
+      :type:  float
+      :value: 0.0
+
+
+
+   .. py:attribute:: power_class_score
+      :type:  float
+      :value: 0.0
+
+
+

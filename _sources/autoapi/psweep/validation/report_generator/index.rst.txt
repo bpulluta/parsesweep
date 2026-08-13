@@ -1,0 +1,110 @@
+psweep.validation.report_generator
+==================================
+
+.. py:module:: psweep.validation.report_generator
+
+.. autoapi-nested-parse::
+
+   Report Generator for QA/QC Multi-Model Validation.
+
+   Generates Excel/CSV reports with color-coded comparison results
+   for human review.
+
+   .. rubric:: Examples
+
+   .. code-block:: python
+
+       from psweep.validation.report_generator import ReportGenerator
+       from psweep.validation.comparison_engine import ComparisonResult
+
+       generator = ReportGenerator()
+       excel_path, csv_path = generator.generate_report(
+           comparison_result=result,
+           output_dir=Path("processed/validation/austin_energy")
+       )
+
+   .. rubric:: Notes
+
+   Output Files::
+
+       processed/validation/{doc_name}/
+           comparison_report.xlsx  # Color-coded Excel
+           comparison_report.csv   # Plain CSV
+
+   Color Coding:
+
+   - Green: Full agreement (N/N)
+   - Yellow: Partial agreement (>50%)
+   - Red: Low agreement (≤50%) or disagreement
+   - Gray: Item missing from one or more models
+
+
+
+Attributes
+----------
+
+.. autoapisummary::
+
+   psweep.validation.report_generator.MAX_VALUE_LENGTH
+   psweep.validation.report_generator.VERBATIM_TRUNCATION
+   psweep.validation.report_generator.logger
+
+
+Classes
+-------
+
+.. autoapisummary::
+
+   psweep.validation.report_generator.ReportGenerator
+
+
+Module Contents
+---------------
+
+.. py:class:: ReportGenerator(schema: Optional[Dict[str, Any]] = None)
+
+   Generate comparison reports in Excel/CSV format.
+
+   Creates actionable reports for human review of multi-model QA/QC results.
+   Excel reports include color-coded rows based on agreement level.
+
+
+   .. py:method:: generate_report(comparison_result: psweep.validation.comparison_engine.ComparisonResult, output_dir: pathlib.Path, run_metadata: Optional[Dict[str, Any]] = None, include_csv: bool = True, include_missing_in_queue: bool = False, include_low_signal_presence_in_queue: bool = False, discovery_checkpoint_path: Optional[pathlib.Path] = None, extraction_dir: Optional[pathlib.Path] = None) -> Tuple[pathlib.Path, pathlib.Path]
+
+      Generate Excel and CSV reports with evidence display.
+
+      :param comparison_result: ComparisonResult from comparison engine
+      :type comparison_result: ComparisonResult
+      :param output_dir: Directory to save reports
+      :type output_dir: Path
+      :param run_metadata: Optional run metadata to include
+      :type run_metadata: Optional[Dict[str, Any]]
+      :param include_csv: Whether to generate CSV report
+      :type include_csv: bool
+      :param include_missing_in_queue: Include presence_diff rows in Review Queue
+      :type include_missing_in_queue: bool
+      :param include_low_signal_presence_in_queue: Include low-signal presence rows
+      :type include_low_signal_presence_in_queue: bool
+      :param discovery_checkpoint_path: Path to discovery checkpoint for document metadata
+      :type discovery_checkpoint_path: Optional[Path]
+      :param extraction_dir: Path to extraction JSONs for evidence values
+      :type extraction_dir: Optional[Path]
+
+      :returns: Tuple of (excel_path, csv_path)
+      :rtype: Tuple[Path, Path]
+
+
+
+   .. py:attribute:: COLORS
+
+
+.. py:data:: MAX_VALUE_LENGTH
+   :value: 200
+
+
+.. py:data:: VERBATIM_TRUNCATION
+   :value: 200
+
+
+.. py:data:: logger
+

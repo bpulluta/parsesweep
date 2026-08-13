@@ -1,0 +1,174 @@
+psweep.utils.item_matcher
+=========================
+
+.. py:module:: psweep.utils.item_matcher
+
+.. autoapi-nested-parse::
+
+   Item matching utilities for comparing and indexing data items.
+
+   Provides reusable logic for matching items across different sources
+   based on identifier fields. Used by both compilation deduplication
+   and QA/QC comparison.
+
+
+
+Attributes
+----------
+
+.. autoapisummary::
+
+   psweep.utils.item_matcher.STOP_WORDS
+   psweep.utils.item_matcher.logger
+
+
+Functions
+---------
+
+.. autoapisummary::
+
+   psweep.utils.item_matcher.create_item_index
+   psweep.utils.item_matcher.extract_key_tokens
+   psweep.utils.item_matcher.get_nested_value
+   psweep.utils.item_matcher.map_key_fields_to_columns
+   psweep.utils.item_matcher.normalize_for_matching
+
+
+Module Contents
+---------------
+
+.. py:function:: create_item_index(items: List[Dict[str, Any]], identifier_fields: List[str], fuzzy_fields: Optional[List[str]] = None) -> Dict[Tuple, Dict[str, Any]]
+
+   Create an index of items by their identifier fields.
+
+   Values are normalized for consistent matching:
+
+   - Strings: lowercase, stripped whitespace
+   - Fuzzy fields: token-normalized (removes stop words, sorts keywords)
+   - None values preserved
+
+   :param items: List of data items (dicts)
+   :type items: List[Dict[str, Any]]
+   :param identifier_fields: List of dot-notation field paths to use as keys
+   :type identifier_fields: List[str]
+   :param fuzzy_fields: Optional list of fields to apply token normalization
+   :type fuzzy_fields: Optional[List[str]]
+
+   :returns: Dictionary mapping identifier tuples to items
+   :rtype: Dict[Tuple, Dict[str, Any]]
+
+   .. rubric:: Examples
+
+   >>> items = [
+   ...     {"id": "1", "name": "Item 1"},
+   ...     {"id": "2", "name": "Item 2"}
+   ... ]
+   >>> index = create_item_index(items, ["id"])
+   >>> index[("1",)]["name"]
+   "Item 1"
+
+
+.. py:function:: extract_key_tokens(text: str) -> Set[str]
+
+   Extract key tokens from text for fuzzy matching.
+
+   Normalizes text by:
+
+   - Converting to lowercase
+   - Removing punctuation
+   - Splitting into words
+   - Removing stop words
+   - Keeping only meaningful content words
+
+   :param text: Text string to tokenize
+   :type text: str
+
+   :returns: Set of normalized key tokens
+   :rtype: Set[str]
+
+   .. rubric:: Examples
+
+   >>> extract_key_tokens("site preparation for drilling")
+   {'site', 'preparation', 'drilling'}
+   >>> extract_key_tokens("work in preparation of the site for drilling")
+   {'preparation', 'site', 'drilling'}
+
+
+.. py:function:: get_nested_value(obj: Dict[str, Any], dot_path: str) -> Any
+
+   Get value from nested dictionary using dot-notation path.
+
+   :param obj: Dictionary to extract value from
+   :type obj: Dict[str, Any]
+   :param dot_path: Dot-notation path (e.g., "metadata.jurisdiction.state")
+   :type dot_path: str
+
+   :returns: Value at the path, or None if path doesn't exist
+   :rtype: Any
+
+   .. rubric:: Examples
+
+   >>> obj = {"metadata": {"jurisdiction": {"state": "CA"}}}
+   >>> get_nested_value(obj, "metadata.jurisdiction.state")
+   "CA"
+   >>> get_nested_value(obj, "metadata.missing")
+   None
+
+
+.. py:function:: map_key_fields_to_columns(df: pandas.DataFrame, key_fields: List[str], *, warn_on_missing: bool = True) -> List[str]
+
+   Map schema key_fields to actual DataFrame columns.
+
+   Handles case variations and common naming patterns.
+   For nested fields like "jurisdiction.state", looks for "State" column.
+   Handles transformations like "specific_subject" -> "Specific Subject".
+
+   This function is extracted from deduplicator for reuse in QA/QC.
+
+   :param df: DataFrame to map columns from
+   :type df: pd.DataFrame
+   :param key_fields: Key field names from schema (dot-notation paths)
+   :type key_fields: List[str]
+   :param warn_on_missing: Whether to log a warning for each unmapped key field
+   :type warn_on_missing: bool
+
+   :returns: List of actual DataFrame column names that match key_fields
+   :rtype: List[str]
+
+   .. rubric:: Examples
+
+   >>> df = pd.DataFrame(columns=["State", "Rate Name", "Charge Type"])
+   >>> map_key_fields_to_columns(df, ["jurisdiction.state", "rate_name"])
+   ["State", "Rate Name"]
+
+
+.. py:function:: normalize_for_matching(value: str) -> str
+
+   Normalize a string value for fuzzy matching.
+
+   Extracts key tokens and joins them sorted, enabling matching
+   despite verbosity differences like:
+
+   - "site preparation for drilling"
+   - "work in preparation of the site for drilling"
+
+   Both normalize to: "drilling preparation site"
+
+   :param value: String value to normalize
+   :type value: str
+
+   :returns: Normalized string with sorted key tokens
+   :rtype: str
+
+   .. rubric:: Examples
+
+   >>> normalize_for_matching("site preparation for drilling")
+   'drilling preparation site'
+   >>> normalize_for_matching("work in preparation of the site for drilling")
+   'drilling preparation site'
+
+
+.. py:data:: STOP_WORDS
+
+.. py:data:: logger
+

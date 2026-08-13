@@ -1,0 +1,245 @@
+psweep.utils.schema_metadata
+============================
+
+.. py:module:: psweep.utils.schema_metadata
+
+.. autoapi-nested-parse::
+
+   Schema metadata parsing and access.
+
+   This module enables schema-driven behavior without hardcoded domain logic.
+   All domain-specific knowledge should reside in schema metadata, not in code.
+
+   As of v2.0, all schemas MUST include a $metadata section.
+
+
+
+Attributes
+----------
+
+.. autoapisummary::
+
+   psweep.utils.schema_metadata.HIGH_SEVERITY_TOKENS
+   psweep.utils.schema_metadata.MEDIUM_SEVERITY_TOKENS
+   psweep.utils.schema_metadata.logger
+
+
+Classes
+-------
+
+.. autoapisummary::
+
+   psweep.utils.schema_metadata.SchemaMetadata
+
+
+Module Contents
+---------------
+
+.. py:class:: SchemaMetadata(schema_path: pathlib.Path, metadata_overrides: Optional[Dict[str, Any]] = None)
+
+   Parse and provide access to schema metadata.
+
+   Enables schema-driven behavior without hardcoded domain logic.
+
+   As of v2.0, all schemas MUST include a $metadata section.
+   Schemas without metadata will raise SchemaMetadataError.
+
+   Initialize with schema file path.
+
+   :param schema_path: Path to JSON schema file
+   :type schema_path: Path
+   :param metadata_overrides: Optional runtime metadata overrides merged onto $metadata
+   :type metadata_overrides: Optional[Dict[str, Any]]
+
+   :raises SchemaMetadataError: If schema lacks required $metadata section
+
+
+   .. py:method:: extract_main_data_array(data: dict) -> List[Dict[str, Any]]
+
+      Extract main data array from extraction results.
+
+      :param data: Extracted data dictionary
+      :type data: dict
+
+      :returns: List of data items, or empty list if not found
+      :rtype: List[Dict[str, Any]]
+
+      :raises SchemaMetadataError: If main data array key not specified
+
+
+
+   .. py:method:: get_auto_width() -> bool
+
+      Get whether to auto-size columns in Excel output.
+
+
+
+   .. py:method:: get_column_order() -> List[str]
+
+      Get preferred column order for output.
+
+
+
+   .. py:method:: get_column_renames() -> Dict[str, str]
+
+      Get output column rename mapping.
+
+
+
+   .. py:method:: get_comparison_mode() -> str
+
+      Get comparison mode for deduplication (exact, fuzzy).
+
+
+
+   .. py:method:: get_compilation_field_severity_hints() -> Dict[str, str]
+
+      Return schema-derived severity hints for compiled output fields.
+
+
+
+   .. py:method:: get_completeness_threshold() -> float
+
+      Get minimum completeness score (0.0-1.0).
+
+
+
+   .. py:method:: get_context_objects() -> List[str]
+
+      Get keys containing context/metadata objects.
+
+
+
+   .. py:method:: get_deduplication_ignore_fields() -> List[str]
+
+      Get fields to ignore during deduplication comparison.
+
+
+
+   .. py:method:: get_deduplication_key_fields() -> List[str]
+
+      Get fields that define uniqueness for deduplication.
+
+
+
+   .. py:method:: get_deduplication_strategy() -> str
+
+      Get deduplication strategy (latest, earliest, merge).
+
+
+
+   .. py:method:: get_description() -> str
+
+      Get schema description from metadata.
+
+
+
+   .. py:method:: get_display_name_template() -> Optional[str]
+
+      Get template for generating display names.
+
+
+
+   .. py:method:: get_document_type() -> str
+
+      Get human-readable document type.
+
+
+
+   .. py:method:: get_domain() -> str
+
+      Get domain/category from metadata.
+
+
+
+   .. py:method:: get_flattening_config() -> Dict[str, Any]
+
+      Return the optional ``compilation.flattening`` block.
+
+      Domain-neutral knobs the flattener consults to decide how arrays of
+      objects become spreadsheet columns. Every key is optional; when a key
+      is absent the flattener falls back to its documented general defaults,
+      so schemas that declare nothing keep the legacy behavior.
+
+
+
+   .. py:method:: get_freeze_columns() -> int
+
+      Get number of columns to freeze in Excel output.
+
+
+
+   .. py:method:: get_identifier_fields() -> List[str]
+
+      Get field paths that serve as identifiers.
+
+
+
+   .. py:method:: get_main_data_array() -> str
+
+      Get the key containing the main data array.
+
+
+
+   .. py:method:: get_output_exclude_fields() -> List[str]
+
+      Get fields that should be excluded from compiled outputs.
+
+
+
+   .. py:method:: get_output_format() -> str
+
+      Get default output format.
+
+
+
+   .. py:method:: get_quality_checks() -> List[Dict[str, Any]]
+
+      Get custom quality validation rules.
+
+
+
+   .. py:method:: get_required_fields() -> List[str]
+
+      Get fields that must be present in extraction.
+
+
+
+   .. py:method:: get_state_normalization_column() -> Optional[str]
+
+      Column whose US-state names should be normalized to abbreviations.
+
+      Driven by ``compilation.normalization.state_column``. Defaults to
+      ``"State"`` (legacy behavior: normalize a column literally named
+      ``State`` when present). Set to ``null``/``""`` in a schema to opt a
+      non-US / non-jurisdiction domain out entirely.
+
+
+
+   .. py:method:: get_version() -> str
+
+      Get schema version from metadata.
+
+
+
+   .. py:method:: has_metadata() -> bool
+
+      Check if schema includes metadata section.
+
+
+
+   .. py:attribute:: metadata
+
+
+   .. py:attribute:: schema
+
+
+   .. py:attribute:: schema_path
+
+
+.. py:data:: HIGH_SEVERITY_TOKENS
+
+.. py:data:: MEDIUM_SEVERITY_TOKENS
+
+.. py:data:: logger
+

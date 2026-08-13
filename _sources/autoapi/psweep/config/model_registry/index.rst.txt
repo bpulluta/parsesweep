@@ -1,0 +1,241 @@
+psweep.config.model_registry
+============================
+
+.. py:module:: psweep.config.model_registry
+
+.. autoapi-nested-parse::
+
+   Unified model registry — one normalization boundary for model tiers.
+
+   This module centralizes how a run's model *tiers* (the top-level ``models:``
+   alias map) and per-model context windows (``model_context_windows:``) become
+   resolvable :class:`ModelDefinition` objects. It is a thin **facade** over the
+   low-level primitives in :mod:`psweep.extraction.llm_factory`:
+
+   * :func:`ModelRegistry.from_config` is the ONLY place where the various config
+     shapes (a plain model string, a long-form ``{model, provider, ...}`` dict, or
+     the legacy ``model_context_windows`` side-map) get normalized into
+     :class:`ModelDefinition` instances. Everything downstream consumes the
+     normalized form.
+   * :meth:`ModelRegistry.to_llm_kwargs` delegates to
+     ``llm_factory.resolve_llm_kwargs`` so credentials and the concrete provider
+     are resolved through the single, env-driven path — never re-derived here.
+
+   Import-cycle discipline
+   -----------------------
+   The registry may call into ``llm_factory`` (lazily, or via an injected
+   callable), but ``llm_factory`` NEVER imports this module. That keeps the
+   dependency arrow one-directional (registry → factory) so there is no cycle.
+
+   Provider stays env-driven
+   -------------------------
+   A :class:`ModelDefinition` may carry a *declared* ``provider`` hint (from a
+   long-form config entry), but the runtime provider and credentials always come
+   from :func:`resolve_llm_kwargs`, which reads ``llm_config['provider']`` (the
+   environment-derived value). The registry never sniffs a provider from a model
+   name for credential purposes.
+
+
+
+Attributes
+----------
+
+.. autoapisummary::
+
+   psweep.config.model_registry.KNOWN_PROVIDERS
+   psweep.config.model_registry.MIN_MULTI_MODELS
+
+
+Exceptions
+----------
+
+.. autoapisummary::
+
+   psweep.config.model_registry.ModelRegistryError
+
+
+Classes
+-------
+
+.. autoapisummary::
+
+   psweep.config.model_registry.ModelDefinition
+   psweep.config.model_registry.ModelRegistry
+
+
+Module Contents
+---------------
+
+.. py:exception:: ModelRegistryError
+
+   Bases: :py:obj:`ValueError`
+
+
+   Raised when a model registry cannot be built or validated.
+
+   Kept local to this module (rather than reusing ``RuntimeConfigError``) so
+   the registry has no dependency back on the loader; the loader converts these
+   into ``RuntimeConfigError`` at its boundary.
+
+   Initialize self.  See help(type(self)) for accurate signature.
+
+
+.. py:class:: ModelDefinition
+
+   A fully normalized model tier — immutable after normalization.
+
+   :ivar tier: The tier/alias name this definition was resolved from (e.g. ``primary``)
+               or the literal model name when the reference was not a defined alias.
+   :ivar model: The concrete model / deployment name passed to the LLM client.
+   :ivar provider: Optional *declared* provider hint (from a long-form config entry). This
+                   is metadata only; runtime credentials come from ``resolve_llm_kwargs``
+                   (env-driven). ``None`` means "use the environment-configured provider".
+   :ivar context_window: Maximum prompt tokens for this model, or ``None`` if unknown. Folded in
+                         from a per-tier ``context_window`` or the top-level
+                         ``model_context_windows`` map at normalization time.
+   :ivar params: Optional extra generation parameters declared in long-form config.
+                 Frozen semantics: treat as read-only after construction.
+
+
+
+   .. py:attribute:: context_window
+      :type:  int | None
+      :value: None
+
+
+
+   .. py:attribute:: model
+      :type:  str
+
+
+   .. py:attribute:: params
+      :type:  Mapping[str, Any]
+
+
+   .. py:attribute:: provider
+      :type:  str | None
+      :value: None
+
+
+
+   .. py:attribute:: tier
+      :type:  str
+
+
+.. py:class:: ModelRegistry(tiers: Mapping[str, ModelDefinition] | None = None, defaults: Mapping[str, str] | None = None, llm_config: Mapping[str, Any] | None = None, *, context_windows: Mapping[str, int] | None = None, resolve_kwargs: Callable[Ellipsis, dict[str, Any]] | None = None)
+
+   Resolve model tier references to :class:`ModelDefinition` objects.
+
+   The registry is built once per run via :meth:`from_config` (the single
+   normalization boundary) and then queried by every LLM-using stage.
+
+   Construct a registry from already-normalized tiers.
+
+   Prefer :meth:`from_config` for building from raw config. Direct
+   construction is primarily for tests and internal use.
+
+   :param tiers: Alias/tier name -> :class:`ModelDefinition`.
+   :param defaults: Optional phase-name -> tier/model default used by
+                    :meth:`resolve_for_phase` when a phase supplies no explicit model.
+   :param llm_config: Env-derived provider/credentials dict (``get_config().llm_config``).
+                      May be ``None``; the delegated ``resolve_llm_kwargs`` will lazily
+                      load the global config in that case.
+   :param context_windows: Concrete-model-name -> context window map (the legacy
+                           ``model_context_windows`` block). Used to fold a window into
+                           on-the-fly literal definitions.
+   :param resolve_kwargs: Injected ``resolve_llm_kwargs``-compatible callable. When ``None``,
+                          it is imported lazily from ``psweep.extraction.llm_factory`` so this
+                          module never imports the factory at import time (cycle-safe).
+
+
+   .. py:method:: from_config(config_dict: Mapping[str, Any] | None, llm_config: Mapping[str, Any] | None = None, *, resolve_kwargs: Callable[Ellipsis, dict[str, Any]] | None = None) -> ModelRegistry
+      :classmethod:
+
+
+      Normalize a runtime config dict into a :class:`ModelRegistry`.
+
+      This is the ONE place that understands the raw config shapes:
+
+      * ``models: {primary: gpt-4.1}`` — string form.
+      * ``models: {primary: {model: gpt-4.1, provider: azure,
+        context_window: 200000, params: {...}}}`` — long-form dict.
+      * ``model_context_windows: {gpt-4.1: 200000}`` — legacy side-map folded
+        into each matching tier's ``context_window``.
+      * ``model_defaults: {extraction: primary}`` — optional per-phase
+        defaults (additive; safe to omit).
+
+      A missing or empty ``models`` block yields an empty-tier registry that
+      still resolves every reference as a literal model name (backward-compat).
+
+
+
+   .. py:method:: get_model(tier_name: str | None) -> ModelDefinition
+
+      Resolve one tier/model reference to a :class:`ModelDefinition`.
+
+      Precedence:
+
+      1. ``tier_name`` matches a defined alias -> that tier's definition.
+      2. ``tier_name`` is any other non-empty string -> a literal model
+         definition (with a context window folded in if one is declared).
+      3. ``tier_name`` is ``None``/empty -> the environment "floor" model.
+
+
+
+   .. py:method:: get_models(tier_names: Sequence[str] | None) -> list[ModelDefinition]
+
+      Resolve a list of references, de-duplicating by concrete model name.
+
+      Order is preserved (first occurrence wins). This is the primitive a
+      multi-model consumer (e.g. QA/QC) uses to expand a ``models:`` list.
+
+
+
+   .. py:method:: resolve_for_phase(phase_name: str, explicit: str | None = None) -> ModelDefinition
+
+      Resolve the model for a pipeline phase using hybrid precedence.
+
+      Precedence: an ``explicit`` per-phase reference (the phase's ``model:``
+      value) wins; otherwise a registry-level default for ``phase_name``;
+      otherwise the environment floor.
+
+
+
+   .. py:method:: to_llm_kwargs(tier_name: str | None) -> dict[str, Any]
+
+      Resolve LLM client kwargs for a tier via the single credential path.
+
+      Returns ``{model, api_key, provider, azure_endpoint, azure_api_version}``
+      by delegating to ``resolve_llm_kwargs``. The concrete provider and
+      credentials come from the env-driven ``llm_config`` — never re-derived
+      in the registry.
+
+
+
+   .. py:method:: validate(*, references: Iterable[str | None] | None = None, multi_references: Iterable[tuple[str, Sequence[str] | None]] | None = None) -> None
+
+      Fail-fast load-time validation.
+
+      Validates, in order:
+
+      * **Structure** — every tier has a non-empty model, a valid (or absent)
+        declared provider, a positive-or-absent context window, and a mapping
+        of params.
+      * **Defaults** — each per-phase default is a non-empty string.
+      * **References** (single ``model:`` fields) — each must be a non-empty
+        string (both aliases and literals are accepted, so resolvability is
+        guaranteed once the value is a valid string).
+      * **Multi-references** (``models:`` lists, e.g. QA/QC) — each must
+        resolve to at least :data:`MIN_MULTI_MODELS` distinct models.
+
+      :raises ModelRegistryError: With a clear, actionable message on the first violation found.
+
+
+
+.. py:data:: KNOWN_PROVIDERS
+   :type:  frozenset[str]
+
+.. py:data:: MIN_MULTI_MODELS
+   :value: 2
+
+

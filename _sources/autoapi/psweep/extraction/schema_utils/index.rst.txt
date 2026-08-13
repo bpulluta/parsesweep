@@ -1,0 +1,35 @@
+psweep.extraction.schema_utils
+==============================
+
+.. py:module:: psweep.extraction.schema_utils
+
+.. autoapi-nested-parse::
+
+   Schema loading utilities.
+
+
+
+Functions
+---------
+
+.. autoapisummary::
+
+   psweep.extraction.schema_utils.load_schema
+
+
+Module Contents
+---------------
+
+.. py:function:: load_schema(schema_path: Union[str, pathlib.Path]) -> Dict[str, Any]
+
+   Load JSON schema from file.
+
+   :param schema_path: Path to JSON schema file
+   :type schema_path: Union[str, Path]
+
+   :returns: Parsed JSON schema as dictionary
+   :rtype: Dict[str, Any]
+
+   :raises ConfigurationError: If the file is missing or not valid JSON
+
+

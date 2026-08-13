@@ -1,0 +1,218 @@
+psweep.discovery.connectors.base
+================================
+
+.. py:module:: psweep.discovery.connectors.base
+
+.. autoapi-nested-parse::
+
+   Base interfaces for discovery connectors (seeker, digger, validators).
+
+
+
+Classes
+-------
+
+.. autoapisummary::
+
+   psweep.discovery.connectors.base.BaseDiggerConnector
+   psweep.discovery.connectors.base.BaseSeekerConnector
+   psweep.discovery.connectors.base.DiggerArtifact
+   psweep.discovery.connectors.base.DiggerInput
+   psweep.discovery.connectors.base.SeekerInput
+
+
+Module Contents
+---------------
+
+.. py:class:: BaseDiggerConnector
+
+   Bases: :py:obj:`abc.ABC`
+
+
+   Abstract interface for bounded crawl/download discovery (digger stage).
+
+   Implementations crawl pages and return normalized artifact candidates.
+
+
+   .. py:method:: discover(digger_input: DiggerInput) -> list[DiggerArtifact]
+      :abstractmethod:
+
+
+      Discover candidate artifacts from seed pages within crawl budgets.
+
+      :rtype: Normalized digger artifacts for downstream validation/scoring.
+
+
+
+   .. py:method:: supports_provider(provider: str) -> bool
+      :abstractmethod:
+
+
+      Check if this connector supports the given provider name.
+
+
+
+.. py:class:: BaseSeekerConnector
+
+   Bases: :py:obj:`abc.ABC`
+
+
+   Abstract interface for search discovery (seeker stage).
+
+   Implementations discover candidate URLs from a query.
+   Results are normalized to DiscoveryCandidate model.
+
+
+   .. py:method:: discover(seeker_input: SeekerInput) -> list[dict[str, Any]]
+      :abstractmethod:
+
+
+      Discover candidate URLs from a query.
+
+      :returns:
+
+                Normalized candidate records, each shaped like::
+
+                    {
+                        "url": str,
+                        "source": str,
+                        "title": str | None,
+                        "snippet": str | None,
+                        "reasons": list[str],
+                    }
+      :rtype: list[dict[str, Any]]
+
+      :raises RuntimeError: If the provider is unavailable or the API key is missing.
+      :raises ValueError: If the query is invalid.
+
+
+
+   .. py:method:: supports_provider(provider: str) -> bool
+      :abstractmethod:
+
+
+      Check if this connector supports the given provider name.
+
+
+
+.. py:class:: DiggerArtifact
+
+   Normalized digger artifact record returned by digger connectors.
+
+
+   .. py:method:: to_dict() -> dict[str, Any]
+
+      Serialize this discovered artifact to a plain dict.
+
+
+
+   .. py:attribute:: extension
+      :type:  str | None
+      :value: None
+
+
+
+   .. py:attribute:: metadata
+      :type:  dict[str, Any] | None
+      :value: None
+
+
+
+   .. py:attribute:: mime_type
+      :type:  str | None
+      :value: None
+
+
+
+   .. py:attribute:: source
+      :type:  str
+
+
+   .. py:attribute:: status
+      :type:  str
+      :value: 'discovered'
+
+
+
+   .. py:attribute:: url
+      :type:  str
+
+
+.. py:class:: DiggerInput
+
+   Normalized input for digger stage link/document discovery.
+
+
+   .. py:attribute:: allowed_domains
+      :type:  list[str] | None
+      :value: None
+
+
+
+   .. py:attribute:: extra_params
+      :type:  dict[str, Any] | None
+      :value: None
+
+
+
+   .. py:attribute:: include_link_text_patterns
+      :type:  list[str] | None
+      :value: None
+
+
+
+   .. py:attribute:: include_url_patterns
+      :type:  list[str] | None
+      :value: None
+
+
+
+   .. py:attribute:: max_depth
+      :type:  int
+      :value: 2
+
+
+
+   .. py:attribute:: max_files
+      :type:  int
+      :value: 20
+
+
+
+   .. py:attribute:: max_pages
+      :type:  int
+      :value: 50
+
+
+
+   .. py:attribute:: seed_urls
+      :type:  list[str]
+
+
+   .. py:attribute:: timeout_seconds
+      :type:  int
+      :value: 30
+
+
+
+.. py:class:: SeekerInput
+
+   Normalized input for seeker stage discovery.
+
+
+   .. py:attribute:: extra_params
+      :type:  dict[str, Any] | None
+      :value: None
+
+
+
+   .. py:attribute:: max_results
+      :type:  int
+      :value: 10
+
+
+
+   .. py:attribute:: query
+      :type:  str
+
+

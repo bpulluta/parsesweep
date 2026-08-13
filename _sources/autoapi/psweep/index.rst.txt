@@ -1,0 +1,80 @@
+psweep
+======
+
+.. py:module:: psweep
+
+.. autoapi-nested-parse::
+
+   ParseSweep
+
+   AI-powered toolkit for extracting structured data from any document type
+   using state-of-the-art LLMs. Supports customizable schemas, intelligent
+   deduplication, and automated data compilation.
+
+   Programmatic API — engine level:
+       >>> from psweep import DocumentExtractor, load_schema
+       >>> extractor = DocumentExtractor(model="gpt-4o-mini")
+       >>> schema = load_schema("schemas/personal/my_schema.json")
+       >>> result = extractor.extract(document_text, schema)
+       >>> print(result.data)
+
+   Programmatic API — pipeline level (recommended for batch use):
+       >>> from psweep.pipeline import extract_documents, compile_extractions
+       >>> result = extract_documents(
+       ...     "documents/my_domain/",
+       ...     schema="schemas/personal/my_schema.json",
+       ... )
+       >>> print(f"Extracted {result.successful}/{result.total} documents")
+       >>> compiled = compile_extractions(result.output_dir, schema=result.schema_path)
+       >>> print(f"Compiled to {compiled.output_files}")
+
+   For document discovery:
+       >>> from psweep import DiscoveryEngine, DiscoveryRequest
+       >>> engine = DiscoveryEngine()
+       >>> request = DiscoveryRequest(
+       ...     domain="my-domain",
+       ...     seed_urls=["https://example.com"],
+       ...     query="geothermal ordinance",
+       ...     enable_serpapi=False,
+       ...     output_documents=None,
+       ...     output_manifest=None,
+       ...     dry_run=True,
+       ... )
+       >>> result = engine.run(request)
+
+
+
+Submodules
+----------
+
+.. toctree::
+   :maxdepth: 1
+
+   /autoapi/psweep/benchmarking/index
+   /autoapi/psweep/compilation/index
+   /autoapi/psweep/config/index
+   /autoapi/psweep/core/index
+   /autoapi/psweep/discovery/index
+   /autoapi/psweep/exceptions/index
+   /autoapi/psweep/extraction/index
+   /autoapi/psweep/pipeline/index
+   /autoapi/psweep/utils/index
+   /autoapi/psweep/validation/index
+
+
+Attributes
+----------
+
+.. autoapisummary::
+
+   psweep.PACKAGE_ROOT
+   psweep.PROJECT_ROOT
+
+
+Package Contents
+----------------
+
+.. py:data:: PACKAGE_ROOT
+
+.. py:data:: PROJECT_ROOT
+

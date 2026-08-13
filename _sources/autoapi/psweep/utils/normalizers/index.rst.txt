@@ -1,0 +1,137 @@
+psweep.utils.normalizers
+========================
+
+.. py:module:: psweep.utils.normalizers
+
+.. autoapi-nested-parse::
+
+   Data normalization utilities for consistent outputs.
+
+   Provides standardization functions for common fields like US states.
+
+
+
+Attributes
+----------
+
+.. autoapisummary::
+
+   psweep.utils.normalizers.US_STATES
+   psweep.utils.normalizers.logger
+
+
+Functions
+---------
+
+.. autoapisummary::
+
+   psweep.utils.normalizers.camel_to_title
+   psweep.utils.normalizers.humanize_field_name
+   psweep.utils.normalizers.normalize_state
+   psweep.utils.normalizers.normalize_state_column
+
+
+Module Contents
+---------------
+
+.. py:function:: camel_to_title(name: str) -> str
+
+   Split camelCase boundaries and Title Case the result, preserving any
+   existing separators (e.g. underscores) untouched.
+
+   Unlike :func:`humanize_field_name`, this does not rewrite underscores;
+   it is used where established display keys must keep their literal
+   separators.
+
+   :param name: Raw field name
+   :type name: str
+
+   :returns: Title-cased name with spaces inserted at camelCase boundaries
+   :rtype: str
+
+   .. rubric:: Examples
+
+   >>> camel_to_title("facilityName")
+   'Facility Name'
+   >>> camel_to_title("utility_name")
+   'Utility_Name'
+
+
+.. py:function:: humanize_field_name(field_name: str) -> str
+
+   Convert any naming style to clean Title Case.
+
+   Handles snake_case, camelCase, and mixed formats, replacing underscores
+   with spaces and splitting camelCase boundaries before capitalizing each
+   word. This is the canonical column-label humanizer.
+
+   :param field_name: Raw field name
+   :type field_name: str
+
+   :returns: Clean Title Case column name
+   :rtype: str
+
+   .. rubric:: Examples
+
+   >>> humanize_field_name("charge_type")
+   'Charge Type'
+   >>> humanize_field_name("annualConsumption")
+   'Annual Consumption'
+
+
+.. py:function:: normalize_state(state: Optional[str]) -> Optional[str]
+
+   Normalize US state name to 2-letter abbreviation.
+
+   Handles:
+
+   - Full state names (case-insensitive): "Utah" → "UT"
+   - Already abbreviated: "UT" → "UT"
+   - Leading/trailing whitespace
+   - Invalid/unknown states → returns original value with warning
+   - None/empty → returns original value
+
+   :param state: State name or abbreviation
+   :type state: Optional[str]
+
+   :returns: 2-letter state abbreviation, or original value if not recognized
+   :rtype: Optional[str]
+
+   .. rubric:: Examples
+
+   >>> normalize_state("Utah")
+   "UT"
+   >>> normalize_state("UT")
+   "UT"
+   >>> normalize_state("New York")
+   "NY"
+   >>> normalize_state("california")
+   "CA"
+   >>> normalize_state(None)
+   None
+
+
+.. py:function:: normalize_state_column(df, column_name: str = 'State') -> None
+
+   Normalize state column in-place in a DataFrame.
+
+   Modifies the DataFrame to replace full state names with abbreviations.
+   Only processes columns that exist in the DataFrame.
+
+   :param df: pandas DataFrame
+   :param column_name: Name of the state column (default: "State")
+   :type column_name: str
+
+   .. rubric:: Examples
+
+   >>> import pandas as pd
+   >>> df = pd.DataFrame({"State": ["Utah", "California", "NY"]})
+   >>> normalize_state_column(df)
+   >>> df["State"].tolist()
+   ["UT", "CA", "NY"]
+
+
+.. py:data:: US_STATES
+
+.. py:data:: logger
+

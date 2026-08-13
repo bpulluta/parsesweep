@@ -1,0 +1,1430 @@
+<!doctype html>
+<html class="no-js" lang="en" data-content_root="../">
+  <head><meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <meta name="color-scheme" content="light dark"><meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="index" title="Index" href="../genindex.html"><link rel="search" title="Search" href="../search.html"><link rel="next" title="API Reference" href="../autoapi/index.html"><link rel="prev" title="Configuration Reference" href="../config-reference.html">
+
+    <!-- Generated with Sphinx 9.1.0 and Furo 2025.12.19 -->
+        <title>Schema Authoring - ParseSweep 2.0.1</title>
+      <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=d111a655" />
+    <link rel="stylesheet" type="text/css" href="../_static/styles/furo.css?v=7bdb33bb" />
+    <link rel="stylesheet" type="text/css" href="../_static/graphviz.css?v=4ae1632d" />
+    <link rel="stylesheet" type="text/css" href="../_static/copybutton.css?v=76b2166b" />
+    <link rel="stylesheet" type="text/css" href="../_static/styles/furo-extensions.css?v=8dab3a3b" />
+    
+    
+
+
+<style>
+  body {
+    --color-code-background: #f2f2f2;
+  --color-code-foreground: #1e1e1e;
+  
+  }
+  @media not print {
+    body[data-theme="dark"] {
+      --color-code-background: #202020;
+  --color-code-foreground: #d0d0d0;
+  
+    }
+    @media (prefers-color-scheme: dark) {
+      body:not([data-theme="light"]) {
+        --color-code-background: #202020;
+  --color-code-foreground: #d0d0d0;
+  
+      }
+    }
+  }
+</style></head>
+  <body>
+    
+    <script>
+      document.body.dataset.theme = localStorage.getItem("theme") || "auto";
+    </script>
+    
+
+<svg xmlns="http://www.w3.org/2000/svg" style="display: none;">
+  <symbol id="svg-toc" viewBox="0 0 24 24">
+    <title>Contents</title>
+    <svg stroke="currentColor" fill="currentColor" stroke-width="0" viewBox="0 0 1024 1024">
+      <path d="M408 442h480c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8H408c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8zm-8 204c0 4.4 3.6 8 8 8h480c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8H408c-4.4 0-8 3.6-8 8v56zm504-486H120c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h784c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zm0 632H120c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h784c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zM115.4 518.9L271.7 642c5.8 4.6 14.4.5 14.4-6.9V388.9c0-7.4-8.5-11.5-14.4-6.9L115.4 505.1a8.74 8.74 0 0 0 0 13.8z"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-menu" viewBox="0 0 24 24">
+    <title>Menu</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather-menu">
+      <line x1="3" y1="12" x2="21" y2="12"></line>
+      <line x1="3" y1="6" x2="21" y2="6"></line>
+      <line x1="3" y1="18" x2="21" y2="18"></line>
+    </svg>
+  </symbol>
+  <symbol id="svg-arrow-right" viewBox="0 0 24 24">
+    <title>Expand</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather-chevron-right">
+      <polyline points="9 18 15 12 9 6"></polyline>
+    </svg>
+  </symbol>
+  <symbol id="svg-sun" viewBox="0 0 24 24">
+    <title>Light mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="feather-sun">
+      <circle cx="12" cy="12" r="5"></circle>
+      <line x1="12" y1="1" x2="12" y2="3"></line>
+      <line x1="12" y1="21" x2="12" y2="23"></line>
+      <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+      <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+      <line x1="1" y1="12" x2="3" y2="12"></line>
+      <line x1="21" y1="12" x2="23" y2="12"></line>
+      <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+      <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+    </svg>
+  </symbol>
+  <symbol id="svg-moon" viewBox="0 0 24 24">
+    <title>Dark mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-moon">
+      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+      <path d="M12 3c.132 0 .263 0 .393 0a7.5 7.5 0 0 0 7.92 12.446a9 9 0 1 1 -8.313 -12.454z" />
+    </svg>
+  </symbol>
+  <symbol id="svg-sun-with-moon" viewBox="0 0 24 24">
+    <title>Auto light/dark, in light mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round"
+      class="icon-custom-derived-from-feather-sun-and-tabler-moon">
+      <path style="opacity: 50%" d="M 5.411 14.504 C 5.471 14.504 5.532 14.504 5.591 14.504 C 3.639 16.319 4.383 19.569 6.931 20.352 C 7.693 20.586 8.512 20.551 9.25 20.252 C 8.023 23.207 4.056 23.725 2.11 21.184 C 0.166 18.642 1.702 14.949 4.874 14.536 C 5.051 14.512 5.231 14.5 5.411 14.5 L 5.411 14.504 Z"/>
+      <line x1="14.5" y1="3.25" x2="14.5" y2="1.25"/>
+      <line x1="14.5" y1="15.85" x2="14.5" y2="17.85"/>
+      <line x1="10.044" y1="5.094" x2="8.63" y2="3.68"/>
+      <line x1="19" y1="14.05" x2="20.414" y2="15.464"/>
+      <line x1="8.2" y1="9.55" x2="6.2" y2="9.55"/>
+      <line x1="20.8" y1="9.55" x2="22.8" y2="9.55"/>
+      <line x1="10.044" y1="14.006" x2="8.63" y2="15.42"/>
+      <line x1="19" y1="5.05" x2="20.414" y2="3.636"/>
+      <circle cx="14.5" cy="9.55" r="3.6"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-moon-with-sun" viewBox="0 0 24 24">
+    <title>Auto light/dark, in dark mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round"
+      class="icon-custom-derived-from-feather-sun-and-tabler-moon">
+      <path d="M 8.282 7.007 C 8.385 7.007 8.494 7.007 8.595 7.007 C 5.18 10.184 6.481 15.869 10.942 17.24 C 12.275 17.648 13.706 17.589 15 17.066 C 12.851 22.236 5.91 23.143 2.505 18.696 C -0.897 14.249 1.791 7.786 7.342 7.063 C 7.652 7.021 7.965 7 8.282 7 L 8.282 7.007 Z"/>
+      <line style="opacity: 50%" x1="18" y1="3.705" x2="18" y2="2.5"/>
+      <line style="opacity: 50%" x1="18" y1="11.295" x2="18" y2="12.5"/>
+      <line style="opacity: 50%" x1="15.316" y1="4.816" x2="14.464" y2="3.964"/>
+      <line style="opacity: 50%" x1="20.711" y1="10.212" x2="21.563" y2="11.063"/>
+      <line style="opacity: 50%" x1="14.205" y1="7.5" x2="13.001" y2="7.5"/>
+      <line style="opacity: 50%" x1="21.795" y1="7.5" x2="23" y2="7.5"/>
+      <line style="opacity: 50%" x1="15.316" y1="10.184" x2="14.464" y2="11.036"/>
+      <line style="opacity: 50%" x1="20.711" y1="4.789" x2="21.563" y2="3.937"/>
+      <circle style="opacity: 50%" cx="18" cy="7.5" r="2.169"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-pencil" viewBox="0 0 24 24">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-pencil-code">
+      <path d="M4 20h4l10.5 -10.5a2.828 2.828 0 1 0 -4 -4l-10.5 10.5v4" />
+      <path d="M13.5 6.5l4 4" />
+      <path d="M20 21l2 -2l-2 -2" />
+      <path d="M17 17l-2 2l2 2" />
+    </svg>
+  </symbol>
+  <symbol id="svg-eye" viewBox="0 0 24 24">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-eye-code">
+      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+      <path d="M10 12a2 2 0 1 0 4 0a2 2 0 0 0 -4 0" />
+      <path
+        d="M11.11 17.958c-3.209 -.307 -5.91 -2.293 -8.11 -5.958c2.4 -4 5.4 -6 9 -6c3.6 0 6.6 2 9 6c-.21 .352 -.427 .688 -.647 1.008" />
+      <path d="M20 21l2 -2l-2 -2" />
+      <path d="M17 17l-2 2l2 2" />
+    </svg>
+  </symbol>
+</svg>
+
+<input type="checkbox" class="sidebar-toggle" name="__navigation" id="__navigation" aria-label="Toggle site navigation sidebar">
+<input type="checkbox" class="sidebar-toggle" name="__toc" id="__toc" aria-label="Toggle table of contents sidebar">
+<label class="overlay sidebar-overlay" for="__navigation"></label>
+<label class="overlay toc-overlay" for="__toc"></label>
+
+<a class="skip-to-content muted-link" href="#furo-main-content">Skip to content</a>
+
+
+
+<div class="page">
+  <header class="mobile-header">
+    <div class="header-left">
+      <label class="nav-overlay-icon" for="__navigation">
+        <span class="icon"><svg><use href="#svg-menu"></use></svg></span>
+      </label>
+    </div>
+    <div class="header-center">
+      <a href="../index.html"><div class="brand">ParseSweep 2.0.1</div></a>
+    </div>
+    <div class="header-right">
+      <div class="theme-toggle-container theme-toggle-header">
+        <button class="theme-toggle" aria-label="Toggle Light / Dark / Auto color theme">
+          <svg class="theme-icon-when-auto-light"><use href="#svg-sun-with-moon"></use></svg>
+          <svg class="theme-icon-when-auto-dark"><use href="#svg-moon-with-sun"></use></svg>
+          <svg class="theme-icon-when-dark"><use href="#svg-moon"></use></svg>
+          <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
+        </button>
+      </div>
+      <label class="toc-overlay-icon toc-header-icon no-toc" for="__toc">
+        <span class="icon"><svg><use href="#svg-toc"></use></svg></span>
+      </label>
+    </div>
+  </header>
+  <aside class="sidebar-drawer">
+    <div class="sidebar-container">
+      
+      <div class="sidebar-sticky"><a class="sidebar-brand" href="../index.html">
+  
+  <span class="sidebar-brand-text">ParseSweep 2.0.1</span>
+  
+</a><form class="sidebar-search-container" method="get" action="../search.html" role="search">
+  <input class="sidebar-search" placeholder="Search" name="q" aria-label="Search">
+  <input type="hidden" name="check_keywords" value="yes">
+  <input type="hidden" name="area" value="default">
+</form>
+<div id="searchbox"></div><div class="sidebar-scroll"><div class="sidebar-tree">
+  <p class="caption" role="heading"><span class="caption-text">Guides</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="../getting-started.html">Getting Started</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../commands/index.html">Command Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../config-reference.html">Configuration Reference</a></li>
+<li class="toctree-l1 current current-page"><a class="current reference internal" href="#">Schema Authoring</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Reference</span></p>
+<ul>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../autoapi/index.html">API Reference</a><input aria-label="Toggle navigation of API Reference" class="toctree-checkbox" id="toctree-checkbox-1" name="toctree-checkbox-1" role="switch" type="checkbox"/><label for="toctree-checkbox-1"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../autoapi/psweep/index.html">psweep</a><input aria-label="Toggle navigation of psweep" class="toctree-checkbox" id="toctree-checkbox-2" name="toctree-checkbox-2" role="switch" type="checkbox"/><label for="toctree-checkbox-2"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../autoapi/psweep/benchmarking/index.html">psweep.benchmarking</a><input aria-label="Toggle navigation of psweep.benchmarking" class="toctree-checkbox" id="toctree-checkbox-3" name="toctree-checkbox-3" role="switch" type="checkbox"/><label for="toctree-checkbox-3"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/benchmarking/performance/index.html">psweep.benchmarking.performance</a></li>
+</ul>
+</li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../autoapi/psweep/compilation/index.html">psweep.compilation</a><input aria-label="Toggle navigation of psweep.compilation" class="toctree-checkbox" id="toctree-checkbox-4" name="toctree-checkbox-4" role="switch" type="checkbox"/><label for="toctree-checkbox-4"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/compilation/csv_exporter/index.html">psweep.compilation.csv_exporter</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/compilation/data_compiler/index.html">psweep.compilation.data_compiler</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/compilation/data_flattener/index.html">psweep.compilation.data_flattener</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/compilation/deduplicator/index.html">psweep.compilation.deduplicator</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/compilation/excel_formatter/index.html">psweep.compilation.excel_formatter</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/compilation/schema_detector/index.html">psweep.compilation.schema_detector</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/compilation/synthesizer/index.html">psweep.compilation.synthesizer</a></li>
+</ul>
+</li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../autoapi/psweep/config/index.html">psweep.config</a><input aria-label="Toggle navigation of psweep.config" class="toctree-checkbox" id="toctree-checkbox-5" name="toctree-checkbox-5" role="switch" type="checkbox"/><label for="toctree-checkbox-5"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/config/file_loader/index.html">psweep.config.file_loader</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/config/model_registry/index.html">psweep.config.model_registry</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/config/runtime_config_loader/index.html">psweep.config.runtime_config_loader</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../autoapi/psweep/core/index.html">psweep.core</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../autoapi/psweep/discovery/index.html">psweep.discovery</a><input aria-label="Toggle navigation of psweep.discovery" class="toctree-checkbox" id="toctree-checkbox-6" name="toctree-checkbox-6" role="switch" type="checkbox"/><label for="toctree-checkbox-6"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/discovery/browser/index.html">psweep.discovery.browser</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/discovery/candidate_selector/index.html">psweep.discovery.candidate_selector</a></li>
+<li class="toctree-l4 has-children"><a class="reference internal" href="../autoapi/psweep/discovery/connectors/index.html">psweep.discovery.connectors</a><input aria-label="Toggle navigation of psweep.discovery.connectors" class="toctree-checkbox" id="toctree-checkbox-7" name="toctree-checkbox-7" role="switch" type="checkbox"/><label for="toctree-checkbox-7"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l5"><a class="reference internal" href="../autoapi/psweep/discovery/connectors/base/index.html">psweep.discovery.connectors.base</a></li>
+<li class="toctree-l5"><a class="reference internal" href="../autoapi/psweep/discovery/connectors/digger/index.html">psweep.discovery.connectors.digger</a></li>
+<li class="toctree-l5"><a class="reference internal" href="../autoapi/psweep/discovery/connectors/serpapi_seeker/index.html">psweep.discovery.connectors.serpapi_seeker</a></li>
+</ul>
+</li>
+<li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/discovery/constants/index.html">psweep.discovery.constants</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/discovery/document_reviewer/index.html">psweep.discovery.document_reviewer</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/discovery/engine/index.html">psweep.discovery.engine</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/discovery/link_prioritizer/index.html">psweep.discovery.link_prioritizer</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/discovery/models/index.html">psweep.discovery.models</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/discovery/policies/index.html">psweep.discovery.policies</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/discovery/retry/index.html">psweep.discovery.retry</a></li>
+<li class="toctree-l4 has-children"><a class="reference internal" href="../autoapi/psweep/discovery/targets/index.html">psweep.discovery.targets</a><input aria-label="Toggle navigation of psweep.discovery.targets" class="toctree-checkbox" id="toctree-checkbox-8" name="toctree-checkbox-8" role="switch" type="checkbox"/><label for="toctree-checkbox-8"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l5"><a class="reference internal" href="../autoapi/psweep/discovery/targets/base/index.html">psweep.discovery.targets.base</a></li>
+<li class="toctree-l5"><a class="reference internal" href="../autoapi/psweep/discovery/targets/providers/index.html">psweep.discovery.targets.providers</a></li>
+</ul>
+</li>
+<li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/discovery/urls/index.html">psweep.discovery.urls</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/discovery/validators/index.html">psweep.discovery.validators</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../autoapi/psweep/exceptions/index.html">psweep.exceptions</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../autoapi/psweep/extraction/index.html">psweep.extraction</a><input aria-label="Toggle navigation of psweep.extraction" class="toctree-checkbox" id="toctree-checkbox-9" name="toctree-checkbox-9" role="switch" type="checkbox"/><label for="toctree-checkbox-9"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/extraction/document_extractor/index.html">psweep.extraction.document_extractor</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/extraction/document_utils/index.html">psweep.extraction.document_utils</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/extraction/llm_client/index.html">psweep.extraction.llm_client</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/extraction/llm_factory/index.html">psweep.extraction.llm_factory</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/extraction/page_locator/index.html">psweep.extraction.page_locator</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/extraction/pdf_utils/index.html">psweep.extraction.pdf_utils</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/extraction/record_writer/index.html">psweep.extraction.record_writer</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/extraction/schema_utils/index.html">psweep.extraction.schema_utils</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/extraction/text_processor/index.html">psweep.extraction.text_processor</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../autoapi/psweep/pipeline/index.html">psweep.pipeline</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../autoapi/psweep/utils/index.html">psweep.utils</a><input aria-label="Toggle navigation of psweep.utils" class="toctree-checkbox" id="toctree-checkbox-10" name="toctree-checkbox-10" role="switch" type="checkbox"/><label for="toctree-checkbox-10"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/utils/config/index.html">psweep.utils.config</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/utils/error_taxonomy/index.html">psweep.utils.error_taxonomy</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/utils/item_matcher/index.html">psweep.utils.item_matcher</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/utils/logger/index.html">psweep.utils.logger</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/utils/model_pricing/index.html">psweep.utils.model_pricing</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/utils/normalizers/index.html">psweep.utils.normalizers</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/utils/page_range/index.html">psweep.utils.page_range</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/utils/schema_metadata/index.html">psweep.utils.schema_metadata</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/utils/value_normalizer/index.html">psweep.utils.value_normalizer</a></li>
+</ul>
+</li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../autoapi/psweep/validation/index.html">psweep.validation</a><input aria-label="Toggle navigation of psweep.validation" class="toctree-checkbox" id="toctree-checkbox-11" name="toctree-checkbox-11" role="switch" type="checkbox"/><label for="toctree-checkbox-11"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/validation/comparison_engine/index.html">psweep.validation.comparison_engine</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/validation/evidence_loader/index.html">psweep.validation.evidence_loader</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/validation/multi_model_extractor/index.html">psweep.validation.multi_model_extractor</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/validation/report_generator/index.html">psweep.validation.report_generator</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/validation/utils/index.html">psweep.validation.utils</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html">Changelog</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../contributing.html">Contributing</a></li>
+</ul>
+
+</div>
+</div>
+
+      </div>
+      
+    </div>
+  </aside>
+  <div class="main">
+    <div class="content">
+      <div class="article-container">
+        <a href="#" class="back-to-top muted-link">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+            <path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8v12z"></path>
+          </svg>
+          <span>Back to top</span>
+        </a>
+        <div class="content-icon-container">
+          <div class="view-this-page">
+  <a class="muted-link" href="../_sources/schemas/index.md.txt" title="View this page">
+    <svg><use href="#svg-eye"></use></svg>
+    <span class="visually-hidden">View this page</span>
+  </a>
+</div>
+<div class="theme-toggle-container theme-toggle-content">
+            <button class="theme-toggle" aria-label="Toggle Light / Dark / Auto color theme">
+              <svg class="theme-icon-when-auto-light"><use href="#svg-sun-with-moon"></use></svg>
+              <svg class="theme-icon-when-auto-dark"><use href="#svg-moon-with-sun"></use></svg>
+              <svg class="theme-icon-when-dark"><use href="#svg-moon"></use></svg>
+              <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
+            </button>
+          </div>
+          <label class="toc-overlay-icon toc-content-icon no-toc" for="__toc">
+            <span class="icon"><svg><use href="#svg-toc"></use></svg></span>
+          </label>
+        </div>
+        <article role="main" id="furo-main-content">
+          <section id="schema-authoring">
+<h1>Schema Authoring<a class="headerlink" href="#schema-authoring" title="Link to this heading">¶</a></h1>
+<p>A schema (JSON) defines <em>what</em> to extract — field names, types, and the
+descriptions the LLM uses as extraction instructions. Well-written field
+descriptions are the single biggest lever on extraction quality.</p>
+<p>The full best-practices guide is embedded below.</p>
+<div class="literal-block-wrapper docutils container" id="id1">
+<div class="code-block-caption"><span class="caption-text">schemas/SCHEMA_BEST_PRACTICES.md</span><a class="headerlink" href="#id1" title="Link to this code">¶</a></div>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span># Schema Design Best Practices
+
+## Overview
+
+ParseSweep v2.0+ uses a metadata-driven architecture where:
+- **`$metadata` section** (required) defines extraction and record-identity behavior
+- **Schema properties** define the data structure to extract
+- Your schema design directly determines your spreadsheet output
+
+Design schemas to match how you want to analyze the data.
+
+For authoring, use this mental model:
+
+- `Schema` (`schemas/personal/&lt;domain&gt;_schema.json`): The **extraction contract**. Fields, descriptions, examples, row shape, identifiers, and deduplication keys. Field-level enum values belong here (in `properties`), not in `$metadata`.
+- `Runtime config` (`config/&lt;domain&gt;/run.yaml`): **Runtime behavior and presentation**. Models, discovery settings, QA/QC lanes, and all compilation output settings (column order, renames, exclude_fields, default_format, freeze_columns). This file drives *how* a run behaves and *how* output looks.
+
+**Separation rule:** `$metadata` in the schema owns `extraction.*` and `identity.deduplication` (data identity — what makes a record unique). Everything else — output formatting, normalization, synthesis, model tiers — lives only in `config/&lt;domain&gt;/run.yaml`. Output config in `$metadata` is not supported and will be rejected by `check-schema`.
+
+---
+
+## Authoring Workflow
+
+### Start With the Schema
+
+Most new extraction setups should begin with a schema only. That keeps iteration fast and local to one file.
+
+Add or update `config/&lt;domain&gt;/run.yaml` later if you need any of the following:
+
+- shared QA/QC lanes for a domain
+- shared compilation output settings such as column order or renames
+- model tier assignments or discovery configuration
+- domain-level runtime overrides you do not want to repeat on the CLI
+
+If none of those apply yet, keep the schema focused on extraction structure.
+
+### Fast Iteration Loop
+
+Use a short loop while evolving a schema:
+
+```bash
+# 1. Validate schema structure
+pixi run psweep check-schema schemas/my_schema.json
+
+# 2. Extract a tiny sample
+pixi run psweep extract documents/sample/ \
+  --schema schemas/my_schema.json \
+  -n 2 \
+  --reprocess
+
+# 3. Consolidate the sample
+pixi run psweep compile extracted/sample/ \
+  --schema schemas/my_schema.json \
+  --verbose
+
+# 4. Preview deduplication before writing outputs
+pixi run psweep compile extracted/sample/ \
+  --schema schemas/my_schema.json \
+  --dry-run \
+  --report-format json \
+  --fail-on-suspicious high
+```
+
+Review after each pass:
+
+- Did `main_data_array` create the right rows?
+- Did `identifier_fields` identify the document correctly?
+- Did your new fields extract consistently?
+- Do `key_fields` keep distinct records separate?
+- Does the dry-run dedup report show any merges you did not intend?
+- Does the dry-run dedup report flag suspicious groups where non-key values disagree?
+- Are any suspicious groups ranked `high` severity because numeric or unit fields disagree?
+- Should the iteration loop fail automatically until those `high` severity groups are resolved?
+- If a `run.yaml` config exists, did verbose output show the resolved config you expected?
+
+The severity ranking is schema-aware: fields declared as numeric in your schema can be ranked `high` severity even if the flattened column name is not obviously numeric.
+
+This loop is the safest way to add fields and tune descriptions without re-running a full batch.
+
+### Do You Need a `run.yaml` config?
+
+Use this decision rule:
+
+- `No`: You are still defining fields, examples, descriptions, identifiers, or deduplication keys for one schema.
+- `Yes`: You want shared runtime QA/QC behavior, shared compilation presentation (column order, renames), or domain-level model/discovery settings.
+
+Keep authoring friction low by delaying `config/&lt;domain&gt;/run.yaml` until you actually need shared runtime behavior.
+
+---
+
+## 🔴 Required: The `$metadata` Section
+
+Every schema MUST include a `$metadata` section. Without it, extraction will fail:
+```
+ERROR: Schema missing required $metadata section
+```
+
+### Minimal Valid Schema
+
+```json
+{
+  &quot;$schema&quot;: &quot;http://json-schema.org/draft-07/schema#&quot;,
+  &quot;$metadata&quot;: {
+    &quot;domain&quot;: &quot;Your Domain&quot;,
+    &quot;version&quot;: &quot;1.0.0&quot;,
+    &quot;extraction&quot;: {
+      &quot;main_data_array&quot;: &quot;items&quot;,
+      &quot;identifier_fields&quot;: [&quot;metadata.document_id&quot;],
+      &quot;context_objects&quot;: [&quot;metadata&quot;]
+    },
+    &quot;identity&quot;: {
+      &quot;deduplication&quot;: {
+        &quot;key_fields&quot;: [&quot;item_name&quot;],
+        &quot;ignore_fields&quot;: [&quot;notes&quot;]
+      }
+    }
+  },
+  &quot;type&quot;: &quot;object&quot;,
+  &quot;properties&quot;: {
+    &quot;metadata&quot;: {
+      &quot;type&quot;: &quot;object&quot;,
+      &quot;properties&quot;: {
+        &quot;document_id&quot;: {&quot;type&quot;: &quot;string&quot;}
+      }
+    },
+    &quot;items&quot;: {
+      &quot;type&quot;: &quot;array&quot;,
+      &quot;items&quot;: {
+        &quot;type&quot;: &quot;object&quot;,
+        &quot;properties&quot;: {
+          &quot;item_name&quot;: {&quot;type&quot;: &quot;string&quot;}
+        }
+      }
+    }
+  }
+}
+```
+
+### Complete `$metadata` Structure
+
+This example shows the full metadata surface that belongs in the schema. All output presentation settings (`column_order`, `exclude_fields`, `column_renames`, `freeze_columns`, `auto_width`, `default_format`) and normalization settings belong in `config/&lt;domain&gt;/run.yaml` — not here.
+
+```json
+{
+  &quot;$metadata&quot;: {
+    &quot;domain&quot;: &quot;Energy - Utility Tariffs&quot;,
+    &quot;version&quot;: &quot;1.0.0&quot;,
+    &quot;description&quot;: &quot;Extract rate schedules and charges from utility tariff documents&quot;,
+    
+    &quot;extraction&quot;: {
+      &quot;main_data_array&quot;: &quot;rate_schedules&quot;,
+      &quot;identifier_fields&quot;: [
+        &quot;utility_info.utility_name&quot;,
+        &quot;utility_info.state&quot;
+      ],
+      &quot;context_objects&quot;: [
+        &quot;utility_info&quot;,
+        &quot;document_applicability&quot;
+      ],
+      &quot;display_name_template&quot;: &quot;{utility_name} ({state})&quot;,
+      &quot;document_type&quot;: &quot;Utility Tariff&quot;
+    },
+    
+    &quot;identity&quot;: {
+      &quot;deduplication&quot;: {
+        &quot;key_fields&quot;: [&quot;rate_name&quot;, &quot;charge_type&quot;, &quot;season&quot;],
+        &quot;ignore_fields&quot;: [&quot;notes&quot;, &quot;extracted_text&quot;],
+        &quot;strategy&quot;: &quot;latest&quot;,
+        &quot;comparison_mode&quot;: &quot;exact&quot;
+      }
+    }
+  }
+}
+```
+
+### Required Fields
+
+| Field | Purpose | Example |
+|-------|---------|---------|
+| `extraction.main_data_array` | Array that becomes spreadsheet rows | `&quot;rate_schedules&quot;` |
+| `extraction.identifier_fields` | Fields that identify the source document | `[&quot;metadata.permit_id&quot;]` |
+| `identity.deduplication.key_fields` | Fields that determine record uniqueness | `[&quot;name&quot;, &quot;type&quot;, &quot;date&quot;]` |
+
+### Recommended Fields
+
+| Field | Purpose | Example |
+|-------|---------|---------|
+| `extraction.context_objects` | Top-level objects with metadata | `[&quot;metadata&quot;, &quot;location&quot;]` |
+| `identity.deduplication.ignore_fields` | Fields to ignore when deduplicating | `[&quot;notes&quot;, &quot;timestamp&quot;]` |
+| `domain` | Category for organization | `&quot;Environmental - Air Quality&quot;` |
+| `version` | Schema version (semver) | `&quot;2.1.0&quot;` |
+
+### Optional: Validation (QA/QC) Runtime Configuration (in `run.yaml`)
+
+Validation behavior is runtime policy and belongs in the `validation` section of
+`config/&lt;domain&gt;/run.yaml` (the `validate` command reads it, mirroring how
+`compile` reads `compilation`):
+
+```yaml
+validation:
+  models: [primary, secondary]      # two model tiers to contrast
+  output_dir: validated/&lt;domain&gt;
+  comparison_approach: mixed        # mixed | numeric_only | text_review
+  record_matching:
+    key_fields: [feature, specific_subject, applies_to]
+    semantic_match_threshold: 0.38
+  comparison:
+    primary_fields: [value, units]
+  judge:
+    enabled: true
+    model: judge
+    apply_on: all                   # none | non_numeric | all
+```
+
+Run `pixi run psweep validate --config config/&lt;domain&gt;/run.yaml` so both models
+and all matching/comparison settings come from the same runtime config.
+
+---
+
+## The Golden Rule: Main Array = Rows
+
+The array specified in `$metadata.extraction.main_data_array` becomes rows in your spreadsheet.
+
+**Example:**
+```json
+{
+  &quot;$metadata&quot;: {
+    &quot;extraction&quot;: {
+      &quot;main_data_array&quot;: &quot;rate_schedules&quot;,
+      &quot;context_objects&quot;: [&quot;utility_info&quot;]
+    }
+  },
+  &quot;utility_info&quot;: {
+    &quot;utility_name&quot;: &quot;Metro Electric&quot;,
+    &quot;state&quot;: &quot;CA&quot;
+  },
+  &quot;rate_schedules&quot;: [
+    {&quot;rate_name&quot;: &quot;Schedule R&quot;, &quot;type&quot;: &quot;Residential&quot;},
+    {&quot;rate_name&quot;: &quot;Schedule C&quot;, &quot;type&quot;: &quot;Commercial&quot;}
+  ]
+}
+```
+
+**Result**: 2 rows in spreadsheet
+- Row 1: Metro Electric (CA) - Schedule R - Residential
+- Row 2: Metro Electric (CA) - Schedule C - Commercial
+
+Context objects (`utility_info`) are included in every row.
+
+---
+
+## Data Structure Design
+
+### Nested Arrays: Automatic Expansion vs Summarization
+
+The compiler automatically decides based on array characteristics:
+
+#### ✅ Expands to Columns (Best for Analysis)
+
+**Criteria:**
+- ≤15 items
+- ≤20 fields per item
+- Consistent structure (same fields across items)
+
+**Example:**
+```json
+&quot;charges&quot;: [
+  {&quot;type&quot;: &quot;Customer&quot;, &quot;rate&quot;: 7.10, &quot;unit&quot;: &quot;$&quot;},
+  {&quot;type&quot;: &quot;Energy&quot;, &quot;rate&quot;: 0.1038, &quot;unit&quot;: &quot;$/kWh&quot;},
+  {&quot;type&quot;: &quot;Demand&quot;, &quot;rate&quot;: 5.00, &quot;unit&quot;: &quot;$/kW&quot;}
+]
+```
+
+**Result:** Separate columns for each charge type
+- `Charges Customer Rate` = 7.10
+- `Charges Customer Unit` = $
+- `Charges Energy Rate` = 0.1038
+- `Charges Energy Unit` = $/kWh
+- `Charges Demand Rate` = 5.00
+- `Charges Demand Unit` = $/kW
+
+#### ✅ Summarizes to Text (Best for Context)
+
+**Criteria:**
+- &gt;15 items, OR
+- &gt;20 fields per item, OR
+- Inconsistent structure
+
+**Example:**
+```json
+&quot;permit_history&quot;: [
+  {&quot;date&quot;: &quot;2023-01-15&quot;, &quot;action&quot;: &quot;Applied&quot;, &quot;officer&quot;: &quot;J. Smith&quot;},
+  {&quot;date&quot;: &quot;2023-02-20&quot;, &quot;action&quot;: &quot;Reviewed&quot;, &quot;officer&quot;: &quot;M. Jones&quot;},
+  ... 28 more items
+]
+```
+
+**Result:** Single column with summary text
+- `Permit History` = &quot;Applied: 2023-01-15 (J. Smith); Reviewed: 2023-02-20 (M. Jones); ...&quot;
+
+---
+
+## Design Patterns
+
+### Pattern 1: Entity-Based (Recommended)
+
+**Best for:** Most use cases where you have a clear primary entity
+
+✅ **Good:**
+```json
+{
+  &quot;$metadata&quot;: {
+    &quot;extraction&quot;: {
+      &quot;main_data_array&quot;: &quot;rate_schedules&quot;,
+      &quot;context_objects&quot;: [&quot;utility_info&quot;]
+    }
+  },
+  &quot;utility_info&quot;: {
+    &quot;utility_name&quot;: &quot;Metro Electric&quot;,
+    &quot;state&quot;: &quot;CA&quot;
+  },
+  &quot;rate_schedules&quot;: [
+    {
+      &quot;rate_name&quot;: &quot;Residential&quot;,
+      &quot;charges&quot;: [
+        {&quot;type&quot;: &quot;Customer&quot;, &quot;rate&quot;: 7.10},
+        {&quot;type&quot;: &quot;Energy&quot;, &quot;rate&quot;: 0.1038}
+      ]
+    }
+  ]
+}
+```
+
+**Result:** One row per rate schedule, with charges expanded as columns
+
+❌ **Bad:**
+```json
+{
+  &quot;$metadata&quot;: {
+    &quot;extraction&quot;: {
+      &quot;main_data_array&quot;: &quot;charges&quot;
+    }
+  },
+  &quot;charges&quot;: [
+    {&quot;rate_name&quot;: &quot;Residential&quot;, &quot;type&quot;: &quot;Customer&quot;, &quot;rate&quot;: 7.10},
+    {&quot;rate_name&quot;: &quot;Residential&quot;, &quot;type&quot;: &quot;Energy&quot;, &quot;rate&quot;: 0.1038},
+    {&quot;rate_name&quot;: &quot;Commercial&quot;, &quot;type&quot;: &quot;Customer&quot;, &quot;rate&quot;: 9.50},
+    ... 50 more charges
+  ]
+}
+```
+
+**Problem:** Creates 50+ rows instead of a few organized rate schedules
+
+### Pattern 2: Include Distinguishing Context
+
+Always include fields that differentiate similar items.
+
+✅ **Good:**
+```json
+{
+  &quot;type&quot;: &quot;Energy&quot;,
+  &quot;rate&quot;: 0.1038,
+  &quot;season&quot;: &quot;Summer&quot;,
+  &quot;time_period&quot;: &quot;On-peak&quot;,
+  &quot;tier&quot;: &quot;1&quot;
+}
+```
+
+**Result:** Clear column names
+- `Charges Energy Summer On-Peak Tier 1 Rate`
+
+❌ **Bad:**
+```json
+{
+  &quot;type&quot;: &quot;Energy&quot;,
+  &quot;rate&quot;: 0.1038
+}
+```
+
+**Problem:** Lost context - which season? which time period?
+
+### Pattern 3: Consistent Field Structure
+
+Use the same fields across all items in an array.
+
+✅ **Good:**
+```json
+&quot;requirements&quot;: [
+  {&quot;category&quot;: &quot;Setback&quot;, &quot;value&quot;: 1320, &quot;unit&quot;: &quot;feet&quot;},
+  {&quot;category&quot;: &quot;Height&quot;, &quot;value&quot;: 35, &quot;unit&quot;: &quot;feet&quot;},
+  {&quot;category&quot;: &quot;Noise&quot;, &quot;value&quot;: 50, &quot;unit&quot;: &quot;dBA&quot;}
+]
+```
+
+**Result:** Clean expansion with predictable columns
+
+❌ **Bad:**
+```json
+&quot;requirements&quot;: [
+  {&quot;category&quot;: &quot;Setback&quot;, &quot;distance&quot;: 1320, &quot;from&quot;: &quot;residence&quot;},
+  {&quot;category&quot;: &quot;Height&quot;, &quot;max_height&quot;: 35},
+  {&quot;category&quot;: &quot;Noise&quot;, &quot;limit_day&quot;: 50, &quot;limit_night&quot;: 45}
+]
+```
+
+**Problem:** Inconsistent fields → forced to summarize instead of expand
+
+---
+
+## Optimization Guidelines
+
+### For Quantitative Analysis
+
+**Goal:** Structured, analyzable columns
+
+1. **Keep nested arrays small** (≤15 items)
+2. **Use consistent field names** across all array items
+3. **Include distinguishing context** (season, tier, period, type)
+4. **Separate values from units**
+
+**Example:**
+```json
+&quot;charges&quot;: [
+  {
+    &quot;charge_type&quot;: &quot;Energy&quot;,
+    &quot;rate&quot;: 0.1038,
+    &quot;unit&quot;: &quot;$/kWh&quot;,
+    &quot;season&quot;: &quot;Summer&quot;,
+    &quot;time_period&quot;: &quot;On-peak&quot;,
+    &quot;tier&quot;: &quot;1&quot;
+  }
+]
+```
+
+---
+
+## Temporal Metadata Best Practices
+
+**Why it matters:** Most documents have a critical time dimension - when they were enacted, when they&#39;re effective, when they expire. Without temporal metadata, you can&#39;t determine if data is current, track changes over time, or perform temporal analysis.
+
+### Common Temporal Fields by Document Type
+
+| Document Type | Critical Temporal Fields |
+|---------------|--------------------------|
+| **Ordinances/Regulations** | `date_adopted`, `date_effective`, `date_last_amended`, `supersedes` |
+| **Permits** | `permit_issuance_date`, `permit_expiration_date`, `renewal_date` |
+| **Tariffs/Rate Schedules** | `effective_date`, `revision_date`, `filing_date`, `supersedes` |
+| **Journal Articles** | `publication_date`, `received_date`, `revised_date`, `accepted_date` |
+| **Financial Filings** | `filing_date`, `fiscal_year_end`, `period_start`, `period_end` |
+| **Contracts** | `execution_date`, `effective_date`, `expiration_date`, `renewal_date` |
+
+### Design Recommendations
+
+**1. Place in context objects** - Temporal fields typically describe the document, not individual data items, so include them in context objects (metadata, jurisdiction, utility_info, etc.)
+
+**2. Allow as-written formats** - Documents use varied date formats. Capture exactly as written for accuracy:
+```json
+&quot;date_adopted&quot;: {
+  &quot;type&quot;: [&quot;string&quot;, &quot;null&quot;],
+  &quot;description&quot;: &quot;Date adopted, exactly as written (e.g., &#39;May 17, 2013&#39;, &#39;10/6/2015&#39;)&quot;
+}
+```
+
+**3. Make fields nullable** - Not all documents state all dates explicitly:
+```json
+&quot;type&quot;: [&quot;string&quot;, &quot;null&quot;],
+&quot;description&quot;: &quot;... Null if not stated.&quot;
+```
+
+**4. Include in column_order** - Place temporal fields early in Excel output for visibility:
+```json
+&quot;column_order&quot;: [
+  &quot;utility_name&quot;,
+  &quot;state&quot;,
+  &quot;effective_date&quot;,
+  &quot;revision_date&quot;,
+  &quot;rate_name&quot;,
+  ...
+]
+```
+
+**5. Provide extraction guidance** - Help the LLM find temporal information:
+```json
+&quot;description&quot;: &quot;Date the ordinance became effective, exactly as written. Look for phrases like &#39;effective date&#39;, &#39;shall become effective on&#39;, &#39;in effect as of&#39;. Null if not stated.&quot;
+```
+
+### Example: Ordinance Schema
+
+```json
+{
+  &quot;jurisdiction&quot;: {
+    &quot;type&quot;: &quot;object&quot;,
+    &quot;properties&quot;: {
+      &quot;state&quot;: {&quot;type&quot;: &quot;string&quot;},
+      &quot;county&quot;: {&quot;type&quot;: &quot;string&quot;},
+      &quot;ordinance_code&quot;: {&quot;type&quot;: [&quot;string&quot;, &quot;null&quot;]},
+      &quot;date_adopted&quot;: {
+        &quot;type&quot;: [&quot;string&quot;, &quot;null&quot;],
+        &quot;description&quot;: &quot;Date adopted by legislative body, exactly as written (e.g., &#39;May 17, 2013&#39;). Look for &#39;adopted on&#39;, &#39;enacted on&#39;, &#39;passed on&#39;. Null if not stated.&quot;
+      },
+      &quot;date_effective&quot;: {
+        &quot;type&quot;: [&quot;string&quot;, &quot;null&quot;],
+        &quot;description&quot;: &quot;Date became law, exactly as written. Look for &#39;effective date&#39;, &#39;shall become effective on&#39;. Null if not stated.&quot;
+      },
+      &quot;date_last_amended&quot;: {
+        &quot;type&quot;: [&quot;string&quot;, &quot;null&quot;],
+        &quot;description&quot;: &quot;Most recent amendment date. Look for &#39;amended on&#39;, &#39;as amended&#39;, &#39;last revised&#39;. Null if not stated.&quot;
+      },
+      &quot;supersedes&quot;: {
+        &quot;type&quot;: [&quot;string&quot;, &quot;null&quot;],
+        &quot;description&quot;: &quot;Previous ordinance this replaces. Look for &#39;replaces&#39;, &#39;supersedes&#39;, &#39;repeals and replaces&#39;. Null if not stated.&quot;
+      }
+    }
+  }
+}
+```
+
+### When to Use Structured vs As-Written Dates
+
+**Structured (YYYY-MM-DD):**
+- ✅ When dates are consistently formatted in source documents
+- ✅ When downstream analysis requires date arithmetic
+- ✅ For permits, filings with standardized formats
+- Example: `&quot;permit_issuance_date&quot;: &quot;2024-01-15&quot;`
+
+**As-Written:**
+- ✅ When date formats vary widely across documents
+- ✅ When preserving exact source text is important
+- ✅ For ordinances, legal documents with varied formats
+- Example: `&quot;date_adopted&quot;: &quot;May 17, 2013&quot;`
+
+**Hybrid Approach:**
+```json
+&quot;effective_date_raw&quot;: &quot;January 1st, 2024&quot;,
+&quot;effective_date_normalized&quot;: &quot;2024-01-01&quot;
+```
+
+---
+
+### For Qualitative/Contextual Data
+
+**Goal:** Readable summaries
+
+1. **Use descriptive name/type fields**
+2. **Let large arrays summarize automatically**
+3. **Include important details in text**
+
+**Example:**
+```json
+&quot;inspection_notes&quot;: [
+  {
+    &quot;date&quot;: &quot;2024-01-15&quot;,
+    &quot;inspector&quot;: &quot;J. Smith&quot;,
+    &quot;findings&quot;: &quot;Equipment in good condition&quot;,
+    &quot;action_required&quot;: &quot;None&quot;
+  },
+  ... many more notes
+]
+```
+
+---
+
+## Common Mistakes
+
+### ❌ Missing `$metadata` Section
+
+**Problem:** Extraction fails immediately
+
+```json
+{
+  &quot;$schema&quot;: &quot;http://json-schema.org/draft-07/schema#&quot;,
+  &quot;type&quot;: &quot;object&quot;,
+  &quot;properties&quot;: {
+    &quot;items&quot;: {&quot;type&quot;: &quot;array&quot;}
+  }
+}
+```
+
+**Error:** `Schema missing required $metadata section`
+
+✅ **Solution:** Always include complete `$metadata`
+
+### ❌ Flat Structure Instead of Nested
+
+**Problem:** Hard to extend, loses organization
+
+```json
+{
+  &quot;rate_name&quot;: &quot;Schedule R&quot;,
+  &quot;customer_charge&quot;: 7.1,
+  &quot;energy_charge_summer&quot;: 0.1038,
+  &quot;energy_charge_winter&quot;: 0.0857,
+  &quot;demand_charge_summer&quot;: 5.0
+}
+```
+
+✅ **Better:**
+```json
+{
+  &quot;rate_name&quot;: &quot;Schedule R&quot;,
+  &quot;charges&quot;: [
+    {&quot;type&quot;: &quot;Customer&quot;, &quot;rate&quot;: 7.1},
+    {&quot;type&quot;: &quot;Energy&quot;, &quot;season&quot;: &quot;Summer&quot;, &quot;rate&quot;: 0.1038},
+    {&quot;type&quot;: &quot;Energy&quot;, &quot;season&quot;: &quot;Winter&quot;, &quot;rate&quot;: 0.0857},
+    {&quot;type&quot;: &quot;Demand&quot;, &quot;season&quot;: &quot;Summer&quot;, &quot;rate&quot;: 5.0}
+  ]
+}
+```
+
+### ❌ Excessive Nesting
+
+**Problem:** Creates unreadable column names
+
+```json
+{
+  &quot;rate_schedules&quot;: [
+    {
+      &quot;details&quot;: {
+        &quot;info&quot;: {
+          &quot;basics&quot;: {
+            &quot;rate_name&quot;: &quot;Schedule R&quot;
+          }
+        }
+      }
+    }
+  ]
+}
+```
+
+**Result:** `Rate Schedules Details Info Basics Rate Name` (too long!)
+
+✅ **Better:** Keep to 2-3 levels maximum
+```json
+{
+  &quot;rate_schedules&quot;: [
+    {
+      &quot;rate_name&quot;: &quot;Schedule R&quot;,
+      &quot;effective_date&quot;: &quot;2024-01-01&quot;
+    }
+  ]
+}
+```
+
+### ❌ Single-Item Arrays
+
+**Problem:** Unnecessary complexity
+
+```json
+{
+  &quot;rate_name&quot;: [&quot;Schedule R&quot;],
+  &quot;effective_date&quot;: [&quot;2024-01-01&quot;]
+}
+```
+
+✅ **Better:** Use simple values
+```json
+{
+  &quot;rate_name&quot;: &quot;Schedule R&quot;,
+  &quot;effective_date&quot;: &quot;2024-01-01&quot;
+}
+```
+
+### ❌ Wrong Main Array Selection
+
+**Problem:** Creates too many or too few rows
+
+```json
+{
+  &quot;$metadata&quot;: {
+    &quot;extraction&quot;: {
+      &quot;main_data_array&quot;: &quot;charges&quot;  // ❌ Too granular
+    }
+  },
+  &quot;rate_schedules&quot;: [
+    {
+      &quot;rate_name&quot;: &quot;Schedule R&quot;,
+      &quot;charges&quot;: [
+        {&quot;type&quot;: &quot;Customer&quot;, &quot;rate&quot;: 7.1},
+        {&quot;type&quot;: &quot;Energy&quot;, &quot;rate&quot;: 0.1038},
+        ... 20 more charges
+      ]
+    }
+  ]
+}
+```
+
+**Result:** 20+ rows per rate schedule instead of 1 row with expanded charge columns
+
+✅ **Better:**
+```json
+{
+  &quot;$metadata&quot;: {
+    &quot;extraction&quot;: {
+      &quot;main_data_array&quot;: &quot;rate_schedules&quot;  // ✅ Right level
+    }
+  }
+}
+```
+
+---
+
+## Testing Your Schema
+
+### 1. Validate Schema Structure
+
+```bash
+pixi run psweep check-schema schemas/your_schema.json
+```
+
+Checks for:
+- Required `$metadata` section
+- Valid JSONPath in identifier_fields
+- Proper field references
+
+### 2. Test on Sample Documents
+
+```bash
+# Extract 1-2 sample documents
+pixi run psweep extract documents/samples/ \
+  --schema schemas/your_schema.json \
+  --limit 2
+
+# Review JSON outputs
+ls -la extracted/samples/
+cat extracted/samples/sample_001.json
+```
+
+Check:
+- Is the `main_data_array` populated correctly?
+- Are nested arrays the right size?
+- Are field names consistent?
+
+### 3. Test Consolidation
+
+```bash
+# Consolidate to Excel/CSV
+pixi run psweep compile extracted/samples/
+
+# Review outputs
+open compiled/samples/*.xlsx
+```
+
+Verify:
+- Correct number of rows
+- Nested arrays expanded/summarized as expected
+- Column names are clear and readable
+- Data properly deduplicated
+
+### 4. Iterate and Refine
+
+Common adjustments:
+- Change `main_data_array` to different level
+- Adjust nested array structure
+- Add/modify `key_fields` for better deduplication
+- Reorganize data to reduce nesting depth
+
+---
+
+## Value Typing and Obligation Classification
+
+Regulatory extraction schemas (ordinances, permits, tariffs) share a common
+problem: a single free-text `value` field ends up carrying *four different kinds
+of information at once* — what is regulated, how much, how binding it is, and
+under what circumstances. That overloading destroys comparability and dedup.
+
+The fix is to decompose every requirement row on **four axes**:
+
+| Axis | Question | Canonical fields |
+|------|----------|------------------|
+| **WHAT** | What is regulated? | `feature` + `specific_subject` + `requirement_description` + `applies_to` |
+| **HOW MUCH** | What magnitude / bound? | `value` + `value_category` + `value_interpretation` + `units` + `range_low` + `range_high` |
+| **HOW BINDING** | Is it mandatory? | `obligation` |
+| **WHEN / WHERE** | Under what circumstance / scope? | `condition` + `applies_to` |
+| **EVIDENCE** | How do we know? | `source_verbatim` + `summary` + `reasoning` + `section` |
+
+### The three classification fields
+
+**`value_category`** (required, `[&quot;quantitative&quot;, &quot;qualitative&quot;]`)
+- `quantitative`: a measurable magnitude lives in `value` (distance, dBA, acres,
+  MW, hours, %, $).
+- `qualitative`: there is no magnitude; the substance lives in
+  `requirement_description` (or an enumerated set in `applicable_values`), and
+  `value` is null.
+- Independent of obligation — a quantitative limit can be conditional, and a
+  qualitative item can be required.
+
+**`value_interpretation`** (`[&quot;exact&quot;,&quot;minimum&quot;,&quot;maximum&quot;,&quot;range&quot;,&quot;formula&quot;,&quot;tiered&quot;,&quot;enumerated&quot;, null]`)
+- `exact` — single fixed value (&quot;shall be 35 feet&quot;).
+- `minimum` — floor (&quot;at least&quot;, &quot;no less than&quot;).
+- `maximum` — ceiling (&quot;shall not exceed&quot;).
+- Coverage-radius phrasing (&quot;show/list/include items within one mile&quot;) is usually
+  `maximum` (inside a radius cap).
+- Separation phrasing (&quot;no structure within 50 feet of a fault&quot;) is usually
+  `minimum` (required standoff distance).
+- `range` — a span; populate `range_low` and `range_high`.
+- `formula` — computed (&quot;1.1× turbine height&quot;).
+- `tiered` — value depends on a band; **emit one row per tier** with the band in
+  `condition`.
+- `enumerated` — a discrete set of allowed values; use with `applicable_values`.
+- `null` — qualitative requirements (present / absent).
+
+**`obligation`** (required, `[&quot;required&quot;,&quot;prohibited&quot;,&quot;conditional&quot;,&quot;allowed&quot;,&quot;recommended&quot;,&quot;informational&quot;]`)
+
+Classify from the governing clause, with these normalization rules:
+- For **quantitative limits/setbacks/windows**, use `obligation = &quot;required&quot;` and encode direction in `value_interpretation` (`minimum` / `maximum` / `range`) even when wording is negative (&quot;shall not exceed&quot;, &quot;shall not be within&quot;).
+- Reserve `obligation = &quot;prohibited&quot;` for **qualitative bans** without a measurable threshold.
+- For permit-gated phrasing (&quot;may be permitted only through CUP&quot;), model the permit gate as `obligation = &quot;required&quot;` on the approval row; avoid flipping between `allowed` and `required` for the same gate.
+
+| Governing language | `obligation` |
+|--------------------|--------------|
+| &quot;shall&quot;, &quot;must&quot;, &quot;is required&quot;, &quot;no less than&quot; | `required` |
+| &quot;shall not&quot;, &quot;no person shall&quot;, &quot;may not&quot;, &quot;is not permitted&quot;, &quot;prohibited&quot; (non-numeric ban) | `prohibited` |
+| &quot;may require&quot;, &quot;at the discretion of&quot;, &quot;as a condition of approval&quot;, &quot;unless waived&quot; | `conditional` |
+| &quot;is permitted&quot;, &quot;may be located&quot;, &quot;is allowed&quot; | `allowed` |
+| &quot;should&quot;, &quot;encouraged&quot;, &quot;best available technology&quot; | `recommended` |
+| definitions, procedures, measured baselines, external standards | `informational` |
+
+When multiple verbs appear, precedence is:
+`prohibited &gt; required &gt; conditional &gt; recommended &gt; allowed &gt; informational`.
+
+### LLM prompt instructions to embed in field descriptions
+
+- **obligation:** &quot;Never place obligation language inside `value` or
+  `requirement_description`. For quantitative rows, use `required` and encode
+  direction in `value_interpretation` even if wording is negative. Reserve
+  `prohibited` for qualitative bans. Cite trigger language in `reasoning`.&quot;
+- **source_verbatim:** &quot;Exact word-for-word operative clause; never paraphrase.
+  If it exceeds 50 words, quote the operative head, insert &#39;…&#39;, then the tail.&quot;
+- **reasoning:** &quot;Terse `trigger → label`, ≤15 words.&quot; e.g.
+  `&quot;&#39;may require&#39; → conditional; no magnitude → qualitative&quot;`.
+- **requirement_description:** &quot;No obligation language — never include shall / may
+  / must / required / prohibited.&quot;
+
+### Anti-patterns
+
+| ❌ Anti-pattern | ✅ Correct |
+|----------------|-----------|
+| `value = &quot;shall not exceed 55 dBA&quot;` | `value = 55`, `units = &quot;dBA&quot;`, `value_interpretation = &quot;maximum&quot;`, `obligation = &quot;required&quot;` |
+| `value = &quot;shall not be within 50 feet of an active fault&quot;` + `obligation = &quot;prohibited&quot;` | `value = 50`, `units = &quot;feet&quot;`, `value_interpretation = &quot;minimum&quot;`, `obligation = &quot;required&quot;` |
+| `value_interpretation = &quot;exact&quot;` for `&quot;within one mile&quot;` in map/reporting scope | `value_interpretation = &quot;maximum&quot;` (coverage radius cap) |
+| `value = &quot;Sound barriers may be required&quot;` | `requirement_description = &quot;Sound barriers&quot;`, `value_category = &quot;qualitative&quot;`, `obligation = &quot;conditional&quot;` |
+| `requirement_description = &quot;Fencing is required&quot;` | `requirement_description = &quot;Solid perimeter fencing&quot;`, `obligation = &quot;required&quot;` |
+| `obligation = &quot;allowed&quot;` for `&quot;...may be permitted only through CUP&quot;` | `obligation = &quot;required&quot;` on the permit-gate approval row |
+| One row per permitted district (`AG`, `RE`, `R1`…) | one row, `value_interpretation = &quot;enumerated&quot;`, `applicable_values = [&quot;AG&quot;,&quot;RE&quot;,&quot;R1&quot;]` |
+| `applies_to = &quot;nighttime&quot;` | `condition = &quot;nighttime&quot;` (applies_to is the *facility type*, not the trigger) |
+| Paraphrasing in `source_verbatim` | copy the clause verbatim; paraphrase only in `summary` |
+
+### Before / after (natural gas noise limit)
+
+Old overloaded single field:
+
+```
+value = &quot;Compressor stations shall not exceed 55 dBA at night at the property line&quot;
+```
+
+New multi-field decomposition:
+
+```json
+{
+  &quot;feature&quot;: &quot;noise&quot;,
+  &quot;specific_subject&quot;: &quot;nighttime limit&quot;,
+  &quot;applies_to&quot;: &quot;Compressor station&quot;,
+  &quot;value_category&quot;: &quot;quantitative&quot;,
+  &quot;value&quot;: 55,
+  &quot;value_interpretation&quot;: &quot;maximum&quot;,
+  &quot;units&quot;: &quot;dBA&quot;,
+  &quot;obligation&quot;: &quot;required&quot;,
+  &quot;condition&quot;: &quot;nighttime&quot;,
+  &quot;source_verbatim&quot;: &quot;...shall not exceed 55 dBa...at night...at the property line.&quot;,
+  &quot;reasoning&quot;: &quot;&#39;shall not exceed&#39; → required; number → quantitative/maximum&quot;
+}
+```
+
+---
+
+## Cross-Domain Consistency Guidelines
+
+Regulatory domains (natural gas, geothermal, solar, and future domains) share the
+same requirement-row shape. Keeping field **names and semantics identical** across
+domains lets one compilation, dedup, and QA/QC path serve every domain, and lets
+analysts compare across domains.
+
+### QA/QC hardening conventions (recommended across all regulatory domains)
+
+These conventions came from live multi-model validation runs and improve
+precision/recall **without adding domain-specific runtime code**:
+
+1. **Add a row-type discriminator when rows mix different requirement kinds.**
+   - Use a canonical field like `rule_kind` (enum) to distinguish
+     `limit`, `deadline`, `duration`, `monitoring`, `equipment_standard`, etc.
+   - Include it in schema dedup keys **and** QA/QC `record_matching.key_fields`
+     in `config/&lt;domain&gt;/run.yaml` so like-for-like rows are compared.
+2. **Encode quantitative vs qualitative constraints in the schema.**
+   - Quantitative rows should require numeric semantics (`value`, `units`,
+     `value_interpretation`).
+   - Qualitative rows should force quantitative-only fields to null.
+3. **Keep schema as contract; keep QA/QC policy in config.**
+   - Schema: field shape, enums, conditional constraints, dedup identity.
+   - Config: model pair, judge model, comparison fields, matching behavior.
+4. **Treat output shape drift as a first-class validation failure.**
+   - `main_data_array` is contractually an array; if provider output drifts
+     (e.g., object-map keyed by `&quot;0&quot;`, `&quot;1&quot;`), normalize deterministically in
+     runtime and log it, then continue comparison.
+5. **Do not choose production models from agreement % alone.**
+   - Use multi-doc runs and source-grounded review of `ONLY model-x` and `DIFFER`
+     rows to determine whether misses are recall gaps or true false positives.
+
+### Canonical requirement-row fields (universal — same name in every domain)
+
+| Field | Type | Required | Axis | Notes |
+|-------|------|----------|------|-------|
+| `feature` | string (enum) | ✅ | WHAT | Domain-specific **enum values**, universal field name |
+| `specific_subject` | string \| null | | WHAT | Sub-aspect; participates in dedup key |
+| `applies_to` | string \| null | | WHAT / WHERE | Governed facility type, document&#39;s terminology |
+| `requirement_description` | string \| null | | WHAT | Obligation-free description of qualitative rows |
+| `value_category` | string | ✅ | HOW MUCH | `quantitative` / `qualitative` |
+| `value` | number \| string \| null | | HOW MUCH | Magnitude only; no units, no obligation words |
+| `value_interpretation` | string \| null | | HOW MUCH | exact / minimum / maximum / range / formula / tiered / enumerated |
+| `units` | string \| null | | HOW MUCH | Null for qualitative |
+| `range_low` | number \| null | | HOW MUCH | Lower bound when `value` is a range |
+| `range_high` | number \| null | | HOW MUCH | Upper bound when `value` is a range |
+| `obligation` | string | ✅ | HOW BINDING | Full controlled vocabulary |
+| `condition` | string \| null | | WHEN / WHERE | Situational trigger, **not** the facility type |
+| `applicable_values` | array \| null | | HOW MUCH | Enumerated interchangeable values |
+| `source_verbatim` | string \| null | | EVIDENCE | Exact quote; audit anchor |
+| `summary` | string \| null | | EVIDENCE | Paraphrase allowed (omit if domain has no summary lane) |
+| `reasoning` | string \| null | | EVIDENCE | `trigger → label`, hidden from output by default |
+| `section` | string \| null | | EVIDENCE | Ordinance / permit section reference |
+| `notes` | string \| null | | EVIDENCE | Exceptions, cross-references |
+
+### What varies per domain vs. what is universal
+
+- **Varies per domain:** the `feature` **enum values**; the domain-specific
+  **examples** inside each field description; `document_applicability` gate fields;
+  `jurisdiction` / identifier structure; `$metadata.domain` and `version`.
+- **Universal (do not rename):** every field **name** above, the
+  `value_category` / `value_interpretation` / `obligation` vocabularies (defined
+  in `properties[*].enum`), and the canonical `key_fields` / `ignore_fields` in
+  `$metadata.identity.deduplication`.
+
+### Canonical `$metadata` blocks
+
+Use the same dedup keys in every regulatory domain (vocabularies belong in `properties[*].enum`, not in `$metadata`):
+
+```json
+&quot;deduplication&quot;: {
+  &quot;key_fields&quot;: [&quot;feature&quot;, &quot;specific_subject&quot;, &quot;applies_to&quot;, &quot;value_category&quot;, &quot;value&quot;, &quot;value_interpretation&quot;, &quot;units&quot;, &quot;obligation&quot;, &quot;condition&quot;],
+  &quot;ignore_fields&quot;: [&quot;source_verbatim&quot;, &quot;summary&quot;, &quot;reasoning&quot;, &quot;notes&quot;, &quot;applicable_values&quot;, &quot;range_low&quot;, &quot;range_high&quot;]
+}
+```
+
+&gt; Jurisdiction context (state / county / subdivision) does **not** need to be in
+&gt; `key_fields` — compilation automatically groups by jurisdiction and never merges
+&gt; rows across jurisdictions. `ignore_fields` may omit `summary` for a domain that
+&gt; has no summary field.
+
+### Creating a new regulatory domain schema
+
+1. Copy an existing regulatory schema (`natural_gas_pipeline_schema.json` is the
+   reference) as a template.
+2. Replace the `feature` enum with your domain&#39;s standardized features.
+3. Update the domain-specific **examples** in `specific_subject`, `applies_to`,
+   `condition`, and `requirement_description` — keep the field names and their
+   instructive descriptions intact.
+4. Set `$metadata.domain` and bump `version`; keep the canonical
+   `key_fields` and `ignore_fields` in `$metadata.identity.deduplication` unchanged.
+5. Adjust `document_applicability` and `jurisdiction` gate fields for the domain.
+6. Validate: `pixi run psweep check-schema schemas/personal/&lt;domain&gt;_schema.json`.
+
+---
+
+## Production Examples
+
+Reference these working schemas in the `schemas/` directory:
+
+### Air Quality Permits
+- **File:** `air_quality_permits_schema.json`
+- **Pattern:** Permit-based with equipment nested
+- **Main array:** `equipment`
+- **Good for:** Environmental compliance tracking
+
+### Electricity Tariffs
+- **File:** `electricity_tariff_schema.json`
+- **Pattern:** Rate schedule with charges nested
+- **Main array:** `rate_schedules`
+- **Good for:** Utility rate analysis
+
+### Geothermal Ordinances
+- **File:** `personal/geothermal_ordinance_schema.json`
+- **Pattern:** Requirements-based, 4-axis value typing
+- **Main array:** `requirements`
+- **Good for:** Regulatory compliance
+
+### Natural Gas Pipelines &amp; Compressor Stations
+- **File:** `personal/natural_gas_pipeline_schema.json`
+- **Pattern:** Requirements-based, 4-axis value typing (reference schema for new regulatory domains)
+- **Main array:** `requirements`
+- **Good for:** Regulatory compliance, cross-jurisdiction comparison
+
+---
+
+## Quick Reference
+
+| Aspect | Guideline |
+|--------|-----------|
+| **`$metadata` section** | Required - extraction fails without it |
+| **`main_data_array`** | Becomes spreadsheet rows - choose entity level carefully |
+| **Nested arrays ≤15 items** | Expands to columns (good for analysis) |
+| **Nested arrays &gt;15 items** | Summarizes to text (good for context) |
+| **Field consistency** | Same fields across items → clean expansion |
+| **Distinguishing fields** | Include season/period/tier for clarity |
+| **Nesting depth** | 2-3 levels maximum for readable columns |
+| **Context objects** | Include in every row automatically |
+| **Deduplication** | Use `key_fields` to define uniqueness |
+| **Regulatory value typing** | Decompose rows on 4 axes: WHAT / HOW MUCH / HOW BINDING / WHEN·WHERE |
+| **`value_category` / `obligation`** | Required classifier fields for regulatory schemas |
+| **Cross-domain consistency** | Keep canonical field names identical across domains; vary only `feature` enums + examples |
+
+---
+
+## Tips for Success
+
+1. **Start with the end in mind** - Design your schema based on how you want to analyze the data in Excel
+2. **Use production schemas as templates** - Copy and modify rather than starting from scratch
+3. **Test early and often** - Extract 1-2 documents before processing hundreds
+4. **Keep it simple** - Fewer levels of nesting = clearer outputs
+5. **Be consistent** - Same structure across all items in an array enables expansion
+6. **Include context** - Add fields that distinguish similar items (season, type, tier)
+7. **Validate first** - Use `check-schema` command before extraction
+
+**Remember:** Good schema design = good data analysis. Take time to structure your schema correctly.
+</pre></div>
+</div>
+</div>
+</section>
+
+        </article>
+      </div>
+      <footer>
+        
+        <div class="related-pages">
+          <a class="next-page" href="../autoapi/index.html">
+              <div class="page-info">
+                <div class="context">
+                  <span>Next</span>
+                </div>
+                <div class="title">API Reference</div>
+              </div>
+              <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
+            </a>
+          <a class="prev-page" href="../config-reference.html">
+              <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
+              <div class="page-info">
+                <div class="context">
+                  <span>Previous</span>
+                </div>
+                
+                <div class="title">Configuration Reference</div>
+                
+              </div>
+            </a>
+        </div>
+        <div class="bottom-of-page">
+          <div class="left-details">
+            <div class="copyright">
+                Copyright &#169; 2026, Byron Pullutasig
+            </div>
+            Made with <a href="https://www.sphinx-doc.org/">Sphinx</a> and <a class="muted-link" href="https://pradyunsg.me">@pradyunsg</a>'s
+            
+            <a href="https://github.com/pradyunsg/furo">Furo</a>
+            
+          </div>
+          <div class="right-details">
+            
+          </div>
+        </div>
+        
+      </footer>
+    </div>
+    <aside class="toc-drawer no-toc">
+      
+      
+      
+    </aside>
+  </div>
+</div><script src="../_static/documentation_options.js?v=f5cff4aa"></script>
+    <script src="../_static/doctools.js?v=fd6eb6e6"></script>
+    <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="../_static/scripts/furo.js?v=46bd48cc"></script>
+    <script src="../_static/clipboard.min.js?v=a7894cd8"></script>
+    <script src="../_static/copybutton.js?v=f281be69"></script>
+    </body>
+</html>

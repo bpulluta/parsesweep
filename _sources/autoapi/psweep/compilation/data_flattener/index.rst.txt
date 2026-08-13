@@ -1,0 +1,305 @@
+psweep.compilation.data_flattener
+=================================
+
+.. py:module:: psweep.compilation.data_flattener
+
+.. autoapi-nested-parse::
+
+   Data flattening utilities for converting nested JSON to flat spreadsheet rows.
+
+   Handles intelligent flattening of complex data structures for analysis-ready output.
+
+   Domain-neutral: how arrays of objects become columns (which field labels a group,
+   which fields distinguish siblings, which fields carry the value/unit, how units are
+   normalized, and the expand-vs-summarize thresholds) is driven by the optional
+   ``compilation.flattening`` schema block. Every knob falls back to a documented
+   general default, so a schema that declares nothing keeps the legacy behavior.
+
+
+
+Attributes
+----------
+
+.. autoapisummary::
+
+   psweep.compilation.data_flattener.DEFAULT_DISTINGUISHING_FIELDS
+   psweep.compilation.data_flattener.DEFAULT_EXPAND_MAX_FIELDS
+   psweep.compilation.data_flattener.DEFAULT_EXPAND_MAX_ITEMS
+   psweep.compilation.data_flattener.DEFAULT_PLACEHOLDER_VALUES
+   psweep.compilation.data_flattener.DEFAULT_SEASON_FIELDS
+   psweep.compilation.data_flattener.DEFAULT_SKIP_FIELDS
+   psweep.compilation.data_flattener.DEFAULT_TYPE_FIELDS
+   psweep.compilation.data_flattener.DEFAULT_UNIT_FIELDS
+   psweep.compilation.data_flattener.DEFAULT_UNIT_NORMALIZATIONS
+   psweep.compilation.data_flattener.DEFAULT_VALUE_FIELDS
+
+
+Classes
+-------
+
+.. autoapisummary::
+
+   psweep.compilation.data_flattener.DataFlattener
+
+
+Module Contents
+---------------
+
+.. py:class:: DataFlattener(schema_metadata=None)
+
+   Flatten nested JSON structures into spreadsheet-friendly rows.
+
+   Provides smart handling of:
+
+   - Nested objects → flattened columns
+   - Arrays of primitives → comma-separated strings
+   - Arrays of objects → expanded columns or readable summaries
+   - Automatic column naming with Title Case
+
+   Initialize the flattener with optional schema-driven config.
+
+   :param schema_metadata: Optional SchemaMetadata. When provided, its
+                           ``compilation.flattening`` block overrides the module defaults.
+                           When omitted (e.g. callers that only use ``make_column_name``),
+                           the documented defaults apply.
+
+
+   .. py:method:: expand_to_columns(parent_key: str, items: List[Dict]) -> Dict
+
+      Expand array of objects into structured columns for analysis.
+
+      Automatically creates clean column names by:
+
+      1. Grouping items by their type/category field
+      2. Adding distinguishing context (season, period, tier, etc.)
+      3. Expanding each item's fields into separate columns
+
+      Works for any data: charges, requirements, fees, tiers, etc.
+
+      :param parent_key: Parent field name
+      :type parent_key: str
+      :param items: List of objects to expand
+      :type items: List[Dict]
+
+      :returns: Dictionary with multiple columns (one per field per item)
+      :rtype: Dict
+
+
+
+   .. py:method:: find_value(obj: Dict, possible_keys: List[str]) -> Any
+
+      Find first non-null value from list of possible keys.
+
+      Useful for finding data in objects with varying field names.
+
+      :param obj: Dictionary to search
+      :type obj: Dict
+      :param possible_keys: List of keys to try in order
+      :type possible_keys: List[str]
+
+      :returns: First non-null value found, or None
+      :rtype: Any
+
+
+
+   .. py:method:: flatten_item(item: Dict) -> Dict
+
+      Intelligently flatten a data item for spreadsheet output.
+
+      Automatically chooses the best representation for nested structures:
+
+      - Simple values → direct columns
+      - Nested objects → flattened columns
+      - Arrays of primitives → comma-separated
+      - Arrays of objects → smart expansion or summary
+
+      :param item: Dictionary with potentially nested structure
+      :type item: Dict
+
+      :returns: Flattened dictionary suitable for DataFrame row
+      :rtype: Dict
+
+
+
+   .. py:method:: get_item_suffix(obj: Dict, idx: int, total: int) -> str
+
+      Generate suffix to distinguish items with same type.
+
+      Looks for the configured distinguishing fields in order, skipping
+      placeholder values. Falls back to numbering if none is found.
+
+      :param obj: Object to analyze
+      :type obj: Dict
+      :param idx: Index in the array
+      :type idx: int
+      :param total: Total items in array
+      :type total: int
+
+      :returns: Suffix string (e.g., " Summer", " Tier 1", " 2")
+      :rtype: str
+
+
+
+   .. py:method:: handle_array(key: str, items: List) -> Dict
+
+      Intelligently handle array data based on its structure.
+
+      Decision logic:
+
+      - Empty → empty string
+      - Simple values → comma-separated
+      - Few objects (< expand_max_items) with few fields (< expand_max_fields)
+        → expand to columns
+      - Many/complex objects → readable summary
+
+      :param key: Column name for this array
+      :type key: str
+      :param items: Array data to process
+      :type items: List
+
+      :returns: Dictionary with column(s) for this array
+      :rtype: Dict
+
+
+
+   .. py:method:: handle_object_array(key: str, items: List[Dict]) -> Dict
+
+      Smart handling of arrays of objects.
+
+      Universal decision logic:
+
+      - Small, consistent arrays → expand to columns (good for analysis)
+      - Large or inconsistent arrays → readable summary (good for context)
+
+      Works for any domain: tariffs, permits, requirements, etc.
+
+      :param key: Parent key for this array
+      :type key: str
+      :param items: List of dictionaries
+      :type items: List[Dict]
+
+      :returns: Dictionary with either expanded columns or summary string
+      :rtype: Dict
+
+
+
+   .. py:method:: make_column_name(name: str) -> str
+
+      Convert any naming style to clean Title Case.
+
+      Handles snake_case, camelCase, and mixed formats.
+
+      :param name: Raw field name
+      :type name: str
+
+      :returns: Clean Title Case column name
+      :rtype: str
+
+      .. rubric:: Examples
+
+      >>> flattener.make_column_name("charge_type")
+      "Charge Type"
+      >>> flattener.make_column_name("annualConsumption")
+      "Annual Consumption"
+
+
+
+   .. py:method:: normalize_units(df: pandas.DataFrame) -> pandas.DataFrame
+
+      Normalize unit values for consistency.
+
+      Converts symbols/abbreviations to canonical units for data analysis,
+      using the configured ``unit_normalizations`` map (general measurement
+      defaults unless the schema overrides them).
+
+      :param df: DataFrame with potential unit column
+      :type df: pd.DataFrame
+
+      :returns: DataFrame with normalized units
+      :rtype: pd.DataFrame
+
+
+
+   .. py:method:: summarize_objects(items: List[Dict]) -> str
+
+      Create readable summary when array is too large to expand.
+
+      Builds concise "Type: Value Unit" format from common field patterns.
+      Automatically detects type, value, unit, and contextual fields.
+
+      :param items: List of objects to summarize
+      :type items: List[Dict]
+
+      :returns: Semicolon-separated summary string
+      :rtype: str
+
+
+
+   .. py:attribute:: distinguishing_fields
+
+
+   .. py:attribute:: expand_max_fields
+
+
+   .. py:attribute:: expand_max_items
+
+
+   .. py:attribute:: placeholder_values
+
+
+   .. py:attribute:: season_fields
+
+
+   .. py:attribute:: skip_fields
+
+
+   .. py:attribute:: type_fields
+
+
+   .. py:attribute:: unit_fields
+
+
+   .. py:attribute:: unit_normalizations
+
+
+   .. py:attribute:: value_fields
+
+
+.. py:data:: DEFAULT_DISTINGUISHING_FIELDS
+   :value: ['season', 'time_period', 'tier', 'period']
+
+
+.. py:data:: DEFAULT_EXPAND_MAX_FIELDS
+   :value: 20
+
+
+.. py:data:: DEFAULT_EXPAND_MAX_ITEMS
+   :value: 15
+
+
+.. py:data:: DEFAULT_PLACEHOLDER_VALUES
+   :value: ['none', 'null', 'year-round', '']
+
+
+.. py:data:: DEFAULT_SEASON_FIELDS
+   :value: ['season', 'period']
+
+
+.. py:data:: DEFAULT_SKIP_FIELDS
+   :value: ['details', 'description', 'charge_description', 'conditions', 'notes', 'comments']
+
+
+.. py:data:: DEFAULT_TYPE_FIELDS
+   :value: ['type', 'charge_type', 'category', 'fee_type', 'name']
+
+
+.. py:data:: DEFAULT_UNIT_FIELDS
+   :value: ['unit', 'units']
+
+
+.. py:data:: DEFAULT_UNIT_NORMALIZATIONS
+
+.. py:data:: DEFAULT_VALUE_FIELDS
+   :value: ['rate', 'value', 'amount', 'cost']
+
+

@@ -1,0 +1,98 @@
+psweep.compilation.schema_detector
+==================================
+
+.. py:module:: psweep.compilation.schema_detector
+
+.. autoapi-nested-parse::
+
+   Schema structure detection for automatic compilation.
+
+
+
+Attributes
+----------
+
+.. autoapisummary::
+
+   psweep.compilation.schema_detector.logger
+
+
+Classes
+-------
+
+.. autoapisummary::
+
+   psweep.compilation.schema_detector.SchemaDetector
+
+
+Module Contents
+---------------
+
+.. py:class:: SchemaDetector(schema_metadata)
+
+   Automatically detect and analyze schema structure from extracted data.
+
+   Requires schema metadata for operation (v2.0+).
+
+   Identifies:
+
+   - Main data arrays (e.g., requirements, rate_schedules)
+   - Identifier/context fields (e.g., jurisdiction, utility_details)
+   - Schema patterns from metadata
+
+   This enables universal compilation without manual configuration.
+
+   Initialize detector.
+
+   :param schema_metadata: SchemaMetadata instance (required in v2.0+)
+
+   :raises SchemaMetadataError: If schema_metadata is not provided
+
+
+   .. py:method:: detect_structure(data: Dict[str, Any]) -> Dict[str, Any]
+
+      Automatically detect schema structure using metadata.
+
+      :param data: Sample data from first extraction file
+      :type data: Dict[str, Any]
+
+      :returns: Dict with:
+
+                - type: schema type name (e.g., "Ordinance/Regulation", "Utility Tariff")
+                - main_array_key: key containing the main data array
+                - id_fields: list of identifier/context field keys
+      :rtype: Dict[str, Any]
+
+      .. rubric:: Examples
+
+      >>> detector = SchemaDetector(schema_metadata)
+      >>> info = detector.detect_structure({"requirements": [...], "jurisdiction_details": {...}})
+      >>> print(info['main_array_key'])
+      'requirements'
+
+
+
+   .. py:method:: extract_context(data: Dict[str, Any], schema_info: Dict[str, Any]) -> Dict[str, Any]
+
+      Extract context/identifier fields from the document.
+
+      :param data: Extraction data
+      :type data: Dict[str, Any]
+      :param schema_info: Schema structure info from detect_structure()
+      :type schema_info: Dict[str, Any]
+
+      :returns: Dict of context fields with human-readable names
+      :rtype: Dict[str, Any]
+
+      .. rubric:: Examples
+
+      >>> context = detector.extract_context(data, schema_info)
+      >>> # Returns: {"Jurisdiction": "Austin", "State": "TX"}
+
+
+
+   .. py:attribute:: schema_metadata
+
+
+.. py:data:: logger
+

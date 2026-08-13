@@ -1,0 +1,119 @@
+psweep.extraction.llm_factory
+=============================
+
+.. py:module:: psweep.extraction.llm_factory
+
+.. autoapi-nested-parse::
+
+   Unified per-stage LLM model resolver / factory.
+
+   One place that turns a stage's ``model`` config value into a configured
+   ``LLMClient``. Every LLM-using stage (extraction, document review, page
+   targeting, synthesis) routes through here, so each stage can be pointed at a
+   different model for cost/quality control — across any provider.
+
+   The simplest, recommended usage is to name the model directly on each stage::
+
+       processing:
+         model: gpt-5                 # extraction model
+       discovery:
+         document_review:
+           model: gpt-4o-mini         # a cheaper model for bulk curation
+
+   Optionally, define reusable named aliases once in a top-level ``models`` block
+   and reference an alias wherever a model is expected. The alias names are entirely
+   user-chosen (there are no reserved names)::
+
+       models:
+         fast: gpt-4o-mini
+         accurate: gpt-5
+       processing:
+         model: accurate              # alias, OR an explicit model string
+
+   Model-name resolution precedence (``resolve_model_name``):
+
+   1. ``stage_value`` — an alias lookup (``stage_value in models``) when it matches
+      a defined alias, otherwise treated as a literal model name.
+   2. ``default_model`` — an explicit fallback the caller supplies (rarely needed).
+   3. ``llm_config["model"]`` — the env/``.env``-derived default.
+   4. ``DEFAULT_MODEL`` (``"gpt-4o-mini"``) as the final floor.
+
+   Credential threading & the one honest limitation
+   -------------------------------------------------
+   ``get_config().llm_config`` holds credentials for exactly ONE provider (the one
+   configured in the environment). Choosing different models of the SAME provider
+   (e.g. two Azure deployments, or two OpenAI models) is fully supported and is the
+   intended use. If a stage's model names a *different* provider than the configured
+   one (e.g. a ``claude-*`` model while the run is configured for Azure), its API
+   key can only come from the ambient environment; when that key is absent,
+   ``api_key`` is ``None`` and LiteLLM will error at call time. Cross-provider
+   per-stage selection is therefore best-effort, not guaranteed.
+
+
+
+Attributes
+----------
+
+.. autoapisummary::
+
+   psweep.extraction.llm_factory.DEFAULT_MODEL
+
+
+Functions
+---------
+
+.. autoapisummary::
+
+   psweep.extraction.llm_factory.build_llm_client
+   psweep.extraction.llm_factory.detect_provider
+   psweep.extraction.llm_factory.resolve_llm_kwargs
+   psweep.extraction.llm_factory.resolve_model_name
+
+
+Module Contents
+---------------
+
+.. py:function:: build_llm_client(stage_value: str | None, *, models: dict[str, str] | None = None, llm_config: dict[str, Any] | None = None, default_model: str | None = None) -> Any
+
+   Build a configured ``LLMClient`` for a stage's ``model`` value.
+
+
+.. py:function:: detect_provider(model: str) -> str
+
+   Detect an LLM provider from a model name (domain-neutral, best-effort).
+
+   This is the single source of truth for name-based provider detection; both
+   the factory and ``LLMClient`` use it, so there is only one place that maps
+   model names to providers.
+
+   Detection is heuristic and only a *fallback*: the pipeline normally sets the
+   provider explicitly (``get_config().llm_config['provider']`` is always
+   populated from the environment). Azure custom deployment names are arbitrary
+   and carry no reliable marker, so the correct signal for Azure is an explicit
+   ``provider: azure`` — not a name sniff. Only the canonical ``azure/`` prefix
+   is treated as an Azure marker here.
+
+
+.. py:function:: resolve_llm_kwargs(stage_value: str | None, *, models: dict[str, str] | None = None, llm_config: dict[str, Any] | None = None, default_model: str | None = None) -> dict[str, Any]
+
+   Resolve the kwargs needed to construct an ``LLMClient`` for a stage.
+
+   Returns ``{model, api_key, provider, base_url?, azure_endpoint?, azure_api_version?}``.
+
+   When ``LLM_BASE_URL`` is configured, all calls are routed through that
+   endpoint regardless of model name. The caller supplies model names exactly
+   as the endpoint advertises them.
+
+
+.. py:function:: resolve_model_name(stage_value: str | None, *, models: dict[str, str] | None = None, llm_config: dict[str, Any] | None = None, default_model: str | None = None) -> str
+
+   Resolve a stage's ``model`` config value to a concrete model name.
+
+   ``stage_value`` may be a named alias (a key in ``models``) or an explicit
+   model string. See the module docstring for the full precedence chain.
+
+
+.. py:data:: DEFAULT_MODEL
+   :value: 'gpt-4o-mini'
+
+

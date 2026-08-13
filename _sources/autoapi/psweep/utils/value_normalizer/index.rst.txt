@@ -1,0 +1,111 @@
+psweep.utils.value_normalizer
+=============================
+
+.. py:module:: psweep.utils.value_normalizer
+
+.. autoapi-nested-parse::
+
+   Value normalization and comparison utilities.
+
+
+
+Attributes
+----------
+
+.. autoapisummary::
+
+   psweep.utils.value_normalizer.logger
+
+
+Functions
+---------
+
+.. autoapisummary::
+
+   psweep.utils.value_normalizer.build_unit_equivalence_index
+   psweep.utils.value_normalizer.canonicalize_measurement
+   psweep.utils.value_normalizer.canonicalize_unit
+   psweep.utils.value_normalizer.is_numeric_value
+   psweep.utils.value_normalizer.normalize_value
+
+
+Module Contents
+---------------
+
+.. py:function:: build_unit_equivalence_index(groups: Any) -> dict[str, str]
+
+   Build normalized unit -> canonical token map from config groups.
+
+
+.. py:function:: canonicalize_measurement(value: Any, unit: Any = None, equivalence_index: Optional[dict[str, str]] = None, *, collapse_percent_context: bool = False) -> Optional[Tuple[str, Optional[str]]]
+
+   Return canonical (numeric_value, canonical_unit) when parsable.
+
+
+.. py:function:: canonicalize_unit(unit: Any, equivalence_index: Optional[dict[str, str]] = None, *, collapse_percent_context: bool = False) -> Optional[str]
+
+   Normalize unit labels to a canonical token for semantic comparison.
+
+
+.. py:function:: is_numeric_value(value: Any) -> bool
+
+   Check if a value contains numeric content.
+
+   Used for focused QA/QC comparison to prioritize numeric values
+   over text-only values like "Required", "Exempt", etc.
+
+   :param value: Value to check
+   :type value: Any
+
+   :returns: True if value contains at least one digit
+   :rtype: bool
+
+   .. rubric:: Examples
+
+   >>> is_numeric_value("30")
+   True
+   >>> is_numeric_value("$15.00")
+   True
+   >>> is_numeric_value("100 feet")
+   True
+   >>> is_numeric_value("Required")
+   False
+   >>> is_numeric_value("Exempt")
+   False
+   >>> is_numeric_value(None)
+   False
+   >>> is_numeric_value("")
+   False
+
+
+.. py:function:: normalize_value(value: Any) -> Any
+
+   Normalize a value for comparison purposes.
+
+   Handles:
+
+   - Numeric strings with currency symbols: "$5.00" → 5.0
+   - Whitespace normalization: "  text  " → "text"
+   - None/empty values → None
+   - Numbers → numeric type
+
+   :param value: Value to normalize
+   :type value: Any
+
+   :returns: Normalized value
+   :rtype: Any
+
+   .. rubric:: Examples
+
+   >>> normalize_value("$5.00")
+   5.0
+   >>> normalize_value("  text  ")
+   "text"
+   >>> normalize_value("")
+   None
+   >>> normalize_value(None)
+   None
+
+
+.. py:data:: logger
+

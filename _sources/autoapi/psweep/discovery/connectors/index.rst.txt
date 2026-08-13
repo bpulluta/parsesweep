@@ -1,0 +1,22 @@
+psweep.discovery.connectors
+===========================
+
+.. py:module:: psweep.discovery.connectors
+
+.. autoapi-nested-parse::
+
+   Discovery connectors for seeker, digger, and validation stages.
+
+
+
+Submodules
+----------
+
+.. toctree::
+   :maxdepth: 1
+
+   /autoapi/psweep/discovery/connectors/base/index
+   /autoapi/psweep/discovery/connectors/digger/index
+   /autoapi/psweep/discovery/connectors/serpapi_seeker/index
+
+

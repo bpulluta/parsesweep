@@ -1,0 +1,70 @@
+psweep.extraction.page_locator
+==============================
+
+.. py:module:: psweep.extraction.page_locator
+
+.. autoapi-nested-parse::
+
+   LLM-assisted page targeting for large documents.
+
+   Large source documents (e.g. a 600+ page tariff book) overflow the extraction
+   context and get truncated before the section you actually want. This module
+   finds the page range that holds a described section so extraction can target
+   only those pages.
+
+   Strategy (cheap first, LLM second):
+
+   1. Heuristic pre-filter — score each page by keyword hits and keep the dense
+      pages plus a little context around them.
+   2. LLM confirm — send a compact index (page number + snippet) of just the
+      candidate pages and ask which contiguous range contains the section.
+
+   Results are cached in a ``.pages/<stem>.json`` sidecar next to the file (keyed
+   on the file's size/mtime and the section description) so the LLM call happens
+   once. Everything is best-effort: on any failure ``locate`` returns ``None`` and
+   the caller falls back to full-document extraction.
+
+
+
+Attributes
+----------
+
+.. autoapisummary::
+
+   psweep.extraction.page_locator.PAGE_CACHE_DIRNAME
+   psweep.extraction.page_locator.logger
+
+
+Classes
+-------
+
+.. autoapisummary::
+
+   psweep.extraction.page_locator.PageLocator
+
+
+Module Contents
+---------------
+
+.. py:class:: PageLocator(section_description: str, *, model: str | None = None, models: dict[str, str] | None = None, default_model: str | None = None, trigger_chars: int = 200000, max_selected_pages: int = 30, keywords: list[str] | None = None, context_pages: int = 1, snippet_chars: int = 600)
+
+   Find the page range holding a described section in a large PDF.
+
+
+   .. py:method:: locate(pdf_path: str | pathlib.Path, pages: list[str] | None = None) -> tuple[int, int] | None
+
+      Return the 1-indexed inclusive page range for the section, or None.
+
+
+
+   .. py:attribute:: trigger_chars
+      :value: 200000
+
+
+
+.. py:data:: PAGE_CACHE_DIRNAME
+   :value: '.pages'
+
+
+.. py:data:: logger
+

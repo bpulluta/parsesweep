@@ -1,0 +1,135 @@
+psweep.extraction.llm_client
+============================
+
+.. py:module:: psweep.extraction.llm_client
+
+.. autoapi-nested-parse::
+
+   Universal LLM client using LiteLLM for multi-provider support.
+
+   Supports:
+   - OpenAI (gpt-4o, gpt-4.1, gpt-5, etc.)
+   - Azure OpenAI (custom deployments)
+   - Anthropic Claude (claude-3.5-sonnet, claude-opus-4.5, etc.)
+   - Google Gemini (gemini-1.5-pro, gemini-3-flash, etc.)
+   - 100+ other models via LiteLLM
+
+   No legacy fallbacks - requires LiteLLM to be installed.
+
+
+
+Attributes
+----------
+
+.. autoapisummary::
+
+   psweep.extraction.llm_client.logger
+
+
+Classes
+-------
+
+.. autoapisummary::
+
+   psweep.extraction.llm_client.LLMClient
+
+
+Module Contents
+---------------
+
+.. py:class:: LLMClient(api_key: str = None, model: str = DEFAULT_MODEL, provider: str = None, azure_endpoint: str = None, azure_api_version: str = None, context_windows: Optional[Dict[str, int]] = None, base_url: str = None, timeout: int = None)
+
+   Universal LLM client for structured data extraction.
+
+   Uses LiteLLM for unified interface across all providers.
+   Automatically tracks costs and handles provider-specific parameters.
+
+   Initialize LLM client.
+
+   :param api_key: API key for the provider (will auto-set environment variables)
+   :type api_key: str
+   :param model: Model name (e.g., "gpt-4o-mini", "claude-3.5-sonnet", "gemini-1.5-pro")
+   :type model: str
+   :param provider: Explicit provider ("openai", "azure", "anthropic", "gemini")
+                    If None, auto-detects from model name
+   :type provider: str
+   :param azure_endpoint: Azure OpenAI endpoint (for Azure provider)
+   :type azure_endpoint: str
+   :param azure_api_version: Azure API version (for Azure provider)
+   :type azure_api_version: str
+   :param context_windows: Optional {model-name -> max prompt tokens} map used to
+                           fail fast before an over-budget request. Domain/deployment
+                           names are NOT hardcoded — supply this from config
+                           (``model_context_windows`` in run.yaml) for deployments whose
+                           context window LiteLLM cannot infer. Unset models are not
+                           guarded.
+   :type context_windows: Optional[Dict[str, int]]
+   :param base_url: Optional endpoint override. When set, all calls are routed
+                    through this OpenAI-compatible URL regardless of model name.
+                    Works with any proxy (LiteLLM, OpenRouter, vLLM, etc.).
+   :type base_url: str
+   :param timeout: Request timeout in seconds. Defaults to LLM_TIMEOUT env var,
+                   then DEFAULT_TIMEOUT (120 s). Set higher for very large docs
+                   or slow proxy routes; set lower for fast fail-fast behaviour.
+   :type timeout: int
+
+
+   .. py:method:: extract(text: str, schema: Dict[str, Any], system_prompt: str = None, user_prompt: str = None) -> Dict[str, Any]
+
+      Extract structured data using LLM.
+
+      :param text: Document text to extract from
+      :type text: str
+      :param schema: JSON schema for extraction
+      :type schema: Dict[str, Any]
+      :param system_prompt: Optional custom system prompt
+      :type system_prompt: str
+      :param user_prompt: Optional custom user prompt (overrides default)
+      :type user_prompt: str
+
+      :returns: dict with 'data' (extracted data) and 'cost' (API cost in USD)
+      :rtype: Dict[str, Any]
+
+
+
+   .. py:attribute:: CONTEXT_RESPONSE_RESERVE_TOKENS
+      :value: 4096
+
+
+
+   .. py:attribute:: DEFAULT_TIMEOUT
+      :value: 120
+
+
+
+   .. py:attribute:: base_url
+      :value: None
+
+
+
+   .. py:attribute:: context_windows
+
+
+   .. py:attribute:: model
+      :value: 'openai/gpt-4o-mini'
+
+
+
+   .. py:attribute:: pricing_db
+
+
+   .. py:attribute:: provider
+      :value: 'azure'
+
+
+
+   .. py:attribute:: raw_model
+      :value: 'gpt-4o-mini'
+
+
+
+   .. py:attribute:: timeout
+
+
+.. py:data:: logger
+

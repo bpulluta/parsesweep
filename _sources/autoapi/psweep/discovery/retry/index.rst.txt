@@ -1,0 +1,45 @@
+psweep.discovery.retry
+======================
+
+.. py:module:: psweep.discovery.retry
+
+.. autoapi-nested-parse::
+
+   Shared retry primitives for the discovery module.
+
+   Exponential backoff and transient-error classification were previously
+   implemented three times (engine downloads, SerpApi seeker, HTTP digger) with
+   byte-identical backoff math and near-identical marker lists. Centralizing them
+   removes the drift risk; each caller keeps its own retry *loop* (they differ in
+   rate-limiting and return shapes) but shares this math and this predicate.
+
+
+
+Functions
+---------
+
+.. autoapisummary::
+
+   psweep.discovery.retry.compute_backoff
+   psweep.discovery.retry.is_transient_error
+
+
+Module Contents
+---------------
+
+.. py:function:: compute_backoff(attempt: int, *, initial_backoff_seconds: float, max_backoff_seconds: float) -> float
+
+   Exponential backoff (seconds) before ``attempt``.
+
+   Attempt 1 waits 0 (first try). Attempt N waits
+   ``initial * 2**(N-2)``, clamped to ``max_backoff_seconds`` when positive.
+
+
+.. py:function:: is_transient_error(exc: BaseException) -> bool
+
+   Return True when *exc* looks like a retryable transient failure.
+
+   Checks ``requests`` network exception types when available, then falls back
+   to substring markers in the exception message.
+
+

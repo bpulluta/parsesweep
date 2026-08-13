@@ -1,0 +1,47 @@
+psweep.compilation.csv_exporter
+===============================
+
+.. py:module:: psweep.compilation.csv_exporter
+
+.. autoapi-nested-parse::
+
+   CSV export for compiled data.
+
+   Simple, clean CSV output.
+
+
+
+Classes
+-------
+
+.. autoapisummary::
+
+   psweep.compilation.csv_exporter.CsvExporter
+
+
+Module Contents
+---------------
+
+.. py:class:: CsvExporter
+
+   Export DataFrame to CSV file.
+
+   Simple CSV export with automatic directory creation.
+
+
+   .. py:method:: save(df: pandas.DataFrame, output_path: pathlib.Path)
+
+      Save DataFrame to CSV file.
+
+      :param df: DataFrame to export
+      :type df: pd.DataFrame
+      :param output_path: Path for output CSV file
+      :type output_path: Path
+
+      .. rubric:: Examples
+
+      >>> exporter = CsvExporter()
+      >>> exporter.save(df, Path("output.csv"))
+
+
+
