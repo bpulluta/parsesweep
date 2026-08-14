@@ -103,6 +103,8 @@ class DiscoveryRequest:
     selection_relevance_require_any_terms: list[str] | None = None
     selection_relevance_require_legal_marker_terms: list[str] | None = None
     selection_relevance_exclude_any_terms: list[str] | None = None
+    selection_exclude_url_patterns: list[str] | None = None
+    selection_exclude_text_patterns: list[str] | None = None
     selection_relevance_allowed_domain_patterns: list[str] | None = None
     selection_require_supported_document: bool = True
     selection_target_identity_require_any_templates: list[str] | None = None
@@ -537,6 +539,8 @@ class DiscoveryEngine:
             or None,
             relevance_exclude_any_terms=request.selection_relevance_exclude_any_terms
             or None,
+            exclude_url_patterns=request.selection_exclude_url_patterns or None,
+            exclude_text_patterns=request.selection_exclude_text_patterns or None,
             require_supported_document=bool(
                 request.selection_require_supported_document
             ),
@@ -1044,6 +1048,28 @@ class DiscoveryEngine:
             raise last_exc
         raise RuntimeError("Unexpected empty retry cycle for download request")
 
+    @staticmethod
+    def _should_retry_download_with_browser(exc: BaseException) -> bool:
+        """Return True when a direct fetch should be retried via browser."""
+        try:
+            import requests
+        except ImportError:
+            return False
+
+        if not isinstance(exc, requests.exceptions.HTTPError):
+            return False
+
+        response = getattr(exc, "response", None)
+        status_code = getattr(response, "status_code", None)
+        if status_code in {401, 403, 429, 451}:
+            return True
+
+        lowered = str(exc).lower()
+        return any(
+            marker in lowered
+            for marker in ("forbidden", "unauthorized", "access denied")
+        )
+
     def _download_single_candidate(
         self,
         *,
@@ -1099,22 +1125,51 @@ class DiscoveryEngine:
                 content, mime_type = browser.download_bytes(url)
                 final_url = url
                 attempt_count = 1
+                download_method = "browser"
 
                 def _chunks(_c: bytes = content) -> object:
                     return [_c]
             else:
-                response, attempt_count = self._download_with_retry(
-                    url=url,
-                    ssl_verify=ssl_verify,
-                    retry_policy=retry_policy,
-                    request_headers=self._resolve_request_headers(request),
-                    rate_limiter=rate_limiter,
-                )
-                final_url = response.url or url
-                mime_type = (response.headers or {}).get("Content-Type")
+                download_method = "requests"
+                try:
+                    response, attempt_count = self._download_with_retry(
+                        url=url,
+                        ssl_verify=ssl_verify,
+                        retry_policy=retry_policy,
+                        request_headers=self._resolve_request_headers(request),
+                        rate_limiter=rate_limiter,
+                    )
+                    final_url = response.url or url
+                    mime_type = (response.headers or {}).get("Content-Type")
 
-                def _chunks(_r: object = response) -> object:
-                    return _r.iter_content(chunk_size=65536)
+                    def _chunks(_r: object = response) -> object:
+                        return _r.iter_content(chunk_size=65536)
+                except Exception as exc:
+                    if not self._should_retry_download_with_browser(exc):
+                        raise
+
+                    browser_session = browser
+                    browser_owned = False
+                    if browser_session is None:
+                        browser_session, _browser_note = self._open_browser_for_download()
+                        browser_owned = browser_session is not None
+                    if browser_session is None:
+                        raise
+
+                    try:
+                        if rate_limiter is not None:
+                            rate_limiter.wait()
+                        content, mime_type = browser_session.download_bytes(url)
+                        final_url = url
+                        attempt_count = 1
+                        download_method = "browser_fallback"
+
+                        def _chunks(_c: bytes = content) -> object:
+                            return [_c]
+                    finally:
+                        if browser_owned:
+                            with contextlib.suppress(Exception):
+                                browser_session.close()
 
             extension = self._infer_extension_from_url_or_mime(
                 final_url, mime_type
@@ -1204,6 +1259,7 @@ class DiscoveryEngine:
                     ).as_posix(),
                     "bytes": bytes_written,
                     "attempt_count": attempt_count,
+                    "download_method": download_method,
                     "policy_warning_codes": list(policy_result.warning_codes),
                     "target_label": (
                         candidate.target_metadata or {}
@@ -1613,6 +1669,16 @@ class DiscoveryEngine:
         notes = [
             f"Download stage completed: {downloaded_count} file(s) saved from {len(candidates)} candidate(s)."
         ]
+        browser_fallback_count = sum(
+            1
+            for record in downloads
+            if str(record.get("download_method")) == "browser_fallback"
+        )
+        if browser_fallback_count:
+            notes.append(
+                "Download fallback retried "
+                f"{browser_fallback_count} blocked URL(s) via headless browser."
+            )
         notes.extend(download_notes_extra)
         if not ssl_verify:
             notes.append(
