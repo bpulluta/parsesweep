@@ -71,6 +71,8 @@ compilation:
   #   enabled: true                      # reconcile many docs → one row per entity
   #   min_sources_for_llm: 2             # skip LLM when only 1 source (cheaper)
   #   group_by: ["entity.key_field"]     # one output row per distinct value
+  #   item_group_by: ["item_field"]      # optional: one row per sub-entity
+  #                                      # (phase/expansion/line item) within it
   #   identity_fields:                   # context fields (first non-empty wins)
   #     - entity.category
   #   citation_field: source.url         # becomes citation list in output

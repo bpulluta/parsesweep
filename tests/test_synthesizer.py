@@ -352,3 +352,132 @@ def test_synthesize_from_directory_groups_and_skips_manifests(tmp_path):
 
     assert sorted(df["id"].tolist()) == ["A", "B"]
     assert "IGNORE" not in df["id"].tolist()
+
+
+# ── item_group_by: sub-entities survive synthesis ────────────────────────────
+# Domain-neutral sub-entity split: repeated items inside one entity (phases,
+# expansions, line items...) become one row each instead of collapsing.
+
+
+def _item_group_cfg(**overrides):
+    cfg = {
+        "item_array": "items",
+        "group_by": ["e.id"],
+        "item_group_by": ["phase"],
+        "citation_field": "src.url",
+        "reconcile_fields": [{"field": "price"}],
+        "min_sources_for_llm": 2,
+    }
+    cfg.update(overrides)
+    return cfg
+
+
+def test_item_group_by_emits_one_row_per_item_subgroup():
+    """Items are bucketed by the item-level key across sources; each bucket is
+    reconciled on its own and carries the item-group column."""
+    recs = [
+        {"e": {"id": "A"}, "src": {"url": "u1"},
+         "items": [{"phase": "I", "price": "10"}, {"phase": "II", "price": "20"}]},
+        {"e": {"id": "A"}, "src": {"url": "u2"},
+         "items": [{"phase": "I", "price": "11"}]},
+    ]
+    llm = _StubLLM()
+    syn = Synthesizer(schema_metadata=None, config=_item_group_cfg(), llm_client=llm)
+    rows = syn._synthesize_group_rows(("A",), recs)
+
+    assert [r["phase"] for r in rows] == ["I", "II"]
+    assert all(r["id"] == "A" for r in rows)
+    # Phase I had two valued sources -> LLM; phase II only one -> deterministic.
+    assert llm.calls == 1
+    assert syn.deterministic_rows == 1
+    assert next(r for r in rows if r["phase"] == "II")["price"] == "20"
+    assert all(r["sources_checked"] == 2 for r in rows)
+
+
+def test_without_item_group_by_behavior_is_unchanged():
+    """Absent the option, all items still collapse into exactly one row."""
+    recs = [
+        {"e": {"id": "A"}, "src": {"url": "u1"},
+         "items": [{"phase": "I", "price": "10"}, {"phase": "II", "price": "20"}]},
+    ]
+    cfg = _item_group_cfg()
+    cfg.pop("item_group_by")
+    syn = Synthesizer(schema_metadata=None, config=cfg, llm_client=_StubLLM())
+    rows = syn._synthesize_group_rows(("A",), recs)
+
+    assert len(rows) == 1
+    assert "phase" not in rows[0]
+
+
+def test_item_group_by_keeps_unkeyed_items_and_sourceless_records():
+    """Items missing the key are not dropped (empty-key row), and a source with
+    no items stays available as context to every subgroup."""
+    recs = [
+        {"e": {"id": "A"}, "src": {"url": "u1"},
+         "items": [{"phase": "I", "price": "10"}, {"price": "99"}]},
+        {"e": {"id": "A"}, "src": {"url": "u2"}, "items": []},
+    ]
+    syn = Synthesizer(
+        schema_metadata=None, config=_item_group_cfg(), llm_client=_StubLLM()
+    )
+    rows = syn._synthesize_group_rows(("A",), recs)
+
+    assert sorted(r["phase"] for r in rows) == ["", "I"]
+    assert next(r for r in rows if r["phase"] == "")["price"] == "99"
+
+
+def test_item_group_by_with_no_items_anywhere_yields_one_empty_row():
+    """Degenerate case: no items at all still produces the single row that
+    un-grouped synthesis would have produced."""
+    recs = [{"e": {"id": "A"}, "src": {"url": "u1"}, "items": []}]
+    syn = Synthesizer(
+        schema_metadata=None, config=_item_group_cfg(), llm_client=_StubLLM()
+    )
+    rows = syn._synthesize_group_rows(("A",), recs)
+
+    assert len(rows) == 1
+    assert rows[0]["phase"] == ""
+    assert rows[0]["price"] == ""
+
+
+def test_item_group_by_preserves_ordering_check_and_citations():
+    """Ordering validation and citation assembly still run per subgroup."""
+    cfg = _item_group_cfg(
+        reconcile_fields=[{"field": "start"}, {"field": "end"}],
+        ordering_constraint=["start", "end"],
+    )
+    recs = [
+        {"e": {"id": "A"}, "src": {"url": "u1"},
+         "items": [{"phase": "I", "start": "2020-01-01", "end": "2019-01-01"}]},
+        {"e": {"id": "A"}, "src": {"url": "u2"},
+         "items": [{"phase": "II", "start": "2021-01-01", "end": "2022-01-01"}]},
+    ]
+    syn = Synthesizer(schema_metadata=None, config=cfg, llm_client=_StubLLM())
+    rows = {r["phase"]: r for r in syn._synthesize_group_rows(("A",), recs)}
+
+    assert rows["I"]["ordering_consistent"] is False
+    assert "is after" in rows["I"]["ordering_notes"]
+    assert rows["II"]["ordering_consistent"] is True
+    assert rows["I"]["citation_urls"] == "u1"
+    assert rows["II"]["citation_urls"] == "u2"
+
+
+def test_synthesize_from_directory_splits_items_across_sources(tmp_path):
+    """End-to-end: subgroups are built across documents, not within one."""
+    cfg = _item_group_cfg()
+
+    def _rec(url, items):
+        return {"payload": {"e": {"id": "A"}, "src": {"url": url}, "items": items}}
+
+    (tmp_path / "a.json").write_text(
+        json.dumps(_rec("u1", [{"phase": "I", "price": "1"}]))
+    )
+    (tmp_path / "b.json").write_text(
+        json.dumps(_rec("u2", [{"phase": "II", "price": "2"}]))
+    )
+
+    syn = Synthesizer(schema_metadata=None, config=cfg, llm_client=_StubLLM())
+    df = syn.synthesize_from_directory(str(tmp_path))
+
+    assert sorted(df["phase"].tolist()) == ["I", "II"]
+    assert df["id"].tolist() == ["A", "A"]

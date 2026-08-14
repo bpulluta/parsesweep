@@ -1370,7 +1370,7 @@ def compile(
                     "info",
                     f"Synthesis: {synthesizer.llm_calls} LLM reconciliation "
                     f"call(s), {synthesizer.deterministic_rows} resolved "
-                    f"deterministically (no API) of {total_rows} entities",
+                    f"deterministically (no API) of {total_rows} synthesized row(s)",
                 )
             schema_info = {
                 "type": f"Synthesized: {schema_metadata.get_main_data_array()}",
