@@ -1,8 +1,8 @@
 domain: datacenter_timelines_wave2
 
 models:
-  primary: compassop-gpt-4.1
-  secondary: compassop-gpt-4.1-mini
+  primary: gpt-5.4
+  secondary: gpt-5.4-mini
 
 discovery:
   targets_csv: targets_wave2_gap.csv

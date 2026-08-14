@@ -5,8 +5,8 @@ domain: utility_rate_tariffs
 
 # Model tiers — cheap/fast for iteration steps, accurate for extraction.
 models:
-  primary: compassop-gpt-4.1          # extraction (accuracy matters)
-  secondary: compassop-gpt-4.1-mini   # discovery, page targeting, review (speed matters)
+  primary: gpt-5.4          # extraction (accuracy matters)
+  secondary: gpt-5.4-mini   # discovery, page targeting, review (speed matters)
 
 discovery:
   targets_csv: targets.csv
