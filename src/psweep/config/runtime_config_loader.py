@@ -1397,6 +1397,7 @@ _ACQ_SELECTION_KEY_MAP: dict[str, str] = {
     "exclude": "selection_relevance_exclude_any_terms",
     "exclude_url_patterns": "selection_exclude_url_patterns",
     "exclude_text_patterns": "selection_exclude_text_patterns",
+    "max_per_host_per_target": "selection_max_per_host_per_target",
     "relevance_allowed_domain_patterns": (
         "selection_relevance_allowed_domain_patterns"
     ),

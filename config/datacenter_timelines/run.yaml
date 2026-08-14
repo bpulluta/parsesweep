@@ -76,12 +76,14 @@ discovery:
     - "{company_name} {state} {city?} data center site:datacenterdynamics.com OR site:datacenterfrontier.com OR site:datacenterknowledge.com"
     # Tier 6: Project-name anchored announcement recall (helps older/ambiguous sites)
     - "\"{site_name}\" {company_name?} data center \"announced\" OR \"plans to build\" OR proposed OR unveiled"
-    # Tier 7: Local-government records for dated approvals / withdrawals
-    - "{company_name} {city?} {state} data center \"special use permit\" OR rezoning OR \"planning commission\" OR \"board of supervisors\" site:.gov"
+    # Tier 7: Local-government / utility records for dated approvals and queue data
+    - "{company_name} {city?} {state} data center \"special use permit\" site:.gov"
+    - "{company_name} {city?} {state} data center rezoning OR \"planning commission\" OR \"board of supervisors\" site:.gov"
+    - "{company_name} {city?} {state} data center interconnection OR substation OR utility site:.gov"
 
   search:
     provider: serpapi
-    max_results: 10
+    max_results: 7
     cache: true          # cache results so re-running discover doesn't re-pay
     # FINDING (2026-07-21): the Google News vertical (tbm=nws) had poor recall —
     # only 3/18 sites got any hit (it favors very recent news + misses specific
@@ -101,11 +103,20 @@ discovery:
 
   selection:
     max_per_target: 10           # bump for 7 query tiers while keeping costs bounded
+    max_per_host_per_target: 4   # avoid single-host dominance when multiple sources exist
     require_supported_document: false   # KEY: allow extension-less HTML news pages
     target_identity_require_any_templates:
       - "{site_name}"
       - "{city}"
       - "{company_name}"
+    # URL-class exclusions remove generic asset/listing endpoints that recur
+    # across many domains and almost never carry timeline facts for the target.
+    exclude_url_patterns:
+      - "/files(?:-[0-9]+)?$"
+      - "/photos(?:-[0-9]+)?$"
+      - "/new(?:-[0-9]+)?$"
+      - "/quotes/new$"
+      - "/data-center/united-states$"
     # Drop facility spec/cut sheets (they carry no dates) and pure non-content
     # pages. NOTE: data-center DIRECTORIES (baxtel, datacentermap,
     # datacenterHawk) are deliberately NOT excluded — they are our best source
@@ -224,6 +235,10 @@ discovery:
 
 extraction:
   model: primary
+  # Cap chars sent to the LLM per document. News/press pages rarely need more
+  # than 100 K chars to contain all lifecycle dates; capping here keeps costs
+  # predictable even if page targeting doesn't fire for an HTML file.
+  max_context: 100000
   # Curated set from the latest discover run (all downloads — no document_review).
   input_dir: discovered/datacenter_timelines/latest/curated
   schema: schemas/personal/datacenter_timelines_schema.json
@@ -237,7 +252,7 @@ extraction:
   # HTML/news is untouched. Domain-neutral: the same mechanism serves any domain.
   pages:
     auto_locate:
-      # model: <cheaper-model>   # optional: cheaper model for the locator call
+      model: secondary   # cheaper model is fine for keyword-based page selection
       section_description: >-
         the passage(s) that state WHEN this specific data-center facility/project
         reached a lifecycle milestone — when it was announced/proposed, when

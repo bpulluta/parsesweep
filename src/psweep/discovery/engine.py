@@ -105,6 +105,7 @@ class DiscoveryRequest:
     selection_relevance_exclude_any_terms: list[str] | None = None
     selection_exclude_url_patterns: list[str] | None = None
     selection_exclude_text_patterns: list[str] | None = None
+    selection_max_per_host_per_target: int = 0
     selection_relevance_allowed_domain_patterns: list[str] | None = None
     selection_require_supported_document: bool = True
     selection_target_identity_require_any_templates: list[str] | None = None
@@ -543,6 +544,9 @@ class DiscoveryEngine:
             exclude_text_patterns=request.selection_exclude_text_patterns or None,
             require_supported_document=bool(
                 request.selection_require_supported_document
+            ),
+            max_per_host_per_target=max(
+                0, int(request.selection_max_per_host_per_target or 0)
             ),
             target_identity_require_any_templates=request.selection_target_identity_require_any_templates
             or None,

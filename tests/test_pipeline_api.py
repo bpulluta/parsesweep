@@ -165,7 +165,7 @@ def test_build_run_stage_commands_preserves_flags(tmp_path: Path) -> None:
         base_cmd=["pixi", "run", "psweep"],
         skip_discover=False,
         skip_extract=False,
-        reprocess=True,
+        fresh=True,
         extra_flags=("-q",),
     )
 

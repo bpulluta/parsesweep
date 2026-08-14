@@ -323,6 +323,25 @@ class TestPerTargetSelection:
         )
         assert selected == [keep]
 
+    def test_max_per_host_per_target_limits_single_host_dominance(self):
+        sel = CandidateSelector(
+            exclude_draft=False,
+            max_per_host_per_target=1,
+        )
+        host_a_2025 = _candidate("https://a.example.com/site-a-2025.pdf")
+        host_a_2024 = _candidate("https://a.example.com/site-a-2024.pdf")
+        host_b_2023 = _candidate("https://b.example.com/site-b-2023.pdf")
+        selected, notes = sel.select(
+            [[host_a_2025, host_a_2024, host_b_2023]],
+            primary_per_target=3,
+        )
+        urls = {c.url for c in selected}
+        assert len(selected) == 2
+        assert host_a_2025.url in urls
+        assert host_b_2023.url in urls
+        assert host_a_2024.url not in urls
+        assert any("per-host cap=1 applied" in n for n in notes)
+
 
 # ---------------------------------------------------------------------------
 # Runtime config loader integration: selection block mapping
@@ -398,3 +417,20 @@ class TestSelectionConfigMapping:
         assert resolved["selection_target_identity_require_any_templates"] == ["{jurisdiction}", "{state}"]
         assert resolved["selection_target_identity_require_all_templates"] == ["{utility}", "{sector}"]
         assert resolved["selection_target_identity_exclude_any_templates"] == ["draft", "template"]
+
+    def test_selection_block_maps_max_per_host_per_target(self):
+        from psweep.config.runtime_config_loader import resolve_command_config
+
+        config = {
+            "discovery": {
+                "selection": {
+                    "max_per_host_per_target": 2,
+                }
+            }
+        }
+        resolved = resolve_command_config(
+            command="discover",
+            cli_values={},
+            config_data=config,
+        )
+        assert resolved["selection_max_per_host_per_target"] == 2

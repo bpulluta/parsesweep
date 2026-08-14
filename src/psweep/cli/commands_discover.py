@@ -351,6 +351,9 @@ def discover(
     resolved_selection_exclude_text_patterns = (
         resolved_inputs.get("selection_exclude_text_patterns") or None
     )
+    resolved_selection_max_per_host_per_target = int(
+        resolved_inputs.get("selection_max_per_host_per_target", 0) or 0
+    )
     resolved_selection_relevance_allowed_domain_patterns = (
         resolved_inputs.get("selection_relevance_allowed_domain_patterns")
         or None
@@ -622,6 +625,9 @@ def discover(
         selection_relevance_exclude_any_terms=resolved_selection_relevance_exclude_any_terms,
         selection_exclude_url_patterns=resolved_selection_exclude_url_patterns,
         selection_exclude_text_patterns=resolved_selection_exclude_text_patterns,
+        selection_max_per_host_per_target=max(
+            0, resolved_selection_max_per_host_per_target
+        ),
         selection_relevance_allowed_domain_patterns=resolved_selection_relevance_allowed_domain_patterns,
         selection_require_supported_document=resolved_selection_require_supported_document,
         selection_target_identity_require_any_templates=resolved_selection_target_identity_require_any_templates,
