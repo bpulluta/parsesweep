@@ -77,6 +77,8 @@ class CandidateSelector:
         relevance_require_any_terms: list[str] | None = None,
         relevance_require_legal_marker_terms: list[str] | None = None,
         relevance_exclude_any_terms: list[str] | None = None,
+        exclude_url_patterns: list[str] | None = None,
+        exclude_text_patterns: list[str] | None = None,
         require_supported_document: bool = True,
         target_identity_require_any_templates: list[str] | None = None,
         target_identity_require_all_templates: list[str] | None = None,
@@ -105,6 +107,16 @@ class CandidateSelector:
             t.strip().lower()
             for t in (relevance_exclude_any_terms or [])
             if t and t.strip()
+        ]
+        self._exclude_url_patterns = [
+            re.compile(p, re.IGNORECASE)
+            for p in (exclude_url_patterns or [])
+            if p and p.strip()
+        ]
+        self._exclude_text_patterns = [
+            re.compile(p, re.IGNORECASE)
+            for p in (exclude_text_patterns or [])
+            if p and p.strip()
         ]
         self._require_supported_document = require_supported_document
         self._target_identity_require_any_templates = [
@@ -197,7 +209,7 @@ class CandidateSelector:
                 if isinstance(raw_context, dict):
                     target_context = raw_context
 
-            # 1. Draft filter
+            # 1. Draft / exclusion filters
             if self._exclude_draft:
                 filtered = [
                     c for c in target_candidates if not self._is_draft(c)
@@ -207,6 +219,20 @@ class CandidateSelector:
                     notes.append(
                         f"Target {target_idx}: draft filter excluded {draft_count} of "
                         f"{original_count} candidate(s)."
+                    )
+                target_candidates = filtered
+
+            if self._exclude_url_patterns or self._exclude_text_patterns:
+                filtered = [
+                    c
+                    for c in target_candidates
+                    if not self._matches_exclusion_patterns(c)
+                ]
+                excluded_count = len(target_candidates) - len(filtered)
+                if excluded_count > 0:
+                    notes.append(
+                        f"Target {target_idx}: configured exclusion patterns excluded {excluded_count} of "
+                        f"{len(target_candidates)} candidate(s)."
                     )
                 target_candidates = filtered
 
@@ -396,6 +422,19 @@ class CandidateSelector:
         combined = re.sub(r"[_\-/]", " ", " ".join(parts))
         return any(rx.search(combined) for rx in self._draft_re)
 
+    def _matches_exclusion_patterns(self, candidate: DiscoveryCandidate) -> bool:
+        """Return True when configured URL/text exclusion patterns match."""
+        if self._exclude_url_patterns:
+            url_text = self._candidate_url_text(candidate)
+            if any(rx.search(url_text) for rx in self._exclude_url_patterns):
+                return True
+
+        if self._exclude_text_patterns:
+            text = self._candidate_text(candidate)
+            if any(rx.search(text) for rx in self._exclude_text_patterns):
+                return True
+        return False
+
     def _is_relevant_candidate(self, candidate: DiscoveryCandidate) -> bool:
         """Return True when candidate text passes required/excluded relevance terms."""
         text = self._candidate_text(candidate)
@@ -403,7 +442,7 @@ class CandidateSelector:
 
         if self._relevance_exclude_any_terms:
             for term in self._relevance_exclude_any_terms:
-                if term in text:
+                if term in text or term in url_text:
                     return False
 
         if self._relevance_require_any_terms:

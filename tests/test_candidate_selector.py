@@ -214,6 +214,22 @@ class TestPerTargetSelection:
         selected, _ = sel.select([[blocked, keep]], primary_per_target=1)
         assert selected == [keep]
 
+    def test_split_exclusion_patterns_can_target_url_and_text_separately(self):
+        sel = CandidateSelector(
+            exclude_draft=False,
+            exclude_url_patterns=[r"archive"],
+            exclude_text_patterns=[r"preliminary"],
+        )
+        url_blocked = _candidate("https://example.com/archive/ordinance-final.pdf")
+        text_blocked = _candidate(
+            "https://example.com/ordinance-final.pdf",
+            reasons=["preliminary planning packet"],
+        )
+        keep = _candidate("https://example.com/ordinance-final.pdf")
+        selected, notes = sel.select([[url_blocked, text_blocked, keep]], primary_per_target=1)
+        assert selected == [keep]
+        assert any("configured exclusion patterns excluded" in n for n in notes)
+
     def test_relevance_legal_marker_gate_requires_structural_legal_terms(self):
         sel = CandidateSelector(
             exclude_draft=False,

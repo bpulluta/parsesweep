@@ -380,6 +380,7 @@ def _apply_page_targeting(
     page_range_map: dict,
     config: dict,
     models: dict | None = None,
+    extraction_model: str | None = None,
     pages_csv: str | None = None,
     output_dir: Path | None = None,
 ) -> None:
@@ -407,6 +408,7 @@ def _apply_page_targeting(
         description,
         model=config.get("model"),
         models=models,
+        default_model=extraction_model,
         trigger_chars=trigger_chars,
         max_selected_pages=int(
             config.get("max_selected_pages", DEFAULT_MAX_SELECTED_PAGES)
@@ -1092,6 +1094,7 @@ def extract(
             page_range_map=page_range_map,
             config=page_targeting,
             models=resolved_inputs.get("models"),
+            extraction_model=resolved_inputs.get("model"),
             pages_csv=pages_csv,
             output_dir=output_dir,
         )
@@ -1243,6 +1246,7 @@ def extract(
         )
         return
 
+    base_url: str | None = None
     if "model" in resolved_inputs:
         from psweep.extraction.llm_factory import resolve_llm_kwargs
 
@@ -1254,8 +1258,9 @@ def extract(
         actual_model = _mk["model"]
         api_key = _mk["api_key"] or api_key
         provider = _mk["provider"] or provider
-        azure_endpoint = _mk["azure_endpoint"]
-        azure_api_version = _mk["azure_api_version"]
+        azure_endpoint = _mk.get("azure_endpoint")
+        azure_api_version = _mk.get("azure_api_version")
+        base_url = _mk.get("base_url")
     else:
         actual_model = (
             config.llm_config.get("model", model)
@@ -1264,6 +1269,7 @@ def extract(
         )
         azure_endpoint = config.llm_config.get("azure_endpoint")
         azure_api_version = config.llm_config.get("azure_api_version")
+        base_url = config.llm_config.get("base_url")
 
     if not actual_model:
         raise click.UsageError(
@@ -1316,6 +1322,7 @@ def extract(
         provider=provider,
         azure_endpoint=azure_endpoint,
         azure_api_version=azure_api_version,
+        base_url=base_url,
         context_windows=context_windows,
         timeout=timeout_seconds,
     )

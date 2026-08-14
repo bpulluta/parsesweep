@@ -15,6 +15,12 @@ completion dates with a chronology constraint) are just one configuration; the
 same stage reconciles, e.g., permit limits across filings, spec values across
 datasheets, or prices across sources.
 
+By default every item found in the main data array across the grouped records is
+flattened into ONE row per entity. When a domain repeats sub-entities inside a
+record (phases, expansions, line items, permit conditions...), declare
+`item_group_by` — item-level field paths — to keep them apart: items are then
+bucketed by that key within each entity and one row is synthesized per bucket.
+
 Cost control: the LLM is called ONLY when >= `min_sources_for_llm` sources carry
 a value to reconcile. With 0 or 1 such source the answer is deterministic (nulls,
 or that single source's values) and no API call is made.
@@ -98,6 +104,12 @@ class Synthesizer:
         # Extra free-text outputs a domain may want (e.g. current_status).
         self.narrative_fields = self.cfg.get("narrative_fields") or []
 
+        # Optional sub-entity split. Paths are resolved against each ITEM of the
+        # main data array (not the record), so repeated sub-entities inside one
+        # entity survive synthesis as separate rows instead of being merged.
+        # Absent -> one row per entity, exactly as before.
+        self.item_group_by = self.cfg.get("item_group_by") or []
+
         # Cost control (see module docstring).
         self.min_sources_for_llm = int(self.cfg.get("min_sources_for_llm", 2))
         self.llm_calls = 0
@@ -138,6 +150,24 @@ class Synthesizer:
 
     # -- findings extraction --------------------------------------------------
 
+    def _item_finding(self, item: dict, citation: Any) -> dict:
+        """One finding entry for a single item of the main data array."""
+        entry: dict[str, Any] = {"citation_url": citation}
+        for fld in self.fields:
+            if item.get(fld) is not None:
+                entry[fld] = item.get(fld)
+            ev = self.evidence_map.get(fld)
+            if ev and item.get(ev):
+                entry[ev] = item.get(ev)
+            pr = self.precision_map.get(fld)
+            if pr and item.get(pr):
+                entry[pr] = item.get(pr)
+        for path in self.item_group_by:
+            value = _get_path(item, path)
+            if value is not None:
+                entry[path.split(".")[-1]] = value
+        return entry
+
     def _build_findings(self, recs: list[dict]) -> list[dict]:
         citation_field = self.cfg.get("citation_field")
         findings = []
@@ -145,24 +175,45 @@ class Synthesizer:
             citation = _get_path(rec, citation_field) if citation_field else None
             items = rec.get(self.main_array) if self.main_array else None
             if isinstance(items, list) and items:
-                for it in items:
-                    entry = {"citation_url": citation}
-                    for fld in self.fields:
-                        if it.get(fld) is not None:
-                            entry[fld] = it.get(fld)
-                        ev = self.evidence_map.get(fld)
-                        if ev and it.get(ev):
-                            entry[ev] = it.get(ev)
-                        pr = self.precision_map.get(fld)
-                        if pr and it.get(pr):
-                            entry[pr] = it.get(pr)
-                    findings.append(entry)
+                findings.extend(self._item_finding(it, citation) for it in items)
             else:
                 findings.append(
                     {"citation_url": citation,
                      "note": "on-topic source with no reconcilable item extracted"}
                 )
         return findings
+
+    def _item_group_key(self, item: dict) -> tuple:
+        return tuple(str(_get_path(item, p) or "") for p in self.item_group_by)
+
+    def _build_item_groups(self, recs: list[dict]) -> dict[tuple, list[dict]]:
+        """Bucket per-item findings by the configured item-level group key.
+
+        Items that carry none of the key values fall into the empty-key bucket
+        rather than being dropped. Sources that yielded no item at all become
+        shared context in every bucket, so citation context is never lost; when
+        no bucket exists at all they still produce the single empty-key row that
+        un-grouped synthesis would have produced.
+        """
+        citation_field = self.cfg.get("citation_field")
+        buckets: dict[tuple, list[dict]] = defaultdict(list)
+        shared: list[dict] = []
+        for rec in recs:
+            citation = _get_path(rec, citation_field) if citation_field else None
+            items = rec.get(self.main_array) if self.main_array else None
+            if isinstance(items, list) and items:
+                for it in items:
+                    buckets[self._item_group_key(it)].append(
+                        self._item_finding(it, citation)
+                    )
+            else:
+                shared.append(
+                    {"citation_url": citation,
+                     "note": "on-topic source with no reconcilable item extracted"}
+                )
+        if not buckets:
+            buckets[tuple("" for _ in self.item_group_by)] = []
+        return {key: findings + shared for key, findings in buckets.items()}
 
     def _valued_findings(self, findings: list[dict]) -> list[dict]:
         """Findings carrying at least one reconcilable value."""
@@ -391,11 +442,9 @@ class Synthesizer:
 
     # -- per-entity synthesis -------------------------------------------------
 
-    def _synthesize_group(self, key: tuple, recs: list[dict]) -> dict:
-        group_by = self.cfg.get("group_by") or []
+    def _identity_context(self, recs: list[dict]) -> dict[str, Any]:
+        """First non-empty value per configured identity path across records."""
         identity = self.cfg.get("identity_fields") or []
-        findings = self._build_findings(recs)
-
         id_ctx: dict[str, Any] = {}
         for path in identity:
             for rec in recs:
@@ -403,27 +452,69 @@ class Synthesizer:
                 if v:
                     id_ctx[path.split(".")[-1]] = v
                     break
+        return id_ctx
 
+    def _synthesize_group(self, key: tuple, recs: list[dict]) -> dict:
+        """Reconcile one entity group into a single row (no item split)."""
+        return self._synthesize_findings(
+            key,
+            (),
+            self._identity_context(recs),
+            self._build_findings(recs),
+            len(recs),
+        )
+
+    def _synthesize_group_rows(self, key: tuple, recs: list[dict]) -> list[dict]:
+        """Rows for one entity group: one per item subgroup when
+        ``item_group_by`` is configured, otherwise exactly one."""
+        if not self.item_group_by:
+            return [self._synthesize_group(key, recs)]
+        id_ctx = self._identity_context(recs)
+        buckets = self._build_item_groups(recs)
+        return [
+            self._synthesize_findings(key, item_key, id_ctx, findings, len(recs))
+            for item_key, findings in sorted(buckets.items())
+        ]
+
+    def _synthesize_findings(
+        self,
+        key: tuple,
+        item_key: tuple,
+        id_ctx: dict[str, Any],
+        findings: list[dict],
+        n_sources: int,
+    ) -> dict:
+        group_by = self.cfg.get("group_by") or []
         valued = self._valued_findings(findings)
         if len(valued) < self.min_sources_for_llm:
             d = self._deterministic_merge(valued)
             self.deterministic_rows += 1
         else:
-            d = self._llm_merge(key, group_by, id_ctx, findings)
+            d = self._llm_merge(key, group_by, item_key, id_ctx, findings)
             self.llm_calls += 1
+        return self._assemble_row(key, group_by, item_key, id_ctx, d, n_sources)
 
-        return self._assemble_row(key, group_by, id_ctx, d, len(recs))
+    def _entity_header(self, key, group_by, item_key, id_ctx) -> str:
+        lines = [f"{g.split('.')[-1]}: {k}" for g, k in zip(group_by, key)]
+        lines += [f"{name}: {val}" for name, val in id_ctx.items()]
+        lines += [
+            f"{p.split('.')[-1]}: {k}" for p, k in zip(self.item_group_by, item_key)
+        ]
+        return "\n".join(lines)
 
-    def _llm_merge(self, key, group_by, id_ctx, findings) -> dict:
+    def _llm_merge(self, key, group_by, item_key, id_ctx, findings) -> dict:
         merge_schema = self._build_merge_schema()
-        header = "\n".join(
-            f"{g.split('.')[-1]}: {k}" for g, k in zip(group_by, key)
+        header = self._entity_header(key, group_by, item_key, id_ctx)
+        scope = (
+            "Reconcile the single best record for THIS sub-entity from these "
+            "per-source extractions; the extractions below belong to it only. "
+            if self.item_group_by
+            else "Reconcile the single best record from these per-source extractions. "
         )
-        header += "".join(f"\n{name}: {val}" for name, val in id_ctx.items())
         prompt = (
             f"ENTITY:\n{header}\n\n"
-            "Reconcile the single best record from these per-source extractions. "
-            "Resolve conflicts and explain resolution. citation_urls must list "
+            + scope
+            + "Resolve conflicts and explain resolution. citation_urls must list "
             "only sources that supported a resolved value.\n\n"
             "SOURCE EXTRACTIONS (JSON):\n"
             + json.dumps(findings, indent=2, default=str)
@@ -437,12 +528,14 @@ class Synthesizer:
         )
         return result.get("data", {}) if isinstance(result, dict) else {}
 
-    def _assemble_row(self, key, group_by, id_ctx, d, n_sources) -> dict:
+    def _assemble_row(self, key, group_by, item_key, id_ctx, d, n_sources) -> dict:
         det_ok, det_note = self._check_ordering(d)
         row: dict[str, Any] = {}
         for g, k in zip(group_by, key):
             row[g.split(".")[-1]] = k
         row.update(id_ctx)
+        for path, k in zip(self.item_group_by, item_key):
+            row[path.split(".")[-1]] = k
         for fld in self.fields:
             row[fld] = d.get(fld) or ""
             pr = self.precision_map.get(fld)
@@ -469,7 +562,8 @@ class Synthesizer:
 
         Reads all extraction output JSON files under ``json_dir``, groups them
         by the configured ``group_by`` identity fields, reconciles each group
-        (optionally via LLM), and returns one row per group.
+        (optionally via LLM), and returns one row per group — or one row per
+        ``item_group_by`` subgroup within each group when that option is set.
 
         Parameters
         ----------
@@ -479,12 +573,14 @@ class Synthesizer:
         Returns
         -------
         pd.DataFrame
-            One synthesized row per unique entity group.
+            One synthesized row per unique entity group (per item subgroup when
+            ``item_group_by`` is configured).
         """
         records = self._load_records(json_dir)
         groups = self._group(records)
         rows = [
-            self._synthesize_group(k, recs)
+            row
             for k, recs in sorted(groups.items())
+            for row in self._synthesize_group_rows(k, recs)
         ]
         return pd.DataFrame(rows)

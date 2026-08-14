@@ -113,6 +113,18 @@ compilation:
     group_by: ["entity.key_field"]
 ```
 
+### One entity, several repeated sub-entities
+
+If records repeat sub-entities (phases, expansions, line items), keep them as
+separate rows instead of collapsing them into the entity row:
+
+```yaml
+compilation:
+  synthesis:
+    group_by: ["entity.key_field"]
+    item_group_by: ["item_level_field"]   # one row per sub-entity per entity
+```
+
 ## Discovery (web acquisition)
 
 ### Too many irrelevant documents

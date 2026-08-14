@@ -130,6 +130,13 @@ VARIABLE_CATALOG: dict[str, list[dict[str, str]]] = {
             "description": "Output formatting: column_order, exclude_fields, column_renames.",
         },
         {
+            "name": "synthesis.item_group_by",
+            "level": "advanced",
+            "description": (
+                "Item-level grouping paths that preserve repeated sub-entities."
+            ),
+        },
+        {
             "name": "normalization",
             "level": "optional",
             "description": "Field normalization (e.g., state abbreviation).",
@@ -173,6 +180,20 @@ VARIABLE_CATALOG: dict[str, list[dict[str, str]]] = {
             "level": "optional",
             "description": (
                 "URL/text include patterns and crawl discovery settings."
+            ),
+        },
+        {
+            "name": "selection.exclude_url_patterns",
+            "level": "advanced",
+            "description": (
+                "Regex patterns applied to candidate URLs before selection."
+            ),
+        },
+        {
+            "name": "selection.exclude_text_patterns",
+            "level": "advanced",
+            "description": (
+                "Regex patterns applied to candidate titles/snippets/reasons."
             ),
         },
         {
@@ -773,6 +794,7 @@ _SYNTHESIS_STRING_FIELDS = (
 _ALLOWED_ORDERING_COMPARISONS = ("lexical", "numeric", "date")
 _SYNTHESIS_STRING_LIST_FIELDS = (
     "group_by",
+    "item_group_by",
     "identity_fields",
     "narrative_fields",
     "ordering_constraint",
@@ -875,6 +897,21 @@ def _validate_synthesis_block(syn: Any) -> None:
             "compilation.synthesis.group_by is required when synthesis is "
             "enabled"
         )
+
+    # item_group_by splits each entity into one row per item subgroup. Its
+    # output columns are the leaf names, so a collision with a group_by leaf
+    # would silently overwrite the entity column — reject it up front.
+    item_group_by = syn.get("item_group_by") or []
+    if item_group_by:
+        group_leaves = {p.split(".")[-1] for p in (syn.get("group_by") or [])}
+        colliding = sorted(
+            {p.split(".")[-1] for p in item_group_by} & group_leaves
+        )
+        if colliding:
+            raise RuntimeConfigError(
+                "compilation.synthesis.item_group_by field(s) collide with "
+                "group_by output column(s): " + ", ".join(colliding)
+            )
 
     # Ordering constraint must reference fields that are actually reconciled.
     ordering = syn.get("ordering_constraint") or []
@@ -1358,6 +1395,8 @@ _ACQ_SELECTION_KEY_MAP: dict[str, str] = {
     ),
     "relevance_exclude_any_terms": "selection_relevance_exclude_any_terms",
     "exclude": "selection_relevance_exclude_any_terms",
+    "exclude_url_patterns": "selection_exclude_url_patterns",
+    "exclude_text_patterns": "selection_exclude_text_patterns",
     "relevance_allowed_domain_patterns": (
         "selection_relevance_allowed_domain_patterns"
     ),

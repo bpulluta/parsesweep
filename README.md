@@ -399,6 +399,19 @@ compilation:
 
 Synthesis runs automatically on `compile` when enabled. It uses the same LLM configured in your environment (override with `synthesis.model:` for a specific stage).
 
+### Keeping repeated sub-entities apart
+
+By default every item found in the extracted array is folded into one row per entity. When a record repeats sub-entities (phases, expansions, line items, permit conditions...), add `item_group_by` — item-level field paths — to synthesize one row per sub-entity instead:
+
+```yaml
+  synthesis:
+    enabled: true
+    group_by: ["entity.name"]       # one output row per distinct entity ...
+    item_group_by: ["phase_label"]  # ... per distinct sub-entity within it
+```
+
+Items are bucketed by that key across *all* sources for the entity, so the same phase reported by three documents is still reconciled once. Items missing the key are kept in their own row rather than dropped, and the item-group fields appear as columns alongside `group_by` and `identity_fields`. Leaf names must not collide with `group_by` leaf names — that is rejected at config load.
+
 ---
 
 ## Project Structure

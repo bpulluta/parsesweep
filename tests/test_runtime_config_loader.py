@@ -548,6 +548,34 @@ discovery:
         assert resolved["selection_require_supported_document"] is True
 
 
+def test_resolve_command_config_maps_split_selection_exclusions(tmp_path: Path):
+        run_path = tmp_path / "run.yaml"
+        run_path.write_text(
+                """
+discovery:
+  seeds:
+        - https://example.org/a
+  selection:
+        exclude_url_patterns:
+          - archive
+        exclude_text_patterns:
+          - preliminary
+""",
+                encoding="utf-8",
+        )
+
+        config_data = load_runtime_config_file(run_path)
+        resolved = resolve_command_config(
+                command="discover",
+                cli_values={},
+                config_data=config_data,
+                strict=True,
+        )
+
+        assert resolved["selection_exclude_url_patterns"] == ["archive"]
+        assert resolved["selection_exclude_text_patterns"] == ["preliminary"]
+
+
 def test_resolve_command_config_maps_generic_selection_templates(tmp_path: Path):
         run_path = tmp_path / "run.yaml"
         run_path.write_text(
@@ -873,9 +901,40 @@ def test_synthesis_accepts_branching_ordering_and_exclusive_pairs(tmp_path: Path
     assert resolved["synthesis"]["ordering_constraints"] == [["a", "b"], ["b", "c"]]
 
 
+def test_synthesis_accepts_item_group_by(tmp_path: Path):
+    """item_group_by is an optional list of item-level paths that splits each
+    entity into one row per sub-entity."""
+    body = (
+        "compilation:\n  input_dir: d\n  schema: s.json\n"
+        "  synthesis:\n    enabled: true\n    group_by: [entity.name]\n"
+        "    item_group_by: [phase_label]\n"
+    )
+    config_data = load_runtime_config_file(_write(tmp_path, body))
+    resolved = resolve_command_config(
+        command="compile",
+        cli_values={},
+        config_data=config_data,
+        strict=True,
+    )
+    assert resolved["synthesis"]["item_group_by"] == ["phase_label"]
+
+
 @pytest.mark.parametrize(
     ("case_id", "body", "match"),
     [
+        (
+            "item_group_by_must_be_string_list",
+            "compilation:\n  input_dir: d\n  schema: s.json\n"
+            "  synthesis:\n    group_by: [x]\n    item_group_by: [\"\"]\n",
+            "item_group_by must be a list of non-empty strings",
+        ),
+        (
+            "item_group_by_may_not_shadow_group_by_column",
+            "compilation:\n  input_dir: d\n  schema: s.json\n"
+            "  synthesis:\n    group_by: [entity.name]\n"
+            "    item_group_by: [phase.name]\n",
+            "collide with group_by output column\\(s\\): name",
+        ),
         (
             "unknown_key",
             "compilation:\n  input_dir: d\n  schema: s.json\n"
