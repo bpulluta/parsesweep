@@ -556,6 +556,7 @@ discovery:
   seeds:
         - https://example.org/a
   selection:
+        max_per_host_per_target: 2
         exclude_url_patterns:
           - archive
         exclude_text_patterns:
@@ -572,6 +573,7 @@ discovery:
                 strict=True,
         )
 
+        assert resolved["selection_max_per_host_per_target"] == 2
         assert resolved["selection_exclude_url_patterns"] == ["archive"]
         assert resolved["selection_exclude_text_patterns"] == ["preliminary"]
 

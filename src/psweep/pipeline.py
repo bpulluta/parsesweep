@@ -125,12 +125,12 @@ def build_run_stage_commands(
     base_cmd: Sequence[str],
     skip_discover: bool = False,
     skip_extract: bool = False,
-    reprocess: bool = False,
+    fresh: bool = False,
     extra_flags: Sequence[str] = (),
 ) -> list[tuple[str, list[str]]]:
     """Build the subprocess commands used to execute a run config pipeline.
 
-    ``reprocess`` propagates a "start fresh" signal to both the discover stage
+    ``fresh`` propagates a "start fresh" signal to both the discover stage
     (``--fresh``: ignore the checkpoint and refresh the search cache) and the
     extract stage (``--fresh``: re-extract already-processed documents), giving
     ``run --fresh`` a single "start fresh" behavior across stages.
@@ -145,7 +145,7 @@ def build_run_stage_commands(
 
     if not skip_discover:
         discover_flags = [*extra_flags]
-        if reprocess:
+        if fresh:
             discover_flags.append("--fresh")
         stage_cmds.append(
             (
@@ -155,7 +155,7 @@ def build_run_stage_commands(
         )
     if not skip_extract:
         extract_flags = [*extra_flags]
-        if reprocess:
+        if fresh:
             extract_flags.append("--fresh")
         stage_cmds.append(
             (
@@ -505,7 +505,7 @@ def run_pipeline(
     *,
     skip_discover: bool = False,
     skip_extract: bool = False,
-    reprocess: bool = False,
+    fresh: bool = False,
 ) -> PipelineResult:
     """Run the full pipeline (discover → extract → compile) from a run config.
 
@@ -522,7 +522,7 @@ def run_pipeline(
         If True, skip the discovery stage.
     skip_extract:
         If True, skip the extraction stage (compile from existing JSON).
-    reprocess:
+    fresh:
         If True, re-extract already-processed documents.
 
     Returns
@@ -549,7 +549,7 @@ def run_pipeline(
         base_cmd=[sys.executable, "-m", "psweep.cli.main"],
         skip_discover=skip_discover,
         skip_extract=skip_extract,
-        reprocess=reprocess,
+        fresh=fresh,
         extra_flags=("-q",),
     )
 

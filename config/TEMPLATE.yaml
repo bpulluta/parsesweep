@@ -90,6 +90,7 @@ compilation:
 #     max_results: 10
 #   selection:
 #     max_per_target: 3
+#     max_per_host_per_target: 1        # optional host-diversity cap per target (0=off)
 #     exclude: [news, blog, press release]
 #   browser_mode: false                   # default: false — set true to download via headless Chrome (bot-protected sites)
 #   partition_by: [state, jurisdiction]   # output layout by_<field>/<value>/… from target metadata

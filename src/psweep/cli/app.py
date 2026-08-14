@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import csv
 import json
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -288,9 +289,16 @@ def run(
         flags.append("-q")
     elif verbose:
         flags.append("-v")
+    pixi_exe = shutil.which("pixi")
+    base_cmd = (
+        [pixi_exe, "run", "psweep"]
+        if pixi_exe
+        else [sys.executable, "-m", "psweep.cli.main"]
+    )
+
     stage_cmds = build_run_stage_commands(
         config_path,
-        base_cmd=["pixi", "run", "psweep"],
+        base_cmd=base_cmd,
         skip_discover=skip_discover,
         skip_extract=skip_extract,
         fresh=fresh,

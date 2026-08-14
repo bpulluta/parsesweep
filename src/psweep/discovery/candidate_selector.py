@@ -80,6 +80,7 @@ class CandidateSelector:
         exclude_url_patterns: list[str] | None = None,
         exclude_text_patterns: list[str] | None = None,
         require_supported_document: bool = True,
+        max_per_host_per_target: int = 0,
         target_identity_require_any_templates: list[str] | None = None,
         target_identity_require_all_templates: list[str] | None = None,
         target_identity_exclude_any_templates: list[str] | None = None,
@@ -119,6 +120,7 @@ class CandidateSelector:
             if p and p.strip()
         ]
         self._require_supported_document = require_supported_document
+        self._max_per_host_per_target = max(0, int(max_per_host_per_target or 0))
         self._target_identity_require_any_templates = [
             t.strip()
             for t in (target_identity_require_any_templates or [])
@@ -372,8 +374,10 @@ class CandidateSelector:
                 )
             )
 
-            # 6. Take top primary_per_target
-            top_items = dated[:primary_per_target]
+            # 6. Take top primary_per_target with optional per-host diversity cap
+            top_items = self._take_top_with_host_cap(
+                dated, primary_per_target
+            )
             top_candidates = [c for c, _ in top_items]
             if target_context:
                 for c in top_candidates:
@@ -392,6 +396,11 @@ class CandidateSelector:
                 notes.append(
                     f"Target {target_idx}: selected {len(top_candidates)} of "
                     f"{len(target_candidates)} candidate(s) (no effective date detected in URL)."
+                )
+            if self._max_per_host_per_target > 0:
+                notes.append(
+                    f"Target {target_idx}: per-host cap={self._max_per_host_per_target} "
+                    f"applied to selected candidates."
                 )
 
             target_metrics.append(
@@ -421,6 +430,29 @@ class CandidateSelector:
         parts = [candidate.url or ""] + list(candidate.reasons or [])
         combined = re.sub(r"[_\-/]", " ", " ".join(parts))
         return any(rx.search(combined) for rx in self._draft_re)
+
+    def _take_top_with_host_cap(
+        self,
+        dated_candidates: list[tuple[DiscoveryCandidate, date | None]],
+        primary_per_target: int,
+    ) -> list[tuple[DiscoveryCandidate, date | None]]:
+        """Select top-ranked candidates, optionally capping picks per host."""
+        if self._max_per_host_per_target <= 0:
+            return dated_candidates[:primary_per_target]
+
+        selected: list[tuple[DiscoveryCandidate, date | None]] = []
+        per_host_counts: dict[str, int] = {}
+        for candidate, parsed_date in dated_candidates:
+            host = urlparse(candidate.url or "").netloc.lower()
+            host_key = host or "__unknown_host__"
+            used = per_host_counts.get(host_key, 0)
+            if used >= self._max_per_host_per_target:
+                continue
+            selected.append((candidate, parsed_date))
+            per_host_counts[host_key] = used + 1
+            if len(selected) >= primary_per_target:
+                break
+        return selected
 
     def _matches_exclusion_patterns(self, candidate: DiscoveryCandidate) -> bool:
         """Return True when configured URL/text exclusion patterns match."""
