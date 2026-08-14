@@ -36,8 +36,8 @@ domain: datacenter_timelines
 
 # ── Model tiers ──────────────────────────────────────────────────────────────
 models:
-  primary: compassop-gpt-4.1           # extraction (accuracy-critical)
-  secondary: compassop-gpt-4.1-mini    # discovery review, page targeting (speed/cost)
+  primary: gpt-5.4                     # extraction (accuracy-critical)
+  secondary: gpt-5.4-mini              # discovery review, page targeting (speed/cost)
 
 # COST CONTROL (optional): each LLM stage accepts a `model:` naming the model to
 # use (else it inherits the environment-configured model). See extraction.model
