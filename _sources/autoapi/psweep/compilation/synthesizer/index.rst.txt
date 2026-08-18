@@ -21,6 +21,12 @@ psweep.compilation.synthesizer
    same stage reconciles, e.g., permit limits across filings, spec values across
    datasheets, or prices across sources.
 
+   By default every item found in the main data array across the grouped records is
+   flattened into ONE row per entity. When a domain repeats sub-entities inside a
+   record (phases, expansions, line items, permit conditions...), declare
+   `item_group_by` — item-level field paths — to keep them apart: items are then
+   bucketed by that key within each entity and one row is synthesized per bucket.
+
    Cost control: the LLM is called ONLY when >= `min_sources_for_llm` sources carry
    a value to reconcile. With 0 or 1 such source the answer is deterministic (nulls,
    or that single source's values) and no API call is made.
@@ -49,12 +55,14 @@ Module Contents
 
       Reads all extraction output JSON files under ``json_dir``, groups them
       by the configured ``group_by`` identity fields, reconciles each group
-      (optionally via LLM), and returns one row per group.
+      (optionally via LLM), and returns one row per group — or one row per
+      ``item_group_by`` subgroup within each group when that option is set.
 
       :param json_dir: Path to a directory containing per-document extraction JSON files.
       :type json_dir: str
 
-      :returns: One synthesized row per unique entity group.
+      :returns: One synthesized row per unique entity group (per item subgroup when
+                ``item_group_by`` is configured).
       :rtype: pd.DataFrame
 
 

@@ -453,6 +453,17 @@ authoritative row per entity:</p>
 </pre></div>
 </div>
 </section>
+<section id="one-entity-several-repeated-sub-entities">
+<h3>One entity, several repeated sub-entities<a class="headerlink" href="#one-entity-several-repeated-sub-entities" title="Link to this heading">¶</a></h3>
+<p>If records repeat sub-entities (phases, expansions, line items), keep them as
+separate rows instead of collapsing them into the entity row:</p>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">compilation</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">synthesis</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">group_by</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">&quot;entity.key_field&quot;</span><span class="p p-Indicator">]</span>
+<span class="w">    </span><span class="nt">item_group_by</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">&quot;item_level_field&quot;</span><span class="p p-Indicator">]</span><span class="w">   </span><span class="c1"># one row per sub-entity per entity</span>
+</pre></div>
+</div>
+</section>
 </section>
 <section id="discovery-web-acquisition">
 <h2>Discovery (web acquisition)<a class="headerlink" href="#discovery-web-acquisition" title="Link to this heading">¶</a></h2>
@@ -565,6 +576,7 @@ table and the <a class="reference internal" href="commands/index.html"><span cla
 <li><a class="reference internal" href="#compilation">Compilation</a><ul>
 <li><a class="reference internal" href="#the-compiled-sheet-has-duplicate-rows">The compiled sheet has duplicate rows</a></li>
 <li><a class="reference internal" href="#many-documents-describe-the-same-entity">Many documents describe the same entity</a></li>
+<li><a class="reference internal" href="#one-entity-several-repeated-sub-entities">One entity, several repeated sub-entities</a></li>
 </ul>
 </li>
 <li><a class="reference internal" href="#discovery-web-acquisition">Discovery (web acquisition)</a><ul>

@@ -358,6 +358,11 @@ config as a path into the extraction payload. Timelines (announced/construction/
 completion dates with a chronology constraint) are just one configuration; the
 same stage reconciles, e.g., permit limits across filings, spec values across
 datasheets, or prices across sources.</p>
+<p>By default every item found in the main data array across the grouped records is
+flattened into ONE row per entity. When a domain repeats sub-entities inside a
+record (phases, expansions, line items, permit conditions…), declare
+<cite>item_group_by</cite> — item-level field paths — to keep them apart: items are then
+bucketed by that key within each entity and one row is synthesized per bucket.</p>
 <p>Cost control: the LLM is called ONLY when &gt;= <cite>min_sources_for_llm</cite> sources carry
 a value to reconcile. With 0 or 1 such source the answer is deterministic (nulls,
 or that single source’s values) and no API call is made.</p>
@@ -385,13 +390,15 @@ or that single source’s values) and no API call is made.</p>
 <dd><p>Load extracted JSON records from a directory and synthesize them.</p>
 <p>Reads all extraction output JSON files under <code class="docutils literal notranslate"><span class="pre">json_dir</span></code>, groups them
 by the configured <code class="docutils literal notranslate"><span class="pre">group_by</span></code> identity fields, reconciles each group
-(optionally via LLM), and returns one row per group.</p>
+(optionally via LLM), and returns one row per group — or one row per
+<code class="docutils literal notranslate"><span class="pre">item_group_by</span></code> subgroup within each group when that option is set.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><p><strong>json_dir</strong> (<em>str</em>) – Path to a directory containing per-document extraction JSON files.</p>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>One synthesized row per unique entity group.</p>
+<dd class="field-even"><p>One synthesized row per unique entity group (per item subgroup when
+<code class="docutils literal notranslate"><span class="pre">item_group_by</span></code> is configured).</p>
 </dd>
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p>pd.DataFrame</p>

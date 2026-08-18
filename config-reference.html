@@ -539,6 +539,8 @@ the sections you need. It documents every knob inline.</p>
 <span class="w">  </span><span class="c1">#   enabled: true                      # reconcile many docs → one row per entity</span>
 <span class="w">  </span><span class="c1">#   min_sources_for_llm: 2             # skip LLM when only 1 source (cheaper)</span>
 <span class="w">  </span><span class="c1">#   group_by: [&quot;entity.key_field&quot;]     # one output row per distinct value</span>
+<span class="w">  </span><span class="c1">#   item_group_by: [&quot;item_field&quot;]      # optional: one row per sub-entity</span>
+<span class="w">  </span><span class="c1">#                                      # (phase/expansion/line item) within it</span>
 <span class="w">  </span><span class="c1">#   identity_fields:                   # context fields (first non-empty wins)</span>
 <span class="w">  </span><span class="c1">#     - entity.category</span>
 <span class="w">  </span><span class="c1">#   citation_field: source.url         # becomes citation list in output</span>
@@ -556,6 +558,7 @@ the sections you need. It documents every knob inline.</p>
 <span class="c1">#     max_results: 10</span>
 <span class="c1">#   selection:</span>
 <span class="c1">#     max_per_target: 3</span>
+<span class="c1">#     max_per_host_per_target: 1        # optional host-diversity cap per target (0=off)</span>
 <span class="c1">#     exclude: [news, blog, press release]</span>
 <span class="c1">#   browser_mode: false                   # default: false — set true to download via headless Chrome (bot-protected sites)</span>
 <span class="c1">#   partition_by: [state, jurisdiction]   # output layout by_&lt;field&gt;/&lt;value&gt;/… from target metadata</span>

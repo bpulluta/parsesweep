@@ -37,7 +37,7 @@ Classes
 Module Contents
 ---------------
 
-.. py:class:: CandidateSelector(exclude_draft: bool = True, draft_patterns: list[str] | None = None, relevance_require_any_terms: list[str] | None = None, relevance_require_legal_marker_terms: list[str] | None = None, relevance_exclude_any_terms: list[str] | None = None, require_supported_document: bool = True, target_identity_require_any_templates: list[str] | None = None, target_identity_require_all_templates: list[str] | None = None, target_identity_exclude_any_templates: list[str] | None = None)
+.. py:class:: CandidateSelector(exclude_draft: bool = True, draft_patterns: list[str] | None = None, relevance_require_any_terms: list[str] | None = None, relevance_require_legal_marker_terms: list[str] | None = None, relevance_exclude_any_terms: list[str] | None = None, exclude_url_patterns: list[str] | None = None, exclude_text_patterns: list[str] | None = None, require_supported_document: bool = True, max_per_host_per_target: int = 0, target_identity_require_any_templates: list[str] | None = None, target_identity_require_all_templates: list[str] | None = None, target_identity_exclude_any_templates: list[str] | None = None)
 
    Selects the best candidate(s) per target from seeker output.
 

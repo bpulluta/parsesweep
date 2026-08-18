@@ -80,11 +80,11 @@ Module Contents
    Combined result from a full discover → extract → [validate] → compile run.
 
 
-.. py:function:: build_run_stage_commands(config_path: str | pathlib.Path, *, base_cmd: Sequence[str], skip_discover: bool = False, skip_extract: bool = False, reprocess: bool = False, extra_flags: Sequence[str] = ()) -> list[tuple[str, list[str]]]
+.. py:function:: build_run_stage_commands(config_path: str | pathlib.Path, *, base_cmd: Sequence[str], skip_discover: bool = False, skip_extract: bool = False, fresh: bool = False, extra_flags: Sequence[str] = ()) -> list[tuple[str, list[str]]]
 
    Build the subprocess commands used to execute a run config pipeline.
 
-   ``reprocess`` propagates a "start fresh" signal to both the discover stage
+   ``fresh`` propagates a "start fresh" signal to both the discover stage
    (``--fresh``: ignore the checkpoint and refresh the search cache) and the
    extract stage (``--fresh``: re-extract already-processed documents), giving
    ``run --fresh`` a single "start fresh" behavior across stages.
@@ -157,7 +157,7 @@ Module Contents
    stage inputs.
 
 
-.. py:function:: run_pipeline(config_path: str | pathlib.Path, *, skip_discover: bool = False, skip_extract: bool = False, reprocess: bool = False) -> PipelineResult
+.. py:function:: run_pipeline(config_path: str | pathlib.Path, *, skip_discover: bool = False, skip_extract: bool = False, fresh: bool = False) -> PipelineResult
 
    Run the full pipeline (discover → extract → compile) from a run config.
 
@@ -169,7 +169,7 @@ Module Contents
    :param config_path: Path to a domain run config file (e.g. ``config/<domain>/<domain>.yaml``).
    :param skip_discover: If True, skip the discovery stage.
    :param skip_extract: If True, skip the extraction stage (compile from existing JSON).
-   :param reprocess: If True, re-extract already-processed documents.
+   :param fresh: If True, re-extract already-processed documents.
 
    :rtype: PipelineResult
 
