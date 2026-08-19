@@ -163,6 +163,7 @@ from psweep.cli.commands_curate import curate
 from psweep.cli.commands_discover import discover
 from psweep.cli.commands_extract import (
     _apply_page_targeting,
+    _apply_section_targeting,
     _build_index_filters,
     _build_run_manifest,
     _context_budget_suggestions_for_process,

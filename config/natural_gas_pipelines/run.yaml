@@ -169,7 +169,7 @@ extraction:
         the ordinance sections regulating natural gas facilities and related oil
         and gas infrastructure — setbacks, noise limits, monitoring timelines,
         permit/submission requirements, and zoning/approval constraints
-      trigger_chars: 600000
+      trigger_chars: 100000
       max_selected_pages: 40
       keywords:
         - natural gas
@@ -201,57 +201,24 @@ compilation:
       - Applies_To_Natural_Gas
       - Extraction_Approach
       - Reasoning
-    column_renames:
-      State: state
-      County: county
-      Subdivision: subdivision
-      Jurisdiction_Type: jurisdiction_type
-      "Jurisdiction Type": jurisdiction_type
-      Fips: FIPS
-      Year: year
-      Source: source
-      Feature: feature
-      "Specific Subject": specific_subject
-      "Applies To": applies_to
-      "Requirement Description": requirement_description
-      "Value Category": value_category
-      Value: value
-      "Value Interpretation": value_interpretation
-      Units: units
-      "Range Low": range_low
-      "Range High": range_high
-      Obligation: obligation
-      Condition: condition
-      "Applicable Values": applicable_values
-      "Source Verbatim": source_verbatim
-      Summary: summary
-      Section: section
-      Notes: notes
-    column_order:
-      - county
-      - state
+      # Always-null in current dataset — keep in schema for edge cases, drop from output
+      - Subdivision
       - subdivision
-      - jurisdiction_type
-      - FIPS
-      - feature
-      - specific_subject
-      - applies_to
-      - requirement_description
-      - value_category
-      - value
-      - value_interpretation
-      - units
+      - Range Low
       - range_low
+      - Range High
       - range_high
-      - obligation
-      - condition
+      - Applicable Values
       - applicable_values
-      - source_verbatim
-      - summary
+    # column_renames: auto-derived from schema property names (snake_case). Add overrides only.
+    column_renames:
+      Fips: FIPS
+    # column_order: priority prefix only — remaining schema fields follow in declaration order
+    column_order:
+      - state
+      - county
+      - jurisdiction_type
       - year
-      - section
-      - source
-      - notes
 
 # ── QA/QC ────────────────────────────────────────────────────────────────────
 validation:

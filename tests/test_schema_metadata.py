@@ -124,7 +124,7 @@ class TestExtractionMetadata:
             ("get_deduplication_strategy", "latest"),
             ("get_comparison_mode", "fuzzy"),
             ("get_output_format", "excel"),
-            ("get_column_order", []),
+            ("get_column_order", ["id", "name"]),  # auto-derived from context object properties
         ],
     )
     def test_schema_metadata_accessors(self, temp_schema_with_metadata, method_name, expected):
@@ -157,7 +157,9 @@ class TestCompilationMetadata:
                 }
             },
         )
-        assert meta.get_column_renames() == {"Name": "charge_name"}
+        renames = meta.get_column_renames()
+        # Explicit override must win; auto-derived renames may also be present
+        assert renames["Name"] == "charge_name"
 
     def test_metadata_overrides_merge_compilation_output(self, temp_schema_with_metadata):
         """Runtime metadata overrides should drive output settings."""
@@ -181,7 +183,8 @@ class TestCompilationMetadata:
 
         assert meta.get_output_exclude_fields() == ["runtime_only"]
         assert meta.get_output_format() == "csv"
-        assert meta.get_column_renames() == {"Name": "charge_name"}
+        renames = meta.get_column_renames()
+        assert renames["Name"] == "charge_name"  # explicit override present
         assert meta.get_comparison_mode() == "exact"
 
 

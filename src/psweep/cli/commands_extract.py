@@ -337,6 +337,11 @@ def _build_source_context_map(
                         or ""
                     ),
                     "company_name": str(meta.get("company_name") or ""),
+                    "jurisdiction": str(
+                        meta.get("jurisdiction")
+                        or row.get("source_jurisdiction", "").replace("-", " ").title()
+                        or ""
+                    ),
                     "city": str(meta.get("city") or ""),
                     "state": str(meta.get("state") or ""),
                 }
@@ -367,6 +372,10 @@ def _prepend_source_context(
         lines.append(f"QUERIED_SITE: {info['site_name']}")
     if info.get("company_name"):
         lines.append(f"QUERIED_COMPANY: {info['company_name']}")
+    # QUERIED_JURISDICTION is the authoritative municipality name from discovery.
+    # Use it as ground truth so LLMs don't infer county names from document context.
+    if info.get("jurisdiction"):
+        lines.append(f"QUERIED_JURISDICTION: {info['jurisdiction']}")
     if location:
         lines.append(f"QUERIED_LOCATION: {location}")
     lines.append("=== END CONTEXT ===")
@@ -418,9 +427,11 @@ def _apply_page_targeting(
     )
 
     discovered: list[tuple[str, int, int]] = []
+    non_pdf_skipped = 0
 
     for doc in doc_files:
         if doc.suffix.lower() != ".pdf":
+            non_pdf_skipped += 1
             continue
         if doc in page_range_map:
             continue
@@ -437,6 +448,11 @@ def _apply_page_targeting(
                 print_info(
                     f"Page targeting: {doc.name} → pages {rng[0]}-{rng[1]}"
                 )
+
+    if non_pdf_skipped and not get_verbosity().is_quiet:
+        print_info(
+            f"Page targeting skipped {non_pdf_skipped} non-PDF file(s): not a PDF"
+        )
 
     if discovered and config.get("save_discovered", False):
         if pages_csv:
@@ -459,6 +475,64 @@ def _apply_page_targeting(
             )
 
 
+def _apply_section_targeting(
+    *,
+    doc_files: list,
+    section_text_map: dict,
+    config: dict,
+    models: dict | None = None,
+    extraction_model: str | None = None,
+) -> None:
+    """Fill section_text_map for large non-PDF files via LLM-assisted section targeting."""
+    from psweep.extraction.section_locator import SectionLocator
+    from psweep.extraction.page_locator import DEFAULT_PAGE_TRIGGER_CHARS
+
+    description = str(config.get("section_description") or "").strip()
+    if not description:
+        return
+
+    trigger_chars = int(
+        config.get("trigger_chars", DEFAULT_PAGE_TRIGGER_CHARS)
+        or DEFAULT_PAGE_TRIGGER_CHARS
+    )
+    locator = SectionLocator(
+        description,
+        model=config.get("model"),
+        models=models,
+        default_model=extraction_model,
+        trigger_chars=trigger_chars,
+        keywords=config.get("keywords"),
+    )
+
+    _non_pdf_types = {".html", ".htm", ".docx", ".doc", ".txt"}
+    targeted_count = 0
+
+    for doc in doc_files:
+        if doc.suffix.lower() not in _non_pdf_types:
+            continue
+        if doc in section_text_map:
+            continue
+        filtered = locator.locate(doc)
+        if filtered is not None:
+            section_text_map[doc] = filtered
+            targeted_count += 1
+            if not get_verbosity().is_quiet:
+                print_info(
+                    f"Section targeting: {doc.name} → {len(filtered):,} chars"
+                )
+            if config.get("save_discovered"):
+                sidecar = doc.parent / f"{doc.stem}.section_target.txt"
+                try:
+                    sidecar.write_text(filtered, encoding="utf-8")
+                except Exception:  # noqa: BLE001
+                    pass
+
+    if targeted_count and not get_verbosity().is_quiet:
+        print_info(
+            f"Section targeting: {targeted_count} non-PDF file(s) targeted"
+        )
+
+
 def _document_progress_desc(doc_path: Path, page_range_map: dict) -> str:
     """Build a progress-bar label for a document, with an optional page suffix."""
     desc = doc_path.name
@@ -475,6 +549,7 @@ def _extract_one_document(
     extractor,
     loaded_schema: dict,
     page_range_map: dict,
+    section_text_map: dict,
     source_context_map: dict,
     file_output_dirs: dict,
     output_dir: Path,
@@ -489,8 +564,12 @@ def _extract_one_document(
 ) -> dict:
     """Extract one document and persist its record."""
     try:
-        page_range = page_range_map.get(doc_path)
-        text = extract_text_from_document(doc_path, page_range=page_range)
+        pre_filtered = section_text_map.get(doc_path) if section_text_map else None
+        if pre_filtered is not None:
+            text = pre_filtered
+        else:
+            page_range = page_range_map.get(doc_path)
+            text = extract_text_from_document(doc_path, page_range=page_range)
         text = _prepend_source_context(text, doc_path, source_context_map)
         result = extractor.extract(text, loaded_schema)
 
@@ -1099,6 +1178,16 @@ def extract(
             output_dir=output_dir,
         )
 
+    section_text_map: dict[Path, str] = {}
+    if isinstance(page_targeting, dict) and page_targeting.get("enabled"):
+        _apply_section_targeting(
+            doc_files=doc_files,
+            section_text_map=section_text_map,
+            config=page_targeting,
+            models=resolved_inputs.get("models"),
+            extraction_model=resolved_inputs.get("model"),
+        )
+
     if not doc_files:
         if is_dir and not view.is_quiet:
             view.header("DOCUMENT EXTRACTION")
@@ -1165,7 +1254,10 @@ def extract(
             else:
                 config_info["Pages"] = "All pages"
         else:
-            config_info["Pages"] = "All pages"
+            if isinstance(page_targeting, dict) and page_targeting.get("enabled"):
+                config_info["Pages"] = "auto-locate (active)"
+            else:
+                config_info["Pages"] = "All pages"
 
         try:
             rel_output = output_dir.relative_to(Path.cwd())
@@ -1349,6 +1441,7 @@ def extract(
             extractor=extractor,
             loaded_schema=loaded_schema,
             page_range_map=page_range_map,
+            section_text_map=section_text_map,
             source_context_map=source_context_map,
             file_output_dirs=file_output_dirs,
             output_dir=output_dir,

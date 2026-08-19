@@ -5,8 +5,13 @@
     "version": "3.0.0",
     "extraction": {
       "main_data_array": "requirements",
-      "identifier_fields": ["jurisdiction.state", "jurisdiction.county"],
-      "context_objects": ["jurisdiction"]
+      "identifier_fields": [
+        "jurisdiction.state",
+        "jurisdiction.county"
+      ],
+      "context_objects": [
+        "jurisdiction"
+      ]
     },
     "identity": {
       "deduplication": {
@@ -35,24 +40,31 @@
     }
   },
   "title": "Natural Gas Pipeline & Compressor Station Ordinance Extraction Schema",
-  "description": "Regulatory requirements for natural gas pipelines, compressor stations, and associated infrastructure.\n\nSCOPE: Natural gas compressor stations, natural gas pipelines (transmission and distribution), metering/regulator stations, oil and gas facilities, and associated equipment.\n\nEXCLUDE: Geothermal wells, wind turbines, solar installations, water/sewer utilities, electric substations, and telecommunications towers.\n\nWhen extracting from multi-use ordinances, ONLY extract provisions that explicitly apply to natural gas or oil and gas facilities.\n\nEvery requirement row is decomposed on four axes: WHAT is regulated (feature + specific_subject + requirement_description + applies_to), HOW MUCH (value + value_category + value_interpretation + units + range_low/range_high), HOW BINDING (obligation), and WHEN/WHERE (condition + applies_to). Evidence lives in source_verbatim, summary, reasoning, and section.",
+  "description": "Regulatory requirements for natural gas pipelines, compressor stations, and associated infrastructure.\n\nSCOPE: Natural gas compressor stations, natural gas pipelines (transmission and distribution), metering/regulator stations, oil and gas facilities, and associated equipment.\n\nEXCLUDE: \n  - Geothermal wells, wind turbines, solar installations, water/sewer utilities, electric substations, telecommunications towers\n  - General residential/commercial zoning (minimum lot sizes, front/side/rear yard setbacks, multi-family restrictions)\n  - Non-gas-specific land uses (duplex residence, commercial space, office buildings)\n\nEXTRACTION DISCIPLINE: When extracting from multi-use ordinances, ONLY extract provisions that explicitly apply to natural gas or oil and gas facilities. If a provision regulates 'structures' generally without mention of gas facilities, EXCLUDE it. If noise/distance/equipment rules apply to gas compressors specifically, INCLUDE them. Use applies_to field to mark the facility type.\n\nSEMANTIC CLARITY (distance features):\n  - 'property lines distance': setback from jurisdiction boundaries or neighboring property edges\n  - 'distance between compressor stations': separation between gas compressor facilities\n  - 'roads distance': setback from street/right-of-way centerline or edge\n  - 'water bodies distance': setback from rivers, streams, wetlands\n  - 'schools/hospitals/community structures distance': setback from sensitive land uses\n  - NEVER use generic 'structures distance' \u2014 be specific about what the distance is measured from/to\n\nAMBIENT REFERENCE PATTERNS (noise):\n  - For limits like 'shall not exceed [ambient baseline] + X dB', capture as: value=X (the adder), value_category='quantitative', value_interpretation='above_ambient'; include the baseline description (e.g., '72-hour evaluation baseline') in notes if not already in source_verbatim\n  - Example: 'ambient + 7 dB daytime' \u2192 value=7, units='dB', specific_subject='daytime adder', value_interpretation='above_ambient', notes='pre-development ambient level or 72-hour evaluation'\n\nEvery requirement row is decomposed on four axes: WHAT is regulated (feature + specific_subject + requirement_description + applies_to), HOW MUCH (value + value_category + value_interpretation + units + ambient_reference_level + range_low/range_high), HOW BINDING (obligation), and WHEN/WHERE (condition + applies_to). Evidence lives in source_verbatim, summary, reasoning, and section.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["jurisdiction", "requirements", "document_applicability"],
+  "required": [
+    "jurisdiction",
+    "requirements",
+    "document_applicability"
+  ],
   "properties": {
     "document_applicability": {
       "type": "object",
-      "description": "Scope verification (extraction-quality field, excluded from compiled output).",
+      "description": "Scope verification (extraction-quality field, excluded from compiled output). Use this to confirm the document actually regulates natural gas or oil/gas facilities, not just general zoning or other utilities.",
       "additionalProperties": false,
-      "required": ["applies_to_natural_gas", "extraction_approach"],
+      "required": [
+        "applies_to_natural_gas",
+        "extraction_approach"
+      ],
       "properties": {
         "applies_to_natural_gas": {
           "type": "boolean",
-          "description": "Does this document contain provisions regulating natural gas pipelines, compressor stations, or oil and gas facilities?"
+          "description": "Does this document contain provisions regulating natural gas pipelines, compressor stations, or oil and gas facilities? Set to FALSE if the document only contains general zoning rules (residential, commercial, industrial) that do not explicitly mention gas/oil or compressor/pipeline infrastructure."
         },
         "extraction_approach": {
           "type": "string",
-          "description": "Which sections were extracted vs excluded. Format: 'Extracted [sections]; Excluded [sections]'"
+          "description": "Which sections were extracted vs excluded. Format: 'Extracted [sections]; Excluded [sections]'. MUST include explicit statement about what was REJECTED. Example: 'Extracted Sec 5.2 (compressor stations), Sec 6.1 (noise); Excluded Sec 3 (general lot sizes, residential uses, front yard setbacks, retreat lot rules, duplex restrictions)'"
         }
       }
     },
@@ -60,7 +72,10 @@
       "type": "object",
       "description": "Geographic and temporal context. These fields become row-level context in compiled output.",
       "additionalProperties": false,
-      "required": ["state", "county"],
+      "required": [
+        "state",
+        "county"
+      ],
       "properties": {
         "state": {
           "type": "string",
@@ -68,14 +83,20 @@
         },
         "county": {
           "type": "string",
-          "description": "County, city, town, or township name exactly as written."
+          "description": "The specific municipality (city, town, township, borough, or village) that enacted this ordinance. CRITICAL: Use the QUERIED_JURISDICTION value from the CONTEXT block if present \u2014 it is the authoritative name. Do NOT use the county or regional name even if it appears prominently in the document. If 'Bristol County' or 'Allegheny County' appears in the document but QUERIED_JURISDICTION says 'Rehoboth' or 'Oakmont', use that. Strip only the administrative suffix: 'Town of Rehoboth' \u2192 'Rehoboth', 'City of Weatherford' \u2192 'Weatherford'. Capture the administrative category in jurisdiction_type instead."
         },
         "subdivision": {
-          "type": ["string", "null"],
+          "type": [
+            "string",
+            "null"
+          ],
           "description": "Sub-jurisdiction name if applicable. Null if county-level."
         },
         "jurisdiction_type": {
-          "type": ["string", "null"],
+          "type": [
+            "string",
+            "null"
+          ],
           "description": "Type of jurisdiction: County, City, Town, Township, Borough, or Village.",
           "enum": [
             "County",
@@ -88,18 +109,25 @@
           ]
         },
         "year": {
-          "type": ["integer", "string", "null"],
+          "type": [
+            "integer",
+            "string",
+            "null"
+          ],
           "description": "Year the ordinance was adopted or last amended. Null if not stated."
         },
         "source": {
-          "type": ["string", "null"],
+          "type": [
+            "string",
+            "null"
+          ],
           "description": "URL or document reference for the source ordinance. Use the SOURCE_URL from the CONTEXT block at the top of the document if present."
         }
       }
     },
     "requirements": {
       "type": "array",
-      "description": "Regulatory requirements extracted from the ordinance.\n\nEXTRACTION RULES:\n\n(1) ONE ROW PER REQUIREMENT: Each distinct regulatory provision gets its own row. When a single regulation applies to multiple subjects (e.g., 'setback from property lines and residential structures'), create SEPARATE rows and distinguish them with 'specific_subject'.\n\n(2) RANGES: When setbacks vary by zone (e.g., 100-500 ft depending on zone), put the range string in 'value', set value_interpretation='range', AND populate range_low/range_high.\n\n(3) TIERS: When a value depends on a band (capacity, distance, zone), emit ONE ROW PER TIER with value_interpretation='tiered' and the triggering band in 'condition'.\n\n(4) DAY/NIGHT: When noise limits differ by time, create separate rows with condition='daytime' or 'nighttime' and specific_subject='daytime limit'/'nighttime limit'.\n\n(5) FACILITY SCOPE vs TRIGGER: Put the governed facility type in 'applies_to' (e.g., 'Compressor station'); put the situational circumstance in 'condition' (e.g., 'nighttime'). Never mix the two.\n\n(6) MIXED CLAUSES: When one clause includes both a measurable threshold and a separate non-numeric prohibition/exception, emit separate rows by semantic role (quantitative row for value/units/value_interpretation; qualitative row for non-numeric prohibition/exception).\n\n(7) MONITORING PROTOCOL DECOMPOSITION: If one monitoring clause contains multiple measurable constraints (e.g., 'within 48 hours', 'for 72 hours', 'at 100 feet'), emit one quantitative row per measurable constraint using the matching rule_kind (`deadline`, `duration`, `location`). Do NOT collapse those measurable constraints into one qualitative `monitoring` protocol row.\n\n(8) COVERAGE-RADIUS PHRASING: For submission/reporting scope language like 'show/list/include items within one mile', extract the numeric distance and use value_interpretation='maximum' (coverage radius cap), not 'exact'.\n\n(9) PRIORITY FEATURES (extract if present):\n   - structures distance, property lines distance, residential zones distance\n   - front yard distance, roads distance, water bodies distance\n   - schools distance, hospitals distance\n   - distance between compressor stations\n   - noise (day/night separately)\n   - fencing, enclosure, minimum lot size\n   - permitted/conditional/special use districts\n   - required permits, bufferyard/landscaping",
+      "description": "Regulatory requirements extracted from the ordinance.\n\nSCOPE VALIDATION (Critical for all extractions):\n  - EXTRACT ONLY: Rules that explicitly govern natural gas compressor stations, pipelines, metering/regulator stations, or oil/gas facilities\n  - EXCLUDE: Generic residential/commercial zoning (minimum lot sizes, front/side/rear yards, multi-family restrictions, duplex rules)\n  - EXCLUDE: Land use restrictions that do not name or clearly reference gas facilities\n  - Test: If the rule applies equally to office buildings, residential, and industrial without gas mention, EXCLUDE it\n  - Use applies_to field to confirm gas facility type (e.g., 'Compressor station', 'Natural gas pipeline')\n\nDISTANCE FEATURE SPECIFICITY:\n  - DO NOT use generic \"structures distance\" \u2014 always specify what is being measured\n  - Use 'property lines distance' ONLY for setbacks from property boundaries (not general zoning)\n  - Use 'roads distance' for street/right-of-way setbacks\n  - Use 'distance between compressor stations' for gas-to-gas separation\n  - Use 'water bodies distance', 'schools distance', 'hospitals distance' for sensitive land uses ONLY if linked to gas facility (e.g., compressor setback from school)\n  - When multiple distance targets appear in one regulation (e.g., 'from property line AND from road'), create separate rows with distinct feature values\n\nEXTRACTION RULES:\n\n(1) ONE ROW PER REQUIREMENT: Each distinct regulatory provision gets its own row. When a single regulation applies to multiple subjects (e.g., 'compressor setback from property lines and from road centerline'), create SEPARATE rows with different 'specific_subject' values.\n\n(2) RANGES: When setbacks vary by zone (e.g., 100-500 ft depending on zone), put the range string in 'value', set value_interpretation='range', AND populate range_low/range_high.\n\n(3) TIERS: When a value depends on a band (capacity, distance, zone), emit ONE ROW PER TIER with value_interpretation='tiered' and the triggering band in 'condition'.\n\n(4) DAY/NIGHT: When noise limits differ by time, create separate rows with condition='daytime' or 'nighttime' and specific_subject='daytime limit'/'nighttime limit'.\n\n(5) FACILITY SCOPE vs TRIGGER: Put the governed facility type in 'applies_to' (e.g., 'Compressor station'); put the situational circumstance in 'condition' (e.g., 'nighttime'). Never mix the two.\n\n(6) MIXED CLAUSES: When one clause includes both a measurable threshold and a separate non-numeric prohibition/exception, emit separate rows by semantic role (quantitative row for value/units/value_interpretation; qualitative row for non-numeric prohibition/exception).\n\n(7) MONITORING PROTOCOL DECOMPOSITION: If one monitoring clause contains multiple measurable constraints (e.g., 'within 48 hours', 'for 72 hours', 'at 100 feet'), emit one quantitative row per measurable constraint using the matching rule_kind (deadline, duration, location).\n\n(8) COVERAGE-RADIUS PHRASING: For submission/reporting scope language like 'show/list/include items within one mile', extract the numeric distance and use value_interpretation='maximum' (coverage radius cap), not 'exact'.\n\n(9) AMBIENT REFERENCE + ADDER PATTERN (for noise like 'ambient + 7 dB'):\n   - Capture as: value=7 (the adder), ambient_reference_level='pre-development ambient level' (the reference)\n   - Use value_category='quantitative', value_interpretation='maximum'\n   - Example: 'shall not exceed ambient + 7 dB daytime' \u2192 value=7, units='dB', ambient_reference_level='pre-development ambient level', specific_subject='daytime adder', condition='daytime'\n   - The adder IS the extractable numeric magnitude; the reference goes in ambient_reference_level\n\n(10) PRIORITY FEATURES (extract if present and gas-specific):\n   - property lines distance (setback from property boundaries)\n   - distance between compressor stations (compressor-to-compressor separation)\n   - roads distance (setback from street/right-of-way)\n   - water bodies distance (setback from water features)\n   - schools/hospitals/community structures distance (setback from sensitive uses, ONLY if linked to gas)\n   - noise (with day/night separation and ambient reference if present)\n   - fencing (gas facility specific)\n   - enclosure (gas facility specific)\n",
       "items": {
         "type": "object",
         "additionalProperties": false,
@@ -113,22 +141,18 @@
         "properties": {
           "feature": {
             "type": "string",
-            "description": "Standardized feature name (the WHAT axis). Use these exact values for cross-jurisdiction consistency.",
+            "description": "Standardized feature name (the WHAT axis). Use these exact values for cross-jurisdiction consistency. SCOPE: Only gas-specific or gas+facility constraints. EXCLUDE generic residential/commercial zoning. CRITICAL: Do NOT extract 'front yard distance'\u2014this is general zoning. Do NOT extract generic 'structures distance' unless the structure type is explicitly named (residential, school, hospital, civic).",
             "enum": [
-              "structures distance",
-              "front yard distance",
               "property lines distance",
-              "residential zones distance",
+              "distance between compressor stations",
               "water bodies distance",
               "roads distance",
+              "residential buildings distance",
               "schools distance",
               "hospitals distance",
               "community structures distance",
-              "residential district boundary distance",
-              "distance between compressor stations",
               "noise",
               "fencing",
-              "minimum lot size",
               "enclosure"
             ]
           },
@@ -147,7 +171,10 @@
             ]
           },
           "specific_subject": {
-            "type": ["string", "null"],
+            "type": [
+              "string",
+              "null"
+            ],
             "description": "Sub-aspect of the feature that distinguishes this record from other rows sharing the same feature (WHAT axis). Participates in the dedup key. Use the ordinance's own framing. Null when the feature is already specific enough.",
             "examples": [
               "from property line",
@@ -159,7 +186,10 @@
             ]
           },
           "applies_to": {
-            "type": ["string", "null"],
+            "type": [
+              "string",
+              "null"
+            ],
             "description": "Facility type or scope the requirement governs (WHAT/WHERE axis), in the document's own terminology. Describes the kind of facility the rule binds. This is NOT the situational trigger (use 'condition') and NOT the obligation. Null when the requirement applies to all natural gas facilities generally.",
             "examples": [
               "Compressor station",
@@ -171,7 +201,10 @@
             ]
           },
           "requirement_description": {
-            "type": ["string", "null"],
+            "type": [
+              "string",
+              "null"
+            ],
             "description": "Clean, obligation-free description of the regulated action or object (WHAT axis). NEVER include obligation language \u2014 no 'required', 'shall', 'may', 'must', 'prohibited'. Used for qualitative requirements; null for purely quantitative rows. For qualitative requirements with relative-reference limits (e.g., 'must not exceed pre-development ambient noise levels'), state the reference standard here (e.g., 'Noise shall not exceed pre-development ambient levels within 300 feet') \u2014 do NOT leave this null while classifying the row as qualitative.",
             "examples": [
               "Sound barriers",
@@ -185,22 +218,45 @@
           },
           "value_category": {
             "type": "string",
-            "description": "REQUIRED. How this requirement's value should be interpreted (HOW MUCH axis). 'quantitative' = a fixed, extractable numeric magnitude lives in 'value' (distance, dBA, acres, MW, hours, %, $). 'qualitative' = there is no fixed numeric magnitude; the substance lives in 'requirement_description' and 'value' must be null. Independent of 'obligation': a quantitative limit can be conditional and a qualitative item can be required.\n\nCRITICAL: If the limit is a relative reference ('shall not exceed pre-development ambient levels', 'shall not exceed neighboring property baseline') or a procedural/approval requirement with no fixed numeric value, classify as 'qualitative' \u2014 the reference phrase belongs in 'requirement_description'. NEVER classify as 'quantitative' when 'value' would be null. If your 'reasoning' concludes 'no magnitude \u2192 qualitative', set value_category='qualitative'.",
-            "enum": ["quantitative", "qualitative"],
-            "examples": ["quantitative", "qualitative"]
+            "description": "REQUIRED. How this requirement's value should be interpreted (HOW MUCH axis). 'quantitative' = a fixed, extractable numeric magnitude lives in 'value' (distance, dBA, acres, MW, hours, %, $). 'qualitative' = there is no fixed numeric magnitude; the substance lives in 'requirement_description' and 'value' must be null. Independent of 'obligation': a quantitative limit can be conditional and a qualitative item can be required.\n\nCRITICAL: If the limit is a relative reference ('shall not exceed pre-development ambient levels', 'shall not exceed neighboring property baseline') or a procedural/approval requirement with no fixed numeric value, classify as 'qualitative' \u2014 the reference phrase belongs in 'requirement_description'. NEVER classify as 'quantitative' when 'value' would be null. If your 'reasoning' concludes 'no magnitude \u2192 qualitative', set value_category='qualitative'. Exception: formula-based procedural rules (where the value is determined by referencing another zoning variable with no extractable number) use value_category='qualitative' + value_interpretation='formula'.",
+            "enum": [
+              "quantitative",
+              "qualitative"
+            ],
+            "examples": [
+              "quantitative",
+              "qualitative"
+            ]
           },
           "value": {
-            "type": ["number", "string", "null"],
+            "type": [
+              "number",
+              "string",
+              "null"
+            ],
             "description": "For quantitative requirements, the numeric magnitude ONLY (e.g., 500, 55, 8). Use a range string (e.g., '100-500') when the provision states a span, set value_interpretation='range', and populate range_low/range_high. For qualitative requirements set value to null and describe the requirement in requirement_description. NEVER embed units or obligation words ('required', 'may', 'shall') in value.",
-            "examples": [500, 300, 60, 55, 8, 20, "100-500", null]
+            "examples": [
+              500,
+              300,
+              60,
+              55,
+              8,
+              20,
+              "100-500",
+              null
+            ]
           },
           "value_interpretation": {
-            "type": ["string", "null"],
-            "description": "How the value is bounded or structured (HOW MUCH axis). 'exact' = single fixed value ('shall be 35 feet'); 'minimum' = floor ('at least', 'no less than'); 'maximum' = ceiling ('shall not exceed'). For coverage-radius phrasing like 'within one mile' (show/list/include all items inside a radius), use 'maximum'. For separation phrasing like 'no structure within 50 feet of hazard', encode as 'minimum' separation distance. 'range' = a span \u2014 populate range_low and range_high; 'formula' = computed ('1.1x turbine height'); 'tiered' = value depends on a band \u2014 emit one row per tier; 'enumerated' = a discrete set of allowed values \u2014 pair with applicable_values. Null for qualitative requirements (present/absent).",
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "How the value is bounded or structured (HOW MUCH axis). 'exact' = single fixed value ('shall be 35 feet'); 'minimum' = floor ('at least', 'no less than'); 'maximum' = ceiling ('shall not exceed' a FIXED absolute level \u2014 not ambient-referenced). 'above_ambient' = value is an ADDER above an ambient baseline ('shall not exceed ambient + X dB') \u2014 use this instead of 'maximum' whenever the limit references a measured baseline; include the baseline description in notes if not already in source_verbatim. 'range' = a span \u2014 populate range_low and range_high; 'formula' = value is determined by a formula, lookup, or rule referencing another variable (e.g., 'setback equals the distance required by the adjoining zoning district' \u2014 use this, NOT 'tiered', when there is no extractable numeric value and the rule references an external lookup); when using formula set value=null and describe the rule in requirement_description; 'tiered' = value depends on a band \u2014 emit one row per tier; 'enumerated' = a discrete set \u2014 pair with applicable_values. Null for qualitative requirements.",
             "enum": [
               "exact",
               "minimum",
               "maximum",
+              "above_ambient",
               "range",
               "formula",
               "tiered",
@@ -211,6 +267,7 @@
               "exact",
               "minimum",
               "maximum",
+              "above_ambient",
               "range",
               "formula",
               "tiered",
@@ -219,19 +276,44 @@
             ]
           },
           "units": {
-            "type": ["string", "null"],
+            "type": [
+              "string",
+              "null"
+            ],
             "description": "Unit of measurement for a quantitative value. Null for qualitative requirements.",
-            "examples": ["feet", "dBA", "dBC", "acres", "miles", "inches", null]
+            "examples": [
+              "feet",
+              "dBA",
+              "dBC",
+              "acres",
+              "miles",
+              "inches",
+              null
+            ]
           },
           "range_low": {
-            "type": ["number", "null"],
+            "type": [
+              "number",
+              "null"
+            ],
             "description": "Lower bound of the span when 'value' is a range (e.g., 100 for '100-500'). Domain-agnostic: works for distances, dBA, MW, acres, etc. Null unless value_interpretation='range'.",
-            "examples": [100, 55, null]
+            "examples": [
+              100,
+              55,
+              null
+            ]
           },
           "range_high": {
-            "type": ["number", "null"],
+            "type": [
+              "number",
+              "null"
+            ],
             "description": "Upper bound of the span when 'value' is a range (e.g., 500 for '100-500'). Domain-agnostic: works for distances, dBA, MW, acres, etc. Null unless value_interpretation='range'.",
-            "examples": [500, 65, null]
+            "examples": [
+              500,
+              65,
+              null
+            ]
           },
           "obligation": {
             "type": "string",
@@ -254,7 +336,10 @@
             ]
           },
           "condition": {
-            "type": ["string", "null"],
+            "type": [
+              "string",
+              "null"
+            ],
             "description": "Situational trigger or circumstance that governs WHEN or WHERE the requirement applies (WHEN/WHERE axis). Must be a SHORT phrase only \u2014 examples: 'nighttime', 'daytime only', 'capacity exceeds 3 MW', 'when in AG zone', 'after a signed complaint is received'. NEVER put the substance of the requirement here \u2014 if a sentence describes what is regulated rather than when/where it applies, it belongs in 'requirement_description' or 'source_verbatim'. Not the facility type (use 'applies_to'). Not the obligation. Null if the requirement applies unconditionally.",
             "examples": [
               "nighttime",
@@ -266,20 +351,39 @@
             ]
           },
           "applicable_values": {
-            "type": ["array", "null"],
+            "type": [
+              "array",
+              "null"
+            ],
             "description": "Parallel interchangeable atomic values that share an IDENTICAL obligation, condition, and evidence. Use ONLY when (a) the values are categorical/enumerated (e.g., permitted district codes, acceptable permit types, equipment options) and (b) all share the same obligation + condition + source. Pair with value_interpretation='enumerated'. Null when a single value applies.",
             "items": {
               "type": "string"
             },
             "examples": [
-              ["AG", "RE", "SF 8.5", "R1", "R2", "R3"],
-              ["Conditional use permit", "Minor use permit"],
-              ["exhaust muffler", "exhaust box"],
+              [
+                "AG",
+                "RE",
+                "SF 8.5",
+                "R1",
+                "R2",
+                "R3"
+              ],
+              [
+                "Conditional use permit",
+                "Minor use permit"
+              ],
+              [
+                "exhaust muffler",
+                "exhaust box"
+              ],
               null
             ]
           },
           "source_verbatim": {
-            "type": ["string", "null"],
+            "type": [
+              "string",
+              "null"
+            ],
             "description": "Exact operative clause copied word-for-word from the ordinance (EVIDENCE axis). Never paraphrase \u2014 this is the audit anchor. If the passage exceeds 50 words, quote the operative head, insert '\u2026', then the tail. Null only if no single passage can be quoted.",
             "examples": [
               "...shall not exceed a maximum of 55 dBa.",
@@ -288,11 +392,17 @@
             ]
           },
           "summary": {
-            "type": ["string", "null"],
+            "type": [
+              "string",
+              "null"
+            ],
             "description": "Human-readable summary of the requirement (EVIDENCE axis). May be paraphrased for clarity. Use 'source_verbatim' for the exact quote. Include enough context for verification."
           },
           "reasoning": {
-            "type": ["string", "null"],
+            "type": [
+              "string",
+              "null"
+            ],
             "description": "Terse 'trigger \u2192 label' rationale (EVIDENCE axis), <=15 words, citing the governing verb and the value_category decision. Goes in ignore_fields and is hidden from compiled output. Null if self-evident.",
             "examples": [
               "'may require' \u2192 conditional; no magnitude \u2192 qualitative",
@@ -301,11 +411,17 @@
             ]
           },
           "section": {
-            "type": ["string", "null"],
+            "type": [
+              "string",
+              "null"
+            ],
             "description": "Specific ordinance section/article reference (EVIDENCE axis, e.g., 'Sec. 12-5-106', 'Article 5 \u00a7 552', '\u00a7 270-4.10')."
           },
           "notes": {
-            "type": ["string", "null"],
+            "type": [
+              "string",
+              "null"
+            ],
             "description": "Additional context not captured elsewhere: measurement conditions, exceptions, cross-references."
           }
         },
@@ -319,7 +435,10 @@
               }
             },
             "then": {
-            "required": ["value", "value_interpretation"],
+              "required": [
+                "value",
+                "value_interpretation"
+              ],
               "properties": {
                 "value": {
                   "anyOf": [
@@ -328,18 +447,22 @@
                     },
                     {
                       "type": "string",
-                    "minLength": 1
+                      "minLength": 1
                     }
                   ]
                 },
                 "units": {
-                "type": ["string", "null"]
+                  "type": [
+                    "string",
+                    "null"
+                  ]
                 },
                 "value_interpretation": {
                   "enum": [
                     "exact",
                     "minimum",
                     "maximum",
+                    "above_ambient",
                     "range",
                     "formula",
                     "tiered",
@@ -372,7 +495,15 @@
                   "type": "null"
                 },
                 "value_interpretation": {
-                  "type": "null"
+                  "anyOf": [
+                    {
+                      "type": "null"
+                    },
+                    {
+                      "const": "formula",
+                      "description": "Formula rows (rule references external lookup with no extractable number) may use formula even with value_category=qualitative."
+                    }
+                  ]
                 }
               }
             }

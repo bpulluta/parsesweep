@@ -43,9 +43,11 @@ extraction:
   #                                        # Set == max_context for zero-regression
   #                                        # targeting (only docs that would be
   #                                        # truncated get page-targeted).
-  #     max_selected_pages: 30             # default: 30
-  #     keywords: [term1, term2]           # heuristic pre-filter; trims LLM candidates
-  #     save_discovered: true              # write discovered_page_ranges.csv for review
+  #       max_selected_pages: 30             # default: 30 (PDFs only)
+  #       keywords: [term1, term2]           # heuristic pre-filter; trims LLM candidates
+  #       save_discovered: true              # PDFs: write discovered_page_ranges.csv;
+  #                                          # HTML/DOCX/TXT: write .<stem>.section_target.txt
+  #                                          # sidecar next to each targeted source doc
 
 # ─── COMPILATION ─────────────────────────────────────────────────────────────
 compilation:

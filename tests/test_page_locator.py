@@ -250,3 +250,60 @@ class TestProcessIntegration:
             config={"enabled": True},  # no section_description
         )
         assert page_range_map == {}
+
+
+class TestNonPdfGuard:
+    def test_locate_on_non_pdf_returns_none(self, tmp_path):
+        """PageLocator.locate() on a non-PDF path returns None without raising."""
+        html = tmp_path / "doc.html"
+        html.write_text("<html><body>irrelevant content</body></html>")
+        loc = PageLocator("rate schedule charges")
+        # Pass an empty pages list to avoid pymupdf I/O; locate() returns None early.
+        result = loc.locate(html, pages=[])
+        assert result is None
+
+    def test_apply_page_targeting_skips_non_pdf(self, tmp_path, monkeypatch):
+        """Non-PDF files in doc_files are skipped; no range added to map."""
+        from psweep.cli import commands
+
+        html = tmp_path / "doc.html"
+        html.write_text("<html></html>")
+
+        monkeypatch.setattr(
+            "psweep.extraction.page_locator.PageLocator.locate",
+            lambda self, doc, pages=None: (1, 5),
+        )
+
+        page_range_map: dict = {}
+        commands._apply_page_targeting(
+            doc_files=[html],
+            page_range_map=page_range_map,
+            config={"enabled": True, "section_description": "rate schedules"},
+        )
+        assert html not in page_range_map
+
+    def test_llm_failure_in_page_locator_emits_no_error_log(
+        self, tmp_path, monkeypatch, caplog
+    ):
+        """When page_locator's LLM call fails, no ERROR-level entry is emitted."""
+        import logging
+        from psweep.extraction.page_locator import PageLocator
+
+        pdf = tmp_path / "doc.pdf"
+        pdf.write_bytes(b"%PDF-1.4 fake")
+
+        class _FailClient:
+            def extract(self, **_kwargs):
+                from psweep.exceptions import ExtractionError
+                raise ExtractionError("simulated empty response")
+
+        loc = PageLocator("rate schedule charges")
+        monkeypatch.setattr(loc, "_ensure_client", lambda: _FailClient())
+
+        pages = _pages_with_section({2, 3}, total=10)
+        with caplog.at_level(logging.DEBUG):
+            result = loc.locate(pdf, pages=pages)
+
+        assert result is None
+        error_records = [r for r in caplog.records if r.levelno >= logging.ERROR]
+        assert not error_records, f"Unexpected ERROR logs: {[r.message for r in error_records]}"

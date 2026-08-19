@@ -70,7 +70,56 @@ _LOCATE_SCHEMA: dict[str, Any] = {
 }
 
 
-class PageLocator:
+class _BaseLocator:
+    """Shared infrastructure for LLM-assisted document section locators."""
+
+    def __init__(
+        self,
+        section_description: str,
+        *,
+        model: str | None = None,
+        models: dict[str, str] | None = None,
+        default_model: str | None = None,
+        trigger_chars: int = DEFAULT_PAGE_TRIGGER_CHARS,
+        keywords: list[str] | None = None,
+        snippet_chars: int = 600,
+    ) -> None:
+        self._description = section_description
+        self._model = model
+        self._models = models
+        self._default_model = default_model
+        self.trigger_chars = int(trigger_chars)
+        self._snippet_chars = max(120, int(snippet_chars))
+        self._keywords = [
+            k.lower() for k in (keywords or self._derive_keywords())
+        ]
+        self._client: Any = None
+
+    def _derive_keywords(self) -> list[str]:
+        """Pull content words from the section description as default keywords."""
+        words = re.findall(r"[a-zA-Z][a-zA-Z/]{2,}", self._description.lower())
+        seen: list[str] = []
+        for word in words:
+            if word not in _STOPWORDS and word not in seen:
+                seen.append(word)
+        return seen
+
+    def _ensure_client(self) -> Any:
+        if self._client is None:
+            from .llm_factory import build_llm_client
+
+            self._client = build_llm_client(
+                self._model,
+                models=self._models,
+                default_model=self._default_model,
+            )
+        return self._client
+
+    def _section_hash(self) -> str:
+        return hashlib.sha256(self._description.encode("utf-8")).hexdigest()[:12]
+
+
+class PageLocator(_BaseLocator):
     """Find the page range holding a described section in a large PDF."""
 
     def __init__(
@@ -86,29 +135,19 @@ class PageLocator:
         context_pages: int = 1,
         snippet_chars: int = 600,
     ) -> None:
-        self._description = section_description
-        self._model = model
-        self._models = models
-        self._default_model = default_model
-        self.trigger_chars = int(trigger_chars)
+        super().__init__(
+            section_description,
+            model=model,
+            models=models,
+            default_model=default_model,
+            trigger_chars=trigger_chars,
+            keywords=keywords,
+            snippet_chars=snippet_chars,
+        )
         self._max_pages = max(1, int(max_selected_pages))
         self._context = max(0, int(context_pages))
-        self._snippet_chars = max(120, int(snippet_chars))
-        self._keywords = [
-            k.lower() for k in (keywords or self._derive_keywords())
-        ]
-        self._client: Any = None
 
     # -- keyword heuristics ------------------------------------------------
-
-    def _derive_keywords(self) -> list[str]:
-        """Pull content words from the section description as default keywords."""
-        words = re.findall(r"[a-zA-Z][a-zA-Z/]{2,}", self._description.lower())
-        seen: list[str] = []
-        for word in words:
-            if word not in _STOPWORDS and word not in seen:
-                seen.append(word)
-        return seen
 
     def _score_page(self, text: str) -> int:
         low = text.lower()
@@ -130,19 +169,6 @@ class PageLocator:
         return sorted(keep)
 
     # -- LLM confirmation --------------------------------------------------
-
-    def _ensure_client(self) -> Any:
-        if self._client is None:
-            # Shared model-tiering resolver — same knobs as every other LLM
-            # stage; honors the ``models:`` block across all providers.
-            from .llm_factory import build_llm_client
-
-            self._client = build_llm_client(
-                self._model,
-                models=self._models,
-                default_model=self._default_model,
-            )
-        return self._client
 
     def _confirm_with_llm(
         self, pages: list[str], candidates: list[int]
@@ -168,6 +194,7 @@ class PageLocator:
                 schema=_LOCATE_SCHEMA,
                 system_prompt=_LOCATE_SYSTEM,
                 user_prompt=user_prompt,
+                suppress_errors=True,
             )
         except Exception as exc:  # noqa: BLE001 - fall back to no targeting
             logger.debug(f"Page locator LLM call failed: {exc}")
@@ -194,9 +221,6 @@ class PageLocator:
         return (start, end)
 
     # -- cache -------------------------------------------------------------
-
-    def _section_hash(self) -> str:
-        return hashlib.sha256(self._description.encode("utf-8")).hexdigest()[:12]
 
     @staticmethod
     def _cache_path(pdf_path: Path) -> Path:

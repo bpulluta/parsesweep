@@ -252,15 +252,79 @@ class SchemaMetadata:
         output = self.metadata.get("compilation", {}).get("output", {})
         return output.get("exclude_fields", [])
 
+    def _schema_item_properties(self) -> List[str]:
+        """Return field names from the main data array's item properties, in declaration order."""
+        main_key = self.get_main_data_array()
+        props = self.schema.get("properties", {})
+        item_schema = props.get(main_key, {}).get("items", {})
+        return list(item_schema.get("properties", {}).keys())
+
+    def _schema_context_properties(self) -> List[str]:
+        """Return field names from all context objects (e.g. jurisdiction), in declaration order."""
+        props = self.schema.get("properties", {})
+        fields: List[str] = []
+        for obj_key in self.get_context_objects():
+            obj_schema = props.get(obj_key, {})
+            fields.extend(obj_schema.get("properties", {}).keys())
+        return fields
+
+    @staticmethod
+    def _to_snake_case(name: str) -> str:
+        """Convert a CamelCase or Title Case column header to snake_case."""
+        import re
+        s = re.sub(r"([A-Z]+)([A-Z][a-z])", r"\1_\2", name)
+        s = re.sub(r"([a-z\d])([A-Z])", r"\1_\2", s)
+        return s.replace(" ", "_").lower()
+
     def get_column_renames(self) -> Dict[str, str]:
-        """Get output column rename mapping."""
+        """Return column rename mapping.
+
+        Merges two sources in priority order (highest last):
+        1. Auto-derived snake_case renames for every item field AND context
+           object field in the schema (Title Case → snake_case).
+        2. Explicit overrides from compilation.output.column_renames in config/schema.
+        This ensures new schema fields are always renamed correctly without
+        manual config updates.
+        """
+        auto: Dict[str, str] = {}
+        for field in self._schema_item_properties() + self._schema_context_properties():
+            snake = self._to_snake_case(field)
+            if snake != field:
+                auto[field] = snake
+            title = field.replace("_", " ").title()
+            if title != field:
+                auto[title] = snake
+            # Handle Title_Underscore form produced by the flattener (e.g. Jurisdiction_Type)
+            title_us = "_".join(w.capitalize() for w in field.split("_"))
+            if title_us != field:
+                auto[title_us] = snake
+
         output = self.metadata.get("compilation", {}).get("output", {})
-        return output.get("column_renames", {})
+        explicit = output.get("column_renames", {})
+        auto.update(explicit)
+        return auto
 
     def get_column_order(self) -> List[str]:
-        """Get preferred column order for output."""
+        """Return column ordering.
+
+        If compilation.output.column_order is set, it acts as a *priority prefix*:
+        those columns appear first (in the listed order), then all remaining
+        schema item fields appear in their declaration order, then context fields.
+        If column_order is empty/absent, item fields then context fields are used.
+        """
         output = self.metadata.get("compilation", {}).get("output", {})
-        return output.get("column_order", [])
+        priority = output.get("column_order", [])
+
+        schema_fields = [self._to_snake_case(f) for f in self._schema_item_properties()]
+        context_fields = [self._to_snake_case(f) for f in self._schema_context_properties()]
+
+        if not priority:
+            return schema_fields + context_fields
+
+        priority_set = set(priority)
+        remainder_items = [f for f in schema_fields if f not in priority_set]
+        remainder_ctx = [f for f in context_fields if f not in priority_set]
+        return priority + remainder_items + remainder_ctx
 
     def get_freeze_columns(self) -> int:
         """Get number of columns to freeze in Excel output."""
