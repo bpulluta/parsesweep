@@ -198,6 +198,7 @@ class LLMClient:
         schema: Dict[str, Any],
         system_prompt: str = None,
         user_prompt: str = None,
+        suppress_errors: bool = False,
     ) -> Dict[str, Any]:
         """
         Extract structured data using LLM.
@@ -320,7 +321,7 @@ class LLMClient:
         )
         content = self._clean_json_content(raw_content)
         if not content:
-            logger.error(
+            (logger.debug if suppress_errors else logger.error)(
                 f"Empty response from API (model={self.model}): raw={repr(raw_content)}"
             )
             raise ExtractionError(
@@ -331,13 +332,27 @@ class LLMClient:
         try:
             data = json.loads(content)
         except json.JSONDecodeError as e:
-            logger.error(f"Model returned non-JSON content: {e}")
-            logger.debug(f"Response content (after cleaning): {repr(content[:500])}")
-            logger.debug(f"Raw content: {repr((raw_content or '')[:500])}")
-            raise ExtractionError(
-                f"Model returned non-JSON content "
-                f"(provider={self.provider}, model={self.model}): {e}"
-            ) from e
+            # "Extra data" means valid JSON followed by trailing prose/content.
+            # raw_decode() parses the first complete JSON object and stops,
+            # making it robust to models that append explanatory text after JSON.
+            data = None
+            if "Extra data" in str(e):
+                try:
+                    data, _ = json.JSONDecoder().raw_decode(content)
+                    logger.debug(
+                        f"Recovered from trailing content after JSON "
+                        f"(model={self.model}, extra_at={e.pos})"
+                    )
+                except json.JSONDecodeError:
+                    pass
+            if data is None:
+                (logger.debug if suppress_errors else logger.error)(f"Model returned non-JSON content: {e}")
+                logger.debug(f"Response content (after cleaning): {repr(content[:500])}")
+                logger.debug(f"Raw content: {repr((raw_content or '')[:500])}")
+                raise ExtractionError(
+                    f"Model returned non-JSON content "
+                    f"(provider={self.provider}, model={self.model}): {e}"
+                ) from e
 
         # ── Cost tracking ─────────────────────────────────────────────────────
         try:
