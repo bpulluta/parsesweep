@@ -136,3 +136,55 @@ def test_forbidden_download_retries_via_browser(tmp_path, monkeypatch):
     assert dummy_browser.closed is True
     assert download_record["status"] == "downloaded"
     assert (documents_dir / download_record["relative_path"]).exists()
+
+
+def test_promote_curated_keeps_existing_when_run_curated_empty(tmp_path):
+    domain_dir = tmp_path / "discovered" / "guardrail_test"
+    consolidated_partition = domain_dir / "curated" / "host" / "path"
+    consolidated_partition.mkdir(parents=True, exist_ok=True)
+    prior_file = consolidated_partition / "existing.pdf"
+    prior_file.write_text("existing", encoding="utf-8")
+
+    run_curated_dir = (
+        domain_dir / "runs" / "run-1" / "curated"
+    )
+    run_curated_dir.mkdir(parents=True, exist_ok=True)
+
+    DiscoveryEngine._promote_to_consolidated_curated(
+        run_curated_dir=run_curated_dir,
+        domain_dir=domain_dir,
+        attempted_partitions={Path("host/path")},
+    )
+
+    assert prior_file.exists()
+    assert prior_file.read_text(encoding="utf-8") == "existing"
+    assert not list(domain_dir.glob(".curated-*"))
+
+
+def test_promote_curated_swaps_attempted_and_clears_stale_on_fresh(tmp_path):
+    domain_dir = tmp_path / "discovered" / "guardrail_test"
+    current_partition = domain_dir / "curated" / "host" / "path"
+    current_partition.mkdir(parents=True, exist_ok=True)
+    (current_partition / "old.pdf").write_text("old", encoding="utf-8")
+
+    stale_partition = domain_dir / "curated" / "other" / "stale"
+    stale_partition.mkdir(parents=True, exist_ok=True)
+    (stale_partition / "stale.pdf").write_text("stale", encoding="utf-8")
+
+    run_curated_dir = (
+        domain_dir / "runs" / "run-2" / "curated"
+    )
+    new_partition = run_curated_dir / "host" / "path"
+    new_partition.mkdir(parents=True, exist_ok=True)
+    (new_partition / "new.pdf").write_text("new", encoding="utf-8")
+
+    DiscoveryEngine._promote_to_consolidated_curated(
+        run_curated_dir=run_curated_dir,
+        domain_dir=domain_dir,
+        attempted_partitions={Path("host/path"), Path("other/stale")},
+    )
+
+    assert (domain_dir / "curated" / "host" / "path" / "new.pdf").exists()
+    assert not (domain_dir / "curated" / "host" / "path" / "old.pdf").exists()
+    assert not (domain_dir / "curated" / "other" / "stale").exists()
+    assert not list(domain_dir.glob(".curated-*"))

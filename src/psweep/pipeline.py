@@ -74,6 +74,7 @@ class CompilationResult:
     output_files: list[Path]
     total_rows: int
     deduplicated: bool
+    warnings: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -130,10 +131,10 @@ def build_run_stage_commands(
 ) -> list[tuple[str, list[str]]]:
     """Build the subprocess commands used to execute a run config pipeline.
 
-    ``fresh`` propagates a "start fresh" signal to both the discover stage
-    (``--fresh``: ignore the checkpoint and refresh the search cache) and the
-    extract stage (``--fresh``: re-extract already-processed documents), giving
-    ``run --fresh`` a single "start fresh" behavior across stages.
+    ``fresh`` propagates a "start fresh" signal to discover (ignore the
+    checkpoint and refresh the search cache), extract (re-extract already-
+    processed documents), and compile (clear compiled outputs before writing),
+    giving ``run --fresh`` a fully clean pipeline across all stages.
 
     When the config enables multi-model QA/QC, an explicit ``validate`` stage
     is appended after extraction.
@@ -170,10 +171,13 @@ def build_run_stage_commands(
                 [*base_cmd, "validate", "--config", str(cfg_path), *extra_flags],
             )
         )
+    compile_flags = [*extra_flags]
+    if fresh:
+        compile_flags.append("--fresh")
     stage_cmds.append(
         (
             "compile",
-            [*base_cmd, "compile", "--config", str(cfg_path), *extra_flags],
+            [*base_cmd, "compile", "--config", str(cfg_path), *compile_flags],
         )
     )
     return stage_cmds
@@ -420,6 +424,7 @@ def compile_extractions(
     CompilationResult
     """
     from psweep.compilation.data_compiler import DataCompiler
+    from psweep.compilation.input_provenance import analyze_compile_input_provenance
     from psweep.utils.schema_metadata import SchemaMetadata
 
     ext_dir = Path(extraction_dir)
@@ -461,6 +466,7 @@ def compile_extractions(
         verbose=False,
         debug=False,
     )
+    provenance_warnings = analyze_compile_input_provenance(ext_dir)
     df, _schema_info = compiler.compile_from_directory(
         ext_dir,
         apply_deduplication=not dry_run,
@@ -497,6 +503,7 @@ def compile_extractions(
         output_files=output_files,
         total_rows=max(rows, 0),
         deduplicated=not dry_run,
+        warnings=provenance_warnings,
     )
 
 
@@ -523,7 +530,8 @@ def run_pipeline(
     skip_extract:
         If True, skip the extraction stage (compile from existing JSON).
     fresh:
-        If True, re-extract already-processed documents.
+        If True, re-run discovery without checkpoint reuse, re-extract already-
+        processed documents, and clear compiled outputs before recompiling.
 
     Returns
     -------

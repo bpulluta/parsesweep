@@ -26,6 +26,16 @@ from .validators import ContentSampler
 
 REVIEW_CACHE_DIRNAME = ".review"
 
+# Field name constants — use these everywhere instead of string literals so a
+# typo is a NameError at import time rather than a silent runtime no-op.
+FIELD_REVIEW_SELECTED = "review_selected"
+FIELD_REVIEW_IS_PRIMARY = "review_is_primary"
+FIELD_REVIEW_RELEVANCE = "review_relevance"
+FIELD_REVIEW_REDUNDANT = "review_redundant"
+FIELD_REVIEW_DOC_KIND = "review_doc_kind"
+FIELD_REVIEW_REASON = "review_reason"
+FIELD_REVIEW_CACHED = "review_cached"
+
 _REVIEW_SYSTEM = (
     "You review candidate documents and decide which one best matches the "
     "TARGET DOCUMENT description the caller provides. Judge each document "
@@ -252,6 +262,48 @@ class DocumentReviewer:
             for field in self._dedup_key_fields
         ]
         return "\x1f".join(parts)
+
+    @staticmethod
+    def _file_sha256(path: str) -> str | None:
+        """Return SHA-256 hex digest for a file, or None if unreadable."""
+        try:
+            h = hashlib.sha256()
+            with open(path, "rb") as fh:
+                for chunk in iter(lambda: fh.read(65536), b""):
+                    h.update(chunk)
+            return h.hexdigest()
+        except OSError:
+            return None
+
+    @staticmethod
+    def _find_byte_identical_duplicates(primaries: list[dict[str, Any]]) -> set[int]:
+        """Return indices of byte-identical files, keeping the highest-ranked one.
+
+        Two curated files that hash to the same SHA-256 are the same content
+        (e.g. http vs https mirror, www vs non-www). Only one needs extraction.
+        Files whose path is unreadable are skipped (never marked redundant).
+        """
+        hash_groups: dict[str, list[int]] = {}
+        for idx, record in enumerate(primaries):
+            digest = DocumentReviewer._file_sha256(str(record.get("path", "")))
+            if digest is None:
+                continue
+            hash_groups.setdefault(digest, []).append(idx)
+
+        redundant: set[int] = set()
+        for indices in hash_groups.values():
+            if len(indices) < 2:
+                continue
+            keep = max(
+                indices,
+                key=lambda i: (
+                    float(primaries[i].get("review_relevance") or 0.0),
+                    bool(primaries[i].get("review_is_primary")),
+                    str(primaries[i].get("path") or ""),
+                ),
+            )
+            redundant.update(i for i in indices if i != keep)
+        return redundant
 
     def _find_structural_duplicates(
         self, primaries: list[dict[str, Any]]
@@ -542,17 +594,42 @@ class DocumentReviewer:
             # Comparative dedup: identify redundant docs among the confirmed
             # primaries BEFORE applying keep_top, so keep_top reflects the
             # desired number of genuinely distinct/complementary documents.
-            redundant_indices: set[int] = set()
+            # Each pass rebuilds `survivors` from the latest redundancy state so
+            # disjoint keep decisions across passes cannot zero-out the set.
             if self._deduplicate_redundant:
                 primaries = [
-                    r for r in ranked if bool(r.get("review_is_primary"))
+                    r for r in ranked if bool(r.get(FIELD_REVIEW_IS_PRIMARY))
                 ]
                 if len(primaries) >= 2:
-                    if self._dedup_key_fields:
-                        structural_redundant = self._find_structural_duplicates(primaries)
+                    # Pass 1: byte-identical files (mirrors, http/https variants).
+                    byte_redundant = self._find_byte_identical_duplicates(primaries)
+                    if byte_redundant:
+                        redundant_path_set = {
+                            str(primaries[i].get("path"))
+                            for i in byte_redundant
+                        }
+                        notes.append(
+                            f"Dedup ({target_key}): excluded "
+                            f"{len(redundant_path_set)} byte-identical duplicate(s)."
+                        )
+                        for r in ranked:
+                            if str(r.get("path")) in redundant_path_set:
+                                r[FIELD_REVIEW_REDUNDANT] = True
+
+                    # Rebuild survivors after pass 1 so pass 2 only sees
+                    # non-redundant primaries (fixes: disjoint keep decisions).
+                    survivors = [
+                        r for r in ranked
+                        if bool(r.get(FIELD_REVIEW_IS_PRIMARY))
+                        and not bool(r.get(FIELD_REVIEW_REDUNDANT))
+                    ]
+
+                    # Pass 2: structural key duplicates (configurable fields).
+                    if len(survivors) >= 2 and self._dedup_key_fields:
+                        structural_redundant = self._find_structural_duplicates(survivors)
                         if structural_redundant:
                             redundant_path_set = {
-                                str(primaries[i].get("path"))
+                                str(survivors[i].get("path"))
                                 for i in structural_redundant
                             }
                             notes.append(
@@ -561,39 +638,56 @@ class DocumentReviewer:
                             )
                             for r in ranked:
                                 if str(r.get("path")) in redundant_path_set:
-                                    r["review_redundant"] = True
+                                    r[FIELD_REVIEW_REDUNDANT] = True
 
-                    primaries = [
-                        r
-                        for r in ranked
-                        if bool(r.get("review_is_primary"))
-                        and not bool(r.get("review_redundant"))
+                    # Rebuild survivors after pass 2 for the LLM pass.
+                    survivors = [
+                        r for r in ranked
+                        if bool(r.get(FIELD_REVIEW_IS_PRIMARY))
+                        and not bool(r.get(FIELD_REVIEW_REDUNDANT))
                     ]
-                if len(primaries) >= 2:
-                    redundant_path_set = {
-                        str(primaries[i].get("path"))
-                        for i in self._find_redundant_docs(primaries, target_context)
-                    }
-                    if redundant_path_set:
-                        notes.append(
-                            f"Dedup ({target_key}): excluded "
-                            f"{len(redundant_path_set)} redundant doc(s)."
-                        )
-                    # Mark redundant records so keep_top skips them.
-                    for r in ranked:
-                        if str(r.get("path")) in redundant_path_set:
-                            r["review_redundant"] = True
+                    if len(survivors) >= 2:
+                        redundant_path_set = {
+                            str(survivors[i].get("path"))
+                            for i in self._find_redundant_docs(survivors, target_context)
+                        }
+                        if redundant_path_set:
+                            notes.append(
+                                f"Dedup ({target_key}): excluded "
+                                f"{len(redundant_path_set)} redundant doc(s)."
+                            )
+                            for r in ranked:
+                                if str(r.get("path")) in redundant_path_set:
+                                    r[FIELD_REVIEW_REDUNDANT] = True
+
+                # Safety net: if every primary was marked redundant (disjoint
+                # keep decisions across passes), un-mark the highest-ranked one
+                # so keep_top always selects at least 1 primary per target.
+                final_primaries = [
+                    r for r in ranked if bool(r.get(FIELD_REVIEW_IS_PRIMARY))
+                ]
+                live_primaries = [
+                    r for r in final_primaries
+                    if not bool(r.get(FIELD_REVIEW_REDUNDANT))
+                ]
+                if final_primaries and not live_primaries:
+                    best = final_primaries[0]  # ranked is already sorted by relevance
+                    best.pop(FIELD_REVIEW_REDUNDANT, None)
+                    notes.append(
+                        f"Dedup ({target_key}): safety-net un-marked 1 file "
+                        f"— all primaries were marked redundant."
+                    )
 
             non_redundant_rank = 0
             for record in ranked:
-                is_redundant = bool(record.get("review_redundant"))
+                is_redundant = bool(record.get(FIELD_REVIEW_REDUNDANT))
                 if is_redundant:
-                    record["review_selected"] = False
+                    record[FIELD_REVIEW_SELECTED] = False
                 else:
                     keep = non_redundant_rank < self._keep_top and bool(
-                        record.get("review_is_primary")
+                        record.get(FIELD_REVIEW_IS_PRIMARY)
                     )
-                    record["review_selected"] = keep
+                    record[FIELD_REVIEW_SELECTED] = keep
                     if keep:
                         selected += 1
                     non_redundant_rank += 1

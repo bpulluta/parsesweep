@@ -13,8 +13,11 @@ def test_extract_help_exposes_fresh_flag() -> None:
     runner = CliRunner()
     result = runner.invoke(cli, ["extract", "--help"])
     assert result.exit_code == 0
-    assert "--fresh" in result.output
-    assert "Re-extract all files" in result.output
+    flat = " ".join(result.output.split())
+    assert "--fresh" in flat
+    assert "Re-extract documents that already have output JSON" in flat
+    assert ".text_cache" in flat
+    assert ".pages" in flat
     # Legacy toggle must be gone.
     assert "--reprocess" not in result.output
     assert "--skip-existing" not in result.output

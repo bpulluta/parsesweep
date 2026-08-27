@@ -136,8 +136,9 @@ def run(
         typer.Option(
             "--fresh",
             help="Ignore all previous work and start fresh — re-run every "
-            "discovery target (ignoring the checkpoint and search cache) and "
-            "re-extract every document.",
+            "discovery target (ignoring the checkpoint and search cache), "
+            "re-extract every document, and clear compiled outputs before "
+            "recompiling.",
         ),
     ] = False,
     skip_discover: Annotated[
@@ -250,7 +251,7 @@ def run(
     if extracted_count and not fresh:
         plan_rows["Extracted"] = f"{extracted_count} docs (skip existing)"
     if fresh:
-        plan_rows["Mode"] = "REPROCESS (ignore checkpoint, cache & extractions)"
+        plan_rows["Mode"] = "REPROCESS (ignore checkpoint/search cache; re-extract docs; clear compiled output)"
 
     stages_list: list[str] = []
     if not skip_discover:

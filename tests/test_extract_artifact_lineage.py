@@ -968,6 +968,8 @@ def test_extract_and_save_result_persists_structured_processing_errors(tmp_path)
     saved = json.loads((tmp_path / 'example.json').read_text(encoding='utf-8'))
     assert saved['quality']['errors'][0]['category'] == 'document_processing'
     assert saved['quality']['errors'][0]['code'] == 'document_extraction_failed'
+    assert saved['lineage']['artifact_id'] == 'artifact://runtime/deterministic1234'
+    assert saved['lineage']['profile_id'] == 'default'
 
 
 def test_generate_run_id_is_deterministic_for_same_inputs() -> None:

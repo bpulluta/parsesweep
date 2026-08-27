@@ -92,6 +92,7 @@ def test_build_run_manifest_summarizes_failed_error_records() -> None:
     assert manifest["errors"]["total_errors"] == 1
     assert manifest["errors"]["by_category"] == {"document_processing": 1}
     assert manifest["errors"]["by_code"] == {"document_extraction_failed": 1}
+    assert manifest["lineage"]["artifact_id"] == "artifact://runtime/deterministic1234"
 
 
 def test_write_run_manifest_persists_expected_file(tmp_path) -> None:

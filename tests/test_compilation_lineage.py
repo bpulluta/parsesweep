@@ -529,3 +529,56 @@ def test_state_normalization_can_be_disabled_via_config(tmp_path) -> None:
     )
     df, _ = compiler.compile_from_directory(extracted_dir)
     assert df.iloc[0]["State"] == "Utah"
+
+
+def test_preview_deduplication_keeps_distinct_numeric_keys_with_missing_values(
+    tmp_path,
+) -> None:
+    schema_path = tmp_path / "schema.json"
+    _write_json(
+        schema_path,
+        {
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "$metadata": {
+                "domain": "Test",
+                "version": "1.0.0",
+                "extraction": {
+                    "main_data_array": "items",
+                    "context_objects": ["metadata"],
+                    "identifier_fields": ["metadata.id"],
+                },
+                "identity": {
+                    "deduplication": {
+                        "key_fields": ["distance_measure"],
+                        "ignore_fields": [],
+                    }
+                },
+            },
+            "type": "object",
+            "properties": {
+                "metadata": {"type": "object"},
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "distance_measure": {"type": "number"},
+                        },
+                    },
+                },
+            },
+        },
+    )
+    deduplicator = Deduplicator(schema_metadata=SchemaMetadata(schema_path))
+
+    df = pd.DataFrame(
+        [
+            {"Distance Measure": 50, "Run Id": "run://1"},
+            {"Distance Measure": 100, "Run Id": "run://2"},
+            {"Distance Measure": "", "Run Id": "run://3"},
+        ]
+    )
+
+    preview = deduplicator.preview_deduplication(df)
+    assert preview["duplicates_removed"] == 0
+    assert preview["suspicious_groups_count"] == 0
