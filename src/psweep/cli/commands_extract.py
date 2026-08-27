@@ -691,7 +691,7 @@ def _extract_one_document(
     "config_path",
     type=click.Path(exists=True),
     default=None,
-    help="Domain config file (RECOMMENDED — includes schema, page targeting, dedup)",
+    help="Domain run config file (RECOMMENDED — extraction input, schema, model, and output paths)",
 )
 @click.option(
     "--show-effective-config",
@@ -859,8 +859,8 @@ def extract(
     --------
     ::
 
-        psweep extract docs/ --schema schemas/my_schema.json
         psweep extract --config config/my_domain/run.yaml --fresh
+        psweep extract docs/ --schema schemas/my_schema.json
         psweep extract docs/ --schema s.json --model gpt-4o --provider azure
     """
     from psweep.cli.commands import (
@@ -980,16 +980,49 @@ def extract(
     timeout_seconds = resolved_inputs.get("timeout_seconds")
     live_dashboard = resolved_inputs.get("live_dashboard", live_dashboard)
 
+    if fresh:
+        import shutil
+
+        # Clear resolved extraction output up-front, even if input validation
+        # fails later (for example: no curated docs selected). This prevents a
+        # follow-up compile from silently reusing stale extracted JSONs.
+        fresh_output_dir = Path(output) if output else None
+        if fresh_output_dir and fresh_output_dir.exists():
+            cleared_count = len([p for p in fresh_output_dir.rglob("*") if p.is_file()])
+            shutil.rmtree(fresh_output_dir, ignore_errors=True)
+            if cleared_count > 0 and not view.is_quiet:
+                view.status(
+                    "info",
+                    f"--fresh: cleared {cleared_count} file(s) from {fresh_output_dir.as_posix()}",
+                )
+
     if not path.exists():
-        print_error(
-            f"Path not found: {path}",
-            "The file or directory you specified doesn't exist.",
-            [
-                "Check the path spelling and try again",
-                f"Current directory: {Path.cwd()}",
-                "Use 'ls' or 'dir' to see available files and folders",
-            ],
+        resolved_parts = list(path.parts)
+        latest_curated_hint = (
+            len(resolved_parts) >= 3
+            and resolved_parts[-2:] == ["latest", "curated"]
+            and "discovered" in resolved_parts
         )
+        if latest_curated_hint:
+            print_error(
+                f"Path not found: {path}",
+                "Latest discovery curation is missing or empty for this domain.",
+                [
+                    "Run discovery first: pixi run psweep discover --config <run.yaml>",
+                    "Then rerun extract with the same --config file",
+                    "No fallback to older curated documents was used.",
+                ],
+            )
+        else:
+            print_error(
+                f"Path not found: {path}",
+                "The file or directory you specified doesn't exist.",
+                [
+                    "Check the path spelling and try again",
+                    f"Current directory: {Path.cwd()}",
+                    "Use 'ls' or 'dir' to see available files and folders",
+                ],
+            )
         sys.exit(1)
 
     config = get_config()
@@ -1289,22 +1322,7 @@ def extract(
             "Files": f"{len(doc_files)} document{'s' if len(doc_files) != 1 else ''}",
         }
 
-    # `provider` can be present-but-None when no credentials resolve a provider;
-    # guard so the banner never crashes with AttributeError on None.title().
-    provider_name = (config.llm_config.get("provider") or "unknown").title()
-    if model and resolved_inputs.get("models"):
-        from psweep.extraction.llm_factory import resolve_model_name
-
-        model_display = resolve_model_name(
-            model, models=resolved_inputs.get("models"),
-            llm_config=config.llm_config,
-        )
-    else:
-        model_display = config.llm_config.get("model", model)
-
     if not get_verbosity().is_quiet:
-        config_info["Model"] = model_display
-        config_info["Provider"] = provider_name
         if page_range_map:
             files_with_ranges = sum(
                 1 for v in page_range_map.values() if v is not None
@@ -1361,9 +1379,6 @@ def extract(
             config_info["Profile"] = runtime_artifact["lineage"]["profile_id"]
         else:
             config_info["Profile"] = profile_name
-
-    if not view.is_quiet:
-        view.config(config_info)
 
     if len(doc_files) > 10 and not view.is_quiet:
         sample_size = min(3, len(doc_files))
@@ -1447,6 +1462,12 @@ def extract(
             "Add a 'models:' block and 'model: primary' under 'extraction:' "
             "in your run config, or set AZURE_OPENAI_MODEL in your .env file."
         )
+
+    if not view.is_quiet:
+        provider_name = (provider or "unknown").title()
+        config_info["Model"] = actual_model
+        config_info["Provider"] = provider_name
+        view.config(config_info)
 
     run_id = _generate_run_id(
         schema_path=schema_path,
@@ -1707,10 +1728,15 @@ def extract(
             )
 
         view.outputs({"Extracted data": str(output_dir.absolute())})
+        compile_cmd = (
+            f"pixi run psweep compile --config {Path(config_path).as_posix()}"
+            if config_path
+            else f"pixi run psweep compile {output_dir} --schema {schema}"
+        )
         view.next_steps(
             [
                 f"Inspect a result: pixi run psweep check {output_dir}/<name>.json --show-data",
-                f"Compile into a spreadsheet: pixi run psweep compile {output_dir} --schema {schema}",
+                f"Compile into a spreadsheet: {compile_cmd}",
             ]
         )
 

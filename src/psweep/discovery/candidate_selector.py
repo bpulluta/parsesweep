@@ -3,7 +3,7 @@
 After the SerpApi seeker discovers candidates per target, this module decides
 which candidates to actually stage for download.  The two core guards are:
 
-1. **Draft filter** – exclude documents whose URL or snippet text contains
+1. **Draft filter** – exclude documents whose URL/title/snippet text contains
    signals indicating they are not the current enacted/production version
    (e.g., "draft", "proposed", "preliminary", "superseded").
 
@@ -32,7 +32,7 @@ from .urls import normalize_url_text, url_extension
 
 
 # ---------------------------------------------------------------------------
-# Default draft / stale-document signal patterns (applied to URL + reasons)
+# Default draft / stale-document signal patterns (applied to URL + title/snippet)
 # ---------------------------------------------------------------------------
 
 DEFAULT_DRAFT_PATTERNS: list[str] = [
@@ -64,7 +64,7 @@ class CandidateSelector:
     ----------
     exclude_draft:
         When ``True`` (default), candidates matching any draft pattern in
-        their URL or reason strings are excluded before recency ranking.
+        their URL/title/snippet text are excluded before recency ranking.
     draft_patterns:
         Override the default draft detection regex patterns.  Each entry is
         a case-insensitive ``re.search`` pattern string.
@@ -421,14 +421,15 @@ class CandidateSelector:
     # ------------------------------------------------------------------
 
     def _is_draft(self, candidate: DiscoveryCandidate) -> bool:
-        """Return ``True`` if the URL or any reason matches a draft pattern.
+        """Return ``True`` if candidate content matches a draft pattern.
 
         Normalises path separators and underscores to spaces before matching so
         that a word-boundary ``draft`` pattern catches ``some_draft_doc.pdf`` as
         well as ``some draft doc.pdf``.
         """
-        parts = [candidate.url or ""] + list(candidate.reasons or [])
-        combined = re.sub(r"[_\-/]", " ", " ".join(parts))
+        combined = re.sub(
+            r"[_\-/]", " ", self._candidate_artifact_text(candidate)
+        )
         return any(rx.search(combined) for rx in self._draft_re)
 
     def _take_top_with_host_cap(
@@ -462,14 +463,14 @@ class CandidateSelector:
                 return True
 
         if self._exclude_text_patterns:
-            text = self._candidate_text(candidate)
+            text = self._candidate_artifact_text(candidate)
             if any(rx.search(text) for rx in self._exclude_text_patterns):
                 return True
         return False
 
     def _is_relevant_candidate(self, candidate: DiscoveryCandidate) -> bool:
         """Return True when candidate text passes required/excluded relevance terms."""
-        text = self._candidate_text(candidate)
+        text = self._candidate_artifact_text(candidate)
         url_text = self._candidate_url_text(candidate)
 
         if self._relevance_exclude_any_terms:
@@ -506,7 +507,7 @@ class CandidateSelector:
             return True
 
         normalized_context = self._normalize_template_context(target_context)
-        text = self._candidate_identity_text(candidate)
+        text = self._candidate_artifact_text(candidate)
         text_compact = re.sub(r"[^a-z0-9]+", "", text)
 
         require_any_terms = self._resolve_templates(
@@ -595,20 +596,11 @@ class CandidateSelector:
         return terms
 
     @staticmethod
-    def _candidate_text(candidate: DiscoveryCandidate) -> str:
-        parts = [candidate.url or ""] + list(candidate.reasons or [])
-        if candidate.title:
-            parts.append(candidate.title)
-        if candidate.snippet:
-            parts.append(candidate.snippet)
-        return normalize_url_text(" ".join(parts))
+    def _candidate_artifact_text(candidate: DiscoveryCandidate) -> str:
+        """Candidate text for filtering/matching: URL + title + snippet only.
 
-    @staticmethod
-    def _candidate_identity_text(candidate: DiscoveryCandidate) -> str:
-        """Text for target-identity matching: URL + title + snippet only.
-
-        Excludes reasons (which embed the query string and would cause
-        every candidate to match the jurisdiction name).
+        Excludes ``reasons`` because seeker reasons include rendered query text,
+        which can otherwise make relevance/exclusion term gates pass trivially.
         """
         parts = [candidate.url or ""]
         if candidate.title:

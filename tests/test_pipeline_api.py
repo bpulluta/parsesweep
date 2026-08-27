@@ -8,6 +8,7 @@ from psweep.pipeline import (
     build_run_stage_commands,
     compile_extractions,
     extract_documents,
+    resolve_run_discovery_enabled,
     resolve_run_validation,
 )
 
@@ -158,7 +159,14 @@ def test_compile_extractions_writes_requested_outputs(tmp_path: Path) -> None:
 
 def test_build_run_stage_commands_preserves_flags(tmp_path: Path) -> None:
     config_path = tmp_path / "run.yaml"
-    config_path.write_text("domain: example\n", encoding="utf-8")
+    config_path.write_text(
+        "domain: example\n"
+        "discovery:\n"
+        "  targets:\n"
+        "    - label: demo\n"
+        "      url: https://example.com\n",
+        encoding="utf-8",
+    )
 
     stage_cmds = build_run_stage_commands(
         config_path,
@@ -166,6 +174,8 @@ def test_build_run_stage_commands_preserves_flags(tmp_path: Path) -> None:
         skip_discover=False,
         skip_extract=False,
         fresh=True,
+        target_limit=3,
+        retention_documents="curated",
         extra_flags=("-q",),
     )
 
@@ -180,6 +190,10 @@ def test_build_run_stage_commands_preserves_flags(tmp_path: Path) -> None:
                 "--config",
                 str(config_path),
                 "-q",
+                "--target-limit",
+                "3",
+                "--retention-documents",
+                "curated",
                 "--fresh",
             ],
         ),
@@ -216,6 +230,10 @@ def test_build_run_stage_commands_wires_validation(tmp_path: Path) -> None:
     config_path = tmp_path / "example.yaml"
     config_path.write_text(
         "domain: example\n"
+        "discovery:\n"
+        "  targets:\n"
+        "    - label: demo\n"
+        "      url: https://example.com\n"
         "extraction:\n"
         "  schema: schemas/example.json\n"
         "  output_dir: extracted/example\n"
@@ -241,6 +259,131 @@ def test_build_run_stage_commands_wires_validation(tmp_path: Path) -> None:
     assert validate_cmd[validate_cmd.index("--config") + 1] == str(config_path)
 
 
+def test_build_run_stage_commands_propagates_fresh_to_validation(
+    tmp_path: Path,
+) -> None:
+    config_path = tmp_path / "example.yaml"
+    config_path.write_text(
+        "domain: example\n"
+        "extraction:\n"
+        "  schema: schemas/example.json\n"
+        "validation:\n"
+        "  models: [primary, secondary]\n",
+        encoding="utf-8",
+    )
+
+    stage_cmds = build_run_stage_commands(
+        config_path,
+        base_cmd=["pixi", "run", "psweep"],
+        fresh=True,
+    )
+    validate_cmd = dict(stage_cmds)["validate"]
+    assert "--fresh" in validate_cmd
+
+
+def test_build_run_stage_commands_applies_target_limit_only_to_discover(
+    tmp_path: Path,
+) -> None:
+    config_path = tmp_path / "example.yaml"
+    config_path.write_text(
+        "domain: example\n"
+        "discovery:\n"
+        "  targets:\n"
+        "    - label: demo\n"
+        "      query: test\n",
+        encoding="utf-8",
+    )
+
+    stage_cmds = build_run_stage_commands(
+        config_path,
+        base_cmd=["pixi", "run", "psweep"],
+        target_limit=2,
+    )
+    cmd_map = dict(stage_cmds)
+    assert "--target-limit" in cmd_map["discover"]
+    assert cmd_map["discover"][cmd_map["discover"].index("--target-limit") + 1] == "2"
+    assert "--target-limit" not in cmd_map["extract"]
+    assert "--target-limit" not in cmd_map["compile"]
+
+
+def test_build_run_stage_commands_applies_retention_only_to_discover(
+    tmp_path: Path,
+) -> None:
+    config_path = tmp_path / "example.yaml"
+    config_path.write_text(
+        "domain: example\n"
+        "discovery:\n"
+        "  targets:\n"
+        "    - label: demo\n"
+        "      query: test\n",
+        encoding="utf-8",
+    )
+
+    stage_cmds = build_run_stage_commands(
+        config_path,
+        base_cmd=["pixi", "run", "psweep"],
+        retention_documents="none",
+    )
+    cmd_map = dict(stage_cmds)
+    assert "--retention-documents" in cmd_map["discover"]
+    assert (
+        cmd_map["discover"][cmd_map["discover"].index("--retention-documents") + 1]
+        == "none"
+    )
+    assert "--retention-documents" not in cmd_map["extract"]
+    assert "--retention-documents" not in cmd_map["compile"]
+
+
+def test_build_run_stage_commands_uses_config_extract_input_without_target_limit(
+    tmp_path: Path,
+) -> None:
+    config_path = tmp_path / "example.yaml"
+    config_path.write_text(
+        "domain: example\n"
+        "discovery:\n"
+        "  targets:\n"
+        "    - label: demo\n"
+        "      query: test\n",
+        encoding="utf-8",
+    )
+
+    stage_cmds = build_run_stage_commands(
+        config_path,
+        base_cmd=["pixi", "run", "psweep"],
+    )
+    extract_cmd = dict(stage_cmds)["extract"]
+    assert extract_cmd[:5] == ["pixi", "run", "psweep", "extract", "--config"]
+
+
+def test_build_run_stage_commands_wires_extract_input_path_when_provided(
+    tmp_path: Path,
+) -> None:
+    config_path = tmp_path / "example.yaml"
+    config_path.write_text(
+        "domain: example\n"
+        "discovery:\n"
+        "  targets:\n"
+        "    - label: demo\n"
+        "      query: test\n",
+        encoding="utf-8",
+    )
+
+    stage_cmds = build_run_stage_commands(
+        config_path,
+        base_cmd=["pixi", "run", "psweep"],
+        extract_input_path="discovered/example/latest/curated",
+    )
+    extract_cmd = dict(stage_cmds)["extract"]
+    assert extract_cmd[:6] == [
+        "pixi",
+        "run",
+        "psweep",
+        "extract",
+        "discovered/example/latest/curated",
+        "--config",
+    ]
+
+
 def test_build_run_stage_commands_no_validation_when_disabled(tmp_path: Path) -> None:
     config_path = tmp_path / "example.yaml"
     config_path.write_text(
@@ -254,7 +397,45 @@ def test_build_run_stage_commands_no_validation_when_disabled(tmp_path: Path) ->
             config_path, base_cmd=["pixi", "run", "psweep"]
         )
     ]
-    assert stage_names == ["discover", "extract", "compile"]
+    assert stage_names == ["extract", "compile"]
+
+
+def test_resolve_run_discovery_enabled_reads_split_override(tmp_path: Path) -> None:
+    config_path = tmp_path / "run.yaml"
+    config_path.write_text(
+        "domain: example\n"
+        "extraction:\n"
+        "  schema: schemas/example.json\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "discovery.yaml").write_text(
+        "seeds:\n"
+        "  - https://example.com/docs\n",
+        encoding="utf-8",
+    )
+
+    assert resolve_run_discovery_enabled(config_path) is True
+
+
+def test_build_run_stage_commands_skips_discover_without_discovery_config(
+    tmp_path: Path,
+) -> None:
+    config_path = tmp_path / "example.yaml"
+    config_path.write_text(
+        "domain: example\n"
+        "extraction:\n"
+        "  schema: s.json\n",
+        encoding="utf-8",
+    )
+
+    assert resolve_run_discovery_enabled(config_path) is False
+    stage_names = [
+        name
+        for name, _ in build_run_stage_commands(
+            config_path, base_cmd=["pixi", "run", "psweep"]
+        )
+    ]
+    assert stage_names == ["extract", "compile"]
 
 
 def test_extract_documents_uses_page_range_csv(tmp_path: Path, monkeypatch) -> None:

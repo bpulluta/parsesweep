@@ -48,6 +48,25 @@
           "jurisdiction.county"
         ]
       }
+    },
+    "compilation": {
+      "flattening": {
+        "unit_normalizations": {
+          "'": "feet",
+          "′": "feet",
+          "ft": "feet",
+          "ft.": "feet",
+          "foot": "feet",
+          "feet": "feet",
+          "dB(A)": "dBA",
+          "db(a)": "dBA",
+          "DB(A)": "dBA",
+          "dbA": "dBA",
+          "dBa": "dBA",
+          "Dba": "dBA",
+          "decibels": "dBA"
+        }
+      }
     }
   },
   "title": "Natural Gas Pipeline & Compressor Station Ordinance Extraction Schema",
@@ -538,6 +557,36 @@
                   ]
                 }
               }
+            }
+          },
+          {
+            "not": {
+              "anyOf": [
+                {
+                  "properties": {
+                    "applies_to": {
+                      "type": "string",
+                      "pattern": "(?i)\\boil\\b|\\bwells?\\b|\\bwellpad\\b|\\bwell\\s*head\\b|\\bdrilling\\b"
+                    }
+                  }
+                },
+                {
+                  "properties": {
+                    "requirement_description": {
+                      "type": "string",
+                      "pattern": "(?i)\\boil and gas operations\\b|\\bwell\\s*heads?\\b|\\bwellpads?\\b|\\bdrilling\\b"
+                    }
+                  }
+                },
+                {
+                  "properties": {
+                    "source_verbatim": {
+                      "type": "string",
+                      "pattern": "(?i)\\boil and gas operations\\b|\\bwell\\s*heads?\\b|\\bwellpads?\\b|\\bdrilling\\b"
+                    }
+                  }
+                }
+              ]
             }
           }
         ]

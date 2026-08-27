@@ -1099,7 +1099,7 @@ def _write_compilation_run_manifest(
     "config_path",
     type=click.Path(exists=True),
     default=None,
-    help="Domain config file (RECOMMENDED — includes schema, page targeting, dedup)",
+    help="Domain run config file (RECOMMENDED — compile input, schema, and output paths)",
 )
 @click.option(
     "--show-effective-config",
@@ -1200,8 +1200,8 @@ def compile(
     --------
     ::
 
-        psweep compile extracted/my_domain/ --schema schemas/my_schema.json
         psweep compile --config config/my_domain/run.yaml
+        psweep compile extracted/my_domain/ --schema schemas/my_schema.json
         psweep compile extracted/ --schema s.json --dry-run --verbose
     """
     from psweep.cli.commands import (

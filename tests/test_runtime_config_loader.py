@@ -659,6 +659,56 @@ discovery:
         assert resolved["selection_target_identity_exclude_any_templates"] == ["sample"]
 
 
+def test_discovery_selection_primary_per_target_must_cover_review_keep_top(
+        tmp_path: Path,
+):
+        run_path = tmp_path / "run.yaml"
+        run_path.write_text(
+            """
+discovery:
+  seeds:
+        - https://example.org/hub
+  selection:
+        primary_per_target: 2
+  document_review:
+        keep_top: 3
+""",
+            encoding="utf-8",
+        )
+
+        with pytest.raises(
+            RuntimeConfigError,
+            match="selection.primary_per_target' must be >=",
+        ):
+            load_runtime_config_file(run_path)
+
+
+def test_discovery_selection_and_review_accept_equal_limits(tmp_path: Path):
+        run_path = tmp_path / "run.yaml"
+        run_path.write_text(
+            """
+discovery:
+  seeds:
+        - https://example.org/hub
+  selection:
+        primary_per_target: 3
+  document_review:
+        keep_top: 3
+""",
+            encoding="utf-8",
+        )
+
+        data = load_runtime_config_file(run_path)
+        resolved = resolve_command_config(
+            command="discover",
+            cli_values={},
+            config_data=data,
+            strict=True,
+        )
+        assert resolved["selection_primary_per_target"] == 3
+        assert resolved["document_review"]["keep_top"] == 3
+
+
 def test_resolve_command_config_maps_discovery_policy_fields(tmp_path: Path):
         run_path = tmp_path / "run.yaml"
         run_path.write_text(

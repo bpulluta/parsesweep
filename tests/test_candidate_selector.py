@@ -25,7 +25,12 @@ class TestDraftDetection:
             ("https://example.com/proposed_amendment_2024.pdf", None, True),
             ("https://example.com/model-ordinance-geothermal.pdf", None, True),
             ("https://example.com/ordinance_template.pdf", None, True),
-            ("https://example.com/E-1.pdf", ["Contains draft rate schedule"], True),
+            (
+                "https://example.com/ordinance-update.pdf",
+                ["Contains draft rate schedule"],
+                False,
+            ),
+            ("https://example.com/ordinance-update.pdf", ["ranked highly"], False),
             ("https://www.pge.com/tariffs/ELEC_SCHEDS_E-1.pdf", None, False),
             (
                 "https://www.xcelenergy.com/Electric_Summation_Sheet_All_Rates_05.01.2024.pdf",
@@ -204,6 +209,24 @@ class TestPerTargetSelection:
         assert selected == [legal]
         assert any("relevance filter excluded" in n for n in notes)
 
+    def test_relevance_require_terms_ignores_query_text_in_reasons(self):
+        sel = CandidateSelector(
+            exclude_draft=False,
+            relevance_require_any_terms=["ordinance", "compressor", "pipeline"],
+        )
+        reason_only = _candidate(
+            "https://example.com/random-brand-landing",
+            reasons=[
+                "SerpApi result rank 1 for query 'Keller Texas natural gas compressor station ordinance'"
+            ],
+        )
+        real_match = _candidate(
+            "https://example.com/weatherford-compressor-ordinance.pdf"
+        )
+        selected, notes = sel.select([[reason_only, real_match]], primary_per_target=1)
+        assert selected == [real_match]
+        assert any("relevance filter excluded" in n for n in notes)
+
     def test_relevance_exclude_terms_blocks_plans_and_briefs(self):
         sel = CandidateSelector(
             exclude_draft=False,
@@ -214,6 +237,19 @@ class TestPerTargetSelection:
         selected, _ = sel.select([[blocked, keep]], primary_per_target=1)
         assert selected == [keep]
 
+    def test_relevance_exclude_terms_ignores_query_text_in_reasons(self):
+        sel = CandidateSelector(
+            exclude_draft=False,
+            relevance_exclude_any_terms=["state brief"],
+        )
+        reason_only = _candidate(
+            "https://example.com/real-ordinance.pdf",
+            reasons=["SerpApi result rank 1 for query 'state brief ordinance'"],
+        )
+        selected, notes = sel.select([[reason_only]], primary_per_target=1)
+        assert selected == [reason_only]
+        assert not any("relevance filter excluded" in n for n in notes)
+
     def test_split_exclusion_patterns_can_target_url_and_text_separately(self):
         sel = CandidateSelector(
             exclude_draft=False,
@@ -223,7 +259,7 @@ class TestPerTargetSelection:
         url_blocked = _candidate("https://example.com/archive/ordinance-final.pdf")
         text_blocked = _candidate(
             "https://example.com/ordinance-final.pdf",
-            reasons=["preliminary planning packet"],
+            snippet="preliminary planning packet",
         )
         keep = _candidate("https://example.com/ordinance-final.pdf")
         selected, notes = sel.select([[url_blocked, text_blocked, keep]], primary_per_target=1)

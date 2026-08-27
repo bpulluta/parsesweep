@@ -165,3 +165,71 @@ class TestMaterializeCurated:
         assert count == 1
         assert (curated_dir / "co/a.pdf").exists()
         assert not (curated_dir / "co/b.pdf").exists()
+
+
+class TestDocumentRetention:
+    def _record(self, docs_dir: Path, rel: str, selected: bool) -> dict:
+        path = docs_dir / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("content", encoding="utf-8")
+        return {
+            "path": path.as_posix(),
+            "relative_path": rel,
+            "review_selected": selected,
+            "status": "downloaded",
+        }
+
+    def test_retention_all_keeps_all_documents(self, tmp_path: Path):
+        docs = tmp_path / "documents"
+        keep = self._record(docs, "a/keep.pdf", True)
+        drop = self._record(docs, "a/drop.pdf", False)
+        curated, _, _ = DiscoveryEngine._materialize_curated(
+            documents_dir=docs, download_records=[keep, drop]
+        )
+
+        removed_files, _ = DiscoveryEngine._apply_document_retention(
+            mode="all",
+            documents_dir=docs,
+            curated_dir=curated,
+            download_records=[keep, drop],
+        )
+        assert removed_files == 0
+        assert (docs / "a/keep.pdf").exists()
+        assert (docs / "a/drop.pdf").exists()
+
+    def test_retention_curated_removes_non_selected(self, tmp_path: Path):
+        docs = tmp_path / "documents"
+        keep = self._record(docs, "a/keep.pdf", True)
+        drop = self._record(docs, "a/drop.pdf", False)
+        curated, _, _ = DiscoveryEngine._materialize_curated(
+            documents_dir=docs, download_records=[keep, drop]
+        )
+
+        removed_files, _ = DiscoveryEngine._apply_document_retention(
+            mode="curated",
+            documents_dir=docs,
+            curated_dir=curated,
+            download_records=[keep, drop],
+        )
+        assert removed_files == 1
+        assert (docs / "a/keep.pdf").exists()
+        assert not (docs / "a/drop.pdf").exists()
+
+    def test_retention_none_removes_all_documents(self, tmp_path: Path):
+        docs = tmp_path / "documents"
+        keep = self._record(docs, "a/keep.pdf", True)
+        drop = self._record(docs, "a/drop.pdf", False)
+        curated, _, _ = DiscoveryEngine._materialize_curated(
+            documents_dir=docs, download_records=[keep, drop]
+        )
+
+        removed_files, _ = DiscoveryEngine._apply_document_retention(
+            mode="none",
+            documents_dir=docs,
+            curated_dir=curated,
+            download_records=[keep, drop],
+        )
+        assert removed_files == 3
+        assert not (docs / "a/keep.pdf").exists()
+        assert not (docs / "a/drop.pdf").exists()
+        assert not (curated / "a/keep.pdf").exists()
