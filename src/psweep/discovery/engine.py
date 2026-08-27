@@ -44,6 +44,7 @@ from psweep.utils.error_taxonomy import (
     normalize_error_records,
     summarize_error_records,
 )
+from psweep.extraction.document_utils import TEXT_CACHE_DIRNAME
 
 # Single source of truth for the download-organization default. Referenced by
 # ``DiscoveryRequest`` and the ``discover`` CLI option/fallback.
@@ -1235,12 +1236,15 @@ class DiscoveryEngine:
             while True:
                 try:
                     bytes_written = 0
+                    hasher = hashlib.sha256()
                     with target_path.open("xb") as handle:
                         for chunk in _chunks():
                             if not chunk:
                                 continue
                             handle.write(chunk)
+                            hasher.update(chunk)
                             bytes_written += len(chunk)
+                    content_hash = hasher.hexdigest()
                     break
                 except FileExistsError:
                     suffix += 1
@@ -1262,6 +1266,7 @@ class DiscoveryEngine:
                         documents_dir
                     ).as_posix(),
                     "bytes": bytes_written,
+                    "content_hash": content_hash,
                     "attempt_count": attempt_count,
                     "download_method": download_method,
                     "policy_warning_codes": list(policy_result.warning_codes),
@@ -2792,7 +2797,7 @@ class DiscoveryEngine:
         *,
         documents_dir: Path,
         download_records: list[dict[str, object]],
-    ) -> tuple[Path, int]:
+    ) -> tuple[Path, int, int]:
         """Populate ``curated/`` with the final-selected documents.
 
         Mirrors each selected file's partition layout under a sibling
@@ -2816,8 +2821,15 @@ class DiscoveryEngine:
         review_ran = any(
             "review_selected" in record for record in download_records
         )
+        review_failed = any(
+            record.get("review_failed") for record in download_records
+        )
 
         def _is_curated(record: dict[str, object]) -> bool:
+            # If review ran but failed mid-execution, do not fall back to curating
+            # everything — that would silently overwrite a good prior curation.
+            if review_failed:
+                return False
             if review_ran:
                 return bool(record.get("review_selected"))
             return record.get("status") == "downloaded"
@@ -2832,6 +2844,7 @@ class DiscoveryEngine:
                 shutil.copy2(src_file, dest_file)
 
         count = 0
+        link_errors = 0
         for record in download_records:
             if not _is_curated(record):
                 continue
@@ -2845,50 +2858,116 @@ class DiscoveryEngine:
                 # Carry over the cached extracted/OCR text so the extraction
                 # stage reading from curated/ reuses it instead of re-OCRing.
                 for suffix in (".txt", ".meta.json"):
-                    cache_src = src.parent / ".text" / f"{src.stem}{suffix}"
+                    cache_src = src.parent / TEXT_CACHE_DIRNAME / f"{src.stem}{suffix}"
                     if cache_src.exists():
-                        _link(cache_src, dest.parent / ".text" / cache_src.name)
+                        _link(cache_src, dest.parent / TEXT_CACHE_DIRNAME / cache_src.name)
                 count += 1
             except OSError:
+                link_errors += 1
                 continue
-        return curated_dir, count
+        return curated_dir, count, link_errors
 
     @staticmethod
     def _promote_to_consolidated_curated(
         *,
         run_curated_dir: Path,
         domain_dir: Path,
+        attempted_partitions: set[Path] | None = None,
     ) -> None:
         """Copy curated documents to the domain-level consolidated directory.
 
-        The consolidated directory (``discovered/<domain>/curated/``) accumulates
-        curated documents across all discovery runs. The partition structure
-        (``by_state_jurisdiction/<state>/<jurisdiction>/``) ensures newer
-        curations for the same target overwrite older ones without conflicts.
+        The consolidated directory (``discovered/<domain>/curated/``) holds the
+        current best curation across all runs.
 
-        This allows extraction to read from ONE stable directory regardless of
-        how many discovery runs contributed documents.
+        Parameters
+        ----------
+        run_curated_dir:
+            The run-scoped curated directory (source files).
+        domain_dir:
+            Root of ``discovered/<domain>/`` — ``curated/`` lives here.
+        attempted_partitions:
+            When provided, every partition in this set is cleared even if the
+            run produced no curated files for it. Pass on ``--fresh`` runs so
+            that searched-but-empty jurisdictions don't keep stale curation.
         """
         import shutil
+        import tempfile
 
         consolidated = domain_dir / "curated"
         consolidated.mkdir(parents=True, exist_ok=True)
 
+        # Derive partitions from curated files, stripping dot-dirs (e.g. .text,
+        # .review) upward so they don't register as independent partitions.
+        run_partitions: set[Path] = set()
         for src_file in run_curated_dir.rglob("*"):
             if not src_file.is_file():
                 continue
             rel = src_file.relative_to(run_curated_dir)
-            dest = consolidated / rel
-            dest.parent.mkdir(parents=True, exist_ok=True)
-            try:
-                if dest.exists():
-                    dest.unlink()
-                dest.hardlink_to(src_file)
-            except (OSError, AttributeError):
-                shutil.copy2(src_file, dest)
+            partition_rel = rel.parent
+            while partition_rel != Path(".") and partition_rel.name.startswith("."):
+                partition_rel = partition_rel.parent
+            if partition_rel != Path("."):
+                run_partitions.add(partition_rel)
 
-        # Merge the run's download_index.csv into a domain-level index so
-        # extraction can resolve source URLs for provenance/citation.
+        if not run_partitions:
+            return
+
+        # Stage files in a temp dir under the same parent so moves are local-fs
+        # (atomic rename possible) — avoids a crash window where partitions are
+        # cleared but not yet refilled.
+        tmp_dir = Path(
+            tempfile.mkdtemp(dir=consolidated.parent, prefix=".curated-staging-")
+        )
+        try:
+            for src_file in run_curated_dir.rglob("*"):
+                if not src_file.is_file():
+                    continue
+                rel = src_file.relative_to(run_curated_dir)
+                dest = tmp_dir / rel
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                try:
+                    dest.hardlink_to(src_file)
+                except (OSError, AttributeError):
+                    shutil.copy2(src_file, dest)
+
+            swapped_partitions: set[Path] = set()
+            for partition_rel in run_partitions:
+                src_partition = tmp_dir / partition_rel
+                if not src_partition.exists():
+                    continue
+                dest_partition = consolidated / partition_rel
+                dest_partition.parent.mkdir(parents=True, exist_ok=True)
+                swap_partition = tmp_dir / ".swap" / partition_rel
+                swap_partition.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copytree(src_partition, swap_partition, dirs_exist_ok=True)
+
+                backup_partition: Path | None = None
+                if dest_partition.exists():
+                    backup_partition = tmp_dir / ".backup" / partition_rel
+                    backup_partition.parent.mkdir(parents=True, exist_ok=True)
+                    dest_partition.replace(backup_partition)
+                try:
+                    swap_partition.replace(dest_partition)
+                    swapped_partitions.add(partition_rel)
+                    if backup_partition and backup_partition.exists():
+                        shutil.rmtree(backup_partition, ignore_errors=True)
+                except OSError:
+                    # Restore the previous curated partition if replacement fails.
+                    if backup_partition and backup_partition.exists():
+                        backup_partition.replace(dest_partition)
+                    raise
+
+            # Clear stale fresh-run partitions only after successful swaps to
+            # avoid dropping prior curated data when replacement fails.
+            stale_partitions = (attempted_partitions or set()) - swapped_partitions
+            for partition_rel in stale_partitions:
+                stale_partition = consolidated / partition_rel
+                if stale_partition.exists():
+                    shutil.rmtree(stale_partition, ignore_errors=True)
+        finally:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+
+        # Merge the run's download_index.csv into the domain-level index.
         run_dir = run_curated_dir.parent
         run_index = run_dir / "download_index.csv"
         if run_index.is_file():
@@ -3615,6 +3694,11 @@ class DiscoveryEngine:
             downloads, notes = reviewer.review(downloads, notes)
             return downloads, notes, reviewer.get_costs()
         except Exception as exc:  # noqa: BLE001 - review is best-effort
+            # Mark records so _materialize_curated knows review failed — this
+            # prevents the fallback "curate everything" path from overwriting a
+            # previously good curation when the LLM call errors mid-run.
+            for _rec in downloads:
+                _rec["review_failed"] = True
             notes.append(f"Document review error (skipped): {exc}")
             return downloads, notes, reviewer.get_costs()
 
@@ -3934,18 +4018,29 @@ class DiscoveryEngine:
             # so a run yields one self-contained folder: documents/ (everything),
             # curated/ (final picks), review.csv (adjust + re-curate).
             if download_records:
-                curated_dir, curated_count = self._materialize_curated(
+                curated_dir, curated_count, _link_errors = self._materialize_curated(
                     documents_dir=documents_dir,
                     download_records=download_records,
                 )
+                # Derive the set of attempted partitions from the download records
+                # so --fresh runs can clear stale curations for empty jurisdictions.
+                attempted_parts: set[Path] | None = None
+                if request.reprocess:
+                    attempted_parts = set()
+                    for _rec in download_records:
+                        _rel = _rec.get("relative_path")
+                        if _rel:
+                            _p = Path(str(_rel)).parent
+                            while _p != Path(".") and _p.name.startswith("."):
+                                _p = _p.parent
+                            if _p != Path("."):
+                                attempted_parts.add(_p)
                 # Promote curated docs to the domain-level consolidated directory.
-                # This accumulates across runs so extraction always sees the
-                # complete set regardless of which run produced each document.
-                if curated_count > 0:
-                    self._promote_to_consolidated_curated(
-                        run_curated_dir=curated_dir,
-                        domain_dir=manifest_path.parent.parent.parent,
-                    )
+                self._promote_to_consolidated_curated(
+                    run_curated_dir=curated_dir,
+                    domain_dir=manifest_path.parent.parent.parent,
+                    attempted_partitions=attempted_parts,
+                )
                 review_index_path = self._write_review_index(
                     request=request,
                     download_records=download_records,

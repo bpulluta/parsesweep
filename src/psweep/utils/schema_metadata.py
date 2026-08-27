@@ -232,6 +232,78 @@ class SchemaMetadata:
         dedup = self.metadata.get("identity", {}).get("deduplication", {})
         return dedup.get("ignore_fields", [])
 
+    def get_deduplication_fuzzy_fields(self) -> List[str]:
+        """Get key fields that use empty-as-wildcard + case-insensitive matching.
+
+        Declared as ``identity.deduplication.fuzzy_key_fields`` in the schema.
+        Accepts either a plain list of field names, or a list of objects with
+        ``field`` and optional ``normalize`` keys::
+
+            "fuzzy_key_fields": [
+                "condition",
+                {"field": "applies_to", "normalize": "words"}
+            ]
+
+        Normalization modes (applied before comparison when both values are
+        non-empty):
+        - ``"words"`` — lowercase, strip leading/trailing whitespace, collapse
+          internal whitespace.  Removes common English articles and prepositions
+          (``a``, ``an``, ``the``, ``of``, ``in``, ``at``, ``by``, ``for``,
+          ``to``, ``from``) so phrasing variations like ``"compressor station"``
+          vs ``"a compressor station"`` still match.  This is a generic
+          text-normalization operation — no domain vocabulary.
+        - ``None`` (default) — exact case-insensitive string equality after
+          strip.
+
+        Returns an empty list when not declared — callers fall back to strict
+        exact matching for all key fields.
+        """
+        dedup = self.metadata.get("identity", {}).get("deduplication", {})
+        raw = dedup.get("fuzzy_key_fields", [])
+        # Normalize to plain list of field names for backward compat
+        result = []
+        for entry in raw:
+            if isinstance(entry, str):
+                result.append(entry)
+            elif isinstance(entry, dict) and "field" in entry:
+                result.append(entry["field"])
+        return result
+
+    def get_deduplication_fuzzy_field_config(self) -> dict:
+        """Return per-fuzzy-field config keyed by field name.
+
+        Each value is a dict with optional ``normalize`` key.  Fields declared
+        as plain strings in ``fuzzy_key_fields`` get an empty config dict.
+        """
+        dedup = self.metadata.get("identity", {}).get("deduplication", {})
+        raw = dedup.get("fuzzy_key_fields", [])
+        config: dict = {}
+        for entry in raw:
+            if isinstance(entry, str):
+                config[entry] = {}
+            elif isinstance(entry, dict) and "field" in entry:
+                config[entry["field"]] = {k: v for k, v in entry.items() if k != "field"}
+        return config
+
+    def get_deduplication_partition_fields(self) -> List[str]:
+        """Get fields that isolate deduplication scope (never merge across them).
+
+        Declared as ``identity.deduplication.partition_fields`` in the schema.
+        Returns an empty list when not declared — no isolation boundaries are
+        applied and all rows within the DataFrame are candidates for dedup.
+
+        Schemas that need cross-document isolation (e.g. jurisdiction-based
+        ordinance extraction where the same item name may legitimately appear
+        in different counties) should declare this explicitly::
+
+            "partition_fields": ["jurisdiction.state", "jurisdiction.county"]
+        """
+        dedup = self.metadata.get("identity", {}).get("deduplication", {})
+        explicit = dedup.get("partition_fields")
+        if explicit is not None:
+            return explicit
+        return []
+
     def get_deduplication_strategy(self) -> str:
         """Get deduplication strategy (latest, earliest, merge)."""
         dedup = self.metadata.get("identity", {}).get("deduplication", {})
@@ -350,9 +422,12 @@ class SchemaMetadata:
         """Column whose US-state names should be normalized to abbreviations.
 
         Driven by ``compilation.normalization.state_column``. Defaults to
-        ``"State"`` (legacy behavior: normalize a column literally named
-        ``State`` when present). Set to ``null``/``""`` in a schema to opt a
-        non-US / non-jurisdiction domain out entirely.
+        ``"State"`` to preserve existing behavior for schemas that have a
+        jurisdiction State column.  Set to ``null``/``""`` in a schema to
+        opt a non-US / non-jurisdiction domain out entirely.
+
+        To make state normalization opt-in for a new domain schema, set
+        ``compilation.normalization.state_column: null`` explicitly.
         """
         normalization = self.metadata.get("compilation", {}).get(
             "normalization", {}

@@ -279,6 +279,7 @@ class TestRunMultiModelExtraction:
             output_dir=tmp_path,
             runtime_artifact=runtime_artifact,
             run_id="run://abc123def4567890",
+            schema_id="schemas/personal/electricity_tariff_schema.json",
         )
 
         output_path = tmp_path / "validation" / "test_doc" / "gpt-4o.json"
@@ -290,6 +291,7 @@ class TestRunMultiModelExtraction:
         assert data["lineage"]["artifact_id"] == runtime_artifact["artifact_id"]
         assert data["lineage"]["profile_id"] == "default"
         assert data["lineage"]["provider"] == "openai"
+        assert data["lineage"]["schema_id"] == "schemas/personal/electricity_tariff_schema.json"
         assert data["payload"]["items"][0]["name"] == "Item 1"
         assert data["processing_metrics"]["cost_usd"] == mock_extraction_result.cost
 

@@ -84,6 +84,47 @@ compilation:
         )
 
 
+def test_load_runtime_config_file_rejects_invalid_compilation_provenance_policy(
+    tmp_path: Path,
+):
+    config_path = tmp_path / "run.yaml"
+    config_path.write_text(
+        """
+compilation:
+  input_dir: processed/geothermal_ordinances
+  schema: schemas/personal/geothermal_ordinance_schema.json
+  provenance_policy: maybe
+""",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(RuntimeConfigError, match="compilation.provenance_policy"):
+        load_runtime_config_file(config_path)
+
+
+def test_resolve_command_config_maps_compilation_provenance_policy(tmp_path: Path):
+    config_path = tmp_path / "run.yaml"
+    config_path.write_text(
+        """
+compilation:
+  input_dir: processed/geothermal_ordinances
+  schema: schemas/personal/geothermal_ordinance_schema.json
+  provenance_policy: FAIL
+""",
+        encoding="utf-8",
+    )
+    config_data = load_runtime_config_file(config_path)
+
+    resolved = resolve_command_config(
+        command="compile",
+        cli_values={},
+        config_data=config_data,
+        strict=True,
+    )
+
+    assert resolved["provenance_policy"] == "fail"
+
+
 def test_catalog_for_command_contains_required_and_advanced_fields():
     entries = catalog_for_command("extract")
     names = {entry["name"] for entry in entries}

@@ -43,6 +43,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Sequence
 
 from ..extraction.llm_factory import DEFAULT_MAX_CONTEXT
+from ..extraction.record_writer import build_lineage
 from .utils import sanitize_model_name
 
 if TYPE_CHECKING:
@@ -86,6 +87,7 @@ def run_multi_model_extraction(
     timeout_seconds: Optional[int] = None,
     runtime_artifact: Optional[Dict[str, Any]] = None,
     run_id: Optional[str] = None,
+    schema_id: Optional[str] = None,
     seed_records_by_model: Optional[Dict[str, Dict[str, Any]]] = None,
     model_status_callback: Optional[Callable[[Dict[str, Any]], None]] = None,
 ) -> Dict[str, ModelExtractionResult]:
@@ -116,6 +118,8 @@ def run_multi_model_extraction(
         Optional compiled runtime artifact for lineage metadata
     run_id : Optional[str]
         Optional deterministic run identifier for this invocation
+    schema_id : Optional[str]
+        Canonical schema identifier/path to persist in output lineage.
 
     Returns
     -------
@@ -214,20 +218,18 @@ def run_multi_model_extraction(
             extracted_at = (
                 datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
             )
-            schema_id = schema.get("$id") if isinstance(schema, dict) else None
-            lineage = {
-                "artifact_id": (runtime_artifact or {}).get("artifact_id")
-                or "artifact://runtime/unresolved",
-                "profile_id": (
-                    (runtime_artifact or {}).get("lineage") or {}
-                ).get("profile_id")
-                or "default",
-                "run_id": run_id or f"run://{doc_name}",
-                "model": model,
-                "provider": provider,
-                "schema_id": schema_id,
-                "extracted_at": extracted_at,
-            }
+            resolved_schema_id = schema_id or (
+                schema.get("$id") if isinstance(schema, dict) else None
+            )
+            lineage = build_lineage(
+                runtime_artifact=runtime_artifact,
+                run_id=run_id,
+                model=model,
+                provider=provider,
+                schema_id=resolved_schema_id,
+                default_run_fragment=doc_name,
+                extracted_at=extracted_at,
+            )
 
             # Save canonical extraction-record output per model.
             output_data = {

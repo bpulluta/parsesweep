@@ -85,18 +85,15 @@ class DataCompiler:
         Tuple[pd.DataFrame, Dict]
             Tuple of (DataFrame, schema_info dict)
         """
-        # First try direct children, then search recursively for nested structures.
-        # The recursive fallback deliberately skips the validation/ subtree: a QA/QC
-        # run writes per-model sidecars under validation/, which are compiled and
-        # validated separately via `compare`. Ingesting them here would
-        # double-count every model's extraction into the primary output.
-        json_files = list(json_dir.glob("*.json"))
-        if not json_files:
-            json_files = [
-                path
-                for path in json_dir.rglob("*.json")
-                if "validation" not in path.relative_to(json_dir).parts
-            ]
+        # Always search recursively so partitioned/nested extraction outputs are
+        # treated identically to flat outputs.
+        # Deliberately skip validation/ and run_manifests/ sidecars.
+        _excluded = {"validation", "run_manifests", "qa_qc"}
+        json_files = [
+            path
+            for path in json_dir.rglob("*.json")
+            if not _excluded.intersection(path.relative_to(json_dir).parts)
+        ]
         if not json_files:
             print(f"No JSON files found in {json_dir}")
             return pd.DataFrame(), {}

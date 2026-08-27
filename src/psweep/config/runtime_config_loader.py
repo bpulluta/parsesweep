@@ -158,6 +158,14 @@ VARIABLE_CATALOG: dict[str, list[dict[str, str]]] = {
                 "Fail threshold for suspicious dedup groups in dry-run."
             ),
         },
+        {
+            "name": "provenance_policy",
+            "level": "advanced",
+            "description": (
+                "How compile handles provenance warnings from extraction inputs "
+                "(warn or fail)."
+            ),
+        },
     ],
     "discovery": [
         {
@@ -318,6 +326,7 @@ _ALLOWED_SECTION_FIELDS = {
         "dry_run",
         "report_format",
         "fail_on_suspicious",
+        "provenance_policy",
         "synthesis",
     },
 }
@@ -356,6 +365,7 @@ _ACQUISITION_OBJECT_FIELDS = {
 }
 
 _ALLOWED_POLICY_MODES = {"ignore", "warn", "enforce"}
+_ALLOWED_PROVENANCE_POLICIES = {"warn", "fail"}
 
 _SECTION_NAMES = ("discovery", "extraction", "compilation", "validation")
 _CONFIG_SUFFIXES = (".yaml", ".yml", ".json")
@@ -826,6 +836,20 @@ def _validate_compilation_section_schema(
     synthesis = compilation.get("synthesis")
     if synthesis is not None:
         _validate_synthesis_block(synthesis)
+    provenance_policy = compilation.get("provenance_policy")
+    if provenance_policy is not None:
+        if not isinstance(provenance_policy, str):
+            raise RuntimeConfigError(
+                "compilation.provenance_policy must be a string"
+            )
+        normalized_policy = provenance_policy.strip().lower()
+        if normalized_policy not in _ALLOWED_PROVENANCE_POLICIES:
+            allowed = ", ".join(sorted(_ALLOWED_PROVENANCE_POLICIES))
+            raise RuntimeConfigError(
+                "compilation.provenance_policy must be one of: "
+                f"{allowed} (got {provenance_policy!r})"
+            )
+        compilation["provenance_policy"] = normalized_policy
 
 
 def _validate_synthesis_block(syn: Any) -> None:
@@ -1754,6 +1778,7 @@ _FIELD_MAP: dict[str, str] = {
     "live_dashboard": "live_dashboard",
     "report_format": "report_format",
     "fail_on_suspicious": "fail_on_suspicious",
+    "provenance_policy": "provenance_policy",
     "synthesis": "synthesis",
     "normalization": "normalization",
     "compilation_output": "output",

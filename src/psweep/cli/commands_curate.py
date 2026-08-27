@@ -152,7 +152,7 @@ def curate(
         )
         _update_review_sidecar(row)
 
-    curated_dir, count = DiscoveryEngine._materialize_curated(
+    curated_dir, count, _link_errors = DiscoveryEngine._materialize_curated(
         documents_dir=documents_dir,
         download_records=records,
     )

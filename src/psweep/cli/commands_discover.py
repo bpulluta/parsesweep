@@ -157,8 +157,12 @@ from psweep.discovery import (
     is_flag=True,
     default=False,
     show_default=True,
-    help="Refresh all targets (default: skip targets completed in a previous run) and ignore "
-    "the checkpoint to refresh the search cache",
+    help=(
+        "Re-run all targets from scratch: clears the checkpoint, bypasses the "
+        "search-result cache, and replaces the curated/ partitions for every "
+        "jurisdiction processed this run. Jurisdictions not touched by this run "
+        "keep their existing curated files."
+    ),
 )
 @click.option("--quiet", "-q", is_flag=True, help="Minimal output")
 @click.option("--verbose", "-v", is_flag=True, help="Detailed output")
@@ -501,8 +505,8 @@ def discover(
                 else "(auto: run-scoped)",
                 "Mode": "dry-run" if dry_run else "run",
             }
-            if not fresh:
-                config_info["Reprocess"] = "yes (ignore checkpoint + cache)"
+            if fresh:
+                config_info["Fresh"] = "checkpoint cleared, search cache bypassed"
         else:
             config_info = {
                 "Domain": resolved_domain,

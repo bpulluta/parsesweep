@@ -10,6 +10,53 @@ from typing import Any, Dict, Iterable, Optional, Sequence
 from ..utils.error_taxonomy import normalize_error_records
 
 
+def _resolve_lineage_artifact_id(
+    *,
+    runtime_artifact: Optional[Dict[str, Any]],
+    run_id: Optional[str],
+    default_fragment: str,
+) -> str:
+    artifact_id = (runtime_artifact or {}).get("artifact_id")
+    if isinstance(artifact_id, str) and artifact_id.strip():
+        return artifact_id
+    lineage_artifact = ((runtime_artifact or {}).get("lineage") or {}).get(
+        "artifact_id"
+    )
+    if isinstance(lineage_artifact, str) and lineage_artifact.strip():
+        return lineage_artifact
+    run_fragment = (run_id or default_fragment).replace("run://", "")
+    return f"artifact://runtime/{run_fragment}"
+
+
+def build_lineage(
+    *,
+    runtime_artifact: Optional[Dict[str, Any]],
+    run_id: Optional[str],
+    model: str,
+    provider: str | None,
+    schema_id: Optional[str],
+    default_run_fragment: str,
+    extracted_at: str,
+) -> Dict[str, Any]:
+    """Build canonical lineage metadata for extraction records."""
+    return {
+        "artifact_id": _resolve_lineage_artifact_id(
+            runtime_artifact=runtime_artifact,
+            run_id=run_id,
+            default_fragment=default_run_fragment,
+        ),
+        "profile_id": ((runtime_artifact or {}).get("lineage") or {}).get(
+            "profile_id"
+        )
+        or "default",
+        "run_id": run_id or f"run://{default_run_fragment}",
+        "model": model,
+        "provider": provider or "unknown",
+        "schema_id": schema_id,
+        "extracted_at": extracted_at,
+    }
+
+
 def _extract_item_count(data: Dict[str, Any]) -> tuple[str | None, int]:
     main_array_key = None
     max_items = 0
@@ -66,19 +113,15 @@ def build_extraction_record(
     identifier = _extract_identifier(result.data, identifier_fields)
     extracted_at = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
-    lineage = {
-        "artifact_id": (runtime_artifact or {}).get("artifact_id")
-        or "artifact://runtime/unresolved",
-        "profile_id": ((runtime_artifact or {}).get("lineage") or {}).get(
-            "profile_id"
-        )
-        or "default",
-        "run_id": run_id or f"run://{doc_path.stem}",
-        "model": model,
-        "provider": provider or "unknown",
-        "schema_id": schema_id,
-        "extracted_at": extracted_at,
-    }
+    lineage = build_lineage(
+        runtime_artifact=runtime_artifact,
+        run_id=run_id,
+        model=model,
+        provider=provider,
+        schema_id=schema_id,
+        default_run_fragment=doc_path.stem,
+        extracted_at=extracted_at,
+    )
 
     record = {
         "record_id": f"record://{lineage['run_id'].replace('run://', '')}/{doc_path.stem}",

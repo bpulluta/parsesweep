@@ -23,6 +23,10 @@ from psweep.cli.ui import (
     with_status,
 )
 from psweep.compilation.data_compiler import DataCompiler
+from psweep.compilation.input_provenance import (
+    analyze_compile_input_provenance,
+    list_compile_record_files,
+)
 from psweep.config import RuntimeConfigError
 
 
@@ -76,6 +80,15 @@ def _should_fail_on_suspicious(
         return preview_report.get("suspicious_groups_count", 0) > 0
 
     return False
+
+
+def _should_fail_on_provenance(
+    *,
+    provenance_policy: str,
+    provenance_warnings: List[str],
+) -> bool:
+    """Return whether provenance warnings should hard-fail compilation."""
+    return provenance_policy == "fail" and bool(provenance_warnings)
 
 
 def _omit_none(d: Dict[str, Any]) -> Dict[str, Any]:
@@ -1136,6 +1149,22 @@ def _write_compilation_run_manifest(
     show_default=True,
     help="With --dry-run, exit non-zero when suspicious duplicate groups meet this severity threshold",
 )
+@click.option(
+    "--provenance-policy",
+    type=click.Choice(["warn", "fail"], case_sensitive=False),
+    default="warn",
+    show_default=True,
+    help=(
+        "How to handle compile input provenance warnings "
+        "(missing schema_id, unresolved artifact_id, mixed lineage/orphan records)."
+    ),
+)
+@click.option(
+    "--fresh",
+    is_flag=True,
+    default=False,
+    help="Clear the compiled output directory (stale CSV/XLSX) before writing new results. Pair with 'extract --fresh' for a guaranteed clean pipeline.",
+)
 @click.option("--quiet", "-q", is_flag=True, help="Minimal output (machine-readable)")
 @click.option("--verbose", "-v", is_flag=True, help="Detailed output with statistics")
 @click.option("--debug", is_flag=True, help="Debug mode with full logs")
@@ -1150,6 +1179,8 @@ def compile(
     dry_run: bool,
     report_format: str,
     fail_on_suspicious: str,
+    provenance_policy: str,
+    fresh: bool,
     quiet: bool,
     verbose: bool,
     debug: bool,
@@ -1159,6 +1190,9 @@ def compile(
     Reads per-document JSON files from EXTRACTED_DIR (or the configured
     input_dir), deduplicates records using the schema's identity rules, and
     writes a consolidated Excel and/or CSV file to the output directory.
+
+    Use --fresh to clear the compiled output directory (stale CSV/XLSX) before
+    writing new results. Pair with 'extract --fresh' for a guaranteed clean pipeline run.
 
     Run ``psweep compile --help`` for every option and its default.
 
@@ -1187,6 +1221,8 @@ def compile(
             "dry_run",
             "report_format",
             "fail_on_suspicious",
+            "provenance_policy",
+            "fresh",
         ]
     )
 
@@ -1237,6 +1273,9 @@ def compile(
     fail_on_suspicious = resolved_inputs.get(
         "fail_on_suspicious", fail_on_suspicious
     )
+    provenance_policy = str(
+        resolved_inputs.get("provenance_policy", provenance_policy)
+    ).strip().lower()
     synthesis_cfg = resolved_inputs.get("synthesis")
     synthesis_active = isinstance(synthesis_cfg, dict) and bool(
         synthesis_cfg.get("enabled")
@@ -1245,15 +1284,6 @@ def compile(
     input_dir = Path(extracted_dir)
     if not input_dir.exists():
         print_error("Input directory not found", input_dir.as_posix())
-        sys.exit(1)
-
-    emit_json_report = dry_run and report_format.lower() == "json"
-
-    if fail_on_suspicious != "none" and not dry_run:
-        print_error(
-            "Invalid option combination",
-            "--fail-on-suspicious only applies with --dry-run",
-        )
         sys.exit(1)
 
     if output:
@@ -1267,7 +1297,37 @@ def compile(
         else:
             output_dir = Path.cwd() / "compiled" / input_dir.name
 
+    if fresh and not dry_run:
+        import shutil
+
+        # --fresh clears the compiled *output* directory (stale CSV/XLSX/accounting),
+        # NOT the extracted JSON directory — that belongs to extract's domain.
+        # Clear exactly the resolved output directory so --output is respected.
+        if output_dir.exists():
+            cleared_count = sum(1 for _ in output_dir.glob("*") if _.is_file())
+            shutil.rmtree(output_dir)
+            if cleared_count > 0 and not view.is_quiet:
+                view.status(
+                    "info",
+                    f"--fresh: cleared {cleared_count} file(s) from {output_dir.as_posix()}",
+                )
+
+    emit_json_report = dry_run and report_format.lower() == "json"
+    record_json_files = list_compile_record_files(input_dir)
+
+    if fail_on_suspicious != "none" and not dry_run:
+        print_error(
+            "Invalid option combination",
+            "--fail-on-suspicious only applies with --dry-run",
+        )
+        sys.exit(1)
+
     output_dir.mkdir(parents=True, exist_ok=True)
+    input_provenance_warnings = analyze_compile_input_provenance(input_dir)
+    would_fail_on_provenance = _should_fail_on_provenance(
+        provenance_policy=provenance_policy,
+        provenance_warnings=input_provenance_warnings,
+    )
 
     if not emit_json_report:
         view.header("COMPILATION")
@@ -1331,6 +1391,27 @@ def compile(
     synth_client = None
     synthesizer = None
     compile_started_at = datetime.now(timezone.utc)
+    if would_fail_on_provenance and emit_json_report:
+        click.echo(
+            json.dumps(
+                {
+                    "warnings": input_provenance_warnings,
+                    "provenance_policy": provenance_policy,
+                    "would_fail_on_provenance": True,
+                },
+                indent=2,
+                sort_keys=True,
+            )
+        )
+        sys.exit(2)
+    if would_fail_on_provenance:
+        if not view.is_quiet:
+            view.error(
+                "Compile input provenance checks failed",
+                "Provenance warnings are present and provenance_policy='fail'.",
+            )
+            view.warnings(input_provenance_warnings)
+        sys.exit(2)
 
     try:
         if synthesis_active:
@@ -1379,9 +1460,8 @@ def compile(
         else:
             quiet = emit_json_report or view.is_quiet
             if not quiet:
-                _json_files = list(input_dir.glob("*.json"))
                 view.phase(
-                    f"Found {len(_json_files)} extracted JSON file(s) in {input_dir.name}"
+                    f"Found {len(record_json_files)} extracted JSON file(s) in {input_dir.name}"
                 )
             with with_status("Loading extracted JSON files...", quiet=quiet):
                 df, schema_info = compiler.compile_from_directory(
@@ -1389,7 +1469,18 @@ def compile(
                     apply_deduplication=not dry_run,
                 )
 
+        if input_provenance_warnings and not emit_json_report:
+            view.warnings(input_provenance_warnings)
         if df.empty:
+            if input_provenance_warnings and emit_json_report:
+                click.echo(
+                    json.dumps(
+                        {"warnings": input_provenance_warnings, "rows": 0},
+                        indent=2,
+                        sort_keys=True,
+                    )
+                )
+                return
             print_warning("No data found to compile")
             return
 
@@ -1410,11 +1501,18 @@ def compile(
                 dedup_preview=dedup_preview,
                 rows_before_dedup=len(df),
             )
+            if input_provenance_warnings:
+                preview_report["warnings"] = [
+                    *(preview_report.get("warnings") or []),
+                    *input_provenance_warnings,
+                ]
             preview_report["fail_on_suspicious"] = fail_on_suspicious
             preview_report["would_fail_on_suspicious"] = _should_fail_on_suspicious(
                 preview_report,
                 fail_on_suspicious,
             )
+            preview_report["provenance_policy"] = provenance_policy
+            preview_report["would_fail_on_provenance"] = would_fail_on_provenance
 
             if emit_json_report or view.is_quiet:
                 click.echo(json.dumps(preview_report, indent=2, sort_keys=True))
@@ -1481,13 +1579,23 @@ def compile(
 
                 view.info("Dry run complete - no CSV/Excel files were written")
 
-            if preview_report["would_fail_on_suspicious"]:
+            if (
+                preview_report["would_fail_on_suspicious"]
+                or preview_report["would_fail_on_provenance"]
+            ):
                 if not emit_json_report and not view.is_quiet:
-                    view.error(
-                        "Suspicious deduplication threshold exceeded",
-                        "Dry-run found suspicious groups at or above "
-                        f"'{fail_on_suspicious}' severity",
-                    )
+                    if preview_report["would_fail_on_suspicious"]:
+                        view.error(
+                            "Suspicious deduplication threshold exceeded",
+                            "Dry-run found suspicious groups at or above "
+                            f"'{fail_on_suspicious}' severity",
+                        )
+                    if preview_report["would_fail_on_provenance"]:
+                        view.error(
+                            "Compile input provenance checks failed",
+                            "Dry-run found provenance warnings while "
+                            "provenance_policy='fail'",
+                        )
                 sys.exit(2)
             return
 

@@ -123,3 +123,4 @@ AGENTS.md
 # Sphinx build output (source under docs/ IS tracked)
 docs/_build/
 .archive/
+notebooks/

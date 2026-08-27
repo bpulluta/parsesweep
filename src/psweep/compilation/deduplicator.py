@@ -63,6 +63,10 @@ class Deduplicator:
         self.field_severity_hints = (
             schema_metadata.get_compilation_field_severity_hints()
         )
+        # Annotation column: configurable via compilation.output.annotation_column,
+        # defaults to "Notes" which is the ParseSweep framework standard.
+        output_cfg = schema_metadata.metadata.get("compilation", {}).get("output", {})
+        self._annotation_col: str = output_cfg.get("annotation_column", "Notes")
 
     def deduplicate(self, df: pd.DataFrame) -> pd.DataFrame:
         """
@@ -93,9 +97,9 @@ class Deduplicator:
         if df.empty:
             return df
 
-        # Ensure Notes column exists
-        if "Notes" not in df.columns:
-            df["Notes"] = ""
+        # Ensure annotation column exists
+        if self._annotation_col not in df.columns:
+            df[self._annotation_col] = ""
 
         # Get key fields from schema metadata (v2.0+ requirement)
         key_fields = self.schema_metadata.get_deduplication_key_fields()
@@ -132,8 +136,8 @@ class Deduplicator:
     def preview_deduplication(self, df: pd.DataFrame) -> Dict[str, Any]:
         """Preview deduplication effects without mutating or writing outputs."""
         preview_df = df.copy(deep=True)
-        if "Notes" not in preview_df.columns:
-            preview_df["Notes"] = ""
+        if self._annotation_col not in preview_df.columns:
+            preview_df[self._annotation_col] = ""
 
         key_fields = self.schema_metadata.get_deduplication_key_fields()
         if not key_fields:
@@ -342,11 +346,14 @@ class Deduplicator:
             self.schema_metadata.get_deduplication_ignore_fields()
         )
 
-        # Match column names (case-insensitive)
+        # Match column names using normalized token equality (not substring containment).
+        # Substring matching causes false positives: e.g. "type" would exclude "Rate Type".
+        def _col_key(name: str) -> str:
+            return name.lower().replace(" ", "_").replace("-", "_")
+
+        ignore_keys = {_col_key(f) for f in ignore_fields}
         exclude_cols = [
-            col
-            for col in df.columns
-            if any(field.lower() in col.lower() for field in ignore_fields)
+            col for col in df.columns if _col_key(col) in ignore_keys
         ]
 
         return exclude_cols
@@ -355,64 +362,77 @@ class Deduplicator:
         self, df: pd.DataFrame, compare_cols: List[str]
     ) -> List[Dict[str, Any]]:
         """
-        Find and process duplicates using fuzzy matching logic.
+        Find duplicate row groups using schema-driven matching.
 
-        Fuzzy matching treats empty/null values in optional fields (like 'Condition')
-        as wildcards that can match any value. For example:
+        Two rows are duplicates when they agree on all key fields (required +
+        fuzzy).  Required fields use exact case-insensitive matching.  Fuzzy
+        fields (declared in ``identity.deduplication.fuzzy_key_fields``) treat
+        an empty/null value as a wildcard that matches any other value, and
+        compare non-empty values case-insensitively.
 
-        - Row A: category="Height limit", condition=""
-        - Row B: category="Height limit", condition="total height"
-
-        These are considered duplicates (A's empty condition matches B's filled condition).
-
-        IMPORTANT: Deduplication only happens within the same jurisdiction.
-        Different jurisdictions are never merged, even if requirements are identical.
+        Partition fields (``identity.deduplication.partition_fields``) are
+        prepended to the groupby key so rows from different partitions are
+        never merged even when all content fields match.
 
         Parameters
         ----------
         df : pd.DataFrame
             Full DataFrame
         compare_cols : List[str]
-            Columns to compare for duplicates
+            Compiled-output column names to compare (mapped from schema key_fields)
 
         Returns
         -------
         List[Dict[str, Any]]
-            List of row indices to drop
+            Duplicate groups with keep/drop indices and merge metadata
         """
-        checked = set()
+        checked: set = set()
         duplicate_groups: List[Dict[str, Any]] = []
 
-        # Optional fields that support fuzzy matching (empty = wildcard)
-        optional_fuzzy_fields = {"Condition", "Applies To", "Applies_To"}
-        fuzzy_cols = [
-            col for col in compare_cols if col in optional_fuzzy_fields
-        ]
-        required_cols = [
-            col for col in compare_cols if col not in optional_fuzzy_fields
-        ]
+        # --- Schema-driven field classification ---
+        # Fuzzy fields: schema declares which key fields use empty-as-wildcard matching.
+        # All other compare_cols are required (exact case-insensitive match via groupby).
+        raw_fuzzy = self.schema_metadata.get_deduplication_fuzzy_fields()
+        fuzzy_field_cfg = self.schema_metadata.get_deduplication_fuzzy_field_config()
+        fuzzy_col_names = map_key_fields_to_columns(df, raw_fuzzy) if raw_fuzzy else []
+        # Build col -> config mapping (col names may differ from field names after mapping)
+        raw_fuzzy_lower = {f.lower().replace(" ", "_"): cfg for f, cfg in fuzzy_field_cfg.items()}
+        fuzzy_col_cfg: dict = {
+            col: raw_fuzzy_lower.get(col.lower().replace(" ", "_"), {})
+            for col in fuzzy_col_names
+        }
+        fuzzy_col_set = set(fuzzy_col_names)
+        fuzzy_cols = [col for col in compare_cols if col in fuzzy_col_set]
+        required_cols = [col for col in compare_cols if col not in fuzzy_col_set]
 
-        # Add jurisdiction columns to ensure we never merge across jurisdictions
-        jurisdiction_cols = []
-        for field in [
-            "State",
-            "County",
-            "City",
-            "Municipality",
-            "Jurisdiction",
-        ]:
-            if field in df.columns:
-                jurisdiction_cols.append(field)
+        # --- Schema-driven partition fields ---
+        # Rows in different partitions are never merged (e.g. different counties).
+        # Partitioning is explicit and schema-driven via
+        # identity.deduplication.partition_fields.
+        raw_partition = self.schema_metadata.get_deduplication_partition_fields()
+        partition_col_names = map_key_fields_to_columns(df, raw_partition) if raw_partition else []
+        partition_cols = [col for col in partition_col_names if col in df.columns]
 
-        # Combine jurisdiction + required fields for grouping
-        grouping_cols = jurisdiction_cols + required_cols
+        # --- Groupby: partition + required fields (all normalized to lowercase) ---
+        grouping_cols = partition_cols + required_cols
+        if not grouping_cols:
+            return duplicate_groups
 
-        # Group by jurisdiction + required fields
-        for _, group in df.groupby(grouping_cols, dropna=False):
+        df_norm = df.copy(deep=False)
+        for col in grouping_cols:
+            if col in df_norm.columns and df_norm[col].dtype == object:
+                df_norm[col] = df_norm[col].map(
+                    lambda value: (
+                        str(value).strip().lower()
+                        if value is not None and value == value
+                        else ""
+                    )
+                )
+
+        for _, group in df_norm.groupby(grouping_cols, dropna=False):
             if len(group) <= 1:
                 continue
 
-            # Within each group, find fuzzy duplicates
             indices = group.index.tolist()
 
             for i, idx1 in enumerate(indices):
@@ -421,38 +441,17 @@ class Deduplicator:
 
                 duplicate_group = [idx1]
 
-                for idx2 in indices[i + 1 :]:
+                for idx2 in indices[i + 1:]:
                     if idx2 in checked:
                         continue
 
-                    # Check if fuzzy fields match (empty matches anything)
-                    is_duplicate = True
-                    for col in fuzzy_cols:
-                        val1 = df.at[idx1, col]
-                        val2 = df.at[idx2, col]
-
-                        # Normalize values
-                        v1_empty = pd.isna(val1) or str(val1).strip() == ""
-                        v2_empty = pd.isna(val2) or str(val2).strip() == ""
-
-                        # Empty values match anything (wildcard)
-                        if v1_empty or v2_empty:
-                            continue
-
-                        # Non-empty values must match exactly
-                        if val1 != val2:
-                            is_duplicate = False
-                            break
-
-                    if is_duplicate:
+                    if self._fuzzy_fields_match(df, idx1, idx2, fuzzy_cols, fuzzy_col_cfg):
                         duplicate_group.append(idx2)
 
-                # Process this duplicate group
                 if len(duplicate_group) > 1:
                     for idx in duplicate_group:
                         checked.add(idx)
 
-                    # Keep the most complete row
                     completeness = {
                         idx: sum(
                             1
@@ -463,16 +462,10 @@ class Deduplicator:
                         for idx in duplicate_group
                     }
                     keep_idx = max(completeness, key=completeness.get)
-                    drop_indices = [
-                        idx for idx in duplicate_group if idx != keep_idx
-                    ]
+                    drop_indices = [idx for idx in duplicate_group if idx != keep_idx]
 
                     note = self._generate_merge_note(
-                        df,
-                        keep_idx,
-                        duplicate_group,
-                        required_cols,
-                        fuzzy_cols,
+                        df, keep_idx, duplicate_group, required_cols, fuzzy_cols
                     )
                     duplicate_groups.append(
                         {
@@ -487,6 +480,49 @@ class Deduplicator:
 
         return duplicate_groups
 
+    _WORDS_NORMALIZE_STOPWORDS = frozenset(
+        {"a", "an", "the", "of", "in", "at", "by", "for", "to", "from", "hours"}
+    )
+
+    @classmethod
+    def _fuzzy_fields_match(
+        cls,
+        df: pd.DataFrame,
+        idx1: int,
+        idx2: int,
+        fuzzy_cols: List[str],
+        fuzzy_col_cfg: Optional[dict] = None,
+    ) -> bool:
+        """Return True when all fuzzy fields are compatible between two rows.
+
+        Compatibility rules (applied per field):
+        - Either value empty/null → wildcard, always compatible.
+        - Both non-empty → compare after applying the field's ``normalize`` mode:
+          - ``"words"`` — lowercase, collapse whitespace, strip basic plural 's',
+            remove common stop-words.  Generic text normalization; no domain
+            vocabulary.  Handles phrasing like "between 7 AM and 7 PM" vs
+            "Between the hours of 7 AM and 7 PM".
+          - ``None`` (default) — exact case-insensitive equality after strip.
+        """
+        cfg = fuzzy_col_cfg or {}
+        for col in fuzzy_cols:
+            v1 = df.at[idx1, col]
+            v2 = df.at[idx2, col]
+            e1 = pd.isna(v1) or str(v1).strip() == ""
+            e2 = pd.isna(v2) or str(v2).strip() == ""
+            if e1 or e2:
+                continue
+            s1 = str(v1).strip().lower()
+            s2 = str(v2).strip().lower()
+            normalize = cfg.get(col, {}).get("normalize")
+            if normalize == "words":
+                sw = cls._WORDS_NORMALIZE_STOPWORDS
+                s1 = " ".join(t.rstrip("s") for t in s1.split() if t not in sw)
+                s2 = " ".join(t.rstrip("s") for t in s2.split() if t not in sw)
+            if s1 != s2:
+                return False
+        return True
+
     def _apply_duplicate_groups(
         self,
         df: pd.DataFrame,
@@ -500,8 +536,8 @@ class Deduplicator:
             note = group["note"]
 
             rows_to_drop.extend(drop_indices)
-            current_note = df.at[keep_idx, "Notes"]
-            df.at[keep_idx, "Notes"] = (
+            current_note = df.at[keep_idx, self._annotation_col]
+            df.at[keep_idx, self._annotation_col] = (
                 f"{current_note}; {note}" if current_note else note
             )
 

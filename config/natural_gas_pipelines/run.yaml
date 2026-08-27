@@ -17,7 +17,6 @@ discovery:
   queries:
     # General ordinance searches (100% hit rate, ~9 results each)
     - "\"{jurisdiction}\" {state} natural gas compressor station ordinance"
-    - "\"{jurisdiction}\" {state} oil and gas facilities zoning ordinance"
     - "\"{jurisdiction}\" {state} compressor station setback noise ordinance code"
     # Code-hosting site searches (find landing pages for municode/ecode360)
     - "site:ecode360.com \"{jurisdiction}\" {state}"
@@ -44,8 +43,6 @@ discovery:
       - compressor
       - pipeline
       - natural gas
-      - oil and gas
-      - gas well
       - gas facilities
       - gas utility
       - bylaw
@@ -81,7 +78,6 @@ discovery:
   #     include_link_text_patterns:
   #       - "compressor"
   #       - "natural gas"
-  #       - "oil and gas"
   #       - "pipeline"
   #       - "gas facilit"
   runtime:
@@ -93,12 +89,10 @@ discovery:
       - compressor
       - pipeline
       - natural gas
-      - oil and gas
       - ordinance
       - zoning
       - code
       - setback
-      - gas well
       - gas facilities
     domain_scores:
       "municode.com": 0.2
@@ -124,8 +118,6 @@ discovery:
       - setback
       - noise
       - permit
-      - oil and gas
-      - gas well
       - gas facilities
       - gas utility
     min_required_matches: 1
@@ -135,12 +127,13 @@ discovery:
     document_description: >-
       enacted municipal or county ordinance, zoning code chapter, bylaw, or
       code of ordinances section that regulates natural gas compressor stations,
-      natural gas pipelines, oil and gas facilities, or gas utility infrastructure.
-      Strongly prefer documents with quantitative regulatory values (setbacks
-      in feet, noise limits in dBA, lot sizes, fencing heights, bond amounts)
-      over documents with only use classifications or qualitative policies.
+      natural gas pipelines (transmission, distribution, gathering), or
+      metering/regulator stations.
+      Strongly prefer documents with quantitative setback values (feet) and
+      noise limits (dBA) over documents with only qualitative standards or
+      monitoring protocols.
       Relevant content includes: setbacks, noise limits, zoning district
-      requirements, permit conditions, fencing, enclosures. Reject only:
+      requirements, permit conditions, fencing heights, enclosures. Reject only:
       drafts, meeting minutes, staff reports, news articles, environmental
       impact reports, state-level regulations, or documents from a different
       jurisdiction than the target.
@@ -166,21 +159,20 @@ extraction:
     auto_locate:
       model: secondary
       section_description: >-
-        the ordinance sections regulating natural gas facilities and related oil
-        and gas infrastructure — setbacks, noise limits, monitoring timelines,
-        permit/submission requirements, and zoning/approval constraints
+        the ordinance sections regulating natural gas compressor stations and
+        pipelines — setback distances from property lines, roads, water bodies,
+        and sensitive uses; noise dBA limits; and fencing height requirements
       trigger_chars: 100000
       max_selected_pages: 40
       keywords:
         - natural gas
         - compressor
         - pipeline
-        - oil and gas
         - setback
         - noise
-        - monitoring
-        - permit
-        - zoning
+        - fencing
+        - dBA
+        - distance
       save_discovered: true
 
 # ── Compilation ──────────────────────────────────────────────────────────────
