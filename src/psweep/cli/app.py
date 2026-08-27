@@ -16,7 +16,6 @@ Architecture note:
 
 from __future__ import annotations
 
-import csv
 import json
 import shutil
 import subprocess
@@ -30,7 +29,11 @@ import typer.main
 from typer.core import TyperGroup
 
 from psweep import __version__
-from psweep.pipeline import build_run_stage_commands, resolve_run_validation
+from psweep.pipeline import (
+    build_run_stage_commands,
+    resolve_run_discovery_enabled,
+    resolve_run_validation,
+)
 
 # ---------------------------------------------------------------------------
 # App
@@ -137,10 +140,27 @@ def run(
             "--fresh",
             help="Ignore all previous work and start fresh — re-run every "
             "discovery target (ignoring the checkpoint and search cache), "
-            "re-extract every document, and clear compiled outputs before "
+            "clear extracted and compiled outputs, then re-extract every "
+            "document from the newly discovered curated set before "
             "recompiling.",
         ),
     ] = False,
+    target_limit: Annotated[
+        Optional[int],
+        typer.Option(
+            "--target-limit",
+            "-n",
+            min=1,
+            help="Limit discovery to the first N configured targets for this run.",
+        ),
+    ] = None,
+    retention_documents: Annotated[
+        Optional[str],
+        typer.Option(
+            "--retention-documents",
+            help="Discovery document retention mode: all, curated, or none.",
+        ),
+    ] = None,
     skip_discover: Annotated[
         bool,
         typer.Option("--skip-discover", help="Skip discovery (use existing curated docs)."),
@@ -149,6 +169,20 @@ def run(
         bool,
         typer.Option("--skip-extract", help="Skip extraction (compile from existing JSON)."),
     ] = False,
+    validate_config_only: Annotated[
+        bool,
+        typer.Option(
+            "--validate-config",
+            help="Validate resolved run-stage config and exit without executing stages.",
+        ),
+    ] = False,
+    config_strict: Annotated[
+        bool,
+        typer.Option(
+            "--config-strict/--no-config-strict",
+            help="Fail on unknown keys in runtime config sections during run preflight.",
+        ),
+    ] = True,
     yes: Annotated[
         bool,
         typer.Option("--yes", "-y", help="Skip confirmation prompt."),
@@ -170,13 +204,18 @@ def run(
 
     [bold]Usage:[/bold]
         psweep run --config config/my_domain/run.yaml
+        psweep run --config config/my_domain/run.yaml --target-limit 3 --fresh --yes
 
     [bold]Adding new targets:[/bold]
         1. Add rows to config/<domain>/targets.csv
         2. Run: psweep run --config config/<domain>/run.yaml
         3. Only new targets are processed; previous results are preserved.
     """
-    from psweep.config import load_yaml_file
+    from psweep.config import (
+        RuntimeConfigError,
+        load_runtime_config_file,
+        resolve_command_config,
+    )
     from psweep.cli.run_view import RunView
     from psweep.cli.ui import Verbosity, set_verbosity
 
@@ -187,18 +226,95 @@ def run(
     resolved_verbosity = Verbosity.from_flags(quiet=quiet, verbose=verbose, debug=False)
     set_verbosity(resolved_verbosity)
     view = RunView("run", verbosity=resolved_verbosity)
+    if retention_documents is not None:
+        retention_documents = retention_documents.strip().lower()
+        if retention_documents not in {"all", "curated", "none"}:
+            view.error(
+                "Invalid --retention-documents value",
+                "Expected one of: all, curated, none",
+            )
+            raise typer.Exit(1)
 
-    cfg = load_yaml_file(config_path)
+    try:
+        cfg = load_runtime_config_file(config_path)
+    except RuntimeConfigError as exc:
+        view.error("Runtime config validation failed", str(exc))
+        raise typer.Exit(1)
 
     domain = cfg.get("domain", config_path.parent.name)
-    discovery_cfg = cfg.get("discovery", {})
-    targets_csv = config_path.parent / discovery_cfg.get("targets_csv", "targets.csv")
+    discovery_enabled = resolve_run_discovery_enabled(config_path)
+    discovery_cfg = cfg.get("discovery", {}) if discovery_enabled else {}
 
     # Build run plan
     target_labels: list[str] = []
-    if targets_csv.exists():
-        with targets_csv.open() as fh:
-            target_labels = [row.get("label", "") for row in csv.DictReader(fh)]
+    configured_targets = discovery_cfg.get("targets")
+    if isinstance(configured_targets, list):
+        target_labels = [
+            str(row.get("label") or "").strip()
+            for row in configured_targets
+            if isinstance(row, dict)
+        ]
+        target_labels = [label for label in target_labels if label]
+    planned_target_labels = (
+        target_labels[:target_limit]
+        if target_limit is not None
+        else target_labels
+    )
+
+    preflight_commands: list[str] = []
+    if not skip_discover and discovery_enabled:
+        preflight_commands.append("discover")
+    if not skip_extract:
+        preflight_commands.append("extract")
+    preflight_commands.append("compile")
+
+    try:
+        discover_inputs: dict[str, object] | None = None
+        if discovery_enabled and not skip_discover:
+            discover_inputs = resolve_command_config(
+                command="discover",
+                cli_values={
+                    **(
+                        {"target_limit": target_limit}
+                        if target_limit is not None
+                        else {}
+                    ),
+                    **(
+                        {"retention_documents": retention_documents}
+                        if retention_documents is not None
+                        else {}
+                    ),
+                },
+                config_data=cfg,
+                strict=config_strict,
+            )
+        for command_name in preflight_commands:
+            resolve_command_config(
+                command=command_name,
+                cli_values={},
+                config_data=cfg,
+                strict=config_strict,
+            )
+        if (
+            not skip_extract
+            and discover_inputs is not None
+            and str(discover_inputs.get("retention_documents", "all")).lower() == "none"
+        ):
+            view.error(
+                "Run preflight failed",
+                "retention_documents='none' keeps no local docs and is incompatible "
+                "with extract/compile run stages. Use --retention-documents curated "
+                "or run discover-only.",
+            )
+            raise typer.Exit(1)
+    except RuntimeConfigError as exc:
+        view.error("Run preflight failed", str(exc))
+        raise typer.Exit(1)
+
+    if validate_config_only:
+        if not view.is_quiet:
+            view.success("Runtime config validation passed for run command")
+        raise typer.Exit(0)
 
     checkpoint_path = Path(f"discovered/{domain}/checkpoint.json")
     checkpointed: list[str] = []
@@ -210,7 +326,7 @@ def run(
         except Exception:
             pass
 
-    new_targets = [t for t in target_labels if t not in checkpointed]
+    new_targets = [t for t in planned_target_labels if t not in checkpointed]
     curated_dir = Path(f"discovered/{domain}/curated")
     curated_count = (
         sum(
@@ -237,24 +353,32 @@ def run(
     # Show run plan
     view.header()
     plan_rows: dict[str, str] = {"Domain": domain}
-    if checkpointed and not fresh:
+    if not discovery_enabled:
+        plan_rows["Targets"] = "n/a (discovery not configured)"
+    elif target_limit is not None:
+        limited_total = len(planned_target_labels)
         plan_rows["Targets"] = (
-            f"{len(target_labels)} total "
+            f"{limited_total}/{len(target_labels)} configured "
+            f"(limited by --target-limit)"
+        )
+    elif checkpointed and not fresh:
+        plan_rows["Targets"] = (
+            f"{len(planned_target_labels)} total "
             f"({len(checkpointed)} cached, {len(new_targets)} new)"
         )
     else:
         plan_rows["Targets"] = (
-            f"{len(target_labels)} total (all {'fresh' if fresh else 'new'})"
+            f"{len(planned_target_labels)} total (all {'fresh' if fresh else 'new'})"
         )
     if curated_count and not fresh:
         plan_rows["Curated"] = f"{curated_count} docs (preserved)"
     if extracted_count and not fresh:
         plan_rows["Extracted"] = f"{extracted_count} docs (skip existing)"
     if fresh:
-        plan_rows["Mode"] = "REPROCESS (ignore checkpoint/search cache; re-extract docs; clear compiled output)"
+        plan_rows["Mode"] = "REPROCESS (ignore checkpoint/search cache; clear extracted+compiled outputs; re-extract docs)"
 
     stages_list: list[str] = []
-    if not skip_discover:
+    if not skip_discover and discovery_enabled:
         stages_list.append("discover")
 
     validation = resolve_run_validation(config_path)
@@ -302,9 +426,22 @@ def run(
         base_cmd=base_cmd,
         skip_discover=skip_discover,
         skip_extract=skip_extract,
+        discovery_enabled=discovery_enabled,
         fresh=fresh,
+        target_limit=target_limit,
+        retention_documents=retention_documents,
+        extract_input_path=(
+            Path(f"discovered/{domain}/latest/curated")
+            if (not skip_discover and discovery_enabled and target_limit is not None)
+            else None
+        ),
         extra_flags=flags,
     )
+
+    if fresh and not skip_extract and extraction_dir.exists():
+        shutil.rmtree(extraction_dir, ignore_errors=True)
+        if not view.is_quiet:
+            view.info(f"--fresh: cleared extracted output at {extraction_dir.as_posix()}")
 
     _stage_labels = {
         "discover": "Discovering documents",
@@ -327,7 +464,15 @@ def run(
         "Status": "complete",
         "Stages": " → ".join(stages_list),
     }
-    final_curated_dir = Path(f"discovered/{domain}/curated")
+    # Report run-scoped discovery output when this invocation executed discovery.
+    # Fallback to consolidated curated only when latest is unavailable.
+    latest_curated_dir = Path(f"discovered/{domain}/latest/curated")
+    consolidated_curated_dir = Path(f"discovered/{domain}/curated")
+    final_curated_dir = (
+        latest_curated_dir
+        if (not skip_discover and discovery_enabled and latest_curated_dir.exists())
+        else consolidated_curated_dir
+    )
     if final_curated_dir.exists():
         doc_count = sum(
             1

@@ -33,7 +33,7 @@ from .constants import (
 from .link_prioritizer import LinkPrioritizer
 from .models import DiscoveryCandidate, DiscoveryManifest, CandidateScore
 from .retry import compute_backoff, is_transient_error
-from .urls import normalize_url_text, url_host
+from .urls import decode_discovery_url, normalize_url_text, url_host
 from .policies import (
     DEFAULT_ROBOTS_POLICY_MODE,
     DEFAULT_TOS_POLICY_MODE,
@@ -141,6 +141,11 @@ class DiscoveryRequest:
     reprocess: bool = False
     # Optional callback for human-friendly progress messages emitted by engine stages.
     progress_callback: Callable[[str], None] | None = None
+    # Downloaded-document retention policy:
+    # - all: keep all downloaded documents
+    # - curated: keep only selected curated documents
+    # - none: keep no downloaded documents
+    retention_documents: str = "all"
 
 
 @dataclass(slots=True)
@@ -213,6 +218,7 @@ class DiscoveryEngine:
     _DEFAULT_REQUEST_HEADERS = {
         "User-Agent": "ParseSweep/2.0 (+discovery)"
     }
+    _ALLOWED_RETENTION_MODES = {"all", "curated", "none"}
     # File-type sets / MIME map are centralized in constants.py.
     _SUPPORTED_EXTENSIONS = DOWNLOADABLE_EXTENSIONS
     _MIME_EXTENSION_MAP = MIME_TO_EXTENSION
@@ -526,6 +532,13 @@ class DiscoveryEngine:
         )
 
     @staticmethod
+    def _resolve_seeker_cache_dir(request: DiscoveryRequest) -> str | None:
+        """Return the canonical SerpApi cache directory for this request."""
+        if not getattr(request, "seeker_cache", False):
+            return None
+        return str(Path("discovered") / request.domain / ".serpapi_cache")
+
+    @staticmethod
     def _build_selector(request: DiscoveryRequest) -> CandidateSelector:
         """Construct a CandidateSelector from request selection settings.
 
@@ -588,13 +601,7 @@ class DiscoveryEngine:
         try:
             from .connectors.serpapi_seeker import SerpApiSeeker
 
-            seeker_cache_dir = None
-            if getattr(request, "seeker_cache", False):
-                seeker_cache_dir = str(
-                    Path("discovered")
-                    / request.domain
-                    / ".serpapi_cache"
-                )
+            seeker_cache_dir = DiscoveryEngine._resolve_seeker_cache_dir(request)
             seeker = SerpApiSeeker(
                 retry_max_attempts=request.retry_max_attempts,
                 retry_initial_backoff_seconds=request.retry_initial_backoff_seconds,
@@ -610,7 +617,10 @@ class DiscoveryEngine:
                     )
                     * 60.0,
                 ),
-                cache_refresh=bool(getattr(request, "reprocess", False)),
+                cache_refresh=bool(
+                    getattr(request, "reprocess", False)
+                    and not getattr(request, "dry_run", False)
+                ),
             )
             seeker_inputs = DiscoveryEngine._build_seeker_inputs(request)
             # Collect results per-target so selection can be applied independently
@@ -647,7 +657,7 @@ class DiscoveryEngine:
         def _to_candidate(
             raw: dict[str, object],
         ) -> DiscoveryCandidate | None:
-            url = raw.get("url")
+            url = decode_discovery_url(str(raw.get("url") or ""))
             if not url:
                 return None
             return DiscoveryCandidate(
@@ -1090,6 +1100,7 @@ class DiscoveryEngine:
         int, dict[str, object], dict[str, object] | None, bool, list[str]
     ]:
         url = candidate.url
+        url = decode_discovery_url(url)
         if not isinstance(url, str) or not re.match(
             r"^https?://", url, flags=re.IGNORECASE
         ):
@@ -2826,13 +2837,9 @@ class DiscoveryEngine:
         )
 
         def _is_curated(record: dict[str, object]) -> bool:
-            # If review ran but failed mid-execution, do not fall back to curating
-            # everything — that would silently overwrite a good prior curation.
-            if review_failed:
-                return False
-            if review_ran:
-                return bool(record.get("review_selected"))
-            return record.get("status") == "downloaded"
+            return DiscoveryEngine._record_is_curated(
+                record, review_ran=review_ran, review_failed=review_failed
+            )
 
         def _link(src_file: Path, dest_file: Path) -> None:
             dest_file.parent.mkdir(parents=True, exist_ok=True)
@@ -2866,6 +2873,108 @@ class DiscoveryEngine:
                 link_errors += 1
                 continue
         return curated_dir, count, link_errors
+
+    @staticmethod
+    def _record_is_curated(
+        record: dict[str, object],
+        *,
+        review_ran: bool,
+        review_failed: bool,
+    ) -> bool:
+        # If review ran but failed mid-execution, do not fall back to curating
+        # everything — that would silently overwrite a good prior curation.
+        if review_failed:
+            return False
+        if review_ran:
+            return bool(record.get("review_selected"))
+        return record.get("status") == "downloaded"
+
+    @classmethod
+    def _apply_document_retention(
+        cls,
+        *,
+        mode: str,
+        documents_dir: Path,
+        curated_dir: Path | None,
+        download_records: list[dict[str, object]],
+    ) -> tuple[int, int]:
+        import shutil
+
+        resolved_mode = str(mode or "all").strip().lower()
+        if resolved_mode not in cls._ALLOWED_RETENTION_MODES:
+            resolved_mode = "all"
+        if resolved_mode == "all":
+            return 0, 0
+
+        files_removed = 0
+        bytes_removed = 0
+
+        def _remove_file(path: Path) -> None:
+            nonlocal files_removed, bytes_removed
+            try:
+                if path.exists() and path.is_file():
+                    try:
+                        bytes_removed += int(path.stat().st_size)
+                    except OSError:
+                        pass
+                    path.unlink()
+                    files_removed += 1
+            except OSError:
+                return
+
+        if resolved_mode == "none":
+            if documents_dir.exists():
+                for file_path in sorted(
+                    (p for p in documents_dir.rglob("*") if p.is_file()),
+                    reverse=True,
+                ):
+                    _remove_file(file_path)
+                shutil.rmtree(documents_dir, ignore_errors=True)
+            if curated_dir and curated_dir.exists():
+                for file_path in sorted(
+                    (p for p in curated_dir.rglob("*") if p.is_file()),
+                    reverse=True,
+                ):
+                    _remove_file(file_path)
+                shutil.rmtree(curated_dir, ignore_errors=True)
+            return files_removed, bytes_removed
+
+        review_ran = any("review_selected" in record for record in download_records)
+        review_failed = any(record.get("review_failed") for record in download_records)
+        kept_rel_paths: set[str] = set()
+        for record in download_records:
+            if cls._record_is_curated(
+                record,
+                review_ran=review_ran,
+                review_failed=review_failed,
+            ):
+                rel = record.get("relative_path")
+                if rel:
+                    kept_rel_paths.add(str(rel))
+
+        if documents_dir.exists():
+            for record in download_records:
+                rel = record.get("relative_path")
+                if not rel:
+                    continue
+                rel_text = str(rel)
+                if rel_text in kept_rel_paths:
+                    continue
+                file_path = documents_dir / rel_text
+                _remove_file(file_path)
+                if file_path.parent.exists():
+                    cache_dir = file_path.parent / TEXT_CACHE_DIRNAME
+                    if cache_dir.exists():
+                        for suffix in (".txt", ".meta.json"):
+                            _remove_file(cache_dir / f"{file_path.stem}{suffix}")
+            # Prune empty directories
+            for dir_path in sorted(
+                (p for p in documents_dir.rglob("*") if p.is_dir()),
+                reverse=True,
+            ):
+                with contextlib.suppress(OSError):
+                    dir_path.rmdir()
+        return files_removed, bytes_removed
 
     @staticmethod
     def _promote_to_consolidated_curated(
@@ -2908,9 +3017,6 @@ class DiscoveryEngine:
                 partition_rel = partition_rel.parent
             if partition_rel != Path("."):
                 run_partitions.add(partition_rel)
-
-        if not run_partitions:
-            return
 
         # Stage files in a temp dir under the same parent so moves are local-fs
         # (atomic rename possible) — avoids a crash window where partitions are
@@ -3569,8 +3675,21 @@ class DiscoveryEngine:
         from .connectors.base import SeekerInput
 
         seeker = SerpApiSeeker(
-            cache_dir=str(documents_dir.parent.parent.parent / ".serpapi_cache"),
-            cache_ttl_seconds=86400 * 7,
+            retry_max_attempts=request.retry_max_attempts,
+            retry_initial_backoff_seconds=request.retry_initial_backoff_seconds,
+            retry_max_backoff_seconds=request.retry_max_backoff_seconds,
+            min_request_interval_seconds=max(
+                0.0, float(request.min_request_interval_ms) / 1000.0
+            ),
+            cache_dir=DiscoveryEngine._resolve_seeker_cache_dir(request),
+            cache_ttl_seconds=max(
+                0.0, float(getattr(request, "seeker_cache_ttl_minutes", 0.0) or 0.0)
+            )
+            * 60.0,
+            cache_refresh=bool(
+                getattr(request, "reprocess", False)
+                and not getattr(request, "dry_run", False)
+            ),
         )
 
         retry_candidates = []
@@ -3739,8 +3858,9 @@ class DiscoveryEngine:
         # this run's completions are recorded).
         checkpoint_path = self._checkpoint_path(manifest_path)
         if request.reprocess:
-            with contextlib.suppress(OSError):
-                checkpoint_path.unlink(missing_ok=True)
+            if not request.dry_run:
+                with contextlib.suppress(OSError):
+                    checkpoint_path.unlink(missing_ok=True)
             completed_checkpoint_keys: dict[str, dict[str, object]] = {}
         else:
             completed_checkpoint_keys = self._load_checkpoint(checkpoint_path)
@@ -4046,6 +4166,12 @@ class DiscoveryEngine:
                     download_records=download_records,
                     run_dir=manifest_path.parent,
                 )
+                removed_files, removed_bytes = self._apply_document_retention(
+                    mode=request.retention_documents,
+                    documents_dir=documents_dir,
+                    curated_dir=curated_dir,
+                    download_records=download_records,
+                )
                 download_notes.append(
                     f"Curated {curated_count} document(s) → "
                     f"{curated_dir.as_posix()}"
@@ -4053,6 +4179,13 @@ class DiscoveryEngine:
                 download_notes.append(
                     f"Review ledger written: {review_index_path.as_posix()}"
                 )
+                if removed_files:
+                    download_notes.append(
+                        "Retention cleanup: "
+                        f"mode={request.retention_documents}, "
+                        f"removed={removed_files} file(s), "
+                        f"freed={removed_bytes} bytes."
+                    )
             download_notes.append(
                 f"Download index written: {download_index_path.as_posix()}"
             )

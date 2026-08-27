@@ -8,7 +8,7 @@ domain: natural_gas_pipelines
 # ── Model tiers ──────────────────────────────────────────────────────────────
 models:
   primary: gpt-5.6-terra
-  secondary: claude-sonnet-4-6
+  secondary: gpt-5.4-mini
   judge: claude-sonnet-5
 
 # ── Discovery ────────────────────────────────────────────────────────────────
@@ -21,6 +21,9 @@ discovery:
     # Code-hosting site searches (find landing pages for municode/ecode360)
     - "site:ecode360.com \"{jurisdiction}\" {state}"
     - "site:municode.com \"{jurisdiction}\" {state} code of ordinances"
+    # Texas jurisdictions often place compressor/pipeline controls inside broader
+    # UDC/gas-well chapters; keep this for discovery recall, then filter in review.
+    - "\"{jurisdiction}\" {state} unified development code gas well compressor station"
   search:
     provider: serpapi
     max_results: 10
@@ -58,6 +61,27 @@ discovery:
       - public comment
       - staff report
       - environmental impact
+      - handbook
+      - technical report
+      - research report
+      - law review
+      - jobs
+    exclude_url_patterns:
+      - "indeed\\.com/"
+      - "digitalcommons\\.law\\."
+      - "ir\\.lawnet\\."
+      - "scholarship\\.law\\."
+      - "hklaw\\.com/"
+      - "townhall\\.virginia\\.gov/"
+      - "wikipedia\\.org/"
+      - "nasa\\.gov/"
+      - "lincolninst\\.edu/"
+      - "agrilife\\.org/"
+      - "rosap\\.ntl\\.bts\\.gov/"
+      - "facebook\\.com/"
+      - "twitter\\.com/"
+      - "x\\.com/"
+      - "insideclimatenews\\.org/"
     relevance_allowed_domain_patterns:
       - ".gov"
       - ".us"
@@ -83,6 +107,8 @@ discovery:
   runtime:
     max_depth: 3
     max_pages: 40
+  retention:
+    documents: curated
   link_prioritization:
     mode: heuristic
     keywords:
@@ -123,7 +149,7 @@ discovery:
     min_required_matches: 1
     action: warn
   document_review:
-    model: secondary
+    model: primary
     document_description: >-
       enacted municipal or county ordinance, zoning code chapter, bylaw, or
       code of ordinances section that regulates natural gas compressor stations,
@@ -136,8 +162,25 @@ discovery:
       requirements, permit conditions, fencing heights, enclosures. Reject only:
       drafts, meeting minutes, staff reports, news articles, environmental
       impact reports, state-level regulations, or documents from a different
-      jurisdiction than the target.
-    keep_top: 2
+      jurisdiction than the target. EXCLUDE oil and gas well siting/drilling/
+      production regulations and wellpad requirements unless a clause explicitly
+      governs natural gas compressor stations or pipelines. If a jurisdiction's
+      only available ordinance artifact is a mixed UDC/gas-well chapter that
+      includes explicit compressor/pipeline standards, treat it as primary for
+      this workflow (we will extract only compressor/pipeline requirements and
+      ignore unrelated well-development clauses).
+    keywords:
+      - natural gas
+      - compressor
+      - pipeline
+      - metering
+      - regulator station
+      - setback
+      - feet
+      - dba
+      - fence
+      - zoning
+    keep_top: 3
     # Comparative dedup: after individual grading, an LLM pass compares all
     # confirmed-primary docs for the same jurisdiction and drops redundant ones
     # (same ordinance in an older format or from a less authoritative source).
@@ -150,7 +193,7 @@ discovery:
 # ── Extraction ───────────────────────────────────────────────────────────────
 extraction:
   model: primary
-  input_dir: discovered/natural_gas_pipelines/curated
+  input_dir: discovered/natural_gas_pipelines/latest/curated
   schema: schemas/personal/natural_gas_pipeline_schema.json
   output_dir: extracted/natural_gas_pipelines
   max_context: 600000
@@ -180,6 +223,7 @@ compilation:
   input_dir: extracted/natural_gas_pipelines
   schema: schemas/personal/natural_gas_pipeline_schema.json
   output_dir: compiled/natural_gas_pipelines
+  provenance_policy: fail
   output:
     default_format: both
     freeze_columns: 4
@@ -213,47 +257,47 @@ compilation:
       - year
 
 # ── QA/QC ────────────────────────────────────────────────────────────────────
-validation:
-  # Keep QA/QC lean for validation runs; 3-model runs inflate presence-only noise.
-  models: [primary, secondary]
-  output_dir: validated/natural_gas_pipelines
-  report:
-    include_csv: false
-    include_missing_in_queue: true
-    include_low_signal_presence_in_queue: false
-    identity_columns: compact
-    include_value_unit_column: true
-    evidence_detail: compact
-    evidence_max_chars: 1000
-  comparison_approach: mixed
-  record_matching:
-    key_fields: [feature, rule_kind, applies_to, specific_subject]
-    fuzzy_key_fields: [applies_to, specific_subject]
-    semantic_match_threshold: 0.38
-    anchor:
-      fields: [source_verbatim]
-      method: char_ngram
-      ngram: 4
-      auto_threshold: 0.65
-      review_threshold: 0.35
-      max_candidates_per_row: 3
-      min_anchor_chars: 12
-  comparison:
-    primary_fields: [value, units, value_interpretation, obligation]
-    # Optional: collapse "percent above/below ..." unit variants to "percent".
-    # Keep false unless you explicitly want basis-insensitive percent matching.
-    collapse_percent_context: true
-    # Optional cross-model unit canonicalization groups (domain-configurable).
-    unit_equivalence_groups:
-      - [feet, ft]
-      - [hours, hrs, hr]
-      - [decibels, dB, dBA, dB(A), CNEL dB, CNEL dB(A)]
-      - ["HH:MM (24-hour)", "a.m./p.m."]
-  judge:
-    enabled: true
-    model: judge
-    apply_on: all
-    row_equivalence: true
-    pair_unmatched: true
-    min_confidence: high
-    strictness: "If any ambiguity exists, return equivalent=false for human review."
+# validation:
+#   # Keep QA/QC lean for validation runs; 3-model runs inflate presence-only noise.
+#   models: [primary, secondary]
+#   output_dir: validated/natural_gas_pipelines
+#   report:
+#     include_csv: false
+#     include_missing_in_queue: true
+#     include_low_signal_presence_in_queue: false
+#     identity_columns: compact
+#     include_value_unit_column: true
+#     evidence_detail: compact
+#     evidence_max_chars: 1000
+#   comparison_approach: mixed
+#   record_matching:
+#     key_fields: [feature, rule_kind, applies_to, specific_subject]
+#     fuzzy_key_fields: [applies_to, specific_subject]
+#     semantic_match_threshold: 0.38
+#     anchor:
+#       fields: [source_verbatim]
+#       method: char_ngram
+#       ngram: 4
+#       auto_threshold: 0.65
+#       review_threshold: 0.35
+#       max_candidates_per_row: 3
+#       min_anchor_chars: 12
+#   comparison:
+#     primary_fields: [value, units, value_interpretation, obligation]
+#     # Optional: collapse "percent above/below ..." unit variants to "percent".
+#     # Keep false unless you explicitly want basis-insensitive percent matching.
+#     collapse_percent_context: true
+#     # Optional cross-model unit canonicalization groups (domain-configurable).
+#     unit_equivalence_groups:
+#       - [feet, ft]
+#       - [hours, hrs, hr]
+#       - [decibels, dB, dBA, dB(A), CNEL dB, CNEL dB(A)]
+#       - ["HH:MM (24-hour)", "a.m./p.m."]
+#   judge:
+#     enabled: true
+#     model: judge
+#     apply_on: all
+#     row_equivalence: true
+#     pair_unmatched: true
+#     min_confidence: high
+#     strictness: "If any ambiguity exists, return equivalent=false for human review."

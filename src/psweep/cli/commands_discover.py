@@ -37,7 +37,7 @@ from psweep.discovery import (
     "config_path",
     type=click.Path(exists=True),
     default=None,
-    help="Domain config file (RECOMMENDED — includes schema, page targeting, dedup)",
+    help="Domain run config file (RECOMMENDED — discovery targets, providers, and output paths)",
 )
 @click.option(
     "--show-effective-config",
@@ -91,6 +91,19 @@ from psweep.discovery import (
     default=DEFAULT_PARTITION_MODE,
     show_default=True,
     help="Download organization mode: auto prefers jurisdiction when available, else host",
+)
+@click.option(
+    "--target-limit",
+    "-n",
+    type=click.IntRange(min=1),
+    default=None,
+    help="Limit discovery to the first N configured targets after config resolution.",
+)
+@click.option(
+    "--retention-documents",
+    type=click.Choice(["all", "curated", "none"], case_sensitive=False),
+    default=None,
+    help="Retention mode for downloaded documents: all, curated, or none.",
 )
 @click.option(
     "--digger-provider",
@@ -181,6 +194,8 @@ def discover(
     state: Optional[str],
     jurisdiction: Optional[str],
     partition_mode: Optional[str],
+    target_limit: Optional[int],
+    retention_documents: Optional[str],
     digger_provider: Optional[str],
     enable_serpapi: Optional[bool],
     max_concurrent_downloads: Optional[int],
@@ -212,7 +227,7 @@ def discover(
 
         psweep discover --config config/my_domain/run.yaml
         psweep discover --seed-url https://example.com/docs --domain my_domain
-        psweep discover --config cfg.yaml --dry-run --verbose
+        psweep discover --config config/my_domain/run.yaml --dry-run --verbose
     """
     from psweep.cli.commands import (
         _explicit_cli_overrides,
@@ -231,6 +246,8 @@ def discover(
             "state",
             "jurisdiction",
             "partition_mode",
+            "target_limit",
+            "retention_documents",
             "digger_provider",
             "enable_serpapi",
             "max_concurrent_downloads",
@@ -241,6 +258,7 @@ def discover(
             "output_documents",
             "output_manifest",
             "dry_run",
+            "fresh",
         ]
     )
 
@@ -296,6 +314,13 @@ def discover(
         resolved_inputs.get("partition_mode", partition_mode)
         or DEFAULT_PARTITION_MODE
     ).lower()
+    resolved_target_limit = resolved_inputs.get("target_limit", target_limit)
+    if resolved_target_limit is not None:
+        resolved_target_limit = int(resolved_target_limit)
+    resolved_retention_documents = str(
+        resolved_inputs.get("retention_documents", retention_documents or "all")
+        or "all"
+    ).lower()
     resolved_digger_provider = (
         (
             resolved_inputs.get("digger_provider", digger_provider)
@@ -311,6 +336,9 @@ def discover(
     resolved_hub_pages = resolved_inputs.get("hub_pages") or None
     resolved_allowed_domains = resolved_inputs.get("allowed_domains") or None
     resolved_targets = resolved_inputs.get("targets") or None
+    total_configured_targets = len(resolved_targets or [])
+    if resolved_targets and resolved_target_limit is not None:
+        resolved_targets = list(resolved_targets)[:resolved_target_limit]
     resolved_query_templates = resolved_inputs.get("query_templates") or None
     resolved_query_families = resolved_inputs.get("query_families") or None
     resolved_use_query_family = resolved_inputs.get("use_query_family")
@@ -462,6 +490,8 @@ def discover(
     resolved_output_manifest = (
         resolved_inputs.get("output_manifest") or output_manifest
     )
+    resolved_dry_run = bool(resolved_inputs.get("dry_run", dry_run))
+    resolved_fresh = bool(resolved_inputs.get("fresh", fresh))
 
     documents_dir = (
         Path(resolved_output_documents) if resolved_output_documents else None
@@ -503,10 +533,13 @@ def discover(
                 "Manifest": str(manifest_path)
                 if manifest_path
                 else "(auto: run-scoped)",
-                "Mode": "dry-run" if dry_run else "run",
+                "Mode": "dry-run" if resolved_dry_run else "run",
             }
-            if fresh:
+            if resolved_fresh:
                 config_info["Fresh"] = "checkpoint cleared, search cache bypassed"
+            if resolved_target_limit is not None:
+                config_info["Target Limit"] = str(resolved_target_limit)
+            config_info["Retention"] = resolved_retention_documents
         else:
             config_info = {
                 "Domain": resolved_domain,
@@ -518,12 +551,21 @@ def discover(
                 "Documents Output": str(documents_dir)
                 if documents_dir
                 else "(auto: run-scoped)",
-                "Mode": "dry-run" if dry_run else "run",
+                "Mode": "dry-run" if resolved_dry_run else "run",
+                "Retention": resolved_retention_documents,
             }
         view.header("DISCOVERY")
         view.config(config_info)
 
         if resolved_targets:
+            if (
+                resolved_target_limit is not None
+                and total_configured_targets > len(resolved_targets)
+            ):
+                view.info(
+                    f"Applying target limit: using first {len(resolved_targets)} "
+                    f"of {total_configured_targets} configured target(s)."
+                )
             view.info(
                 f"Preparing discovery plan for {len(resolved_targets)} target(s)..."
             )
@@ -571,17 +613,17 @@ def discover(
             "SerpApi TLS verification is disabled (SERPAPI_SSL_VERIFY=false).",
             "Set SERPAPI_SSL_VERIFY=true to suppress insecure-request warnings.",
         )
-    if not dry_run and not download_ssl_verify:
+    if not resolved_dry_run and not download_ssl_verify:
         view.warning(
             "Download TLS verification is disabled (DISCOVERY_SSL_VERIFY=false)."
         )
 
     discover_live = None
     discover_dashboard = None
-    if view.verbosity in {Verbosity.NORMAL, Verbosity.VERBOSE} and not dry_run:
+    if view.verbosity in {Verbosity.NORMAL, Verbosity.VERBOSE} and not resolved_dry_run:
         discover_live, discover_dashboard = create_discovery_live_dashboard(
             domain=resolved_domain,
-            mode="dry-run" if dry_run else "run",
+            mode="dry-run" if resolved_dry_run else "run",
             total_targets=len(resolved_targets or []),
             seeker_enabled=resolved_enable_serpapi,
         )
@@ -601,7 +643,7 @@ def discover(
         enable_serpapi=resolved_enable_serpapi,
         output_documents=documents_dir,
         output_manifest=manifest_path,
-        dry_run=dry_run,
+        dry_run=resolved_dry_run,
         state=resolved_state,
         jurisdiction=resolved_jurisdiction,
         partition_mode=resolved_partition_mode,
@@ -642,7 +684,7 @@ def discover(
         models=resolved_models,
         seeker_cache=resolved_seeker_cache,
         seeker_cache_ttl_minutes=resolved_seeker_cache_ttl_minutes,
-        reprocess=fresh,
+        reprocess=resolved_fresh,
         progress_callback=_discover_progress,
         query_context_aliases=resolved_query_context_aliases,
         partition_by=resolved_partition_by,
@@ -664,6 +706,7 @@ def discover(
         robots_policy_mode=resolved_robots_policy_mode,
         tos_policy_mode=resolved_tos_policy_mode,
         acknowledged_tos_domains=resolved_acknowledged_tos_domains or None,
+        retention_documents=resolved_retention_documents,
     )
 
     view.phase("Scanning for document sources...")
@@ -703,7 +746,7 @@ def discover(
     view.summary(
         {
             "Run ID": result.run_id,
-            "Mode": "dry-run" if dry_run else "run",
+            "Mode": "dry-run" if resolved_dry_run else "run",
             "Downloaded": f"{downloaded_count}/{total_count}",
             "Notes": str(len(notes)),
             "Errors": str(len(errors)),
@@ -756,8 +799,13 @@ def discover(
             "then run: pixi run psweep curate"
         )
     if result.curated_count > 0:
-        next_steps.append(
-            "Extract the documents: pixi run psweep extract "
+        extract_cmd = (
+            f"pixi run psweep extract --config {Path(config_path).as_posix()}"
+            if config_path
+            else "pixi run psweep extract "
             f"{result.curated_dir or result.documents_dir} --schema <schema>"
+        )
+        next_steps.append(
+            f"Extract the documents: {extract_cmd}"
         )
     view.next_steps(next_steps)

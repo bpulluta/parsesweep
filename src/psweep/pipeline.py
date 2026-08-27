@@ -89,12 +89,19 @@ class PipelineResult:
 
 def _read_config_dict(config_path: str | Path) -> dict:
     """Load a domain run config file as a plain dict (empty on failure)."""
-    from psweep.config import load_yaml_file
+    from psweep.config import (
+        RuntimeConfigError,
+        load_runtime_config_file,
+        load_yaml_file,
+    )
 
     cfg_path = Path(config_path)
     if not cfg_path.exists():
         return {}
-    return load_yaml_file(cfg_path)
+    try:
+        return load_runtime_config_file(cfg_path)
+    except RuntimeConfigError:
+        return load_yaml_file(cfg_path)
 
 
 def resolve_run_validation(config_path: str | Path) -> Optional[dict]:
@@ -120,13 +127,24 @@ def resolve_run_validation(config_path: str | Path) -> Optional[dict]:
     }
 
 
+def resolve_run_discovery_enabled(config_path: str | Path) -> bool:
+    """Return True when discovery is configured for the run config."""
+    cfg = _read_config_dict(config_path)
+    discovery_section = cfg.get("discovery")
+    return isinstance(discovery_section, dict) and bool(discovery_section)
+
+
 def build_run_stage_commands(
     config_path: str | Path,
     *,
     base_cmd: Sequence[str],
     skip_discover: bool = False,
     skip_extract: bool = False,
+    discovery_enabled: bool | None = None,
     fresh: bool = False,
+    target_limit: int | None = None,
+    retention_documents: str | None = None,
+    extract_input_path: str | Path | None = None,
     extra_flags: Sequence[str] = (),
 ) -> list[tuple[str, list[str]]]:
     """Build the subprocess commands used to execute a run config pipeline.
@@ -142,10 +160,17 @@ def build_run_stage_commands(
     cfg_path = Path(config_path)
     stage_cmds: list[tuple[str, list[str]]] = []
 
+    if discovery_enabled is None:
+        discovery_enabled = resolve_run_discovery_enabled(cfg_path)
+
     validation = resolve_run_validation(cfg_path)
 
-    if not skip_discover:
+    if not skip_discover and discovery_enabled:
         discover_flags = [*extra_flags]
+        if target_limit is not None:
+            discover_flags.extend(["--target-limit", str(target_limit)])
+        if retention_documents is not None:
+            discover_flags.extend(["--retention-documents", str(retention_documents)])
         if fresh:
             discover_flags.append("--fresh")
         stage_cmds.append(
@@ -158,17 +183,24 @@ def build_run_stage_commands(
         extract_flags = [*extra_flags]
         if fresh:
             extract_flags.append("--fresh")
+        extract_cmd = [*base_cmd, "extract"]
+        if extract_input_path is not None:
+            extract_cmd.append(str(extract_input_path))
+        extract_cmd.extend(["--config", str(cfg_path), *extract_flags])
         stage_cmds.append(
             (
                 "extract",
-                [*base_cmd, "extract", "--config", str(cfg_path), *extract_flags],
+                extract_cmd,
             )
         )
     if validation and not skip_extract:
+        validate_flags = [*extra_flags]
+        if fresh:
+            validate_flags.append("--fresh")
         stage_cmds.append(
             (
                 "validate",
-                [*base_cmd, "validate", "--config", str(cfg_path), *extra_flags],
+                [*base_cmd, "validate", "--config", str(cfg_path), *validate_flags],
             )
         )
     compile_flags = [*extra_flags]
@@ -557,6 +589,7 @@ def run_pipeline(
         base_cmd=[sys.executable, "-m", "psweep.cli.main"],
         skip_discover=skip_discover,
         skip_extract=skip_extract,
+        discovery_enabled=resolve_run_discovery_enabled(cfg_path),
         fresh=fresh,
         extra_flags=("-q",),
     )

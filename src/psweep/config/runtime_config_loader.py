@@ -201,7 +201,7 @@ VARIABLE_CATALOG: dict[str, list[dict[str, str]]] = {
             "name": "selection.exclude_text_patterns",
             "level": "advanced",
             "description": (
-                "Regex patterns applied to candidate titles/snippets/reasons."
+                "Regex patterns applied to candidate URL/title/snippet text."
             ),
         },
         {
@@ -220,6 +220,11 @@ VARIABLE_CATALOG: dict[str, list[dict[str, str]]] = {
             "name": "runtime.min_request_interval_ms",
             "level": "advanced",
             "description": "Min delay between discovery requests (ms).",
+        },
+        {
+            "name": "runtime.target_limit",
+            "level": "optional",
+            "description": "Limit discovery to first N configured targets.",
         },
         {
             "name": "policy.robots_mode",
@@ -300,6 +305,7 @@ _ALLOWED_SECTION_FIELDS = {
         "partition_by",
         "browser_mode",
         "browser",
+        "retention",
     },
     "extraction": {
         "input_dir",
@@ -362,6 +368,7 @@ _ACQUISITION_OBJECT_FIELDS = {
     "request_headers",
     "document_classifier",
     "document_review",
+    "retention",
 }
 
 _ALLOWED_POLICY_MODES = {"ignore", "warn", "enforce"}
@@ -510,6 +517,16 @@ def _validate_discovery_runtime(runtime: dict[str, Any]) -> None:
         )
         raise RuntimeConfigError(msg)
 
+    target_limit = runtime.get("target_limit")
+    if target_limit is not None and (
+        not isinstance(target_limit, int) or target_limit < 1
+    ):
+        msg = (
+            "'discovery.runtime.target_limit'"
+            " must be an integer >= 1"
+        )
+        raise RuntimeConfigError(msg)
+
 
 def _validate_discovery_request_headers(request_headers: Any) -> None:
     if not isinstance(request_headers, dict):
@@ -573,7 +590,55 @@ def _validate_discovery_query_families(
                 f"'discovery.query_families.{family_name}'"
                 " must be an array of strings"
             )
+            raise RuntimeConfigError(msg            )
+
+
+def _validate_discovery_retention(retention: dict[str, Any]) -> None:
+    unknown = [key for key in retention if key != "documents"]
+    if unknown:
+        msg = (
+            "Unknown keys in 'discovery.retention': "
+            + ", ".join(sorted(unknown))
+        )
+        raise RuntimeConfigError(msg)
+    documents = retention.get("documents")
+    if documents is None:
+            return
+    allowed = {"all", "curated", "none"}
+    if not isinstance(documents, str) or documents.strip().lower() not in allowed:
+            msg = (
+                "'discovery.retention.documents' must be one of: "
+                + ", ".join(sorted(allowed))
+            )
             raise RuntimeConfigError(msg)
+
+
+def _validate_discovery_selection_review_consistency(
+    discovery: dict[str, Any],
+) -> None:
+    selection = discovery.get("selection")
+    review = discovery.get("document_review")
+    if not isinstance(selection, dict) or not isinstance(review, dict):
+        return
+
+    primary_per_target = selection.get("primary_per_target")
+    keep_top = review.get("keep_top")
+    if primary_per_target is None or keep_top is None:
+        return
+    if not isinstance(primary_per_target, int) or primary_per_target < 1:
+        raise RuntimeConfigError(
+            "'discovery.selection.primary_per_target' must be an integer >= 1"
+        )
+    if not isinstance(keep_top, int) or keep_top < 1:
+        raise RuntimeConfigError(
+            "'discovery.document_review.keep_top' must be an integer >= 1"
+        )
+    if primary_per_target < keep_top:
+        raise RuntimeConfigError(
+            "'discovery.selection.primary_per_target' must be >= "
+            "'discovery.document_review.keep_top' so review can retain up to "
+            "the configured top documents."
+        )
 
 
 def _validate_discovery_section_schema(discovery: dict[str, Any]) -> None:
@@ -610,6 +675,12 @@ def _validate_discovery_section_schema(discovery: dict[str, Any]) -> None:
     policy = discovery.get("policy")
     if isinstance(policy, dict):
         _validate_discovery_policy(policy)
+
+    retention = discovery.get("retention")
+    if isinstance(retention, dict):
+        _validate_discovery_retention(retention)
+
+    _validate_discovery_selection_review_consistency(discovery)
 
 
 def _validate_models_block(models: Any) -> None:
@@ -1403,6 +1474,7 @@ _ACQ_RUNTIME_KEYS: tuple[str, ...] = (
     "timeout_seconds",
     "max_concurrent_downloads",
     "min_request_interval_ms",
+    "target_limit",
 )
 
 # YAML selection keys → merged dict keys.
@@ -1732,6 +1804,15 @@ def _merge_discovery_fields(
     if isinstance(review, dict):
         _set(merged, sources, "document_review", review,
              "config.discovery.document_review")
+    retention = section.get("retention")
+    if isinstance(retention, dict) and retention.get("documents") is not None:
+        _set(
+            merged,
+            sources,
+            "retention_documents",
+            str(retention.get("documents")),
+            "config.discovery.retention.documents",
+        )
     aliases = section.get("query_context_aliases")
     if isinstance(aliases, dict):
         _set(merged, sources, "query_context_aliases", aliases,
@@ -1772,6 +1853,7 @@ _FIELD_MAP: dict[str, str] = {
     "provider": "provider",
     "model": "model",
     "limit": "limit",
+    "target_limit": "target_limit",
     "skip_existing": "skip_existing",
     "max_context": "max_context",
     "timeout_seconds": "timeout_seconds",

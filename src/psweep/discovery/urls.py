@@ -12,6 +12,7 @@ not folded in here.
 from __future__ import annotations
 
 import re
+from html import unescape
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -21,6 +22,26 @@ _SEPARATOR_RE = re.compile(r"[_\-/]")
 def normalize_url_text(text: str) -> str:
     """Lowercase and turn ``_``, ``-``, ``/`` into spaces for term matching."""
     return _SEPARATOR_RE.sub(" ", text or "").lower()
+
+
+_ESCAPED_URL_REPLACEMENTS = {
+    "\\u0026": "&",
+    "\\u003d": "=",
+    "\\u003f": "?",
+    "\\u003a": ":",
+    "\\u002f": "/",
+}
+
+
+def decode_discovery_url(url: str) -> str:
+    """Decode common escaped URL variants emitted by search APIs."""
+    decoded = str(url or "").strip()
+    if not decoded:
+        return decoded
+    for needle, repl in _ESCAPED_URL_REPLACEMENTS.items():
+        decoded = decoded.replace(needle, repl)
+    decoded = decoded.replace("\\/", "/")
+    return unescape(decoded)
 
 
 def url_host(url: str) -> str:
