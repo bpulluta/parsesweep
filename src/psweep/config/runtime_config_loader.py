@@ -264,6 +264,15 @@ VARIABLE_CATALOG: dict[str, list[dict[str, str]]] = {
             ),
         },
         {
+            "name": "code_host_adapters",
+            "level": "advanced",
+            "description": (
+                "Capture ordinance text from JS code hosts (e.g. "
+                "Municode) via their server API instead of a browser "
+                "render (enabled). Default: enabled."
+            ),
+        },
+        {
             "name": "retention",
             "level": "advanced",
             "description": (
@@ -343,6 +352,7 @@ _ALLOWED_SECTION_FIELDS = {
         "browser_mode",
         "browser",
         "browser_escalation",
+        "code_host_adapters",
         "retention",
     },
     "extraction": {
@@ -859,6 +869,10 @@ def _validate_discovery_section_schema(discovery: dict[str, Any]) -> None:
     escalation = discovery.get("browser_escalation")
     if escalation is not None:
         _normalize_browser_escalation(escalation)
+
+    adapters = discovery.get("code_host_adapters")
+    if adapters is not None:
+        _normalize_code_host_adapters(adapters)
 
     _validate_discovery_shorthands(discovery)
 
@@ -2122,6 +2136,15 @@ def _merge_discovery_fields(
             _normalize_browser_escalation(escalation),
             "config.discovery.browser_escalation",
         )
+    adapters = section.get("code_host_adapters")
+    if adapters is not None:
+        _set(
+            merged,
+            sources,
+            "code_host_adapters",
+            _normalize_code_host_adapters(adapters),
+            "config.discovery.code_host_adapters",
+        )
 
 
 _BROWSER_ESCALATION_INT_KEYS = ("min_shell_chars", "min_rendered_chars")
@@ -2176,6 +2199,33 @@ def _normalize_browser_escalation(value: object) -> dict[str, object]:
                 f"config.discovery.browser_escalation.{key} must be >= 0."
             )
         normalized[key] = number
+    return normalized
+
+
+def _normalize_code_host_adapters(value: object) -> dict[str, object]:
+    """Validate ``discovery.code_host_adapters`` (strict; no silent fallback).
+
+    Accepts a bool shorthand (``true``/``false`` toggles the whole layer) or a
+    mapping with an ``enabled`` flag. Unknown keys are rejected so a typo never
+    silently no-ops.
+    """
+
+    if isinstance(value, bool):
+        return {"enabled": value}
+    if not isinstance(value, dict):
+        raise RuntimeConfigError(
+            "config.discovery.code_host_adapters must be a mapping or bool."
+        )
+    allowed = {"enabled"}
+    unknown = sorted(set(value) - allowed)
+    if unknown:
+        raise RuntimeConfigError(
+            "config.discovery.code_host_adapters has unknown key(s): "
+            f"{', '.join(unknown)}. Allowed: {', '.join(sorted(allowed))}."
+        )
+    normalized: dict[str, object] = {}
+    if "enabled" in value:
+        normalized["enabled"] = bool(value["enabled"])
     return normalized
 
 

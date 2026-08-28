@@ -110,6 +110,9 @@ compilation:
 #     min_shell_chars: 8000               # HTTP body below this many chars looks like an unrendered shell → escalate
 #     min_rendered_chars: 10000           # accept the browser render only once it yields at least this many chars
 #     settle_seconds: 20                  # wait up to this long for client-side content to finish rendering
+#   code_host_adapters:                   # recover JS code-host shells (e.g. Municode) via the host's server API
+#     enabled: true                       # default: enabled — runs before browser escalation; falls through if it can't resolve
+#                                          # reuses browser_escalation's min_shell_chars/min_rendered_chars thresholds
 #   partition_by: [state, jurisdiction]   # output layout by_<field>/<value>/… from target metadata
 #                                          # (domain-agnostic: any target-metadata field(s) — county, region, year, …)
 #   jurisdiction_aliases:                  # only used when partition_mode=jurisdiction; supplements the
