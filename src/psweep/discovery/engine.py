@@ -193,6 +193,10 @@ class DiscoveryRequest:
     # JS-shell browser re-render policy (see _escalate_js_shells_to_browser):
     # {enabled, settle_seconds, min_shell_chars, min_rendered_chars}
     browser_escalation: dict[str, object] | None = None
+    # Code-host content adapters (see _resolve_code_host_shells): fetch ordinance
+    # text from JS code hosts (e.g. Municode) via their server API before the
+    # browser fallback. {enabled}; defaults enabled.
+    code_host_adapters: dict[str, object] | None = None
     # Extra SerpApi query params forwarded verbatim to the seeker (e.g.
     # {"tbm": "nws"} for Google News, {"tbs": "qdr:y"} for recency). Enables
     # dated-news discovery for temporal domains.
@@ -3368,6 +3372,155 @@ class DiscoveryEngine:
         )
         return downloads, notes
 
+    def _code_host_get(
+        self, request: DiscoveryRequest, ssl_verify: bool
+    ) -> Callable[[str, dict], tuple[int, str]]:
+        """Build an HTTP getter for adapters: (url, headers) -> (status, text).
+
+        Merges the discovery request headers with the adapter's own (e.g.
+        Municode's ``X-CSRF``) and reuses the pipeline's TLS-verify policy.
+        """
+        import requests
+
+        base_headers = self._resolve_request_headers(request)
+
+        def _get(url: str, headers: dict) -> tuple[int, str]:
+            merged = dict(base_headers)
+            merged.update(headers or {})
+            response = requests.get(
+                url, headers=merged, timeout=30, verify=ssl_verify
+            )
+            return response.status_code, response.text
+
+        return _get
+
+    def _resolve_code_host_shells(
+        self,
+        downloads: list[dict[str, object]],
+        notes: list[str],
+        request: DiscoveryRequest,
+    ) -> tuple[list[dict[str, object]], list[str]]:
+        """Recover JS-shell content from known code hosts via their server API.
+
+        For each downloaded HTML file that is a JS shell (little server-rendered
+        text) whose URL matches a bundled code-host adapter (e.g. Municode),
+        fetch the real ordinance text through the host's API, write it over the
+        shell, and cache it — no browser required. Runs before browser
+        escalation; anything unresolved is left untouched for that fallback.
+
+        Config ``discovery.code_host_adapters`` ({enabled}); defaults enabled.
+        Reuses the ``browser_escalation`` thresholds as the single definition of
+        a "shell" so the two stages agree on what needs recovery.
+        """
+        import html
+        from pathlib import Path
+
+        from .code_host_adapters import resolve_adapter
+        from .validators import ContentSampler
+
+        cfg = getattr(request, "code_host_adapters", None)
+        if isinstance(cfg, bool):
+            cfg = {"enabled": cfg}
+        cfg = cfg or {}
+        if not cfg.get("enabled", True):
+            return downloads, notes
+
+        escalation_cfg = getattr(request, "browser_escalation", None) or {}
+        if isinstance(escalation_cfg, bool):
+            escalation_cfg = {}
+        min_shell_chars = int(
+            escalation_cfg.get(
+                "min_shell_chars", DEFAULT_BROWSER_ESCALATION_MIN_SHELL_CHARS
+            )
+        )
+        min_rendered_chars = int(
+            escalation_cfg.get(
+                "min_rendered_chars",
+                DEFAULT_BROWSER_ESCALATION_MIN_RENDERED_CHARS,
+            )
+        )
+
+        html_extensions = {".html", ".htm"}
+        ssl_verify = self._downloads_ssl_verify()
+        getter: Callable[[str, dict], tuple[int, str]] | None = None
+        resolved = 0
+
+        for record in downloads:
+            if record.get("status") != "downloaded":
+                continue
+            file_path = record.get("path")
+            if not file_path:
+                continue
+            path = Path(str(file_path))
+            if path.suffix.lower() not in html_extensions:
+                continue
+            url = str(record.get("url") or record.get("final_url") or "")
+            if not url:
+                continue
+            adapter = resolve_adapter(url)
+            if adapter is None:
+                continue
+
+            # Shell detection: the same predicate as browser escalation.
+            try:
+                text = ContentSampler.extract_text(str(path))
+            except Exception:  # noqa: BLE001 - unreadable file, skip
+                continue
+            if len(text.strip()) >= min_shell_chars:
+                continue  # already has server content; not a shell
+
+            # Honor robots/ToS per URL (the evaluator caches the robots parser
+            # per host, so this stays cheap while keeping path granularity).
+            try:
+                policy = self._evaluate_request_policy(
+                    url=url, request=request, ssl_verify=ssl_verify
+                )
+                allowed = bool(getattr(policy, "allowed", True))
+            except Exception:  # noqa: BLE001 - fail open, like other stages
+                allowed = True
+            if not allowed:
+                continue
+
+            if getter is None:
+                getter = self._code_host_get(request, ssl_verify)
+            try:
+                content = adapter.fetch_text(url, getter)
+            except Exception:  # noqa: BLE001 - one bad fetch must not abort
+                content = None
+            if not content or len(content.strip()) < min_rendered_chars:
+                continue
+
+            # Write the recovered text back as valid, self-consistent HTML so
+            # downstream .html extraction round-trips it — escaping keeps any
+            # literal "<"/">" in ordinance text (e.g. "lots < 5,000 sq ft").
+            # The clean text is also cached below for the fast path.
+            wrapped = (
+                "<!doctype html><html><body><pre>"
+                + html.escape(content)
+                + "</pre></body></html>"
+            )
+            try:
+                path.write_text(wrapped, encoding="utf-8")
+            except OSError:
+                continue
+            # Mark so downstream dedup re-hashes (bytes changed on disk) and so
+            # the review index shows how the content was recovered.
+            record["code_host_adapter"] = adapter.name
+            from ..extraction.document_utils import write_text_cache
+
+            try:
+                write_text_cache(path, content, method="code_host_api")
+            except Exception:  # noqa: BLE001 - text cache is best-effort
+                pass
+            resolved += 1
+
+        if resolved:
+            notes.append(
+                f"Code-host adapters: recovered {resolved} JS-shell "
+                "document(s) via server API (no browser)."
+            )
+        return downloads, notes
+
     def _escalate_js_shells_to_browser(
         self,
         downloads: list[dict[str, object]],
@@ -4305,6 +4458,16 @@ class DiscoveryEngine:
                             download_records, classifier_cfg, download_notes
                         )
                     )
+
+                # Code-host adapters: recover JS-shell content from known code
+                # hosts (e.g. Municode) via their server API — cheaper, more
+                # reliable, and deterministic. Runs BEFORE browser escalation;
+                # shells it cannot resolve fall through to the browser below.
+                download_records, download_notes = (
+                    self._resolve_code_host_shells(
+                        download_records, download_notes, request
+                    )
+                )
 
                 # Browser escalation: re-fetch HTML files that are JS-rendered
                 # shells (SPA frameworks like Angular/React) with no usable

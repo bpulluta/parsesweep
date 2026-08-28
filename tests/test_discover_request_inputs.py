@@ -113,6 +113,18 @@ class TestCoercions:
             {"browser_escalation": True}
         )["browser_escalation"] is None
 
+    def test_code_host_adapters_dict_copied(self):
+        block = {"enabled": False}
+        n = normalize_discover_inputs({"code_host_adapters": block})
+        assert n["code_host_adapters"] == block
+        assert n["code_host_adapters"] is not block  # copied
+        # Non-dict is dropped to None (default-enabled handled downstream).
+        assert normalize_discover_inputs(
+            {"code_host_adapters": True}
+        )["code_host_adapters"] is None
+        # Absent -> None (engine treats None as enabled).
+        assert normalize_discover_inputs({})["code_host_adapters"] is None
+
 
 def test_all_shipped_configs_resolve_and_normalize():
     """Every shipped discover config resolves + normalizes without error."""

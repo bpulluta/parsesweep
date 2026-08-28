@@ -400,3 +400,157 @@ def test_browser_escalation_uses_recalibrated_shell_default(tmp_path, monkeypatc
         "JS-rendered HTML file(s) detected but browser unavailable" in n
         for n in notes
     )
+
+
+# ── Code-host content adapters (Phase 3D) ────────────────────────────────────
+
+
+def _shell_request(**overrides):
+    base = dict(
+        domain="d",
+        seed_urls=[],
+        query=None,
+        enable_serpapi=False,
+        output_documents=None,
+        output_manifest=None,
+        dry_run=False,
+    )
+    base.update(overrides)
+    return DiscoveryRequest(**base)
+
+
+def _allow_all_policy(monkeypatch):
+    """Stub the robots/ToS gate so the unit test never touches the network."""
+    import types
+
+    monkeypatch.setattr(
+        DiscoveryEngine,
+        "_evaluate_request_policy",
+        lambda self, *, url, request, ssl_verify: types.SimpleNamespace(
+            allowed=True
+        ),
+    )
+
+
+class _FakeAdapter:
+    name = "fake"
+
+    def can_handle(self, url):
+        return True
+
+    def fetch_text(self, url, get):
+        return "RECOVERED ORDINANCE " + "y" * 11000
+
+
+def test_code_host_adapter_recovers_shell(tmp_path, monkeypatch):
+    """A JS shell on a known code host is recovered via the adapter (no browser)."""
+    from psweep.discovery import code_host_adapters as cha
+
+    shell = tmp_path / "shell.html"
+    shell.write_text("<html><body>x</body></html>", encoding="utf-8")
+
+    monkeypatch.setattr(cha, "resolve_adapter", lambda url: _FakeAdapter())
+    _allow_all_policy(monkeypatch)
+
+    request = _shell_request()
+    downloads = [
+        {
+            "status": "downloaded",
+            "path": shell.as_posix(),
+            "url": "https://library.municode.com/tx/friendswood/codes/x?nodeId=N",
+            "content_hash": "stale",
+        }
+    ]
+    out, notes = DiscoveryEngine()._resolve_code_host_shells(
+        downloads, [], request
+    )
+
+    assert "RECOVERED ORDINANCE" in shell.read_text(encoding="utf-8")
+    assert out[0]["code_host_adapter"] == "fake"
+    assert any("Code-host adapters: recovered 1" in n for n in notes)
+
+
+def test_code_host_adapter_disabled_is_noop(tmp_path, monkeypatch):
+    """enabled: false turns the whole layer off; the shell is left untouched."""
+    from psweep.discovery import code_host_adapters as cha
+
+    shell = tmp_path / "shell.html"
+    shell.write_text("<html>x</html>", encoding="utf-8")
+    monkeypatch.setattr(cha, "resolve_adapter", lambda url: _FakeAdapter())
+    _allow_all_policy(monkeypatch)
+
+    request = _shell_request(code_host_adapters={"enabled": False})
+    downloads = [
+        {
+            "status": "downloaded",
+            "path": shell.as_posix(),
+            "url": "https://library.municode.com/x?nodeId=N",
+        }
+    ]
+    out, notes = DiscoveryEngine()._resolve_code_host_shells(
+        downloads, [], request
+    )
+
+    assert shell.read_text(encoding="utf-8") == "<html>x</html>"
+    assert "code_host_adapter" not in out[0]
+    assert notes == []
+
+
+def test_code_host_adapter_skips_non_shell(tmp_path, monkeypatch):
+    """A file that already has server content (> min_shell_chars) is untouched."""
+    from psweep.discovery import code_host_adapters as cha
+
+    doc = tmp_path / "full.html"
+    doc.write_text(
+        "<html><body>" + ("word " * 3000) + "</body></html>", encoding="utf-8"
+    )
+    original = doc.read_text(encoding="utf-8")
+    monkeypatch.setattr(cha, "resolve_adapter", lambda url: _FakeAdapter())
+    _allow_all_policy(monkeypatch)
+
+    request = _shell_request()
+    downloads = [
+        {
+            "status": "downloaded",
+            "path": doc.as_posix(),
+            "url": "https://library.municode.com/x?nodeId=N",
+        }
+    ]
+    out, _ = DiscoveryEngine()._resolve_code_host_shells(downloads, [], request)
+
+    assert doc.read_text(encoding="utf-8") == original
+    assert "code_host_adapter" not in out[0]
+
+
+def test_code_host_adapter_rejects_short_content(tmp_path, monkeypatch):
+    """API content below min_rendered_chars is discarded (falls through)."""
+    from psweep.discovery import code_host_adapters as cha
+
+    class _ShortAdapter:
+        name = "short"
+
+        def can_handle(self, url):
+            return True
+
+        def fetch_text(self, url, get):
+            return "too short"
+
+    shell = tmp_path / "shell.html"
+    shell.write_text("<html>x</html>", encoding="utf-8")
+    monkeypatch.setattr(cha, "resolve_adapter", lambda url: _ShortAdapter())
+    _allow_all_policy(monkeypatch)
+
+    request = _shell_request()
+    downloads = [
+        {
+            "status": "downloaded",
+            "path": shell.as_posix(),
+            "url": "https://library.municode.com/x?nodeId=N",
+        }
+    ]
+    out, notes = DiscoveryEngine()._resolve_code_host_shells(
+        downloads, [], request
+    )
+
+    assert shell.read_text(encoding="utf-8") == "<html>x</html>"
+    assert "code_host_adapter" not in out[0]

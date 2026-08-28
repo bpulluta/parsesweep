@@ -210,6 +210,76 @@ class TestReviewGradeCache:
         assert any("graded 1 file" in n for n in notes2)
 
 
+class TestReviewSampleWindowing:
+    """Lock the large-document sampler: deterministic + keyword-biased.
+
+    Phase 3B — on very large PDFs the review sample must (a) be byte-identical
+    across runs so the same file always scores the same, and (b) prefer windows
+    containing the domain's operative keywords (sourced from config) so relevant
+    content deep in a long document reaches the grader. Keywords are supplied by
+    the caller (``review_keywords``); no domain vocabulary lives in this module.
+    """
+
+    # Marker sits at position 30000 of a 60000-char body. With max_chars=2000
+    # the distributed body windows land at offsets ~391/20065/39739/59413, so
+    # 30000 falls in a sampling gap — the no-keyword sampler cannot reach it,
+    # which is exactly what the keyword bias is there to fix.
+    _MAX_CHARS = 2000
+    _N = 60000
+    _POS = 30000
+    _MARKER = "Compressor SENTINEL_TOKEN "
+
+    def _large_text(self) -> str:
+        prefix = "x" * self._POS
+        suffix = "x" * (self._N - self._POS - len(self._MARKER))
+        return prefix + self._MARKER + suffix
+
+    def test_short_document_returns_full_text_unchanged(self):
+        reviewer = DocumentReviewer(
+            document_description="x", max_chars=100, review_keywords=["compressor"]
+        )
+        text = "a short ordinance about a compressor station"
+        assert reviewer._build_review_sample(text) == text
+
+    def test_keyword_window_is_included_when_deep_in_body(self):
+        reviewer = DocumentReviewer(
+            document_description="x",
+            max_chars=self._MAX_CHARS,
+            review_keywords=["compressor"],  # matched case-insensitively
+        )
+        sample = reviewer._build_review_sample(self._large_text())
+        # The keyword-adjacent content deep in the body is pulled in...
+        assert "SENTINEL_TOKEN" in sample
+        # ...and the bounded sample never exceeds the configured budget.
+        assert len(sample) <= self._MAX_CHARS
+
+    def test_no_keyword_sampler_misses_the_deep_marker(self):
+        # Same input, no keywords configured -> the deep-body marker falls in a
+        # gap between the evenly-spaced body windows and is NOT sampled. This is
+        # the recall failure Phase 3B's keyword bias exists to prevent.
+        reviewer = DocumentReviewer(
+            document_description="x", max_chars=self._MAX_CHARS, review_keywords=[]
+        )
+        sample = reviewer._build_review_sample(self._large_text())
+        assert "SENTINEL_TOKEN" not in sample
+
+    def test_sampling_is_deterministic_across_calls(self):
+        text = self._large_text()
+        with_kw = DocumentReviewer(
+            document_description="x",
+            max_chars=self._MAX_CHARS,
+            review_keywords=["compressor", "setback"],
+        )
+        without_kw = DocumentReviewer(
+            document_description="x", max_chars=self._MAX_CHARS, review_keywords=[]
+        )
+        # Repeated calls on the same input are byte-identical (no RNG, no clock).
+        assert with_kw._build_review_sample(text) == with_kw._build_review_sample(text)
+        assert without_kw._build_review_sample(text) == without_kw._build_review_sample(text)
+        # And the two configurations genuinely diverge — the bias changes output.
+        assert with_kw._build_review_sample(text) != without_kw._build_review_sample(text)
+
+
 class TestByteIdenticalDedup:
     """The byte-identical dedup reuses the download-time content_hash."""
 
