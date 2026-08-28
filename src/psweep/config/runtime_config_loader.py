@@ -305,6 +305,7 @@ _ALLOWED_SECTION_FIELDS = {
         "partition_by",
         "browser_mode",
         "browser",
+        "browser_escalation",
         "retention",
     },
     "extraction": {
@@ -368,6 +369,7 @@ _ACQUISITION_OBJECT_FIELDS = {
     "request_headers",
     "document_classifier",
     "document_review",
+    "browser_escalation",
     "retention",
 }
 
@@ -1827,6 +1829,70 @@ def _merge_discovery_fields(
     if browser_flag is not None:
         _set(merged, sources, "browser_mode", bool(browser_flag),
              "config.discovery.browser_mode")
+    escalation = section.get("browser_escalation")
+    if escalation is not None:
+        _set(
+            merged,
+            sources,
+            "browser_escalation",
+            _normalize_browser_escalation(escalation),
+            "config.discovery.browser_escalation",
+        )
+
+
+_BROWSER_ESCALATION_INT_KEYS = ("min_shell_chars", "min_rendered_chars")
+
+
+def _normalize_browser_escalation(value: object) -> dict[str, object]:
+    """Validate ``discovery.browser_escalation`` (strict; no silent fallback)."""
+
+    if isinstance(value, bool):
+        return {"enabled": value}
+    if not isinstance(value, dict):
+        raise RuntimeConfigError(
+            "config.discovery.browser_escalation must be a mapping or bool."
+        )
+    allowed = {
+        "enabled",
+        "settle_seconds",
+        *_BROWSER_ESCALATION_INT_KEYS,
+    }
+    unknown = sorted(set(value) - allowed)
+    if unknown:
+        raise RuntimeConfigError(
+            "config.discovery.browser_escalation has unknown key(s): "
+            f"{', '.join(unknown)}. Allowed: {', '.join(sorted(allowed))}."
+        )
+    normalized: dict[str, object] = {}
+    if "enabled" in value:
+        normalized["enabled"] = bool(value["enabled"])
+    if "settle_seconds" in value:
+        try:
+            settle = float(value["settle_seconds"])
+        except (TypeError, ValueError) as exc:
+            raise RuntimeConfigError(
+                "config.discovery.browser_escalation.settle_seconds must be a number."
+            ) from exc
+        if settle < 0:
+            raise RuntimeConfigError(
+                "config.discovery.browser_escalation.settle_seconds must be >= 0."
+            )
+        normalized["settle_seconds"] = settle
+    for key in _BROWSER_ESCALATION_INT_KEYS:
+        if key not in value:
+            continue
+        try:
+            number = int(value[key])
+        except (TypeError, ValueError) as exc:
+            raise RuntimeConfigError(
+                f"config.discovery.browser_escalation.{key} must be an integer."
+            ) from exc
+        if number < 0:
+            raise RuntimeConfigError(
+                f"config.discovery.browser_escalation.{key} must be >= 0."
+            )
+        normalized[key] = number
+    return normalized
 
 
 # ── Top-level field map (all commands) ──────────────────────────

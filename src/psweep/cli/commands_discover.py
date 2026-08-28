@@ -472,6 +472,12 @@ def discover(
     )
     resolved_partition_by = resolved_inputs.get("partition_by") or None
     resolved_browser_mode = bool(resolved_inputs.get("browser_mode") or False)
+    _raw_browser_escalation = resolved_inputs.get("browser_escalation")
+    resolved_browser_escalation = (
+        dict(_raw_browser_escalation)
+        if isinstance(_raw_browser_escalation, dict)
+        else None
+    )
     _raw_seeker_extra = resolved_inputs.get("seeker_extra_params")
     resolved_seeker_extra_params = (
         dict(_raw_seeker_extra) if isinstance(_raw_seeker_extra, dict) else None
@@ -689,6 +695,7 @@ def discover(
         query_context_aliases=resolved_query_context_aliases,
         partition_by=resolved_partition_by,
         browser_mode=resolved_browser_mode,
+        browser_escalation=resolved_browser_escalation,
         seeker_extra_params=resolved_seeker_extra_params,
         include_url_patterns=resolved_include_url_patterns,
         include_link_text_patterns=resolved_include_link_text_patterns,

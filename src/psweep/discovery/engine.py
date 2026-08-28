@@ -122,6 +122,9 @@ class DiscoveryRequest:
     # Use a real browser to clear bot-manager challenges (Akamai/Cloudflare)
     # for downloads on protected sites.
     browser_mode: bool = False
+    # JS-shell browser re-render policy (see _escalate_js_shells_to_browser):
+    # {enabled, settle_seconds, min_shell_chars, min_rendered_chars}
+    browser_escalation: dict[str, object] | None = None
     # Extra SerpApi query params forwarded verbatim to the seeker (e.g.
     # {"tbm": "nws"} for Google News, {"tbs": "qdr:y"} for recency). Enables
     # dated-news discovery for temporal domains.
