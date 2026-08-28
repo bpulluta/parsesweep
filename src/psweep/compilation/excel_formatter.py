@@ -11,6 +11,15 @@ from openpyxl import load_workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 
+# Built-in defaults for column centering. These are the single source of truth
+# for the centering heuristic; a domain can override either one via
+# ``compilation.output.center_align_columns`` / ``center_align_max_length``
+# (see SchemaMetadata). When neither is configured, behavior is unchanged.
+DEFAULT_CENTER_ALIGN_MAX_LENGTH: float = 30.0
+DEFAULT_CENTER_ALIGN_COLUMN_NAMES: frozenset[str] = frozenset(
+    {"state", "county", "city", "type", "value", "unit", "date", "number"}
+)
+
 
 class ExcelFormatter:
     """
@@ -45,6 +54,8 @@ class ExcelFormatter:
         output_path: Path,
         freeze_columns: int = 0,
         auto_width: bool = True,
+        center_align_columns: list[str] | None = None,
+        center_align_max_length: float | None = None,
     ):
         """
         Save DataFrame to professionally formatted Excel file.
@@ -59,6 +70,14 @@ class ExcelFormatter:
             Number of leading columns to freeze
         auto_width : bool
             Whether to auto-size columns
+        center_align_columns : list[str], optional
+            Column names (matched case-insensitively) that should always be
+            center-aligned regardless of content length. Defaults to
+            :data:`DEFAULT_CENTER_ALIGN_COLUMN_NAMES` when ``None``.
+        center_align_max_length : float, optional
+            Columns whose sampled average value length is below this threshold
+            are center-aligned. Defaults to
+            :data:`DEFAULT_CENTER_ALIGN_MAX_LENGTH` when ``None``.
 
         Examples
         --------
@@ -82,7 +101,11 @@ class ExcelFormatter:
 
         # Apply all formatting
         self._apply_header_style(ws)
-        center_aligned_cols = self._identify_center_aligned_columns(df, ws)
+        center_aligned_cols = self._identify_center_aligned_columns(
+            df,
+            center_align_columns=center_align_columns,
+            center_align_max_length=center_align_max_length,
+        )
         self._apply_data_row_styles(ws, center_aligned_cols)
         if auto_width:
             self._apply_column_widths(ws, center_aligned_cols)
@@ -109,24 +132,48 @@ class ExcelFormatter:
                 horizontal="center", vertical="center", wrap_text=True
             )
 
-    def _identify_center_aligned_columns(self, df: pd.DataFrame, ws) -> list:
+    def _identify_center_aligned_columns(
+        self,
+        df: pd.DataFrame,
+        center_align_columns: list[str] | None = None,
+        center_align_max_length: float | None = None,
+    ) -> list:
         """
         Identify columns that should be center-aligned.
 
-        Short/categorical columns get centered, long text gets left-aligned.
+        Short/categorical columns get centered, long text gets
+        left-aligned. A column is centered when its sampled average length
+        is below ``center_align_max_length`` OR its name is listed in
+        ``center_align_columns`` (case-insensitive). Both fall back to the
+        module defaults when ``None``, preserving the built-in heuristic.
 
         Parameters
         ----------
         df : pd.DataFrame
             Source DataFrame
-        ws
-            Worksheet object
+        center_align_columns : list[str], optional
+            Column names to always center; defaults to
+            :data:`DEFAULT_CENTER_ALIGN_COLUMN_NAMES`.
+        center_align_max_length : float, optional
+            Average-length threshold; defaults to
+            :data:`DEFAULT_CENTER_ALIGN_MAX_LENGTH`.
 
         Returns
         -------
         list
             List of column letters that should be centered
         """
+        max_length_threshold = (
+            center_align_max_length
+            if center_align_max_length is not None
+            else DEFAULT_CENTER_ALIGN_MAX_LENGTH
+        )
+        forced_names = (
+            {name.lower() for name in center_align_columns}
+            if center_align_columns is not None
+            else DEFAULT_CENTER_ALIGN_COLUMN_NAMES
+        )
+
         center_aligned_cols = []
 
         for idx, col_name in enumerate(df.columns, start=1):
@@ -137,16 +184,9 @@ class ExcelFormatter:
             )
 
             # Center if: numeric-like, dates, short categorical values
-            if avg_length < 30 or col_name.lower() in [
-                "state",
-                "county",
-                "city",
-                "type",
-                "value",
-                "unit",
-                "date",
-                "number",
-            ]:
+            is_short = avg_length < max_length_threshold
+            is_named = str(col_name).lower() in forced_names
+            if is_short or is_named:
                 center_aligned_cols.append(col_letter)
 
         return center_aligned_cols

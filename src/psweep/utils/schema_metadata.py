@@ -471,6 +471,8 @@ class SchemaMetadata:
             "freeze_columns",
             "auto_width",
             "annotation_column",
+            "center_align_columns",
+            "center_align_max_length",
         }
         unknown = sorted(set(output) - allowed)
         if unknown:
@@ -484,8 +486,19 @@ class SchemaMetadata:
             if value is not None and (not isinstance(value, str) or not value):
                 self._raise_meta(f"{loc}.{key} must be a non-empty string.")
 
-        for key in ("exclude_fields", "column_order"):
+        for key in ("exclude_fields", "column_order", "center_align_columns"):
             self._require_str_list_meta(output.get(key), f"{loc}.{key}")
+
+        max_len = output.get("center_align_max_length")
+        if max_len is not None and (
+            isinstance(max_len, bool)
+            or not isinstance(max_len, (int, float))
+            or max_len < 0
+        ):
+            self._raise_meta(
+                f"{loc}.center_align_max_length must be a non-negative number "
+                f"(got {max_len!r})."
+            )
 
         renames = output.get("column_renames")
         if renames is not None:
@@ -761,6 +774,24 @@ class SchemaMetadata:
         """Get whether to auto-size columns in Excel output."""
         output = self.metadata.get("compilation", {}).get("output", {})
         return output.get("auto_width", True)
+
+    def get_center_align_columns(self) -> Optional[List[str]]:
+        """Return explicit center-aligned Excel column names, if configured.
+
+        ``None`` means "unset" — the formatter uses its built-in default name
+        list. An empty list disables name-based centering entirely.
+        """
+        output = self.metadata.get("compilation", {}).get("output", {})
+        return output.get("center_align_columns")
+
+    def get_center_align_max_length(self) -> Optional[float]:
+        """Return the average-length threshold for center-aligning columns.
+
+        ``None`` means "unset" — the formatter uses its built-in default
+        threshold.
+        """
+        output = self.metadata.get("compilation", {}).get("output", {})
+        return output.get("center_align_max_length")
 
     def get_flattening_config(self) -> Dict[str, Any]:
         """Return the optional ``compilation.flattening`` block.
