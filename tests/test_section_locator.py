@@ -10,6 +10,7 @@ import pytest
 from psweep.extraction.section_locator import (
     SectionLocator,
     _Chunk,
+    _pipe_row,
     _table_to_markdown,
 )
 
@@ -291,3 +292,80 @@ class TestTableToMarkdown:
         md = _table_to_markdown(table)
         assert "| A | B |" in md
         assert "| 1 | 2 |" in md
+
+
+# ---------------------------------------------------------------------------
+# Serializer output locks (guard the table -> markdown consolidation)
+#
+# section_locator has two table serializers that share the bordered `| a | b |`
+# row format via `_pipe_row` but differ in row filtering:
+#   - `_table_to_markdown` (bs4)   : keeps every row that has cells, incl. all-blank
+#   - `_table_md` (docx, nested)   : drops rows whose cells are ALL blank
+# These tests pin the exact byte output of each so the shared helper can never
+# silently change either format.
+# ---------------------------------------------------------------------------
+
+
+class TestPipeRowHelper:
+    def test_bordered_format(self):
+        assert _pipe_row(["a", "b"]) == "| a | b |"
+
+    def test_empty_cells_preserved_as_blank_columns(self):
+        assert _pipe_row(["", ""]) == "|  |  |"
+
+    def test_single_cell(self):
+        assert _pipe_row(["x"]) == "| x |"
+
+
+class TestTableToMarkdownExactOutput:
+    """Lock bs4 serializer (#1): keeps empty cells AND all-blank rows."""
+
+    def test_exact_output_keeps_empty_cells_and_blank_rows(self):
+        from bs4 import BeautifulSoup
+
+        html = (
+            "<table>"
+            "<tr><th>A</th><th>B</th></tr>"
+            "<tr><td>1</td><td></td></tr>"
+            "<tr><td></td><td></td></tr>"
+            "</table>"
+        )
+        table = BeautifulSoup(html, "html.parser").find("table")
+        assert _table_to_markdown(table) == "| A | B |\n| 1 |  |\n|  |  |"
+
+    def test_row_without_cells_is_skipped(self):
+        from bs4 import BeautifulSoup
+
+        html = "<table><tr></tr><tr><td>x</td></tr></table>"
+        table = BeautifulSoup(html, "html.parser").find("table")
+        assert _table_to_markdown(table) == "| x |"
+
+
+class TestDocxTableSerializerExactOutput:
+    """Lock docx serializer (#2, `_table_md` via `_split_docx_sections`).
+
+    Bordered format like the bs4 path, but rows whose cells are ALL blank are
+    dropped (``any(cells)``).
+    """
+
+    def _docx_with_table(self, tmp_path: Path) -> Path:
+        import docx
+
+        d = docx.Document()
+        d.add_paragraph("Rate Schedule", style="Heading 1")
+        tbl = d.add_table(rows=3, cols=2)
+        tbl.rows[0].cells[0].text = "A"
+        tbl.rows[0].cells[1].text = "B"
+        tbl.rows[1].cells[0].text = "1"
+        tbl.rows[1].cells[1].text = ""  # one blank cell -> preserved
+        # row 2 left entirely blank -> whole row dropped
+        path = tmp_path / "table.docx"
+        d.save(path)
+        return path
+
+    def test_exact_output_drops_all_blank_row_keeps_empty_cell(self, tmp_path):
+        path = self._docx_with_table(tmp_path)
+        chunks = SectionLocator("rate schedule")._split_docx_sections(path)
+        table_chunks = [c for c in chunks if "|" in c.text]
+        assert len(table_chunks) == 1
+        assert table_chunks[0].text == "| A | B |\n| 1 |  |"
