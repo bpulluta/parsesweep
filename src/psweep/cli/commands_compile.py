@@ -28,6 +28,7 @@ from psweep.compilation.input_provenance import (
     list_compile_record_files,
 )
 from psweep.config import RuntimeConfigError
+from psweep.utils.config import get_config
 
 
 def _build_dedup_preview_report(
@@ -1419,7 +1420,8 @@ def compile(
             from psweep.extraction.llm_factory import build_llm_client
 
             synth_model = synthesis_cfg.get("model")
-            if not synth_model and not resolved_inputs.get("models") and not config.llm_config.get("model"):
+            env_model = get_config().llm_config.get("model")
+            if not synth_model and not resolved_inputs.get("models") and not env_model:
                 raise click.UsageError(
                     "No model configured for the compilation synthesis stage. "
                     "Add 'model: primary' under 'compilation.synthesis:' "

@@ -211,6 +211,70 @@ def test_load_runtime_config_file_rejects_invalid_discovery_config(
         load_runtime_config_file(config_path)
 
 
+@pytest.mark.parametrize("flag", [True, False])
+def test_load_runtime_config_file_accepts_browser_escalation_bool(
+    tmp_path: Path, flag: bool
+):
+    """The documented bool shorthand for browser_escalation loads (regression)."""
+    config_path = tmp_path / "run.yaml"
+    config_path.write_text(
+        f"discovery:\n  browser_escalation: {str(flag).lower()}\n",
+        encoding="utf-8",
+    )
+
+    loaded = load_runtime_config_file(config_path)
+    assert loaded["discovery"]["browser_escalation"] is flag
+
+
+def test_load_runtime_config_file_accepts_browser_escalation_mapping(
+    tmp_path: Path,
+):
+    config_path = tmp_path / "run.yaml"
+    config_path.write_text(
+        "discovery:\n"
+        "  browser_escalation:\n"
+        "    enabled: true\n"
+        "    min_shell_chars: 8000\n"
+        "    min_rendered_chars: 10000\n"
+        "    settle_seconds: 20\n",
+        encoding="utf-8",
+    )
+
+    loaded = load_runtime_config_file(config_path)
+    assert loaded["discovery"]["browser_escalation"]["min_shell_chars"] == 8000
+
+
+@pytest.mark.parametrize(
+    ("escalation_block", "match"),
+    [
+        (
+            "    enabled: true\n    bogus_key: 1\n",
+            "unknown key",
+        ),
+        (
+            "    min_shell_chars: -5\n",
+            "min_shell_chars must be >= 0",
+        ),
+        (
+            "    min_shell_chars: not-an-int\n",
+            "min_shell_chars must be an integer",
+        ),
+    ],
+)
+def test_load_runtime_config_file_rejects_invalid_browser_escalation(
+    tmp_path: Path, escalation_block: str, match: str
+):
+    """Inner-key validation now runs at load time (single source of truth)."""
+    config_path = tmp_path / "run.yaml"
+    config_path.write_text(
+        f"discovery:\n  browser_escalation:\n{escalation_block}",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(RuntimeConfigError, match=match):
+        load_runtime_config_file(config_path)
+
+
 def test_load_runtime_config_file_applies_split_file_processing_override(tmp_path: Path):
     run_path = tmp_path / "run.yaml"
     run_path.write_text(

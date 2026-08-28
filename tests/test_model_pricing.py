@@ -108,3 +108,29 @@ def test_unknown_model_returns_fallback_not_zero():
     inp, out = result
     # Fallback should resolve to a known model's price, not zero
     assert inp > 0 or out > 0
+
+
+def test_bare_family_name_does_not_map_to_variant():
+    """A bare family name must fall back, not silently pick a longer variant.
+
+    Regression: the old substring matcher mapped "gpt-4" (no exact key) to an
+    arbitrary longer, differently-priced variant like "gpt-4o-mini".
+    """
+    from psweep.utils.model_pricing import DEFAULT_MODEL, MODEL_PRICING
+
+    assert "gpt-4" not in MODEL_PRICING  # guards the premise of this test
+    assert get_model_pricing("gpt-4") == MODEL_PRICING[DEFAULT_MODEL]
+
+
+def test_deployment_version_suffix_resolves_to_family():
+    """A dated deployment suffix resolves to the base family via boundary match."""
+    assert get_model_pricing("gpt-4o-2024-05-13") == get_model_pricing("gpt-4o")
+
+
+def test_internal_model_with_family_marker_matched_intact():
+    """A whole model name containing a family marker isn't mangled by stripping.
+
+    Regression: "halo-gpt-oss-120b" contains "-gpt-"; exact match must win
+    before deployment-prefix stripping rewrites it to "gpt-oss-120b".
+    """
+    assert get_model_pricing("halo-gpt-oss-120b") == (0.0, 0.0)

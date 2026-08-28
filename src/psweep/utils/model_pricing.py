@@ -27,7 +27,7 @@ MODEL_PRICING: Dict[str, Tuple[float, float]] = {
     "gpt-5.4-nano": (0.20, 1.25),
     "gpt-5.5": (5.00, 30.00),
     "gpt-5.6-luna": (0.20, 1.20),
-    "gpt-5.6-sol": (5.00, 30.00),
+    "gpt-5.6-sol": (4.00, 20.00),
     "gpt-5.6-terra": (2.00, 12.00),
     "gpt-4.1": (2.00, 8.00),
     "gpt-4.1-mini": (0.40, 1.60),
@@ -114,6 +114,45 @@ MODEL_PRICING: Dict[str, Tuple[float, float]] = {
 
 _UNKNOWN_MODEL_WARNED: set[str] = set()
 
+# Provider-family markers used to peel a custom deployment prefix off a model
+# name (e.g. "compassop-gpt-4.1-mini" -> "gpt-4.1-mini").
+_DEPLOYMENT_FAMILY_MARKERS = ("gpt", "claude", "gemini")
+
+
+def _strip_deployment_prefix(model_lower: str) -> str:
+    """Drop a custom deployment prefix before a known provider-family marker."""
+    for marker in _DEPLOYMENT_FAMILY_MARKERS:
+        if f"-{marker}-" in model_lower:
+            parts = model_lower.split("-")
+            idx = next(i for i, p in enumerate(parts) if p == marker)
+            return "-".join(parts[idx:])
+    return model_lower
+
+
+def _boundary_partial_match(model_lower: str) -> str | None:
+    """Longest known pricing key that appears in ``model_lower`` as a token.
+
+    Only the "known key appears in the model name" direction is used: it
+    resolves deployment/version suffixes (e.g. "gpt-4o-2024-05-13" -> "gpt-4o").
+    The reverse direction (query is a substring of a key) is intentionally not
+    allowed — it would map a bare family name like "gpt-4" to an arbitrary
+    longer, differently-priced variant (e.g. "gpt-4o-mini").
+    """
+    matches = []
+    for key in MODEL_PRICING:
+        idx = model_lower.find(key)
+        if idx == -1:
+            continue
+        before_ok = idx == 0 or not model_lower[idx - 1].isalnum()
+        end = idx + len(key)
+        after_ok = end == len(model_lower) or not model_lower[end].isalnum()
+        if before_ok and after_ok:
+            matches.append((len(key), key))
+    if not matches:
+        return None
+    matches.sort(reverse=True)
+    return matches[0][1]
+
 
 def get_model_pricing(model_name: str) -> Tuple[float, float]:
     """
@@ -142,36 +181,19 @@ def get_model_pricing(model_name: str) -> Tuple[float, float]:
     model_lower = model_lower.replace("gemini/", "")
     model_lower = model_lower.replace("anthropic/", "")
 
-    # Handle Azure custom deployment names (e.g., "compassop-gpt-4.1-mini")
-    # Extract the actual model name after the last hyphen group
-    if "-gpt-" in model_lower:
-        # "compassop-gpt-4.1-mini" -> "gpt-4.1-mini"
-        parts = model_lower.split("-")
-        gpt_index = next(i for i, p in enumerate(parts) if p == "gpt")
-        model_lower = "-".join(parts[gpt_index:])
-    elif "-claude-" in model_lower:
-        parts = model_lower.split("-")
-        claude_index = next(i for i, p in enumerate(parts) if p == "claude")
-        model_lower = "-".join(parts[claude_index:])
-    elif "-gemini-" in model_lower:
-        parts = model_lower.split("-")
-        gemini_index = next(i for i, p in enumerate(parts) if p == "gemini")
-        model_lower = "-".join(parts[gemini_index:])
-
-    # Try exact match first
+    # Exact match first — before any deployment-prefix stripping — so a whole
+    # model name that itself contains a family marker (e.g. the internal
+    # "halo-gpt-oss-120b") is matched intact rather than mangled.
     if model_lower in MODEL_PRICING:
         return MODEL_PRICING[model_lower]
 
-    # Try partial match (longest match wins)
-    matches = []
-    for key in MODEL_PRICING:
-        if key in model_lower or model_lower in key:
-            matches.append((len(key), key))
+    # Peel a custom deployment prefix (e.g. "compassop-gpt-4.1-mini") and retry.
+    model_lower = _strip_deployment_prefix(model_lower)
+    if model_lower in MODEL_PRICING:
+        return MODEL_PRICING[model_lower]
 
-    if matches:
-        # Get longest match
-        matches.sort(reverse=True)
-        best_match = matches[0][1]
+    best_match = _boundary_partial_match(model_lower)
+    if best_match is not None:
         logger.debug(
             f"Matched model '{model_name}' to pricing key '{best_match}'"
         )
