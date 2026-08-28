@@ -394,7 +394,16 @@ def extract_documents(
             hint="Add $metadata.extraction.main_data_array and identifier_fields.",
         )
 
-    # Resolve output directory
+    # Resolve output directory.
+    #
+    # The Python API deliberately keeps a minimal, predictable convention here —
+    # ``extracted/<input-dir-name>`` relative to the cwd — rather than calling the
+    # workflow-aware ``resolve_extract_output_dir`` the CLI uses. That resolver
+    # additionally infers ``discovered/<domain>`` layout (mapping
+    # ``discovered/<domain>/curated`` -> ``extracted/<domain>``) and returns an
+    # absolute path; those are conveniences for the discover->extract->compile CLI
+    # flow, not the low-level primitive. Callers who want that inference should
+    # pass ``output_dir`` explicitly or drive the pipeline through the CLI.
     category = docs_path.name
     out_dir = Path(output_dir) if output_dir else Path("extracted") / category
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -524,6 +533,10 @@ def compile_extractions(
     if not schema_path.exists():
         raise FileNotFoundError(f"Schema not found: {schema_path}")
 
+    # See ``extract_documents`` above: the Python API keeps the minimal
+    # ``compiled/<input-dir-name>`` convention rather than the CLI's
+    # ``resolve_compile_output_dir`` (which swaps a nested ``extracted`` component
+    # in place and returns an absolute path). Pass ``output_dir`` for full control.
     out_dir = Path(output_dir) if output_dir else Path("compiled") / ext_dir.name
     if not dry_run:
         out_dir.mkdir(parents=True, exist_ok=True)
