@@ -448,7 +448,6 @@ def _sample_assets_readme_content(
     document_type: str,
     schema_ref: str,
     page_ranges_ref: Optional[str],
-    template_mode: str,
 ) -> str:
     supported_extensions = ", ".join(SUPPORTED_EXTENSIONS)
     workflow_lines = [
@@ -467,8 +466,6 @@ def _sample_assets_readme_content(
                 documents_ref=f"documents/{category_name}",
                 schema_ref=schema_ref,
                 page_ranges_ref=page_ranges_ref,
-                document_type=document_type,
-                template_mode=template_mode,
             )
         )
     else:
@@ -477,8 +474,6 @@ def _sample_assets_readme_content(
             + _build_scaffold_extract_command(
                 documents_ref=f"documents/{category_name}",
                 schema_ref=schema_ref,
-                document_type=document_type,
-                template_mode=template_mode,
             )
         )
 
@@ -508,7 +503,6 @@ def _create_sample_asset_skeleton(
     document_type: str,
     schema_ref: str,
     page_ranges_ref: Optional[str],
-    template_mode: str,
     force: bool,
 ) -> list[str]:
     documents_root = repo_root / "documents" / category_name
@@ -522,7 +516,6 @@ def _create_sample_asset_skeleton(
             document_type=document_type,
             schema_ref=schema_ref,
             page_ranges_ref=page_ranges_ref,
-            template_mode=template_mode,
         ),
         force=force,
     )
@@ -553,8 +546,6 @@ def _build_scaffold_extract_command(
     schema_ref: str,
     profile_ref: Optional[str] = None,
     page_ranges_ref: Optional[str] = None,
-    document_type: str,
-    template_mode: str = "recommended",
 ) -> str:
     command_parts = [
         "pixi run psweep extract",
@@ -585,7 +576,7 @@ def _config_readme_content(
         "2. Update page_ranges.csv if extraction should target a subset of pages",
         (
             '3. Run: '
-            f'{_build_scaffold_extract_command(documents_ref=f"documents/{category_name}", schema_ref=schema_ref, page_ranges_ref=page_ranges_ref, document_type=document_type, template_mode=template_mode)}'
+            f'{_build_scaffold_extract_command(documents_ref=f"documents/{category_name}", schema_ref=schema_ref, page_ranges_ref=page_ranges_ref)}'
         ),
         (
             f"4. Run: pixi run psweep compile extracted/{category_name} "
