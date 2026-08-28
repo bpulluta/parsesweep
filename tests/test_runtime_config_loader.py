@@ -1325,3 +1325,67 @@ def test_browser_escalation_rejects_invalid_config(body: str, match: str):
     """Typos/invalid values fail loudly instead of silently no-op'ing."""
     with pytest.raises(RuntimeConfigError, match=match):
         _resolve_discovery(body)
+
+
+def test_link_prioritization_shopping_keywords_resolve(tmp_path: Path):
+    run_path = tmp_path / "run.yaml"
+    run_path.write_text(
+        """
+discovery:
+  seeds:
+    - https://example.com/hub
+  link_prioritization:
+    keywords:
+      - spec
+    shopping_path_keywords:
+      - wishlist
+      - compare-products
+""",
+        encoding="utf-8",
+    )
+    config_data = load_runtime_config_file(run_path)
+    resolved = resolve_command_config(
+        command="discover",
+        cli_values={},
+        config_data=config_data,
+        strict=True,
+    )
+    assert resolved["link_prioritization_shopping_keywords"] == [
+        "wishlist",
+        "compare-products",
+    ]
+
+
+def test_link_prioritization_shopping_keywords_must_be_str_list(tmp_path: Path):
+    run_path = tmp_path / "run.yaml"
+    run_path.write_text(
+        """
+discovery:
+  seeds:
+    - https://example.com/hub
+  link_prioritization:
+    shopping_path_keywords:
+      - 123
+""",
+        encoding="utf-8",
+    )
+    with pytest.raises(
+        RuntimeConfigError, match="shopping_path_keywords"
+    ):
+        load_runtime_config_file(run_path)
+
+
+def test_link_prioritization_rejects_unknown_inner_key(tmp_path: Path):
+    run_path = tmp_path / "run.yaml"
+    run_path.write_text(
+        """
+discovery:
+  seeds:
+    - https://example.com/hub
+  link_prioritization:
+    power_range_kw: [200, 300]
+""",
+        encoding="utf-8",
+    )
+    with pytest.raises(RuntimeConfigError, match="link_prioritization"):
+        load_runtime_config_file(run_path)

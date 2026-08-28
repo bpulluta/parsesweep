@@ -6,7 +6,6 @@ download, enabling 1000+ link automation without manual selection.
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass, field
 from typing import Any
 from urllib.parse import urlparse
@@ -64,12 +63,6 @@ _DOMAIN_AUTHORITY_PATTERNS: list[tuple[str, float]] = [
     ("slideshare.net", -0.05),
 ]
 
-# Power-class URL patterns: match numeric kW values in URL path
-# e.g. "200kw", "200-kw", "250kva" etc.
-_POWER_CLASS_URL_RE = re.compile(
-    r"\b(\d{2,4})\s*[-_]?\s*k[wv][aA]?\b", re.IGNORECASE
-)
-
 # Generic, domain-neutral "this path looks like a document" keywords used only
 # when a domain supplies no `link_prioritization.keywords` of its own. Domain
 # vocabulary (e.g. manual/spec/datasheet, or ordinance/permit/tariff) belongs
@@ -81,7 +74,9 @@ _DOCUMENT_PATH_KEYWORDS: list[str] = [
     "report",
 ]
 
-# Shopping-page path keywords → negative signal
+# Shopping-page path keywords → negative signal. Domain-neutral defaults; a
+# domain can extend them via `link_prioritization.shopping_path_keywords`, which
+# is unioned with this list (the defaults are always retained).
 _SHOPPING_PATH_KEYWORDS: list[str] = [
     "cart",
     "checkout",
@@ -94,6 +89,9 @@ _SHOPPING_PATH_KEYWORDS: list[str] = [
     "search?",
     "q=",
 ]
+
+# Penalty applied when a candidate URL path looks like a shopping/cart page.
+_SHOPPING_PATH_PENALTY: float = -0.10
 
 
 # ---------------------------------------------------------------------------
@@ -108,7 +106,6 @@ class PriorityScore:
     file_type_score: float = 0.0
     domain_authority_score: float = 0.0
     keyword_score: float = 0.0
-    power_class_score: float = 0.0
     confidence: float = 0.0  # 0-1, normalised aggregate
 
     def to_dict(self) -> dict[str, Any]:
@@ -117,7 +114,6 @@ class PriorityScore:
             "file_type_score": round(self.file_type_score, 4),
             "domain_authority_score": round(self.domain_authority_score, 4),
             "keyword_score": round(self.keyword_score, 4),
-            "power_class_score": round(self.power_class_score, 4),
             "confidence": round(self.confidence, 4),
         }
 
@@ -164,10 +160,9 @@ class LinkPrioritizer:
     top_k:
         Maximum number of candidates to surface after ranking. ``None``
         returns all candidates in ranked order.
-    power_range_kw:
-        Optional ``(min_kw, max_kw)`` tuple.  URLs containing a numeric kW
-        value inside this range receive a bonus; values outside the range
-        receive a penalty.
+    shopping_path_keywords:
+        Extra shopping/cart path keywords that supplement the built-in
+        :data:`_SHOPPING_PATH_KEYWORDS`; the defaults are always retained.
     """
 
     def __init__(
@@ -175,7 +170,7 @@ class LinkPrioritizer:
         keywords: list[str] | None = None,
         domain_authority_overrides: dict[str, float] | None = None,
         top_k: int | None = 5,
-        power_range_kw: tuple[float, float] | None = None,
+        shopping_path_keywords: list[str] | None = None,
     ) -> None:
         self._keywords: list[str] = [
             k.lower().strip() for k in (keywords or []) if k.strip()
@@ -185,7 +180,14 @@ class LinkPrioritizer:
             for k, v in (domain_authority_overrides or {}).items()
         )
         self._top_k = top_k
-        self._power_range_kw = power_range_kw
+        extra_shopping = [
+            k.lower().strip()
+            for k in (shopping_path_keywords or [])
+            if k.strip()
+        ]
+        self._shopping_keywords: list[str] = list(_SHOPPING_PATH_KEYWORDS) + [
+            k for k in extra_shopping if k not in _SHOPPING_PATH_KEYWORDS
+        ]
 
     # ------------------------------------------------------------------
     # Public API
@@ -310,14 +312,13 @@ class LinkPrioritizer:
         file_type_score = self._score_file_type(url, anchor, reasons)
         domain_authority_score = self._score_domain_authority(url, reasons)
         keyword_score = self._score_keywords(url, anchor, reasons)
-        power_class_score = self._score_power_class(url, anchor, reasons)
 
-        # Weighted aggregate before normalisation
+        # Weighted aggregate before normalisation. Weights keep their relative
+        # importance (file type dominates, then authority and keywords equally).
         raw = (
             file_type_score * 0.35
             + domain_authority_score * 0.25
             + keyword_score * 0.25
-            + power_class_score * 0.15
         )
         confidence = max(0.0, min(1.0, 0.5 + raw))
 
@@ -325,7 +326,6 @@ class LinkPrioritizer:
             file_type_score=file_type_score,
             domain_authority_score=domain_authority_score,
             keyword_score=keyword_score,
-            power_class_score=power_class_score,
             confidence=confidence,
         )
         return ps, reasons
@@ -356,10 +356,13 @@ class LinkPrioritizer:
                 return score
 
         # Check for shopping path → negative signal
-        for kw in _SHOPPING_PATH_KEYWORDS:
+        for kw in self._shopping_keywords:
             if kw in lower_url:
-                reasons.append(f"file_type:shopping_path_keyword={kw} (-0.10)")
-                return -0.10
+                reasons.append(
+                    f"file_type:shopping_path_keyword={kw} "
+                    f"({_SHOPPING_PATH_PENALTY:.2f})"
+                )
+                return _SHOPPING_PATH_PENALTY
 
         return 0.0
 
@@ -413,41 +416,6 @@ class LinkPrioritizer:
         score = min(1.0, 0.3 * math.log1p(hit_count) / math.log1p(1))
         reasons.append(f"keywords:{hit_count}_match(s) (+{score:.2f})")
         return round(score, 4)
-
-    def _score_power_class(
-        self, url: str, anchor: str, reasons: list[str]
-    ) -> float:
-        """Return power-class URL bonus/penalty.
-
-        If ``power_range_kw`` is set, URLs matching a value inside the range
-        receive +0.15; outside the range receive -0.10.  If no range is set,
-        any numeric kW value earns a modest +0.10.
-        """
-        lower_url = url.lower()
-        combined = lower_url + " " + anchor
-        matches = _POWER_CLASS_URL_RE.findall(combined)
-        if not matches:
-            return 0.0
-
-        values = [float(m) for m in matches]
-
-        if self._power_range_kw is None:
-            # Generic: any power-class mention is a good signal
-            reasons.append(f"power_class:kw_in_url={values} (+0.10)")
-            return 0.10
-
-        lo, hi = self._power_range_kw
-        in_range = any(lo <= v <= hi for v in values)
-        if in_range:
-            reasons.append(
-                f"power_class:kw_in_range[{lo},{hi}]={values} (+0.15)"
-            )
-            return 0.15
-        else:
-            reasons.append(
-                f"power_class:kw_out_of_range[{lo},{hi}]={values} (-0.10)"
-            )
-            return -0.10
 
     @staticmethod
     def _extract_extension(url_lower: str) -> str | None:
