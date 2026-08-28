@@ -115,7 +115,6 @@ def test_build_scaffold_extract_command_composes_flags():
         documents_ref="documents/widgets",
         schema_ref="schemas/widgets.json",
         page_ranges_ref="config/widgets/page_ranges.csv",
-        document_type="Widget Catalog",
     )
     assert cmd.startswith("pixi run psweep extract documents/widgets/")
     assert "--schema schemas/widgets.json" in cmd
