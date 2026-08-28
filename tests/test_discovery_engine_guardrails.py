@@ -344,3 +344,59 @@ def test_download_single_candidate_decodes_escaped_url_before_fetch(
     assert captured_url["value"] == "https://example.org/doc.pdf?article=1034&context=test"
     assert record["status"] == "downloaded"
     assert record["url"] == "https://example.org/doc.pdf?article=1034&context=test"
+
+
+from psweep.discovery import engine as engine_module
+
+
+def test_browser_escalation_defaults_calibrated_for_spa_shells():
+    """The unset-config fallbacks match real SPA shell sizes, not the old no-op."""
+    assert engine_module.DEFAULT_BROWSER_ESCALATION_MIN_SHELL_CHARS == 8000
+    assert engine_module.DEFAULT_BROWSER_ESCALATION_MIN_RENDERED_CHARS == 10000
+    assert 10 <= engine_module.DEFAULT_BROWSER_ESCALATION_SETTLE_SECONDS <= 20
+
+
+def test_browser_escalation_uses_recalibrated_shell_default(tmp_path, monkeypatch):
+    """A mid-size shell (>200, <8000 chars) escalates under the new default.
+
+    With the old 200-char fallback this file would clear the gate and never be
+    flagged; the recalibrated 8000-char default catches it. The browser is
+    stubbed unavailable, so we assert only that the shell was *detected*.
+    """
+    shell = tmp_path / "shell.html"
+    body = "x" * 3000
+    shell.write_text(
+        f"<html><body><p>{body}</p></body></html>", encoding="utf-8"
+    )
+
+    monkeypatch.setattr(
+        DiscoveryEngine,
+        "_open_browser_for_download",
+        lambda self: (None, "browser disabled for test"),
+    )
+
+    request = DiscoveryRequest(
+        domain="d",
+        seed_urls=[],
+        query=None,
+        enable_serpapi=False,
+        output_documents=None,
+        output_manifest=None,
+        dry_run=False,
+    )
+    downloads = [
+        {
+            "status": "downloaded",
+            "path": shell.as_posix(),
+            "url": "https://municode.example/city",
+        }
+    ]
+
+    _, notes = DiscoveryEngine()._escalate_js_shells_to_browser(
+        downloads, [], request
+    )
+
+    assert any(
+        "JS-rendered HTML file(s) detected but browser unavailable" in n
+        for n in notes
+    )

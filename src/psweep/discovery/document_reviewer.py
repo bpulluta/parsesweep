@@ -278,6 +278,27 @@ class DocumentReviewer:
             return None
 
     @staticmethod
+    def _record_content_hash(record: dict[str, Any]) -> str | None:
+        """Return the byte-identity SHA-256 for a curated record.
+
+        The downloader already computes a SHA-256 of the streamed bytes and
+        stores it as ``content_hash`` (engine ``_download_candidates``). Reuse
+        it to avoid a second full-file read. It is only trustworthy when the
+        on-disk bytes still match the download: browser escalation rewrites the
+        file in place (and copies a stale hash onto deep-crawl records), so when
+        ``browser_escalated`` is set we re-hash the file. Both paths use the
+        identical SHA-256 algorithm, so the duplicates detected are unchanged.
+        """
+        stored = record.get("content_hash")
+        if (
+            isinstance(stored, str)
+            and stored
+            and not record.get("browser_escalated")
+        ):
+            return stored
+        return DocumentReviewer._file_sha256(str(record.get("path", "")))
+
+    @staticmethod
     def _find_byte_identical_duplicates(primaries: list[dict[str, Any]]) -> set[int]:
         """Return indices of byte-identical files, keeping the highest-ranked one.
 
@@ -287,7 +308,7 @@ class DocumentReviewer:
         """
         hash_groups: dict[str, list[int]] = {}
         for idx, record in enumerate(primaries):
-            digest = DocumentReviewer._file_sha256(str(record.get("path", "")))
+            digest = DocumentReviewer._record_content_hash(record)
             if digest is None:
                 continue
             hash_groups.setdefault(digest, []).append(idx)
