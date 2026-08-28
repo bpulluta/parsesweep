@@ -142,5 +142,43 @@ def test_empty_config_defaults(monkeypatch):
     assert kw["provider"] == "openai"
 
 
+def test_cross_provider_mistral_uses_mistral_api_key(monkeypatch):
+    # mistral is now a recognized cross-provider fallback (MISTRAL_API_KEY).
+    monkeypatch.setenv("MISTRAL_API_KEY", "mistral-ambient")
+    kw = llm_factory.resolve_llm_kwargs(
+        "mistral-large-2", models={}, llm_config=OPENAI_CFG
+    )
+    assert kw["provider"] == "mistral"
+    assert kw["api_key"] == "mistral-ambient"
+
+
+# ── provider-set consistency (single source of truth) ───────────────────────
+
+
+def test_provider_env_keys_are_a_subset_of_known_providers():
+    assert set(llm_factory._PROVIDER_ENV_KEY).issubset(
+        llm_factory.KNOWN_PROVIDERS
+    )
+
+
+def test_detect_provider_outputs_are_all_known_providers():
+    # Every provider detect_provider can emit must be a recognized provider.
+    sample_models = [
+        "gpt-4o-mini",
+        "azure/my-deploy",
+        "claude-3.5-sonnet",
+        "gemini-1.5-pro",
+        "gemma-2",
+        "llama-3.3-70b",
+        "mistral-large-2",
+        "codestral-latest",
+        "o1",
+        "o3",
+        "some-unknown-model",  # falls through to the "openai" default
+    ]
+    for model in sample_models:
+        assert llm_factory.detect_provider(model) in llm_factory.KNOWN_PROVIDERS
+
+
 if __name__ == "__main__":  # pragma: no cover
     raise SystemExit(pytest.main([__file__, "-v"]))
