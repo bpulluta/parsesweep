@@ -1389,3 +1389,42 @@ discovery:
     )
     with pytest.raises(RuntimeConfigError, match="link_prioritization"):
         load_runtime_config_file(run_path)
+
+
+def test_reasoning_models_passthrough_and_resolve(tmp_path: Path):
+    run_path = tmp_path / "run.yaml"
+    run_path.write_text(
+        """
+reasoning_models:
+  - halo-reason
+  - my-thinker
+extraction:
+  input_dir: documents/x
+  schema: schemas/personal/x.json
+""",
+        encoding="utf-8",
+    )
+    config_data = load_runtime_config_file(run_path)
+    resolved = resolve_command_config(
+        command="extract",
+        cli_values={},
+        config_data=config_data,
+        strict=True,
+    )
+    assert resolved["reasoning_models"] == ["halo-reason", "my-thinker"]
+
+
+def test_reasoning_models_must_be_str_list(tmp_path: Path):
+    run_path = tmp_path / "run.yaml"
+    run_path.write_text(
+        """
+reasoning_models:
+  - 5
+extraction:
+  input_dir: documents/x
+  schema: schemas/personal/x.json
+""",
+        encoding="utf-8",
+    )
+    with pytest.raises(RuntimeConfigError, match="reasoning_models"):
+        load_runtime_config_file(run_path)

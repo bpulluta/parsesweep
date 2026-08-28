@@ -135,6 +135,24 @@ class TestProxyApiParams:
         assert "temperature" not in params
         assert "response_format" not in params
 
+    def test_config_reasoning_marker_omits_temperature(self):
+        # A model unknown to the built-in markers is treated as reasoning when
+        # the deployment declares it via reasoning_models.
+        base = self._extract_with_capture("halo-reason-01")
+        assert base.get("temperature") == 0  # not reasoning by default
+        configured = self._extract_with_capture(
+            "halo-reason-01", reasoning_models=["halo-reason"]
+        )
+        assert "temperature" not in configured
+        assert "response_format" not in configured
+
+    def test_config_markers_supplement_builtin_defaults(self):
+        # Declaring a custom marker must not disable the built-in ones.
+        params = self._extract_with_capture(
+            "gpt-5-turbo", reasoning_models=["halo-reason"]
+        )
+        assert "temperature" not in params
+
     def test_no_api_key_in_params_when_not_provided(self):
         client = LLMClient(model="gpt-4o-mini", base_url=BASE_URL)
         ok_response = _make_response(json.dumps({"items": []}))
@@ -301,3 +319,32 @@ class TestJsonPromptInjection:
         combined = " ".join(m["content"] for m in messages).lower()
         # Only one occurrence of the injection phrase (not doubled).
         assert combined.count("respond with a json object") <= 1
+
+
+# ── reasoning-model marker set (config supplements built-in defaults) ─────────
+
+
+class TestReasoningModelMarkers:
+    def test_defaults_present_when_unconfigured(self):
+        from psweep.extraction.llm_client import (
+            DEFAULT_REASONING_MODEL_MARKERS,
+        )
+
+        client = _client("gpt-4o-mini")
+        assert set(DEFAULT_REASONING_MODEL_MARKERS) <= set(
+            client.reasoning_model_markers
+        )
+
+    def test_config_markers_unioned_and_lowercased(self):
+        from psweep.extraction.llm_client import (
+            DEFAULT_REASONING_MODEL_MARKERS,
+        )
+
+        client = _client(
+            "gpt-4o-mini", reasoning_models=["HALO-Reason", "gpt-5"]
+        )
+        markers = client.reasoning_model_markers
+        assert "halo-reason" in markers  # new, lowercased
+        assert set(DEFAULT_REASONING_MODEL_MARKERS) <= set(markers)
+        # "gpt-5" already a default → not duplicated
+        assert markers.count("gpt-5") == 1

@@ -27,6 +27,19 @@ from .text_processor import find_data_arrays
 logger = logging.getLogger(__name__)
 
 
+# Substring markers that identify "reasoning" models — those that reject the
+# temperature / response_format params. Provider-neutral defaults; a deployment
+# can extend this via the top-level ``reasoning_models`` run.yaml list (unioned
+# with these defaults) so a new reasoning model works without a code change.
+DEFAULT_REASONING_MODEL_MARKERS: tuple[str, ...] = (
+    "gpt-5",
+    "o1",
+    "o3",
+    "o4",
+    "thinking",
+)
+
+
 class LLMClient:
     """
     Universal LLM client for structured data extraction.
@@ -49,6 +62,7 @@ class LLMClient:
         context_windows: Optional[Dict[str, int]] = None,
         base_url: str = None,
         timeout: int = None,
+        reasoning_models: Optional[List[str]] = None,
     ):
         """
         Initialize LLM client.
@@ -95,6 +109,19 @@ class LLMClient:
         self.base_url = base_url
         self._api_key = api_key  # Stored for direct-pass in endpoint-override mode
         self.context_windows = dict(context_windows or {})
+        # Reasoning-model markers: built-in defaults unioned with any
+        # config-supplied ``reasoning_models`` (extra markers, lowercased).
+        extra_markers = [
+            m.lower().strip() for m in (reasoning_models or []) if m.strip()
+        ]
+        self.reasoning_model_markers: tuple[str, ...] = (
+            *DEFAULT_REASONING_MODEL_MARKERS,
+            *(
+                m
+                for m in extra_markers
+                if m not in DEFAULT_REASONING_MODEL_MARKERS
+            ),
+        )
         self.timeout = timeout if timeout is not None else int(
             os.environ.get("LLM_TIMEOUT", self.DEFAULT_TIMEOUT)
         )
@@ -239,8 +266,7 @@ class LLMClient:
 
         # Check if this is a reasoning model (doesn't support temperature/response_format)
         is_reasoning_model = any(
-            x in self.model.lower()
-            for x in ["gpt-5", "o1", "o3", "o4", "thinking"]
+            x in self.model.lower() for x in self.reasoning_model_markers
         )
 
         # Prepare API call parameters
