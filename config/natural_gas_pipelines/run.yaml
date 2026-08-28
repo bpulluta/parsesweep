@@ -17,6 +17,10 @@ discovery:
   queries:
     # General ordinance searches (100% hit rate, ~9 results each)
     - "\"{jurisdiction}\" {state} natural gas compressor station ordinance"
+    # Restore: Catches municipalities that regulate NG compressor stations within
+    # broader "oil and gas operations" chapters (e.g., PA, MA). LLM extraction
+    # correctly identifies NG-specific rules; URL filters prevent noise.
+    - "\"{jurisdiction}\" {state} oil and gas facilities zoning ordinance"
     - "\"{jurisdiction}\" {state} compressor station setback noise ordinance code"
     # Code-hosting site searches (find landing pages for municode/ecode360)
     - "site:ecode360.com \"{jurisdiction}\" {state}"
@@ -46,6 +50,9 @@ discovery:
       - compressor
       - pipeline
       - natural gas
+      # Restore: These keywords catch mixed O&G/NG ordinances that contain NG rules
+      - oil and gas
+      - gas well
       - gas facilities
       - gas utility
       - bylaw
