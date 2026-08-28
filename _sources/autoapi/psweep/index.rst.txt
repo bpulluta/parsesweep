@@ -58,6 +58,7 @@ Submodules
    /autoapi/psweep/exceptions/index
    /autoapi/psweep/extraction/index
    /autoapi/psweep/pipeline/index
+   /autoapi/psweep/scaffolding/index
    /autoapi/psweep/utils/index
    /autoapi/psweep/validation/index
 

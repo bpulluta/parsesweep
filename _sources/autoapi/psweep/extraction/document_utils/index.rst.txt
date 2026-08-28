@@ -23,7 +23,7 @@ Functions
 Module Contents
 ---------------
 
-.. py:function:: extract_text_from_document(file_path: pathlib.Path, page_range: Optional[tuple] = None) -> str
+.. py:function:: extract_text_from_document(file_path: pathlib.Path, page_range: Optional[tuple] = None, ocr_corrections: Optional[list] = None) -> str
 
    Extract text from any supported document format.
 
@@ -33,6 +33,9 @@ Module Contents
    :type file_path: Path
    :param page_range: Optional tuple (start_page, end_page) for PDF files only (1-indexed)
    :type page_range: Optional[tuple]
+   :param ocr_corrections: Optional OCR text-correction rules (from ``extraction.ocr_corrections``)
+                           applied to OCR-derived PDF text only.
+   :type ocr_corrections: Optional[list]
 
    :returns: Extracted text content
    :rtype: str

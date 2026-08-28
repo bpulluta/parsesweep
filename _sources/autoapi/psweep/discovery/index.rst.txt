@@ -17,6 +17,7 @@ Submodules
 
    /autoapi/psweep/discovery/browser/index
    /autoapi/psweep/discovery/candidate_selector/index
+   /autoapi/psweep/discovery/code_host_adapters/index
    /autoapi/psweep/discovery/connectors/index
    /autoapi/psweep/discovery/constants/index
    /autoapi/psweep/discovery/document_reviewer/index
@@ -24,6 +25,7 @@ Submodules
    /autoapi/psweep/discovery/link_prioritizer/index
    /autoapi/psweep/discovery/models/index
    /autoapi/psweep/discovery/policies/index
+   /autoapi/psweep/discovery/request_inputs/index
    /autoapi/psweep/discovery/retry/index
    /autoapi/psweep/discovery/targets/index
    /autoapi/psweep/discovery/urls/index

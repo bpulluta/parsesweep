@@ -31,7 +31,7 @@ Classes
 Module Contents
 ---------------
 
-.. py:class:: DocumentExtractor(api_key: str = None, model: str = DEFAULT_MODEL, max_context_chars: int = DEFAULT_MAX_CONTEXT, schema_metadata=None, provider: str = None, azure_endpoint: str = None, azure_api_version: str = None, context_windows: Optional[Dict[str, int]] = None, base_url: Optional[str] = None, timeout: Optional[int] = None)
+.. py:class:: DocumentExtractor(api_key: str = None, model: str = DEFAULT_MODEL, max_context_chars: int = DEFAULT_MAX_CONTEXT, schema_metadata=None, provider: str = None, azure_endpoint: str = None, azure_api_version: str = None, context_windows: Optional[Dict[str, int]] = None, base_url: Optional[str] = None, timeout: Optional[int] = None, reasoning_models: Optional[List[str]] = None)
 
    Universal document extractor with traceability and configurable context.
 
@@ -80,6 +80,10 @@ Module Contents
    :param timeout: Per-request LLM timeout in seconds. If omitted, LLMClient
                    uses LLM_TIMEOUT env var or its default timeout.
    :type timeout: Optional[int]
+   :param reasoning_models: Optional extra reasoning-model markers (from ``reasoning_models``
+                            in config), unioned with the built-in defaults. No model names are
+                            hardcoded in universal code beyond provider-neutral defaults.
+   :type reasoning_models: Optional[List[str]]
 
 
    .. py:method:: extract(text: str, schema: Dict[str, Any]) -> ExtractionResult

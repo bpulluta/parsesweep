@@ -17,6 +17,15 @@ Classes
    psweep.extraction.text_processor.TextProcessor
 
 
+Functions
+---------
+
+.. autoapisummary::
+
+   psweep.extraction.text_processor.find_data_arrays
+   psweep.extraction.text_processor.find_main_data_array
+
+
 Module Contents
 ---------------
 
@@ -109,5 +118,23 @@ Module Contents
       :returns: List of warning messages
       :rtype: List[str]
 
+
+
+.. py:function:: find_data_arrays(data: Dict[str, Any]) -> List[Tuple[str, list]]
+
+   Return ``(field_name, list_value)`` for every non-empty list-valued
+   top-level field, in document (insertion) order.
+
+   This is the single source of truth for "which top-level fields hold the
+   extracted item arrays", used by item counting, completeness scoring, and
+   record writing so the "find the data arrays" scan is not reimplemented.
+
+
+.. py:function:: find_main_data_array(data: Dict[str, Any]) -> Tuple[Optional[str], int]
+
+   Return ``(field_name, item_count)`` for the largest non-empty list-valued
+   top-level field, or ``(None, 0)`` when there are none.
+
+   On ties the first such field in document order wins.
 
 

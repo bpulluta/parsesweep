@@ -1,0 +1,24 @@
+psweep.extraction.provenance
+============================
+
+.. py:module:: psweep.extraction.provenance
+
+.. autoapi-nested-parse::
+
+   Provenance and lineage helpers for the extraction stage.
+
+   These helpers build the deterministic run identifier and run manifest that tie
+   extracted records back to their inputs, and map discovered documents to the
+   source URL / queried target recorded during discovery. They are pure functions
+   (no Click, no console I/O) so they can be reused and tested outside the
+   ``extract`` CLI command.
+
+   Public API
+   ----------
+   - :func:`generate_run_id` — deterministic run id for lineage joins.
+   - :func:`build_run_manifest` — deterministic run-manifest payload.
+   - :func:`build_source_context_map` — map documents to discovery provenance.
+   - :func:`prepend_source_context` — prepend a CONTEXT block to document text.
+
+
+

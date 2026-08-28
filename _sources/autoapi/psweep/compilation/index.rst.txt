@@ -15,11 +15,13 @@ Submodules
 .. toctree::
    :maxdepth: 1
 
+   /autoapi/psweep/compilation/accounting/index
    /autoapi/psweep/compilation/csv_exporter/index
    /autoapi/psweep/compilation/data_compiler/index
    /autoapi/psweep/compilation/data_flattener/index
    /autoapi/psweep/compilation/deduplicator/index
    /autoapi/psweep/compilation/excel_formatter/index
+   /autoapi/psweep/compilation/input_provenance/index
    /autoapi/psweep/compilation/schema_detector/index
    /autoapi/psweep/compilation/synthesizer/index
 

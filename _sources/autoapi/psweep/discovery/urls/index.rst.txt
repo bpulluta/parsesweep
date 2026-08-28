@@ -22,6 +22,7 @@ Functions
 
 .. autoapisummary::
 
+   psweep.discovery.urls.decode_discovery_url
    psweep.discovery.urls.normalize_url_text
    psweep.discovery.urls.url_extension
    psweep.discovery.urls.url_host
@@ -29,6 +30,11 @@ Functions
 
 Module Contents
 ---------------
+
+.. py:function:: decode_discovery_url(url: str) -> str
+
+   Decode common escaped URL variants emitted by search APIs.
+
 
 .. py:function:: normalize_url_text(text: str) -> str
 

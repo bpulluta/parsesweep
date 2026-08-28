@@ -39,6 +39,9 @@ Module Contents
 
 .. py:class:: PageLocator(section_description: str, *, model: str | None = None, models: dict[str, str] | None = None, default_model: str | None = None, trigger_chars: int = DEFAULT_PAGE_TRIGGER_CHARS, max_selected_pages: int = DEFAULT_MAX_SELECTED_PAGES, keywords: list[str] | None = None, context_pages: int = 1, snippet_chars: int = 600)
 
+   Bases: :py:obj:`_BaseLocator`
+
+
    Find the page range holding a described section in a large PDF.
 
 

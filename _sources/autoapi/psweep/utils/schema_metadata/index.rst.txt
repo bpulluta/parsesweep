@@ -64,15 +64,47 @@ Module Contents
 
 
 
+   .. py:method:: get_center_align_columns() -> Optional[List[str]]
+
+      Return explicit center-aligned Excel column names, if configured.
+
+      ``None`` means "unset" — the formatter uses its built-in default name
+      list. An empty list disables name-based centering entirely.
+
+
+
+   .. py:method:: get_center_align_max_length() -> Optional[float]
+
+      Return the average-length threshold for center-aligning columns.
+
+      ``None`` means "unset" — the formatter uses its built-in default
+      threshold.
+
+
+
    .. py:method:: get_column_order() -> List[str]
 
-      Get preferred column order for output.
+      Return column ordering.
+
+      If compilation.output.column_order is set, it acts as a *priority prefix*:
+      those columns appear first (in the listed order), then all remaining
+      schema item fields appear in their declaration order, then context fields.
+      If column_order is empty/absent, item fields then context fields are used.
 
 
 
    .. py:method:: get_column_renames() -> Dict[str, str]
 
-      Get output column rename mapping.
+      Return column rename mapping.
+
+      Merges two sources in priority order (highest last):
+
+      1. Auto-derived snake_case renames for every item field AND context
+         object field in the schema (Title Case → snake_case).
+      2. Explicit overrides from compilation.output.column_renames in config/schema.
+
+      This ensures new schema fields are always renamed correctly without
+      manual config updates.
 
 
 
@@ -100,6 +132,65 @@ Module Contents
 
 
 
+   .. py:method:: get_cross_feature_redundancy_config() -> Optional[Dict[str, Any]]
+
+      Config for the optional cross-feature approval-redundancy dedup pass.
+
+      Declared as ``identity.deduplication.cross_feature_redundancy``. When
+      absent (the default), the pass is a no-op — it is entirely opt-in and
+      domain-neutral; the ranking, trigger columns, and interchangeable
+      feature values all come from the schema, not from code.
+
+      Expected shape::
+
+          "cross_feature_redundancy": {
+              "group_by": ["applies_to", "obligation"],
+              "feature_field": "feature",
+              "authority_ranking": ["permit_approval", "zoning_districts"],
+              "redundant_features": ["permit_approval", "zoning_districts"]
+          }
+
+
+
+   .. py:method:: get_deduplication_fuzzy_field_config() -> dict
+
+      Return per-fuzzy-field config keyed by field name.
+
+      Each value is a dict with optional ``normalize`` key.  Fields declared
+      as plain strings in ``fuzzy_key_fields`` get an empty config dict.
+
+
+
+   .. py:method:: get_deduplication_fuzzy_fields() -> List[str]
+
+      Get key fields that use empty-as-wildcard + case-insensitive matching.
+
+      Declared as ``identity.deduplication.fuzzy_key_fields`` in the schema.
+      Accepts either a plain list of field names, or a list of objects with
+      ``field`` and optional ``normalize`` keys::
+
+          "fuzzy_key_fields": [
+              "condition",
+              {"field": "applies_to", "normalize": "words"}
+          ]
+
+      Normalization modes (applied before comparison when both values are
+      non-empty):
+
+      - ``"words"`` — lowercase, strip leading/trailing whitespace, collapse
+        internal whitespace.  Removes common English articles and prepositions
+        (``a``, ``an``, ``the``, ``of``, ``in``, ``at``, ``by``, ``for``,
+        ``to``, ``from``) so phrasing variations like ``"compressor station"``
+        vs ``"a compressor station"`` still match.  This is a generic
+        text-normalization operation — no domain vocabulary.
+      - ``None`` (default) — exact case-insensitive string equality after
+        strip.
+
+      Returns an empty list when not declared — callers fall back to strict
+      exact matching for all key fields.
+
+
+
    .. py:method:: get_deduplication_ignore_fields() -> List[str]
 
       Get fields to ignore during deduplication comparison.
@@ -109,6 +200,22 @@ Module Contents
    .. py:method:: get_deduplication_key_fields() -> List[str]
 
       Get fields that define uniqueness for deduplication.
+
+
+
+   .. py:method:: get_deduplication_partition_fields() -> List[str]
+
+      Get fields that isolate deduplication scope (never merge across them).
+
+      Declared as ``identity.deduplication.partition_fields`` in the schema.
+      Returns an empty list when not declared — no isolation boundaries are
+      applied and all rows within the DataFrame are candidates for dedup.
+
+      Schemas that need cross-document isolation (e.g. jurisdiction-based
+      ordinance extraction where the same item name may legitimately appear
+      in different counties) should declare this explicitly::
+
+          "partition_fields": ["jurisdiction.state", "jurisdiction.county"]
 
 
 
@@ -195,14 +302,30 @@ Module Contents
 
 
 
+   .. py:method:: get_severity_tokens() -> tuple[frozenset, frozenset]
+
+      Return the ``(high, medium)`` field-name severity token sets.
+
+      These name-heuristic tokens classify how impactful a differing field is
+      when the schema provides no explicit severity hint. A schema may extend
+      either set via ``$metadata.compilation.severity_tokens.{high,medium}``;
+      the configured tokens are unioned with the built-in defaults (the
+      generic tokens are always retained), matching the supplement idiom used
+      elsewhere. When unconfigured, the module defaults are returned unchanged.
+
+
+
    .. py:method:: get_state_normalization_column() -> Optional[str]
 
       Column whose US-state names should be normalized to abbreviations.
 
       Driven by ``compilation.normalization.state_column``. Defaults to
-      ``"State"`` (legacy behavior: normalize a column literally named
-      ``State`` when present). Set to ``null``/``""`` in a schema to opt a
-      non-US / non-jurisdiction domain out entirely.
+      ``"State"`` to preserve existing behavior for schemas that have a
+      jurisdiction State column.  Set to ``null``/``""`` in a schema to
+      opt a non-US / non-jurisdiction domain out entirely.
+
+      To make state normalization opt-in for a new domain schema, set
+      ``compilation.normalization.state_column: null`` explicitly.
 
 
 

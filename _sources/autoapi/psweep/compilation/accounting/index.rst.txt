@@ -1,0 +1,24 @@
+psweep.compilation.accounting
+=============================
+
+.. py:module:: psweep.compilation.accounting
+
+.. autoapi-nested-parse::
+
+   Pipeline run accounting for the compile stage.
+
+   This module builds the unified ``run_accounting.json`` payload and the
+   per-run compilation manifest. The logic is a factual log of what happened
+   across the discover -> extract -> compile pipeline, gathered from immutable
+   run manifests. It lives here (rather than in the thin CLI layer) so it can be
+   built and tested without invoking the ``compile`` Click command.
+
+   Public API
+   ----------
+   - :func:`build_pipeline_accounting` — assemble the full accounting payload.
+   - :func:`write_compilation_run_manifest` — persist one compile run manifest.
+   - :func:`collect_discovery_manifests` / :func:`discover_domain_roots` —
+     manifest discovery helpers, exposed for testing.
+
+
+

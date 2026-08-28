@@ -65,7 +65,7 @@ Module Contents
    Result from a single model extraction.
 
 
-.. py:function:: run_multi_model_extraction(doc_text: str, doc_name: str, schema: dict, registry: psweep.config.model_registry.ModelRegistry, model_tiers: Sequence[str], output_dir: pathlib.Path, max_context_chars: int = DEFAULT_MAX_CONTEXT, timeout_seconds: Optional[int] = None, runtime_artifact: Optional[Dict[str, Any]] = None, run_id: Optional[str] = None, seed_records_by_model: Optional[Dict[str, Dict[str, Any]]] = None, model_status_callback: Optional[Callable[[Dict[str, Any]], None]] = None) -> Dict[str, ModelExtractionResult]
+.. py:function:: run_multi_model_extraction(doc_text: str, doc_name: str, schema: dict, registry: psweep.config.model_registry.ModelRegistry, model_tiers: Sequence[str], output_dir: pathlib.Path, max_context_chars: int = DEFAULT_MAX_CONTEXT, timeout_seconds: Optional[int] = None, runtime_artifact: Optional[Dict[str, Any]] = None, run_id: Optional[str] = None, schema_id: Optional[str] = None, seed_records_by_model: Optional[Dict[str, Dict[str, Any]]] = None, model_status_callback: Optional[Callable[[Dict[str, Any]], None]] = None) -> Dict[str, ModelExtractionResult]
 
    Run extraction with multiple models resolved through the model registry.
 
@@ -91,6 +91,8 @@ Module Contents
    :type runtime_artifact: Optional[Dict[str, Any]]
    :param run_id: Optional deterministic run identifier for this invocation
    :type run_id: Optional[str]
+   :param schema_id: Canonical schema identifier/path to persist in output lineage.
+   :type schema_id: Optional[str]
 
    :returns: Dict mapping concrete model name to ModelExtractionResult
    :rtype: Dict[str, ModelExtractionResult]

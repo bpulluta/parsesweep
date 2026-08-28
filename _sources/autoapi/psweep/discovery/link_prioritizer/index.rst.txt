@@ -25,7 +25,7 @@ Classes
 Module Contents
 ---------------
 
-.. py:class:: LinkPrioritizer(keywords: list[str] | None = None, domain_authority_overrides: dict[str, float] | None = None, top_k: int | None = 5, power_range_kw: tuple[float, float] | None = None)
+.. py:class:: LinkPrioritizer(keywords: list[str] | None = None, domain_authority_overrides: dict[str, float] | None = None, top_k: int | None = 5, shopping_path_keywords: list[str] | None = None)
 
    Heuristic ranker for discovery candidate URLs.
 
@@ -39,9 +39,8 @@ Module Contents
                                       supplement the built-in authority table.
    :param top_k: Maximum number of candidates to surface after ranking. ``None``
                  returns all candidates in ranked order.
-   :param power_range_kw: Optional ``(min_kw, max_kw)`` tuple.  URLs containing a numeric kW
-                          value inside this range receive a bonus; values outside the range
-                          receive a penalty.
+   :param shopping_path_keywords: Extra shopping/cart path keywords that supplement the built-in
+                                  :data:`_SHOPPING_PATH_KEYWORDS`; the defaults are always retained.
 
 
    .. py:method:: prioritize(candidates: list[psweep.discovery.models.DiscoveryCandidate]) -> tuple[list[psweep.discovery.models.DiscoveryCandidate], list[dict[str, Any]]]

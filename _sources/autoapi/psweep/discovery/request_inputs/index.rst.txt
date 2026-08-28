@@ -1,0 +1,48 @@
+psweep.discovery.request_inputs
+===============================
+
+.. py:module:: psweep.discovery.request_inputs
+
+.. autoapi-nested-parse::
+
+   Normalize resolved discover config into typed, defaulted request inputs.
+
+   ``resolve_command_config(command="discover", ...)`` merges config + explicit
+   CLI overrides but returns only the values that were actually set. This module
+   is the single place that applies the discover command's runtime defaults and
+   type coercions on top of that merged view, producing the concrete values the
+   ``DiscoveryEngine`` request is built from.
+
+   Keeping it here (rather than inline in the CLI) means the defaults live in one
+   tested layer and the CLI ``discover`` command is a thin driver over it. The
+   CLI threads its own option values in as the final fallbacks (identical to the
+   former inline behavior); every expression below is a verbatim move of the shim.
+
+
+
+Functions
+---------
+
+.. autoapisummary::
+
+   psweep.discovery.request_inputs.normalize_discover_inputs
+
+
+Module Contents
+---------------
+
+.. py:function:: normalize_discover_inputs(resolved_inputs: dict[str, Any], *, domain: str | None = None, target: str | None = None, seed_urls: collections.abc.Sequence[str] = (), query: str | None = None, state: str | None = None, jurisdiction: str | None = None, partition_mode: str | None = None, target_limit: int | None = None, retention_documents: str | None = None, digger_provider: str | None = None, enable_serpapi: bool = False, max_concurrent_downloads: int | None = None, min_request_interval_ms: int | None = None, robots_policy_mode: str | None = None, tos_policy_mode: str | None = None, acknowledged_tos_domains: collections.abc.Sequence[str] = (), output_documents: str | None = None, output_manifest: str | None = None, dry_run: bool = False, fresh: bool = False) -> dict[str, Any]
+
+   Apply discover runtime defaults + coercions to merged config inputs.
+
+   ``resolved_inputs`` is the output of
+   ``resolve_command_config(command="discover", ...)``. The keyword arguments
+   are the CLI option values, used as the final fallback exactly as the
+   former inline shim did (explicit overrides are already merged into
+   ``resolved_inputs``, so these only matter when a value is set nowhere
+   else).
+
+   Returns fully-defaulted, coerced values keyed by their short names (the
+   CLI binds its ``resolved_*`` locals directly from these).
+
+

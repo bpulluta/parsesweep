@@ -15,6 +15,7 @@ Functions
 .. autoapisummary::
 
    psweep.extraction.record_writer.build_extraction_record
+   psweep.extraction.record_writer.build_lineage
    psweep.extraction.record_writer.write_extraction_record
 
 
@@ -24,6 +25,11 @@ Module Contents
 .. py:function:: build_extraction_record(*, doc_path: pathlib.Path, result: Any, model: str, provider: str | None, runtime_artifact: Optional[Dict[str, Any]] = None, run_id: Optional[str] = None, schema_id: Optional[str] = None, identifier_fields: Optional[Sequence[str]] = None) -> tuple[Dict[str, Any], int]
 
    Build the canonical ParseSweep extraction-record payload.
+
+
+.. py:function:: build_lineage(*, runtime_artifact: Optional[Dict[str, Any]], run_id: Optional[str], model: str, provider: str | None, schema_id: Optional[str], default_run_fragment: str, extracted_at: str) -> Dict[str, Any]
+
+   Build canonical lineage metadata for extraction records.
 
 
 .. py:function:: write_extraction_record(output_path: pathlib.Path, *, doc_path: pathlib.Path, result: Any, model: str, provider: str | None, runtime_artifact: Optional[Dict[str, Any]] = None, run_id: Optional[str] = None, schema_id: Optional[str] = None, identifier_fields: Optional[Sequence[str]] = None) -> int

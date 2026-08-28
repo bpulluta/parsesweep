@@ -10,7 +10,7 @@ psweep.discovery.candidate_selector
    After the SerpApi seeker discovers candidates per target, this module decides
    which candidates to actually stage for download.  The two core guards are:
 
-   1. **Draft filter** – exclude documents whose URL or snippet text contains
+   1. **Draft filter** – exclude documents whose URL/title/snippet text contains
       signals indicating they are not the current enacted/production version
       (e.g., "draft", "proposed", "preliminary", "superseded").
 
@@ -42,7 +42,7 @@ Module Contents
    Selects the best candidate(s) per target from seeker output.
 
    :param exclude_draft: When ``True`` (default), candidates matching any draft pattern in
-                         their URL or reason strings are excluded before recency ranking.
+                         their URL/title/snippet text are excluded before recency ranking.
    :param draft_patterns: Override the default draft detection regex patterns.  Each entry is
                           a case-insensitive ``re.search`` pattern string.
 

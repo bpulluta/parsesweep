@@ -16,7 +16,6 @@ Functions
 
    psweep.extraction.pdf_utils.extract_pages_text
    psweep.extraction.pdf_utils.extract_text_from_pdf
-   psweep.extraction.pdf_utils.truncate_text
 
 
 Module Contents
@@ -31,23 +30,20 @@ Module Contents
    returns an empty list if PyMuPDF is unavailable or the file can't be opened.
 
 
-.. py:function:: extract_text_from_pdf(pdf_path: pathlib.Path, prefer_markdown: bool = False, page_range: Optional[tuple] = None, return_meta: bool = False)
+.. py:function:: extract_text_from_pdf(pdf_path: pathlib.Path, page_range: Optional[tuple] = None, return_meta: bool = False, ocr_corrections: Optional[list] = None)
 
    Extract text from a PDF file with adaptive method selection.
 
    Strategy:
 
-   1. Try PyMuPDF4LLM for markdown/table structure (if prefer_markdown=True)
-   2. Validate extraction quality (content length, key terms)
-   3. Fall back to PyMuPDF if quality check fails
-   4. Ultimate fallback to pypdf
+   1. Use PyMuPDF as the primary extractor - most reliable
+   2. Fall back to pypdf when PyMuPDF is unavailable or yields no text
+   3. OCR fallback (Tesseract via PyMuPDF) for image-based PDFs
 
    This ensures optimal extraction method is used based on PDF characteristics.
 
    :param pdf_path: Path to the PDF file
    :type pdf_path: Path
-   :param prefer_markdown: If True, try PyMuPDF4LLM first for table preservation
-   :type prefer_markdown: bool
    :param page_range: Optional tuple (start_page, end_page) to extract only specific pages (1-indexed)
    :type page_range: Optional[tuple]
    :param return_meta: If True, return ``(text, {"used_ocr": bool})`` so callers
@@ -57,21 +53,5 @@ Module Contents
 
    :returns: Extracted text string, or ``(text, meta)`` when ``return_meta`` is True.
    :rtype: str or tuple
-
-
-.. py:function:: truncate_text(text: str, max_chars: int = 50000) -> str
-
-   Intelligently truncate text if too long.
-
-   Keeps the beginning (70%) and end (30%) of the document
-   to preserve both header information and summary sections.
-
-   :param text: Text to truncate
-   :type text: str
-   :param max_chars: Maximum characters to keep (~12,500 tokens)
-   :type max_chars: int
-
-   :returns: Truncated text
-   :rtype: str
 
 

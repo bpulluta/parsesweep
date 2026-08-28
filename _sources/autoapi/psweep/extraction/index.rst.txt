@@ -21,8 +21,10 @@ Submodules
    /autoapi/psweep/extraction/llm_factory/index
    /autoapi/psweep/extraction/page_locator/index
    /autoapi/psweep/extraction/pdf_utils/index
+   /autoapi/psweep/extraction/provenance/index
    /autoapi/psweep/extraction/record_writer/index
    /autoapi/psweep/extraction/schema_utils/index
+   /autoapi/psweep/extraction/section_locator/index
    /autoapi/psweep/extraction/text_processor/index
 
 

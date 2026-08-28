@@ -1,0 +1,61 @@
+psweep.extraction.section_locator
+=================================
+
+.. py:module:: psweep.extraction.section_locator
+
+.. autoapi-nested-parse::
+
+   LLM-assisted section targeting for non-PDF documents.
+
+   Large HTML, DOCX, and TXT documents can overflow the extraction context just
+   like large PDFs. This module finds the text regions that hold a described
+   section so extraction can target only those regions.
+
+   Strategy (mirrors PageLocator):
+
+   1. Heuristic pre-filter — split document into heading-delimited chunks,
+      score each chunk by keyword hit density, keep the dense ones.
+   2. LLM confirm — send a compact index (heading + snippet) of candidate
+      chunks and ask which ones contain the described section.
+
+   Results are cached in a ``.sections/<stem>.json`` + ``.sections/<stem>.txt``
+   sidecar pair next to the source file (keyed on size/mtime and section
+   description) so the LLM call happens once.
+
+   Everything is best-effort: on any failure ``locate`` returns ``None`` and the
+   caller falls back to full-document extraction.
+
+   Supported formats: HTML/HTM, DOCX/DOC, TXT.
+   Unsupported (always full extraction): XLSX, CSV, PDF.
+
+
+
+Classes
+-------
+
+.. autoapisummary::
+
+   psweep.extraction.section_locator.SectionLocator
+
+
+Module Contents
+---------------
+
+.. py:class:: SectionLocator(section_description: str, *, model: str | None = None, models: dict[str, str] | None = None, default_model: str | None = None, trigger_chars: int = DEFAULT_PAGE_TRIGGER_CHARS, keywords: list[str] | None = None, snippet_chars: int = 600)
+
+   Bases: :py:obj:`psweep.extraction.page_locator._BaseLocator`
+
+
+   Find the text regions holding a described section in a large non-PDF document.
+
+
+   .. py:method:: locate(file_path: str | pathlib.Path) -> str | None
+
+      Return filtered section text for the document, or None.
+
+      Returns ``None`` for PDF, XLSX, CSV (unsupported or delegated), for
+      documents smaller than ``trigger_chars``, and on any failure —
+      signalling the caller to fall back to full-document extraction.
+
+
+

@@ -3,7 +3,7 @@
   <head><meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <meta name="color-scheme" content="light dark"><meta name="viewport" content="width=device-width, initial-scale=1" />
-<link rel="index" title="Index" href="../../../../genindex.html"><link rel="search" title="Search" href="../../../../search.html"><link rel="next" title="psweep.pipeline" href="../../pipeline/index.html"><link rel="prev" title="psweep.extraction.schema_utils" href="../schema_utils/index.html">
+<link rel="index" title="Index" href="../../../../genindex.html"><link rel="search" title="Search" href="../../../../search.html"><link rel="next" title="psweep.pipeline" href="../../pipeline/index.html"><link rel="prev" title="psweep.extraction.section_locator" href="../section_locator/index.html">
 
     <link rel="shortcut icon" href="../../../../_static/favicon.svg"><!-- Generated with Sphinx 9.1.0 and Furo 2025.12.19 -->
         <title>psweep.extraction.text_processor - ParseSweep 2.0.1</title>
@@ -222,11 +222,13 @@
 </ul>
 </li>
 <li class="toctree-l3 has-children"><a class="reference internal" href="../../compilation/index.html">psweep.compilation</a><input aria-label="Toggle navigation of psweep.compilation" class="toctree-checkbox" id="toctree-checkbox-4" name="toctree-checkbox-4" role="switch" type="checkbox"/><label for="toctree-checkbox-4"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../compilation/accounting/index.html">psweep.compilation.accounting</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compilation/csv_exporter/index.html">psweep.compilation.csv_exporter</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compilation/data_compiler/index.html">psweep.compilation.data_compiler</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compilation/data_flattener/index.html">psweep.compilation.data_flattener</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compilation/deduplicator/index.html">psweep.compilation.deduplicator</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compilation/excel_formatter/index.html">psweep.compilation.excel_formatter</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compilation/input_provenance/index.html">psweep.compilation.input_provenance</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compilation/schema_detector/index.html">psweep.compilation.schema_detector</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compilation/synthesizer/index.html">psweep.compilation.synthesizer</a></li>
 </ul>
@@ -241,6 +243,7 @@
 <li class="toctree-l3 has-children"><a class="reference internal" href="../../discovery/index.html">psweep.discovery</a><input aria-label="Toggle navigation of psweep.discovery" class="toctree-checkbox" id="toctree-checkbox-6" name="toctree-checkbox-6" role="switch" type="checkbox"/><label for="toctree-checkbox-6"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l4"><a class="reference internal" href="../../discovery/browser/index.html">psweep.discovery.browser</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../discovery/candidate_selector/index.html">psweep.discovery.candidate_selector</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../discovery/code_host_adapters/index.html">psweep.discovery.code_host_adapters</a></li>
 <li class="toctree-l4 has-children"><a class="reference internal" href="../../discovery/connectors/index.html">psweep.discovery.connectors</a><input aria-label="Toggle navigation of psweep.discovery.connectors" class="toctree-checkbox" id="toctree-checkbox-7" name="toctree-checkbox-7" role="switch" type="checkbox"/><label for="toctree-checkbox-7"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l5"><a class="reference internal" href="../../discovery/connectors/base/index.html">psweep.discovery.connectors.base</a></li>
 <li class="toctree-l5"><a class="reference internal" href="../../discovery/connectors/digger/index.html">psweep.discovery.connectors.digger</a></li>
@@ -253,6 +256,7 @@
 <li class="toctree-l4"><a class="reference internal" href="../../discovery/link_prioritizer/index.html">psweep.discovery.link_prioritizer</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../discovery/models/index.html">psweep.discovery.models</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../discovery/policies/index.html">psweep.discovery.policies</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../discovery/request_inputs/index.html">psweep.discovery.request_inputs</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../discovery/retry/index.html">psweep.discovery.retry</a></li>
 <li class="toctree-l4 has-children"><a class="reference internal" href="../../discovery/targets/index.html">psweep.discovery.targets</a><input aria-label="Toggle navigation of psweep.discovery.targets" class="toctree-checkbox" id="toctree-checkbox-8" name="toctree-checkbox-8" role="switch" type="checkbox"/><label for="toctree-checkbox-8"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l5"><a class="reference internal" href="../../discovery/targets/base/index.html">psweep.discovery.targets.base</a></li>
@@ -271,12 +275,15 @@
 <li class="toctree-l4"><a class="reference internal" href="../llm_factory/index.html">psweep.extraction.llm_factory</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../page_locator/index.html">psweep.extraction.page_locator</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../pdf_utils/index.html">psweep.extraction.pdf_utils</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../provenance/index.html">psweep.extraction.provenance</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../record_writer/index.html">psweep.extraction.record_writer</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../schema_utils/index.html">psweep.extraction.schema_utils</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../section_locator/index.html">psweep.extraction.section_locator</a></li>
 <li class="toctree-l4 current current-page"><a class="current reference internal" href="#">psweep.extraction.text_processor</a></li>
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="../../pipeline/index.html">psweep.pipeline</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../scaffolding/index.html">psweep.scaffolding</a></li>
 <li class="toctree-l3 has-children"><a class="reference internal" href="../../utils/index.html">psweep.utils</a><input aria-label="Toggle navigation of psweep.utils" class="toctree-checkbox" id="toctree-checkbox-10" name="toctree-checkbox-10" role="switch" type="checkbox"/><label for="toctree-checkbox-10"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l4"><a class="reference internal" href="../../utils/config/index.html">psweep.utils.config</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../utils/error_taxonomy/index.html">psweep.utils.error_taxonomy</a></li>
@@ -353,6 +360,21 @@
 <tbody>
 <tr class="row-odd"><td><p><a class="reference internal" href="#psweep.extraction.text_processor.TextProcessor" title="psweep.extraction.text_processor.TextProcessor"><code class="xref py py-obj docutils literal notranslate"><span class="pre">TextProcessor</span></code></a></p></td>
 <td><p>Handles text optimization and preparation for extraction.</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+<section id="functions">
+<h2>Functions<a class="headerlink" href="#functions" title="Link to this heading">¶</a></h2>
+<div class="table-wrapper autosummary longtable docutils container">
+<table class="autosummary longtable docutils align-default">
+<tbody>
+<tr class="row-odd"><td><p><a class="reference internal" href="#psweep.extraction.text_processor.find_data_arrays" title="psweep.extraction.text_processor.find_data_arrays"><code class="xref py py-obj docutils literal notranslate"><span class="pre">find_data_arrays</span></code></a>(→ List[Tuple[str, list]])</p></td>
+<td><p>Return <code class="docutils literal notranslate"><span class="pre">(field_name,</span> <span class="pre">list_value)</span></code> for every non-empty list-valued</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#psweep.extraction.text_processor.find_main_data_array" title="psweep.extraction.text_processor.find_main_data_array"><code class="xref py py-obj docutils literal notranslate"><span class="pre">find_main_data_array</span></code></a>(→ Tuple[Optional[str], int])</p></td>
+<td><p>Return <code class="docutils literal notranslate"><span class="pre">(field_name,</span> <span class="pre">item_count)</span></code> for the largest non-empty list-valued</p></td>
 </tr>
 </tbody>
 </table>
@@ -479,6 +501,24 @@ identifier_fields (when available) to build human-readable item labels.</p>
 
 </dd></dl>
 
+<dl class="py function">
+<dt class="sig sig-object py" id="psweep.extraction.text_processor.find_data_arrays">
+<span class="sig-prename descclassname"><span class="pre">psweep.extraction.text_processor.</span></span><span class="sig-name descname"><span class="pre">find_data_arrays</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">data</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">list</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#psweep.extraction.text_processor.find_data_arrays" title="Link to this definition">¶</a></dt>
+<dd><p>Return <code class="docutils literal notranslate"><span class="pre">(field_name,</span> <span class="pre">list_value)</span></code> for every non-empty list-valued
+top-level field, in document (insertion) order.</p>
+<p>This is the single source of truth for “which top-level fields hold the
+extracted item arrays”, used by item counting, completeness scoring, and
+record writing so the “find the data arrays” scan is not reimplemented.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="psweep.extraction.text_processor.find_main_data_array">
+<span class="sig-prename descclassname"><span class="pre">psweep.extraction.text_processor.</span></span><span class="sig-name descname"><span class="pre">find_main_data_array</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">data</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">int</span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#psweep.extraction.text_processor.find_main_data_array" title="Link to this definition">¶</a></dt>
+<dd><p>Return <code class="docutils literal notranslate"><span class="pre">(field_name,</span> <span class="pre">item_count)</span></code> for the largest non-empty list-valued
+top-level field, or <code class="docutils literal notranslate"><span class="pre">(None,</span> <span class="pre">0)</span></code> when there are none.</p>
+<p>On ties the first such field in document order wins.</p>
+</dd></dl>
+
 </section>
 </section>
 
@@ -496,14 +536,14 @@ identifier_fields (when available) to build human-readable item labels.</p>
               </div>
               <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
             </a>
-          <a class="prev-page" href="../schema_utils/index.html">
+          <a class="prev-page" href="../section_locator/index.html">
               <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
               <div class="page-info">
                 <div class="context">
                   <span>Previous</span>
                 </div>
                 
-                <div class="title">psweep.extraction.schema_utils</div>
+                <div class="title">psweep.extraction.section_locator</div>
                 
               </div>
             </a>
@@ -542,6 +582,7 @@ identifier_fields (when available) to build human-readable item labels.</p>
             <ul>
 <li><a class="reference internal" href="#">psweep.extraction.text_processor</a><ul>
 <li><a class="reference internal" href="#classes">Classes</a></li>
+<li><a class="reference internal" href="#functions">Functions</a></li>
 <li><a class="reference internal" href="#module-contents">Module Contents</a><ul>
 <li><a class="reference internal" href="#psweep.extraction.text_processor.TextProcessor"><code class="docutils literal notranslate"><span class="pre">TextProcessor</span></code></a><ul>
 <li><a class="reference internal" href="#psweep.extraction.text_processor.TextProcessor.calculate_completeness"><code class="docutils literal notranslate"><span class="pre">TextProcessor.calculate_completeness()</span></code></a></li>
@@ -551,6 +592,8 @@ identifier_fields (when available) to build human-readable item labels.</p>
 <li><a class="reference internal" href="#psweep.extraction.text_processor.TextProcessor.run_sanity_checks"><code class="docutils literal notranslate"><span class="pre">TextProcessor.run_sanity_checks()</span></code></a></li>
 </ul>
 </li>
+<li><a class="reference internal" href="#psweep.extraction.text_processor.find_data_arrays"><code class="docutils literal notranslate"><span class="pre">find_data_arrays()</span></code></a></li>
+<li><a class="reference internal" href="#psweep.extraction.text_processor.find_main_data_array"><code class="docutils literal notranslate"><span class="pre">find_main_data_array()</span></code></a></li>
 </ul>
 </li>
 </ul>

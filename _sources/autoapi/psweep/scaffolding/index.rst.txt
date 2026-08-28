@@ -1,0 +1,40 @@
+psweep.scaffolding
+==================
+
+.. py:module:: psweep.scaffolding
+
+.. autoapi-nested-parse::
+
+   Schema and config scaffolding builders for domain onboarding.
+
+   Pure builder functions extracted from the CLI ``utils_commands`` module: they
+   derive lean starter schemas from a reference schema, build validation and
+   compilation scaffolds, and lay out the workspace/config skeleton for a new
+   domain. None of them perform Click or console I/O, so they can be reused and
+   tested independently of the CLI command wrappers that call them.
+
+   ``ConfigValidationError`` is raised by several builders and re-exported here.
+
+
+
+Exceptions
+----------
+
+.. autoapisummary::
+
+   psweep.scaffolding.ConfigValidationError
+
+
+Module Contents
+---------------
+
+.. py:exception:: ConfigValidationError
+
+   Bases: :py:obj:`ValueError`
+
+
+   Config or schema validation error.
+
+   Initialize self.  See help(type(self)) for accurate signature.
+
+

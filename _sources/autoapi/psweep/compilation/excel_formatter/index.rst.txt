@@ -37,7 +37,7 @@ Module Contents
    - Clean borders throughout
 
 
-   .. py:method:: save(df: pandas.DataFrame, output_path: pathlib.Path, freeze_columns: int = 0, auto_width: bool = True)
+   .. py:method:: save(df: pandas.DataFrame, output_path: pathlib.Path, freeze_columns: int = 0, auto_width: bool = True, center_align_columns: list[str] | None = None, center_align_max_length: float | None = None)
 
       Save DataFrame to professionally formatted Excel file.
 
@@ -49,6 +49,14 @@ Module Contents
       :type freeze_columns: int
       :param auto_width: Whether to auto-size columns
       :type auto_width: bool
+      :param center_align_columns: Column names (matched case-insensitively) that should always be
+                                   center-aligned regardless of content length. Defaults to
+                                   :data:`DEFAULT_CENTER_ALIGN_COLUMN_NAMES` when ``None``.
+      :type center_align_columns: list[str], optional
+      :param center_align_max_length: Columns whose sampled average value length is below this threshold
+                                      are center-aligned. Defaults to
+                                      :data:`DEFAULT_CENTER_ALIGN_MAX_LENGTH` when ``None``.
+      :type center_align_max_length: float, optional
 
       .. rubric:: Examples
 

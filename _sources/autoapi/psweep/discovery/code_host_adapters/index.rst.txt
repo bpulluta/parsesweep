@@ -1,0 +1,99 @@
+psweep.discovery.code_host_adapters
+===================================
+
+.. py:module:: psweep.discovery.code_host_adapters
+
+.. autoapi-nested-parse::
+
+   Code-host content adapters: fetch server-rendered ordinance text from
+   JavaScript code-hosting platforms whose public pages are empty SPA shells.
+
+   When a downloaded HTML file is a JS shell (little server-rendered text) and its
+   URL is on a supported code host, the discovery engine asks the matching adapter
+   to fetch the real content via that host's server-side API — no browser required.
+   This runs *before* the Selenium browser-escalation fallback because it is
+   cheaper, deterministic, and more reliable; anything an adapter cannot resolve
+   falls through to the browser path unchanged.
+
+   Adapters are pure: they receive an injected HTTP ``get`` callable
+   (``get(url, headers) -> (status_code, text)``) so this module has no network,
+   engine, or config dependency and is unit-testable with a fake ``get``.
+
+   The bundled :class:`MunicodeAdapter` targets ``library.municode.com``, the
+   dominant US municipal-code host. Municode serves public municipal law
+   (government edicts); this collects it as reference material, honors the site's
+   robots policy through the engine's existing policy gate, and uses a generic
+   User-Agent (never a named AI-crawler UA, which the site disallows).
+
+
+
+Classes
+-------
+
+.. autoapisummary::
+
+   psweep.discovery.code_host_adapters.CodeHostAdapter
+   psweep.discovery.code_host_adapters.MunicodeAdapter
+
+
+Functions
+---------
+
+.. autoapisummary::
+
+   psweep.discovery.code_host_adapters.resolve_adapter
+
+
+Module Contents
+---------------
+
+.. py:class:: CodeHostAdapter
+
+   Bases: :py:obj:`Protocol`
+
+
+   A per-host content fetcher for a JS code-hosting platform.
+
+
+   .. py:method:: can_handle(url: str) -> bool
+
+      Return True if this adapter handles ``url``'s host.
+
+
+
+   .. py:method:: fetch_text(url: str, get: HttpGet) -> Optional[str]
+
+      Return clean text for ``url`` via ``get``, or None if unresolved.
+
+
+
+.. py:class:: MunicodeAdapter
+
+   Fetch clean ordinance text from ``library.municode.com`` via its JSON API.
+
+   The public page is an Angular SPA; the real content comes from ``/api``
+   endpoints reachable with a single ``X-CSRF: 1`` header (no auth, cookie, or
+   token). Given a public URL such as
+   ``https://library.municode.com/tx/friendswood/codes/code_of_ordinances?nodeId=<node>``
+   the resolution chain is: client (state + name) -> product -> latest job ->
+   node content. ``groupChunks=true`` returns the node's whole subtree in one
+   call so a link that points at a chapter/article still yields its sections.
+
+
+   .. py:method:: can_handle(url: str) -> bool
+
+      Return True for ``library.municode.com`` URLs.
+
+
+
+   .. py:method:: fetch_text(url: str, get: HttpGet) -> Optional[str]
+
+      Resolve the Municode API chain for ``url`` and return clean text.
+
+
+
+.. py:function:: resolve_adapter(url: str) -> Optional[CodeHostAdapter]
+
+   Return the first bundled adapter that can handle ``url``, or ``None``.
+
+

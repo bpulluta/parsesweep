@@ -29,7 +29,7 @@ Classes
 Module Contents
 ---------------
 
-.. py:class:: LLMClient(api_key: str = None, model: str = DEFAULT_MODEL, provider: str = None, azure_endpoint: str = None, azure_api_version: str = None, context_windows: Optional[Dict[str, int]] = None, base_url: str = None, timeout: int = None)
+.. py:class:: LLMClient(api_key: str = None, model: str = DEFAULT_MODEL, provider: str = None, azure_endpoint: str = None, azure_api_version: str = None, context_windows: Optional[Dict[str, int]] = None, base_url: str = None, timeout: int = None, reasoning_models: Optional[List[str]] = None)
 
    Universal LLM client for structured data extraction.
 
@@ -66,7 +66,7 @@ Module Contents
    :type timeout: int
 
 
-   .. py:method:: extract(text: str, schema: Dict[str, Any], system_prompt: str = None, user_prompt: str = None) -> Dict[str, Any]
+   .. py:method:: extract(text: str, schema: Dict[str, Any], system_prompt: str = None, user_prompt: str = None, suppress_errors: bool = False) -> Dict[str, Any]
 
       Extract structured data using LLM.
 

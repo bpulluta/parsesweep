@@ -1,0 +1,33 @@
+psweep.compilation.input_provenance
+===================================
+
+.. py:module:: psweep.compilation.input_provenance
+
+.. autoapi-nested-parse::
+
+   Input provenance checks for compilation safety warnings.
+
+
+
+Functions
+---------
+
+.. autoapisummary::
+
+   psweep.compilation.input_provenance.analyze_compile_input_provenance
+   psweep.compilation.input_provenance.list_compile_record_files
+
+
+Module Contents
+---------------
+
+.. py:function:: analyze_compile_input_provenance(input_dir: pathlib.Path) -> list[str]
+
+   Return non-fatal warnings about mixed/stale extraction inputs.
+
+
+.. py:function:: list_compile_record_files(input_dir: pathlib.Path) -> list[pathlib.Path]
+
+   Return sorted record JSON files under input_dir, excluding internal dirs.
+
+
