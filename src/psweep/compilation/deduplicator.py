@@ -126,10 +126,20 @@ class Deduplicator:
         # Remove duplicates
         df = df.drop(index=rows_to_drop)
 
-        if rows_to_drop:
-            print(f"  ✓ Removed {len(rows_to_drop)} duplicate entries")
+        # Apply semantic dedup: remove approval cross-feature redundancies
+        # (e.g., zoning_districts row when permit_approval row exists for same applies_to+obligation)
+        semantic_drops = self._deduplicate_approval_redundancy(df)
+        if semantic_drops:
+            df = df.drop(index=semantic_drops)
+            total_dropped = len(rows_to_drop) + len(semantic_drops)
+            print(
+                f"  ✓ Removed {len(rows_to_drop)} key-field duplicates + {len(semantic_drops)} approval redundancies ({total_dropped} total)"
+            )
         else:
-            print("  ✓ No duplicates found")
+            if rows_to_drop:
+                print(f"  ✓ Removed {len(rows_to_drop)} duplicate entries")
+            else:
+                print("  ✓ No duplicates found")
 
         return df
 
@@ -615,3 +625,106 @@ class Deduplicator:
             return f"Merged {num_merged} duplicate(s) on: {fields_str} [fuzzy: {', '.join(fuzzy_cols)}]"
         else:
             return f"Merged {num_merged} duplicate(s) on: {fields_str}"
+
+    def _deduplicate_approval_redundancy(self, df: pd.DataFrame) -> List[int]:
+        """
+        Semantic dedup: Remove cross-feature approval redundancies.
+
+        When 'zoning_districts' and 'permit_approval' rows exist for the same
+        applies_to + obligation, keep the more authoritative 'permit_approval'
+        row and drop the 'zoning_districts' summary.
+
+        This handles the case where an ordinance lists a facility in a zoning
+        use matrix (zoning_districts row) AND has a separate detailed section
+        stating "Conditional use permit required" (permit_approval row). Both
+        encode the same approval gate, but permit_approval is more explicit.
+
+        Parameters
+        ----------
+        df : pd.DataFrame
+            DataFrame after key-field deduplication
+
+        Returns
+        -------
+        List[int]
+            Indices of rows to drop
+        """
+        rows_to_drop: List[int] = []
+
+        # Feature authority ranking (prefer earlier in list)
+        FEATURE_AUTHORITY = [
+            "permit_approval",
+            "location",
+            "equipment_standard",
+            "zoning_districts",
+        ]
+
+        # Build index for efficient lookup
+        if "feature" not in df.columns or "applies_to" not in df.columns:
+            return rows_to_drop
+
+        if "obligation" not in df.columns:
+            return rows_to_drop
+
+        # Group by applies_to + obligation
+        for applies_to, obligation in df.groupby(
+            ["applies_to", "obligation"], dropna=False
+        ).groups.keys():
+            group_mask = (df["applies_to"] == applies_to) & (
+                df["obligation"] == obligation
+            )
+            group_indices = df[group_mask].index.tolist()
+
+            if len(group_indices) <= 1:
+                continue
+
+            # Find all features in this group
+            features_in_group = df.loc[group_indices, "feature"].dropna().unique()
+
+            # Check if we have approval-related features
+            approval_features = [
+                f for f in features_in_group
+                if f in {"permit_approval", "zoning_districts"}
+            ]
+
+            if len(approval_features) < 2:
+                continue
+
+            # Sort by authority; prefer earlier features
+            sorted_features = sorted(
+                approval_features,
+                key=lambda f: FEATURE_AUTHORITY.index(f)
+                if f in FEATURE_AUTHORITY
+                else len(FEATURE_AUTHORITY),
+            )
+
+            # Keep rows with the most authoritative feature
+            keep_feature = sorted_features[0]
+            keep_indices = set(
+                df[(df.index.isin(group_indices)) & (df["feature"] == keep_feature)].index
+            )
+
+            # Drop rows with less authoritative features
+            for drop_feature in sorted_features[1:]:
+                drop_candidates = df[
+                    (df.index.isin(group_indices)) & (df["feature"] == drop_feature)
+                ].index.tolist()
+
+                for drop_idx in drop_candidates:
+                    if drop_idx not in keep_indices:
+                        rows_to_drop.append(drop_idx)
+                        # Annotate the kept row
+                        keep_idx = list(keep_indices)[0]
+                        current_note = df.at[keep_idx, self._annotation_col]
+                        drop_feature_val = df.at[drop_idx, "feature"]
+                        annotation = (
+                            f"Removed redundant '{drop_feature_val}' row "
+                            f"(kept more authoritative '{keep_feature}')"
+                        )
+                        df.at[keep_idx, self._annotation_col] = (
+                            f"{current_note}; {annotation}"
+                            if current_note
+                            else annotation
+                        )
+
+        return rows_to_drop
