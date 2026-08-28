@@ -382,6 +382,8 @@ class DataCompiler:
             output_path,
             freeze_columns=self.schema_metadata.get_freeze_columns(),
             auto_width=self.schema_metadata.get_auto_width(),
+            center_align_columns=self.schema_metadata.get_center_align_columns(),
+            center_align_max_length=self.schema_metadata.get_center_align_max_length(),
         )
 
     def save_csv(self, df: pd.DataFrame, output_path: Path):
