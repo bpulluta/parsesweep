@@ -28,6 +28,7 @@ from psweep.discovery import (
     DiscoveryEngine,
     DiscoveryRequest,
 )
+from psweep.discovery.request_inputs import normalize_discover_inputs
 
 
 @click.command()
@@ -303,190 +304,133 @@ def discover(
             )
         return
 
-    resolved_domain = (
-        resolved_inputs.get("domain") or domain or target or "default"
+    # All discover runtime defaults + type coercions live in one tested layer.
+    # The CLI option values are threaded in as the final fallbacks, exactly as
+    # the former inline shim did.
+    _norm = normalize_discover_inputs(
+        resolved_inputs,
+        domain=domain,
+        target=target,
+        seed_urls=seed_urls,
+        query=query,
+        state=state,
+        jurisdiction=jurisdiction,
+        partition_mode=partition_mode,
+        target_limit=target_limit,
+        retention_documents=retention_documents,
+        digger_provider=digger_provider,
+        enable_serpapi=enable_serpapi,
+        max_concurrent_downloads=max_concurrent_downloads,
+        min_request_interval_ms=min_request_interval_ms,
+        robots_policy_mode=robots_policy_mode,
+        tos_policy_mode=tos_policy_mode,
+        acknowledged_tos_domains=acknowledged_tos_domains,
+        output_documents=output_documents,
+        output_manifest=output_manifest,
+        dry_run=dry_run,
+        fresh=fresh,
     )
-    resolved_seed_urls = list(resolved_inputs.get("seed_urls") or seed_urls)
-    resolved_query = resolved_inputs.get("query", query)
-    resolved_state = resolved_inputs.get("state", state)
-    resolved_jurisdiction = resolved_inputs.get("jurisdiction", jurisdiction)
-    resolved_jurisdiction_aliases = (
-        resolved_inputs.get("jurisdiction_aliases") or None
-    )
-    resolved_partition_mode = (
-        resolved_inputs.get("partition_mode", partition_mode)
-        or DEFAULT_PARTITION_MODE
-    ).lower()
-    resolved_target_limit = resolved_inputs.get("target_limit", target_limit)
-    if resolved_target_limit is not None:
-        resolved_target_limit = int(resolved_target_limit)
-    resolved_retention_documents = str(
-        resolved_inputs.get("retention_documents", retention_documents or "all")
-        or "all"
-    ).lower()
-    resolved_digger_provider = (
-        (
-            resolved_inputs.get("digger_provider", digger_provider)
-            or "seed_only"
-        )
-        .strip()
-        .lower()
-    )
-    resolved_topology_mode = resolved_inputs.get("topology_mode")
-    resolved_enable_serpapi = bool(
-        resolved_inputs.get("enable_serpapi", enable_serpapi or False)
-    )
-    resolved_hub_pages = resolved_inputs.get("hub_pages") or None
-    resolved_allowed_domains = resolved_inputs.get("allowed_domains") or None
-    resolved_targets = resolved_inputs.get("targets") or None
-    total_configured_targets = len(resolved_targets or [])
-    if resolved_targets and resolved_target_limit is not None:
-        resolved_targets = list(resolved_targets)[:resolved_target_limit]
-    resolved_query_templates = resolved_inputs.get("query_templates") or None
-    resolved_query_families = resolved_inputs.get("query_families") or None
-    resolved_use_query_family = resolved_inputs.get("use_query_family")
-    resolved_seeker_max_results = int(
-        resolved_inputs.get("seeker_max_results", 10) or 10
-    )
-    resolved_link_prioritization_mode = str(
-        resolved_inputs.get("link_prioritization_mode", "heuristic")
-        or "heuristic"
-    ).lower()
-    # 0 = no global cap; per-target selection controls recall.
-    resolved_link_top_k = int(resolved_inputs.get("link_top_k", 0) or 0)
-    resolved_link_prioritization_keywords = (
-        resolved_inputs.get("link_prioritization_keywords") or None
-    )
-    resolved_link_prioritization_domain_scores = (
-        resolved_inputs.get("link_prioritization_domain_scores") or None
-    )
-    resolved_link_prioritization_shopping_keywords = (
-        resolved_inputs.get("link_prioritization_shopping_keywords") or None
-    )
-    resolved_selection_primary_per_target = int(
-        resolved_inputs.get("selection_primary_per_target", 1) or 1
-    )
-    resolved_selection_exclude_draft = bool(
-        resolved_inputs.get("selection_exclude_draft", True)
-    )
-    resolved_selection_draft_patterns = (
-        resolved_inputs.get("selection_draft_patterns") or None
-    )
-    resolved_selection_relevance_require_any_terms = (
-        resolved_inputs.get("selection_relevance_require_any_terms") or None
-    )
-    resolved_selection_relevance_require_legal_marker_terms = (
-        resolved_inputs.get("selection_relevance_require_legal_marker_terms")
-        or None
-    )
-    resolved_selection_relevance_exclude_any_terms = (
-        resolved_inputs.get("selection_relevance_exclude_any_terms") or None
-    )
-    resolved_selection_exclude_url_patterns = (
-        resolved_inputs.get("selection_exclude_url_patterns") or None
-    )
-    resolved_selection_exclude_text_patterns = (
-        resolved_inputs.get("selection_exclude_text_patterns") or None
-    )
-    resolved_selection_max_per_host_per_target = int(
-        resolved_inputs.get("selection_max_per_host_per_target", 0) or 0
-    )
-    resolved_selection_relevance_allowed_domain_patterns = (
-        resolved_inputs.get("selection_relevance_allowed_domain_patterns")
-        or None
-    )
-    resolved_selection_require_supported_document = bool(
-        resolved_inputs.get("selection_require_supported_document", True)
-    )
-    resolved_selection_target_identity_require_any_templates = (
-        resolved_inputs.get("selection_target_identity_require_any_templates")
-        or None
-    )
-    resolved_selection_target_identity_require_all_templates = (
-        resolved_inputs.get("selection_target_identity_require_all_templates")
-        or None
-    )
-    resolved_selection_target_identity_exclude_any_templates = (
-        resolved_inputs.get("selection_target_identity_exclude_any_templates")
-        or None
-    )
-    resolved_include_url_patterns = (
-        resolved_inputs.get("include_url_patterns") or None
-    )
-    resolved_include_link_text_patterns = (
-        resolved_inputs.get("include_link_text_patterns") or None
-    )
-    resolved_index_page_mode = resolved_inputs.get("index_page_mode") or None
-    resolved_index_links = resolved_inputs.get("index_links") or None
-    resolved_max_depth = resolved_inputs.get("max_depth")
-    resolved_max_pages = resolved_inputs.get("max_pages")
-    resolved_max_files = resolved_inputs.get("max_files")
-    resolved_timeout_seconds = resolved_inputs.get("timeout_seconds")
-    resolved_retry_max_attempts = int(
-        resolved_inputs.get("retry_max_attempts", 3) or 3
-    )
-    resolved_retry_initial_backoff_seconds = float(
-        resolved_inputs.get("retry_initial_backoff_seconds", 1.0) or 1.0
-    )
-    resolved_retry_max_backoff_seconds = float(
-        resolved_inputs.get("retry_max_backoff_seconds", 8.0) or 8.0
-    )
-    resolved_max_concurrent_downloads = int(
-        resolved_inputs.get(
-            "max_concurrent_downloads", max_concurrent_downloads or 2
-        )
-        or 2
-    )
-    resolved_min_request_interval_ms = int(
-        resolved_inputs.get(
-            "min_request_interval_ms", min_request_interval_ms or 0
-        )
-        or 0
-    )
-    resolved_robots_policy_mode = str(
-        resolved_inputs.get(
-            "robots_policy_mode",
-            robots_policy_mode or DEFAULT_ROBOTS_POLICY_MODE,
-        )
-        or DEFAULT_ROBOTS_POLICY_MODE
-    ).lower()
-    resolved_tos_policy_mode = str(
-        resolved_inputs.get(
-            "tos_policy_mode", tos_policy_mode or DEFAULT_TOS_POLICY_MODE
-        )
-        or DEFAULT_TOS_POLICY_MODE
-    ).lower()
-    resolved_acknowledged_tos_domains = list(
-        resolved_inputs.get("acknowledged_tos_domains")
-        or acknowledged_tos_domains
-        or []
-    )
-    resolved_document_classifier = (
-        resolved_inputs.get("document_classifier") or None
-    )
-    resolved_document_review = (
-        resolved_inputs.get("document_review") or None
-    )
-    resolved_models = resolved_inputs.get("models") or None
-    resolved_seeker_cache = bool(resolved_inputs.get("seeker_cache") or False)
-    resolved_seeker_cache_ttl_minutes = float(
-        resolved_inputs.get("seeker_cache_ttl_minutes", 0) or 0
-    )
-    resolved_query_context_aliases = (
-        resolved_inputs.get("query_context_aliases") or None
-    )
-    resolved_partition_by = resolved_inputs.get("partition_by") or None
-    resolved_browser_mode = bool(resolved_inputs.get("browser_mode") or False)
-    _raw_browser_escalation = resolved_inputs.get("browser_escalation")
-    resolved_browser_escalation = (
-        dict(_raw_browser_escalation)
-        if isinstance(_raw_browser_escalation, dict)
-        else None
-    )
-    _raw_seeker_extra = resolved_inputs.get("seeker_extra_params")
-    resolved_seeker_extra_params = (
-        dict(_raw_seeker_extra) if isinstance(_raw_seeker_extra, dict) else None
-    )
+    resolved_domain = _norm["domain"]
+    resolved_seed_urls = _norm["seed_urls"]
+    resolved_query = _norm["query"]
+    resolved_state = _norm["state"]
+    resolved_jurisdiction = _norm["jurisdiction"]
+    resolved_jurisdiction_aliases = _norm["jurisdiction_aliases"]
+    resolved_partition_mode = _norm["partition_mode"]
+    resolved_target_limit = _norm["target_limit"]
+    resolved_retention_documents = _norm["retention_documents"]
+    resolved_digger_provider = _norm["digger_provider"]
+    resolved_topology_mode = _norm["topology_mode"]
+    resolved_enable_serpapi = _norm["enable_serpapi"]
+    resolved_hub_pages = _norm["hub_pages"]
+    resolved_allowed_domains = _norm["allowed_domains"]
+    resolved_targets = _norm["targets"]
+    total_configured_targets = _norm["total_configured_targets"]
+    resolved_query_templates = _norm["query_templates"]
+    resolved_query_families = _norm["query_families"]
+    resolved_use_query_family = _norm["use_query_family"]
+    resolved_seeker_max_results = _norm["seeker_max_results"]
+    resolved_link_prioritization_mode = _norm["link_prioritization_mode"]
+    resolved_link_top_k = _norm["link_top_k"]
+    resolved_link_prioritization_keywords = _norm[
+        "link_prioritization_keywords"
+    ]
+    resolved_link_prioritization_domain_scores = _norm[
+        "link_prioritization_domain_scores"
+    ]
+    resolved_link_prioritization_shopping_keywords = _norm[
+        "link_prioritization_shopping_keywords"
+    ]
+    resolved_selection_primary_per_target = _norm[
+        "selection_primary_per_target"
+    ]
+    resolved_selection_exclude_draft = _norm["selection_exclude_draft"]
+    resolved_selection_draft_patterns = _norm["selection_draft_patterns"]
+    resolved_selection_relevance_require_any_terms = _norm[
+        "selection_relevance_require_any_terms"
+    ]
+    resolved_selection_relevance_require_legal_marker_terms = _norm[
+        "selection_relevance_require_legal_marker_terms"
+    ]
+    resolved_selection_relevance_exclude_any_terms = _norm[
+        "selection_relevance_exclude_any_terms"
+    ]
+    resolved_selection_exclude_url_patterns = _norm[
+        "selection_exclude_url_patterns"
+    ]
+    resolved_selection_exclude_text_patterns = _norm[
+        "selection_exclude_text_patterns"
+    ]
+    resolved_selection_max_per_host_per_target = _norm[
+        "selection_max_per_host_per_target"
+    ]
+    resolved_selection_relevance_allowed_domain_patterns = _norm[
+        "selection_relevance_allowed_domain_patterns"
+    ]
+    resolved_selection_require_supported_document = _norm[
+        "selection_require_supported_document"
+    ]
+    resolved_selection_target_identity_require_any_templates = _norm[
+        "selection_target_identity_require_any_templates"
+    ]
+    resolved_selection_target_identity_require_all_templates = _norm[
+        "selection_target_identity_require_all_templates"
+    ]
+    resolved_selection_target_identity_exclude_any_templates = _norm[
+        "selection_target_identity_exclude_any_templates"
+    ]
+    resolved_include_url_patterns = _norm["include_url_patterns"]
+    resolved_include_link_text_patterns = _norm["include_link_text_patterns"]
+    resolved_index_page_mode = _norm["index_page_mode"]
+    resolved_index_links = _norm["index_links"]
+    resolved_max_depth = _norm["max_depth"]
+    resolved_max_pages = _norm["max_pages"]
+    resolved_max_files = _norm["max_files"]
+    resolved_timeout_seconds = _norm["timeout_seconds"]
+    resolved_retry_max_attempts = _norm["retry_max_attempts"]
+    resolved_retry_initial_backoff_seconds = _norm[
+        "retry_initial_backoff_seconds"
+    ]
+    resolved_retry_max_backoff_seconds = _norm["retry_max_backoff_seconds"]
+    resolved_max_concurrent_downloads = _norm["max_concurrent_downloads"]
+    resolved_min_request_interval_ms = _norm["min_request_interval_ms"]
+    resolved_robots_policy_mode = _norm["robots_policy_mode"]
+    resolved_tos_policy_mode = _norm["tos_policy_mode"]
+    resolved_acknowledged_tos_domains = _norm["acknowledged_tos_domains"]
+    resolved_document_classifier = _norm["document_classifier"]
+    resolved_document_review = _norm["document_review"]
+    resolved_models = _norm["models"]
+    resolved_seeker_cache = _norm["seeker_cache"]
+    resolved_seeker_cache_ttl_minutes = _norm["seeker_cache_ttl_minutes"]
+    resolved_query_context_aliases = _norm["query_context_aliases"]
+    resolved_partition_by = _norm["partition_by"]
+    resolved_browser_mode = _norm["browser_mode"]
+    resolved_browser_escalation = _norm["browser_escalation"]
+    resolved_seeker_extra_params = _norm["seeker_extra_params"]
+    resolved_output_documents = _norm["output_documents"]
+    resolved_output_manifest = _norm["output_manifest"]
+    resolved_dry_run = _norm["dry_run"]
+    resolved_fresh = _norm["fresh"]
 
     if not resolved_seed_urls and not resolved_query and not resolved_targets:
         print_error(
@@ -494,15 +438,6 @@ def discover(
             "Provide at least one --seed-url, --query, or discovery.targets entry in config.",
         )
         sys.exit(1)
-
-    resolved_output_documents = (
-        resolved_inputs.get("output_documents") or output_documents
-    )
-    resolved_output_manifest = (
-        resolved_inputs.get("output_manifest") or output_manifest
-    )
-    resolved_dry_run = bool(resolved_inputs.get("dry_run", dry_run))
-    resolved_fresh = bool(resolved_inputs.get("fresh", fresh))
 
     documents_dir = (
         Path(resolved_output_documents) if resolved_output_documents else None
