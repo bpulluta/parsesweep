@@ -46,7 +46,24 @@
         "partition_fields": [
           "jurisdiction.state",
           "jurisdiction.county"
-        ]
+        ],
+        "cross_feature_redundancy": {
+          "group_by": [
+            "applies_to",
+            "obligation"
+          ],
+          "feature_field": "feature",
+          "authority_ranking": [
+            "permit_approval",
+            "location",
+            "equipment_standard",
+            "zoning_districts"
+          ],
+          "redundant_features": [
+            "permit_approval",
+            "zoning_districts"
+          ]
+        }
       }
     },
     "compilation": {

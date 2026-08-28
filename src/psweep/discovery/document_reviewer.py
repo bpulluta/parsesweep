@@ -57,15 +57,17 @@ _REVIEW_SCHEMA: dict[str, Any] = {
 }
 
 _DEDUP_SYSTEM = (
-    "You compare multiple documents discovered for the same jurisdiction and "
-    "identify which are redundant — meaning they cover the same regulatory "
-    "content as another document in the set but are an older, superseded, or "
-    "less authoritative version of it. Your goal: ensure the curated set has "
-    "maximum unique regulatory content with no version redundancy. "
-    "Documents covering genuinely different regulatory provisions (e.g., "
-    "different sections, different topics, complementary rules) are NOT "
-    "redundant even if they are from the same jurisdiction. "
-    "Return your assessment as a JSON object."
+    "You compare multiple documents discovered for the same search target and "
+    "identify which are redundant — meaning they cover the same content as "
+    "another document in the set but are an older, superseded, or less "
+    "authoritative version of it. Judge redundancy against the TARGET "
+    "DOCUMENT description the caller provides; do not impose outside "
+    "assumptions about document type. Your goal: ensure the curated set has "
+    "maximum unique content with no version redundancy. Documents covering "
+    "genuinely "
+    "different material (e.g., different sections, different topics, "
+    "complementary content) are NOT redundant even if they come from the same "
+    "source. Return your assessment as a JSON object."
 )
 
 _DEDUP_SCHEMA: dict[str, Any] = {
@@ -441,7 +443,8 @@ class DocumentReviewer:
 
         # Build a numbered list of doc metadata for the LLM.
         lines: list[str] = [
-            f"Jurisdiction context: {target_context}\n",
+            f"TARGET DOCUMENT: {self._description}\n",
+            f"Target context: {target_context}\n" if target_context else "",
             "Documents to compare (0-based index):\n",
         ]
         for i, rec in enumerate(primaries):
@@ -459,12 +462,12 @@ class DocumentReviewer:
 
         user_prompt = (
             "".join(lines)
-            + "\nFor each group of documents that cover the same regulatory content "
+            + "\nFor each group of documents that cover the same content "
             "where one supersedes another (older version, less authoritative source, "
-            "or duplicate encoding of the same ordinance), return a redundancy_groups "
+            "or duplicate encoding of the same material), return a redundancy_groups "
             "entry specifying the keep_index (most current/authoritative) and the "
             "redundant_indices to exclude. "
-            "Documents covering genuinely different regulatory content are NOT "
+            "Documents covering genuinely different content are NOT "
             "redundant — return empty redundancy_groups if all docs are complementary. "
             "Return your answer as a JSON object."
         )

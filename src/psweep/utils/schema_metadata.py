@@ -178,6 +178,64 @@ class SchemaMetadata:
                 schema_path=str(self.schema_path),
             )
 
+        self._validate_cross_feature_redundancy(identity)
+
+    def _validate_cross_feature_redundancy(self, identity: Dict[str, Any]) -> None:
+        """Strictly validate the optional cross_feature_redundancy dedup block."""
+        if not isinstance(identity, dict):
+            return
+        dedup = identity.get("deduplication", {})
+        if not isinstance(dedup, dict):
+            return
+        cfg = dedup.get("cross_feature_redundancy")
+        if cfg is None:
+            return
+        loc = "identity.deduplication.cross_feature_redundancy"
+        if not isinstance(cfg, dict):
+            raise SchemaMetadataError(
+                f"Schema metadata field {loc} must be an object.",
+                schema_path=str(self.schema_path),
+            )
+        allowed = {
+            "group_by",
+            "feature_field",
+            "authority_ranking",
+            "redundant_features",
+        }
+        unknown = sorted(set(cfg) - allowed)
+        if unknown:
+            raise SchemaMetadataError(
+                f"{loc} has unknown key(s): {', '.join(unknown)}. "
+                f"Allowed: {', '.join(sorted(allowed))}.",
+                schema_path=str(self.schema_path),
+            )
+
+        def _require_str_list(key: str, *, allow_empty: bool) -> None:
+            value = cfg.get(key)
+            if value is None or not isinstance(value, list) or (
+                not allow_empty and not value
+            ):
+                raise SchemaMetadataError(
+                    f"{loc}.{key} must be a{'' if allow_empty else ' non-empty'} "
+                    "array of strings.",
+                    schema_path=str(self.schema_path),
+                )
+            if not all(isinstance(v, str) and v for v in value):
+                raise SchemaMetadataError(
+                    f"{loc}.{key} must contain only non-empty strings.",
+                    schema_path=str(self.schema_path),
+                )
+
+        _require_str_list("group_by", allow_empty=False)
+        _require_str_list("authority_ranking", allow_empty=True)
+        _require_str_list("redundant_features", allow_empty=False)
+        feature_field = cfg.get("feature_field")
+        if not isinstance(feature_field, str) or not feature_field:
+            raise SchemaMetadataError(
+                f"{loc}.feature_field must be a non-empty string.",
+                schema_path=str(self.schema_path),
+            )
+
     def has_metadata(self) -> bool:
         """Check if schema includes metadata section."""
         return bool(self.metadata)
@@ -303,6 +361,27 @@ class SchemaMetadata:
         if explicit is not None:
             return explicit
         return []
+
+    def get_cross_feature_redundancy_config(self) -> Optional[Dict[str, Any]]:
+        """Config for the optional cross-feature approval-redundancy dedup pass.
+
+        Declared as ``identity.deduplication.cross_feature_redundancy``. When
+        absent (the default), the pass is a no-op — it is entirely opt-in and
+        domain-neutral; the ranking, trigger columns, and interchangeable
+        feature values all come from the schema, not from code.
+
+        Expected shape::
+
+            "cross_feature_redundancy": {
+                "group_by": ["applies_to", "obligation"],
+                "feature_field": "feature",
+                "authority_ranking": ["permit_approval", "zoning_districts"],
+                "redundant_features": ["permit_approval", "zoning_districts"]
+            }
+        """
+        dedup = self.metadata.get("identity", {}).get("deduplication", {})
+        cfg = dedup.get("cross_feature_redundancy")
+        return cfg if isinstance(cfg, dict) else None
 
     def get_deduplication_strategy(self) -> str:
         """Get deduplication strategy (latest, earliest, merge)."""
