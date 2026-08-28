@@ -154,7 +154,6 @@ from psweep.cli.commands_benchmark import benchmark
 from psweep.cli.commands_check import check
 from psweep.cli.commands_compile import (
     _build_dedup_preview_report,
-    _build_pipeline_accounting,
     _resolve_compilation_output_formats,
     _should_fail_on_suspicious,
     compile,
@@ -163,7 +162,6 @@ from psweep.cli.commands_curate import curate
 from psweep.cli.commands_discover import discover
 from psweep.cli.commands_extract import (
     _apply_page_targeting,
-    _apply_section_targeting,
     _build_index_filters,
     _build_run_manifest,
     _context_budget_suggestions_for_process,
