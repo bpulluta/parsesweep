@@ -79,6 +79,35 @@ JS_SHELL_RETRY_URL_SIGNAL = 0.7
 JS_SHELL_RETRY_TRUST_SIGNAL = 0.3
 
 
+class _RetryBudget:
+    """Shared cap on retry targets across the post-review retry stages.
+
+    A single budget is threaded through both retry stages (code-hosting
+    SerpApi retry + JS-shell browser-crawl retry) so the cap bounds the
+    combined per-run total, not each stage independently.
+
+    ``limit=None`` means unbounded — the historical default behavior — and
+    :meth:`allow` then returns whatever is requested without decrementing.
+    """
+
+    __slots__ = ("_remaining",)
+
+    def __init__(self, limit: int | None) -> None:
+        self._remaining = None if limit is None else max(0, int(limit))
+
+    @property
+    def unbounded(self) -> bool:
+        return self._remaining is None
+
+    def allow(self, requested: int) -> int:
+        """Grant up to ``requested`` targets, decrementing remaining budget."""
+        if self._remaining is None:
+            return requested
+        granted = min(max(0, requested), self._remaining)
+        self._remaining -= granted
+        return granted
+
+
 @dataclass(slots=True)
 class DiscoveryRequest:
     """Normalized command inputs for a discovery run."""
@@ -108,6 +137,13 @@ class DiscoveryRequest:
     retry_max_attempts: int = 3
     retry_initial_backoff_seconds: float = 1.0
     retry_max_backoff_seconds: float = 8.0
+    # Opt-in cap on the TOTAL number of targets processed by the post-review
+    # retry stages (code-hosting SerpApi retry + JS-shell browser-crawl retry)
+    # within a single run. Sourced from
+    # ``config.discovery.retry_policy.max_retry_targets`` when the loader wires
+    # it; read defensively via ``getattr`` so an unset value (None) means
+    # unbounded — i.e. identical to the historical behavior.
+    retry_max_retry_targets: int | None = None
     max_concurrent_downloads: int = 5
     min_request_interval_ms: int = 0
     request_headers: dict[str, str] | None = None
@@ -2218,6 +2254,127 @@ class DiscoveryEngine:
 
         return constraints
 
+    # ------------------------------------------------------------------
+    # Shared routing helpers (used by distributed + centralized routing).
+    # These factor out the parts that were previously duplicated verbatim
+    # across ``_route_distributed_candidates`` and
+    # ``_route_centralized_candidates``. Behavior is unchanged: per-mode
+    # differences (seed selection, extra digger params, routing-state
+    # extras, note strings, and the distributed non-crawled merge-back)
+    # stay in the two orchestrator methods below.
+    # ------------------------------------------------------------------
+
+    def _discover_routing_artifacts(
+        self,
+        *,
+        request: DiscoveryRequest,
+        filtered_seed_urls: list[str],
+        ssl_verify: bool,
+        extra_params: dict[str, object] | None = None,
+    ) -> tuple[list[object] | None, list[dict[str, object]]]:
+        """Run the digger ``discover`` call shared by both routing modes.
+
+        Returns ``(artifacts, errors)``. ``artifacts is None`` signals the
+        connector raised (caller should fall back to unrouted candidates);
+        the error record is included in ``errors``. ``extra_params`` carries
+        mode-specific digger params (empty for distributed, the index-page
+        options for centralized) merged ahead of the shared ssl/header/retry
+        params.
+        """
+        errors: list[dict[str, object]] = []
+        try:
+            connector = resolve_digger_connector(request.digger_provider)
+            artifacts = connector.discover(
+                DiggerInput(
+                    seed_urls=filtered_seed_urls,
+                    max_depth=request.max_depth or 2,
+                    max_pages=request.max_pages or 50,
+                    max_files=request.max_files or 20,
+                    timeout_seconds=request.timeout_seconds or 30,
+                    allowed_domains=request.allowed_domains,
+                    include_url_patterns=request.include_url_patterns,
+                    include_link_text_patterns=request.include_link_text_patterns,
+                    extra_params={
+                        **(extra_params or {}),
+                        "ssl_verify": ssl_verify,
+                        "request_headers": self._resolve_request_headers(
+                            request
+                        ),
+                        "retry": self._resolve_retry_policy(request),
+                    },
+                )
+            )
+        except Exception as exc:
+            errors.append(
+                build_error_record(
+                    exc,
+                    stage="discovery.routing",
+                    provider=request.digger_provider,
+                )
+            )
+            return None, errors
+        return artifacts, errors
+
+    @staticmethod
+    def _digger_discovery_modes(artifacts: list[object]) -> list[str]:
+        """Sorted set of ``discovery_mode`` values across digger artifacts."""
+        return sorted(
+            {
+                str(artifact.metadata.get("discovery_mode") or "unknown")
+                for artifact in artifacts
+                if isinstance(artifact.metadata, dict)
+            }
+        )
+
+    def _build_routed_candidates_from_artifacts(
+        self,
+        *,
+        candidates: list[DiscoveryCandidate],
+        artifacts: list[object],
+        route_reason: str,
+    ) -> tuple[list[DiscoveryCandidate], set[str]]:
+        """Merge digger artifacts back onto candidates for a routing mode.
+
+        Existing candidates are re-tagged with ``route_reason``; artifacts
+        with no matching candidate become new crawl-child candidates that
+        inherit target provenance. Returns ``(routed_candidates, seen_urls)``
+        so the distributed path can append its non-crawled candidates after.
+        """
+        candidate_by_url: dict[str, DiscoveryCandidate] = {}
+        for candidate in candidates:
+            candidate_by_url.setdefault(candidate.url, candidate)
+
+        routed_candidates: list[DiscoveryCandidate] = []
+        seen_urls: set[str] = set()
+        for artifact in artifacts:
+            if artifact.url in seen_urls:
+                continue
+            seen_urls.add(artifact.url)
+            existing = candidate_by_url.get(artifact.url)
+            if existing is not None:
+                routed_candidates.append(
+                    self._copy_candidate_with_reason(existing, route_reason)
+                )
+                continue
+
+            # Attribute crawled children back to the seed target that led
+            # the digger to them (target provenance for crawl domains).
+            inherited_metadata = self._inherit_target_metadata(
+                artifact, candidate_by_url
+            )
+            routed_candidates.append(
+                DiscoveryCandidate(
+                    url=artifact.url,
+                    source=artifact.source,
+                    score=CandidateScore(url_signal=0.35, trust_signal=0.55),
+                    reasons=[route_reason],
+                    mime_type=artifact.mime_type,
+                    extension=artifact.extension,
+                    target_metadata=inherited_metadata,
+                )
+            )
+        return routed_candidates, seen_urls
+
     def _route_distributed_candidates(
         self,
         *,
@@ -2301,35 +2458,13 @@ class DiscoveryEngine:
             )
             return candidates, errors, notes, routing_state
 
-        try:
-            connector = resolve_digger_connector(request.digger_provider)
-            artifacts = connector.discover(
-                DiggerInput(
-                    seed_urls=filtered_seed_urls,
-                    max_depth=request.max_depth or 2,
-                    max_pages=request.max_pages or 50,
-                    max_files=request.max_files or 20,
-                    timeout_seconds=request.timeout_seconds or 30,
-                    allowed_domains=request.allowed_domains,
-                    include_url_patterns=request.include_url_patterns,
-                    include_link_text_patterns=request.include_link_text_patterns,
-                    extra_params={
-                        "ssl_verify": ssl_verify,
-                        "request_headers": self._resolve_request_headers(
-                            request
-                        ),
-                        "retry": self._resolve_retry_policy(request),
-                    },
-                )
-            )
-        except Exception as exc:
-            errors.append(
-                build_error_record(
-                    exc,
-                    stage="discovery.routing",
-                    provider=request.digger_provider,
-                )
-            )
+        artifacts, discover_errors = self._discover_routing_artifacts(
+            request=request,
+            filtered_seed_urls=filtered_seed_urls,
+            ssl_verify=ssl_verify,
+        )
+        errors.extend(discover_errors)
+        if artifacts is None:
             notes.append(
                 "Distributed routing failed; falling back to unrouted candidates."
             )
@@ -2340,18 +2475,11 @@ class DiscoveryEngine:
                 routing_state,
             )
 
-        discovery_modes = sorted(
-            {
-                str(artifact.metadata.get("discovery_mode") or "unknown")
-                for artifact in artifacts
-                if isinstance(artifact.metadata, dict)
-            }
-        )
         routing_state.update(
             {
                 "applied": True,
                 "artifact_count": len(artifacts),
-                "discovery_modes": discovery_modes,
+                "discovery_modes": self._digger_discovery_modes(artifacts),
             }
         )
 
@@ -2366,40 +2494,13 @@ class DiscoveryEngine:
                 routing_state,
             )
 
-        candidate_by_url: dict[str, DiscoveryCandidate] = {}
-        for candidate in candidates:
-            candidate_by_url.setdefault(candidate.url, candidate)
-
-        routed_candidates: list[DiscoveryCandidate] = []
-        seen_urls: set[str] = set()
-        route_reason = ROUTE_REASON_DISTRIBUTED
-        for artifact in artifacts:
-            if artifact.url in seen_urls:
-                continue
-            seen_urls.add(artifact.url)
-            existing = candidate_by_url.get(artifact.url)
-            if existing is not None:
-                routed_candidates.append(
-                    self._copy_candidate_with_reason(existing, route_reason)
-                )
-                continue
-
-            # Attribute crawled children back to the seed target that led
-            # the digger to them (target provenance for crawl domains).
-            inherited_metadata = self._inherit_target_metadata(
-                artifact, candidate_by_url
+        routed_candidates, seen_urls = (
+            self._build_routed_candidates_from_artifacts(
+                candidates=candidates,
+                artifacts=artifacts,
+                route_reason=ROUTE_REASON_DISTRIBUTED,
             )
-            routed_candidates.append(
-                DiscoveryCandidate(
-                    url=artifact.url,
-                    source=artifact.source,
-                    score=CandidateScore(url_signal=0.35, trust_signal=0.55),
-                    reasons=[route_reason],
-                    mime_type=artifact.mime_type,
-                    extension=artifact.extension,
-                    target_metadata=inherited_metadata,
-                )
-            )
+        )
 
         notes.append(
             f"Distributed routing staged {len(routed_candidates)} candidate(s) through digger."
@@ -2473,36 +2574,14 @@ class DiscoveryEngine:
         if request.index_links is not None:
             extra_params["index_links"] = request.index_links
 
-        try:
-            connector = resolve_digger_connector(request.digger_provider)
-            artifacts = connector.discover(
-                DiggerInput(
-                    seed_urls=filtered_seed_urls,
-                    max_depth=request.max_depth or 2,
-                    max_pages=request.max_pages or 50,
-                    max_files=request.max_files or 20,
-                    timeout_seconds=request.timeout_seconds or 30,
-                    allowed_domains=request.allowed_domains,
-                    include_url_patterns=request.include_url_patterns,
-                    include_link_text_patterns=request.include_link_text_patterns,
-                    extra_params={
-                        **extra_params,
-                        "ssl_verify": ssl_verify,
-                        "request_headers": self._resolve_request_headers(
-                            request
-                        ),
-                        "retry": self._resolve_retry_policy(request),
-                    },
-                )
-            )
-        except Exception as exc:
-            errors.append(
-                build_error_record(
-                    exc,
-                    stage="discovery.routing",
-                    provider=request.digger_provider,
-                )
-            )
+        artifacts, discover_errors = self._discover_routing_artifacts(
+            request=request,
+            filtered_seed_urls=filtered_seed_urls,
+            ssl_verify=ssl_verify,
+            extra_params=extra_params,
+        )
+        errors.extend(discover_errors)
+        if artifacts is None:
             notes.append(
                 "Centralized routing failed; falling back to unrouted candidates."
             )
@@ -2513,18 +2592,11 @@ class DiscoveryEngine:
                 routing_state,
             )
 
-        discovery_modes = sorted(
-            {
-                str(artifact.metadata.get("discovery_mode") or "unknown")
-                for artifact in artifacts
-                if isinstance(artifact.metadata, dict)
-            }
-        )
         routing_state.update(
             {
                 "applied": True,
                 "artifact_count": len(artifacts),
-                "discovery_modes": discovery_modes,
+                "discovery_modes": self._digger_discovery_modes(artifacts),
                 "hub_page_count": len(hub_pages),
                 "index_link_count": len(request.index_links or []),
             }
@@ -2541,38 +2613,13 @@ class DiscoveryEngine:
                 routing_state,
             )
 
-        candidate_by_url: dict[str, DiscoveryCandidate] = {}
-        for candidate in candidates:
-            candidate_by_url.setdefault(candidate.url, candidate)
-
-        routed_candidates: list[DiscoveryCandidate] = []
-        seen_urls: set[str] = set()
-        route_reason = ROUTE_REASON_CENTRALIZED
-        for artifact in artifacts:
-            if artifact.url in seen_urls:
-                continue
-            seen_urls.add(artifact.url)
-            existing = candidate_by_url.get(artifact.url)
-            if existing is not None:
-                routed_candidates.append(
-                    self._copy_candidate_with_reason(existing, route_reason)
-                )
-                continue
-
-            inherited_metadata = self._inherit_target_metadata(
-                artifact, candidate_by_url
+        routed_candidates, _seen_urls = (
+            self._build_routed_candidates_from_artifacts(
+                candidates=candidates,
+                artifacts=artifacts,
+                route_reason=ROUTE_REASON_CENTRALIZED,
             )
-            routed_candidates.append(
-                DiscoveryCandidate(
-                    url=artifact.url,
-                    source=artifact.source,
-                    score=CandidateScore(url_signal=0.35, trust_signal=0.55),
-                    reasons=[route_reason],
-                    mime_type=artifact.mime_type,
-                    extension=artifact.extension,
-                    target_metadata=inherited_metadata,
-                )
-            )
+        )
 
         notes.append(
             f"Centralized routing staged {len(routed_candidates)} candidate(s) through hub sweep."
@@ -3464,6 +3511,112 @@ class DiscoveryEngine:
 
         return downloads, notes
 
+    # ------------------------------------------------------------------
+    # Shared post-review retry helpers (used by both retry stages).
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _group_records_by_target_label(
+        download_records: list[dict[str, object]],
+    ) -> dict[str, list[dict[str, object]]]:
+        """Group download records by their target label.
+
+        Records with no usable target label are dropped (matching the prior
+        per-stage grouping). Shared by both post-review retry stages.
+        """
+        from collections import defaultdict
+
+        by_target: dict[str, list[dict[str, object]]] = defaultdict(list)
+        for rec in download_records:
+            meta = rec.get("target_metadata") or {}
+            key = str(meta.get("label") or "")
+            if key:
+                by_target[key].append(rec)
+        return by_target
+
+    def _download_and_review_retry_candidates(
+        self,
+        *,
+        request: DiscoveryRequest,
+        candidates: list[DiscoveryCandidate],
+        documents_dir: Path,
+        review_cfg: dict[str, object],
+        classifier_keywords: list[str] | None,
+    ) -> tuple[list[dict[str, object]], list[str]]:
+        """Download a retry candidate batch and (optionally) review it.
+
+        This is the shared crawl/download/review core for both post-review
+        retry stages. Review runs only when there are downloads AND a
+        ``review_cfg`` is configured, matching the prior per-stage logic.
+        Returns ``(retry_downloads, review_notes)``; callers decide whether
+        to surface ``review_notes`` (code-hosting keeps them, JS-shell drops
+        them, as before).
+        """
+        retry_downloads, _retry_errors, _retry_dl_notes = (
+            self._download_candidates(
+                request=request,
+                candidates=candidates,
+                documents_dir=documents_dir,
+                max_downloads=len(candidates),
+            )
+        )
+        review_notes: list[str] = []
+        if retry_downloads and review_cfg:
+            retry_downloads, review_notes, _ = self._run_document_review(
+                retry_downloads,
+                review_cfg,
+                [],
+                models=getattr(request, "models", None),
+                classifier_keywords=classifier_keywords,
+            )
+        return retry_downloads, review_notes
+
+    def _run_post_review_retries(
+        self,
+        *,
+        request: DiscoveryRequest,
+        download_records: list[dict[str, object]],
+        notes: list[str],
+        documents_dir: Path,
+        review_cfg: dict[str, object],
+        classifier_keywords: list[str] | None,
+    ) -> tuple[list[dict[str, object]], list[str]]:
+        """Run both post-review retry stages under one shared target budget.
+
+        Preserves the historical sequencing exactly: the code-hosting SerpApi
+        retry runs first (only when ``link_prioritization_domain_scores`` is
+        configured), then the JS-shell browser-crawl retry. A single
+        :class:`_RetryBudget` is shared across both so the opt-in cap
+        (``retry_max_retry_targets``) bounds the combined per-run total. When
+        the cap is unset (None) the budget is unbounded and behavior is
+        identical to before this change.
+        """
+        max_retry_targets = getattr(request, "retry_max_retry_targets", None)
+        budget = _RetryBudget(max_retry_targets)
+
+        if request.link_prioritization_domain_scores:
+            download_records, notes = (
+                self._retry_failed_targets_on_code_hosting(
+                    request=request,
+                    download_records=download_records,
+                    notes=notes,
+                    documents_dir=documents_dir,
+                    review_cfg=review_cfg,
+                    classifier_keywords=classifier_keywords,
+                    budget=budget,
+                )
+            )
+
+        download_records, notes = self._retry_js_shells_with_digger(
+            request=request,
+            download_records=download_records,
+            notes=notes,
+            documents_dir=documents_dir,
+            review_cfg=review_cfg,
+            budget=budget,
+        )
+        return download_records, notes
+
     def _retry_js_shells_with_digger(
         self,
         *,
@@ -3472,6 +3625,7 @@ class DiscoveryEngine:
         notes: list[str],
         documents_dir: Path,
         review_cfg: dict[str, object],
+        budget: "_RetryBudget | None" = None,
     ) -> tuple[list[dict[str, object]], list[str]]:
         """Browser-crawl retry for failed targets with JS-shell downloads.
 
@@ -3482,9 +3636,12 @@ class DiscoveryEngine:
 
         This is the hybrid approach: fast SerpApi for most targets, targeted
         browser crawl only for the ~15% that need it.
+
+        ``budget`` (optional) caps how many JS-shell targets this stage may
+        crawl; when ``None`` (the default) the stage is unbounded, matching
+        the historical behavior.
         """
         from pathlib import Path as _Path
-        from collections import defaultdict
 
         classifier_cfg = getattr(request, "document_classifier", None) or {}
         keywords = classifier_cfg.get("nice_to_have_keywords") or []
@@ -3497,12 +3654,7 @@ class DiscoveryEngine:
             return download_records, notes
 
         # Find targets with 0 curated AND JS-shell downloads from code-hosting domains
-        by_target: dict[str, list[dict[str, object]]] = defaultdict(list)
-        for rec in download_records:
-            meta = rec.get("target_metadata") or {}
-            key = str(meta.get("label") or "")
-            if key:
-                by_target[key].append(rec)
+        by_target = self._group_records_by_target_label(download_records)
 
         shell_urls: list[tuple[str, str, dict[str, object]]] = []
         for target_key, records in by_target.items():
@@ -3524,7 +3676,22 @@ class DiscoveryEngine:
         if not shell_urls:
             return download_records, notes
 
-        # Use the HTTP digger with browser to crawl from each shell URL
+        # Opt-in cap: bound how many JS-shell targets this stage crawls. When
+        # no budget is passed (or it is unbounded) this is a no-op.
+        if budget is not None:
+            allowed = budget.allow(len(shell_urls))
+            if allowed < len(shell_urls):
+                notes.append(
+                    f"Browser crawl retry: retry-target budget limited crawls "
+                    f"to {allowed} of {len(shell_urls)} JS-shell target(s)."
+                )
+                shell_urls = shell_urls[:allowed]
+            if not shell_urls:
+                return download_records, notes
+
+        # Use the HTTP digger with browser to crawl from each shell URL. A
+        # single connector instance is reused across every shell target so the
+        # browser session (when the digger escalates) is shared, not rebuilt.
         from .connectors.digger import HttpDiggerConnector
         from .connectors.base import DiggerInput
 
@@ -3563,19 +3730,16 @@ class DiscoveryEngine:
                 for a in artifacts
             ]
 
-            retry_downloads, _, _ = self._download_candidates(
-                request=request,
-                candidates=artifact_candidates,
-                documents_dir=documents_dir,
-                max_downloads=len(artifact_candidates),
-            )
-
-            if retry_downloads and review_cfg:
-                retry_downloads, _, _ = self._run_document_review(
-                    retry_downloads, review_cfg, [],
-                    models=getattr(request, "models", None),
+            # JS-shell path discards review notes (matches prior behavior).
+            retry_downloads, _review_notes = (
+                self._download_and_review_retry_candidates(
+                    request=request,
+                    candidates=artifact_candidates,
+                    documents_dir=documents_dir,
+                    review_cfg=review_cfg,
                     classifier_keywords=keywords,
                 )
+            )
 
             new_curated = sum(1 for r in retry_downloads if r.get("review_selected"))
             download_records.extend(retry_downloads)
@@ -3651,6 +3815,7 @@ class DiscoveryEngine:
         documents_dir: Path,
         review_cfg: dict[str, object],
         classifier_keywords: list[str] | None = None,
+        budget: "_RetryBudget | None" = None,
     ) -> tuple[list[dict[str, object]], list[str]]:
         """Targeted retry for targets that got 0 curated docs from code-hosting sites.
 
@@ -3661,6 +3826,10 @@ class DiscoveryEngine:
         (like specific chapters) that the initial broad query missed.
 
         Only fires for failed targets — typically 1-2 extra queries per run.
+
+        ``budget`` (optional) caps how many failed targets this stage retries;
+        when ``None`` (the default) the stage is unbounded, matching the
+        historical behavior.
         """
         # Identify code-hosting domains from link_prioritization.domain_scores
         domain_scores = request.link_prioritization_domain_scores or {}
@@ -3674,14 +3843,8 @@ class DiscoveryEngine:
 
         # Group records by target, find targets with 0 curated
         from urllib.parse import urlparse
-        from collections import defaultdict
 
-        by_target: dict[str, list[dict[str, object]]] = defaultdict(list)
-        for rec in download_records:
-            meta = rec.get("target_metadata") or {}
-            key = str(meta.get("label") or "")
-            if key:
-                by_target[key].append(rec)
+        by_target = self._group_records_by_target_label(download_records)
 
         failed_targets: list[tuple[str, str, dict[str, object]]] = []
         for target_key, records in by_target.items():
@@ -3712,6 +3875,19 @@ class DiscoveryEngine:
 
         if not failed_targets:
             return download_records, notes
+
+        # Opt-in cap: bound how many failed targets this stage retries. When
+        # no budget is passed (or it is unbounded) this is a no-op.
+        if budget is not None:
+            allowed = budget.allow(len(failed_targets))
+            if allowed < len(failed_targets):
+                notes.append(
+                    f"Code-hosting retry: retry-target budget limited retries "
+                    f"to {allowed} of {len(failed_targets)} failed target(s)."
+                )
+                failed_targets = failed_targets[:allowed]
+            if not failed_targets:
+                return download_records, notes
 
         # Fire targeted retry queries
         retry_notes: list[str] = []
@@ -3784,23 +3960,18 @@ class DiscoveryEngine:
             for c in retry_candidates
         ]
 
-        retry_downloads, retry_errors, retry_dl_notes = self._download_candidates(
-            request=request,
-            candidates=candidates_for_download,
-            documents_dir=documents_dir,
-            max_downloads=len(candidates_for_download),
-        )
-
-        # Review retry downloads
-        if retry_downloads and review_cfg:
-            retry_downloads, retry_review_notes, _ = self._run_document_review(
-                retry_downloads,
-                review_cfg,
-                [],
-                models=getattr(request, "models", None),
+        # Download + review the retry batch via the shared retry core. The
+        # code-hosting path keeps the review notes (unlike the JS-shell path).
+        retry_downloads, retry_review_notes = (
+            self._download_and_review_retry_candidates(
+                request=request,
+                candidates=candidates_for_download,
+                documents_dir=documents_dir,
+                review_cfg=review_cfg,
                 classifier_keywords=classifier_keywords,
             )
-            retry_notes.extend(retry_review_notes)
+        )
+        retry_notes.extend(retry_review_notes)
 
         # Merge into main records
         download_records.extend(retry_downloads)
@@ -4116,34 +4287,30 @@ class DiscoveryEngine:
                         )
                     )
 
-                    # Retry on code-hosting sites for targets that got 0 curated.
-                    if request.link_prioritization_domain_scores:
-                        classifier_cfg = getattr(request, "document_classifier", None) or {}
-                        download_records, download_notes = (
-                            self._retry_failed_targets_on_code_hosting(
-                                request=request,
-                                download_records=download_records,
-                                notes=download_notes,
-                                documents_dir=documents_dir,
-                                review_cfg=review_cfg,
-                                classifier_keywords=classifier_cfg.get("nice_to_have_keywords"),
-                            )
-                        )
-
-                    # Browser crawl retry: for targets that still have 0 curated
-                    # AND have JS-shell escalated pages, use the digger to crawl
-                    # deeper from those rendered pages.
+                    # Post-review retry stages (code-hosting SerpApi retry for
+                    # targets with 0 curated, then JS-shell browser-crawl retry)
+                    # run under one shared, opt-in per-run target budget. The
+                    # orchestrator preserves the historical ordering and the
+                    # code-hosting domain-scores guard.
+                    classifier_cfg = getattr(request, "document_classifier", None) or {}
                     download_records, download_notes = (
-                        self._retry_js_shells_with_digger(
+                        self._run_post_review_retries(
                             request=request,
                             download_records=download_records,
                             notes=download_notes,
                             documents_dir=documents_dir,
                             review_cfg=review_cfg,
+                            classifier_keywords=classifier_cfg.get("nice_to_have_keywords"),
                         )
                     )
 
                 # Checkpoint: persist completed targets for resume capability.
+                # Aggregate one entry per target, then persist INCREMENTALLY
+                # (one target per write). _save_checkpoint_entries merges into
+                # the file, so the FINAL on-disk state is identical to a single
+                # bulk save — only crash-safety improves: a crash mid-loop still
+                # leaves every already-processed target checkpointed on disk, so
+                # a resumed run skips them correctly.
                 new_checkpoint_entries: dict[
                     str, dict[str, object]
                 ] = {}
@@ -4162,10 +4329,12 @@ class DiscoveryEngine:
                                 else 0
                             ),
                         }
-                if new_checkpoint_entries:
+                for _key, _entry in new_checkpoint_entries.items():
+                    # Persist per target so a mid-run crash resumes correctly.
                     self._save_checkpoint_entries(
-                        checkpoint_path, new_checkpoint_entries
+                        checkpoint_path, {_key: _entry}
                     )
+                if new_checkpoint_entries:
                     download_notes.append(
                         f"Checkpoint: saved {len(new_checkpoint_entries)}"
                         f" target(s) to {checkpoint_path.as_posix()}"
