@@ -374,6 +374,10 @@ def compile(
         if isinstance(config_norm, dict):
             compilation_overrides["normalization"] = config_norm
 
+        config_severity = resolved_inputs.get("severity_tokens")
+        if isinstance(config_severity, dict):
+            compilation_overrides["severity_tokens"] = config_severity
+
         if compilation_overrides:
             metadata_overrides["compilation"] = compilation_overrides
 

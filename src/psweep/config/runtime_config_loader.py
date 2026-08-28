@@ -366,6 +366,7 @@ _ALLOWED_SECTION_FIELDS = {
         "output_dir",
         "output",
         "normalization",
+        "severity_tokens",
         "dry_run",
         "report_format",
         "fail_on_suspicious",
@@ -2118,6 +2119,7 @@ _FIELD_MAP: dict[str, str] = {
     "synthesis": "synthesis",
     "normalization": "normalization",
     "compilation_output": "output",
+    "severity_tokens": "severity_tokens",
 }
 
 

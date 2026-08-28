@@ -381,6 +381,27 @@ class SchemaMetadata:
         if output is not None:
             self._validate_output_block(output)
 
+        severity_tokens = compilation.get("severity_tokens")
+        if severity_tokens is not None:
+            self._validate_severity_tokens_block(severity_tokens)
+
+    def _validate_severity_tokens_block(self, severity_tokens: Any) -> None:
+        """Validate ``compilation.severity_tokens`` (see get_severity_tokens)."""
+        loc = "compilation.severity_tokens"
+        if not isinstance(severity_tokens, dict):
+            self._raise_meta(f"Schema metadata field {loc} must be an object.")
+        allowed = {"high", "medium"}
+        unknown = sorted(set(severity_tokens) - allowed)
+        if unknown:
+            self._raise_meta(
+                f"{loc} has unknown key(s): {', '.join(unknown)}. "
+                "Allowed: high, medium."
+            )
+        for key in ("high", "medium"):
+            self._require_str_list_meta(
+                severity_tokens.get(key), f"{loc}.{key}"
+            )
+
     def _validate_flattening_block(self, flattening: Any) -> None:
         """Validate ``compilation.flattening`` (see get_flattening_config)."""
         loc = "compilation.flattening"
@@ -822,6 +843,26 @@ class SchemaMetadata:
         column = normalization.get("state_column")
         return column or None
 
+    def get_severity_tokens(self) -> tuple[frozenset, frozenset]:
+        """Return the ``(high, medium)`` field-name severity token sets.
+
+        These name-heuristic tokens classify how impactful a differing field is
+        when the schema provides no explicit severity hint. A schema may extend
+        either set via ``$metadata.compilation.severity_tokens.{high,medium}``;
+        the configured tokens are unioned with the built-in defaults (the
+        generic tokens are always retained), matching the supplement idiom used
+        elsewhere. When unconfigured, the module defaults are returned unchanged.
+        """
+        compilation = self.metadata.get("compilation", {}) or {}
+        tokens = compilation.get("severity_tokens", {}) or {}
+        high = HIGH_SEVERITY_TOKENS | {
+            str(t).lower() for t in (tokens.get("high") or [])
+        }
+        medium = MEDIUM_SEVERITY_TOKENS | {
+            str(t).lower() for t in (tokens.get("medium") or [])
+        }
+        return frozenset(high), frozenset(medium)
+
     def get_compilation_field_severity_hints(self) -> Dict[str, str]:
         """Return schema-derived severity hints for compiled output fields."""
         hints: Dict[str, str] = {}
@@ -988,6 +1029,7 @@ class SchemaMetadata:
     ) -> Optional[str]:
         """Infer severity from the user-authored schema field definition."""
         normalized_name = field_name.replace("_", " ").lower()
+        high_tokens, medium_tokens = self.get_severity_tokens()
         field_types = field_schema.get("type")
         if isinstance(field_types, str):
             field_types = [field_types]
@@ -999,17 +1041,13 @@ class SchemaMetadata:
         ):
             return "high"
 
-        if any(
-            token in normalized_name for token in HIGH_SEVERITY_TOKENS
-        ):
+        if any(token in normalized_name for token in high_tokens):
             return "high"
 
         if field_schema.get("enum"):
             return "medium"
 
-        if any(
-            token in normalized_name for token in MEDIUM_SEVERITY_TOKENS
-        ):
+        if any(token in normalized_name for token in medium_tokens):
             return "medium"
 
         return None
