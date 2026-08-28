@@ -5,14 +5,6 @@ from pathlib import Path
 from typing import Optional
 
 try:
-    import pymupdf4llm  # PyMuPDF4LLM - optimized for LLMs with table preservation
-
-    PYMUPDF4LLM_AVAILABLE = True
-except ImportError:
-    PYMUPDF4LLM_AVAILABLE = False
-    pymupdf4llm = None
-
-try:
     import pymupdf  # PyMuPDF - fallback
 
     PYMUPDF_AVAILABLE = True
@@ -115,60 +107,8 @@ def _extract_with_ocr(pdf_path: Path) -> str:
         return ""
 
 
-def _validate_extraction_quality(text: str, pdf_path: Path) -> bool:
-    """
-    Validate extraction quality to detect truncation or corruption.
-
-    Heuristics:
-
-    1. Minimum character threshold (multi-page documents should have substantial text)
-    2. Content-to-page ratio check (detect image-heavy PDFs with poor OCR)
-
-    Parameters
-    ----------
-    text : str
-        Extracted text
-    pdf_path : Path
-        Path to PDF for metadata
-
-    Returns
-    -------
-    bool
-        True if extraction quality is acceptable, False otherwise
-    """
-    # Check 1: Minimum length threshold
-    # Most multi-page documents have at least 1000 chars/page
-    # 3000 chars is conservative minimum for reasonable content
-    if len(text) < 3000:
-        logger.debug(
-            f"Extraction too short: {len(text)} chars (expected >3000)"
-        )
-        return False
-
-    # Check 2: Page count vs content ratio
-    # If PDF has many pages but very little text, OCR likely failed
-    try:
-        if PYMUPDF_AVAILABLE:
-            with pymupdf.open(str(pdf_path)) as doc:
-                page_count = len(doc)
-                chars_per_page = (
-                    len(text) / page_count if page_count > 0 else 0
-                )
-                # Warn if average is less than 100 chars/page (likely images without OCR)
-                if page_count > 5 and chars_per_page < 100:
-                    logger.debug(
-                        f"Low content density: {chars_per_page:.0f} chars/page for {page_count} pages"
-                    )
-                    return False
-    except Exception:
-        pass  # Skip check if can't open PDF
-
-    return True
-
-
 def extract_text_from_pdf(
     pdf_path: Path,
-    prefer_markdown: bool = False,
     page_range: Optional[tuple] = None,
     return_meta: bool = False,
 ):
@@ -177,10 +117,9 @@ def extract_text_from_pdf(
 
     Strategy:
 
-    1. Try PyMuPDF4LLM for markdown/table structure (if prefer_markdown=True)
-    2. Validate extraction quality (content length, key terms)
-    3. Fall back to PyMuPDF if quality check fails
-    4. Ultimate fallback to pypdf
+    1. Use PyMuPDF as the primary extractor - most reliable
+    2. Fall back to pypdf when PyMuPDF is unavailable or yields no text
+    3. OCR fallback (Tesseract via PyMuPDF) for image-based PDFs
 
     This ensures optimal extraction method is used based on PDF characteristics.
 
@@ -188,8 +127,6 @@ def extract_text_from_pdf(
     ----------
     pdf_path : Path
         Path to the PDF file
-    prefer_markdown : bool
-        If True, try PyMuPDF4LLM first for table preservation
     page_range : Optional[tuple]
         Optional tuple (start_page, end_page) to extract only specific pages (1-indexed)
     return_meta : bool
@@ -206,26 +143,7 @@ def extract_text_from_pdf(
     used_ocr = False
     pdf_path = Path(pdf_path)
 
-    # Strategy 1: Try PyMuPDF4LLM first if markdown preferred (for table-heavy docs)
-    if prefer_markdown and PYMUPDF4LLM_AVAILABLE:
-        try:
-            text = pymupdf4llm.to_markdown(str(pdf_path))
-            logger.debug(f"Extracted using PyMuPDF4LLM from {pdf_path.name}")
-
-            # Quality check: PyMuPDF4LLM has known truncation issues
-            # If extracted text is suspiciously short, fall back to PyMuPDF
-            if not _validate_extraction_quality(text, pdf_path):
-                logger.warning(
-                    f"PyMuPDF4LLM extraction quality low for {pdf_path.name}, falling back to PyMuPDF"
-                )
-                text = ""
-        except Exception as e:
-            logger.error(
-                f"Error extracting text with PyMuPDF4LLM from {pdf_path}: {e}"
-            )
-            text = ""
-
-    # Strategy 2: Use PyMuPDF as primary/fallback - most reliable
+    # Strategy 1: Use PyMuPDF as primary extractor - most reliable
     if not text and PYMUPDF_AVAILABLE:
         try:
             with pymupdf.open(str(pdf_path)) as doc:
@@ -262,13 +180,12 @@ def extract_text_from_pdf(
                 f"Error extracting text with PyMuPDF from {pdf_path}: {e}"
             )
 
-    # Strategy 3: Final fallback to pypdf (when PyMuPDF is unavailable or yielded
-    # no text). PyMuPDF4LLM was already attempted in Strategy 1 when requested, so
-    # re-invoking it here would be redundant.
+    # Strategy 2: Final fallback to pypdf (when PyMuPDF is unavailable or yielded
+    # no text).
     if not text and PYPDF_AVAILABLE:
         if PdfReader is None:
             logger.error(
-                "No PDF extraction library available. Install PyMuPDF4LLM, PyMuPDF or pypdf."
+                "No PDF extraction library available. Install PyMuPDF or pypdf."
             )
             return ""
 
@@ -286,7 +203,7 @@ def extract_text_from_pdf(
             )
             return ""
 
-    # Strategy 4: OCR fallback for image-based PDFs
+    # Strategy 3: OCR fallback for image-based PDFs
     # If text extraction yielded very little content, try OCR
     if (
         len(text.strip()) < 500
@@ -447,40 +364,3 @@ def _cleanup_ocr_errors(text: str) -> str:
     )
 
     return text
-
-
-def truncate_text(text: str, max_chars: int = 50000) -> str:
-    """
-    Intelligently truncate text if too long.
-
-    Keeps the beginning (70%) and end (30%) of the document
-    to preserve both header information and summary sections.
-
-    Parameters
-    ----------
-    text : str
-        Text to truncate
-    max_chars : int
-        Maximum characters to keep (~12,500 tokens)
-
-    Returns
-    -------
-    str
-        Truncated text
-    """
-    if len(text) <= max_chars:
-        return text
-
-    keep_first = int(max_chars * 0.7)
-    keep_last = max_chars - keep_first
-
-    truncated = (
-        text[:keep_first]
-        + "\n\n[...middle section truncated...]\n\n"
-        + text[-keep_last:]
-    )
-
-    logger.info(
-        f"Document truncated from {len(text)} to {max_chars} characters"
-    )
-    return truncated

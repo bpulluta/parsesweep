@@ -1,9 +1,37 @@
 """Text processing utilities for extraction."""
 
 import logging
-from typing import Dict, Any, List, Tuple
+from typing import Dict, Any, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
+
+
+def find_data_arrays(data: Dict[str, Any]) -> List[Tuple[str, list]]:
+    """Return ``(field_name, list_value)`` for every non-empty list-valued
+    top-level field, in document (insertion) order.
+
+    This is the single source of truth for "which top-level fields hold the
+    extracted item arrays", used by item counting, completeness scoring, and
+    record writing so the "find the data arrays" scan is not reimplemented.
+    """
+    return [
+        (key, value)
+        for key, value in data.items()
+        if isinstance(value, list) and value
+    ]
+
+
+def find_main_data_array(data: Dict[str, Any]) -> Tuple[Optional[str], int]:
+    """Return ``(field_name, item_count)`` for the largest non-empty list-valued
+    top-level field, or ``(None, 0)`` when there are none.
+
+    On ties the first such field in document order wins.
+    """
+    arrays = find_data_arrays(data)
+    if not arrays:
+        return None, 0
+    key, value = max(arrays, key=lambda kv: len(kv[1]))
+    return key, len(value)
 
 
 class TextProcessor:
@@ -155,10 +183,7 @@ class TextProcessor:
         warnings = []
 
         # Find main array fields dynamically
-        main_arrays = []
-        for key, value in data.items():
-            if isinstance(value, list) and value:
-                main_arrays.append((key, value))
+        main_arrays = find_data_arrays(data)
 
         # Check 1: At least some items extracted
         total_items = sum(len(items) for _, items in main_arrays)
@@ -256,23 +281,22 @@ class TextProcessor:
         total_items = 0
         complete_items = 0
 
-        for key, value in data.items():
-            if isinstance(value, list) and value:
-                total_items += len(value)
-                # Count items with at least 50% of fields populated
-                for item in value:
-                    if isinstance(item, dict):
-                        item_fields = len(item)
-                        populated_fields = sum(
-                            1
-                            for v in item.values()
-                            if v not in [None, "", [], {}]
-                        )
-                        if (
-                            item_fields > 0
-                            and populated_fields / item_fields >= 0.5
-                        ):
-                            complete_items += 1
+        for _key, value in find_data_arrays(data):
+            total_items += len(value)
+            # Count items with at least 50% of fields populated
+            for item in value:
+                if isinstance(item, dict):
+                    item_fields = len(item)
+                    populated_fields = sum(
+                        1
+                        for v in item.values()
+                        if v not in [None, "", [], {}]
+                    )
+                    if (
+                        item_fields > 0
+                        and populated_fields / item_fields >= 0.5
+                    ):
+                        complete_items += 1
 
         # Score item completeness
         if total_items > 0:

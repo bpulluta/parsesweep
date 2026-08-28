@@ -193,14 +193,12 @@ class SectionLocator(_BaseLocator):
     def _split_docx_sections(self, docx_path: Path) -> list[_Chunk]:
         """Split DOCX into heading-delimited chunks; tables become markdown rows."""
         try:
-            import docx as _docx  # noqa: F401 — lazy import for optional dep
+            import docx as _docx  # lazy import for optional dep
         except ImportError:
             logger.debug("python-docx not available; DOCX section splitting skipped")
             return []
 
         try:
-            import docx as _docx
-
             doc = _docx.Document(str(docx_path))
         except Exception as exc:
             logger.debug(f"Failed to open DOCX {docx_path.name}: {exc}")
