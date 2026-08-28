@@ -30,6 +30,7 @@ class ExtractionEstimate:
 
     @property
     def estimated_minutes(self) -> float:
+        """Estimated runtime in minutes."""
         return self.estimated_seconds / 60
 
 

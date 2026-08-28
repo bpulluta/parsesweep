@@ -19,6 +19,7 @@ def _canonical_path(path_value: str | Path, *, cwd: Path) -> Path:
 
 
 def list_compile_record_files(input_dir: Path) -> list[Path]:
+    """Return sorted record JSON files under input_dir, excluding internal dirs."""
     return sorted(
         path
         for path in input_dir.rglob("*.json")
