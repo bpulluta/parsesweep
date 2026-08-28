@@ -51,6 +51,34 @@ from psweep.extraction.document_utils import TEXT_CACHE_DIRNAME
 DEFAULT_PARTITION_MODE = "auto"
 
 
+# --- Browser escalation for JS-rendered (SPA) HTML shells -------------------
+# Runtime fallback thresholds, used ONLY when discovery.browser_escalation does
+# not specify them. Real Municode / eCode360-style SPA pages ship an 8-10 KB
+# JavaScript bootstrap with almost no server-rendered text, so the shell-detect
+# gate must sit near that size. The earlier 200/1000 fallbacks were a silent
+# no-op — a shell easily clears 200 chars of boilerplate and never escalates.
+DEFAULT_BROWSER_ESCALATION_SETTLE_SECONDS = 15.0
+DEFAULT_BROWSER_ESCALATION_MIN_SHELL_CHARS = 8000
+DEFAULT_BROWSER_ESCALATION_MIN_RENDERED_CHARS = 10000
+
+# A browser render returning fewer than this many characters of HTML is treated
+# as a failed render (blank page / error shell) and skipped.
+MIN_RENDERED_HTML_CHARS = 500
+
+# Budget for the post-review browser-crawl retry of JS-shell targets
+# (_retry_js_shells_with_digger). Deliberately small: it fires only for the
+# minority of targets that ended with 0 curated docs but a JS-shell download.
+JS_SHELL_RETRY_MAX_DEPTH = 3
+JS_SHELL_RETRY_MAX_PAGES = 15
+JS_SHELL_RETRY_MAX_FILES = 3
+JS_SHELL_RETRY_TIMEOUT_SECONDS = 60
+
+# Candidate scores for artifacts found by the JS-shell browser-crawl retry.
+# They come from a link-text-matched crawl, so only url + trust signals exist.
+JS_SHELL_RETRY_URL_SIGNAL = 0.7
+JS_SHELL_RETRY_TRUST_SIGNAL = 0.3
+
+
 @dataclass(slots=True)
 class DiscoveryRequest:
     """Normalized command inputs for a discovery run."""
@@ -3269,9 +3297,9 @@ class DiscoveryEngine:
         4. Re-validates the replacement file.
 
         Configurable via ``discovery.browser_escalation`` in run.yaml:
-            settle_seconds: Time to wait for SPA to render (default: 10)
-            min_shell_chars: Below this = JS shell detected (default: 200)
-            min_rendered_chars: Rendered text must exceed this (default: 1000)
+            settle_seconds: Time to wait for SPA to render (default: 15)
+            min_shell_chars: Below this = JS shell detected (default: 8000)
+            min_rendered_chars: Rendered text must exceed this (default: 10000)
             enabled: true/false (default: true)
 
         This is a general-purpose escalation that works for any domain without
@@ -3288,9 +3316,21 @@ class DiscoveryEngine:
         if not escalation_cfg.get("enabled", True):
             return downloads, notes
 
-        settle_seconds = float(escalation_cfg.get("settle_seconds", 10))
-        min_shell_chars = int(escalation_cfg.get("min_shell_chars", 200))
-        min_rendered_chars = int(escalation_cfg.get("min_rendered_chars", 1000))
+        settle_seconds = float(
+            escalation_cfg.get(
+                "settle_seconds", DEFAULT_BROWSER_ESCALATION_SETTLE_SECONDS
+            )
+        )
+        min_shell_chars = int(
+            escalation_cfg.get(
+                "min_shell_chars", DEFAULT_BROWSER_ESCALATION_MIN_SHELL_CHARS
+            )
+        )
+        min_rendered_chars = int(
+            escalation_cfg.get(
+                "min_rendered_chars", DEFAULT_BROWSER_ESCALATION_MIN_RENDERED_CHARS
+            )
+        )
 
         html_extensions = {".html", ".htm"}
         candidates_for_escalation: list[dict[str, object]] = []
@@ -3339,7 +3379,10 @@ class DiscoveryEngine:
                     rendered_html = browser.fetch_html(
                         url, settle_seconds=settle_seconds
                     )
-                    if not rendered_html or len(rendered_html.strip()) < 500:
+                    if (
+                        not rendered_html
+                        or len(rendered_html.strip()) < MIN_RENDERED_HTML_CHARS
+                    ):
                         continue
 
                     # Save rendered HTML over the shell
@@ -3490,10 +3533,10 @@ class DiscoveryEngine:
         for target_key, url, target_meta in shell_urls:
             di = DiggerInput(
                 seed_urls=[url],
-                max_depth=3,
-                max_pages=15,
-                max_files=3,
-                timeout_seconds=60,
+                max_depth=JS_SHELL_RETRY_MAX_DEPTH,
+                max_pages=JS_SHELL_RETRY_MAX_PAGES,
+                max_files=JS_SHELL_RETRY_MAX_FILES,
+                timeout_seconds=JS_SHELL_RETRY_TIMEOUT_SECONDS,
                 include_link_text_patterns=keywords,
                 extra_params={"ssl_verify": self._downloads_ssl_verify()},
             )
@@ -3512,8 +3555,8 @@ class DiscoveryEngine:
                     url=a.url,
                     source="browser_crawl_retry",
                     score=CandidateScore(
-                        url_signal=0.7, anchor_signal=0.0,
-                        content_signal=0.0, trust_signal=0.3,
+                        url_signal=JS_SHELL_RETRY_URL_SIGNAL, anchor_signal=0.0,
+                        content_signal=0.0, trust_signal=JS_SHELL_RETRY_TRUST_SIGNAL,
                     ),
                     target_metadata=target_meta,
                 )

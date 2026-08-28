@@ -208,3 +208,52 @@ class TestReviewGradeCache:
         _, notes2 = r2.review([rec2], [])
         assert rec2.get("review_cached") is not True
         assert any("graded 1 file" in n for n in notes2)
+
+
+class TestByteIdenticalDedup:
+    """The byte-identical dedup reuses the download-time content_hash."""
+
+    def test_reuses_stored_content_hash_without_reading_files(
+        self, tmp_path: Path
+    ):
+        # Two files with DIFFERENT bytes but the SAME stored content_hash are
+        # treated as byte-identical, which is only possible if the stored hash
+        # is reused instead of the files being re-hashed from disk.
+        a = tmp_path / "a.pdf"
+        a.write_text("AAAA", encoding="utf-8")
+        b = tmp_path / "b.pdf"
+        b.write_text("BBBB", encoding="utf-8")
+        records = [
+            {"path": a.as_posix(), "content_hash": "deadbeef", "review_relevance": 0.9},
+            {"path": b.as_posix(), "content_hash": "deadbeef", "review_relevance": 0.1},
+        ]
+        redundant = DocumentReviewer._find_byte_identical_duplicates(records)
+        assert redundant == {1}  # higher-ranked index 0 is kept
+
+    def test_falls_back_to_hashing_when_hash_absent(self, tmp_path: Path):
+        # No stored hash -> hash the files from disk; identical bytes dedup.
+        a = tmp_path / "a.pdf"
+        a.write_text("SAME-CONTENT", encoding="utf-8")
+        b = tmp_path / "b.pdf"
+        b.write_text("SAME-CONTENT", encoding="utf-8")
+        records = [
+            {"path": a.as_posix(), "review_relevance": 0.5},
+            {"path": b.as_posix(), "review_relevance": 0.2},
+        ]
+        redundant = DocumentReviewer._find_byte_identical_duplicates(records)
+        assert redundant == {1}
+
+    def test_rehashes_browser_escalated_stale_hash(self, tmp_path: Path):
+        # Browser escalation rewrites files in place, so their stored hash is
+        # stale. Two escalated files sharing a stale hash but with different
+        # on-disk bytes must NOT be deduped -> the file is re-hashed.
+        a = tmp_path / "a.html"
+        a.write_text("rendered-A", encoding="utf-8")
+        b = tmp_path / "b.html"
+        b.write_text("rendered-B", encoding="utf-8")
+        records = [
+            {"path": a.as_posix(), "content_hash": "stale", "browser_escalated": True},
+            {"path": b.as_posix(), "content_hash": "stale", "browser_escalated": True},
+        ]
+        redundant = DocumentReviewer._find_byte_identical_duplicates(records)
+        assert redundant == set()
