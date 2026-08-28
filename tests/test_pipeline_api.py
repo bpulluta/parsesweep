@@ -6,10 +6,16 @@ from types import SimpleNamespace
 
 from psweep.pipeline import (
     build_run_stage_commands,
+    clear_run_extract_output,
     compile_extractions,
+    count_curated_documents,
+    count_extracted_documents,
     extract_documents,
+    read_checkpoint_entries,
     resolve_run_discovery_enabled,
+    resolve_run_extraction_dir,
     resolve_run_validation,
+    run_checkpoint_path,
 )
 
 
@@ -502,3 +508,76 @@ def test_extract_documents_uses_page_range_csv(tmp_path: Path, monkeypatch) -> N
     )
 
     assert seen_page_ranges == [("sample.txt", (5, 9))]
+
+
+# ── run-command on-disk helpers (extracted from app.py run) ──────────────────
+
+
+def test_run_checkpoint_path_uses_domain_convention() -> None:
+    assert run_checkpoint_path("acme") == Path(
+        "discovered/acme/checkpoint.json"
+    )
+
+
+def test_read_checkpoint_entries_missing_file(tmp_path: Path) -> None:
+    assert read_checkpoint_entries(tmp_path / "nope.json") == []
+
+
+def test_read_checkpoint_entries_returns_keys(tmp_path: Path) -> None:
+    cp = tmp_path / "checkpoint.json"
+    cp.write_text(
+        json.dumps({"entries": {"target-a": {}, "target-b": {}}}),
+        encoding="utf-8",
+    )
+    assert sorted(read_checkpoint_entries(cp)) == ["target-a", "target-b"]
+
+
+def test_read_checkpoint_entries_malformed_json(tmp_path: Path) -> None:
+    cp = tmp_path / "checkpoint.json"
+    cp.write_text("{not valid json", encoding="utf-8")
+    assert read_checkpoint_entries(cp) == []
+
+
+def test_read_checkpoint_entries_no_entries_key(tmp_path: Path) -> None:
+    cp = tmp_path / "checkpoint.json"
+    cp.write_text(json.dumps({"other": 1}), encoding="utf-8")
+    assert read_checkpoint_entries(cp) == []
+
+
+def test_resolve_run_extraction_dir_uses_config_value() -> None:
+    cfg = {"extraction": {"output_dir": "custom/out"}}
+    assert resolve_run_extraction_dir(cfg, "acme") == Path("custom/out")
+
+
+def test_resolve_run_extraction_dir_defaults_to_domain() -> None:
+    assert resolve_run_extraction_dir({}, "acme") == Path("extracted/acme")
+
+
+def test_clear_run_extract_output_removes_existing(tmp_path: Path) -> None:
+    d = tmp_path / "extracted" / "acme"
+    d.mkdir(parents=True)
+    (d / "doc.json").write_text("{}", encoding="utf-8")
+    assert clear_run_extract_output(d) is True
+    assert not d.exists()
+
+
+def test_clear_run_extract_output_missing_dir(tmp_path: Path) -> None:
+    assert clear_run_extract_output(tmp_path / "nope") is False
+
+
+def test_count_curated_documents_skips_sidecars(tmp_path: Path) -> None:
+    d = tmp_path / "curated"
+    d.mkdir()
+    (d / "a.pdf").write_text("x", encoding="utf-8")
+    (d / "a.pdf.text").write_text("x", encoding="utf-8")
+    (d / "meta.json").write_text("{}", encoding="utf-8")
+    assert count_curated_documents(d) == 1
+
+
+def test_count_extracted_documents_excludes_manifests(tmp_path: Path) -> None:
+    d = tmp_path / "extracted"
+    (d / "run_manifests").mkdir(parents=True)
+    (d / "a.json").write_text("{}", encoding="utf-8")
+    (d / "b.json").write_text("{}", encoding="utf-8")
+    (d / "run_manifests" / "m.json").write_text("{}", encoding="utf-8")
+    assert count_extracted_documents(d) == 2

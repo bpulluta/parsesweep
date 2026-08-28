@@ -16,7 +16,6 @@ Architecture note:
 
 from __future__ import annotations
 
-import json
 import shutil
 import subprocess
 import sys
@@ -31,39 +30,15 @@ from typer.core import TyperGroup
 from psweep import __version__
 from psweep.pipeline import (
     build_run_stage_commands,
+    clear_run_extract_output,
+    count_curated_documents,
+    count_extracted_documents,
+    read_checkpoint_entries,
     resolve_run_discovery_enabled,
+    resolve_run_extraction_dir,
     resolve_run_validation,
+    run_checkpoint_path,
 )
-
-
-# ---------------------------------------------------------------------------
-# On-disk artifact counting helpers (shared by run-plan and post-run summary)
-# ---------------------------------------------------------------------------
-
-
-def _count_curated_documents(curated_dir: Path) -> int:
-    """Count curated docs, skipping ``.text`` sidecars and ``.json``."""
-    if not curated_dir.exists():
-        return 0
-    return sum(
-        1
-        for f in curated_dir.rglob("*")
-        if f.is_file() and ".text" not in str(f) and f.suffix != ".json"
-    )
-
-
-def _count_extracted_documents(extraction_dir: Path) -> int:
-    """Count extracted JSONs, excluding ``run_manifests/*.json``."""
-    if not extraction_dir.exists():
-        return 0
-    manifests_dir = extraction_dir / "run_manifests"
-    all_json = sum(1 for _ in extraction_dir.rglob("*.json"))
-    manifest_json = (
-        sum(1 for _ in manifests_dir.rglob("*.json"))
-        if manifests_dir.exists()
-        else 0
-    )
-    return all_json - manifest_json
 
 
 # ---------------------------------------------------------------------------
@@ -347,24 +322,16 @@ def run(
             view.success("Runtime config validation passed for run command")
         raise typer.Exit(0)
 
-    checkpoint_path = Path(f"discovered/{domain}/checkpoint.json")
-    checkpointed: list[str] = []
-    if checkpoint_path.exists() and not fresh:
-        try:
-            checkpointed = list(
-                json.loads(checkpoint_path.read_text()).get("entries", {}).keys()
-            )
-        except Exception:
-            pass
+    checkpointed: list[str] = (
+        [] if fresh else read_checkpoint_entries(run_checkpoint_path(domain))
+    )
 
     new_targets = [t for t in planned_target_labels if t not in checkpointed]
     curated_dir = Path(f"discovered/{domain}/curated")
-    curated_count = _count_curated_documents(curated_dir)
+    curated_count = count_curated_documents(curated_dir)
 
-    extraction_dir = Path(
-        cfg.get("extraction", {}).get("output_dir", f"extracted/{domain}")
-    )
-    extracted_count = _count_extracted_documents(extraction_dir)
+    extraction_dir = resolve_run_extraction_dir(cfg, domain)
+    extracted_count = count_extracted_documents(extraction_dir)
 
     # Show run plan
     view.header()
@@ -454,10 +421,11 @@ def run(
         extra_flags=flags,
     )
 
-    if fresh and not skip_extract and extraction_dir.exists():
-        shutil.rmtree(extraction_dir, ignore_errors=True)
-        if not view.is_quiet:
-            view.info(f"--fresh: cleared extracted output at {extraction_dir.as_posix()}")
+    if fresh and not skip_extract:
+        if clear_run_extract_output(extraction_dir) and not view.is_quiet:
+            view.info(
+                f"--fresh: cleared extracted output at {extraction_dir.as_posix()}"
+            )
 
     _stage_labels = {
         "discover": "Discovering documents",
@@ -489,10 +457,10 @@ def run(
         if (not skip_discover and discovery_enabled and latest_curated_dir.exists())
         else consolidated_curated_dir
     )
-    doc_count = _count_curated_documents(final_curated_dir)
+    doc_count = count_curated_documents(final_curated_dir)
     if doc_count:
         summary_rows["Documents found"] = str(doc_count)
-    final_extracted = _count_extracted_documents(extraction_dir)
+    final_extracted = count_extracted_documents(extraction_dir)
     if final_extracted:
         summary_rows["Extracted"] = str(final_extracted)
     view.summary(summary_rows, title="Pipeline Complete")
