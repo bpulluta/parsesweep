@@ -24,6 +24,10 @@ models:
   primary: your-model-name           # alias → concrete deployment name
   secondary: another-model-name      # add more aliases as needed
 
+# reasoning_models: [my-reasoner]    # extra model-name substring markers for
+#                                    # reasoning models (reject temperature/response_format);
+#                                    # unioned with the built-in defaults (gpt-5, o1, o3, o4, thinking)
+
 # ─── EXTRACTION ──────────────────────────────────────────────────────────────
 extraction:
   schema: schemas/personal/your_schema.json
@@ -66,6 +70,12 @@ compilation:
     # exclude_fields: [internal_field]     # hide columns from output
     # freeze_columns: 2                   # freeze first N columns in Excel
     # auto_width: true                    # auto-size Excel columns
+    # center_align_columns: [state, type] # Excel: force-center these columns (default: a
+    #                                     # domain-neutral name list); [] disables name-based centering
+    # center_align_max_length: 30         # Excel: center columns whose avg value length is below this
+  # severity_tokens:                       # extend the dedup conflict-severity name heuristic
+  #   high: [flow, throughput]             # extra HIGH-severity field-name tokens (unioned with defaults)
+  #   medium: [tier]                       # extra MEDIUM-severity tokens
   # normalization:
   #   state_column: State                # auto-abbreviate US state names
   #
@@ -101,6 +111,13 @@ compilation:
 #     min_rendered_chars: 10000           # accept the browser render only once it yields at least this many chars
 #     settle_seconds: 20                  # wait up to this long for client-side content to finish rendering
 #   partition_by: [state, jurisdiction]   # output layout by_<field>/<value>/… from target metadata
+#                                          # (domain-agnostic: any target-metadata field(s) — county, region, year, …)
+#   jurisdiction_aliases:                  # only used when partition_mode=jurisdiction; supplements the
+#     ontario: on                          # built-in US-state table for non-US/custom jurisdiction schemes
+#   link_prioritization:
+#     keywords: [datasheet, spec]          # boost URLs/anchors containing these (merged with generic defaults)
+#     domain_scores: {example.gov: 0.15}   # supplement the built-in authority table (+ boosts / − penalties)
+#     shopping_path_keywords: [wishlist]   # extra cart/store path keywords to de-prioritize (unioned with defaults)
 #   document_review:
 #     model: secondary                    # pin to an alias — avoid silent .env fallback
 #     document_description: "the authoritative source document"
