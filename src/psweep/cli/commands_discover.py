@@ -357,7 +357,9 @@ def discover(
     resolved_link_prioritization_domain_scores = (
         resolved_inputs.get("link_prioritization_domain_scores") or None
     )
-    resolved_power_range_kw = resolved_inputs.get("power_range_kw") or None
+    resolved_link_prioritization_shopping_keywords = (
+        resolved_inputs.get("link_prioritization_shopping_keywords") or None
+    )
     resolved_selection_primary_per_target = int(
         resolved_inputs.get("selection_primary_per_target", 1) or 1
     )
@@ -666,7 +668,7 @@ def discover(
         link_top_k=max(0, resolved_link_top_k),
         link_prioritization_keywords=resolved_link_prioritization_keywords,
         link_prioritization_domain_scores=resolved_link_prioritization_domain_scores,
-        power_range_kw=resolved_power_range_kw,
+        link_prioritization_shopping_keywords=resolved_link_prioritization_shopping_keywords,
         selection_primary_per_target=max(
             1, resolved_selection_primary_per_target
         ),

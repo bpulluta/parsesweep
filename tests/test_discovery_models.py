@@ -1148,7 +1148,6 @@ def test_engine_run_seeker_applies_prioritization_and_emits_lineage(tmp_path: Pa
         link_prioritization_mode="heuristic",
         link_top_k=2,
         link_prioritization_keywords=["manual", "installation", "spec"],
-        power_range_kw=[200, 300],
         selection_primary_per_target=4,
     )
 

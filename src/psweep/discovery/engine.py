@@ -160,7 +160,7 @@ class DiscoveryRequest:
     link_top_k: int = 0  # 0 = rank only, no global cap (per-target controls recall)
     link_prioritization_keywords: list[str] | None = None
     link_prioritization_domain_scores: dict[str, float] | None = None
-    power_range_kw: list[float] | None = None
+    link_prioritization_shopping_keywords: list[str] | None = None
     # Per-target candidate selection
     selection_primary_per_target: int = 1
     selection_exclude_draft: bool = True
@@ -779,12 +779,6 @@ class DiscoveryEngine:
         prioritizer_lineage: list[dict[str, object]] = []
         mode = (request.link_prioritization_mode or "heuristic").lower()
         if mode != "off" and candidates:
-            power_range: tuple[float, float] | None = None
-            if request.power_range_kw and len(request.power_range_kw) >= 2:
-                power_range = (
-                    float(request.power_range_kw[0]),
-                    float(request.power_range_kw[1]),
-                )
             # Rank for ordering, but only apply a global cap when the config
             # explicitly sets link_top_k. Otherwise per-target selection
             # (max_per_target) is the sole recall control — a hidden global cap
@@ -808,7 +802,9 @@ class DiscoveryEngine:
                 keywords=request.link_prioritization_keywords,
                 domain_authority_overrides=domain_scores or None,
                 top_k=effective_top_k,
-                power_range_kw=power_range,
+                shopping_path_keywords=(
+                    request.link_prioritization_shopping_keywords
+                ),
             )
             ranked_candidates, prioritizer_lineage = prioritizer.prioritize(
                 candidates
@@ -2247,9 +2243,9 @@ class DiscoveryEngine:
             "mode": request.link_prioritization_mode,
             "top_k": request.link_top_k,
             "keywords": list(request.link_prioritization_keywords or []),
-            "power_range_kw": list(request.power_range_kw)
-            if request.power_range_kw
-            else None,
+            "shopping_path_keywords": list(
+                request.link_prioritization_shopping_keywords or []
+            ),
         }
 
         return constraints

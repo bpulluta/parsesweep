@@ -1,7 +1,7 @@
 """Unit tests for heuristic link prioritizer.
 
 Tests validate heuristic scoring across file type, domain authority,
-keyword, and power-class signals, plus the top-K ranking/lineage contract.
+keyword, and shopping-path signals, plus the top-K ranking/lineage contract.
 """
 
 from __future__ import annotations
@@ -153,67 +153,6 @@ class TestKeywordScoring:
 
 
 # ---------------------------------------------------------------------------
-# Power-class scoring
-# ---------------------------------------------------------------------------
-
-
-class TestPowerClassScoring:
-    """Power-class signal: URLs with kW values in-range get a bonus; out-of-range get a penalty."""
-
-    def test_in_range_kw_in_url_scores_bonus(self):
-        p = _prioritizer(power_range_kw=(200.0, 300.0), top_k=None)
-        in_range = _candidate("https://generac.com/250kw-industrial-manual.pdf")
-        out_range = _candidate("https://generac.com/50kw-residential-manual.pdf")
-        ranked, _ = p.prioritize([out_range, in_range])
-        assert ranked[0].url == in_range.url
-
-    def test_out_of_range_kw_in_url_scores_penalty(self):
-        p = _prioritizer(power_range_kw=(200.0, 300.0), top_k=None)
-        out_range = _candidate("https://generac.com/50kw-spec.pdf")
-        no_kw = _candidate("https://generac.com/industrial-spec.pdf")
-        ranked, _ = p.prioritize([out_range, no_kw])
-        # no_kw should rank above out_range because penalty applies to out_range
-        assert ranked[0].url == no_kw.url
-
-    def test_no_power_range_context_gives_generic_bonus(self):
-        """Any kW mention in URL earns a modest bonus when no range is constrained."""
-        p = _prioritizer(power_range_kw=None, top_k=None)
-        kw_url = _candidate("https://generac.com/200kw-spec.pdf")
-        no_kw = _candidate("https://generac.com/spec.pdf")
-        ranked, _ = p.prioritize([no_kw, kw_url])
-        assert ranked[0].url == kw_url.url
-
-    def test_kva_variation_detected(self):
-        """kVA pattern is treated equivalent to kW for discovery signal."""
-        p = _prioritizer(power_range_kw=(200.0, 300.0), top_k=None)
-        kva_url = _candidate("https://sdmo.com/250kva-generator.pdf")
-        ranked, _ = p.prioritize([kva_url])
-        reasons = ranked[0].reasons
-        assert any("power_class" in r for r in reasons)
-
-    @pytest.mark.parametrize(
-        ("url", "expected_reason"),
-        [
-            ("https://example.com/200kw-spec.pdf", "kw_in_range"),
-            ("https://example.com/300kw-spec.pdf", "kw_in_range"),
-            ("https://example.com/301kw-spec.pdf", "kw_out_of_range"),
-        ],
-    )
-    def test_power_range_boundary_reasoning(self, url, expected_reason):
-        p = _prioritizer(power_range_kw=(200.0, 300.0), top_k=None)
-        ranked, _ = p.prioritize([_candidate(url)])
-        reasons = ranked[0].reasons
-        assert any(expected_reason in r for r in reasons)
-
-    def test_out_of_range_boundary_50kw_excluded(self):
-        p = _prioritizer(power_range_kw=(200.0, 300.0), top_k=None)
-        low = _candidate("https://example.com/50kw-spec.pdf")
-        high = _candidate("https://example.com/200kw-spec.pdf")
-        ranked, _ = p.prioritize([low, high])
-        assert ranked[0].url == high.url
-
-
-# ---------------------------------------------------------------------------
 # Top-K and lineage contract
 # ---------------------------------------------------------------------------
 
@@ -310,7 +249,6 @@ class TestGeneratorDomainScenario:
     def test_top5_are_manufacturer_or_manual_sources(self):
         p = _prioritizer(
             keywords=["generator", "manual", "spec"],
-            power_range_kw=(200.0, 300.0),
             top_k=5,
         )
         candidates = [_candidate(url) for url in self._CANDIDATES]
@@ -332,9 +270,56 @@ class TestGeneratorDomainScenario:
     def test_runtime_under_1_second(self):
         """Prioritisation of 30 candidates should complete in under 1 second."""
         import time
-        p = _prioritizer(power_range_kw=(200.0, 300.0), top_k=5)
+        p = _prioritizer(top_k=5)
         candidates = [_candidate(url) for url in (self._CANDIDATES * 3)[: 30]]
         start = time.monotonic()
         p.prioritize(candidates)
         elapsed = time.monotonic() - start
         assert elapsed < 1.0, f"Prioritization took {elapsed:.3f}s, expected <1s"
+
+
+# ---------------------------------------------------------------------------
+# Shopping-path keyword de-prioritization (config-drivable, domain-neutral)
+# ---------------------------------------------------------------------------
+
+
+class TestShoppingPathKeywords:
+    """Shopping/cart path keywords penalise a URL; the built-in list is
+    domain-neutral and can be supplemented via ``shopping_path_keywords``."""
+
+    def test_default_shopping_keyword_penalised(self):
+        p = _prioritizer(top_k=None)
+        ranked, _ = p.prioritize(
+            [_candidate("https://example.com/checkout/item")]
+        )
+        assert any(
+            "shopping_path_keyword=checkout" in r for r in ranked[0].reasons
+        )
+
+    def test_custom_keyword_not_penalised_by_default(self):
+        p = _prioritizer(top_k=None)
+        ranked, _ = p.prioritize(
+            [_candidate("https://example.com/wishlist/item")]
+        )
+        assert not any(
+            "shopping_path_keyword" in r for r in ranked[0].reasons
+        )
+
+    def test_custom_keyword_penalised_when_configured(self):
+        p = _prioritizer(top_k=None, shopping_path_keywords=["wishlist"])
+        ranked, _ = p.prioritize(
+            [_candidate("https://example.com/wishlist/item")]
+        )
+        assert any(
+            "shopping_path_keyword=wishlist" in r for r in ranked[0].reasons
+        )
+
+    def test_builtin_defaults_retained_with_custom_list(self):
+        # Config supplements the defaults; it never replaces them.
+        p = _prioritizer(top_k=None, shopping_path_keywords=["wishlist"])
+        ranked, _ = p.prioritize(
+            [_candidate("https://example.com/checkout/item")]
+        )
+        assert any(
+            "shopping_path_keyword=checkout" in r for r in ranked[0].reasons
+        )

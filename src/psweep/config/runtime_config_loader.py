@@ -460,6 +460,7 @@ _ACQUISITION_OBJECT_ALLOWED_KEYS: dict[str, set[str]] = {
         "top_k",
         "keywords",
         "domain_scores",
+        "shopping_path_keywords",
     },
     "document_classifier": {
         "required_keywords",
@@ -679,6 +680,52 @@ def _validate_discovery_policy(policy: dict[str, Any]) -> None:
         raise RuntimeConfigError(msg)
 
 
+def _validate_discovery_link_prioritization(lp: dict[str, Any]) -> None:
+    """Validate ``discovery.link_prioritization`` value types.
+
+    Unknown inner keys are already rejected by
+    ``_validate_acquisition_object_keys``; this checks value shapes so a
+    malformed list/mapping fails loudly at load time rather than silently
+    no-op'ing.
+    """
+    loc = "discovery.link_prioritization"
+
+    mode = lp.get("mode")
+    if mode is not None and not isinstance(mode, str):
+        msg = f"'{loc}.mode' must be a string"
+        raise RuntimeConfigError(msg)
+
+    top_k = lp.get("top_k")
+    if top_k is not None and (
+        isinstance(top_k, bool) or not isinstance(top_k, int) or top_k < 0
+    ):
+        msg = f"'{loc}.top_k' must be a non-negative integer"
+        raise RuntimeConfigError(msg)
+
+    for key in ("keywords", "shopping_path_keywords"):
+        value = lp.get(key)
+        if value is not None and (
+            not isinstance(value, list)
+            or not all(isinstance(v, str) and v.strip() for v in value)
+        ):
+            msg = f"'{loc}.{key}' must be an array of non-empty strings"
+            raise RuntimeConfigError(msg)
+
+    domain_scores = lp.get("domain_scores")
+    if domain_scores is not None and (
+        not isinstance(domain_scores, dict)
+        or not all(
+            isinstance(k, str)
+            and k.strip()
+            and isinstance(v, (int, float))
+            and not isinstance(v, bool)
+            for k, v in domain_scores.items()
+        )
+    ):
+        msg = f"'{loc}.domain_scores' must map domain substrings to numbers"
+        raise RuntimeConfigError(msg)
+
+
 def _validate_discovery_topology(topology: dict[str, Any]) -> None:
     mode = topology.get("mode")
     if mode is not None and mode not in _ALLOWED_TOPOLOGY_MODES:
@@ -814,6 +861,10 @@ def _validate_discovery_section_schema(discovery: dict[str, Any]) -> None:
     policy = discovery.get("policy")
     if isinstance(policy, dict):
         _validate_discovery_policy(policy)
+
+    link_prioritization = discovery.get("link_prioritization")
+    if isinstance(link_prioritization, dict):
+        _validate_discovery_link_prioritization(link_prioritization)
 
     retention = discovery.get("retention")
     if isinstance(retention, dict):
@@ -1926,6 +1977,7 @@ def _merge_acq_link_prioritization(
         ("top_k", "link_top_k"),
         ("keywords", "link_prioritization_keywords"),
         ("domain_scores", "link_prioritization_domain_scores"),
+        ("shopping_path_keywords", "link_prioritization_shopping_keywords"),
     ):
         if src in lp:
             _set(merged, sources, dst, lp[src],
