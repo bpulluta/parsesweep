@@ -1,5 +1,6 @@
 from pathlib import Path
 
+import yaml
 import pytest
 
 from psweep.config.runtime_config_loader import (
@@ -1089,3 +1090,50 @@ def test_synthesis_block_rejects_invalid_config(
     """
     with pytest.raises(RuntimeConfigError, match=match):
         load_runtime_config_file(_write(tmp_path, body))
+
+
+def _resolve_discovery(body: str) -> dict:
+    from psweep.config.runtime_config_loader import resolve_command_config
+
+    return resolve_command_config(
+        command="discover", cli_values={}, config_data=yaml.safe_load(body)
+    )
+
+
+def test_browser_escalation_resolves_to_discovery_inputs():
+    """discovery.browser_escalation reaches the engine request payload."""
+    resolved = _resolve_discovery(
+        "discovery:\n  query: q\n  browser_escalation:\n"
+        "    min_shell_chars: 1500\n    settle_seconds: 20\n"
+    )
+    assert resolved["browser_escalation"] == {
+        "min_shell_chars": 1500,
+        "settle_seconds": 20.0,
+    }
+
+
+@pytest.mark.parametrize(
+    ("body", "match"),
+    [
+        (
+            "discovery:\n  query: q\n  browser_escalation:\n    min_shel_chars: 1500\n",
+            "unknown key",
+        ),
+        (
+            "discovery:\n  query: q\n  browser_escalation:\n    min_shell_chars: abc\n",
+            "must be an integer",
+        ),
+        (
+            "discovery:\n  query: q\n  browser_escalation:\n    settle_seconds: -1\n",
+            "must be >= 0",
+        ),
+        (
+            "discovery:\n  query: q\n  browser_escalation: [1]\n",
+            "must be a mapping or bool",
+        ),
+    ],
+)
+def test_browser_escalation_rejects_invalid_config(body: str, match: str):
+    """Typos/invalid values fail loudly instead of silently no-op'ing."""
+    with pytest.raises(RuntimeConfigError, match=match):
+        _resolve_discovery(body)
