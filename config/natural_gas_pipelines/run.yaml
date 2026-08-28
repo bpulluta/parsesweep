@@ -22,6 +22,9 @@ discovery:
     # correctly identifies NG-specific rules; URL filters prevent noise.
     - "\"{jurisdiction}\" {state} oil and gas facilities zoning ordinance"
     - "\"{jurisdiction}\" {state} compressor station setback noise ordinance code"
+    # Catches dedicated gas-well ordinances that include NG compressor/pipeline provisions
+    # (e.g., Keller TX Gas Well Ordinance explicitly references compressors and pipelines).
+    - "\"{jurisdiction}\" {state} gas well ordinance compressor pipeline"
     # Code-hosting site searches (find landing pages for municode/ecode360)
     - "site:ecode360.com \"{jurisdiction}\" {state}"
     - "site:municode.com \"{jurisdiction}\" {state} code of ordinances"
@@ -153,6 +156,9 @@ discovery:
       - permit
       - gas facilities
       - gas utility
+      # Restore: Keywords for mixed O&G/NG ordinances that contain NG compressor rules
+      - oil and gas
+      - gas well
     min_required_matches: 1
     action: warn
   document_review:
