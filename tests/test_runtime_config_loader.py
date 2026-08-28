@@ -157,6 +157,50 @@ extraction:
         load_runtime_config_file(config_path)
 
 
+def test_load_runtime_config_file_accepts_ocr_corrections(tmp_path: Path):
+    config_path = tmp_path / "run.yaml"
+    config_path.write_text(
+        """
+extraction:
+  input_dir: documents/x
+  schema: schemas/personal/geothermal_ordinance_schema.json
+  ocr_corrections:
+    - {pattern: '\\bIbs\\b', replacement: 'lbs'}
+    - {pattern: 'gaspowered', replacement: 'gas powered', ignore_case: true}
+""",
+        encoding="utf-8",
+    )
+    loaded = load_runtime_config_file(config_path)
+    rules = loaded["extraction"]["ocr_corrections"]
+    assert rules[0]["replacement"] == "lbs"
+    assert rules[1]["ignore_case"] is True
+
+
+@pytest.mark.parametrize(
+    ("rules_block", "match"),
+    [
+        ("    - {pattern: '', replacement: 'x'}\n", "pattern must be a non-empty"),
+        ("    - {pattern: 'a', bogus: 1}\n", "unknown key"),
+        ("    - {pattern: '('}\n", "replacement must be a non-empty"),
+        ("    - {pattern: '(', replacement: 'x'}\n", "not a valid regular expression"),
+        ("    - 'not-an-object'\n", "must be an object"),
+    ],
+)
+def test_load_runtime_config_file_rejects_invalid_ocr_corrections(
+    tmp_path: Path, rules_block: str, match: str
+):
+    config_path = tmp_path / "run.yaml"
+    config_path.write_text(
+        "extraction:\n"
+        "  input_dir: documents/x\n"
+        "  schema: schemas/personal/geothermal_ordinance_schema.json\n"
+        "  ocr_corrections:\n" + rules_block,
+        encoding="utf-8",
+    )
+    with pytest.raises(RuntimeConfigError, match=match):
+        load_runtime_config_file(config_path)
+
+
 def test_load_runtime_config_file_accepts_valid_discovery_section(tmp_path: Path):
         config_path = tmp_path / "run.yaml"
         config_path.write_text(

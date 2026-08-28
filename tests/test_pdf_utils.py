@@ -38,7 +38,19 @@ def test_digital_pdf_text_not_mangled_by_ocr_corrections(tmp_path):
     assert "Cakmont" not in text
 
 
-def test_cleanup_ocr_errors_still_available_for_ocr_text():
-    """The OCR-correction helper itself is unchanged for genuine OCR noise."""
-    # "Ibs" -> "lbs" is a canonical OCR letter-confusion fix.
-    assert "lbs" in pdf_utils._cleanup_ocr_errors("Ibs per acre")
+def test_cleanup_ocr_errors_noop_without_rules():
+    """No configured rules => no-op (corrections are opt-in per domain)."""
+    assert pdf_utils._cleanup_ocr_errors("Ibs per acre") == "Ibs per acre"
+    assert pdf_utils._cleanup_ocr_errors("Ibs per acre", []) == "Ibs per acre"
+
+
+def test_cleanup_ocr_errors_applies_configured_rules_in_order():
+    """Configured rules apply in order, honoring ignore_case."""
+    rules = [
+        {"pattern": r"\bIbs\b", "replacement": "lbs"},
+        {"pattern": "emissionsfrom", "replacement": "emissions from",
+         "ignore_case": True},
+    ]
+    out = pdf_utils._cleanup_ocr_errors("Ibs Emissionsfrom stack", rules)
+    assert "lbs" in out
+    assert "emissions from" in out.lower()

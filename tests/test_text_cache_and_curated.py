@@ -33,7 +33,7 @@ class TestTextCache:
         pdf.write_bytes(b"%PDF-1.4 fake")
         calls = {"n": 0}
 
-        def _fake(pdf_path, page_range=None, return_meta=False):
+        def _fake(pdf_path, page_range=None, return_meta=False, ocr_corrections=None):
             calls["n"] += 1
             text = "OCR EXTRACTED TEXT"
             return (text, {"used_ocr": True}) if return_meta else text
@@ -53,7 +53,7 @@ class TestTextCache:
         pdf = tmp_path / "native.pdf"
         pdf.write_bytes(b"%PDF-1.4 fake")
 
-        def _fake(pdf_path, page_range=None, return_meta=False):
+        def _fake(pdf_path, page_range=None, return_meta=False, ocr_corrections=None):
             text = "NATIVE TEXT WITH TABLES"
             return (text, {"used_ocr": False}) if return_meta else text
 
@@ -79,7 +79,7 @@ class TestTextCache:
         doc.write_bytes(b"%PDF-1.4 fake")
         write_text_cache(doc, "FULL-CACHED")
 
-        def _fake(pdf_path, page_range=None, return_meta=False):
+        def _fake(pdf_path, page_range=None, return_meta=False, ocr_corrections=None):
             text = f"PAGE-RANGE {page_range}"
             return (text, {"used_ocr": False}) if return_meta else text
 

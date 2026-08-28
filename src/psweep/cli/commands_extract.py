@@ -614,6 +614,7 @@ def _extract_one_document(
     provider,
     schema_path: Path,
     identifier_fields=None,
+    ocr_corrections=None,
 ) -> dict:
     """Extract one document and persist its record."""
     try:
@@ -622,7 +623,11 @@ def _extract_one_document(
             text = pre_filtered
         else:
             page_range = page_range_map.get(doc_path)
-            text = extract_text_from_document(doc_path, page_range=page_range)
+            text = extract_text_from_document(
+                doc_path,
+                page_range=page_range,
+                ocr_corrections=ocr_corrections,
+            )
         text = _prepend_source_context(text, doc_path, source_context_map)
         result = extractor.extract(text, loaded_schema)
 
@@ -949,6 +954,7 @@ def extract(
     max_context = resolved_inputs.get("max_context", max_context)
     timeout_seconds = resolved_inputs.get("timeout_seconds")
     live_dashboard = resolved_inputs.get("live_dashboard", live_dashboard)
+    ocr_corrections = resolved_inputs.get("ocr_corrections")
 
     if fresh:
         import shutil
@@ -1497,6 +1503,7 @@ def extract(
             provider=provider,
             schema_path=schema_path,
             identifier_fields=identifier_fields,
+            ocr_corrections=ocr_corrections,
         )
 
     if live_dashboard and len(doc_files) > 1 and not view.is_quiet:

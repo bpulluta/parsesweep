@@ -5,6 +5,7 @@ from __future__ import annotations
 import csv
 import json
 import os
+import re
 from pathlib import Path
 from typing import Any
 
@@ -59,6 +60,15 @@ VARIABLE_CATALOG: dict[str, list[dict[str, str]]] = {
             "description": (
                 "LLM-assisted page selection for large documents "
                 "(from pages.auto_locate)."
+            ),
+        },
+        {
+            "name": "ocr_corrections",
+            "level": "advanced",
+            "description": (
+                "Optional per-domain OCR text-correction rules "
+                "({pattern, replacement, ignore_case}) applied to OCR-derived "
+                "PDF text only."
             ),
         },
         {
@@ -348,6 +358,7 @@ _ALLOWED_SECTION_FIELDS = {
         "max_context",
         "timeout_seconds",
         "live_dashboard",
+        "ocr_corrections",  # optional per-domain OCR text-correction rules
     },
     "compilation": {
         "input_dir",
@@ -953,6 +964,51 @@ def _validate_extraction_section_schema(extraction: dict[str, Any]) -> None:
     page_targeting = extraction.get("page_targeting")
     if page_targeting is not None:
         _validate_page_targeting_block(page_targeting)
+
+    ocr_corrections = extraction.get("ocr_corrections")
+    if ocr_corrections is not None:
+        _validate_ocr_corrections_block(ocr_corrections)
+
+
+def _validate_ocr_corrections_block(rules: Any) -> None:
+    """Validate ``extraction.ocr_corrections`` (optional OCR text-fix rules).
+
+    A list of ``{pattern, replacement, ignore_case?}`` objects applied (in
+    order) to OCR-derived PDF text. Domain-specific by nature (e.g. scanned
+    air-emissions permits); absent by default so it is a no-op for every domain
+    that does not opt in.
+    """
+    if not isinstance(rules, list):
+        raise RuntimeConfigError(
+            "extraction.ocr_corrections must be a list of "
+            "{pattern, replacement, ignore_case?} objects"
+        )
+    allowed = {"pattern", "replacement", "ignore_case"}
+    for i, rule in enumerate(rules):
+        loc = f"extraction.ocr_corrections[{i}]"
+        if not isinstance(rule, dict):
+            raise RuntimeConfigError(f"{loc} must be an object")
+        unknown = sorted(set(rule) - allowed)
+        if unknown:
+            raise RuntimeConfigError(
+                f"{loc} has unknown key(s): {', '.join(unknown)}. "
+                f"Allowed: {', '.join(sorted(allowed))}."
+            )
+        for key in ("pattern", "replacement"):
+            if not isinstance(rule.get(key), str) or not rule.get(key):
+                raise RuntimeConfigError(
+                    f"{loc}.{key} must be a non-empty string"
+                )
+        if rule.get("ignore_case") is not None and not isinstance(
+            rule["ignore_case"], bool
+        ):
+            raise RuntimeConfigError(f"{loc}.ignore_case must be a boolean")
+        try:
+            re.compile(rule["pattern"])
+        except re.error as exc:
+            raise RuntimeConfigError(
+                f"{loc}.pattern is not a valid regular expression: {exc}"
+            ) from exc
 
 
 def _validate_page_targeting_block(pt: Any) -> None:
@@ -2046,6 +2102,7 @@ _FIELD_MAP: dict[str, str] = {
     "pages_csv": "pages_csv",
     "pages": "pages",
     "page_targeting": "page_targeting",
+    "ocr_corrections": "ocr_corrections",
     "profile_name": "profile",
     "provider": "provider",
     "model": "model",
