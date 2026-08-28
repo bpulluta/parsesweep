@@ -91,6 +91,11 @@ class _HTMLTextExtractor(HTMLParser):
     and filters out navigation elements (nav) that add noise without
     useful content. Footer and header are preserved as block elements
     since they can contain legal citations, dates, or ordinance metadata.
+
+    NOTE: the tab-separated table format here is intentionally distinct from
+    the ``|``-delimited serializers in ``section_locator`` and from the
+    unbordered ``a | b`` format in ``_extract_from_docx`` above; each targets a
+    different consumer, so they are kept separate rather than unified.
     """
 
     _BLOCK_TAGS = {
@@ -356,7 +361,13 @@ def _extract_from_docx(docx_path: Path) -> str:
             if para.text.strip():
                 text_parts.append(para.text)
 
-        # Extract text from tables
+        # Extract text from tables.
+        # NOTE: this path deliberately uses an *unbordered* ``a | b`` row and
+        # DROPS empty cells entirely (only non-blank cells are joined). That is
+        # intentionally different from section_locator's bordered ``| a | b |``
+        # serializers (``_table_to_markdown`` / ``_table_md``), which preserve
+        # empty cells as blank columns. Kept separate so this flattened
+        # whole-document extraction stays byte-stable; do not unify.
         for table in doc.tables:
             for row in table.rows:
                 row_text = []

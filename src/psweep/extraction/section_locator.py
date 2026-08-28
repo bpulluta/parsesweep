@@ -90,13 +90,37 @@ class _Chunk:
         return self.text
 
 
+def _pipe_row(cells: list[str]) -> str:
+    """Format a list of cell strings as one bordered pipe-delimited markdown row.
+
+    Shared by both table serializers in this module: the bs4 path
+    (:func:`_table_to_markdown`) and the docx/lxml path (``_table_md`` inside
+    :meth:`SectionLocator._split_docx_sections`). They read cells from different
+    DOM libraries and apply different row-inclusion filters, but emit the SAME
+    ``| a | b |`` row format, so the row formatting lives here to stay in sync.
+    Empty cells are preserved as blank columns (``|  |``).
+
+    NOTE: the serializers in ``document_utils`` are intentionally different and
+    must NOT route through this helper — ``_extract_from_docx`` emits an
+    *unbordered* ``a | b`` row and drops empty cells, and ``_HTMLTextExtractor``
+    uses tab separators. Their output is locked by dedicated tests.
+    """
+    return "| " + " | ".join(cells) + " |"
+
+
 def _table_to_markdown(table) -> str:
-    """Convert a BeautifulSoup <table> element to pipe-delimited markdown rows."""
+    """Convert a BeautifulSoup <table> element to pipe-delimited markdown rows.
+
+    A row is kept if it has any ``<td>``/``<th>`` cells at all — even when every
+    cell is blank (yielding e.g. ``|  |  |``); empty cells are preserved. This
+    differs from the docx path (``_table_md``), which drops all-blank rows via
+    ``any(cells)``. Both share the bordered row format via :func:`_pipe_row`.
+    """
     rows: list[str] = []
     for tr in table.find_all("tr"):
         cells = [td.get_text(" ", strip=True) for td in tr.find_all(["td", "th"])]
         if cells:
-            rows.append("| " + " | ".join(cells) + " |")
+            rows.append(_pipe_row(cells))
     return "\n".join(rows)
 
 
@@ -222,6 +246,9 @@ class SectionLocator(_BaseLocator):
             return pStyle.get(f"{{{_W}}}val", "")
 
         def _table_md(tbl_elem) -> str:
+            # Same bordered `| a | b |` row format as `_table_to_markdown`
+            # (both call `_pipe_row`), but here rows whose cells are ALL blank
+            # are dropped (`any(cells)`), whereas the bs4 path keeps them.
             rows: list[str] = []
             for tr in tbl_elem.iter(f"{{{_W}}}tr"):
                 cells = [
@@ -229,7 +256,7 @@ class SectionLocator(_BaseLocator):
                     for tc in tr.findall(f"{{{_W}}}tc")
                 ]
                 if any(cells):
-                    rows.append("| " + " | ".join(cells) + " |")
+                    rows.append(_pipe_row(cells))
             return "\n".join(rows)
 
         chunks: list[_Chunk] = []
