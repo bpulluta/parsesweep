@@ -236,6 +236,31 @@ VARIABLE_CATALOG: dict[str, list[dict[str, str]]] = {
             "level": "advanced",
             "description": "ToS mode: ignore, warn, or enforce.",
         },
+        {
+            "name": "browser_mode",
+            "level": "optional",
+            "description": (
+                "Download via headless Chrome for bot-protected sites "
+                "(default: false)."
+            ),
+        },
+        {
+            "name": "browser_escalation",
+            "level": "advanced",
+            "description": (
+                "Auto-retry thin/JS-rendered pages with a headless browser "
+                "(enabled, settle_seconds, min_shell_chars, "
+                "min_rendered_chars)."
+            ),
+        },
+        {
+            "name": "retention",
+            "level": "advanced",
+            "description": (
+                "Which discovered documents to keep on disk "
+                "(documents: all, curated, or none)."
+            ),
+        },
     ],
 }
 
@@ -370,6 +395,76 @@ _ACQUISITION_OBJECT_FIELDS = {
     "document_classifier",
     "document_review",
     "retention",
+}
+
+# Shallow per-sub-block allowed-key sets for discovery object-fields
+# whose inner keys the code actually consumes. Only these blocks get
+# strict unknown-key rejection; typos in them previously passed silently
+# (the block was only checked to be a dict). Each set is a superset of
+# every key read by the resolver/engine plus every shipped-config key.
+#
+# Deliberately NOT listed (left as free-form passthroughs): scoring,
+# dedupe, file_filters, keyword_validation — no code path reads any of
+# their inner keys, so there is no meaningful key to allowlist.
+# serpapi_params inside `search` is likewise left unrestricted: its keys
+# are forwarded verbatim to the SerpApi HTTP API, so the allowlist stays
+# shallow (the `search` keys only, never `serpapi_params`' contents).
+_ACQUISITION_OBJECT_ALLOWED_KEYS: dict[str, set[str]] = {
+    "search": {
+        "provider",
+        "enabled",
+        "query_templates",
+        "max_results_per_query",
+        "max_results",
+        "cache",
+        "cache_ttl_minutes",
+        "serpapi_params",
+        "google_news",
+    },
+    "seeker": {
+        "provider",
+        "enabled",
+        "query_templates",
+        "use_query_family",
+        "max_results",
+    },
+    "digger": {
+        "provider",
+        "connector",
+        "allowed_domains",
+        "index_page_mode",
+        "discovery_rules",
+    },
+    "routing": {
+        "index_links",
+    },
+    "retry_policy": {
+        "max_attempts",
+        "initial_backoff_seconds",
+        "max_backoff_seconds",
+    },
+    "link_prioritization": {
+        "mode",
+        "top_k",
+        "keywords",
+        "domain_scores",
+    },
+    "document_classifier": {
+        "required_keywords",
+        "nice_to_have_keywords",
+        "min_required_matches",
+        "action",
+    },
+    "document_review": {
+        "document_description",
+        "model",
+        "keep_top",
+        "action",
+        "max_chars",
+        "keywords",
+        "deduplicate_redundant",
+        "deduplication",
+    },
 }
 
 _ALLOWED_POLICY_MODES = {"ignore", "warn", "enforce"}
@@ -642,6 +737,28 @@ def _validate_discovery_selection_review_consistency(
         )
 
 
+def _validate_acquisition_object_keys(discovery: dict[str, Any]) -> None:
+    """Reject unknown inner keys in consumed discovery sub-blocks.
+
+    Shallow (one level deep) check: a typo like ``max_result`` for
+    ``max_results`` now fails loudly instead of silently no-op'ing. Only
+    sub-blocks whose inner keys the code actually reads are checked; free-form
+    passthrough blocks are omitted from the allowlist mapping.
+    """
+    for field, allowed_keys in _ACQUISITION_OBJECT_ALLOWED_KEYS.items():
+        value = discovery.get(field)
+        if not isinstance(value, dict):
+            continue
+        unknown = sorted(key for key in value if key not in allowed_keys)
+        if unknown:
+            raise RuntimeConfigError(
+                f"Unknown keys in 'discovery.{field}': "
+                + ", ".join(unknown)
+                + ". Allowed: "
+                + ", ".join(sorted(allowed_keys))
+            )
+
+
 def _validate_discovery_section_schema(discovery: dict[str, Any]) -> None:
     for field in _ACQUISITION_LIST_FIELDS:
         value = discovery.get(field)
@@ -654,6 +771,8 @@ def _validate_discovery_section_schema(discovery: dict[str, Any]) -> None:
         if value is not None and not isinstance(value, dict):
             msg = f"'discovery.{field}' must be an object"
             raise RuntimeConfigError(msg)
+
+    _validate_acquisition_object_keys(discovery)
 
     # browser_escalation accepts a bool shorthand or a mapping; validate it (and
     # its inner keys) here at load time so the same strict check runs whether or
@@ -865,6 +984,12 @@ def _validate_page_targeting_block(pt: Any) -> None:
     ):
         raise RuntimeConfigError(
             "pages.auto_locate.keywords must be a list"
+        )
+    if pt.get("save_discovered") is not None and not isinstance(
+        pt["save_discovered"], bool
+    ):
+        raise RuntimeConfigError(
+            "pages.auto_locate.save_discovered must be a boolean"
         )
 
 

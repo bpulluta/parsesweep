@@ -179,6 +179,8 @@ class SchemaMetadata:
             )
 
         self._validate_cross_feature_redundancy(identity)
+        self._validate_identity_deduplication(identity)
+        self._validate_compilation_block()
 
     def _validate_cross_feature_redundancy(self, identity: Dict[str, Any]) -> None:
         """Strictly validate the optional cross_feature_redundancy dedup block."""
@@ -235,6 +237,279 @@ class SchemaMetadata:
                 f"{loc}.feature_field must be a non-empty string.",
                 schema_path=str(self.schema_path),
             )
+
+    def _raise_meta(self, message: str) -> None:
+        """Raise a SchemaMetadataError carrying the schema path (helper)."""
+        raise SchemaMetadataError(message, schema_path=str(self.schema_path))
+
+    def _require_str_list_meta(
+        self, value: Any, loc: str, *, allow_empty: bool = True
+    ) -> None:
+        """Require ``value`` to be a list of non-empty strings (or absent)."""
+        if value is None:
+            return
+        if not isinstance(value, list) or (not allow_empty and not value):
+            qualifier = "an" if allow_empty else "a non-empty"
+            self._raise_meta(
+                f"Schema metadata field {loc} must be {qualifier} array of "
+                "strings."
+            )
+        if not all(isinstance(v, str) and v for v in value):
+            self._raise_meta(
+                f"Schema metadata field {loc} must contain only non-empty "
+                "strings."
+            )
+
+    def _require_positive_int_meta(self, value: Any, loc: str) -> None:
+        """Require ``value`` to be a positive integer (or absent)."""
+        if value is None:
+            return
+        if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+            self._raise_meta(
+                f"Schema metadata field {loc} must be a positive integer "
+                f"(got {value!r})."
+            )
+
+    def _validate_identity_deduplication(
+        self, identity: Dict[str, Any]
+    ) -> None:
+        """Strictly validate the ``identity.deduplication`` block structure.
+
+        Domain-neutral structural/type checks with unknown-key rejection so a
+        mistyped key (e.g. ``key_field`` for ``key_fields``) fails loudly
+        instead of silently reverting to defaults. The nested
+        ``cross_feature_redundancy`` block is validated separately by
+        :meth:`_validate_cross_feature_redundancy`.
+        """
+        if not isinstance(identity, dict):
+            return
+        dedup = identity.get("deduplication")
+        if dedup is None:
+            return
+        loc = "identity.deduplication"
+        if not isinstance(dedup, dict):
+            self._raise_meta(f"Schema metadata field {loc} must be an object.")
+
+        allowed = {
+            "key_fields",
+            "ignore_fields",
+            "fuzzy_key_fields",
+            "partition_fields",
+            "strategy",
+            "comparison_mode",
+            "cross_feature_redundancy",
+        }
+        unknown = sorted(set(dedup) - allowed)
+        if unknown:
+            self._raise_meta(
+                f"{loc} has unknown key(s): {', '.join(unknown)}. "
+                f"Allowed: {', '.join(sorted(allowed))}."
+            )
+
+        for key in ("key_fields", "ignore_fields", "partition_fields"):
+            self._require_str_list_meta(dedup.get(key), f"{loc}.{key}")
+
+        for key in ("strategy", "comparison_mode"):
+            value = dedup.get(key)
+            if value is not None and (not isinstance(value, str) or not value):
+                self._raise_meta(
+                    f"{loc}.{key} must be a non-empty string."
+                )
+
+        # fuzzy_key_fields accepts a mixed list of plain field-name strings and
+        # objects of the form {"field": "...", "normalize": "..."} (see
+        # get_deduplication_fuzzy_field_config).
+        fuzzy = dedup.get("fuzzy_key_fields")
+        if fuzzy is not None:
+            if not isinstance(fuzzy, list):
+                self._raise_meta(
+                    f"{loc}.fuzzy_key_fields must be an array."
+                )
+            for entry in fuzzy:
+                if isinstance(entry, str):
+                    if not entry:
+                        self._raise_meta(
+                            f"{loc}.fuzzy_key_fields string entries must be "
+                            "non-empty."
+                        )
+                elif isinstance(entry, dict):
+                    field = entry.get("field")
+                    if not isinstance(field, str) or not field:
+                        self._raise_meta(
+                            f"{loc}.fuzzy_key_fields object entries require a "
+                            "non-empty string 'field'."
+                        )
+                    normalize = entry.get("normalize")
+                    if normalize is not None and not isinstance(normalize, str):
+                        self._raise_meta(
+                            f"{loc}.fuzzy_key_fields['{field}'].normalize must "
+                            "be a string."
+                        )
+                else:
+                    self._raise_meta(
+                        f"{loc}.fuzzy_key_fields entries must be strings or "
+                        "objects with a 'field' key."
+                    )
+
+    def _validate_compilation_block(self) -> None:
+        """Strictly validate the schema-side ``compilation`` sub-blocks.
+
+        Only the framework-owned sub-blocks the code actually consumes are
+        checked (``flattening``, ``normalization``, ``output``); other
+        ``compilation`` keys some schemas carry (e.g. temporal_precision) are
+        left untouched. Unknown keys *within* a validated sub-block are
+        rejected so a typo fails loudly instead of silently reverting to a
+        default.
+        """
+        compilation = self.metadata.get("compilation")
+        if compilation is None:
+            return
+        if not isinstance(compilation, dict):
+            self._raise_meta(
+                "Schema metadata field compilation must be an object."
+            )
+
+        flattening = compilation.get("flattening")
+        if flattening is not None:
+            self._validate_flattening_block(flattening)
+
+        normalization = compilation.get("normalization")
+        if normalization is not None:
+            self._validate_normalization_block(normalization)
+
+        output = compilation.get("output")
+        if output is not None:
+            self._validate_output_block(output)
+
+    def _validate_flattening_block(self, flattening: Any) -> None:
+        """Validate ``compilation.flattening`` (see get_flattening_config)."""
+        loc = "compilation.flattening"
+        if not isinstance(flattening, dict):
+            self._raise_meta(f"Schema metadata field {loc} must be an object.")
+        allowed = {
+            "type_fields",
+            "skip_fields",
+            "distinguishing_fields",
+            "value_fields",
+            "unit_fields",
+            "season_fields",
+            "placeholder_values",
+            "expand_max_items",
+            "expand_max_fields",
+            "unit_normalizations",
+        }
+        unknown = sorted(set(flattening) - allowed)
+        if unknown:
+            self._raise_meta(
+                f"{loc} has unknown key(s): {', '.join(unknown)}. "
+                f"Allowed: {', '.join(sorted(allowed))}."
+            )
+
+        for key in (
+            "type_fields",
+            "skip_fields",
+            "distinguishing_fields",
+            "value_fields",
+            "unit_fields",
+            "season_fields",
+        ):
+            self._require_str_list_meta(flattening.get(key), f"{loc}.{key}")
+
+        placeholders = flattening.get("placeholder_values")
+        if placeholders is not None and not isinstance(placeholders, list):
+            self._raise_meta(f"{loc}.placeholder_values must be an array.")
+
+        for key in ("expand_max_items", "expand_max_fields"):
+            self._require_positive_int_meta(flattening.get(key), f"{loc}.{key}")
+
+        unit_norm = flattening.get("unit_normalizations")
+        if unit_norm is not None:
+            if not isinstance(unit_norm, dict):
+                self._raise_meta(
+                    f"{loc}.unit_normalizations must be an object mapping "
+                    "unit symbols to canonical units."
+                )
+            for k, v in unit_norm.items():
+                if not isinstance(k, str) or not isinstance(v, str):
+                    self._raise_meta(
+                        f"{loc}.unit_normalizations must map strings to "
+                        "strings."
+                    )
+
+    def _validate_normalization_block(self, normalization: Any) -> None:
+        """Validate ``compilation.normalization`` (see state_column accessor)."""
+        loc = "compilation.normalization"
+        if not isinstance(normalization, dict):
+            self._raise_meta(f"Schema metadata field {loc} must be an object.")
+        allowed = {"state_column"}
+        unknown = sorted(set(normalization) - allowed)
+        if unknown:
+            self._raise_meta(
+                f"{loc} has unknown key(s): {', '.join(unknown)}. "
+                f"Allowed: {', '.join(sorted(allowed))}."
+            )
+        # state_column may be null (opt-out) or a non-empty column name.
+        if "state_column" in normalization:
+            column = normalization.get("state_column")
+            if column is not None and (
+                not isinstance(column, str) or not column
+            ):
+                self._raise_meta(
+                    f"{loc}.state_column must be a non-empty string or null."
+                )
+
+    def _validate_output_block(self, output: Any) -> None:
+        """Validate ``compilation.output`` structure/types."""
+        loc = "compilation.output"
+        if not isinstance(output, dict):
+            self._raise_meta(f"Schema metadata field {loc} must be an object.")
+        allowed = {
+            "default_format",
+            "exclude_fields",
+            "column_renames",
+            "column_order",
+            "freeze_columns",
+            "auto_width",
+            "annotation_column",
+        }
+        unknown = sorted(set(output) - allowed)
+        if unknown:
+            self._raise_meta(
+                f"{loc} has unknown key(s): {', '.join(unknown)}. "
+                f"Allowed: {', '.join(sorted(allowed))}."
+            )
+
+        for key in ("default_format", "annotation_column"):
+            value = output.get(key)
+            if value is not None and (not isinstance(value, str) or not value):
+                self._raise_meta(f"{loc}.{key} must be a non-empty string.")
+
+        for key in ("exclude_fields", "column_order"):
+            self._require_str_list_meta(output.get(key), f"{loc}.{key}")
+
+        renames = output.get("column_renames")
+        if renames is not None:
+            if not isinstance(renames, dict):
+                self._raise_meta(f"{loc}.column_renames must be an object.")
+            for k, v in renames.items():
+                if not isinstance(k, str) or not k or not isinstance(v, str):
+                    self._raise_meta(
+                        f"{loc}.column_renames must map non-empty strings to "
+                        "strings."
+                    )
+
+        freeze = output.get("freeze_columns")
+        if freeze is not None and (
+            isinstance(freeze, bool) or not isinstance(freeze, int) or freeze < 0
+        ):
+            self._raise_meta(
+                f"{loc}.freeze_columns must be a non-negative integer "
+                f"(got {freeze!r})."
+            )
+
+        auto_width = output.get("auto_width")
+        if auto_width is not None and not isinstance(auto_width, bool):
+            self._raise_meta(f"{loc}.auto_width must be a boolean.")
 
     def has_metadata(self) -> bool:
         """Check if schema includes metadata section."""
