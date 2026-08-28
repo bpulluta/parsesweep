@@ -284,9 +284,9 @@ class DocumentReviewer:
         The downloader already computes a SHA-256 of the streamed bytes and
         stores it as ``content_hash`` (engine ``_download_candidates``). Reuse
         it to avoid a second full-file read. It is only trustworthy when the
-        on-disk bytes still match the download: browser escalation rewrites the
-        file in place (and copies a stale hash onto deep-crawl records), so when
-        ``browser_escalated`` is set we re-hash the file. Both paths use the
+        on-disk bytes still match the download: browser escalation and code-host
+        adapters both rewrite the file in place, so when ``browser_escalated``
+        or ``code_host_adapter`` is set we re-hash the file. All paths use the
         identical SHA-256 algorithm, so the duplicates detected are unchanged.
         """
         stored = record.get("content_hash")
@@ -294,6 +294,7 @@ class DocumentReviewer:
             isinstance(stored, str)
             and stored
             and not record.get("browser_escalated")
+            and not record.get("code_host_adapter")
         ):
             return stored
         return DocumentReviewer._file_sha256(str(record.get("path", "")))

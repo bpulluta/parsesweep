@@ -1327,6 +1327,55 @@ def test_browser_escalation_rejects_invalid_config(body: str, match: str):
         _resolve_discovery(body)
 
 
+def test_code_host_adapters_resolves_to_discovery_inputs():
+    """discovery.code_host_adapters reaches the engine request payload."""
+    resolved = _resolve_discovery(
+        "discovery:\n  query: q\n  code_host_adapters:\n    enabled: false\n"
+    )
+    assert resolved["code_host_adapters"] == {"enabled": False}
+
+
+def test_code_host_adapters_bool_shorthand_resolves():
+    """The bool shorthand toggles the whole adapter layer."""
+    resolved = _resolve_discovery(
+        "discovery:\n  query: q\n  code_host_adapters: false\n"
+    )
+    assert resolved["code_host_adapters"] == {"enabled": False}
+
+
+@pytest.mark.parametrize(
+    ("body", "match"),
+    [
+        (
+            "discovery:\n  query: q\n  code_host_adapters:\n"
+            "    enabled: true\n    bogus_key: 1\n",
+            "unknown key",
+        ),
+        (
+            "discovery:\n  query: q\n  code_host_adapters: [1]\n",
+            "must be a mapping or bool",
+        ),
+    ],
+)
+def test_code_host_adapters_rejects_invalid_config(body: str, match: str):
+    """Typos/invalid shapes fail loudly instead of silently no-op'ing."""
+    with pytest.raises(RuntimeConfigError, match=match):
+        _resolve_discovery(body)
+
+
+def test_load_runtime_config_file_rejects_invalid_code_host_adapters(
+    tmp_path: Path,
+):
+    """Inner-key validation runs at load time too (single source of truth)."""
+    config_path = tmp_path / "run.yaml"
+    config_path.write_text(
+        "discovery:\n  code_host_adapters:\n    enabled: true\n    typo: 1\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(RuntimeConfigError, match="unknown key"):
+        load_runtime_config_file(config_path)
+
+
 def test_link_prioritization_shopping_keywords_resolve(tmp_path: Path):
     run_path = tmp_path / "run.yaml"
     run_path.write_text(

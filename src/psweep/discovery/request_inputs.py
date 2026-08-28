@@ -74,6 +74,12 @@ def normalize_discover_inputs(  # noqa: PLR0913 - mirrors the discover CLI optio
         if isinstance(raw_browser_escalation, dict)
         else None
     )
+    raw_code_host_adapters = ri.get("code_host_adapters")
+    code_host_adapters = (
+        dict(raw_code_host_adapters)
+        if isinstance(raw_code_host_adapters, dict)
+        else None
+    )
     raw_seeker_extra = ri.get("seeker_extra_params")
     seeker_extra_params = (
         dict(raw_seeker_extra) if isinstance(raw_seeker_extra, dict) else None
@@ -223,6 +229,7 @@ def normalize_discover_inputs(  # noqa: PLR0913 - mirrors the discover CLI optio
         "partition_by": ri.get("partition_by") or None,
         "browser_mode": bool(ri.get("browser_mode") or False),
         "browser_escalation": browser_escalation,
+        "code_host_adapters": code_host_adapters,
         "seeker_extra_params": seeker_extra_params,
         "output_documents": ri.get("output_documents") or output_documents,
         "output_manifest": ri.get("output_manifest") or output_manifest,
