@@ -34,17 +34,19 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Callable, Iterable, Mapping, Sequence
 
-# Mirrors ``llm_factory.DEFAULT_MODEL`` ("gpt-4o-mini"). We resolve the real
-# value lazily (see ``_floor_model``) to keep this module importable without
-# importing the factory eagerly; this constant is only a documented reference.
-_DEFAULT_MODEL_FALLBACK = "gpt-4o-mini"
+# Import the single sources of truth from the factory. The dependency arrow is
+# one-directional (registry -> factory; ``llm_factory`` NEVER imports this
+# module), so a top-level import here is cycle-safe.
+from ..extraction.llm_factory import DEFAULT_MODEL, KNOWN_PROVIDERS
 
-# Providers the pipeline knows how to thread credentials for. Kept in sync with
-# ``llm_factory`` (``_PROVIDER_ENV_KEY`` keys plus the ``detect_provider``
-# outputs). A *declared* provider outside this set is a config error.
-KNOWN_PROVIDERS: frozenset[str] = frozenset(
-    {"openai", "azure", "anthropic", "gemini", "meta", "mistral"}
-)
+# Concrete fallback for ``_floor_model`` when the (defensive) lazy re-import of
+# the factory fails. Bound to ``llm_factory.DEFAULT_MODEL`` so there is exactly
+# one place the "gpt-4o-mini" floor is defined.
+_DEFAULT_MODEL_FALLBACK = DEFAULT_MODEL
+
+# ``KNOWN_PROVIDERS`` is re-exported (see ``__all__``) so existing importers of
+# ``psweep.config.model_registry.KNOWN_PROVIDERS`` keep working. It is defined in
+# ``llm_factory`` — a *declared* provider outside this set is a config error.
 
 # Minimum distinct models required for a multi-model (e.g. QA/QC) reference.
 MIN_MULTI_MODELS = 2

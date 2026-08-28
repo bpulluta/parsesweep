@@ -58,13 +58,32 @@ DEFAULT_MODEL = "gpt-4o-mini"
 # tests/test_defaults_single_source.py).
 DEFAULT_MAX_CONTEXT = 600000
 
+# Canonical set of LLM providers the pipeline recognizes at runtime. This is the
+# SINGLE SOURCE OF TRUTH for provider names: ``model_registry`` imports it, and
+# it must cover every value ``detect_provider`` can return. Keep it in sync with
+# ``detect_provider`` (below) and ``_PROVIDER_ENV_KEY`` (a subset — only the
+# providers whose ambient env-var name is known).
+#
+# Note: the extraction config allows an extra ``"auto"`` sentinel (validated in
+# ``runtime_config_loader``); that is a *config-level* directive resolved before
+# a run, not a runtime provider, so it deliberately does NOT appear here.
+KNOWN_PROVIDERS: frozenset[str] = frozenset(
+    {"openai", "azure", "anthropic", "gemini", "meta", "mistral"}
+)
+
 # Provider -> ambient env var holding that provider's API key. Used only on the
 # cross-provider fallback path (resolved model's provider != configured one).
+# Keys are a subset of ``KNOWN_PROVIDERS``: only providers with a well-known,
+# canonical env-var name are listed. "meta" is intentionally omitted — Meta's
+# Llama models have no single canonical key (LiteLLM's ``meta_llama`` provider
+# reads ``LLAMA_API_KEY``, but Llama is more commonly reached through a proxy or
+# another host), so we do not guess one here and fall back to ``api_key=None``.
 _PROVIDER_ENV_KEY: dict[str, str] = {
     "openai": "OPENAI_API_KEY",
     "anthropic": "ANTHROPIC_API_KEY",
     "gemini": "GEMINI_API_KEY",
     "azure": "AZURE_OPENAI_API_KEY",
+    "mistral": "MISTRAL_API_KEY",
 }
 
 
