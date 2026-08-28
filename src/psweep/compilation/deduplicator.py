@@ -11,7 +11,6 @@ import logging
 
 from ..exceptions import SchemaMetadataError
 from ..utils.item_matcher import map_key_fields_to_columns
-from ..utils.schema_metadata import HIGH_SEVERITY_TOKENS, MEDIUM_SEVERITY_TOKENS
 
 logger = logging.getLogger(__name__)
 
@@ -71,6 +70,12 @@ class Deduplicator:
         self.schema_metadata = schema_metadata
         self.field_severity_hints = (
             schema_metadata.get_compilation_field_severity_hints()
+        )
+        # Name-heuristic fallback token sets (built-in defaults unioned with any
+        # config-supplied compilation.severity_tokens). Used only when the
+        # schema-derived per-field hints above do not classify a conflict.
+        self._high_severity_tokens, self._medium_severity_tokens = (
+            schema_metadata.get_severity_tokens()
         )
         # Annotation column: configurable via compilation.output.annotation_column,
         # defaults to "Notes" which is the ParseSweep framework standard.
@@ -261,13 +266,13 @@ class Deduplicator:
         }
 
         if any(
-            any(token in column for token in HIGH_SEVERITY_TOKENS)
+            any(token in column for token in self._high_severity_tokens)
             for column in normalized_columns
         ):
             return "high"
 
         if any(
-            any(token in column for token in MEDIUM_SEVERITY_TOKENS)
+            any(token in column for token in self._medium_severity_tokens)
             for column in normalized_columns
         ):
             return "medium"
