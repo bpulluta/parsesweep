@@ -22,6 +22,7 @@ from litellm import completion, completion_cost
 from ..utils.model_pricing import get_pricing
 from ..exceptions import ExtractionError
 from .llm_factory import DEFAULT_MODEL, detect_provider
+from .text_processor import find_data_arrays
 
 logger = logging.getLogger(__name__)
 
@@ -365,9 +366,7 @@ class LLMClient:
                 response.usage.completion_tokens,
             )
 
-        total_items = sum(
-            len(value) for value in data.values() if isinstance(value, list)
-        )
+        total_items = sum(len(value) for _, value in find_data_arrays(data))
 
         usage = getattr(response, "usage", None)
         input_tokens = getattr(usage, "prompt_tokens", None)

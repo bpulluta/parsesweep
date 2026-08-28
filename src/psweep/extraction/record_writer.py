@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, Optional, Sequence
 
 from ..utils.error_taxonomy import normalize_error_records
+from .text_processor import find_main_data_array
 
 
 def _resolve_lineage_artifact_id(
@@ -57,16 +58,6 @@ def build_lineage(
     }
 
 
-def _extract_item_count(data: Dict[str, Any]) -> tuple[str | None, int]:
-    main_array_key = None
-    max_items = 0
-    for key, value in data.items():
-        if isinstance(value, list) and value and len(value) > max_items:
-            max_items = len(value)
-            main_array_key = key
-    return main_array_key, max_items
-
-
 def _extract_identifier(
     data: Dict[str, Any],
     identifier_fields: Optional[Sequence[str]] = None,
@@ -109,7 +100,7 @@ def build_extraction_record(
     identifier_fields: Optional[Sequence[str]] = None,
 ) -> tuple[Dict[str, Any], int]:
     """Build the canonical ParseSweep extraction-record payload."""
-    item_array_key, num_items = _extract_item_count(result.data)
+    item_array_key, num_items = find_main_data_array(result.data)
     identifier = _extract_identifier(result.data, identifier_fields)
     extracted_at = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
