@@ -72,64 +72,9 @@ US_STATES = {
     "district of columbia": "DC",
     "washington, d.c.": "DC",
     "washington d.c.": "DC",
-    # Already abbreviated (identity mapping - uppercase)
-    "AL": "AL",
-    "AK": "AK",
-    "AZ": "AZ",
-    "AR": "AR",
-    "CA": "CA",
-    "CO": "CO",
-    "CT": "CT",
-    "DE": "DE",
-    "FL": "FL",
-    "GA": "GA",
-    "HI": "HI",
-    "ID": "ID",
-    "IL": "IL",
-    "IN": "IN",
-    "IA": "IA",
-    "KS": "KS",
-    "KY": "KY",
-    "LA": "LA",
-    "ME": "ME",
-    "MD": "MD",
-    "MA": "MA",
-    "MI": "MI",
-    "MN": "MN",
-    "MS": "MS",
-    "MO": "MO",
-    "MT": "MT",
-    "NE": "NE",
-    "NV": "NV",
-    "NH": "NH",
-    "NJ": "NJ",
-    "NM": "NM",
-    "NY": "NY",
-    "NC": "NC",
-    "ND": "ND",
-    "OH": "OH",
-    "OK": "OK",
-    "OR": "OR",
-    "PA": "PA",
-    "RI": "RI",
-    "SC": "SC",
-    "SD": "SD",
-    "TN": "TN",
-    "TX": "TX",
-    "UT": "UT",
-    "VT": "VT",
-    "VA": "VA",
-    "WA": "WA",
-    "WV": "WV",
-    "WI": "WI",
-    "WY": "WY",
-    "PR": "PR",
-    "GU": "GU",
-    "VI": "VI",
-    "AS": "AS",
-    "MP": "MP",
-    "DC": "DC",
-    # Already abbreviated (identity mapping - lowercase)
+    # Already abbreviated (identity mapping). normalize_state() looks up
+    # cleaned.lower(), so only the lowercase keys below are ever reached;
+    # uppercase inputs like "TX" are matched via their lowercase form.
     "al": "AL",
     "ak": "AK",
     "az": "AZ",
@@ -280,6 +225,15 @@ def normalize_state_column(df, column_name: str = "State") -> None:
     )
 
 
+def _split_camel_case(name: str) -> str:
+    """Insert spaces at camelCase boundaries, leaving all other characters intact.
+
+    Shared splitting core for :func:`humanize_field_name` and
+    :func:`camel_to_title`; each applies its own separator/casing policy on top.
+    """
+    return "".join(" " + c if c.isupper() else c for c in name).strip()
+
+
 def humanize_field_name(field_name: str) -> str:
     """
     Convert any naming style to clean Title Case.
@@ -305,8 +259,7 @@ def humanize_field_name(field_name: str) -> str:
     >>> humanize_field_name("annualConsumption")
     'Annual Consumption'
     """
-    name = field_name.replace("_", " ")
-    name = "".join([" " + c if c.isupper() else c for c in name]).strip()
+    name = _split_camel_case(field_name.replace("_", " "))
     return " ".join(word.capitalize() for word in name.split())
 
 
@@ -336,4 +289,4 @@ def camel_to_title(name: str) -> str:
     >>> camel_to_title("utility_name")
     'Utility_Name'
     """
-    return "".join([" " + c if c.isupper() else c for c in name]).strip().title()
+    return _split_camel_case(name).title()

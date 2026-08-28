@@ -17,6 +17,12 @@ class TestHumanizeFieldName:
     def test_mixed(self):
         assert humanize_field_name("utility_rateName") == "Utility Rate Name"
 
+    def test_already_spaced(self):
+        assert humanize_field_name("Rate Name") == "Rate Name"
+
+    def test_empty_string(self):
+        assert humanize_field_name("") == ""
+
 
 class TestCamelToTitle:
     def test_camel_case_splits(self):
@@ -26,6 +32,13 @@ class TestCamelToTitle:
         # Distinct from humanize_field_name: separators are left literal so
         # established display keys keep their exact form.
         assert camel_to_title("utility_name") == "Utility_Name"
+
+    def test_underscore_only_left_literal(self):
+        # Pure camelCase splitting with underscores preserved verbatim.
+        assert camel_to_title("utility_rateName") == "Utility_Rate Name"
+
+    def test_empty_string(self):
+        assert camel_to_title("") == ""
 
     def test_data_flattener_reuses_canonical_humanizer(self):
         from psweep.compilation import data_flattener

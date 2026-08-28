@@ -16,14 +16,23 @@ from ..utils.schema_metadata import HIGH_SEVERITY_TOKENS, MEDIUM_SEVERITY_TOKENS
 logger = logging.getLogger(__name__)
 
 
+# Provenance / lineage column display names — single source of truth shared
+# with data_compiler, which populates these columns from extraction lineage.
+COL_RUN_ID = "Run Id"
+COL_ARTIFACT_ID = "Artifact Id"
+COL_ERROR_COUNT = "Error Count"
+COL_ERROR_CATEGORIES = "Error Categories"
+COL_ERROR_MESSAGES = "Error Messages"
+COL_NOTES = "Notes"
+
 PROVENANCE_COLUMNS = frozenset(
     {
-        "Run Id",
-        "Artifact Id",
-        "Error Count",
-        "Error Categories",
-        "Error Messages",
-        "Notes",
+        COL_RUN_ID,
+        COL_ARTIFACT_ID,
+        COL_ERROR_COUNT,
+        COL_ERROR_CATEGORIES,
+        COL_ERROR_MESSAGES,
+        COL_NOTES,
     }
 )
 
@@ -490,6 +499,11 @@ class Deduplicator:
 
         return duplicate_groups
 
+    # Stop-words stripped when comparing fuzzy key-field *values* under the
+    # "words" normalize mode (e.g. duplicate hour ranges). Deliberately narrow
+    # and distinct from item_matcher.STOP_WORDS (name-token matching) and
+    # value_normalizer._UNIT_STOPWORDS (measurement-unit relational words):
+    # widening it would silently merge rows that differ in meaningful content.
     _WORDS_NORMALIZE_STOPWORDS = frozenset(
         {"a", "an", "the", "of", "in", "at", "by", "for", "to", "from", "hours"}
     )

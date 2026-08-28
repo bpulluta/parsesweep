@@ -133,6 +133,10 @@ def _normalize_unit_text(raw: str) -> str:
     return raw
 
 
+# Relational/positional words dropped when building unit-equivalence token keys
+# (e.g. "5 db above baseline" ~ "5 db"). Measurement-unit specific — distinct
+# from item_matcher.STOP_WORDS (name tokens) and
+# deduplicator._WORDS_NORMALIZE_STOPWORDS (value phrasing).
 _UNIT_STOPWORDS = {
     "above",
     "below",

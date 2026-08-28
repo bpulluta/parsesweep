@@ -11,7 +11,14 @@ from pathlib import Path
 from typing import Dict, Any, Tuple
 from .schema_detector import SchemaDetector
 from .data_flattener import DataFlattener
-from .deduplicator import Deduplicator
+from .deduplicator import (
+    Deduplicator,
+    COL_RUN_ID,
+    COL_ARTIFACT_ID,
+    COL_ERROR_COUNT,
+    COL_ERROR_CATEGORIES,
+    COL_ERROR_MESSAGES,
+)
 from .excel_formatter import ExcelFormatter
 from .csv_exporter import CsvExporter
 from ..exceptions import SchemaMetadataError
@@ -278,9 +285,9 @@ class DataCompiler:
         artifact_id = lineage.get("artifact_id")
 
         if run_id:
-            context["Run Id"] = run_id
+            context[COL_RUN_ID] = run_id
         if artifact_id:
-            context["Artifact Id"] = artifact_id
+            context[COL_ARTIFACT_ID] = artifact_id
 
         quality = (
             raw_data.get("quality")
@@ -293,8 +300,8 @@ class DataCompiler:
             else []
         )
         if errors:
-            context["Error Count"] = len(errors)
-            context["Error Categories"] = "; ".join(
+            context[COL_ERROR_COUNT] = len(errors)
+            context[COL_ERROR_CATEGORIES] = "; ".join(
                 sorted(
                     {
                         error.get("category", "internal")
@@ -303,7 +310,7 @@ class DataCompiler:
                     }
                 )
             )
-            context["Error Messages"] = " | ".join(
+            context[COL_ERROR_MESSAGES] = " | ".join(
                 error.get("message", "Unknown error")
                 for error in errors
                 if isinstance(error, dict)
