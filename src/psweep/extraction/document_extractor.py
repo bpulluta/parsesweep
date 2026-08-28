@@ -74,6 +74,7 @@ class DocumentExtractor:
         context_windows: Optional[Dict[str, int]] = None,
         base_url: Optional[str] = None,
         timeout: Optional[int] = None,
+        reasoning_models: Optional[List[str]] = None,
     ):
         """
         Initialize document extractor.
@@ -105,6 +106,10 @@ class DocumentExtractor:
         timeout : Optional[int]
             Per-request LLM timeout in seconds. If omitted, LLMClient
             uses LLM_TIMEOUT env var or its default timeout.
+        reasoning_models : Optional[List[str]]
+            Optional extra reasoning-model markers (from ``reasoning_models``
+            in config), unioned with the built-in defaults. No model names are
+            hardcoded in universal code beyond provider-neutral defaults.
         """
         self.api_key = api_key
         self.model = model
@@ -121,6 +126,7 @@ class DocumentExtractor:
             context_windows=context_windows,
             base_url=base_url,
             timeout=timeout,
+            reasoning_models=reasoning_models,
         )
 
         # Initialize text processor

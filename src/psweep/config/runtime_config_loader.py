@@ -288,6 +288,7 @@ _ALLOWED_TOP_LEVEL = {
     "domain",
     "models",
     "model_context_windows",
+    "reasoning_models",
     "discovery",
     "extraction",
     "compilation",
@@ -948,6 +949,25 @@ def _validate_model_context_windows_block(windows: Any) -> None:
                 "'model_context_windows' values must be positive integers "
                 f"(got {value!r} for '{key}')"
             )
+
+
+def _validate_reasoning_models_block(markers: Any) -> None:
+    """Validate the optional top-level ``reasoning_models`` list.
+
+    Extra substring markers (unioned with the built-in defaults) identifying
+    reasoning models — those that reject the temperature / response_format
+    params. Must be a list of non-empty strings. Only provider-neutral
+    defaults live in code; anything else is declared here.
+    """
+    if markers is None:
+        return
+    if not isinstance(markers, list) or not all(
+        isinstance(m, str) and m.strip() for m in markers
+    ):
+        raise RuntimeConfigError(
+            "'reasoning_models' must be a list of non-empty model-name "
+            "substring markers (e.g. ['gpt-5', 'o3'])"
+        )
 
 
 def _normalize_pages_block(extraction: dict[str, Any]) -> None:
@@ -1645,6 +1665,7 @@ def load_runtime_config_file(config_path: Path) -> dict[str, Any]:
     _validate_model_context_windows_block(
         config_data.get("model_context_windows")
     )
+    _validate_reasoning_models_block(config_data.get("reasoning_models"))
 
     discovery = config_data.get("discovery")
     if discovery is not None:
@@ -2273,6 +2294,12 @@ def resolve_command_config(
     if "model_context_windows" in cfg:
         merged["model_context_windows"] = cfg.get("model_context_windows")
         sources["model_context_windows"] = "config.model_context_windows"
+
+    # Extra reasoning-model markers (unioned with built-in defaults in the LLM
+    # client); passed through untouched for the extraction stage to consume.
+    if "reasoning_models" in cfg:
+        merged["reasoning_models"] = cfg.get("reasoning_models")
+        sources["reasoning_models"] = "config.reasoning_models"
 
     # Top-level QA/QC settings are shared runtime policy used by extraction
     # and validate report generation workflows.

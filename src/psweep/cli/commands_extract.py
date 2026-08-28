@@ -1252,6 +1252,7 @@ def extract(
             identifier_fields = None
 
     context_windows = resolved_inputs.get("model_context_windows") or None
+    reasoning_models = resolved_inputs.get("reasoning_models") or None
     enable_validation = False  # Regular extract command is single-model only
     extractor = DocumentExtractor(
         api_key=api_key,
@@ -1264,6 +1265,7 @@ def extract(
         base_url=base_url,
         context_windows=context_windows,
         timeout=timeout_seconds,
+        reasoning_models=reasoning_models,
     )
 
     view.phase("Extracting documents")
