@@ -44,6 +44,20 @@ def minimal_schema_path(tmp_path):
                     "ignore_fields": ["notes", "reasoning"],
                     "fuzzy_key_fields": [],
                     "partition_fields": ["state", "county"],
+                    "cross_feature_redundancy": {
+                        "group_by": ["applies_to", "obligation"],
+                        "feature_field": "feature",
+                        "authority_ranking": [
+                            "permit_approval",
+                            "location",
+                            "equipment_standard",
+                            "zoning_districts",
+                        ],
+                        "redundant_features": [
+                            "permit_approval",
+                            "zoning_districts",
+                        ],
+                    },
                 }
             },
         },
@@ -337,6 +351,71 @@ def test_approval_redundancy_no_features_present(minimal_metadata):
 
     assert len(result) == 0
     print(f"✓ Empty DataFrame handled correctly")
+
+
+def test_cross_feature_redundancy_is_noop_without_schema_block(tmp_path):
+    """When a schema omits cross_feature_redundancy, the pass does nothing.
+
+    Guards domain-neutrality: the approval-redundancy collapse must be entirely
+    opt-in, not hardcoded behavior applied to every domain.
+    """
+    schema = {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "$metadata": {
+            "domain": "test_neutral",
+            "version": "2.0.0",
+            "extraction": {
+                "main_data_array": "requirements",
+                "identifier_fields": ["state", "county"],
+                "context_objects": [],
+            },
+            "identity": {
+                "deduplication": {
+                    # Same key fields, but NO cross_feature_redundancy block.
+                    "key_fields": ["feature", "applies_to", "obligation", "value"],
+                    "ignore_fields": ["notes", "reasoning"],
+                    "fuzzy_key_fields": [],
+                    "partition_fields": ["state", "county"],
+                }
+            },
+        },
+        "type": "object",
+        "properties": {"requirements": {"type": "array", "items": {"type": "object"}}},
+    }
+    schema_file = tmp_path / "neutral_schema.json"
+    schema_file.write_text(json.dumps(schema), encoding="utf-8")
+
+    df = pd.DataFrame(
+        [
+            {
+                "state": "TX",
+                "county": "Weatherford",
+                "feature": "zoning_districts",
+                "applies_to": "Compressor station",
+                "obligation": "required",
+                "value": None,
+                "summary": "matrix row",
+                "Notes": "",
+            },
+            {
+                "state": "TX",
+                "county": "Weatherford",
+                "feature": "permit_approval",
+                "applies_to": "Compressor station",
+                "obligation": "required",
+                "value": None,
+                "summary": "CUP required",
+                "Notes": "",
+            },
+        ]
+    )
+
+    dedup = Deduplicator(SchemaMetadata(schema_file))
+    result = dedup.deduplicate(df)
+
+    # Both rows survive — no cross-feature collapse without the schema block.
+    assert len(result) == 2
+    assert set(result["feature"]) == {"zoning_districts", "permit_approval"}
 
 
 if __name__ == "__main__":

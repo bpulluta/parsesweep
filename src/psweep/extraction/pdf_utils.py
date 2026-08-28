@@ -306,8 +306,13 @@ def extract_text_from_pdf(
                 f"⚠️ OCR extraction failed for {pdf_path.name} - PDF may be image-based without searchable text"
             )
 
-    # Apply basic OCR error corrections for common issues
-    text = _cleanup_ocr_errors(text)
+    # Apply OCR-artifact corrections only to text that actually came from OCR.
+    # These heuristics (e.g. capital-O -> C at a word start) are meant for
+    # scan/OCR noise and would corrupt clean digital extractions — turning
+    # "Oil" into "Cil" or "Oakmont" into "Cakmont" — so they must not run on
+    # normally-extracted text.
+    if used_ocr:
+        text = _cleanup_ocr_errors(text)
 
     if return_meta:
         return text, {"used_ocr": used_ocr}
