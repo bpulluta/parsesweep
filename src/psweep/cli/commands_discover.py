@@ -310,6 +310,9 @@ def discover(
     resolved_query = resolved_inputs.get("query", query)
     resolved_state = resolved_inputs.get("state", state)
     resolved_jurisdiction = resolved_inputs.get("jurisdiction", jurisdiction)
+    resolved_jurisdiction_aliases = (
+        resolved_inputs.get("jurisdiction_aliases") or None
+    )
     resolved_partition_mode = (
         resolved_inputs.get("partition_mode", partition_mode)
         or DEFAULT_PARTITION_MODE
@@ -654,6 +657,7 @@ def discover(
         dry_run=resolved_dry_run,
         state=resolved_state,
         jurisdiction=resolved_jurisdiction,
+        jurisdiction_aliases=resolved_jurisdiction_aliases,
         partition_mode=resolved_partition_mode,
         digger_provider=resolved_digger_provider,
         topology_mode=resolved_topology_mode,

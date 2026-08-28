@@ -122,6 +122,10 @@ class DiscoveryRequest:
     state: str | None = None
     jurisdiction: str | None = None
     partition_mode: str = DEFAULT_PARTITION_MODE
+    # Optional {full-name: short-key} jurisdiction alias map. Supplements the
+    # built-in US-state table (config wins on conflicts) so non-US jurisdiction
+    # schemes work under partition_mode=jurisdiction. None -> US default only.
+    jurisdiction_aliases: dict[str, str] | None = None
     digger_provider: str = "seed_only"
     topology_mode: str | None = None
     hub_pages: list[str] | None = None
@@ -289,6 +293,10 @@ class DiscoveryEngine:
     # File-type sets / MIME map are centralized in constants.py.
     _SUPPORTED_EXTENSIONS = DOWNLOADABLE_EXTENSIONS
     _MIME_EXTENSION_MAP = MIME_TO_EXTENSION
+    # Built-in US-state full-name -> abbreviation table. This is the default
+    # jurisdiction alias map (active only under partition_mode=jurisdiction); a
+    # domain can supplement/override it with discovery.jurisdiction_aliases for
+    # non-US or custom jurisdiction schemes. See _effective_state_aliases.
     _STATE_ALIASES = {
         "alabama": "al",
         "alaska": "ak",
@@ -1460,23 +1468,48 @@ class DiscoveryEngine:
         return re.sub(r"[^A-Za-z0-9]+", "-", value.strip().lower()).strip("-")
 
     @classmethod
-    def _normalize_state_key(cls, value: str | None) -> str | None:
+    def _effective_state_aliases(
+        cls, extra: dict[str, str] | None
+    ) -> dict[str, str]:
+        """Return the built-in US-state table merged with config overrides.
+
+        ``extra`` (from ``discovery.jurisdiction_aliases``) supplements the
+        defaults and wins on key conflicts. Returns the built-in table
+        unchanged when no overrides are supplied, so behavior is preserved.
+        """
+        if not extra:
+            return cls._STATE_ALIASES
+        merged = dict(cls._STATE_ALIASES)
+        merged.update(
+            {
+                str(k).strip().lower(): str(v).strip().lower()
+                for k, v in extra.items()
+            }
+        )
+        return merged
+
+    @classmethod
+    def _normalize_state_key(
+        cls, value: str | None, aliases: dict[str, str] | None = None
+    ) -> str | None:
         if value is None:
             return None
         normalized = value.strip().lower()
         if not normalized:
             return None
+        alias_map = cls._STATE_ALIASES if aliases is None else aliases
         if len(normalized) == 2 and normalized.isalpha():
             return normalized
-        return cls._STATE_ALIASES.get(normalized) or cls._slug(normalized)
+        return alias_map.get(normalized) or cls._slug(normalized)
 
     @classmethod
     def _infer_jurisdiction_from_query(
-        cls, query: str | None
+        cls, query: str | None, aliases: dict[str, str] | None = None
     ) -> tuple[str | None, str | None]:
         if not query:
             return None, None
 
+        alias_map = cls._STATE_ALIASES if aliases is None else aliases
         query_clean = re.sub(r"\s+", " ", query).strip()
         if not query_clean:
             return None, None
@@ -1492,7 +1525,7 @@ class DiscoveryEngine:
 
         lower_query = query_clean.lower()
         state_key: str | None = None
-        for state_name, abbrev in cls._STATE_ALIASES.items():
+        for state_name, abbrev in alias_map.items():
             if re.search(rf"\b{re.escape(state_name)}\b", lower_query):
                 state_key = abbrev
                 break
@@ -1500,7 +1533,7 @@ class DiscoveryEngine:
             abbrev_match = re.search(r"\b([A-Za-z]{2})\b", query_clean)
             if abbrev_match:
                 candidate = abbrev_match.group(1).lower()
-                if candidate in set(cls._STATE_ALIASES.values()):
+                if candidate in set(alias_map.values()):
                     state_key = candidate
 
         return jurisdiction, state_key
@@ -1512,8 +1545,9 @@ class DiscoveryEngine:
         *,
         state: str | None,
         jurisdiction: str | None,
+        aliases: dict[str, str] | None = None,
     ) -> tuple[str, str, Path]:
-        state_key = cls._normalize_state_key(state) or "unknown-state"
+        state_key = cls._normalize_state_key(state, aliases) or "unknown-state"
         jurisdiction_key = (
             cls._slug(jurisdiction or "unknown-jurisdiction")
             or "unknown-jurisdiction"
@@ -1557,7 +1591,16 @@ class DiscoveryEngine:
         request: DiscoveryRequest,
         target_metadata: dict[str, object] | None = None,
     ) -> tuple[str, dict[str, str], Path]:
-        # Generic, config-driven partitioning takes precedence when set.
+        # Partitioning layers, most general first:
+        #   1. partition_by  — the domain-agnostic, scalable path: partition by
+        #      ANY target-metadata field(s) (county, region, year, manufacturer,
+        #      ...). This is the mechanism to use for arbitrary schemes and it
+        #      takes precedence over everything below.
+        #   2. jurisdiction  — an OPTIONAL geographic convenience that adds
+        #      query-based inference of a jurisdiction + short-key (aliases from
+        #      discovery.jurisdiction_aliases, defaulting to the US-state table).
+        #   3. host          — fall back to partitioning by URL host.
+        # Only (1) is required for universality; (2)/(3) are conveniences.
         if request.partition_by:
             source_meta, partition_dir = cls._generic_partition_dir(
                 documents_dir,
@@ -1575,8 +1618,9 @@ class DiscoveryEngine:
             else DEFAULT_PARTITION_MODE
         )
 
+        alias_map = cls._effective_state_aliases(request.jurisdiction_aliases)
         inferred_jurisdiction, inferred_state = (
-            cls._infer_jurisdiction_from_query(request.query)
+            cls._infer_jurisdiction_from_query(request.query, alias_map)
         )
         jurisdiction = request.jurisdiction or inferred_jurisdiction
         state = request.state or inferred_state
@@ -1587,6 +1631,7 @@ class DiscoveryEngine:
                     documents_dir,
                     state=state,
                     jurisdiction=jurisdiction,
+                    aliases=alias_map,
                 )
             )
             return (
@@ -1611,6 +1656,7 @@ class DiscoveryEngine:
                     documents_dir,
                     state=state,
                     jurisdiction=jurisdiction,
+                    aliases=alias_map,
                 )
             )
             return (

@@ -305,6 +305,7 @@ _ALLOWED_SECTION_FIELDS = {
         "query",
         "state",
         "jurisdiction",
+        "jurisdiction_aliases",
         "partition_mode",
         "enable_serpapi",
         "query_templates",
@@ -726,6 +727,24 @@ def _validate_discovery_link_prioritization(lp: dict[str, Any]) -> None:
         raise RuntimeConfigError(msg)
 
 
+def _validate_discovery_jurisdiction_aliases(aliases: Any) -> None:
+    """Validate ``discovery.jurisdiction_aliases`` (see engine _STATE_ALIASES).
+
+    Must be a mapping of non-empty full-name strings to non-empty short-key
+    strings, so a malformed map fails loudly at load rather than silently
+    no-op'ing when partition_mode=jurisdiction.
+    """
+    if not isinstance(aliases, dict) or not all(
+        isinstance(k, str) and k.strip() and isinstance(v, str) and v.strip()
+        for k, v in aliases.items()
+    ):
+        msg = (
+            "'discovery.jurisdiction_aliases' must map non-empty full-name "
+            "strings to non-empty short-key strings"
+        )
+        raise RuntimeConfigError(msg)
+
+
 def _validate_discovery_topology(topology: dict[str, Any]) -> None:
     mode = topology.get("mode")
     if mode is not None and mode not in _ALLOWED_TOPOLOGY_MODES:
@@ -865,6 +884,10 @@ def _validate_discovery_section_schema(discovery: dict[str, Any]) -> None:
     link_prioritization = discovery.get("link_prioritization")
     if isinstance(link_prioritization, dict):
         _validate_discovery_link_prioritization(link_prioritization)
+
+    jurisdiction_aliases = discovery.get("jurisdiction_aliases")
+    if jurisdiction_aliases is not None:
+        _validate_discovery_jurisdiction_aliases(jurisdiction_aliases)
 
     retention = discovery.get("retention")
     if isinstance(retention, dict):
@@ -2143,6 +2166,7 @@ _FIELD_MAP: dict[str, str] = {
     "query": "query",
     "state": "state",
     "jurisdiction": "jurisdiction",
+    "jurisdiction_aliases": "jurisdiction_aliases",
     "partition_mode": "partition_mode",
     "enable_serpapi": "enable_serpapi",
     "output_documents": "output_documents",
