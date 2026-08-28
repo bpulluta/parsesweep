@@ -613,6 +613,7 @@ class SchemaMetadata:
 
         Normalization modes (applied before comparison when both values are
         non-empty):
+
         - ``"words"`` — lowercase, strip leading/trailing whitespace, collapse
           internal whitespace.  Removes common English articles and prepositions
           (``a``, ``an``, ``the``, ``of``, ``in``, ``at``, ``by``, ``for``,
@@ -740,9 +741,11 @@ class SchemaMetadata:
         """Return column rename mapping.
 
         Merges two sources in priority order (highest last):
+
         1. Auto-derived snake_case renames for every item field AND context
            object field in the schema (Title Case → snake_case).
         2. Explicit overrides from compilation.output.column_renames in config/schema.
+
         This ensures new schema fields are always renamed correctly without
         manual config updates.
         """
