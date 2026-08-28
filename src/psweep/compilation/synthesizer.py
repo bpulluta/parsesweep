@@ -466,7 +466,8 @@ class Synthesizer:
 
     def _synthesize_group_rows(self, key: tuple, recs: list[dict]) -> list[dict]:
         """Rows for one entity group: one per item subgroup when
-        ``item_group_by`` is configured, otherwise exactly one."""
+        ``item_group_by`` is configured, otherwise exactly one.
+        """
         if not self.item_group_by:
             return [self._synthesize_group(key, recs)]
         id_ctx = self._identity_context(recs)
