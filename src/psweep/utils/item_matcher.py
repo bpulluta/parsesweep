@@ -14,7 +14,11 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-# Common stop words to ignore during token matching
+# Stop-words removed when tokenizing free-text item *names/descriptions* for
+# fuzzy matching (extract_key_tokens/normalize_for_matching). Broad English
+# stop-words plus name-noise like "work"/"works". Intentionally distinct from
+# deduplicator._WORDS_NORMALIZE_STOPWORDS (narrow value-phrasing set) and
+# value_normalizer._UNIT_STOPWORDS (measurement-unit relational words).
 STOP_WORDS = frozenset(
     [
         "a",
@@ -292,6 +296,11 @@ def map_key_fields_to_columns(
     """
     mapped_cols = []
 
+    # Normalize each DataFrame column once, not once per key field.
+    normalized_columns = [
+        (col, _normalize_field_name_for_matching(col)) for col in df.columns
+    ]
+
     for key_field in key_fields:
         # Handle nested field names (e.g., "jurisdiction.state" -> "state")
         field_name = key_field.split(".")[-1]
@@ -300,8 +309,7 @@ def map_key_fields_to_columns(
 
         # Find matching column (case-insensitive, with/without underscores)
         matching_col = None
-        for col in df.columns:
-            normalized_col = _normalize_field_name_for_matching(col)
+        for col, normalized_col in normalized_columns:
             if normalized_col == normalized_field:
                 matching_col = col
                 break

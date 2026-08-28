@@ -168,3 +168,16 @@ class TestMapKeyFieldsToColumns:
         df = pd.DataFrame()
         mapped = map_key_fields_to_columns(df, ["field1"])
         assert mapped == []
+
+    def test_first_matching_column_wins(self):
+        """Columns are normalized once up front; the first match (by column
+        order) still wins when two columns share a normalized form."""
+        df = pd.DataFrame(columns=["Rate Name", "rate_name"])
+        mapped = map_key_fields_to_columns(df, ["rate_name"])
+        assert mapped == ["Rate Name"]
+
+    def test_repeated_key_field_maps_consistently(self):
+        """Normalizing columns once must not change results across key fields."""
+        df = pd.DataFrame(columns=["State", "Rate Name"])
+        mapped = map_key_fields_to_columns(df, ["state", "rate_name", "State"])
+        assert mapped == ["State", "Rate Name", "State"]
