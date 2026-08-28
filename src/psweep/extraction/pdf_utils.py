@@ -262,18 +262,10 @@ def extract_text_from_pdf(
                 f"Error extracting text with PyMuPDF from {pdf_path}: {e}"
             )
 
-    # Strategy 3: Final fallback to pypdf
+    # Strategy 3: Final fallback to pypdf (when PyMuPDF is unavailable or yielded
+    # no text). PyMuPDF4LLM was already attempted in Strategy 1 when requested, so
+    # re-invoking it here would be redundant.
     if not text and PYPDF_AVAILABLE:
-        try:
-            text = pymupdf4llm.to_markdown(str(pdf_path))
-            logger.debug(
-                f"Extracted text using PyMuPDF4LLM (markdown with tables) from {pdf_path.name}"
-            )
-        except Exception as e:
-            logger.error(
-                f"Error extracting text with PyMuPDF4LLM from {pdf_path}: {e}"
-            )
-        # Fallback to pypdf
         if PdfReader is None:
             logger.error(
                 "No PDF extraction library available. Install PyMuPDF4LLM, PyMuPDF or pypdf."

@@ -369,7 +369,6 @@ _ACQUISITION_OBJECT_FIELDS = {
     "request_headers",
     "document_classifier",
     "document_review",
-    "browser_escalation",
     "retention",
 }
 
@@ -655,6 +654,13 @@ def _validate_discovery_section_schema(discovery: dict[str, Any]) -> None:
         if value is not None and not isinstance(value, dict):
             msg = f"'discovery.{field}' must be an object"
             raise RuntimeConfigError(msg)
+
+    # browser_escalation accepts a bool shorthand or a mapping; validate it (and
+    # its inner keys) here at load time so the same strict check runs whether or
+    # not the resolve path is exercised.
+    escalation = discovery.get("browser_escalation")
+    if escalation is not None:
+        _normalize_browser_escalation(escalation)
 
     _validate_discovery_shorthands(discovery)
 
