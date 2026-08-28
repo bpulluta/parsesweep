@@ -1,8 +1,4 @@
-"""Benchmark command extracted from the legacy monolith.
-
-This module is intentionally focused on benchmark profiling and gate evaluation
-so it can be migrated independently from the rest of the CLI command surface.
-"""
+"""Benchmark command: profiling and gate evaluation."""
 
 from __future__ import annotations
 

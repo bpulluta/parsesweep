@@ -1,4 +1,4 @@
-"""`check` command extracted from the legacy CLI monolith."""
+"""`check` command."""
 
 from __future__ import annotations
 

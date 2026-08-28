@@ -1,4 +1,4 @@
-"""`discover` command extracted from the legacy CLI monolith."""
+"""`discover` command."""
 
 from __future__ import annotations
 

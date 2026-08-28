@@ -50,8 +50,8 @@ from psweep.cli.ui import (
     section,
     status_item,
 )
-from psweep.utils.model_pricing import get_model_pricing
 from psweep.utils.page_range import load_pages_csv
+from psweep.cli.cost_tracker import estimate_extraction_cost
 
 
 class ConfigValidationError(ValueError):
@@ -783,12 +783,6 @@ def _suggest_page_ranges_filename(document_type: str) -> str:
     return f"{slug}.pdf"
 
 
-def _recommended_extract_flags(document_type: str) -> list[str]:
-    """Return suggested CLI flags based on document type (domain-agnostic)."""
-    # No domain-specific defaults — users configure max_context in run.yaml
-    return []
-
-
 def _build_scaffold_extract_command(
     *,
     documents_ref: str,
@@ -805,8 +799,6 @@ def _build_scaffold_extract_command(
     ]
     if profile_ref:
         command_parts.append(f"--profile {profile_ref}")
-    if template_mode == "recommended":
-        command_parts.extend(_recommended_extract_flags(document_type))
     if page_ranges_ref:
         command_parts.append(f"--pages-csv {page_ranges_ref}")
     return " ".join(command_parts)
@@ -843,16 +835,6 @@ def _config_readme_content(
             f"6. Optional config-based compilation: pixi run psweep compile --config {run_config_ref}"
         ),
     ]
-
-    recommended_flags = _recommended_extract_flags(document_type)
-    if template_mode == "recommended" and recommended_flags:
-        workflow_lines.extend(
-            [
-                "",
-                "Recommended flags:",
-                "- --max-context 1400000: Use for large tariff books so long schedule sections are less likely to be truncated.",
-            ]
-        )
 
     if template_mode == "recommended" and has_validation:
         workflow_lines.extend(
@@ -1167,17 +1149,12 @@ def preview(document_path: str):
         text = extract_text_from_document(doc_path)
         text_length = len(text)
 
-        # Estimate tokens (rough approximation: 4 chars per token)
-        estimated_tokens = text_length // 4
-
-        # Estimate cost using the default model's pricing
-        input_cost_per_1m, output_cost_per_1m = get_model_pricing(DEFAULT_MODEL)
-        input_cost = (estimated_tokens / 1_000_000) * input_cost_per_1m
-        output_cost = (estimated_tokens * 0.1 / 1_000_000) * output_cost_per_1m
-        total_cost = input_cost + output_cost
-
-        # Estimate time (rough: 100 tokens per second)
-        estimated_time = estimated_tokens / 100
+        # Estimate cost/time using the configured model's pricing (shared helper).
+        config = get_config()
+        model_name = config.llm_config.get("model", DEFAULT_MODEL)
+        est = estimate_extraction_cost(text_length, model_name)
+        estimated_tokens = est.input_tokens
+        total_cost = est.total_cost
 
         section("Content Analysis")
         analysis_table = key_values(
@@ -1189,7 +1166,6 @@ def preview(document_path: str):
         console.print(analysis_table)
 
         # Try to detect schema via fuzzy stem matching
-        config = get_config()
         matched_schema = None
 
         candidates = sorted(config.schema_dir.glob("*.json"), key=lambda p: p.stem)
@@ -1220,8 +1196,8 @@ def preview(document_path: str):
             total_docs=1,
             estimated_tokens=estimated_tokens,
             estimated_cost=total_cost,
-            estimated_time=estimated_time / 60,  # Convert to minutes
-            model=DEFAULT_MODEL,
+            estimated_time=est.estimated_minutes,
+            model=model_name,
         )
         section("Sample Content Preview")
         sample = text[:500].replace("\n", " ")
@@ -1332,27 +1308,22 @@ def estimate(documents_path: str, workers: int, pages_csv: str):
         print_warning("Could not analyze documents for estimation")
         return
 
-    # Calculate averages and estimates
+    # Calculate averages and estimates (shared estimator, configured model).
     avg_chars = total_chars / sample_size
     estimated_total_chars = avg_chars * len(doc_files)
-    estimated_tokens = int(estimated_total_chars / 4)
 
-    # Get current model pricing from config
     config = get_config()
     model_name = config.llm_config.get("model", DEFAULT_MODEL)
 
-    # Get pricing for the configured model (returns tuple: input_cost, output_cost per 1M tokens)
-    input_cost_per_1m, output_cost_per_1m = get_model_pricing(model_name)
-
-    # Cost calculation using model-specific rates
-    input_cost = (estimated_tokens / 1_000_000) * input_cost_per_1m
-    output_tokens = estimated_tokens * 0.1
-    output_cost = (output_tokens / 1_000_000) * output_cost_per_1m
-    total_cost = input_cost + output_cost
-
-    # Time calculation (assuming 100 tokens/sec with workers)
-    total_seconds = estimated_tokens / (100 * workers)
-    estimated_minutes = total_seconds / 60
+    est = estimate_extraction_cost(
+        estimated_total_chars, model_name, workers=workers
+    )
+    estimated_tokens = est.input_tokens
+    input_cost_per_1m = est.input_rate
+    output_cost_per_1m = est.output_rate
+    output_tokens = est.output_tokens
+    total_cost = est.total_cost
+    estimated_minutes = est.estimated_minutes
 
     # Display analysis
     section("Document Analysis")

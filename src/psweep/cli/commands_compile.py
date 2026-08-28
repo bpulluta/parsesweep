@@ -1,4 +1,4 @@
-"""`compile` command extracted from the legacy CLI monolith."""
+"""`compile` command."""
 
 from __future__ import annotations
 
@@ -28,6 +28,7 @@ from psweep.compilation.input_provenance import (
     list_compile_record_files,
 )
 from psweep.config import RuntimeConfigError
+from psweep.pipeline import resolve_compile_output_dir
 from psweep.utils.config import get_config
 
 
@@ -1290,13 +1291,7 @@ def compile(
     if output:
         output_dir = Path(output)
     else:
-        parts = list(input_dir.parts)
-        if "extracted" in parts:
-            index = parts.index("extracted")
-            parts[index] = "compiled"
-            output_dir = Path(*parts)
-        else:
-            output_dir = Path.cwd() / "compiled" / input_dir.name
+        output_dir = resolve_compile_output_dir(input_dir)
 
     if fresh and not dry_run:
         import shutil

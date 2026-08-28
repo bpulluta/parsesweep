@@ -37,6 +37,63 @@ logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
+# Path-layout helpers
+#
+# Single source of truth for the documents -> extracted -> compiled directory
+# layout and the discovered/<domain>/... convention shared by the CLI commands.
+# ---------------------------------------------------------------------------
+
+
+def discover_domain(path: Path) -> Optional[str]:
+    """Return ``<domain>`` for a ``discovered/<domain>/...`` path, else ``None``.
+
+    The path is resolved first so the convention holds regardless of how the
+    input was spelled (relative, symlinked, or absolute).
+    """
+    resolved_parts = list(Path(path).resolve().parts)
+    if "discovered" in resolved_parts:
+        i = resolved_parts.index("discovered")
+        if i + 1 < len(resolved_parts):
+            return resolved_parts[i + 1]
+    return None
+
+
+def swap_layout_component(path: Path, source: str, target: str) -> Path:
+    """Swap the first ``source`` path component for ``target``.
+
+    Falls back to ``Path.cwd() / target / path.name`` when ``path`` has no
+    ``source`` component. This is the shared documents->extracted->compiled
+    directory swap.
+    """
+    path = Path(path)
+    parts = list(path.parts)
+    if source in parts:
+        parts[parts.index(source)] = target
+        return Path(*parts)
+    return Path.cwd() / target / path.name
+
+
+def resolve_extract_output_dir(input_path: Path, *, is_dir: bool) -> Path:
+    """Default ``extracted/...`` output dir for an extract input path.
+
+    ``discovered/<domain>/...`` inputs map to ``extracted/<domain>``; otherwise a
+    ``documents`` component is swapped to ``extracted``; otherwise
+    ``extracted/<name>``.
+    """
+    input_path = Path(input_path)
+    probe = input_path if is_dir else input_path.parent
+    domain = discover_domain(probe)
+    if domain:
+        return Path.cwd() / "extracted" / domain
+    return swap_layout_component(probe, "documents", "extracted")
+
+
+def resolve_compile_output_dir(input_dir: Path) -> Path:
+    """Default ``compiled/...`` output dir for a compile input directory."""
+    return swap_layout_component(Path(input_dir), "extracted", "compiled")
+
+
+# ---------------------------------------------------------------------------
 # Result dataclasses
 # ---------------------------------------------------------------------------
 

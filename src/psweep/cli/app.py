@@ -35,6 +35,37 @@ from psweep.pipeline import (
     resolve_run_validation,
 )
 
+
+# ---------------------------------------------------------------------------
+# On-disk artifact counting helpers (shared by run-plan and post-run summary)
+# ---------------------------------------------------------------------------
+
+
+def _count_curated_documents(curated_dir: Path) -> int:
+    """Count curated docs, skipping ``.text`` sidecars and ``.json``."""
+    if not curated_dir.exists():
+        return 0
+    return sum(
+        1
+        for f in curated_dir.rglob("*")
+        if f.is_file() and ".text" not in str(f) and f.suffix != ".json"
+    )
+
+
+def _count_extracted_documents(extraction_dir: Path) -> int:
+    """Count extracted JSONs, excluding ``run_manifests/*.json``."""
+    if not extraction_dir.exists():
+        return 0
+    manifests_dir = extraction_dir / "run_manifests"
+    all_json = sum(1 for _ in extraction_dir.rglob("*.json"))
+    manifest_json = (
+        sum(1 for _ in manifests_dir.rglob("*.json"))
+        if manifests_dir.exists()
+        else 0
+    )
+    return all_json - manifest_json
+
+
 # ---------------------------------------------------------------------------
 # App
 # ---------------------------------------------------------------------------
@@ -328,27 +359,12 @@ def run(
 
     new_targets = [t for t in planned_target_labels if t not in checkpointed]
     curated_dir = Path(f"discovered/{domain}/curated")
-    curated_count = (
-        sum(
-            1
-            for f in curated_dir.rglob("*")
-            if f.is_file() and ".text" not in str(f) and f.suffix != ".json"
-        )
-        if curated_dir.exists()
-        else 0
-    )
+    curated_count = _count_curated_documents(curated_dir)
 
     extraction_dir = Path(
         cfg.get("extraction", {}).get("output_dir", f"extracted/{domain}")
     )
-    extracted_count = 0
-    if extraction_dir.exists():
-        manifests_dir = extraction_dir / "run_manifests"
-        all_json = sum(1 for _ in extraction_dir.rglob("*.json"))
-        manifest_json = (
-            sum(1 for _ in manifests_dir.rglob("*.json")) if manifests_dir.exists() else 0
-        )
-        extracted_count = all_json - manifest_json
+    extracted_count = _count_extracted_documents(extraction_dir)
 
     # Show run plan
     view.header()
@@ -473,25 +489,12 @@ def run(
         if (not skip_discover and discovery_enabled and latest_curated_dir.exists())
         else consolidated_curated_dir
     )
-    if final_curated_dir.exists():
-        doc_count = sum(
-            1
-            for f in final_curated_dir.rglob("*")
-            if f.is_file() and ".text" not in str(f) and f.suffix != ".json"
-        )
-        if doc_count:
-            summary_rows["Documents found"] = str(doc_count)
-    if extraction_dir.exists():
-        manifests_dir = extraction_dir / "run_manifests"
-        all_json = sum(1 for _ in extraction_dir.rglob("*.json"))
-        manifest_json = (
-            sum(1 for _ in manifests_dir.rglob("*.json"))
-            if manifests_dir.exists()
-            else 0
-        )
-        final_extracted = all_json - manifest_json
-        if final_extracted:
-            summary_rows["Extracted"] = str(final_extracted)
+    doc_count = _count_curated_documents(final_curated_dir)
+    if doc_count:
+        summary_rows["Documents found"] = str(doc_count)
+    final_extracted = _count_extracted_documents(extraction_dir)
+    if final_extracted:
+        summary_rows["Extracted"] = str(final_extracted)
     view.summary(summary_rows, title="Pipeline Complete")
 
 

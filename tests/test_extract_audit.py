@@ -52,18 +52,16 @@ def test_generic_filter_parses_column_value_pairs():
     assert ("domain", "tariffs") in filters
 
 
-def test_state_and_jurisdiction_aliases_map_onto_generic_filter():
+def test_generic_filter_slugifies_multiword_values():
     filters = _build_index_filters(
-        [], filter_state="CA", filter_jurisdiction="Imperial County"
+        ["source_state=CA", "source_jurisdiction=Imperial County"]
     )
     assert ("source_state", "ca") in filters
     assert ("source_jurisdiction", "imperial-county") in filters
 
 
 def test_row_matches_filters_is_case_and_format_insensitive():
-    filters = _build_index_filters(
-        [], filter_jurisdiction="Imperial County"
-    )
+    filters = _build_index_filters(["source_jurisdiction=Imperial County"])
     assert _row_matches_filters(
         {"source_jurisdiction": "imperial-county"}, filters
     )
