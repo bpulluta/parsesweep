@@ -1,4 +1,4 @@
-"""`curate` command extracted from the legacy CLI monolith."""
+"""`curate` command."""
 
 from __future__ import annotations
 

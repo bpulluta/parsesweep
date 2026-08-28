@@ -8,6 +8,65 @@ from psweep.extraction.llm_factory import DEFAULT_MODEL
 from psweep.utils.model_pricing import get_model_pricing
 
 
+# Rough pre-flight estimation constants (order-of-magnitude, not billing-grade).
+CHARS_PER_TOKEN = 4
+OUTPUT_TOKEN_RATIO = 0.1  # assume output tokens ~= 10% of input tokens
+TOKENS_PER_SECOND = 100  # assumed throughput per worker
+
+
+@dataclass(frozen=True)
+class ExtractionEstimate:
+    """Pre-flight cost/time estimate for extracting a body of text."""
+
+    model: str
+    input_tokens: int
+    output_tokens: float
+    input_rate: float
+    output_rate: float
+    input_cost: float
+    output_cost: float
+    total_cost: float
+    estimated_seconds: float
+
+    @property
+    def estimated_minutes(self) -> float:
+        return self.estimated_seconds / 60
+
+
+def estimate_extraction_cost(
+    total_chars: float,
+    model: str,
+    *,
+    workers: int = 1,
+) -> ExtractionEstimate:
+    """Rough pre-flight cost/time estimate for extracting ``total_chars`` of text.
+
+    Single source of truth for the CLI's order-of-magnitude estimate used by the
+    ``preview``, ``estimate``, and ``extract`` commands: input tokens are
+    approximated as ``chars / CHARS_PER_TOKEN``, output tokens as
+    ``OUTPUT_TOKEN_RATIO`` of input, and throughput as ``TOKENS_PER_SECOND`` per
+    worker. Pricing comes from the shared model-pricing DB for ``model`` (pass
+    the resolved model name so the estimate matches what the run will bill).
+    """
+    input_tokens = int(total_chars // CHARS_PER_TOKEN)
+    output_tokens = input_tokens * OUTPUT_TOKEN_RATIO
+    input_rate, output_rate = get_model_pricing(model)
+    input_cost = (input_tokens / 1_000_000) * input_rate
+    output_cost = (output_tokens / 1_000_000) * output_rate
+    estimated_seconds = input_tokens / (TOKENS_PER_SECOND * workers)
+    return ExtractionEstimate(
+        model=model,
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+        input_rate=input_rate,
+        output_rate=output_rate,
+        input_cost=input_cost,
+        output_cost=output_cost,
+        total_cost=input_cost + output_cost,
+        estimated_seconds=estimated_seconds,
+    )
+
+
 @dataclass
 class CostTracker:
     """Track API costs in real-time during extraction operations."""

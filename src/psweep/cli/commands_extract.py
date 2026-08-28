@@ -1,4 +1,4 @@
-"""`extract` command and helpers extracted from the legacy CLI monolith."""
+"""`extract` command and helpers."""
 
 from __future__ import annotations
 
@@ -38,6 +38,7 @@ from psweep.extraction.document_utils import (
 )
 from psweep.extraction.llm_factory import DEFAULT_MAX_CONTEXT, DEFAULT_MODEL
 from psweep.extraction.record_writer import write_extraction_record
+from psweep.pipeline import resolve_extract_output_dir
 from psweep.validation.utils import sanitize_model_name
 from psweep.utils.config import get_config
 from psweep.utils.error_taxonomy import (
@@ -258,18 +259,11 @@ def _slugify_value(value) -> str:
     return re.sub(r"[^a-z0-9]+", "-", str(value or "").lower()).strip("-")
 
 
-def _build_index_filters(
-    filters,
-    filter_state: Optional[str] = None,
-    filter_jurisdiction: Optional[str] = None,
-) -> List[tuple]:
+def _build_index_filters(filters) -> List[tuple]:
     """Return ``[(column, slug_value), ...]`` for download-index row filtering.
 
     Domain-neutral: ``--filter column=value`` filters on any
-    ``download_index.csv`` column. The legacy ``--filter-state`` /
-    ``--filter-jurisdiction`` options are thin back-compat aliases that map onto
-    the same mechanism (columns ``source_state`` / ``source_jurisdiction``), so
-    existing runs behave identically while new domains use the generic flag.
+    ``download_index.csv`` column (repeatable).
     """
     pairs: List[tuple] = []
     for raw in filters or ():
@@ -278,12 +272,6 @@ def _build_index_filters(
             col = col.strip()
             if col:
                 pairs.append((col, _slugify_value(val)))
-    if filter_state:
-        pairs.append(("source_state", _slugify_value(filter_state)))
-    if filter_jurisdiction:
-        pairs.append(
-            ("source_jurisdiction", _slugify_value(filter_jurisdiction))
-        )
     return pairs
 
 
@@ -806,20 +794,6 @@ def _extract_one_document(
     help="With --from-index: keep only rows where COLUMN matches VALUE "
     "(format: column=value; repeatable; matches any download_index.csv column)",
 )
-@click.option(
-    "--filter-state",
-    "filter_state",
-    type=str,
-    default=None,
-    help="Back-compat alias for --filter source_state=VALUE",
-)
-@click.option(
-    "--filter-jurisdiction",
-    "filter_jurisdiction",
-    type=str,
-    default=None,
-    help="Back-compat alias for --filter source_jurisdiction=VALUE",
-)
 def extract(
     path: Optional[str],
     config_path: Optional[str],
@@ -843,8 +817,6 @@ def extract(
     pages_csv: Optional[str],
     from_index: Optional[str] = None,
     index_filters: tuple = (),
-    filter_state: Optional[str] = None,
-    filter_jurisdiction: Optional[str] = None,
 ):
     """Extract structured data from documents using an LLM.
 
@@ -899,9 +871,7 @@ def extract(
             _fi_downloaded = [
                 r for r in _fi_rows if r.get("status") == "downloaded"
             ]
-            _fi_filters = _build_index_filters(
-                index_filters, filter_state, filter_jurisdiction
-            )
+            _fi_filters = _build_index_filters(index_filters)
             if _fi_filters:
                 _fi_downloaded = [
                     r
@@ -1034,29 +1004,10 @@ def extract(
     else:
         category = path.parent.name
 
-    def _discover_domain(p: Path) -> Optional[str]:
-        resolved_parts = list(p.resolve().parts)
-        if "discovered" in resolved_parts:
-            i = resolved_parts.index("discovered")
-            if i + 1 < len(resolved_parts):
-                return resolved_parts[i + 1]
-        return None
-
     if output:
         output_dir = Path(output)
     else:
-        probe = path if is_dir else path.parent
-        disc_domain = _discover_domain(probe)
-        if disc_domain:
-            output_dir = Path.cwd() / "extracted" / disc_domain
-        else:
-            parts = list(probe.parts)
-            if "documents" in parts:
-                idx = parts.index("documents")
-                parts[idx] = "extracted"
-                output_dir = Path(*parts)
-            else:
-                output_dir = Path.cwd() / "extracted" / probe.name
+        output_dir = resolve_extract_output_dir(path, is_dir=is_dir)
 
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -1374,11 +1325,7 @@ def extract(
         except ValueError:
             config_info["Schema"] = str(schema_path)
 
-        if runtime_artifact:
-            config_info["Artifact"] = runtime_artifact["artifact_id"]
-            config_info["Profile"] = runtime_artifact["lineage"]["profile_id"]
-        else:
-            config_info["Profile"] = profile_name
+        config_info["Profile"] = profile_name
 
     if len(doc_files) > 10 and not view.is_quiet:
         sample_size = min(3, len(doc_files))
@@ -1394,20 +1341,18 @@ def extract(
         if total_chars > 0:
             avg_chars = total_chars / sample_size
             estimated_total_chars = avg_chars * len(doc_files)
-            estimated_tokens = int(estimated_total_chars / 4)
 
             from psweep.extraction.llm_factory import resolve_model_name
-            from psweep.utils.model_pricing import get_model_pricing
+            from psweep.cli.cost_tracker import estimate_extraction_cost
 
             est_model = resolve_model_name(
                 resolved_inputs.get("model"),
                 models=resolved_inputs.get("models"),
                 llm_config=config.llm_config,
             )
-            input_rate, output_rate = get_model_pricing(est_model)
-            input_cost = (estimated_tokens / 1_000_000) * input_rate
-            output_cost = (estimated_tokens * 0.1 / 1_000_000) * output_rate
-            total_est_cost = input_cost + output_cost
+            est = estimate_extraction_cost(estimated_total_chars, est_model)
+            estimated_tokens = est.input_tokens
+            total_est_cost = est.total_cost
 
             if total_est_cost > 1.0:
                 view.warning(
