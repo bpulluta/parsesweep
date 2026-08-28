@@ -426,6 +426,7 @@ def discover(
     resolved_partition_by = _norm["partition_by"]
     resolved_browser_mode = _norm["browser_mode"]
     resolved_browser_escalation = _norm["browser_escalation"]
+    resolved_code_host_adapters = _norm["code_host_adapters"]
     resolved_seeker_extra_params = _norm["seeker_extra_params"]
     resolved_output_documents = _norm["output_documents"]
     resolved_output_manifest = _norm["output_manifest"]
@@ -637,6 +638,7 @@ def discover(
         partition_by=resolved_partition_by,
         browser_mode=resolved_browser_mode,
         browser_escalation=resolved_browser_escalation,
+        code_host_adapters=resolved_code_host_adapters,
         seeker_extra_params=resolved_seeker_extra_params,
         include_url_patterns=resolved_include_url_patterns,
         include_link_text_patterns=resolved_include_link_text_patterns,
