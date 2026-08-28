@@ -23,8 +23,10 @@ For full config-driven runs (recommended for complex domains):
 
 from __future__ import annotations
 
+import json
 import logging
 import os
+import shutil
 import subprocess
 import sys
 from dataclasses import dataclass, field
@@ -270,6 +272,84 @@ def build_run_stage_commands(
         )
     )
     return stage_cmds
+
+
+# ---------------------------------------------------------------------------
+# Run-command on-disk helpers
+#
+# Pure, UI-free logic shared by the CLI ``run`` driver: artifact counting,
+# checkpoint inspection, and the extraction-output layout. Keeping these here
+# (rather than inline in app.py) makes ``run`` a thin driver and the logic
+# unit-testable without spawning the CLI.
+# ---------------------------------------------------------------------------
+
+
+def count_curated_documents(curated_dir: Path) -> int:
+    """Count curated docs, skipping ``.text`` sidecars and ``.json``."""
+    if not curated_dir.exists():
+        return 0
+    return sum(
+        1
+        for f in curated_dir.rglob("*")
+        if f.is_file() and ".text" not in str(f) and f.suffix != ".json"
+    )
+
+
+def count_extracted_documents(extraction_dir: Path) -> int:
+    """Count extracted JSONs, excluding ``run_manifests/*.json``."""
+    if not extraction_dir.exists():
+        return 0
+    manifests_dir = extraction_dir / "run_manifests"
+    all_json = sum(1 for _ in extraction_dir.rglob("*.json"))
+    manifest_json = (
+        sum(1 for _ in manifests_dir.rglob("*.json"))
+        if manifests_dir.exists()
+        else 0
+    )
+    return all_json - manifest_json
+
+
+def run_checkpoint_path(domain: str) -> Path:
+    """Return the discovery checkpoint path for a domain run."""
+    return Path(f"discovered/{domain}/checkpoint.json")
+
+
+def read_checkpoint_entries(checkpoint_path: Path) -> list[str]:
+    """Return the checkpointed target-label keys, or ``[]`` on any problem.
+
+    A missing, unreadable, or malformed checkpoint yields an empty list — the
+    run then treats every planned target as new.
+    """
+    if not checkpoint_path.exists():
+        return []
+    try:
+        data = json.loads(checkpoint_path.read_text())
+        return list((data.get("entries") or {}).keys())
+    except (OSError, ValueError, AttributeError):
+        return []
+
+
+def resolve_run_extraction_dir(cfg: dict, domain: str) -> Path:
+    """Resolve the extraction output dir for a run config.
+
+    Uses ``extraction.output_dir`` when set, else the ``extracted/<domain>``
+    convention.
+    """
+    extraction_cfg = cfg.get("extraction") or {}
+    return Path(extraction_cfg.get("output_dir", f"extracted/{domain}"))
+
+
+def clear_run_extract_output(extraction_dir: Path) -> bool:
+    """Remove the extraction output dir for a ``--fresh`` run.
+
+    Returns ``True`` when a directory was removed, ``False`` when there was
+    nothing to clear. Only the extraction output is cleared here — the
+    per-stage ``--fresh`` flags handle discover/compile.
+    """
+    if not extraction_dir.exists():
+        return False
+    shutil.rmtree(extraction_dir, ignore_errors=True)
+    return True
 
 
 # ---------------------------------------------------------------------------

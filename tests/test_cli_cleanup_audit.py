@@ -19,14 +19,12 @@ from psweep.cli.cost_tracker import (
     estimate_extraction_cost,
 )
 from psweep.pipeline import (
+    count_curated_documents as _count_curated_documents,
+    count_extracted_documents as _count_extracted_documents,
     discover_domain,
     resolve_compile_output_dir,
     resolve_extract_output_dir,
     swap_layout_component,
-)
-from psweep.cli.app import (
-    _count_curated_documents,
-    _count_extracted_documents,
 )
 
 
