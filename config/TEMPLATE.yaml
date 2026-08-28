@@ -95,6 +95,11 @@ compilation:
 #     max_per_host_per_target: 1        # optional host-diversity cap per target (0=off)
 #     exclude: [news, blog, press release]
 #   browser_mode: false                   # default: false — set true to download via headless Chrome (bot-protected sites)
+#   browser_escalation:                   # auto-retry thin/JS-rendered pages with a headless browser
+#     enabled: true                       # off by default; escalate only pages that look under-rendered
+#     min_shell_chars: 8000               # HTTP body below this many chars looks like an unrendered shell → escalate
+#     min_rendered_chars: 10000           # accept the browser render only once it yields at least this many chars
+#     settle_seconds: 20                  # wait up to this long for client-side content to finish rendering
 #   partition_by: [state, jurisdiction]   # output layout by_<field>/<value>/… from target metadata
 #   document_review:
 #     model: secondary                    # pin to an alias — avoid silent .env fallback

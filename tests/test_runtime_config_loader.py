@@ -968,6 +968,34 @@ def test_pages_block_variants(
         )
 
 
+def test_pages_auto_locate_accepts_save_discovered(tmp_path: Path):
+    """save_discovered is consumed by extract; a bool must be accepted."""
+    cfg = _write(
+        tmp_path,
+        "extraction:\n  schema: s.json\n  input_dir: d\n"
+        "  pages:\n    auto_locate:\n"
+        "      section_description: the rate tables\n"
+        "      save_discovered: true\n",
+    )
+    loaded = load_runtime_config_file(cfg)
+    assert loaded["extraction"]["page_targeting"]["save_discovered"] is True
+
+
+def test_pages_auto_locate_rejects_non_bool_save_discovered(tmp_path: Path):
+    """A mistyped (non-bool) save_discovered fails loudly instead of no-op'ing."""
+    cfg = _write(
+        tmp_path,
+        "extraction:\n  schema: s.json\n  input_dir: d\n"
+        "  pages:\n    auto_locate:\n"
+        "      section_description: the rate tables\n"
+        "      save_discovered: yesplease\n",
+    )
+    with pytest.raises(
+        RuntimeConfigError, match="save_discovered must be a boolean"
+    ):
+        load_runtime_config_file(cfg)
+
+
 def test_old_flat_pages_keys_rejected(tmp_path: Path):
     """Old pages_csv / page_targeting keys are no longer accepted."""
     cfg = _write(
@@ -1162,6 +1190,58 @@ def _resolve_discovery(body: str) -> dict:
     return resolve_command_config(
         command="discover", cli_values={}, config_data=yaml.safe_load(body)
     )
+
+
+@pytest.mark.parametrize(
+    ("block", "match"),
+    [
+        (
+            "  seeker:\n    provider: serpapi\n    max_result: 7\n",
+            "Unknown keys in 'discovery.seeker': max_result",
+        ),
+        (
+            "  search:\n    provider: serpapi\n    maxresults: 5\n",
+            "Unknown keys in 'discovery.search': maxresults",
+        ),
+        (
+            "  retry_policy:\n    max_attempt: 3\n",
+            "Unknown keys in 'discovery.retry_policy': max_attempt",
+        ),
+        (
+            "  document_review:\n    keep_topp: 1\n",
+            "Unknown keys in 'discovery.document_review': keep_topp",
+        ),
+    ],
+)
+def test_load_runtime_config_file_rejects_unknown_subblock_key(
+    tmp_path: Path, block: str, match: str
+):
+    """A typo inside a consumed discovery sub-block fails loudly (not no-op)."""
+    config_path = tmp_path / "run.yaml"
+    config_path.write_text(
+        "discovery:\n  seeds:\n    - https://example.org/a\n" + block,
+        encoding="utf-8",
+    )
+    with pytest.raises(RuntimeConfigError, match=match):
+        load_runtime_config_file(config_path)
+
+
+def test_load_runtime_config_file_accepts_known_subblock_keys(tmp_path: Path):
+    """serpapi_params stays an unrestricted passthrough (shallow check only)."""
+    config_path = tmp_path / "run.yaml"
+    config_path.write_text(
+        "discovery:\n"
+        "  seeds:\n    - https://example.org/a\n"
+        "  search:\n"
+        "    provider: serpapi\n"
+        "    max_results: 5\n"
+        "    serpapi_params:\n"
+        "      tbm: nws\n"
+        "      any_verbatim_key: ok\n",
+        encoding="utf-8",
+    )
+    loaded = load_runtime_config_file(config_path)
+    assert loaded["discovery"]["search"]["max_results"] == 5
 
 
 def test_browser_escalation_resolves_to_discovery_inputs():

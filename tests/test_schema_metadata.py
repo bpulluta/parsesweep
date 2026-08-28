@@ -391,3 +391,184 @@ class TestExpectedRequirementsMethods:
         assert not hasattr(meta, "get_expected_count_range")
         assert not hasattr(meta, "get_qa_qc_match_fields")
         assert not hasattr(meta, "get_qa_qc_compare_fields")
+
+
+# --- Strict validation of schema-side compilation / identity blocks -----------
+# Previously these blocks were unchecked: a mistyped key (e.g. key_field for
+# key_fields, or expand_max_item for expand_max_items) silently reverted to a
+# default and produced wrong output with no error. These lock the guards.
+
+
+def _write_schema(tmp_path, metadata_extra):
+    """Write a minimal-valid schema, merging metadata_extra onto $metadata."""
+    metadata = {
+        "extraction": {
+            "main_data_array": "items",
+            "identifier_fields": ["id"],
+        }
+    }
+    metadata.update(metadata_extra)
+    schema = {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "$metadata": metadata,
+        "type": "object",
+        "properties": {"items": {"type": "array", "items": {"type": "object"}}},
+    }
+    path = tmp_path / "schema.json"
+    path.write_text(json.dumps(schema), encoding="utf-8")
+    return path
+
+
+class TestCompilationBlockValidation:
+    """Strict validation for schema-side compilation sub-blocks."""
+
+    def test_valid_flattening_block_accepted(self, tmp_path):
+        path = _write_schema(
+            tmp_path,
+            {
+                "compilation": {
+                    "flattening": {
+                        "type_fields": ["type", "category"],
+                        "skip_fields": ["notes"],
+                        "expand_max_items": 20,
+                        "expand_max_fields": 25,
+                        "unit_normalizations": {"ft": "feet"},
+                    }
+                }
+            },
+        )
+        meta = SchemaMetadata(path)
+        assert meta.get_flattening_config()["expand_max_items"] == 20
+
+    def test_valid_output_and_normalization_accepted(self, tmp_path):
+        path = _write_schema(
+            tmp_path,
+            {
+                "compilation": {
+                    "output": {
+                        "default_format": "excel",
+                        "annotation_column": "Notes",
+                        "exclude_fields": ["internal"],
+                        "column_renames": {"Name": "name"},
+                        "freeze_columns": 2,
+                        "auto_width": True,
+                    },
+                    "normalization": {"state_column": "State"},
+                }
+            },
+        )
+        meta = SchemaMetadata(path)
+        assert meta.get_output_format() == "excel"
+        assert meta.get_state_normalization_column() == "State"
+
+    def test_normalization_state_column_null_accepted(self, tmp_path):
+        """Explicit null opts a non-US domain out of state normalization."""
+        path = _write_schema(
+            tmp_path,
+            {"compilation": {"normalization": {"state_column": None}}},
+        )
+        meta = SchemaMetadata(path)
+        assert meta.get_state_normalization_column() is None
+
+    def test_unrelated_compilation_keys_left_untouched(self, tmp_path):
+        """Non-framework compilation keys (e.g. temporal_precision) still load."""
+        path = _write_schema(
+            tmp_path,
+            {
+                "compilation": {
+                    "description": "notes",
+                    "strategy": "temporal",
+                    "temporal_precision": {"precision_field_pattern": "*_date"},
+                }
+            },
+        )
+        # Must not raise — only flattening/normalization/output are validated.
+        SchemaMetadata(path)
+
+    @pytest.mark.parametrize(
+        ("compilation", "match"),
+        [
+            (
+                {"flattening": {"expand_max_item": 20}},
+                "unknown key",
+            ),
+            (
+                {"flattening": {"expand_max_items": 0}},
+                "expand_max_items must be a positive integer",
+            ),
+            (
+                {"flattening": {"type_fields": "type"}},
+                "type_fields must be an array of strings",
+            ),
+            (
+                {"flattening": {"unit_normalizations": ["ft"]}},
+                "unit_normalizations must be an object",
+            ),
+            (
+                {"output": {"annotaton_column": "Notes"}},
+                "unknown key",
+            ),
+            (
+                {"output": {"freeze_columns": -1}},
+                "freeze_columns must be a non-negative integer",
+            ),
+            (
+                {"normalization": {"state_colum": "State"}},
+                "unknown key",
+            ),
+        ],
+    )
+    def test_invalid_compilation_block_rejected(
+        self, tmp_path, compilation, match
+    ):
+        path = _write_schema(tmp_path, {"compilation": compilation})
+        with pytest.raises(SchemaMetadataError, match=match):
+            SchemaMetadata(path)
+
+
+class TestIdentityDeduplicationValidation:
+    """Strict validation for identity.deduplication (excluding CFR block)."""
+
+    def test_valid_deduplication_block_accepted(self, tmp_path):
+        path = _write_schema(
+            tmp_path,
+            {
+                "identity": {
+                    "deduplication": {
+                        "key_fields": ["a", "b"],
+                        "ignore_fields": ["notes"],
+                        "partition_fields": ["state"],
+                        "fuzzy_key_fields": [
+                            "applies_to",
+                            {"field": "condition", "normalize": "words"},
+                        ],
+                        "strategy": "latest",
+                        "comparison_mode": "fuzzy",
+                    }
+                }
+            },
+        )
+        meta = SchemaMetadata(path)
+        assert meta.get_deduplication_key_fields() == ["a", "b"]
+        assert meta.get_deduplication_fuzzy_fields() == [
+            "applies_to",
+            "condition",
+        ]
+
+    @pytest.mark.parametrize(
+        ("dedup", "match"),
+        [
+            ({"key_field": ["a"]}, "unknown key"),
+            ({"key_fields": "a"}, "key_fields must be"),
+            ({"key_fields": [""]}, "must contain only non-empty"),
+            ({"strategy": 5}, "strategy must be a non-empty string"),
+            (
+                {"fuzzy_key_fields": [{"normalize": "words"}]},
+                "require a non-empty string 'field'",
+            ),
+        ],
+    )
+    def test_invalid_deduplication_block_rejected(self, tmp_path, dedup, match):
+        path = _write_schema(tmp_path, {"identity": {"deduplication": dedup}})
+        with pytest.raises(SchemaMetadataError, match=match):
+            SchemaMetadata(path)
