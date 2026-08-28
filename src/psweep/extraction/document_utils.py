@@ -235,7 +235,9 @@ def is_supported_document(file_path: Path) -> bool:
 
 
 def extract_text_from_document(
-    file_path: Path, page_range: Optional[tuple] = None
+    file_path: Path,
+    page_range: Optional[tuple] = None,
+    ocr_corrections: Optional[list] = None,
 ) -> str:
     """
     Extract text from any supported document format.
@@ -248,6 +250,9 @@ def extract_text_from_document(
         Path to the document
     page_range : Optional[tuple]
         Optional tuple (start_page, end_page) for PDF files only (1-indexed)
+    ocr_corrections : Optional[list]
+        Optional OCR text-correction rules (from ``extraction.ocr_corrections``)
+        applied to OCR-derived PDF text only.
 
     Returns
     -------
@@ -281,7 +286,7 @@ def extract_text_from_document(
     # stage might want — so they always extract fresh from the source.
     used_ocr = False
     if ext == ".pdf":
-        text, meta = _extract_from_pdf(file_path, page_range)
+        text, meta = _extract_from_pdf(file_path, page_range, ocr_corrections)
         used_ocr = bool(meta.get("used_ocr"))
     elif ext in {".docx", ".doc"}:
         text = _extract_from_docx(file_path)
@@ -306,13 +311,18 @@ def extract_text_from_document(
 
 
 def _extract_from_pdf(
-    pdf_path: Path, page_range: Optional[tuple] = None
+    pdf_path: Path,
+    page_range: Optional[tuple] = None,
+    ocr_corrections: Optional[list] = None,
 ) -> tuple[str, dict]:
     """Extract PDF text; return ``(text, {"used_ocr": bool})``."""
     from .pdf_utils import extract_text_from_pdf
 
     return extract_text_from_pdf(
-        pdf_path, page_range=page_range, return_meta=True
+        pdf_path,
+        page_range=page_range,
+        return_meta=True,
+        ocr_corrections=ocr_corrections,
     )
 
 

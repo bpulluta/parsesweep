@@ -1,6 +1,7 @@
 """PDF extraction utilities using LLMs."""
 
 import logging
+import re
 from pathlib import Path
 from typing import Optional
 
@@ -111,6 +112,7 @@ def extract_text_from_pdf(
     pdf_path: Path,
     page_range: Optional[tuple] = None,
     return_meta: bool = False,
+    ocr_corrections: Optional[list] = None,
 ):
     """
     Extract text from a PDF file with adaptive method selection.
@@ -229,7 +231,7 @@ def extract_text_from_pdf(
     # "Oil" into "Cil" or "Oakmont" into "Cakmont" — so they must not run on
     # normally-extracted text.
     if used_ocr:
-        text = _cleanup_ocr_errors(text)
+        text = _cleanup_ocr_errors(text, ocr_corrections)
 
     if return_meta:
         return text, {"used_ocr": used_ocr}
@@ -254,113 +256,34 @@ def extract_pages_text(pdf_path: Path) -> list[str]:
         return []
 
 
-def _cleanup_ocr_errors(text: str) -> str:
-    """
-    Fix common OCR errors using scalable rule-based approach.
+def _cleanup_ocr_errors(text: str, rules: Optional[list] = None) -> str:
+    """Apply configured OCR-artifact correction rules to OCR-derived text.
 
-    Strategy:
-
-    1. General pattern rules (O→C, I→l, ^→/, CamelCase splitting)
-    2. Context-aware fixes (units, symbols, abbreviations)
-    3. Small domain dictionary for exceptions
-
-    This scales to new states/documents without hardcoding every variant.
+    ``rules`` is a list of ``{"pattern", "replacement", "ignore_case"?}``
+    objects supplied via ``extraction.ocr_corrections`` in the run config and
+    applied in order. When no rules are configured this is a no-op: OCR
+    corrections are domain-specific (e.g. scanned air-emissions permits) and are
+    opted into per domain rather than baked into this universal extractor.
 
     Parameters
     ----------
     text : str
-        Raw extracted text
+        Raw OCR-extracted text.
+    rules : list, optional
+        Ordered correction rules; see ``extraction.ocr_corrections``.
 
     Returns
     -------
     str
-        Text with common OCR errors corrected
+        Text with the configured corrections applied (unchanged if none).
     """
-    import re
+    if not rules:
+        return text
 
-    # ========================================================================
-    # RULE 1: Capital O → C at word start (common OCR error in scanned docs)
-    # ========================================================================
-    # Pattern: Oarbon → Carbon, Oompounds → Compounds, Oaterpillar → Caterpillar
-    # Scalable: Works for any capitalized word starting with O followed by vowel
-    text = re.sub(r"\bO([aeiou][a-z]+)", r"C\1", text)
-
-    # ========================================================================
-    # RULE 2: Split compound words (CamelCase → Separated Words)
-    # ========================================================================
-    # Pattern: SulfurDioxide → Sulfur Dioxide, CarbonMonoxide → Carbon Monoxide
-    # Scalable: Works for any CamelCase technical terms (2+ capitalized words)
-    text = re.sub(
-        r"\b([A-Z][a-z]+)([A-Z][a-z]+(?:[A-Z][a-z]+)*)\b", r"\1 \2", text
-    )
-
-    # ========================================================================
-    # RULE 3: Symbol substitutions (OCR misreads special characters)
-    # ========================================================================
-    # ^ → / in units (tons^yr → tons/yr)
-    text = re.sub(r"(lbs|tons)\^(hr|yr)", r"\1/\2", text)
-    # ^ → 2 in chemical formulas (NO^ → NO2, SO^ → SO2)
-    text = re.sub(r"([A-Z]{1,2})\^", r"\g<1>2", text)
-
-    # ========================================================================
-    # RULE 4: Letter/Number confusion
-    # ========================================================================
-    # I → l in common units (Ibs → lbs)
-    text = re.sub(r"\bIbs\b", "lbs", text)
-    # O → 0 in codes/designations (PM-IO → PM-10)
-    text = re.sub(r"PM-I([O0])", "PM-10", text)
-    text = re.sub(r"PM-([O0])", "PM-0", text)
-
-    # ========================================================================
-    # RULE 5: Letter confusion in common abbreviations
-    # ========================================================================
-    # b → h in time units (lbs/br → lbs/hr)
-    text = re.sub(r"(lbs|tons)/br\b", r"\1/hr", text)
-
-    # ========================================================================
-    # RULE 6: Spacing fixes (remove run-together words)
-    # ========================================================================
-    spacing_rules = [
-        (
-            r"Caterpillardiesel",
-            "Caterpillar diesel",
-        ),  # Specific manufacturer+type
-        (r"hoursperyear", "hours per year"),
-        (r"peryear", "per year"),
-        (r"perhour", "per hour"),
-        (r"dieselpowered", "diesel powered"),
-        (r"diesel-powered", "diesel powered"),
-        (r"gaspowered", "gas powered"),
-        (r"gas-powered", "gas powered"),
-        (r"Emissionsfrom", "Emissions from"),
-        (r"Emissionsto", "Emissions to"),
-    ]
-
-    for pattern, replacement in spacing_rules:
-        text = re.sub(pattern, replacement, text, flags=re.IGNORECASE)
-
-    # ========================================================================
-    # RULE 7: Domain dictionary (common text correction patterns)
-    # ========================================================================
-    # Keep small dictionary for edge cases that don't fit general rules
-    domain_terms = {
-        # Chemical compound fragments (double letters, special cases)
-        r"Oioxide": "Dioxide",  # Oioxide not caught by Rule 1 (double-i)
-        r"Oompounds": "Compounds",  # Backup for Organic Oompounds pattern
-        # Special formatting for chemical formulas
-        r"\(asNO2\)": "(as NO2)",  # Add space: (asNO2)→(as NO2)
-        r"\(asSO2\)": "(as SO2)",  # Add space: (asSO2)→(as SO2)
-    }
-
-    for pattern, replacement in domain_terms.items():
-        text = re.sub(pattern, replacement, text)
-
-    # ========================================================================
-    # RULE 8: Numeric spacing (add spaces between numbers and units)
-    # ========================================================================
-    # Add spaces around numeric values with units (4.20lbs/hr → 4.20 lbs/hr)
-    text = re.sub(
-        r"(\d+\.?\d*)([a-z]+/[a-z]+)", r"\1 \2", text, flags=re.IGNORECASE
-    )
+    for rule in rules:
+        pattern = rule["pattern"]
+        replacement = rule["replacement"]
+        flags = re.IGNORECASE if rule.get("ignore_case") else 0
+        text = re.sub(pattern, replacement, text, flags=flags)
 
     return text

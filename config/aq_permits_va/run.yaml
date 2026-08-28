@@ -53,6 +53,43 @@ extraction:
   input_dir: discovered/aq_permits_va/latest/curated
   schema: schemas/personal/air_quality_permits_schema.json
   output_dir: extracted/aq_permits_va
+  # OCR-artifact corrections for scanned air-emissions permits. Applied in order
+  # to OCR-derived PDF text only. These are domain-specific (emissions units,
+  # chemical formulas, manufacturer names); other domains simply omit this block.
+  ocr_corrections:
+    # Capital O -> C at a word start (Oarbon -> Carbon).
+    - {pattern: '\bO([aeiou][a-z]+)', replacement: 'C\1'}
+    # Split run-together CamelCase technical terms (SulfurDioxide -> Sulfur Dioxide).
+    - {pattern: '\b([A-Z][a-z]+)([A-Z][a-z]+(?:[A-Z][a-z]+)*)\b', replacement: '\1 \2'}
+    # ^ -> / in rate units (tons^yr -> tons/yr).
+    - {pattern: '(lbs|tons)\^(hr|yr)', replacement: '\1/\2'}
+    # ^ -> 2 in chemical formulas (NO^ -> NO2, SO^ -> SO2).
+    - {pattern: '([A-Z]{1,2})\^', replacement: '\g<1>2'}
+    # I -> l in unit abbreviations (Ibs -> lbs).
+    - {pattern: '\bIbs\b', replacement: 'lbs'}
+    # O/0 confusion in particulate codes (PM-IO -> PM-10).
+    - {pattern: 'PM-I([O0])', replacement: 'PM-10'}
+    - {pattern: 'PM-([O0])', replacement: 'PM-0'}
+    # b -> h in time units (lbs/br -> lbs/hr).
+    - {pattern: '(lbs|tons)/br\b', replacement: '\1/hr'}
+    # Run-together words common in emissions permits.
+    - {pattern: 'Caterpillardiesel', replacement: 'Caterpillar diesel', ignore_case: true}
+    - {pattern: 'hoursperyear', replacement: 'hours per year', ignore_case: true}
+    - {pattern: 'peryear', replacement: 'per year', ignore_case: true}
+    - {pattern: 'perhour', replacement: 'per hour', ignore_case: true}
+    - {pattern: 'dieselpowered', replacement: 'diesel powered', ignore_case: true}
+    - {pattern: 'diesel-powered', replacement: 'diesel powered', ignore_case: true}
+    - {pattern: 'gaspowered', replacement: 'gas powered', ignore_case: true}
+    - {pattern: 'gas-powered', replacement: 'gas powered', ignore_case: true}
+    - {pattern: 'Emissionsfrom', replacement: 'Emissions from', ignore_case: true}
+    - {pattern: 'Emissionsto', replacement: 'Emissions to', ignore_case: true}
+    # Chemical compound fragments and formula spacing.
+    - {pattern: 'Oioxide', replacement: 'Dioxide'}
+    - {pattern: 'Oompounds', replacement: 'Compounds'}
+    - {pattern: '\(asNO2\)', replacement: '(as NO2)'}
+    - {pattern: '\(asSO2\)', replacement: '(as SO2)'}
+    # Space between a numeric value and its rate unit (4.20lbs/hr -> 4.20 lbs/hr).
+    - {pattern: '(\d+\.?\d*)([a-z]+/[a-z]+)', replacement: '\1 \2', ignore_case: true}
 
 compilation:
   input_dir: extracted/aq_permits_va
