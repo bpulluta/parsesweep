@@ -250,15 +250,13 @@ compilation:
       - Applies_To_Natural_Gas
       - Extraction_Approach
       - Reasoning
-      # Always-null in current dataset — keep in schema for edge cases, drop from output
-      - Subdivision
+      # Genuinely always-empty in this dataset — hidden to keep the table lean
+      # (schema-reindex would otherwise surface them as empty columns).
       - subdivision
-      - Range Low
       - range_low
-      - Range High
       - range_high
-      - Applicable Values
-      - applicable_values
+      # NOTE: applicable_values is NOT excluded — it carries the enumerated set
+      # (permitted districts, permit types) for enumerated rows.
     # column_renames: auto-derived from schema property names (snake_case). Add overrides only.
     column_renames:
       Fips: FIPS

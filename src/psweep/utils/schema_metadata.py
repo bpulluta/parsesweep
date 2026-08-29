@@ -729,6 +729,41 @@ class SchemaMetadata:
             fields.extend(obj_schema.get("properties", {}).keys())
         return fields
 
+    def get_field_types(self) -> Dict[str, set]:
+        """Map each item/context field name to its set of JSON-declared types.
+
+        Domain-agnostic: reads the schema's declared ``type`` for every item and
+        context property (a string like ``"number"`` or a list like
+        ``["integer", "string", "null"]``). The compiler uses this to coerce
+        output columns to their true dtype without hardcoding any field name.
+        Keys are the schema's own (snake_case) field names, which match the
+        post-rename output columns.
+        """
+
+        def _types(prop: Dict[str, Any]) -> set:
+            declared = prop.get("type")
+            if isinstance(declared, str):
+                return {declared}
+            if isinstance(declared, list):
+                return {t for t in declared if isinstance(t, str)}
+            return set()
+
+        props = self.schema.get("properties", {})
+        result: Dict[str, set] = {}
+        main_key = self.get_main_data_array()
+        item_props = (
+            props.get(main_key, {}).get("items", {}).get("properties", {})
+        )
+        for name, prop in item_props.items():
+            if isinstance(prop, dict):
+                result[name] = _types(prop)
+        for obj_key in self.get_context_objects():
+            obj_props = props.get(obj_key, {}).get("properties", {})
+            for name, prop in obj_props.items():
+                if isinstance(prop, dict):
+                    result[name] = _types(prop)
+        return result
+
     @staticmethod
     def _to_snake_case(name: str) -> str:
         """Convert a CamelCase or Title Case column header to snake_case."""
