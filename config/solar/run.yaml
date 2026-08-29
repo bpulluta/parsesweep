@@ -18,5 +18,8 @@ compilation:
   input_dir: extracted/solar/
   schema: schemas/personal/solar_ordinance_schema.json
   output_dir: compiled/solar/
+  normalization:
+    # Derive a 5-digit Census county FIPS join key from state + county.
+    county_fips: true
   output:
     default_format: both

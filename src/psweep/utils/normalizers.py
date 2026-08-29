@@ -6,6 +6,10 @@ Provides standardization functions for common fields like US states.
 """
 
 from typing import Optional
+import csv
+import functools
+import re
+from pathlib import Path
 import logging
 
 logger = logging.getLogger(__name__)
@@ -223,6 +227,92 @@ def normalize_state_column(df, column_name: str = "State") -> None:
     logger.debug(
         f"Normalized {column_name}: {unique_states} unique states across {original_count} rows"
     )
+
+
+# County-name suffixes to strip for suffix-insensitive matching (Census
+# spellings). Multi-word first so "City and Borough" beats "Borough".
+_COUNTY_SUFFIXES = (
+    "city and borough",
+    "census area",
+    "municipality",
+    "municipio",
+    "county",
+    "parish",
+    "borough",
+)
+
+_COUNTY_FIPS_CSV = Path(__file__).parent / "data" / "us_county_fips.csv"
+
+
+def _county_key(name: str) -> str:
+    """Canonical, suffix-insensitive key for county matching.
+
+    Lowercases, drops punctuation, collapses whitespace, and strips a trailing
+    county-equivalent suffix so ``"Imperial"`` and ``"Imperial County"`` match.
+    """
+    key = re.sub(r"[^a-z0-9 ]", " ", str(name or "").lower())
+    key = re.sub(r"\s+", " ", key).strip()
+    for suffix in _COUNTY_SUFFIXES:
+        if key.endswith(" " + suffix):
+            return key[: -len(suffix) - 1].strip()
+    return key
+
+
+@functools.lru_cache(maxsize=1)
+def _county_fips_lookup() -> dict:
+    """Load the bundled Census county→FIPS table once: {(state, key): fips}."""
+    lookup: dict = {}
+    try:
+        with _COUNTY_FIPS_CSV.open(encoding="utf-8") as handle:
+            for row in csv.DictReader(handle):
+                state = (row.get("state") or "").strip().upper()
+                fips = (row.get("fips") or "").strip()
+                key = _county_key(row.get("county") or "")
+                if state and fips and key:
+                    lookup[(state, key)] = fips
+    except OSError:
+        logger.warning("County FIPS table not found at %s", _COUNTY_FIPS_CSV)
+    return lookup
+
+
+def county_to_fips(
+    state: Optional[str], county: Optional[str]
+) -> Optional[str]:
+    """Return the 5-digit county FIPS (GEOID) for a state + county, or None.
+
+    Domain-agnostic geographic enrichment: matching is suffix-insensitive and
+    state-scoped, so ``("Nevada", "Churchill")`` and ``("NV", "Churchill
+    County")`` both resolve to ``"32001"``. Returns None when either input is
+    missing or no county matches (never raises).
+    """
+    if not state or not county:
+        return None
+    state_abbr = normalize_state(state)
+    if not isinstance(state_abbr, str):
+        return None
+    return _county_fips_lookup().get(
+        (state_abbr.strip().upper(), _county_key(county))
+    )
+
+
+def add_county_fips_column(
+    df,
+    state_column: str,
+    county_column: str,
+    fips_column: str = "county_fips",
+) -> None:
+    """Add a ``fips_column`` derived from state + county columns, in place.
+
+    No-op when either source column is absent. Rows that don't resolve get a
+    null FIPS. Universal — any domain with clean county-level geography gets a
+    GIS/DS join key with zero per-domain code.
+    """
+    if state_column not in df.columns or county_column not in df.columns:
+        return
+    df[fips_column] = [
+        county_to_fips(s, c)
+        for s, c in zip(df[state_column], df[county_column])
+    ]
 
 
 def _split_camel_case(name: str) -> str:
