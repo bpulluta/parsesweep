@@ -78,6 +78,9 @@ compilation:
   #   medium: [tier]                       # extra MEDIUM-severity tokens
   # normalization:
   #   state_column: State                # auto-abbreviate US state names
+  #   county_fips: true                  # derive a 5-digit Census county FIPS
+  #                                       # join key from the state + county
+  #                                       # columns (GIS/DS). County-level only.
   #
   # synthesis:                           # multi-source reconciliation
   #   enabled: true                      # reconcile many docs → one row per entity

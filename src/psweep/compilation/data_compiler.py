@@ -320,17 +320,21 @@ class DataCompiler:
 
     def _apply_exclude_fields(self, df: pd.DataFrame) -> pd.DataFrame:
         """
-        Remove columns specified in schema output.exclude_fields.
+        Remove columns named in schema output.exclude_fields.
 
-        This is schema-driven and universal - any schema can specify columns to hide.
+        Schema-driven and universal. Matching is case/format-insensitive: both the
+        configured names and the DataFrame columns are normalized to snake_case
+        before comparison, so a field is named once regardless of casing and there
+        is no need to list both "Applicable Values" and "applicable_values".
         """
         exclude_fields = self.schema_metadata.get_output_exclude_fields()
 
         if not exclude_fields:
             return df
 
-        # Only drop fields that actually exist in the DataFrame
-        cols_to_drop = [col for col in exclude_fields if col in df.columns]
+        norm = self.schema_metadata._to_snake_case
+        excluded = {norm(str(name)) for name in exclude_fields}
+        cols_to_drop = [col for col in df.columns if norm(str(col)) in excluded]
 
         if cols_to_drop:
             if self.verbose:
@@ -341,13 +345,49 @@ class DataCompiler:
 
         return df
 
+    def _coerce_schema_types(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Coerce columns to schema-declared dtypes and unify missing values.
+
+        Domain-agnostic and schema-driven — no field name is hardcoded:
+
+        - Unify missing: empty strings become ``pd.NA`` so the frame has a single
+          missing-value representation (item nulls were ``""``, context nulls were
+          ``NaN``).
+        - Fields the schema types as purely numeric (``number``/``integer``,
+          optionally ``null``, but NOT ``string``) are parsed with
+          ``pd.to_numeric`` so they load as real numbers instead of
+          object-with-blanks. Fields that also allow ``string`` (e.g. a value
+          axis still carrying codes/times pre-Tier-2) are left untouched.
+        - Any float column whose non-null values are all whole numbers is
+          downcast to nullable ``Int64`` — universally kills the ``2012.0``
+          year artifact (an int column promoted to float by a single null).
+        """
+        out = df.replace("", pd.NA)
+        type_map = self.schema_metadata.get_field_types()
+        numeric = {"number", "integer"}
+        for col in out.columns:
+            types = type_map.get(col)
+            if types and (types & numeric) and not (types - (numeric | {"null"})):
+                out[col] = pd.to_numeric(out[col], errors="coerce")
+        for col in out.columns:
+            series = out[col]
+            if pd.api.types.is_float_dtype(series):
+                non_null = series.dropna()
+                if len(non_null) and (non_null == non_null.round()).all():
+                    out[col] = series.astype("Int64")
+        return out
+
     def _prepare_output_dataframe(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Apply schema-driven output shaping before saving exports."""
+        """Apply schema-driven output shaping before saving exports.
+
+        Ordering is deliberate: rename to the schema's canonical (snake_case)
+        names first so every later step works in one namespace, then coerce to
+        schema-declared dtypes, then exclude, then order. Universal and
+        config-light — no per-domain or per-field special-casing.
+        """
         prepared_df = df.copy()
 
-        # Exclude fields first — applies to every save path (CSV, Excel, synthesis)
-        prepared_df = self._apply_exclude_fields(prepared_df)
-
+        # 1. Canonical rename first (auto snake_case + explicit overrides).
         column_renames = self.schema_metadata.get_column_renames()
         if column_renames:
             prepared_df = prepared_df.rename(
@@ -358,6 +398,34 @@ class DataCompiler:
                 }
             )
 
+        # 2. Reindex to the full schema projection so the column SET is stable
+        #    and predictable across runs (a field the schema declares but a run
+        #    didn't emit appears as an empty column, instead of vanishing). Extra
+        #    non-schema columns (lineage) are preserved; excludes trim later.
+        schema_fields = (
+            self.schema_metadata._schema_item_properties()
+            + self.schema_metadata._schema_context_properties()
+        )
+        for field in schema_fields:
+            if field not in prepared_df.columns:
+                prepared_df[field] = pd.NA
+
+        # 3. Coerce to schema dtypes + unify missing values.
+        prepared_df = self._coerce_schema_types(prepared_df)
+
+        # 3b. Optional GIS/DS join key: derive county_fips from state + county
+        #     (opt-in; only meaningful for county-level geography).
+        if self.schema_metadata.get_derive_county_fips():
+            from ..utils.normalizers import add_county_fips_column
+
+            add_county_fips_column(
+                prepared_df, "state", "county", "county_fips"
+            )
+
+        # 4. Exclude fields (normalized name match, so casing/format is moot).
+        prepared_df = self._apply_exclude_fields(prepared_df)
+
+        # 5. Column order (priority prefix; remainder in schema order).
         column_order = self.schema_metadata.get_column_order()
         if column_order:
             ordered_columns = [
