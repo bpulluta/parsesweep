@@ -145,3 +145,65 @@ def test_array_field_preserved_as_its_own_column(tmp_path: Path):
     )
     assert out["applicable_values"].tolist() == ["A, B"]
     assert out["value"].isna().all()  # value stays empty/numeric, not overloaded
+
+
+def _schema_with_fips(path: Path) -> None:
+    schema = {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "$metadata": {
+            "domain": "Test",
+            "version": "1.0.0",
+            "extraction": {
+                "main_data_array": "items",
+                "context_objects": ["ctx"],
+                "identifier_fields": ["ctx.id"],
+                "document_type": "Test",
+            },
+            "identity": {"deduplication": {"key_fields": ["feature"]}},
+            "compilation": {"normalization": {"county_fips": True}},
+        },
+        "type": "object",
+        "properties": {
+            "ctx": {
+                "type": "object",
+                "properties": {
+                    "id": {"type": "string"},
+                    "state": {"type": "string"},
+                    "county": {"type": "string"},
+                },
+            },
+            "items": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {"feature": {"type": "string"}},
+                },
+            },
+        },
+    }
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(schema), encoding="utf-8")
+
+
+def test_county_fips_derived_when_enabled(tmp_path: Path):
+    sp = tmp_path / "schema.json"
+    _schema_with_fips(sp)
+    compiler = DataCompiler(
+        schema_metadata=SchemaMetadata(sp), verbose=False, debug=False
+    )
+    out = compiler._prepare_output_dataframe(
+        pd.DataFrame(
+            [
+                {"State": "NV", "County": "Churchill", "Feature": "a"},
+                {"State": "CA", "County": "Imperial County", "Feature": "b"},
+            ]
+        )
+    )
+    assert "county_fips" in out.columns
+    assert out["county_fips"].tolist() == ["32001", "06025"]
+
+
+def test_county_fips_absent_when_not_enabled(tmp_path: Path):
+    # Default schema (no normalization.county_fips) -> no county_fips column.
+    out = _prep(tmp_path, [{"Feature": "a"}])
+    assert "county_fips" not in out.columns

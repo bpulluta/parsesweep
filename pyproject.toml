@@ -85,6 +85,10 @@ package-dir = {"" = "src"}
 where = ["src"]
 include = ["psweep*"]
 
+[tool.setuptools.package-data]
+# Bundled reference data (e.g. the Census county->FIPS lookup) must ship in the wheel.
+psweep = ["**/data/*.csv"]
+
 [tool.black]
 line-length = 100
 target-version = ['py39']

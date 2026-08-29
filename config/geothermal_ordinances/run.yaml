@@ -154,6 +154,10 @@ compilation:
   input_dir: extracted/geothermal_ordinances
   schema: schemas/personal/geothermal_ordinance_schema.json
   output_dir: compiled/geothermal_ordinances
+  normalization:
+    # Derive a 5-digit Census county FIPS join key from state + county
+    # (county-level geography). Domain-agnostic GIS/DS key.
+    county_fips: true
   output:
     default_format: both
     exclude_fields:

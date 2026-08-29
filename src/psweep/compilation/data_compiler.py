@@ -413,6 +413,15 @@ class DataCompiler:
         # 3. Coerce to schema dtypes + unify missing values.
         prepared_df = self._coerce_schema_types(prepared_df)
 
+        # 3b. Optional GIS/DS join key: derive county_fips from state + county
+        #     (opt-in; only meaningful for county-level geography).
+        if self.schema_metadata.get_derive_county_fips():
+            from ..utils.normalizers import add_county_fips_column
+
+            add_county_fips_column(
+                prepared_df, "state", "county", "county_fips"
+            )
+
         # 4. Exclude fields (normalized name match, so casing/format is moot).
         prepared_df = self._apply_exclude_fields(prepared_df)
 

@@ -58,3 +58,48 @@ class TestNormalizeStateColumn:
         df = pd.DataFrame({"Other": ["x"]})
         normalize_state_column(df)  # should not raise
         assert df["Other"].tolist() == ["x"]
+
+
+# --- County FIPS derivation (domain-agnostic GIS/DS join key) -----------------
+
+from psweep.utils.normalizers import (  # noqa: E402
+    county_to_fips,
+    add_county_fips_column,
+)
+
+
+class TestCountyFips:
+    def test_suffix_and_abbrev_insensitive(self):
+        # Same county resolves whether the suffix/state form varies.
+        assert county_to_fips("Nevada", "Churchill") == "32001"
+        assert county_to_fips("NV", "Churchill County") == "32001"
+        assert county_to_fips("California", "Imperial County") == "06025"
+
+    def test_parish_and_census_area_suffixes(self):
+        assert county_to_fips("LA", "Orleans Parish") == "22071"
+        assert county_to_fips("LA", "Orleans") == "22071"
+        assert county_to_fips("AK", "Nome Census Area") == "02180"
+
+    def test_state_scoped_no_cross_state_collision(self):
+        # "Lincoln County" exists in many states; each maps to its own FIPS.
+        a = county_to_fips("NV", "Lincoln")
+        b = county_to_fips("OR", "Lincoln")
+        assert a and b and a != b
+
+    def test_unknown_or_missing_returns_none(self):
+        assert county_to_fips("NV", "Nowhere County") is None
+        assert county_to_fips(None, "Churchill") is None
+        assert county_to_fips("NV", None) is None
+        assert county_to_fips("NV", "") is None
+
+    def test_add_column_derives_and_is_noop_without_source(self):
+        df = pd.DataFrame(
+            {"state": ["NV", "CA"], "county": ["Churchill", "Imperial County"]}
+        )
+        add_county_fips_column(df, "state", "county", "county_fips")
+        assert df["county_fips"].tolist() == ["32001", "06025"]
+
+        # Missing source column -> no column added, no error.
+        df2 = pd.DataFrame({"state": ["NV"]})
+        add_county_fips_column(df2, "state", "county", "county_fips")
+        assert "county_fips" not in df2.columns
