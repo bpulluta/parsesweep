@@ -569,6 +569,16 @@ in different counties) should declare this explicitly:</p>
 </dd></dl>
 
 <dl class="py method">
+<dt class="sig sig-object py" id="psweep.utils.schema_metadata.SchemaMetadata.get_derive_county_fips">
+<span class="sig-name descname"><span class="pre">get_derive_county_fips</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">bool</span></span></span><a class="headerlink" href="#psweep.utils.schema_metadata.SchemaMetadata.get_derive_county_fips" title="Link to this definition">¶</a></dt>
+<dd><p>Whether to derive a <code class="docutils literal notranslate"><span class="pre">county_fips</span></code> join key from state + county.</p>
+<p>Opt-in via <code class="docutils literal notranslate"><span class="pre">compilation.normalization.county_fips:</span> <span class="pre">true</span></code>. When on, the
+compiler adds a 5-digit Census county FIPS column from the <code class="docutils literal notranslate"><span class="pre">state</span></code> and
+<code class="docutils literal notranslate"><span class="pre">county</span></code> columns — a domain-agnostic GIS/DS join key. Off by default,
+and only meaningful for county-level geography (not place/municipality).</p>
+</dd></dl>
+
+<dl class="py method">
 <dt class="sig sig-object py" id="psweep.utils.schema_metadata.SchemaMetadata.get_description">
 <span class="sig-name descname"><span class="pre">get_description</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">str</span></span></span><a class="headerlink" href="#psweep.utils.schema_metadata.SchemaMetadata.get_description" title="Link to this definition">¶</a></dt>
 <dd><p>Get schema description from metadata.</p>
@@ -590,6 +600,18 @@ in different counties) should declare this explicitly:</p>
 <dt class="sig sig-object py" id="psweep.utils.schema_metadata.SchemaMetadata.get_domain">
 <span class="sig-name descname"><span class="pre">get_domain</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">str</span></span></span><a class="headerlink" href="#psweep.utils.schema_metadata.SchemaMetadata.get_domain" title="Link to this definition">¶</a></dt>
 <dd><p>Get domain/category from metadata.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="psweep.utils.schema_metadata.SchemaMetadata.get_field_types">
+<span class="sig-name descname"><span class="pre">get_field_types</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">set</span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#psweep.utils.schema_metadata.SchemaMetadata.get_field_types" title="Link to this definition">¶</a></dt>
+<dd><p>Map each item/context field name to its set of JSON-declared types.</p>
+<p>Domain-agnostic: reads the schema’s declared <code class="docutils literal notranslate"><span class="pre">type</span></code> for every item and
+context property (a string like <code class="docutils literal notranslate"><span class="pre">&quot;number&quot;</span></code> or a list like
+<code class="docutils literal notranslate"><span class="pre">[&quot;integer&quot;,</span> <span class="pre">&quot;string&quot;,</span> <span class="pre">&quot;null&quot;]</span></code>). The compiler uses this to coerce
+output columns to their true dtype without hardcoding any field name.
+Keys are the schema’s own (snake_case) field names, which match the
+post-rename output columns.</p>
 </dd></dl>
 
 <dl class="py method">
@@ -764,10 +786,12 @@ opt a non-US / non-jurisdiction domain out entirely.</p>
 <li><a class="reference internal" href="#psweep.utils.schema_metadata.SchemaMetadata.get_deduplication_key_fields"><code class="docutils literal notranslate"><span class="pre">SchemaMetadata.get_deduplication_key_fields()</span></code></a></li>
 <li><a class="reference internal" href="#psweep.utils.schema_metadata.SchemaMetadata.get_deduplication_partition_fields"><code class="docutils literal notranslate"><span class="pre">SchemaMetadata.get_deduplication_partition_fields()</span></code></a></li>
 <li><a class="reference internal" href="#psweep.utils.schema_metadata.SchemaMetadata.get_deduplication_strategy"><code class="docutils literal notranslate"><span class="pre">SchemaMetadata.get_deduplication_strategy()</span></code></a></li>
+<li><a class="reference internal" href="#psweep.utils.schema_metadata.SchemaMetadata.get_derive_county_fips"><code class="docutils literal notranslate"><span class="pre">SchemaMetadata.get_derive_county_fips()</span></code></a></li>
 <li><a class="reference internal" href="#psweep.utils.schema_metadata.SchemaMetadata.get_description"><code class="docutils literal notranslate"><span class="pre">SchemaMetadata.get_description()</span></code></a></li>
 <li><a class="reference internal" href="#psweep.utils.schema_metadata.SchemaMetadata.get_display_name_template"><code class="docutils literal notranslate"><span class="pre">SchemaMetadata.get_display_name_template()</span></code></a></li>
 <li><a class="reference internal" href="#psweep.utils.schema_metadata.SchemaMetadata.get_document_type"><code class="docutils literal notranslate"><span class="pre">SchemaMetadata.get_document_type()</span></code></a></li>
 <li><a class="reference internal" href="#psweep.utils.schema_metadata.SchemaMetadata.get_domain"><code class="docutils literal notranslate"><span class="pre">SchemaMetadata.get_domain()</span></code></a></li>
+<li><a class="reference internal" href="#psweep.utils.schema_metadata.SchemaMetadata.get_field_types"><code class="docutils literal notranslate"><span class="pre">SchemaMetadata.get_field_types()</span></code></a></li>
 <li><a class="reference internal" href="#psweep.utils.schema_metadata.SchemaMetadata.get_flattening_config"><code class="docutils literal notranslate"><span class="pre">SchemaMetadata.get_flattening_config()</span></code></a></li>
 <li><a class="reference internal" href="#psweep.utils.schema_metadata.SchemaMetadata.get_freeze_columns"><code class="docutils literal notranslate"><span class="pre">SchemaMetadata.get_freeze_columns()</span></code></a></li>
 <li><a class="reference internal" href="#psweep.utils.schema_metadata.SchemaMetadata.get_identifier_fields"><code class="docutils literal notranslate"><span class="pre">SchemaMetadata.get_identifier_fields()</span></code></a></li>

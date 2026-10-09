@@ -553,6 +553,9 @@ the sections you need. It documents every knob inline.</p>
 <span class="w">  </span><span class="c1">#   medium: [tier]                       # extra MEDIUM-severity tokens</span>
 <span class="w">  </span><span class="c1"># normalization:</span>
 <span class="w">  </span><span class="c1">#   state_column: State                # auto-abbreviate US state names</span>
+<span class="w">  </span><span class="c1">#   county_fips: true                  # derive a 5-digit Census county FIPS</span>
+<span class="w">  </span><span class="c1">#                                       # join key from the state + county</span>
+<span class="w">  </span><span class="c1">#                                       # columns (GIS/DS). County-level only.</span>
 <span class="w">  </span><span class="c1">#</span>
 <span class="w">  </span><span class="c1"># synthesis:                           # multi-source reconciliation</span>
 <span class="w">  </span><span class="c1">#   enabled: true                      # reconcile many docs → one row per entity</span>

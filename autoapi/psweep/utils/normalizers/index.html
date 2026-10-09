@@ -359,8 +359,14 @@
 <div class="table-wrapper autosummary longtable docutils container">
 <table class="autosummary longtable docutils align-default">
 <tbody>
-<tr class="row-odd"><td><p><a class="reference internal" href="#psweep.utils.normalizers.camel_to_title" title="psweep.utils.normalizers.camel_to_title"><code class="xref py py-obj docutils literal notranslate"><span class="pre">camel_to_title</span></code></a>(→ str)</p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="#psweep.utils.normalizers.add_county_fips_column" title="psweep.utils.normalizers.add_county_fips_column"><code class="xref py py-obj docutils literal notranslate"><span class="pre">add_county_fips_column</span></code></a>(→ None)</p></td>
+<td><p>Add a <code class="docutils literal notranslate"><span class="pre">fips_column</span></code> derived from state + county columns, in place.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#psweep.utils.normalizers.camel_to_title" title="psweep.utils.normalizers.camel_to_title"><code class="xref py py-obj docutils literal notranslate"><span class="pre">camel_to_title</span></code></a>(→ str)</p></td>
 <td><p>Split camelCase boundaries and Title Case the result, preserving any</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#psweep.utils.normalizers.county_to_fips" title="psweep.utils.normalizers.county_to_fips"><code class="xref py py-obj docutils literal notranslate"><span class="pre">county_to_fips</span></code></a>(→ Optional[str])</p></td>
+<td><p>Return the 5-digit county FIPS (GEOID) for a state + county, or None.</p></td>
 </tr>
 <tr class="row-even"><td><p><a class="reference internal" href="#psweep.utils.normalizers.humanize_field_name" title="psweep.utils.normalizers.humanize_field_name"><code class="xref py py-obj docutils literal notranslate"><span class="pre">humanize_field_name</span></code></a>(→ str)</p></td>
 <td><p>Convert any naming style to clean Title Case.</p></td>
@@ -377,6 +383,15 @@
 </section>
 <section id="module-contents">
 <h2>Module Contents<a class="headerlink" href="#module-contents" title="Link to this heading">¶</a></h2>
+<dl class="py function">
+<dt class="sig sig-object py" id="psweep.utils.normalizers.add_county_fips_column">
+<span class="sig-prename descclassname"><span class="pre">psweep.utils.normalizers.</span></span><span class="sig-name descname"><span class="pre">add_county_fips_column</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">df</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">state_column</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">county_column</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">fips_column</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'county_fips'</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="headerlink" href="#psweep.utils.normalizers.add_county_fips_column" title="Link to this definition">¶</a></dt>
+<dd><p>Add a <code class="docutils literal notranslate"><span class="pre">fips_column</span></code> derived from state + county columns, in place.</p>
+<p>No-op when either source column is absent. Rows that don’t resolve get a
+null FIPS. Universal — any domain with clean county-level geography gets a
+GIS/DS join key with zero per-domain code.</p>
+</dd></dl>
+
 <dl class="py function">
 <dt class="sig sig-object py" id="psweep.utils.normalizers.camel_to_title">
 <span class="sig-prename descclassname"><span class="pre">psweep.utils.normalizers.</span></span><span class="sig-name descname"><span class="pre">camel_to_title</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">str</span></span></span><a class="headerlink" href="#psweep.utils.normalizers.camel_to_title" title="Link to this definition">¶</a></dt>
@@ -403,6 +418,16 @@ separators.</p>
 <span class="go">&#39;Utility_Name&#39;</span>
 </pre></div>
 </div>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="psweep.utils.normalizers.county_to_fips">
+<span class="sig-prename descclassname"><span class="pre">psweep.utils.normalizers.</span></span><span class="sig-name descname"><span class="pre">county_to_fips</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">state</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">county</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span></span><a class="headerlink" href="#psweep.utils.normalizers.county_to_fips" title="Link to this definition">¶</a></dt>
+<dd><p>Return the 5-digit county FIPS (GEOID) for a state + county, or None.</p>
+<p>Domain-agnostic geographic enrichment: matching is suffix-insensitive and
+state-scoped, so <code class="docutils literal notranslate"><span class="pre">(&quot;Nevada&quot;,</span> <span class="pre">&quot;Churchill&quot;)</span></code> and <code class="docutils literal notranslate"><span class="pre">(&quot;NV&quot;,</span> <span class="pre">&quot;Churchill</span>
+<span class="pre">County&quot;)</span></code> both resolve to <code class="docutils literal notranslate"><span class="pre">&quot;32001&quot;</span></code>. Returns None when either input is
+missing or no county matches (never raises).</p>
 </dd></dl>
 
 <dl class="py function">
@@ -558,7 +583,9 @@ Only processes columns that exist in the DataFrame.</p>
 <li><a class="reference internal" href="#">psweep.utils.normalizers</a><ul>
 <li><a class="reference internal" href="#functions">Functions</a></li>
 <li><a class="reference internal" href="#module-contents">Module Contents</a><ul>
+<li><a class="reference internal" href="#psweep.utils.normalizers.add_county_fips_column"><code class="docutils literal notranslate"><span class="pre">add_county_fips_column()</span></code></a></li>
 <li><a class="reference internal" href="#psweep.utils.normalizers.camel_to_title"><code class="docutils literal notranslate"><span class="pre">camel_to_title()</span></code></a></li>
+<li><a class="reference internal" href="#psweep.utils.normalizers.county_to_fips"><code class="docutils literal notranslate"><span class="pre">county_to_fips()</span></code></a></li>
 <li><a class="reference internal" href="#psweep.utils.normalizers.humanize_field_name"><code class="docutils literal notranslate"><span class="pre">humanize_field_name()</span></code></a></li>
 <li><a class="reference internal" href="#psweep.utils.normalizers.normalize_state"><code class="docutils literal notranslate"><span class="pre">normalize_state()</span></code></a></li>
 <li><a class="reference internal" href="#psweep.utils.normalizers.normalize_state_column"><code class="docutils literal notranslate"><span class="pre">normalize_state_column()</span></code></a></li>

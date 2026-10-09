@@ -225,6 +225,17 @@ Module Contents
 
 
 
+   .. py:method:: get_derive_county_fips() -> bool
+
+      Whether to derive a ``county_fips`` join key from state + county.
+
+      Opt-in via ``compilation.normalization.county_fips: true``. When on, the
+      compiler adds a 5-digit Census county FIPS column from the ``state`` and
+      ``county`` columns — a domain-agnostic GIS/DS join key. Off by default,
+      and only meaningful for county-level geography (not place/municipality).
+
+
+
    .. py:method:: get_description() -> str
 
       Get schema description from metadata.
@@ -246,6 +257,19 @@ Module Contents
    .. py:method:: get_domain() -> str
 
       Get domain/category from metadata.
+
+
+
+   .. py:method:: get_field_types() -> Dict[str, set]
+
+      Map each item/context field name to its set of JSON-declared types.
+
+      Domain-agnostic: reads the schema's declared ``type`` for every item and
+      context property (a string like ``"number"`` or a list like
+      ``["integer", "string", "null"]``). The compiler uses this to coerce
+      output columns to their true dtype without hardcoding any field name.
+      Keys are the schema's own (snake_case) field names, which match the
+      post-rename output columns.
 
 
 

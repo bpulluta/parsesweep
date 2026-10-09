@@ -16,7 +16,9 @@ Functions
 
 .. autoapisummary::
 
+   psweep.utils.normalizers.add_county_fips_column
    psweep.utils.normalizers.camel_to_title
+   psweep.utils.normalizers.county_to_fips
    psweep.utils.normalizers.humanize_field_name
    psweep.utils.normalizers.normalize_state
    psweep.utils.normalizers.normalize_state_column
@@ -24,6 +26,15 @@ Functions
 
 Module Contents
 ---------------
+
+.. py:function:: add_county_fips_column(df, state_column: str, county_column: str, fips_column: str = 'county_fips') -> None
+
+   Add a ``fips_column`` derived from state + county columns, in place.
+
+   No-op when either source column is absent. Rows that don't resolve get a
+   null FIPS. Universal — any domain with clean county-level geography gets a
+   GIS/DS join key with zero per-domain code.
+
 
 .. py:function:: camel_to_title(name: str) -> str
 
@@ -46,6 +57,16 @@ Module Contents
    'Facility Name'
    >>> camel_to_title("utility_name")
    'Utility_Name'
+
+
+.. py:function:: county_to_fips(state: Optional[str], county: Optional[str]) -> Optional[str]
+
+   Return the 5-digit county FIPS (GEOID) for a state + county, or None.
+
+   Domain-agnostic geographic enrichment: matching is suffix-insensitive and
+   state-scoped, so ``("Nevada", "Churchill")`` and ``("NV", "Churchill
+   County")`` both resolve to ``"32001"``. Returns None when either input is
+   missing or no county matches (never raises).
 
 
 .. py:function:: humanize_field_name(field_name: str) -> str
