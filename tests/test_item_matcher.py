@@ -169,12 +169,16 @@ class TestMapKeyFieldsToColumns:
         mapped = map_key_fields_to_columns(df, ["field1"])
         assert mapped == []
 
-    def test_first_matching_column_wins(self):
-        """Columns are normalized once up front; the first match (by column
-        order) still wins when two columns share a normalized form."""
+    def test_exact_schema_column_precedes_formatted_alias(self):
+        """Canonical raw paths win; formatted columns remain a wide fallback."""
         df = pd.DataFrame(columns=["Rate Name", "rate_name"])
         mapped = map_key_fields_to_columns(df, ["rate_name"])
-        assert mapped == ["Rate Name"]
+        assert mapped == ["rate_name"]
+
+    def test_context_path_does_not_collide_with_item_leaf(self):
+        """Context and item identities remain separate despite matching leaves."""
+        df = pd.DataFrame(columns=["url", "source.url"])
+        assert map_key_fields_to_columns(df, ["source.url", "url"]) == ["source.url", "url"]
 
     def test_repeated_key_field_maps_consistently(self):
         """Normalizing columns once must not change results across key fields."""

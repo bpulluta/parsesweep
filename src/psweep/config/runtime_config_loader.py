@@ -2295,6 +2295,17 @@ def _merge_config_fields(
     return merged, sources
 
 
+def resolve_compilation_metadata(resolved: dict[str, Any]):
+    """Validate the merged schema/runtime contract before any compilation work."""
+    from psweep.exceptions import SchemaError, ConfigurationError
+    from psweep.utils.schema_metadata import SchemaMetadata
+
+    try:
+        return SchemaMetadata.for_compilation(Path(resolved["schema"]), resolved)
+    except (SchemaError, ConfigurationError, ValueError, OSError) as exc:
+        raise RuntimeConfigError(f"Compilation contract is invalid: {exc}") from exc
+
+
 def resolve_command_config(
     *,
     command: str,

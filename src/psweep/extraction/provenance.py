@@ -22,6 +22,7 @@ import json
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from psweep.discovery.urls import redact_url
 from psweep.utils.error_taxonomy import summarize_error_records
 
 
@@ -116,7 +117,7 @@ def _build_source_context_map(
     input_path: Optional[Path],
     from_index: Optional[str],
 ) -> Dict[str, Dict[str, str]]:
-    """Map each discovered document's filename to its origin URL + queried target."""
+    """Map canonical paths to provenance; basename fallback must be unique."""
     index_path: Optional[Path] = None
 
     if from_index:
@@ -138,6 +139,15 @@ def _build_source_context_map(
         return {}
 
     context_map: Dict[str, Dict[str, str]] = {}
+    basenames: Dict[str, list[Dict[str, str]]] = {}
+
+    def add_path(path: Path, entry: Dict[str, str]) -> None:
+        for key in (path.as_posix(), path.resolve().as_posix()):
+            prior = context_map.get(key)
+            if prior is not None and prior != entry:
+                raise ValueError(f"Conflicting discovery provenance for canonical path: {key}")
+            context_map[key] = entry
+
     try:
         with index_path.open(encoding="utf-8", newline="") as handle:
             for row in csv.DictReader(handle):
@@ -170,20 +180,25 @@ def _build_source_context_map(
                     "state": str(meta.get("state") or ""),
                 }
                 path_candidate = Path(path_val)
-                key_candidates = {
-                    path_candidate.as_posix(),
-                    path_candidate.name,
-                }
+                add_path(path_candidate, context_entry)
+                if not path_candidate.is_absolute():
+                    add_path(index_path.parent / path_candidate, context_entry)
                 rel_candidate = row.get("relative_path")
                 if rel_candidate:
                     rel_path = Path(rel_candidate)
-                    key_candidates.add(rel_path.as_posix())
-                    key_candidates.add(rel_path.name)
-                for key in key_candidates:
-                    if key:
-                        context_map[key] = context_entry
-    except Exception:
+                    if rel_path.is_absolute() or ".." in rel_path.parts:
+                        raise ValueError(f"Invalid discovery relative_path: {rel_candidate}")
+                    add_path(index_path.parent / "curated" / rel_path, context_entry)
+                    if len(rel_path.parts) > 1:
+                        add_path(rel_path, context_entry)
+                basenames.setdefault(path_candidate.name, []).append(context_entry)
+    except (OSError, csv.Error):
         return {}
+    for basename, entries in basenames.items():
+        if len(entries) == 1:
+            context_map[basename] = entries[0]
+        elif basename in context_map:
+            context_map.pop(basename)
     return context_map
 
 
@@ -199,7 +214,8 @@ def _prepend_source_context(
     except ValueError:
         rel_cwd = None
     info = (
-        context_map.get(doc_path.as_posix())
+        context_map.get(doc_path.resolve().as_posix())
+        or context_map.get(doc_path.as_posix())
         or (context_map.get(rel_cwd) if rel_cwd else None)
         or context_map.get(doc_path.name)
         or context_map.get(str(doc_path))
@@ -214,7 +230,7 @@ def _prepend_source_context(
         "=== CONTEXT (added by ParseSweep; not part of the source document) ==="
     ]
     if info.get("url"):
-        lines.append(f"SOURCE_URL: {info['url']}")
+        lines.append(f"SOURCE_URL: {redact_url(info['url'])}")
     if info.get("site_name"):
         lines.append(f"QUERIED_SITE: {info['site_name']}")
     if info.get("company_name"):

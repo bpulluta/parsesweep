@@ -29,6 +29,7 @@ from psweep.cli.ui import (
     print_warning,
 )
 from psweep.config import RuntimeConfigError
+from psweep.exceptions import SchemaError, ConfigurationError
 from psweep.extraction import DocumentExtractor, load_schema
 from psweep.extraction.document_utils import (
     SUPPORTED_EXTENSIONS,
@@ -36,7 +37,10 @@ from psweep.extraction.document_utils import (
     is_supported_document,
 )
 from psweep.extraction.llm_factory import DEFAULT_MAX_CONTEXT, DEFAULT_MODEL
-from psweep.extraction.record_writer import write_extraction_record
+from psweep.extraction.record_writer import (
+    record_extraction_scope,
+    write_extraction_record,
+)
 from psweep.extraction.provenance import (
     _build_run_manifest,
     _build_source_context_map,
@@ -427,6 +431,11 @@ def _extract_one_document(
             )
         text = _prepend_source_context(text, doc_path, source_context_map)
         result = extractor.extract(text, loaded_schema)
+        record_extraction_scope(
+            result,
+            page_range=page_range_map.get(doc_path),
+            section_filtered=pre_filtered is not None,
+        )
 
         doc_output_dir = file_output_dirs.get(doc_path, output_dir)
         num_items = _extract_and_save_result(
@@ -450,6 +459,7 @@ def _extract_one_document(
             "input_tokens": getattr(result, "input_tokens", None),
             "output_tokens": getattr(result, "output_tokens", None),
             "output_path": (doc_output_dir / f"{doc_path.stem}.json").as_posix(),
+            "coverage": result.coverage,
             "success": True,
         }
     except Exception as e:
@@ -706,6 +716,13 @@ def extract(
         view.error("Runtime config resolution failed", str(exc))
         sys.exit(1)
 
+    try:
+        schema_path = _resolve_schema_ref(Path(resolved_inputs["schema"]))
+        loaded_schema = load_schema(schema_path)
+    except (SchemaError, ConfigurationError) as exc:
+        view.error("Extraction schema validation failed", str(exc))
+        sys.exit(1)
+
     warnings = resolved_inputs.get("_config_warnings", [])
     view.warnings(warnings)
 
@@ -737,7 +754,6 @@ def extract(
         return
 
     path = Path(resolved_inputs["path"])
-    schema = resolved_inputs["schema"]
     output = resolved_inputs.get("output", output)
     pages_csv = resolved_inputs.get("pages_csv", pages_csv)
     pages = resolved_inputs.get("pages", pages)
@@ -1115,11 +1131,6 @@ def extract(
         except ValueError:
             config_info["Output"] = str(output_dir)
 
-    schema_path = _resolve_schema_ref(Path(schema))
-    if not schema_path.exists():
-        print_error("Schema not found", schema_path.as_posix())
-        sys.exit(1)
-    loaded_schema = load_schema(schema_path)
     runtime_artifact = None
     if not get_verbosity().is_quiet:
         try:
@@ -1434,6 +1445,11 @@ def extract(
             failed_results=failed,
             costs=run_costs,
         )
+        run_manifest["coverage"] = {
+            result["output_path"]: result["coverage"]
+            for result in successful
+            if result.get("coverage") and result.get("output_path")
+        }
         manifest_path = _write_run_manifest(output_dir, run_id, run_manifest)
         if view.verbosity.shows_detail:
             view.status("info", f"Run manifest: {manifest_path.as_posix()}")
@@ -1519,7 +1535,6 @@ def _run_validation_extraction(
     list from the run config.
     """
     from psweep.validation import run_multi_model_extraction
-    from psweep.cli.commands import ask_confirm as shared_ask_confirm
 
     qa_model_defs = registry.get_models(list(validation_models))
     qa_models = [definition.model for definition in qa_model_defs]
@@ -1570,7 +1585,7 @@ def _run_validation_extraction(
             f"Max fresh extractions: {len(doc_files)} docs × {len(qa_models)} models "
             f"= {len(doc_files) * len(qa_models)} (lower when model outputs are reused)",
         )
-        if prompt_confirm and not shared_ask_confirm(
+        if prompt_confirm and not ask_confirm(
             "Proceed with QA/QC extraction?", default=True
         ):
             view.info("Operation cancelled")

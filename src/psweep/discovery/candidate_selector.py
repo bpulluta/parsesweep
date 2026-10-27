@@ -28,8 +28,7 @@ from urllib.parse import urlparse
 
 from .constants import DOCUMENT_EXTENSIONS
 from .models import DiscoveryCandidate
-from .urls import normalize_url_text, url_extension
-
+from .urls import matches_url_exclusion, normalize_url_text, url_extension
 
 # ---------------------------------------------------------------------------
 # Default draft / stale-document signal patterns (applied to URL + title/snippet)
@@ -457,10 +456,8 @@ class CandidateSelector:
 
     def _matches_exclusion_patterns(self, candidate: DiscoveryCandidate) -> bool:
         """Return True when configured URL/text exclusion patterns match."""
-        if self._exclude_url_patterns:
-            url_text = self._candidate_url_text(candidate)
-            if any(rx.search(url_text) for rx in self._exclude_url_patterns):
-                return True
+        if matches_url_exclusion(candidate.url, self._exclude_url_patterns):
+            return True
 
         if self._exclude_text_patterns:
             text = self._candidate_artifact_text(candidate)

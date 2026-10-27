@@ -295,12 +295,24 @@ def run(
                 strict=config_strict,
             )
         for command_name in preflight_commands:
-            resolve_command_config(
+            stage_inputs = resolve_command_config(
                 command=command_name,
                 cli_values={},
                 config_data=cfg,
                 strict=config_strict,
             )
+            if command_name == "compile":
+                from psweep.config.runtime_config_loader import resolve_compilation_metadata
+
+                resolve_compilation_metadata(stage_inputs)
+            elif command_name == "extract":
+                from psweep.extraction.schema_utils import load_schema
+                from psweep.exceptions import SchemaError, ConfigurationError
+
+                try:
+                    load_schema(Path(str(stage_inputs["schema"])))
+                except (SchemaError, ConfigurationError) as exc:
+                    raise RuntimeConfigError(str(exc)) from exc
         if (
             not skip_extract
             and discover_inputs is not None

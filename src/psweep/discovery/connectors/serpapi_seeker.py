@@ -11,6 +11,27 @@ from ..retry import compute_backoff, is_transient_error
 from .base import BaseSeekerConnector, SeekerInput
 
 
+class SerpApiSearchTimeout(RuntimeError):
+    """Explicit incomplete search, carrying results from completed queries."""
+
+    def __init__(
+        self, candidates: list[dict[str, Any]], query_errors: list[str]
+    ) -> None:
+        self.candidates = candidates
+        self.query_errors = query_errors
+        super().__init__("; ".join(query_errors))
+
+
+def _is_search_timeout(exc: Exception) -> bool:
+    if isinstance(exc, TimeoutError):
+        return True
+    try:
+        from requests.exceptions import Timeout
+    except ImportError:
+        return False
+    return isinstance(exc, Timeout)
+
+
 class SerpApiSeeker(BaseSeekerConnector):
     """
     SerpApi-based seeker connector for Google Search discovery.
@@ -59,9 +80,8 @@ class SerpApiSeeker(BaseSeekerConnector):
             0.0, float(min_request_interval_seconds)
         )
         self._last_request_monotonic = 0.0
-        # Cumulative count of search API calls made (one per rendered query).
-        # Callers can read this after all discover() calls to get the true
-        # number of queries consumed from the plan (not just seeker-input count).
+        # Live outbound attempts, including retries and failed/time-out requests.
+        # Cache hits are free; actual provider billing for failures is unknown.
         self.queries_run: int = 0
         # Optional on-disk result cache so re-running acquire during tuning does
         # not re-pay SerpApi for identical queries. Keyed on the request params.
@@ -86,7 +106,9 @@ class SerpApiSeeker(BaseSeekerConnector):
             now = time.monotonic()
         self._last_request_monotonic = now
 
-    _is_transient_search_error = staticmethod(is_transient_error)
+    @staticmethod
+    def _is_transient_search_error(exc: Exception) -> bool:
+        return _is_search_timeout(exc) or is_transient_error(exc)
 
     def _backoff_for_attempt(self, attempt: int) -> float:
         return compute_backoff(
@@ -103,6 +125,7 @@ class SerpApiSeeker(BaseSeekerConnector):
         for attempt in range(1, self.retry_max_attempts + 1):
             try:
                 self._respect_rate_limit()
+                self.queries_run += 1
                 return search_callable(params)
             except Exception as exc:
                 last_exc = exc
@@ -168,8 +191,11 @@ class SerpApiSeeker(BaseSeekerConnector):
         ------
         ValueError
             If query is empty or invalid.
+        SerpApiSearchTimeout
+            If any query exhausts timeout retries; includes completed results and
+            explicit query errors, after attempting the remaining queries.
         RuntimeError
-            If SerpApi API call fails.
+            If SerpApi fails for another reason; aborts without partial success.
         """
         template_context = {}
         if isinstance(seeker_input.extra_params, dict):
@@ -193,6 +219,7 @@ class SerpApiSeeker(BaseSeekerConnector):
 
         deduped_candidates: list[dict[str, Any]] = []
         seen_urls: set[str] = set()
+        timeout_errors: list[str] = []
         for rendered_query in rendered_queries:
             try:
                 params = self._build_search_params(
@@ -204,11 +231,14 @@ class SerpApiSeeker(BaseSeekerConnector):
                         search_callable, params
                     )
                     self._cache_put(params, results)
-                    self.queries_run += 1
-                # Cache hits do not consume a search API credit; count them
-                # separately so the accounting can distinguish live vs cached.
             except Exception as exc:
                 sanitized_message = self._sanitize_error_message(str(exc))
+                if _is_search_timeout(exc):
+                    timeout_errors.append(
+                        f"SerpApi search failed for query '{rendered_query}': "
+                        f"{sanitized_message}"
+                    )
+                    continue
                 raise RuntimeError(
                     f"SerpApi search failed for query '{rendered_query}': {sanitized_message}"
                 ) from exc
@@ -222,6 +252,8 @@ class SerpApiSeeker(BaseSeekerConnector):
                 seen_urls.add(url)
                 deduped_candidates.append(candidate)
 
+        if timeout_errors:
+            raise SerpApiSearchTimeout(deduped_candidates, timeout_errors)
         return deduped_candidates
 
     # -- result cache ------------------------------------------------------

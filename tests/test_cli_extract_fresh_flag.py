@@ -6,7 +6,17 @@ from click.testing import CliRunner
 
 from psweep.cli.main import cli
 
-SCHEMA_PATH = Path("schemas/personal/geothermal_ordinance_schema.json")
+import sys
+
+import pytest
+
+
+SCHEMA_PATH = None
+
+
+@pytest.fixture(autouse=True)
+def _use_synthetic_schema(schema_path, monkeypatch):
+    monkeypatch.setattr(sys.modules[__name__], "SCHEMA_PATH", schema_path, raising=False)
 
 
 def test_extract_help_exposes_fresh_flag() -> None:

@@ -71,6 +71,7 @@ US_STATES = {
     "puerto rico": "PR",
     "guam": "GU",
     "u.s. virgin islands": "VI",
+    "us virgin islands": "VI",
     "american samoa": "AS",
     "northern mariana islands": "MP",
     "district of columbia": "DC",
@@ -285,6 +286,8 @@ def county_to_fips(
     County")`` both resolve to ``"32001"``. Returns None when either input is
     missing or no county matches (never raises).
     """
+    if not isinstance(state, str) or not isinstance(county, str):
+        return None
     if not state or not county:
         return None
     state_abbr = normalize_state(state)

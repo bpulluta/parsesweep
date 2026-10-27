@@ -12,11 +12,23 @@ not folded in here.
 from __future__ import annotations
 
 import re
+from functools import lru_cache
 from html import unescape
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import parse_qsl, unquote, urlencode, urlparse, urlunparse
 
 _SEPARATOR_RE = re.compile(r"[_\-/]")
+
+
+@lru_cache(maxsize=256)
+def _compile_url_patterns(patterns: tuple[str, ...]) -> tuple[re.Pattern, ...]:
+    """Compile case-insensitive URL patterns once per distinct pattern set."""
+    return tuple(re.compile(pattern, re.IGNORECASE) for pattern in patterns)
+
+
+def compile_url_patterns(patterns) -> tuple[re.Pattern, ...]:
+    """Return compiled patterns, reusing a cached compile for repeated calls."""
+    return _compile_url_patterns(tuple(patterns or ()))
 
 
 def normalize_url_text(text: str) -> str:
@@ -42,6 +54,56 @@ def decode_discovery_url(url: str) -> str:
         decoded = decoded.replace(needle, repl)
     decoded = decoded.replace("\\/", "/")
     return unescape(decoded)
+
+
+def matches_url_exclusion(url: str, patterns: list[re.Pattern]) -> bool:
+    """Match raw and decoded URLs without discarding host/path punctuation."""
+    raw = str(url or "")
+    decoded = unquote(decode_discovery_url(raw))
+    return any(pattern.search(value) for pattern in patterns for value in (raw, decoded))
+
+
+def matches_allowed_domain(url: str, allowed_domains: list[str] | None) -> bool:
+    """Match an exact hostname or subdomain, never an arbitrary substring."""
+    if not allowed_domains:
+        return True
+    host = url_host(decode_discovery_url(url))
+    return any(
+        host == domain.strip().lower() or host.endswith("." + domain.strip().lower())
+        for domain in allowed_domains if domain and domain.strip()
+    )
+
+
+_SECRET_PARAMETER_RE = re.compile(
+    r"token|secret|password|passwd|signature|credential|authorization|api[-_]?key|"
+    r"^key$|^auth$|^sig$|^x-amz-|^x-goog-|^awsaccesskeyid$|^googleaccessid$",
+    re.IGNORECASE,
+)
+
+
+def redact_url(url: str) -> str:
+    """Hide URL credentials/signatures in prompts, preserving document IDs."""
+    try:
+        parsed = urlparse(decode_discovery_url(url))
+        host = parsed.netloc.rsplit("@", 1)[-1]
+        query = urlencode([
+            (key, value) for key, value in parse_qsl(parsed.query, keep_blank_values=True)
+            if not _SECRET_PARAMETER_RE.search(key)
+        ])
+        # Fragments are never sent to the server and may contain OAuth tokens.
+        return urlunparse(parsed._replace(netloc=host, query=query, fragment=""))
+    except ValueError:
+        return "[invalid URL]"
+
+
+def redact_urls_in_text(text: str) -> str:
+    """Sanitize URLs embedded in user-provided target context."""
+    return re.sub(
+        r"https?://[^\s<>\"']+",
+        lambda match: redact_url(match.group()),
+        text,
+        flags=re.IGNORECASE,
+    )
 
 
 def url_host(url: str) -> str:

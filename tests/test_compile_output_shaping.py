@@ -123,6 +123,22 @@ def test_empty_strings_unified_to_na(tmp_path: Path):
     assert out["value"].isna().all()  # "" became NA, not literal ""
 
 
+def test_numeric_schema_type_survives_explicit_rename(tmp_path: Path):
+    schema = tmp_path / "schema.json"
+    _schema(schema)
+    compiler = DataCompiler(SchemaMetadata(schema, {"compilation": {"output": {
+        "column_renames": {"Range Low": "threshold"},
+    }}}), verbose=False)
+    out = compiler._prepare_output_dataframe(pd.DataFrame([
+        {"Feature": "a", "Range Low": "100.5"},
+        {"Feature": "b", "Range Low": ""},
+    ]))
+    assert "range_low" not in out
+    assert pd.api.types.is_numeric_dtype(out["threshold"])
+    assert out.iloc[0]["threshold"] == 100.5
+    assert pd.isna(out.iloc[1]["threshold"])
+
+
 def test_reindex_adds_declared_but_unemitted_field(tmp_path: Path):
     out = _prep(tmp_path, [{"Feature": "a", "Value": "1"}])
     assert "missing_field" in out.columns  # schema field surfaced as a column
