@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+from psweep.utils.normalizers import county_to_fips
 from psweep.discovery.targets import (
     CrossProductTargetProvider,
     CsvTargetProvider,
@@ -55,6 +56,23 @@ class TestSimpleProviders:
 
 
 class TestCrossProduct:
+    def test_county_catalog_filter_preserves_leading_zero_fips(self, tmp_path: Path):
+        _write_csv(
+            tmp_path, "counties.csv",
+            "state,county,fips\nAL,Autauga County,01001\nCO,Adams County,08001\n",
+        )
+        provider = resolve_target_provider(
+            {
+                "source": "cross_product",
+                "dimensions": [{"name": "county", "dataset": "counties.csv"}],
+                "filter": {"fips": ["01001"]},
+            },
+            config_dir=tmp_path,
+        )
+        assert provider.provide() == [
+            {"state": "AL", "county": "Autauga County", "fips": "01001"},
+        ]
+
     def test_values_cross_product_cardinality(self, tmp_path: Path):
         prov = CrossProductTargetProvider(
             [
@@ -113,6 +131,23 @@ class TestCrossProduct:
 
 
 class TestResolveFactory:
+    def test_bundled_county_catalog_covers_fifty_states_with_unique_text_keys(self):
+        path = (
+            Path(__file__).resolve().parents[1]
+            / "src/psweep/utils/data/us_county_fips.csv"
+        )
+        rows = DatasetTargetProvider(path).provide()
+        non_state_codes = {"AS", "DC", "GU", "MP", "PR", "UM", "VI"}
+        assert len({row["state"] for row in rows} - non_state_codes) == 50
+        assert len({row["fips"] for row in rows}) == len(rows)
+        assert all(
+            isinstance(row["fips"], str)
+            and len(row["fips"]) == 5
+            and row["fips"].isdigit()
+            and county_to_fips(row["state"], row["county"]) == row["fips"]
+            for row in rows
+        )
+
     def test_resolve_dataset(self, tmp_path: Path):
         _write_csv(tmp_path, "d.csv", "county\nA\nB\n")
         prov = resolve_target_provider(

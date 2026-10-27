@@ -103,6 +103,22 @@ def test_extract_documents_uses_max_context_chars(
     assert compiled.output_files[0].exists()
 
 
+def test_compile_without_identity_reports_no_deduplication(tmp_path: Path) -> None:
+    directory = tmp_path / "records"
+    directory.mkdir()
+    schema = tmp_path / "schema.json"
+    schema.write_text(json.dumps({"$metadata": {"extraction": {
+        "main_data_array": "items", "identifier_fields": ["name"],
+    }}}))
+    (directory / "record.json").write_text(json.dumps({"payload": {
+        "items": [{"name": "same"}, {"name": "same"}],
+    }}))
+    result = compile_extractions(directory, schema, output_dir=tmp_path / "output",
+                                report_format="csv")
+    assert result.total_rows == 2
+    assert result.deduplicated is False
+
+
 def test_compile_extractions_writes_requested_outputs(tmp_path: Path) -> None:
     extraction_dir = tmp_path / "extracted"
     extraction_dir.mkdir()

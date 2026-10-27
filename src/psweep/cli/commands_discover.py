@@ -676,7 +676,6 @@ def discover(
         return
 
     view.phase("Writing discovery index...")
-    view.success(f"Discovery complete (run_id={result.run_id})")
 
     try:
         manifest_data = json.loads(
@@ -687,6 +686,13 @@ def discover(
 
     notes = manifest_data.get("notes") or []
     errors = manifest_data.get("errors") or []
+    if errors:
+        view.warning(
+            "Discovery finished with errors; results may be partial.",
+            f"run_id={result.run_id}; inspect the manifest before using results.",
+        )
+    else:
+        view.success(f"Discovery complete (run_id={result.run_id})")
     download_summary = (
         (manifest_data.get("stage_summaries") or {}).get("downloads") or {}
     )
@@ -697,6 +703,7 @@ def discover(
         {
             "Run ID": result.run_id,
             "Mode": "dry-run" if resolved_dry_run else "run",
+            "Status": manifest_data.get("status") or "unknown",
             "Downloaded": f"{downloaded_count}/{total_count}",
             "Notes": str(len(notes)),
             "Errors": str(len(errors)),

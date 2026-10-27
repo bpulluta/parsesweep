@@ -25,9 +25,7 @@ def test_validate_requires_config_option(tmp_path: Path) -> None:
     assert "Missing option '--config'" in result.output
 
 
-def test_validate_compare_only_errors_when_no_validation_outputs_found(tmp_path: Path) -> None:
-    schema_path = Path("schemas/personal/geothermal_ordinance_schema.json")
-    assert schema_path.exists()
+def test_validate_compare_only_errors_when_no_validation_outputs_found(tmp_path: Path, schema_path) -> None:
     (tmp_path / "sample.txt").write_text("test", encoding="utf-8")
     cfg_path = tmp_path / "run.yaml"
     cfg_path.write_text(
@@ -54,9 +52,7 @@ def test_validate_compare_only_errors_when_no_validation_outputs_found(tmp_path:
     assert "QA/QC output not found" in result.output
 
 
-def test_validate_accepts_fresh_flag(tmp_path: Path) -> None:
-    schema_path = Path("schemas/personal/geothermal_ordinance_schema.json")
-    assert schema_path.exists()
+def test_validate_accepts_fresh_flag(tmp_path: Path, schema_path) -> None:
     (tmp_path / "sample.txt").write_text("test", encoding="utf-8")
     cfg_path = tmp_path / "run.yaml"
     cfg_path.write_text(

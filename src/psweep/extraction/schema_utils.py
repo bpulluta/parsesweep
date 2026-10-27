@@ -25,4 +25,21 @@ def load_schema(schema_path: Union[str, Path]) -> Dict[str, Any]:
     ConfigurationError
         If the file is missing or not valid JSON
     """
-    return load_json_file(schema_path)
+    schema = load_json_file(schema_path)
+    build_schema_validator(schema)
+    return schema
+
+
+def build_schema_validator(schema: Dict[str, Any]):
+    """Validate a schema definition and return its format-aware validator."""
+    from jsonschema import FormatChecker, SchemaError
+    from jsonschema.validators import validator_for
+    from ..exceptions import SchemaValidationError
+
+    validator_class = validator_for(schema)
+    try:
+        validator_class.check_schema(schema)
+    except SchemaError as exc:
+        message = f"Invalid extraction schema: {exc.message}"
+        raise SchemaValidationError(message) from exc
+    return validator_class(schema, format_checker=FormatChecker())

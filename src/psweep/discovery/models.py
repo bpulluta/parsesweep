@@ -114,6 +114,7 @@ class DiscoveryCandidate:
             "extension": self.extension,
             "canonical_url": self.canonical_url,
             "content_hash": self.content_hash,
+            "target_metadata": self.target_metadata,
         }
 
 

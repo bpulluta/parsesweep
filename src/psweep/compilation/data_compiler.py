@@ -25,6 +25,10 @@ from ..exceptions import SchemaMetadataError
 from ..utils.normalizers import normalize_state_column
 
 
+EXCEL_MAX_DATA_ROWS = 1_048_575
+EXCEL_MAX_CELL_CHARACTERS = 32_767
+
+
 class DataCompiler:
     """
     Universal data compiler that automatically handles any extraction schema.
@@ -92,39 +96,15 @@ class DataCompiler:
         Tuple[pd.DataFrame, Dict]
             Tuple of (DataFrame, schema_info dict)
         """
-        # Always search recursively so partitioned/nested extraction outputs are
-        # treated identically to flat outputs.
-        # Deliberately skip validation/ and run_manifests/ sidecars.
-        _excluded = {"validation", "run_manifests", "qa_qc"}
-        json_files = [
-            path
-            for path in json_dir.rglob("*.json")
-            if not _excluded.intersection(path.relative_to(json_dir).parts)
-        ]
+        from .input_provenance import list_compile_record_files
+
+        json_files = list_compile_record_files(json_dir)
         if not json_files:
             print(f"No JSON files found in {json_dir}")
             return pd.DataFrame(), {}
 
-        # Analyze first canonical extraction-record file to understand schema structure.
-        sample_data = None
-        for sample_file in sorted(json_files):
-            with open(sample_file) as f:
-                loaded = json.load(f)
-            if isinstance(loaded, dict) and isinstance(
-                loaded.get("payload"), dict
-            ):
-                sample_data = loaded["payload"]
-                break
-
-        if sample_data is None:
-            if self.verbose:
-                print(
-                    f"No canonical extraction-record files found in {json_dir}"
-                )
-            return pd.DataFrame(), {}
-
-        # Detect schema type and structure
-        self.schema_info = self.detector.detect_structure(sample_data)
+        # Structure is schema-owned; do not parse a sample record twice.
+        self.schema_info = self.detector.detect_structure({})
 
         if self.verbose:
             print(f"📋 Schema detected: {self.schema_info['type']}")
@@ -152,7 +132,7 @@ class DataCompiler:
         rows = []
         self.file_count = len(json_files)
 
-        for idx, json_file in enumerate(sorted(json_files), 1):
+        for idx, json_file in enumerate(json_files, 1):
             if self.debug:
                 print(
                     f"\n[DEBUG] Processing file {idx}/{self.file_count}: {json_file.name}"
@@ -162,7 +142,7 @@ class DataCompiler:
                 raw_data = json.load(f)
 
             # Canonical extraction-record contract stores extractable data in payload.
-            if "payload" in raw_data and isinstance(raw_data["payload"], dict):
+            if isinstance(raw_data, dict) and isinstance(raw_data.get("payload"), dict):
                 data = raw_data["payload"]
                 context_source = data
             else:
@@ -174,14 +154,15 @@ class DataCompiler:
             )
             context.update(self._extract_lineage_context(raw_data))
 
-            # Extract main array items
-            main_array = data.get(self.schema_info["main_array_key"], [])
-
-            # Filter out invalid items (e.g., strings instead of dicts)
-            if main_array:
-                main_array = [
-                    item for item in main_array if isinstance(item, dict)
-                ]
+            # Refuse malformed records instead of silently dropping their rows.
+            main_key = self.schema_info["main_array_key"]
+            main_array = data.get(main_key, [])
+            if not isinstance(main_array, list) or any(
+                not isinstance(item, dict) for item in main_array
+            ):
+                raise ValueError(
+                    f"{json_file}: {main_key} must be an array of objects"
+                )
 
             # Check if items have a nested array that should be flattened
             # Pattern: parent_array → nested_array (e.g., rate_schedules → charges)
@@ -198,12 +179,19 @@ class DataCompiler:
                         break
 
             if nested_array_key:
-                # Flatten: one row per nested item with parent context
+                # Preserve child rows and parents with no children.
                 file_items = 0
                 for parent_item in main_array:
-                    nested_items = parent_item.pop(nested_array_key, [])
-                    parent_context = self.flattener.flatten_item(parent_item)
+                    nested_items = parent_item.get(nested_array_key, [])
+                    parent_context = self.flattener.flatten_item({
+                        key: value for key, value in parent_item.items()
+                        if key != nested_array_key
+                    })
 
+                    if not nested_items:
+                        rows.append({**context, **parent_context})
+                        file_items += 1
+                        continue
                     for nested_item in nested_items:
                         nested_row = self.flattener.flatten_item(nested_item)
                         row = {**context, **parent_context, **nested_row}
@@ -226,6 +214,23 @@ class DataCompiler:
 
         # Create DataFrame and deduplicate
         df = pd.DataFrame(rows)
+        del rows
+        # Declared optional identity fields may be absent in every record;
+        # represent them as null, but leave misspelled/unknown keys to fail.
+        identity_fields = (
+            self.schema_metadata.get_deduplication_key_fields()
+            + self.schema_metadata.get_deduplication_partition_fields()
+        )
+        from ..utils.item_matcher import map_key_fields_to_columns
+
+        for field in identity_fields:
+            if map_key_fields_to_columns(df, [field], warn_on_missing=False):
+                continue
+            try:
+                self.schema_metadata.resolve_schema_field(field)
+            except SchemaMetadataError:
+                continue
+            df[self.flattener.make_column_name(field.split(".")[-1])] = None
         df = self.flattener.normalize_units(df)
 
         # Normalize state names to 2-letter abbreviations for consistency.
@@ -363,7 +368,11 @@ class DataCompiler:
           year artifact (an int column promoted to float by a single null).
         """
         out = df.replace("", pd.NA)
-        type_map = self.schema_metadata.get_field_types()
+        renames = self.schema_metadata.get_column_renames()
+        type_map = {
+            renames.get(field, renames.get(self.flattener.make_column_name(field), field)): types
+            for field, types in self.schema_metadata.get_field_types().items()
+        }
         numeric = {"number", "integer"}
         for col in out.columns:
             types = type_map.get(col)
@@ -407,8 +416,12 @@ class DataCompiler:
             + self.schema_metadata._schema_context_properties()
         )
         for field in schema_fields:
-            if field not in prepared_df.columns:
-                prepared_df[field] = pd.NA
+            display = self.flattener.make_column_name(field)
+            output_field = column_renames.get(
+                field, column_renames.get(display, self.schema_metadata._to_snake_case(field))
+            )
+            if output_field not in prepared_df.columns:
+                prepared_df[output_field] = pd.NA
 
         # 3. Coerce to schema dtypes + unify missing values.
         prepared_df = self._coerce_schema_types(prepared_df)
@@ -442,9 +455,166 @@ class DataCompiler:
 
         return prepared_df
 
-    def save_excel(self, df: pd.DataFrame, output_path: Path):
+    @staticmethod
+    def validate_export(df: pd.DataFrame, formats) -> None:
+        """Reject workbook overflow before either writer touches output."""
+        if "excel" not in formats:
+            return
+        if len(df) > EXCEL_MAX_DATA_ROWS:
+            raise ValueError(
+                f"Excel supports at most {EXCEL_MAX_DATA_ROWS:,} data rows; "
+                "select CSV for this batch. No export was written."
+            )
+        for column in df.columns:
+            if any(
+                isinstance(value, str) and len(value) > EXCEL_MAX_CELL_CHARACTERS
+                for value in df[column]
+            ):
+                raise ValueError(
+                    f"Excel cells support at most {EXCEL_MAX_CELL_CHARACTERS:,} characters "
+                    f"(column {column}); select CSV to preserve evidence. No export was written."
+                )
+
+    def export(self, df, output_dir: Path, base_name: str, formats, *, fresh=False):
+        """Prepare once, preflight, then publish from a staging dir with rollback.
+
+        All requested writers run inside a fresh temporary stage directory beside
+        the real output (same parent, so promotion is a local rename). The stage
+        holds a ``files/`` subdir (writer output) and a ``backup/`` subdir (live
+        files moved aside during publication); every backup name is stage-owned,
+        so nothing in or around the output dir is ever overwritten by a fixed
+        sentinel name. Nothing live is touched until every writer has succeeded:
+
+        - ``fresh``: the finished ``files/`` dir replaces the whole output
+          directory in one rename; the prior directory is kept in ``backup/`` and
+          restored if the rename fails.
+        - non-fresh: each finished file is promoted into place, moving any file
+          it overwrites into ``backup/`` first; a failed promotion rolls the
+          already-promoted files back. Unrelated files are never disturbed.
+
+        A caught writer or publish failure leaves prior output and unrelated
+        files as they were and leaves no staging directory behind. In the rare
+        case that a rollback cannot restore a file it moved aside, the stage root
+        (holding that backup) is kept and the raised error reports where it is,
+        rather than claiming the output is unchanged.
+
+        Limitations: this is staged publication with rollback, not a crash-safe
+        transaction. Writers run before any live file is touched, but publication
+        is a sequence of renames — a process/power crash mid-publish, or a
+        concurrent writer in the same output dir, can leave a brief or partial
+        state; there is no locking.
+        """
+        import shutil
+        import tempfile
+
+        frame = self._prepare_output_dataframe(df)
+        self.validate_export(frame, formats)
+        output_dir = Path(output_dir)
+        plan = []
+        if "csv" in formats:
+            plan.append((f"{base_name}.csv", self.save_csv))
+        if "excel" in formats:
+            plan.append((f"{base_name}.xlsx", self.save_excel))
+
+        output_dir.parent.mkdir(parents=True, exist_ok=True)
+        stage_root = Path(
+            tempfile.mkdtemp(dir=output_dir.parent, prefix=".psweep-export-")
+        )
+        files_dir = stage_root / "files"
+        backup_dir = stage_root / "backup"
+        files_dir.mkdir()
+        backup_dir.mkdir()
+        # Populated only if a failed rollback leaves a prior file recoverable
+        # solely from its stage-owned backup; while non-empty the stage root is
+        # kept so those files survive.
+        preserved: list[str] = []
+        try:
+            staged = []
+            for filename, writer in plan:
+                staged_path = files_dir / filename
+                writer(frame, staged_path, prepared=True)
+                staged.append((filename, staged_path))
+            if fresh:
+                emitted = self._publish_fresh(
+                    files_dir, backup_dir, output_dir, staged, preserved
+                )
+            else:
+                emitted = self._publish_in_place(
+                    backup_dir, output_dir, staged, preserved
+                )
+        except (OSError, ValueError) as exc:
+            if preserved:
+                raise ValueError(
+                    "Export failed; rollback incomplete. Recovery details: "
+                    f"{'; '.join(preserved)}. {exc}"
+                ) from exc
+            raise ValueError(
+                f"Export failed; prior output unchanged. {exc}"
+            ) from exc
+        finally:
+            if not preserved:
+                shutil.rmtree(stage_root, ignore_errors=True)
+        return emitted, frame
+
+    @staticmethod
+    def _publish_fresh(files_dir, backup_dir, output_dir, staged, preserved):
+        """Swap the staged files dir in for the whole output dir, restoring on failure."""
+        backup = None
+        if output_dir.exists():
+            backup = backup_dir / "old"
+            output_dir.replace(backup)
+        try:
+            files_dir.replace(output_dir)
+        except OSError:
+            if backup is not None:
+                try:
+                    backup.replace(output_dir)
+                except OSError:
+                    # The backup is now the only copy of the prior output;
+                    # record it so the caller keeps the stage root.
+                    preserved.append(f"{output_dir.name} -> {backup}")
+            raise
+        return [output_dir / filename for filename, _ in staged]
+
+    @staticmethod
+    def _publish_in_place(backup_dir, output_dir, staged, preserved):
+        """Promote each staged file into the output dir with per-file rollback."""
+        output_dir.mkdir(parents=True, exist_ok=True)
+        promoted = []  # (final_path, backup_path_or_None)
+        try:
+            for index, (filename, staged_path) in enumerate(staged):
+                final_path = output_dir / filename
+                backup_path = None
+                if final_path.exists():
+                    backup_path = backup_dir / f"{index}-{filename}"
+                    final_path.replace(backup_path)
+                # Record before promoting so a failed promotion still restores
+                # the backup we just moved aside.
+                promoted.append((final_path, backup_path))
+                staged_path.replace(final_path)
+        except OSError:
+            # Undo each promotion. Both steps (remove our file, restore the
+            # backup) can fail; wrap each so one failure can't abort the rest,
+            # and keep any backup we could not restore from (preserved => stage
+            # root is retained, so the prior file survives there).
+            for final_path, backup_path in reversed(promoted):
+                try:
+                    final_path.unlink(missing_ok=True)
+                    if backup_path is not None:
+                        backup_path.replace(final_path)
+                except OSError:
+                    if backup_path is not None and backup_path.exists():
+                        preserved.append(f"{final_path.name} -> {backup_path}")
+                    else:
+                        preserved.append(f"new output could not be removed: {final_path}")
+            raise
+        return [final_path for final_path, _ in promoted]
+
+    def save_excel(self, df: pd.DataFrame, output_path: Path, *, prepared=False):
         """Save DataFrame to Excel with professional formatting."""
-        prepared_df = self._prepare_output_dataframe(df)
+        prepared_df = df if prepared else self._prepare_output_dataframe(df)
+        if not prepared:
+            self.validate_export(prepared_df, ["excel"])
         self.excel_formatter.save(
             prepared_df,
             output_path,
@@ -454,7 +624,7 @@ class DataCompiler:
             center_align_max_length=self.schema_metadata.get_center_align_max_length(),
         )
 
-    def save_csv(self, df: pd.DataFrame, output_path: Path):
+    def save_csv(self, df: pd.DataFrame, output_path: Path, *, prepared=False):
         """Save DataFrame to CSV."""
-        prepared_df = self._prepare_output_dataframe(df)
+        prepared_df = df if prepared else self._prepare_output_dataframe(df)
         self.csv_exporter.save(prepared_df, output_path)

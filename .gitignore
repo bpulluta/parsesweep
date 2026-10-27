@@ -124,3 +124,5 @@ AGENTS.md
 docs/_build/
 .archive/
 notebooks/
+graphify-out/
+config/wind_puc/

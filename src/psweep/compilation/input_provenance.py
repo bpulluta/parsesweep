@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any
 
 
 _EXCLUDED_DIRS = {"validation", "run_manifests", "qa_qc"}

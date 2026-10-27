@@ -17,6 +17,9 @@ import time
 from typing import Dict, Any, List, Optional
 from dataclasses import dataclass
 
+from jsonschema import ValidationError
+
+from ..exceptions import SchemaValidationError
 from .llm_client import LLMClient
 from .llm_factory import DEFAULT_MAX_CONTEXT, DEFAULT_MODEL
 from .text_processor import TextProcessor
@@ -36,6 +39,7 @@ class ExtractionResult:
     validation_report: Optional[Any] = None  # Optional QA/QC validation report
     input_tokens: Optional[int] = None  # Prompt tokens (from provider usage)
     output_tokens: Optional[int] = None  # Completion tokens (from provider usage)
+    coverage: Optional[Dict[str, Any]] = None
 
 
 class DocumentExtractor:
@@ -171,6 +175,20 @@ class DocumentExtractor:
         start_time = time.time()
         total_cost = 0.0
         validation_notes = []
+        coverage = {
+            "input_characters": len(text),
+            "extracted_characters": min(len(text), self.max_context_chars),
+            "context_truncated": len(text) > self.max_context_chars,
+        }
+        if coverage["context_truncated"]:
+            validation_notes.append(
+                f"Extraction context truncated from {coverage['input_characters']} "
+                f"to {coverage['extracted_characters']} characters; coverage is partial."
+            )
+
+        from .schema_utils import build_schema_validator
+
+        validator = build_schema_validator(schema)
 
         # Stage 1: LLM Structured Extraction
         logger.info("🤖 Stage 1: LLM Structured Extraction")
@@ -178,8 +196,15 @@ class DocumentExtractor:
         total_cost += extraction["cost"]
         validated_data = extraction["data"]
 
+        # Reject invalid replies before normalization can hide contract violations.
+        self._validate_payload(validated_data, validator)
+
         # Stage 2: Post-extraction sanity checks and normalization
+        validated_data = self.processor.normalize_with_schema(
+            validated_data, schema
+        )
         validated_data = self.processor.normalize_string_fields(validated_data)
+        self._validate_payload(validated_data, validator)
         sanity_warnings = self.processor.run_sanity_checks(
             validated_data, schema_metadata=self.schema_metadata
         )
@@ -200,7 +225,20 @@ class DocumentExtractor:
             validation_report=None,
             input_tokens=extraction.get("input_tokens"),
             output_tokens=extraction.get("output_tokens"),
+            coverage=coverage,
         )
+
+    @staticmethod
+    def _validate_payload(data, validator) -> None:
+        """Reject invalid payloads using the shared error taxonomy."""
+        try:
+            validator.validate(data)
+        except ValidationError as exc:
+            path = ".".join(map(str, exc.absolute_path)) or "payload"
+            message = (
+                f"Extraction schema validation failed at {path}: {exc.message}"
+            )
+            raise SchemaValidationError(message) from exc
 
     def _extract_structured(
         self, text: str, schema: Dict[str, Any]
@@ -226,12 +264,4 @@ class DocumentExtractor:
         text_excerpt, _ = self.processor.optimize(text)
 
         # Use LLM client for extraction
-        result = self.client.extract(text_excerpt, schema)
-
-        # Ensure all schema fields are present (fill missing with null)
-        if result["data"]:
-            result["data"] = self.processor.normalize_with_schema(
-                result["data"], schema
-            )
-
-        return result
+        return self.client.extract(text_excerpt, schema)

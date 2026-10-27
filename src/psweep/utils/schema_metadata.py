@@ -122,6 +122,100 @@ class SchemaMetadata:
         # Validate required metadata fields
         self._validate_metadata()
 
+    @classmethod
+    def for_compilation(cls, schema_path: Path, resolved: Dict[str, Any]):
+        """Build the effective schema/runtime compilation contract once."""
+        compilation = {
+            target: resolved[source]
+            for source, target in (
+                ("compilation_output", "output"),
+                ("normalization", "normalization"),
+                ("severity_tokens", "severity_tokens"),
+                ("synthesis", "synthesis"),
+            )
+            if isinstance(resolved.get(source), dict)
+        }
+        return cls(schema_path, {"compilation": compilation} if compilation else None)
+
+    def _schema_node_at_path(
+        self, node: dict, parts: list[str],
+    ) -> Optional[dict]:
+        """Resolve local references along the path and at its leaf."""
+        for part in [*parts, None]:
+            visited = set()
+            while isinstance(node, dict) and "$ref" in node:
+                ref = node["$ref"]
+                if not ref.startswith("#/") or ref in visited:
+                    return None
+                visited.add(ref)
+                node = self.schema
+                for token in ref[2:].split("/"):
+                    if not isinstance(node, dict):
+                        return None
+                    key = token.replace("~1", "/").replace("~0", "~")
+                    node = node.get(key, {})
+            if not isinstance(node, dict):
+                return None
+            if part is not None:
+                node = node.get("properties", {}).get(part)
+        return node
+
+    def resolve_schema_field(
+        self, path: str, *, root: Optional[dict] = None,
+    ) -> tuple[str, dict]:
+        """Resolve an item/context alias or an exact root-relative path."""
+        if root is not None:
+            found = self._schema_node_at_path(root, path.split("."))
+            if found is None:
+                self._raise_meta(f"Compilation unknown schema field: {path}")
+            return path, found
+        properties = self.schema.get("properties", {})
+        main = self.get_main_data_array()
+        item = properties.get(main, {}).get("items", {})
+        descend = self._schema_node_at_path
+
+        candidates = []
+        parts = path.split(".")
+        array_node = properties.get(parts[0], {})
+        if parts[0] == main or (len(parts) > 1 and "items" in array_node):
+            scoped_item = array_node.get("items", {})
+            found = descend(scoped_item, parts[1:])
+            if found is not None:
+                canonical = (
+                    path if len(parts) > 1 and parts[1] in self.get_context_objects()
+                    else ".".join(parts[1:])
+                )
+                candidates.append((canonical, found))
+        else:
+            found = descend(item, parts)
+            if found is not None:
+                candidates.append((path, found))
+            if parts[0] in self.get_context_objects():
+                found = descend(properties.get(parts[0], {}), parts[1:])
+                if found is not None:
+                    candidates.append((path, found))
+            else:
+                for context in self.get_context_objects():
+                    found = descend(properties.get(context, {}), parts)
+                    if found is not None:
+                        candidates.append((f"{context}.{path}", found))
+        if len(candidates) != 1:
+            reason = "ambiguous" if candidates else "unknown"
+            self._raise_meta(f"Compilation {reason} schema field: {path}")
+        return candidates[0]
+
+    def get_output_formats(self) -> List[str]:
+        """Resolve effective formats; an absent setting retains CSV + Excel."""
+        requested = self.metadata.get("compilation", {}).get("output", {}).get(
+            "default_format", "both"
+        )
+        formats = {"csv": ["csv"], "excel": ["excel"], "xlsx": ["excel"],
+                   "both": ["csv", "excel"], "all": ["csv", "excel"]}
+        normalized = str(requested).strip().lower()
+        if normalized not in formats:
+            self._raise_meta("compilation.output.default_format must be csv, excel, or both")
+        return formats[normalized]
+
     def _load_schema(self) -> dict:
         """Load and parse JSON schema."""
         return load_schema(self.schema_path)
@@ -181,6 +275,7 @@ class SchemaMetadata:
         self._validate_cross_feature_redundancy(identity)
         self._validate_identity_deduplication(identity)
         self._validate_compilation_block()
+        self._validate_synthesis_schema()
 
     def _validate_cross_feature_redundancy(self, identity: Dict[str, Any]) -> None:
         """Strictly validate the optional cross_feature_redundancy dedup block."""
@@ -385,6 +480,35 @@ class SchemaMetadata:
         if severity_tokens is not None:
             self._validate_severity_tokens_block(severity_tokens)
 
+    def _validate_synthesis_schema(self) -> None:
+        """Check existing synthesis inputs against the effective domain schema."""
+        synthesis = self.metadata.get("compilation", {}).get("synthesis")
+        if not synthesis:
+            return
+        from ..config.runtime_config_loader import _validate_synthesis_block
+
+        _validate_synthesis_block(synthesis)
+        if not synthesis.get("enabled"):
+            return
+        main = synthesis.get("item_array") or self.get_main_data_array()
+        main_schema = self.schema.get("properties", {}).get(main)
+        if not isinstance(main_schema, dict) or "items" not in main_schema:
+            self._raise_meta(f"Synthesis unknown schema array: {main}")
+        for key in ("group_by", "identity_fields"):
+            for field in synthesis.get(key, []):
+                self.resolve_schema_field(field, root=self.schema)
+        for key in ("citation_field", "relevance_flag"):
+            if synthesis.get(key):
+                self.resolve_schema_field(synthesis[key], root=self.schema)
+        for field in synthesis.get("item_group_by", []):
+            self.resolve_schema_field(field, root=main_schema["items"])
+        for entry in synthesis.get("reconcile_fields", []):
+            for key in ("field", "evidence", "precision"):
+                if entry.get(key):
+                    self.resolve_schema_field(
+                        entry[key], root=main_schema["items"],
+                    )
+
     def _validate_severity_tokens_block(self, severity_tokens: Any) -> None:
         """Validate ``compilation.severity_tokens`` (see get_severity_tokens)."""
         loc = "compilation.severity_tokens"
@@ -506,6 +630,8 @@ class SchemaMetadata:
                 f"{loc} has unknown key(s): {', '.join(unknown)}. "
                 f"Allowed: {', '.join(sorted(allowed))}."
             )
+
+        self.get_output_formats()
 
         for key in ("default_format", "annotation_column"):
             value = output.get(key)
@@ -633,7 +759,7 @@ class SchemaMetadata:
         """
         dedup = self.metadata.get("identity", {}).get("deduplication", {})
         raw = dedup.get("fuzzy_key_fields", [])
-        # Normalize to plain list of field names for backward compat
+        # Both supported forms expose the same field list to callers.
         result = []
         for entry in raw:
             if isinstance(entry, str):
@@ -707,11 +833,6 @@ class SchemaMetadata:
         """Get comparison mode for deduplication (exact, fuzzy)."""
         dedup = self.metadata.get("identity", {}).get("deduplication", {})
         return dedup.get("comparison_mode", "exact")
-
-    def get_output_format(self) -> str:
-        """Get default output format."""
-        output = self.metadata.get("compilation", {}).get("output", {})
-        return output.get("default_format", "excel")
 
     def get_output_exclude_fields(self) -> List[str]:
         """Get fields that should be excluded from compiled outputs."""
