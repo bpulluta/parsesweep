@@ -77,17 +77,17 @@ Module Contents
 
    .. py:method:: normalize_with_schema(data: Dict[str, Any], schema: Dict[str, Any]) -> Dict[str, Any]
 
-      Ensure all schema fields are present in extracted data, filling missing fields with null.
+      Fill absent optional fields with null only when their schema permits it.
 
-      This prevents data loss when OpenAI omits optional fields.
-      Works generically with any schema structure.
+      Required fields must already be present; non-nullable optional fields
+      remain absent rather than becoming invalid null values.
 
       :param data: Extracted data dictionary
       :type data: Dict[str, Any]
       :param schema: JSON schema defining expected structure
       :type schema: Dict[str, Any]
 
-      :returns: Normalized data with all schema fields present
+      :returns: Data with absent nullable optional fields filled
       :rtype: Dict[str, Any]
 
 

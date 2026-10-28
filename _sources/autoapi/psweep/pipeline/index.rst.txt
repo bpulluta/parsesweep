@@ -113,7 +113,7 @@ Module Contents
    per-stage ``--fresh`` flags handle discover/compile.
 
 
-.. py:function:: compile_extractions(extraction_dir: str | pathlib.Path, schema: str | pathlib.Path, *, config_path: str | pathlib.Path | None = None, output_dir: str | pathlib.Path | None = None, report_format: str = 'both', dry_run: bool = False) -> CompilationResult
+.. py:function:: compile_extractions(extraction_dir: str | pathlib.Path, schema: str | pathlib.Path, *, config_path: str | pathlib.Path | None = None, output_dir: str | pathlib.Path | None = None, report_format: str | None = None, dry_run: bool = False) -> CompilationResult
 
    Compile extracted JSON files into Excel/CSV output.
 
@@ -126,7 +126,8 @@ Module Contents
                        are applied to the output. Matches the behavior of
                        ``pixi run psweep compile --config``.
    :param output_dir: Where to write compiled output. Defaults to ``compiled/<name>/``.
-   :param report_format: ``"xlsx"``, ``"csv"``, or ``"both"`` (default).
+   :param report_format: ``"xlsx"``, ``"csv"``, or ``"both"``. If omitted, runtime output settings
+                         override schema output settings; absent both, CSV and Excel are emitted.
    :param dry_run: If True, parse and validate but write no output files.
 
    :rtype: CompilationResult

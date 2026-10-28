@@ -423,8 +423,8 @@ source-of-truth constants in the code, so <code class="docutils literal notransl
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">output.default_format</span></code></p></td>
 <td><p>compilation</p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">excel</span></code></p></td>
-<td><p>You want <code class="docutils literal notranslate"><span class="pre">csv</span></code> or <code class="docutils literal notranslate"><span class="pre">both</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">both</span></code> when unset</p></td>
+<td><p>You want only <code class="docutils literal notranslate"><span class="pre">csv</span></code> or <code class="docutils literal notranslate"><span class="pre">excel</span></code></p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">synthesis.min_sources_for_llm</span></code></p></td>
 <td><p>compilation</p></td>
@@ -465,6 +465,72 @@ data; if your domain names fields differently, override them per-schema in the
 schema’s <code class="docutils literal notranslate"><span class="pre">$metadata.compilation.flattening</span></code> block (e.g. <code class="docutils literal notranslate"><span class="pre">type_fields</span></code>,
 <code class="docutils literal notranslate"><span class="pre">value_fields</span></code>, <code class="docutils literal notranslate"><span class="pre">unit_fields</span></code>, <code class="docutils literal notranslate"><span class="pre">skip_fields</span></code>) — no code changes needed. Every
 knob falls back to the built-in default when omitted.</p>
+</section>
+</section>
+<section id="schema-driven-compilation">
+<h2>Schema-driven compilation<a class="headerlink" href="#schema-driven-compilation" title="Link to this heading">¶</a></h2>
+<p>Output columns come from the domain schema, not a fixed opinion, project, or
+geographic record layout. A manual can declare numeric measurements and units;
+a regulation can declare requirements; a public-comment schema can declare
+sentiment and evidence. Fields absent from that domain are not invented as
+empty consumer columns.</p>
+<p>Use the existing <code class="docutils literal notranslate"><span class="pre">compilation.output</span></code> settings to rename, prioritize, or exclude
+columns. For example, a measurement schema declaring <code class="docutils literal notranslate"><span class="pre">manufacturer</span></code>,
+<code class="docutils literal notranslate"><span class="pre">rated_power_kw</span></code>, and <code class="docutils literal notranslate"><span class="pre">measurement_quote</span></code> can use:</p>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">compilation</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">output</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">default_format</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">csv</span>
+<span class="w">    </span><span class="nt">column_renames</span><span class="p">:</span>
+<span class="w">      </span><span class="nt">Manufacturer</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">manufacturer</span>
+<span class="w">      </span><span class="nt">Rated Power Kw</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">rated_power_kw</span>
+<span class="w">      </span><span class="nt">Measurement Quote</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">evidence</span>
+<span class="w">    </span><span class="nt">column_order</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">manufacturer</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">rated_power_kw</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">evidence</span><span class="p p-Indicator">]</span>
+</pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">column_order</span></code> is a priority prefix, not an exact column selection; remaining
+schema fields are retained. <code class="docutils literal notranslate"><span class="pre">exclude_fields</span></code> removes unwanted fields. Nested
+flattening uses the schema’s existing <code class="docutils literal notranslate"><span class="pre">compilation.flattening</span></code> settings.
+Canonical extraction JSON remains the source for lossless arrays/objects,
+quality warnings, coverage, document identity, and lineage. Spreadsheet output
+is a presentation, not a replacement for that record.</p>
+<p>Runtime compilation settings override schema <code class="docutils literal notranslate"><span class="pre">$metadata.compilation</span></code> settings.
+With no format setting, CLI and Python API emit CSV and Excel. Compilation and
+<code class="docutils literal notranslate"><span class="pre">run</span> <span class="pre">--validate-config</span></code> validate the merged contract before scanning records,
+calling synthesis models, or clearing outputs with <code class="docutils literal notranslate"><span class="pre">--fresh</span></code>. Excel batches
+above 1,048,575 data rows or with cells over 32,767 characters fail before
+either export; select CSV to preserve full evidence. Requested files are written
+to staging before publication; caught writer/publication failures restore prior
+output where possible. If restoration fails, recoverable backups are retained
+and their paths appear in the error. This is not a crash-safe multi-file
+transaction: do not run concurrent writers into the same output directory.</p>
+<p>Semantic summaries and classifications belong in the extraction schema’s
+instructions and constraints. Existing <code class="docutils literal notranslate"><span class="pre">compilation.synthesis</span></code> handles
+cross-document reconciliation. Deterministic code validates structure,
+provenance, identity, and export contracts; JSON Schema validation, including
+declared calendar-date formats, does <strong>not</strong> certify quotation authenticity,
+sentiment, or geographical support. US county-FIPS derivation remains an
+explicit, optional wide-output normalization, not a requirement of any domain.</p>
+<p>Page/section selection and context truncation are preserved as limitations in
+canonical records and extraction manifests. Incomplete searches do not replace
+previous good curated partitions. A seeded or capped sample is not a recall or
+population estimate.</p>
+<section id="scale-boundary">
+<h3>Scale boundary<a class="headerlink" href="#scale-boundary" title="Link to this heading">¶</a></h3>
+<p>The compiler prepares one export frame for CSV/Excel, but global identity and
+deduplication still require an in-memory frame. Complete exact/fuzzy keys use
+indexed grouping rather than pairwise scans. Null-as-wildcard fuzzy matching
+also uses indexed candidates while preserving ordered matching semantics;
+highly ambiguous multidimensional identity buckets can still be expensive.
+Prefer CSV for large batches; benchmark representative record sizes and
+duplicate distributions before scaling. Schemas without
+identity keys do not deduplicate; choose domain-appropriate keys explicitly
+rather than inferring them in core code. Configured keys missing from both the
+schema and compiled columns fail instead of silently deduplicating on fewer
+fields. Atomic checkpoint snapshots avoid repeated whole-file writes, and
+review caches avoid repeated parsing/model calls when grading inputs are
+unchanged. Neither feature bounds acquisition latency or whole-pipeline
+memory. Synthetic record, checkpoint, and mocked timeout tests do not establish
+100,000-target, large-document, fuzzy-dedup, or live-API readiness.</p>
 </section>
 </section>
 <section id="annotated-template">
@@ -708,6 +774,10 @@ the sections you need. It documents every knob inline.</p>
 <li><a class="reference internal" href="#start-small-add-as-you-need">Start small, add as you need</a></li>
 <li><a class="reference internal" href="#defaults-at-a-glance">Defaults at a glance</a><ul>
 <li><a class="reference internal" href="#advanced-column-flattening-overrides">Advanced: column-flattening overrides</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#schema-driven-compilation">Schema-driven compilation</a><ul>
+<li><a class="reference internal" href="#scale-boundary">Scale boundary</a></li>
 </ul>
 </li>
 <li><a class="reference internal" href="#annotated-template">Annotated template</a></li>

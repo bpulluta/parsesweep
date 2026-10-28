@@ -22,8 +22,13 @@ Functions
 
 .. autoapisummary::
 
+   psweep.discovery.urls.compile_url_patterns
    psweep.discovery.urls.decode_discovery_url
+   psweep.discovery.urls.matches_allowed_domain
+   psweep.discovery.urls.matches_url_exclusion
    psweep.discovery.urls.normalize_url_text
+   psweep.discovery.urls.redact_url
+   psweep.discovery.urls.redact_urls_in_text
    psweep.discovery.urls.url_extension
    psweep.discovery.urls.url_host
 
@@ -31,14 +36,39 @@ Functions
 Module Contents
 ---------------
 
+.. py:function:: compile_url_patterns(patterns) -> tuple[re.Pattern, Ellipsis]
+
+   Return compiled patterns, reusing a cached compile for repeated calls.
+
+
 .. py:function:: decode_discovery_url(url: str) -> str
 
    Decode common escaped URL variants emitted by search APIs.
 
 
+.. py:function:: matches_allowed_domain(url: str, allowed_domains: list[str] | None) -> bool
+
+   Match an exact hostname or subdomain, never an arbitrary substring.
+
+
+.. py:function:: matches_url_exclusion(url: str, patterns: list[re.Pattern]) -> bool
+
+   Match raw and decoded URLs without discarding host/path punctuation.
+
+
 .. py:function:: normalize_url_text(text: str) -> str
 
    Lowercase and turn ``_``, ``-``, ``/`` into spaces for term matching.
+
+
+.. py:function:: redact_url(url: str) -> str
+
+   Hide URL credentials/signatures in prompts, preserving document IDs.
+
+
+.. py:function:: redact_urls_in_text(text: str) -> str
+
+   Sanitize URLs embedded in user-provided target context.
 
 
 .. py:function:: url_extension(url: str) -> str

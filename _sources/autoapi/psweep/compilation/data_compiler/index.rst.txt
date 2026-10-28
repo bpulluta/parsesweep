@@ -55,15 +55,55 @@ Module Contents
 
 
 
-   .. py:method:: save_csv(df: pandas.DataFrame, output_path: pathlib.Path)
+   .. py:method:: export(df, output_dir: pathlib.Path, base_name: str, formats, *, fresh=False)
+
+      Prepare once, preflight, then publish from a staging dir with rollback.
+
+      All requested writers run inside a fresh temporary stage directory beside
+      the real output (same parent, so promotion is a local rename). The stage
+      holds a ``files/`` subdir (writer output) and a ``backup/`` subdir (live
+      files moved aside during publication); every backup name is stage-owned,
+      so nothing in or around the output dir is ever overwritten by a fixed
+      sentinel name. Nothing live is touched until every writer has succeeded:
+
+      - ``fresh``: the finished ``files/`` dir replaces the whole output
+        directory in one rename; the prior directory is kept in ``backup/`` and
+        restored if the rename fails.
+      - non-fresh: each finished file is promoted into place, moving any file
+        it overwrites into ``backup/`` first; a failed promotion rolls the
+        already-promoted files back. Unrelated files are never disturbed.
+
+      A caught writer or publish failure leaves prior output and unrelated
+      files as they were and leaves no staging directory behind. In the rare
+      case that a rollback cannot restore a file it moved aside, the stage root
+      (holding that backup) is kept and the raised error reports where it is,
+      rather than claiming the output is unchanged.
+
+      Limitations: this is staged publication with rollback, not a crash-safe
+      transaction. Writers run before any live file is touched, but publication
+      is a sequence of renames — a process/power crash mid-publish, or a
+      concurrent writer in the same output dir, can leave a brief or partial
+      state; there is no locking.
+
+
+
+   .. py:method:: save_csv(df: pandas.DataFrame, output_path: pathlib.Path, *, prepared=False)
 
       Save DataFrame to CSV.
 
 
 
-   .. py:method:: save_excel(df: pandas.DataFrame, output_path: pathlib.Path)
+   .. py:method:: save_excel(df: pandas.DataFrame, output_path: pathlib.Path, *, prepared=False)
 
       Save DataFrame to Excel with professional formatting.
+
+
+
+   .. py:method:: validate_export(df: pandas.DataFrame, formats) -> None
+      :staticmethod:
+
+
+      Reject workbook overflow before either writer touches output.
 
 
 

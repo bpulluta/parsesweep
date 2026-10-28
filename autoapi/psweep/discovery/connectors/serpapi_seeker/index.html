@@ -353,6 +353,18 @@
           <section id="module-psweep.discovery.connectors.serpapi_seeker">
 <span id="psweep-discovery-connectors-serpapi-seeker"></span><h1>psweep.discovery.connectors.serpapi_seeker<a class="headerlink" href="#module-psweep.discovery.connectors.serpapi_seeker" title="Link to this heading">¶</a></h1>
 <p>SerpApi-based seeker connector for web search discovery.</p>
+<section id="exceptions">
+<h2>Exceptions<a class="headerlink" href="#exceptions" title="Link to this heading">¶</a></h2>
+<div class="table-wrapper autosummary longtable docutils container">
+<table class="autosummary longtable docutils align-default">
+<tbody>
+<tr class="row-odd"><td><p><a class="reference internal" href="#psweep.discovery.connectors.serpapi_seeker.SerpApiSearchTimeout" title="psweep.discovery.connectors.serpapi_seeker.SerpApiSearchTimeout"><code class="xref py py-obj docutils literal notranslate"><span class="pre">SerpApiSearchTimeout</span></code></a></p></td>
+<td><p>Explicit incomplete search, carrying results from completed queries.</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
 <section id="classes">
 <h2>Classes<a class="headerlink" href="#classes" title="Link to this heading">¶</a></h2>
 <div class="table-wrapper autosummary longtable docutils container">
@@ -367,6 +379,14 @@
 </section>
 <section id="module-contents">
 <h2>Module Contents<a class="headerlink" href="#module-contents" title="Link to this heading">¶</a></h2>
+<dl class="py exception">
+<dt class="sig sig-object py" id="psweep.discovery.connectors.serpapi_seeker.SerpApiSearchTimeout">
+<span class="property"><span class="k"><span class="pre">exception</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">psweep.discovery.connectors.serpapi_seeker.</span></span><span class="sig-name descname"><span class="pre">SerpApiSearchTimeout</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">candidates</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">list</span><span class="p"><span class="pre">[</span></span><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">query_errors</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">list</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#psweep.discovery.connectors.serpapi_seeker.SerpApiSearchTimeout" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-obj docutils literal notranslate"><span class="pre">RuntimeError</span></code></p>
+<p>Explicit incomplete search, carrying results from completed queries.</p>
+<p>Initialize self.  See help(type(self)) for accurate signature.</p>
+</dd></dl>
+
 <dl class="py class">
 <dt class="sig sig-object py" id="psweep.discovery.connectors.serpapi_seeker.SerpApiSeeker">
 <span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">psweep.discovery.connectors.serpapi_seeker.</span></span><span class="sig-name descname"><span class="pre">SerpApiSeeker</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">api_key</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ssl_verify</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">retry_max_attempts</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">3</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">retry_initial_backoff_seconds</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">1.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">retry_max_backoff_seconds</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">8.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">min_request_interval_seconds</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">0.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cache_dir</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cache_ttl_seconds</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">0.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cache_refresh</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#psweep.discovery.connectors.serpapi_seeker.SerpApiSeeker" title="Link to this definition">¶</a></dt>
@@ -404,7 +424,9 @@ SERPAPI_SSL_VERIFY / PSWEEP_SSL_VERIFY (default: false).</p></li>
 <dt class="field-even">Raises<span class="colon">:</span></dt>
 <dd class="field-even"><ul class="simple">
 <li><p><strong>ValueError</strong> – If query is empty or invalid.</p></li>
-<li><p><strong>RuntimeError</strong> – If SerpApi API call fails.</p></li>
+<li><p><a class="reference internal" href="#psweep.discovery.connectors.serpapi_seeker.SerpApiSearchTimeout" title="psweep.discovery.connectors.serpapi_seeker.SerpApiSearchTimeout"><strong>SerpApiSearchTimeout</strong></a> – If any query exhausts timeout retries; includes completed results and
+explicit query errors, after attempting the remaining queries.</p></li>
+<li><p><strong>RuntimeError</strong> – If SerpApi fails for another reason; aborts without partial success.</p></li>
 </ul>
 </dd>
 </dl>
@@ -480,8 +502,10 @@ SERPAPI_SSL_VERIFY / PSWEEP_SSL_VERIFY (default: false).</p></li>
           <div class="toc-tree">
             <ul>
 <li><a class="reference internal" href="#">psweep.discovery.connectors.serpapi_seeker</a><ul>
+<li><a class="reference internal" href="#exceptions">Exceptions</a></li>
 <li><a class="reference internal" href="#classes">Classes</a></li>
 <li><a class="reference internal" href="#module-contents">Module Contents</a><ul>
+<li><a class="reference internal" href="#psweep.discovery.connectors.serpapi_seeker.SerpApiSearchTimeout"><code class="docutils literal notranslate"><span class="pre">SerpApiSearchTimeout</span></code></a></li>
 <li><a class="reference internal" href="#psweep.discovery.connectors.serpapi_seeker.SerpApiSeeker"><code class="docutils literal notranslate"><span class="pre">SerpApiSeeker</span></code></a><ul>
 <li><a class="reference internal" href="#psweep.discovery.connectors.serpapi_seeker.SerpApiSeeker.discover"><code class="docutils literal notranslate"><span class="pre">SerpApiSeeker.discover()</span></code></a></li>
 <li><a class="reference internal" href="#psweep.discovery.connectors.serpapi_seeker.SerpApiSeeker.supports_provider"><code class="docutils literal notranslate"><span class="pre">SerpApiSeeker.supports_provider()</span></code></a></li>

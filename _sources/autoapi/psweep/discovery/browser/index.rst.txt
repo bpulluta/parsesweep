@@ -77,9 +77,9 @@ Module Contents
 
 
 
-   .. py:method:: download_bytes(url: str, *, timeout_seconds: int = 60) -> tuple[bytes, str | None]
+   .. py:method:: download_bytes(url: str, *, timeout_seconds: int = 60) -> tuple[bytes, str | None, str]
 
-      Fetch *url* through the browser and return ``(bytes, content_type)``.
+      Fetch *url* and return bytes, content type, and observed response URL.
 
       Runs a same-origin ``fetch()`` inside the page so the request uses the
       browser's real TLS fingerprint and session — the only reliable way past
@@ -92,6 +92,13 @@ Module Contents
 
       Navigate to *url* and return the rendered page source.
 
+
+
+   .. py:property:: current_url
+      :type: str
+
+
+      Return the observed browser location, never the requested URL.
 
 
 .. py:function:: browser_available() -> bool

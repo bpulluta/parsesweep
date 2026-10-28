@@ -410,6 +410,12 @@ Schemas without metadata will raise SchemaMetadataError.</p>
 </dd></dl>
 
 <dl class="py method">
+<dt class="sig sig-object py" id="psweep.utils.schema_metadata.SchemaMetadata.for_compilation">
+<span class="property"><span class="k"><span class="pre">classmethod</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">for_compilation</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">schema_path</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">pathlib.Path</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">resolved</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#psweep.utils.schema_metadata.SchemaMetadata.for_compilation" title="Link to this definition">¶</a></dt>
+<dd><p>Build the effective schema/runtime compilation contract once.</p>
+</dd></dl>
+
+<dl class="py method">
 <dt class="sig sig-object py" id="psweep.utils.schema_metadata.SchemaMetadata.get_auto_width">
 <span class="sig-name descname"><span class="pre">get_auto_width</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">bool</span></span></span><a class="headerlink" href="#psweep.utils.schema_metadata.SchemaMetadata.get_auto_width" title="Link to this definition">¶</a></dt>
 <dd><p>Get whether to auto-size columns in Excel output.</p>
@@ -649,9 +655,9 @@ so schemas that declare nothing keep the legacy behavior.</p>
 </dd></dl>
 
 <dl class="py method">
-<dt class="sig sig-object py" id="psweep.utils.schema_metadata.SchemaMetadata.get_output_format">
-<span class="sig-name descname"><span class="pre">get_output_format</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">str</span></span></span><a class="headerlink" href="#psweep.utils.schema_metadata.SchemaMetadata.get_output_format" title="Link to this definition">¶</a></dt>
-<dd><p>Get default output format.</p>
+<dt class="sig sig-object py" id="psweep.utils.schema_metadata.SchemaMetadata.get_output_formats">
+<span class="sig-name descname"><span class="pre">get_output_formats</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#psweep.utils.schema_metadata.SchemaMetadata.get_output_formats" title="Link to this definition">¶</a></dt>
+<dd><p>Resolve effective formats; an absent setting retains CSV + Excel.</p>
 </dd></dl>
 
 <dl class="py method">
@@ -700,6 +706,12 @@ opt a non-US / non-jurisdiction domain out entirely.</p>
 <dt class="sig sig-object py" id="psweep.utils.schema_metadata.SchemaMetadata.has_metadata">
 <span class="sig-name descname"><span class="pre">has_metadata</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">bool</span></span></span><a class="headerlink" href="#psweep.utils.schema_metadata.SchemaMetadata.has_metadata" title="Link to this definition">¶</a></dt>
 <dd><p>Check if schema includes metadata section.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="psweep.utils.schema_metadata.SchemaMetadata.resolve_schema_field">
+<span class="sig-name descname"><span class="pre">resolve_schema_field</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">path</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">root</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">dict</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">dict</span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#psweep.utils.schema_metadata.SchemaMetadata.resolve_schema_field" title="Link to this definition">¶</a></dt>
+<dd><p>Resolve an item/context alias or an exact root-relative path.</p>
 </dd></dl>
 
 </dd></dl>
@@ -770,6 +782,7 @@ opt a non-US / non-jurisdiction domain out entirely.</p>
 <li><a class="reference internal" href="#module-contents">Module Contents</a><ul>
 <li><a class="reference internal" href="#psweep.utils.schema_metadata.SchemaMetadata"><code class="docutils literal notranslate"><span class="pre">SchemaMetadata</span></code></a><ul>
 <li><a class="reference internal" href="#psweep.utils.schema_metadata.SchemaMetadata.extract_main_data_array"><code class="docutils literal notranslate"><span class="pre">SchemaMetadata.extract_main_data_array()</span></code></a></li>
+<li><a class="reference internal" href="#psweep.utils.schema_metadata.SchemaMetadata.for_compilation"><code class="docutils literal notranslate"><span class="pre">SchemaMetadata.for_compilation()</span></code></a></li>
 <li><a class="reference internal" href="#psweep.utils.schema_metadata.SchemaMetadata.get_auto_width"><code class="docutils literal notranslate"><span class="pre">SchemaMetadata.get_auto_width()</span></code></a></li>
 <li><a class="reference internal" href="#psweep.utils.schema_metadata.SchemaMetadata.get_center_align_columns"><code class="docutils literal notranslate"><span class="pre">SchemaMetadata.get_center_align_columns()</span></code></a></li>
 <li><a class="reference internal" href="#psweep.utils.schema_metadata.SchemaMetadata.get_center_align_max_length"><code class="docutils literal notranslate"><span class="pre">SchemaMetadata.get_center_align_max_length()</span></code></a></li>
@@ -797,13 +810,14 @@ opt a non-US / non-jurisdiction domain out entirely.</p>
 <li><a class="reference internal" href="#psweep.utils.schema_metadata.SchemaMetadata.get_identifier_fields"><code class="docutils literal notranslate"><span class="pre">SchemaMetadata.get_identifier_fields()</span></code></a></li>
 <li><a class="reference internal" href="#psweep.utils.schema_metadata.SchemaMetadata.get_main_data_array"><code class="docutils literal notranslate"><span class="pre">SchemaMetadata.get_main_data_array()</span></code></a></li>
 <li><a class="reference internal" href="#psweep.utils.schema_metadata.SchemaMetadata.get_output_exclude_fields"><code class="docutils literal notranslate"><span class="pre">SchemaMetadata.get_output_exclude_fields()</span></code></a></li>
-<li><a class="reference internal" href="#psweep.utils.schema_metadata.SchemaMetadata.get_output_format"><code class="docutils literal notranslate"><span class="pre">SchemaMetadata.get_output_format()</span></code></a></li>
+<li><a class="reference internal" href="#psweep.utils.schema_metadata.SchemaMetadata.get_output_formats"><code class="docutils literal notranslate"><span class="pre">SchemaMetadata.get_output_formats()</span></code></a></li>
 <li><a class="reference internal" href="#psweep.utils.schema_metadata.SchemaMetadata.get_quality_checks"><code class="docutils literal notranslate"><span class="pre">SchemaMetadata.get_quality_checks()</span></code></a></li>
 <li><a class="reference internal" href="#psweep.utils.schema_metadata.SchemaMetadata.get_required_fields"><code class="docutils literal notranslate"><span class="pre">SchemaMetadata.get_required_fields()</span></code></a></li>
 <li><a class="reference internal" href="#psweep.utils.schema_metadata.SchemaMetadata.get_severity_tokens"><code class="docutils literal notranslate"><span class="pre">SchemaMetadata.get_severity_tokens()</span></code></a></li>
 <li><a class="reference internal" href="#psweep.utils.schema_metadata.SchemaMetadata.get_state_normalization_column"><code class="docutils literal notranslate"><span class="pre">SchemaMetadata.get_state_normalization_column()</span></code></a></li>
 <li><a class="reference internal" href="#psweep.utils.schema_metadata.SchemaMetadata.get_version"><code class="docutils literal notranslate"><span class="pre">SchemaMetadata.get_version()</span></code></a></li>
 <li><a class="reference internal" href="#psweep.utils.schema_metadata.SchemaMetadata.has_metadata"><code class="docutils literal notranslate"><span class="pre">SchemaMetadata.has_metadata()</span></code></a></li>
+<li><a class="reference internal" href="#psweep.utils.schema_metadata.SchemaMetadata.resolve_schema_field"><code class="docutils literal notranslate"><span class="pre">SchemaMetadata.resolve_schema_field()</span></code></a></li>
 </ul>
 </li>
 </ul>

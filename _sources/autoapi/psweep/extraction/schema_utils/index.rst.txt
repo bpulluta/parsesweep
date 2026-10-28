@@ -14,11 +14,17 @@ Functions
 
 .. autoapisummary::
 
+   psweep.extraction.schema_utils.build_schema_validator
    psweep.extraction.schema_utils.load_schema
 
 
 Module Contents
 ---------------
+
+.. py:function:: build_schema_validator(schema: Dict[str, Any])
+
+   Validate a schema definition and return its format-aware validator.
+
 
 .. py:function:: load_schema(schema_path: Union[str, pathlib.Path]) -> Dict[str, Any]
 

@@ -26,6 +26,7 @@ Functions
    psweep.config.runtime_config_loader.catalog_for_command
    psweep.config.runtime_config_loader.load_runtime_config_file
    psweep.config.runtime_config_loader.resolve_command_config
+   psweep.config.runtime_config_loader.resolve_compilation_metadata
 
 
 Module Contents
@@ -68,5 +69,10 @@ Module Contents
 .. py:function:: resolve_command_config(*, command: str, cli_values: dict[str, Any], config_data: dict[str, Any] | None, strict: bool = False) -> dict[str, Any]
 
    Resolve command inputs from runtime config and CLI overrides.
+
+
+.. py:function:: resolve_compilation_metadata(resolved: dict[str, Any])
+
+   Validate the merged schema/runtime contract before any compilation work.
 
 

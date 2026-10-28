@@ -409,15 +409,51 @@
 </dd></dl>
 
 <dl class="py method">
+<dt class="sig sig-object py" id="psweep.compilation.data_compiler.DataCompiler.export">
+<span class="sig-name descname"><span class="pre">export</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">df</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">output_dir</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">pathlib.Path</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">base_name</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">formats</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">fresh</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#psweep.compilation.data_compiler.DataCompiler.export" title="Link to this definition">¶</a></dt>
+<dd><p>Prepare once, preflight, then publish from a staging dir with rollback.</p>
+<p>All requested writers run inside a fresh temporary stage directory beside
+the real output (same parent, so promotion is a local rename). The stage
+holds a <code class="docutils literal notranslate"><span class="pre">files/</span></code> subdir (writer output) and a <code class="docutils literal notranslate"><span class="pre">backup/</span></code> subdir (live
+files moved aside during publication); every backup name is stage-owned,
+so nothing in or around the output dir is ever overwritten by a fixed
+sentinel name. Nothing live is touched until every writer has succeeded:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">fresh</span></code>: the finished <code class="docutils literal notranslate"><span class="pre">files/</span></code> dir replaces the whole output
+directory in one rename; the prior directory is kept in <code class="docutils literal notranslate"><span class="pre">backup/</span></code> and
+restored if the rename fails.</p></li>
+<li><p>non-fresh: each finished file is promoted into place, moving any file
+it overwrites into <code class="docutils literal notranslate"><span class="pre">backup/</span></code> first; a failed promotion rolls the
+already-promoted files back. Unrelated files are never disturbed.</p></li>
+</ul>
+<p>A caught writer or publish failure leaves prior output and unrelated
+files as they were and leaves no staging directory behind. In the rare
+case that a rollback cannot restore a file it moved aside, the stage root
+(holding that backup) is kept and the raised error reports where it is,
+rather than claiming the output is unchanged.</p>
+<p>Limitations: this is staged publication with rollback, not a crash-safe
+transaction. Writers run before any live file is touched, but publication
+is a sequence of renames — a process/power crash mid-publish, or a
+concurrent writer in the same output dir, can leave a brief or partial
+state; there is no locking.</p>
+</dd></dl>
+
+<dl class="py method">
 <dt class="sig sig-object py" id="psweep.compilation.data_compiler.DataCompiler.save_csv">
-<span class="sig-name descname"><span class="pre">save_csv</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">df</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">pandas.DataFrame</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">output_path</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">pathlib.Path</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#psweep.compilation.data_compiler.DataCompiler.save_csv" title="Link to this definition">¶</a></dt>
+<span class="sig-name descname"><span class="pre">save_csv</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">df</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">pandas.DataFrame</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">output_path</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">pathlib.Path</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">prepared</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#psweep.compilation.data_compiler.DataCompiler.save_csv" title="Link to this definition">¶</a></dt>
 <dd><p>Save DataFrame to CSV.</p>
 </dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="psweep.compilation.data_compiler.DataCompiler.save_excel">
-<span class="sig-name descname"><span class="pre">save_excel</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">df</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">pandas.DataFrame</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">output_path</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">pathlib.Path</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#psweep.compilation.data_compiler.DataCompiler.save_excel" title="Link to this definition">¶</a></dt>
+<span class="sig-name descname"><span class="pre">save_excel</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">df</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">pandas.DataFrame</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">output_path</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">pathlib.Path</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">prepared</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#psweep.compilation.data_compiler.DataCompiler.save_excel" title="Link to this definition">¶</a></dt>
 <dd><p>Save DataFrame to Excel with professional formatting.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="psweep.compilation.data_compiler.DataCompiler.validate_export">
+<span class="property"><span class="k"><span class="pre">static</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">validate_export</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">df</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">pandas.DataFrame</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">formats</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="headerlink" href="#psweep.compilation.data_compiler.DataCompiler.validate_export" title="Link to this definition">¶</a></dt>
+<dd><p>Reject workbook overflow before either writer touches output.</p>
 </dd></dl>
 
 </dd></dl>
@@ -488,8 +524,10 @@
 <li><a class="reference internal" href="#module-contents">Module Contents</a><ul>
 <li><a class="reference internal" href="#psweep.compilation.data_compiler.DataCompiler"><code class="docutils literal notranslate"><span class="pre">DataCompiler</span></code></a><ul>
 <li><a class="reference internal" href="#psweep.compilation.data_compiler.DataCompiler.compile_from_directory"><code class="docutils literal notranslate"><span class="pre">DataCompiler.compile_from_directory()</span></code></a></li>
+<li><a class="reference internal" href="#psweep.compilation.data_compiler.DataCompiler.export"><code class="docutils literal notranslate"><span class="pre">DataCompiler.export()</span></code></a></li>
 <li><a class="reference internal" href="#psweep.compilation.data_compiler.DataCompiler.save_csv"><code class="docutils literal notranslate"><span class="pre">DataCompiler.save_csv()</span></code></a></li>
 <li><a class="reference internal" href="#psweep.compilation.data_compiler.DataCompiler.save_excel"><code class="docutils literal notranslate"><span class="pre">DataCompiler.save_excel()</span></code></a></li>
+<li><a class="reference internal" href="#psweep.compilation.data_compiler.DataCompiler.validate_export"><code class="docutils literal notranslate"><span class="pre">DataCompiler.validate_export()</span></code></a></li>
 </ul>
 </li>
 </ul>

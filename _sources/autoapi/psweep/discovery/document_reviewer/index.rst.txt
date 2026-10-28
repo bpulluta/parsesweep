@@ -48,9 +48,8 @@ Module Contents
 
       Grade downloaded files per target and promote the top one(s).
 
-      Annotates each record with ``review_*`` fields. In ``move`` mode the
-      promoted file(s) are relocated to a ``reviewed/`` subfolder and their
-      ``path``/``relative_path`` updated; in ``flag`` mode files stay put.
+      Annotates each record with ``review_*`` fields and writes audit sidecars.
+      Files stay in place; the engine materializes selected files separately.
 
 
 

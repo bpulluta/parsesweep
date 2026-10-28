@@ -58,6 +58,14 @@ Module Contents
 
 
 
+   .. py:method:: for_compilation(schema_path: pathlib.Path, resolved: Dict[str, Any])
+      :classmethod:
+
+
+      Build the effective schema/runtime compilation contract once.
+
+
+
    .. py:method:: get_auto_width() -> bool
 
       Get whether to auto-size columns in Excel output.
@@ -308,9 +316,9 @@ Module Contents
 
 
 
-   .. py:method:: get_output_format() -> str
+   .. py:method:: get_output_formats() -> List[str]
 
-      Get default output format.
+      Resolve effective formats; an absent setting retains CSV + Excel.
 
 
 
@@ -362,6 +370,12 @@ Module Contents
    .. py:method:: has_metadata() -> bool
 
       Check if schema includes metadata section.
+
+
+
+   .. py:method:: resolve_schema_field(path: str, *, root: Optional[dict] = None) -> tuple[str, dict]
+
+      Resolve an item/context alias or an exact root-relative path.
 
 
 

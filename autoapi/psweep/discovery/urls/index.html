@@ -364,16 +364,31 @@ not folded in here.</p>
 <div class="table-wrapper autosummary longtable docutils container">
 <table class="autosummary longtable docutils align-default">
 <tbody>
-<tr class="row-odd"><td><p><a class="reference internal" href="#psweep.discovery.urls.decode_discovery_url" title="psweep.discovery.urls.decode_discovery_url"><code class="xref py py-obj docutils literal notranslate"><span class="pre">decode_discovery_url</span></code></a>(→ str)</p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="#psweep.discovery.urls.compile_url_patterns" title="psweep.discovery.urls.compile_url_patterns"><code class="xref py py-obj docutils literal notranslate"><span class="pre">compile_url_patterns</span></code></a>(→ tuple[re.Pattern, Ellipsis])</p></td>
+<td><p>Return compiled patterns, reusing a cached compile for repeated calls.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#psweep.discovery.urls.decode_discovery_url" title="psweep.discovery.urls.decode_discovery_url"><code class="xref py py-obj docutils literal notranslate"><span class="pre">decode_discovery_url</span></code></a>(→ str)</p></td>
 <td><p>Decode common escaped URL variants emitted by search APIs.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="#psweep.discovery.urls.normalize_url_text" title="psweep.discovery.urls.normalize_url_text"><code class="xref py py-obj docutils literal notranslate"><span class="pre">normalize_url_text</span></code></a>(→ str)</p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="#psweep.discovery.urls.matches_allowed_domain" title="psweep.discovery.urls.matches_allowed_domain"><code class="xref py py-obj docutils literal notranslate"><span class="pre">matches_allowed_domain</span></code></a>(→ bool)</p></td>
+<td><p>Match an exact hostname or subdomain, never an arbitrary substring.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#psweep.discovery.urls.matches_url_exclusion" title="psweep.discovery.urls.matches_url_exclusion"><code class="xref py py-obj docutils literal notranslate"><span class="pre">matches_url_exclusion</span></code></a>(→ bool)</p></td>
+<td><p>Match raw and decoded URLs without discarding host/path punctuation.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#psweep.discovery.urls.normalize_url_text" title="psweep.discovery.urls.normalize_url_text"><code class="xref py py-obj docutils literal notranslate"><span class="pre">normalize_url_text</span></code></a>(→ str)</p></td>
 <td><p>Lowercase and turn <code class="docutils literal notranslate"><span class="pre">_</span></code>, <code class="docutils literal notranslate"><span class="pre">-</span></code>, <code class="docutils literal notranslate"><span class="pre">/</span></code> into spaces for term matching.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="#psweep.discovery.urls.url_extension" title="psweep.discovery.urls.url_extension"><code class="xref py py-obj docutils literal notranslate"><span class="pre">url_extension</span></code></a>(→ str)</p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="#psweep.discovery.urls.redact_url" title="psweep.discovery.urls.redact_url"><code class="xref py py-obj docutils literal notranslate"><span class="pre">redact_url</span></code></a>(→ str)</p></td>
+<td><p>Hide URL credentials/signatures in prompts, preserving document IDs.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#psweep.discovery.urls.redact_urls_in_text" title="psweep.discovery.urls.redact_urls_in_text"><code class="xref py py-obj docutils literal notranslate"><span class="pre">redact_urls_in_text</span></code></a>(→ str)</p></td>
+<td><p>Sanitize URLs embedded in user-provided target context.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#psweep.discovery.urls.url_extension" title="psweep.discovery.urls.url_extension"><code class="xref py py-obj docutils literal notranslate"><span class="pre">url_extension</span></code></a>(→ str)</p></td>
 <td><p>Return the lowercase file extension of the URL path (<code class="docutils literal notranslate"><span class="pre">&quot;&quot;</span></code> if none).</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="#psweep.discovery.urls.url_host" title="psweep.discovery.urls.url_host"><code class="xref py py-obj docutils literal notranslate"><span class="pre">url_host</span></code></a>(→ str)</p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="#psweep.discovery.urls.url_host" title="psweep.discovery.urls.url_host"><code class="xref py py-obj docutils literal notranslate"><span class="pre">url_host</span></code></a>(→ str)</p></td>
 <td><p>Return the lowercase hostname of <em>url</em>, or <code class="docutils literal notranslate"><span class="pre">&quot;&quot;</span></code> if unparseable.</p></td>
 </tr>
 </tbody>
@@ -383,15 +398,45 @@ not folded in here.</p>
 <section id="module-contents">
 <h2>Module Contents<a class="headerlink" href="#module-contents" title="Link to this heading">¶</a></h2>
 <dl class="py function">
+<dt class="sig sig-object py" id="psweep.discovery.urls.compile_url_patterns">
+<span class="sig-prename descclassname"><span class="pre">psweep.discovery.urls.</span></span><span class="sig-name descname"><span class="pre">compile_url_patterns</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">patterns</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">re.Pattern</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Ellipsis</span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#psweep.discovery.urls.compile_url_patterns" title="Link to this definition">¶</a></dt>
+<dd><p>Return compiled patterns, reusing a cached compile for repeated calls.</p>
+</dd></dl>
+
+<dl class="py function">
 <dt class="sig sig-object py" id="psweep.discovery.urls.decode_discovery_url">
 <span class="sig-prename descclassname"><span class="pre">psweep.discovery.urls.</span></span><span class="sig-name descname"><span class="pre">decode_discovery_url</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">url</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">str</span></span></span><a class="headerlink" href="#psweep.discovery.urls.decode_discovery_url" title="Link to this definition">¶</a></dt>
 <dd><p>Decode common escaped URL variants emitted by search APIs.</p>
 </dd></dl>
 
 <dl class="py function">
+<dt class="sig sig-object py" id="psweep.discovery.urls.matches_allowed_domain">
+<span class="sig-prename descclassname"><span class="pre">psweep.discovery.urls.</span></span><span class="sig-name descname"><span class="pre">matches_allowed_domain</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">url</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">allowed_domains</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">list</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">bool</span></span></span><a class="headerlink" href="#psweep.discovery.urls.matches_allowed_domain" title="Link to this definition">¶</a></dt>
+<dd><p>Match an exact hostname or subdomain, never an arbitrary substring.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="psweep.discovery.urls.matches_url_exclusion">
+<span class="sig-prename descclassname"><span class="pre">psweep.discovery.urls.</span></span><span class="sig-name descname"><span class="pre">matches_url_exclusion</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">url</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">patterns</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">list</span><span class="p"><span class="pre">[</span></span><span class="pre">re.Pattern</span><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">bool</span></span></span><a class="headerlink" href="#psweep.discovery.urls.matches_url_exclusion" title="Link to this definition">¶</a></dt>
+<dd><p>Match raw and decoded URLs without discarding host/path punctuation.</p>
+</dd></dl>
+
+<dl class="py function">
 <dt class="sig sig-object py" id="psweep.discovery.urls.normalize_url_text">
 <span class="sig-prename descclassname"><span class="pre">psweep.discovery.urls.</span></span><span class="sig-name descname"><span class="pre">normalize_url_text</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">text</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">str</span></span></span><a class="headerlink" href="#psweep.discovery.urls.normalize_url_text" title="Link to this definition">¶</a></dt>
 <dd><p>Lowercase and turn <code class="docutils literal notranslate"><span class="pre">_</span></code>, <code class="docutils literal notranslate"><span class="pre">-</span></code>, <code class="docutils literal notranslate"><span class="pre">/</span></code> into spaces for term matching.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="psweep.discovery.urls.redact_url">
+<span class="sig-prename descclassname"><span class="pre">psweep.discovery.urls.</span></span><span class="sig-name descname"><span class="pre">redact_url</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">url</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">str</span></span></span><a class="headerlink" href="#psweep.discovery.urls.redact_url" title="Link to this definition">¶</a></dt>
+<dd><p>Hide URL credentials/signatures in prompts, preserving document IDs.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="psweep.discovery.urls.redact_urls_in_text">
+<span class="sig-prename descclassname"><span class="pre">psweep.discovery.urls.</span></span><span class="sig-name descname"><span class="pre">redact_urls_in_text</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">text</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">str</span></span></span><a class="headerlink" href="#psweep.discovery.urls.redact_urls_in_text" title="Link to this definition">¶</a></dt>
+<dd><p>Sanitize URLs embedded in user-provided target context.</p>
 </dd></dl>
 
 <dl class="py function">
@@ -470,8 +515,13 @@ not folded in here.</p>
 <li><a class="reference internal" href="#">psweep.discovery.urls</a><ul>
 <li><a class="reference internal" href="#functions">Functions</a></li>
 <li><a class="reference internal" href="#module-contents">Module Contents</a><ul>
+<li><a class="reference internal" href="#psweep.discovery.urls.compile_url_patterns"><code class="docutils literal notranslate"><span class="pre">compile_url_patterns()</span></code></a></li>
 <li><a class="reference internal" href="#psweep.discovery.urls.decode_discovery_url"><code class="docutils literal notranslate"><span class="pre">decode_discovery_url()</span></code></a></li>
+<li><a class="reference internal" href="#psweep.discovery.urls.matches_allowed_domain"><code class="docutils literal notranslate"><span class="pre">matches_allowed_domain()</span></code></a></li>
+<li><a class="reference internal" href="#psweep.discovery.urls.matches_url_exclusion"><code class="docutils literal notranslate"><span class="pre">matches_url_exclusion()</span></code></a></li>
 <li><a class="reference internal" href="#psweep.discovery.urls.normalize_url_text"><code class="docutils literal notranslate"><span class="pre">normalize_url_text()</span></code></a></li>
+<li><a class="reference internal" href="#psweep.discovery.urls.redact_url"><code class="docutils literal notranslate"><span class="pre">redact_url()</span></code></a></li>
+<li><a class="reference internal" href="#psweep.discovery.urls.redact_urls_in_text"><code class="docutils literal notranslate"><span class="pre">redact_urls_in_text()</span></code></a></li>
 <li><a class="reference internal" href="#psweep.discovery.urls.url_extension"><code class="docutils literal notranslate"><span class="pre">url_extension()</span></code></a></li>
 <li><a class="reference internal" href="#psweep.discovery.urls.url_host"><code class="docutils literal notranslate"><span class="pre">url_host()</span></code></a></li>
 </ul>
