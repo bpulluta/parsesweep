@@ -228,6 +228,10 @@ The `document_description` defines what document type to select. The `target_con
 - Change what TARGET to search for → edit `targets.csv`
 - No code changes needed for either
 
+For source restrictions, `selection.exclude_url_patterns` matches the original
+URL (case-insensitive regex), including its host and path punctuation.
+`relevance_allowed_domain_patterns` only boosts ranking; it is not a host allowlist.
+
 ---
 
 ## Setting Up a New Domain
@@ -315,6 +319,10 @@ pixi run psweep extract documents/my_domain/ \
 pixi run psweep extract --config config/my_domain/run.yaml
 pixi run psweep compile --config config/my_domain/run.yaml
 ```
+
+Output fields come from each domain's schema. For configurable column shaping,
+validation, and scale limits, see the
+[compilation reference](docs/config-reference.md#schema-driven-compilation).
 
 ---
 

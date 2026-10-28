@@ -80,7 +80,7 @@ def test_forbidden_download_retries_via_browser(tmp_path, monkeypatch):
 
         def download_bytes(self, url: str):
             assert url == candidate.url
-            return b"%PDF-1.4\nfallback", "application/pdf"
+            return b"%PDF-1.4\nfallback", "application/pdf", url
 
         def close(self) -> None:
             self.closed = True
@@ -554,3 +554,34 @@ def test_code_host_adapter_rejects_short_content(tmp_path, monkeypatch):
 
     assert shell.read_text(encoding="utf-8") == "<html>x</html>"
     assert "code_host_adapter" not in out[0]
+
+
+def test_final_url_guard_does_not_recompile_exclusion_patterns(monkeypatch):
+    """The per-candidate guard reuses one compiled pattern set at scale."""
+    import psweep.discovery.urls as urls_mod
+
+    urls_mod._compile_url_patterns.cache_clear()
+    compile_calls = {"count": 0}
+    real_compile = urls_mod.re.compile
+
+    def _counting_compile(pattern, flags=0):
+        compile_calls["count"] += 1
+        return real_compile(pattern, flags)
+
+    monkeypatch.setattr(urls_mod.re, "compile", _counting_compile)
+
+    request = _shell_request(
+        selection_exclude_url_patterns=[r"/draft/", r"\.tmp$"]
+    )
+    engine = DiscoveryEngine()
+    for idx in range(50):
+        engine._passes_final_url_selection_guard(
+            final_url=f"https://example.gov/doc-{idx}.pdf", request=request
+        )
+
+    # Two patterns compiled exactly once despite 50 guard evaluations.
+    assert compile_calls["count"] == 2
+    # Same request patterns resolve to the identical cached tuple.
+    assert urls_mod.compile_url_patterns(
+        request.selection_exclude_url_patterns
+    ) is urls_mod.compile_url_patterns(request.selection_exclude_url_patterns)

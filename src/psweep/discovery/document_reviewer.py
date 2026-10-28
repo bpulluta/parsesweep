@@ -22,6 +22,7 @@ import re
 from pathlib import Path
 from typing import Any
 
+from .urls import redact_url, redact_urls_in_text
 from .validators import ContentSampler
 
 REVIEW_CACHE_DIRNAME = ".review"
@@ -355,8 +356,20 @@ class DocumentReviewer:
             redundant.update(i for i in indices if i != keep)
         return redundant
 
+    @staticmethod
+    def _record_source_url(record: dict[str, Any]) -> str:
+        """Actual download location: post-redirect ``final_url``, else ``url``.
+
+        Returns "" when the record carries no URL; never invents one.
+        """
+        for field in ("final_url", "url"):
+            value = str(record.get(field) or "").strip()
+            if value:
+                return value
+        return ""
+
     def _grade(
-        self, file_path: str, target_context: str = ""
+        self, file_path: str, target_context: str = "", source_url: str = ""
     ) -> dict[str, Any] | None:
         """Return the LLM grade for one file, or None if it can't be graded."""
         try:
@@ -378,14 +391,26 @@ class DocumentReviewer:
             return None
 
         sample = self._build_review_sample(text)
+        coverage = {
+            "document_chars": len(text), "sampled_chars": len(sample),
+            "truncated": len(text) > len(sample),
+        }
+        target_context = redact_urls_in_text(target_context)
+        source_url = redact_url(source_url) if source_url else ""
         target_line = (
             f"\nSEARCH TARGET CONTEXT: {target_context}\n"
             if target_context
             else ""
         )
+        source_line = (
+            f"SOURCE_URL: {source_url} "
+            "(actual download location of this file)\n"
+            if source_url
+            else ""
+        )
         user_prompt = (
             f"TARGET DOCUMENT: {self._description}\n"
-            f"{target_line}\n"
+            f"{target_line}{source_line}\n"
             "Grade the document excerpt below against the target description. "
             "Return JSON with: is_primary (bool — true only if this IS the "
             "target document type AND is specifically relevant to the search "
@@ -409,28 +434,44 @@ class DocumentReviewer:
             self._total_input_tokens += result.get("input_tokens", 0) or 0
             self._total_output_tokens += result.get("output_tokens", 0) or 0
             self._llm_calls += 1
-        return result.get("data") if isinstance(result, dict) else None
+        grade = result.get("data") if isinstance(result, dict) else None
+        if isinstance(grade, dict):
+            return {**grade, "coverage": coverage}
+        return None
 
     # -- grade cache -------------------------------------------------------
 
-    def _cache_key(self, file_path: str) -> str:
-        """Cache key = file size+mtime + the description/model that graded it.
+    def _cache_key(self, file_path: str, source_url: str = "", target_context: str = "") -> str:
+        """Identify every effective grading input, independent of selection."""
+        from ..extraction.llm_factory import resolve_llm_kwargs
 
-        A re-run reuses a stored grade only when the file is byte-identical
-        (size+mtime) AND the target description/model are unchanged, so editing
-        the ``document_description`` or switching models re-grades correctly.
-        """
+        resolved = getattr(self, "_cache_model", None)
+        if resolved is None:
+            resolved = resolve_llm_kwargs(
+                self._model, models=self._models, default_model=self._default_model,
+            )
+            resolved.pop("api_key", None)
+            self._cache_model = resolved
         try:
             st = Path(file_path).stat()
             stat_part = f"{st.st_size}:{st.st_mtime_ns}"
         except OSError:
             stat_part = "0:0"
-        digest = hashlib.sha256(
-            f"{self._description}\x00{self._model or ''}".encode()
-        ).hexdigest()[:16]
+        graded_inputs = json.dumps({
+            "file": Path(file_path).resolve().as_posix(),
+            "description": self._description, "model": resolved,
+            "source_url": redact_url(source_url),
+            "target_context": redact_urls_in_text(target_context),
+            "max_chars": self._max_chars, "keywords": self._review_keywords,
+            "system": _REVIEW_SYSTEM, "schema": _REVIEW_SCHEMA,
+            "sampling": "head-keyword-body-tail-v1",
+        }, sort_keys=True, default=str)
+        digest = hashlib.sha256(graded_inputs.encode()).hexdigest()
         return f"{stat_part}:{digest}"
 
-    def _read_cached_grade(self, file_path: str) -> dict[str, Any] | None:
+    def _read_cached_grade(
+        self, file_path: str, source_url: str = "", target_context: str = ""
+    ) -> dict[str, Any] | None:
         """Return a stored LLM grade when the cache key still matches."""
         src = Path(file_path)
         sidecar = src.parent / REVIEW_CACHE_DIRNAME / f"{src.stem}.json"
@@ -440,12 +481,14 @@ class DocumentReviewer:
             payload = json.loads(sidecar.read_text(encoding="utf-8"))
         except (OSError, ValueError):
             return None
-        if payload.get("cache_key") != self._cache_key(file_path):
+        if not isinstance(payload, dict):
+            return None
+        if payload.get("cache_key") != self._cache_key(file_path, source_url, target_context):
             return None
         llm = payload.get("llm")
         if not isinstance(llm, dict) or llm.get("relevance") is None:
             return None
-        return llm
+        return {**llm, "coverage": payload.get("coverage", {})}
 
     def _find_redundant_docs(
         self, primaries: list[dict[str, Any]], target_context: str
@@ -466,13 +509,13 @@ class DocumentReviewer:
         # Build a numbered list of doc metadata for the LLM.
         lines: list[str] = [
             f"TARGET DOCUMENT: {self._description}\n",
-            f"Target context: {target_context}\n" if target_context else "",
+            f"Target context: {redact_urls_in_text(target_context)}\n" if target_context else "",
             "Documents to compare (0-based index):\n",
         ]
         for i, rec in enumerate(primaries):
             path = str(rec.get("path") or "")
             filename = Path(path).name if path else f"doc_{i}"
-            url = str(rec.get("url") or rec.get("final_url") or "unknown")
+            url = redact_url(self._record_source_url(rec)) or "unknown"
             doc_kind = str(rec.get("review_doc_kind") or "unknown")
             reason = str(rec.get("review_reason") or "")
             lines.append(
@@ -539,9 +582,8 @@ class DocumentReviewer:
     ) -> tuple[list[dict[str, Any]], list[str]]:
         """Grade downloaded files per target and promote the top one(s).
 
-        Annotates each record with ``review_*`` fields. In ``move`` mode the
-        promoted file(s) are relocated to a ``reviewed/`` subfolder and their
-        ``path``/``relative_path`` updated; in ``flag`` mode files stay put.
+        Annotates each record with ``review_*`` fields and writes audit sidecars.
+        Files stay in place; the engine materializes selected files separately.
         """
         gradable = [
             r
@@ -550,10 +592,17 @@ class DocumentReviewer:
         ]
         if not gradable:
             return downloads, notes
+        for record in gradable:
+            for field in tuple(record):
+                if field.startswith("review_"):
+                    record.pop(field)
+            record[FIELD_REVIEW_SELECTED] = False
 
         try:
             self._ensure_client()
         except Exception as exc:  # noqa: BLE001 - no LLM configured
+            for record in gradable:
+                record["review_failed"] = True
             notes.append(
                 f"Document review skipped (LLM unavailable: {exc})."
             )
@@ -562,8 +611,15 @@ class DocumentReviewer:
         # Group by originating target so promotion is per-jurisdiction.
         groups: dict[str, list[dict[str, Any]]] = {}
         for record in gradable:
+            # Selection/dedup are recomputed, not grade-cache inputs.
+            record.pop(FIELD_REVIEW_REDUNDANT, None)
+            record.pop("review_deduplication", None)
             meta = record.get("target_metadata") or {}
-            key = str(meta.get("label") or record.get("target_label") or "_")
+            # Labels and shared hosts need not be unique project identities.
+            key = (
+                json.dumps(meta, sort_keys=True, default=str)
+                if meta else str(record.get("target_label") or "_")
+            )
             groups.setdefault(key, []).append(record)
 
         selected = 0
@@ -575,7 +631,7 @@ class DocumentReviewer:
             # whether the document is relevant for THIS specific target.
             _meta = (records[0].get("target_metadata") or {}) if records else {}
             _ctx_parts = [
-                f"{k}={v}" for k, v in _meta.items()
+                f"{k}={v}" for k, v in sorted(_meta.items())
                 if v and k != "query"  # exclude the search query itself
             ]
             target_context = ", ".join(_ctx_parts) if _ctx_parts else target_key
@@ -583,12 +639,20 @@ class DocumentReviewer:
             # Grade files concurrently (4 threads) for speed.
             from concurrent.futures import ThreadPoolExecutor, as_completed
 
-            def _grade_record(record: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any] | None, bool]:
+            def _grade_record(
+                record: dict[str, Any], context: str = target_context,
+            ) -> tuple[dict[str, Any], dict[str, Any] | None, bool]:
                 path = str(record.get("path"))
-                grade = self._read_cached_grade(path)
+                source_url = self._record_source_url(record)
+                record["review_target_context"] = context
+                grade = self._read_cached_grade(path, source_url, context)
                 was_cached = grade is not None
                 if grade is None:
-                    grade = self._grade(path, target_context=target_context)
+                    grade = self._grade(
+                        path,
+                        target_context=context,
+                        source_url=source_url,
+                    )
                 return record, grade, was_cached
 
             with ThreadPoolExecutor(max_workers=4) as executor:
@@ -596,10 +660,16 @@ class DocumentReviewer:
                 for future in as_completed(futures):
                     record, grade, was_cached = future.result()
                     if grade is None:
+                        record["review_failed"] = True
                         continue
+                    record["review_cached"] = was_cached
+                    record["review_grade"] = {
+                        field: grade.get(field) for field in
+                        ("is_primary", "relevance", "doc_kind", "reason")
+                    }
+                    record["review_coverage"] = grade.get("coverage", {})
                     if was_cached:
                         cached += 1
-                        record["review_cached"] = True
                     else:
                         graded += 1
                     record["review_is_primary"] = bool(grade.get("is_primary"))
@@ -629,17 +699,12 @@ class DocumentReviewer:
                     # Pass 1: byte-identical files (mirrors, http/https variants).
                     byte_redundant = self._find_byte_identical_duplicates(primaries)
                     if byte_redundant:
-                        redundant_path_set = {
-                            str(primaries[i].get("path"))
-                            for i in byte_redundant
-                        }
                         notes.append(
                             f"Dedup ({target_key}): excluded "
-                            f"{len(redundant_path_set)} byte-identical duplicate(s)."
+                            f"{len(byte_redundant)} byte-identical duplicate(s)."
                         )
-                        for r in ranked:
-                            if str(r.get("path")) in redundant_path_set:
-                                r[FIELD_REVIEW_REDUNDANT] = True
+                        for i in byte_redundant:
+                            primaries[i][FIELD_REVIEW_REDUNDANT] = True
 
                     # Rebuild survivors after pass 1 so pass 2 only sees
                     # non-redundant primaries (fixes: disjoint keep decisions).
@@ -716,6 +781,8 @@ class DocumentReviewer:
                     if keep:
                         selected += 1
                     non_redundant_rank += 1
+
+            for record in ranked:
                 # Files are NOT moved: everything stays in place under
                 # documents/ and the engine materializes the selected set into
                 # curated/. A per-file sidecar records the verdict so a human
@@ -763,23 +830,34 @@ class DocumentReviewer:
         if sidecar.exists():
             try:
                 prior = json.loads(sidecar.read_text(encoding="utf-8"))
-                if isinstance(prior.get("human"), dict):
+                if (
+                    isinstance(prior, dict)
+                    and isinstance(prior.get("human"), dict)
+                ):
                     human_block = prior["human"]
             except (OSError, ValueError):
                 pass
 
+        source_url = self._record_source_url(record)
         payload = {
             "file": src.name,
-            "cache_key": self._cache_key(str(src)),
-            "llm": {
+            "source_url": source_url or None,
+            "cache_key": self._cache_key(str(src), source_url, record.get("review_target_context", "")),
+            "llm": record.get("review_grade") or {
                 "is_primary": record.get("review_is_primary"),
                 "relevance": record.get("review_relevance"),
                 "doc_kind": record.get("review_doc_kind"),
                 "reason": record.get("review_reason"),
-                "selected": record.get("review_selected"),
             },
+            "selection": {
+                "selected": bool(record.get("review_selected")),
+                "redundant": bool(record.get("review_redundant")),
+            },
+            "coverage": record.get("review_coverage", {}),
             "human": human_block,
         }
+        if record.get("review_deduplication"):
+            payload["deduplication"] = record["review_deduplication"]
         try:
             review_dir.mkdir(parents=True, exist_ok=True)
             sidecar.write_text(

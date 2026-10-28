@@ -13,11 +13,12 @@ from psweep.discovery.engine import DiscoveryEngine
 
 
 class TestCheckpointKey:
-    def test_label_is_used_when_present(self):
-        key = DiscoveryEngine._target_checkpoint_key(
-            {"label": "Aurora CO", "state": "co"}
-        )
-        assert key == "Aurora CO"
+    def test_label_only_target_is_its_complete_identity(self):
+        assert DiscoveryEngine._target_checkpoint_key({"label": "Aurora CO"}) == "Aurora CO"
+
+    def test_label_does_not_discard_other_identity_fields(self):
+        key = DiscoveryEngine._target_checkpoint_key({"label": "Aurora CO", "state": "co"})
+        assert key != DiscoveryEngine._target_checkpoint_key({"label": "Aurora CO", "state": "oh"})
 
     def test_hash_fallback_when_no_label(self):
         key = DiscoveryEngine._target_checkpoint_key(

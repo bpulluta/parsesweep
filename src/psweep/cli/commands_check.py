@@ -7,7 +7,17 @@ import sys
 from pathlib import Path
 
 import click
-from jsonschema import ValidationError, validate as json_validate
+from jsonschema import (
+    FormatChecker,
+    SchemaError,
+    ValidationError,
+    validate as json_validate,
+)
+
+from psweep.exceptions import (
+    ConfigurationError,
+    SchemaError as ExtractionSchemaError,
+)
 
 from psweep.extraction import load_schema
 from psweep.utils.config import get_config
@@ -15,13 +25,22 @@ from psweep.utils.config import get_config
 
 @click.command()
 @click.argument("extraction_file", type=click.Path(exists=True))
+@click.option(
+    "--schema", type=click.Path(exists=True, dir_okay=False),
+    help="Schema to check against (defaults to the record's lineage schema).",
+)
 @click.option("--verbose", "-v", is_flag=True, help="Enable verbose logging")
 @click.option(
     "--show-data",
     is_flag=True,
     help="Display extracted data with syntax highlighting",
 )
-def check(extraction_file: str, verbose: bool, show_data: bool) -> None:
+def check(
+    extraction_file: str,
+    schema: str | None,
+    verbose: bool,
+    show_data: bool,
+) -> None:
     """
     Check an extraction result against the schema.
 
@@ -44,8 +63,26 @@ def check(extraction_file: str, verbose: bool, show_data: bool) -> None:
         view.error("Invalid JSON file", str(exc))
         sys.exit(1)
 
-    config = get_config()
-    schema = load_schema(config.default_schema)
+    if not isinstance(data, dict):
+        view.error("Invalid extraction record", "Expected a JSON object")
+        sys.exit(1)
+    lineage = data.get("lineage")
+    recorded_schema = (
+        lineage.get("schema_id") if isinstance(lineage, dict) else None
+    )
+    schema_ref = schema or recorded_schema or get_config().default_schema
+    schema_path = Path(schema_ref)
+    if not schema_path.exists():
+        view.error(
+            "Schema not found",
+            f"{schema_path}; supply --schema for this record",
+        )
+        sys.exit(1)
+    try:
+        loaded_schema = load_schema(schema_path)
+    except (ConfigurationError, ExtractionSchemaError) as exc:
+        view.error("Cannot load schema", str(exc))
+        sys.exit(1)
 
     try:
         payload = data.get("payload")
@@ -53,9 +90,13 @@ def check(extraction_file: str, verbose: bool, show_data: bool) -> None:
             raise ValidationError(
                 "Extraction file must use canonical extraction-record format with a 'payload' object"
             )
-        json_validate(instance=payload, schema=schema)
+        json_validate(
+            instance=payload,
+            schema=loaded_schema,
+            format_checker=FormatChecker(),
+        )
         view.status("success", "Schema validation passed")
-    except ValidationError as exc:
+    except (SchemaError, ValidationError) as exc:
         view.error("Schema validation failed", exc.message)
         sys.exit(1)
 

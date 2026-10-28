@@ -7,7 +7,21 @@ from click.testing import CliRunner
 
 from psweep.cli.main import cli
 
-SCHEMA_PATH = Path("schemas/personal/geothermal_ordinance_schema.json")
+import json
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def synthetic_schema(tmp_path, monkeypatch):
+    schema = tmp_path / "schema.json"
+    schema.write_text(json.dumps({"$metadata": {
+        "extraction": {"main_data_array": "requirements", "identifier_fields": ["value"]},
+        "identity": {"deduplication": {"key_fields": ["value"]}},
+    }}))
+    monkeypatch.setitem(globals(), "SCHEMA_PATH", schema)
+
+
+SCHEMA_PATH = None
 
 
 def _patch_compiler(monkeypatch):
@@ -17,9 +31,9 @@ def _patch_compiler(monkeypatch):
             {"type": "Document", "main_array_key": "requirements"},
         )
 
-    def _fake_save_csv(self, df, path):
+    def _fake_save_csv(self, df, path, *, prepared=False):
         path.write_text("State,County,Value\nMA,Longmeadow,1\n", encoding="utf-8")
-    def _fake_save_excel(self, df, path):
+    def _fake_save_excel(self, df, path, *, prepared=False):
         path.write_bytes(b"")
 
     monkeypatch.setattr(

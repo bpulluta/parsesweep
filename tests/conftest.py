@@ -4,6 +4,18 @@ import os
 import sys
 from unittest.mock import MagicMock
 
+import pytest
+
+from _helpers import synthetic_evidence_schema, write_json
+
+
+@pytest.fixture
+def schema_path(tmp_path):
+    """Write the self-contained evidence contract used by shared feature tests."""
+    path = tmp_path / "schema.json"
+    write_json(path, synthetic_evidence_schema())
+    return path
+
 # Force color OFF before psweep imports build any Rich console. CLI tests assert
 # on plain-text error substrings (e.g. "Missing option '--config'"); when Rich
 # emits ANSI codes those substrings get split and the assertions fail. Some

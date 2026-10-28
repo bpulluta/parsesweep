@@ -176,6 +176,11 @@ class BrowserSession:
             pass
         self._driver.set_page_load_timeout(self._page_load_timeout)
 
+    @property
+    def current_url(self) -> str:
+        """Return the observed browser location, never the requested URL."""
+        return str(self._driver.current_url or "") if self._driver is not None else ""
+
     def fetch_html(self, url: str, *, settle_seconds: float = 2.0) -> str:
         """Navigate to *url* and return the rendered page source."""
         if self._driver is None:
@@ -204,8 +209,8 @@ class BrowserSession:
 
     def download_bytes(
         self, url: str, *, timeout_seconds: int = 60
-    ) -> tuple[bytes, str | None]:
-        """Fetch *url* through the browser and return ``(bytes, content_type)``.
+    ) -> tuple[bytes, str | None, str]:
+        """Fetch *url* and return bytes, content type, and observed response URL.
 
         Runs a same-origin ``fetch()`` inside the page so the request uses the
         browser's real TLS fingerprint and session — the only reliable way past
@@ -242,6 +247,7 @@ class BrowserSession:
                   cb(JSON.stringify({
                       ok: r.ok, status: r.status,
                       ct: r.headers.get('content-type'),
+                      url: r.url,
                       data: btoa(bin)
                   }));
               }))
@@ -255,7 +261,11 @@ class BrowserSession:
             detail = payload.get("error") or f"HTTP {payload.get('status')}"
             msg = f"Browser download failed for {url}: {detail}"
             raise RuntimeError(msg)
-        return base64.b64decode(payload.get("data") or ""), payload.get("ct")
+        return (
+            base64.b64decode(payload.get("data") or ""),
+            payload.get("ct"),
+            str(payload.get("url") or ""),
+        )
 
     def close(self) -> None:
         """Quit the underlying browser driver and release its resources."""

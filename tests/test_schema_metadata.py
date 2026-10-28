@@ -123,7 +123,7 @@ class TestExtractionMetadata:
             ("get_deduplication_ignore_fields", ["notes", "timestamp"]),
             ("get_deduplication_strategy", "latest"),
             ("get_comparison_mode", "fuzzy"),
-            ("get_output_format", "excel"),
+            ("get_output_formats", ["csv", "excel"]),
             ("get_column_order", ["id", "name"]),  # auto-derived from context object properties
         ],
     )
@@ -182,7 +182,7 @@ class TestCompilationMetadata:
         )
 
         assert meta.get_output_exclude_fields() == ["runtime_only"]
-        assert meta.get_output_format() == "csv"
+        assert meta.get_output_formats() == ["csv"]
         renames = meta.get_column_renames()
         assert renames["Name"] == "charge_name"  # explicit override present
         assert meta.get_comparison_mode() == "exact"
@@ -458,7 +458,7 @@ class TestCompilationBlockValidation:
             },
         )
         meta = SchemaMetadata(path)
-        assert meta.get_output_format() == "excel"
+        assert meta.get_output_formats() == ["excel"]
         assert meta.get_state_normalization_column() == "State"
 
     def test_normalization_state_column_null_accepted(self, tmp_path):

@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import psweep.extraction.document_utils as document_utils
 from psweep.discovery.document_reviewer import DocumentReviewer
 
 
@@ -29,6 +30,28 @@ def _stub_grades(reviewer: DocumentReviewer, grades: dict[str, dict]) -> None:
     """Replace the LLM grade call with canned results keyed by filename."""
     reviewer._ensure_client = lambda: object()  # type: ignore[method-assign]
     reviewer._grade = lambda p, **kw: grades.get(Path(p).name)  # type: ignore[method-assign]
+
+
+def test_seed_only_review_preserves_shared_cap(tmp_path):
+    records = [_record(tmp_path, name, "unused") for name in ("one.pdf", "two.pdf")]
+    for record in records:
+        record.pop("target_metadata")
+        record.pop("target_label")
+    reviewer = DocumentReviewer(document_description="records", keep_top=1, deduplicate_redundant=False)
+    _stub_grades(reviewer, {name: {"is_primary": True, "relevance": 0.9, "doc_kind": "record", "reason": "fixture"} for name in ("one.pdf", "two.pdf")})
+    reviewer.review(records, [])
+    assert sum(record["review_selected"] for record in records) == 1
+
+
+def test_malformed_cache_shape_is_a_miss(tmp_path):
+    record = _record(tmp_path, "one.pdf", "target")
+    cache = tmp_path / ".review/one.json"
+    cache.parent.mkdir()
+    cache.write_text("[]")
+    reviewer = DocumentReviewer(document_description="records")
+    _stub_grades(reviewer, {"one.pdf": {"is_primary": True, "relevance": 0.9, "doc_kind": "record", "reason": "fixture"}})
+    reviewer.review([record], [])
+    assert record["review_selected"] and not record["review_cached"]
 
 
 class TestReviewSelection:
@@ -67,7 +90,7 @@ class TestReviewSelection:
         assert sidecar.exists()
         payload = json.loads(sidecar.read_text(encoding="utf-8"))
         assert payload["llm"]["is_primary"] is True
-        assert payload["llm"]["selected"] is True
+        assert payload["selection"]["selected"] is True
         assert payload["human"]["decision"] is None
         # non-primary stays put and is not selected
         assert deck.get("review_selected") is False
@@ -208,6 +231,120 @@ class TestReviewGradeCache:
         _, notes2 = r2.review([rec2], [])
         assert rec2.get("review_cached") is not True
         assert any("graded 1 file" in n for n in notes2)
+
+    def test_changed_source_url_invalidates_cache(self, tmp_path: Path):
+        rec = _record(tmp_path, "comment.pdf", "Project A")
+        rec["url"] = "https://mirror.example.org/comment.pdf"
+        grades = {
+            "comment.pdf": {
+                "is_primary": True, "relevance": 0.9,
+                "doc_kind": "comment", "reason": "x",
+            }
+        }
+        r1 = DocumentReviewer(document_description="public comments")
+        _stub_grades(r1, grades)
+        r1.review([dict(rec)], [])
+
+        # Same file bytes/mtime, but different download provenance → re-grade.
+        r2 = DocumentReviewer(document_description="public comments")
+        seen: list[str] = []
+
+        def _grade(p, **kw):
+            seen.append(kw.get("source_url", ""))
+            return grades[Path(p).name]
+
+        r2._ensure_client = lambda: object()  # type: ignore[method-assign]
+        r2._grade = _grade  # type: ignore[method-assign]
+        rec2 = dict(rec)
+        rec2["final_url"] = "https://puc.sd.gov/comments/comment.pdf"
+        _, notes2 = r2.review([rec2], [])
+        assert rec2.get("review_cached") is not True
+        assert seen == ["https://puc.sd.gov/comments/comment.pdf"]
+        assert any("graded 1 file" in n for n in notes2)
+
+        # Unchanged provenance on a third run → cache hit.
+        r3 = DocumentReviewer(document_description="public comments")
+        _stub_grades(r3, {})
+        rec3 = dict(rec2)
+        r3.review([rec3], [])
+        assert rec3.get("review_cached") is True
+
+    def test_url_less_record_cache_key_unchanged(self, tmp_path: Path):
+        rec = _record(tmp_path, "ordinance.pdf", "County A")
+        reviewer = DocumentReviewer(document_description="desc")
+        assert reviewer._cache_key(rec["path"]) == reviewer._cache_key(
+            rec["path"], source_url=""
+        )
+        assert reviewer._cache_key(rec["path"]) != reviewer._cache_key(
+            rec["path"], source_url="https://dps.ny.gov/a.pdf"
+        )
+
+
+class _CapturingClient:
+    def __init__(self) -> None:
+        self.prompts: list[str] = []
+
+    def extract(self, *, text, schema, system_prompt, user_prompt):
+        self.prompts.append(user_prompt)
+        return {
+            "data": {
+                "is_primary": True, "relevance": 0.9,
+                "doc_kind": "comment", "reason": "ok",
+            }
+        }
+
+
+class TestReviewSourceUrlContext:
+    """The grader must see the record's actual download URL (provenance)."""
+
+    def _review_one(self, tmp_path: Path, monkeypatch, **urls) -> str:
+        monkeypatch.setattr(
+            document_utils,
+            "extract_text_from_document",
+            lambda _p: "public comment " * 50,
+        )
+        rec = _record(tmp_path, "Bury.pdf", "Crowned Ridge Wind")
+        rec.update(urls)
+        client = _CapturingClient()
+        reviewer = DocumentReviewer(document_description="public comments")
+        reviewer._client = client
+        reviewer.review([rec], [])
+        assert len(client.prompts) == 1
+        return client.prompts[0]
+
+    def test_final_url_preferred_over_original(
+        self, tmp_path: Path, monkeypatch
+    ):
+        prompt = self._review_one(
+            tmp_path,
+            monkeypatch,
+            url="https://short.example.com/x",
+            final_url="https://puc.sd.gov/commission/dockets/Bury.pdf",
+        )
+        final = "https://puc.sd.gov/commission/dockets/Bury.pdf"
+        assert f"SOURCE_URL: {final}" in prompt
+        assert "short.example.com" not in prompt
+
+    def test_original_url_used_when_final_missing(
+        self, tmp_path: Path, monkeypatch
+    ):
+        prompt = self._review_one(
+            tmp_path, monkeypatch, url="https://dps.ny.gov/ViewDoc-4.pdf"
+        )
+        assert "SOURCE_URL: https://dps.ny.gov/ViewDoc-4.pdf" in prompt
+
+    def test_missing_url_is_not_fabricated(self, tmp_path: Path, monkeypatch):
+        prompt = self._review_one(tmp_path, monkeypatch)
+        assert "SOURCE_URL" not in prompt
+
+    def test_sidecar_records_source_url(self, tmp_path: Path, monkeypatch):
+        self._review_one(
+            tmp_path, monkeypatch, final_url="https://efsec.wa.gov/c.pdf"
+        )
+        payload = json.loads(
+            (tmp_path / ".review" / "Bury.json").read_text(encoding="utf-8")
+        )
+        assert payload["source_url"] == "https://efsec.wa.gov/c.pdf"
 
 
 class TestReviewSampleWindowing:

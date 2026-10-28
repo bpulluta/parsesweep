@@ -1,6 +1,10 @@
 """Text processing utilities for extraction."""
 
 import logging
+
+from jsonschema import FormatChecker
+from jsonschema.validators import validator_for
+
 from typing import Dict, Any, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
@@ -79,10 +83,10 @@ class TextProcessor:
         self, data: Dict[str, Any], schema: Dict[str, Any]
     ) -> Dict[str, Any]:
         """
-        Ensure all schema fields are present in extracted data, filling missing fields with null.
+        Fill absent optional fields with null only when their schema permits it.
 
-        This prevents data loss when OpenAI omits optional fields.
-        Works generically with any schema structure.
+        Required fields must already be present; non-nullable optional fields
+        remain absent rather than becoming invalid null values.
 
         Parameters
         ----------
@@ -94,31 +98,29 @@ class TextProcessor:
         Returns
         -------
         Dict[str, Any]
-            Normalized data with all schema fields present
+            Data with absent nullable optional fields filled
         """
-        # Get schema properties
-        schema_props = schema.get("properties", {})
+        validator = validator_for(schema)(schema, format_checker=FormatChecker())
 
-        # Normalize all top-level object fields
-        for prop_name, prop_schema in schema_props.items():
-            if prop_schema.get("type") == "object" and prop_name in data:
-                # This is an object field (e.g., metadata, context, details)
-                obj_schema = prop_schema.get("properties", {})
-                for field in obj_schema.keys():
-                    if field not in data[prop_name]:
-                        data[prop_name][field] = None
+        def fill_nullable(value, subschema):
+            if not isinstance(subschema, dict):
+                return
+            if isinstance(value, dict):
+                required = subschema.get("required", [])
+                for field, field_schema in subschema.get("properties", {}).items():
+                    if field in value:
+                        fill_nullable(value[field], field_schema)
+                    elif (
+                        field not in required
+                        and validator.evolve(schema=field_schema).is_valid(None)
+                    ):
+                        value[field] = None
+            elif isinstance(value, list):
+                item_schema = subschema.get("items", {})
+                for item in value:
+                    fill_nullable(item, item_schema)
 
-            elif prop_schema.get("type") == "array" and prop_name in data:
-                # This is an array field (e.g., requirements, items, rates)
-                item_schema = prop_schema.get("items", {}).get(
-                    "properties", {}
-                )
-                for item in data.get(prop_name, []):
-                    if isinstance(item, dict):
-                        for field in item_schema.keys():
-                            if field not in item:
-                                item[field] = None
-
+        fill_nullable(data, schema)
         return data
 
     def normalize_string_fields(self, data: Dict[str, Any]) -> Dict[str, Any]:

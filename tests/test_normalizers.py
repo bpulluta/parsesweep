@@ -103,3 +103,11 @@ class TestCountyFips:
         df2 = pd.DataFrame({"state": ["NV"]})
         add_county_fips_column(df2, "state", "county", "county_fips")
         assert "county_fips" not in df2.columns
+
+    def test_nullable_geography_retains_missing_fips(self):
+        df = pd.DataFrame({
+            "state": ["California", "California", pd.NA, float("nan")],
+            "county": ["Shasta County", pd.NA, "Shasta County", None],
+        })
+        add_county_fips_column(df, "state", "county")
+        assert df["county_fips"].tolist() == ["06089", None, None, None]

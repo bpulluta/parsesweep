@@ -266,6 +266,17 @@ class TestPerTargetSelection:
         assert selected == [keep]
         assert any("configured exclusion patterns excluded" in n for n in notes)
 
+    def test_url_exclusion_preserves_structural_punctuation(self):
+        sel = CandidateSelector(
+            exclude_draft=False,
+            exclude_url_patterns=[r"/private-files/", r"^https://mirror\.example/"],
+        )
+        private = _candidate("https://agency.example/private-files/comment.pdf")
+        mirror = _candidate("https://mirror.example/public/comment.pdf")
+        keep = _candidate("https://agency.example/public/comment.pdf")
+        selected, _ = sel.select([[private, mirror, keep]], primary_per_target=3)
+        assert selected == [keep]
+
     def test_relevance_legal_marker_gate_requires_structural_legal_terms(self):
         sel = CandidateSelector(
             exclude_draft=False,
