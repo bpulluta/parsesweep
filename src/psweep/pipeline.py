@@ -442,11 +442,8 @@ def extract_documents(
     """
     from psweep.exceptions import APIKeyError, SchemaError
     from psweep.extraction import DocumentExtractor, load_schema
-    from psweep.extraction.document_utils import (
-        SUPPORTED_EXTENSIONS,
-        is_supported_document,
-    )
-    from psweep.extraction.record_writer import write_extraction_record
+    from psweep.extraction.document_utils import is_supported_document
+    from psweep.extraction.record_writer import record_extraction_scope, write_extraction_record
     from psweep.utils.page_range import load_pages_csv
 
     docs_path = Path(documents_path)
@@ -529,6 +526,7 @@ def extract_documents(
             page_range = page_range_map.get(doc)
             text = extract_text_from_document(doc, page_range=page_range)
             result = extractor.extract(text, loaded_schema)
+            record_extraction_scope(result, page_range=page_range)
 
             num_items = write_extraction_record(
                 output_file,
@@ -572,7 +570,7 @@ def compile_extractions(
     *,
     config_path: str | Path | None = None,
     output_dir: str | Path | None = None,
-    report_format: str = "both",
+    report_format: str | None = None,
     dry_run: bool = False,
 ) -> CompilationResult:
     """Compile extracted JSON files into Excel/CSV output.
@@ -593,7 +591,8 @@ def compile_extractions(
     output_dir:
         Where to write compiled output. Defaults to ``compiled/<name>/``.
     report_format:
-        ``"xlsx"``, ``"csv"``, or ``"both"`` (default).
+        ``"xlsx"``, ``"csv"``, or ``"both"``. If omitted, runtime output settings
+        override schema output settings; absent both, CSV and Excel are emitted.
     dry_run:
         If True, parse and validate but write no output files.
 
@@ -603,7 +602,7 @@ def compile_extractions(
     """
     from psweep.compilation.data_compiler import DataCompiler
     from psweep.compilation.input_provenance import analyze_compile_input_provenance
-    from psweep.utils.schema_metadata import SchemaMetadata
+    from psweep.config.runtime_config_loader import resolve_compilation_metadata
 
     ext_dir = Path(extraction_dir)
     schema_path = Path(schema)
@@ -618,34 +617,25 @@ def compile_extractions(
     # ``resolve_compile_output_dir`` (which swaps a nested ``extracted`` component
     # in place and returns an absolute path). Pass ``output_dir`` for full control.
     out_dir = Path(output_dir) if output_dir else Path("compiled") / ext_dir.name
-    if not dry_run:
-        out_dir.mkdir(parents=True, exist_ok=True)
-
-    # Build metadata overrides from config when provided — this is how output
-    # settings (exclude_fields, column_renames, column_order, normalization)
-    # reach the compiler when calling the Python API directly.
-    metadata_overrides: dict | None = None
+    resolved: dict = {"schema": str(schema_path)}
     if config_path:
         from psweep.config import load_runtime_config_file, resolve_command_config
 
         cfg = load_runtime_config_file(Path(config_path))
         resolved = resolve_command_config(
-            command="compile", cli_values={}, config_data=cfg, strict=False
+            command="compile", cli_values={
+                "schema": str(schema_path), "extracted_dir": str(ext_dir),
+            },
+            config_data=cfg, strict=False,
         )
-        compilation_overrides: dict = {}
-        config_output = resolved.get("compilation_output")
-        if isinstance(config_output, dict):
-            compilation_overrides["output"] = config_output
-        config_norm = resolved.get("normalization")
-        if isinstance(config_norm, dict):
-            compilation_overrides["normalization"] = config_norm
-        config_severity = resolved.get("severity_tokens")
-        if isinstance(config_severity, dict):
-            compilation_overrides["severity_tokens"] = config_severity
-        if compilation_overrides:
-            metadata_overrides = {"compilation": compilation_overrides}
-
-    schema_metadata = SchemaMetadata(schema_path, metadata_overrides=metadata_overrides)
+    if report_format is not None:
+        resolved["compilation_output"] = {
+            **resolved.get("compilation_output", {}),
+            "default_format": report_format,
+        }
+    schema_metadata = resolve_compilation_metadata(resolved)
+    if schema_metadata.metadata.get("compilation", {}).get("synthesis", {}).get("enabled"):
+        raise ValueError("Library compile_extractions does not run synthesis; use the compile CLI")
     compiler = DataCompiler(
         schema_metadata=schema_metadata,
         verbose=False,
@@ -659,35 +649,26 @@ def compile_extractions(
 
     rows = len(df)
     output_files: list[Path] = []
-    if not dry_run and not df.empty:
-        base_name = ext_dir.name.replace("_", "-")
-        normalized_format = report_format.strip().lower()
-        if normalized_format in {"both", "all"}:
-            output_formats = ("csv", "xlsx")
-        elif normalized_format in {"csv"}:
-            output_formats = ("csv",)
-        elif normalized_format in {"xlsx", "excel"}:
-            output_formats = ("xlsx",)
-        else:
-            raise ValueError(
-                "report_format must be one of: csv, xlsx, both"
-            )
+    if not df.empty:
+        if dry_run:
+            from contextlib import redirect_stdout
+            from io import StringIO
 
-        for output_format in output_formats:
-            if output_format == "csv":
-                csv_path = out_dir / f"{base_name}.csv"
-                compiler.save_csv(df, csv_path)
-                output_files.append(csv_path)
-            else:
-                xlsx_path = out_dir / f"{base_name}.xlsx"
-                compiler.save_excel(df, xlsx_path)
-                output_files.append(xlsx_path)
+            with redirect_stdout(StringIO()):
+                export_df = compiler.deduplicator.deduplicate(df.copy())
+            frame = compiler._prepare_output_dataframe(export_df)
+            compiler.validate_export(frame, schema_metadata.get_output_formats())
+        else:
+            output_files, _ = compiler.export(
+                df, out_dir, ext_dir.name.replace("_", "-"),
+                schema_metadata.get_output_formats(),
+            )
 
     return CompilationResult(
         output_dir=out_dir,
         output_files=output_files,
         total_rows=max(rows, 0),
-        deduplicated=not dry_run,
+        deduplicated=not dry_run and bool(schema_metadata.get_deduplication_key_fields()),
         warnings=provenance_warnings,
     )
 
@@ -727,16 +708,28 @@ def run_pipeline(
     psweep.exceptions.PipelineError
         If any stage fails.
     """
-    from psweep.config import load_yaml_file
     from psweep.exceptions import PipelineError
 
     cfg_path = Path(config_path)
     if not cfg_path.exists():
         raise FileNotFoundError(f"Config not found: {cfg_path}")
 
-    cfg = load_yaml_file(cfg_path)
+    from psweep.config import load_runtime_config_file, resolve_command_config
+    from psweep.config.runtime_config_loader import resolve_compilation_metadata
 
-    domain = cfg.get("domain", cfg_path.parent.name)
+    runtime_cfg = load_runtime_config_file(cfg_path)
+    resolve_compilation_metadata(resolve_command_config(
+        command="compile", cli_values={}, config_data=runtime_cfg, strict=True,
+    ))
+    if not skip_extract:
+        from psweep.extraction.schema_utils import load_schema
+
+        extract_inputs = resolve_command_config(
+            command="extract", cli_values={}, config_data=runtime_cfg, strict=True,
+        )
+        load_schema(Path(extract_inputs["schema"]))
+
+    domain = runtime_cfg.get("domain", cfg_path.parent.name)
     stage_cmds = build_run_stage_commands(
         cfg_path,
         base_cmd=[sys.executable, "-m", "psweep.cli.main"],

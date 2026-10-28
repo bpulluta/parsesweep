@@ -25,7 +25,6 @@ from psweep.discovery.constants import (
 )
 from psweep.discovery.models import CandidateScore, DiscoveryCandidate
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -365,9 +364,8 @@ def test_retry_budget_unbounded_when_unset(monkeypatch):
 # ---------------------------------------------------------------------------
 
 
-def test_checkpoint_persisted_per_target(tmp_path, monkeypatch):
-    """Checkpoint is saved once per target (incremental crash-safety) and the
-    final on-disk state has one entry per completed target."""
+def test_checkpoint_persisted_once_after_curation(tmp_path, monkeypatch):
+    """Completed target entries share one atomic snapshot after publication."""
     engine = DiscoveryEngine()
 
     dom = tmp_path / "dom"
@@ -407,7 +405,7 @@ def test_checkpoint_persisted_per_target(tmp_path, monkeypatch):
         ),
     )
 
-    # Spy on checkpoint saves: count calls + assert each writes exactly 1 entry.
+    # Spy on checkpoint saves: avoid repeated whole-file rewrites per target.
     save_calls: list[int] = []
     orig_save = DiscoveryEngine._save_checkpoint_entries
 
@@ -424,9 +422,7 @@ def test_checkpoint_persisted_per_target(tmp_path, monkeypatch):
     )
     engine.run(request)
 
-    # One save per target -> incremental, not a single bulk save.
-    assert len(save_calls) == 3
-    assert all(size == 1 for size in save_calls)
+    assert save_calls == [3]
 
     # Final on-disk state: one entry per completed target.
     checkpoint_path = dom / "checkpoint.json"

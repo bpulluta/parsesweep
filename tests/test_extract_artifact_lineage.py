@@ -14,7 +14,6 @@ from psweep.cli.commands import (
     _extract_and_save_result,
     _generate_run_id,
     _run_validation_extraction,
-    _resolve_compilation_output_formats,
     _resolve_schema_ref,
     _should_fail_on_suspicious,
 )
@@ -77,8 +76,8 @@ def test_context_budget_suggestions_for_process_without_matching_config_remain_g
     assert all('--pages-csv config/' not in suggestion for suggestion in suggestions)
 
 
-def test_resolve_compilation_output_formats_defaults_to_both() -> None:
-    assert _resolve_compilation_output_formats() == ['csv', 'excel']
+def test_resolve_compilation_output_formats_defaults_to_both(schema_path) -> None:
+    assert SchemaMetadata.for_compilation(schema_path, {}).get_output_formats() == ['csv', 'excel']
 
 
 def test_init_domain_schema_cli_creates_lean_starter_from_reference(tmp_path) -> None:
@@ -324,7 +323,7 @@ def test_run_validation_extraction_prints_compare_command_with_selected_lane(tmp
             'model-b': _DummyResult(cost=0.2, processing_time=1.5),
         },
     )
-    monkeypatch.setattr('psweep.cli.commands.ask_confirm', lambda *args, **kwargs: True)
+    monkeypatch.setattr('psweep.cli.commands_extract.ask_confirm', lambda *args, **kwargs: True)
 
     _run_validation_extraction(
         doc_files=[document_path],
@@ -430,31 +429,23 @@ def test_should_fail_on_suspicious_respects_thresholds() -> None:
     assert _should_fail_on_suspicious(preview_report, 'low') is True
 
 
-def test_resolve_compilation_output_formats_honors_runtime_excel_override() -> None:
-    assert _resolve_compilation_output_formats(
-        {
-            'compilation': {
-                'output': {
-                    'default_format': 'excel',
-                }
-            }
-        }
-    ) == ['excel']
+def test_resolve_compilation_output_formats_honors_runtime_excel_override(schema_path) -> None:
+    assert SchemaMetadata.for_compilation(schema_path, {
+        'compilation_output': {'default_format': 'excel'},
+    }).get_output_formats() == ['excel']
 
 
-def test_resolve_compilation_output_formats_falls_back_for_invalid_value() -> None:
-    assert _resolve_compilation_output_formats(
-        {
-            'compilation': {
-                'output': {
-                    'default_format': 'spreadsheet',
-                }
-            }
-        }
-    ) == ['csv', 'excel']
+def test_resolve_compilation_output_formats_rejects_invalid_value(schema_path) -> None:
+    from psweep.exceptions import SchemaMetadataError
+
+    with pytest.raises(SchemaMetadataError, match='default_format'):
+        SchemaMetadata.for_compilation(schema_path, {
+            'compilation_output': {'default_format': 'spreadsheet'},
+        })
 
 
-def test_compile_cli_keeps_dual_output_without_runtime_override(tmp_path) -> None:
+@pytest.mark.parametrize("schema_format", [None, "excel"])
+def test_compile_cli_respects_schema_format_and_dual_default(tmp_path, schema_format) -> None:
     schema_path = tmp_path / 'schema.json'
     _write_json(
         schema_path,
@@ -477,7 +468,7 @@ def test_compile_cli_keeps_dual_output_without_runtime_override(tmp_path) -> Non
                 },
                 'compilation': {
                     'output': {
-                        'default_format': 'excel',
+                        **({'default_format': schema_format} if schema_format else {}),
                     },
                 },
             },
@@ -541,7 +532,7 @@ def test_compile_cli_keeps_dual_output_without_runtime_override(tmp_path) -> Non
     )
 
     assert result.exit_code == 0
-    assert (output_dir / 'contracts.csv').exists()
+    assert (output_dir / 'contracts.csv').exists() is (schema_format is None)
     assert (output_dir / 'contracts.xlsx').exists()
 
 

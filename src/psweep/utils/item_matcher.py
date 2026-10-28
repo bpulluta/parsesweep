@@ -302,6 +302,9 @@ def map_key_fields_to_columns(
     ]
 
     for key_field in key_fields:
+        if key_field in df.columns:
+            mapped_cols.append(key_field)
+            continue
         # Handle nested field names (e.g., "jurisdiction.state" -> "state")
         field_name = key_field.split(".")[-1]
 

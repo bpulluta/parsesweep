@@ -13,7 +13,6 @@ from rich.logging import RichHandler
 from psweep.cli.run_view import RunView
 from psweep.cli.ui import (
     Verbosity,
-    ask_confirm,
     console,
     key_values,
     print_header,
@@ -154,7 +153,6 @@ from psweep.cli.commands_benchmark import benchmark
 from psweep.cli.commands_check import check
 from psweep.cli.commands_compile import (
     _build_dedup_preview_report,
-    _resolve_compilation_output_formats,
     _should_fail_on_suspicious,
     compile,
 )
@@ -175,3 +173,15 @@ from psweep.cli.commands_extract import (
     extract,
 )
 from psweep.cli.commands_validate import validate
+
+__all__ = [
+    "benchmark", "check", "compile", "curate", "discover", "extract", "validate",
+    "begin_run", "configure_logging",
+    "_explicit_cli_overrides", "_print_effective_config",
+    "_resolve_runtime_command_inputs", "_format_runtime_artifact_summary",
+    "_build_dedup_preview_report", "_should_fail_on_suspicious",
+    "_apply_page_targeting", "_build_index_filters", "_build_run_manifest",
+    "_context_budget_suggestions_for_process", "_extract_and_save_result",
+    "_extract_one_document", "_generate_run_id", "_resolve_schema_ref",
+    "_row_matches_filters", "_run_validation_extraction", "_write_run_manifest",
+]

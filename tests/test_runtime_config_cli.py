@@ -8,13 +8,13 @@ from click.testing import CliRunner
 from psweep.cli.main import cli
 
 
-def test_process_validate_config_with_run_yaml(tmp_path):
+def test_process_validate_config_with_run_yaml(tmp_path, schema_path):
     config_path = tmp_path / "run.yaml"
     config_path.write_text(
-        """
+        f"""
 extraction:
   input_dir: documents/geothermal_ordinances
-  schema: schemas/personal/geothermal_ordinance_schema.json
+  schema: {schema_path.as_posix()}
 """,
         encoding="utf-8",
     )
@@ -30,13 +30,13 @@ extraction:
         assert "Runtime config validation passed" in result.output
 
 
-def test_process_validate_config_strict_rejects_unknown_key(tmp_path):
+def test_process_validate_config_strict_rejects_unknown_key(tmp_path, schema_path):
     config_path = tmp_path / "run.yaml"
     config_path.write_text(
-        """
+        f"""
 extraction:
   input_dir: documents/geothermal_ordinances
-  schema: schemas/personal/geothermal_ordinance_schema.json
+  schema: {schema_path.as_posix()}
   mystery_option: true
 """,
         encoding="utf-8",
@@ -58,13 +58,13 @@ extraction:
     assert "Unknown keys in 'extraction' section" in result.output
 
 
-def test_compile_validate_config_quiet_returns_json(tmp_path):
+def test_compile_validate_config_quiet_returns_json(tmp_path, schema_path):
     config_path = tmp_path / "run.yaml"
     config_path.write_text(
-        """
+        f"""
 compilation:
   input_dir: processed/geothermal_ordinances
-  schema: schemas/personal/geothermal_ordinance_schema.json
+  schema: {schema_path.as_posix()}
 """,
         encoding="utf-8",
     )
@@ -81,17 +81,17 @@ compilation:
     assert payload["command"] == "compile"
 
 
-def test_run_validate_config_only_passes_with_valid_runtime_config(tmp_path):
+def test_run_validate_config_only_passes_with_valid_runtime_config(tmp_path, schema_path):
     config_path = tmp_path / "run.yaml"
     config_path.write_text(
-        """
+        f"""
 domain: demo
 extraction:
   input_dir: documents/demo
-  schema: schemas/personal/geothermal_ordinance_schema.json
+  schema: {schema_path.as_posix()}
 compilation:
   input_dir: extracted/demo
-  schema: schemas/personal/geothermal_ordinance_schema.json
+  schema: {schema_path.as_posix()}
 """,
         encoding="utf-8",
     )
@@ -104,18 +104,18 @@ compilation:
     assert result.exit_code == 0
 
 
-def test_run_validate_config_strict_fails_on_unknown_keys_by_default(tmp_path):
+def test_run_validate_config_strict_fails_on_unknown_keys_by_default(tmp_path, schema_path):
     config_path = tmp_path / "run.yaml"
     config_path.write_text(
-        """
+        f"""
 domain: demo
 extraction:
   input_dir: documents/demo
-  schema: schemas/personal/geothermal_ordinance_schema.json
+  schema: {schema_path.as_posix()}
   mystery_option: true
 compilation:
   input_dir: extracted/demo
-  schema: schemas/personal/geothermal_ordinance_schema.json
+  schema: {schema_path.as_posix()}
 """,
         encoding="utf-8",
     )
@@ -129,18 +129,18 @@ compilation:
     assert "Unknown keys in 'extraction' section" in result.output
 
 
-def test_run_validate_config_allows_unknown_keys_when_not_strict(tmp_path):
+def test_run_validate_config_allows_unknown_keys_when_not_strict(tmp_path, schema_path):
     config_path = tmp_path / "run.yaml"
     config_path.write_text(
-        """
+        f"""
 domain: demo
 extraction:
   input_dir: documents/demo
-  schema: schemas/personal/geothermal_ordinance_schema.json
+  schema: {schema_path.as_posix()}
   mystery_option: true
 compilation:
   input_dir: extracted/demo
-  schema: schemas/personal/geothermal_ordinance_schema.json
+  schema: {schema_path.as_posix()}
 """,
         encoding="utf-8",
     )
@@ -159,7 +159,7 @@ compilation:
     assert result.exit_code == 0
 
 
-def test_run_fresh_clears_extraction_output_before_stages(tmp_path):
+def test_run_fresh_clears_extraction_output_before_stages(tmp_path, schema_path):
     config_path = tmp_path / "run.yaml"
     extraction_dir = tmp_path / "extracted" / "demo"
     extraction_dir.mkdir(parents=True)
@@ -171,11 +171,11 @@ def test_run_fresh_clears_extraction_output_before_stages(tmp_path):
 domain: demo
 extraction:
   input_dir: documents/demo
-  schema: schemas/personal/geothermal_ordinance_schema.json
+  schema: {schema_path.as_posix()}
   output_dir: {extraction_dir.as_posix()}
 compilation:
   input_dir: {extraction_dir.as_posix()}
-  schema: schemas/personal/geothermal_ordinance_schema.json
+  schema: {schema_path.as_posix()}
 """,
         encoding="utf-8",
     )
@@ -194,7 +194,7 @@ compilation:
     assert not stale_record.exists()
 
 
-def test_run_summary_prefers_latest_curated_when_discovery_runs(tmp_path, monkeypatch):
+def test_run_summary_prefers_latest_curated_when_discovery_runs(tmp_path, monkeypatch, schema_path):
     config_path = tmp_path / "run.yaml"
     monkeypatch.chdir(tmp_path)
     extraction_dir = tmp_path / "extracted" / "demo"
@@ -209,11 +209,11 @@ discovery:
       query: q1
 extraction:
   input_dir: docs/demo
-  schema: schemas/personal/geothermal_ordinance_schema.json
+  schema: {schema_path.as_posix()}
   output_dir: {extraction_dir.as_posix()}
 compilation:
   input_dir: {extraction_dir.as_posix()}
-  schema: schemas/personal/geothermal_ordinance_schema.json
+  schema: {schema_path.as_posix()}
 """,
         encoding="utf-8",
     )
@@ -472,10 +472,10 @@ discovery:
     assert captured["request"].retention_documents == "none"
 
 
-def test_run_preflight_rejects_none_retention_with_extract_compile(tmp_path):
+def test_run_preflight_rejects_none_retention_with_extract_compile(tmp_path, schema_path):
     config_path = tmp_path / "run.yaml"
     config_path.write_text(
-        """
+        f"""
 domain: demo
 discovery:
   seeds:
@@ -484,10 +484,10 @@ discovery:
     documents: none
 extraction:
   input_dir: discovered/demo/curated
-  schema: schemas/personal/geothermal_ordinance_schema.json
+  schema: {schema_path.as_posix()}
 compilation:
   input_dir: extracted/demo
-  schema: schemas/personal/geothermal_ordinance_schema.json
+  schema: {schema_path.as_posix()}
 """,
         encoding="utf-8",
     )

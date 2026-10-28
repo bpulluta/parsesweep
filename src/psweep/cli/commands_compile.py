@@ -96,31 +96,6 @@ def _should_fail_on_provenance(
     return provenance_policy == "fail" and bool(provenance_warnings)
 
 
-def _resolve_compilation_output_formats(
-    metadata_overrides: Optional[Dict[str, Any]] = None,
-) -> List[str]:
-    """Resolve which compilation outputs to emit."""
-    output_config = ((metadata_overrides or {}).get("compilation") or {}).get("output") or {}
-    requested_format = output_config.get("default_format")
-
-    if requested_format is None:
-        return ["csv", "excel"]
-
-    normalized_format = str(requested_format).strip().lower()
-    if normalized_format == "excel":
-        return ["excel"]
-    if normalized_format == "csv":
-        return ["csv"]
-    if normalized_format in {"both", "all"}:
-        return ["csv", "excel"]
-
-    logging.getLogger(__name__).warning(
-        "Unsupported compilation output format '%s'; falling back to csv+excel",
-        requested_format,
-    )
-    return ["csv", "excel"]
-
-
 @click.command()
 @click.argument("extracted_dir", type=click.Path(exists=True), required=False)
 @click.option(
@@ -262,6 +237,9 @@ def compile(
             strict=config_strict,
             cli_values=cli_overrides,
         )
+        from psweep.config.runtime_config_loader import resolve_compilation_metadata
+
+        resolved_inputs["_schema_metadata"] = resolve_compilation_metadata(resolved_inputs)
     except RuntimeConfigError as exc:
         view.error("Runtime config resolution failed", str(exc))
         sys.exit(1)
@@ -305,7 +283,9 @@ def compile(
     provenance_policy = str(
         resolved_inputs.get("provenance_policy", provenance_policy)
     ).strip().lower()
-    synthesis_cfg = resolved_inputs.get("synthesis")
+    synthesis_cfg = resolved_inputs["_schema_metadata"].metadata.get(
+        "compilation", {}
+    ).get("synthesis")
     synthesis_active = isinstance(synthesis_cfg, dict) and bool(
         synthesis_cfg.get("enabled")
     )
@@ -320,21 +300,6 @@ def compile(
     else:
         output_dir = resolve_compile_output_dir(input_dir)
 
-    if fresh and not dry_run:
-        import shutil
-
-        # --fresh clears the compiled *output* directory (stale CSV/XLSX/accounting),
-        # NOT the extracted JSON directory — that belongs to extract's domain.
-        # Clear exactly the resolved output directory so --output is respected.
-        if output_dir.exists():
-            cleared_count = sum(1 for _ in output_dir.glob("*") if _.is_file())
-            shutil.rmtree(output_dir)
-            if cleared_count > 0 and not view.is_quiet:
-                view.status(
-                    "info",
-                    f"--fresh: cleared {cleared_count} file(s) from {output_dir.as_posix()}",
-                )
-
     emit_json_report = dry_run and report_format.lower() == "json"
     record_json_files = list_compile_record_files(input_dir)
 
@@ -345,7 +310,6 @@ def compile(
         )
         sys.exit(1)
 
-    output_dir.mkdir(parents=True, exist_ok=True)
     input_provenance_warnings = analyze_compile_input_provenance(input_dir)
     would_fail_on_provenance = _should_fail_on_provenance(
         provenance_policy=provenance_policy,
@@ -360,53 +324,13 @@ def compile(
         print_error("Schema not found", matched_schema.as_posix())
         sys.exit(1)
 
-    try:
-        from psweep.utils.schema_metadata import SchemaMetadata
-
-        metadata_overrides: Dict[str, Any] = {}
-        compilation_overrides: Dict[str, Any] = {}
-
-        config_output = resolved_inputs.get("compilation_output")
-        if isinstance(config_output, dict):
-            compilation_overrides["output"] = config_output
-
-        config_norm = resolved_inputs.get("normalization")
-        if isinstance(config_norm, dict):
-            compilation_overrides["normalization"] = config_norm
-
-        config_severity = resolved_inputs.get("severity_tokens")
-        if isinstance(config_severity, dict):
-            compilation_overrides["severity_tokens"] = config_severity
-
-        if compilation_overrides:
-            metadata_overrides["compilation"] = compilation_overrides
-
-        schema_metadata = SchemaMetadata(
-            matched_schema,
-            metadata_overrides=metadata_overrides or None,
-        )
-
-        if not emit_json_report and not view.is_quiet:
-            try:
-                schema_display = str(matched_schema.relative_to(Path.cwd()))
-            except ValueError:
-                schema_display = str(matched_schema)
-            config_info = {
-                "Input": str(input_dir),
-                "Output": str(output_dir),
-                "Schema": schema_display,
-            }
-            if metadata_overrides:
-                config_info["Overrides"] = "config-owned compilation settings active"
-            view.config(config_info)
-    except Exception as exc:
-        print_error(
-            "Schema validation failed",
-            f"Schema {matched_schema.name} is missing required $metadata section: {exc}\n"
-            "ParseSweep v2.0+ requires schemas with $metadata.\n"
-            "See schemas/SCHEMA_BEST_PRACTICES.md for examples.",
-        )
-        return
+    schema_metadata = resolved_inputs["_schema_metadata"]
+    if not emit_json_report and not view.is_quiet:
+        view.config({
+            "Input": str(input_dir),
+            "Output": str(output_dir),
+            "Schema": str(matched_schema),
+        })
 
     if not emit_json_report:
         view.phase("Analyzing schema structure")
@@ -500,6 +424,10 @@ def compile(
         if input_provenance_warnings and not emit_json_report:
             view.warnings(input_provenance_warnings)
         if df.empty:
+            if fresh and not dry_run and output_dir.exists():
+                import shutil
+
+                shutil.rmtree(output_dir)
             if input_provenance_warnings and emit_json_report:
                 click.echo(
                     json.dumps(
@@ -515,6 +443,18 @@ def compile(
         if not emit_json_report:
             view.success(f"Schema detected: {schema_info['type']}")
             view.status("info", f"Main entity: {schema_info['main_array_key']}")
+
+        if dry_run:
+            from contextlib import redirect_stdout
+            from io import StringIO
+
+            with redirect_stdout(StringIO()):
+                export_df = (
+                    df if synthesis_active
+                    else compiler.deduplicator.deduplicate(df.copy())
+                )
+            output_frame = compiler._prepare_output_dataframe(export_df)
+            compiler.validate_export(output_frame, schema_metadata.get_output_formats())
 
         if dry_run and synthesis_active:
             print_info(
@@ -629,13 +569,14 @@ def compile(
 
         view.phase("Creating outputs")
         base_name = input_dir.name.replace("_", "-")
-        output_formats = _resolve_compilation_output_formats(metadata_overrides or None)
-        emitted_paths: List[Path] = []
+        output_formats = schema_metadata.get_output_formats()
+        emitted_paths, output_frame = compiler.export(
+            df, output_dir, base_name, output_formats, fresh=fresh
+        )
+        output_column_count = len(output_frame.columns)
 
         if "csv" in output_formats:
             csv_path = output_dir / f"{base_name}.csv"
-            compiler.save_csv(df, csv_path)
-            emitted_paths.append(csv_path)
             csv_size_mb = csv_path.stat().st_size / (1024 * 1024)
 
             if view.verbosity.shows_detail:
@@ -647,8 +588,6 @@ def compile(
 
         if "excel" in output_formats:
             excel_path = output_dir / f"{base_name}.xlsx"
-            compiler.save_excel(df, excel_path)
-            emitted_paths.append(excel_path)
             excel_size_mb = excel_path.stat().st_size / (1024 * 1024)
 
             if view.verbosity.shows_detail:
@@ -662,7 +601,7 @@ def compile(
             summary_stats = {
                 "Schema Type": schema_info["type"],
                 "Records": str(len(df)),
-                "Columns": str(len(df.columns)),
+                "Columns": str(output_column_count),
                 "Outputs": ", ".join(output_formats),
             }
             if not synthesis_active and compiler.duplicates_removed > 0:
@@ -702,7 +641,7 @@ def compile(
         # ------------------------------------------------------------------
         _summary_stats_for_acct = {
             "records": len(df),
-            "columns": len(df.columns),
+            "columns": output_column_count,
             "duplicates_removed": compiler.duplicates_removed,
             "output_format": ", ".join(output_formats),
         }
@@ -714,7 +653,7 @@ def compile(
             synthesis_provider=(getattr(synth_client, "provider", None) if synth_client else None),
             synthesis_llm_calls=(int(getattr(synthesizer, "llm_calls", 0)) if synthesizer else 0),
             records=len(df),
-            columns=len(df.columns),
+            columns=output_column_count,
             duplicates_removed=compiler.duplicates_removed,
             output_formats=output_formats,
             started_at=compile_started_at,

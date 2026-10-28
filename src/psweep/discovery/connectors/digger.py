@@ -2,15 +2,15 @@
 
 from __future__ import annotations
 
-from html.parser import HTMLParser
 import re
 import time
+from html.parser import HTMLParser
 from typing import Any
 from urllib.parse import urljoin, urlparse
 
 from ..constants import DOWNLOADABLE_EXTENSIONS
 from ..retry import compute_backoff, is_transient_error
-from ..urls import url_extension
+from ..urls import matches_allowed_domain, url_extension
 from .base import BaseDiggerConnector, DiggerArtifact, DiggerInput
 
 # Patterns that indicate an HTML response is a JS-rendered shell
@@ -84,20 +84,7 @@ class NullDiggerConnector(BaseDiggerConnector):
         - Exact match: host == domain entry.
         - Subdomain match: host ends with '.' + domain entry.
         """
-        if not allowed_domains:
-            return True
-        try:
-            host = urlparse(url).hostname or ""
-        except Exception:
-            return False
-        host_lower = host.lower()
-        for domain in allowed_domains:
-            d = (domain or "").strip().lower()
-            if not d:
-                continue
-            if host_lower == d or host_lower.endswith("." + d):
-                return True
-        return False
+        return matches_allowed_domain(url, allowed_domains)
 
     @staticmethod
     def _matches_file_filter(
@@ -637,7 +624,7 @@ class HttpDiggerConnector(BaseDiggerConnector):
                 return None
             browser_attempted = True
             try:
-                from ..browser import BrowserSession, BrowserUnavailableError
+                from ..browser import BrowserSession
                 session = BrowserSession()
                 session._start()  # noqa: SLF001
                 browser = session

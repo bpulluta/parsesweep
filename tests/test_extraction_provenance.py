@@ -2,6 +2,8 @@
 
 from pathlib import Path
 
+import pytest
+
 from psweep.extraction.provenance import (
     build_source_context_map,
     generate_run_id,
@@ -70,6 +72,32 @@ def test_build_source_context_map_parses_target_metadata(tmp_path):
 
 def test_build_source_context_map_missing_index_returns_empty():
     assert build_source_context_map(None, None) == {}
+
+
+@pytest.mark.parametrize("absolute_paths", [False, True])
+def test_curated_provenance_uses_partition_not_colliding_filename(
+    tmp_path, monkeypatch, absolute_paths
+):
+    monkeypatch.chdir(tmp_path)
+    root = Path("discovered/wind")
+    root.mkdir(parents=True)
+    index = root / "download_index.csv"
+    index.write_text(
+        "path,relative_path,final_url,target_label\n"
+        "runs/one/documents/ca/GetDocument.pdf,ca/GetDocument.pdf,"
+        "https://agency.example/ca.pdf,California project\n"
+        "runs/two/documents/unknown/GetDocument.pdf,unknown/GetDocument.pdf,"
+        "https://agency.example/different.pdf,Different project\n",
+        encoding="utf-8",
+    )
+    document = root / "curated/ca/GetDocument.pdf"
+    document.parent.mkdir(parents=True)
+    if absolute_paths:
+        document = document.resolve()
+    context_map = build_source_context_map(document.parent, None)
+    text = prepend_source_context("BODY", document, context_map)
+    assert "SOURCE_URL: https://agency.example/ca.pdf" in text
+    assert "different.pdf" not in text
 
 
 def test_prepend_source_context_adds_block_when_info_present():

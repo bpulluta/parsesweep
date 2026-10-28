@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, Iterable, Optional, Sequence
+from typing import Any, Dict, Optional, Sequence
 
 from ..utils.error_taxonomy import normalize_error_records
 from .text_processor import find_main_data_array
@@ -88,6 +88,31 @@ def _extract_identifier(
     return identifier
 
 
+def record_extraction_scope(
+    result: Any,
+    *,
+    page_range: Optional[tuple[int, int]] = None,
+    section_filtered: bool = False,
+) -> None:
+    """Retain selected-input limitations alongside the canonical result."""
+    coverage = dict(getattr(result, "coverage", None) or {})
+    warnings = list(getattr(result, "validation_notes", None) or [])
+    if page_range is not None:
+        coverage["selected_page_range"] = list(page_range)
+        warnings.append(
+            f"Extraction limited to selected pages {page_range[0]}-{page_range[1]}; "
+            "not a full-document coverage guarantee."
+        )
+    if section_filtered:
+        coverage["section_filtered"] = True
+        warnings.append(
+            "Extraction limited to selected sections; "
+            "not a full-document coverage guarantee."
+        )
+    result.coverage = coverage
+    result.validation_notes = warnings
+
+
 def build_extraction_record(
     *,
     doc_path: Path,
@@ -139,6 +164,9 @@ def build_extraction_record(
             "output_tokens": getattr(result, "output_tokens", None),
         },
     }
+    coverage = getattr(result, "coverage", None)
+    if coverage:
+        record["processing_metrics"]["coverage"] = coverage
     if item_array_key:
         record["item_count"] = num_items
     return record, num_items
