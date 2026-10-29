@@ -244,6 +244,7 @@
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/discovery/browser/index.html">psweep.discovery.browser</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/discovery/candidate_selector/index.html">psweep.discovery.candidate_selector</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/discovery/code_host_adapters/index.html">psweep.discovery.code_host_adapters</a></li>
+<li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/discovery/concurrency/index.html">psweep.discovery.concurrency</a></li>
 <li class="toctree-l4 has-children"><a class="reference internal" href="autoapi/psweep/discovery/connectors/index.html">psweep.discovery.connectors</a><input aria-label="Toggle navigation of psweep.discovery.connectors" class="toctree-checkbox" id="toctree-checkbox-7" name="toctree-checkbox-7" role="switch" type="checkbox"/><label for="toctree-checkbox-7"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l5"><a class="reference internal" href="autoapi/psweep/discovery/connectors/base/index.html">psweep.discovery.connectors.base</a></li>
 <li class="toctree-l5"><a class="reference internal" href="autoapi/psweep/discovery/connectors/digger/index.html">psweep.discovery.connectors.digger</a></li>
@@ -255,7 +256,9 @@
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/discovery/engine/index.html">psweep.discovery.engine</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/discovery/link_prioritizer/index.html">psweep.discovery.link_prioritizer</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/discovery/models/index.html">psweep.discovery.models</a></li>
+<li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/discovery/network/index.html">psweep.discovery.network</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/discovery/policies/index.html">psweep.discovery.policies</a></li>
+<li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/discovery/publication/index.html">psweep.discovery.publication</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/discovery/request_inputs/index.html">psweep.discovery.request_inputs</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/discovery/retry/index.html">psweep.discovery.retry</a></li>
 <li class="toctree-l4 has-children"><a class="reference internal" href="autoapi/psweep/discovery/targets/index.html">psweep.discovery.targets</a><input aria-label="Toggle navigation of psweep.discovery.targets" class="toctree-checkbox" id="toctree-checkbox-8" name="toctree-checkbox-8" role="switch" type="checkbox"/><label for="toctree-checkbox-8"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
@@ -364,17 +367,168 @@ pixi<span class="w"> </span>install
 </pre></div>
 </div>
 </section>
-<section id="configure-credentials">
-<h2>Configure credentials<a class="headerlink" href="#configure-credentials" title="Link to this heading">¶</a></h2>
-<p>ParseSweep reads LLM credentials from a <code class="docutils literal notranslate"><span class="pre">.env</span></code> file in the project root (or
-from environment variables). Configure <strong>exactly one</strong> provider block.</p>
-<p>Run the interactive setup:</p>
+<section id="start-with-discovery-only">
+<h2>Start with discovery only<a class="headerlink" href="#start-with-discovery-only" title="Link to this heading">¶</a></h2>
+<p>Discovery needs a YAML config, not an extraction schema or LLM credentials.
+Set your SerpApi credential in the environment or the project’s <code class="docutils literal notranslate"><span class="pre">.env</span></code> file:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="c1"># .env — keep credentials out of YAML and version control</span>
+<span class="nv">SERPAPI_API_KEY</span><span class="o">=</span>your-serpapi-key
+</pre></div>
+</div>
+<p>Copy the short template, then replace its domain and query with your own:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>mkdir<span class="w"> </span>-p<span class="w"> </span>config/my_domain
+cp<span class="w"> </span>config/TEMPLATE.yaml<span class="w"> </span>config/my_domain/run.yaml
+</pre></div>
+</div>
+<p>The active config can be as small as:</p>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">domain</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">my_domain</span>
+<span class="nt">discovery</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">queries</span><span class="p">:</span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">&quot;industrial</span><span class="nv"> </span><span class="s">pump</span><span class="nv"> </span><span class="s">installation</span><span class="nv"> </span><span class="s">manual</span><span class="nv"> </span><span class="s">filetype:pdf&quot;</span>
+</pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">discovery.queries</span></code> auto-enables SerpApi when search is omitted. An explicit
+<code class="docutils literal notranslate"><span class="pre">search.enabled:</span> <span class="pre">false</span></code> disables it. If you already
+know the document URLs, replace <code class="docutils literal notranslate"><span class="pre">queries</span></code> with <code class="docutils literal notranslate"><span class="pre">seeds</span></code>; seed-only discovery
+does not auto-enable search and needs no search credential:</p>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">domain</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">my_domain</span>
+<span class="nt">discovery</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">seeds</span><span class="p">:</span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">https://example.org/documents/manual.pdf</span>
+</pre></div>
+</div>
+<p>Validate the local input plan, then acquire documents:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>pixi<span class="w"> </span>run<span class="w"> </span>psweep<span class="w"> </span>discover<span class="w"> </span>--config<span class="w"> </span>config/my_domain/run.yaml<span class="w"> </span>--validate-config
+pixi<span class="w"> </span>run<span class="w"> </span>psweep<span class="w"> </span>discover<span class="w"> </span>--config<span class="w"> </span>config/my_domain/run.yaml
+</pre></div>
+</div>
+<p>Validation makes no provider/network calls or run artifacts. Passing it does
+not confirm credentials, provider availability, or live network behavior.
+Only the explicitly selected config is loaded. Existing adjacent section
+YAML/JSON overrides beside a <code class="docutils literal notranslate"><span class="pre">run</span></code> config now fail: move their settings into
+the corresponding sections of the run file and remove the adjacent files, or
+load a section-wrapped config explicitly with <code class="docutils literal notranslate"><span class="pre">--config</span></code>.</p>
+<section id="inspect-what-was-acquired">
+<h3>Inspect what was acquired<a class="headerlink" href="#inspect-what-was-acquired" title="Link to this heading">¶</a></h3>
+<p>Open the run manifest and documents under
+<code class="docutils literal notranslate"><span class="pre">discovered/my_domain/runs/&lt;run_id&gt;/</span></code>; that run’s selected files are in
+<code class="docutils literal notranslate"><span class="pre">curated/</span></code>. The consolidated downstream folder is
+<code class="docutils literal notranslate"><span class="pre">discovered/my_domain/curated/</span></code>.</p>
+<p>Discovery exit codes are the same in quiet, default, and verbose modes:
+<code class="docutils literal notranslate"><span class="pre">success</span></code>/<code class="docutils literal notranslate"><span class="pre">dry_run</span></code>/validated <code class="docutils literal notranslate"><span class="pre">reused</span></code> = <strong>0</strong>; <code class="docutils literal notranslate"><span class="pre">failed</span></code>/<code class="docutils literal notranslate"><span class="pre">partial_failure</span></code> = <strong>1</strong>
+(including failures with zero downloads); genuinely <code class="docutils literal notranslate"><span class="pre">empty</span></code> results = <strong>2</strong>.
+Inspect the manifest status/errors, not only the file count.</p>
+<p>The small setup uses these defaults:</p>
+<ul class="simple">
+<li><p><strong>10 unique candidates per query</strong>, capped locally across live, cached, and
+enabled news results. Provider <code class="docutils literal notranslate"><span class="pre">num</span></code> does not override that cap. There is no
+hidden pagination or refill, and 10 candidates does not mean 10 downloads.</p></li>
+<li><p><strong>1 acquisition per target</strong> (<code class="docutils literal notranslate"><span class="pre">selection.max_per_target</span></code>), selected by
+heuristics. This is not LLM relevance review or a completeness guarantee.</p></li>
+<li><p>Direct acquisition with <strong>no crawl</strong>, concurrency <strong>2</strong>, retry attempts <strong>3</strong>,
+and robots/ToS policy modes <strong>warn</strong>.</p></li>
+<li><p>Search cache <strong>off</strong>. When explicitly enabled, cache hits make zero live
+search calls.</p></li>
+<li><p>Browser mode, browser escalation, and code-host adapters <strong>off</strong>. Opt into
+recovery with <code class="docutils literal notranslate"><span class="pre">browser_escalation:</span> <span class="pre">{enabled:</span> <span class="pre">true}</span></code> and/or
+<code class="docutils literal notranslate"><span class="pre">code_host_adapters:</span> <span class="pre">{enabled:</span> <span class="pre">true}</span></code>; threshold-only blocks do not enable them.</p></li>
+<li><p>No automatic LLM calls. <code class="docutils literal notranslate"><span class="pre">document_review</span></code> is an explicit optional paid stage
+requiring a document description, model choice, and LLM credentials.</p></li>
+</ul>
+<p>PDF candidates are preferred to web pages when present. HTML/HTM and
+extensionless HTTP(S) URLs are provisionally eligible without disabling
+<code class="docutils literal notranslate"><span class="pre">require_supported_document</span></code>; known non-document binaries are excluded, and
+actual GET/MIME checks verify ambiguous URLs. Eligibility is not semantic
+validation: inspect whether the acquired document is the one you need.</p>
+</section>
+<section id="add-only-the-choices-you-need">
+<h3>Add only the choices you need<a class="headerlink" href="#add-only-the-choices-you-need" title="Link to this heading">¶</a></h3>
+<p>To change the candidate budget or acquisition count, add <code class="docutils literal notranslate"><span class="pre">search.max_results</span></code>
+or <code class="docutils literal notranslate"><span class="pre">selection.max_per_target</span></code>. To restrict a source, combine a host allowlist
+with a URL-path regex:</p>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">discovery</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">queries</span><span class="p">:</span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">&quot;site:example.org</span><span class="nv"> </span><span class="s">installation</span><span class="nv"> </span><span class="s">manual</span><span class="nv"> </span><span class="s">filetype:pdf&quot;</span>
+<span class="w">  </span><span class="nt">allowed_domains</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">example.org</span><span class="p p-Indicator">]</span>
+<span class="w">  </span><span class="nt">discovery_rules</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">include_url_patterns</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">&#39;^https?://(?:www\.)?example\.org/documents/&#39;</span><span class="p p-Indicator">]</span>
+</pre></div>
+</div>
+<p>Scope checks apply before top-one selection and to final redirects. Search
+<code class="docutils literal notranslate"><span class="pre">site:</span></code>/<code class="docutils literal notranslate"><span class="pre">filetype:</span></code> hints alone do not guarantee source or file type. Concrete
+provider/vendor filters are domain-config choices, not settings automatically
+inferred from a document parser.</p>
+<p>For existing configs, migrate <code class="docutils literal notranslate"><span class="pre">seeker</span></code> to <code class="docutils literal notranslate"><span class="pre">search</span></code>, <code class="docutils literal notranslate"><span class="pre">max_results_per_query</span></code> to
+<code class="docutils literal notranslate"><span class="pre">max_results</span></code>, and selection <code class="docutils literal notranslate"><span class="pre">primary_per_target</span></code>/<code class="docutils literal notranslate"><span class="pre">relevance_require_any_terms</span></code>/
+<code class="docutils literal notranslate"><span class="pre">relevance_exclude_any_terms</span></code> to <code class="docutils literal notranslate"><span class="pre">max_per_target</span></code>/<code class="docutils literal notranslate"><span class="pre">require_any</span></code>/<code class="docutils literal notranslate"><span class="pre">exclude</span></code>.
+Retired aliases fail even when canonical keys coexist. There are no built-in
+legal draft, vendor authority, or shopping-path lists; configure those domain
+preferences explicitly. Supply <code class="docutils literal notranslate"><span class="pre">jurisdiction</span></code> and <code class="docutils literal notranslate"><span class="pre">state</span></code> fields or use
+<code class="docutils literal notranslate"><span class="pre">partition_by</span></code>: query text does not infer geography, and discovery has no
+built-in US alias table.</p>
+<p>HTTP robots/ToS enforcement is supported. Strict enforcement cannot certify
+browser redirects or subresources and fails before unsupported browser
+navigation. Use HTTP acquisition when enforcement is required.</p>
+<p>SerpApi and download TLS verification defaults remain <code class="docutils literal notranslate"><span class="pre">false</span></code>. Environment
+options <code class="docutils literal notranslate"><span class="pre">SERPAPI_SSL_VERIFY</span></code>, <code class="docutils literal notranslate"><span class="pre">DISCOVERY_SSL_VERIFY</span></code>, and <code class="docutils literal notranslate"><span class="pre">REQUESTS_CA_BUNDLE</span></code>
+control verification and the Requests CA bundle; these are independent of
+config validation.</p>
+<p>For CSV targets, optional keyword classification, LLM review, crawling, or
+other stage settings, use the <a class="reference internal" href="config-reference.html"><span class="std std-doc">Configuration Reference</span></a>
+and the expanded <code class="docutils literal notranslate"><span class="pre">config/ADVANCED.yaml</span></code>. Neither a seeded sample nor a capped
+search establishes recall or population coverage.</p>
+</section>
+<section id="resume-and-document-sidecars">
+<h3>Resume and document sidecars<a class="headerlink" href="#resume-and-document-sidecars" title="Link to this heading">¶</a></h3>
+<p>Checkpoint v2 reuse requires matching effective config and artifact digest
+evidence, including curated files. Changed settings, missing/altered files,
+and old v1 entries cause reacquisition. Search-result caching is separate.
+Publication locks reject concurrent corpus writers; a discovery journal lets
+the next writer recover interrupted curated/provenance swaps. This is not a
+general pipeline transaction.</p>
+<p>OCR caches use <code class="docutils literal notranslate"><span class="pre">.text/&lt;filename&gt;.txt</span></code> and <code class="docutils literal notranslate"><span class="pre">.text/&lt;filename&gt;.meta.json</span></code>;
+review sidecars use <code class="docutils literal notranslate"><span class="pre">.review/&lt;filename&gt;.json</span></code>. Full filenames avoid collisions
+between formats with the same stem. OCR readers verify source size/mtime and
+source/text digests; partial pairs are misses and old stem-only caches are not
+reused. Metadata is replaced last. Curation carries these sidecars with selected
+files; native extraction and OCR correction rules are unchanged.</p>
+</section>
+</section>
+<section id="add-extraction-when-you-have-suitable-documents">
+<h2>Add extraction when you have suitable documents<a class="headerlink" href="#add-extraction-when-you-have-suitable-documents" title="Link to this heading">¶</a></h2>
+<p>Extraction and compilation use two files per domain:</p>
+<div class="table-wrapper colwidths-auto docutils container">
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>File</p></th>
+<th class="head"><p>Role</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><strong>Schema</strong> (JSON)</p></td>
+<td><p>Defines <em>what</em> to extract — field names, types, descriptions</p></td>
+</tr>
+<tr class="row-odd"><td><p><strong>Config</strong> (YAML)</p></td>
+<td><p>Defines <em>how</em> to run — paths, models, page targeting, output</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>The existing <code class="docutils literal notranslate"><span class="pre">init-domain-schema</span></code> command scaffolds a <strong>schema</strong>; it is not a
+discovery setup wizard. Discovery does not require it. Keep project-specific
+schemas locally under <code class="docutils literal notranslate"><span class="pre">schemas/personal/</span></code>; see
+<a class="reference internal" href="schemas/index.html"><span class="std std-doc">Schema Authoring</span></a> for the contract and instructions.</p>
+<section id="configure-llm-credentials">
+<h3>Configure LLM credentials<a class="headerlink" href="#configure-llm-credentials" title="Link to this heading">¶</a></h3>
+<p>ParseSweep reads LLM credentials from a <code class="docutils literal notranslate"><span class="pre">.env</span></code> file in the project root or
+from environment variables. Configure <strong>exactly one</strong> provider block when
+using extraction, LLM document review, or another LLM stage.</p>
+<p>Run the interactive credential setup:</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>pixi<span class="w"> </span>run<span class="w"> </span>psweep<span class="w"> </span>init
 </pre></div>
 </div>
-<p>…or create <code class="docutils literal notranslate"><span class="pre">.env</span></code> by hand. Any OpenAI-compatible proxy (LiteLLM, OpenRouter,
-Azure AI Foundry, Together AI, vLLM, Ollama, …) works via the endpoint
-override:</p>
+<p>…or create <code class="docutils literal notranslate"><span class="pre">.env</span></code> by hand. An OpenAI-compatible proxy (LiteLLM, OpenRouter,
+Azure AI Foundry, Together AI, vLLM, Ollama, …) can use the endpoint override:</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="c1"># .env — endpoint override (highest priority)</span>
 <span class="nv">LLM_BASE_URL</span><span class="o">=</span>https://your-proxy.example.com/v1
 <span class="nv">LLM_API_KEY</span><span class="o">=</span>sk-your-proxy-key
@@ -389,35 +543,10 @@ override:</p>
 </pre></div>
 </div>
 </section>
-<section id="two-files-per-domain">
-<h2>Two files per domain<a class="headerlink" href="#two-files-per-domain" title="Link to this heading">¶</a></h2>
-<div class="table-wrapper colwidths-auto docutils container">
-<table class="docutils align-default">
-<thead>
-<tr class="row-odd"><th class="head"><p>File</p></th>
-<th class="head"><p>Role</p></th>
-</tr>
-</thead>
-<tbody>
-<tr class="row-even"><td><p><strong>Schema</strong> (JSON)</p></td>
-<td><p>Defines <em>what</em> to extract — field names, types, descriptions</p></td>
-</tr>
-<tr class="row-odd"><td><p><strong>Config</strong> (YAML)</p></td>
-<td><p>Defines <em>how</em> to run — paths, page targeting, dedup, output</p></td>
-</tr>
-</tbody>
-</table>
-</div>
-<p>See the <a class="reference internal" href="config-reference.html"><span class="std std-doc">Configuration Reference</span></a> for the annotated config
-template and <a class="reference internal" href="schemas/index.html"><span class="std std-doc">Schema Authoring</span></a> for schema best practices.</p>
-</section>
-<section id="start-minimal">
-<h2>Start minimal<a class="headerlink" href="#start-minimal" title="Link to this heading">¶</a></h2>
-<p>You do not need a full config to begin. The smallest useful setup is a schema
-with two required metadata keys plus a two-line config.</p>
-<p><strong>1. A minimal schema</strong> (<code class="docutils literal notranslate"><span class="pre">schemas/personal/my_schema.json</span></code>). Only
-<code class="docutils literal notranslate"><span class="pre">$metadata.extraction.main_data_array</span></code> and <code class="docutils literal notranslate"><span class="pre">identifier_fields</span></code> are required —
-everything else is optional:</p>
+<section id="create-a-minimal-schema">
+<h3>Create a minimal schema<a class="headerlink" href="#create-a-minimal-schema" title="Link to this heading">¶</a></h3>
+<p>Only <code class="docutils literal notranslate"><span class="pre">$metadata.extraction.main_data_array</span></code> and <code class="docutils literal notranslate"><span class="pre">identifier_fields</span></code> are
+required metadata keys. For example, <code class="docutils literal notranslate"><span class="pre">schemas/personal/my_schema.json</span></code>:</p>
 <div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
 <span class="w">  </span><span class="nt">&quot;$schema&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;http://json-schema.org/draft-07/schema#&quot;</span><span class="p">,</span>
 <span class="w">  </span><span class="nt">&quot;$metadata&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
@@ -443,46 +572,61 @@ everything else is optional:</p>
 </pre></div>
 </div>
 <p>The field <code class="docutils literal notranslate"><span class="pre">description</span></code>s are the LLM’s extraction instructions — write them
-precisely. See <a class="reference internal" href="schemas/index.html"><span class="std std-doc">Schema Authoring</span></a> for the full guide.</p>
-<p><strong>2. A minimal config</strong> (<code class="docutils literal notranslate"><span class="pre">config/my_domain/run.yaml</span></code>). Only <code class="docutils literal notranslate"><span class="pre">schema</span></code> and
-<code class="docutils literal notranslate"><span class="pre">input_dir</span></code> are required; <code class="docutils literal notranslate"><span class="pre">model</span></code>, <code class="docutils literal notranslate"><span class="pre">output_dir</span></code>, <code class="docutils literal notranslate"><span class="pre">max_context</span></code>, and everything
-else fall back to sensible defaults:</p>
+precisely. This example illustrates the contract; it does not certify the
+semantic quality of extracted values.</p>
+</section>
+<section id="add-extraction-to-the-same-config">
+<h3>Add extraction to the same config<a class="headerlink" href="#add-extraction-to-the-same-config" title="Link to this heading">¶</a></h3>
+<p>Only <code class="docutils literal notranslate"><span class="pre">schema</span></code> and <code class="docutils literal notranslate"><span class="pre">input_dir</span></code> are required. <code class="docutils literal notranslate"><span class="pre">output_dir</span></code>, <code class="docutils literal notranslate"><span class="pre">max_context</span></code>, and
+other settings have defaults; pin <code class="docutils literal notranslate"><span class="pre">model</span></code> when you want an explicit choice.
+For discovered inputs:</p>
 <div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">extraction</span><span class="p">:</span>
 <span class="w">  </span><span class="nt">schema</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">schemas/personal/my_schema.json</span>
-<span class="w">  </span><span class="nt">input_dir</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">documents/my_domain</span>
+<span class="w">  </span><span class="nt">input_dir</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">discovered/my_domain/curated</span>
+<span class="w">  </span><span class="nt">output_dir</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">extracted/my_domain</span>
+<span class="w">  </span><span class="nt">model</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">your-model-name</span>
 </pre></div>
 </div>
-<p><strong>3. Run it</strong> (schema-only mode skips the config entirely, ideal for a first test):</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="c1"># Quick test: point extract straight at a folder + schema, limit to 2 docs</span>
-pixi<span class="w"> </span>run<span class="w"> </span>psweep<span class="w"> </span>extract<span class="w"> </span>documents/my_domain/<span class="w"> </span><span class="se">\</span>
+<p>For local documents, use <code class="docutils literal notranslate"><span class="pre">input_dir:</span> <span class="pre">documents/my_domain</span></code> instead. You can also
+test schema-only mode without a config:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>pixi<span class="w"> </span>run<span class="w"> </span>psweep<span class="w"> </span>extract<span class="w"> </span>documents/my_domain/<span class="w"> </span><span class="se">\</span>
 <span class="w">  </span>--schema<span class="w"> </span>schemas/personal/my_schema.json<span class="w"> </span>-n<span class="w"> </span><span class="m">2</span>
 
-<span class="c1"># Or the config-driven run (picks up every setting)</span>
+<span class="c1"># Config-driven extraction</span>
 pixi<span class="w"> </span>run<span class="w"> </span>psweep<span class="w"> </span>extract<span class="w"> </span>--config<span class="w"> </span>config/my_domain/run.yaml
 </pre></div>
 </div>
 </section>
+</section>
 <section id="inspect-then-iterate">
 <h2>Inspect, then iterate<a class="headerlink" href="#inspect-then-iterate" title="Link to this heading">¶</a></h2>
 <p>Extraction writes one JSON per document to <code class="docutils literal notranslate"><span class="pre">extracted/&lt;domain&gt;/</span></code>. Open a couple
-and check the results, then tune <strong>one knob at a time</strong>:</p>
+and check the results, then tune <strong>one setting at a time</strong>:</p>
 <ul class="simple">
 <li><p>Output looks <strong>truncated / missing later sections</strong> → raise <code class="docutils literal notranslate"><span class="pre">max_context</span></code> or
 turn on page targeting.</p></li>
-<li><p>Documents are <strong>large or slow/expensive</strong> → add <code class="docutils literal notranslate"><span class="pre">pages.auto_locate</span></code>.</p></li>
+<li><p>Documents are <strong>large or slow/expensive</strong> → consider <code class="docutils literal notranslate"><span class="pre">pages.auto_locate</span></code>.</p></li>
 <li><p>The compiled sheet has <strong>duplicate rows</strong> → set the schema’s dedup key fields.</p></li>
-<li><p>Discovery finds <strong>too many or too few</strong> documents → tune keywords.</p></li>
+<li><p>Discovery acquired the <strong>wrong document</strong> → inspect source scope, ranking,
+and query terms before increasing result/acquisition limits or adding paid review.</p></li>
 </ul>
-<p>Each of these has a default you can see and a knob you can change — the
-<a class="reference internal" href="tuning.html"><span class="std std-doc">Tuning &amp; Iteration guide</span></a> maps every symptom to the exact setting,
-and the <a class="reference internal" href="config-reference.html"><span class="std std-doc">Configuration Reference</span></a> lists every default.</p>
+<p>The <a class="reference internal" href="tuning.html"><span class="std std-doc">Tuning &amp; Iteration guide</span></a> maps symptoms to settings, and the
+<a class="reference internal" href="config-reference.html"><span class="std std-doc">Configuration Reference</span></a> documents defaults and advanced
+options.</p>
 </section>
 <section id="compile-and-run-the-whole-pipeline">
 <h2>Compile and run the whole pipeline<a class="headerlink" href="#compile-and-run-the-whole-pipeline" title="Link to this heading">¶</a></h2>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="c1"># Merge the per-document JSON into one Excel/CSV</span>
+<p>Add compilation only when you are ready to use extracted records:</p>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">compilation</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">schema</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">schemas/personal/my_schema.json</span>
+<span class="w">  </span><span class="nt">input_dir</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">extracted/my_domain</span>
+<span class="w">  </span><span class="nt">output_dir</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">compiled/my_domain</span>
+</pre></div>
+</div>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="c1"># Merge per-document JSON into Excel/CSV</span>
 pixi<span class="w"> </span>run<span class="w"> </span>psweep<span class="w"> </span>compile<span class="w"> </span>--config<span class="w"> </span>config/my_domain/run.yaml
 
-<span class="c1"># Or run discover → extract → compile in one shot</span>
+<span class="c1"># With the relevant sections configured: discover → extract → compile</span>
 pixi<span class="w"> </span>run<span class="w"> </span>psweep<span class="w"> </span>run<span class="w"> </span>--config<span class="w"> </span>config/my_domain/run.yaml
 </pre></div>
 </div>
@@ -551,9 +695,18 @@ its default.</p>
             <ul>
 <li><a class="reference internal" href="#">Getting Started</a><ul>
 <li><a class="reference internal" href="#install">Install</a></li>
-<li><a class="reference internal" href="#configure-credentials">Configure credentials</a></li>
-<li><a class="reference internal" href="#two-files-per-domain">Two files per domain</a></li>
-<li><a class="reference internal" href="#start-minimal">Start minimal</a></li>
+<li><a class="reference internal" href="#start-with-discovery-only">Start with discovery only</a><ul>
+<li><a class="reference internal" href="#inspect-what-was-acquired">Inspect what was acquired</a></li>
+<li><a class="reference internal" href="#add-only-the-choices-you-need">Add only the choices you need</a></li>
+<li><a class="reference internal" href="#resume-and-document-sidecars">Resume and document sidecars</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#add-extraction-when-you-have-suitable-documents">Add extraction when you have suitable documents</a><ul>
+<li><a class="reference internal" href="#configure-llm-credentials">Configure LLM credentials</a></li>
+<li><a class="reference internal" href="#create-a-minimal-schema">Create a minimal schema</a></li>
+<li><a class="reference internal" href="#add-extraction-to-the-same-config">Add extraction to the same config</a></li>
+</ul>
+</li>
 <li><a class="reference internal" href="#inspect-then-iterate">Inspect, then iterate</a></li>
 <li><a class="reference internal" href="#compile-and-run-the-whole-pipeline">Compile and run the whole pipeline</a></li>
 </ul>

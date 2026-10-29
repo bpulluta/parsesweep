@@ -244,6 +244,7 @@
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/discovery/browser/index.html">psweep.discovery.browser</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/discovery/candidate_selector/index.html">psweep.discovery.candidate_selector</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/discovery/code_host_adapters/index.html">psweep.discovery.code_host_adapters</a></li>
+<li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/discovery/concurrency/index.html">psweep.discovery.concurrency</a></li>
 <li class="toctree-l4 has-children"><a class="reference internal" href="autoapi/psweep/discovery/connectors/index.html">psweep.discovery.connectors</a><input aria-label="Toggle navigation of psweep.discovery.connectors" class="toctree-checkbox" id="toctree-checkbox-7" name="toctree-checkbox-7" role="switch" type="checkbox"/><label for="toctree-checkbox-7"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l5"><a class="reference internal" href="autoapi/psweep/discovery/connectors/base/index.html">psweep.discovery.connectors.base</a></li>
 <li class="toctree-l5"><a class="reference internal" href="autoapi/psweep/discovery/connectors/digger/index.html">psweep.discovery.connectors.digger</a></li>
@@ -255,7 +256,9 @@
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/discovery/engine/index.html">psweep.discovery.engine</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/discovery/link_prioritizer/index.html">psweep.discovery.link_prioritizer</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/discovery/models/index.html">psweep.discovery.models</a></li>
+<li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/discovery/network/index.html">psweep.discovery.network</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/discovery/policies/index.html">psweep.discovery.policies</a></li>
+<li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/discovery/publication/index.html">psweep.discovery.publication</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/discovery/request_inputs/index.html">psweep.discovery.request_inputs</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/discovery/retry/index.html">psweep.discovery.retry</a></li>
 <li class="toctree-l4 has-children"><a class="reference internal" href="autoapi/psweep/discovery/targets/index.html">psweep.discovery.targets</a><input aria-label="Toggle navigation of psweep.discovery.targets" class="toctree-checkbox" id="toctree-checkbox-8" name="toctree-checkbox-8" role="switch" type="checkbox"/><label for="toctree-checkbox-8"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
@@ -353,7 +356,7 @@
           <section id="tuning-iteration">
 <h1>Tuning &amp; Iteration<a class="headerlink" href="#tuning-iteration" title="Link to this heading">¶</a></h1>
 <p>ParseSweep is built to be tuned incrementally: start from the
-<a class="reference internal" href="getting-started.html#start-minimal"><span class="std std-ref">minimal config</span></a>, run it, inspect the output,
+<a class="reference internal" href="getting-started.html#start-with-discovery-only"><span class="std std-ref">minimal config</span></a>, run it, inspect the output,
 then change <strong>one knob at a time</strong>. This page maps each symptom you might see to
 the exact setting that fixes it, its default, and how to change it.</p>
 <section id="extraction-quality">
@@ -487,25 +490,73 @@ separate rows instead of collapsing them into the entity row:</p>
 </section>
 <section id="too-few-documents">
 <h3>Too few documents<a class="headerlink" href="#too-few-documents" title="Link to this heading">¶</a></h3>
-<p>Broaden your search queries and loosen <code class="docutils literal notranslate"><span class="pre">selection.max_per_target</span></code>, or enable
-<code class="docutils literal notranslate"><span class="pre">document_review</span></code> to keep the most authoritative results rather than filtering
-hard up front.</p>
+<p>Broaden queries or raise <code class="docutils literal notranslate"><span class="pre">search.max_results</span></code> (default <code class="docutils literal notranslate"><span class="pre">10</span></code> unique candidates
+per query) and <code class="docutils literal notranslate"><span class="pre">selection.max_per_target</span></code> (default <code class="docutils literal notranslate"><span class="pre">1</span></code> acquisition per target).
+Check scope and exclusion evidence before increasing budgets. Search caps do
+not guarantee downloads or recall. Optional paid <code class="docutils literal notranslate"><span class="pre">document_review.keep_top</span></code>
+controls retention after acquisition; review does not expand the search.</p>
+</section>
+<section id="domain-filters-or-partitions-changed-unexpectedly">
+<h3>Domain filters or partitions changed unexpectedly<a class="headerlink" href="#domain-filters-or-partitions-changed-unexpectedly" title="Link to this heading">¶</a></h3>
+<p>Use canonical <code class="docutils literal notranslate"><span class="pre">search</span></code>, <code class="docutils literal notranslate"><span class="pre">max_results</span></code>, and selection
+<code class="docutils literal notranslate"><span class="pre">max_per_target</span></code>/<code class="docutils literal notranslate"><span class="pre">require_any</span></code>/<code class="docutils literal notranslate"><span class="pre">exclude</span></code>. Retired aliases fail with migration
+guidance, rather than merging into canonical settings. Adjacent section
+YAML/JSON overrides beside a <code class="docutils literal notranslate"><span class="pre">run</span></code> config are also retired: move settings into
+its explicit sections and remove the adjacent files.</p>
+<p>There are no built-in legal draft, vendor authority, or shopping-path lists.
+Use <code class="docutils literal notranslate"><span class="pre">selection.draft_patterns</span></code> with <code class="docutils literal notranslate"><span class="pre">exclude_draft</span></code>,
+<code class="docutils literal notranslate"><span class="pre">link_prioritization.domain_scores</span></code>, and <code class="docutils literal notranslate"><span class="pre">shopping_path_keywords</span></code> for observed
+domain mismatches. <code class="docutils literal notranslate"><span class="pre">link_prioritization.keywords</span></code> replaces the generic fallback.
+Concrete provider/vendor source filters belong in the domain config; parsers
+do not add them automatically. <code class="docutils literal notranslate"><span class="pre">allowed_domains</span></code> plus URL rules enforce source
+scope; soft ranking boosts are not an allowlist.</p>
+<p>Supply <code class="docutils literal notranslate"><span class="pre">state</span></code>/<code class="docutils literal notranslate"><span class="pre">jurisdiction</span></code> fields explicitly, or use <code class="docutils literal notranslate"><span class="pre">partition_by</span></code> for
+arbitrary metadata layouts. Query text never infers geography and discovery
+has no built-in US alias table; supply any <code class="docutils literal notranslate"><span class="pre">jurisdiction_aliases</span></code> yourself.</p>
 </section>
 <section id="crawl-politeness-policy">
 <h3>Crawl politeness / policy<a class="headerlink" href="#crawl-politeness-policy" title="Link to this heading">¶</a></h3>
-<p><code class="docutils literal notranslate"><span class="pre">robots_mode</span></code> and <code class="docutils literal notranslate"><span class="pre">tos_mode</span></code> both default to <code class="docutils literal notranslate"><span class="pre">warn</span></code> (log and continue). Set
-<code class="docutils literal notranslate"><span class="pre">block</span></code> to enforce, or <code class="docutils literal notranslate"><span class="pre">ignore</span></code> to silence. Throttle with
-<code class="docutils literal notranslate"><span class="pre">runtime.min_request_interval_ms</span></code> and <code class="docutils literal notranslate"><span class="pre">runtime.max_concurrent_downloads</span></code>.</p>
+<p><code class="docutils literal notranslate"><span class="pre">policy.robots_mode</span></code> and <code class="docutils literal notranslate"><span class="pre">policy.tos_mode</span></code> default to <code class="docutils literal notranslate"><span class="pre">warn</span></code> (log and continue).
+Set <code class="docutils literal notranslate"><span class="pre">enforce</span></code> for HTTP enforcement or <code class="docutils literal notranslate"><span class="pre">ignore</span></code> to silence. Strict enforcement
+cannot certify browser redirects or subresources: it fails before unsupported
+browser navigation, including escalation. Use HTTP acquisition when enforcement
+is required. Throttle with <code class="docutils literal notranslate"><span class="pre">runtime.min_request_interval_ms</span></code> and
+<code class="docutils literal notranslate"><span class="pre">runtime.max_concurrent_downloads</span></code>.</p>
+<p>SerpApi/download TLS verification remains the user’s environment choice;
+<code class="docutils literal notranslate"><span class="pre">SERPAPI_SSL_VERIFY</span></code> and <code class="docutils literal notranslate"><span class="pre">DISCOVERY_SSL_VERIFY</span></code> retain default <code class="docutils literal notranslate"><span class="pre">false</span></code>.
+Configure verification explicitly (and <code class="docutils literal notranslate"><span class="pre">REQUESTS_CA_BUNDLE</span></code> if needed);
+validation does not test live certificate chains.</p>
+</section>
+<section id="automation-reports-no-downloads">
+<h3>Automation reports no downloads<a class="headerlink" href="#automation-reports-no-downloads" title="Link to this heading">¶</a></h3>
+<p>Inspect manifest <code class="docutils literal notranslate"><span class="pre">status</span></code> and <code class="docutils literal notranslate"><span class="pre">errors</span></code>. Quiet/default/verbose modes share exit
+codes: error-free <code class="docutils literal notranslate"><span class="pre">success</span></code>/<code class="docutils literal notranslate"><span class="pre">dry_run</span></code>/<code class="docutils literal notranslate"><span class="pre">reused</span></code> = <code class="docutils literal notranslate"><span class="pre">0</span></code>, <code class="docutils literal notranslate"><span class="pre">failed</span></code>/<code class="docutils literal notranslate"><span class="pre">partial_failure</span></code>
+(including zero downloads caused by failure) = <code class="docutils literal notranslate"><span class="pre">1</span></code>, genuinely <code class="docutils literal notranslate"><span class="pre">empty</span></code> = <code class="docutils literal notranslate"><span class="pre">2</span></code>.
+A partial result is not successful acquisition.</p>
 </section>
 </section>
 <section id="re-running-after-changes">
 <h2>Re-running after changes<a class="headerlink" href="#re-running-after-changes" title="Link to this heading">¶</a></h2>
-<p>Every stage honors previous work by default. Pass <code class="docutils literal notranslate"><span class="pre">--fresh</span></code> to ignore caches
-and start over:</p>
+<p>Discovery checkpoint v2 reuse requires matching effective config and artifact
+digest evidence, including curated files. Changed settings, missing/altered
+artifacts, and old v1 entries cause reacquisition; opt-in search caching is
+separate. Publication locks reject concurrent corpus writers; journal recovery
+restores interrupted discovery curated/provenance swaps on the next writer.
+Do not treat that small protocol as a general pipeline transaction.</p>
+<p>Extraction skips existing output JSON by default. <code class="docutils literal notranslate"><span class="pre">--fresh</span></code> bypasses discovery
+checkpoints and enabled search cache, and re-extracts existing JSON:</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>pixi<span class="w"> </span>run<span class="w"> </span>psweep<span class="w"> </span>extract<span class="w"> </span>--config<span class="w"> </span>config/my_domain/run.yaml<span class="w"> </span>--fresh
 pixi<span class="w"> </span>run<span class="w"> </span>psweep<span class="w"> </span>run<span class="w">     </span>--config<span class="w"> </span>config/my_domain/run.yaml<span class="w"> </span>--fresh
 </pre></div>
 </div>
+<p>OCR cache identity is separate from existing output JSON: it uses
+<code class="docutils literal notranslate"><span class="pre">.text/&lt;filename&gt;.txt</span></code> and <code class="docutils literal notranslate"><span class="pre">.text/&lt;filename&gt;.meta.json</span></code>. Source size/mtime and
+source/text digests must match; partial or stale pairs are misses, metadata is
+replaced last, and old stem-only caches are not reused. LLM review sidecars use
+<code class="docutils literal notranslate"><span class="pre">.review/&lt;filename&gt;.json</span></code>; curation carries these full-name pairs/sidecars.
+Native extraction, OCR correction rules, and <code class="docutils literal notranslate"><span class="pre">.pages/</span></code> targeting behavior are
+unchanged. Delete <code class="docutils literal notranslate"><span class="pre">.text/</span></code> or <code class="docutils literal notranslate"><span class="pre">.pages/</span></code> for a cold OCR or targeting run; <code class="docutils literal notranslate"><span class="pre">--fresh</span></code>
+is not a new OCR-rule invalidation mechanism.</p>
 <p>See the <a class="reference internal" href="config-reference.html"><span class="std std-doc">Configuration Reference</span></a> for the full defaults
 table and the <a class="reference internal" href="commands/index.html"><span class="std std-doc">Command Reference</span></a> for every option.</p>
 </section>
@@ -589,7 +640,9 @@ table and the <a class="reference internal" href="commands/index.html"><span cla
 <li><a class="reference internal" href="#discovery-web-acquisition">Discovery (web acquisition)</a><ul>
 <li><a class="reference internal" href="#too-many-irrelevant-documents">Too many irrelevant documents</a></li>
 <li><a class="reference internal" href="#too-few-documents">Too few documents</a></li>
+<li><a class="reference internal" href="#domain-filters-or-partitions-changed-unexpectedly">Domain filters or partitions changed unexpectedly</a></li>
 <li><a class="reference internal" href="#crawl-politeness-policy">Crawl politeness / policy</a></li>
+<li><a class="reference internal" href="#automation-reports-no-downloads">Automation reports no downloads</a></li>
 </ul>
 </li>
 <li><a class="reference internal" href="#re-running-after-changes">Re-running after changes</a></li>

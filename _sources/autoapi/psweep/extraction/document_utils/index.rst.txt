@@ -17,6 +17,7 @@ Functions
    psweep.extraction.document_utils.extract_text_from_document
    psweep.extraction.document_utils.is_supported_document
    psweep.extraction.document_utils.read_text_cache
+   psweep.extraction.document_utils.text_cache_paths
    psweep.extraction.document_utils.write_text_cache
 
 
@@ -57,18 +58,24 @@ Module Contents
 
 .. py:function:: read_text_cache(file_path: pathlib.Path) -> Optional[str]
 
-   Return cached full-document text if present and still valid, else None.
+   Return cached text if its source and text still match.
 
-   Validity is keyed on the source file's size and mtime, so a re-downloaded or
-   edited document is re-extracted rather than served stale.
+   Size/mtime and source SHA-256 identify the document. Text SHA-256
+   rejects partial or mismatched pairs. Stem-only caches are ignored.
+
+
+.. py:function:: text_cache_paths(file_path: pathlib.Path) -> tuple[pathlib.Path, pathlib.Path]
+
+   Return text/metadata paths keyed by the full filename.
 
 
 .. py:function:: write_text_cache(file_path: pathlib.Path, text: str, method: str = 'ocr') -> None
 
-   Persist expensively-extracted ``text`` next to ``file_path``.
+   Write the cache via flushed temporary files, metadata last.
 
-   Best-effort. Only the OCR path is cached (native-text documents are cheap to
-   re-extract and are left uncached so a later table-aware extraction is never
-   served a flattened copy); ``method`` is recorded for transparency.
+   Only OCR calls this cache; native extraction remains uncached.
+   Each file is atomically replaced, not the pair as a transaction.
+   An interruption between replacements is a miss because readers
+   verify both digests. ``method`` is recorded for transparency.
 
 

@@ -244,6 +244,7 @@
 <li class="toctree-l4"><a class="reference internal" href="../browser/index.html">psweep.discovery.browser</a></li>
 <li class="toctree-l4 current current-page"><a class="current reference internal" href="#">psweep.discovery.candidate_selector</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../code_host_adapters/index.html">psweep.discovery.code_host_adapters</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../concurrency/index.html">psweep.discovery.concurrency</a></li>
 <li class="toctree-l4 has-children"><a class="reference internal" href="../connectors/index.html">psweep.discovery.connectors</a><input aria-label="Toggle navigation of psweep.discovery.connectors" class="toctree-checkbox" id="toctree-checkbox-7" name="toctree-checkbox-7" role="switch" type="checkbox"/><label for="toctree-checkbox-7"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l5"><a class="reference internal" href="../connectors/base/index.html">psweep.discovery.connectors.base</a></li>
 <li class="toctree-l5"><a class="reference internal" href="../connectors/digger/index.html">psweep.discovery.connectors.digger</a></li>
@@ -255,7 +256,9 @@
 <li class="toctree-l4"><a class="reference internal" href="../engine/index.html">psweep.discovery.engine</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../link_prioritizer/index.html">psweep.discovery.link_prioritizer</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../models/index.html">psweep.discovery.models</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../network/index.html">psweep.discovery.network</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../policies/index.html">psweep.discovery.policies</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../publication/index.html">psweep.discovery.publication</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../request_inputs/index.html">psweep.discovery.request_inputs</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../retry/index.html">psweep.discovery.retry</a></li>
 <li class="toctree-l4 has-children"><a class="reference internal" href="../targets/index.html">psweep.discovery.targets</a><input aria-label="Toggle navigation of psweep.discovery.targets" class="toctree-checkbox" id="toctree-checkbox-8" name="toctree-checkbox-8" role="switch" type="checkbox"/><label for="toctree-checkbox-8"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
@@ -352,22 +355,12 @@
         <article role="main" id="furo-main-content">
           <section id="module-psweep.discovery.candidate_selector">
 <span id="psweep-discovery-candidate-selector"></span><h1>psweep.discovery.candidate_selector<a class="headerlink" href="#module-psweep.discovery.candidate_selector" title="Link to this heading">¶</a></h1>
-<p>Per-target candidate selection: draft filtering and recency-based version selection.</p>
-<p>After the SerpApi seeker discovers candidates per target, this module decides
-which candidates to actually stage for download.  The two core guards are:</p>
-<ol class="arabic simple">
-<li><p><strong>Draft filter</strong> – exclude documents whose URL/title/snippet text contains
-signals indicating they are not the current enacted/production version
-(e.g., “draft”, “proposed”, “preliminary”, “superseded”).</p></li>
-<li><p><strong>Recency selection</strong> – within each target’s candidate pool, prefer the
-most recent version by parsing effective dates out of the URL filename
-or path segments.  When no date is detectable the candidate is still
-included (date-less candidates rank behind dated ones).</p></li>
-</ol>
-<p>Both guards are applied per-target so that a utility or jurisdiction with
-many candidates does not crowd out others, and so that version conflicts
-(e.g., April-2024 vs May-2024 tariff summation sheets) resolve to the
-single latest copy.</p>
+<p>Per-target candidate selection with configurable exclusion policies.</p>
+<p>Source URL/title/snippet evidence is filtered only by supplied draft,
+identity and relevance rules. No domain-specific exclusion vocabulary is
+imposed by default. Within each target’s pool, supported files and more
+recent filename dates are preferred; undated candidates remain eligible.
+Per-target limits keep larger candidate pools from crowding out others.</p>
 <section id="classes">
 <h2>Classes<a class="headerlink" href="#classes" title="Link to this heading">¶</a></h2>
 <div class="table-wrapper autosummary longtable docutils container">
@@ -389,10 +382,10 @@ single latest copy.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>exclude_draft</strong> – When <code class="docutils literal notranslate"><span class="pre">True</span></code> (default), candidates matching any draft pattern in
-their URL/title/snippet text are excluded before recency ranking.</p></li>
-<li><p><strong>draft_patterns</strong> – Override the default draft detection regex patterns.  Each entry is
-a case-insensitive <code class="docutils literal notranslate"><span class="pre">re.search</span></code> pattern string.</p></li>
+<li><p><strong>exclude_draft</strong> – When <code class="docutils literal notranslate"><span class="pre">True</span></code> (default), apply the supplied draft patterns to
+source URL/title/snippet evidence before recency ranking.</p></li>
+<li><p><strong>draft_patterns</strong> – Domain-provided case-insensitive <code class="docutils literal notranslate"><span class="pre">re.search</span></code> patterns.
+Omitted or empty lists impose no draft exclusions.</p></li>
 </ul>
 </dd>
 </dl>

@@ -38,7 +38,7 @@ Module Contents
    Initialize self.  See help(type(self)) for accurate signature.
 
 
-.. py:class:: SerpApiSeeker(api_key: str | None = None, ssl_verify: bool | None = None, retry_max_attempts: int = 3, retry_initial_backoff_seconds: float = 1.0, retry_max_backoff_seconds: float = 8.0, min_request_interval_seconds: float = 0.0, cache_dir: str | None = None, cache_ttl_seconds: float = 0.0, cache_refresh: bool = False)
+.. py:class:: SerpApiSeeker(api_key: str | None = None, ssl_verify: bool | None = None, retry_max_attempts: int = 3, retry_initial_backoff_seconds: float = 1.0, retry_max_backoff_seconds: float = 8.0, min_request_interval_seconds: float = 0.0, cache_dir: str | None = None, cache_ttl_seconds: float = 0.0, cache_refresh: bool = False, timeout_seconds: float = 45)
 
    Bases: :py:obj:`psweep.discovery.connectors.base.BaseSeekerConnector`
 

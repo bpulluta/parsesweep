@@ -244,6 +244,7 @@
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/discovery/browser/index.html">psweep.discovery.browser</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/discovery/candidate_selector/index.html">psweep.discovery.candidate_selector</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/discovery/code_host_adapters/index.html">psweep.discovery.code_host_adapters</a></li>
+<li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/discovery/concurrency/index.html">psweep.discovery.concurrency</a></li>
 <li class="toctree-l4 has-children"><a class="reference internal" href="autoapi/psweep/discovery/connectors/index.html">psweep.discovery.connectors</a><input aria-label="Toggle navigation of psweep.discovery.connectors" class="toctree-checkbox" id="toctree-checkbox-7" name="toctree-checkbox-7" role="switch" type="checkbox"/><label for="toctree-checkbox-7"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l5"><a class="reference internal" href="autoapi/psweep/discovery/connectors/base/index.html">psweep.discovery.connectors.base</a></li>
 <li class="toctree-l5"><a class="reference internal" href="autoapi/psweep/discovery/connectors/digger/index.html">psweep.discovery.connectors.digger</a></li>
@@ -255,7 +256,9 @@
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/discovery/engine/index.html">psweep.discovery.engine</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/discovery/link_prioritizer/index.html">psweep.discovery.link_prioritizer</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/discovery/models/index.html">psweep.discovery.models</a></li>
+<li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/discovery/network/index.html">psweep.discovery.network</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/discovery/policies/index.html">psweep.discovery.policies</a></li>
+<li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/discovery/publication/index.html">psweep.discovery.publication</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/discovery/request_inputs/index.html">psweep.discovery.request_inputs</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/discovery/retry/index.html">psweep.discovery.retry</a></li>
 <li class="toctree-l4 has-children"><a class="reference internal" href="autoapi/psweep/discovery/targets/index.html">psweep.discovery.targets</a><input aria-label="Toggle navigation of psweep.discovery.targets" class="toctree-checkbox" id="toctree-checkbox-8" name="toctree-checkbox-8" role="switch" type="checkbox"/><label for="toctree-checkbox-8"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
@@ -360,6 +363,8 @@ and this project adheres to <a class="reference external" href="https://semver.o
 <section id="added">
 <h3>Added<a class="headerlink" href="#added" title="Link to this heading">¶</a></h3>
 <ul class="simple">
+<li><p>Short discovery-only starter template, with expanded settings in
+<code class="docutils literal notranslate"><span class="pre">config/ADVANCED.yaml</span></code> and discovery-first onboarding documentation.</p></li>
 <li><p>Embedded documentation: NumPy docstrings rendered to a Sphinx site
 (autoapi + sphinx-click) and published to GitHub Pages via CI.</p></li>
 <li><p>Provider/model mismatch warning in <code class="docutils literal notranslate"><span class="pre">llm_factory.build_llm_client()</span></code> when
@@ -370,6 +375,54 @@ and this project adheres to <a class="reference external" href="https://semver.o
 <section id="changed">
 <h3>Changed<a class="headerlink" href="#changed" title="Link to this heading">¶</a></h3>
 <ul class="simple">
+<li><p>Discovery YAML now uses only canonical <code class="docutils literal notranslate"><span class="pre">search</span></code>, <code class="docutils literal notranslate"><span class="pre">search.max_results</span></code>, and
+selection <code class="docutils literal notranslate"><span class="pre">max_per_target</span></code>/<code class="docutils literal notranslate"><span class="pre">require_any</span></code>/<code class="docutils literal notranslate"><span class="pre">exclude</span></code>. Migrate retired <code class="docutils literal notranslate"><span class="pre">seeker</span></code>,
+<code class="docutils literal notranslate"><span class="pre">browser</span></code>, <code class="docutils literal notranslate"><span class="pre">max_results_per_query</span></code>, <code class="docutils literal notranslate"><span class="pre">primary_per_target</span></code>,
+<code class="docutils literal notranslate"><span class="pre">relevance_require_any_terms</span></code>, and <code class="docutils literal notranslate"><span class="pre">relevance_exclude_any_terms</span></code> to their
+named replacements (<code class="docutils literal notranslate"><span class="pre">browser_mode</span></code> for <code class="docutils literal notranslate"><span class="pre">browser</span></code>); aliases fail with
+actionable errors even when canonical keys coexist.</p></li>
+<li><p>Retired no-op <code class="docutils literal notranslate"><span class="pre">document_review.action</span></code>: originals remain in <code class="docutils literal notranslate"><span class="pre">documents/</span></code>
+and selected curation is materialized separately; remove this setting.</p></li>
+<li><p>Implicit adjacent discovery/extraction/compilation/validation overrides
+beside <code class="docutils literal notranslate"><span class="pre">run.yaml</span></code>, <code class="docutils literal notranslate"><span class="pre">run.yml</span></code>, or <code class="docutils literal notranslate"><span class="pre">run.json</span></code> are retired. Move settings into
+the corresponding sections of the selected config and remove adjacent
+files, or load a section-wrapped config explicitly with <code class="docutils literal notranslate"><span class="pre">--config</span></code>.</p></li>
+<li><p>Discovery geography now requires explicit <code class="docutils literal notranslate"><span class="pre">state</span></code>/<code class="docutils literal notranslate"><span class="pre">jurisdiction</span></code> fields or
+<code class="docutils literal notranslate"><span class="pre">partition_by</span></code>; query text does not infer geography. There is no built-in
+US discovery alias table. Configure <code class="docutils literal notranslate"><span class="pre">jurisdiction_aliases</span></code> where needed.</p></li>
+<li><p>Domain policy replaces built-in legal draft, vendor authority, and shopping
+lists. Configure <code class="docutils literal notranslate"><span class="pre">draft_patterns</span></code>, <code class="docutils literal notranslate"><span class="pre">link_prioritization.domain_scores</span></code>, and
+<code class="docutils literal notranslate"><span class="pre">shopping_path_keywords</span></code>; configured ranking keywords replace the generic
+document-path fallback. Concrete provider/vendor source filters remain
+domain-config choices, not automatic parser-derived settings.</p></li>
+<li><p>Discovery outcomes have verbosity-independent exit codes: error-free
+<code class="docutils literal notranslate"><span class="pre">success</span></code>/<code class="docutils literal notranslate"><span class="pre">dry_run</span></code>/<code class="docutils literal notranslate"><span class="pre">reused</span></code> return 0, <code class="docutils literal notranslate"><span class="pre">failed</span></code>/<code class="docutils literal notranslate"><span class="pre">partial_failure</span></code> return 1
+(including failure with zero downloads), and genuinely <code class="docutils literal notranslate"><span class="pre">empty</span></code> returns 2.</p></li>
+<li><p>Checkpoint v2 reuse requires matching effective discovery config and artifact
+digest evidence, including curated files; changed/missing artifacts and v1
+entries reacquire. Publication locks reject concurrent corpus writers and
+journal recovery handles interrupted discovery curated/provenance swaps.
+This is not a general pipeline transaction or large-scale certification.</p></li>
+<li><p>Strict robots/ToS enforcement cannot cover browser redirects/subresources
+and fails before unsupported browser navigation; use HTTP acquisition for
+enforcement. TLS verification remains an explicit user environment choice
+with unchanged SerpApi/download defaults of <code class="docutils literal notranslate"><span class="pre">false</span></code>.</p></li>
+<li><p>OCR sidecars now use <code class="docutils literal notranslate"><span class="pre">.text/&lt;filename&gt;.txt</span></code> and <code class="docutils literal notranslate"><span class="pre">&lt;filename&gt;.meta.json</span></code>, and
+reviewer sidecars use <code class="docutils literal notranslate"><span class="pre">.review/&lt;filename&gt;.json</span></code>, avoiding same-stem format
+collisions. Old stem-only caches are not reused. Native extraction, OCR
+correction rules, and page-targeting behavior are unchanged.</p></li>
+<li><p>Query-driven discovery infers search enablement when omitted; explicit
+config/CLI disable still wins. HTML and extensionless documents are eligible
+without disabling the supported-document filter; real MIME gates downloads.</p></li>
+<li><p>Browser recovery and code-host adapters are now explicit opt-ins; threshold
+blocks alone do not enable them. Existing dependent domain configs pin their
+recovery settings. Search caching remains opt-in.</p></li>
+<li><p>Discovery validates nested options, booleans, regexes, and resource limits
+before execution. Quoted booleans and previously ignored <code class="docutils literal notranslate"><span class="pre">pipeline</span></code>,
+<code class="docutils literal notranslate"><span class="pre">scoring</span></code>, <code class="docutils literal notranslate"><span class="pre">dedupe</span></code>, <code class="docutils literal notranslate"><span class="pre">file_filters</span></code>, and <code class="docutils literal notranslate"><span class="pre">keyword_validation</span></code> blocks are
+rejected; remove those no-op blocks from existing configs.</p></li>
+<li><p>Direct discovery requests now share the CLI’s two-download concurrency
+default (previously five for direct requests).</p></li>
 <li><p>Single-source-of-truth defaults: every user-facing default is one named
 constant referenced by the dataclass field, the CLI option, the CLI
 resolution fallback, and (for policies) the evaluator signature, so <code class="docutils literal notranslate"><span class="pre">--help</span></code>
@@ -387,6 +440,21 @@ effective default drifted between <code class="docutils literal notranslate"><sp
 <section id="fixed">
 <h3>Fixed<a class="headerlink" href="#fixed" title="Link to this heading">¶</a></h3>
 <ul class="simple">
+<li><p>OCR cache writes stage temporary files and replace metadata last. Readers
+verify source size/mtime and source/text SHA-256 digests, treating partial,
+stale, or mismatched pairs as misses. Curation uses the canonical cache-path
+helper to carry full-filename pairs with selected documents.</p></li>
+<li><p>Enforce stable, deduplicated search limits locally per query for live, cached,
+and news results; reject provider errors before caching and protect reserved
+query/count/credential parameters from passthrough overrides.</p></li>
+<li><p>Apply explicit source/URL scope before selection and at final redirects,
+preserve search title/snippet evidence, and distinguish filtered results from
+missing credentials or empty/provider-failed searches.</p></li>
+<li><p>Discovery request headers reach the engine, explicit search disables and
+CLI domain overrides are honored, and validation-only execution uses the
+same input-plan check as <code class="docutils literal notranslate"><span class="pre">discover</span></code> and <code class="docutils literal notranslate"><span class="pre">run</span></code> before side effects.</p></li>
+<li><p>Run config helpers propagate validation errors instead of falling back to
+unvalidated YAML.</p></li>
 <li><p>Standardized all docstrings to NumPy style — <code class="docutils literal notranslate"><span class="pre">ruff</span> <span class="pre">check</span> <span class="pre">src/</span></code> reports 0
 enforced pydocstyle (D) violations (was 58).</p></li>
 <li><p>README broken-image alt text.</p></li>

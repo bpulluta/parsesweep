@@ -1,0 +1,27 @@
+psweep.discovery.concurrency
+============================
+
+.. py:module:: psweep.discovery.concurrency
+
+.. autoapi-nested-parse::
+
+   Bounded discovery scheduling with caller-owned result ordering.
+
+
+
+Functions
+---------
+
+.. autoapisummary::
+
+   psweep.discovery.concurrency.bounded_results
+
+
+Module Contents
+---------------
+
+.. py:function:: bounded_results(function: collections.abc.Callable[[Any], Any], items: collections.abc.Iterable[Any], *, workers: int) -> collections.abc.Iterator[Any]
+
+   Yield completed work with at most ``workers`` pending futures.
+
+

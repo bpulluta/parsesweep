@@ -1,0 +1,83 @@
+psweep.discovery.network
+========================
+
+.. py:module:: psweep.discovery.network
+
+.. autoapi-nested-parse::
+
+   Internal acquisition boundary for policy-gated discovery requests.
+
+
+
+Exceptions
+----------
+
+.. autoapisummary::
+
+   psweep.discovery.network.NetworkPolicyError
+
+
+Classes
+-------
+
+.. autoapisummary::
+
+   psweep.discovery.network.RateLimiter
+
+
+Functions
+---------
+
+.. autoapisummary::
+
+   psweep.discovery.network.check_url
+   psweep.discovery.network.send_get
+
+
+Module Contents
+---------------
+
+.. py:exception:: NetworkPolicyError(url: str, reason: str, result: object = None)
+
+   Bases: :py:obj:`RuntimeError`
+
+
+   A URL gate denied acquisition or could not be evaluated.
+
+   Initialize self.  See help(type(self)) for accurate signature.
+
+
+.. py:class:: RateLimiter
+
+   Bases: :py:obj:`Protocol`
+
+
+   Provide the shared acquisition pacing operation.
+
+
+   .. py:method:: wait() -> None
+
+      Wait until the next outbound request may start.
+
+
+
+.. py:function:: check_url(url: str, gate: URLGate | None) -> None
+
+   Run a gate, accepting bools or policy-check results.
+
+   A callback returning ``None`` may enforce by raising. Failures fail
+   closed and are never classified as transient network errors.
+
+
+.. py:function:: send_get(url: str, *, headers: dict[str, str] | None = None, timeout: float = 60, verify: bool = True, stream: bool = False, gate: URLGate | None = None, response_url_gate: URLGate | None = None, limiter: RateLimiter | None = None, retry: RetryConfig = (1, 0.0, 0.0), raise_for_status: bool = True) -> tuple[Any, int]
+
+   Return a response and attempt count through the GET boundary.
+
+   All GETs, including redirects and retries, check ``gate`` and wait
+   on ``limiter``. ``response_url_gate`` checks the final URL before
+   callers use the body. Redirect/error responses are closed; callers
+   own and must close successful responses. Status errors are retried
+   with discovery backoff. Robots lookup disables ``raise_for_status``
+   to interpret missing rules without invoking a recursive gate.
+
+

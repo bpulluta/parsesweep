@@ -244,6 +244,7 @@
 <li class="toctree-l4"><a class="reference internal" href="../browser/index.html">psweep.discovery.browser</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../candidate_selector/index.html">psweep.discovery.candidate_selector</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../code_host_adapters/index.html">psweep.discovery.code_host_adapters</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../concurrency/index.html">psweep.discovery.concurrency</a></li>
 <li class="toctree-l4 has-children"><a class="reference internal" href="../connectors/index.html">psweep.discovery.connectors</a><input aria-label="Toggle navigation of psweep.discovery.connectors" class="toctree-checkbox" id="toctree-checkbox-7" name="toctree-checkbox-7" role="switch" type="checkbox"/><label for="toctree-checkbox-7"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l5"><a class="reference internal" href="../connectors/base/index.html">psweep.discovery.connectors.base</a></li>
 <li class="toctree-l5"><a class="reference internal" href="../connectors/digger/index.html">psweep.discovery.connectors.digger</a></li>
@@ -255,7 +256,9 @@
 <li class="toctree-l4 current current-page"><a class="current reference internal" href="#">psweep.discovery.engine</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../link_prioritizer/index.html">psweep.discovery.link_prioritizer</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../models/index.html">psweep.discovery.models</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../network/index.html">psweep.discovery.network</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../policies/index.html">psweep.discovery.policies</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../publication/index.html">psweep.discovery.publication</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../request_inputs/index.html">psweep.discovery.request_inputs</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../retry/index.html">psweep.discovery.retry</a></li>
 <li class="toctree-l4 has-children"><a class="reference internal" href="../targets/index.html">psweep.discovery.targets</a><input aria-label="Toggle navigation of psweep.discovery.targets" class="toctree-checkbox" id="toctree-checkbox-8" name="toctree-checkbox-8" role="switch" type="checkbox"/><label for="toctree-checkbox-8"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
@@ -352,20 +355,20 @@
         <article role="main" id="furo-main-content">
           <section id="module-psweep.discovery.engine">
 <span id="psweep-discovery-engine"></span><h1>psweep.discovery.engine<a class="headerlink" href="#module-psweep.discovery.engine" title="Link to this heading">¶</a></h1>
-<p>Scaffold discovery engine for initial CLI integration.</p>
+<p>Discovery orchestration over acquisition, review, and publication.</p>
 <section id="classes">
 <h2>Classes<a class="headerlink" href="#classes" title="Link to this heading">¶</a></h2>
 <div class="table-wrapper autosummary longtable docutils container">
 <table class="autosummary longtable docutils align-default">
 <tbody>
 <tr class="row-odd"><td><p><a class="reference internal" href="#psweep.discovery.engine.DiscoveryEngine" title="psweep.discovery.engine.DiscoveryEngine"><code class="xref py py-obj docutils literal notranslate"><span class="pre">DiscoveryEngine</span></code></a></p></td>
-<td><p>Initial discovery engine that emits deterministic scaffold artifacts.</p></td>
+<td><p>Coordinate discovery and publish verified artifacts.</p></td>
 </tr>
 <tr class="row-even"><td><p><a class="reference internal" href="#psweep.discovery.engine.DiscoveryRequest" title="psweep.discovery.engine.DiscoveryRequest"><code class="xref py py-obj docutils literal notranslate"><span class="pre">DiscoveryRequest</span></code></a></p></td>
 <td><p>Normalized command inputs for a discovery run.</p></td>
 </tr>
 <tr class="row-odd"><td><p><a class="reference internal" href="#psweep.discovery.engine.DiscoveryResult" title="psweep.discovery.engine.DiscoveryResult"><code class="xref py py-obj docutils literal notranslate"><span class="pre">DiscoveryResult</span></code></a></p></td>
-<td><p>Minimal result payload for the scaffold engine.</p></td>
+<td><p>Run outcomes and published artifacts returned by discovery.</p></td>
 </tr>
 </tbody>
 </table>
@@ -376,7 +379,7 @@
 <dl class="py class">
 <dt class="sig sig-object py" id="psweep.discovery.engine.DiscoveryEngine">
 <span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">psweep.discovery.engine.</span></span><span class="sig-name descname"><span class="pre">DiscoveryEngine</span></span><a class="headerlink" href="#psweep.discovery.engine.DiscoveryEngine" title="Link to this definition">¶</a></dt>
-<dd><p>Initial discovery engine that emits deterministic scaffold artifacts.</p>
+<dd><p>Coordinate discovery and publish verified artifacts.</p>
 <dl class="py method">
 <dt class="sig sig-object py" id="psweep.discovery.engine.DiscoveryEngine.run">
 <span class="sig-name descname"><span class="pre">run</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">request</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#psweep.discovery.engine.DiscoveryRequest" title="psweep.discovery.engine.DiscoveryRequest"><span class="pre">DiscoveryRequest</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#psweep.discovery.engine.DiscoveryResult" title="psweep.discovery.engine.DiscoveryResult"><span class="pre">DiscoveryResult</span></a></span></span><a class="headerlink" href="#psweep.discovery.engine.DiscoveryEngine.run" title="Link to this definition">¶</a></dt>
@@ -386,8 +389,7 @@
 <dd class="field-odd"><p><strong>request</strong> (<a class="reference internal" href="#psweep.discovery.engine.DiscoveryRequest" title="psweep.discovery.engine.DiscoveryRequest"><em>DiscoveryRequest</em></a>) – Fully resolved discovery configuration and seed inputs.</p>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>Run outcome including the manifest path, downloaded documents
-directory, and any errors encountered.</p>
+<dd class="field-even"><p>Manifest path, downloaded documents, and acquisition errors.</p>
 </dd>
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p><a class="reference internal" href="#psweep.discovery.engine.DiscoveryResult" title="psweep.discovery.engine.DiscoveryResult">DiscoveryResult</a></p>
@@ -406,7 +408,7 @@ directory, and any errors encountered.</p>
 <dl class="py class">
 <dt class="sig sig-object py" id="psweep.discovery.engine.DiscoveryResult">
 <span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">psweep.discovery.engine.</span></span><span class="sig-name descname"><span class="pre">DiscoveryResult</span></span><a class="headerlink" href="#psweep.discovery.engine.DiscoveryResult" title="Link to this definition">¶</a></dt>
-<dd><p>Minimal result payload for the scaffold engine.</p>
+<dd><p>Run outcomes and published artifacts returned by discovery.</p>
 </dd></dl>
 
 </section>

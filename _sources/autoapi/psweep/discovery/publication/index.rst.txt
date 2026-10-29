@@ -1,0 +1,166 @@
+psweep.discovery.publication
+============================
+
+.. py:module:: psweep.discovery.publication
+
+.. autoapi-nested-parse::
+
+   Discovery-specific publication, recovery, and checkpoint evidence.
+
+   Stage first, then swap under one corpus lock. Backups outlive
+   every provenance write; an interrupted publication is rolled back
+   by the next writer.
+
+
+
+Exceptions
+----------
+
+.. autoapisummary::
+
+   psweep.discovery.publication.PublicationError
+
+
+Classes
+-------
+
+.. autoapisummary::
+
+   psweep.discovery.publication.PublicationPaths
+
+
+Functions
+---------
+
+.. autoapisummary::
+
+   psweep.discovery.publication.artifact_sha256
+   psweep.discovery.publication.atomic_json
+   psweep.discovery.publication.atomic_write
+   psweep.discovery.publication.checkpoint_artifacts_valid
+   psweep.discovery.publication.csv_content
+   psweep.discovery.publication.discovery_publication
+   psweep.discovery.publication.effective_discovery_fingerprint
+   psweep.discovery.publication.load_checkpoint
+   psweep.discovery.publication.materialize_curated
+   psweep.discovery.publication.merge_download_index
+   psweep.discovery.publication.promote_curated
+   psweep.discovery.publication.publish_manual_curation
+   psweep.discovery.publication.record_is_curated
+   psweep.discovery.publication.refresh_latest_pointer
+   psweep.discovery.publication.resolve_publication_paths
+   psweep.discovery.publication.save_checkpoint_entries
+
+
+Module Contents
+---------------
+
+.. py:exception:: PublicationError
+
+   Bases: :py:obj:`ValueError`
+
+
+   Publication cannot safely replace the previously published
+   corpus.
+
+   Initialize self.  See help(type(self)) for accurate signature.
+
+
+.. py:class:: PublicationPaths
+
+   Resolved run and corpus publication locations.
+
+
+.. py:function:: artifact_sha256(path: pathlib.Path) -> str
+
+   Hash a regular publication artifact without following a
+   symlink.
+
+
+.. py:function:: atomic_json(path: pathlib.Path, payload: object, *, prefix: str | None = None) -> None
+
+   Atomically publish finite JSON through a same-directory file.
+
+
+.. py:function:: atomic_write(path: pathlib.Path, content: str | bytes, *, prefix: str | None = None) -> None
+
+   Replace a UTF-8 or binary file after flushing its same-
+   directory staging file.
+
+
+.. py:function:: checkpoint_artifacts_valid(entry: collections.abc.Mapping[str, object]) -> bool
+
+   Validate hashed artifact evidence for a completed target.
+
+
+.. py:function:: csv_content(fieldnames: list[str], rows: list[dict]) -> str
+
+   Serialize discovery provenance rows as a complete CSV.
+
+
+.. py:function:: discovery_publication(domain_dir: pathlib.Path) -> collections.abc.Iterator[None]
+
+   Reject an active writer; kernel locks release automatically on
+   process death.
+
+   Never unlink the lock inode: doing so lets waiting writers
+   lock different files. PID/host/token are diagnostic ownership,
+   not an unsafe stale timeout.
+
+
+.. py:function:: effective_discovery_fingerprint(request: object) -> str
+
+   Fingerprint effective discovery semantics and configured
+   output locations.
+
+
+.. py:function:: load_checkpoint(path: pathlib.Path, *, fingerprint: str | None = None, validate_artifacts: bool = True) -> dict[str, dict[str, object]]
+
+   Load matching v2 completions whose artifact evidence remains
+   valid.
+
+
+.. py:function:: materialize_curated(*, documents_dir: pathlib.Path, download_records: list[dict[str, object]], curated_dir: pathlib.Path | None = None) -> tuple[pathlib.Path, int, int]
+
+   Stage selected documents before replacing run-local curation.
+
+
+.. py:function:: merge_download_index(*, run_index: pathlib.Path, domain_index: pathlib.Path, promoted_paths: set[str], replaced_partitions: set[pathlib.Path]) -> None
+
+   Atomically publish the index for known promoted documents.
+
+
+.. py:function:: promote_curated(*, run_curated_dir: pathlib.Path, domain_dir: pathlib.Path, attempted_partitions=None, blocked_partitions=None, run_index: pathlib.Path | None = None) -> None
+
+   Publish complete partitions and their consolidated provenance.
+
+
+.. py:function:: publish_manual_curation(*, paths: PublicationPaths, download_records: list[dict[str, object]], run_index: pathlib.Path, run_index_content: str, metadata_updates: collections.abc.Mapping[pathlib.Path, str], attempted_partitions=None, blocked_partitions=None, _lock_held: bool = False) -> tuple[pathlib.Path, int]
+
+   Publish local/consolidated human curation and its provenance
+   together.
+
+
+.. py:function:: record_is_curated(record: collections.abc.Mapping[str, object], *, review_ran: bool) -> bool
+
+   Resolve the automated default with an explicit human override.
+
+
+.. py:function:: refresh_latest_pointer(run_dir: pathlib.Path, *, domain_dir: pathlib.Path | None = None) -> None
+
+   Atomically update the current-run pointer under the corpus
+   lock.
+
+
+.. py:function:: resolve_publication_paths(documents_dir: pathlib.Path, manifest_path: pathlib.Path, domain: str, *, domain_dir: pathlib.Path | None = None, run_curated_dir: pathlib.Path | None = None) -> PublicationPaths
+
+   Resolve explicit outputs without inferring arbitrary ancestor
+   directories.
+
+
+.. py:function:: save_checkpoint_entries(path: pathlib.Path, new_entries: dict[str, dict[str, object]], *, fingerprint: str | None = None) -> None
+
+   Atomically merge completions without overwriting corrupt
+   state.
+
+

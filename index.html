@@ -244,6 +244,7 @@
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/discovery/browser/index.html">psweep.discovery.browser</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/discovery/candidate_selector/index.html">psweep.discovery.candidate_selector</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/discovery/code_host_adapters/index.html">psweep.discovery.code_host_adapters</a></li>
+<li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/discovery/concurrency/index.html">psweep.discovery.concurrency</a></li>
 <li class="toctree-l4 has-children"><a class="reference internal" href="autoapi/psweep/discovery/connectors/index.html">psweep.discovery.connectors</a><input aria-label="Toggle navigation of psweep.discovery.connectors" class="toctree-checkbox" id="toctree-checkbox-7" name="toctree-checkbox-7" role="switch" type="checkbox"/><label for="toctree-checkbox-7"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l5"><a class="reference internal" href="autoapi/psweep/discovery/connectors/base/index.html">psweep.discovery.connectors.base</a></li>
 <li class="toctree-l5"><a class="reference internal" href="autoapi/psweep/discovery/connectors/digger/index.html">psweep.discovery.connectors.digger</a></li>
@@ -255,7 +256,9 @@
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/discovery/engine/index.html">psweep.discovery.engine</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/discovery/link_prioritizer/index.html">psweep.discovery.link_prioritizer</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/discovery/models/index.html">psweep.discovery.models</a></li>
+<li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/discovery/network/index.html">psweep.discovery.network</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/discovery/policies/index.html">psweep.discovery.policies</a></li>
+<li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/discovery/publication/index.html">psweep.discovery.publication</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/discovery/request_inputs/index.html">psweep.discovery.request_inputs</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/discovery/retry/index.html">psweep.discovery.retry</a></li>
 <li class="toctree-l4 has-children"><a class="reference internal" href="autoapi/psweep/discovery/targets/index.html">psweep.discovery.targets</a><input aria-label="Toggle navigation of psweep.discovery.targets" class="toctree-checkbox" id="toctree-checkbox-8" name="toctree-checkbox-8" role="switch" type="checkbox"/><label for="toctree-checkbox-8"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
@@ -375,9 +378,8 @@ the rest.</p>
 <ul>
 <li class="toctree-l1"><a class="reference internal" href="getting-started.html">Getting Started</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="getting-started.html#install">Install</a></li>
-<li class="toctree-l2"><a class="reference internal" href="getting-started.html#configure-credentials">Configure credentials</a></li>
-<li class="toctree-l2"><a class="reference internal" href="getting-started.html#two-files-per-domain">Two files per domain</a></li>
-<li class="toctree-l2"><a class="reference internal" href="getting-started.html#start-minimal">Start minimal</a></li>
+<li class="toctree-l2"><a class="reference internal" href="getting-started.html#start-with-discovery-only">Start with discovery only</a></li>
+<li class="toctree-l2"><a class="reference internal" href="getting-started.html#add-extraction-when-you-have-suitable-documents">Add extraction when you have suitable documents</a></li>
 <li class="toctree-l2"><a class="reference internal" href="getting-started.html#inspect-then-iterate">Inspect, then iterate</a></li>
 <li class="toctree-l2"><a class="reference internal" href="getting-started.html#compile-and-run-the-whole-pipeline">Compile and run the whole pipeline</a></li>
 </ul>
@@ -389,8 +391,11 @@ the rest.</p>
 <li class="toctree-l1"><a class="reference internal" href="config-reference.html">Configuration Reference</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="config-reference.html#start-small-add-as-you-need">Start small, add as you need</a></li>
 <li class="toctree-l2"><a class="reference internal" href="config-reference.html#defaults-at-a-glance">Defaults at a glance</a></li>
+<li class="toctree-l2"><a class="reference internal" href="config-reference.html#discovery-budgets-scope-and-review">Discovery budgets, scope, and review</a></li>
+<li class="toctree-l2"><a class="reference internal" href="config-reference.html#discovery-configuration-validation">Discovery configuration validation</a></li>
 <li class="toctree-l2"><a class="reference internal" href="config-reference.html#schema-driven-compilation">Schema-driven compilation</a></li>
-<li class="toctree-l2"><a class="reference internal" href="config-reference.html#annotated-template">Annotated template</a></li>
+<li class="toctree-l2"><a class="reference internal" href="config-reference.html#minimal-discovery-template">Minimal discovery template</a></li>
+<li class="toctree-l2"><a class="reference internal" href="config-reference.html#advanced-annotated-reference">Advanced annotated reference</a></li>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="tuning.html">Tuning &amp; Iteration</a><ul>

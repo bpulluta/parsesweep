@@ -244,6 +244,7 @@
 <li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/discovery/browser/index.html">psweep.discovery.browser</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/discovery/candidate_selector/index.html">psweep.discovery.candidate_selector</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/discovery/code_host_adapters/index.html">psweep.discovery.code_host_adapters</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/discovery/concurrency/index.html">psweep.discovery.concurrency</a></li>
 <li class="toctree-l4 has-children"><a class="reference internal" href="../autoapi/psweep/discovery/connectors/index.html">psweep.discovery.connectors</a><input aria-label="Toggle navigation of psweep.discovery.connectors" class="toctree-checkbox" id="toctree-checkbox-7" name="toctree-checkbox-7" role="switch" type="checkbox"/><label for="toctree-checkbox-7"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l5"><a class="reference internal" href="../autoapi/psweep/discovery/connectors/base/index.html">psweep.discovery.connectors.base</a></li>
 <li class="toctree-l5"><a class="reference internal" href="../autoapi/psweep/discovery/connectors/digger/index.html">psweep.discovery.connectors.digger</a></li>
@@ -255,7 +256,9 @@
 <li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/discovery/engine/index.html">psweep.discovery.engine</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/discovery/link_prioritizer/index.html">psweep.discovery.link_prioritizer</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/discovery/models/index.html">psweep.discovery.models</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/discovery/network/index.html">psweep.discovery.network</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/discovery/policies/index.html">psweep.discovery.policies</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/discovery/publication/index.html">psweep.discovery.publication</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/discovery/request_inputs/index.html">psweep.discovery.request_inputs</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/discovery/retry/index.html">psweep.discovery.retry</a></li>
 <li class="toctree-l4 has-children"><a class="reference internal" href="../autoapi/psweep/discovery/targets/index.html">psweep.discovery.targets</a><input aria-label="Toggle navigation of psweep.discovery.targets" class="toctree-checkbox" id="toctree-checkbox-8" name="toctree-checkbox-8" role="switch" type="checkbox"/><label for="toctree-checkbox-8"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
@@ -764,7 +767,7 @@ writing new results. Pair with ‘extract –fresh’ for a guaranteed clean pip
 </section>
 <section id="psweep-curate">
 <h3>curate<a class="headerlink" href="#psweep-curate" title="Link to this heading">¶</a></h3>
-<p>Rebuild a run’s curated/ set from human edits in review.csv.</p>
+<p>Publish human ledger edits to local and consolidated curation.</p>
 <p class="rubric">Usage</p>
 <div class="highlight-shell notranslate"><div class="highlight"><pre><span></span>psweep<span class="w"> </span>curate<span class="w"> </span><span class="o">[</span>OPTIONS<span class="o">]</span><span class="w"> </span><span class="o">[</span>TARGET<span class="o">]</span>
 </pre></div>
@@ -773,7 +776,7 @@ writing new results. Pair with ‘extract –fresh’ for a guaranteed clean pip
 <dl class="std option">
 <dt class="sig sig-object std" id="cmdoption-psweep-curate-config">
 <span class="sig-name descname"><span class="pre">--config</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;config_path&gt;</span></span><a class="headerlink" href="#cmdoption-psweep-curate-config" title="Link to this definition">¶</a></dt>
-<dd><p>Path to runtime config file (.yaml/.yml/.json) — used to locate the domain’s latest run</p>
+<dd><p>Path to runtime config (.yaml/.yml/.json) — locates the domain’s latest run or explicit manifest</p>
 </dd></dl>
 
 <dl class="std option">
@@ -987,7 +990,7 @@ re-run all targets from scratch.</p>
 <dl class="std option">
 <dt class="sig sig-object std" id="cmdoption-psweep-discover-dry-run">
 <span class="sig-name descname"><span class="pre">--dry-run</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-psweep-discover-dry-run" title="Link to this definition">¶</a></dt>
-<dd><p>Discover and emit manifest scaffold without downloads</p>
+<dd><p>Search and emit a dry-run manifest without downloads</p>
 </dd></dl>
 
 <dl class="std option">

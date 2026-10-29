@@ -19,6 +19,15 @@ Classes
    psweep.discovery.models.DiscoveryManifest
 
 
+Functions
+---------
+
+.. autoapisummary::
+
+   psweep.discovery.models.discovery_exit_code
+   psweep.discovery.models.discovery_status
+
+
 Module Contents
 ---------------
 
@@ -85,5 +94,15 @@ Module Contents
                 serialized via ``DiscoveryCandidate.to_dict()``.
       :rtype: dict[str, Any]
 
+
+
+.. py:function:: discovery_exit_code(manifest: dict) -> int
+
+   Validate the result contract and return its exit code.
+
+
+.. py:function:: discovery_status(*, dry_run: bool, errors: list, usable: bool) -> str
+
+   Resolve a truthful status independently of CLI rendering.
 
 

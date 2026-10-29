@@ -3,7 +3,7 @@
   <head><meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <meta name="color-scheme" content="light dark"><meta name="viewport" content="width=device-width, initial-scale=1" />
-<link rel="index" title="Index" href="../../../../genindex.html"><link rel="search" title="Search" href="../../../../search.html"><link rel="next" title="psweep.discovery.policies" href="../policies/index.html"><link rel="prev" title="psweep.discovery.link_prioritizer" href="../link_prioritizer/index.html">
+<link rel="index" title="Index" href="../../../../genindex.html"><link rel="search" title="Search" href="../../../../search.html"><link rel="next" title="psweep.discovery.network" href="../network/index.html"><link rel="prev" title="psweep.discovery.link_prioritizer" href="../link_prioritizer/index.html">
 
     <link rel="shortcut icon" href="../../../../_static/favicon.svg"><!-- Generated with Sphinx 9.1.0 and Furo 2025.12.19 -->
         <title>psweep.discovery.models - ParseSweep 2.0.1</title>
@@ -244,6 +244,7 @@
 <li class="toctree-l4"><a class="reference internal" href="../browser/index.html">psweep.discovery.browser</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../candidate_selector/index.html">psweep.discovery.candidate_selector</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../code_host_adapters/index.html">psweep.discovery.code_host_adapters</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../concurrency/index.html">psweep.discovery.concurrency</a></li>
 <li class="toctree-l4 has-children"><a class="reference internal" href="../connectors/index.html">psweep.discovery.connectors</a><input aria-label="Toggle navigation of psweep.discovery.connectors" class="toctree-checkbox" id="toctree-checkbox-7" name="toctree-checkbox-7" role="switch" type="checkbox"/><label for="toctree-checkbox-7"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l5"><a class="reference internal" href="../connectors/base/index.html">psweep.discovery.connectors.base</a></li>
 <li class="toctree-l5"><a class="reference internal" href="../connectors/digger/index.html">psweep.discovery.connectors.digger</a></li>
@@ -255,7 +256,9 @@
 <li class="toctree-l4"><a class="reference internal" href="../engine/index.html">psweep.discovery.engine</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../link_prioritizer/index.html">psweep.discovery.link_prioritizer</a></li>
 <li class="toctree-l4 current current-page"><a class="current reference internal" href="#">psweep.discovery.models</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../network/index.html">psweep.discovery.network</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../policies/index.html">psweep.discovery.policies</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../publication/index.html">psweep.discovery.publication</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../request_inputs/index.html">psweep.discovery.request_inputs</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../retry/index.html">psweep.discovery.retry</a></li>
 <li class="toctree-l4 has-children"><a class="reference internal" href="../targets/index.html">psweep.discovery.targets</a><input aria-label="Toggle navigation of psweep.discovery.targets" class="toctree-checkbox" id="toctree-checkbox-8" name="toctree-checkbox-8" role="switch" type="checkbox"/><label for="toctree-checkbox-8"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
@@ -371,6 +374,21 @@
 </table>
 </div>
 </section>
+<section id="functions">
+<h2>Functions<a class="headerlink" href="#functions" title="Link to this heading">¶</a></h2>
+<div class="table-wrapper autosummary longtable docutils container">
+<table class="autosummary longtable docutils align-default">
+<tbody>
+<tr class="row-odd"><td><p><a class="reference internal" href="#psweep.discovery.models.discovery_exit_code" title="psweep.discovery.models.discovery_exit_code"><code class="xref py py-obj docutils literal notranslate"><span class="pre">discovery_exit_code</span></code></a>(→ int)</p></td>
+<td><p>Validate the result contract and return its exit code.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#psweep.discovery.models.discovery_status" title="psweep.discovery.models.discovery_status"><code class="xref py py-obj docutils literal notranslate"><span class="pre">discovery_status</span></code></a>(→ str)</p></td>
+<td><p>Resolve a truthful status independently of CLI rendering.</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
 <section id="module-contents">
 <h2>Module Contents<a class="headerlink" href="#module-contents" title="Link to this heading">¶</a></h2>
 <dl class="py class">
@@ -466,6 +484,18 @@ serialized via <code class="docutils literal notranslate"><span class="pre">Disc
 
 </dd></dl>
 
+<dl class="py function">
+<dt class="sig sig-object py" id="psweep.discovery.models.discovery_exit_code">
+<span class="sig-prename descclassname"><span class="pre">psweep.discovery.models.</span></span><span class="sig-name descname"><span class="pre">discovery_exit_code</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">manifest</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">dict</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">int</span></span></span><a class="headerlink" href="#psweep.discovery.models.discovery_exit_code" title="Link to this definition">¶</a></dt>
+<dd><p>Validate the result contract and return its exit code.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="psweep.discovery.models.discovery_status">
+<span class="sig-prename descclassname"><span class="pre">psweep.discovery.models.</span></span><span class="sig-name descname"><span class="pre">discovery_status</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">dry_run</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">errors</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">list</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">usable</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">str</span></span></span><a class="headerlink" href="#psweep.discovery.models.discovery_status" title="Link to this definition">¶</a></dt>
+<dd><p>Resolve a truthful status independently of CLI rendering.</p>
+</dd></dl>
+
 </section>
 </section>
 
@@ -474,12 +504,12 @@ serialized via <code class="docutils literal notranslate"><span class="pre">Disc
       <footer>
         
         <div class="related-pages">
-          <a class="next-page" href="../policies/index.html">
+          <a class="next-page" href="../network/index.html">
               <div class="page-info">
                 <div class="context">
                   <span>Next</span>
                 </div>
-                <div class="title">psweep.discovery.policies</div>
+                <div class="title">psweep.discovery.network</div>
               </div>
               <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
             </a>
@@ -529,6 +559,7 @@ serialized via <code class="docutils literal notranslate"><span class="pre">Disc
             <ul>
 <li><a class="reference internal" href="#">psweep.discovery.models</a><ul>
 <li><a class="reference internal" href="#classes">Classes</a></li>
+<li><a class="reference internal" href="#functions">Functions</a></li>
 <li><a class="reference internal" href="#module-contents">Module Contents</a><ul>
 <li><a class="reference internal" href="#psweep.discovery.models.CandidateScore"><code class="docutils literal notranslate"><span class="pre">CandidateScore</span></code></a><ul>
 <li><a class="reference internal" href="#psweep.discovery.models.CandidateScore.acceptance_class"><code class="docutils literal notranslate"><span class="pre">CandidateScore.acceptance_class()</span></code></a></li>
@@ -544,6 +575,8 @@ serialized via <code class="docutils literal notranslate"><span class="pre">Disc
 <li><a class="reference internal" href="#psweep.discovery.models.DiscoveryManifest.to_dict"><code class="docutils literal notranslate"><span class="pre">DiscoveryManifest.to_dict()</span></code></a></li>
 </ul>
 </li>
+<li><a class="reference internal" href="#psweep.discovery.models.discovery_exit_code"><code class="docutils literal notranslate"><span class="pre">discovery_exit_code()</span></code></a></li>
+<li><a class="reference internal" href="#psweep.discovery.models.discovery_status"><code class="docutils literal notranslate"><span class="pre">discovery_status()</span></code></a></li>
 </ul>
 </li>
 </ul>

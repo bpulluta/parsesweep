@@ -29,18 +29,21 @@ Module Contents
 
    Heuristic ranker for discovery candidate URLs.
 
-   Scores candidates before download using file-type, domain authority,
-   keyword, and power-class signals.  Returns top-K ranked candidates and
-   a full lineage list so nothing is permanently discarded.
+   Scores source URL/title/snippet evidence before download using file
+   type and configured authority/keyword signals. Returns top-K ranked
+   candidates and full lineage so nothing is permanently discarded.
 
    :param keywords: Domain/query keywords used to boost URLs that contain them.
                     Sourced from schema keywords or config.
-   :param domain_authority_overrides: Extra ``{domain_substring: score_adjustment}`` entries that
-                                      supplement the built-in authority table.
+   :param domain_authority_overrides: Configured ``{host_pattern: score_adjustment}`` entries from
+                                      ``link_prioritization.domain_scores``. Host keys match the host
+                                      and its subdomains; leading-dot keys match hostname suffixes.
+                                      No authority adjustments apply unless configured.
    :param top_k: Maximum number of candidates to surface after ranking. ``None``
                  returns all candidates in ranked order.
-   :param shopping_path_keywords: Extra shopping/cart path keywords that supplement the built-in
-                                  :data:`_SHOPPING_PATH_KEYWORDS`; the defaults are always retained.
+   :param shopping_path_keywords: Configured shopping/cart terms matched literally at token
+                                  boundaries in decoded URL paths. Empty or omitted lists apply
+                                  no shopping penalties.
 
 
    .. py:method:: prioritize(candidates: list[psweep.discovery.models.DiscoveryCandidate]) -> tuple[list[psweep.discovery.models.DiscoveryCandidate], list[dict[str, Any]]]

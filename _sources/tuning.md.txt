@@ -1,7 +1,7 @@
 # Tuning & Iteration
 
 ParseSweep is built to be tuned incrementally: start from the
-[minimal config](getting-started.md#start-minimal), run it, inspect the output,
+[minimal config](getting-started.md#start-with-discovery-only), run it, inspect the output,
 then change **one knob at a time**. This page maps each symptom you might see to
 the exact setting that fixes it, its default, and how to change it.
 
@@ -141,25 +141,78 @@ discovery:
 
 ### Too few documents
 
-Broaden your search queries and loosen `selection.max_per_target`, or enable
-`document_review` to keep the most authoritative results rather than filtering
-hard up front.
+Broaden queries or raise `search.max_results` (default `10` unique candidates
+per query) and `selection.max_per_target` (default `1` acquisition per target).
+Check scope and exclusion evidence before increasing budgets. Search caps do
+not guarantee downloads or recall. Optional paid `document_review.keep_top`
+controls retention after acquisition; review does not expand the search.
+
+### Domain filters or partitions changed unexpectedly
+
+Use canonical `search`, `max_results`, and selection
+`max_per_target`/`require_any`/`exclude`. Retired aliases fail with migration
+guidance, rather than merging into canonical settings. Adjacent section
+YAML/JSON overrides beside a `run` config are also retired: move settings into
+its explicit sections and remove the adjacent files.
+
+There are no built-in legal draft, vendor authority, or shopping-path lists.
+Use `selection.draft_patterns` with `exclude_draft`,
+`link_prioritization.domain_scores`, and `shopping_path_keywords` for observed
+domain mismatches. `link_prioritization.keywords` replaces the generic fallback.
+Concrete provider/vendor source filters belong in the domain config; parsers
+do not add them automatically. `allowed_domains` plus URL rules enforce source
+scope; soft ranking boosts are not an allowlist.
+
+Supply `state`/`jurisdiction` fields explicitly, or use `partition_by` for
+arbitrary metadata layouts. Query text never infers geography and discovery
+has no built-in US alias table; supply any `jurisdiction_aliases` yourself.
 
 ### Crawl politeness / policy
 
-`robots_mode` and `tos_mode` both default to `warn` (log and continue). Set
-`block` to enforce, or `ignore` to silence. Throttle with
-`runtime.min_request_interval_ms` and `runtime.max_concurrent_downloads`.
+`policy.robots_mode` and `policy.tos_mode` default to `warn` (log and continue).
+Set `enforce` for HTTP enforcement or `ignore` to silence. Strict enforcement
+cannot certify browser redirects or subresources: it fails before unsupported
+browser navigation, including escalation. Use HTTP acquisition when enforcement
+is required. Throttle with `runtime.min_request_interval_ms` and
+`runtime.max_concurrent_downloads`.
+
+SerpApi/download TLS verification remains the user's environment choice;
+`SERPAPI_SSL_VERIFY` and `DISCOVERY_SSL_VERIFY` retain default `false`.
+Configure verification explicitly (and `REQUESTS_CA_BUNDLE` if needed);
+validation does not test live certificate chains.
+
+### Automation reports no downloads
+
+Inspect manifest `status` and `errors`. Quiet/default/verbose modes share exit
+codes: error-free `success`/`dry_run`/`reused` = `0`, `failed`/`partial_failure`
+(including zero downloads caused by failure) = `1`, genuinely `empty` = `2`.
+A partial result is not successful acquisition.
 
 ## Re-running after changes
 
-Every stage honors previous work by default. Pass `--fresh` to ignore caches
-and start over:
+Discovery checkpoint v2 reuse requires matching effective config and artifact
+digest evidence, including curated files. Changed settings, missing/altered
+artifacts, and old v1 entries cause reacquisition; opt-in search caching is
+separate. Publication locks reject concurrent corpus writers; journal recovery
+restores interrupted discovery curated/provenance swaps on the next writer.
+Do not treat that small protocol as a general pipeline transaction.
+
+Extraction skips existing output JSON by default. `--fresh` bypasses discovery
+checkpoints and enabled search cache, and re-extracts existing JSON:
 
 ```bash
 pixi run psweep extract --config config/my_domain/run.yaml --fresh
 pixi run psweep run     --config config/my_domain/run.yaml --fresh
 ```
+
+OCR cache identity is separate from existing output JSON: it uses
+`.text/<filename>.txt` and `.text/<filename>.meta.json`. Source size/mtime and
+source/text digests must match; partial or stale pairs are misses, metadata is
+replaced last, and old stem-only caches are not reused. LLM review sidecars use
+`.review/<filename>.json`; curation carries these full-name pairs/sidecars.
+Native extraction, OCR correction rules, and `.pages/` targeting behavior are
+unchanged. Delete `.text/` or `.pages/` for a cold OCR or targeting run; `--fresh`
+is not a new OCR-rule invalidation mechanism.
 
 See the [Configuration Reference](config-reference.md) for the full defaults
 table and the [Command Reference](commands/index.md) for every option.

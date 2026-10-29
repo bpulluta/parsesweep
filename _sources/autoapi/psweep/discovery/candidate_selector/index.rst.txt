@@ -5,24 +5,13 @@ psweep.discovery.candidate_selector
 
 .. autoapi-nested-parse::
 
-   Per-target candidate selection: draft filtering and recency-based version selection.
+   Per-target candidate selection with configurable exclusion policies.
 
-   After the SerpApi seeker discovers candidates per target, this module decides
-   which candidates to actually stage for download.  The two core guards are:
-
-   1. **Draft filter** – exclude documents whose URL/title/snippet text contains
-      signals indicating they are not the current enacted/production version
-      (e.g., "draft", "proposed", "preliminary", "superseded").
-
-   2. **Recency selection** – within each target's candidate pool, prefer the
-      most recent version by parsing effective dates out of the URL filename
-      or path segments.  When no date is detectable the candidate is still
-      included (date-less candidates rank behind dated ones).
-
-   Both guards are applied per-target so that a utility or jurisdiction with
-   many candidates does not crowd out others, and so that version conflicts
-   (e.g., April-2024 vs May-2024 tariff summation sheets) resolve to the
-   single latest copy.
+   Source URL/title/snippet evidence is filtered only by supplied draft,
+   identity and relevance rules. No domain-specific exclusion vocabulary is
+   imposed by default. Within each target's pool, supported files and more
+   recent filename dates are preferred; undated candidates remain eligible.
+   Per-target limits keep larger candidate pools from crowding out others.
 
 
 
@@ -41,10 +30,10 @@ Module Contents
 
    Selects the best candidate(s) per target from seeker output.
 
-   :param exclude_draft: When ``True`` (default), candidates matching any draft pattern in
-                         their URL/title/snippet text are excluded before recency ranking.
-   :param draft_patterns: Override the default draft detection regex patterns.  Each entry is
-                          a case-insensitive ``re.search`` pattern string.
+   :param exclude_draft: When ``True`` (default), apply the supplied draft patterns to
+                         source URL/title/snippet evidence before recency ranking.
+   :param draft_patterns: Domain-provided case-insensitive ``re.search`` patterns.
+                          Omitted or empty lists impose no draft exclusions.
 
 
    .. py:method:: select(candidates_by_target: list[list[psweep.discovery.models.DiscoveryCandidate]], primary_per_target: int = 1, target_contexts: list[dict[str, object]] | None = None, include_metrics: bool = False) -> tuple[list[psweep.discovery.models.DiscoveryCandidate], list[str]] | tuple[list[psweep.discovery.models.DiscoveryCandidate], list[str], list[dict[str, Any]]]

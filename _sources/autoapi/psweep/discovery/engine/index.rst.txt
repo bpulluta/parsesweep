@@ -5,7 +5,7 @@ psweep.discovery.engine
 
 .. autoapi-nested-parse::
 
-   Scaffold discovery engine for initial CLI integration.
+   Discovery orchestration over acquisition, review, and publication.
 
 
 
@@ -24,7 +24,7 @@ Module Contents
 
 .. py:class:: DiscoveryEngine
 
-   Initial discovery engine that emits deterministic scaffold artifacts.
+   Coordinate discovery and publish verified artifacts.
 
 
    .. py:method:: run(request: DiscoveryRequest) -> DiscoveryResult
@@ -34,8 +34,7 @@ Module Contents
       :param request: Fully resolved discovery configuration and seed inputs.
       :type request: DiscoveryRequest
 
-      :returns: Run outcome including the manifest path, downloaded documents
-                directory, and any errors encountered.
+      :returns: Manifest path, downloaded documents, and acquisition errors.
       :rtype: DiscoveryResult
 
 
@@ -47,6 +46,6 @@ Module Contents
 
 .. py:class:: DiscoveryResult
 
-   Minimal result payload for the scaffold engine.
+   Run outcomes and published artifacts returned by discovery.
 
 

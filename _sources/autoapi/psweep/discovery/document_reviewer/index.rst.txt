@@ -5,21 +5,24 @@ psweep.discovery.document_reviewer
 
 .. autoapi-nested-parse::
 
-   LLM-based post-download document review (curation).
+   LLM-based post-download document review and in-place selection.
 
-   The keyword classifier flags obvious mismatches cheaply. This optional step
-   goes further: it asks an LLM to grade each downloaded file against a plain
-   description of the document you actually want, then promotes the most relevant
-   file(s) into a ``reviewed/`` subfolder next to the originals.
+   Grade each downloaded file against the configured document description.
+   The engine copies selections into ``curated/``; originals stay put.
+   Full-filename ``.review`` sidecars separate raw grades from selection.
+   Each sidecar preserves only its own file's human decisions.
 
-   The point is county-scale automation without human review: after a run over
-   thousands of jurisdictions, a person only opens the ``reviewed/`` folders —
-   presentations, drafts, superseded versions, and tangential reports stay out.
+   Reuse the extraction LLM client and document text extraction. Explicit
+   per-record failures let the caller block unsafe publication.
 
-   Reuses the extraction LLM client (``extraction/llm_client.py``) and the
-   ``ContentSampler`` text extractor, so it adds no new dependencies. It is
-   best-effort: if the LLM is unavailable it leaves files untouched and says so.
 
+
+Exceptions
+----------
+
+.. autoapisummary::
+
+   psweep.discovery.document_reviewer.ReviewError
 
 
 Classes
@@ -33,14 +36,24 @@ Classes
 Module Contents
 ---------------
 
-.. py:class:: DocumentReviewer(*, document_description: str, model: str | None = None, models: dict[str, str] | None = None, default_model: str | None = None, keep_top: int = 1, action: str = 'move', max_chars: int = 12000, review_keywords: list[str] | None = None, deduplicate_redundant: bool = True, dedup_key_fields: list[str] | None = None)
+.. py:exception:: ReviewError(message: str, *, usage_unknown: bool = False)
+
+   Bases: :py:obj:`Exception`
+
+
+   A per-file failure without sensitive provider error text.
+
+   Initialize self.  See help(type(self)) for accurate signature.
+
+
+.. py:class:: DocumentReviewer(*, document_description: str, model: str | None = None, models: dict[str, str] | None = None, default_model: str | None = None, keep_top: int = 1, max_chars: int = 12000, review_keywords: list[str] | None = None, deduplicate_redundant: bool = True, dedup_key_fields: list[str] | None = None)
 
    Grade downloaded files with an LLM and promote the primary one(s).
 
 
    .. py:method:: get_costs() -> dict[str, Any]
 
-      Return accumulated cost data from document review LLM calls.
+      Return a synchronized snapshot of returned usage and cost.
 
 
 

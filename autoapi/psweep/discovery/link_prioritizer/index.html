@@ -244,6 +244,7 @@
 <li class="toctree-l4"><a class="reference internal" href="../browser/index.html">psweep.discovery.browser</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../candidate_selector/index.html">psweep.discovery.candidate_selector</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../code_host_adapters/index.html">psweep.discovery.code_host_adapters</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../concurrency/index.html">psweep.discovery.concurrency</a></li>
 <li class="toctree-l4 has-children"><a class="reference internal" href="../connectors/index.html">psweep.discovery.connectors</a><input aria-label="Toggle navigation of psweep.discovery.connectors" class="toctree-checkbox" id="toctree-checkbox-7" name="toctree-checkbox-7" role="switch" type="checkbox"/><label for="toctree-checkbox-7"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l5"><a class="reference internal" href="../connectors/base/index.html">psweep.discovery.connectors.base</a></li>
 <li class="toctree-l5"><a class="reference internal" href="../connectors/digger/index.html">psweep.discovery.connectors.digger</a></li>
@@ -255,7 +256,9 @@
 <li class="toctree-l4"><a class="reference internal" href="../engine/index.html">psweep.discovery.engine</a></li>
 <li class="toctree-l4 current current-page"><a class="current reference internal" href="#">psweep.discovery.link_prioritizer</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../models/index.html">psweep.discovery.models</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../network/index.html">psweep.discovery.network</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../policies/index.html">psweep.discovery.policies</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../publication/index.html">psweep.discovery.publication</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../request_inputs/index.html">psweep.discovery.request_inputs</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../retry/index.html">psweep.discovery.retry</a></li>
 <li class="toctree-l4 has-children"><a class="reference internal" href="../targets/index.html">psweep.discovery.targets</a><input aria-label="Toggle navigation of psweep.discovery.targets" class="toctree-checkbox" id="toctree-checkbox-8" name="toctree-checkbox-8" role="switch" type="checkbox"/><label for="toctree-checkbox-8"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
@@ -379,20 +382,23 @@ download, enabling 1000+ link automation without manual selection.</p>
 <dt class="sig sig-object py" id="psweep.discovery.link_prioritizer.LinkPrioritizer">
 <span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">psweep.discovery.link_prioritizer.</span></span><span class="sig-name descname"><span class="pre">LinkPrioritizer</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">keywords</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">list</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">domain_authority_overrides</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">float</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">top_k</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">5</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">shopping_path_keywords</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">list</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#psweep.discovery.link_prioritizer.LinkPrioritizer" title="Link to this definition">¶</a></dt>
 <dd><p>Heuristic ranker for discovery candidate URLs.</p>
-<p>Scores candidates before download using file-type, domain authority,
-keyword, and power-class signals.  Returns top-K ranked candidates and
-a full lineage list so nothing is permanently discarded.</p>
+<p>Scores source URL/title/snippet evidence before download using file
+type and configured authority/keyword signals. Returns top-K ranked
+candidates and full lineage so nothing is permanently discarded.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>keywords</strong> – Domain/query keywords used to boost URLs that contain them.
 Sourced from schema keywords or config.</p></li>
-<li><p><strong>domain_authority_overrides</strong> – Extra <code class="docutils literal notranslate"><span class="pre">{domain_substring:</span> <span class="pre">score_adjustment}</span></code> entries that
-supplement the built-in authority table.</p></li>
+<li><p><strong>domain_authority_overrides</strong> – Configured <code class="docutils literal notranslate"><span class="pre">{host_pattern:</span> <span class="pre">score_adjustment}</span></code> entries from
+<code class="docutils literal notranslate"><span class="pre">link_prioritization.domain_scores</span></code>. Host keys match the host
+and its subdomains; leading-dot keys match hostname suffixes.
+No authority adjustments apply unless configured.</p></li>
 <li><p><strong>top_k</strong> – Maximum number of candidates to surface after ranking. <code class="docutils literal notranslate"><span class="pre">None</span></code>
 returns all candidates in ranked order.</p></li>
-<li><p><strong>shopping_path_keywords</strong> – Extra shopping/cart path keywords that supplement the built-in
-<code class="xref py py-data docutils literal notranslate"><span class="pre">_SHOPPING_PATH_KEYWORDS</span></code>; the defaults are always retained.</p></li>
+<li><p><strong>shopping_path_keywords</strong> – Configured shopping/cart terms matched literally at token
+boundaries in decoded URL paths. Empty or omitted lists apply
+no shopping penalties.</p></li>
 </ul>
 </dd>
 </dl>
