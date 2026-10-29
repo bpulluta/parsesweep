@@ -1,10 +1,4 @@
-"""Tests for config-supplied jurisdiction aliases.
-
-The built-in US-state alias table (active only under
-``partition_mode=jurisdiction``) can be supplemented/overridden via
-``discovery.jurisdiction_aliases`` so non-US or custom jurisdiction schemes
-work. When unconfigured, the US default is used unchanged.
-"""
+"""Jurisdiction aliases are explicit domain inputs, not US defaults."""
 
 from pathlib import Path
 
@@ -19,40 +13,16 @@ from psweep.discovery.engine import DiscoveryEngine
 
 
 class TestEffectiveStateAliases:
-    def test_default_identity_when_no_extra(self):
-        assert (
-            DiscoveryEngine._effective_state_aliases(None)
-            is DiscoveryEngine._STATE_ALIASES
-        )
-        assert (
-            DiscoveryEngine._effective_state_aliases({})
-            is DiscoveryEngine._STATE_ALIASES
-        )
+    def test_no_unconfigured_geographic_aliases(self):
+        assert DiscoveryEngine._effective_state_aliases(None) == {}
+        assert DiscoveryEngine._effective_state_aliases({}) == {}
 
-    def test_merges_and_config_wins_on_conflict(self):
-        merged = DiscoveryEngine._effective_state_aliases(
+    def test_only_configured_aliases_are_normalized(self):
+        aliases = DiscoveryEngine._effective_state_aliases(
             {"Ontario": "ON", "Texas": "TX-CUSTOM"}
         )
-        assert merged["ontario"] == "on"  # new, lowercased
-        assert merged["texas"] == "tx-custom"  # override wins
-        assert merged["california"] == "ca"  # built-in default retained
-
-
-class TestInferJurisdictionWithAliases:
-    def test_infers_non_us_jurisdiction_from_custom_alias(self):
-        aliases = DiscoveryEngine._effective_state_aliases({"ontario": "on"})
-        jurisdiction, state = DiscoveryEngine._infer_jurisdiction_from_query(
-            "Toronto City Ontario zoning permits", aliases
-        )
-        assert state == "on"
-        assert jurisdiction == "Toronto City"
-
-    def test_default_us_inference_unchanged(self):
-        jurisdiction, state = DiscoveryEngine._infer_jurisdiction_from_query(
-            "Fairfax County Virginia ordinance"
-        )
-        assert state == "va"
-        assert jurisdiction == "Fairfax County"
+        assert aliases == {"ontario": "on", "texas": "tx-custom"}
+        assert "california" not in aliases
 
 
 class TestNormalizeStateKey:
@@ -62,8 +32,8 @@ class TestNormalizeStateKey:
             DiscoveryEngine._normalize_state_key("Ontario", aliases) == "on"
         )
 
-    def test_default_alias_unchanged(self):
-        assert DiscoveryEngine._normalize_state_key("Virginia") == "va"
+    def test_absent_alias_uses_generic_slug(self):
+        assert DiscoveryEngine._normalize_state_key("Virginia") == "virginia"
 
 
 class TestJurisdictionAliasesResolve:

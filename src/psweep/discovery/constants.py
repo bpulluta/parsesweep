@@ -8,6 +8,10 @@ engine, selector, prioritizer, and connectors.
 
 from __future__ import annotations
 
+DEFAULT_MAX_CONCURRENT_DOWNLOADS = 2
+RESERVED_SEARCH_PARAMS = frozenset({"q", "num", "api_key"})
+
+
 # ---------------------------------------------------------------------------
 # File types
 # ---------------------------------------------------------------------------
@@ -43,20 +47,6 @@ MIME_TO_EXTENSION: dict[str, str] = {
 
 ROUTE_REASON_DISTRIBUTED = "Routed via distributed digger path"
 ROUTE_REASON_CENTRALIZED = "Routed via centralized hub sweep"
-
-
-# ---------------------------------------------------------------------------
-# Query-context aliases
-# ---------------------------------------------------------------------------
-
-# Coalesce aliases for query templates: an alias resolves to the first
-# non-empty source field in its list. Domains override via config
-# (discovery.query_context_aliases). The default preserves the legacy
-# behavior where "{utility_or_jurisdiction}" fell back to jurisdiction then
-# manufacturer, so existing configs keep working unchanged.
-DEFAULT_QUERY_CONTEXT_ALIASES: dict[str, list[str]] = {
-    "utility_or_jurisdiction": ["jurisdiction", "manufacturer"],
-}
 
 
 # ---------------------------------------------------------------------------

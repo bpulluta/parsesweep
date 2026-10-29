@@ -319,79 +319,56 @@ def test_load_runtime_config_file_rejects_invalid_browser_escalation(
         load_runtime_config_file(config_path)
 
 
-def test_load_runtime_config_file_applies_split_file_processing_override(tmp_path: Path):
+@pytest.mark.parametrize(
+    "override_body",
+    [
+        "output_dir: processed/from-override\nmax_context: 222222\n",
+        "extraction:\n  output_dir: processed/from-override\n",
+    ],
+)
+def test_load_runtime_config_file_rejects_split_processing_override(
+    tmp_path: Path, override_body: str,
+):
+    """Flat and wrapped overrides must be migrated into the run config."""
     run_path = tmp_path / "run.yaml"
     run_path.write_text(
-        """
-domain: geothermal_ordinances
-extraction:
-  input_dir: documents/geothermal_ordinances
-  schema: schemas/personal/geothermal_ordinance_schema.json
-  output_dir: processed/from-run
-""",
+        "extraction:\n"
+        "  input_dir: documents/geothermal_ordinances\n"
+        "  schema: schemas/personal/geothermal_ordinance_schema.json\n"
+        "  output_dir: processed/from-run\n",
         encoding="utf-8",
     )
+    (tmp_path / "extraction.yaml").write_text(override_body, encoding="utf-8")
 
-    extraction_path = tmp_path / "extraction.yaml"
-    extraction_path.write_text(
-        """
-output_dir: processed/from-override
-max_context: 222222
-""",
-        encoding="utf-8",
-    )
-
-    loaded = load_runtime_config_file(run_path)
-
-    assert loaded["extraction"]["input_dir"] == "documents/geothermal_ordinances"
-    assert loaded["extraction"]["schema"] == "schemas/personal/geothermal_ordinance_schema.json"
-    assert loaded["extraction"]["output_dir"] == "processed/from-override"
-    assert loaded["extraction"]["max_context"] == 222222
-
-
-def test_load_runtime_config_file_section_override_supports_nested_section_shape(tmp_path: Path):
-    run_path = tmp_path / "run.yaml"
-    run_path.write_text(
-        """
-compilation:
-  input_dir: processed/geothermal_ordinances
-  schema: schemas/personal/geothermal_ordinance_schema.json
-""",
-        encoding="utf-8",
-    )
-
-    compilation_path = tmp_path / "compilation.yaml"
-    compilation_path.write_text(
-        """
-compilation:
-  output_dir: compiled/geothermal_ordinances
-""",
-        encoding="utf-8",
-    )
-
-    loaded = load_runtime_config_file(run_path)
-
-    assert loaded["compilation"]["input_dir"] == "processed/geothermal_ordinances"
-    assert loaded["compilation"]["schema"] == "schemas/personal/geothermal_ordinance_schema.json"
-    assert loaded["compilation"]["output_dir"] == "compiled/geothermal_ordinances"
-
-
-def test_load_runtime_config_file_rejects_multiple_split_files_for_same_section(tmp_path: Path):
-    run_path = tmp_path / "run.yaml"
-    run_path.write_text(
-        """
-extraction:
-  input_dir: documents/geothermal_ordinances
-  schema: schemas/personal/geothermal_ordinance_schema.json
-""",
-        encoding="utf-8",
-    )
-
-    (tmp_path / "extraction.yaml").write_text("output_dir: one\n", encoding="utf-8")
-    (tmp_path / "extraction.json").write_text('{"output_dir": "two"}', encoding="utf-8")
-
-    with pytest.raises(RuntimeConfigError, match="Multiple section override files found for 'extraction'"):
+    with pytest.raises(
+        RuntimeConfigError, match="Implicit section override files",
+    ) as exc:
         load_runtime_config_file(run_path)
+    assert "extraction.yaml" in str(exc.value)
+    assert "run.yaml" in str(exc.value)
+
+
+def test_load_runtime_config_file_rejects_all_split_files_for_same_section(
+    tmp_path: Path,
+):
+    """Every conflicting override is listed in the migration error."""
+    run_path = tmp_path / "run.yaml"
+    run_path.write_text(
+        "extraction:\n  input_dir: docs\n  schema: s.json\n", encoding="utf-8",
+    )
+    (tmp_path / "extraction.yaml").write_text(
+        "output_dir: one\n", encoding="utf-8",
+    )
+    (tmp_path / "extraction.json").write_text(
+        '{"output_dir": "two"}', encoding="utf-8",
+    )
+
+    with pytest.raises(
+        RuntimeConfigError, match="Implicit section override files",
+    ) as exc:
+        load_runtime_config_file(run_path)
+    assert "extraction.yaml" in str(exc.value)
+    assert "extraction.json" in str(exc.value)
 
 
 def test_resolve_command_config_supports_acquire_alias(tmp_path: Path):
@@ -666,13 +643,13 @@ discovery:
     seeds:
         - https://example.org/hub
     selection:
-        relevance_require_any_terms:
+        require_any:
             - ordinance
             - municipal code
         relevance_require_legal_marker_terms:
             - title
             - chapter
-        relevance_exclude_any_terms:
+        exclude:
             - state brief
             - specific plan
         relevance_allowed_domain_patterns:
@@ -736,7 +713,7 @@ discovery:
     seeds:
         - https://example.org/hub
     selection:
-        primary_per_target: 3
+        max_per_target: 3
         exclude_draft: false
         draft_patterns:
             - draft
@@ -768,28 +745,29 @@ discovery:
         assert resolved["selection_target_identity_exclude_any_templates"] == ["sample"]
 
 
-def test_discovery_selection_primary_per_target_must_cover_review_keep_top(
-        tmp_path: Path,
+def test_discovery_selection_max_per_target_must_cover_review_keep_top(
+    tmp_path: Path,
 ):
-        run_path = tmp_path / "run.yaml"
-        run_path.write_text(
-            """
+    """Acquisition must provide enough candidates for configured review."""
+    run_path = tmp_path / "run.yaml"
+    run_path.write_text(
+        """
 discovery:
   seeds:
         - https://example.org/hub
   selection:
-        primary_per_target: 2
+        max_per_target: 2
   document_review:
         keep_top: 3
 """,
-            encoding="utf-8",
-        )
+        encoding="utf-8",
+    )
 
-        with pytest.raises(
-            RuntimeConfigError,
-            match="selection.primary_per_target' must be >=",
-        ):
-            load_runtime_config_file(run_path)
+    with pytest.raises(
+        RuntimeConfigError,
+        match=r"selection\.max_per_target' must be >=",
+    ):
+        load_runtime_config_file(run_path)
 
 
 def test_discovery_selection_and_review_accept_equal_limits(tmp_path: Path):
@@ -800,7 +778,7 @@ discovery:
   seeds:
         - https://example.org/hub
   selection:
-        primary_per_target: 3
+        max_per_target: 3
   document_review:
         keep_top: 3
 """,
@@ -861,7 +839,7 @@ discovery:
   query_families:
     generator_similar_power:
       - "{manufacturer} {power_class_kw} kW generator spec pdf"
-  seeker:
+  search:
     provider: serpapi
     use_query_family: generator_similar_power
     max_results: 7
@@ -1240,8 +1218,8 @@ def _resolve_discovery(body: str) -> dict:
     ("block", "match"),
     [
         (
-            "  seeker:\n    provider: serpapi\n    max_result: 7\n",
-            "Unknown keys in 'discovery.seeker': max_result",
+            "  search:\n    provider: serpapi\n    max_result: 7\n",
+            "Unknown keys in 'discovery.search': max_result",
         ),
         (
             "  search:\n    provider: serpapi\n    maxresults: 5\n",

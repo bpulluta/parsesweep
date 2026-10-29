@@ -8,12 +8,18 @@ along so downstream extraction never re-OCRs.
 
 from __future__ import annotations
 
+import hashlib
+import json
+import os
 from pathlib import Path
+
+import pytest
 
 from psweep.discovery.engine import DiscoveryEngine
 from psweep.extraction.document_utils import (
     extract_text_from_document,
     read_text_cache,
+    text_cache_paths,
     write_text_cache,
 )
 
@@ -43,7 +49,7 @@ class TestTextCache:
             _fake,
         )
         text1 = extract_text_from_document(pdf)
-        assert (tmp_path / ".text" / "scan.txt").exists()
+        assert (tmp_path / ".text" / "scan.pdf.txt").exists()
         assert calls["n"] == 1
         # Second call is served from cache — the extractor does not run again.
         text2 = extract_text_from_document(pdf)
@@ -73,6 +79,109 @@ class TestTextCache:
         # Editing the source (size/mtime change) invalidates the cache.
         doc.write_text("something much longer than before", encoding="utf-8")
         assert read_text_cache(doc) is None
+
+    def test_same_stem_formats_have_independent_cache_pairs(self, tmp_path):
+        pdf, html = tmp_path / "report.pdf", tmp_path / "report.html"
+        for source in (pdf, html):
+            source.write_bytes(b"same bytes")
+            os.utime(source, ns=(1000000000, 1000000000))
+        write_text_cache(pdf, "PDF OCR")
+        write_text_cache(html, "HTML TEXT")
+
+        assert text_cache_paths(pdf) == (
+            tmp_path / ".text/report.pdf.txt",
+            tmp_path / ".text/report.pdf.meta.json",
+        )
+        assert read_text_cache(pdf) == "PDF OCR"
+        assert read_text_cache(html) == "HTML TEXT"
+        assert len(list((tmp_path / ".text").iterdir())) == 4
+
+    def test_legacy_stem_cache_is_not_reused(self, tmp_path):
+        source = tmp_path / "report.pdf"
+        source.write_bytes(b"source")
+        write_text_cache(source, "old cache")
+        text_path, meta_path = text_cache_paths(source)
+        text_path.replace(text_path.parent / "report.txt")
+        meta_path.replace(meta_path.parent / "report.meta.json")
+        assert read_text_cache(source) is None
+
+    def test_source_digest_invalidates_same_size_and_mtime(self, tmp_path):
+        source = tmp_path / "report.pdf"
+        source.write_bytes(b"before")
+        stat = source.stat()
+        write_text_cache(source, "cached before")
+        source.write_bytes(b"after!")
+        os.utime(source, ns=(stat.st_atime_ns, stat.st_mtime_ns))
+        assert read_text_cache(source) is None
+
+    def test_text_digest_rejects_tampered_cache(self, tmp_path):
+        source = tmp_path / "report.pdf"
+        source.write_bytes(b"source")
+        write_text_cache(source, "cached text")
+        text_path, meta_path = text_cache_paths(source)
+        meta = json.loads(meta_path.read_text())
+        assert meta["source_sha256"] == hashlib.sha256(b"source").hexdigest()
+        assert meta["text_sha256"] == hashlib.sha256(
+            b"cached text",
+        ).hexdigest()
+        text_path.write_text("altered txt")  # same length, different digest
+        assert read_text_cache(source) is None
+
+    @pytest.mark.parametrize("missing", [0, 1])
+    def test_partial_cache_pair_is_a_miss(self, tmp_path, missing):
+        source = tmp_path / "report.pdf"
+        source.write_bytes(b"source")
+        write_text_cache(source, "cached text")
+        text_cache_paths(source)[missing].unlink()
+        assert read_text_cache(source) is None
+
+    def test_metadata_replaced_last_and_intermediate_pair_is_a_miss(
+        self, tmp_path, monkeypatch,
+    ):
+        source = tmp_path / "report.pdf"
+        source.write_bytes(b"source")
+        write_text_cache(source, "before")
+        text_path, meta_path = text_cache_paths(source)
+        original_replace = Path.replace
+        destinations = []
+
+        def observe_replace(staged, destination):
+            assert staged.parent == destination.parent
+            if destination == meta_path:
+                assert text_path.read_text() == "after"
+                assert read_text_cache(source) is None
+            destinations.append(destination)
+            return original_replace(staged, destination)
+
+        monkeypatch.setattr(Path, "replace", observe_replace)
+        write_text_cache(source, "after")
+        assert destinations == [text_path, meta_path]
+        assert read_text_cache(source) == "after"
+        assert len(list(text_path.parent.iterdir())) == 2
+
+    @pytest.mark.parametrize("failed_index", [0, 1])
+    def test_interrupted_replace_never_serves_mismatched_pair(
+        self, tmp_path, monkeypatch, failed_index,
+    ):
+        source = tmp_path / "report.pdf"
+        source.write_bytes(b"source")
+        write_text_cache(source, "before")
+        paths = text_cache_paths(source)
+        original_replace = Path.replace
+
+        def fail_replace(staged, destination):
+            if destination == paths[failed_index]:
+                raise OSError("interrupted cache write")
+            return original_replace(staged, destination)
+
+        monkeypatch.setattr(Path, "replace", fail_replace)
+        write_text_cache(source, "after")  # caching must stay best-effort
+        expected = "before" if failed_index == 0 else None
+        assert read_text_cache(source) == expected
+        assert len(list(paths[0].parent.iterdir())) == 2
+        monkeypatch.setattr(Path, "replace", original_replace)
+        write_text_cache(source, "recovered")
+        assert read_text_cache(source) == "recovered"
 
     def test_page_range_bypasses_cache(self, tmp_path: Path, monkeypatch):
         doc = tmp_path / "doc.pdf"
@@ -146,6 +255,22 @@ class TestMaterializeCurated:
         )
         # The curated copy carries its cache, so extraction reuses it.
         assert read_text_cache(curated_dir / "co/scan.pdf") == "OCR TEXT"
+
+    def test_same_stem_cache_pairs_are_carried_without_collision(
+        self, tmp_path,
+    ):
+        docs = tmp_path / "documents"
+        pdf = self._record(docs, "co/report.pdf", True)
+        html = self._record(docs, "co/report.html", True)
+        write_text_cache(Path(pdf["path"]), "PDF TEXT")
+        write_text_cache(Path(html["path"]), "HTML TEXT")
+
+        curated, count, _ = DiscoveryEngine._materialize_curated(
+            documents_dir=docs, download_records=[pdf, html],
+        )
+        assert count == 2
+        assert read_text_cache(curated / "co/report.pdf") == "PDF TEXT"
+        assert read_text_cache(curated / "co/report.html") == "HTML TEXT"
 
     def test_rebuild_drops_stale_files(self, tmp_path: Path):
         docs = tmp_path / "documents"

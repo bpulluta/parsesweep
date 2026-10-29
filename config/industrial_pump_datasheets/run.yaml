@@ -54,7 +54,6 @@ discovery:
       quantitative specs (flow rate, head, motor power, dimensions) — not a
       brochure, price list, catalog index, or marketing page
     keep_top: 1
-    action: move
 
   # Domain-neutral output layout: by_manufacturer/<manufacturer>/...
   partition_by: ["manufacturer"]

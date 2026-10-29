@@ -11,6 +11,9 @@ from discovery_helpers import FakeResponse, make_candidate
 
 from psweep.discovery import DiscoveryEngine, DiscoveryRequest
 from psweep.discovery.document_reviewer import DocumentReviewer
+from psweep.discovery.publication import (
+    artifact_sha256, effective_discovery_fingerprint,
+)
 from psweep.extraction.provenance import (
     build_source_context_map,
     prepend_source_context,
@@ -106,21 +109,64 @@ def test_shared_host_seed_attribution_is_ambiguous(tmp_path):
 def test_resumed_global_seeds_do_not_reintroduce_completed_target(tmp_path):
     engine = DiscoveryEngine()
     request = _request(
-        tmp_path, dry_run=True,
-        seed_urls=["https://agency.gov/alpha.pdf", "https://agency.gov/beta.pdf"],
+        tmp_path,
+        dry_run=True,
+        seed_urls=[
+            "https://agency.gov/alpha.pdf",
+            "https://agency.gov/beta.pdf",
+        ],
         targets=[{"label": "alpha"}, {"label": "beta"}],
     )
-    engine._save_checkpoint_entries(tmp_path / "domain/checkpoint.json", {"alpha": {"run_id": "old"}})
+    manifest = tmp_path / "old-manifest.json"
+    index = tmp_path / "old-index.csv"
+    manifest.write_text("{}")
+    index.write_text("path\n")
+    engine._save_checkpoint_entries(
+        tmp_path / "domain/checkpoint.json",
+        {
+            "alpha": {
+                "run_id": "old",
+                "artifacts": {
+                    str(manifest): artifact_sha256(manifest),
+                    str(index): artifact_sha256(index),
+                },
+                "curated_paths": {},
+            }
+        },
+        fingerprint=effective_discovery_fingerprint(request),
+    )
     result = engine.run(request)
     candidates = json.loads(result.manifest_path.read_text())["candidates"]
-    assert [candidate["url"] for candidate in candidates] == ["https://agency.gov/beta.pdf"]
+    assert [candidate["url"] for candidate in candidates] == [
+        "https://agency.gov/beta.pdf"
+    ]
     assert candidates[0]["target_metadata"] == {"label": "beta"}
 
 
-def test_all_completed_targets_do_not_trigger_unscoped_search(monkeypatch, tmp_path):
+def test_all_completed_targets_do_not_trigger_unscoped_search(
+    monkeypatch, tmp_path
+):
+    """Validated complete targets cannot trigger an unscoped search."""
     request = _request(tmp_path, dry_run=True, targets=[{"label": "alpha"}])
     engine = DiscoveryEngine()
-    engine._save_checkpoint_entries(tmp_path / "domain/checkpoint.json", {"alpha": {"run_id": "old"}})
+    manifest = tmp_path / "old-manifest.json"
+    index = tmp_path / "old-index.csv"
+    manifest.write_text("{}")
+    index.write_text("path\n")
+    engine._save_checkpoint_entries(
+        tmp_path / "domain/checkpoint.json",
+        {
+            "alpha": {
+                "run_id": "old",
+                "artifacts": {
+                    str(manifest): artifact_sha256(manifest),
+                    str(index): artifact_sha256(index),
+                },
+                "curated_paths": {},
+            }
+        },
+        fingerprint=effective_discovery_fingerprint(request),
+    )
     seeker = Mock(side_effect=AssertionError("nothing remains to search"))
     monkeypatch.setattr(engine, "_run_seeker", seeker)
     result = engine.run(request)
@@ -128,7 +174,10 @@ def test_all_completed_targets_do_not_trigger_unscoped_search(monkeypatch, tmp_p
     assert json.loads(result.manifest_path.read_text())["candidates"] == []
 
 
-def test_promotion_index_only_tracks_promoted_files_and_prunes_cleared(tmp_path):
+def test_promotion_index_only_tracks_promoted_files_and_prunes_cleared(
+    tmp_path,
+):
+    """Only published evidence can replace consolidated provenance."""
     domain = tmp_path / "domain"
     curated = domain / "curated/partition"
     curated.mkdir(parents=True)
@@ -234,7 +283,7 @@ def test_llm_urls_hide_credentials_but_retain_document_identifiers(monkeypatch, 
     assert "id=42" in prompt
     for secret in ("user:password", "secret", "credential", "fragment"):
         assert secret not in prompt
-    sidecar = json.loads((tmp_path / ".review/comment.json").read_text())
+    sidecar = json.loads((tmp_path / ".review/comment.pdf.json").read_text())
     assert sidecar["source_url"] == url
     assert sidecar["llm"]["reason"] == "raw"
     assert sidecar["coverage"]["sampled_chars"] <= sidecar["coverage"]["document_chars"]
@@ -283,7 +332,7 @@ def test_full_mocked_discover_curate_preserves_partial_and_distinct_sources(monk
     )
     result = DiscoveryEngine().run(request)
     manifest = json.loads(result.manifest_path.read_text())
-    assert manifest["status"] == "scaffold_with_errors"
+    assert manifest["status"] == "partial_failure"
     assert prior.read_bytes() == b"prior complete evidence"
     assert result.curated_count == 3
     assert not (tmp_path / "domain/curated/by_label/redirect/report.pdf").exists()
@@ -362,7 +411,10 @@ def test_browser_render_redirect_cannot_bypass_source_policy(monkeypatch, tmp_pa
         current_url="https://outside.example.org/document", close=lambda: None,
     )
     monkeypatch.setattr(DiscoveryEngine, "_open_browser_for_download", lambda self: (browser, "fixture"))
-    request = _request(tmp_path, allowed_domains=["agency.gov"])
+    request = _request(
+        tmp_path, allowed_domains=["agency.gov"],
+        browser_escalation={"enabled": True},
+    )
     records = [{"path": str(shell), "status": "downloaded", "url": "https://agency.gov/document"}]
     DiscoveryEngine()._escalate_js_shells_to_browser(records, [], request)
     assert records[0]["status"] == "skipped_selection_filter"
@@ -426,7 +478,7 @@ def test_cached_raw_grade_is_independent_of_pdf_dedup_selection(tmp_path):
     reviewer._find_redundant_docs = lambda records, context: {1}
     reviewer.review(records, [])
     assert sum(record["review_selected"] for record in records) == 1
-    sidecar = json.loads((tmp_path / ".review/two.json").read_text())
+    sidecar = json.loads((tmp_path / ".review/two.pdf.json").read_text())
     assert sidecar["llm"]["reason"] == "original raw grade"
     assert sidecar["selection"]["redundant"]
     reviewer._deduplicate_redundant = False

@@ -4,12 +4,15 @@ from __future__ import annotations
 
 import re
 import time
+from collections import deque
 from html.parser import HTMLParser
 from typing import Any
 from urllib.parse import urljoin, urlparse
 
 from ..constants import DOWNLOADABLE_EXTENSIONS
-from ..retry import compute_backoff, is_transient_error
+from psweep.discovery.network import (
+    NetworkPolicyError, RateLimiter, URLGate, check_url, send_get,
+)
 from ..urls import matches_allowed_domain, url_extension
 from .base import BaseDiggerConnector, DiggerArtifact, DiggerInput
 
@@ -19,7 +22,6 @@ _JS_SHELL_MARKERS = re.compile(
     r"ng-app=|<app-root|__NEXT_DATA__|<div\s+id=[\"'](?:root|app|__next)[\"']\s*>",
     re.IGNORECASE,
 )
-_MIN_SHELL_CHARS = 200  # Below this extracted text length = likely JS shell
 
 
 def _is_js_shell(html_text: str) -> bool:
@@ -55,6 +57,59 @@ def _is_navigation_link(link_text: str) -> bool:
 def _normalize_budget(value: int, *, minimum: int = 0) -> int:
     """Clamp an integer budget (max pages/files/depth/timeout) to a minimum."""
     return max(minimum, int(value))
+
+
+def _acquisition_options(
+    digger_input: DiggerInput,
+    allowed_domains: list[str] | None = None,
+) -> dict[str, Any]:
+    """Resolve network callbacks, not document include patterns."""
+    extras = digger_input.extra_params or {}
+    domains = allowed_domains or digger_input.allowed_domains
+
+    def request_gate(url: str) -> bool:
+        if not matches_allowed_domain(url, domains):
+            return False
+        check_url(url, extras.get("request_gate"))
+        return True
+
+    return {
+        "request_gate": request_gate,
+        "response_url_gate": extras.get("response_url_gate"),
+        "rate_limiter": extras.get("rate_limiter"),
+    }
+
+
+def _require_browser_policy_support(digger_input: DiggerInput) -> None:
+    """Refuse strict browser flows before network navigation."""
+    if (digger_input.extra_params or {}).get("browser_policy_strict"):
+        message = (
+            "Strict discovery network policy cannot intercept arbitrary "
+            "browser redirects or subresource requests; use HTTP acquisition."
+        )
+        raise RuntimeError(message)
+
+
+def _fetch_browser_html(
+    browser: Any,
+    url: str,
+    *,
+    request_gate: URLGate | None,
+    response_url_gate: URLGate | None,
+    rate_limiter: RateLimiter | None,
+    **fetch_options: Any,
+) -> tuple[str, str]:
+    """Gate and pace navigation, then validate its landing URL."""
+    check_url(url, request_gate)
+    if rate_limiter is not None:
+        rate_limiter.wait()
+    html = browser.fetch_html(url, **fetch_options)
+    final_url = str(browser.current_url or "")
+    if not re.match(r"^https?://", final_url, flags=re.IGNORECASE):
+        raise NetworkPolicyError(final_url, "missing browser landing URL")
+    check_url(final_url, request_gate)
+    check_url(final_url, response_url_gate)
+    return html, final_url
 
 
 class NullDiggerConnector(BaseDiggerConnector):
@@ -321,7 +376,6 @@ class HttpDiggerConnector(BaseDiggerConnector):
     _DEFAULT_REQUEST_HEADERS = {
         "User-Agent": "ParseSweep/2.0 (+discovery)"
     }
-    _USER_AGENT = "ParseSweep/2.0 (+discovery)"
 
     @staticmethod
     def _is_http_url(url: str) -> bool:
@@ -373,18 +427,6 @@ class HttpDiggerConnector(BaseDiggerConnector):
                     headers[normalized_key] = normalized_value
         return headers
 
-    _is_transient_error = staticmethod(is_transient_error)
-
-    @staticmethod
-    def _backoff_for_attempt(
-        *, attempt: int, initial_backoff: float, max_backoff: float
-    ) -> float:
-        return compute_backoff(
-            attempt,
-            initial_backoff_seconds=initial_backoff,
-            max_backoff_seconds=max_backoff,
-        )
-
     def _fetch_html(
         self,
         *,
@@ -393,50 +435,47 @@ class HttpDiggerConnector(BaseDiggerConnector):
         ssl_verify: bool,
         request_headers: dict[str, str],
         retry_config: tuple[int, float, float],
+        request_gate: URLGate | None = None,
+        response_url_gate: URLGate | None = None,
+        rate_limiter: RateLimiter | None = None,
     ) -> tuple[str, int]:
+        """Fetch HTML through the boundary and release the response."""
+        response, attempt = send_get(
+            url,
+            timeout=max(1, timeout_seconds),
+            verify=ssl_verify,
+            headers=request_headers,
+            retry=retry_config,
+            gate=request_gate,
+            response_url_gate=response_url_gate,
+            limiter=rate_limiter,
+        )
         try:
-            import requests
-        except ImportError as exc:
-            raise RuntimeError(
-                "requests dependency is required for HTTP digger provider"
-            ) from exc
+            content_type = str(
+                (response.headers or {}).get("Content-Type") or ""
+            ).lower()
+            if "html" not in content_type and "text/" not in content_type:
+                return "", attempt
+            return response.text or "", attempt
+        finally:
+            response.close()
 
-        max_attempts, initial_backoff, max_backoff = retry_config
-        last_exc: BaseException | None = None
+    def _fetch_page_html(
+        self, *, acquisition: dict[str, Any], **fetch_options: Any,
+    ) -> tuple[str, str]:
+        """Retain the landing URL for resolving relative links."""
+        final_url = fetch_options["url"]
 
-        for attempt in range(1, max_attempts + 1):
-            try:
-                response = requests.get(
-                    url,
-                    timeout=max(1, timeout_seconds),
-                    allow_redirects=True,
-                    verify=ssl_verify,
-                    headers=request_headers,
-                )
-                response.raise_for_status()
-                content_type = str(
-                    (response.headers or {}).get("Content-Type") or ""
-                ).lower()
-                if "html" not in content_type and "text/" not in content_type:
-                    return "", attempt
-                return response.text or "", attempt
-            except Exception as exc:
-                last_exc = exc
-                if attempt >= max_attempts or not self._is_transient_error(
-                    exc
-                ):
-                    raise
-                delay = self._backoff_for_attempt(
-                    attempt=attempt + 1,
-                    initial_backoff=initial_backoff,
-                    max_backoff=max_backoff,
-                )
-                if delay > 0:
-                    time.sleep(delay)
+        def observe_url(url: str) -> None:
+            nonlocal final_url
+            check_url(url, acquisition.get("response_url_gate"))
+            final_url = url
 
-        if last_exc is not None:
-            raise last_exc
-        return "", 0
+        html, _ = self._fetch_html(
+            **fetch_options,
+            **{**acquisition, "response_url_gate": observe_url},
+        )
+        return html, final_url
 
     @staticmethod
     def _extract_links(html_text: str, base_url: str) -> list[dict[str, str]]:
@@ -494,6 +533,7 @@ class HttpDiggerConnector(BaseDiggerConnector):
         seed_pages = list(digger_input.seed_urls)
 
         candidate_links: list[dict[str, str]] = []
+        acquisition = _acquisition_options(digger_input)
         pages_fetched = 0
         if isinstance(raw_links, list):
             for item in raw_links:
@@ -513,19 +553,20 @@ class HttpDiggerConnector(BaseDiggerConnector):
                 if not self._is_http_url(page_url):
                     continue
                 try:
-                    html_text, _ = self._fetch_html(
+                    html_text, final_url = self._fetch_page_html(
                         url=page_url,
                         timeout_seconds=timeout_seconds,
                         ssl_verify=ssl_verify,
                         request_headers=request_headers,
                         retry_config=retry_config,
+                        acquisition=acquisition,
                     )
                 except Exception:
                     continue
                 pages_fetched += 1
                 if html_text:
                     candidate_links.extend(
-                        self._extract_links(html_text, page_url)
+                        self._extract_links(html_text, final_url)
                     )
 
         artifacts: list[DiggerArtifact] = []
@@ -579,9 +620,7 @@ class HttpDiggerConnector(BaseDiggerConnector):
         # child documents can be attributed back to the target that seeded
         # the crawl (target provenance for distributed/crawl domains).
         # Queue entries: (url, depth, origin_seed, incoming_link_text)
-        queue: list[tuple[str, int, str, str]] = [
-            (url, 0, url, "") for url in digger_input.seed_urls
-        ]
+        queue = deque((url, 0, url, "") for url in digger_input.seed_urls)
         visited: set[str] = set()
         seen_artifacts: set[str] = set()
         artifacts: list[DiggerArtifact] = []
@@ -602,6 +641,10 @@ class HttpDiggerConnector(BaseDiggerConnector):
                     else:
                         seed_domains.add(parsed.hostname)
             effective_allowed_domains = list(seed_domains) if seed_domains else None
+
+        acquisition = _acquisition_options(
+            digger_input, effective_allowed_domains,
+        )
 
         # When link text patterns are configured, save matching HTML pages as
         # artifacts (not just traditional document files). This allows the
@@ -625,7 +668,7 @@ class HttpDiggerConnector(BaseDiggerConnector):
             browser_attempted = True
             try:
                 from ..browser import BrowserSession
-                session = BrowserSession()
+                session = BrowserSession(page_load_timeout=timeout_seconds)
                 session._start()  # noqa: SLF001
                 browser = session
                 return browser
@@ -636,12 +679,13 @@ class HttpDiggerConnector(BaseDiggerConnector):
             """Fetch a page and extract links, using browser if JS shell detected."""
             nonlocal pages_fetched
             try:
-                html_text, _ = self._fetch_html(
+                html_text, url = self._fetch_page_html(
                     url=url,
                     timeout_seconds=timeout_seconds,
                     ssl_verify=ssl_verify,
                     request_headers=request_headers,
                     retry_config=retry_config,
+                    acquisition=acquisition,
                 )
             except Exception:
                 return []
@@ -651,11 +695,18 @@ class HttpDiggerConnector(BaseDiggerConnector):
                 return []
 
             # Detect JS shell and escalate to browser rendering
-            if _is_js_shell(html_text):
+            if (
+                _is_js_shell(html_text)
+                and (digger_input.extra_params or {}).get("browser_escalation")
+                is True
+            ):
+                _require_browser_policy_support(digger_input)
                 b = _get_browser()
                 if b is not None:
                     try:
-                        html_text = b.fetch_html(url, settle_seconds=4)
+                        html_text, url = _fetch_browser_html(
+                            b, url, settle_seconds=4, **acquisition,
+                        )
                         if not html_text:
                             return []
                     except Exception:
@@ -669,7 +720,9 @@ class HttpDiggerConnector(BaseDiggerConnector):
             while (
                 queue and pages_fetched < max_pages and len(artifacts) < max_files
             ):
-                current_url, depth, origin_seed, incoming_text = queue.pop(0)
+                current_url, depth, origin_seed, incoming_text = (
+                    queue.popleft()
+                )
                 if current_url in visited:
                     continue
                 visited.add(current_url)
@@ -928,6 +981,11 @@ class SeleniumDiggerConnector(BaseDiggerConnector):
         if max_pages <= 0 or max_files <= 0:
             return []
 
+        _require_browser_policy_support(digger_input)
+        acquisition = _acquisition_options(digger_input)
+        timeout_seconds = _normalize_budget(
+            digger_input.timeout_seconds, minimum=1,
+        )
         artifacts: list[DiggerArtifact] = []
         seen: set[str] = set()
         visited: set[str] = set()
@@ -966,16 +1024,14 @@ class SeleniumDiggerConnector(BaseDiggerConnector):
             lowered = url.lower()
             return any(str(p).lower() in lowered for p in patterns)
 
-        with BrowserSession() as browser:
-            queue: list[tuple[str, int, str]] = [
-                (url, 0, url) for url in digger_input.seed_urls
-            ]
+        with BrowserSession(page_load_timeout=timeout_seconds) as browser:
+            queue = deque((url, 0, url) for url in digger_input.seed_urls)
             while (
                 queue
                 and pages_fetched < max_pages
                 and len(artifacts) < max_files
             ):
-                current_url, depth, seed = queue.pop(0)
+                current_url, depth, seed = queue.popleft()
                 if current_url in visited:
                     continue
                 visited.add(current_url)
@@ -989,7 +1045,7 @@ class SeleniumDiggerConnector(BaseDiggerConnector):
                     continue
 
                 try:
-                    browser.fetch_html(current_url)
+                    _fetch_browser_html(browser, current_url, **acquisition)
                 except Exception:  # noqa: BLE001 - skip unreachable page
                     continue
                 pages_fetched += 1

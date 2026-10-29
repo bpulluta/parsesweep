@@ -23,7 +23,7 @@ class TestCsvTargetLoading:
             """
 discovery:
   targets_csv: targets.csv
-  seeker:
+  search:
     provider: serpapi
 extraction:
   input_dir: documents
@@ -59,7 +59,7 @@ extraction:
             """
 discovery:
   targets_csv: targets.csv
-  seeker:
+  search:
     provider: serpapi
 extraction:
   input_dir: documents
@@ -91,7 +91,7 @@ discovery:
   targets:
     - utility: Duke Energy
       state: NC
-  seeker:
+  search:
     provider: serpapi
 extraction:
   input_dir: documents
@@ -124,7 +124,7 @@ extraction:
             """
 discovery:
   targets_csv: targets.csv
-  seeker:
+  search:
     provider: serpapi
 extraction:
   input_dir: documents
@@ -146,7 +146,7 @@ extraction:
             """
 discovery:
   targets_csv: nonexistent.csv
-  seeker:
+  search:
     provider: serpapi
 extraction:
   input_dir: documents
@@ -173,7 +173,7 @@ extraction:
             """
 discovery:
   targets_csv: targets.csv
-  seeker:
+  search:
     provider: serpapi
 extraction:
   input_dir: documents
@@ -204,7 +204,7 @@ discovery:
   query_families:
     utility_tariff:
       - "{utility} tariff {state} pdf"
-  seeker:
+  search:
     provider: serpapi
     use_query_family: utility_tariff
 extraction:

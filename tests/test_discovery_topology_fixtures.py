@@ -48,8 +48,12 @@ def test_distributed_topology_with_static_fixture_links(tmp_path: Path):
     payload = json.loads(result.manifest_path.read_text(encoding="utf-8"))
 
     assert payload["lineage"]["routing"]["mode"] == "distributed"
-    assert payload["lineage"]["routing"]["artifact_count"] == 0
-    assert len(payload["candidates"]) >= 3
+    assert payload["lineage"]["routing"]["applied"] is False
+    assert len(payload["candidates"]) == 3
+    assert all(
+        candidate["url"].endswith(".pdf")
+        for candidate in payload["candidates"]
+    )
     assert any(
         candidate["url"].startswith("https://chaffeecounty.org/")
         for candidate in payload["candidates"]

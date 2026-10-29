@@ -1,4 +1,4 @@
-"""Discovery runtime scaffold for web document discovery."""
+"""Configured web document discovery and curated publication."""
 
 from .engine import (
     DEFAULT_PARTITION_MODE,

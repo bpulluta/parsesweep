@@ -30,17 +30,34 @@ def _request(**kw) -> DiscoveryRequest:
 
 
 class TestQueryContextAliases:
-    def test_default_preserves_legacy_jurisdiction(self):
+    def test_no_implicit_domain_aliases(self):
         ctx = DiscoveryEngine._target_template_context(
-            {"jurisdiction": "Boulder County"}
+            {"jurisdiction": "Boulder County", "manufacturer": "Generac"}
+        )
+        assert ctx == {
+            "jurisdiction": "Boulder County",
+            "manufacturer": "Generac",
+        }
+
+    def test_explicit_alias_resolves_jurisdiction(self):
+        ctx = DiscoveryEngine._target_template_context(
+            {"jurisdiction": "Boulder County"},
+            {"utility_or_jurisdiction": ["jurisdiction", "manufacturer"]},
         )
         assert ctx["utility_or_jurisdiction"] == "Boulder County"
 
-    def test_default_preserves_legacy_manufacturer(self):
+    def test_explicit_alias_resolves_manufacturer(self):
         ctx = DiscoveryEngine._target_template_context(
-            {"manufacturer": "Generac"}
+            {"manufacturer": "Generac"},
+            {"utility_or_jurisdiction": ["jurisdiction", "manufacturer"]},
         )
         assert ctx["utility_or_jurisdiction"] == "Generac"
+
+    def test_explicit_empty_aliases_do_not_synthesize_fields(self):
+        ctx = DiscoveryEngine._target_template_context(
+            {"jurisdiction": "Boulder County"}, {}
+        )
+        assert ctx == {"jurisdiction": "Boulder County"}
 
     def test_custom_alias_first_source_wins(self):
         ctx = DiscoveryEngine._target_template_context(

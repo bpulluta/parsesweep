@@ -37,7 +37,7 @@ def test_manifest_serialization_includes_candidate_score_payload():
     )
     manifest = DiscoveryManifest(
         run_id="acq-test",
-        status="scaffold",
+        status="success",
         started_at="2026-03-26T00:00:00+00:00",
         input={"domain": "geothermal_ordinances"},
         candidates=[candidate],
@@ -72,7 +72,7 @@ def test_engine_run_emits_scaffold_candidates(tmp_path: Path):
 
     assert result.manifest_path.exists()
     assert result.documents_dir.exists()
-    assert '"status": "scaffold_dry_run"' in payload
+    assert '"status": "dry_run"' in payload
     assert '"acceptance_class"' in payload
     assert payload.count('"source": "seed_url"') == 2
 
@@ -92,7 +92,10 @@ def test_engine_run_uses_deterministic_default_paths_and_lineage():
     result = engine.run(request)
     payload = json.loads(result.manifest_path.read_text(encoding="utf-8"))
 
-    assert re.match(r"^acq-geothermal-ordinances-\d{8}T\d{6}Z-[0-9a-f]{8}$", result.run_id)
+    assert re.match(
+        r"^acq-geothermal-ordinances-\d{8}T\d{12}Z-[0-9a-f]{8}$",
+        result.run_id,
+    )
     # Each run is one self-contained folder: documents/ lives under the run dir.
     assert result.documents_dir.as_posix().endswith(
         f"/runs/{result.run_id}/documents"
@@ -121,7 +124,7 @@ def test_engine_run_emits_taxonomy_aligned_structured_errors_for_invalid_seeds(t
     result = engine.run(request)
     payload = json.loads(result.manifest_path.read_text(encoding="utf-8"))
 
-    assert payload["status"] == "scaffold_dry_run_with_errors"
+    assert payload["status"] == "partial_failure"
     assert payload["input"]["seed_urls"] == ["https://example.org/valid"]
     assert len(payload["candidates"]) == 1
 
@@ -632,6 +635,7 @@ def test_engine_run_downloads_partitioned_by_explicit_jurisdiction(tmp_path: Pat
         dry_run=False,
         state="California",
         jurisdiction="Imperial County",
+        jurisdiction_aliases={"california": "ca"},
         partition_mode="jurisdiction",
     )
 
@@ -656,7 +660,11 @@ def test_engine_run_downloads_partitioned_by_explicit_jurisdiction(tmp_path: Pat
     assert rows[0]["source_jurisdiction"] == "imperial-county"
 
 
-def test_engine_run_auto_partition_infers_jurisdiction_from_query(tmp_path: Path, monkeypatch):
+def test_engine_run_auto_partition_does_not_infer_geography_from_query(
+    tmp_path: Path,
+    monkeypatch,
+):
+    """Queries stay search hints rather than becoming geographic identity."""
     _patch_requests_get(
         monkeypatch,
         url="https://www.chaffeecounty.org/documents/53007.pdf",
@@ -680,10 +688,10 @@ def test_engine_run_auto_partition_infers_jurisdiction_from_query(tmp_path: Path
 
     assert payload["error_summary"]["total_errors"] == 0
     record = payload["downloads"][0]
-    assert record["partition_mode"] == "jurisdiction"
-    assert record["source_state"] == "co"
-    assert record["source_jurisdiction"] == "chaffee-county"
-    assert record["relative_path"].startswith("by_jurisdiction/co/chaffee-county/")
+    assert record["partition_mode"] == "host"
+    assert "source_state" not in record
+    assert "source_jurisdiction" not in record
+    assert record["relative_path"].startswith("by_host/www.chaffeecounty.org/")
 
 
 def test_engine_run_dry_run_has_no_download_index(tmp_path: Path):
@@ -830,8 +838,9 @@ def test_engine_run_centralized_routing_falls_back_when_no_sweep_matches(tmp_pat
     result = engine.run(request)
     payload = json.loads(result.manifest_path.read_text(encoding="utf-8"))
 
-    assert len(payload["candidates"]) == 1
-    assert payload["candidates"][0]["url"] == "https://seed.example.org/fallback"
+    assert payload["candidates"] == []
+    # Explicit PDF rules must not restore an out-of-scope fallback seed.
+    assert all(c["url"].endswith(".pdf") for c in payload["candidates"])
     assert payload["lineage"]["routing"]["mode"] == "centralized"
     assert payload["lineage"]["routing"]["applied"] is True
     assert payload["lineage"]["routing"]["artifact_count"] == 0
@@ -1023,7 +1032,7 @@ def test_manifest_to_dict_includes_observability_keys():
     """to_dict() must always emit timing, stage_summaries, and candidate_summary."""
     manifest = DiscoveryManifest(
         run_id="acq-obs-test",
-        status="scaffold",
+        status="success",
         started_at="2026-03-26T00:00:00+00:00",
         input={"domain": "test"},
     )
