@@ -4,6 +4,9 @@ import json
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+from psweep.config import RuntimeConfigError
+
 from psweep.pipeline import (
     build_run_stage_commands,
     clear_run_extract_output,
@@ -422,21 +425,22 @@ def test_build_run_stage_commands_no_validation_when_disabled(tmp_path: Path) ->
     assert stage_names == ["extract", "compile"]
 
 
-def test_resolve_run_discovery_enabled_reads_split_override(tmp_path: Path) -> None:
+def test_resolve_run_discovery_enabled_rejects_split_override(
+    tmp_path: Path,
+) -> None:
+    """Pipeline helpers do not restore retired implicit config overrides."""
     config_path = tmp_path / "run.yaml"
     config_path.write_text(
-        "domain: example\n"
-        "extraction:\n"
-        "  schema: schemas/example.json\n",
+        "domain: example\nextraction:\n  schema: schemas/example.json\n",
         encoding="utf-8",
     )
     (tmp_path / "discovery.yaml").write_text(
-        "seeds:\n"
-        "  - https://example.com/docs\n",
+        "seeds:\n  - https://example.com/docs\n",
         encoding="utf-8",
     )
 
-    assert resolve_run_discovery_enabled(config_path) is True
+    with pytest.raises(RuntimeConfigError, match="section override"):
+        resolve_run_discovery_enabled(config_path)
 
 
 def test_build_run_stage_commands_skips_discover_without_discovery_config(

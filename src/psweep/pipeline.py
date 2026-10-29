@@ -33,6 +33,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional, Sequence
 
+from psweep.config import load_runtime_config_file
+from psweep.discovery.request_inputs import (
+    normalize_discover_inputs,
+    validate_discover_plan,
+)
 from psweep.extraction.llm_factory import DEFAULT_MAX_CONTEXT, DEFAULT_MODEL
 
 logger = logging.getLogger(__name__)
@@ -147,20 +152,8 @@ class PipelineResult:
 
 
 def _read_config_dict(config_path: str | Path) -> dict:
-    """Load a domain run config file as a plain dict (empty on failure)."""
-    from psweep.config import (
-        RuntimeConfigError,
-        load_runtime_config_file,
-        load_yaml_file,
-    )
-
-    cfg_path = Path(config_path)
-    if not cfg_path.exists():
-        return {}
-    try:
-        return load_runtime_config_file(cfg_path)
-    except RuntimeConfigError:
-        return load_yaml_file(cfg_path)
+    """Load run config without bypassing validation failures."""
+    return load_runtime_config_file(Path(config_path))
 
 
 def resolve_run_validation(config_path: str | Path) -> Optional[dict]:
@@ -729,13 +722,20 @@ def run_pipeline(
         )
         load_schema(Path(extract_inputs["schema"]))
 
+    discovery_enabled = resolve_run_discovery_enabled(cfg_path)
+    if discovery_enabled and not skip_discover:
+        discovery_inputs = resolve_command_config(
+            command="discover", cli_values={}, config_data=runtime_cfg,
+            strict=True,
+        )
+        validate_discover_plan(normalize_discover_inputs(discovery_inputs))
     domain = runtime_cfg.get("domain", cfg_path.parent.name)
     stage_cmds = build_run_stage_commands(
         cfg_path,
         base_cmd=[sys.executable, "-m", "psweep.cli.main"],
         skip_discover=skip_discover,
         skip_extract=skip_extract,
-        discovery_enabled=resolve_run_discovery_enabled(cfg_path),
+        discovery_enabled=discovery_enabled,
         fresh=fresh,
         extra_flags=("-q",),
     )

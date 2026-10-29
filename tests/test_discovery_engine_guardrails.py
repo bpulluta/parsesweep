@@ -37,14 +37,11 @@ def test_query_discovery_without_candidates_emits_explicit_error(tmp_path):
     result = DiscoveryEngine().run(request)
     manifest = _read_manifest(result.manifest_path)
 
-    assert manifest["status"] == "scaffold_dry_run_with_errors"
-    assert manifest["error_summary"]["total_errors"] >= 1
+    assert manifest["status"] == "dry_run"
+    assert manifest["error_summary"]["total_errors"] == 0
+    assert manifest["errors"] == []
     assert any(
-        record.get("stage") == "discovery.search"
-        for record in manifest.get("errors", [])
-    )
-    assert any(
-        "Discovery produced zero candidates" in note
+        "Search is disabled" in note
         for note in manifest.get("notes", [])
     )
 
@@ -60,6 +57,7 @@ def test_forbidden_download_retries_via_browser(tmp_path, monkeypatch):
         output_documents=documents_dir,
         output_manifest=manifest_path,
         dry_run=False,
+        browser_escalation={"enabled": True},
     )
     candidate = DiscoveryCandidate(
         url="https://example.gov/files/attachment.pdf",
@@ -72,6 +70,7 @@ def test_forbidden_download_retries_via_browser(tmp_path, monkeypatch):
         response.status_code = 403
         response.url = candidate.url
         response._content = b""
+        response._content_consumed = True
         return response
 
     class DummyBrowser:
@@ -219,8 +218,10 @@ def test_code_hosting_retry_respects_fresh_cache_refresh(monkeypatch, tmp_path):
     class DummySeeker:
         def __init__(self, **kwargs):
             captured_kwargs.update(kwargs)
+            self.queries_run = 0
 
         def discover(self, _seeker_input):
+            self.queries_run += 1
             return []
 
     monkeypatch.setattr(
@@ -383,6 +384,7 @@ def test_browser_escalation_uses_recalibrated_shell_default(tmp_path, monkeypatc
         output_documents=None,
         output_manifest=None,
         dry_run=False,
+        browser_escalation={"enabled": True},
     )
     downloads = [
         {
@@ -414,6 +416,7 @@ def _shell_request(**overrides):
         output_documents=None,
         output_manifest=None,
         dry_run=False,
+        code_host_adapters={"enabled": True},
     )
     base.update(overrides)
     return DiscoveryRequest(**base)

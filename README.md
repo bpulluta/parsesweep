@@ -9,7 +9,7 @@
 
 **AI-powered document extraction pipeline.**
 
-ParseSweep discovers, extracts, and compiles structured data from documents into Excel/CSV. Define what you need with a JSON schema, configure how to run it with a YAML config, and let the AI handle the rest.
+ParseSweep discovers documents, extracts schema-defined data, and compiles records into Excel/CSV. Start discovery with a small YAML config; add your own JSON schema and LLM credentials when you need extraction. Inspect acquired documents and extracted records before using the results.
 
 ![ParseSweep pipeline overview](src/psweep/img/imagev1.png)
 
@@ -30,86 +30,98 @@ Each step runs independently via the same config file.
 
 ---
 
-## Quick Start
+## Quick Start — Discovery First
 
 ```bash
-# Install and setup
+# Install
 curl -fsSL https://pixi.sh/install.sh | bash
 git clone https://github.com/bpulluta/parsesweep.git && cd parsesweep
 pixi install
-pixi run psweep init   # configure API credentials
 
-# Run extraction
-pixi run psweep extract --config config/utility_rate_tariffs/run.yaml
-
-# Compile results into Excel
-pixi run psweep compile --config config/utility_rate_tariffs/run.yaml
+# Create your domain config
+mkdir -p config/my_domain
+cp config/TEMPLATE.yaml config/my_domain/run.yaml
 ```
+
+Set `SERPAPI_API_KEY=your-serpapi-key` in your environment or `.env`, not YAML.
+Edit the copied config's domain and query. Its active content can be just:
+
+```yaml
+domain: my_domain
+discovery:
+  queries:
+    - "industrial pump installation manual filetype:pdf"
+```
+
+No extraction schema or LLM credential is needed for discovery alone. Queries
+auto-enable SerpApi when search is omitted; explicit `search.enabled: false`
+wins. For known document URLs, replace `queries`
+with `seeds`; seed-only input does not auto-enable search.
+
+```bash
+# Local input-plan validation: no network calls or run artifacts
+pixi run psweep discover --config config/my_domain/run.yaml --validate-config
+pixi run psweep discover --config config/my_domain/run.yaml
+```
+
+Inspect the selected files in `discovered/my_domain/runs/<run_id>/curated` and
+the consolidated `discovered/my_domain/curated`. Defaults are **10 unique
+candidates per query**, **1 acquisition per target**, direct acquisition/no
+crawl, concurrency **2**, retry attempts **3**, and robots/ToS policy **warn**.
+Search cache and browser recovery are **off**. No LLM review is automatic.
+A capped search or successful validation does not establish recall, correct
+semantics, working credentials, or live provider/network availability.
+
+See [Getting Started](docs/getting-started.md) for the discovery-to-extraction
+workflow, [config/TEMPLATE.yaml](config/TEMPLATE.yaml) for common optional
+choices, and [config/ADVANCED.yaml](config/ADVANCED.yaml) for expanded stages.
 
 ---
 
 ## Architecture
 
-### Two Files Per Domain
+### Two Files Per Domain — When Extracting
 
 | File | Role |
 |------|------|
 | **Schema** (JSON) | Defines WHAT to extract — field names, types, descriptions |
-| **Config** (YAML) | Defines HOW to run — paths, page targeting, dedup, output format |
+| **Config** (YAML) | Defines HOW to run — discovery inputs, paths, models, output format |
+
+Discovery uses the config alone. Add your own schema and LLM credentials when
+you are ready to extract; schemas under `schemas/personal/` are local inputs,
+not a prerequisite or published private schema set.
 
 ### Config Is the Single Entry Point
 
-```bash
-# Every command takes --config
-psweep discover --config config/my_domain/run.yaml
-psweep extract  --config config/my_domain/run.yaml
-psweep compile  --config config/my_domain/run.yaml
-```
-
-Each command reads its own section from the config:
+Every command accepts `--config`. All supplied sections are validated at load;
+each command executes only its own section. Only the explicitly selected file
+is loaded. Adjacent `discovery`, `extraction`, `compilation`, or `validation`
+YAML/JSON overrides beside a `run` config are retired: move their sections into
+that file and remove the adjacent files. Add extraction and compilation later
+to the same config:
 
 ```yaml
-# config/my_domain/run.yaml
-domain: my_domain
-
 extraction:
   schema: schemas/personal/my_schema.json
-  input_dir: documents/my_domain          # where documents live
+  input_dir: discovered/my_domain/curated   # or documents/my_domain for local files
   output_dir: extracted/my_domain
-  pages:
-    auto_locate:
-      section_description: "the section with rate tables"
-      trigger_chars: 200000
-
+  model: your-model-name
 compilation:
   schema: schemas/personal/my_schema.json
-  input_dir: extracted/my_domain          # default: matches extraction output_dir
+  input_dir: extracted/my_domain
   output_dir: compiled/my_domain
   # Dedup identity is schema-owned ($metadata.identity.deduplication.key_fields)
-  output:
-    default_format: excel
-
-discovery:   # optional — only for web document acquisition
-  targets_csv: targets.csv
-  queries:
-    - "{entity} {state} filetype:pdf"
 ```
 
-### Modular by Design
-
-Run any step independently or chain them:
+Run stages independently or chain the configured stages:
 
 ```bash
-# Full pipeline
-psweep discover --config config/tariffs/run.yaml
-psweep extract  --config config/tariffs/run.yaml
-psweep compile  --config config/tariffs/run.yaml
+pixi run psweep discover --config config/my_domain/run.yaml
+pixi run psweep extract  --config config/my_domain/run.yaml
+pixi run psweep compile  --config config/my_domain/run.yaml
 
-# Or just extract from local documents
-psweep extract --config config/tariffs/run.yaml
-
-# Or just compile existing extractions
-psweep compile --config config/tariffs/run.yaml
+# Full pipeline, once its sections are configured
+pixi run psweep run --config config/my_domain/run.yaml
 ```
 
 ---
@@ -178,14 +190,21 @@ pixi run psweep curate --run discovered/my_domain/latest
 pixi run psweep discover --config config/my_domain/run.yaml
 
 # Options
-  --config PATH       Config YAML (required)
-  --dry-run                     Show plan without downloading
-  --max-concurrent-downloads N  Limit parallel downloads
+  --config PATH                 Config YAML
+  --validate-config             Validate local input plan; no network calls/output writes
+  --dry-run                     Show acquisition plan; search may still contact the provider
+  --max-concurrent-downloads N   Limit parallel downloads (default: 2)
 ```
 
-### Discovery Configuration
+Discovery exits **0** for `success`, `dry_run`, or validated `reused` work,
+**1** for failed or partially failed acquisition (including zero downloads due
+to failure), and **2** for a genuinely empty result. Quiet/default/verbose modes
+use the same outcome and exit code; a partial manifest is not success.
 
-Discovery uses a `targets.csv` where each row is a target to search for. All columns automatically flow into the document reviewer as context:
+### Discovery Configuration — Add as Needed
+
+The quick start does not need `targets.csv`. For multiple targets, each CSV row
+supplies query-template fields and context for optional document review:
 
 ```csv
 label,jurisdiction,state,topic,technology
@@ -193,52 +212,92 @@ label,jurisdiction,state,topic,technology
 "Imperial County CA","Imperial County",California,geothermal ordinance,geothermal electricity
 ```
 
-**Key discovery config sections:**
-
 ```yaml
 discovery:
   targets_csv: targets.csv
   queries:
-    # Templates — variables come from targets.csv columns
     - "{jurisdiction} {state} ordinance filetype:pdf"
-    - "{jurisdiction} {state} zoning code division filetype:pdf"
-
+  search:
+    max_results: 10               # unique candidates PER QUERY, not downloads
+    cache: false                  # default: off; cache hits make zero live search calls
   selection:
-    max_per_target: 7             # candidates downloaded per target
+    max_per_target: 1             # default acquisition count per target
     exclude: [press release, fact sheet, presentation]
-
-  document_classifier:            # cheap keyword pre-filter (no API calls)
-    required_keywords: [ordinance, code, chapter, section]
-    min_required_matches: 2
-    action: warn
-
-  document_review:                # LLM curation (uses secondary model)
-    model: secondary
-    document_description: >-
-      enacted county ordinance that regulates geothermal electricity
-      generation. Must be codified regulation text, not a draft or EIR.
-    keep_top: 1                   # curate the single best per target
-    action: move
-
   partition_by: [state, jurisdiction]
+
+  # Optional keyword check after acquisition (no LLM calls):
+  # document_classifier:
+  #   required_keywords: [ordinance, code, chapter, section]
+  #   min_required_matches: 2
+  #   action: warn
+
+  # Optional PAID LLM curation — explicitly opt in and configure credentials:
+  # document_review:
+  #   model: your-model-name
+  #   document_description: "enacted regulation text, not a draft or summary"
+  #   keep_top: 1                  # review retention, not acquisition count
 ```
 
-The `document_description` defines what document type to select. The `target_context` (all columns from targets.csv) tells the reviewer which specific target each document should match. This separation means:
-- Change what TYPE of document you want → edit `document_description`
-- Change what TARGET to search for → edit `targets.csv`
-- No code changes needed for either
+The local candidate cap covers live/cached results and enabled news results;
+provider `num` is not trusted as the cap. No hidden pagination or refill is
+performed. `max_per_target` controls acquisition, while optional LLM review's
+`keep_top` controls retention after acquisition. No LLM review is auto-enabled.
 
-For source restrictions, `selection.exclude_url_patterns` matches the original
-URL (case-insensitive regex), including its host and path punctuation.
-`relevance_allowed_domain_patterns` only boosts ranking; it is not a host allowlist.
+For strict source scope, combine `allowed_domains` and URL-path regexes:
+
+```yaml
+discovery:
+  allowed_domains: [example.org]
+  discovery_rules:
+    include_url_patterns: ['^https?://(?:www\.)?example\.org/documents/']
+```
+
+Scope is enforced before top-one selection and on final redirects. Provider
+`site:`/`filetype:` query hints are not guarantees. Concrete provider/vendor
+source filters belong in the domain config; a document parser does not add them
+automatically. `selection.exclude_url_patterns` uses case-insensitive regexes
+on URLs; `relevance_allowed_domain_patterns` is only a ranking boost, not a
+host allowlist.
+
+Use canonical `search`, `search.max_results`, and selection
+`max_per_target`/`require_any`/`exclude`. Retired `seeker`,
+`max_results_per_query`, `primary_per_target`, `relevance_require_any_terms`, and
+`relevance_exclude_any_terms` fail with actionable migration errors, even when
+canonical keys coexist. There are no built-in legal draft, vendor authority,
+or shopping-path policies: configure `draft_patterns`, `domain_scores`, and
+`shopping_path_keywords` for your domain. Supply `jurisdiction` and `state`
+explicitly or use `partition_by`; query text does not infer geography and there
+is no built-in US discovery alias table.
+
+PDF candidates are preferred to web pages when present. HTML/HTM and
+extensionless HTTP(S) URLs are provisionally eligible without setting
+`require_supported_document: false`; known non-document binaries are excluded,
+and GET/MIME checks verify ambiguous candidates. Inspect document relevance
+before downstream use.
+
+Browser mode is off. Browser escalation and code-host adapters are also off
+until explicitly configured with `browser_escalation: {enabled: true}` or
+`code_host_adapters: {enabled: true}`. Threshold-only blocks do not enable either.
+Strict robots/ToS enforcement cannot certify browser redirects or subresources;
+it fails before unsupported browser navigation. Use HTTP acquisition for
+enforcement. SerpApi/download TLS verification defaults remain `false`; choose verification
+with environment options `SERPAPI_SSL_VERIFY`, `DISCOVERY_SSL_VERIFY`, and a
+Requests CA bundle with `REQUESTS_CA_BUNDLE` if applicable.
+
+See [config/ADVANCED.yaml](config/ADVANCED.yaml) and the
+[configuration reference](docs/config-reference.md) for expanded settings.
 
 ---
 
-## Setting Up a New Domain
+## Add Extraction to a New Domain
+
+Start with discovery above, or skip it if your documents are already local.
+Extraction and compilation need a schema plus LLM credentials for extraction.
+Run `pixi run psweep init` for credential setup, or configure `.env` manually.
 
 ### 1. Create Schema
 
-Define what to extract:
+The existing scaffold is **schema-specific**, not a discovery setup wizard:
 
 ```bash
 pixi run psweep init-domain-schema --name my_domain \
@@ -281,23 +340,20 @@ Or create manually — a minimal schema:
 
 Save it to `schemas/personal/my_schema.json`. The `schemas/personal/` directory is the recommended location for your project-specific schemas.
 
-### 2. Create Config
+### 2. Add Sections to Your Config
 
-Copy the template and customize:
-
-```bash
-cp config/TEMPLATE.yaml config/my_domain/run.yaml
-```
-
-Minimal config for testing:
+If you started with `config/TEMPLATE.yaml`, add extraction and compilation to
+the same config; its commented blocks show the minimal paths. For a local-only
+workflow, you can instead create a config containing only these sections:
 
 ```yaml
 domain: my_domain
 
 extraction:
   schema: schemas/personal/my_schema.json
-  input_dir: documents/my_domain
+  input_dir: documents/my_domain       # or discovered/my_domain/curated
   output_dir: extracted/my_domain
+  model: your-model-name
 
 compilation:
   schema: schemas/personal/my_schema.json
@@ -305,6 +361,10 @@ compilation:
   output_dir: compiled/my_domain
   # Dedup identity is schema-owned ($metadata.identity.deduplication.key_fields)
 ```
+
+Use [config/ADVANCED.yaml](config/ADVANCED.yaml) for additional model aliases,
+page targeting, output shaping, synthesis, or QA/QC. These are existing optional
+settings, not requirements for discovery.
 
 ### 3. Extract and Compile
 
@@ -427,14 +487,13 @@ Items are bucketed by that key across *all* sources for the entity, so the same 
 ```
 parsesweep/
 ├── config/                    # Domain configs (one per domain)
-│   ├── TEMPLATE.yaml          # Annotated template — copy this to start
-│   ├── utility_rate_tariffs/
-│   │   ├── run.yaml
-│   │   └── page_ranges.csv    # optional manual page ranges
-│   └── datacenter_timelines/
-│       └── run.yaml
+│   ├── TEMPLATE.yaml          # Short discovery-only starting point
+│   ├── ADVANCED.yaml          # Expanded stage examples and annotations
+│   └── my_domain/             # Create locally
+│       ├── run.yaml
+│       └── page_ranges.csv    # optional manual extraction page ranges
 ├── schemas/
-│   ├── personal/              # Your extraction schemas (JSON) — put new schemas here
+│   ├── personal/              # Local project-specific schemas (JSON)
 │   └── example_utility_rate_schema.json
 ├── documents/                 # Input documents (created by you)
 ├── extracted/                 # JSON extraction output (generated)
@@ -453,18 +512,21 @@ parsesweep/
 
 ## Configuration Reference
 
-See `config/TEMPLATE.yaml` for a fully annotated config template.
+Use [config/TEMPLATE.yaml](config/TEMPLATE.yaml) for the short discovery-only
+start, and [config/ADVANCED.yaml](config/ADVANCED.yaml) for expanded stage
+examples and annotations. The [configuration reference](docs/config-reference.md)
+renders both templates and documents defaults, validation, and limitations.
 
 ### Config Sections
 
 | Section | Used By | Required |
 |---------|---------|----------|
-| `extraction:` | `extract` | Yes (needs `schema`) |
-| `compilation:` | `compile` | Yes (needs `schema`) |
-| `discovery:` | `discover` | Only for web discovery |
+| `discovery:` | `discover` | For web acquisition; no extraction schema required |
+| `extraction:` | `extract` | Needs `schema` and `input_dir` (or CLI input) |
+| `compilation:` | `compile` | Needs `schema` and input records |
 | `validation:` | `validate` | QA/QC validation stage |
-| `domain:` | All | Recommended |
-| `models:` | All | Optional (env default) |
+| `domain:` | All | Names the domain/output namespace |
+| `models:` | Configured LLM stages | Optional aliases; does not auto-enable review |
 
 ### Key Extraction Settings
 
@@ -599,15 +661,23 @@ Extraction shows per-file cost in real-time:
 
 ### Caching & Re-runs
 
-Every stage honors previous work by default and exposes one consistent
-`--fresh` flag to ignore it and start over:
+Discovery checkpoint **v2** reuse requires the same effective config and valid
+artifact digest evidence (including curated files). Changed settings, missing
+or altered artifacts, and old v1 entries cause reacquisition, not a success
+skip. Discovery publication locks reject concurrent corpus writers; its journal
+recovers interrupted curated/provenance swaps on the next writer. This is a
+small discovery-specific protocol, not a general pipeline transaction.
+Extraction skips existing JSON outputs by default.
+**Search-result caching is separate and off by default.**
+Opt in with `discovery.search.cache: true`; a cache hit makes zero live search
+calls. Checkpoint skips and cache hits are not the same mechanism.
 
 ```bash
-# Default: skip targets/files completed in a previous run
+# Resume/skip previous completed work
 pixi run psweep discover --config config/my_domain/run.yaml
 pixi run psweep extract  --config config/my_domain/run.yaml
 
-# Re-run discovery from scratch (ignore the checkpoint + refresh search cache)
+# Re-run discovery; bypass checkpoint and any enabled search cache
 pixi run psweep discover --config config/my_domain/run.yaml --fresh
 
 # Force re-extract (no need to delete files)
@@ -619,19 +689,24 @@ pixi run psweep run --config config/my_domain/run.yaml --fresh
 
 `compile` always rewrites its output, so it needs no flag.
 
-**What `--fresh` clears, per stage:**
+**What `--fresh` changes, per stage:**
 
 | Stage | `--fresh` action |
 | --- | --- |
-| `discover` | Deletes the crash-resume checkpoint (`discovered/<domain>/checkpoint.json`) so every target re-runs, and refreshes the SerpApi result cache (`discovered/<domain>/.serpapi_cache/`) with fresh live queries. |
+| `discover` | Clears the crash-resume checkpoint (`discovered/<domain>/checkpoint.json`) and bypasses enabled SerpApi cache entries for fresh queries. It does not enable caching or search. |
 | `extract` | Re-extracts every document even if a JSON output already exists. |
 | `compile` | No flag — output is always rewritten. |
 
-**Automatic content-keyed caches (no flag, safe to ignore):** extraction also
-keeps an OCR text cache (`documents/<domain>/.text/`) and a page-targeting
-cache (`documents/<domain>/.pages/`). Both are keyed on file content/mtime, so
-they self-invalidate when a source document changes and almost never need
-manual clearing. To force a cold OCR/page re-run, delete those folders.
+**Document sidecars:** OCR text uses `.text/<filename>.txt` and
+`.text/<filename>.meta.json` (for example, `report.pdf.txt`), preserving format
+identity. Source size/mtime and SHA-256 plus the cached-text SHA-256 must match;
+partial or mismatched pairs are cache misses. Writes replace temporary files
+with metadata last; old stem-only caches are not reused. LLM review sidecars
+use `.review/<filename>.json`. Selected documents carry these sidecars into
+curated output. Native extraction, OCR correction rules, and page-targeting
+(`.pages/`) behavior are unchanged by this naming migration. These caches are
+separate from opt-in search caching; delete `.text/` or `.pages/` to request
+cold OCR or page targeting.
 
 ---
 

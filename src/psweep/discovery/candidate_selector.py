@@ -1,21 +1,10 @@
-"""Per-target candidate selection: draft filtering and recency-based version selection.
+"""Per-target candidate selection with configurable exclusion policies.
 
-After the SerpApi seeker discovers candidates per target, this module decides
-which candidates to actually stage for download.  The two core guards are:
-
-1. **Draft filter** – exclude documents whose URL/title/snippet text contains
-   signals indicating they are not the current enacted/production version
-   (e.g., "draft", "proposed", "preliminary", "superseded").
-
-2. **Recency selection** – within each target's candidate pool, prefer the
-   most recent version by parsing effective dates out of the URL filename
-   or path segments.  When no date is detectable the candidate is still
-   included (date-less candidates rank behind dated ones).
-
-Both guards are applied per-target so that a utility or jurisdiction with
-many candidates does not crowd out others, and so that version conflicts
-(e.g., April-2024 vs May-2024 tariff summation sheets) resolve to the
-single latest copy.
+Source URL/title/snippet evidence is filtered only by supplied draft,
+identity and relevance rules. No domain-specific exclusion vocabulary is
+imposed by default. Within each target's pool, supported files and more
+recent filename dates are preferred; undated candidates remain eligible.
+Per-target limits keep larger candidate pools from crowding out others.
 """
 
 from __future__ import annotations
@@ -26,30 +15,9 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
-from .constants import DOCUMENT_EXTENSIONS
+from .constants import DOCUMENT_EXTENSIONS, DOWNLOADABLE_EXTENSIONS
 from .models import DiscoveryCandidate
 from .urls import matches_url_exclusion, normalize_url_text, url_extension
-
-# ---------------------------------------------------------------------------
-# Default draft / stale-document signal patterns (applied to URL + title/snippet)
-# ---------------------------------------------------------------------------
-
-DEFAULT_DRAFT_PATTERNS: list[str] = [
-    r"\bdraft\b",
-    r"\bproposed\b",
-    r"\bpreliminary\b",
-    r"for[\s_\-]?review",
-    r"\bmodel[\s_\-]ordinance\b",
-    r"\bmodel[\s_\-]code\b",
-    r"\btemplate\b",
-    r"\bsuperseded\b",
-    r"\bwithdrawn\b",
-    r"\bobsolete\b",
-    r"\barchive[d]?\b",
-]
-
-# Canonical document extensions live in constants.DOCUMENT_EXTENSIONS.
-
 
 # ---------------------------------------------------------------------------
 # CandidateSelector
@@ -62,11 +30,11 @@ class CandidateSelector:
     Parameters
     ----------
     exclude_draft:
-        When ``True`` (default), candidates matching any draft pattern in
-        their URL/title/snippet text are excluded before recency ranking.
+        When ``True`` (default), apply the supplied draft patterns to
+        source URL/title/snippet evidence before recency ranking.
     draft_patterns:
-        Override the default draft detection regex patterns.  Each entry is
-        a case-insensitive ``re.search`` pattern string.
+        Domain-provided case-insensitive ``re.search`` patterns.
+        Omitted or empty lists impose no draft exclusions.
     """
 
     def __init__(
@@ -85,13 +53,8 @@ class CandidateSelector:
         target_identity_exclude_any_templates: list[str] | None = None,
     ) -> None:
         self._exclude_draft = exclude_draft
-        raw_patterns = (
-            draft_patterns
-            if draft_patterns is not None
-            else DEFAULT_DRAFT_PATTERNS
-        )
         self._draft_re: list[re.Pattern[str]] = [
-            re.compile(p, re.IGNORECASE) for p in raw_patterns
+            re.compile(p, re.IGNORECASE) for p in (draft_patterns or [])
         ]
         self._relevance_require_any_terms = [
             t.strip().lower()
@@ -362,9 +325,8 @@ class CandidateSelector:
             ]
             dated.sort(
                 key=lambda item: (
-                    not self._is_supported_document_url(
-                        item[0]
-                    ),  # supported docs first
+                    url_extension(item[0].url) not in DOCUMENT_EXTENSIONS,
+                    # Prefer definite files to provisional web content.
                     item[1]
                     is None,  # False (dated) sorts before True (undated)
                     -(
@@ -686,5 +648,6 @@ class CandidateSelector:
 
     @staticmethod
     def _is_supported_document_url(candidate: DiscoveryCandidate) -> bool:
-        """Return True when URL path ends with a supported document extension."""
-        return url_extension(candidate.url or "") in DOCUMENT_EXTENSIONS
+        """Allow supported files and provisional web documents."""
+        extension = url_extension(candidate.url or "")
+        return not extension or extension in DOWNLOADABLE_EXTENSIONS

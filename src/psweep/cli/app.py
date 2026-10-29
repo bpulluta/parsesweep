@@ -28,6 +28,10 @@ import typer.main
 from typer.core import TyperGroup
 
 from psweep import __version__
+from psweep.discovery.request_inputs import (
+    normalize_discover_inputs,
+    validate_discover_plan,
+)
 from psweep.pipeline import (
     build_run_stage_commands,
     clear_run_extract_output,
@@ -294,6 +298,10 @@ def run(
                 config_data=cfg,
                 strict=config_strict,
             )
+            try:
+                validate_discover_plan(normalize_discover_inputs(discover_inputs))
+            except ValueError as exc:
+                raise RuntimeConfigError(str(exc)) from exc
         for command_name in preflight_commands:
             stage_inputs = resolve_command_config(
                 command=command_name,

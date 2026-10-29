@@ -240,9 +240,11 @@ def _run_code_hosting_retry(cap):
 
         def __init__(self, **_kwargs):
             self.queries: list[str] = []
+            self.queries_run = 0
             _FakeSeeker.instances.append(self)
 
         def discover(self, seeker_input):  # noqa: ANN001
+            self.queries_run += 1
             self.queries.append(seeker_input.query)
             return []  # no results -> no downloads, isolates the target-count cap
 
@@ -390,6 +392,11 @@ def test_checkpoint_persisted_once_after_curation(tmp_path, monkeypatch):
         },
     ]
 
+    for record in canned:
+        path = documents_dir / (record["target_metadata"]["label"] + ".pdf")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b"synthetic document")
+        record.update(path=str(path), relative_path=path.name)
     monkeypatch.setattr(
         engine,
         "_filter_candidates_for_download",
@@ -409,9 +416,9 @@ def test_checkpoint_persisted_once_after_curation(tmp_path, monkeypatch):
     save_calls: list[int] = []
     orig_save = DiscoveryEngine._save_checkpoint_entries
 
-    def _spy_save(path, new_entries):
+    def _spy_save(path, new_entries, **kwargs):
         save_calls.append(len(new_entries))
-        return orig_save(path, new_entries)
+        return orig_save(path, new_entries, **kwargs)
 
     monkeypatch.setattr(DiscoveryEngine, "_save_checkpoint_entries", staticmethod(_spy_save))
 

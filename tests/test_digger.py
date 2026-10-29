@@ -20,9 +20,11 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
+from types import SimpleNamespace
 from urllib.parse import urlparse
 
 import pytest
+import requests
 
 from psweep.discovery.connectors import (
     BaseDiggerConnector,
@@ -36,6 +38,331 @@ from psweep.discovery.connectors.digger import SeleniumDiggerConnector
 from psweep.discovery.engine import DiscoveryEngine, DiscoveryRequest
 
 from discovery_helpers import patch_requests_get
+from test_discovery_network_policy import Response
+
+
+class FakeBrowser:
+    """A navigation-only browser substitute with an observable final URL."""
+
+    pages = {}
+    navigations = []
+    closed = False
+
+    def __init__(self, **kwargs):
+        self.options = kwargs
+        self.current_url = ""
+
+    def __enter__(self):
+        self._start()
+        return self
+
+    def __exit__(self, *args):
+        self.close()
+
+    def _start(self):
+        pass
+
+    def fetch_html(self, url, **kwargs):
+        self.navigations.append(url)
+        final, html, links = self.pages[url]
+        self.current_url = final
+        self.links = links
+        return html
+
+    def current_links(self):
+        return self.links
+
+    def close(self):
+        self.closed = True
+
+
+def test_http_crawl_gates_children_without_filtering_hub_paths(monkeypatch):
+    """Document include patterns cannot prevent visiting parent crawl hubs."""
+    pages = {
+        "https://county.gov/hub": '<a href="/allowed">Codes</a>'
+        '<a href="/private">Private Codes</a>',
+        "https://county.gov/allowed": '<a href="/doc.pdf">Document</a>',
+    }
+    calls = []
+    waits = []
+    checks = []
+
+    def get(url, **kwargs):
+        calls.append(url)
+        return Response(url, text=pages[url])
+
+    def gate(url):
+        checks.append(url)
+        return not url.endswith("/private")
+
+    monkeypatch.setattr(requests, "get", get)
+    artifacts = HttpDiggerConnector().discover(
+        DiggerInput(
+            seed_urls=["https://county.gov/hub"],
+            max_depth=3,
+            include_url_patterns=[r"\.pdf$"],
+            extra_params={
+                "request_gate": gate,
+                "rate_limiter": SimpleNamespace(
+                    wait=lambda: waits.append(True)
+                ),
+            },
+        ),
+    )
+    assert calls == list(pages)
+    assert "https://county.gov/private" in checks
+    assert waits == [True, True]
+    assert [artifact.url for artifact in artifacts] == [
+        "https://county.gov/doc.pdf"
+    ]
+
+
+def test_centralized_http_gates_seed_and_redirect_and_closes(monkeypatch):
+    """Sweep-page redirects use the distributed crawl's network guard."""
+    response = Response(
+        "https://county.gov/hub", status=302, location="/private"
+    )
+    calls = []
+
+    def get(url, **kwargs):
+        calls.append(url)
+        return response
+
+    monkeypatch.setattr(requests, "get", get)
+    artifacts = HttpDiggerConnector().discover(
+        DiggerInput(
+            seed_urls=[response.url],
+            extra_params={
+                "request_gate": lambda url: not url.endswith("/private"),
+                "index_page_mode": {
+                    "enabled": True,
+                    "collect_all_matching_links": True,
+                },
+            },
+        ),
+    )
+    assert artifacts == []
+    assert calls == [response.url]
+    assert response.closed
+
+
+def test_http_fetch_keeps_return_shape_and_ssl_false(monkeypatch):
+    """The HTML fetch contract remains text and attempt count."""
+    response = Response("https://county.gov/hub", text="html")
+    options = []
+
+    def get(url, **kwargs):
+        options.append(kwargs)
+        return response
+
+    monkeypatch.setattr(requests, "get", get)
+    assert HttpDiggerConnector()._fetch_html(
+        url=response.url,
+        timeout_seconds=6,
+        ssl_verify=False,
+        request_headers={"X-App": "value"},
+        retry_config=(1, 0, 0),
+    ) == ("html", 1)
+    assert options[0]["verify"] is False
+    assert options[0]["timeout"] == 6
+    assert options[0]["headers"] == {"X-App": "value"}
+    assert response.closed
+
+
+@pytest.mark.parametrize("sweep", [False, True])
+def test_http_redirect_resolves_links_against_landing_page(monkeypatch, sweep):
+    """Relative child links use the observed HTTP landing-page directory."""
+    calls = []
+    responses = [
+        Response(
+            "https://county.gov/hub", status=302, location="/codes/index"
+        ),
+        Response(
+            "https://county.gov/codes/index", text='<a href="doc.pdf">Doc</a>'
+        ),
+    ]
+
+    def get(url, **kwargs):
+        calls.append(url)
+        return responses[len(calls) - 1]
+
+    monkeypatch.setattr(requests, "get", get)
+    artifacts = HttpDiggerConnector().discover(
+        DiggerInput(
+            seed_urls=["https://county.gov/hub"],
+            extra_params={
+                "index_page_mode": {
+                    "enabled": sweep,
+                    "collect_all_matching_links": sweep,
+                },
+            },
+        ),
+    )
+    assert [artifact.url for artifact in artifacts] == [
+        "https://county.gov/codes/doc.pdf"
+    ]
+    assert all(response.closed for response in responses)
+
+
+@pytest.mark.parametrize(
+    "connector", [HttpDiggerConnector, SeleniumDiggerConnector]
+)
+def test_render_navigation_is_gated_and_paced(monkeypatch, connector):
+    """Both Selenium crawling and HTTP rendering gate each navigation."""
+    hub = "https://county.gov/hub"
+    child = "https://county.gov/child"
+    monkeypatch.setattr(FakeBrowser, "navigations", [])
+    monkeypatch.setattr(
+        FakeBrowser,
+        "pages",
+        {
+            hub: (
+                hub,
+                '<a href="/child">Codes</a>',
+                [{"url": child, "text": "Codes"}],
+            ),
+            child: (
+                child,
+                '<a href="/doc.pdf">Doc</a>',
+                [{"url": "https://county.gov/doc.pdf", "text": "Doc"}],
+            ),
+        },
+    )
+    monkeypatch.setattr("psweep.discovery.browser.BrowserSession", FakeBrowser)
+    monkeypatch.setattr(
+        requests,
+        "get",
+        lambda url, **_kwargs: Response(url, text="<app-root></app-root>"),
+    )
+    checks = []
+    final_checks = []
+    waits = []
+    artifacts = connector().discover(
+        DiggerInput(
+            seed_urls=[hub],
+            max_depth=3,
+            extra_params={
+                "request_gate": checks.append,
+                "response_url_gate": final_checks.append,
+                "rate_limiter": SimpleNamespace(
+                    wait=lambda: waits.append(True)
+                ),
+                "browser_escalation": True,
+            },
+        ),
+    )
+    assert FakeBrowser.navigations == [hub, child]
+    assert checks.count(hub) >= 1
+    assert checks.count(child) >= 1
+    assert final_checks.count(hub) >= 1
+    assert final_checks.count(child) >= 1
+    assert len(waits) == (4 if connector is HttpDiggerConnector else 2)
+    assert [artifact.url for artifact in artifacts] == [
+        "https://county.gov/doc.pdf"
+    ]
+
+
+@pytest.mark.parametrize(
+    "connector", [HttpDiggerConnector, SeleniumDiggerConnector]
+)
+def test_render_denied_final_url_discards_links(monkeypatch, connector):
+    """Post-navigation checks reject documents from a denied landing page."""
+    hub = "https://county.gov/hub"
+    final = "https://outside.org/private"
+    monkeypatch.setattr(FakeBrowser, "navigations", [])
+    monkeypatch.setattr(
+        FakeBrowser,
+        "pages",
+        {
+            hub: (
+                final,
+                '<a href="https://county.gov/doc.pdf">Doc</a>',
+                [{"url": "https://county.gov/doc.pdf", "text": "Doc"}],
+            ),
+        },
+    )
+    monkeypatch.setattr("psweep.discovery.browser.BrowserSession", FakeBrowser)
+    monkeypatch.setattr(
+        requests,
+        "get",
+        lambda url, **_kwargs: Response(url, text="<app-root></app-root>"),
+    )
+    artifacts = connector().discover(
+        DiggerInput(
+            seed_urls=[hub],
+            extra_params={
+                "request_gate": lambda url: url != final,
+                "browser_escalation": True,
+            },
+        ),
+    )
+    assert FakeBrowser.navigations == [hub]
+    assert artifacts == []
+
+
+@pytest.mark.parametrize(
+    "connector", [HttpDiggerConnector, SeleniumDiggerConnector]
+)
+def test_strict_browser_policy_fails_before_navigation(monkeypatch, connector):
+    """A strict boundary cannot claim to intercept browser subresources."""
+    monkeypatch.setattr(FakeBrowser, "navigations", [])
+    monkeypatch.setattr("psweep.discovery.browser.BrowserSession", FakeBrowser)
+    monkeypatch.setattr(
+        requests,
+        "get",
+        lambda url, **_kwargs: Response(url, text="<app-root></app-root>"),
+    )
+    with pytest.raises(RuntimeError, match=r"subresource|intercept"):
+        connector().discover(
+            DiggerInput(
+                seed_urls=["https://county.gov/hub"],
+                extra_params={
+                    "browser_policy_strict": True,
+                    "browser_escalation": True,
+                },
+            ),
+        )
+    assert FakeBrowser.navigations == []
+
+
+@pytest.mark.parametrize(
+    "connector",
+    [HttpDiggerConnector, SeleniumDiggerConnector],
+)
+def test_browser_gate_denies_before_each_navigation(monkeypatch, connector):
+    """Denied child pages are not navigated, including render escalation."""
+    hub = "https://county.gov/hub"
+    child = "https://county.gov/private"
+    monkeypatch.setattr(FakeBrowser, "navigations", [])
+    monkeypatch.setattr(
+        FakeBrowser,
+        "pages",
+        {
+            hub: (
+                hub,
+                '<a href="/private">Codes</a>',
+                [{"url": child, "text": "Codes"}],
+            ),
+        },
+    )
+    monkeypatch.setattr("psweep.discovery.browser.BrowserSession", FakeBrowser)
+    monkeypatch.setattr(
+        requests,
+        "get",
+        lambda url, **_kwargs: Response(url, text="<app-root></app-root>"),
+    )
+    artifacts = connector().discover(
+        DiggerInput(
+            seed_urls=[hub],
+            max_depth=3,
+            extra_params={
+                "request_gate": lambda url: url != child,
+                "browser_escalation": True,
+            },
+        ),
+    )
+    assert FakeBrowser.navigations == [hub]
+    assert artifacts == []
 
 
 # ---------------------------------------------------------------------------

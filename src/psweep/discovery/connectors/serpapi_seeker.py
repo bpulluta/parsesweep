@@ -7,6 +7,8 @@ import re
 import time
 from typing import Any
 
+from psweep.discovery.constants import RESERVED_SEARCH_PARAMS
+from psweep.discovery.publication import atomic_json
 from ..retry import compute_backoff, is_transient_error
 from .base import BaseSeekerConnector, SeekerInput
 
@@ -51,6 +53,7 @@ class SerpApiSeeker(BaseSeekerConnector):
         cache_dir: str | None = None,
         cache_ttl_seconds: float = 0.0,
         cache_refresh: bool = False,
+        timeout_seconds: float = 45,
     ):
         """
         Initialize SerpApi seeker connector.
@@ -83,6 +86,7 @@ class SerpApiSeeker(BaseSeekerConnector):
         # Live outbound attempts, including retries and failed/time-out requests.
         # Cache hits are free; actual provider billing for failures is unknown.
         self.queries_run: int = 0
+        self.query_results: list[dict[str, Any]] = []
         # Optional on-disk result cache so re-running acquire during tuning does
         # not re-pay SerpApi for identical queries. Keyed on the request params.
         self.cache_dir = cache_dir
@@ -92,6 +96,7 @@ class SerpApiSeeker(BaseSeekerConnector):
         # ``--fresh`` "start fresh" semantics without discarding the cache
         # for subsequent tuning runs.
         self.cache_refresh = bool(cache_refresh)
+        self.timeout_seconds = timeout_seconds
         self._ensure_prepared()
 
     def _respect_rate_limit(self) -> None:
@@ -207,6 +212,11 @@ class SerpApiSeeker(BaseSeekerConnector):
                     if value is not None
                 }
 
+        if (
+            isinstance(seeker_input.extra_params, dict)
+            and "timeout_seconds" in seeker_input.extra_params
+        ):
+            self.timeout_seconds = seeker_input.extra_params["timeout_seconds"]
         rendered_queries = self._resolve_search_queries(
             seeker_input, template_context
         )
@@ -226,10 +236,13 @@ class SerpApiSeeker(BaseSeekerConnector):
                     seeker_input, rendered_query
                 )
                 results = self._cache_get(params)
+                cache_hit = results is not None
                 if results is None:
                     results = self._execute_search_with_retry(
                         search_callable, params
                     )
+                self._validate_response(results)
+                if not cache_hit:
                     self._cache_put(params, results)
             except Exception as exc:
                 sanitized_message = self._sanitize_error_message(str(exc))
@@ -243,18 +256,46 @@ class SerpApiSeeker(BaseSeekerConnector):
                     f"SerpApi search failed for query '{rendered_query}': {sanitized_message}"
                 ) from exc
 
-            for candidate in self._normalize_results(results, rendered_query):
-                url = candidate.get("url")
-                if not isinstance(url, str) or not url:
-                    continue
-                if url in seen_urls:
-                    continue
-                seen_urls.add(url)
-                deduped_candidates.append(candidate)
+            normalized = self._normalize_results(results, rendered_query)
+            per_query: dict[str, dict[str, Any]] = {}
+            for candidate in normalized:
+                per_query.setdefault(candidate["url"], candidate)
+            limited = list(per_query.values())[: seeker_input.max_results]
+            self.query_results.append(
+                {
+                    "query": rendered_query,
+                    "cache_hit": cache_hit,
+                    "returned": len(normalized),
+                    "unique": len(per_query),
+                    "retained": len(limited),
+                    "limit": seeker_input.max_results,
+                }
+            )
+            for candidate in limited:
+                url = candidate["url"]
+                if url not in seen_urls:
+                    seen_urls.add(url)
+                    deduped_candidates.append(candidate)
 
         if timeout_errors:
             raise SerpApiSearchTimeout(deduped_candidates, timeout_errors)
         return deduped_candidates
+
+    @staticmethod
+    def _validate_response(response: Any) -> None:
+        """Reject errors and malformed live/cache results."""
+        if not isinstance(response, dict):
+            msg = "SerpApi response must be an object"
+            raise TypeError(msg)
+        if response.get("error"):
+            raise RuntimeError(str(response["error"]))
+        for field in ("organic_results", "news_results"):
+            if field in response and (
+                not isinstance(response[field], list)
+                or not all(isinstance(row, dict) for row in response[field])
+            ):
+                msg = f"SerpApi response.{field} must be an array of objects"
+                raise ValueError(msg)
 
     # -- result cache ------------------------------------------------------
 
@@ -298,12 +339,7 @@ class SerpApiSeeker(BaseSeekerConnector):
         if path is None:
             return
         try:
-            import json
-
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(
-                json.dumps(results, default=str), encoding="utf-8"
-            )
+            atomic_json(path, results)
         except (OSError, TypeError):
             return
 
@@ -370,11 +406,14 @@ class SerpApiSeeker(BaseSeekerConnector):
         response = requests.get(
             "https://serpapi.com/search.json",
             params=request_params,
-            timeout=45,
+            timeout=self.timeout_seconds,
             verify=self.ssl_verify,
         )
-        response.raise_for_status()
-        return response.json()
+        try:
+            response.raise_for_status()
+            return response.json()
+        finally:
+            response.close()
 
     @staticmethod
     def _build_search_params(
@@ -397,7 +436,7 @@ class SerpApiSeeker(BaseSeekerConnector):
             "query_templates",
             "query_families",
             "use_query_family",
-            "serpapi_params",
+            "serpapi_params", "timeout_seconds",
         }
 
         if seeker_input.extra_params:
@@ -410,8 +449,24 @@ class SerpApiSeeker(BaseSeekerConnector):
             # {"tbs": "qdr:y"} for recency). Merged last so they win.
             passthrough = seeker_input.extra_params.get("serpapi_params")
             if isinstance(passthrough, dict):
+                reserved = RESERVED_SEARCH_PARAMS.intersection(passthrough)
+                if reserved:
+                    msg = (
+                        "SerpApi reserved parameters cannot be overridden: "
+                        + ", ".join(sorted(reserved))
+                    )
+                    raise ValueError(msg)
                 for key, value in passthrough.items():
                     params[str(key)] = value
+
+        # The connector owns query, count, and credential controls.
+        params["q"] = (
+            rendered_query
+            if rendered_query is not None
+            else seeker_input.query
+        )
+        params["num"] = seeker_input.max_results
+        params.pop("api_key", None)
 
         return params
 

@@ -32,7 +32,7 @@ Configure LLM credentials in a `.env` file (see
 Run the full suite before opening a PR:
 
 ```bash
-pixi run -e dev pytest
+pixi run test
 ```
 
 Lint and format with ruff (docstrings are enforced NumPy-style):
@@ -42,9 +42,12 @@ pixi run -e dev ruff check src/
 pixi run -e dev ruff format --check src/
 ```
 
-A change is not done until tests pass and `ruff check src/` reports 0
-violations. If a test is skipped or a check is blocked, say so explicitly in
-the PR.
+Tests must pass and source docstrings must have zero pydocstyle (`D`)
+violations, matching the CI gate. The repository has existing non-docstring
+lint and formatting debt: inspect the commands above, avoid adding findings
+in changed code, and do not reformat unrelated files just to make a check
+pass. A complete Ruff run is not currently a clean baseline. Report existing
+failures, skipped tests, or blocked checks explicitly in the PR.
 
 ## Building the docs
 

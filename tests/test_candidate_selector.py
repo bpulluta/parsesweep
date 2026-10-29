@@ -30,7 +30,11 @@ class TestDraftDetection:
                 ["Contains draft rate schedule"],
                 False,
             ),
-            ("https://example.com/ordinance-update.pdf", ["ranked highly"], False),
+            (
+                "https://example.com/ordinance-update.pdf",
+                ["ranked highly"],
+                False,
+            ),
             ("https://www.pge.com/tariffs/ELEC_SCHEDS_E-1.pdf", None, False),
             (
                 "https://www.xcelenergy.com/Electric_Summation_Sheet_All_Rates_05.01.2024.pdf",
@@ -40,7 +44,15 @@ class TestDraftDetection:
         ],
     )
     def test_draft_detection_patterns(self, url, reasons, expected):
-        sel = CandidateSelector(exclude_draft=True)
+        sel = CandidateSelector(
+            exclude_draft=True,
+            draft_patterns=[
+                r"\bdraft\b",
+                r"\bproposed\b",
+                r"\bmodel[\s_\-]ordinance\b",
+                r"\btemplate\b",
+            ],
+        )
         c = _candidate(url, reasons=reasons)
         assert sel._is_draft(c) is expected
 
@@ -134,9 +146,19 @@ class TestPerTargetSelection:
         assert selected == [dated]
 
     def test_draft_filtered_before_recency_sort(self):
-        sel = CandidateSelector(exclude_draft=True)
+        sel = CandidateSelector(
+            exclude_draft=True,
+            draft_patterns=[
+                r"\bdraft\b",
+                r"\bproposed\b",
+                r"\bmodel[\s_\-]ordinance\b",
+                r"\btemplate\b",
+            ],
+        )
         draft = _candidate("https://example.com/proposed_ordinance_2025.pdf")
-        enacted = _candidate("https://example.com/geothermal_ordinance_2023.pdf")
+        enacted = _candidate(
+            "https://example.com/geothermal_ordinance_2023.pdf"
+        )
         selected, notes = sel.select([[draft, enacted]], primary_per_target=1)
         # draft excluded → enacted selected even though 2025 > 2023
         assert selected == [enacted]
@@ -149,7 +171,15 @@ class TestPerTargetSelection:
         assert any("0 candidates" in n for n in notes)
 
     def test_all_drafts_excluded_produces_empty_target(self):
-        sel = CandidateSelector(exclude_draft=True)
+        sel = CandidateSelector(
+            exclude_draft=True,
+            draft_patterns=[
+                r"\bdraft\b",
+                r"\bproposed\b",
+                r"\bmodel[\s_\-]ordinance\b",
+                r"\btemplate\b",
+            ],
+        )
         c1 = _candidate("https://example.com/draft_v1.pdf")
         c2 = _candidate("https://example.com/proposed_v2.pdf")
         selected, notes = sel.select([[c1, c2]], primary_per_target=1)
@@ -172,13 +202,25 @@ class TestPerTargetSelection:
 
     def test_supported_document_preferred_over_newer_unsupported_page(self):
         sel = CandidateSelector(exclude_draft=False)
-        unsupported_newer = _candidate("https://example.com/ordinance_page_2026")
+        unsupported_newer = _candidate(
+            "https://example.com/ordinance_page_2026"
+        )
         supported_older = _candidate("https://example.com/ordinance_2024.pdf")
-        selected, _ = sel.select([[unsupported_newer, supported_older]], primary_per_target=1)
+        selected, _ = sel.select(
+            [[unsupported_newer, supported_older]], primary_per_target=1
+        )
         assert selected == [supported_older]
 
     def test_multiple_targets_independent_selection(self):
-        sel = CandidateSelector(exclude_draft=True)
+        sel = CandidateSelector(
+            exclude_draft=True,
+            draft_patterns=[
+                r"\bdraft\b",
+                r"\bproposed\b",
+                r"\bmodel[\s_\-]ordinance\b",
+                r"\btemplate\b",
+            ],
+        )
         # Target 0: PG&E — two real docs, no drafts
         t0 = [
             _candidate("https://pge.com/ELEC_SCHEDS_E-1.pdf"),
@@ -187,7 +229,9 @@ class TestPerTargetSelection:
         # Target 1: Xcel — one draft, one real
         t1 = [
             _candidate("https://xcel.com/proposed_rate_book_2025.pdf"),
-            _candidate("https://xcel.com/Electric_Summation_Sheet_05.01.2024.pdf"),
+            _candidate(
+                "https://xcel.com/Electric_Summation_Sheet_05.01.2024.pdf"
+            ),
         ]
         # Target 2: empty
         t2: list[DiscoveryCandidate] = []
@@ -311,20 +355,22 @@ class TestPerTargetSelection:
         selected, _notes = sel.select([[off_host]], primary_per_target=1)
         assert selected == [off_host]
 
-    def test_require_supported_document_excludes_non_file_urls(self):
+    def test_require_supported_document_prefers_pdf_to_provisional_web(self):
         sel = CandidateSelector(exclude_draft=False, require_supported_document=True)
         page = _candidate("https://example.com/ordinance/chapter-9")
         pdf = _candidate("https://example.com/ordinance/chapter-9.pdf")
         selected, notes = sel.select([[page, pdf]], primary_per_target=1)
         assert selected == [pdf]
-        assert any("supported-document filter excluded" in n for n in notes)
+        assert not any(
+            "supported-document filter excluded" in n for n in notes
+        )
 
-    def test_require_supported_document_all_filtered_if_no_supported_links(self):
+    def test_require_supported_document_accepts_extensionless_web(self):
         sel = CandidateSelector(exclude_draft=False, require_supported_document=True)
         page = _candidate("https://example.com/ordinance/chapter-9")
         selected, notes = sel.select([[page]], primary_per_target=1)
-        assert selected == []
-        assert any("unsupported document type" in n for n in notes)
+        assert selected == [page]
+        assert not any("unsupported document type" in n for n in notes)
 
     def test_target_identity_require_any_templates_matches_jurisdiction(self):
         sel = CandidateSelector(
@@ -402,7 +448,7 @@ class TestSelectionConfigMapping:
         config = {
             "discovery": {
                 "selection": {
-                    "primary_per_target": 2,
+                    "max_per_target": 2,
                     "exclude_draft": False,
                 }
             }

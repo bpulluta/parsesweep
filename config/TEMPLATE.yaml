@@ -1,167 +1,63 @@
-# Domain Config Template
-# Copy this file to config/<your_domain>/run.yaml
-# Usage: psweep run --config config/<your_domain>/run.yaml
-#
-# Each section is independent — include only what you need:
-#   - extraction: required for the extract command
-#   - compilation: required for the compile command
-#   - discovery: only if you need web document discovery
-#   - validation: only if you use multi-model QA/QC validation
+# Minimal discovery setup — copy to config/<your_domain>/run.yaml.
+# Set SERPAPI_API_KEY in your environment or .env (never in YAML).
+# Run: pixi run psweep discover --config config/<your_domain>/run.yaml
+# No extraction schema or LLM credentials are needed for discovery alone.
+# Expanded stage options: config/ADVANCED.yaml and docs/config-reference.md.
+# Only this file is loaded; move retired adjacent section overrides into it.
 
-domain: your_domain_name
+domain: my_domain
+discovery:
+  queries:
+    - "industrial pump installation manual filetype:pdf"
 
-# ─── MODELS (recommended) ─────────────────────────────────────────────────────
-# User-defined alias map: keys are alias names (any string), values are
-# concrete deployment/model names. Stages reference aliases via their `model:`
-# key; if no alias matches, the value is used as-is as the model name.
-# When omitted, all stages fall back to the model in your .env (AZURE_OPENAI_MODEL).
-#
-# Stage model-tier safety: PIN every stage's `model:` to an alias explicitly.
-# Leaving a stage unset lets it silently fall back to the .env default —
-# a hidden cost/accuracy risk whenever the env or alias map changes.
-# Define as many aliases as you need; names are entirely up to you.
-models:
-  primary: your-model-name           # alias → concrete deployment name
-  secondary: another-model-name      # add more aliases as needed
+  # Common choices — uncomment only when changing the defaults.
+  # Queries auto-enable SerpApi when search is omitted; explicit false wins.
+  # Seed-only alternative: remove queries above and use seeds (no auto search).
+  # seeds: [https://example.org/documents/manual.pdf]
+  # search:
+  #   max_results: 10            # unique candidates PER QUERY, not downloads
+  #   cache: false               # OFF by default; true opts into search caching
+  # selection:
+  #   max_per_target: 1          # acquisition count per target; not LLM review
+  #   exclude: [news, blog, press release]
 
-# reasoning_models: [my-reasoner]    # extra model-name substring markers for
-#                                    # reasoning models (reject temperature/response_format);
-#                                    # unioned with the built-in defaults (gpt-5, o1, o3, o4, thinking)
+  # Strict source scope needs both host and URL-path restrictions.
+  # Provider site:/filetype: hints alone do not enforce scope.
+  # allowed_domains: [example.org]
+  # discovery_rules:
+  #   include_url_patterns: ['^https?://(?:www\.)?example\.org/documents/']
 
-# ─── EXTRACTION ──────────────────────────────────────────────────────────────
-extraction:
-  schema: schemas/personal/your_schema.json
-  input_dir: documents/your_domain        # source documents folder
-  output_dir: extracted/your_domain
-  model: primary                          # PIN the tier — don't rely on .env default
-  # Skip/refresh hygiene: extract skips files with existing output JSON by
-  # default (skip_existing=true). Re-run cheaply after config tweaks with no
-  # flag; only pass --fresh after changing schema, model tier, or pages.
-  # max_context: 600000                   # chars per document (default: 600000)
-  # pages:                                 # how to select pages from large PDFs
-  #   csv: config/your_domain/page_ranges.csv  # manual ranges per file (wins)
-  #   auto_locate:                         # LLM fallback for uncovered large docs
-  #     model: secondary                   # pin to an alias — avoid silent .env fallback
-  #     section_description: "the section containing your target data"
-  #     trigger_chars: 200000              # default: 200000 — only targets docs larger than this.
-  #                                        # Set == max_context for zero-regression
-  #                                        # targeting (only docs that would be
-  #                                        # truncated get page-targeted).
-  #       max_selected_pages: 30             # default: 30 (PDFs only)
-  #       keywords: [term1, term2]           # heuristic pre-filter; trims LLM candidates
-  #       save_discovered: true              # PDFs: write discovered_page_ranges.csv;
-  #                                          # HTML/DOCX/TXT: write .<stem>.section_target.txt
-  #                                          # sidecar next to each targeted source doc
+  # PDF candidates are preferred when present. HTML/HTM and extensionless
+  # HTTP(S) URLs are provisionally eligible; GET/MIME verifies ambiguity.
+  # Direct acquisition (no crawl), concurrency 2, retry attempts 3, policy warn.
+  # Browser mode and recovery are OFF; each recovery path needs explicit opt-in.
+  # browser_escalation: {enabled: true}
+  # code_host_adapters: {enabled: true}
+  # Strict robots/ToS enforcement fails before unsupported browser navigation:
+  # browser redirects/subresources cannot be certified; use HTTP enforcement.
 
-# ─── COMPILATION ─────────────────────────────────────────────────────────────
-compilation:
-  schema: schemas/personal/your_schema.json
-  input_dir: extracted/your_domain        # matches extraction output_dir
-  output_dir: compiled/your_domain
-  # dry_run: false                        # default: false — preview dedup/merges without writing output
-  # fail_on_suspicious: false             # default: false — fail compile when suspicious dedup groups found
-  # Dedup identity is schema-owned at $metadata.identity.deduplication.
-  # Keep uniqueness fields in the schema so every workflow (extract/compile/api)
-  # uses the same record identity contract.
-  output:
-    default_format: excel                 # excel, csv, or both
-    # column_order: [field1, field2, ...]  # custom column ordering
-    # column_renames: {OldName: new_name}  # rename output columns
-    # exclude_fields: [internal_field]     # hide columns from output
-    # freeze_columns: 2                   # freeze first N columns in Excel
-    # auto_width: true                    # auto-size Excel columns
-    # center_align_columns: [state, type] # Excel: force-center these columns (default: a
-    #                                     # domain-neutral name list); [] disables name-based centering
-    # center_align_max_length: 30         # Excel: center columns whose avg value length is below this
-  # severity_tokens:                       # extend the dedup conflict-severity name heuristic
-  #   high: [flow, throughput]             # extra HIGH-severity field-name tokens (unioned with defaults)
-  #   medium: [tier]                       # extra MEDIUM-severity tokens
-  # normalization:
-  #   state_column: State                # auto-abbreviate US state names
-  #   county_fips: true                  # derive a 5-digit Census county FIPS
-  #                                       # join key from the state + county
-  #                                       # columns (GIS/DS). County-level only.
-  #
-  # synthesis:                           # multi-source reconciliation
-  #   enabled: true                      # reconcile many docs → one row per entity
-  #   min_sources_for_llm: 2             # skip LLM when only 1 source (cheaper)
-  #   group_by: ["entity.key_field"]     # one output row per distinct value
-  #   item_group_by: ["item_field"]      # optional: one row per sub-entity
-  #                                      # (phase/expansion/line item) within it
-  #   identity_fields:                   # context fields (first non-empty wins)
-  #     - entity.category
-  #   citation_field: source.url         # becomes citation list in output
-  #   reconcile_fields:
-  #     - {field: some_field}
-  #     - {field: dated_field, evidence: evidence_field}
+  # Optional PAID LLM review; never auto-enabled. Requires LLM credentials.
+  # document_review:
+  #   model: your-model-name
+  #   document_description: "the manufacturer's installation manual"
+  #   keep_top: 1                # review retention, separate from acquisition count
 
-# ─── DISCOVERY (optional) ────────────────────────────────────────────────────
-# discovery:
-#   targets_csv: targets.csv
-#   queries:
-#     - "{entity_name} {state} filetype:pdf"
-#   search:
-#     provider: serpapi
-#     max_results: 10
-#   selection:
-#     max_per_target: 3
-#     max_per_host_per_target: 1        # optional host-diversity cap per target (0=off)
-#     exclude: [news, blog, press release]
-#   browser_mode: false                   # default: false — set true to download via headless Chrome (bot-protected sites)
-#   browser_escalation:                   # auto-retry thin/JS-rendered pages with a headless browser
-#     enabled: true                       # off by default; escalate only pages that look under-rendered
-#     min_shell_chars: 8000               # HTTP body below this many chars looks like an unrendered shell → escalate
-#     min_rendered_chars: 10000           # accept the browser render only once it yields at least this many chars
-#     settle_seconds: 20                  # wait up to this long for client-side content to finish rendering
-#   code_host_adapters:                   # recover JS code-host shells (e.g. Municode) via the host's server API
-#     enabled: true                       # default: enabled — runs before browser escalation; falls through if it can't resolve
-#                                          # reuses browser_escalation's min_shell_chars/min_rendered_chars thresholds
-#   partition_by: [state, jurisdiction]   # output layout by_<field>/<value>/… from target metadata
-#                                          # (domain-agnostic: any target-metadata field(s) — county, region, year, …)
-#   jurisdiction_aliases:                  # only used when partition_mode=jurisdiction; supplements the
-#     ontario: on                          # built-in US-state table for non-US/custom jurisdiction schemes
-#   link_prioritization:
-#     keywords: [datasheet, spec]          # boost URLs/anchors containing these (merged with generic defaults)
-#     domain_scores: {example.gov: 0.15}   # supplement the built-in authority table (+ boosts / − penalties)
-#     shopping_path_keywords: [wishlist]   # extra cart/store path keywords to de-prioritize (unioned with defaults)
-#   document_review:
-#     model: secondary                    # pin to an alias — avoid silent .env fallback
-#     document_description: "the authoritative source document"
-#     keep_top: 1
-#     action: move
+# Inspect discovered/my_domain/runs/<run_id>/curated and the consolidated
+# discovered/my_domain/curated before configuring extraction.
+# Search caps include live/cached/news candidates; no hidden pagination/refill.
+# Use search/max_results and selection.max_per_target/require_any/exclude.
+# No built-in legal draft, vendor authority, shopping, or US discovery alias lists.
+# Supply geographic target fields explicitly or use partition_by; no query inference.
+# SerpApi/download TLS verification defaults remain false; configure
+# SERPAPI_SSL_VERIFY and DISCOVERY_SSL_VERIFY in the environment if needed.
 
-# ─── QA/QC (optional) ────────────────────────────────────────────────────────
-# Run two models on the same documents and compare their outputs field-by-field.
-# Uncomment the block below to enable. Keep this minimal.
-#
-# validation:
-#   models: [primary, secondary]      # Two model tiers to contrast.
-#   output_dir: validated/your_domain
-#   report:
-#     include_csv: false
-#     include_missing_in_queue: true
-#     include_low_signal_presence_in_queue: false  # keep obligation-only one-sided rows out of reviewer queue
-#     identity_columns: compact                     # compact | expanded
-#     include_value_unit_column: true
-#     evidence_detail: full                        # full | compact | off
-#     evidence_max_chars: 200
-#   comparison_approach: mixed            # mixed | numeric_only | text_review
-#   record_matching:
-#     key_fields: [feature, applies_to, specific_subject]
-#     fuzzy_key_fields: [applies_to, specific_subject]
-#     semantic_match_threshold: 0.38
-#   comparison:
-#     primary_fields: [value, units, value_interpretation, obligation]
-#     collapse_percent_context: false   # true = treat "percent above/below ..." as "percent"
-#     unit_equivalence_groups:          # optional unit synonym groups
-#       - [feet, ft]
-#       - [hours, hrs, hr]
-#       - [decibels, dB, dBA, dB(A)]
-#   judge:                                # Optional but recommended for mixed/text_review.
-#     enabled: true
-#     model: judge
-#     apply_on: all                       # none | non_numeric | all
-#     row_equivalence: true
-#     pair_unmatched: true
-#     min_confidence: high
-#     strictness: "If uncertain, mark non-equivalent."
+# Optional later stages — create your own schema and configure LLM credentials.
+# extraction:
+#   schema: schemas/personal/my_schema.json
+#   input_dir: discovered/my_domain/curated
+#   output_dir: extracted/my_domain
+#   model: your-model-name
+# compilation:
+#   schema: schemas/personal/my_schema.json
+#   input_dir: extracted/my_domain
+#   output_dir: compiled/my_domain

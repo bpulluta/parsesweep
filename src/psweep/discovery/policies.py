@@ -6,6 +6,8 @@ from dataclasses import dataclass, field
 from urllib.parse import urlparse
 from urllib.robotparser import RobotFileParser
 
+from .network import RateLimiter, send_get
+
 # Single source of truth for the user-facing policy defaults. Referenced by the
 # ``DiscoveryRequest`` dataclass, the CLI options, the CLI resolution fallbacks,
 # and ``DiscoveryPolicyEvaluator.evaluate`` so every layer agrees on one value.
@@ -66,7 +68,10 @@ class DiscoveryPolicyEvaluator:
         url: str,
         ssl_verify: bool,
         request_headers: dict[str, str] | None,
+        timeout_seconds: float = 15,
+        rate_limiter: RateLimiter | None = None,
     ) -> tuple[RobotFileParser | None, str | None]:
+        """Load robots rules without recursively invoking a gate."""
         parsed = urlparse(url)
         if not parsed.scheme or not parsed.netloc:
             return None, "invalid URL for robots evaluation"
@@ -81,21 +86,16 @@ class DiscoveryPolicyEvaluator:
 
         robots_url = f"{parsed.scheme}://{parsed.netloc}/robots.txt"
 
+        response = None
         try:
-            import requests
-        except ImportError as exc:
-            result = (None, f"requests dependency unavailable: {exc}")
-            self._robots_cache[cache_key] = result
-            return result
-
-        try:
-            response = requests.get(
+            response, _ = send_get(
                 robots_url,
-                timeout=15,
-                allow_redirects=True,
+                timeout=timeout_seconds,
                 verify=ssl_verify,
                 headers=request_headers
                 or {"User-Agent": self.DEFAULT_USER_AGENT},
+                limiter=rate_limiter,
+                raise_for_status=False,
             )
             status_code = int(getattr(response, "status_code", 200) or 200)
             if status_code == 404:
@@ -111,10 +111,13 @@ class DiscoveryPolicyEvaluator:
             result = (parser, None)
             self._robots_cache[cache_key] = result
             return result
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - record unavailable robots rules
             result = (None, str(exc))
             self._robots_cache[cache_key] = result
             return result
+        finally:
+            if response is not None:
+                response.close()
 
     def evaluate(
         self,
@@ -125,6 +128,8 @@ class DiscoveryPolicyEvaluator:
         robots_policy_mode: str = DEFAULT_ROBOTS_POLICY_MODE,
         tos_policy_mode: str = DEFAULT_TOS_POLICY_MODE,
         acknowledged_tos_domains: list[str] | None = None,
+        timeout_seconds: float = 15,
+        rate_limiter: RateLimiter | None = None,
     ) -> PolicyCheckResult:
         """Evaluate robots.txt and ToS-acknowledgement policy for a URL.
 
@@ -144,6 +149,10 @@ class DiscoveryPolicyEvaluator:
             ``ignore``, ``warn``, or ``enforce`` for terms acknowledgement.
         acknowledged_tos_domains:
             Hosts/parent domains the caller has acknowledged terms for.
+        timeout_seconds:
+            Per-request timeout for gate-free ``robots.txt`` lookup.
+        rate_limiter:
+            Shared pacing boundary, also used for robots redirect hops.
 
         Returns
         -------
@@ -179,6 +188,8 @@ class DiscoveryPolicyEvaluator:
             url=url,
             ssl_verify=ssl_verify,
             request_headers=request_headers,
+            timeout_seconds=timeout_seconds,
+            rate_limiter=rate_limiter,
         )
         if parser is None:
             message = (
