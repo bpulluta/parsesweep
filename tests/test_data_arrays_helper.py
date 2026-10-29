@@ -7,9 +7,9 @@ completeness/sanity checks (TextProcessor), and total-item logging (LLMClient).
 
 from __future__ import annotations
 
+from psweep.extraction import text_processor
 from psweep.extraction.text_processor import (
     find_data_arrays,
-    find_main_data_array,
 )
 
 
@@ -37,26 +37,9 @@ def test_find_data_arrays_includes_lists_of_non_dicts():
     assert find_data_arrays(data) == [("tags", ["x", "y", "z"])]
 
 
-def test_find_main_data_array_picks_largest():
-    data = {
-        "small": [1, 2],
-        "big": [1, 2, 3, 4],
-        "mid": [1, 2, 3],
-    }
-    assert find_main_data_array(data) == ("big", 4)
-
-
-def test_find_main_data_array_tie_breaks_to_first_in_order():
-    data = {
-        "first": [1, 2, 3],
-        "second": [4, 5, 6],
-    }
-    assert find_main_data_array(data) == ("first", 3)
-
-
-def test_find_main_data_array_none_when_no_arrays():
-    assert find_main_data_array({"a": 1, "b": {}}) == (None, 0)
-    assert find_main_data_array({"empty": []}) == (None, 0)
+def test_domain_item_count_has_no_largest_array_fallback():
+    """Record counting belongs to schema metadata, not arbitrary array size."""
+    assert not hasattr(text_processor, "find_main_data_array")
 
 
 def test_total_items_matches_sum_of_arrays():

@@ -20,6 +20,7 @@ from psweep.discovery import (
     DiscoveryRequest,
 )
 from psweep.discovery.policies import DiscoveryPolicyEvaluator
+from psweep.extraction.llm_factory import resolve_model_name
 from psweep.extraction.llm_factory import DEFAULT_MAX_CONTEXT, DEFAULT_MODEL
 from psweep.extraction.page_locator import (
     DEFAULT_MAX_SELECTED_PAGES,
@@ -68,7 +69,8 @@ def test_discover_cli_option_defaults_match_constants():
 def test_extract_cli_option_defaults_are_single_sourced():
     """extract --model and --max-context come from the shared constants."""
     defaults = _option_defaults("extract")
-    assert defaults["model"] == DEFAULT_MODEL
+    assert defaults["model"] is None
+    assert resolve_model_name(None, llm_config={}) == DEFAULT_MODEL
     assert defaults["max_context"] == DEFAULT_MAX_CONTEXT
 
 

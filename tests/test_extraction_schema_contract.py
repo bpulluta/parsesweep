@@ -1,6 +1,7 @@
 """Resolved extraction schemas are enforced before a result can succeed."""
 
 import json
+from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 import pytest
@@ -8,12 +9,30 @@ import pytest
 from psweep.exceptions import SchemaValidationError
 from psweep.extraction.document_extractor import DocumentExtractor
 from psweep.utils.error_taxonomy import build_error_record
+from psweep.utils.schema_metadata import SchemaMetadata
+from psweep.pipeline import _extract_one_document
+
+
+@pytest.fixture(autouse=True)
+def controlled_configuration(monkeypatch):
+    """Never consult the project's real .env while exercising extraction."""
+    config = SimpleNamespace(llm_config={
+        "provider": "openai", "model": "gpt-4o-mini", "api_key": "fixture-key",
+    })
+    monkeypatch.setattr("psweep.utils.config._global_config", config)
+    monkeypatch.setattr(
+        "psweep.cli.commands_extract.load_dotenv", lambda: None,
+    )
 
 
 @pytest.fixture
 def schema():
     return {
         "$schema": "http://json-schema.org/draft-07/schema#",
+        "$metadata": {"extraction": {
+            "main_data_array": "items", "context_objects": ["source"],
+            "identifier_fields": ["source.id"],
+        }},
         "type": "object",
         "required": ["source", "items"],
         "properties": {
@@ -135,21 +154,24 @@ def test_nullable_reference_is_filled_without_inventing_nonnullable_values(schem
     assert "nonnullable_ref" not in result.data["items"][0]
 
 
-def test_cli_document_failure_keeps_contract_taxonomy_and_no_record(tmp_path, schema, payload):
-    from psweep.cli.commands_extract import _extract_one_document
-
+def test_workflow_document_failure_keeps_contract_taxonomy_and_no_record(
+    tmp_path, schema, payload,
+):
+    """The shared worker never publishes contract-invalid payloads."""
     document = tmp_path / "document.txt"
     document.write_text("Document evidence")
+    schema_path = tmp_path / "schema.json"
+    schema_path.write_text(json.dumps(schema))
+    metadata = SchemaMetadata(schema_path)
     extractor = DocumentExtractor(api_key="test-key", model="gpt-4o-mini")
     del payload["items"][0]["quote"]
     with patch.object(extractor.client, "extract", return_value={"data": payload, "cost": 0.0}):
         result = _extract_one_document(
             document, extractor=extractor, loaded_schema=schema,
-            page_range_map={}, section_text_map={}, source_context_map={},
-            file_output_dirs={}, output_dir=tmp_path, category="synthetic",
-            actual_model="gpt-4o-mini", enable_validation=False,
-            runtime_artifact=None, run_id="run://contract", provider="openai",
-            schema_path=tmp_path / "schema.json",
+            schema_metadata=metadata, schema_path=schema_path,
+            output_path=tmp_path / "document.json", model="gpt-4o-mini",
+            run_id="run://contract", provider="openai",
+            input_fingerprint="a" * 64,
         )
     assert result["success"] is False
     assert result["errors"][0]["category"] == "schema_contract"
@@ -198,7 +220,16 @@ def test_context_truncation_survives_canonical_record(tmp_path, schema, payload)
         result = extractor.extract("long source text", schema)
     assert client.call_args.args[0] == "long "
     assert any("truncated" in note for note in result.validation_notes)
-    record, _ = build_extraction_record(doc_path=tmp_path / "doc.txt", result=result, model="gpt-4o-mini", provider="openai")
+    document = tmp_path / "doc.txt"
+    document.write_text("long source text")
+    schema_path = tmp_path / "schema.json"
+    schema_path.write_text(json.dumps(schema))
+    record, count = build_extraction_record(
+        doc_path=document, result=result, model="gpt-4o-mini",
+        provider="openai",
+        schema_metadata=SchemaMetadata(schema_path),
+    )
+    assert count == record["item_count"] == 1
     assert record["processing_metrics"]["coverage"] == {
         "input_characters": 16, "extracted_characters": 5, "context_truncated": True,
     }
@@ -254,9 +285,17 @@ def test_mocked_page_limited_extract_compiles_without_private_inputs(tmp_path, m
     pages_csv = tmp_path / "pages.csv"
     pages_csv.write_text("file_path,start_page,end_page\ndocument.pdf,5,9\n")
     extracted = tmp_path / "extracted"
-    monkeypatch.setattr("psweep.pipeline.detect_api_provider", lambda: ("openai", True, None))
     seen = []
-    monkeypatch.setattr("psweep.extraction.document_utils.extract_text_from_document", lambda doc, page_range=None: seen.append(page_range) or "Source body")
+
+    def parse_document(_doc, *, page_range=None, return_meta=False, **_kwargs):
+        seen.append(page_range)
+        text = "Source body"
+        return (text, {"page_range": page_range}) if return_meta else text
+
+    monkeypatch.setattr(
+        "psweep.extraction.document_utils.extract_text_from_document",
+        parse_document,
+    )
     monkeypatch.setattr("psweep.extraction.llm_client.LLMClient.extract", lambda *args: {"data": deepcopy(data), "cost": 0.0})
     run = extract_documents(documents, schema_path, output_dir=extracted, provider="openai", pages_csv=pages_csv)
     assert run.successful == 1 and run.failed == 0
@@ -281,22 +320,34 @@ def test_mocked_page_limited_extract_compiles_without_private_inputs(tmp_path, m
 
 
 @pytest.mark.parametrize("scope", ["pages", "sections"])
-def test_cli_selected_input_scope_survives_record(tmp_path, schema, payload, scope):
-    from psweep.cli.commands_extract import _extract_one_document
-
+def test_workflow_selected_input_scope_survives_record(
+    tmp_path, schema, payload, scope,
+):
+    """Selected pages and sections retain limitations and source text."""
     document = tmp_path / "document.txt"
     document.write_text("Complete source document")
+    schema_path = tmp_path / "schema.json"
+    schema_path.write_text(json.dumps(schema))
+    metadata = SchemaMetadata(schema_path)
     extractor = DocumentExtractor(api_key="test-key", model="gpt-4o-mini")
-    with patch.object(extractor.client, "extract", return_value={"data": payload, "cost": 0.0}):
+    with patch.object(
+        extractor.client, "extract",
+        return_value={"data": payload, "cost": 0.0},
+    ) as client:
         result = _extract_one_document(
             document, extractor=extractor, loaded_schema=schema,
-            page_range_map={document: (5, 9)} if scope == "pages" else {},
-            section_text_map={document: "Selected section"} if scope == "sections" else {},
-            source_context_map={}, file_output_dirs={}, output_dir=tmp_path,
-            category="synthetic", actual_model="gpt-4o-mini", enable_validation=False,
-            runtime_artifact=None, run_id="run://contract", provider="openai",
-            schema_path=tmp_path / "schema.json",
+            schema_metadata=metadata, schema_path=schema_path,
+            output_path=tmp_path / "document.json", model="gpt-4o-mini",
+            run_id="run://contract", provider="openai",
+            input_fingerprint="a" * 64,
+            page_range=(5, 9) if scope == "pages" else None,
+            section_text="Selected section" if scope == "sections" else None,
         )
+    expected_text = (
+        "Selected section" if scope == "sections"
+        else "Complete source document"
+    )
+    assert client.call_args.args[0] == expected_text
     assert result["success"] is True
     record = json.loads((tmp_path / "document.json").read_text())
     coverage = record["processing_metrics"]["coverage"]
@@ -318,7 +369,6 @@ def test_pipeline_does_not_write_invalid_extraction(tmp_path, monkeypatch, schem
     documents.mkdir()
     (documents / "doc.txt").write_text("Source text")
     output = tmp_path / "output"
-    monkeypatch.setattr("psweep.pipeline.detect_api_provider", lambda: ("openai", True, None))
     monkeypatch.setattr("psweep.extraction.llm_client.LLMClient.extract", lambda *args: {"data": {"items": []}, "cost": 0.0})
     result = extract_documents(documents, schema_path, output_dir=output, provider="openai")
     assert result.failed == 1

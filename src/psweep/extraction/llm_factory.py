@@ -1,46 +1,20 @@
-"""Unified per-stage LLM model resolver / factory.
+"""Resolve model names, providers, and credentials for every LLM stage.
 
-One place that turns a stage's ``model`` config value into a configured
-``LLMClient``. Every LLM-using stage (extraction, document review, page
-targeting, synthesis) routes through here, so each stage can be pointed at a
-different model for cost/quality control — across any provider.
+Extraction, discovery review, page targeting, QA/QC, and synthesis share
+this boundary. Stage values can be literal model names or string aliases
+from the top-level ``models`` map. Alias names are user-chosen.
 
-The simplest, recommended usage is to name the model directly on each stage::
+Model precedence is stage value (alias or literal), explicit caller
+fallback, environment-configured model, then ``DEFAULT_MODEL``.
 
-    processing:
-      model: gpt-5                 # extraction model
-    discovery:
-      document_review:
-        model: gpt-4o-mini         # a cheaper model for bulk curation
+An explicit supported provider wins over name-based detection. ``None``
+and ``"auto"`` retain configured/heuristic resolution, including custom
+Azure deployment names. Credentials come from the configured provider
+when it matches, otherwise only from the target's ambient environment.
+A missing target key remains ``None``, never another provider's key.
 
-Optionally, define reusable named aliases once in a top-level ``models`` block
-and reference an alias wherever a model is expected. The alias names are entirely
-user-chosen (there are no reserved names)::
-
-    models:
-      fast: gpt-4o-mini
-      accurate: gpt-5
-    processing:
-      model: accurate              # alias, OR an explicit model string
-
-Model-name resolution precedence (``resolve_model_name``):
-
-1. ``stage_value`` — an alias lookup (``stage_value in models``) when it matches
-   a defined alias, otherwise treated as a literal model name.
-2. ``default_model`` — an explicit fallback the caller supplies (rarely needed).
-3. ``llm_config["model"]`` — the env/``.env``-derived default.
-4. ``DEFAULT_MODEL`` (``"gpt-4o-mini"``) as the final floor.
-
-Credential threading & the one honest limitation
--------------------------------------------------
-``get_config().llm_config`` holds credentials for exactly ONE provider (the one
-configured in the environment). Choosing different models of the SAME provider
-(e.g. two Azure deployments, or two OpenAI models) is fully supported and is the
-intended use. If a stage's model names a *different* provider than the configured
-one (e.g. a ``claude-*`` model while the run is configured for Azure), its API
-key can only come from the ambient environment; when that key is absent,
-``api_key`` is ``None`` and LiteLLM will error at call time. Cross-provider
-per-stage selection is therefore best-effort, not guaranteed.
+A configured ``base_url`` routes all models through that proxy with its
+configured key, regardless of provider override or model name.
 """
 
 from __future__ import annotations
@@ -49,35 +23,22 @@ import logging
 import os
 from typing import Any
 
+logger = logging.getLogger(__name__)
+
 DEFAULT_MODEL = "gpt-4o-mini"
 
-# Maximum document characters sent to the LLM in a single extraction. The one
-# source of truth for the ``max_context`` default across the CLI, the public
-# ``pipeline`` API, the multi-model validator, and ``DocumentExtractor`` — so
-# ``extract`` and ``validate`` operate on the same context window (see
-# tests/test_defaults_single_source.py).
+# Single source for the character limit shared by CLI/API extraction,
+# multi-model validation, and DocumentExtractor. See the defaults tests.
 DEFAULT_MAX_CONTEXT = 600000
 
-# Canonical set of LLM providers the pipeline recognizes at runtime. This is the
-# SINGLE SOURCE OF TRUTH for provider names: ``model_registry`` imports it, and
-# it must cover every value ``detect_provider`` can return. Keep it in sync with
-# ``detect_provider`` (below) and ``_PROVIDER_ENV_KEY`` (a subset — only the
-# providers whose ambient env-var name is known).
-#
-# Note: the extraction config allows an extra ``"auto"`` sentinel (validated in
-# ``runtime_config_loader``); that is a *config-level* directive resolved before
-# a run, not a runtime provider, so it deliberately does NOT appear here.
+# Canonical runtime providers, covering every detect_provider result.
+# "auto" requests resolution rather than naming a runtime provider.
 KNOWN_PROVIDERS: frozenset[str] = frozenset(
     {"openai", "azure", "anthropic", "gemini", "meta", "mistral"}
 )
 
-# Provider -> ambient env var holding that provider's API key. Used only on the
-# cross-provider fallback path (resolved model's provider != configured one).
-# Keys are a subset of ``KNOWN_PROVIDERS``: only providers with a well-known,
-# canonical env-var name are listed. "meta" is intentionally omitted — Meta's
-# Llama models have no single canonical key (LiteLLM's ``meta_llama`` provider
-# reads ``LLAMA_API_KEY``, but Llama is more commonly reached through a proxy or
-# another host), so we do not guess one here and fall back to ``api_key=None``.
+# Target provider's ambient key, used only across providers. Meta/Llama
+# has no canonical host/key; use configured credentials or a proxy.
 _PROVIDER_ENV_KEY: dict[str, str] = {
     "openai": "OPENAI_API_KEY",
     "anthropic": "ANTHROPIC_API_KEY",
@@ -91,8 +52,8 @@ def _get_llm_config(llm_config: dict[str, Any] | None) -> dict[str, Any]:
     """Return the given llm_config or lazily load the global one."""
     if llm_config is not None:
         return llm_config
-    # Lazy import avoids an import cycle (config.py never imports this module).
-    from ..utils.config import get_config
+    # Config imports this factory when selecting its OpenAI default.
+    from psweep.utils.config import get_config  # noqa: PLC0415
 
     return get_config().llm_config or {}
 
@@ -104,18 +65,12 @@ def resolve_model_name(
     llm_config: dict[str, Any] | None = None,
     default_model: str | None = None,
 ) -> str:
-    """Resolve a stage's ``model`` config value to a concrete model name.
-
-    ``stage_value`` may be a named alias (a key in ``models``) or an explicit
-    model string. See the module docstring for the full precedence chain.
-    """
+    """Resolve a model alias or literal using shared precedence."""
     models = models or {}
     cfg = _get_llm_config(llm_config)
 
     if stage_value:
-        if stage_value in models:
-            return models[stage_value]
-        return stage_value
+        return models.get(stage_value, stage_value)
     if default_model:
         return models.get(default_model, default_model)
     if cfg.get("model"):
@@ -124,35 +79,24 @@ def resolve_model_name(
 
 
 def detect_provider(model: str) -> str:
-    """Detect an LLM provider from a model name (domain-neutral, best-effort).
+    """Detect a provider from ordered model markers, as a fallback only.
 
-    This is the single source of truth for name-based provider detection; both
-    the factory and ``LLMClient`` use it, so there is only one place that maps
-    model names to providers.
-
-    Detection is heuristic and only a *fallback*: the pipeline normally sets the
-    provider explicitly (``get_config().llm_config['provider']`` is always
-    populated from the environment). Azure custom deployment names are arbitrary
-    and carry no reliable marker, so the correct signal for Azure is an explicit
-    ``provider: azure`` — not a name sniff. Only the canonical ``azure/`` prefix
-    is treated as an Azure marker here.
+    Both the factory and LLMClient use this heuristic. Azure deployments
+    have arbitrary names, so explicit provider/configuration wins over
+    detection; only ``azure/`` identifies Azure by name.
     """
-    m = model.lower()
-    if "azure/" in m:
-        return "azure"
-    if "claude" in m:
-        return "anthropic"
-    if "gemini" in m or "gemma" in m:
-        return "gemini"
-    if "gpt" in m or "o1" in m or "o3" in m:
-        return "openai"
-    if "llama" in m:
-        return "meta"
-    if "mistral" in m or "codestral" in m:
-        return "mistral"
+    name = model.lower()
+    for provider, markers in (
+        ("azure", ("azure/",)),
+        ("anthropic", ("claude",)),
+        ("gemini", ("gemini", "gemma")),
+        ("openai", ("gpt", "o1", "o3")),
+        ("meta", ("llama",)),
+        ("mistral", ("mistral", "codestral")),
+    ):
+        if any(marker in name for marker in markers):
+            return provider
     return "openai"
-
-
 
 
 def resolve_llm_kwargs(
@@ -161,15 +105,29 @@ def resolve_llm_kwargs(
     models: dict[str, str] | None = None,
     llm_config: dict[str, Any] | None = None,
     default_model: str | None = None,
+    provider: str | None = None,
 ) -> dict[str, Any]:
-    """Resolve the kwargs needed to construct an ``LLMClient`` for a stage.
+    """Resolve LLM client kwargs using one provider/credential boundary.
 
-    Returns ``{model, api_key, provider, base_url?, azure_endpoint?, azure_api_version?}``.
+    A supported explicit ``provider`` overrides name detection. ``None``
+    or ``"auto"`` retains configured/heuristic resolution. Credentials
+    always belong to the target provider, never another configured one.
 
-    When ``LLM_BASE_URL`` is configured, all calls are routed through that
-    endpoint regardless of model name. The caller supplies model names exactly
-    as the endpoint advertises them.
+    A configured ``base_url`` retains proxy routing and its configured
+    key regardless of provider/model name. Azure endpoint/version apply
+    only to direct Azure routing.
     """
+    if provider is not None:
+        if not isinstance(provider, str) or provider.lower() not in (
+            KNOWN_PROVIDERS | {"auto"}
+        ):
+            message = "provider must be 'auto' or one of: " + ", ".join(
+                sorted(KNOWN_PROVIDERS)
+            )
+            raise ValueError(message)
+        provider = provider.lower()
+        if provider == "auto":
+            provider = None
     cfg = _get_llm_config(llm_config)
     resolved_model = resolve_model_name(
         stage_value,
@@ -178,39 +136,41 @@ def resolve_llm_kwargs(
         default_model=default_model,
     )
 
-    # Endpoint-override mode: a generic OpenAI-compatible proxy is configured.
-    # Route everything through it — no provider-specific logic applies.
+    # Proxy credentials/routing apply regardless of provider or model.
     if cfg.get("base_url"):
         return {
             "model": resolved_model,
             "api_key": cfg.get("api_key"),
-            "provider": cfg.get("provider", "openai"),
+            "provider": provider or cfg.get("provider") or "openai",
             "base_url": cfg["base_url"],
         }
 
     cfg_provider = cfg.get("provider")
-    target = detect_provider(resolved_model)
+    target = provider or detect_provider(resolved_model)
 
-    # Azure deployment names usually carry no azure/ marker, so provider
-    # detection misreads them as "openai". When the environment is configured for
-    # Azure and the model shows no *foreign* marker, treat it as an Azure
-    # deployment. This — not a name sniff — is how Azure deployments are honored.
-    if cfg_provider == "azure" and target in ("openai", "azure"):
+    # Arbitrary Azure deployment names usually look like OpenAI models.
+    # Use configured Azure only without an explicit provider override.
+    if (
+        provider is None
+        and cfg_provider == "azure"
+        and target in {"openai", "azure"}
+    ):
         target = "azure"
 
     if cfg_provider and target == cfg_provider:
-        # Same provider as configured — the common case. Thread the configured
-        # credentials (identical to today's behavior).
         return {
             "model": resolved_model,
             "api_key": cfg.get("api_key"),
-            "provider": cfg_provider,
-            "azure_endpoint": cfg.get("azure_endpoint"),
-            "azure_api_version": cfg.get("azure_api_version"),
+            "provider": target,
+            "azure_endpoint": cfg.get("azure_endpoint")
+            if target == "azure"
+            else None,
+            "azure_api_version": cfg.get("azure_api_version")
+            if target == "azure"
+            else None,
         }
 
-    # Cross-provider: the model names a provider whose creds are not in
-    # llm_config. Best-effort fallback to that provider's ambient env key.
+    # Cross-provider: use only the target's ambient key and settings.
     env_key = _PROVIDER_ENV_KEY.get(target)
     api_key = os.getenv(env_key) if env_key else None
     if target == "gemini" and not api_key:
@@ -237,8 +197,9 @@ def build_llm_client(
     llm_config: dict[str, Any] | None = None,
     default_model: str | None = None,
 ) -> Any:
-    """Build a configured ``LLMClient`` for a stage's ``model`` value."""
-    from .llm_client import LLMClient
+    """Build a configured LLMClient for a stage's model value."""
+    # LLMClient imports model defaults and detection from this module.
+    from .llm_client import LLMClient  # noqa: PLC0415
 
     kwargs = resolve_llm_kwargs(
         stage_value,
@@ -246,8 +207,11 @@ def build_llm_client(
         llm_config=llm_config,
         default_model=default_model,
     )
-    if kwargs.get("provider") == "azure" and kwargs.get("model") == DEFAULT_MODEL:
-        logging.warning(
+    if (
+        kwargs.get("provider") == "azure"
+        and kwargs.get("model") == DEFAULT_MODEL
+    ):
+        logger.warning(
             "Provider resolved to azure but model is still '%s'. "
             "Pin your model in run.yaml models: block or pass --model.",
             DEFAULT_MODEL,

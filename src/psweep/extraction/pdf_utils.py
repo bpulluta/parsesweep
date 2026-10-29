@@ -1,12 +1,14 @@
-"""PDF extraction utilities using LLMs."""
+"""PDF text extraction with native parsers and scoped OCR fallback."""
 
+import contextlib
 import logging
+import os
 import re
 from pathlib import Path
 from typing import Optional
 
 try:
-    import pymupdf  # PyMuPDF - fallback
+    import pymupdf
 
     PYMUPDF_AVAILABLE = True
 except ImportError:
@@ -22,90 +24,158 @@ except ImportError:
     PdfReader = None
 
 logger = logging.getLogger(__name__)
+_MIN_NATIVE_CHARS = 500
 
 
-def _extract_with_ocr(pdf_path: Path) -> str:
-    """
-    Extract text from image-based PDF using PyMuPDF's built-in OCR (Tesseract).
+def _validate_page_range(page_range: tuple) -> None:
+    """Reject malformed or reversed bounds before opening a parser."""
+    message = "page_range must contain ordered integer page bounds"
+    if not isinstance(page_range, (tuple, list)):
+        raise TypeError(message)
+    try:
+        start, end = page_range
+    except ValueError as exc:
+        raise ValueError(message) from exc
+    if type(start) is not int or type(end) is not int or start > end:
+        raise ValueError(message)
 
-    PyMuPDF 1.23+ has built-in OCR support via get_textpage_ocr().
-    This is used as a fallback when normal text extraction yields insufficient text.
 
-    Parameters
-    ----------
-    pdf_path : Path
-        Path to the PDF file
+def _selected_pages(page_count: int, page_range: Optional[tuple]) -> range:
+    """Return one bounded selection for every PDF parser."""
+    if page_range is None:
+        return range(page_count)
+    _validate_page_range(page_range)
+    start, end = max(1, page_range[0]), min(page_count, page_range[1])
+    if start > end:
+        message = f"page_range does not intersect the {page_count}-page PDF"
+        raise ValueError(message)
+    return range(start - 1, end)
 
-    Returns
-    -------
-    str
-        Extracted text via OCR
-    """
+
+def validate_pdf_scope(pdf_path: Path, page_range: tuple) -> tuple[int, int]:
+    """Check actual PDF bounds without parsing text or starting OCR."""
+    if PYMUPDF_AVAILABLE:
+        with pymupdf.open(str(pdf_path)) as document:
+            pages = _selected_pages(len(document), page_range)
+    elif PYPDF_AVAILABLE:
+        with Path(pdf_path).open("rb") as handle:
+            pages = _selected_pages(len(PdfReader(handle).pages), page_range)
+    else:
+        message = "No PDF parser is available to validate selected pages"
+        raise RuntimeError(message)
+    return pages.start + 1, pages.stop
+
+
+def _scope_meta(
+    page_count: int | None,
+    pages: list[int],
+    used_ocr: bool = False,
+) -> dict:
+    """Describe actual parser coverage, including skipped OCR pages."""
+    return {
+        "used_ocr": used_ocr,
+        "page_count": page_count,
+        "page_range": (pages[0], pages[-1]) if pages else None,
+        "extracted_pages": pages,
+    }
+
+
+@contextlib.contextmanager
+def _quiet_tesseract():
+    """Restore stderr and close handles after OCR or failure."""
+    with Path(os.devnull).open("w", encoding="utf-8") as null_device:
+        old_stderr = os.dup(2)
+        try:
+            os.dup2(null_device.fileno(), 2)
+            yield
+        finally:
+            try:
+                os.dup2(old_stderr, 2)
+            finally:
+                os.close(old_stderr)
+
+
+def _extract_with_ocr(
+    pdf_path: Path,
+    page_range: Optional[tuple] = None,
+    return_meta: bool = False,
+):
+    """Extract raw OCR text from the selected pages, best-effort."""
+    text, meta = "", _scope_meta(None, [])
     if not PYMUPDF_AVAILABLE:
         logger.warning("PyMuPDF not available for OCR extraction")
-        return ""
-
+        return (text, meta) if return_meta else text
     try:
-        import os
+        doc = pymupdf.open(str(pdf_path))
+    except Exception:
+        logger.exception("Error opening %s for OCR", pdf_path)
+        return (text, meta) if return_meta else text
 
-        text = ""
-        with pymupdf.open(str(pdf_path)) as doc:
-            page_count = len(doc)
-            logger.info(
-                f"🔍 Performing OCR on {page_count} pages (image-based PDF detected)..."
-            )
-
-            # Completely suppress Tesseract stderr warnings
-            # Redirect both Python stderr and system-level stderr
-            null_device = open(os.devnull, "w")
-            old_stderr = os.dup(2)
-            os.dup2(null_device.fileno(), 2)
-
-            try:
-                for page_num in range(page_count):
+    with doc:
+        pages = _selected_pages(len(doc), page_range)
+        extracted, parts = [], []
+        logger.info("Performing OCR on %s selected pages", len(pages))
+        with _quiet_tesseract():
+            for page_num in pages:
+                try:
                     page = doc[page_num]
-                    # Try OCR with PyMuPDF (uses Tesseract if available)
-                    try:
-                        # get_textpage_ocr requires tesseract to be installed
-                        tp = page.get_textpage_ocr()
-                        if tp:
-                            page_text = page.get_text(textpage=tp)
-                            text += page_text + "\n"
-                            logger.debug(
-                                f"  OCR page {page_num + 1}/{page_count}: {len(page_text)} chars"
-                            )
-                    except AttributeError:
-                        # Older PyMuPDF versions or Tesseract not available
-                        logger.warning(
-                            f"OCR not available - PyMuPDF {pymupdf.__version__} may need Tesseract installation"
+                    textpage = page.get_textpage_ocr()
+                    if textpage:
+                        parts.append(
+                            (page.get_text(textpage=textpage) or "") + "\n",
                         )
-                        break
-                    except Exception as e:
-                        # Skip pages that fail OCR (common with poor quality scans)
-                        logger.debug(
-                            f"OCR skipped for page {page_num + 1}: {str(e)[:100]}"
-                        )
-                        continue
-            finally:
-                # Restore system stderr
-                os.dup2(old_stderr, 2)
-                os.close(old_stderr)
-                null_device.close()
+                        extracted.append(page_num + 1)
+                except AttributeError:  # noqa: PERF203 - isolate per-page OCR failures
+                    logger.warning("PyMuPDF OCR requires Tesseract")
+                    break
+                except (OSError, RuntimeError, ValueError) as exc:
+                    # Keep healthy pages when one scan fails OCR.
+                    logger.debug("OCR skipped page %s: %s", page_num + 1, exc)
+        text = "".join(parts)
+        meta = {
+            **_scope_meta(len(doc), extracted, used_ocr=bool(text.strip())),
+            "selected_pages": [page + 1 for page in pages],
+        }
+    return (text, meta) if return_meta else text
 
-        if text:
-            logger.info(
-                f"✓ OCR extraction completed: {len(text):,} characters from {page_count} pages"
+
+def _extract_native(
+    pdf_path: Path,
+    page_range: Optional[tuple],
+    *,
+    use_pypdf: bool = False,
+) -> tuple[str, dict]:
+    """Run either parser with identical selection/failure semantics."""
+    with contextlib.ExitStack() as stack:
+        try:
+            if use_pypdf:
+                handle = stack.enter_context(pdf_path.open("rb"))
+                pages = PdfReader(handle).pages
+            else:
+                pages = stack.enter_context(pymupdf.open(str(pdf_path)))
+        except Exception:
+            logger.exception("Error opening PDF %s", pdf_path)
+            return "", _scope_meta(None, [])
+        selected = _selected_pages(len(pages), page_range)
+        try:
+            text = "".join(
+                (
+                    (
+                        pages[n].extract_text()
+                        if use_pypdf
+                        else pages[n].get_text()
+                    )
+                    or ""
+                )
+                + "\n"
+                for n in selected
             )
-        else:
-            logger.warning(
-                "OCR extraction yielded no text - PDF may have poor quality scans"
+        except Exception:
+            logger.exception(
+                "Error extracting native PDF text from %s", pdf_path
             )
-
-        return text
-
-    except Exception as e:
-        logger.error(f"Error during OCR extraction from {pdf_path}: {e}")
-        return ""
+            return "", _scope_meta(len(pages), [])
+        return text, _scope_meta(len(pages), [n + 1 for n in selected])
 
 
 def extract_text_from_pdf(
@@ -114,176 +184,61 @@ def extract_text_from_pdf(
     return_meta: bool = False,
     ocr_corrections: Optional[list] = None,
 ):
+    """Extract selected pages with native, pypdf, then OCR fallbacks.
+
+    Bounds are 1-indexed and inclusive. Overlapping bounds are clamped;
+    invalid scopes raise ValueError. Every parser honors the scope.
+    ``return_meta`` always returns a pair, including on failure.
+    Metadata describes actual ``page_range``, total ``page_count``, and
+    ``extracted_pages`` (OCR can skip failed pages). OCR also returns
+    ``raw_ocr_text`` for caching before applying current corrections.
     """
-    Extract text from a PDF file with adaptive method selection.
-
-    Strategy:
-
-    1. Use PyMuPDF as the primary extractor - most reliable
-    2. Fall back to pypdf when PyMuPDF is unavailable or yields no text
-    3. OCR fallback (Tesseract via PyMuPDF) for image-based PDFs
-
-    This ensures optimal extraction method is used based on PDF characteristics.
-
-    Parameters
-    ----------
-    pdf_path : Path
-        Path to the PDF file
-    page_range : Optional[tuple]
-        Optional tuple (start_page, end_page) to extract only specific pages (1-indexed)
-    return_meta : bool
-        If True, return ``(text, {"used_ocr": bool})`` so callers
-        can decide whether the (expensive) OCR path ran — used to cache only
-        OCR results and re-extract cheap native PDFs fresh.
-
-    Returns
-    -------
-    str or tuple
-        Extracted text string, or ``(text, meta)`` when ``return_meta`` is True.
-    """
-    text = ""
-    used_ocr = False
     pdf_path = Path(pdf_path)
-
-    # Strategy 1: Use PyMuPDF as primary extractor - most reliable
-    if not text and PYMUPDF_AVAILABLE:
-        try:
-            with pymupdf.open(str(pdf_path)) as doc:
-                page_count = len(doc)
-
-                # Determine page range
-                if page_range:
-                    start_page, end_page = page_range
-                    # Convert to 0-indexed and validate
-                    start_page = max(
-                        0, start_page - 1
-                    )  # Convert 1-indexed to 0-indexed
-                    end_page = min(
-                        page_count, end_page
-                    )  # Ensure within bounds
-                    pages_to_extract = range(start_page, end_page)
-                    logger.debug(
-                        f"Extracting pages {start_page + 1}-{end_page} from {pdf_path.name}"
-                    )
-                else:
-                    pages_to_extract = range(page_count)
-                    logger.debug(
-                        f"Extracting all {page_count} pages from {pdf_path.name}"
-                    )
-
-                for page_num in pages_to_extract:
-                    text += doc[page_num].get_text() + "\n"
-
-                logger.debug(
-                    f"Extracted {len(pages_to_extract)} pages using PyMuPDF from {pdf_path.name}"
-                )
-        except Exception as e:
-            logger.error(
-                f"Error extracting text with PyMuPDF from {pdf_path}: {e}"
-            )
-
-    # Strategy 2: Final fallback to pypdf (when PyMuPDF is unavailable or yielded
-    # no text).
-    if not text and PYPDF_AVAILABLE:
-        if PdfReader is None:
-            logger.error(
-                "No PDF extraction library available. Install PyMuPDF or pypdf."
-            )
-            return ""
-
-        try:
-            with open(pdf_path, "rb") as f:
-                pdf_reader = PdfReader(f)
-                for page_num in range(len(pdf_reader.pages)):
-                    text += pdf_reader.pages[page_num].extract_text() + "\n"
-            logger.debug(
-                f"Extracted {len(pdf_reader.pages)} pages using pypdf from {pdf_path.name}"
-            )
-        except Exception as e:
-            logger.error(
-                f"Error extracting text with pypdf from {pdf_path}: {e}"
-            )
-            return ""
-
-    # Strategy 3: OCR fallback for image-based PDFs
-    # If text extraction yielded very little content, try OCR
-    if (
-        len(text.strip()) < 500
-    ):  # Less than 500 chars indicates image-based PDF
-        logger.warning(
-            f"Very little text extracted from {pdf_path.name} ({len(text)} chars), attempting OCR..."
+    if page_range is not None:
+        _validate_page_range(page_range)
+    text, meta = "", _scope_meta(None, [])
+    if PYMUPDF_AVAILABLE:
+        text, meta = _extract_native(pdf_path, page_range)
+    if not text.strip() and PYPDF_AVAILABLE and PdfReader is not None:
+        fallback_text, fallback_meta = _extract_native(
+            pdf_path,
+            page_range,
+            use_pypdf=True,
         )
-        ocr_text = _extract_with_ocr(pdf_path)
-        if ocr_text and len(ocr_text) > len(text):
-            logger.info(
-                f"✓ OCR extraction successful for {pdf_path.name}, using OCR text"
-            )
-            text = ocr_text
-            used_ocr = True
-        elif not ocr_text:
-            logger.warning(
-                f"⚠️ OCR extraction failed for {pdf_path.name} - PDF may be image-based without searchable text"
-            )
-
-    # Apply OCR-artifact corrections only to text that actually came from OCR.
-    # These heuristics (e.g. capital-O -> C at a word start) are meant for
-    # scan/OCR noise and would corrupt clean digital extractions — turning
-    # "Oil" into "Cil" or "Oakmont" into "Cakmont" — so they must not run on
-    # normally-extracted text.
-    if used_ocr:
-        text = _cleanup_ocr_errors(text, ocr_corrections)
-
-    if return_meta:
-        return text, {"used_ocr": used_ocr}
-    return text
+        if fallback_meta["page_count"] is not None:
+            text, meta = fallback_text, fallback_meta
+    if len(text.strip()) < _MIN_NATIVE_CHARS:
+        logger.warning(
+            "Very little text extracted from %s; attempting scoped OCR",
+            pdf_path.name,
+        )
+        ocr_text, ocr_meta = _extract_with_ocr(
+            pdf_path,
+            page_range,
+            return_meta=True,
+        )
+        if ocr_text.strip() and len(ocr_text) > len(text):
+            text = _cleanup_ocr_errors(ocr_text, ocr_corrections)
+            meta = {**ocr_meta, "raw_ocr_text": ocr_text}
+    return (text, meta) if return_meta else text
 
 
 def extract_pages_text(pdf_path: Path) -> list[str]:
-    """Return the plain text of each page as a list (index 0 = page 1).
-
-    Used by page targeting to score/locate the pages that hold a target section
-    without loading the whole document into the extraction context. Best-effort:
-    returns an empty list if PyMuPDF is unavailable or the file can't be opened.
-    """
+    """Return plain text per page (index 0 = page 1), best-effort."""
     if not PYMUPDF_AVAILABLE:
         logger.warning("PyMuPDF not available; cannot read per-page text")
         return []
     try:
         with pymupdf.open(str(pdf_path)) as doc:
             return [page.get_text() or "" for page in doc]
-    except Exception as e:  # noqa: BLE001 - caller falls back to full extraction
-        logger.error(f"Error reading per-page text from {pdf_path}: {e}")
+    except Exception:
+        logger.exception("Error reading per-page text from %s", pdf_path)
         return []
 
 
 def _cleanup_ocr_errors(text: str, rules: Optional[list] = None) -> str:
-    """Apply configured OCR-artifact correction rules to OCR-derived text.
-
-    ``rules`` is a list of ``{"pattern", "replacement", "ignore_case"?}``
-    objects supplied via ``extraction.ocr_corrections`` in the run config and
-    applied in order. When no rules are configured this is a no-op: OCR
-    corrections are domain-specific (e.g. scanned air-emissions permits) and are
-    opted into per domain rather than baked into this universal extractor.
-
-    Parameters
-    ----------
-    text : str
-        Raw OCR-extracted text.
-    rules : list, optional
-        Ordered correction rules; see ``extraction.ocr_corrections``.
-
-    Returns
-    -------
-    str
-        Text with the configured corrections applied (unchanged if none).
-    """
-    if not rules:
-        return text
-
-    for rule in rules:
-        pattern = rule["pattern"]
-        replacement = rule["replacement"]
+    """Apply ordered configured corrections to OCR text only."""
+    for rule in rules or []:
         flags = re.IGNORECASE if rule.get("ignore_case") else 0
-        text = re.sub(pattern, replacement, text, flags=flags)
-
+        text = re.sub(rule["pattern"], rule["replacement"], text, flags=flags)
     return text

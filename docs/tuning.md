@@ -76,9 +76,10 @@ extraction:
 - **Limit a test run** with `-n 5` on `extract` to iterate quickly before a
   full pass.
 
-Cached work is reused automatically: `extract` skips documents that already
-have output JSON. Pass `--fresh` to force a re-run after you change the schema,
-model tier, or page settings.
+Validated work is reused automatically: matching source/schema/settings and
+record-byte evidence skip model calls. Source, model, scope, or schema changes
+invalidate reuse; malformed or old unverifiable JSON is re-extracted. `--fresh`
+forces a whole-output reset after preflight, rebuilding only the selected subset.
 
 ## Compilation
 
@@ -197,8 +198,11 @@ separate. Publication locks reject concurrent corpus writers; journal recovery
 restores interrupted discovery curated/provenance swaps on the next writer.
 Do not treat that small protocol as a general pipeline transaction.
 
-Extraction skips existing output JSON by default. `--fresh` bypasses discovery
-checkpoints and enabled search cache, and re-extracts existing JSON:
+Extraction validates reuse evidence instead of trusting JSON existence.
+`extract --fresh` resets its entire resolved output after successful preflight;
+with a limit/filter, only that subset is rebuilt. Invalid input/schema/scope,
+missing required credentials, or overlapping paths preserve existing output.
+`run --fresh` also bypasses discovery checkpoints and enabled search cache:
 
 ```bash
 pixi run psweep extract --config config/my_domain/run.yaml --fresh
@@ -210,9 +214,11 @@ OCR cache identity is separate from existing output JSON: it uses
 source/text digests must match; partial or stale pairs are misses, metadata is
 replaced last, and old stem-only caches are not reused. LLM review sidecars use
 `.review/<filename>.json`; curation carries these full-name pairs/sidecars.
-Native extraction, OCR correction rules, and `.pages/` targeting behavior are
-unchanged. Delete `.text/` or `.pages/` for a cold OCR or targeting run; `--fresh`
-is not a new OCR-rule invalidation mechanism.
+Raw OCR is cached before current correction rules are applied, so changing
+rules does not repeat OCR. Old corrected OCR caches are misses. `.pages/` and
+`.sections/` products verify source content and resolved model/settings; full-name
+section pairs also validate their text digest. Delete these directories for a
+cold OCR/targeting run; they are separate from record reuse.
 
 See the [Configuration Reference](config-reference.md) for the full defaults
 table and the [Command Reference](commands/index.md) for every option.

@@ -16,13 +16,13 @@ import math
 import os
 import shutil
 import socket
-import tempfile
 import uuid
 from dataclasses import dataclass, fields, is_dataclass
 from pathlib import Path
 from collections.abc import Iterator, Mapping
 
 from psweep.extraction.document_utils import text_cache_paths
+from psweep.utils.file_io import atomic_write, atomic_json
 
 if os.name == "nt":
     import msvcrt
@@ -85,47 +85,6 @@ def resolve_publication_paths(
         "run-download_index.csv" if run == root else "download_index.csv"
     )
     return PublicationPaths(documents, manifest, root, curated, index)
-
-
-def atomic_write(
-    path: Path, content: str | bytes, *, prefix: str | None = None
-) -> None:
-    """Replace a UTF-8 or binary file after flushing its same-
-    directory staging file.
-    """
-    path = Path(path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary: Path | None = None
-    try:
-        with tempfile.NamedTemporaryFile(
-            mode="wb",
-            dir=path.parent,
-            prefix=prefix or f".{path.name}-",
-            delete=False,
-        ) as handle:
-            temporary = Path(handle.name)
-            handle.write(
-                content.encode("utf-8")
-                if isinstance(content, str)
-                else content
-            )
-            handle.flush()
-            os.fsync(handle.fileno())
-        temporary.replace(path)
-    finally:
-        if temporary is not None:
-            temporary.unlink(missing_ok=True)
-
-
-def atomic_json(
-    path: Path, payload: object, *, prefix: str | None = None
-) -> None:
-    """Atomically publish finite JSON through a same-directory file."""
-    atomic_write(
-        path,
-        json.dumps(payload, indent=2, sort_keys=True, allow_nan=False),
-        prefix=prefix,
-    )
 
 
 def _exists(path: Path) -> bool:

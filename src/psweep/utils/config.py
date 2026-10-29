@@ -84,35 +84,44 @@ class Config:
         #      Works with any proxy (LiteLLM, OpenRouter, Azure AI Foundry, vLLM, …).
         #      Set this + LLM_API_KEY to route all calls through a single endpoint.
         #   2–5. Direct provider keys (Azure, Anthropic, Gemini, OpenAI).
-        if "LLM_BASE_URL" in env_vars and "LLM_API_KEY" in env_vars:
+        if env_vars.get("LLM_BASE_URL"):
             config["provider"] = "openai"  # OpenAI-compatible wire format
             config["model"] = env_vars.get("LLM_MODEL")
-            config["api_key"] = env_vars["LLM_API_KEY"]
+            config["api_key"] = env_vars.get("LLM_API_KEY")
             config["base_url"] = env_vars["LLM_BASE_URL"]
-        elif "AZURE_OPENAI_API_KEY" in env_vars and (
-            "AZURE_OPENAI_MODEL" in env_vars
-            or "AZURE_OPENAI_ENDPOINT" in env_vars
+        elif any(
+            env_vars.get(key)
+            for key in (
+                "AZURE_OPENAI_API_KEY",
+                "AZURE_OPENAI_MODEL",
+                "AZURE_OPENAI_ENDPOINT",
+            )
         ):
             config["provider"] = "azure"
             config["model"] = env_vars.get("AZURE_OPENAI_MODEL")
-            config["api_key"] = env_vars["AZURE_OPENAI_API_KEY"]
+            config["api_key"] = env_vars.get("AZURE_OPENAI_API_KEY")
             config["azure_endpoint"] = env_vars.get("AZURE_OPENAI_ENDPOINT")
             config["azure_api_version"] = env_vars.get(
                 "AZURE_OPENAI_API_VERSION", "2024-02-15-preview"
             )
-        elif "ANTHROPIC_API_KEY" in env_vars:
+        elif env_vars.get("ANTHROPIC_API_KEY") or env_vars.get(
+            "ANTHROPIC_MODEL"
+        ):
             config["provider"] = "anthropic"
             config["model"] = env_vars.get(
                 "ANTHROPIC_MODEL", "claude-3.5-sonnet"
             )
-            config["api_key"] = env_vars["ANTHROPIC_API_KEY"]
-        elif "GEMINI_API_KEY" in env_vars or "GOOGLE_API_KEY" in env_vars:
+            config["api_key"] = env_vars.get("ANTHROPIC_API_KEY")
+        elif any(
+            env_vars.get(key)
+            for key in ("GEMINI_API_KEY", "GOOGLE_API_KEY", "GEMINI_MODEL")
+        ):
             config["provider"] = "gemini"
             config["model"] = env_vars.get("GEMINI_MODEL", "gemini-1.5-pro")
             config["api_key"] = env_vars.get("GEMINI_API_KEY") or env_vars.get(
                 "GOOGLE_API_KEY"
             )
-        elif "OPENAI_API_KEY" in env_vars:
+        elif env_vars.get("OPENAI_API_KEY") or env_vars.get("OPENAI_MODEL"):
             config["provider"] = "openai"
             # Single source of truth for the default model. Imported lazily:
             # ``llm_factory`` imports ``get_config`` (also lazily, at call time),
@@ -120,10 +129,14 @@ class Config:
             from ..extraction.llm_factory import DEFAULT_MODEL
 
             config["model"] = env_vars.get("OPENAI_MODEL", DEFAULT_MODEL)
-            config["api_key"] = env_vars["OPENAI_API_KEY"]
+            config["api_key"] = env_vars.get("OPENAI_API_KEY")
 
         if config["provider"]:
-            base_url_suffix = f", base_url={config['base_url']}" if config.get("base_url") else ""
+            base_url_suffix = (
+                f", base_url={config['base_url']}"
+                if config.get("base_url")
+                else ""
+            )
             logger.info(
                 f"Loaded LLM config: provider={config['provider']}, model={config['model']}{base_url_suffix}"
             )

@@ -367,7 +367,6 @@ _ALLOWED_SECTION_FIELDS = {
         "pages",           # unified block (csv + auto_locate); normalized to pages_csv / page_targeting internally
         "pages_csv",       # internal (set by _normalize_pages_block or CLI --pages-csv)
         "page_targeting",  # internal (set by _normalize_pages_block)
-        "profile",
         "provider",
         "model",
         "limit",
@@ -1383,6 +1382,10 @@ def _validate_extraction_section_schema(extraction: dict[str, Any]) -> None:
     types and ranges are enforced.
     """
 
+    if "profile" in extraction:
+        message = "extraction.profile is retired; remove this inert setting."
+        raise RuntimeConfigError(message)
+
     def _require_positive_int(name: str, value: Any) -> None:
         if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
             raise RuntimeConfigError(
@@ -1494,12 +1497,12 @@ def _validate_page_targeting_block(pt: Any) -> None:
         raise RuntimeConfigError(
             "pages.auto_locate.model must be a string"
         )
-    if pt.get("keywords") is not None and not isinstance(
-        pt["keywords"], list
+    if pt.get("keywords") is not None and (
+        not isinstance(pt["keywords"], list)
+        or any(not isinstance(keyword, str) for keyword in pt["keywords"])
     ):
-        raise RuntimeConfigError(
-            "pages.auto_locate.keywords must be a list"
-        )
+        message = "pages.auto_locate.keywords must be a list of strings"
+        raise RuntimeConfigError(message)
     if pt.get("save_discovered") is not None and not isinstance(
         pt["save_discovered"], bool
     ):
@@ -2444,7 +2447,6 @@ _FIELD_MAP: dict[str, str] = {
     "pages": "pages",
     "page_targeting": "page_targeting",
     "ocr_corrections": "ocr_corrections",
-    "profile_name": "profile",
     "provider": "provider",
     "model": "model",
     "limit": "limit",
@@ -2520,6 +2522,8 @@ def resolve_command_config(
 
     if section_name == "discovery":
         _validate_discovery_section_schema(section)
+    elif section_name == "extraction":
+        _validate_extraction_section_schema(section)
     warnings = _validate_section_keys(section_name, section, strict=strict)
     merged, sources = _merge_config_fields(
         section_name=section_name,

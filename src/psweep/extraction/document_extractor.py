@@ -1,15 +1,7 @@
-"""
-Universal document extractor for structured data extraction.
+"""Schema-driven extraction with measured usage and scope limits.
 
-Architecture:
-
-1. OpenAI Structured - Fast, accurate extraction with schema-driven parsing
-2. Multi-Model QA/QC - Validates results using multiple AI models (separate command)
-
-Supports any document type with a defined JSON schema - fully domain-agnostic.
-
-Cost: ~$0.002-0.004 per document (varies by length and model)
-Accuracy: 90%+ on validation set
+Regular extraction is single-model. Multi-model QA/QC runs separately.
+Structural validation does not certify source grounding or accuracy.
 """
 
 import logging
@@ -33,12 +25,14 @@ class ExtractionResult:
 
     data: Dict[str, Any]
     completeness_score: float  # 0-1 score based on fields populated
-    cost: float
+    cost: float | None
     processing_time: float
     validation_notes: List[str]
     validation_report: Optional[Any] = None  # Optional QA/QC validation report
     input_tokens: Optional[int] = None  # Prompt tokens (from provider usage)
-    output_tokens: Optional[int] = None  # Completion tokens (from provider usage)
+    output_tokens: Optional[int] = (
+        None  # Completion tokens (from provider usage)
+    )
     coverage: Optional[Dict[str, Any]] = None
 
 
@@ -173,12 +167,12 @@ class DocumentExtractor:
         >>>     print("High confidence extraction!")
         """
         start_time = time.time()
-        total_cost = 0.0
         validation_notes = []
+        excerpt, truncated = self.processor.optimize(text)
         coverage = {
             "input_characters": len(text),
-            "extracted_characters": min(len(text), self.max_context_chars),
-            "context_truncated": len(text) > self.max_context_chars,
+            "extracted_characters": len(excerpt),
+            "context_truncated": truncated,
         }
         if coverage["context_truncated"]:
             validation_notes.append(
@@ -192,34 +186,41 @@ class DocumentExtractor:
 
         # Stage 1: LLM Structured Extraction
         logger.info("🤖 Stage 1: LLM Structured Extraction")
-        extraction = self._extract_structured(text, schema)
-        total_cost += extraction["cost"]
-        validated_data = extraction["data"]
+        extraction = self.client.extract(excerpt, schema)
+        try:
+            validated_data = extraction["data"]
 
-        # Reject invalid replies before normalization can hide contract violations.
-        self._validate_payload(validated_data, validator)
+            # Validate before normalization hides contract violations.
+            self._validate_payload(validated_data, validator)
 
-        # Stage 2: Post-extraction sanity checks and normalization
-        validated_data = self.processor.normalize_with_schema(
-            validated_data, schema
-        )
-        validated_data = self.processor.normalize_string_fields(validated_data)
-        self._validate_payload(validated_data, validator)
-        sanity_warnings = self.processor.run_sanity_checks(
-            validated_data, schema_metadata=self.schema_metadata
-        )
-        validation_notes.extend(sanity_warnings)
+            # Stage 2: Post-extraction sanity checks and normalization
+            validated_data = self.processor.normalize_with_schema(
+                validated_data, schema, validator=validator
+            )
+            validated_data = self.processor.normalize_string_fields(
+                validated_data
+            )
+            self._validate_payload(validated_data, validator)
+            sanity_warnings = self.processor.run_sanity_checks(
+                validated_data, schema_metadata=self.schema_metadata
+            )
+            validation_notes.extend(sanity_warnings)
+
+        except Exception as exc:
+            exc.usage = {
+                key: extraction.get(key)
+                for key in ("cost", "input_tokens", "output_tokens")
+            }
+            raise
 
         processing_time = time.time() - start_time
 
-        completeness = self.processor.calculate_completeness(
-            validated_data, validation_notes
-        )
+        completeness = self.processor.calculate_completeness(validated_data)
 
         return ExtractionResult(
             data=validated_data,
             completeness_score=completeness,
-            cost=total_cost,
+            cost=extraction.get("cost"),
             processing_time=processing_time,
             validation_notes=validation_notes,
             validation_report=None,
@@ -239,29 +240,3 @@ class DocumentExtractor:
                 f"Extraction schema validation failed at {path}: {exc.message}"
             )
             raise SchemaValidationError(message) from exc
-
-    def _extract_structured(
-        self, text: str, schema: Dict[str, Any]
-    ) -> Dict[str, Any]:
-        """
-        Extract using LLM structured outputs (provider-agnostic via LLMClient).
-
-        Delegates to LLMClient for API calls and TextProcessor for optimization.
-
-        Parameters
-        ----------
-        text : str
-            Document text to extract from
-        schema : Dict[str, Any]
-            JSON schema for validation
-
-        Returns
-        -------
-        Dict[str, Any]
-            Dict with 'data', 'cost' (USD), and 'input_tokens'/'output_tokens'
-        """
-        # Use text processor to optimize text for extraction
-        text_excerpt, _ = self.processor.optimize(text)
-
-        # Use LLM client for extraction
-        return self.client.extract(text_excerpt, schema)
