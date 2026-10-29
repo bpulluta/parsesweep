@@ -6,9 +6,11 @@ download, enabling 1000+ link automation without manual selection.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+import math
+import re
+from dataclasses import dataclass, replace, field
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import unquote, urlparse
 
 from .models import DiscoveryCandidate, CandidateScore
 
@@ -39,55 +41,13 @@ _FILE_TYPE_SCORES: dict[str, float] = {
     ".exe": -0.30,
 }
 
-# Domain pattern → authority adjustment (additive, clamped later).
-# Patterns are lowercased substring matches against the netloc.
-#
-# These are DOMAIN-NEUTRAL defaults only: official-source boosts (.gov/.edu)
-# and universally low-value sources (forums / marketplaces) for document
-# discovery. Domain-specific authority (e.g. manufacturer or vendor sites)
-# belongs in that domain's config via `link_prioritization.domain_scores`,
-# which is applied identically alongside these defaults.
-_DOMAIN_AUTHORITY_PATTERNS: list[tuple[str, float]] = [
-    # Government and official sources → positive
-    (".gov", 0.15),
-    (".edu", 0.10),
-    # Forums and marketplaces → negative
-    ("ebay.com", -0.20),
-    ("amazon.com", -0.15),
-    ("etsy.com", -0.20),
-    ("aliexpress.com", -0.20),
-    ("reddit.com", -0.15),
-    ("quora.com", -0.15),
-    ("answers.com", -0.15),
-    ("pinterest.com", -0.20),
-    ("slideshare.net", -0.05),
-]
-
-# Generic, domain-neutral "this path looks like a document" keywords used only
-# when a domain supplies no `link_prioritization.keywords` of its own. Domain
-# vocabulary (e.g. manual/spec/datasheet, or ordinance/permit/tariff) belongs
-# in that domain's config, where it is merged with these defaults.
+# Generic document-discovery fallback used only when no ranking keywords
+# are supplied. Explicit domain keywords replace it.
 _DOCUMENT_PATH_KEYWORDS: list[str] = [
     "document",
     "download",
     "guide",
     "report",
-]
-
-# Shopping-page path keywords → negative signal. Domain-neutral defaults; a
-# domain can extend them via `link_prioritization.shopping_path_keywords`, which
-# is unioned with this list (the defaults are always retained).
-_SHOPPING_PATH_KEYWORDS: list[str] = [
-    "cart",
-    "checkout",
-    "buy-now",
-    "add-to-cart",
-    "shop",
-    "store",
-    "product-listing",
-    "category",
-    "search?",
-    "q=",
 ]
 
 # Penalty applied when a candidate URL path looks like a shopping/cart page.
@@ -145,9 +105,9 @@ class PrioritizedCandidate:
 class LinkPrioritizer:
     """Heuristic ranker for discovery candidate URLs.
 
-    Scores candidates before download using file-type, domain authority,
-    keyword, and power-class signals.  Returns top-K ranked candidates and
-    a full lineage list so nothing is permanently discarded.
+    Scores source URL/title/snippet evidence before download using file
+    type and configured authority/keyword signals. Returns top-K ranked
+    candidates and full lineage so nothing is permanently discarded.
 
     Parameters
     ----------
@@ -155,14 +115,17 @@ class LinkPrioritizer:
         Domain/query keywords used to boost URLs that contain them.
         Sourced from schema keywords or config.
     domain_authority_overrides:
-        Extra ``{domain_substring: score_adjustment}`` entries that
-        supplement the built-in authority table.
+        Configured ``{host_pattern: score_adjustment}`` entries from
+        ``link_prioritization.domain_scores``. Host keys match the host
+        and its subdomains; leading-dot keys match hostname suffixes.
+        No authority adjustments apply unless configured.
     top_k:
         Maximum number of candidates to surface after ranking. ``None``
         returns all candidates in ranked order.
     shopping_path_keywords:
-        Extra shopping/cart path keywords that supplement the built-in
-        :data:`_SHOPPING_PATH_KEYWORDS`; the defaults are always retained.
+        Configured shopping/cart terms matched literally at token
+        boundaries in decoded URL paths. Empty or omitted lists apply
+        no shopping penalties.
     """
 
     def __init__(
@@ -175,18 +138,19 @@ class LinkPrioritizer:
         self._keywords: list[str] = [
             k.lower().strip() for k in (keywords or []) if k.strip()
         ]
-        self._authority_extra: list[tuple[str, float]] = list(
-            (k.lower(), float(v))
+        self._authority_patterns: list[tuple[str, float]] = [
+            (k.lower().strip().rstrip("."), float(v))
             for k, v in (domain_authority_overrides or {}).items()
-        )
-        self._top_k = top_k
-        extra_shopping = [
-            k.lower().strip()
-            for k in (shopping_path_keywords or [])
-            if k.strip()
+            if k.strip().rstrip(".")
         ]
-        self._shopping_keywords: list[str] = list(_SHOPPING_PATH_KEYWORDS) + [
-            k for k in extra_shopping if k not in _SHOPPING_PATH_KEYWORDS
+        self._top_k = top_k
+        self._shopping_patterns: list[tuple[str, re.Pattern[str]]] = [
+            (term, re.compile(rf"(?<![^\W_]){re.escape(term)}(?![^\W_])"))
+            for term in dict.fromkeys(
+                k.lower().strip()
+                for k in (shopping_path_keywords or [])
+                if k.strip()
+            )
         ]
 
     # ------------------------------------------------------------------
@@ -282,18 +246,7 @@ class LinkPrioritizer:
             )
             updated_reasons = list(c.reasons) + pc.priority_reasons
             ranked_top_k.append(
-                DiscoveryCandidate(
-                    url=c.url,
-                    source=c.source,
-                    score=updated_score,
-                    reasons=updated_reasons,
-                    status=c.status,
-                    mime_type=c.mime_type,
-                    extension=c.extension,
-                    canonical_url=c.canonical_url,
-                    content_hash=c.content_hash,
-                    target_metadata=c.target_metadata,
-                )
+                replace(c, score=updated_score, reasons=updated_reasons)
             )
 
         return ranked_top_k, lineage
@@ -306,12 +259,16 @@ class LinkPrioritizer:
         self, candidate: DiscoveryCandidate
     ) -> tuple[PriorityScore, list[str]]:
         url = candidate.url or ""
-        anchor = " ".join(candidate.reasons or []).lower()
+        # Reasons hold query/heuristic notes, not source evidence.
+        # Ranking on them would reward every result for its query.
+        source_text = " ".join(
+            text for text in (candidate.title, candidate.snippet) if text
+        ).lower()
         reasons: list[str] = []
 
-        file_type_score = self._score_file_type(url, anchor, reasons)
+        file_type_score = self._score_file_type(url, source_text, reasons)
         domain_authority_score = self._score_domain_authority(url, reasons)
-        keyword_score = self._score_keywords(url, anchor, reasons)
+        keyword_score = self._score_keywords(url, source_text, reasons)
 
         # Weighted aggregate before normalisation. Weights keep their relative
         # importance (file type dominates, then authority and keywords equally).
@@ -355,11 +312,17 @@ class LinkPrioritizer:
                     )
                 return score
 
-        # Check for shopping path → negative signal
-        for kw in self._shopping_keywords:
-            if kw in lower_url:
+        # Match path tokens, not host/query text.
+        if not self._shopping_patterns:
+            return 0.0
+        try:
+            path = unquote(urlparse(url).path).lower()
+        except ValueError:
+            return 0.0
+        for term, pattern in self._shopping_patterns:
+            if pattern.search(path):
                 reasons.append(
-                    f"file_type:shopping_path_keyword={kw} "
+                    f"file_type:shopping_path_keyword={term} "
                     f"({_SHOPPING_PATH_PENALTY:.2f})"
                 )
                 return _SHOPPING_PATH_PENALTY
@@ -369,24 +332,22 @@ class LinkPrioritizer:
     def _score_domain_authority(self, url: str, reasons: list[str]) -> float:
         """Return domain authority adjustment, clamped to [-0.5, 0.5]."""
         try:
-            netloc = urlparse(url).netloc.lower()
-        except Exception:
+            host = (urlparse(url).hostname or "").lower().rstrip(".")
+        except ValueError:
             return 0.0
 
         total = 0.0
         matched: list[str] = []
 
-        # Built-in patterns
-        for pattern, adj in _DOMAIN_AUTHORITY_PATTERNS:
-            if pattern in netloc:
+        for pattern, adj in self._authority_patterns:
+            matches = (
+                host.endswith(pattern)
+                if pattern.startswith(".")
+                else host == pattern or host.endswith("." + pattern)
+            )
+            if matches:
                 total += adj
                 matched.append(f"{pattern}={adj:+.2f}")
-
-        # User-supplied overrides
-        for pattern, adj in self._authority_extra:
-            if pattern in netloc:
-                total += adj
-                matched.append(f"{pattern}={adj:+.2f}(override)")
 
         clamped = max(-0.5, min(0.5, total))
         if matched:
@@ -396,23 +357,15 @@ class LinkPrioritizer:
     def _score_keywords(
         self, url: str, anchor: str, reasons: list[str]
     ) -> float:
-        """Return keyword signal in [0, 1] based on combined URL + anchor matches."""
-        if not self._keywords:
-            # Fall back to built-in document path keywords
-            active_keywords = _DOCUMENT_PATH_KEYWORDS
-        else:
-            active_keywords = self._keywords + _DOCUMENT_PATH_KEYWORDS
-
-        lower_url = url.lower()
-        combined = lower_url + " " + anchor
+        """Score source evidence with keywords or a generic fallback."""
+        active_keywords = self._keywords or _DOCUMENT_PATH_KEYWORDS
+        combined = unquote(url).lower() + " " + anchor
 
         hit_count = sum(1 for kw in active_keywords if kw in combined)
         if hit_count == 0:
             return 0.0
 
         # Log-scale: 1 hit → ~0.3; 3 hits → ~0.6; 6+ hits → ~0.9
-        import math
-
         score = min(1.0, 0.3 * math.log1p(hit_count) / math.log1p(1))
         reasons.append(f"keywords:{hit_count}_match(s) (+{score:.2f})")
         return round(score, 4)

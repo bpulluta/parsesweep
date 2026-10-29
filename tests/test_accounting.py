@@ -23,7 +23,10 @@ def _write_json(path: Path, payload: dict) -> None:
     path.write_text(json.dumps(payload), encoding="utf-8")
 
 
-def test_discover_domain_roots_includes_cwd_and_extraction_parents(monkeypatch, tmp_path):
+def test_discover_domain_roots_includes_cwd_and_extraction_parents(
+    monkeypatch, tmp_path
+):
+    """Accounting can locate discovery beside extracted inputs."""
     monkeypatch.chdir(tmp_path)
     extraction_dir = tmp_path / "extracted" / "widgets"
     roots = discover_domain_roots(
@@ -38,8 +41,12 @@ def test_discover_domain_roots_includes_cwd_and_extraction_parents(monkeypatch, 
 def test_collect_discovery_manifests_dedupes_and_sorts(monkeypatch, tmp_path):
     monkeypatch.chdir(tmp_path)
     domain = "widgets"
-    run_manifest = tmp_path / "discovered" / domain / "runs" / "r1" / "manifest.json"
-    latest_manifest = tmp_path / "discovered" / domain / "latest" / "manifest.json"
+    run_manifest = (
+        tmp_path / "discovered" / domain / "runs" / "r1" / "manifest.json"
+    )
+    latest_manifest = (
+        tmp_path / "discovered" / domain / "latest" / "manifest.json"
+    )
     _write_json(run_manifest, {"run_id": "r1"})
     _write_json(latest_manifest, {"run_id": "r1-latest"})
 
@@ -66,13 +73,18 @@ def test_discovery_domain_root_from_manifest_layouts(tmp_path):
         tmp_path / "discovered" / domain
     )
     # Unknown layout returns None.
-    assert discovery_domain_root_from_manifest(tmp_path / "manifest.json", domain) is None
+    assert (
+        discovery_domain_root_from_manifest(tmp_path / "manifest.json", domain)
+        is None
+    )
 
 
 def test_canonical_discovery_manifest_path_prefers_runs_over_latest(tmp_path):
     domain = "widgets"
     run_id = "r1"
-    canonical = tmp_path / "discovered" / domain / "runs" / run_id / "manifest.json"
+    canonical = (
+        tmp_path / "discovered" / domain / "runs" / run_id / "manifest.json"
+    )
     _write_json(canonical, {"run_id": run_id})
     latest = tmp_path / "discovered" / domain / "latest" / "manifest.json"
     _write_json(latest, {"run_id": run_id})
@@ -85,7 +97,10 @@ def test_canonical_discovery_manifest_path_prefers_runs_over_latest(tmp_path):
     assert resolved == str(canonical)
 
 
-def test_build_pipeline_accounting_from_extraction_run_manifest(monkeypatch, tmp_path):
+def test_build_pipeline_accounting_from_extraction_run_manifest(
+    monkeypatch, tmp_path
+):
+    """Stage metadata and measured usage survive pipeline accounting."""
     monkeypatch.chdir(tmp_path)
     domain = "widgets"
     extraction_dir = tmp_path / "extracted" / domain
@@ -146,6 +161,31 @@ def test_build_pipeline_accounting_from_extraction_run_manifest(monkeypatch, tmp
     assert accounting["stages"]["discovery"]["status"] == "not_applicable"
     # Compilation stats merged into the compilation stage.
     assert accounting["stages"]["compilation"]["records"] == 2
+
+
+def test_accounting_uses_discovery_contract_dry_run_flag(
+    monkeypatch,
+    tmp_path,
+):
+    """Status migrations cannot turn a dry-run into acquisition."""
+    monkeypatch.chdir(tmp_path)
+    _write_json(
+        tmp_path / "discovered/widgets/runs/r1/manifest.json",
+        {
+            "run_id": "r1",
+            "status": "dry_run",
+            "input": {"dry_run": True},
+            "stage_summaries": {"seeker": {"queries_executed": 1}},
+        },
+    )
+    accounting = build_pipeline_accounting(
+        domain="widgets",
+        extraction_dir=tmp_path / "extracted/widgets",
+        output_dir=tmp_path / "compiled/widgets",
+        compilation_stats={},
+        discovery_input_dir=None,
+    )
+    assert accounting["stages"]["discovery"]["runs"][0]["status"] == "dry_run"
 
 
 def test_write_compilation_run_manifest_roundtrip(tmp_path):

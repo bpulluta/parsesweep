@@ -7,6 +7,8 @@ CLI command, and verifies every shipped config resolves + normalizes cleanly.
 from pathlib import Path
 import glob
 
+import pytest
+
 from psweep.config.runtime_config_loader import (
     load_runtime_config_file,
     resolve_command_config,
@@ -71,15 +73,15 @@ class TestCliFallbacks:
 
 
 class TestCoercions:
-    def test_case_and_type_coercions(self):
+    def test_case_normalization_preserves_typed_options(self):
         n = normalize_discover_inputs(
             {
                 "partition_mode": "JURISDICTION",
                 "retention_documents": "CURATED",
                 "digger_provider": "  SerpApi ",
-                "seeker_max_results": "25",
-                "enable_serpapi": 1,
-                "max_concurrent_downloads": "4",
+                "seeker_max_results": 25,
+                "enable_serpapi": True,
+                "max_concurrent_downloads": 4,
             }
         )
         assert n["partition_mode"] == "jurisdiction"
@@ -89,11 +91,15 @@ class TestCoercions:
         assert n["enable_serpapi"] is True
         assert n["max_concurrent_downloads"] == 4
 
-    def test_zero_falls_back_via_or(self):
-        # A configured 0 for max_concurrent_downloads is falsy -> default 2
-        # (preserves the former inline `... or 2` behavior exactly).
-        n = normalize_discover_inputs({"max_concurrent_downloads": 0})
-        assert n["max_concurrent_downloads"] == 2
+    @pytest.mark.parametrize("value", [0, -1, True, "4"])
+    def test_invalid_concurrency_fails_instead_of_falling_back(self, value):
+        with pytest.raises(ValueError, match="max_concurrent_downloads"):
+            normalize_discover_inputs({"max_concurrent_downloads": value})
+
+    @pytest.mark.parametrize("value", ["false", 0, 1, None])
+    def test_invalid_boolean_fails_instead_of_using_truthiness(self, value):
+        with pytest.raises(ValueError, match="must be a boolean"):
+            normalize_discover_inputs({"enable_serpapi": value})
 
     def test_targets_slicing_and_total_count(self):
         targets = [{"label": f"t{i}"} for i in range(5)]
@@ -124,6 +130,53 @@ class TestCoercions:
         )["code_host_adapters"] is None
         # Absent -> None (engine treats None as enabled).
         assert normalize_discover_inputs({})["code_host_adapters"] is None
+
+
+@pytest.mark.parametrize(
+    "discovery,cli_values,expected",
+    [
+        ({"queries": ["manual"]}, {}, True),
+        ({"queries": ["manual"], "enable_serpapi": False}, {}, False),
+        (
+            {"queries": ["manual"], "enable_serpapi": False,
+             "search": {"provider": "serpapi"}},
+            {}, False,
+        ),
+        (
+            {"queries": ["manual"], "search": {"provider": "serpapi"}},
+            {"enable_serpapi": False}, False,
+        ),
+        ({"queries": ["manual"], "search": {"enabled": False}}, {}, False),
+        (
+            {"queries": ["manual"], "enable_serpapi": True,
+             "search": {"enabled": False}},
+            {}, False,
+        ),
+        (
+            {"queries": ["manual"], "enable_serpapi": False,
+             "search": {"enabled": True}},
+            {}, True,
+        ),
+        (
+            {"queries": ["manual"], "search": {"enabled": False}},
+            {"enable_serpapi": True}, True,
+        ),
+        (
+            {"queries": ["manual"], "search": {"enabled": True}},
+            {"enable_serpapi": False}, False,
+        ),
+        ({"seeds": ["https://example.org/manual.pdf"]}, {}, False),
+    ],
+)
+def test_explicit_search_controls_and_cli_win_over_query_inference(
+    discovery: dict, cli_values: dict, expected: bool,
+):
+    """Explicit config and CLI controls override search inference."""
+    resolved = resolve_command_config(
+        command="discover", cli_values=cli_values,
+        config_data={"discovery": discovery}, strict=True,
+    )
+    assert normalize_discover_inputs(resolved)["enable_serpapi"] is expected
 
 
 def test_all_shipped_configs_resolve_and_normalize():

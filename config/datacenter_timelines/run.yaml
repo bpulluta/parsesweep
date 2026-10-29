@@ -100,8 +100,10 @@ discovery:
   # Plain HTTP downloads run in parallel (fast). Set true only if a target's
   # sources are bot-protected (serial through headless Chrome, much slower).
   browser_mode: false
+  browser_escalation: {enabled: true}  # recover JS-heavy source pages
 
   selection:
+    exclude_draft: false         # proposed projects are valid timeline evidence
     max_per_target: 10           # bump for 7 query tiers while keeping costs bounded
     max_per_host_per_target: 4   # avoid single-host dominance when multiple sources exist
     require_supported_document: false   # KEY: allow extension-less HTML news pages

@@ -1,31 +1,44 @@
-"""LLM-based post-download document review (curation).
+"""LLM-based post-download document review and in-place selection.
 
-The keyword classifier flags obvious mismatches cheaply. This optional step
-goes further: it asks an LLM to grade each downloaded file against a plain
-description of the document you actually want, then promotes the most relevant
-file(s) into a ``reviewed/`` subfolder next to the originals.
+Grade each downloaded file against the configured document description.
+The engine copies selections into ``curated/``; originals stay put.
+Full-filename ``.review`` sidecars separate raw grades from selection.
+Each sidecar preserves only its own file's human decisions.
 
-The point is county-scale automation without human review: after a run over
-thousands of jurisdictions, a person only opens the ``reviewed/`` folders —
-presentations, drafts, superseded versions, and tangential reports stay out.
-
-Reuses the extraction LLM client (``extraction/llm_client.py``) and the
-``ContentSampler`` text extractor, so it adds no new dependencies. It is
-best-effort: if the LLM is unavailable it leaves files untouched and says so.
+Reuse the extraction LLM client and document text extraction. Explicit
+per-record failures let the caller block unsafe publication.
 """
 
 from __future__ import annotations
 
 import hashlib
 import json
+import math
 import re
+from collections.abc import Iterator
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
+from contextlib import suppress
+from itertools import islice
 from pathlib import Path
+from tempfile import NamedTemporaryFile
+from threading import Lock
 from typing import Any
 
 from .urls import redact_url, redact_urls_in_text
 from .validators import ContentSampler
 
 REVIEW_CACHE_DIRNAME = ".review"
+_REVIEW_WORKERS = 4
+_GRADE_FIELDS = ("is_primary", "relevance", "doc_kind", "reason")
+
+
+class ReviewError(Exception):
+    """A per-file failure without sensitive provider error text."""
+
+    def __init__(self, message: str, *, usage_unknown: bool = False) -> None:
+        self.usage_unknown = usage_unknown
+        super().__init__(message)
+
 
 # Field name constants — use these everywhere instead of string literals so a
 # typo is a NameError at import time rather than a silent runtime no-op.
@@ -114,7 +127,6 @@ class DocumentReviewer:
         models: dict[str, str] | None = None,
         default_model: str | None = None,
         keep_top: int = 1,
-        action: str = "move",
         max_chars: int = 12000,
         review_keywords: list[str] | None = None,
         deduplicate_redundant: bool = True,
@@ -125,7 +137,9 @@ class DocumentReviewer:
         self._models = models
         self._default_model = default_model
         self._keep_top = max(1, int(keep_top))
-        self._action = action if action in {"move", "flag"} else "move"
+        if type(max_chars) is not int or max_chars <= 0:
+            message = "max_chars must be a positive integer"
+            raise ValueError(message)
         self._max_chars = max_chars
         self._review_keywords = [
             k.lower() for k in (review_keywords or []) if k and k.strip()
@@ -142,6 +156,8 @@ class DocumentReviewer:
         self._total_input_tokens: int = 0
         self._total_output_tokens: int = 0
         self._llm_calls: int = 0
+        self._usage_unknown_calls: int = 0
+        self._usage_lock = Lock()
 
     def _ensure_client(self) -> Any:
         if self._client is None:
@@ -176,6 +192,9 @@ class DocumentReviewer:
         separator_budget = len(separator) * total_separator_count
 
         usable = self._max_chars - separator_budget
+        if usable // 5 <= 0:
+            # No room for all sections: avoid empty or negative windows.
+            return text[: self._max_chars]
         head_budget = usable // 5
         tail_budget = usable // 5
         keyword_budget = usable // 5
@@ -190,26 +209,36 @@ class DocumentReviewer:
             text_lower = text.lower()
             keyword_windows: list[str] = []
             seen_positions: set[int] = set()
-            window_size = keyword_budget // max(len(self._review_keywords), 2)
+            window_size = max(
+                1,
+                keyword_budget // max(len(self._review_keywords), 2),
+            )
 
             for keyword in self._review_keywords:
                 pos = text_lower.find(keyword, head_budget)
                 while pos != -1 and pos < len(text) - tail_budget:
                     # Skip if too close to a window we already captured
-                    if not any(abs(pos - s) < window_size for s in seen_positions):
+                    if not any(
+                        abs(pos - s) < window_size for s in seen_positions
+                    ):
                         start = max(head_budget, pos - window_size // 4)
                         excerpt = text[start : start + window_size]
                         if excerpt.strip():
                             keyword_windows.append(excerpt)
                             seen_positions.add(pos)
-                        if len(keyword_windows) * window_size >= keyword_budget:
+                        if (
+                            len(keyword_windows) * window_size
+                            >= keyword_budget
+                        ):
                             break
                     pos = text_lower.find(keyword, pos + window_size)
                 if len(keyword_windows) * window_size >= keyword_budget:
                     break
 
             if keyword_windows:
-                keyword_section = separator.join(keyword_windows)[:keyword_budget]
+                keyword_section = separator.join(keyword_windows)[
+                    :keyword_budget
+                ]
             else:
                 # No keywords found — give budget back to body
                 body_budget += keyword_budget
@@ -368,31 +397,85 @@ class DocumentReviewer:
                 return value
         return ""
 
+    @staticmethod
+    def _valid_grade(grade: object) -> bool:
+        """Require typed fields and a finite unit-interval score."""
+        if not isinstance(grade, dict):
+            return False
+        relevance = grade.get("relevance")
+        return (
+            isinstance(grade.get("is_primary"), bool)
+            and type(relevance) in {int, float}
+            and math.isfinite(relevance)
+            and 0 <= relevance <= 1
+            and isinstance(grade.get("doc_kind"), str)
+            and isinstance(grade.get("reason"), str)
+        )
+
+    def _track_usage(self, result: object = None) -> None:
+        """Accumulate returned numeric usage under the shared lock."""
+        usage = result if isinstance(result, dict) else {}
+        cost = usage.get("cost")
+        input_tokens = usage.get("input_tokens")
+        output_tokens = usage.get("output_tokens")
+        cost_known = (
+            type(cost) in {int, float} and math.isfinite(cost) and cost >= 0
+        )
+        input_known = type(input_tokens) is int and input_tokens >= 0
+        output_known = type(output_tokens) is int and output_tokens >= 0
+        with self._usage_lock:
+            self._llm_calls += 1
+            self._usage_unknown_calls += not (
+                cost_known and input_known and output_known
+            )
+            if cost_known:
+                self._total_cost += cost
+            if input_known:
+                self._total_input_tokens += input_tokens
+            if output_known:
+                self._total_output_tokens += output_tokens
+
+    @staticmethod
+    def _mark_review_failure(
+        record: dict[str, Any],
+        error: ReviewError,
+    ) -> None:
+        """Flag a sanitized failure and deselect the affected file."""
+        record[FIELD_REVIEW_SELECTED] = False
+        record["review_failed"] = True
+        record["review_error"] = str(error)
+        if error.usage_unknown:
+            record["review_usage_unknown"] = True
+
     def _grade(
         self, file_path: str, target_context: str = "", source_url: str = ""
     ) -> dict[str, Any] | None:
-        """Return the LLM grade for one file, or None if it can't be graded."""
+        """Return a raw grade or raise a sanitized review failure."""
         try:
-            # Use full document extraction (with caching) instead of the
-            # 5-page sample. This ensures the keyword-targeted sampling can
-            # find relevant content deep in large multi-section documents.
-            from pathlib import Path
-
-            from ..extraction.document_utils import extract_text_from_document
+            # Full extraction reaches keyword matches beyond five pages.
+            from psweep.extraction.document_utils import (  # noqa: PLC0415
+                extract_text_from_document,
+            )
 
             text = extract_text_from_document(Path(file_path))
         except Exception:  # noqa: BLE001 - unreadable file, skip grading
             # Fall back to the sampler if full extraction fails
             try:
                 text = ContentSampler.extract_text(file_path)
-            except Exception:
-                return None
-        if not text or len(text.strip()) < ContentSampler.MIN_EXTRACTION_LENGTH:
-            return None
+            except Exception as exc:
+                message = "document text extraction failed"
+                raise ReviewError(message) from exc
+        if (
+            not text
+            or len(text.strip()) < ContentSampler.MIN_EXTRACTION_LENGTH
+        ):
+            message = "insufficient extracted text for document review"
+            raise ReviewError(message)
 
         sample = self._build_review_sample(text)
         coverage = {
-            "document_chars": len(text), "sampled_chars": len(sample),
+            "document_chars": len(text),
+            "sampled_chars": len(sample),
             "truncated": len(text) > len(sample),
         }
         target_context = redact_urls_in_text(target_context)
@@ -426,55 +509,71 @@ class DocumentReviewer:
                 system_prompt=_REVIEW_SYSTEM,
                 user_prompt=user_prompt,
             )
-        except Exception:  # noqa: BLE001 - one bad file must not abort review
-            return None
-        # Track cost from the LLM response
-        if isinstance(result, dict):
-            self._total_cost += result.get("cost", 0.0) or 0.0
-            self._total_input_tokens += result.get("input_tokens", 0) or 0
-            self._total_output_tokens += result.get("output_tokens", 0) or 0
-            self._llm_calls += 1
+        except Exception as exc:
+            self._track_usage()
+            message = f"LLM grade call failed ({type(exc).__name__})"
+            raise ReviewError(message, usage_unknown=True) from exc
+        # Retain returned usage even when the grade data is invalid.
+        self._track_usage(result)
         grade = result.get("data") if isinstance(result, dict) else None
-        if isinstance(grade, dict):
-            return {**grade, "coverage": coverage}
-        return None
-
-    # -- grade cache -------------------------------------------------------
-
-    def _cache_key(self, file_path: str, source_url: str = "", target_context: str = "") -> str:
-        """Identify every effective grading input, independent of selection."""
-        from ..extraction.llm_factory import resolve_llm_kwargs
-
-        resolved = getattr(self, "_cache_model", None)
-        if resolved is None:
-            resolved = resolve_llm_kwargs(
-                self._model, models=self._models, default_model=self._default_model,
+        if not self._valid_grade(grade):
+            message = (
+                "invalid LLM grade: expected boolean, finite score and strings"
             )
-            resolved.pop("api_key", None)
-            self._cache_model = resolved
-        try:
-            st = Path(file_path).stat()
-            stat_part = f"{st.st_size}:{st.st_mtime_ns}"
-        except OSError:
-            stat_part = "0:0"
-        graded_inputs = json.dumps({
-            "file": Path(file_path).resolve().as_posix(),
-            "description": self._description, "model": resolved,
-            "source_url": redact_url(source_url),
-            "target_context": redact_urls_in_text(target_context),
-            "max_chars": self._max_chars, "keywords": self._review_keywords,
-            "system": _REVIEW_SYSTEM, "schema": _REVIEW_SCHEMA,
-            "sampling": "head-keyword-body-tail-v1",
-        }, sort_keys=True, default=str)
-        digest = hashlib.sha256(graded_inputs.encode()).hexdigest()
-        return f"{stat_part}:{digest}"
+            raise ReviewError(message)
+        return {**grade, "coverage": coverage}
+
+    # Raw grade cache (selection is always recomputed).
+
+    def _cache_key(
+        self, file_path: str, source_url: str = "", target_context: str = ""
+    ) -> str:
+        """Identify raw grading inputs, excluding selection controls."""
+        from psweep.extraction.llm_factory import (  # noqa: PLC0415
+            resolve_llm_kwargs,
+        )
+
+        resolved = resolve_llm_kwargs(
+            self._model,
+            models=self._models,
+            default_model=self._default_model,
+        )
+        resolved.pop("api_key", None)
+        content_hash = self._file_sha256(file_path)
+        if content_hash is None:
+            message = "cannot read document content for grade cache identity"
+            raise ReviewError(message)
+        graded_inputs = json.dumps(
+            {
+                "file": Path(file_path).resolve().as_posix(),
+                "content_sha256": content_hash,
+                "description": self._description,
+                "model": resolved,
+                "source_url": redact_url(source_url),
+                "target_context": redact_urls_in_text(target_context),
+                "max_chars": self._max_chars,
+                "keywords": self._review_keywords,
+                "system": _REVIEW_SYSTEM,
+                "schema": _REVIEW_SCHEMA,
+                "grading": "document-context-source-excerpt-v2",
+                "sampling": "head-keyword-body-tail-v2",
+            },
+            sort_keys=True,
+            default=str,
+        )
+        return hashlib.sha256(graded_inputs.encode()).hexdigest()
 
     def _read_cached_grade(
-        self, file_path: str, source_url: str = "", target_context: str = ""
+        self,
+        file_path: str,
+        source_url: str = "",
+        target_context: str = "",
+        *,
+        cache_key: str | None = None,
     ) -> dict[str, Any] | None:
-        """Return a stored LLM grade when the cache key still matches."""
+        """Return a valid stored grade for matching raw inputs."""
         src = Path(file_path)
-        sidecar = src.parent / REVIEW_CACHE_DIRNAME / f"{src.stem}.json"
+        sidecar = src.parent / REVIEW_CACHE_DIRNAME / f"{src.name}.json"
         if not sidecar.exists():
             return None
         try:
@@ -483,25 +582,24 @@ class DocumentReviewer:
             return None
         if not isinstance(payload, dict):
             return None
-        if payload.get("cache_key") != self._cache_key(file_path, source_url, target_context):
+        expected = cache_key or self._cache_key(
+            file_path, source_url, target_context
+        )
+        if payload.get("cache_key") != expected:
             return None
         llm = payload.get("llm")
-        if not isinstance(llm, dict) or llm.get("relevance") is None:
+        if not self._valid_grade(llm):
             return None
         return {**llm, "coverage": payload.get("coverage", {})}
 
     def _find_redundant_docs(
         self, primaries: list[dict[str, Any]], target_context: str
     ) -> set[int]:
-        """Comparative pass: identify redundant docs among confirmed primaries.
+        """Identify redundant docs among confirmed primaries.
 
-        Uses already-available metadata (filename, URL, doc_kind, review_reason)
-        to detect version overlap without re-reading any document. Returns the
-        0-based indices (into ``primaries``) that should be excluded as
-        superseded/redundant.
-
-        Designed to be called only when len(primaries) >= 2. Fails silently:
-        any error returns an empty set so all primaries are kept.
+        Compare existing filename, URL, kind and assessment metadata.
+        Return indices into ``primaries`` for documents to exclude.
+        Provider failures flag survivors but preserve their raw grades.
         """
         if len(primaries) < 2:
             return set()
@@ -509,7 +607,9 @@ class DocumentReviewer:
         # Build a numbered list of doc metadata for the LLM.
         lines: list[str] = [
             f"TARGET DOCUMENT: {self._description}\n",
-            f"Target context: {redact_urls_in_text(target_context)}\n" if target_context else "",
+            f"Target context: {redact_urls_in_text(target_context)}\n"
+            if target_context
+            else "",
             "Documents to compare (0-based index):\n",
         ]
         for i, rec in enumerate(primaries):
@@ -528,12 +628,14 @@ class DocumentReviewer:
         user_prompt = (
             "".join(lines)
             + "\nFor each group of documents that cover the same content "
-            "where one supersedes another (older version, less authoritative source, "
-            "or duplicate encoding of the same material), return a redundancy_groups "
-            "entry specifying the keep_index (most current/authoritative) and the "
+            "where one supersedes another (older version, less authoritative "
+            "source, or duplicate encoding of the same material), return a "
+            "redundancy_groups entry specifying the keep_index (most "
+            "current/authoritative) and the "
             "redundant_indices to exclude. "
             "Documents covering genuinely different content are NOT "
-            "redundant — return empty redundancy_groups if all docs are complementary. "
+            "redundant — return empty redundancy_groups if all docs are "
+            "complementary. "
             "Return your answer as a JSON object."
         )
 
@@ -544,36 +646,116 @@ class DocumentReviewer:
                 system_prompt=_DEDUP_SYSTEM,
                 user_prompt=user_prompt,
             )
-        except Exception:  # noqa: BLE001 - dedup is best-effort
+        except Exception as exc:  # noqa: BLE001 - isolate dedup failures
+            self._track_usage()
+            message = f"LLM dedup call failed ({type(exc).__name__})"
+            error = ReviewError(message, usage_unknown=True)
+            for record in primaries:
+                self._mark_review_failure(record, error)
             return set()
 
-        if isinstance(result, dict):
-            self._total_cost += result.get("cost", 0.0) or 0.0
-            self._total_input_tokens += result.get("input_tokens", 0) or 0
-            self._total_output_tokens += result.get("output_tokens", 0) or 0
-            self._llm_calls += 1
+        self._track_usage(result)
 
+        try:
+            return self._redundant_indices(result, len(primaries))
+        except ReviewError as exc:
+            for record in primaries:
+                self._mark_review_failure(record, exc)
+            return set()
+
+    @staticmethod
+    def _redundant_indices(result: object, count: int) -> set[int]:
+        """Validate a comparative response before using any indices."""
         data = result.get("data") if isinstance(result, dict) else None
-        if not isinstance(data, dict):
-            return set()
-
+        groups = (
+            data.get("redundancy_groups") if isinstance(data, dict) else None
+        )
+        message = "invalid LLM dedup assessment"
+        if not isinstance(groups, list):
+            raise ReviewError(message)
         redundant: set[int] = set()
-        n = len(primaries)
-        for group in data.get("redundancy_groups") or []:
+        for group in groups:
             if not isinstance(group, dict):
-                continue
+                raise ReviewError(message)
             keep = group.get("keep_index")
-            to_drop = group.get("redundant_indices") or []
-            # Validate all indices are in-bounds and keep is not in to_drop.
-            if not isinstance(keep, int) or keep < 0 or keep >= n:
-                continue
-            valid_drop = {
-                idx for idx in to_drop
-                if isinstance(idx, int) and 0 <= idx < n and idx != keep
-            }
-            redundant |= valid_drop
-
+            to_drop = group.get("redundant_indices")
+            if (
+                type(keep) is not int
+                or not 0 <= keep < count
+                or not isinstance(to_drop, list)
+                or not isinstance(group.get("reason"), str)
+                or any(
+                    type(idx) is not int or not 0 <= idx < count or idx == keep
+                    for idx in to_drop
+                )
+            ):
+                raise ReviewError(message)
+            redundant.update(to_drop)
         return redundant
+
+    @classmethod
+    def _require_grade(cls, grade: object) -> None:
+        """Reject invalid or absent grades from all client adapters."""
+        if not cls._valid_grade(grade):
+            message = "invalid or unavailable document grade"
+            raise ReviewError(message)
+
+    def _grade_record(
+        self,
+        record: dict[str, Any],
+        context: str,
+    ) -> tuple[dict[str, Any], dict[str, Any] | None, bool]:
+        """Isolate a per-file failure and validate before selection."""
+        path = str(record.get("path"))
+        source_url = self._record_source_url(record)
+        record["review_target_context"] = context
+        try:
+            cache_key = self._cache_key(path, source_url, context)
+            grade = self._read_cached_grade(
+                path,
+                source_url,
+                context,
+                cache_key=cache_key,
+            )
+            was_cached = grade is not None
+            if grade is None:
+                grade = self._grade(
+                    path,
+                    target_context=context,
+                    source_url=source_url,
+                )
+            self._require_grade(grade)
+        except ReviewError as exc:
+            self._mark_review_failure(record, exc)
+            return record, None, False
+        except Exception as exc:  # noqa: BLE001 - isolate record-level failures
+            message = f"document grade failed ({type(exc).__name__})"
+            self._mark_review_failure(record, ReviewError(message))
+            return record, None, False
+        # Cache against pre-call inputs, not a later file revision.
+        record["review_cache_key"] = cache_key
+        return record, grade, was_cached
+
+    def _iter_grades(
+        self,
+        records: list[dict[str, Any]],
+        context: str,
+    ) -> Iterator[tuple[dict[str, Any], dict[str, Any] | None, bool]]:
+        """Keep at most one four-worker window of futures pending."""
+        remaining = iter(records)
+        with ThreadPoolExecutor(max_workers=_REVIEW_WORKERS) as executor:
+            pending = {
+                executor.submit(self._grade_record, record, context)
+                for record in islice(remaining, _REVIEW_WORKERS)
+            }
+            while pending:
+                completed, pending = wait(pending, return_when=FIRST_COMPLETED)
+                for future in completed:
+                    yield future.result()
+                pending.update(
+                    executor.submit(self._grade_record, record, context)
+                    for record in islice(remaining, len(completed))
+                )
 
     def review(
         self,
@@ -601,11 +783,10 @@ class DocumentReviewer:
         try:
             self._ensure_client()
         except Exception as exc:  # noqa: BLE001 - no LLM configured
+            message = f"LLM unavailable ({type(exc).__name__})"
             for record in gradable:
-                record["review_failed"] = True
-            notes.append(
-                f"Document review skipped (LLM unavailable: {exc})."
-            )
+                self._mark_review_failure(record, ReviewError(message))
+            notes.append(f"Document review skipped ({message}).")
             return downloads, notes
 
         # Group by originating target so promotion is per-jurisdiction.
@@ -636,46 +817,24 @@ class DocumentReviewer:
             ]
             target_context = ", ".join(_ctx_parts) if _ctx_parts else target_key
 
-            # Grade files concurrently (4 threads) for speed.
-            from concurrent.futures import ThreadPoolExecutor, as_completed
-
-            def _grade_record(
-                record: dict[str, Any], context: str = target_context,
-            ) -> tuple[dict[str, Any], dict[str, Any] | None, bool]:
-                path = str(record.get("path"))
-                source_url = self._record_source_url(record)
-                record["review_target_context"] = context
-                grade = self._read_cached_grade(path, source_url, context)
-                was_cached = grade is not None
+            for record, grade, was_cached in self._iter_grades(
+                records, target_context
+            ):
                 if grade is None:
-                    grade = self._grade(
-                        path,
-                        target_context=context,
-                        source_url=source_url,
-                    )
-                return record, grade, was_cached
-
-            with ThreadPoolExecutor(max_workers=4) as executor:
-                futures = [executor.submit(_grade_record, r) for r in records]
-                for future in as_completed(futures):
-                    record, grade, was_cached = future.result()
-                    if grade is None:
-                        record["review_failed"] = True
-                        continue
-                    record["review_cached"] = was_cached
-                    record["review_grade"] = {
-                        field: grade.get(field) for field in
-                        ("is_primary", "relevance", "doc_kind", "reason")
-                    }
-                    record["review_coverage"] = grade.get("coverage", {})
-                    if was_cached:
-                        cached += 1
-                    else:
-                        graded += 1
-                    record["review_is_primary"] = bool(grade.get("is_primary"))
-                    record["review_relevance"] = grade.get("relevance")
-                    record["review_doc_kind"] = grade.get("doc_kind")
-                    record["review_reason"] = grade.get("reason")
+                    continue
+                record[FIELD_REVIEW_CACHED] = was_cached
+                record["review_grade"] = {
+                    field: grade[field] for field in _GRADE_FIELDS
+                }
+                record["review_coverage"] = grade.get("coverage", {})
+                if was_cached:
+                    cached += 1
+                else:
+                    graded += 1
+                record[FIELD_REVIEW_IS_PRIMARY] = grade["is_primary"]
+                record[FIELD_REVIEW_RELEVANCE] = grade["relevance"]
+                record[FIELD_REVIEW_DOC_KIND] = grade["doc_kind"]
+                record[FIELD_REVIEW_REASON] = grade["reason"]
 
             ranked = sorted(
                 (r for r in records if "review_relevance" in r),
@@ -771,7 +930,7 @@ class DocumentReviewer:
             non_redundant_rank = 0
             for record in ranked:
                 is_redundant = bool(record.get(FIELD_REVIEW_REDUNDANT))
-                if is_redundant:
+                if is_redundant or record.get("review_failed"):
                     record[FIELD_REVIEW_SELECTED] = False
                 else:
                     keep = non_redundant_rank < self._keep_top and bool(
@@ -787,7 +946,10 @@ class DocumentReviewer:
                 # documents/ and the engine materializes the selected set into
                 # curated/. A per-file sidecar records the verdict so a human
                 # can see the reasoning (and override) in context.
+                was_selected = record[FIELD_REVIEW_SELECTED]
                 self._write_sidecar(record)
+                if was_selected and not record[FIELD_REVIEW_SELECTED]:
+                    selected -= 1
 
         notes.append(
             f"Document review: graded {graded} file(s) "
@@ -804,19 +966,21 @@ class DocumentReviewer:
         return downloads, notes
 
     def get_costs(self) -> dict[str, Any]:
-        """Return accumulated cost data from document review LLM calls."""
-        return {
-            "total_cost_usd": round(self._total_cost, 6),
-            "llm_calls": self._llm_calls,
-            "total_input_tokens": self._total_input_tokens,
-            "total_output_tokens": self._total_output_tokens,
-        }
+        """Return a synchronized snapshot of returned usage and cost."""
+        with self._usage_lock:
+            return {
+                "total_cost_usd": round(self._total_cost, 6),
+                "llm_calls": self._llm_calls,
+                "total_input_tokens": self._total_input_tokens,
+                "total_output_tokens": self._total_output_tokens,
+                "usage_unknown_calls": self._usage_unknown_calls,
+            }
 
     def _write_sidecar(self, record: dict[str, Any]) -> None:
-        """Write ``.review/<stem>.json`` next to a graded file (best-effort).
+        """Atomically write a full-filename sidecar for a graded file.
 
-        Stores a ``cache_key`` so a later run can reuse the grade without a
-        fresh LLM call, and preserves any existing ``human`` decision block.
+        Preserve raw grade identity and this file's human decisions.
+        Failed writes leave the prior full-filename sidecar intact.
         """
         if "review_relevance" not in record:
             return
@@ -825,25 +989,27 @@ class DocumentReviewer:
             return
 
         review_dir = src.parent / REVIEW_CACHE_DIRNAME
-        sidecar = review_dir / f"{src.stem}.json"
+        sidecar = review_dir / f"{src.name}.json"
         human_block: dict[str, Any] = {"decision": None, "notes": None}
         if sidecar.exists():
             try:
                 prior = json.loads(sidecar.read_text(encoding="utf-8"))
-                if (
-                    isinstance(prior, dict)
-                    and isinstance(prior.get("human"), dict)
+                if isinstance(prior, dict) and isinstance(
+                    prior.get("human"), dict
                 ):
                     human_block = prior["human"]
             except (OSError, ValueError):
-                pass
+                error = ReviewError("cannot read prior review sidecar safely")
+                self._mark_review_failure(record, error)
+                return
 
         source_url = self._record_source_url(record)
         payload = {
             "file": src.name,
             "source_url": source_url or None,
-            "cache_key": self._cache_key(str(src), source_url, record.get("review_target_context", "")),
-            "llm": record.get("review_grade") or {
+            "cache_key": record.get("review_cache_key"),
+            "llm": record.get("review_grade")
+            or {
                 "is_primary": record.get("review_is_primary"),
                 "relevance": record.get("review_relevance"),
                 "doc_kind": record.get("review_doc_kind"),
@@ -858,10 +1024,25 @@ class DocumentReviewer:
         }
         if record.get("review_deduplication"):
             payload["deduplication"] = record["review_deduplication"]
+        temporary: Path | None = None
         try:
             review_dir.mkdir(parents=True, exist_ok=True)
-            sidecar.write_text(
-                json.dumps(payload, indent=2), encoding="utf-8"
+            with NamedTemporaryFile(
+                mode="w",
+                encoding="utf-8",
+                dir=review_dir,
+                prefix=f".{sidecar.name}.",
+                suffix=".tmp",
+                delete=False,
+            ) as stream:
+                temporary = Path(stream.name)
+                stream.write(json.dumps(payload, indent=2, allow_nan=False))
+            temporary.replace(sidecar)
+        except (OSError, TypeError, ValueError):
+            self._mark_review_failure(
+                record, ReviewError("review sidecar write failed")
             )
-        except OSError:
-            return
+        finally:
+            if temporary is not None:
+                with suppress(OSError):
+                    temporary.unlink(missing_ok=True)

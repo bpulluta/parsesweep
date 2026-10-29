@@ -9,6 +9,7 @@ models:
   secondary: gpt-5.4-mini   # discovery, page targeting, review (speed matters)
 
 discovery:
+  browser_escalation: {enabled: true}  # opt into protected-site recovery
   targets_csv: targets.csv
   queries:
     # Geography + utility brand — finds the most likely official tariff
@@ -24,10 +25,20 @@ discovery:
     max_results: 10
     cache: true
   selection:
-    primary_per_target: 20
+    max_per_target: 20
     exclude_draft: true
+    draft_patterns:
+      - '\bdraft\b'
+      - '\bproposed\b'
+      - '\bpreliminary\b'
+      - 'for[\s_\-]?review'
+      - '\btemplate\b'
+      - '\bsuperseded\b'
+      - '\bwithdrawn\b'
+      - '\bobsolete\b'
+      - '\barchive[d]?\b'
     # Relevance pre-filter: must look like tariff content (keyword match in URL/title/snippet)
-    relevance_require_any_terms:
+    require_any:
       - tariff
       - rate schedule
       - rate book
@@ -39,7 +50,7 @@ discovery:
       - customer charge
       - demand charge
       - rate filing
-    relevance_exclude_any_terms:
+    exclude:
       - press release
       - news article
       - meeting minutes
@@ -96,8 +107,6 @@ discovery:
     deduplicate_redundant: true
     deduplication:
       key_fields: [path_basename, review_doc_kind]
-    action: move
-  partition_by: [state, utility_name]
   partition_by: [state, utility_name]
 
 # Skip/reprocess hygiene: extraction skips files with existing output JSON by

@@ -13,6 +13,9 @@ models:
 
 # ── Discovery ────────────────────────────────────────────────────────────────
 discovery:
+  # This domain opts into code-host/API and browser recovery.
+  browser_escalation: {enabled: true}
+  code_host_adapters: {enabled: true}
   targets_csv: targets.csv
   queries:
     # General ordinance searches (100% hit rate, ~9 results each)
@@ -39,14 +42,26 @@ discovery:
     # When follow_links is enabled, set high to ensure HTML landing pages
     # (which sort below PDFs) reach the digger. Document review keep_top
     # is the real output gatekeeper.
-    primary_per_target: 40
+    max_per_target: 40
     exclude_draft: true
+    draft_patterns:
+      - '\bdraft\b'
+      - '\bproposed\b'
+      - '\bpreliminary\b'
+      - 'for[\s_\-]?review'
+      - '\bmodel[\s_\-]ordinance\b'
+      - '\bmodel[\s_\-]code\b'
+      - '\btemplate\b'
+      - '\bsuperseded\b'
+      - '\bwithdrawn\b'
+      - '\bobsolete\b'
+      - '\barchive[d]?\b'
     # Hard filter: candidate URL/title/snippet MUST mention the jurisdiction
     target_identity_require_any_templates:
       - "{jurisdiction}"
     # Minimal relevance filter: just needs to look like legal/government content
     # (the digger + document review handle topic relevance)
-    relevance_require_any_terms:
+    require_any:
       - ordinance
       - zoning
       - code
@@ -61,7 +76,7 @@ discovery:
       - bylaw
       - chapter
       - title
-    relevance_exclude_any_terms:
+    exclude:
       - press release
       - news article
       - meeting minutes
@@ -200,7 +215,6 @@ discovery:
     # Genuinely complementary sections are kept. keep_top still caps the final
     # count of distinct docs per jurisdiction. Default: true.
     deduplicate_redundant: true
-    action: move
   partition_by: [state, jurisdiction]
 
 # ── Extraction ───────────────────────────────────────────────────────────────

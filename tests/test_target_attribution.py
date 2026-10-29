@@ -96,20 +96,27 @@ class TestRoutingPreservesMetadata:
 
         seed = _candidate("https://county.gov/ordinances/")
         seed.target_metadata = {"county_name": "Boulder", "state": "CO"}
-        by_url = {seed.url: seed}
-        # Artifact discovered by crawling the seed carries source_seed.
         artifact = SimpleNamespace(
-            metadata={"source_seed": "https://county.gov/ordinances/"}
+            url="https://county.gov/child.pdf", source="crawl", mime_type=None,
+            extension=None, metadata={"source_seed": seed.url},
         )
-        inherited = DiscoveryEngine._inherit_target_metadata(
-            artifact, by_url
+        routed, _ = DiscoveryEngine()._build_routed_candidates_from_artifacts(
+            candidates=[seed], artifacts=[artifact], route_reason="routed",
         )
-        assert inherited == {"county_name": "Boulder", "state": "CO"}
+        assert routed[0].target_metadata == {
+            "county_name": "Boulder", "state": "CO",
+        }
 
     def test_inherit_returns_none_without_source_seed(self):
         from types import SimpleNamespace
 
         from psweep.discovery.engine import DiscoveryEngine
 
-        artifact = SimpleNamespace(metadata={"discovery_mode": "x"})
-        assert DiscoveryEngine._inherit_target_metadata(artifact, {}) is None
+        artifact = SimpleNamespace(
+            url="https://county.gov/child.pdf", source="crawl", mime_type=None,
+            extension=None, metadata={"discovery_mode": "x"},
+        )
+        routed, _ = DiscoveryEngine()._build_routed_candidates_from_artifacts(
+            candidates=[], artifacts=[artifact], route_reason="routed",
+        )
+        assert routed[0].target_metadata is None

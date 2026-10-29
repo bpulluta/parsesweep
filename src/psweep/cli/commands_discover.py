@@ -16,7 +16,6 @@ from psweep.cli.ui import (
     Verbosity,
     console,
     get_verbosity,
-    print_error,
     print_info,
     print_success,
 )
@@ -28,7 +27,11 @@ from psweep.discovery import (
     DiscoveryEngine,
     DiscoveryRequest,
 )
-from psweep.discovery.request_inputs import normalize_discover_inputs
+from psweep.discovery.models import discovery_exit_code
+from psweep.discovery.request_inputs import (
+    normalize_discover_inputs,
+    validate_discover_plan,
+)
 
 
 @click.command()
@@ -119,13 +122,13 @@ from psweep.discovery.request_inputs import normalize_discover_inputs
 )
 @click.option(
     "--max-concurrent-downloads",
-    type=int,
+    type=click.IntRange(min=1),
     default=None,
     help="Maximum parallel downloads during discover runs",
 )
 @click.option(
     "--min-request-interval-ms",
-    type=int,
+    type=click.IntRange(min=0),
     default=None,
     help="Minimum delay between outbound discovery requests in milliseconds",
 )
@@ -164,7 +167,7 @@ from psweep.discovery.request_inputs import normalize_discover_inputs
 @click.option(
     "--dry-run",
     is_flag=True,
-    help="Discover and emit manifest scaffold without downloads",
+    help="Search and emit a dry-run manifest without downloads",
 )
 @click.option(
     "--fresh",
@@ -281,6 +284,36 @@ def discover(
         _print_effective_config("discover", resolved_inputs)
         console.print()
 
+    # Apply defaults and preflight before creating run artifacts.
+    try:
+        normalized_inputs = normalize_discover_inputs(
+            resolved_inputs,
+            domain=domain,
+            target=target,
+            seed_urls=seed_urls,
+            query=query,
+            state=state,
+            jurisdiction=jurisdiction,
+            partition_mode=partition_mode,
+            target_limit=target_limit,
+            retention_documents=retention_documents,
+            digger_provider=digger_provider,
+            enable_serpapi=enable_serpapi,
+            max_concurrent_downloads=max_concurrent_downloads,
+            min_request_interval_ms=min_request_interval_ms,
+            robots_policy_mode=robots_policy_mode,
+            tos_policy_mode=tos_policy_mode,
+            acknowledged_tos_domains=acknowledged_tos_domains,
+            output_documents=output_documents,
+            output_manifest=output_manifest,
+            dry_run=dry_run,
+            fresh=fresh,
+        )
+        validate_discover_plan(normalized_inputs)
+    except ValueError as exc:
+        view.error("Discovery preflight failed", str(exc))
+        sys.exit(1)
+
     if validate_config_only:
         if get_verbosity().is_quiet:
             click.echo(
@@ -288,11 +321,7 @@ def discover(
                     {
                         "command": "discover",
                         "status": "valid",
-                        "resolved": {
-                            k: v
-                            for k, v in resolved_inputs.items()
-                            if not k.startswith("_")
-                        },
+                        "resolved": normalized_inputs,
                     },
                     indent=2,
                     sort_keys=True,
@@ -304,141 +333,126 @@ def discover(
             )
         return
 
-    # All discover runtime defaults + type coercions live in one tested layer.
-    # The CLI option values are threaded in as the final fallbacks, exactly as
-    # the former inline shim did.
-    _norm = normalize_discover_inputs(
-        resolved_inputs,
-        domain=domain,
-        target=target,
-        seed_urls=seed_urls,
-        query=query,
-        state=state,
-        jurisdiction=jurisdiction,
-        partition_mode=partition_mode,
-        target_limit=target_limit,
-        retention_documents=retention_documents,
-        digger_provider=digger_provider,
-        enable_serpapi=enable_serpapi,
-        max_concurrent_downloads=max_concurrent_downloads,
-        min_request_interval_ms=min_request_interval_ms,
-        robots_policy_mode=robots_policy_mode,
-        tos_policy_mode=tos_policy_mode,
-        acknowledged_tos_domains=acknowledged_tos_domains,
-        output_documents=output_documents,
-        output_manifest=output_manifest,
-        dry_run=dry_run,
-        fresh=fresh,
-    )
-    resolved_domain = _norm["domain"]
-    resolved_seed_urls = _norm["seed_urls"]
-    resolved_query = _norm["query"]
-    resolved_state = _norm["state"]
-    resolved_jurisdiction = _norm["jurisdiction"]
-    resolved_jurisdiction_aliases = _norm["jurisdiction_aliases"]
-    resolved_partition_mode = _norm["partition_mode"]
-    resolved_target_limit = _norm["target_limit"]
-    resolved_retention_documents = _norm["retention_documents"]
-    resolved_digger_provider = _norm["digger_provider"]
-    resolved_topology_mode = _norm["topology_mode"]
-    resolved_enable_serpapi = _norm["enable_serpapi"]
-    resolved_hub_pages = _norm["hub_pages"]
-    resolved_allowed_domains = _norm["allowed_domains"]
-    resolved_targets = _norm["targets"]
-    total_configured_targets = _norm["total_configured_targets"]
-    resolved_query_templates = _norm["query_templates"]
-    resolved_query_families = _norm["query_families"]
-    resolved_use_query_family = _norm["use_query_family"]
-    resolved_seeker_max_results = _norm["seeker_max_results"]
-    resolved_link_prioritization_mode = _norm["link_prioritization_mode"]
-    resolved_link_top_k = _norm["link_top_k"]
-    resolved_link_prioritization_keywords = _norm[
+    resolved_domain = normalized_inputs["domain"]
+    resolved_seed_urls = normalized_inputs["seed_urls"]
+    resolved_query = normalized_inputs["query"]
+    resolved_state = normalized_inputs["state"]
+    resolved_jurisdiction = normalized_inputs["jurisdiction"]
+    resolved_jurisdiction_aliases = normalized_inputs["jurisdiction_aliases"]
+    resolved_partition_mode = normalized_inputs["partition_mode"]
+    resolved_target_limit = normalized_inputs["target_limit"]
+    resolved_retention_documents = normalized_inputs["retention_documents"]
+    resolved_digger_provider = normalized_inputs["digger_provider"]
+    resolved_topology_mode = normalized_inputs["topology_mode"]
+    resolved_enable_serpapi = normalized_inputs["enable_serpapi"]
+    resolved_hub_pages = normalized_inputs["hub_pages"]
+    resolved_allowed_domains = normalized_inputs["allowed_domains"]
+    resolved_targets = normalized_inputs["targets"]
+    total_configured_targets = normalized_inputs["total_configured_targets"]
+    resolved_query_templates = normalized_inputs["query_templates"]
+    resolved_query_families = normalized_inputs["query_families"]
+    resolved_use_query_family = normalized_inputs["use_query_family"]
+    resolved_seeker_max_results = normalized_inputs["seeker_max_results"]
+    resolved_link_prioritization_mode = normalized_inputs[
+        "link_prioritization_mode"
+    ]
+    resolved_link_top_k = normalized_inputs["link_top_k"]
+    resolved_link_prioritization_keywords = normalized_inputs[
         "link_prioritization_keywords"
     ]
-    resolved_link_prioritization_domain_scores = _norm[
+    resolved_link_prioritization_domain_scores = normalized_inputs[
         "link_prioritization_domain_scores"
     ]
-    resolved_link_prioritization_shopping_keywords = _norm[
+    resolved_link_prioritization_shopping_keywords = normalized_inputs[
         "link_prioritization_shopping_keywords"
     ]
-    resolved_selection_primary_per_target = _norm[
+    resolved_selection_primary_per_target = normalized_inputs[
         "selection_primary_per_target"
     ]
-    resolved_selection_exclude_draft = _norm["selection_exclude_draft"]
-    resolved_selection_draft_patterns = _norm["selection_draft_patterns"]
-    resolved_selection_relevance_require_any_terms = _norm[
+    resolved_selection_exclude_draft = normalized_inputs[
+        "selection_exclude_draft"
+    ]
+    resolved_selection_draft_patterns = normalized_inputs[
+        "selection_draft_patterns"
+    ]
+    resolved_selection_relevance_require_any_terms = normalized_inputs[
         "selection_relevance_require_any_terms"
     ]
-    resolved_selection_relevance_require_legal_marker_terms = _norm[
-        "selection_relevance_require_legal_marker_terms"
-    ]
-    resolved_selection_relevance_exclude_any_terms = _norm[
+    resolved_selection_relevance_require_legal_marker_terms = (
+        normalized_inputs["selection_relevance_require_legal_marker_terms"]
+    )
+    resolved_selection_relevance_exclude_any_terms = normalized_inputs[
         "selection_relevance_exclude_any_terms"
     ]
-    resolved_selection_exclude_url_patterns = _norm[
+    resolved_selection_exclude_url_patterns = normalized_inputs[
         "selection_exclude_url_patterns"
     ]
-    resolved_selection_exclude_text_patterns = _norm[
+    resolved_selection_exclude_text_patterns = normalized_inputs[
         "selection_exclude_text_patterns"
     ]
-    resolved_selection_max_per_host_per_target = _norm[
+    resolved_selection_max_per_host_per_target = normalized_inputs[
         "selection_max_per_host_per_target"
     ]
-    resolved_selection_relevance_allowed_domain_patterns = _norm[
+    resolved_selection_relevance_allowed_domain_patterns = normalized_inputs[
         "selection_relevance_allowed_domain_patterns"
     ]
-    resolved_selection_require_supported_document = _norm[
+    resolved_selection_require_supported_document = normalized_inputs[
         "selection_require_supported_document"
     ]
-    resolved_selection_target_identity_require_any_templates = _norm[
-        "selection_target_identity_require_any_templates"
+    resolved_selection_target_identity_require_any_templates = (
+        normalized_inputs["selection_target_identity_require_any_templates"]
+    )
+    resolved_selection_target_identity_require_all_templates = (
+        normalized_inputs["selection_target_identity_require_all_templates"]
+    )
+    resolved_selection_target_identity_exclude_any_templates = (
+        normalized_inputs["selection_target_identity_exclude_any_templates"]
+    )
+    resolved_include_url_patterns = normalized_inputs["include_url_patterns"]
+    resolved_include_link_text_patterns = normalized_inputs[
+        "include_link_text_patterns"
     ]
-    resolved_selection_target_identity_require_all_templates = _norm[
-        "selection_target_identity_require_all_templates"
-    ]
-    resolved_selection_target_identity_exclude_any_templates = _norm[
-        "selection_target_identity_exclude_any_templates"
-    ]
-    resolved_include_url_patterns = _norm["include_url_patterns"]
-    resolved_include_link_text_patterns = _norm["include_link_text_patterns"]
-    resolved_index_page_mode = _norm["index_page_mode"]
-    resolved_index_links = _norm["index_links"]
-    resolved_max_depth = _norm["max_depth"]
-    resolved_max_pages = _norm["max_pages"]
-    resolved_max_files = _norm["max_files"]
-    resolved_timeout_seconds = _norm["timeout_seconds"]
-    resolved_retry_max_attempts = _norm["retry_max_attempts"]
-    resolved_retry_initial_backoff_seconds = _norm[
+    resolved_index_page_mode = normalized_inputs["index_page_mode"]
+    resolved_index_links = normalized_inputs["index_links"]
+    resolved_max_depth = normalized_inputs["max_depth"]
+    resolved_max_pages = normalized_inputs["max_pages"]
+    resolved_max_files = normalized_inputs["max_files"]
+    resolved_timeout_seconds = normalized_inputs["timeout_seconds"]
+    resolved_retry_max_attempts = normalized_inputs["retry_max_attempts"]
+    resolved_retry_initial_backoff_seconds = normalized_inputs[
         "retry_initial_backoff_seconds"
     ]
-    resolved_retry_max_backoff_seconds = _norm["retry_max_backoff_seconds"]
-    resolved_max_concurrent_downloads = _norm["max_concurrent_downloads"]
-    resolved_min_request_interval_ms = _norm["min_request_interval_ms"]
-    resolved_robots_policy_mode = _norm["robots_policy_mode"]
-    resolved_tos_policy_mode = _norm["tos_policy_mode"]
-    resolved_acknowledged_tos_domains = _norm["acknowledged_tos_domains"]
-    resolved_document_classifier = _norm["document_classifier"]
-    resolved_document_review = _norm["document_review"]
-    resolved_models = _norm["models"]
-    resolved_seeker_cache = _norm["seeker_cache"]
-    resolved_seeker_cache_ttl_minutes = _norm["seeker_cache_ttl_minutes"]
-    resolved_query_context_aliases = _norm["query_context_aliases"]
-    resolved_partition_by = _norm["partition_by"]
-    resolved_browser_mode = _norm["browser_mode"]
-    resolved_browser_escalation = _norm["browser_escalation"]
-    resolved_code_host_adapters = _norm["code_host_adapters"]
-    resolved_seeker_extra_params = _norm["seeker_extra_params"]
-    resolved_output_documents = _norm["output_documents"]
-    resolved_output_manifest = _norm["output_manifest"]
-    resolved_dry_run = _norm["dry_run"]
-    resolved_fresh = _norm["fresh"]
-
-    if not resolved_seed_urls and not resolved_query and not resolved_targets:
-        print_error(
-            "Discovery input missing",
-            "Provide at least one --seed-url, --query, or discovery.targets entry in config.",
-        )
-        sys.exit(1)
+    resolved_retry_max_backoff_seconds = normalized_inputs[
+        "retry_max_backoff_seconds"
+    ]
+    resolved_max_concurrent_downloads = normalized_inputs[
+        "max_concurrent_downloads"
+    ]
+    resolved_min_request_interval_ms = normalized_inputs[
+        "min_request_interval_ms"
+    ]
+    resolved_robots_policy_mode = normalized_inputs["robots_policy_mode"]
+    resolved_tos_policy_mode = normalized_inputs["tos_policy_mode"]
+    resolved_acknowledged_tos_domains = normalized_inputs[
+        "acknowledged_tos_domains"
+    ]
+    resolved_document_classifier = normalized_inputs["document_classifier"]
+    resolved_document_review = normalized_inputs["document_review"]
+    resolved_models = normalized_inputs["models"]
+    resolved_seeker_cache = normalized_inputs["seeker_cache"]
+    resolved_seeker_cache_ttl_minutes = normalized_inputs[
+        "seeker_cache_ttl_minutes"
+    ]
+    resolved_query_context_aliases = normalized_inputs["query_context_aliases"]
+    resolved_partition_by = normalized_inputs["partition_by"]
+    resolved_browser_mode = normalized_inputs["browser_mode"]
+    resolved_browser_escalation = normalized_inputs["browser_escalation"]
+    resolved_code_host_adapters = normalized_inputs["code_host_adapters"]
+    resolved_seeker_extra_params = normalized_inputs["seeker_extra_params"]
+    resolved_output_documents = normalized_inputs["output_documents"]
+    resolved_output_manifest = normalized_inputs["output_manifest"]
+    resolved_dry_run = normalized_inputs["dry_run"]
+    resolved_fresh = normalized_inputs["fresh"]
 
     documents_dir = (
         Path(resolved_output_documents) if resolved_output_documents else None
@@ -627,6 +641,7 @@ def discover(
         selection_target_identity_require_any_templates=resolved_selection_target_identity_require_any_templates,
         selection_target_identity_require_all_templates=resolved_selection_target_identity_require_all_templates,
         selection_target_identity_exclude_any_templates=resolved_selection_target_identity_exclude_any_templates,
+        request_headers=normalized_inputs["request_headers"],
         document_classifier=resolved_document_classifier,
         document_review=resolved_document_review,
         models=resolved_models,
@@ -671,19 +686,22 @@ def discover(
             traceback.print_exc()
         sys.exit(1)
 
-    if view.is_quiet:
-        click.echo(str(result.manifest_path))
-        return
-
-    view.phase("Writing discovery index...")
-
     try:
         manifest_data = json.loads(
             result.manifest_path.read_text(encoding="utf-8")
         )
-    except Exception:
-        manifest_data = {}
+        exit_code = discovery_exit_code(manifest_data)
+    except (OSError, ValueError, TypeError) as exc:
+        view.error("Cannot validate discovery manifest", str(exc))
+        sys.exit(1)
 
+    if view.is_quiet:
+        click.echo(str(result.manifest_path))
+        if exit_code:
+            sys.exit(exit_code)
+        return
+
+    view.phase("Writing discovery index...")
     notes = manifest_data.get("notes") or []
     errors = manifest_data.get("errors") or []
     if errors:
@@ -691,6 +709,8 @@ def discover(
             "Discovery finished with errors; results may be partial.",
             f"run_id={result.run_id}; inspect the manifest before using results.",
         )
+    elif manifest_data["status"] == "empty":
+        view.warning("No usable documents acquired", str(result.manifest_path))
     else:
         view.success(f"Discovery complete (run_id={result.run_id})")
     download_summary = (
@@ -766,3 +786,5 @@ def discover(
             f"Extract the documents: {extract_cmd}"
         )
     view.next_steps(next_steps)
+    if exit_code:
+        sys.exit(exit_code)

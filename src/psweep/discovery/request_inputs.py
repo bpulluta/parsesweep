@@ -1,15 +1,8 @@
-"""Normalize resolved discover config into typed, defaulted request inputs.
+"""Normalize discovery config and check its executable input plan.
 
-``resolve_command_config(command="discover", ...)`` merges config + explicit
-CLI overrides but returns only the values that were actually set. This module
-is the single place that applies the discover command's runtime defaults and
-type coercions on top of that merged view, producing the concrete values the
-``DiscoveryEngine`` request is built from.
-
-Keeping it here (rather than inline in the CLI) means the defaults live in one
-tested layer and the CLI ``discover`` command is a thin driver over it. The
-CLI threads its own option values in as the final fallbacks (identical to the
-former inline behavior); every expression below is a verbatim move of the shim.
+The runtime resolver merges config and explicit CLI overrides. This
+layer checks typed controls and applies defaults to request values
+used by discovery. CLI and pipeline preflight share the same plan check.
 """
 
 from __future__ import annotations
@@ -17,6 +10,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Any
 
+from .constants import DEFAULT_MAX_CONCURRENT_DOWNLOADS
 from .engine import DEFAULT_PARTITION_MODE
 from .policies import DEFAULT_ROBOTS_POLICY_MODE, DEFAULT_TOS_POLICY_MODE
 
@@ -45,19 +39,43 @@ def normalize_discover_inputs(  # noqa: PLR0913 - mirrors the discover CLI optio
     dry_run: bool = False,
     fresh: bool = False,
 ) -> dict[str, Any]:
-    """Apply discover runtime defaults + coercions to merged config inputs.
+    """Apply discovery defaults and infer omitted search enablement.
 
-    ``resolved_inputs`` is the output of
-    ``resolve_command_config(command="discover", ...)``. The keyword arguments
-    are the CLI option values, used as the final fallback exactly as the
-    former inline shim did (explicit overrides are already merged into
-    ``resolved_inputs``, so these only matter when a value is set nowhere
-    else).
-
-    Returns fully-defaulted, coerced values keyed by their short names (the
-    CLI binds its ``resolved_*`` locals directly from these).
+    Explicit CLI overrides are already merged into ``resolved_inputs``.
+    Keyword arguments supply defaults only where no value was resolved.
+    Invalid boolean and integer controls fail rather than being coerced.
     """
     ri = resolved_inputs
+    for field in (
+        "enable_serpapi",
+        "selection_exclude_draft",
+        "selection_require_supported_document",
+        "seeker_cache",
+        "browser_mode",
+        "dry_run",
+        "fresh",
+    ):
+        if field in ri and not isinstance(ri[field], bool):
+            msg = f"Discovery option '{field}' must be a boolean"
+            raise ValueError(msg)
+    for field, minimum in (
+        ("max_concurrent_downloads", 1),
+        ("min_request_interval_ms", 0),
+        ("target_limit", 1),
+        ("seeker_max_results", 1),
+        ("link_top_k", 0),
+        ("selection_primary_per_target", 1),
+        ("selection_max_per_host_per_target", 0),
+        ("retry_max_attempts", 1),
+    ):
+        value = ri.get(field)
+        if value is not None and (
+            isinstance(value, bool)
+            or not isinstance(value, int)
+            or value < minimum
+        ):
+            msg = f"Discovery option '{field}' must be an integer >= {minimum}"
+            raise ValueError(msg)
 
     resolved_target_limit = ri.get("target_limit", target_limit)
     if resolved_target_limit is not None:
@@ -67,6 +85,17 @@ def normalize_discover_inputs(  # noqa: PLR0913 - mirrors the discover CLI optio
     total_configured_targets = len(resolved_targets or [])
     if resolved_targets and resolved_target_limit is not None:
         resolved_targets = list(resolved_targets)[:resolved_target_limit]
+
+    # Explicit controls win; infer only from the selected query plan.
+    # Config names are already mapped to internal request keys.
+    resolved_enable_serpapi = ri.get("enable_serpapi")
+    if resolved_enable_serpapi is None:
+        resolved_enable_serpapi = enable_serpapi or bool(
+            ri.get("query", query)
+            or ri.get("query_templates")
+            or (ri.get("query_families") or {}).get(ri.get("use_query_family"))
+            or any(row.get("query") for row in (resolved_targets or []))
+        )
 
     raw_browser_escalation = ri.get("browser_escalation")
     browser_escalation = (
@@ -79,6 +108,10 @@ def normalize_discover_inputs(  # noqa: PLR0913 - mirrors the discover CLI optio
         dict(raw_code_host_adapters)
         if isinstance(raw_code_host_adapters, dict)
         else None
+    )
+    raw_headers = ri.get("request_headers")
+    request_headers = (
+        dict(raw_headers) if isinstance(raw_headers, dict) else None
     )
     raw_seeker_extra = ri.get("seeker_extra_params")
     seeker_extra_params = (
@@ -106,9 +139,7 @@ def normalize_discover_inputs(  # noqa: PLR0913 - mirrors the discover CLI optio
             .lower()
         ),
         "topology_mode": ri.get("topology_mode"),
-        "enable_serpapi": bool(
-            ri.get("enable_serpapi", enable_serpapi or False)
-        ),
+        "enable_serpapi": resolved_enable_serpapi,
         "hub_pages": ri.get("hub_pages") or None,
         "allowed_domains": ri.get("allowed_domains") or None,
         "targets": resolved_targets,
@@ -185,16 +216,17 @@ def normalize_discover_inputs(  # noqa: PLR0913 - mirrors the discover CLI optio
         "timeout_seconds": ri.get("timeout_seconds"),
         "retry_max_attempts": int(ri.get("retry_max_attempts", 3) or 3),
         "retry_initial_backoff_seconds": float(
-            ri.get("retry_initial_backoff_seconds", 1.0) or 1.0
+            ri.get("retry_initial_backoff_seconds", 1.0)
         ),
         "retry_max_backoff_seconds": float(
-            ri.get("retry_max_backoff_seconds", 8.0) or 8.0
+            ri.get("retry_max_backoff_seconds", 8.0)
         ),
         "max_concurrent_downloads": int(
             ri.get(
-                "max_concurrent_downloads", max_concurrent_downloads or 2
+                "max_concurrent_downloads",
+                max_concurrent_downloads or DEFAULT_MAX_CONCURRENT_DOWNLOADS,
             )
-            or 2
+            or DEFAULT_MAX_CONCURRENT_DOWNLOADS
         ),
         "min_request_interval_ms": int(
             ri.get("min_request_interval_ms", min_request_interval_ms or 0)
@@ -218,6 +250,7 @@ def normalize_discover_inputs(  # noqa: PLR0913 - mirrors the discover CLI optio
             or acknowledged_tos_domains
             or []
         ),
+        "request_headers": request_headers,
         "document_classifier": ri.get("document_classifier") or None,
         "document_review": ri.get("document_review") or None,
         "models": ri.get("models") or None,
@@ -236,3 +269,24 @@ def normalize_discover_inputs(  # noqa: PLR0913 - mirrors the discover CLI optio
         "dry_run": bool(ri.get("dry_run", dry_run)),
         "fresh": bool(ri.get("fresh", fresh)),
     }
+
+
+def validate_discover_plan(inputs: dict[str, Any]) -> None:
+    """Check executable inputs without contacting external services."""
+    has_templates = inputs.get("query_templates") or (
+        (inputs.get("query_families") or {}).get(
+            inputs.get("use_query_family")
+        )
+    )
+    if not (
+        inputs.get("seed_urls")
+        or inputs.get("query")
+        or inputs.get("targets")
+        or inputs.get("hub_pages")
+        or (inputs.get("enable_serpapi") and has_templates)
+    ):
+        msg = (
+            "Discovery input missing: provide seed URLs, a query, targets, "
+            "hub pages, or enabled search with query templates."
+        )
+        raise ValueError(msg)

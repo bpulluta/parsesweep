@@ -63,6 +63,10 @@ class FakeResponse:
     def raise_for_status(self):
         return None
 
+    def close(self):
+        """Model response ownership without any external resource."""
+        self.closed = True
+
     def iter_content(self, chunk_size: int = 65536):
         del chunk_size
         for chunk in self._chunks:

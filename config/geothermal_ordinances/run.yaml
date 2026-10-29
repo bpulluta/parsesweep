@@ -11,6 +11,9 @@ models:
 
 # ── Discovery ────────────────────────────────────────────────────────────────
 discovery:
+  # This domain opts into code-host/API and browser recovery.
+  browser_escalation: {enabled: true}
+  code_host_adapters: {enabled: true}
   targets_csv: targets.csv
   queries:
     - "\"{jurisdiction}\" {state} geothermal ordinance zoning code"
@@ -23,11 +26,23 @@ discovery:
     max_results: 10
     cache: true
   selection:
-    primary_per_target: 15
+    max_per_target: 15
     exclude_draft: true
+    draft_patterns:
+      - '\bdraft\b'
+      - '\bproposed\b'
+      - '\bpreliminary\b'
+      - 'for[\s_\-]?review'
+      - '\bmodel[\s_\-]ordinance\b'
+      - '\bmodel[\s_\-]code\b'
+      - '\btemplate\b'
+      - '\bsuperseded\b'
+      - '\bwithdrawn\b'
+      - '\bobsolete\b'
+      - '\barchive[d]?\b'
     target_identity_require_any_templates:
       - "{jurisdiction}"
-    relevance_require_any_terms:
+    require_any:
       - geothermal
       - ordinance
       - zoning
@@ -39,7 +54,7 @@ discovery:
       - permit
       - well
       - energy
-    relevance_exclude_any_terms:
+    exclude:
       - press release
       - news article
       - meeting minutes
@@ -112,7 +127,6 @@ discovery:
     # Genuinely complementary sections are kept. keep_top still caps the final
     # count of distinct docs per jurisdiction. Default: true.
     deduplicate_redundant: true
-    action: move
   partition_by: [state, jurisdiction]
 
 # ── Extraction ───────────────────────────────────────────────────────────────
