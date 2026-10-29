@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import logging
+import os
+
 from pathlib import Path
 
 import pytest
@@ -225,6 +227,124 @@ class TestCacheRoundTrip:
 # ---------------------------------------------------------------------------
 # LLM failure → None, no ERROR log
 # ---------------------------------------------------------------------------
+
+
+class TestSectionCacheIntegrity:
+    def _source(self, tmp_path):
+        source = tmp_path / "doc.html"
+        source.write_text(HTML_WITH_TABLE)
+        return source
+
+    def test_full_filename_identity(self, tmp_path):
+        sources = [tmp_path / "doc.html", tmp_path / "doc.txt"]
+        loc = SectionLocator("rates")
+        for source, text in zip(sources, ("HTML", "TXT")):
+            source.write_bytes(b"same")
+            os.utime(source, ns=(1000000000, 1000000000))
+            loc._write_cache(source, text)
+        assert [loc._read_cache(s) for s in sources] == ["HTML", "TXT"]
+        assert len(list((tmp_path / ".sections").iterdir())) == 4
+
+    def test_text_digest_rejects_tampering(self, tmp_path):
+        source = self._source(tmp_path)
+        loc = SectionLocator("rates")
+        loc._write_cache(source, "cached")
+        loc._cache_paths(source)[1].write_text("broken")
+        assert loc._read_cache(source) is None
+
+    def test_source_digest_invalidates_same_stat(self, tmp_path):
+        source = self._source(tmp_path)
+        loc = SectionLocator("rates")
+        loc._write_cache(source, "cached")
+        stat = source.stat()
+        source.write_text(HTML_WITH_TABLE.replace("100", "101"))
+        os.utime(source, ns=(stat.st_atime_ns, stat.st_mtime_ns))
+        assert loc._read_cache(source) is None
+
+    @pytest.mark.parametrize(
+        "changed",
+        [
+            {"keywords": []},
+            {"trigger_chars": 1},
+            {"snippet_chars": 900},
+            {"model": "gpt-4o-mini"},
+        ],
+    )
+    def test_settings_invalidate_cache(self, tmp_path, changed):
+        source = self._source(tmp_path)
+        SectionLocator("rates", model="gpt-4o")._write_cache(source, "cached")
+        kwargs = {"model": "gpt-4o", **changed}
+        assert SectionLocator("rates", **kwargs)._read_cache(source) is None
+
+    def test_explicit_empty_keywords_respected(self):
+        loc = SectionLocator("rate schedule", keywords=[])
+        assert loc._candidate_chunks([_Chunk("rate", "schedule")]) == []
+
+    def test_metadata_last_staging_and_cached_lookup(
+        self, tmp_path, monkeypatch
+    ):
+        source = self._source(tmp_path)
+        loc = SectionLocator("rates", trigger_chars=1)
+        loc._write_cache(source, "before")
+        meta_path, text_path = loc._cache_paths(source)
+        original_replace = Path.replace
+        destinations = []
+
+        def observe(staged, destination):
+            assert staged.parent == destination.parent
+            if destination == meta_path:
+                assert text_path.read_text() == "after"
+                assert loc._read_cache(source) is None
+            destinations.append(destination)
+            return original_replace(staged, destination)
+
+        monkeypatch.setattr(Path, "replace", observe)
+        loc._write_cache(source, "after")
+        assert destinations == [text_path, meta_path]
+        monkeypatch.setattr(
+            loc,
+            "_split_html_sections",
+            lambda _t: pytest.fail("parsed cache hit"),
+        )
+        assert loc.locate_cached(source) == "after"
+        assert loc.locate(source) == "after"
+        assert len(list(meta_path.parent.iterdir())) == 2
+
+    @pytest.mark.parametrize("failed_index", [0, 1])
+    def test_interruption_never_serves_mismatched_pair(
+        self, tmp_path, monkeypatch, failed_index
+    ):
+        source = self._source(tmp_path)
+        loc = SectionLocator("rates")
+        loc._write_cache(source, "before")
+        meta_path, text_path = loc._cache_paths(source)
+        original_replace = Path.replace
+
+        def fail(staged, destination):
+            if destination == (text_path, meta_path)[failed_index]:
+                raise OSError("interrupted")
+            return original_replace(staged, destination)
+
+        monkeypatch.setattr(Path, "replace", fail)
+        loc._write_cache(source, "after")
+        assert loc._read_cache(source) == (
+            "before" if failed_index == 0 else None
+        )
+        assert len(list(meta_path.parent.iterdir())) == 2
+
+
+class TestSectionResponses:
+    @pytest.mark.parametrize(
+        "sections", [[True], [1.5], ["2"], {"unexpected": 1}]
+    )
+    def test_noninteger_sections_are_not_coerced(self, monkeypatch, sections):
+        locator = SectionLocator("rates")
+        monkeypatch.setattr(
+            locator, "_ensure_client", lambda: _FakeClient(sections)
+        )
+        assert (
+            locator._confirm_with_llm([_Chunk("", "rates")] * 3, [0]) is None
+        )
 
 
 class TestLlmFailureReturnsNoneNoErrorLog:

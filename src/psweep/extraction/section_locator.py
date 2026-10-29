@@ -11,9 +11,9 @@ Strategy (mirrors PageLocator):
 2. LLM confirm — send a compact index (heading + snippet) of candidate
    chunks and ask which ones contain the described section.
 
-Results are cached in a ``.sections/<stem>.json`` + ``.sections/<stem>.txt``
-sidecar pair next to the source file (keyed on size/mtime and section
-description) so the LLM call happens once.
+Caches live in ``.sections/<filename>.json`` and ``<filename>.txt``.
+Source/text SHA-256 and resolved model/settings verify the pair.
+Publication replaces text before metadata; interrupted pairs miss.
 
 Everything is best-effort: on any failure ``locate`` returns ``None`` and the
 caller falls back to full-document extraction.
@@ -24,6 +24,7 @@ Unsupported (always full extraction): XLSX, CSV, PDF.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import re
@@ -31,6 +32,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from psweep.exceptions import APIKeyError
 from .page_locator import (
     DEFAULT_PAGE_TRIGGER_CHARS,
     _BaseLocator,
@@ -118,7 +120,9 @@ def _table_to_markdown(table) -> str:
     """
     rows: list[str] = []
     for tr in table.find_all("tr"):
-        cells = [td.get_text(" ", strip=True) for td in tr.find_all(["td", "th"])]
+        cells = [
+            td.get_text(" ", strip=True) for td in tr.find_all(["td", "th"])
+        ]
         if cells:
             rows.append(_pipe_row(cells))
     return "\n".join(rows)
@@ -134,6 +138,7 @@ class SectionLocator(_BaseLocator):
         model: str | None = None,
         models: dict[str, str] | None = None,
         default_model: str | None = None,
+        llm_config: dict | None = None,
         trigger_chars: int = DEFAULT_PAGE_TRIGGER_CHARS,
         keywords: list[str] | None = None,
         snippet_chars: int = 600,
@@ -143,6 +148,7 @@ class SectionLocator(_BaseLocator):
             model=model,
             models=models,
             default_model=default_model,
+            llm_config=llm_config,
             trigger_chars=trigger_chars,
             keywords=keywords,
             snippet_chars=snippet_chars,
@@ -150,17 +156,9 @@ class SectionLocator(_BaseLocator):
 
     # -- keyword heuristics ------------------------------------------------
 
-    def _score_chunk(self, chunk: _Chunk) -> int:
-        low = (chunk.heading + " " + chunk.text).lower()
-        return sum(low.count(kw) for kw in self._keywords)
-
     def _candidate_chunks(self, chunks: list[_Chunk]) -> list[int]:
         """Return 0-indexed candidate chunk indices by keyword density."""
-        scores = [self._score_chunk(c) for c in chunks]
-        if not any(scores):
-            return []
-        threshold = max(1, int(0.4 * max(scores)))
-        return [i for i, s in enumerate(scores) if s >= threshold]
+        return self._dense_indices(c.heading + " " + c.text for c in chunks)
 
     # -- document splitting ------------------------------------------------
 
@@ -219,7 +217,9 @@ class SectionLocator(_BaseLocator):
         try:
             import docx as _docx  # lazy import for optional dep
         except ImportError:
-            logger.debug("python-docx not available; DOCX section splitting skipped")
+            logger.debug(
+                "python-docx not available; DOCX section splitting skipped"
+            )
             return []
 
         try:
@@ -252,7 +252,9 @@ class SectionLocator(_BaseLocator):
             rows: list[str] = []
             for tr in tbl_elem.iter(f"{{{_W}}}tr"):
                 cells = [
-                    "".join(t.text or "" for t in tc.iter(f"{{{_W}}}t")).strip()
+                    "".join(
+                        t.text or "" for t in tc.iter(f"{{{_W}}}t")
+                    ).strip()
                     for tc in tr.findall(f"{{{_W}}}tc")
                 ]
                 if any(cells):
@@ -270,7 +272,9 @@ class SectionLocator(_BaseLocator):
                 text = _para_text(child).strip()
                 if style.startswith("heading") and text:
                     if cur_parts:
-                        chunks.append(_Chunk(cur_heading, "\n".join(cur_parts)))
+                        chunks.append(
+                            _Chunk(cur_heading, "\n".join(cur_parts))
+                        )
                     cur_heading = text
                     cur_parts = []
                 elif text:
@@ -288,7 +292,9 @@ class SectionLocator(_BaseLocator):
     def _split_txt_sections(self, text: str) -> list[_Chunk]:
         """Split plain text by section markers or blank-line paragraphs."""
         # Try explicit section markers first.
-        marker_positions = [m.start() for m in _SECTION_MARKER_RE.finditer(text)]
+        marker_positions = [
+            m.start() for m in _SECTION_MARKER_RE.finditer(text)
+        ]
         if len(marker_positions) > 1:
             chunks: list[_Chunk] = []
             # Preamble before first marker
@@ -296,7 +302,11 @@ class SectionLocator(_BaseLocator):
             if preamble:
                 chunks.append(_Chunk("", preamble))
             for i, pos in enumerate(marker_positions):
-                end = marker_positions[i + 1] if i + 1 < len(marker_positions) else len(text)
+                end = (
+                    marker_positions[i + 1]
+                    if i + 1 < len(marker_positions)
+                    else len(text)
+                )
                 block = text[pos:end]
                 first_nl = block.find("\n")
                 if first_nl == -1:
@@ -310,7 +320,9 @@ class SectionLocator(_BaseLocator):
             return [c for c in chunks if c.text.strip()]
 
         # Fall back: split by blank lines and group into ~_TXT_CHUNK_CHARS chunks.
-        paragraphs = [p.strip() for p in re.split(r"\n\s*\n", text) if p.strip()]
+        paragraphs = [
+            p.strip() for p in re.split(r"\n\s*\n", text) if p.strip()
+        ]
         if len(paragraphs) <= 1:
             return [_Chunk("", text.strip())] if text.strip() else []
 
@@ -323,12 +335,16 @@ class SectionLocator(_BaseLocator):
             cur_len += len(para)
             if cur_len >= _TXT_CHUNK_CHARS:
                 section_num += 1
-                chunks.append(_Chunk(f"Part {section_num}", "\n\n".join(cur_parts)))
+                chunks.append(
+                    _Chunk(f"Part {section_num}", "\n\n".join(cur_parts))
+                )
                 cur_parts = []
                 cur_len = 0
         if cur_parts:
             section_num += 1
-            chunks.append(_Chunk(f"Part {section_num}", "\n\n".join(cur_parts)))
+            chunks.append(
+                _Chunk(f"Part {section_num}", "\n\n".join(cur_parts))
+            )
         return chunks
 
     # -- LLM confirmation --------------------------------------------------
@@ -350,7 +366,7 @@ class SectionLocator(_BaseLocator):
             "Below are excerpts from candidate sections of a document (section "
             "numbers are 1-indexed). Return the section numbers that contain "
             "the target content as JSON "
-            "{\"relevant_sections\": [N, M, ...]}.\n\n"
+            '{"relevant_sections": [N, M, ...]}.\n\n'
             f"CANDIDATE SECTIONS:\n{index_text}"
         )
         try:
@@ -361,21 +377,23 @@ class SectionLocator(_BaseLocator):
                 user_prompt=user_prompt,
                 suppress_errors=True,
             )
+        except APIKeyError:
+            raise
         except Exception as exc:  # noqa: BLE001 - fall back to no targeting
             logger.debug(f"Section locator LLM call failed: {exc}")
             return None
 
         data = result.get("data") if isinstance(result, dict) else None
-        section_nums = (data or {}).get("relevant_sections") or []
-        result_indices: list[int] = []
-        for n in section_nums:
-            try:
-                idx = int(n) - 1
-                if 0 <= idx < len(chunks):
-                    result_indices.append(idx)
-            except (TypeError, ValueError):
-                continue
-        return result_indices if result_indices else None
+        section_nums = (
+            data.get("relevant_sections") if isinstance(data, dict) else None
+        )
+        if not isinstance(section_nums, list):
+            return None
+        return [
+            n - 1
+            for n in section_nums
+            if type(n) is int and 1 <= n <= len(chunks)
+        ] or None
 
     # -- cache -------------------------------------------------------------
 
@@ -384,8 +402,8 @@ class SectionLocator(_BaseLocator):
         """Return (meta_path, text_path) for the section cache sidecar."""
         cache_dir = file_path.parent / SECTION_CACHE_DIRNAME
         return (
-            cache_dir / f"{file_path.stem}.json",
-            cache_dir / f"{file_path.stem}.txt",
+            cache_dir / f"{file_path.name}.json",
+            cache_dir / f"{file_path.name}.txt",
         )
 
     def _read_cache(self, file_path: Path) -> str | None:
@@ -394,38 +412,50 @@ class SectionLocator(_BaseLocator):
             return None
         try:
             meta = json.loads(meta_path.read_text(encoding="utf-8"))
-            stat = file_path.stat()
-            if int(meta.get("source_size", -1)) != stat.st_size:
+            if not self._cache_matches(file_path, meta):
                 return None
-            if int(meta.get("source_mtime_ns", -1)) != stat.st_mtime_ns:
+            text_bytes = text_path.read_bytes()
+            if (
+                meta.get("text_sha256")
+                != hashlib.sha256(text_bytes).hexdigest()
+            ):
                 return None
-            if meta.get("section_hash") != self._section_hash():
-                return None
-            return text_path.read_text(encoding="utf-8")
+            return text_bytes.decode("utf-8")
         except Exception:  # noqa: BLE001 - a bad cache must never break extraction
             return None
 
     def _write_cache(self, file_path: Path, text: str) -> None:
         meta_path, text_path = self._cache_paths(file_path)
         try:
-            stat = file_path.stat()
-            meta_path.parent.mkdir(parents=True, exist_ok=True)
-            meta_path.write_text(
-                json.dumps(
-                    {
-                        "source_size": stat.st_size,
-                        "source_mtime_ns": stat.st_mtime_ns,
-                        "section_hash": self._section_hash(),
-                        "section_description": self._description,
-                        "method": "heuristic+llm",
-                    },
-                    indent=2,
-                ),
-                encoding="utf-8",
+            text_bytes = text.encode("utf-8")
+            meta = {
+                **self._cache_metadata(file_path),
+                "text_sha256": hashlib.sha256(text_bytes).hexdigest(),
+                "method": "heuristic+llm",
+            }
+            self._publish_cache(
+                [
+                    (text_path, text_bytes),
+                    (meta_path, json.dumps(meta, indent=2).encode("utf-8")),
+                ]
             )
-            text_path.write_text(text, encoding="utf-8")
-        except Exception:  # noqa: BLE001 - caching is an optimization, never fatal
-            pass
+        except (OSError, TypeError, ValueError):
+            logger.debug(
+                "Section cache write failed for %s", file_path, exc_info=True
+            )
+
+    def locate_cached(self, file_path: str | Path) -> str | None:
+        """Return verified section text without document parsing."""
+        file_path = Path(file_path)
+        if file_path.suffix.lower() not in {
+            ".html",
+            ".htm",
+            ".docx",
+            ".doc",
+            ".txt",
+        }:
+            return None
+        return self._read_cache(file_path)
 
     # -- entry point -------------------------------------------------------
 
@@ -446,6 +476,11 @@ class SectionLocator(_BaseLocator):
         if ext not in {".html", ".htm", ".docx", ".doc", ".txt"}:
             return None
 
+        cached = self.locate_cached(file_path)
+        if cached is not None:
+            logger.debug("Section targeting cache hit for %s", file_path.name)
+            return cached
+
         # Size check: for byte-comparable formats, use file size as proxy.
         # For text formats we compare actual char count after reading.
         try:
@@ -457,28 +492,28 @@ class SectionLocator(_BaseLocator):
         if ext in {".docx", ".doc"} and file_size <= self.trigger_chars:
             return None
 
-        # Check cache.
-        cached = self._read_cache(file_path)
-        if cached is not None:
-            logger.debug(f"Section targeting cache hit for {file_path.name}")
-            return cached
-
         # Split into chunks.
         try:
             if ext in {".html", ".htm"}:
-                raw_text = file_path.read_text(encoding="utf-8", errors="ignore")
+                raw_text = file_path.read_text(
+                    encoding="utf-8", errors="ignore"
+                )
                 if len(raw_text) <= self.trigger_chars:
                     return None
                 chunks = self._split_html_sections(raw_text)
             elif ext in {".docx", ".doc"}:
                 chunks = self._split_docx_sections(file_path)
             else:  # .txt
-                raw_text = file_path.read_text(encoding="utf-8", errors="ignore")
+                raw_text = file_path.read_text(
+                    encoding="utf-8", errors="ignore"
+                )
                 if len(raw_text) <= self.trigger_chars:
                     return None
                 chunks = self._split_txt_sections(raw_text)
         except Exception as exc:  # noqa: BLE001 - fall back to full extraction
-            logger.debug(f"Section splitting failed for {file_path.name}: {exc}")
+            logger.debug(
+                "Section splitting failed for %s: %s", file_path.name, exc
+            )
             return None
 
         if not chunks:
@@ -492,6 +527,7 @@ class SectionLocator(_BaseLocator):
             return None
 
         relevant_indices = self._confirm_with_llm(chunks, candidates)
+        self.incomplete = not relevant_indices
         if not relevant_indices:
             return None
 

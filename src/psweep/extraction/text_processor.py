@@ -5,12 +5,12 @@ import logging
 from jsonschema import FormatChecker
 from jsonschema.validators import validator_for
 
-from typing import Dict, Any, List, Optional, Tuple
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
 
-def find_data_arrays(data: Dict[str, Any]) -> List[Tuple[str, list]]:
+def find_data_arrays(data: dict[str, Any]) -> list[tuple[str, list]]:
     """Return ``(field_name, list_value)`` for every non-empty list-valued
     top-level field, in document (insertion) order.
 
@@ -23,19 +23,6 @@ def find_data_arrays(data: Dict[str, Any]) -> List[Tuple[str, list]]:
         for key, value in data.items()
         if isinstance(value, list) and value
     ]
-
-
-def find_main_data_array(data: Dict[str, Any]) -> Tuple[Optional[str], int]:
-    """Return ``(field_name, item_count)`` for the largest non-empty list-valued
-    top-level field, or ``(None, 0)`` when there are none.
-
-    On ties the first such field in document order wins.
-    """
-    arrays = find_data_arrays(data)
-    if not arrays:
-        return None, 0
-    key, value = max(arrays, key=lambda kv: len(kv[1]))
-    return key, len(value)
 
 
 class TextProcessor:
@@ -53,7 +40,7 @@ class TextProcessor:
         """
         self.max_chars = max_chars
 
-    def optimize(self, text: str) -> Tuple[str, bool]:
+    def optimize(self, text: str) -> tuple[str, bool]:
         """
         Optimize text for extraction by truncating if needed.
 
@@ -64,7 +51,7 @@ class TextProcessor:
 
         Returns
         -------
-        Tuple[str, bool]
+        tuple[str, bool]
             Tuple of (optimized_text, was_truncated)
         """
         original_length = len(text)
@@ -80,8 +67,8 @@ class TextProcessor:
         return text, was_truncated
 
     def normalize_with_schema(
-        self, data: Dict[str, Any], schema: Dict[str, Any]
-    ) -> Dict[str, Any]:
+        self, data: dict[str, Any], schema: dict[str, Any], validator=None
+    ) -> dict[str, Any]:
         """
         Fill absent optional fields with null only when their schema permits it.
 
@@ -90,30 +77,33 @@ class TextProcessor:
 
         Parameters
         ----------
-        data : Dict[str, Any]
+        data : dict[str, Any]
             Extracted data dictionary
-        schema : Dict[str, Any]
+        schema : dict[str, Any]
             JSON schema defining expected structure
 
         Returns
         -------
-        Dict[str, Any]
+        dict[str, Any]
             Data with absent nullable optional fields filled
         """
-        validator = validator_for(schema)(schema, format_checker=FormatChecker())
+        validator = validator or validator_for(schema)(
+            schema, format_checker=FormatChecker()
+        )
 
         def fill_nullable(value, subschema):
             if not isinstance(subschema, dict):
                 return
             if isinstance(value, dict):
                 required = subschema.get("required", [])
-                for field, field_schema in subschema.get("properties", {}).items():
+                for field, field_schema in subschema.get(
+                    "properties", {}
+                ).items():
                     if field in value:
                         fill_nullable(value[field], field_schema)
-                    elif (
-                        field not in required
-                        and validator.evolve(schema=field_schema).is_valid(None)
-                    ):
+                    elif field not in required and validator.evolve(
+                        schema=field_schema
+                    ).is_valid(None):
                         value[field] = None
             elif isinstance(value, list):
                 item_schema = subschema.get("items", {})
@@ -123,7 +113,8 @@ class TextProcessor:
         fill_nullable(data, schema)
         return data
 
-    def normalize_string_fields(self, data: Dict[str, Any]) -> Dict[str, Any]:
+    @staticmethod
+    def normalize_string_fields(data: dict[str, Any]) -> dict[str, Any]:
         """
         Normalize string fields for consistency.
 
@@ -132,12 +123,12 @@ class TextProcessor:
 
         Parameters
         ----------
-        data : Dict[str, Any]
+        data : dict[str, Any]
             Extracted data dictionary
 
         Returns
         -------
-        Dict[str, Any]
+        dict[str, Any]
             Data with normalized string fields
         """
 
@@ -162,8 +153,8 @@ class TextProcessor:
         return clean_dict(data)
 
     def run_sanity_checks(
-        self, data: Dict[str, Any], schema_metadata=None
-    ) -> List[str]:
+        self, data: dict[str, Any], schema_metadata=None
+    ) -> list[str]:
         """
         Run post-extraction sanity checks to catch obvious errors.
 
@@ -172,14 +163,14 @@ class TextProcessor:
 
         Parameters
         ----------
-        data : Dict[str, Any]
+        data : dict[str, Any]
             Extracted data dictionary
         schema_metadata
             Optional SchemaMetadata for identifier field lookup
 
         Returns
         -------
-        List[str]
+        list[str]
             List of warning messages
         """
         warnings = []
@@ -196,10 +187,12 @@ class TextProcessor:
 
         # Resolve item-level label fields from schema metadata.
         # Dedup key_fields are per-item identifying fields defined in the schema.
-        id_field_names: List[str] = []
+        id_field_names: list[str] = []
         if schema_metadata:
             try:
-                key_fields = schema_metadata.get_deduplication_key_fields() or []
+                key_fields = (
+                    schema_metadata.get_deduplication_key_fields() or []
+                )
                 id_field_names = [str(f) for f in key_fields if f]
             except Exception:
                 pass
@@ -226,7 +219,9 @@ class TextProcessor:
                             id_parts.append(val)
                             if len(id_parts) >= 2:
                                 break
-                item_label = " / ".join(id_parts[:2]) if id_parts else f"#{idx}"
+                item_label = (
+                    " / ".join(id_parts[:2]) if id_parts else f"#{idx}"
+                )
 
                 for field, value in item.items():
                     if isinstance(value, str):
@@ -237,9 +232,8 @@ class TextProcessor:
 
         return warnings
 
-    def calculate_completeness(
-        self, data: Dict[str, Any], validation_notes: List[str]
-    ) -> float:
+    @staticmethod
+    def calculate_completeness(data: dict[str, Any]) -> float:
         """
         Calculate completeness score based on fields populated.
 
@@ -251,10 +245,8 @@ class TextProcessor:
 
         Parameters
         ----------
-        data : Dict[str, Any]
+        data : dict[str, Any]
             Extracted data dictionary
-        validation_notes : List[str]
-            List of validation notes (unused but kept for compatibility)
 
         Returns
         -------
@@ -267,13 +259,12 @@ class TextProcessor:
         context_fields = 0
         total_context_fields = 0
 
-        for key, value in data.items():
+        for value in data.values():
             if isinstance(value, dict):
-                # This is a context object (metadata, jurisdiction, facility, etc.)
-                for field_key, field_value in value.items():
-                    total_context_fields += 1
-                    if field_value not in [None, "", [], {}]:
-                        context_fields += 1
+                total_context_fields += len(value)
+                context_fields += sum(
+                    field not in [None, "", [], {}] for field in value.values()
+                )
 
         # Score context completeness
         if total_context_fields > 0:
@@ -290,9 +281,7 @@ class TextProcessor:
                 if isinstance(item, dict):
                     item_fields = len(item)
                     populated_fields = sum(
-                        1
-                        for v in item.values()
-                        if v not in [None, "", [], {}]
+                        1 for v in item.values() if v not in [None, "", [], {}]
                     )
                     if (
                         item_fields > 0

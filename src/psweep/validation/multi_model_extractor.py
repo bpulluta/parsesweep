@@ -65,12 +65,12 @@ class ModelExtractionResult:
     success: bool
     output_path: Optional[Path]
     data: Optional[Dict[str, Any]]
-    cost: float
+    cost: float | None
     processing_time: float
     input_tokens: int = 0
     output_tokens: int = 0
     reused: bool = False
-    reused_prior_cost_usd: float = 0.0
+    reused_prior_cost_usd: float | None = 0.0
     error: Optional[str] = None
     error_details: Optional[Dict[str, Any]] = None
     result: Optional[Any] = None
@@ -165,7 +165,7 @@ def run_multi_model_extraction(
             payload = seeded_record["payload"]
             metrics = seeded_record.get("processing_metrics") or {}
             processing_time = time.time() - model_start
-            prior_cost = float(metrics.get("cost_usd") or 0.0)
+            prior_cost = metrics.get("cost_usd")
             results[model] = ModelExtractionResult(
                 model=model,
                 success=True,
@@ -195,6 +195,7 @@ def run_multi_model_extraction(
         llm_kwargs = registry.to_llm_kwargs(definition.tier)
         provider = llm_kwargs.get("provider", "openai")
 
+        result = None
         try:
             # Create a new extractor for this model, threading base_url for
             # OpenAI-compatible proxy support (LiteLLM, OpenRouter, etc.)
@@ -276,21 +277,33 @@ def run_multi_model_extraction(
                 result=result,
             )
 
+            cost_display = (
+                "unknown cost"
+                if result.cost is None
+                else f"${result.cost:.4f}"
+            )
             logger.info(
-                f"✓ {model} completed: {output_path.name} "
-                f"(${result.cost:.4f}, {processing_time:.1f}s)"
+                "✓ %s completed: %s (%s, %.1fs)",
+                model,
+                output_path.name,
+                cost_display,
+                processing_time,
             )
             if model_status_callback:
                 model_status_callback(
                     {
                         "event": "model_success",
                         "model": model,
-                        "cost": float(result.cost or 0.0),
+                        "cost": result.cost,
                         "processing_time": processing_time,
                     }
                 )
 
         except Exception as e:
+            usage = getattr(e, "usage", None) or {
+                key: getattr(result, key, None)
+                for key in ("cost", "input_tokens", "output_tokens")
+            }
             processing_time = time.time() - model_start
             error_msg = str(e)
             error_details = build_error_record(
@@ -306,10 +319,10 @@ def run_multi_model_extraction(
                 success=False,
                 output_path=None,
                 data=None,
-                cost=0.0,
+                cost=usage.get("cost"),
                 processing_time=processing_time,
-                input_tokens=0,
-                output_tokens=0,
+                input_tokens=usage.get("input_tokens") or 0,
+                output_tokens=usage.get("output_tokens") or 0,
                 error=error_msg,
                 error_details=error_details,
             )
@@ -326,15 +339,22 @@ def run_multi_model_extraction(
 
     # Calculate totals
     total_time = time.time() - total_start
-    total_cost = sum(r.cost for r in results.values())
+    total_cost = sum(r.cost or 0 for r in results.values())
+    unknown_cost_models = sum(r.cost is None for r in results.values())
     successful = sum(1 for r in results.values() if r.success)
     reused_outputs = sum(1 for r in results.values() if r.success and r.reused)
     fresh_extractions = sum(
         1 for r in results.values() if r.success and not r.reused
     )
-    reused_prior_cost = sum(r.reused_prior_cost_usd for r in results.values())
-    total_input_tokens = sum(int(r.input_tokens or 0) for r in results.values())
-    total_output_tokens = sum(int(r.output_tokens or 0) for r in results.values())
+    reused_prior_cost = sum(
+        r.reused_prior_cost_usd or 0 for r in results.values()
+    )
+    total_input_tokens = sum(
+        int(r.input_tokens or 0) for r in results.values()
+    )
+    total_output_tokens = sum(
+        int(r.output_tokens or 0) for r in results.values()
+    )
     error_summary = summarize_error_records(
         r.error_details
         for r in results.values()
@@ -370,6 +390,7 @@ def run_multi_model_extraction(
             "reused_prior_cost_usd": reused_prior_cost,
             "total_errors": error_summary["total_errors"],
             "total_cost_usd_incurred_this_run": total_cost,
+            "unknown_cost_models": unknown_cost_models,
             "total_input_tokens": total_input_tokens,
             "total_output_tokens": total_output_tokens,
             "total_time": total_time,
@@ -403,7 +424,8 @@ def run_multi_model_extraction(
 
     logger.info(
         f"Multi-model extraction complete: {successful}/{len(models)} models, "
-        f"${total_cost:.4f} total, {total_time:.1f}s"
+        f"${total_cost:.4f} known total ({unknown_cost_models} unknown), "
+        f"{total_time:.1f}s"
     )
 
     return results

@@ -2,8 +2,13 @@
 
 from __future__ import annotations
 
+import json
+import os
 from pathlib import Path
 
+import pytest
+
+from psweep.cli import commands_extract as commands
 from psweep.extraction.page_locator import PageLocator
 
 
@@ -58,7 +63,9 @@ class TestLocate:
         pdf.write_bytes(b"%PDF-1.4 fake")
         return pdf
 
-    def test_locate_returns_range_and_writes_cache(self, tmp_path, monkeypatch):
+    def test_locate_returns_range_and_writes_cache(
+        self, tmp_path, monkeypatch
+    ):
         pdf = self._pdf(tmp_path)
         loc = PageLocator("residential rate schedule per kwh")
         fake = _FakeClient([{"start": 11, "end": 12}])
@@ -86,12 +93,16 @@ class TestLocate:
         assert rng == (11, 12)
         assert fake2.calls == 0  # served from cache
 
-    def test_cache_invalidated_when_section_changes(self, tmp_path, monkeypatch):
+    def test_cache_invalidated_when_section_changes(
+        self, tmp_path, monkeypatch
+    ):
         pdf = self._pdf(tmp_path)
         pages = _pages_with_section({10, 11}, total=20)
         loc = PageLocator("residential rate schedule per kwh")
         monkeypatch.setattr(
-            loc, "_ensure_client", lambda: _FakeClient([{"start": 11, "end": 12}])
+            loc,
+            "_ensure_client",
+            lambda: _FakeClient([{"start": 11, "end": 12}]),
         )
         loc.locate(pdf, pages=pages)
 
@@ -125,12 +136,132 @@ class TestLocate:
         assert loc.locate(pdf, pages=["irrelevant"] * 5) is None
 
 
+class TestCacheIntegrity:
+    def _seed(self, tmp_path, monkeypatch, **kwargs):
+        source = tmp_path / "doc.pdf"
+        source.write_bytes(b"before")
+        locator = PageLocator("rate schedule", **kwargs)
+        monkeypatch.setattr(
+            locator,
+            "_ensure_client",
+            lambda: _FakeClient([{"start": 2, "end": 3}]),
+        )
+        assert locator.locate(source, pages=["rate schedule"] * 5) == (2, 3)
+        return source, locator
+
+    def test_explicit_empty_keywords_respected(self):
+        loc = PageLocator("rate schedule", keywords=[])
+        assert loc._candidate_pages(["rate schedule"]) == []
+
+    def test_source_digest_invalidates_same_stat(self, tmp_path, monkeypatch):
+        source, loc = self._seed(tmp_path, monkeypatch)
+        stat = source.stat()
+        source.write_bytes(b"after!")
+        os.utime(source, ns=(stat.st_atime_ns, stat.st_mtime_ns))
+        assert loc._read_cache(source) is None
+
+    @pytest.mark.parametrize(
+        "changed",
+        [
+            {"keywords": []},
+            {"trigger_chars": 1},
+            {"snippet_chars": 900},
+            {"context_pages": 2},
+            {"max_selected_pages": 1},
+            {"model": "gpt-4o-mini"},
+        ],
+    )
+    def test_effective_settings_invalidate_cache(
+        self, tmp_path, monkeypatch, changed
+    ):
+        source, _ = self._seed(tmp_path, monkeypatch, model="gpt-4o")
+        kwargs = {"model": "gpt-4o", **changed}
+        assert (
+            PageLocator("rate schedule", **kwargs)._read_cache(source) is None
+        )
+
+    @pytest.mark.parametrize(
+        "bad_range", [[0, 2], [4, 3], [1, 8], [1, 5], [True, 2], [1.5, 2]]
+    )
+    def test_cached_bounds_and_cap_validated(
+        self, tmp_path, monkeypatch, bad_range
+    ):
+        source, loc = self._seed(tmp_path, monkeypatch, max_selected_pages=2)
+        cache = loc._cache_path(source)
+        meta = json.loads(cache.read_text())
+        meta["range"] = bad_range
+        cache.write_text(json.dumps(meta))
+        assert loc._read_cache(source) is None
+
+    def test_cached_lookup_does_not_parse_or_construct_client(
+        self, tmp_path, monkeypatch
+    ):
+        source, loc = self._seed(tmp_path, monkeypatch)
+        monkeypatch.setattr(
+            "psweep.extraction.pdf_utils.extract_pages_text",
+            lambda _p: pytest.fail("parsed cache hit"),
+        )
+        monkeypatch.setattr(
+            loc, "_ensure_client", lambda: pytest.fail("built client")
+        )
+        assert loc.locate_cached(source) == (2, 3)
+
+    def test_resolved_ambient_model_invalidates_cache(
+        self, tmp_path, monkeypatch
+    ):
+        config = {"model": "gpt-4o"}
+        monkeypatch.setattr(
+            "psweep.extraction.llm_factory._get_llm_config",
+            lambda _cfg: config,
+        )
+        source, _ = self._seed(tmp_path, monkeypatch)
+        config["model"] = "gpt-4o-mini"
+        assert PageLocator("rate schedule")._read_cache(source) is None
+
+
+def test_page_locator_applies_trigger_when_loading_its_own_pages(
+    tmp_path, monkeypatch
+):
+    """Shared workflow targeting does not call the LLM for small PDFs."""
+    source = tmp_path / "small.pdf"
+    source.write_bytes(b"fake")
+    loc = PageLocator("rates", trigger_chars=1000)
+    monkeypatch.setattr(
+        "psweep.extraction.pdf_utils.extract_pages_text", lambda _p: ["rates"]
+    )
+    monkeypatch.setattr(
+        loc, "_ensure_client", lambda: pytest.fail("small PDF located")
+    )
+    assert loc.locate(source) is None
+
+
+class TestRangeResponses:
+    @pytest.mark.parametrize(
+        "ranges",
+        [
+            [{"start": 4, "end": 2}],
+            [{"start": True, "end": 2}],
+            [{"start": 1.5, "end": 2}],
+            [{"start": 1}, {"start": 4, "end": 4}],
+        ],
+    )
+    def test_malformed_ranges_never_widen_selection(
+        self, tmp_path, monkeypatch, ranges
+    ):
+        source = tmp_path / "doc.pdf"
+        source.write_bytes(b"fake")
+        locator = PageLocator("rates")
+        monkeypatch.setattr(
+            locator, "_ensure_client", lambda: _FakeClient(ranges)
+        )
+        expected = (4, 4) if len(ranges) > 1 else None
+        assert locator.locate(source, pages=["rates"] * 5) == expected
+
+
 class TestProcessIntegration:
     def test_apply_page_targeting_respects_manual_and_size(
         self, tmp_path, monkeypatch
     ):
-        from psweep.cli import commands
-
         big = tmp_path / "big.pdf"
         big.write_bytes(b"%PDF fake")
         small = tmp_path / "small.pdf"
@@ -171,8 +302,6 @@ class TestProcessIntegration:
         self, tmp_path, monkeypatch
     ):
         """CSV entry with empty pages (explicit full-doc) blocks targeting."""
-        from psweep.cli import commands
-
         doc = tmp_path / "full.pdf"
         doc.write_bytes(b"%PDF fake")
 
@@ -202,8 +331,6 @@ class TestProcessIntegration:
         self, tmp_path, monkeypatch
     ):
         """Discovered page ranges are written to a CSV for human review."""
-        from psweep.cli import commands
-
         doc = tmp_path / "big.pdf"
         doc.write_bytes(b"%PDF fake")
 
@@ -239,8 +366,6 @@ class TestProcessIntegration:
     def test_apply_page_targeting_noop_without_description(
         self, tmp_path, monkeypatch, capsys
     ):
-        from psweep.cli import commands
-
         doc = tmp_path / "d.pdf"
         doc.write_bytes(b"%PDF fake")
         page_range_map: dict = {}
@@ -264,8 +389,6 @@ class TestNonPdfGuard:
 
     def test_apply_page_targeting_skips_non_pdf(self, tmp_path, monkeypatch):
         """Non-PDF files in doc_files are skipped; no range added to map."""
-        from psweep.cli import commands
-
         html = tmp_path / "doc.html"
         html.write_text("<html></html>")
 
@@ -295,6 +418,7 @@ class TestNonPdfGuard:
         class _FailClient:
             def extract(self, **_kwargs):
                 from psweep.exceptions import ExtractionError
+
                 raise ExtractionError("simulated empty response")
 
         loc = PageLocator("rate schedule charges")
@@ -305,5 +429,9 @@ class TestNonPdfGuard:
             result = loc.locate(pdf, pages=pages)
 
         assert result is None
-        error_records = [r for r in caplog.records if r.levelno >= logging.ERROR]
-        assert not error_records, f"Unexpected ERROR logs: {[r.message for r in error_records]}"
+        error_records = [
+            r for r in caplog.records if r.levelno >= logging.ERROR
+        ]
+        assert not error_records, (
+            f"Unexpected ERROR logs: {[r.message for r in error_records]}"
+        )

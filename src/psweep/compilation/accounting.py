@@ -472,6 +472,8 @@ def _build_pipeline_accounting(
         ext_input_tokens = 0
         ext_output_tokens = 0
         ext_docs_billed = 0
+        ext_calls = 0
+        ext_unknown_cost_calls = 0
         providers: set[str] = set()
         models: set[str] = set()
         schema_ids: set[str] = set()
@@ -504,6 +506,8 @@ def _build_pipeline_accounting(
             run_input = int(costs.get("total_input_tokens") or 0)
             run_output = int(costs.get("total_output_tokens") or 0)
             run_docs = int(costs.get("documents_billed") or 0)
+            run_calls = int(costs.get("llm_calls", run_docs) or 0)
+            run_unknown = int(costs.get("unknown_cost_calls") or 0)
             run_model = lineage.get("model") or costs.get("model")
             run_provider = lineage.get("provider")
             run_schema = lineage.get("schema_id")
@@ -516,6 +520,8 @@ def _build_pipeline_accounting(
             ext_input_tokens += run_input
             ext_output_tokens += run_output
             ext_docs_billed += run_docs
+            ext_calls += run_calls
+            ext_unknown_cost_calls += run_unknown
             if run_provider:
                 providers.add(str(run_provider))
             if run_model:
@@ -528,8 +534,11 @@ def _build_pipeline_accounting(
             run_record: Dict[str, Any] = {
                 "run_id": run_id,
                 "documents_billed": run_docs,
+                "llm_calls": run_calls,
+                "unknown_cost_calls": run_unknown,
                 "cost_usd": run_cost,
                 "zero_cost_reason": (
+                    "provider cost unknown for some calls" if run_unknown else
                     None if run_cost > 0 else "provider reported zero billable cost"
                 ),
                 "cost_per_document_usd": (
@@ -572,7 +581,9 @@ def _build_pipeline_accounting(
             "documents_billed": ext_docs_billed,
             "cost_usd": ext_cost,
             "zero_cost_reason": (
-                None if ext_cost > 0 else "no documents billed"
+                "provider cost unknown for some calls"
+                if ext_unknown_cost_calls
+                else None if ext_cost > 0 else "no documents billed"
             ),
             "cost_per_document_usd": (
                 _round_cost(ext_cost / ext_docs_billed) if ext_docs_billed else 0.0
@@ -580,7 +591,8 @@ def _build_pipeline_accounting(
             "input_tokens": ext_input_tokens,
             "output_tokens": ext_output_tokens,
             "tokens": ext_tokens,
-            "llm_calls": ext_docs_billed,
+            "llm_calls": ext_calls,
+            "unknown_cost_calls": ext_unknown_cost_calls,
             "extraction_runs": len(runs_data),
             "runs": runs_data,
         }
@@ -600,7 +612,7 @@ def _build_pipeline_accounting(
 
         stages["extraction"] = stage_payload
         total_llm_cost = _round_cost(math.fsum([total_llm_cost, ext_cost]))
-        total_llm_calls += ext_docs_billed
+        total_llm_calls += ext_calls
         total_tokens += ext_tokens
         total_docs_extracted = ext_docs_billed
         total_extraction_runs = len(runs_data)
@@ -897,9 +909,16 @@ def _build_pipeline_accounting(
         "tokens_total": total_tokens,
         "extraction_runs": total_extraction_runs,
     }
-    # Only include conditional fields when they carry information:
+    # Unknown-priced calls are not measured zero-cost operations.
+    unknown_calls = stages.get("extraction", {}).get("unknown_cost_calls", 0)
+    if unknown_calls:
+        summary["unknown_cost_calls"] = unknown_calls
+        summary["cost_scope"] = "known_metered_llm_only"
     if total_llm_cost == 0:
-        summary["zero_cost_reason"] = "no LLM-billable operations in this run"
+        summary["zero_cost_reason"] = (
+            "provider pricing unavailable for some calls" if unknown_calls
+            else "no LLM-billable operations in this run"
+        )
     if total_search_queries > 0:
         summary["search_api_queries"] = total_search_queries
     if search_api_provider:

@@ -107,7 +107,16 @@ class LLMClient:
             )
         self.raw_model = model  # Keep original for cost tracking
         self.base_url = base_url
-        self._api_key = api_key  # Stored for direct-pass in endpoint-override mode
+        self._api_key = (
+            api_key  # Stored for direct-pass in endpoint-override mode
+        )
+        self.usage = {
+            "calls": 0,
+            "cost": 0.0,
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "unknown_cost_calls": 0,
+        }
         self.context_windows = dict(context_windows or {})
         # Reasoning-model markers: built-in defaults unioned with any
         # config-supplied ``reasoning_models`` (extra markers, lowercased).
@@ -122,8 +131,13 @@ class LLMClient:
                 if m not in DEFAULT_REASONING_MODEL_MARKERS
             ),
         )
-        self.timeout = timeout if timeout is not None else int(
-            os.environ.get("LLM_TIMEOUT", self.DEFAULT_TIMEOUT)
+        self.timeout = (
+            timeout
+            if timeout is not None
+            else int(os.environ.get("LLM_TIMEOUT", self.DEFAULT_TIMEOUT))
+        )
+        self._explicit_provider = (
+            provider is not None and not model.startswith("openrouter/")
         )
         self.provider = provider or detect_provider(model)
 
@@ -275,6 +289,12 @@ class LLMClient:
             "messages": messages,
             "timeout": self.timeout,
         }
+        if not self.base_url and self._explicit_provider:
+            api_params["custom_llm_provider"] = (
+                "meta_llama" if self.provider == "meta" else self.provider
+            )
+            if self._api_key:
+                api_params["api_key"] = self._api_key
 
         # Endpoint-override mode: route through the proxy's base_url.
         # The model name already carries an "openai/" prefix (set by
@@ -306,6 +326,7 @@ class LLMClient:
         # ── API call ─────────────────────────────────────────────────────────
         # Split from content parsing so the two failure modes produce distinct
         # error messages: proxy/network errors vs model returned non-JSON text.
+        self.usage["calls"] += 1
         try:
             response = completion(**api_params)
         except json.JSONDecodeError as e:
@@ -317,6 +338,7 @@ class LLMClient:
                 if self.base_url
                 else ""
             )
+            self.usage["unknown_cost_calls"] += 1
             raise ExtractionError(
                 f"Proxy returned a non-JSON response body for model={self.raw_model!r}.{hint}"
                 f" Raw parse error: {e}"
@@ -325,12 +347,15 @@ class LLMClient:
             # Some routed/provider-backed models reject `temperature` entirely.
             # Retry once without temperature when the provider explicitly says the
             # parameter is deprecated/unsupported.
+            self.usage["unknown_cost_calls"] += 1
             if self._should_retry_without_temperature(e, api_params):
                 retry_params = dict(api_params)
                 retry_params.pop("temperature", None)
+                self.usage["calls"] += 1
                 try:
                     response = completion(**retry_params)
                 except Exception as retry_error:
+                    self.usage["unknown_cost_calls"] += 1
                     logger.exception(
                         f"LLM extraction failed after retry without temperature "
                         f"(provider={self.provider}, model={self.model})"
@@ -342,65 +367,83 @@ class LLMClient:
                 )
                 raise ExtractionError(str(e)) from e
 
-        # ── Response content ─────────────────────────────────────────────────
-        raw_content = (
-            response.choices[0].message.content if response.choices else None
-        )
-        content = self._clean_json_content(raw_content)
-        if not content:
-            (logger.debug if suppress_errors else logger.error)(
-                f"Empty response from API (model={self.model}): raw={repr(raw_content)}"
-            )
-            raise ExtractionError(
-                f"Empty response from provider={self.provider}, model={self.model}"
-            )
-
-        # ── JSON parsing ──────────────────────────────────────────────────────
-        try:
-            data = json.loads(content)
-        except json.JSONDecodeError as e:
-            # "Extra data" means valid JSON followed by trailing prose/content.
-            # raw_decode() parses the first complete JSON object and stops,
-            # making it robust to models that append explanatory text after JSON.
-            data = None
-            if "Extra data" in str(e):
-                try:
-                    data, _ = json.JSONDecoder().raw_decode(content)
-                    logger.debug(
-                        f"Recovered from trailing content after JSON "
-                        f"(model={self.model}, extra_at={e.pos})"
-                    )
-                except json.JSONDecodeError:
-                    pass
-            if data is None:
-                (logger.debug if suppress_errors else logger.error)(f"Model returned non-JSON content: {e}")
-                logger.debug(f"Response content (after cleaning): {repr(content[:500])}")
-                logger.debug(f"Raw content: {repr((raw_content or '')[:500])}")
-                raise ExtractionError(
-                    f"Model returned non-JSON content "
-                    f"(provider={self.provider}, model={self.model}): {e}"
-                ) from e
-
-        # ── Cost tracking ─────────────────────────────────────────────────────
-        try:
-            cost = completion_cost(completion_response=response)
-        except Exception as e:
-            logger.debug(f"LiteLLM cost calculation failed, using pricing DB: {e}")
-            cost = self.pricing_db.get_cost(
-                self.raw_model,
-                response.usage.prompt_tokens,
-                response.usage.completion_tokens,
-            )
-
-        total_items = sum(len(value) for _, value in find_data_arrays(data))
-
         usage = getattr(response, "usage", None)
         input_tokens = getattr(usage, "prompt_tokens", None)
         output_tokens = getattr(usage, "completion_tokens", None)
+        try:
+            cost = completion_cost(completion_response=response)
+        except Exception as exc:  # noqa: BLE001 - optional provider pricing must not discard a response
+            # Estimates are not measured billing evidence.
+            logger.debug("Response cost unavailable: %s", exc)
+            cost = None
+        measured = {
+            "cost": cost,
+            "input_tokens": input_tokens,
+            "output_tokens": output_tokens,
+        }
+        self.usage["cost"] += cost or 0
+        self.usage["input_tokens"] += input_tokens or 0
+        self.usage["output_tokens"] += output_tokens or 0
+        self.usage["unknown_cost_calls"] += int(cost is None)
+        try:
+            raw_content = (
+                response.choices[0].message.content
+                if response.choices
+                else None
+            )
+            content = self._clean_json_content(raw_content)
+            if not content:
+                (logger.debug if suppress_errors else logger.error)(
+                    "Empty response from API (model=%s): raw=%r",
+                    self.model,
+                    raw_content,
+                )
+                message = (
+                    f"Empty response from provider={self.provider}, "
+                    f"model={self.model}"
+                )
+                error = ExtractionError(message)
+                error.usage = measured
+                raise error
+
+            # Parse JSON while retaining usage on a rejected response.
+            try:
+                data = json.loads(content)
+            except json.JSONDecodeError as e:
+                # Recover JSON before trailing prose.
+                data = None
+                if "Extra data" in str(e):
+                    try:
+                        data, _ = json.JSONDecoder().raw_decode(content)
+                        logger.debug(
+                            "Recovered trailing content (model=%s, at=%s)",
+                            self.model,
+                            e.pos,
+                        )
+                    except json.JSONDecodeError:
+                        pass
+                if data is None:
+                    (logger.debug if suppress_errors else logger.error)(
+                        "Model returned non-JSON content: %s",
+                        e,
+                    )
+                    logger.debug("Cleaned content: %r", content[:500])
+                    logger.debug("Raw content: %r", (raw_content or "")[:500])
+                    message = (
+                        "Model returned non-JSON content "
+                        f"(provider={self.provider}, model={self.model}): {e}"
+                    )
+                    raise ExtractionError(message) from e
+
+        except ExtractionError as exc:
+            exc.usage = measured
+            raise
+
+        total_items = sum(len(value) for _, value in find_data_arrays(data))
 
         logger.info(
             f"✓ Extracted {total_items} items "
-            f"(tokens: {input_tokens}+{output_tokens}, cost: ${cost:.4f})"
+            f"(tokens: {input_tokens}+{output_tokens}, cost: {cost})"
         )
 
         return {

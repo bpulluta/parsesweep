@@ -18,6 +18,8 @@ from psweep.extraction.provenance import (
     build_source_context_map,
     prepend_source_context,
 )
+from psweep.pipeline import _extract_one_document, compile_extractions
+from psweep.utils.schema_metadata import SchemaMetadata
 
 
 def _request(tmp_path, **overrides):
@@ -346,17 +348,16 @@ def test_full_mocked_discover_curate_preserves_partial_and_distinct_sources(monk
     checkpoint = DiscoveryEngine._load_checkpoint(tmp_path / "domain/checkpoint.json")
     assert set(checkpoint) == {"first", "second"}
 
-    # Continue the same mocked run through the shared CLI extraction boundary.
+    # Continue through the shared UI-free extraction worker.
     import pandas as pd
     from _helpers import synthetic_evidence_schema
 
-    from psweep.cli.commands_extract import _extract_one_document
     from psweep.extraction.document_extractor import DocumentExtractor
-    from psweep.pipeline import compile_extractions
 
     schema = synthetic_evidence_schema()
     schema_path = tmp_path / "schema.json"
     schema_path.write_text(json.dumps(schema))
+    metadata = SchemaMetadata(schema_path)
     extractor = DocumentExtractor(api_key="fixture", model="gpt-fixture")
     seen_origins = []
 
@@ -369,7 +370,15 @@ def test_full_mocked_discover_curate_preserves_partial_and_distinct_sources(monk
         }]}, "cost": 0.0}
 
     monkeypatch.setattr(extractor.client, "extract", extract)
-    monkeypatch.setattr("psweep.cli.commands_extract.extract_text_from_document", lambda *args, **kwargs: "Exact fixture statement")
+
+    def parse_document(_doc, *, page_range=None, return_meta=False, **_kwargs):
+        text = "Exact fixture statement"
+        return (text, {"page_range": page_range}) if return_meta else text
+
+    monkeypatch.setattr(
+        "psweep.extraction.document_utils.extract_text_from_document",
+        parse_document,
+    )
     output = tmp_path / "extracted"
     output.mkdir()
     for label in ("first", "second", "partial"):
@@ -377,10 +386,11 @@ def test_full_mocked_discover_curate_preserves_partial_and_distinct_sources(monk
         document = tmp_path / f"domain/curated/by_label/{label}/report.pdf"
         result = _extract_one_document(
             document, extractor=extractor, loaded_schema=schema,
-            page_range_map={document: (1, 1)}, section_text_map={}, source_context_map=context,
-            file_output_dirs={document: output / label}, output_dir=output,
-            category="synthetic", actual_model="gpt-fixture", enable_validation=False,
-            runtime_artifact=None, run_id="run://integration", provider="openai", schema_path=schema_path,
+            schema_metadata=metadata, schema_path=schema_path,
+            output_path=output / label / "report.json", model="gpt-fixture",
+            run_id="run://integration", provider="openai",
+            input_fingerprint="a" * 64,
+            page_range=(1, 1), source_context_map=context,
         )
         assert result["success"], result
     assert set(seen_origins) == {

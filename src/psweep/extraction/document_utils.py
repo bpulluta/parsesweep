@@ -5,10 +5,11 @@ import contextlib
 import hashlib
 import json
 import logging
-import os
 from pathlib import Path
-import tempfile
 from typing import Optional
+
+from psweep.utils.file_io import artifact_sha256, staged_file
+from .pdf_utils import _cleanup_ocr_errors
 
 logger = logging.getLogger(__name__)
 
@@ -27,15 +28,7 @@ def text_cache_paths(file_path: Path) -> tuple[Path, Path]:
     )
 
 
-def _source_digest(file_path: Path) -> str:
-    digest = hashlib.sha256()
-    with file_path.open("rb") as handle:
-        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
-
-
-def read_text_cache(file_path: Path) -> Optional[str]:
+def read_text_cache(file_path: Path, *, return_meta: bool = False):
     """Return cached text if its source and text still match.
 
     Size/mtime and source SHA-256 identify the document. Text SHA-256
@@ -44,31 +37,45 @@ def read_text_cache(file_path: Path) -> Optional[str]:
     txt_path, meta_path = text_cache_paths(file_path)
     try:
         meta = json.loads(meta_path.read_text(encoding="utf-8"))
+        # Older OCR entries may contain domain-specific corrections.
+        # They cannot safely be consumed as raw OCR under current rules.
+        if meta.get("method") == "ocr" and meta.get("ocr_raw") is not True:
+            return None
         stat = file_path.stat()
-        if int(meta.get("source_size", -1)) != stat.st_size:
+        if (
+            int(meta.get("source_size", -1)) != stat.st_size
+            or int(meta.get("source_mtime_ns", -1)) != stat.st_mtime_ns
+        ):
             return None
-        if int(meta.get("source_mtime_ns", -1)) != stat.st_mtime_ns:
-            return None
-        if meta.get("source_sha256") != _source_digest(file_path):
+        if meta.get("source_sha256") != artifact_sha256(file_path):
             return None
         text_bytes = txt_path.read_bytes()
         if meta.get("text_sha256") != hashlib.sha256(text_bytes).hexdigest():
             return None
-        return text_bytes.decode("utf-8")
+        text = text_bytes.decode("utf-8")
     except Exception:  # noqa: BLE001 - a bad cache must never break extraction
         return None
+    else:
+        return (text, meta) if return_meta else text
 
 
-def write_text_cache(file_path: Path, text: str, method: str = "ocr") -> None:
+def write_text_cache(
+    file_path: Path,
+    text: str,
+    method: str = "ocr",
+    *,
+    page_count: int | None = None,
+) -> None:
     """Write the cache via flushed temporary files, metadata last.
 
-    Only OCR calls this cache; native extraction remains uncached.
+    OCR callers supply raw text, never corrected text. Discovery also
+    caches browser/API products under their own ``method``. Cheap native
+    document parsing remains uncached.
     Each file is atomically replaced, not the pair as a transaction.
     An interruption between replacements is a miss because readers
     verify both digests. ``method`` is recorded for transparency.
     """
     txt_path, meta_path = text_cache_paths(file_path)
-    temporary: list[Path] = []
     try:
         stat = file_path.stat()
         text_bytes = text.encode("utf-8")
@@ -76,37 +83,31 @@ def write_text_cache(file_path: Path, text: str, method: str = "ocr") -> None:
             {
                 "source_size": stat.st_size,
                 "source_mtime_ns": stat.st_mtime_ns,
-                "source_sha256": _source_digest(file_path),
+                "source_sha256": artifact_sha256(file_path),
                 "text_sha256": hashlib.sha256(text_bytes).hexdigest(),
                 "chars": len(text),
                 "method": method,
+                "ocr_raw": method == "ocr",
+                "page_count": page_count,
             },
             indent=2,
         ).encode("utf-8")
-        txt_path.parent.mkdir(parents=True, exist_ok=True)
-        for destination, content in (
-            (txt_path, text_bytes), (meta_path, metadata),
-        ):
-            with tempfile.NamedTemporaryFile(
-                mode="wb",
-                dir=destination.parent,
-                prefix=f".{destination.name}-",
-                delete=False,
-            ) as handle:
-                temporary.append(Path(handle.name))
-                handle.write(content)
-                handle.flush()
-                os.fsync(handle.fileno())
-        for staged, destination in zip(temporary, (txt_path, meta_path)):
-            staged.replace(destination)
+        with contextlib.ExitStack() as stack:
+            staged = [
+                stack.enter_context(staged_file(destination, content))
+                for destination, content in (
+                    (txt_path, text_bytes),
+                    (meta_path, metadata),
+                )
+            ]
+            for temporary, destination in zip(staged, (txt_path, meta_path)):
+                temporary.replace(destination)
     except Exception:  # noqa: BLE001 - caching is an optimization, never fatal
         logger.debug(
-            "Text cache write failed for %s", file_path, exc_info=True,
+            "Text cache write failed for %s",
+            file_path,
+            exc_info=True,
         )
-    finally:
-        for staged in temporary:
-            with contextlib.suppress(OSError):
-                staged.unlink(missing_ok=True)
 
 
 # Supported file extensions
@@ -281,7 +282,9 @@ def extract_text_from_document(
     file_path: Path,
     page_range: Optional[tuple] = None,
     ocr_corrections: Optional[list] = None,
-) -> str:
+    *,
+    return_meta: bool = False,
+):
     """
     Extract text from any supported document format.
 
@@ -296,11 +299,13 @@ def extract_text_from_document(
     ocr_corrections : Optional[list]
         Optional OCR text-correction rules (from ``extraction.ocr_corrections``)
         applied to OCR-derived PDF text only.
+    return_meta : bool
+        Return a text/metadata pair with actual PDF scope when True.
 
     Returns
     -------
-    str
-        Extracted text content
+    str or tuple
+        Text, or ``(text, metadata)`` when ``return_meta`` is True.
 
     Raises
     ------
@@ -318,19 +323,32 @@ def extract_text_from_document(
     # whole-document extraction is cached — page-range requests bypass it so a
     # partial slice never poisons the full-text cache other stages depend on.
     if page_range is None:
-        cached = read_text_cache(file_path)
+        cached = read_text_cache(file_path, return_meta=True)
         if cached is not None:
-            logger.debug(f"Text cache hit for {file_path.name}")
-            return cached
+            text, cache_meta = cached
+            used_ocr = cache_meta.get("method") == "ocr"
+            if used_ocr:
+                text = _cleanup_ocr_errors(text, ocr_corrections)
+            page_count = cache_meta.get("page_count")
+            meta = {
+                "used_ocr": used_ocr,
+                "page_count": page_count,
+                "page_range": (1, page_count) if page_count else None,
+                "extracted_pages": (
+                    list(range(1, page_count + 1)) if page_count else []
+                ),
+            }
+            logger.debug("Text cache hit for %s", file_path.name)
+            return (text, meta) if return_meta else text
 
     # Only the expensive OCR path is cached. Native-text PDFs and structured
     # formats (DOCX/XLSX/CSV/HTML) are cheap to re-extract, and caching a
     # flattened copy would defeat any richer/table-aware extraction a later
     # stage might want — so they always extract fresh from the source.
-    used_ocr = False
+    meta = {"used_ocr": False, "page_range": None, "page_count": None}
     if ext == ".pdf":
-        text, meta = _extract_from_pdf(file_path, page_range, ocr_corrections)
-        used_ocr = bool(meta.get("used_ocr"))
+        # Parse/cache raw OCR before applying current corrections.
+        text, meta = _extract_from_pdf(file_path, page_range)
     elif ext in {".docx", ".doc"}:
         text = _extract_from_docx(file_path)
     elif ext == ".txt":
@@ -347,10 +365,18 @@ def extract_text_from_document(
             f"Supported formats: {', '.join(sorted(SUPPORTED_EXTENSIONS))}"
         )
 
-    # Cache OCR results (page-range requests never cache — see above).
-    if page_range is None and used_ocr and text:
-        write_text_cache(file_path, text)
-    return text
+    if meta.get("used_ocr"):
+        raw_text = meta.get("raw_ocr_text", text)
+        page_count = meta.get("page_count")
+        pages = meta.get("extracted_pages")
+        # Skipped OCR pages must not produce a whole-document cache.
+        complete = pages is None or (
+            page_count is not None and len(pages) == page_count
+        )
+        if page_range is None and raw_text and complete:
+            write_text_cache(file_path, raw_text, page_count=page_count)
+        text = _cleanup_ocr_errors(raw_text, ocr_corrections)
+    return (text, meta) if return_meta else text
 
 
 def _extract_from_pdf(
@@ -488,19 +514,19 @@ def _extract_from_xlsx(xlsx_path: Path) -> str:
     try:
         wb = openpyxl.load_workbook(xlsx_path, data_only=True)
         text_parts = []
+        try:
+            for sheet_name in wb.sheetnames:
+                sheet = wb[sheet_name]
+                text_parts.append(f"\n### Sheet: {sheet_name} ###\n")
 
-        for sheet_name in wb.sheetnames:
-            sheet = wb[sheet_name]
-            text_parts.append(f"\n### Sheet: {sheet_name} ###\n")
-
-            # Extract all rows
-            for row in sheet.iter_rows(values_only=True):
-                row_values = [
-                    str(cell) if cell is not None else "" for cell in row
-                ]
-                # Skip completely empty rows
-                if any(v.strip() for v in row_values):
-                    text_parts.append(" | ".join(row_values))
+                for row in sheet.iter_rows(values_only=True):
+                    row_values = [
+                        str(cell) if cell is not None else "" for cell in row
+                    ]
+                    if any(v.strip() for v in row_values):
+                        text_parts.append(" | ".join(row_values))
+        finally:
+            wb.close()
 
         text = "\n".join(text_parts)
         logger.info(

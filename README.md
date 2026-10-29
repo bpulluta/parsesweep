@@ -667,7 +667,12 @@ or altered artifacts, and old v1 entries cause reacquisition, not a success
 skip. Discovery publication locks reject concurrent corpus writers; its journal
 recovers interrupted curated/provenance swaps on the next writer. This is a
 small discovery-specific protocol, not a general pipeline transaction.
-Extraction skips existing JSON outputs by default.
+Extraction reuses only validated records with matching source/schema digests and
+resolved model, context, correction, provenance, and page/section settings.
+Manifest evidence must match the record bytes; malformed, changed, or older
+unverifiable outputs are re-extracted. Fully reused runs make no model calls and
+need no provider credentials. A successful zero-item payload is valid, not a
+failed acquisition.
 **Search-result caching is separate and off by default.**
 Opt in with `discovery.search.cache: true`; a cache hit makes zero live search
 calls. Checkpoint skips and cache hits are not the same mechanism.
@@ -694,19 +699,28 @@ pixi run psweep run --config config/my_domain/run.yaml --fresh
 | Stage | `--fresh` action |
 | --- | --- |
 | `discover` | Clears the crash-resume checkpoint (`discovered/<domain>/checkpoint.json`) and bypasses enabled SerpApi cache entries for fresh queries. It does not enable caching or search. |
-| `extract` | Re-extracts every document even if a JSON output already exists. |
+| `extract` | After successful preflight, resets the whole resolved extraction output and re-extracts the selected subset. Filters/limits do not preserve unselected old records. |
 | `compile` | No flag — output is always rewritten. |
 
 **Document sidecars:** OCR text uses `.text/<filename>.txt` and
 `.text/<filename>.meta.json` (for example, `report.pdf.txt`), preserving format
 identity. Source size/mtime and SHA-256 plus the cached-text SHA-256 must match;
 partial or mismatched pairs are cache misses. Writes replace temporary files
-with metadata last; old stem-only caches are not reused. LLM review sidecars
-use `.review/<filename>.json`. Selected documents carry these sidecars into
-curated output. Native extraction, OCR correction rules, and page-targeting
-(`.pages/`) behavior are unchanged by this naming migration. These caches are
-separate from opt-in search caching; delete `.text/` or `.pages/` to request
-cold OCR or page targeting.
+with metadata last; old stem-only caches are not reused. OCR caches hold raw
+text so current correction rules apply without repeating OCR; older corrected
+OCR entries are invalidated. LLM review sidecars use `.review/<filename>.json`.
+Selected documents carry these sidecars into curated output. Page and section
+selection caches include source content, resolved model, and effective settings;
+section caches use full filenames and text digests. These caches are separate
+from output-record reuse and opt-in search caching; delete `.text/`, `.pages/`,
+or `.sections/` to request a cold OCR or targeting run.
+
+Extraction exit codes are `0` for success/verified reuse (including zero items),
+`1` for operational or partial failure, and `2` for an empty input selection.
+`run` stops before compilation on failure or empty selection. Invalid schema,
+input, scope, credentials, collisions, or overlapping paths fail before fresh
+output deletion. Records and manifests use atomic single-file replacement;
+this does not certify concurrent extraction writers or a whole-run transaction.
 
 ---
 

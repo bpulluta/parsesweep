@@ -33,9 +33,9 @@ extraction:
   input_dir: documents/your_domain        # or discovered/your_domain/curated
   output_dir: extracted/your_domain
   model: primary                          # PIN the tier — don't rely on .env default
-  # Skip/refresh hygiene: extract skips files with existing output JSON by
-  # default (skip_existing=true). Re-run cheaply after config tweaks with no
-  # flag; only pass --fresh after changing schema, model tier, or pages.
+  # Reuse validates source/schema/model/scope and record-byte evidence.
+  # Stale or unverifiable outputs re-extract under skip_existing=true.
+  # --fresh resets the WHOLE output after preflight, rebuilding selected inputs.
   # max_context: 600000                   # chars per document (default: 600000)
   # pages:                                 # how to select pages from large PDFs
   #   csv: config/your_domain/page_ranges.csv  # manual ranges per file (wins)
