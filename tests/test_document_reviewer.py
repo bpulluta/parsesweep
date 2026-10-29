@@ -10,8 +10,21 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 import psweep.extraction.document_utils as document_utils
 from psweep.discovery.document_reviewer import DocumentReviewer
+from psweep.extraction import llm_factory
+
+
+@pytest.fixture(autouse=True)
+def _fake_model_resolution(monkeypatch):
+    """Keep reviewer tests independent of credentials and ambient config."""
+    monkeypatch.setattr(
+        llm_factory,
+        "resolve_llm_kwargs",
+        lambda *_args, **_kwargs: {"model": "fixture", "provider": "fixture"},
+    )
 
 
 def _record(tmp_path: Path, name: str, label: str) -> dict:
@@ -33,6 +46,7 @@ def _stub_grades(reviewer: DocumentReviewer, grades: dict[str, dict]) -> None:
 
 
 def test_seed_only_review_preserves_shared_cap(tmp_path):
+    """Seed-only files share the configured selection cap."""
     records = [_record(tmp_path, name, "unused") for name in ("one.pdf", "two.pdf")]
     for record in records:
         record.pop("target_metadata")
@@ -44,8 +58,9 @@ def test_seed_only_review_preserves_shared_cap(tmp_path):
 
 
 def test_malformed_cache_shape_is_a_miss(tmp_path):
+    """An array-shaped grade cache is rejected and regraded."""
     record = _record(tmp_path, "one.pdf", "target")
-    cache = tmp_path / ".review/one.json"
+    cache = tmp_path / ".review/one.pdf.json"
     cache.parent.mkdir()
     cache.write_text("[]")
     reviewer = DocumentReviewer(document_description="records")
@@ -86,7 +101,7 @@ class TestReviewSelection:
         assert (tmp_path / "ordinance.pdf").exists()
         assert "reviewed" not in ordinance["path"]
         # A per-file review sidecar captures the verdict for human review.
-        sidecar = tmp_path / ".review" / "ordinance.json"
+        sidecar = tmp_path / ".review" / "ordinance.pdf.json"
         assert sidecar.exists()
         payload = json.loads(sidecar.read_text(encoding="utf-8"))
         assert payload["llm"]["is_primary"] is True
@@ -155,10 +170,10 @@ class TestReviewSelection:
 
 
 class TestReviewFlagMode:
-    def test_flag_mode_does_not_move(self, tmp_path: Path):
+    def test_review_never_moves_original_documents(self, tmp_path: Path):
         rec = _record(tmp_path, "ord.pdf", "County A")
         reviewer = DocumentReviewer(
-            document_description="the ordinance", keep_top=1, action="flag"
+            document_description="the ordinance", keep_top=1
         )
         _stub_grades(
             reviewer,
@@ -195,7 +210,7 @@ class TestReviewGradeCache:
         _stub_grades(r1, grades)
         _, notes1 = r1.review([dict(rec)], [])
         assert any("reused from cache" in n for n in notes1)
-        sidecar = tmp_path / ".review" / "ordinance.json"
+        sidecar = tmp_path / ".review" / "ordinance.pdf.json"
         assert "cache_key" in json.loads(sidecar.read_text(encoding="utf-8"))
 
         # Second run: file unchanged → grade reused, LLM must NOT be called.
@@ -342,7 +357,9 @@ class TestReviewSourceUrlContext:
             tmp_path, monkeypatch, final_url="https://efsec.wa.gov/c.pdf"
         )
         payload = json.loads(
-            (tmp_path / ".review" / "Bury.json").read_text(encoding="utf-8")
+            (tmp_path / ".review" / "Bury.pdf.json").read_text(
+                encoding="utf-8",
+            )
         )
         assert payload["source_url"] == "https://efsec.wa.gov/c.pdf"
 

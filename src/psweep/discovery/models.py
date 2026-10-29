@@ -115,7 +115,43 @@ class DiscoveryCandidate:
             "canonical_url": self.canonical_url,
             "content_hash": self.content_hash,
             "target_metadata": self.target_metadata,
+            "title": self.title,
+            "snippet": self.snippet,
         }
+
+
+def discovery_status(*, dry_run: bool, errors: list, usable: bool) -> str:
+    """Resolve a truthful status independently of CLI rendering."""
+    if errors:
+        return "partial_failure" if usable else "failed"
+    if dry_run:
+        return "dry_run"
+    return "success" if usable else "empty"
+
+
+def discovery_exit_code(manifest: dict) -> int:
+    """Validate the result contract and return its exit code."""
+    if not isinstance(manifest, dict):
+        message = "Expected a discovery manifest object"
+        raise TypeError(message)
+    status = manifest.get("status")
+    if status not in {
+        "success",
+        "reused",
+        "dry_run",
+        "empty",
+        "failed",
+        "partial_failure",
+    }:
+        message = "Discovery manifest has no valid outcome status"
+        raise ValueError(message)
+    errors = manifest.get("errors")
+    if not isinstance(errors, list):
+        message = "Discovery manifest.errors must be an array"
+        raise TypeError(message)
+    if errors or status in {"failed", "partial_failure"}:
+        return 1
+    return 2 if status == "empty" else 0
 
 
 @dataclass(slots=True)

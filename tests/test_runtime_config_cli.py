@@ -393,6 +393,9 @@ def _run_discover_and_capture_request(extra_args, tmp_path):
 
     def _fake_run(self, request):
         captured["request"] = request
+        (tmp_path / "manifest.json").write_text(json.dumps({
+            "status": "dry_run", "errors": [], "notes": [],
+        }))
         return DiscoveryResult(
             run_id="test",
             manifest_path=tmp_path / "manifest.json",
@@ -454,6 +457,9 @@ discovery:
 
     def _fake_run(self, request):
         captured["request"] = request
+        (tmp_path / "manifest.json").write_text(json.dumps({
+            "status": "dry_run", "errors": [], "notes": [],
+        }))
         return DiscoveryResult(
             run_id="test",
             manifest_path=tmp_path / "manifest.json",
@@ -562,6 +568,9 @@ discovery:
 
     def _fake_run(self, request):
         captured["request"] = request
+        (tmp_path / "manifest.json").write_text(json.dumps({
+            "status": "dry_run", "errors": [], "notes": [],
+        }))
         return DiscoveryResult(
             run_id="test",
             manifest_path=tmp_path / "manifest.json",
@@ -693,6 +702,9 @@ discovery:
 
     def _fake_run(self, request):
         captured["request"] = request
+        (tmp_path / "manifest.json").write_text(json.dumps({
+            "status": "dry_run", "errors": [], "notes": [],
+        }))
         return DiscoveryResult(
             run_id="test",
             manifest_path=tmp_path / "manifest.json",

@@ -251,8 +251,8 @@ def _build_pipeline_accounting(
             run_completed_at = timing.get("completed_at") or None
             run_elapsed = _round_secs(float(timing.get("elapsed_seconds") or 0.0))
 
-            source_status = str(disc.get("status") or "scaffold")
-            source_is_dry_run = source_status.startswith("scaffold_dry_run")
+            source_status = str(disc.get("status") or "failed")
+            source_is_dry_run = bool((disc.get("input") or {}).get("dry_run"))
 
             rev_cost = _round_cost(float(review_costs.get("total_cost_usd") or 0.0))
             rev_input_tokens = int(review_costs.get("total_input_tokens") or 0)
@@ -311,11 +311,13 @@ def _build_pipeline_accounting(
             )
             is_reused = (not has_activity) and has_reuse_evidence and not source_is_dry_run
 
-            if source_status == "scaffold_dry_run":
-                user_status = "dry_run"
-            elif source_status == "scaffold_dry_run_with_errors":
-                user_status = "dry_run_with_errors"
-            elif is_reused:
+            if source_is_dry_run:
+                user_status = (
+                    "dry_run_with_errors" if disc_error_total else "dry_run"
+                )
+            elif source_status == "empty":
+                user_status = "empty"
+            elif source_status == "reused" or is_reused:
                 user_status = "reused"
             elif has_activity and disc_error_total > 0:
                 user_status = "completed_with_errors"

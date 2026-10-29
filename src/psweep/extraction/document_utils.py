@@ -1,9 +1,13 @@
 """Universal document text extraction for multiple file formats."""
 
 from html.parser import HTMLParser
+import contextlib
+import hashlib
 import json
 import logging
+import os
 from pathlib import Path
+import tempfile
 from typing import Optional
 
 logger = logging.getLogger(__name__)
@@ -14,24 +18,30 @@ logger = logging.getLogger(__name__)
 TEXT_CACHE_DIRNAME = ".text"
 
 
-def _text_cache_paths(file_path: Path) -> tuple[Path, Path]:
-    """Return (text_path, meta_path) for a document's cached extraction."""
+def text_cache_paths(file_path: Path) -> tuple[Path, Path]:
+    """Return text/metadata paths keyed by the full filename."""
     cache_dir = file_path.parent / TEXT_CACHE_DIRNAME
     return (
-        cache_dir / f"{file_path.stem}.txt",
-        cache_dir / f"{file_path.stem}.meta.json",
+        cache_dir / f"{file_path.name}.txt",
+        cache_dir / f"{file_path.name}.meta.json",
     )
 
 
-def read_text_cache(file_path: Path) -> Optional[str]:
-    """Return cached full-document text if present and still valid, else None.
+def _source_digest(file_path: Path) -> str:
+    digest = hashlib.sha256()
+    with file_path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
-    Validity is keyed on the source file's size and mtime, so a re-downloaded or
-    edited document is re-extracted rather than served stale.
+
+def read_text_cache(file_path: Path) -> Optional[str]:
+    """Return cached text if its source and text still match.
+
+    Size/mtime and source SHA-256 identify the document. Text SHA-256
+    rejects partial or mismatched pairs. Stem-only caches are ignored.
     """
-    txt_path, meta_path = _text_cache_paths(file_path)
-    if not txt_path.exists() or not meta_path.exists():
-        return None
+    txt_path, meta_path = text_cache_paths(file_path)
     try:
         meta = json.loads(meta_path.read_text(encoding="utf-8"))
         stat = file_path.stat()
@@ -39,37 +49,65 @@ def read_text_cache(file_path: Path) -> Optional[str]:
             return None
         if int(meta.get("source_mtime_ns", -1)) != stat.st_mtime_ns:
             return None
-        return txt_path.read_text(encoding="utf-8")
+        if meta.get("source_sha256") != _source_digest(file_path):
+            return None
+        text_bytes = txt_path.read_bytes()
+        if meta.get("text_sha256") != hashlib.sha256(text_bytes).hexdigest():
+            return None
+        return text_bytes.decode("utf-8")
     except Exception:  # noqa: BLE001 - a bad cache must never break extraction
         return None
 
 
 def write_text_cache(file_path: Path, text: str, method: str = "ocr") -> None:
-    """Persist expensively-extracted ``text`` next to ``file_path``.
+    """Write the cache via flushed temporary files, metadata last.
 
-    Best-effort. Only the OCR path is cached (native-text documents are cheap to
-    re-extract and are left uncached so a later table-aware extraction is never
-    served a flattened copy); ``method`` is recorded for transparency.
+    Only OCR calls this cache; native extraction remains uncached.
+    Each file is atomically replaced, not the pair as a transaction.
+    An interruption between replacements is a miss because readers
+    verify both digests. ``method`` is recorded for transparency.
     """
-    txt_path, meta_path = _text_cache_paths(file_path)
+    txt_path, meta_path = text_cache_paths(file_path)
+    temporary: list[Path] = []
     try:
         stat = file_path.stat()
+        text_bytes = text.encode("utf-8")
+        metadata = json.dumps(
+            {
+                "source_size": stat.st_size,
+                "source_mtime_ns": stat.st_mtime_ns,
+                "source_sha256": _source_digest(file_path),
+                "text_sha256": hashlib.sha256(text_bytes).hexdigest(),
+                "chars": len(text),
+                "method": method,
+            },
+            indent=2,
+        ).encode("utf-8")
         txt_path.parent.mkdir(parents=True, exist_ok=True)
-        txt_path.write_text(text, encoding="utf-8")
-        meta_path.write_text(
-            json.dumps(
-                {
-                    "source_size": stat.st_size,
-                    "source_mtime_ns": stat.st_mtime_ns,
-                    "chars": len(text),
-                    "method": method,
-                },
-                indent=2,
-            ),
-            encoding="utf-8",
-        )
+        for destination, content in (
+            (txt_path, text_bytes), (meta_path, metadata),
+        ):
+            with tempfile.NamedTemporaryFile(
+                mode="wb",
+                dir=destination.parent,
+                prefix=f".{destination.name}-",
+                delete=False,
+            ) as handle:
+                temporary.append(Path(handle.name))
+                handle.write(content)
+                handle.flush()
+                os.fsync(handle.fileno())
+        for staged, destination in zip(temporary, (txt_path, meta_path)):
+            staged.replace(destination)
     except Exception:  # noqa: BLE001 - caching is an optimization, never fatal
-        pass
+        logger.debug(
+            "Text cache write failed for %s", file_path, exc_info=True,
+        )
+    finally:
+        for staged in temporary:
+            with contextlib.suppress(OSError):
+                staged.unlink(missing_ok=True)
+
 
 # Supported file extensions
 SUPPORTED_EXTENSIONS = {

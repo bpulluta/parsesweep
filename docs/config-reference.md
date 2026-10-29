@@ -1,30 +1,71 @@
 # Configuration Reference
 
-A ParseSweep run is driven by a single YAML config. Each command reads only its
-own section, so a config can contain any subset of `extraction`, `compilation`,
-`discovery`, and `validation`.
+A ParseSweep run is driven by a YAML config containing any subset of
+`extraction`, `compilation`, `discovery`, and `validation`. Loading validates
+all supplied sections; each command executes only its own section. Only the
+explicitly selected config file is loaded. Adjacent section override files
+beside `run.yaml`, `run.yml`, or `run.json` are retired: move their settings into
+the corresponding sections of the run config and remove those adjacent files,
+or load a section-wrapped config explicitly with `--config`. The loader names
+the files to migrate rather than silently ignoring them.
 
 ## Start small, add as you need
 
-Only two keys are required to extract — `schema` and `input_dir`:
+Discovery alone needs no schema or LLM configuration:
+
+```yaml
+domain: my_domain
+discovery:
+  queries:
+    - "industrial pump installation manual filetype:pdf"
+```
+
+Set `SERPAPI_API_KEY` in the environment or `.env`, then run
+`pixi run psweep discover --config config/my_domain/run.yaml`.
+`discovery.queries` auto-enables SerpApi when search is omitted; explicit
+`search.enabled: false` wins over inference.
+Seed-only input does not auto-enable search. Replace `queries` with
+`seeds: [https://example.org/documents/manual.pdf]` for known document URLs.
+
+Start from `config/TEMPLATE.yaml`; use `config/ADVANCED.yaml` for expanded
+stage settings. The existing `init-domain-schema` scaffold creates a schema,
+not a discovery wizard or a new config mode.
+
+Once you have suitable documents, only two keys are required to extract —
+`schema` and `input_dir`:
 
 ```yaml
 extraction:
   schema: schemas/personal/my_schema.json
-  input_dir: documents/my_domain
+  input_dir: discovered/my_domain/curated
 ```
 
-Everything else has a default (see the table below). Add a key only when you
-have a reason to change its default — the [Tuning & Iteration guide](tuning.md)
-tells you which key to reach for and when.
+Extraction requires LLM credentials; discovery does not unless you explicitly
+configure paid `document_review`. Add a setting only when you have a reason
+to change its default. The [Getting Started guide](getting-started.md) walks
+through discovery first, and [Tuning & Iteration](tuning.md) covers later tuning.
 
 ## Defaults at a glance
 
-These are the values that apply when you omit a key. They come from single
-source-of-truth constants in the code, so `--help` and runtime never drift.
+These are the values that apply when you omit a key. Defaults come from
+shared runtime definitions; templates show explicit choices separately.
 
 | Setting | Section | Default | Change it when… |
 |---------|---------|---------|-----------------|
+| `search.enabled` | discovery | Inferred for `queries`; off for seed-only input | Explicitly enable/disable search |
+| `search.max_results` | discovery | `10` unique candidates per query | Change the candidate budget, not the download count |
+| `search.cache` | discovery | `false` | Opt into search-result caching |
+| `selection.max_per_target` | discovery | `1` | Acquire more candidates per target |
+| `follow_links` | discovery | `false` (direct acquisition) | Explicitly enable crawling |
+| `runtime.max_concurrent_downloads` | discovery | `2` | Change download concurrency |
+| `retry_policy.max_attempts` | discovery | `3` total attempts | Change the retry budget |
+| `browser_mode` | discovery | `false` | Explicitly use headless-browser downloads |
+| `browser_escalation.enabled` | discovery | `false` | Opt into thin/JS-shell browser recovery |
+| `code_host_adapters.enabled` | discovery | `false` | Opt into supported code-host API recovery |
+| `document_review` | discovery | Not configured (no LLM review) | Add explicit paid model-based curation |
+| `partition_mode` | discovery | `auto` | You need a specific output layout |
+| `policy.robots_mode` | discovery | `warn` | Enforce (`enforce`) or silence (`ignore`) |
+| `policy.tos_mode` | discovery | `warn` | Enforce (`enforce`) or silence (`ignore`) |
 | `model` | extraction | `.env` model → `gpt-4o-mini` | You want a stronger/cheaper tier |
 | `max_context` | extraction | `600000` | Output is truncated on large docs |
 | `output_dir` | extraction | `extracted/<domain>` | You want a custom location |
@@ -36,12 +77,165 @@ source-of-truth constants in the code, so `--help` and runtime never drift.
 | `output.default_format` | compilation | `both` when unset | You want only `csv` or `excel` |
 | `synthesis.min_sources_for_llm` | compilation | `2` | Tune when the LLM reconciler runs |
 | dedup `key_fields` | schema `$metadata.identity.deduplication` | none | Compiled sheet has duplicate rows |
-| `partition_mode` | discovery | `auto` | You need a specific output layout |
-| `policy.robots_mode` | discovery | `warn` | Enforce (`block`) or silence (`ignore`) |
-| `policy.tos_mode` | discovery | `warn` | Enforce (`block`) or silence (`ignore`) |
 
 The [Command Reference](commands/index.md) also renders every CLI option's
 default directly from the live command definitions.
+
+## Discovery budgets, scope, and review
+
+`search.max_results` caps **unique candidates per rendered query**, locally,
+across live/cached results and enabled news results. Provider `num` is a request
+hint, not an authoritative limit. There is no hidden pagination or refill.
+`selection.max_per_target` is the **acquisition count per target**, after scope
+and candidate selection; it is separate from `document_review.keep_top`, which
+controls optional post-acquisition LLM curation. Neither cap guarantees that
+many successful downloads or establishes search recall.
+
+Search cache is off by default. With `search.cache: true`, a cache hit makes
+zero live search calls. Browser recovery also remains off until explicitly
+enabled, including when threshold settings are supplied:
+
+```yaml
+discovery:
+  browser_escalation:
+    enabled: true
+    min_shell_chars: 8000
+  code_host_adapters:
+    enabled: true
+```
+
+HTML/HTM and extensionless HTTP(S) URLs are provisionally eligible with the
+default `selection.require_supported_document`; you do not need to set it to
+`false` to discover web documents. Known non-document binaries are excluded;
+GET/MIME checks verify ambiguous candidates. PDF candidates are preferred to
+web pages when present. Ranking and MIME validation do not certify document
+relevance or semantic accuracy.
+
+For strict sources, combine `allowed_domains` with a URL-path regex:
+
+```yaml
+discovery:
+  queries:
+    - "site:example.org installation manual filetype:pdf"
+  allowed_domains: [example.org]
+  discovery_rules:
+    include_url_patterns: ['^https?://(?:www\.)?example\.org/documents/']
+```
+
+Scope applies before top-one selection and to final redirects. Search `site:`
+and `filetype:` hints are not scope/type guarantees.
+`selection.relevance_allowed_domain_patterns` is a ranking boost, not a host
+allowlist. `selection.exclude_url_patterns` is a case-insensitive regex guard
+on URLs, not a substitute for positive source scope. Concrete provider/vendor
+source filters belong in domain configs; a document parser does not configure
+them automatically.
+
+Selection uses `require_any` and `exclude` for literal relevance terms, and
+`exclude_text_patterns` for candidate-text regex guards. Domain-authored
+`draft_patterns` with `exclude_draft: true` express draft filtering; there is
+no built-in legal draft list. Ranking has no built-in vendor/government
+authority table or shopping-path list: configure `link_prioritization.domain_scores`
+and `shopping_path_keywords` when needed. Configured ranking `keywords`
+replace the generic `document`/`download`/`guide`/`report` fallback.
+
+Geographic partitioning uses explicit `state` and `jurisdiction` request/target
+fields, not inference from query text. `jurisdiction_aliases` supplies only
+configured aliases; there is no built-in US discovery alias table. Use
+`partition_by` for arbitrary metadata layouts.
+
+`document_review` is never enabled by query inference or model aliases. Add an
+explicit `document_description` and `model`, and configure LLM credentials,
+only when you want paid model-based curation. Without it, acquisition uses
+heuristics; inspect the files before extraction. Run-scoped selected files are
+under `discovered/<domain>/runs/<run_id>/curated`; the consolidated downstream
+folder is `discovered/<domain>/curated`.
+
+Credentials belong only in environment variables or `.env`, not YAML.
+`SERPAPI_SSL_VERIFY` and `DISCOVERY_SSL_VERIFY` retain their default `false`;
+set them explicitly to choose TLS verification. `REQUESTS_CA_BUNDLE` selects
+a Requests CA bundle. These options do not change what config validation checks.
+
+## Discovery configuration validation
+
+Discovery validates consumed nested blocks even without `--config-strict`:
+unknown options, quoted booleans such as `"false"`, invalid regular expressions,
+and invalid resource limits fail before acquisition. Use unquoted YAML
+`true`/`false`, actual integers for count limits, and finite non-negative numbers
+for delays. `runtime.max_depth: 0` disables descent; concurrency, result counts,
+page/file budgets, timeouts, and per-target selection counts must be positive.
+Host-diversity caps and request intervals may be zero.
+
+### Canonical YAML migration
+
+Retired aliases fail with a replacement-key error, even without strict mode
+and even if a canonical key is also supplied. They are not merged:
+
+| Retired key | Use instead |
+|-------------|-------------|
+| `discovery.seeker` | `discovery.search` (including `use_query_family`) |
+| `discovery.browser` | `discovery.browser_mode` |
+| `discovery.search.max_results_per_query` | `discovery.search.max_results` |
+| `discovery.selection.primary_per_target` | `discovery.selection.max_per_target` |
+| `discovery.selection.relevance_require_any_terms` | `discovery.selection.require_any` |
+| `discovery.selection.relevance_exclude_any_terms` | `discovery.selection.exclude` |
+
+The unused `pipeline`, `scoring`, `dedupe`, `file_filters`, and
+`keyword_validation` discovery blocks are rejected. Remove these no-op blocks;
+use `selection`, `link_prioritization`, `discovery_rules`, and
+`document_classifier` for supported behavior. Provider-specific
+`search.serpapi_params` and target metadata remain open maps, except reserved
+`q`, `num`, and `api_key` request controls cannot be overridden.
+
+`discover --validate-config` uses the same normalized input-plan check as
+execution, without invoking the engine, contacting providers, or writing run
+artifacts. It requires seeds, a query, targets, hub pages, or enabled search
+with usable templates. Quiet output includes normalized defaults and the
+applied target limit. The `run` CLI and Python `run_pipeline` perform this check
+before starting discovery; invalid run configs never fall back to raw YAML.
+Validation does not establish provider availability, credentials, or live
+network reliability.
+
+`discovery.request_headers` reaches the engine's HTTP requests. Set public
+headers such as `User-Agent` here; do not store secrets in configs or print
+secret-bearing headers with effective-config/validation output. Browser requests
+have their own header behavior. Explicit CLI options override config values,
+including the domain. Within a config, explicit `search.enabled: false`
+disables search even if `enable_serpapi` was true.
+
+Strict robots/ToS enforcement is available for HTTP acquisition. It cannot
+certify browser redirects or subresource requests and therefore fails before
+unsupported browser navigation, including escalation. Keep HTTP acquisition
+when enforcement is required; browser opt-in is not enforcement support.
+
+### Outcomes, resume, and discovery publication
+
+Outcome and exit code do not depend on quiet/default/verbose rendering:
+
+| Manifest status | Exit code | Meaning |
+|-----------------|-----------|---------|
+| `success`, `dry_run`, `reused` | `0` | Successful acquisition, valid plan, or validated reuse with no errors. |
+| `failed`, `partial_failure` | `1` | Acquisition failed wholly or partly; zero downloads caused by failure are not an empty success. |
+| `empty` | `2` | No usable results and no acquisition failure. |
+
+Checkpoint **v2** requires the effective discovery config fingerprint and
+SHA-256 artifact evidence, including curated files, to match before reuse.
+Config changes, missing/changed artifacts, and old v1 entries cause
+reacquisition. Search-result caching remains a separate opt-in mechanism.
+
+Corpus publication rejects concurrent writers with a lock and journals the
+known curated/provenance swaps. The next writer recovers an interrupted
+publication; corrupt recovery evidence fails closed rather than overwriting
+prior files. This is a small discovery-specific protocol, not a general
+pipeline or output transaction.
+
+OCR pairs use `.text/<filename>.txt` and `.text/<filename>.meta.json`, so
+`report.pdf` and `report.html` do not share a cache. Readers verify source
+size/mtime and source SHA-256 plus cached-text SHA-256. Partial/stale/mismatched
+pairs are misses; temporary-file replacement publishes metadata last. Old
+stem-only pairs are not reused. LLM reviewer sidecars use
+`.review/<filename>.json`; curation carries these full-name sidecars with
+selected documents. Native extraction, OCR correction rules, and page-targeting
+behavior are unchanged by this identity migration.
 
 ### Advanced: column-flattening overrides
 
@@ -125,12 +319,24 @@ unchanged. Neither feature bounds acquisition latency or whole-pipeline
 memory. Synthetic record, checkpoint, and mocked timeout tests do not establish
 100,000-target, large-document, fuzzy-dedup, or live-API readiness.
 
-## Annotated template
+## Minimal discovery template
 
-Copy the annotated template below to `config/<your_domain>/run.yaml` and edit
-the sections you need. It documents every knob inline.
+Copy this short template to `config/<your_domain>/run.yaml`. Only discovery is
+active; common choices and minimal later extraction/compilation blocks are
+commented out. The active starter remains just `domain` and `discovery.queries`.
 
 ```{literalinclude} ../config/TEMPLATE.yaml
 :language: yaml
 :caption: config/TEMPLATE.yaml
+```
+
+## Advanced annotated reference
+
+The expanded reference retains the original extraction, compilation, discovery,
+model, page-targeting, and QA/QC examples. Copy only the sections you need;
+placeholder models and schema paths must be replaced before those stages run.
+
+```{literalinclude} ../config/ADVANCED.yaml
+:language: yaml
+:caption: config/ADVANCED.yaml
 ```

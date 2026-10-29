@@ -152,7 +152,7 @@ def test_engine_keeps_earlier_and_later_targets_with_explicit_partial_status(mon
     manifest = json.loads(result.manifest_path.read_text())
 
     assert len(manifest["candidates"]) == 3
-    assert manifest["status"] == "scaffold_dry_run_with_errors"
+    assert manifest["status"] == "partial_failure"
     assert manifest["stage_summaries"]["seeker"]["queries_executed"] == 6
     assert manifest["stage_summaries"]["seeker"]["candidates_discovered"] == 5
     assert len(manifest["errors"]) == 1
@@ -175,7 +175,7 @@ def test_engine_non_timeout_error_does_not_turn_into_partial_success(monkeypatch
     assert [candidate["url"] for candidate in manifest["candidates"]] == [
         "https://example.gov/first-comments.pdf"
     ]
-    assert manifest["status"] == "scaffold_dry_run_with_errors"
+    assert manifest["status"] == "partial_failure"
     assert manifest["stage_summaries"]["seeker"]["queries_executed"] == 4
     assert any("401 Unauthorized" in error["message"] for error in manifest["errors"])
     metrics = manifest["stage_summaries"]["acceptance_metrics"]["unknown_target_discovery"]["targets"]
@@ -189,10 +189,15 @@ def test_partial_target_is_not_checkpointed_as_complete(monkeypatch, tmp_path):
     engine = DiscoveryEngine()
 
     def download(*, request, candidates, documents_dir, max_downloads):
-        return [
-            {"url": candidate.url, "status": "downloaded", "target_metadata": candidate.target_metadata}
-            for candidate in candidates
-        ], [], []
+        records = []
+        for idx, candidate in enumerate(candidates):
+            path = documents_dir / f"record-{idx}.pdf"
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(b"synthetic document")
+            records.append({"url": candidate.url, "status": "downloaded",
+                            "target_metadata": candidate.target_metadata,
+                            "path": str(path), "relative_path": path.name})
+        return records, [], []
 
     monkeypatch.setattr(engine, "_download_candidates", download)
     engine.run(_engine_request(tmp_path, dry_run=False))
@@ -273,7 +278,7 @@ def test_incomplete_shared_partition_stays_run_local(
         DiscoveryEngine._target_checkpoint_key({"label": "last", "state": "California"})
     }
     manifest = json.loads(result.manifest_path.read_text())
-    assert manifest["status"] == "scaffold_with_errors"
+    assert manifest["status"] == ("partial_failure" if selected else "failed")
 
 
 def test_same_named_counties_keep_independent_review_caps(monkeypatch, tmp_path):
@@ -354,7 +359,7 @@ def test_cli_does_not_label_partial_discovery_complete(monkeypatch, tmp_path, wi
 
     manifest_path = tmp_path / "manifest.json"
     manifest_path.write_text(json.dumps({
-        "status": "scaffold_dry_run_with_errors" if with_errors else "scaffold_dry_run",
+        "status": "partial_failure" if with_errors else "dry_run",
         "notes": [],
         "errors": [{"stage": "discovery.seeker_discover", "message": "query timed out"}] if with_errors else [],
     }))
@@ -368,10 +373,10 @@ def test_cli_does_not_label_partial_discovery_complete(monkeypatch, tmp_path, wi
     ))
     result = CliRunner().invoke(discover, ["--query", "test", "--dry-run"])
 
-    assert result.exit_code == 0, result.output
+    assert result.exit_code == (1 if with_errors else 0), result.output
     if with_errors:
         assert "results may be partial" in result.output
         assert "Discovery complete" not in result.output
-        assert "scaffold_dry_run_with_errors" in result.output
+        assert "partial_failure" in result.output
     else:
         assert "Discovery complete" in result.output

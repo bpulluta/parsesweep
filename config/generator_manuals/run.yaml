@@ -10,13 +10,8 @@ discovery:
     - manufacturer: John Deere
       power_class_kw: "200-300"
       query: "John Deere generator operator manual pdf"
-  query_families:
-    generator_similar_power:
-      - "{manufacturer} {power_class_kw} kW generator spec pdf"
-      - "{manufacturer} generator {power_class_kw} kW manual pdf"
-  seeker:
+  search:
     provider: serpapi
-    use_query_family: generator_similar_power
     max_results: 6
   # Domain-specific ranking signals (kept in config, not hard-coded in code).
   link_prioritization:
