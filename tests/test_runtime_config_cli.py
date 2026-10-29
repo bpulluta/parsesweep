@@ -9,11 +9,13 @@ from psweep.cli.main import cli
 
 
 def test_process_validate_config_with_run_yaml(tmp_path, schema_path):
+    documents = tmp_path / "documents"
+    documents.mkdir()
     config_path = tmp_path / "run.yaml"
     config_path.write_text(
         f"""
 extraction:
-  input_dir: documents/geothermal_ordinances
+  input_dir: {documents.as_posix()}
   schema: {schema_path.as_posix()}
 """,
         encoding="utf-8",
@@ -159,7 +161,8 @@ compilation:
     assert result.exit_code == 0
 
 
-def test_run_fresh_clears_extraction_output_before_stages(tmp_path, schema_path):
+def test_run_fresh_delegates_safe_cleanup_to_extraction(tmp_path, schema_path):
+    """The parent run must not delete before its child preflight."""
     config_path = tmp_path / "run.yaml"
     extraction_dir = tmp_path / "extracted" / "demo"
     extraction_dir.mkdir(parents=True)
@@ -191,7 +194,7 @@ compilation:
         )
 
     assert result.exit_code == 0
-    assert not stale_record.exists()
+    assert stale_record.read_text() == "{}"
 
 
 def test_run_summary_prefers_latest_curated_when_discovery_runs(tmp_path, monkeypatch, schema_path):
@@ -508,7 +511,8 @@ compilation:
     assert "retention_documents='none'" in result.output
 
 
-def test_extract_fresh_clears_output_even_when_input_path_missing(tmp_path):
+def test_extract_fresh_preserves_output_when_input_path_missing(tmp_path):
+    """Missing source inputs cannot delete prior extraction records."""
     extraction_dir = tmp_path / "extracted" / "demo"
     extraction_dir.mkdir(parents=True)
     stale_record = extraction_dir / "stale.json"
@@ -539,8 +543,8 @@ extraction:
     )
 
     assert result.exit_code != 0
-    assert not stale_record.exists()
-    assert "Latest discovery curation is missing or empty" in result.output
+    assert stale_record.read_text() == "{}"
+    assert "Documents path not found" in result.output
 
 
 def test_discover_target_limit_slices_configured_targets(tmp_path):

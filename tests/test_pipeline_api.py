@@ -3,28 +3,48 @@ from __future__ import annotations
 import json
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import Mock
+
+import yaml
+
+from click.testing import CliRunner
+
+from psweep.cli.main import cli
+from psweep.exceptions import PipelineError
 
 import pytest
 from psweep.config import RuntimeConfigError
 
 from psweep.pipeline import (
     build_run_stage_commands,
-    clear_run_extract_output,
     compile_extractions,
     count_curated_documents,
     count_extracted_documents,
     extract_documents,
-    read_checkpoint_entries,
     resolve_run_discovery_enabled,
     resolve_run_extraction_dir,
     resolve_run_validation,
-    run_checkpoint_path,
+    run_pipeline,
 )
 
 
+@pytest.fixture(autouse=True)
+def controlled_configuration(monkeypatch):
+    """Keep factory tests isolated from local .env and real credentials."""
+    config = SimpleNamespace(llm_config={
+        "provider": "openai", "model": "gpt-fixture", "api_key": "fixture-key",
+    })
+    monkeypatch.setattr("psweep.utils.config._global_config", config)
+    monkeypatch.setattr(
+        "psweep.cli.commands_extract.load_dotenv", lambda: None,
+    )
+    return config.llm_config
+
+
 def test_extract_documents_uses_max_context_chars(
-    monkeypatch, tmp_path: Path
+    monkeypatch, tmp_path: Path, controlled_configuration,
 ) -> None:
+    controlled_configuration["base_url"] = "https://proxy.example.invalid/v1"
     docs_dir = tmp_path / "docs"
     docs_dir.mkdir()
     (docs_dir / "sample.txt").write_text("sample document", encoding="utf-8")
@@ -61,17 +81,28 @@ def test_extract_documents_uses_max_context_chars(
             max_context_chars: int,
             schema_metadata=None,
             api_key=None,
+            azure_endpoint=None,
+            azure_api_version=None,
+            base_url=None,
+            context_windows=None,
+            reasoning_models=None,
+            timeout=None,
         ) -> None:
             captured["model"] = model
             captured["provider"] = provider
             captured["max_context_chars"] = max_context_chars
+            captured["api_key"] = api_key
+            captured["base_url"] = base_url
+            captured["schema_metadata"] = schema_metadata
+            captured["context_windows"] = context_windows
+            captured["reasoning_models"] = reasoning_models
+            captured["timeout"] = timeout
 
         def extract(self, text: str, schema: dict) -> SimpleNamespace:
             captured["text"] = text
             captured["schema"] = schema
             return SimpleNamespace(data={"items": [{"name": "a"}]}, cost=1.25)
 
-    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
     monkeypatch.setattr("psweep.extraction.DocumentExtractor", DummyExtractor)
     monkeypatch.setattr(
         "psweep.extraction.document_utils.extract_text_from_document",
@@ -89,6 +120,14 @@ def test_extract_documents_uses_max_context_chars(
 
     assert captured["max_context_chars"] == 123
     assert captured["provider"] == "openai"
+    assert captured["model"] == "gpt-fixture"
+    assert captured["api_key"] == "fixture-key"
+    assert captured["base_url"] == "https://proxy.example.invalid/v1"
+    assert captured["schema_metadata"].schema_path == schema_path
+    assert captured["context_windows"] is None
+    assert captured["reasoning_models"] is None
+    assert captured["timeout"] is None
+    assert captured["text"] == "extracted text"
     assert result.total == 1
     assert result.successful == 1
     assert result.failed == 0
@@ -503,13 +542,18 @@ def test_extract_documents_uses_page_range_csv(tmp_path: Path, monkeypatch) -> N
             max_context_chars: int,
             schema_metadata=None,
             api_key=None,
+            azure_endpoint=None,
+            azure_api_version=None,
+            base_url=None,
+            context_windows=None,
+            reasoning_models=None,
+            timeout=None,
         ) -> None:
             pass
 
         def extract(self, text: str, schema: dict) -> SimpleNamespace:
             return SimpleNamespace(data={"items": [{"name": "a"}]}, cost=0.0)
 
-    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
     monkeypatch.setattr("psweep.extraction.DocumentExtractor", DummyExtractor)
     monkeypatch.setattr(
         "psweep.extraction.document_utils.extract_text_from_document",
@@ -517,7 +561,7 @@ def test_extract_documents_uses_page_range_csv(tmp_path: Path, monkeypatch) -> N
         or "extracted text",
     )
 
-    extract_documents(
+    result = extract_documents(
         docs_dir,
         schema_path,
         output_dir=tmp_path / "out",
@@ -527,41 +571,74 @@ def test_extract_documents_uses_page_range_csv(tmp_path: Path, monkeypatch) -> N
         pages_csv=pages_csv,
     )
 
+    assert result.successful == 1 and result.failed == 0
     assert seen_page_ranges == [("sample.txt", (5, 9))]
+    record = json.loads((tmp_path / "out/sample.json").read_text())
+    coverage = record["processing_metrics"]["coverage"]
+    assert coverage["selected_page_range"] == [5, 9]
 
 
-# ── run-command on-disk helpers (extracted from app.py run) ──────────────────
+# Run orchestrators delegate artifact reuse and cleanup to their stage owners.
 
 
-def test_run_checkpoint_path_uses_domain_convention() -> None:
-    assert run_checkpoint_path("acme") == Path(
-        "discovered/acme/checkpoint.json"
+def _run_config(tmp_path, schema_path, *, discovery=True):
+    output = tmp_path / "extracted" / "acme"
+    config = {
+        "domain": "acme",
+        "extraction": {
+            "schema": str(schema_path),
+            "input_dir": str(tmp_path / "documents"),
+            "output_dir": str(output),
+        },
+        "compilation": {
+            "schema": str(schema_path), "input_dir": str(output),
+            "output_dir": str(tmp_path / "compiled"),
+        },
+    }
+    if discovery:
+        config["discovery"] = {
+            "queries": ["{label} documents"],
+            "targets": [{"label": "alpha"}, {"label": "beta"}],
+        }
+    path = tmp_path / "run.yaml"
+    path.write_text(yaml.safe_dump(config), encoding="utf-8")
+    return path, output
+
+
+@pytest.mark.parametrize("checkpoint", [
+    None,
+    "{not valid json",
+    json.dumps({"other": 1}),
+    json.dumps({"entries": {"alpha": {}, "beta": {}}}),
+    json.dumps({"entries": {"alpha": {"artifacts": {"missing": "0" * 64}}}}),
+])
+def test_run_ui_does_not_predict_reuse_from_raw_checkpoint(
+    tmp_path: Path, schema_path: Path, monkeypatch, checkpoint,
+) -> None:
+    """Missing, malformed and stale checkpoint keys are not skip evidence."""
+    monkeypatch.chdir(tmp_path)
+    config, _ = _run_config(tmp_path, schema_path)
+    if checkpoint is not None:
+        path = tmp_path / "discovered/acme/checkpoint.json"
+        path.parent.mkdir(parents=True)
+        path.write_text(checkpoint, encoding="utf-8")
+    plans = []
+    monkeypatch.setattr(
+        "psweep.cli.run_view.RunView.config",
+        lambda _self, rows, **_kwargs: plans.append(rows),
     )
+    subprocess = Mock(return_value=SimpleNamespace(returncode=1))
+    monkeypatch.setattr("psweep.cli.app.subprocess.run", subprocess)
 
-
-def test_read_checkpoint_entries_missing_file(tmp_path: Path) -> None:
-    assert read_checkpoint_entries(tmp_path / "nope.json") == []
-
-
-def test_read_checkpoint_entries_returns_keys(tmp_path: Path) -> None:
-    cp = tmp_path / "checkpoint.json"
-    cp.write_text(
-        json.dumps({"entries": {"target-a": {}, "target-b": {}}}),
-        encoding="utf-8",
-    )
-    assert sorted(read_checkpoint_entries(cp)) == ["target-a", "target-b"]
-
-
-def test_read_checkpoint_entries_malformed_json(tmp_path: Path) -> None:
-    cp = tmp_path / "checkpoint.json"
-    cp.write_text("{not valid json", encoding="utf-8")
-    assert read_checkpoint_entries(cp) == []
-
-
-def test_read_checkpoint_entries_no_entries_key(tmp_path: Path) -> None:
-    cp = tmp_path / "checkpoint.json"
-    cp.write_text(json.dumps({"other": 1}), encoding="utf-8")
-    assert read_checkpoint_entries(cp) == []
+    result = CliRunner().invoke(cli, ["run", "--config", str(config), "--yes"])
+    assert result.exit_code == 1, result.output
+    assert plans[0]["Targets"] == "2 configured (reuse verified by discovery)"
+    assert "remaining" not in plans[0]["Targets"].lower()
+    assert "skip" not in plans[0]["Targets"].lower()
+    assert subprocess.call_count == 1
+    command = subprocess.call_args.args[0]
+    assert "discover" in command
+    assert "--fresh" not in command
 
 
 def test_resolve_run_extraction_dir_uses_config_value() -> None:
@@ -573,16 +650,45 @@ def test_resolve_run_extraction_dir_defaults_to_domain() -> None:
     assert resolve_run_extraction_dir({}, "acme") == Path("extracted/acme")
 
 
-def test_clear_run_extract_output_removes_existing(tmp_path: Path) -> None:
-    d = tmp_path / "extracted" / "acme"
-    d.mkdir(parents=True)
-    (d / "doc.json").write_text("{}", encoding="utf-8")
-    assert clear_run_extract_output(d) is True
-    assert not d.exists()
+@pytest.mark.parametrize("entrypoint", ["cli", "api"])
+@pytest.mark.parametrize("existing", [False, True])
+def test_parent_fresh_run_leaves_cleanup_to_extract_stage(
+    tmp_path: Path, schema_path: Path, monkeypatch, entrypoint, existing,
+) -> None:
+    """Only the extract child may mutate the extraction output directory."""
+    monkeypatch.chdir(tmp_path)
+    config, output = _run_config(tmp_path, schema_path, discovery=False)
+    sentinel = output / "prior.json"
+    if existing:
+        output.mkdir(parents=True)
+        sentinel.write_text("previous verified output", encoding="utf-8")
+    seen = []
 
+    def child(command, **kwargs):
+        seen.append(command)
+        if existing:
+            assert sentinel.read_text() == "previous verified output"
+        else:
+            assert not output.exists()
+        # Simulate the extract child's failed preflight; compile must not run.
+        return SimpleNamespace(returncode=1)
 
-def test_clear_run_extract_output_missing_dir(tmp_path: Path) -> None:
-    assert clear_run_extract_output(tmp_path / "nope") is False
+    monkeypatch.setattr("psweep.pipeline.subprocess.run", child)
+    if entrypoint == "cli":
+        result = CliRunner().invoke(
+            cli, ["run", "--config", str(config), "--fresh", "--yes"],
+        )
+        assert result.exit_code == 1, result.output
+        assert "Stage 'extract' failed" in result.output
+    else:
+        with pytest.raises(PipelineError, match="Stage 'extract' failed"):
+            run_pipeline(config, fresh=True)
+    assert len(seen) == 1
+    assert "extract" in seen[0] and "--fresh" in seen[0]
+    if existing:
+        assert sentinel.read_text() == "previous verified output"
+    else:
+        assert not output.exists()
 
 
 def test_count_curated_documents_skips_sidecars(tmp_path: Path) -> None:

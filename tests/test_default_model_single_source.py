@@ -29,9 +29,8 @@ _PROVIDER_ENV_KEYS = (
 
 
 def test_registry_default_model_is_factory_default_model():
-    # model_registry imports the value; the defensive fallback is bound to it.
-    assert model_registry.DEFAULT_MODEL is llm_factory.DEFAULT_MODEL
-    assert model_registry._DEFAULT_MODEL_FALLBACK is llm_factory.DEFAULT_MODEL
+    registry = model_registry.ModelRegistry.from_config({}, llm_config={})
+    assert registry.to_llm_kwargs(None)["model"] == llm_factory.DEFAULT_MODEL
 
 
 def test_config_default_model_is_factory_default_model(monkeypatch, tmp_path):
@@ -39,12 +38,20 @@ def test_config_default_model_is_factory_default_model(monkeypatch, tmp_path):
         monkeypatch.delenv(key, raising=False)
     monkeypatch.setenv("OPENAI_API_KEY", "test-openai-key")
 
-    cfg = Config(project_root=tmp_path)  # tmp_path has no .env -> pure env read
+    cfg = Config(
+        project_root=tmp_path
+    )  # tmp_path has no .env -> pure env read
 
     assert cfg.llm_config["provider"] == "openai"
     assert cfg.llm_config["model"] == llm_factory.DEFAULT_MODEL
 
 
 def test_known_providers_is_shared_across_modules():
-    # Re-exported, not redefined: same object in both namespaces.
-    assert model_registry.KNOWN_PROVIDERS is llm_factory.KNOWN_PROVIDERS
+    for provider in llm_factory.KNOWN_PROVIDERS:
+        resolved = llm_factory.resolve_llm_kwargs(
+            "fixture",
+            llm_config={},
+            provider=provider,
+        )
+        assert resolved["provider"] == provider
+    assert not hasattr(model_registry, "KNOWN_PROVIDERS")

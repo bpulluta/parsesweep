@@ -14,6 +14,7 @@ from psweep.config import RuntimeConfigError
 from psweep.extraction import load_schema
 from psweep.extraction.llm_factory import DEFAULT_MAX_CONTEXT
 from psweep.extraction.document_utils import SUPPORTED_EXTENSIONS
+from psweep.extraction.provenance import generate_run_id
 
 
 @click.command()
@@ -66,8 +67,6 @@ def validate(
     )
     from psweep.cli.commands_extract import (
         _apply_page_targeting,
-        _generate_run_id,
-        _resolve_schema_ref,
         _run_validation_extraction,
     )
 
@@ -86,7 +85,7 @@ def validate(
         sys.exit(1)
 
     path = Path(resolved_inputs["path"])
-    schema_path = _resolve_schema_ref(Path(resolved_inputs["schema"]))
+    schema_path = Path(resolved_inputs["schema"])
     extraction_output_dir = Path(
         resolved_inputs.get("output")
         or (Path.cwd() / "extracted" / resolved_inputs.get("domain", path.name))
@@ -259,7 +258,7 @@ def validate(
     else:
         view.phase("Stage 1/3: Page targeting disabled")
 
-    run_id = _generate_run_id(
+    run_id = generate_run_id(
         schema_path=schema_path,
         provider="mixed",
         model="validation",

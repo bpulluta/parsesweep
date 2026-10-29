@@ -17,13 +17,12 @@ import math
 import re
 from collections.abc import Iterator
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
-from contextlib import suppress
 from itertools import islice
 from pathlib import Path
-from tempfile import NamedTemporaryFile
 from threading import Lock
 from typing import Any
 
+from psweep.utils.file_io import atomic_json
 from .urls import redact_url, redact_urls_in_text
 from .validators import ContentSampler
 
@@ -1024,25 +1023,9 @@ class DocumentReviewer:
         }
         if record.get("review_deduplication"):
             payload["deduplication"] = record["review_deduplication"]
-        temporary: Path | None = None
         try:
-            review_dir.mkdir(parents=True, exist_ok=True)
-            with NamedTemporaryFile(
-                mode="w",
-                encoding="utf-8",
-                dir=review_dir,
-                prefix=f".{sidecar.name}.",
-                suffix=".tmp",
-                delete=False,
-            ) as stream:
-                temporary = Path(stream.name)
-                stream.write(json.dumps(payload, indent=2, allow_nan=False))
-            temporary.replace(sidecar)
+            atomic_json(sidecar, payload)
         except (OSError, TypeError, ValueError):
             self._mark_review_failure(
                 record, ReviewError("review sidecar write failed")
             )
-        finally:
-            if temporary is not None:
-                with suppress(OSError):
-                    temporary.unlink(missing_ok=True)

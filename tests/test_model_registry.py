@@ -1,17 +1,26 @@
-"""Unit tests for the unified model registry (``config.model_registry``)."""
+"""Test string aliases, model resolution, and strict config contracts."""
 
 from __future__ import annotations
 
+from dataclasses import FrozenInstanceError
+from types import SimpleNamespace
+
 import pytest
+import yaml
 
 from psweep.config.model_registry import (
-    KNOWN_PROVIDERS,
     MIN_MULTI_MODELS,
     ModelDefinition,
     ModelRegistry,
     ModelRegistryError,
 )
-
+from psweep.config.runtime_config_loader import (
+    RuntimeConfigError,
+    load_runtime_config_file,
+    resolve_command_config,
+)
+from psweep.extraction import llm_factory
+from psweep.extraction.llm_client import LLMClient
 
 OPENAI_CFG = {
     "provider": "openai",
@@ -20,378 +29,346 @@ OPENAI_CFG = {
 }
 
 
-def _fake_resolve_kwargs(stage_value, *, models=None, llm_config=None, **_):
-    """Record the model passed through and echo a deterministic kwargs dict."""
-    return {
-        "model": stage_value,
-        "api_key": (llm_config or {}).get("api_key"),
-        "provider": (llm_config or {}).get("provider"),
-        "azure_endpoint": (llm_config or {}).get("azure_endpoint"),
-        "azure_api_version": (llm_config or {}).get("azure_api_version"),
-    }
-
-
-# ── from_config: building from the various shapes ──────────────────────────
-
-
 def test_from_config_string_form_builds_tier_definitions():
-    cfg = {"models": {"primary": "gpt-4.1", "secondary": "gpt-4.1-mini"}}
-    registry = ModelRegistry.from_config(cfg, OPENAI_CFG)
-
-    primary = registry.get_model("primary")
-    assert isinstance(primary, ModelDefinition)
-    assert primary.tier == "primary"
-    assert primary.model == "gpt-4.1"
-    assert primary.provider is None
-    assert primary.context_window is None
-    assert dict(primary.params) == {}
-
-
-def test_from_config_long_form_dict_carries_provider_window_and_params():
-    cfg = {
-        "models": {
-            "primary": {
-                "model": "azure-deploy",
-                "provider": "azure",
-                "context_window": 200000,
-                "params": {"temperature": 0.0},
-            }
-        }
-    }
-    registry = ModelRegistry.from_config(cfg, OPENAI_CFG)
-
-    definition = registry.get_model("primary")
-    assert definition.model == "azure-deploy"
-    assert definition.provider == "azure"
-    assert definition.context_window == 200000
-    assert dict(definition.params) == {"temperature": 0.0}
+    """From config string form builds tier definitions."""
+    registry = ModelRegistry.from_config(
+        {"models": {"primary": "gpt-4.1", "secondary": "gpt-4.1-mini"}},
+        OPENAI_CFG,
+    )
+    assert registry.get_model("primary") == ModelDefinition(
+        tier="primary", model="gpt-4.1"
+    )
+    assert registry.get_model("secondary").model == "gpt-4.1-mini"
 
 
-def test_from_config_folds_model_context_windows_into_tier():
-    cfg = {
-        "models": {"primary": "gpt-4.1"},
-        "model_context_windows": {"gpt-4.1": 128000},
-    }
-    registry = ModelRegistry.from_config(cfg, OPENAI_CFG)
-
-    assert registry.get_model("primary").context_window == 128000
-
-
-def test_from_config_long_form_context_window_wins_over_side_map():
-    cfg = {
-        "models": {
-            "primary": {"model": "gpt-4.1", "context_window": 999}
-        },
-        "model_context_windows": {"gpt-4.1": 128000},
-    }
-    registry = ModelRegistry.from_config(cfg, OPENAI_CFG)
-
-    assert registry.get_model("primary").context_window == 999
+@pytest.mark.parametrize(
+    "spec",
+    [
+        {"model": "deployment", "provider": "azure"},
+        {"model": "gpt-4.1", "context_window": 200000},
+        {"model": "gpt-4.1", "params": {"temperature": 0.0}},
+        {"model": "gpt-4.1", "context_window": 999},
+        {"provider": "azure"},
+        {},
+    ],
+)
+def test_from_config_rejects_long_form_models_with_actionable_message(spec):
+    """From config rejects long form models with actionable message."""
+    with pytest.raises(ModelRegistryError, match="non-empty model string"):
+        ModelRegistry.from_config({"models": {"primary": spec}}, OPENAI_CFG)
 
 
-def test_from_config_empty_models_block_is_backward_compatible():
-    registry = ModelRegistry.from_config({}, OPENAI_CFG)
+@pytest.mark.parametrize("defaults", [{"extract": "primary"}, {}, None, []])
+def test_from_config_rejects_retired_phase_defaults(defaults):
+    """From config rejects retired phase defaults."""
+    with pytest.raises(
+        ModelRegistryError, match=r"model_defaults.*not supported"
+    ):
+        ModelRegistry.from_config({"model_defaults": defaults}, OPENAI_CFG)
 
-    # No tiers, but any reference still resolves as a literal.
-    definition = registry.get_model("some-literal-model")
-    assert definition.model == "some-literal-model"
 
-
-def test_from_config_none_config_yields_usable_registry():
-    registry = ModelRegistry.from_config(None, OPENAI_CFG)
+@pytest.mark.parametrize("config", [{}, {"models": {}}, None])
+def test_empty_config_resolves_literal_models(config):
+    """Empty config resolves literal models."""
+    registry = ModelRegistry.from_config(config, OPENAI_CFG)
     assert registry.get_model("literal").model == "literal"
 
 
-def test_from_config_rejects_non_mapping_models_block():
+@pytest.mark.parametrize("block", [["gpt-4.1"], [], "", False, 123])
+def test_from_config_rejects_non_mapping_models_block(block):
+    """From config rejects non mapping models block."""
     with pytest.raises(ModelRegistryError, match="'models' must be a mapping"):
-        ModelRegistry.from_config({"models": ["gpt-4.1"]}, OPENAI_CFG)
+        ModelRegistry.from_config({"models": block}, OPENAI_CFG)
 
 
-def test_from_config_rejects_long_form_without_model():
-    cfg = {"models": {"primary": {"provider": "azure"}}}
-    with pytest.raises(ModelRegistryError, match="non-empty 'model' string"):
-        ModelRegistry.from_config(cfg, OPENAI_CFG)
+@pytest.mark.parametrize("spec", [123, True, None, "", "   "])
+def test_from_config_rejects_invalid_model_strings(spec):
+    """From config rejects invalid model strings."""
+    with pytest.raises(ModelRegistryError, match="non-empty model string"):
+        ModelRegistry.from_config({"models": {"primary": spec}}, OPENAI_CFG)
 
 
-def test_from_config_rejects_invalid_spec_type():
-    cfg = {"models": {"primary": 123}}
-    with pytest.raises(ModelRegistryError, match="model string or a mapping"):
-        ModelRegistry.from_config(cfg, OPENAI_CFG)
+@pytest.mark.parametrize("name", [123, "", "   "])
+def test_from_config_rejects_invalid_alias_names(name):
+    """From config rejects invalid alias names."""
+    with pytest.raises(ModelRegistryError, match="non-empty strings"):
+        ModelRegistry.from_config({"models": {name: "gpt-4.1"}}, OPENAI_CFG)
 
 
-# ── get_model: alias hit vs literal fallback vs floor ──────────────────────
-
-
-def test_get_model_alias_hit_returns_mapped_definition():
+def test_get_model_literal_fallback_for_unknown_reference():
+    """Get model literal fallback for unknown reference."""
     registry = ModelRegistry.from_config(
         {"models": {"accurate": "gpt-5"}}, OPENAI_CFG
     )
     assert registry.get_model("accurate").model == "gpt-5"
-
-
-def test_get_model_literal_fallback_for_unknown_reference():
-    registry = ModelRegistry.from_config(
-        {"models": {"accurate": "gpt-5"}}, OPENAI_CFG
+    assert registry.get_model("claude-3.5-sonnet") == ModelDefinition(
+        tier="claude-3.5-sonnet", model="claude-3.5-sonnet"
     )
-    definition = registry.get_model("claude-3.5-sonnet")
-    assert definition.tier == "claude-3.5-sonnet"
-    assert definition.model == "claude-3.5-sonnet"
 
 
-def test_get_model_none_returns_env_floor_model():
+@pytest.mark.parametrize("reference", [None, "", "   "])
+def test_get_model_omitted_reference_returns_configured_model(reference):
+    """Get model omitted reference returns configured model."""
     registry = ModelRegistry.from_config({}, OPENAI_CFG)
+    assert registry.get_model(reference).model == "env-default-model"
+
+
+def test_get_model_floor_uses_factory_default_when_explicit_config_is_empty():
+    """Get model floor uses factory default when explicit config is empty."""
+    registry = ModelRegistry.from_config({}, {})
+    assert registry.get_model(None).model == llm_factory.DEFAULT_MODEL
+
+
+def test_get_model_omitted_config_uses_global_environment_model(monkeypatch):
+    """Get model omitted config uses global environment model."""
+    monkeypatch.setattr(
+        "psweep.utils.config.get_config",
+        lambda: SimpleNamespace(llm_config=OPENAI_CFG),
+    )
+    registry = ModelRegistry.from_config({})
     assert registry.get_model(None).model == "env-default-model"
-
-
-def test_get_model_empty_string_returns_env_floor_model():
-    registry = ModelRegistry.from_config({}, OPENAI_CFG)
-    assert registry.get_model("   ").model == "env-default-model"
-
-
-def test_get_model_floor_uses_default_when_no_env_model():
-    registry = ModelRegistry.from_config({}, {"provider": "openai"})
-    # Falls back to llm_factory.DEFAULT_MODEL.
-    assert registry.get_model(None).model == "gpt-4o-mini"
+    assert registry.to_llm_kwargs(None)["api_key"] == "openai-key"
 
 
 def test_get_model_non_string_reference_raises():
+    """Get model non string reference raises."""
     registry = ModelRegistry.from_config({}, OPENAI_CFG)
     with pytest.raises(ModelRegistryError, match="must be a string or None"):
-        registry.get_model(123)  # type: ignore[arg-type]
+        registry.get_model(123)
 
 
-def test_get_model_literal_folds_context_window_from_side_map():
-    cfg = {"model_context_windows": {"gpt-4.1": 128000}}
-    registry = ModelRegistry.from_config(cfg, OPENAI_CFG)
-    assert registry.get_model("gpt-4.1").context_window == 128000
-
-
-# ── get_models: dedup + order preservation ─────────────────────────────────
-
-
-def test_get_models_preserves_order_and_dedups_by_model():
+def test_get_models_preserves_order_and_dedups_by_concrete_model():
+    """Get models preserves order and dedups by concrete model."""
     cfg = {"models": {"a": "gpt-5", "b": "gpt-4.1", "c": "gpt-5"}}
     registry = ModelRegistry.from_config(cfg, OPENAI_CFG)
-
     resolved = registry.get_models(["a", "b", "c", "gpt-4.1"])
-    models = [d.model for d in resolved]
-    assert models == ["gpt-5", "gpt-4.1"]
-
-
-def test_get_models_empty_input_returns_empty_list():
-    registry = ModelRegistry.from_config({}, OPENAI_CFG)
+    assert [(d.tier, d.model) for d in resolved] == [
+        ("a", "gpt-5"),
+        ("b", "gpt-4.1"),
+    ]
     assert registry.get_models(None) == []
     assert registry.get_models([]) == []
 
 
-# ── resolve_for_phase: explicit -> defaults -> floor ───────────────────────
+def test_to_llm_kwargs_delegates_once_with_concrete_model(monkeypatch):
+    """To llm kwargs delegates once with concrete model."""
+    captured = {}
 
+    def spy(stage_value, **kwargs):
+        captured.update(stage_value=stage_value, **kwargs)
+        return {"model": stage_value, "provider": "openai", "api_key": "key"}
 
-def test_resolve_for_phase_explicit_reference_wins():
-    cfg = {"models": {"primary": "gpt-5"}, "model_defaults": {"extract": "primary"}}
-    registry = ModelRegistry.from_config(cfg, OPENAI_CFG)
-    # Explicit literal overrides the phase default.
-    assert registry.resolve_for_phase("extract", "gpt-4.1").model == "gpt-4.1"
-
-
-def test_resolve_for_phase_uses_default_when_no_explicit():
-    cfg = {"models": {"primary": "gpt-5"}, "model_defaults": {"extract": "primary"}}
-    registry = ModelRegistry.from_config(cfg, OPENAI_CFG)
-    assert registry.resolve_for_phase("extract").model == "gpt-5"
-
-
-def test_resolve_for_phase_falls_to_floor_without_default():
-    cfg = {"models": {"primary": "gpt-5"}}
-    registry = ModelRegistry.from_config(cfg, OPENAI_CFG)
-    assert registry.resolve_for_phase("extract").model == "env-default-model"
-
-
-def test_resolve_for_phase_blank_explicit_ignored():
-    cfg = {"model_defaults": {"extract": "gpt-5"}}
-    registry = ModelRegistry.from_config(cfg, OPENAI_CFG)
-    assert registry.resolve_for_phase("extract", "  ").model == "gpt-5"
-
-
-# ── to_llm_kwargs: single credential path via resolve_llm_kwargs ────────────
-
-
-def test_to_llm_kwargs_delegates_to_resolve_llm_kwargs():
-    cfg = {"models": {"primary": "gpt-5"}}
+    monkeypatch.setattr(llm_factory, "resolve_llm_kwargs", spy)
+    # The concrete value is also another alias. It must not be resolved twice.
     registry = ModelRegistry.from_config(
-        cfg, OPENAI_CFG, resolve_kwargs=_fake_resolve_kwargs
+        {"models": {"primary": "secondary", "secondary": "gpt-5"}}, OPENAI_CFG
     )
-    kwargs = registry.to_llm_kwargs("primary")
-    assert kwargs["model"] == "gpt-5"
+    assert registry.to_llm_kwargs("primary")["model"] == "secondary"
+    assert captured == {
+        "stage_value": "secondary",
+        "models": {},
+        "llm_config": OPENAI_CFG,
+    }
+
+
+@pytest.mark.parametrize("reference", ["gpt-4o", None])
+def test_to_llm_kwargs_same_provider_uses_configured_credentials(reference):
+    """To llm kwargs same provider uses configured credentials."""
+    registry = ModelRegistry.from_config({}, OPENAI_CFG)
+    kwargs = registry.to_llm_kwargs(reference)
+    assert kwargs["model"] == (reference or "env-default-model")
     assert kwargs["provider"] == "openai"
     assert kwargs["api_key"] == "openai-key"
 
 
-def test_to_llm_kwargs_literal_reference_passes_through():
+def test_to_llm_kwargs_cross_provider_uses_only_target_credentials(
+    monkeypatch,
+):
+    """To llm kwargs cross provider uses only target credentials."""
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "anthropic-key")
     registry = ModelRegistry.from_config(
-        {}, OPENAI_CFG, resolve_kwargs=_fake_resolve_kwargs
+        {"models": {"review": "claude-3.5-sonnet"}}, OPENAI_CFG
     )
-    assert registry.to_llm_kwargs("claude-3.5-sonnet")["model"] == "claude-3.5-sonnet"
+    assert registry.to_llm_kwargs("review")["api_key"] == "anthropic-key"
+    monkeypatch.delenv("ANTHROPIC_API_KEY")
+    assert registry.to_llm_kwargs("review")["api_key"] is None
 
 
-def test_to_llm_kwargs_none_reference_uses_floor_model():
-    registry = ModelRegistry.from_config(
-        {}, OPENAI_CFG, resolve_kwargs=_fake_resolve_kwargs
-    )
-    assert registry.to_llm_kwargs(None)["model"] == "env-default-model"
-
-
-def test_to_llm_kwargs_default_bridge_calls_real_factory(monkeypatch):
-    # Without an injected callable, it lazily imports the real factory.
-    import psweep.extraction.llm_factory as factory
-
-    captured = {}
-
-    def _spy(stage_value, *, models=None, llm_config=None, **_):
-        captured["stage_value"] = stage_value
-        captured["models"] = models
-        return {"model": stage_value, "provider": (llm_config or {}).get("provider")}
-
-    monkeypatch.setattr(factory, "resolve_llm_kwargs", _spy)
-    registry = ModelRegistry.from_config({"models": {"primary": "gpt-5"}}, OPENAI_CFG)
-    result = registry.to_llm_kwargs("primary")
-    assert result["model"] == "gpt-5"
-    assert captured["stage_value"] == "gpt-5"
-    # Concrete model must pass as a literal (empty alias map).
-    assert captured["models"] == {}
-
-
-# ── validate: structure ─────────────────────────────────────────────────────
-
-
-def test_validate_accepts_well_formed_registry():
+def test_to_llm_kwargs_threads_azure_deployments():
+    """To llm kwargs threads azure deployments."""
     cfg = {
-        "models": {
-            "primary": {"model": "azure-deploy", "provider": "azure"},
-            "secondary": "gpt-4.1-mini",
-        },
-        "model_context_windows": {"azure-deploy": 200000},
+        "provider": "azure",
+        "api_key": "azure-key",
+        "azure_endpoint": "https://azure.example",
+        "azure_api_version": "version",
     }
-    registry = ModelRegistry.from_config(cfg, OPENAI_CFG)
-    registry.validate()  # should not raise
-
-
-def test_validate_rejects_unknown_declared_provider():
-    cfg = {"models": {"primary": {"model": "x", "provider": "notaprovider"}}}
-    registry = ModelRegistry.from_config(cfg, OPENAI_CFG)
-    with pytest.raises(ModelRegistryError, match="unknown provider"):
-        registry.validate()
-
-
-def test_validate_rejects_non_positive_context_window():
-    cfg = {"models": {"primary": {"model": "x", "context_window": 0}}}
-    registry = ModelRegistry.from_config(cfg, OPENAI_CFG)
-    with pytest.raises(ModelRegistryError, match="context_window must be a positive"):
-        registry.validate()
-
-
-def test_validate_rejects_boolean_context_window():
-    registry = ModelRegistry(
-        tiers={
-            "primary": ModelDefinition(
-                tier="primary", model="x", context_window=True  # type: ignore[arg-type]
-            )
-        }
+    registry = ModelRegistry.from_config(
+        {"models": {"primary": "deployment"}}, cfg
     )
-    with pytest.raises(ModelRegistryError, match="context_window must be a positive"):
-        registry.validate()
+    kwargs = registry.to_llm_kwargs("primary")
+    assert kwargs["model"] == "deployment"
+    assert kwargs["provider"] == "azure"
+    assert kwargs["api_key"] == "azure-key"
+    assert kwargs["azure_endpoint"] == "https://azure.example"
+    assert kwargs["azure_api_version"] == "version"
 
 
-def test_validate_known_providers_are_accepted():
-    for provider in sorted(KNOWN_PROVIDERS):
-        registry = ModelRegistry(
-            tiers={
-                "t": ModelDefinition(tier="t", model="m", provider=provider)
-            }
-        )
-        registry.validate()
-
-
-# ── validate: defaults ──────────────────────────────────────────────────────
-
-
-def test_validate_rejects_blank_default_tier():
-    registry = ModelRegistry(
-        tiers={"primary": ModelDefinition(tier="primary", model="x")},
-        defaults={"extract": ""},
+def test_to_llm_kwargs_threads_proxy_without_provider_sniffing():
+    """To llm kwargs threads proxy without provider sniffing."""
+    cfg = {**OPENAI_CFG, "base_url": "https://proxy.example/v1"}
+    registry = ModelRegistry.from_config(
+        {"models": {"primary": "claude-custom"}}, cfg
     )
-    with pytest.raises(ModelRegistryError, match="must be a non-empty tier"):
-        registry.validate()
+    kwargs = registry.to_llm_kwargs("primary")
+    assert kwargs["model"] == "claude-custom"
+    assert kwargs["base_url"] == "https://proxy.example/v1"
+    assert kwargs["provider"] == "openai"
+    assert kwargs["api_key"] == "openai-key"
 
 
-# ── validate: single references ─────────────────────────────────────────────
+def test_explicit_empty_llm_config_does_not_load_global_credentials(
+    monkeypatch,
+):
+    """Explicit empty llm config does not load global credentials."""
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.setattr(
+        "psweep.utils.config.get_config",
+        lambda: SimpleNamespace(llm_config=OPENAI_CFG),
+    )
+    registry = ModelRegistry.from_config({}, {})
+    kwargs = registry.to_llm_kwargs(None)
+    assert kwargs["model"] == llm_factory.DEFAULT_MODEL
+    assert kwargs["api_key"] is None
 
 
-def test_validate_single_reference_accepts_alias_and_literal():
-    cfg = {"models": {"primary": "gpt-5"}}
-    registry = ModelRegistry.from_config(cfg, OPENAI_CFG)
-    # Alias hit, literal, and None (unset) are all fine.
+def test_context_windows_remain_separate_from_alias_resolution(
+    tmp_path, monkeypatch
+):
+    """Context windows remain separate from alias resolution."""
+    config_path = tmp_path / "run.yaml"
+    config_path.write_text(
+        "models:\n  primary: deployment\n"
+        "model_context_windows:\n  deployment: 20000\n  other: 30000\n"
+        "extraction:\n  schema: s.json\n  input_dir: documents\n",
+        encoding="utf-8",
+    )
+    config_data = load_runtime_config_file(config_path)
+    resolved = resolve_command_config(
+        command="extract", cli_values={}, config_data=config_data, strict=True
+    )
+    windows = resolved["model_context_windows"]
+    assert windows == {"deployment": 20000, "other": 30000}
+    registry = ModelRegistry.from_config(config_data, OPENAI_CFG)
+    kwargs = registry.to_llm_kwargs("primary")
+    assert "context_windows" not in kwargs
+    assert "context_window" not in kwargs
+
+    # Client setup mutates ambient keys; keep this contract test isolated.
+    monkeypatch.setenv("OPENAI_API_KEY", "test-original-key")
+    client = LLMClient(**kwargs, context_windows=windows)
+    assert client.context_windows == windows
+    assert client._get_context_window_tokens() == 20000
+    assert windows == config_data["model_context_windows"]
+
+
+@pytest.mark.parametrize("window", [0, -1, True, 1.5, "20000"])
+def test_strict_loader_rejects_invalid_context_windows(tmp_path, window):
+    """Strict loader rejects invalid context windows."""
+    config_path = tmp_path / "run.yaml"
+    config_path.write_text(
+        yaml.safe_dump({"model_context_windows": {"deployment": window}}),
+        encoding="utf-8",
+    )
+    with pytest.raises(RuntimeConfigError, match="positive integer"):
+        load_runtime_config_file(config_path)
+
+
+def test_validate_accepts_well_formed_aliases_and_references():
+    """Validate accepts well formed aliases and references."""
+    registry = ModelRegistry.from_config(
+        {"models": {"primary": "gpt-5"}}, OPENAI_CFG
+    )
     registry.validate(references=["primary", "claude-3.5-sonnet", None])
 
 
-def test_validate_rejects_empty_string_reference():
+@pytest.mark.parametrize("name", ["", "   ", 123])
+def test_validate_rejects_invalid_direct_alias_name(name):
+    """Validate rejects invalid direct alias name."""
+    registry = ModelRegistry(
+        tiers={name: ModelDefinition(tier="primary", model="gpt-5")}
+    )
+    with pytest.raises(ModelRegistryError, match="non-empty strings"):
+        registry.validate()
+
+
+@pytest.mark.parametrize("model", ["", "   ", None])
+def test_validate_rejects_invalid_direct_model(model):
+    """Validate rejects invalid direct model."""
+    registry = ModelRegistry(
+        tiers={"primary": ModelDefinition(tier="primary", model=model)}
+    )
+    with pytest.raises(ModelRegistryError, match="non-empty model"):
+        registry.validate()
+
+
+@pytest.mark.parametrize("reference", ["", "  ", 42])
+def test_validate_rejects_invalid_single_reference(reference):
+    """Validate rejects invalid single reference."""
     registry = ModelRegistry.from_config({}, OPENAI_CFG)
     with pytest.raises(ModelRegistryError, match="non-empty string"):
-        registry.validate(references=[""])
-
-
-def test_validate_rejects_non_string_reference():
-    registry = ModelRegistry.from_config({}, OPENAI_CFG)
-    with pytest.raises(ModelRegistryError, match="non-empty string"):
-        registry.validate(references=[42])  # type: ignore[list-item]
-
-
-# ── validate: multi-model arity ─────────────────────────────────────────────
+        registry.validate(references=[reference])
 
 
 def test_validate_multi_reference_requires_two_distinct_models():
-    cfg = {"models": {"a": "gpt-5", "b": "gpt-4.1"}}
-    registry = ModelRegistry.from_config(cfg, OPENAI_CFG)
+    """Validate multi reference requires two distinct models."""
+    registry = ModelRegistry.from_config(
+        {"models": {"a": "gpt-5", "b": "gpt-4.1"}}, OPENAI_CFG
+    )
     registry.validate(multi_references=[("validation.models", ["a", "b"])])
 
 
-def test_validate_multi_reference_rejects_single_model():
-    registry = ModelRegistry.from_config({}, OPENAI_CFG)
+@pytest.mark.parametrize("references", [["a"], ["a", "alias"], []])
+def test_validate_multi_reference_rejects_too_few_distinct_models(references):
+    """Validate multi reference rejects too few distinct models."""
+    registry = ModelRegistry.from_config(
+        {"models": {"a": "gpt-5", "alias": "gpt-5"}}, OPENAI_CFG
+    )
     with pytest.raises(
-        ModelRegistryError,
-        match=f"at least {MIN_MULTI_MODELS} distinct",
+        ModelRegistryError, match=f"at least {MIN_MULTI_MODELS} distinct"
     ):
-        registry.validate(multi_references=[("validation.models", ["gpt-5"])])
-
-
-def test_validate_multi_reference_rejects_duplicate_resolved_models():
-    cfg = {"models": {"a": "gpt-5", "b": "gpt-5"}}
-    registry = ModelRegistry.from_config(cfg, OPENAI_CFG)
-    with pytest.raises(ModelRegistryError, match="distinct models"):
-        registry.validate(multi_references=[("validation.models", ["a", "b"])])
+        registry.validate(multi_references=[("validation.models", references)])
 
 
 def test_validate_multi_reference_rejects_none_list():
+    """Validate multi reference rejects none list."""
     registry = ModelRegistry.from_config({}, OPENAI_CFG)
-    with pytest.raises(ModelRegistryError, match="at least"):
+    with pytest.raises(
+        ModelRegistryError, match=r"validation\.models must list at least"
+    ):
         registry.validate(multi_references=[("validation.models", None)])
 
 
 def test_validate_multi_reference_rejects_non_list():
+    """Validate multi reference rejects non list."""
     registry = ModelRegistry.from_config({}, OPENAI_CFG)
     with pytest.raises(ModelRegistryError, match="must be a list"):
         registry.validate(multi_references=[("validation.models", "gpt-5")])
 
 
-def test_validate_multi_reference_rejects_blank_entry():
+@pytest.mark.parametrize("reference", [" ", 42, None])
+def test_validate_multi_reference_rejects_invalid_entry(reference):
+    """Validate multi reference rejects invalid entry."""
     registry = ModelRegistry.from_config({}, OPENAI_CFG)
-    with pytest.raises(ModelRegistryError, match="non-empty strings"):
-        registry.validate(multi_references=[("validation.models", ["gpt-5", " "])])
-
-
-# ── immutability ────────────────────────────────────────────────────────────
+    with pytest.raises(
+        ModelRegistryError, match="entries must be non-empty strings"
+    ):
+        registry.validate(
+            multi_references=[("validation.models", ["gpt-5", reference])]
+        )
 
 
 def test_model_definition_is_frozen():
-    definition = ModelDefinition(tier="t", model="m")
-    with pytest.raises(Exception):
-        definition.model = "other"  # type: ignore[misc]
+    """Model definition is frozen."""
+    definition = ModelDefinition(tier="primary", model="gpt-5")
+    with pytest.raises(FrozenInstanceError):
+        definition.model = "other"

@@ -26,7 +26,8 @@ from psweep.utils.config import get_config
 @click.command()
 @click.argument("extraction_file", type=click.Path(exists=True))
 @click.option(
-    "--schema", type=click.Path(exists=True, dir_okay=False),
+    "--schema",
+    type=click.Path(exists=True, dir_okay=False),
     help="Schema to check against (defaults to the record's lineage schema).",
 )
 @click.option("--verbose", "-v", is_flag=True, help="Enable verbose logging")
@@ -113,11 +114,16 @@ def check(
                 if isinstance(value, list):
                     item_count = max(item_count, len(value))
 
+        cost = data.get("processing_metrics", {}).get("cost_usd")
         metadata = {
-            "Source File": data.get("document", {}).get("source_filename", "N/A"),
-            "Extraction Date": data.get("lineage", {}).get("extracted_at", "N/A"),
+            "Source File": data.get("document", {}).get(
+                "source_filename", "N/A"
+            ),
+            "Extraction Date": data.get("lineage", {}).get(
+                "extracted_at", "N/A"
+            ),
             "Model": data.get("lineage", {}).get("model", "N/A"),
-            "Cost": f"${data.get('processing_metrics', {}).get('cost_usd', 0):.4f}",
+            "Cost": "unknown" if cost is None else f"${cost:.4f}",
             "Processing Time": f"{data.get('processing_metrics', {}).get('duration_seconds', 0):.1f}s",
             "Item Count": str(item_count),
         }

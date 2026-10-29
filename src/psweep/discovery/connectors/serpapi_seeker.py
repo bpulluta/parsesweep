@@ -8,7 +8,7 @@ import time
 from typing import Any
 
 from psweep.discovery.constants import RESERVED_SEARCH_PARAMS
-from psweep.discovery.publication import atomic_json
+from psweep.utils.file_io import atomic_json
 from ..retry import compute_backoff, is_transient_error
 from .base import BaseSeekerConnector, SeekerInput
 

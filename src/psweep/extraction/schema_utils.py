@@ -1,5 +1,8 @@
 """Schema loading utilities."""
 
+import json
+from functools import lru_cache
+from importlib.resources import files
 from pathlib import Path
 from typing import Any, Dict, Union
 
@@ -43,3 +46,14 @@ def build_schema_validator(schema: Dict[str, Any]):
         message = f"Invalid extraction schema: {exc.message}"
         raise SchemaValidationError(message) from exc
     return validator_class(schema, format_checker=FormatChecker())
+
+
+@lru_cache(maxsize=1)
+def record_validator():
+    """Load the canonical record-envelope validator once per process."""
+    path = files("psweep.extraction").joinpath(
+        "data/extraction_record.schema.json"
+    )
+    return build_schema_validator(
+        json.loads(path.read_text(encoding="utf-8")),
+    )

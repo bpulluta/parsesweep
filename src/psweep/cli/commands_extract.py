@@ -5,52 +5,33 @@ from __future__ import annotations
 import csv
 import contextlib
 import json
-import os
-import re
 import sys
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import click
 from dotenv import load_dotenv
 
-from psweep.cli.dashboard import create_live_dashboard
 from psweep.cli.run_view import RunView
+from psweep.cli.dashboard import create_live_dashboard
 from psweep.cli.ui import (
     Verbosity,
     ask_confirm,
-    console,
-    create_extraction_progress,
     get_verbosity,
     print_error,
     print_info,
-    print_success,
     print_warning,
 )
 from psweep.config import RuntimeConfigError
-from psweep.exceptions import SchemaError, ConfigurationError
-from psweep.extraction import DocumentExtractor, load_schema
 from psweep.extraction.document_utils import (
-    SUPPORTED_EXTENSIONS,
     extract_text_from_document,
-    is_supported_document,
 )
-from psweep.extraction.llm_factory import DEFAULT_MAX_CONTEXT, DEFAULT_MODEL
-from psweep.extraction.record_writer import (
-    record_extraction_scope,
-    write_extraction_record,
-)
-from psweep.extraction.provenance import (
-    _build_run_manifest,
-    _build_source_context_map,
-    _generate_run_id,
-    _prepend_source_context,
-)
-from psweep.pipeline import resolve_extract_output_dir
+from psweep.exceptions import ParseSweepError
+from psweep.extraction.llm_factory import DEFAULT_MAX_CONTEXT
+from psweep.extraction.record_writer import write_extraction_record
+from psweep.pipeline import _execute_extraction, _prepare_extraction
+from psweep.utils.schema_metadata import SchemaMetadata
 from psweep.validation.utils import sanitize_model_name
-from psweep.utils.config import get_config
-from psweep.utils.error_taxonomy import build_error_record
 
 
 def _format_extraction_accounting(
@@ -58,7 +39,7 @@ def _format_extraction_accounting(
     total_cost_usd: float,
     total_llm_calls: int,
     total_time_sec: float,
-    model: str,
+    model: str | None,
 ) -> str:
     """Format concise extraction accounting summary for terminal display.
 
@@ -127,114 +108,6 @@ def _context_budget_suggestions_for_process(
             )
 
     return suggestions
-
-
-def _write_run_manifest(
-    output_dir: Path, run_id: str, manifest: Dict[str, Any]
-) -> Path:
-    """Persist a run manifest in the run_manifests output folder."""
-    manifest_dir = output_dir / "run_manifests"
-    manifest_dir.mkdir(parents=True, exist_ok=True)
-    run_suffix = run_id.replace("run://", "")
-    manifest_path = manifest_dir / f"{run_suffix}.manifest.json"
-    manifest_path.write_text(
-        json.dumps(manifest, indent=2, sort_keys=True) + "\n",
-        encoding="utf-8",
-    )
-    return manifest_path
-
-
-def _resolve_schema_ref(schema_path: Path) -> Path:
-    """Resolve a schema reference, unwrapping a domain pack to its JSON schema.
-
-    If ``schema_path`` is a domain pack (``*.yaml``/``*.yml`` with a
-    ``schema_path`` key), return the JSON schema it declares (resolved relative
-    to the repo root or the pack's own directory). Otherwise return the path
-    unchanged so a direct JSON schema still works.
-    """
-    if schema_path.suffix.lower() not in {".yaml", ".yml"}:
-        return schema_path
-    try:
-        import yaml
-
-        data = yaml.safe_load(schema_path.read_text(encoding="utf-8")) or {}
-    except Exception:
-        return schema_path
-    declared = data.get("schema_path")
-    if not declared:
-        return schema_path
-    declared_path = Path(declared)
-    if declared_path.is_absolute() and declared_path.exists():
-        return declared_path
-    for base in (Path.cwd(), schema_path.parent):
-        candidate = base / declared
-        if candidate.exists():
-            return candidate
-    return declared_path
-
-
-def _slugify_value(value) -> str:
-    """Lowercase + hyphenate a value for case/format-insensitive matching."""
-    return re.sub(r"[^a-z0-9]+", "-", str(value or "").lower()).strip("-")
-
-
-def _build_index_filters(filters) -> List[tuple]:
-    """Return ``[(column, slug_value), ...]`` for download-index row filtering.
-
-    Domain-neutral: ``--filter column=value`` filters on any
-    ``download_index.csv`` column (repeatable).
-    """
-    pairs: List[tuple] = []
-    for raw in filters or ():
-        if "=" in str(raw):
-            col, val = str(raw).split("=", 1)
-            col = col.strip()
-            if col:
-                pairs.append((col, _slugify_value(val)))
-    return pairs
-
-
-def _row_matches_filters(row: dict, filters: List[tuple]) -> bool:
-    """True when a CSV row matches every ``(column, slug_value)`` filter."""
-    return all(_slugify_value(row.get(col)) == val for col, val in filters)
-
-
-def _common_doc_root(doc_files: List[Path]) -> Optional[Path]:
-    """Deepest common parent for a set of document paths."""
-    if not doc_files:
-        return None
-    parents = sorted({str(path.parent) for path in doc_files})
-    try:
-        return Path(os.path.commonpath(parents))
-    except ValueError:
-        return None
-
-
-def _assert_unique_output_paths(file_output_dirs: Dict[Path, Path]) -> None:
-    """Abort early if multiple docs would overwrite the same output JSON."""
-    seen: Dict[Path, Path] = {}
-    collisions: List[str] = []
-    for doc, out_dir in file_output_dirs.items():
-        output_path = out_dir / f"{doc.stem}.json"
-        prior = seen.get(output_path)
-        if prior is not None:
-            collisions.append(
-                f"{prior.as_posix()} + {doc.as_posix()} -> {output_path.as_posix()}"
-            )
-        else:
-            seen[output_path] = doc
-
-    if collisions:
-        print_error(
-            "Output filename collisions detected",
-            "Two source documents resolve to the same output JSON path; "
-            "extraction would silently overwrite one of them.",
-            [
-                *collisions[:5],
-                "Rename, repartition, or scope input files so output stems are unique.",
-            ],
-        )
-        sys.exit(1)
 
 
 def _apply_page_targeting(
@@ -397,91 +270,40 @@ def _document_progress_desc(doc_path: Path, page_range_map: dict) -> str:
     return desc
 
 
-def _extract_one_document(
-    doc_path: Path,
-    *,
-    extractor,
-    loaded_schema: dict,
-    page_range_map: dict,
-    section_text_map: dict,
-    source_context_map: dict,
-    file_output_dirs: dict,
-    output_dir: Path,
-    category: str,
-    actual_model: str,
-    enable_validation: bool,
-    runtime_artifact,
-    run_id,
-    provider,
-    schema_path: Path,
-    identifier_fields=None,
-    ocr_corrections=None,
-) -> dict:
-    """Extract one document and persist its record."""
-    try:
-        pre_filtered = section_text_map.get(doc_path) if section_text_map else None
-        if pre_filtered is not None:
-            text = pre_filtered
-        else:
-            page_range = page_range_map.get(doc_path)
-            text = extract_text_from_document(
-                doc_path,
-                page_range=page_range,
-                ocr_corrections=ocr_corrections,
-            )
-        text = _prepend_source_context(text, doc_path, source_context_map)
-        result = extractor.extract(text, loaded_schema)
-        record_extraction_scope(
-            result,
-            page_range=page_range_map.get(doc_path),
-            section_filtered=pre_filtered is not None,
+def _render_extraction(plan, view, live_dashboard):
+    """Keep progress display outside shared extraction execution."""
+    dashboard = None
+    live = None
+    if live_dashboard and not view.is_quiet:
+        live, dashboard = create_live_dashboard(
+            len(plan["pending"]),
+            plan["llm"]["model"],
         )
 
-        doc_output_dir = file_output_dirs.get(doc_path, output_dir)
-        num_items = _extract_and_save_result(
-            doc_path,
-            result,
-            doc_output_dir,
-            category,
-            actual_model,
-            enable_validation,
-            runtime_artifact=runtime_artifact,
-            run_id=run_id,
-            provider=provider,
-            schema_id=schema_path.as_posix(),
-            identifier_fields=identifier_fields,
-        )
-        return {
-            "file": doc_path.name,
-            "items": num_items,
-            "cost": result.cost,
-            "time": result.processing_time,
-            "input_tokens": getattr(result, "input_tokens", None),
-            "output_tokens": getattr(result, "output_tokens", None),
-            "output_path": (doc_output_dir / f"{doc_path.stem}.json").as_posix(),
-            "coverage": result.coverage,
-            "success": True,
-        }
-    except Exception as e:
-        error_record = build_error_record(
-            e,
-            stage="extract",
-            document_path=doc_path.as_posix(),
-            model=actual_model,
-            provider=provider,
-        )
-        suggestions = _context_budget_suggestions_for_process(
-            error_record=error_record,
-            schema_path=schema_path,
-            document_path=doc_path,
-        )
-        return {
-            "file": doc_path.name,
-            "success": False,
-            "error": str(e),
-            "errors": [error_record],
-            "suggestions": suggestions,
-        }
+    def progress(doc_path, result):
+        if dashboard is not None:
+            if result is None:
+                dashboard.start_document(doc_path.name)
+            else:
+                dashboard.complete_document(
+                    doc_path.name,
+                    success=result["success"],
+                    cost=result.get("cost") or 0,
+                    input_tokens=result.get("input_tokens") or 0,
+                    output_tokens=result.get("output_tokens") or 0,
+                )
+            return
+        if view.is_quiet or result is None:
+            return
+        if result["success"]:
+            view.success(f"{doc_path.name}: {result['items']} items")
+        else:
+            view.error(
+                f"Extraction failed for {doc_path.name}", result["error"]
+            )
+
+    with live if live is not None else contextlib.nullcontext():
+        return _execute_extraction(plan, on_progress=progress)
 
 
 @click.command()
@@ -523,13 +345,8 @@ def _extract_one_document(
     help="Schema file (for quick testing without a config YAML)",
 )
 @click.option(
-    "--category",
-    help="Category name (auto-detected from path if not specified)",
-)
-@click.option(
     "--model",
-    default=DEFAULT_MODEL,
-    show_default=True,
+    default=None,
     help="LLM model name, or an alias defined in the run.yaml models: block. "
     "For Azure, use your deployment name (e.g. gpt-4o).",
 )
@@ -544,25 +361,24 @@ def _extract_one_document(
     help="LLM provider (auto-detects from .env)",
 )
 @click.option(
-    "--profile",
-    "profile_name",
-    default="default",
-    show_default=True,
-    help="Runtime profile to compile into artifact lineage (for example: default, dev, staging, prod)",
+    "--limit",
+    "-n",
+    type=click.IntRange(min=1),
+    help="Process only first N pending files",
 )
-@click.option("--limit", "-n", type=int, help="Process only first N files")
 @click.option(
     "--fresh",
     is_flag=True,
     default=False,
     show_default=True,
-    help="Re-extract documents that already have output JSON, overwriting it. "
-    "Cached document text (.text_cache) and page-targeting sidecars (.pages) are reused. "
-    "Pair with 'compile --fresh' to also clear compiled outputs.",
+    help="Reset the entire resolved extraction output "
+    "after successful preflight and re-extract the selected documents. "
+    "Valid raw OCR (.text) and targeting (.pages/.sections) "
+    "caches are reused.",
 )
 @click.option(
     "--max-context",
-    type=int,
+    type=click.IntRange(min=1),
     default=DEFAULT_MAX_CONTEXT,
     show_default=True,
     help="Max document characters to process",
@@ -614,10 +430,8 @@ def extract(
     config_strict: bool,
     output: Optional[str],
     schema: Optional[str],
-    category: Optional[str],
     model: str,
     provider: str,
-    profile_name: str,
     limit: Optional[int],
     fresh: bool,
     max_context: int,
@@ -664,7 +478,6 @@ def extract(
             "output",
             "pages_csv",
             "pages",
-            "profile_name",
             "provider",
             "model",
             "limit",
@@ -674,36 +487,8 @@ def extract(
         ]
     )
 
-    _from_index_data: dict = {}
     if from_index and "path" not in cli_overrides:
-        try:
-            _fi_path = Path(from_index)
-            with _fi_path.open(encoding="utf-8", newline="") as _fi_handle:
-                _fi_rows = list(csv.DictReader(_fi_handle))
-            _fi_downloaded = [
-                r for r in _fi_rows if r.get("status") == "downloaded"
-            ]
-            _fi_filters = _build_index_filters(index_filters)
-            if _fi_filters:
-                _fi_downloaded = [
-                    r
-                    for r in _fi_downloaded
-                    if _row_matches_filters(r, _fi_filters)
-                ]
-            if _fi_downloaded:
-                _fi_existing = [
-                    Path(r["path"])
-                    for r in _fi_downloaded
-                    if r.get("path") and Path(r["path"]).exists()
-                ]
-                _from_index_data = {
-                    "doc_files": _fi_existing,
-                    "domain": _fi_downloaded[0].get("domain", "acquired"),
-                }
-                if _fi_existing:
-                    cli_overrides["path"] = str(_fi_existing[0].parent)
-        except Exception as _fi_exc:
-            print_warning(f"Could not pre-read download index: {_fi_exc}")
+        cli_overrides["path"] = str(Path(from_index).resolve().parent)
 
     try:
         resolved_inputs = _resolve_runtime_command_inputs(
@@ -716,796 +501,102 @@ def extract(
         view.error("Runtime config resolution failed", str(exc))
         sys.exit(1)
 
-    try:
-        schema_path = _resolve_schema_ref(Path(resolved_inputs["schema"]))
-        loaded_schema = load_schema(schema_path)
-    except (SchemaError, ConfigurationError) as exc:
-        view.error("Extraction schema validation failed", str(exc))
-        sys.exit(1)
-
-    warnings = resolved_inputs.get("_config_warnings", [])
-    view.warnings(warnings)
-
-    if show_effective_config and not get_verbosity().is_quiet:
+    view.warnings(resolved_inputs.get("_config_warnings", []))
+    if show_effective_config and not view.is_quiet:
         _print_effective_config("extract", resolved_inputs)
-        console.print()
-
-    if validate_config_only:
-        if get_verbosity().is_quiet:
-            click.echo(
-                json.dumps(
-                    {
-                        "command": "extract",
-                        "status": "valid",
-                        "resolved": {
-                            k: v
-                            for k, v in resolved_inputs.items()
-                            if not k.startswith("_")
-                        },
-                    },
-                    indent=2,
-                    sort_keys=True,
-                )
-            )
-        else:
-            print_success(
-                "Runtime config validation passed for extract command"
-            )
-        return
-
-    path = Path(resolved_inputs["path"])
-    output = resolved_inputs.get("output", output)
-    pages_csv = resolved_inputs.get("pages_csv", pages_csv)
-    pages = resolved_inputs.get("pages", pages)
-    profile_name = resolved_inputs.get("profile_name", profile_name)
-    provider = resolved_inputs.get("provider", provider)
-    model = resolved_inputs.get("model", model)
-    limit = resolved_inputs.get("limit", limit)
-    skip_existing = resolved_inputs.get("skip_existing", True)
-    if fresh:
-        skip_existing = False
-    max_context = resolved_inputs.get("max_context", max_context)
-    timeout_seconds = resolved_inputs.get("timeout_seconds")
-    live_dashboard = resolved_inputs.get("live_dashboard", live_dashboard)
-    ocr_corrections = resolved_inputs.get("ocr_corrections")
-
-    if fresh:
-        import shutil
-
-        # Clear resolved extraction output up-front, even if input validation
-        # fails later (for example: no curated docs selected). This prevents a
-        # follow-up compile from silently reusing stale extracted JSONs.
-        fresh_output_dir = Path(output) if output else None
-        if fresh_output_dir and fresh_output_dir.exists():
-            cleared_count = len([p for p in fresh_output_dir.rglob("*") if p.is_file()])
-            shutil.rmtree(fresh_output_dir, ignore_errors=True)
-            if cleared_count > 0 and not view.is_quiet:
-                view.status(
-                    "info",
-                    f"--fresh: cleared {cleared_count} file(s) from {fresh_output_dir.as_posix()}",
-                )
-
-    if not path.exists():
-        resolved_parts = list(path.parts)
-        latest_curated_hint = (
-            len(resolved_parts) >= 3
-            and resolved_parts[-2:] == ["latest", "curated"]
-            and "discovered" in resolved_parts
-        )
-        if latest_curated_hint:
-            print_error(
-                f"Path not found: {path}",
-                "Latest discovery curation is missing or empty for this domain.",
-                [
-                    "Run discovery first: pixi run psweep discover --config <run.yaml>",
-                    "Then rerun extract with the same --config file",
-                    "No fallback to older curated documents was used.",
-                ],
-            )
-        else:
-            print_error(
-                f"Path not found: {path}",
-                "The file or directory you specified doesn't exist.",
-                [
-                    "Check the path spelling and try again",
-                    f"Current directory: {Path.cwd()}",
-                    "Use 'ls' or 'dir' to see available files and folders",
-                ],
-            )
-        sys.exit(1)
-
-    config = get_config()
-    path = Path(path)
-    is_dir = path.is_dir()
-
-    if is_dir:
-        category = path.name
-    else:
-        category = path.parent.name
-
-    if output:
-        output_dir = Path(output)
-    else:
-        output_dir = resolve_extract_output_dir(path, is_dir=is_dir)
-
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    file_output_dirs = {}
-
-    def _not_sidecar(p: Path) -> bool:
-        return not any(part.startswith(".") for part in p.relative_to(path).parts)
-
-    if is_dir:
-        doc_files = []
-        for ext in SUPPORTED_EXTENSIONS:
-            doc_files.extend(sorted(path.glob(f"*{ext}")))
-        doc_files = sorted(f for f in doc_files if _not_sidecar(f))
-
-        if not doc_files:
-            for ext in SUPPORTED_EXTENSIONS:
-                doc_files.extend(sorted(path.rglob(f"*{ext}")))
-            doc_files = sorted(f for f in doc_files if _not_sidecar(f))
-
-            if doc_files and not get_verbosity().is_quiet:
-                subdirs_found = set()
-                for doc in doc_files:
-                    try:
-                        rel = doc.relative_to(path)
-                        if len(rel.parts) > 1:
-                            subdirs_found.add(rel.parts[0])
-                    except ValueError:
-                        pass
-                if subdirs_found:
-                    view.info(
-                        f"Found {len(doc_files)} document(s) across "
-                        f"{len(subdirs_found)} subfolder(s)"
-                    )
-                    for sdir in sorted(subdirs_found):
-                        sdir_docs = [
-                            d
-                            for d in doc_files
-                            if d.relative_to(path).parts[0] == sdir
-                        ]
-                        view.status(
-                            "info", f"{sdir}: {len(sdir_docs)} document(s)"
-                        )
-
-        for doc in doc_files:
-            try:
-                rel_parent = doc.parent.relative_to(path)
-                file_output_dirs[doc] = output_dir / rel_parent
-            except ValueError:
-                file_output_dirs[doc] = output_dir
-            file_output_dirs[doc].mkdir(parents=True, exist_ok=True)
-        _assert_unique_output_paths(file_output_dirs)
-
-        if not doc_files:
-            supported_exts = ", ".join(sorted(SUPPORTED_EXTENSIONS))
-            print_error(
-                f"No supported documents found in: {path}",
-                "The directory exists but doesn't contain any supported document files.",
-                [
-                    f"Supported formats: {supported_exts}",
-                    "Check if documents are in a subdirectory",
-                    f"Use 'ls {path}' to see what's in this folder",
-                ],
-            )
-            sys.exit(1)
-
-        if skip_existing:
-            original_count = len(doc_files)
-            doc_files = [
-                p
-                for p in doc_files
-                if not (
-                    file_output_dirs.get(p, output_dir) / f"{p.stem}.json"
-                ).exists()
-            ]
-            skipped = original_count - len(doc_files)
-            if skipped > 0 and len(doc_files) > 0 and not get_verbosity().is_quiet:
-                print_info(
-                    f"Skipping {skipped} already processed file{'s' if skipped != 1 else ''} (use --fresh to extract again)"
-                )
-        if limit:
-            doc_files = doc_files[:limit]
-    else:
-        if not is_supported_document(path):
-            supported_exts = ", ".join(sorted(SUPPORTED_EXTENSIONS))
-            print_error(
-                f"Unsupported file format: {path.name}",
-                f"This tool works with: {supported_exts}",
-                [
-                    "Make sure the file has a supported extension",
-                    "Check if you specified the correct file path",
-                ],
-            )
-            sys.exit(1)
-        doc_files = [path]
-
-    if from_index and _from_index_data.get("doc_files"):
-        doc_files = _from_index_data["doc_files"]
-        if not output:
-            output_dir = Path("extracted") / _from_index_data["domain"]
-            output_dir.mkdir(parents=True, exist_ok=True)
-            category = _from_index_data["domain"]
-        file_output_dirs = {}
-        from_index_root = _common_doc_root(doc_files)
-        for doc in doc_files:
-            rel_parent = Path()
-            if from_index_root is not None:
-                try:
-                    rel_parent = doc.parent.relative_to(from_index_root)
-                except ValueError:
-                    rel_parent = Path()
-            file_output_dirs[doc] = output_dir / rel_parent
-            file_output_dirs[doc].mkdir(parents=True, exist_ok=True)
-        _assert_unique_output_paths(file_output_dirs)
-        if skip_existing:
-            original_count = len(doc_files)
-            doc_files = [
-                p
-                for p in doc_files
-                if not (
-                    file_output_dirs.get(p, output_dir) / f"{p.stem}.json"
-                ).exists()
-            ]
-            skipped = original_count - len(doc_files)
-            if skipped > 0 and not get_verbosity().is_quiet:
-                print_info(
-                    f'Skipping {skipped} already processed file{"s" if skipped != 1 else ""} (use --fresh to extract again)'
-                )
-        if limit:
-            doc_files = doc_files[:limit]
-        if not doc_files:
-            print_error(
-                "No new files to process from download index",
-                "All discovered files have already been processed. Use --fresh to extract again.",
-            )
-            sys.exit(0)
-        if not get_verbosity().is_quiet:
-            print_info(
-                f"From-index mode: {len(doc_files)} file(s) loaded from {from_index}"
-            )
-
-    from psweep.utils.page_range import (
-        load_pages_csv,
-        parse_page_range,
-    )
-
-    page_range_map = {}
-
-    if pages_csv:
-        try:
-            page_mappings = load_pages_csv(Path(pages_csv))
-            for doc in doc_files:
-                if str(doc) in page_mappings:
-                    page_range_map[doc] = page_mappings[str(doc)]
-                elif doc.name in page_mappings:
-                    page_range_map[doc] = page_mappings[doc.name]
-
-            if not view.is_quiet:
-                mapped_count = sum(
-                    1 for v in page_range_map.values() if v is not None
-                )
-                view.status(
-                    "info",
-                    f"Loaded page ranges for {mapped_count} file(s) from CSV",
-                )
-
-        except Exception as e:
-            print_error(
-                "Invalid page ranges CSV",
-                str(e),
-                [
-                    "CSV format should be:",
-                    "  file_path,start_page,end_page",
-                    "  tariff1.pdf,615,759",
-                    "  tariff2.pdf,400,550",
-                ],
-            )
-            sys.exit(1)
-
-    elif pages:
-        if len(doc_files) > 1:
-            print_error(
-                "--pages flag only works with single file",
-                f"You specified --pages but selected {len(doc_files)} files",
-                [
-                    "Use --pages only when processing a single PDF",
-                    "For multiple files, use --pages-csv instead",
-                ],
-            )
-            sys.exit(1)
-
-        if doc_files[0].suffix.lower() != ".pdf":
-            print_error(
-                "--pages only works with PDF files",
-                f"File {doc_files[0].name} is not a PDF",
-                ["Page ranges are only supported for PDF documents"],
-            )
-            sys.exit(1)
-
-        try:
-            page_range_tuple = parse_page_range(pages)
-            page_range_map[doc_files[0]] = page_range_tuple
-
-            if not view.is_quiet:
-                view.status(
-                    "info",
-                    f"Extracting pages {page_range_tuple[0]}-"
-                    f"{page_range_tuple[1]} only",
-                )
-
-        except ValueError as e:
-            print_error(
-                "Invalid page range format",
-                str(e),
-                [
-                    "Use format like: --pages 615-759",
-                    "Or with colons: --pages 100:200",
-                ],
-            )
-            sys.exit(1)
-
-    page_targeting = resolved_inputs.get("page_targeting")
-    if isinstance(page_targeting, dict) and page_targeting.get("enabled"):
-        _apply_page_targeting(
-            doc_files=doc_files,
-            page_range_map=page_range_map,
-            config=page_targeting,
-            models=resolved_inputs.get("models"),
-            extraction_model=resolved_inputs.get("model"),
-            pages_csv=pages_csv,
-            output_dir=output_dir,
-        )
-
-    section_text_map: dict[Path, str] = {}
-    if isinstance(page_targeting, dict) and page_targeting.get("enabled"):
-        _apply_section_targeting(
-            doc_files=doc_files,
-            section_text_map=section_text_map,
-            config=page_targeting,
-            models=resolved_inputs.get("models"),
-            extraction_model=resolved_inputs.get("model"),
-        )
-
-    if not doc_files:
-        if is_dir and not view.is_quiet:
-            view.header("DOCUMENT EXTRACTION")
-            view.success(f"All {original_count} file(s) already processed")
-            view.outputs({"Output directory": str(output_dir)})
-            view.next_steps(
-                ["Re-extract everything with the --fresh flag"]
-            )
-        return
-
-    view.header("DOCUMENT EXTRACTION")
-    if not view.is_quiet:
-        try:
-            rel_input = path.relative_to(Path.cwd())
-            input_display = str(rel_input)
-        except ValueError:
-            input_display = str(path)
-
-        config_info = {
-            "Input": input_display,
-            "Files": f"{len(doc_files)} document{'s' if len(doc_files) != 1 else ''}",
-        }
-
-    if not get_verbosity().is_quiet:
-        if page_range_map:
-            files_with_ranges = sum(
-                1 for v in page_range_map.values() if v is not None
-            )
-            if files_with_ranges == 1 and len(doc_files) == 1:
-                start, end = list(page_range_map.values())[0]
-                if pages_csv:
-                    try:
-                        csv_rel = Path(pages_csv).relative_to(Path.cwd())
-                        config_info["Pages"] = f"{csv_rel} ({start}-{end})"
-                    except ValueError:
-                        config_info["Pages"] = f"{pages_csv} ({start}-{end})"
-                else:
-                    config_info["Pages"] = f"{start}-{end}"
-            elif files_with_ranges > 0:
-                summary = f"{files_with_ranges} file(s) with ranges, {len(doc_files) - files_with_ranges} full"
-                if pages_csv:
-                    try:
-                        csv_rel = Path(pages_csv).relative_to(Path.cwd())
-                        config_info["Pages"] = f"{csv_rel} ({summary})"
-                    except ValueError:
-                        config_info["Pages"] = f"{pages_csv} ({summary})"
-                else:
-                    config_info["Pages"] = summary
-            else:
-                config_info["Pages"] = "All pages"
-        else:
-            if isinstance(page_targeting, dict) and page_targeting.get("enabled"):
-                config_info["Pages"] = "auto-locate (active)"
-            else:
-                config_info["Pages"] = "All pages"
-
-        try:
-            rel_output = output_dir.relative_to(Path.cwd())
-            config_info["Output"] = str(rel_output)
-        except ValueError:
-            config_info["Output"] = str(output_dir)
-
-    runtime_artifact = None
-    if not get_verbosity().is_quiet:
-        try:
-            schema_rel = schema_path.relative_to(Path.cwd())
-            config_info["Schema"] = str(schema_rel)
-        except ValueError:
-            config_info["Schema"] = str(schema_path)
-
-        config_info["Profile"] = profile_name
-
-    if len(doc_files) > 10 and not view.is_quiet:
-        sample_size = min(3, len(doc_files))
-        total_chars = 0
-        for doc in doc_files[:sample_size]:
-            try:
-                page_range = page_range_map.get(doc)
-                text = extract_text_from_document(doc, page_range=page_range)
-                total_chars += len(text)
-            except Exception:
-                pass
-
-        if total_chars > 0:
-            avg_chars = total_chars / sample_size
-            estimated_total_chars = avg_chars * len(doc_files)
-
-            from psweep.extraction.llm_factory import resolve_model_name
-            from psweep.cli.cost_tracker import estimate_extraction_cost
-
-            est_model = resolve_model_name(
-                resolved_inputs.get("model"),
-                models=resolved_inputs.get("models"),
-                llm_config=config.llm_config,
-            )
-            est = estimate_extraction_cost(estimated_total_chars, est_model)
-            estimated_tokens = est.input_tokens
-            total_est_cost = est.total_cost
-
-            if total_est_cost > 1.0:
-                view.warning(
-                    f"Estimated cost: ${total_est_cost:.2f}",
-                    f"Processing {len(doc_files)} documents "
-                    f"with ~{estimated_tokens:,} tokens",
-                )
-                if not ask_confirm("Proceed with extraction?", default=True):
-                    view.info("Operation cancelled")
-                    return
-
-    config = get_config()
-    if provider == "auto":
-        provider = config.llm_config.get("provider", "openai")
-
-    api_key = config.llm_config.get("api_key")
-    if not api_key:
-        print_error(
-            f"{provider.upper()} API key not found",
-            f"Configure {provider.upper()}_API_KEY in .env file",
-        )
-        return
-
-    base_url: str | None = None
-    if "model" in resolved_inputs:
-        from psweep.extraction.llm_factory import resolve_llm_kwargs
-
-        _mk = resolve_llm_kwargs(
-            resolved_inputs["model"],
-            models=resolved_inputs.get("models"),
-            llm_config=config.llm_config,
-        )
-        actual_model = _mk["model"]
-        api_key = _mk["api_key"] or api_key
-        provider = _mk["provider"] or provider
-        azure_endpoint = _mk.get("azure_endpoint")
-        azure_api_version = _mk.get("azure_api_version")
-        base_url = _mk.get("base_url")
-    else:
-        actual_model = (
-            config.llm_config.get("model", model)
-            if provider != "openai"
-            else model
-        )
-        azure_endpoint = config.llm_config.get("azure_endpoint")
-        azure_api_version = config.llm_config.get("azure_api_version")
-        base_url = config.llm_config.get("base_url")
-
-    if not actual_model:
-        raise click.UsageError(
-            "No model configured for the extraction stage. "
-            "Add a 'models:' block and 'model: primary' under 'extraction:' "
-            "in your run config, or set AZURE_OPENAI_MODEL in your .env file."
-        )
-
-    if not view.is_quiet:
-        provider_name = (provider or "unknown").title()
-        config_info["Model"] = actual_model
-        config_info["Provider"] = provider_name
-        view.config(config_info)
-
-    run_id = _generate_run_id(
-        schema_path=schema_path,
-        provider=provider,
-        model=actual_model,
-        enable_validation=False,
-        doc_files=doc_files,
-        artifact_id=runtime_artifact.get("artifact_id")
-        if runtime_artifact
-        else None,
-    )
-    run_started_at = (
-        datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-    )
-
-    schema_metadata = None
-    if schema_path:
-        try:
-            from psweep.utils.schema_metadata import SchemaMetadata
-
-            schema_metadata = SchemaMetadata(schema_path)
-        except Exception as e:
-            if get_verbosity() is Verbosity.VERBOSE:
-                console.print(
-                    f"[dim yellow]Could not load schema metadata: {e}[/dim yellow]"
-                )
-
-    identifier_fields = None
-    if schema_metadata is not None:
-        try:
-            declared = schema_metadata.get_identifier_fields() or []
-            identifier_fields = [p.split(".")[-1] for p in declared] or None
-        except Exception:
-            identifier_fields = None
-
-    context_windows = resolved_inputs.get("model_context_windows") or None
-    reasoning_models = resolved_inputs.get("reasoning_models") or None
-    enable_validation = False  # Regular extract command is single-model only
-    extractor = DocumentExtractor(
-        api_key=api_key,
-        model=actual_model,
-        max_context_chars=max_context,
-        schema_metadata=schema_metadata,
-        provider=provider,
-        azure_endpoint=azure_endpoint,
-        azure_api_version=azure_api_version,
-        base_url=base_url,
-        context_windows=context_windows,
-        timeout=timeout_seconds,
-        reasoning_models=reasoning_models,
-    )
-
-    view.phase("Extracting documents")
-    source_context_map = _build_source_context_map(
-        Path(path) if path else None, from_index
-    )
-    if source_context_map and not view.is_quiet:
-        matched = sum(1 for d in doc_files if d.name in source_context_map)
-        view.status(
-            "info",
-            f"Source-context: matched {matched}/{len(doc_files)} "
-            "document(s) to discover provenance",
-        )
-
-    results = []
-    total_cost = 0.0
-    total_time = 0.0
-
-    def _run(doc_path: Path) -> dict:
-        return _extract_one_document(
-            doc_path,
-            extractor=extractor,
-            loaded_schema=loaded_schema,
-            page_range_map=page_range_map,
-            section_text_map=section_text_map,
-            source_context_map=source_context_map,
-            file_output_dirs=file_output_dirs,
-            output_dir=output_dir,
-            category=category,
-            actual_model=actual_model,
-            enable_validation=enable_validation,
-            runtime_artifact=runtime_artifact,
-            run_id=run_id,
-            provider=provider,
-            schema_path=schema_path,
-            identifier_fields=identifier_fields,
-            ocr_corrections=ocr_corrections,
-        )
-
-    if live_dashboard and len(doc_files) > 1 and not view.is_quiet:
-        # Enhanced live dashboard — available for any multi-doc run via
-        # --live-dashboard (threshold gate removed).
-        live, dashboard = create_live_dashboard(len(doc_files), actual_model)
-
-        with live:
-            for doc_path in doc_files:
-                dashboard.start_document(doc_path.name)
-                res = _run(doc_path)
-                results.append(res)
-                if res["success"]:
-                    dashboard.complete_document(
-                        res["file"],
-                        success=True,
-                        cost=res["cost"],
-                        input_tokens=res.get("input_tokens") or 0,
-                        output_tokens=res.get("output_tokens") or 0,
-                    )
-                    total_cost += res["cost"]
-                    total_time += res["time"]
-                else:
-                    dashboard.complete_document(res["file"], success=False)
-
-    elif len(doc_files) > 1 and not view.is_quiet:
-        # Progress bar for every multi-doc run, with inline phase label and
-        # per-doc result rows printed above the bar as each doc finishes.
-        progress = create_extraction_progress()
-        task = progress.add_task(
-            _document_progress_desc(doc_files[0], page_range_map),
-            total=len(doc_files),
-            phase="",
-        )
-
-        with progress:
-            for idx, doc_path in enumerate(doc_files):
-                if idx > 0:
-                    progress.update(
-                        task,
-                        description=_document_progress_desc(
-                            doc_path, page_range_map
-                        ),
-                        phase="",
-                    )
-
-                progress.update(task, phase=f"→ {actual_model}")
-                res = _run(doc_path)
-                progress.update(task, phase="", advance=1)
-
-                results.append(res)
-                if res["success"]:
-                    total_cost += res["cost"]
-                    total_time += res["time"]
-                    console.print(
-                        f"  [green]✓[/green] {doc_path.name}"
-                        f"  [dim]→[/dim]  {res['items']} items"
-                        f"  [dim]•[/dim]  [magenta]${res['cost']:.4f}[/magenta]"
-                        f"  [dim]•[/dim]  [dim]{res['time']:.1f}s[/dim]"
-                    )
-                else:
-                    console.print(
-                        f"  [red]✗[/red] {doc_path.name}"
-                        f"  [dim]→[/dim]  [red]Error:[/red] {res['error'][:60]}"
-                    )
-    else:
-        for doc_path in doc_files:
-            if not view.is_quiet:
-                page_range = page_range_map.get(doc_path)
-                spinner_msg = f"[cyan]Extracting {doc_path.name}"
-                if page_range is not None:
-                    start, end = page_range
-                    spinner_msg += f" [dim](pages {start}-{end})[/dim]"
-                spinner_msg += "...[/cyan]"
-                with console.status(spinner_msg, spinner="dots"):
-                    res = _run(doc_path)
-            else:
-                res = _run(doc_path)
-
-            results.append(res)
-            if res["success"]:
-                total_cost += res["cost"]
-                total_time += res["time"]
-                if not view.is_quiet:
-                    console.print(
-                        f"  [green]✓[/green] {doc_path.name}"
-                        f"  [dim]→[/dim]  {res['items']} items"
-                        f"  [dim]•[/dim]  [magenta]${res['cost']:.4f}[/magenta]"
-                        f"  [dim]•[/dim]  [dim]{res['time']:.1f}s[/dim]"
-                    )
-            elif not view.is_quiet:
-                console.print(
-                    f"  [red]✗[/red] {doc_path.name}"
-                    f"  [dim]→[/dim]  [red]Error:[/red] {res['error'][:60]}"
-                )
-
-    run_finished_at = (
-        datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-    )
-    successful = [r for r in results if r.get("success")]
-    failed = [r for r in results if not r.get("success")]
-    successful_output_paths = [
-        Path(r["output_path"]) for r in successful if r.get("output_path")
-    ]
-    total_input_tokens = sum(r.get("input_tokens") or 0 for r in successful)
-    total_output_tokens = sum(r.get("output_tokens") or 0 for r in successful)
-    run_costs = {
-        "total_cost_usd": round(total_cost, 6),
-        "total_input_tokens": total_input_tokens,
-        "total_output_tokens": total_output_tokens,
-        "model": actual_model,
-        "documents_billed": len(successful),
-    }
+    resolved_inputs.setdefault("max_context", max_context)
+    resolved_inputs.setdefault("provider", provider)
     try:
-        run_manifest = _build_run_manifest(
-            run_id=run_id,
-            mode="single_model",
-            schema_path=schema_path,
-            provider=provider,
-            model=actual_model,
-            runtime_artifact=runtime_artifact,
-            doc_files=doc_files,
-            successful_output_paths=successful_output_paths,
-            started_at=run_started_at,
-            finished_at=run_finished_at,
-            total_processed=len(results),
-            successful_count=len(successful),
-            failed_count=len(failed),
-            failed_results=failed,
-            costs=run_costs,
+        plan = _prepare_extraction(
+            resolved_inputs,
+            fresh=fresh,
+            from_index=from_index,
+            index_filters=index_filters,
+            config_path=config_path,
+            validate_only=validate_config_only,
         )
-        run_manifest["coverage"] = {
-            result["output_path"]: result["coverage"]
-            for result in successful
-            if result.get("coverage") and result.get("output_path")
-        }
-        manifest_path = _write_run_manifest(output_dir, run_id, run_manifest)
-        if view.verbosity.shows_detail:
-            view.status("info", f"Run manifest: {manifest_path.as_posix()}")
-    except Exception as exc:
-        view.warning(f"Run manifest write failed: {exc}")
+        if validate_config_only:
+            if view.is_quiet:
+                click.echo(
+                    json.dumps(
+                        {
+                            "command": "extract",
+                            "status": "valid",
+                            "resolved": {
+                                k: v
+                                for k, v in resolved_inputs.items()
+                                if not k.startswith("_")
+                            },
+                        },
+                        indent=2,
+                        sort_keys=True,
+                    )
+                )
+            else:
+                view.success(
+                    "Runtime config validation passed for extract command"
+                )
+            return
+        view.header("DOCUMENT EXTRACTION")
+        view.config(
+            {
+                "Input": str(resolved_inputs["path"]),
+                "Files": str(len(plan["documents"])),
+                "Model": plan["llm"]["model"],
+                "Output": str(plan["output"]),
+            }
+        )
 
-    if not view.is_quiet:
-        summary_stats = {
-            "Extracted": f"{len(results)} file{'s' if len(results) != 1 else ''}",
-            "Successful": str(len(successful)),
-        }
-        if failed:
-            summary_stats["Failed"] = str(len(failed))
-        if successful:
-            avg_cost = total_cost / len(successful)
-            avg_time = total_time / len(successful)
-            summary_stats["Total Cost"] = f"${total_cost:.4f}"
-            summary_stats["Avg Cost/File"] = f"${avg_cost:.4f}"
-            summary_stats["Total Time"] = f"{total_time:.1f}s"
-            summary_stats["Avg Time/File"] = f"{avg_time:.1f}s"
-            total_items = sum(r.get("items", 0) or 0 for r in successful)
-            if total_items > 0:
-                summary_stats["Total Items"] = str(total_items)
-
-        view.summary(summary_stats, title="Extraction Summary")
-
-        # Display concise extraction accounting
-        if successful and not view.is_quiet:
-            accounting_line = _format_extraction_accounting(
-                num_docs=len(successful),
-                total_cost_usd=total_cost,
-                total_llm_calls=len(results),  # Approximation: total calls across all docs
-                total_time_sec=total_time,
-                model=actual_model,
+        outcome = _render_extraction(
+            plan,
+            view,
+            resolved_inputs.get("live_dashboard", live_dashboard),
+        )
+    except (ParseSweepError, OSError, ValueError, TypeError) as exc:
+        view.error("Extraction failed", str(exc))
+        raise click.exceptions.Exit(1) from exc
+    if view.is_quiet:
+        click.echo(str(outcome.manifest_path))
+    else:
+        if outcome.status == "reused":
+            view.success(
+                f"All {outcome.successful} file(s) already processed "
+                "(verified reuse)"
             )
-            console.print(accounting_line)
-
-        for failure in [f for f in failed if f.get("suggestions")][:3]:
-            view.error(
-                f"Processing failed for {failure['file']}",
-                failure.get("error"),
-                failure.get("suggestions"),
+        view.summary(
+            {
+                "Status": outcome.status,
+                "Successful": str(outcome.successful),
+                "Failed": str(outcome.failed),
+                "Items": str(outcome.total_items),
+                "Known Cost": f"${outcome.total_cost:.4f}",
+                "Unknown Cost Calls": str(outcome.unknown_cost_calls),
+            },
+            title="Extraction Summary",
+        )
+        view.outputs(
+            {
+                "Extracted data": str(outcome.output_dir),
+                "Run manifest": str(outcome.manifest_path),
+            }
+        )
+        if outcome.exit_code == 0:
+            compile_cmd = (
+                f"pixi run psweep compile --config {config_path}"
+                if config_path
+                else (
+                    f"pixi run psweep compile {outcome.output_dir} "
+                    f"--schema {schema}"
+                )
             )
-
-        view.outputs({"Extracted data": str(output_dir.absolute())})
-        compile_cmd = (
-            f"pixi run psweep compile --config {Path(config_path).as_posix()}"
-            if config_path
-            else f"pixi run psweep compile {output_dir} --schema {schema}"
-        )
-        view.next_steps(
-            [
-                f"Inspect a result: pixi run psweep check {output_dir}/<name>.json --show-data",
-                f"Compile into a spreadsheet: {compile_cmd}",
-            ]
-        )
+            view.next_steps(
+                [
+                    f"Inspect a result: pixi run psweep check "
+                    f"{outcome.output_dir}/<name>.json --show-data",
+                    f"Compile into a spreadsheet: {compile_cmd}",
+                ]
+            )
+    raise click.exceptions.Exit(outcome.exit_code)
 
 
 def _run_validation_extraction(
@@ -1536,12 +627,19 @@ def _run_validation_extraction(
     """
     from psweep.validation import run_multi_model_extraction
 
+    if len({path.stem for path in doc_files}) != len(doc_files):
+        message = (
+            "QA/QC document stem collision; scope or rename ambiguous sources"
+        )
+        raise ValueError(message)
     qa_model_defs = registry.get_models(list(validation_models))
     qa_models = [definition.model for definition in qa_model_defs]
     seed_output_dir = seed_output_dir or output_dir
     if len(qa_model_defs) < 2:
         hint = (
-            f"resolved to: {qa_models}" if qa_models else "resolved to nothing — validation.models is empty or missing"
+            f"resolved to: {qa_models}"
+            if qa_models
+            else "resolved to nothing — validation.models is empty or missing"
         )
         print_error(
             "QA/QC Configuration Error",
@@ -1602,14 +700,6 @@ def _run_validation_extraction(
     # deliverable. Its extraction is written to the normal per-document location,
     # plus multi-model sidecars under validation/ for comparison.
     primary_model = primary_def.model
-    id_declared = (
-        loaded_schema.get("$metadata", {})
-        .get("extraction", {})
-        .get("identifier_fields")
-        or []
-    )
-    primary_identifier_fields = [p.split(".")[-1] for p in id_declared] or None
-
     progress = view.make_progress()
     task_id = None
     if progress is not None:
@@ -1621,7 +711,9 @@ def _run_validation_extraction(
         if progress is not None and task_id is not None:
             progress.update(task_id, phase=message)
 
-    progress_ctx = progress if progress is not None else contextlib.nullcontext()
+    progress_ctx = (
+        progress if progress is not None else contextlib.nullcontext()
+    )
     with progress_ctx:
         for doc_idx, doc_path in enumerate(doc_files, 1):
             if progress is not None and task_id is not None:
@@ -1637,7 +729,9 @@ def _run_validation_extraction(
 
             try:
                 page_range = page_range_map.get(doc_path)
-                text = extract_text_from_document(doc_path, page_range=page_range)
+                text = extract_text_from_document(
+                    doc_path, page_range=page_range
+                )
                 seed_records_by_model = {}
                 if skip_existing:
                     canonical_path = seed_output_dir / f"{doc_path.stem}.json"
@@ -1646,7 +740,9 @@ def _run_validation_extraction(
                             with open(canonical_path, encoding="utf-8") as fh:
                                 existing_record = json.load(fh)
                             existing_model = (
-                                (existing_record.get("lineage") or {}).get("model")
+                                (existing_record.get("lineage") or {}).get(
+                                    "model"
+                                )
                                 if isinstance(existing_record, dict)
                                 else None
                             )
@@ -1674,7 +770,8 @@ def _run_validation_extraction(
                             if model_name in seed_records_by_model:
                                 continue
                             model_path = (
-                                qa_doc_dir / f"{sanitize_model_name(model_name)}.json"
+                                qa_doc_dir
+                                / f"{sanitize_model_name(model_name)}.json"
                             )
                             if not model_path.exists():
                                 continue
@@ -1706,9 +803,11 @@ def _run_validation_extraction(
                     elif kind == "model_reused":
                         _update_phase(f"→ reused {model_name}")
                     elif kind == "model_success":
-                        _update_phase(
-                            f"→ done {model_name} ${float(event.get('cost', 0.0)):.4f}"
+                        cost = event.get("cost")
+                        display = (
+                            "unknown cost" if cost is None else f"${cost:.4f}"
                         )
+                        _update_phase(f"→ done {model_name} {display}")
                     elif kind == "model_error":
                         _update_phase(f"→ failed {model_name}")
 
@@ -1735,23 +834,28 @@ def _run_validation_extraction(
                     and primary_result.success
                     and primary_result.result is not None
                 ):
-                    _extract_and_save_result(
+                    write_extraction_record(
+                        seed_output_dir / f"{doc_path.stem}.json",
                         doc_path=doc_path,
                         result=primary_result.result,
-                        output_dir=seed_output_dir,
-                        category=seed_output_dir.name,
                         model=primary_model,
-                        validation_enabled=True,
                         runtime_artifact=runtime_artifact,
                         run_id=run_id,
                         provider=qa_provider,
                         schema_id=schema_path.as_posix(),
-                        identifier_fields=primary_identifier_fields,
+                        schema_metadata=SchemaMetadata(schema_path),
                     )
 
-                doc_cost = sum(r.cost for r in model_results.values())
-                doc_time = sum(r.processing_time for r in model_results.values())
-                successful = sum(1 for r in model_results.values() if r.success)
+                doc_cost = sum(r.cost or 0 for r in model_results.values())
+                unknown_costs = sum(
+                    r.cost is None for r in model_results.values()
+                )
+                doc_time = sum(
+                    r.processing_time for r in model_results.values()
+                )
+                successful = sum(
+                    1 for r in model_results.values() if r.success
+                )
                 doc_fresh = sum(
                     1
                     for r in model_results.values()
@@ -1773,6 +877,7 @@ def _run_validation_extraction(
                         "models_successful": successful,
                         "models_total": len(qa_models),
                         "cost": doc_cost,
+                        "unknown_cost_models": unknown_costs,
                         "time": doc_time,
                         "fresh_extractions": doc_fresh,
                         "reused_outputs": doc_reused,
@@ -1785,7 +890,8 @@ def _run_validation_extraction(
                 view.status(
                     level,
                     f"{successful}/{len(qa_models)} models",
-                    f"${doc_cost:.4f} • {doc_time:.1f}s",
+                    f"${doc_cost:.4f} known • {unknown_costs} unknown • "
+                    f"{doc_time:.1f}s",
                 )
 
             except Exception as e:
@@ -1817,7 +923,10 @@ def _run_validation_extraction(
         )
         summary_stats["Fresh Model Extractions"] = str(total_fresh_extractions)
         summary_stats["Reused Existing Outputs"] = str(total_reused_outputs)
-        summary_stats["Total Cost"] = f"${total_cost:.4f}"
+        summary_stats["Known Cost"] = f"${total_cost:.4f}"
+        summary_stats["Unknown Cost Models"] = str(
+            sum(r.get("unknown_cost_models", 0) for r in results)
+        )
         summary_stats["Total Time"] = f"{total_time:.1f}s"
 
         view.summary(summary_stats, title="QA/QC Extraction Summary")
@@ -1832,37 +941,10 @@ def _run_validation_extraction(
             )
         validate_compare_command += " --compare-only"
         view.next_steps(
-            [f"Rebuild QA/QC reports with validate (no re-extraction): {validate_compare_command}"]
+            [
+                "Rebuild QA/QC reports with validate (no re-extraction): "
+                f"{validate_compare_command}"
+            ]
         )
 
     return output_dir / "validation"
-
-
-def _extract_and_save_result(
-    doc_path: Path,
-    result,
-    output_dir: Path,
-    category: str,
-    model: str,
-    validation_enabled: bool,
-    runtime_artifact: Optional[Dict[str, Any]] = None,
-    run_id: Optional[str] = None,
-    provider: Optional[str] = None,
-    schema_id: Optional[str] = None,
-    identifier_fields: Optional[List[str]] = None,
-) -> int:
-    """Helper to extract items count and save result to JSON."""
-    output_file = output_dir / f"{doc_path.stem}.json"
-    num_items = write_extraction_record(
-        output_file,
-        doc_path=doc_path,
-        result=result,
-        model=model,
-        provider=provider,
-        runtime_artifact=runtime_artifact,
-        run_id=run_id,
-        schema_id=schema_id,
-        identifier_fields=identifier_fields,
-    )
-
-    return num_items

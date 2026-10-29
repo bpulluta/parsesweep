@@ -202,6 +202,65 @@ class TestTextCache:
         assert "PAGE-RANGE" in result
 
 
+class TestRawOcrCache:
+    def test_current_corrections_apply_without_repeating_ocr(
+        self, tmp_path, monkeypatch
+    ):
+        pdf = tmp_path / "scan.pdf"
+        pdf.write_bytes(b"fake")
+        calls = []
+
+        def fake(*args, **kwargs):
+            calls.append(kwargs)
+            return "RAW text", {"used_ocr": True, "raw_ocr_text": "RAW text"}
+
+        monkeypatch.setattr(
+            "psweep.extraction.pdf_utils.extract_text_from_pdf", fake
+        )
+        for replacement in ("first", "second"):
+            text = extract_text_from_document(
+                pdf,
+                ocr_corrections=[
+                    {"pattern": "RAW", "replacement": replacement}
+                ],
+            )
+            assert text == f"{replacement} text"
+        assert len(calls) == 1
+        assert read_text_cache(pdf) == "RAW text"
+
+    def test_old_corrected_ocr_cache_is_invalidated(self, tmp_path):
+        pdf = tmp_path / "scan.pdf"
+        pdf.write_bytes(b"fake")
+        write_text_cache(pdf, "corrected text")
+        _, metadata = text_cache_paths(pdf)
+        meta = json.loads(metadata.read_text())
+        meta.pop("ocr_raw", None)
+        metadata.write_text(json.dumps(meta))
+        assert read_text_cache(pdf) is None
+
+    def test_non_ocr_discovery_cache_is_preserved(self, tmp_path):
+        html = tmp_path / "code.html"
+        html.write_bytes(b"source")
+        write_text_cache(html, "API text", method="code_host_api")
+        assert read_text_cache(html) == "API text"
+        assert extract_text_from_document(html) == "API text"
+
+    def test_partial_ocr_does_not_write_full_document_cache(
+        self, tmp_path, monkeypatch
+    ):
+        pdf = tmp_path / "scan.pdf"
+        pdf.write_bytes(b"fake")
+        monkeypatch.setattr(
+            "psweep.extraction.pdf_utils.extract_text_from_pdf",
+            lambda *_a, **_k: (
+                "partial",
+                {"used_ocr": True, "raw_ocr_text": "partial"},
+            ),
+        )
+        assert extract_text_from_document(pdf, (2, 2)) == "partial"
+        assert not (tmp_path / ".text").exists()
+
+
 class TestMaterializeCurated:
     def _record(self, docs_dir: Path, rel: str, selected: bool) -> dict:
         path = docs_dir / rel

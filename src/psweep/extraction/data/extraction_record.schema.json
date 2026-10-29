@@ -30,6 +30,11 @@
       "minLength": 1,
       "description": "Unique identifier for this extraction record instance."
     },
+    "item_count": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Item count in the domain schema's declared main data array."
+    },
     "contract_version": {
       "type": "string",
       "const": "1.0.0",
@@ -103,6 +108,11 @@
         },
         "schema_id": {
           "type": ["string", "null"]
+        },
+        "input_fingerprint": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$",
+          "description": "Optional digest of effective extraction inputs/settings for validated reuse."
         },
         "extracted_at": {
           "type": "string",
@@ -185,6 +195,46 @@
         "duration_seconds": {
           "type": ["number", "null"],
           "minimum": 0
+        },
+        "coverage": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Observed context and selection limitations, not a full-document coverage guarantee.",
+          "properties": {
+            "input_characters": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "extracted_characters": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "context_truncated": {
+              "type": "boolean"
+            },
+            "selected_page_range": {
+              "type": "array",
+              "minItems": 2,
+              "maxItems": 2,
+              "items": {
+                "type": "integer",
+                "minimum": 1
+              }
+            },
+            "section_filtered": {
+              "type": "boolean"
+            },
+            "page_count": {
+              "type": "integer", "minimum": 0
+            },
+            "extracted_pages": {
+              "type": "array", "uniqueItems": true,
+              "items": {"type": "integer", "minimum": 1}
+            },
+            "parser_partial": {
+              "type": "boolean"
+            }
+          }
         },
         "input_tokens": {
           "type": ["integer", "null"],

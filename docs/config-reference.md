@@ -69,7 +69,7 @@ shared runtime definitions; templates show explicit choices separately.
 | `model` | extraction | `.env` model → `gpt-4o-mini` | You want a stronger/cheaper tier |
 | `max_context` | extraction | `600000` | Output is truncated on large docs |
 | `output_dir` | extraction | `extracted/<domain>` | You want a custom location |
-| `skip_existing` | extraction | `true` | Never (use `--fresh` to re-run) |
+| `skip_existing` | extraction | `true` | Validated record reuse; `--fresh` resets whole output after preflight |
 | `timeout_seconds` | extraction | `120` (`LLM_TIMEOUT` env) | Very large docs time out |
 | `provider` | extraction | `auto` | Auto-detection picks the wrong one |
 | `pages.auto_locate.trigger_chars` | extraction | `200000` | Target only docs above a size |
@@ -234,8 +234,22 @@ size/mtime and source SHA-256 plus cached-text SHA-256. Partial/stale/mismatched
 pairs are misses; temporary-file replacement publishes metadata last. Old
 stem-only pairs are not reused. LLM reviewer sidecars use
 `.review/<filename>.json`; curation carries these full-name sidecars with
-selected documents. Native extraction, OCR correction rules, and page-targeting
-behavior are unchanged by this identity migration.
+selected documents. OCR caches now hold raw text, applying current corrections
+on consumption; older corrected entries invalidate rather than silently reuse.
+Page/section products fingerprint source content and resolved model/settings;
+section cache pairs use full filenames, text digests, and metadata-last staging.
+Native, pypdf, and OCR paths honor selected page bounds and retain actual scope.
+
+Extraction reuses records only when source/schema/settings and record-byte
+evidence match. Missing proof or invalid JSON triggers re-extraction, without a
+new resume setting. Valid reuse needs no provider credentials or calls. `--fresh`
+resets the whole resolved output after successful preflight; filtered/limited
+fresh runs rebuild only that subset. Overlapping output/input paths are rejected.
+Exit 0 means success/reuse (including valid zero-item payloads); exit 1 includes
+partial failure; empty selection exits 2. Pipeline drivers halt downstream work.
+Atomic per-file record/manifest replacement is not a whole-run transaction or
+concurrent-writer certification. Inert category/profile settings and YAML schema
+pack unwrapping are retired; use direct JSON schemas and supported string aliases.
 
 ### Advanced: column-flattening overrides
 
