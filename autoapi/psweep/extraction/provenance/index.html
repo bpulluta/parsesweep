@@ -290,6 +290,7 @@
 <li class="toctree-l3 has-children"><a class="reference internal" href="../../utils/index.html">psweep.utils</a><input aria-label="Toggle navigation of psweep.utils" class="toctree-checkbox" id="toctree-checkbox-10" name="toctree-checkbox-10" role="switch" type="checkbox"/><label for="toctree-checkbox-10"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l4"><a class="reference internal" href="../../utils/config/index.html">psweep.utils.config</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../utils/error_taxonomy/index.html">psweep.utils.error_taxonomy</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../utils/file_io/index.html">psweep.utils.file_io</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../utils/item_matcher/index.html">psweep.utils.item_matcher</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../utils/logger/index.html">psweep.utils.logger</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../utils/model_pricing/index.html">psweep.utils.model_pricing</a></li>
@@ -356,19 +357,55 @@
           <section id="module-psweep.extraction.provenance">
 <span id="psweep-extraction-provenance"></span><h1>psweep.extraction.provenance<a class="headerlink" href="#module-psweep.extraction.provenance" title="Link to this heading">¶</a></h1>
 <p>Provenance and lineage helpers for the extraction stage.</p>
-<p>These helpers build the deterministic run identifier and run manifest that tie
-extracted records back to their inputs, and map discovered documents to the
-source URL / queried target recorded during discovery. They are pure functions
-(no Click, no console I/O) so they can be reused and tested outside the
-<code class="docutils literal notranslate"><span class="pre">extract</span></code> CLI command.</p>
-<section id="public-api">
-<h2>Public API<a class="headerlink" href="#public-api" title="Link to this heading">¶</a></h2>
-<ul class="simple">
-<li><p><code class="xref py py-func docutils literal notranslate"><span class="pre">generate_run_id()</span></code> — deterministic run id for lineage joins.</p></li>
-<li><p><code class="xref py py-func docutils literal notranslate"><span class="pre">build_run_manifest()</span></code> — deterministic run-manifest payload.</p></li>
-<li><p><code class="xref py py-func docutils literal notranslate"><span class="pre">build_source_context_map()</span></code> — map documents to discovery provenance.</p></li>
-<li><p><code class="xref py py-func docutils literal notranslate"><span class="pre">prepend_source_context()</span></code> — prepend a CONTEXT block to document text.</p></li>
-</ul>
+<p>Identify attempts and tie records to inputs and discovery hints.
+No CLI dependencies; validation retains its deterministic run identity.</p>
+<section id="functions">
+<h2>Functions<a class="headerlink" href="#functions" title="Link to this heading">¶</a></h2>
+<div class="table-wrapper autosummary longtable docutils container">
+<table class="autosummary longtable docutils align-default">
+<tbody>
+<tr class="row-odd"><td><p><a class="reference internal" href="#psweep.extraction.provenance.build_run_manifest" title="psweep.extraction.provenance.build_run_manifest"><code class="xref py py-obj docutils literal notranslate"><span class="pre">build_run_manifest</span></code></a>(→ dict[str, Any])</p></td>
+<td><p>Build a run manifest for extraction and validation executions.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#psweep.extraction.provenance.build_source_context_map" title="psweep.extraction.provenance.build_source_context_map"><code class="xref py py-obj docutils literal notranslate"><span class="pre">build_source_context_map</span></code></a>(→ dict[str, dict[str, Any]])</p></td>
+<td><p>Map paths to hints, permitting only unique basename fallbacks.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#psweep.extraction.provenance.generate_run_id" title="psweep.extraction.provenance.generate_run_id"><code class="xref py py-obj docutils literal notranslate"><span class="pre">generate_run_id</span></code></a>(→ str)</p></td>
+<td><p>Identify attempts uniquely, preserving validation identity.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#psweep.extraction.provenance.prepend_source_context" title="psweep.extraction.provenance.prepend_source_context"><code class="xref py py-obj docutils literal notranslate"><span class="pre">prepend_source_context</span></code></a>(→ str)</p></td>
+<td><p>Prepend discovery hints, separate from document facts.</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+<section id="module-contents">
+<h2>Module Contents<a class="headerlink" href="#module-contents" title="Link to this heading">¶</a></h2>
+<dl class="py function">
+<dt class="sig sig-object py" id="psweep.extraction.provenance.build_run_manifest">
+<span class="sig-prename descclassname"><span class="pre">psweep.extraction.provenance.</span></span><span class="sig-name descname"><span class="pre">build_run_manifest</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">run_id</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">mode</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">schema_path</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">pathlib.Path</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">provider</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">model</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">runtime_artifact</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">doc_files</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">list</span><span class="p"><span class="pre">[</span></span><span class="pre">pathlib.Path</span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">successful_output_paths</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">list</span><span class="p"><span class="pre">[</span></span><span class="pre">pathlib.Path</span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">started_at</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">finished_at</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">total_processed</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">successful_count</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">failed_count</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">failed_results</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">list</span><span class="p"><span class="pre">[</span></span><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">costs</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#psweep.extraction.provenance.build_run_manifest" title="Link to this definition">¶</a></dt>
+<dd><p>Build a run manifest for extraction and validation executions.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="psweep.extraction.provenance.build_source_context_map">
+<span class="sig-prename descclassname"><span class="pre">psweep.extraction.provenance.</span></span><span class="sig-name descname"><span class="pre">build_source_context_map</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">input_path</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">pathlib.Path</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">from_index</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#psweep.extraction.provenance.build_source_context_map" title="Link to this definition">¶</a></dt>
+<dd><p>Map paths to hints, permitting only unique basename fallbacks.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="psweep.extraction.provenance.generate_run_id">
+<span class="sig-prename descclassname"><span class="pre">psweep.extraction.provenance.</span></span><span class="sig-name descname"><span class="pre">generate_run_id</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">schema_path</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">pathlib.Path</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">provider</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">model</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">enable_validation</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">doc_files</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">list</span><span class="p"><span class="pre">[</span></span><span class="pre">pathlib.Path</span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">artifact_id</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">str</span></span></span><a class="headerlink" href="#psweep.extraction.provenance.generate_run_id" title="Link to this definition">¶</a></dt>
+<dd><p>Identify attempts uniquely, preserving validation identity.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="psweep.extraction.provenance.prepend_source_context">
+<span class="sig-prename descclassname"><span class="pre">psweep.extraction.provenance.</span></span><span class="sig-name descname"><span class="pre">prepend_source_context</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">text</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">doc_path</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">pathlib.Path</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">context_map</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">str</span></span></span><a class="headerlink" href="#psweep.extraction.provenance.prepend_source_context" title="Link to this definition">¶</a></dt>
+<dd><p>Prepend discovery hints, separate from document facts.</p>
+</dd></dl>
+
 </section>
 </section>
 
@@ -431,7 +468,14 @@ source URL / queried target recorded during discovery. They are pure functions
           <div class="toc-tree">
             <ul>
 <li><a class="reference internal" href="#">psweep.extraction.provenance</a><ul>
-<li><a class="reference internal" href="#public-api">Public API</a></li>
+<li><a class="reference internal" href="#functions">Functions</a></li>
+<li><a class="reference internal" href="#module-contents">Module Contents</a><ul>
+<li><a class="reference internal" href="#psweep.extraction.provenance.build_run_manifest"><code class="docutils literal notranslate"><span class="pre">build_run_manifest()</span></code></a></li>
+<li><a class="reference internal" href="#psweep.extraction.provenance.build_source_context_map"><code class="docutils literal notranslate"><span class="pre">build_source_context_map()</span></code></a></li>
+<li><a class="reference internal" href="#psweep.extraction.provenance.generate_run_id"><code class="docutils literal notranslate"><span class="pre">generate_run_id()</span></code></a></li>
+<li><a class="reference internal" href="#psweep.extraction.provenance.prepend_source_context"><code class="docutils literal notranslate"><span class="pre">prepend_source_context()</span></code></a></li>
+</ul>
+</li>
 </ul>
 </li>
 </ul>

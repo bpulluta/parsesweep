@@ -290,6 +290,7 @@
 <li class="toctree-l3 has-children"><a class="reference internal" href="../autoapi/psweep/utils/index.html">psweep.utils</a><input aria-label="Toggle navigation of psweep.utils" class="toctree-checkbox" id="toctree-checkbox-10" name="toctree-checkbox-10" role="switch" type="checkbox"/><label for="toctree-checkbox-10"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/utils/config/index.html">psweep.utils.config</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/utils/error_taxonomy/index.html">psweep.utils.error_taxonomy</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/utils/file_io/index.html">psweep.utils.file_io</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/utils/item_matcher/index.html">psweep.utils.item_matcher</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/utils/logger/index.html">psweep.utils.logger</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../autoapi/psweep/utils/model_pricing/index.html">psweep.utils.model_pricing</a></li>
@@ -1127,20 +1128,9 @@ run <code class="docutils literal notranslate"><span class="pre">psweep</span> <
 </dd></dl>
 
 <dl class="std option">
-<dt class="sig sig-object std" id="cmdoption-psweep-extract-category">
-<span class="sig-name descname"><span class="pre">--category</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;category&gt;</span></span><a class="headerlink" href="#cmdoption-psweep-extract-category" title="Link to this definition">¶</a></dt>
-<dd><p>Category name (auto-detected from path if not specified)</p>
-</dd></dl>
-
-<dl class="std option">
 <dt class="sig sig-object std" id="cmdoption-psweep-extract-model">
 <span class="sig-name descname"><span class="pre">--model</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;model&gt;</span></span><a class="headerlink" href="#cmdoption-psweep-extract-model" title="Link to this definition">¶</a></dt>
 <dd><p>LLM model name, or an alias defined in the run.yaml models: block. For Azure, use your deployment name (e.g. gpt-4o).</p>
-<dl class="field-list simple">
-<dt class="field-odd">Default<span class="colon">:</span></dt>
-<dd class="field-odd"><p><code class="docutils literal notranslate"><span class="pre">'gpt-4o-mini'</span></code></p>
-</dd>
-</dl>
 </dd></dl>
 
 <dl class="std option">
@@ -1158,26 +1148,15 @@ run <code class="docutils literal notranslate"><span class="pre">psweep</span> <
 </dd></dl>
 
 <dl class="std option">
-<dt class="sig sig-object std" id="cmdoption-psweep-extract-profile">
-<span class="sig-name descname"><span class="pre">--profile</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;profile_name&gt;</span></span><a class="headerlink" href="#cmdoption-psweep-extract-profile" title="Link to this definition">¶</a></dt>
-<dd><p>Runtime profile to compile into artifact lineage (for example: default, dev, staging, prod)</p>
-<dl class="field-list simple">
-<dt class="field-odd">Default<span class="colon">:</span></dt>
-<dd class="field-odd"><p><code class="docutils literal notranslate"><span class="pre">'default'</span></code></p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="std option">
 <dt class="sig sig-object std" id="cmdoption-psweep-extract-n">
 <span id="cmdoption-psweep-extract-limit"></span><span class="sig-name descname"><span class="pre">-n</span></span><span class="sig-prename descclassname"></span><span class="sig-prename descclassname"><span class="pre">,</span> </span><span class="sig-name descname"><span class="pre">--limit</span></span><span class="sig-prename descclassname"> <span class="pre">&lt;limit&gt;</span></span><a class="headerlink" href="#cmdoption-psweep-extract-n" title="Link to this definition">¶</a></dt>
-<dd><p>Process only first N files</p>
+<dd><p>Process only first N pending files</p>
 </dd></dl>
 
 <dl class="std option">
 <dt class="sig sig-object std" id="cmdoption-psweep-extract-fresh">
 <span class="sig-name descname"><span class="pre">--fresh</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-psweep-extract-fresh" title="Link to this definition">¶</a></dt>
-<dd><p>Re-extract documents that already have output JSON, overwriting it. Cached document text (.text_cache) and page-targeting sidecars (.pages) are reused. Pair with ‘compile –fresh’ to also clear compiled outputs.</p>
+<dd><p>Reset the entire resolved extraction output after successful preflight and re-extract the selected documents. Valid raw OCR (.text) and targeting (.pages/.sections) caches are reused.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Default<span class="colon">:</span></dt>
 <dd class="field-odd"><p><code class="docutils literal notranslate"><span class="pre">False</span></code></p>

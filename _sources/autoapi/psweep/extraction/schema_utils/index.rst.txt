@@ -16,6 +16,7 @@ Functions
 
    psweep.extraction.schema_utils.build_schema_validator
    psweep.extraction.schema_utils.load_schema
+   psweep.extraction.schema_utils.record_validator
 
 
 Module Contents
@@ -37,5 +38,10 @@ Module Contents
    :rtype: Dict[str, Any]
 
    :raises ConfigurationError: If the file is missing or not valid JSON
+
+
+.. py:function:: record_validator()
+
+   Load the canonical record-envelope validator once per process.
 
 

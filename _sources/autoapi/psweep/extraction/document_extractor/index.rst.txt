@@ -5,17 +5,10 @@ psweep.extraction.document_extractor
 
 .. autoapi-nested-parse::
 
-   Universal document extractor for structured data extraction.
+   Schema-driven extraction with measured usage and scope limits.
 
-   Architecture:
-
-   1. OpenAI Structured - Fast, accurate extraction with schema-driven parsing
-   2. Multi-Model QA/QC - Validates results using multiple AI models (separate command)
-
-   Supports any document type with a defined JSON schema - fully domain-agnostic.
-
-   Cost: ~$0.002-0.004 per document (varies by length and model)
-   Accuracy: 90%+ on validation set
+   Regular extraction is single-model. Multi-model QA/QC runs separately.
+   Structural validation does not certify source grounding or accuracy.
 
 
 

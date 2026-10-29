@@ -24,7 +24,7 @@ Functions
 Module Contents
 ---------------
 
-.. py:function:: extract_text_from_document(file_path: pathlib.Path, page_range: Optional[tuple] = None, ocr_corrections: Optional[list] = None) -> str
+.. py:function:: extract_text_from_document(file_path: pathlib.Path, page_range: Optional[tuple] = None, ocr_corrections: Optional[list] = None, *, return_meta: bool = False)
 
    Extract text from any supported document format.
 
@@ -37,9 +37,11 @@ Module Contents
    :param ocr_corrections: Optional OCR text-correction rules (from ``extraction.ocr_corrections``)
                            applied to OCR-derived PDF text only.
    :type ocr_corrections: Optional[list]
+   :param return_meta: Return a text/metadata pair with actual PDF scope when True.
+   :type return_meta: bool
 
-   :returns: Extracted text content
-   :rtype: str
+   :returns: Text, or ``(text, metadata)`` when ``return_meta`` is True.
+   :rtype: str or tuple
 
    :raises ValueError: If file format is not supported
    :raises RuntimeError: If extraction fails
@@ -56,7 +58,7 @@ Module Contents
    :rtype: bool
 
 
-.. py:function:: read_text_cache(file_path: pathlib.Path) -> Optional[str]
+.. py:function:: read_text_cache(file_path: pathlib.Path, *, return_meta: bool = False)
 
    Return cached text if its source and text still match.
 
@@ -69,11 +71,13 @@ Module Contents
    Return text/metadata paths keyed by the full filename.
 
 
-.. py:function:: write_text_cache(file_path: pathlib.Path, text: str, method: str = 'ocr') -> None
+.. py:function:: write_text_cache(file_path: pathlib.Path, text: str, method: str = 'ocr', *, page_count: int | None = None) -> None
 
    Write the cache via flushed temporary files, metadata last.
 
-   Only OCR calls this cache; native extraction remains uncached.
+   OCR callers supply raw text, never corrected text. Discovery also
+   caches browser/API products under their own ``method``. Cheap native
+   document parsing remains uncached.
    Each file is atomically replaced, not the pair as a transaction.
    An interruption between replacements is a miss because readers
    verify both digests. ``method`` is recorded for transparency.

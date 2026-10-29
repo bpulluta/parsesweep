@@ -290,6 +290,7 @@
 <li class="toctree-l3 has-children"><a class="reference internal" href="../../utils/index.html">psweep.utils</a><input aria-label="Toggle navigation of psweep.utils" class="toctree-checkbox" id="toctree-checkbox-10" name="toctree-checkbox-10" role="switch" type="checkbox"/><label for="toctree-checkbox-10"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l4"><a class="reference internal" href="../../utils/config/index.html">psweep.utils.config</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../utils/error_taxonomy/index.html">psweep.utils.error_taxonomy</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../utils/file_io/index.html">psweep.utils.file_io</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../utils/item_matcher/index.html">psweep.utils.item_matcher</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../utils/logger/index.html">psweep.utils.logger</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../utils/model_pricing/index.html">psweep.utils.model_pricing</a></li>
@@ -355,15 +356,9 @@
         <article role="main" id="furo-main-content">
           <section id="module-psweep.extraction.document_extractor">
 <span id="psweep-extraction-document-extractor"></span><h1>psweep.extraction.document_extractor<a class="headerlink" href="#module-psweep.extraction.document_extractor" title="Link to this heading">¶</a></h1>
-<p>Universal document extractor for structured data extraction.</p>
-<p>Architecture:</p>
-<ol class="arabic simple">
-<li><p>OpenAI Structured - Fast, accurate extraction with schema-driven parsing</p></li>
-<li><p>Multi-Model QA/QC - Validates results using multiple AI models (separate command)</p></li>
-</ol>
-<p>Supports any document type with a defined JSON schema - fully domain-agnostic.</p>
-<p>Cost: ~$0.002-0.004 per document (varies by length and model)
-Accuracy: 90%+ on validation set</p>
+<p>Schema-driven extraction with measured usage and scope limits.</p>
+<p>Regular extraction is single-model. Multi-model QA/QC runs separately.
+Structural validation does not certify source grounding or accuracy.</p>
 <section id="classes">
 <h2>Classes<a class="headerlink" href="#classes" title="Link to this heading">¶</a></h2>
 <div class="table-wrapper autosummary longtable docutils container">

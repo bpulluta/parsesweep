@@ -290,6 +290,7 @@
 <li class="toctree-l3 has-children"><a class="reference internal" href="../../utils/index.html">psweep.utils</a><input aria-label="Toggle navigation of psweep.utils" class="toctree-checkbox" id="toctree-checkbox-10" name="toctree-checkbox-10" role="switch" type="checkbox"/><label for="toctree-checkbox-10"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l4"><a class="reference internal" href="../../utils/config/index.html">psweep.utils.config</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../utils/error_taxonomy/index.html">psweep.utils.error_taxonomy</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../utils/file_io/index.html">psweep.utils.file_io</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../utils/item_matcher/index.html">psweep.utils.item_matcher</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../utils/logger/index.html">psweep.utils.logger</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../utils/model_pricing/index.html">psweep.utils.model_pricing</a></li>
@@ -355,42 +356,18 @@
         <article role="main" id="furo-main-content">
           <section id="module-psweep.config.model_registry">
 <span id="psweep-config-model-registry"></span><h1>psweep.config.model_registry<a class="headerlink" href="#module-psweep.config.model_registry" title="Link to this heading">¶</a></h1>
-<p>Unified model registry — one normalization boundary for model tiers.</p>
-<p>This module centralizes how a run’s model <em>tiers</em> (the top-level <code class="docutils literal notranslate"><span class="pre">models:</span></code>
-alias map) and per-model context windows (<code class="docutils literal notranslate"><span class="pre">model_context_windows:</span></code>) become
-resolvable <a class="reference internal" href="#psweep.config.model_registry.ModelDefinition" title="psweep.config.model_registry.ModelDefinition"><code class="xref py py-class docutils literal notranslate"><span class="pre">ModelDefinition</span></code></a> objects. It is a thin <strong>facade</strong> over the
-low-level primitives in <a class="reference internal" href="../../extraction/llm_factory/index.html#module-psweep.extraction.llm_factory" title="psweep.extraction.llm_factory"><code class="xref py py-mod docutils literal notranslate"><span class="pre">psweep.extraction.llm_factory</span></code></a>:</p>
-<ul class="simple">
-<li><p><a class="reference internal" href="#psweep.config.model_registry.ModelRegistry.from_config" title="psweep.config.model_registry.ModelRegistry.from_config"><code class="xref py py-func docutils literal notranslate"><span class="pre">ModelRegistry.from_config()</span></code></a> is the ONLY place where the various config
-shapes (a plain model string, a long-form <code class="docutils literal notranslate"><span class="pre">{model,</span> <span class="pre">provider,</span> <span class="pre">...}</span></code> dict, or
-the legacy <code class="docutils literal notranslate"><span class="pre">model_context_windows</span></code> side-map) get normalized into
-<a class="reference internal" href="#psweep.config.model_registry.ModelDefinition" title="psweep.config.model_registry.ModelDefinition"><code class="xref py py-class docutils literal notranslate"><span class="pre">ModelDefinition</span></code></a> instances. Everything downstream consumes the
-normalized form.</p></li>
-<li><p><a class="reference internal" href="#psweep.config.model_registry.ModelRegistry.to_llm_kwargs" title="psweep.config.model_registry.ModelRegistry.to_llm_kwargs"><code class="xref py py-meth docutils literal notranslate"><span class="pre">ModelRegistry.to_llm_kwargs()</span></code></a> delegates to
-<code class="docutils literal notranslate"><span class="pre">llm_factory.resolve_llm_kwargs</span></code> so credentials and the concrete provider
-are resolved through the single, env-driven path — never re-derived here.</p></li>
-</ul>
-<section id="import-cycle-discipline">
-<h2>Import-cycle discipline<a class="headerlink" href="#import-cycle-discipline" title="Link to this heading">¶</a></h2>
-<p>The registry may call into <code class="docutils literal notranslate"><span class="pre">llm_factory</span></code> (lazily, or via an injected
-callable), but <code class="docutils literal notranslate"><span class="pre">llm_factory</span></code> NEVER imports this module. That keeps the
-dependency arrow one-directional (registry → factory) so there is no cycle.</p>
-</section>
-<section id="provider-stays-env-driven">
-<h2>Provider stays env-driven<a class="headerlink" href="#provider-stays-env-driven" title="Link to this heading">¶</a></h2>
-<p>A <a class="reference internal" href="#psweep.config.model_registry.ModelDefinition" title="psweep.config.model_registry.ModelDefinition"><code class="xref py py-class docutils literal notranslate"><span class="pre">ModelDefinition</span></code></a> may carry a <em>declared</em> <code class="docutils literal notranslate"><span class="pre">provider</span></code> hint (from a
-long-form config entry), but the runtime provider and credentials always come
-from <code class="xref py py-func docutils literal notranslate"><span class="pre">resolve_llm_kwargs()</span></code>, which reads <code class="docutils literal notranslate"><span class="pre">llm_config['provider']</span></code> (the
-environment-derived value). The registry never sniffs a provider from a model
-name for credential purposes.</p>
-</section>
+<p>Resolve supported string aliases through the shared LLM factory.</p>
+<p>The strict loader accepts <code class="docutils literal notranslate"><span class="pre">models:</span> <span class="pre">{alias:</span> <span class="pre">model-name}</span></code> only. Context
+windows remain a separate model-name map passed directly to LLM clients,
+not folded into aliases. The factory owns provider and credentials for
+all callers, including QA/QC.</p>
 <section id="exceptions">
 <h2>Exceptions<a class="headerlink" href="#exceptions" title="Link to this heading">¶</a></h2>
 <div class="table-wrapper autosummary longtable docutils container">
 <table class="autosummary longtable docutils align-default">
 <tbody>
 <tr class="row-odd"><td><p><a class="reference internal" href="#psweep.config.model_registry.ModelRegistryError" title="psweep.config.model_registry.ModelRegistryError"><code class="xref py py-obj docutils literal notranslate"><span class="pre">ModelRegistryError</span></code></a></p></td>
-<td><p>Raised when a model registry cannot be built or validated.</p></td>
+<td><p>Report invalid aliases or references at the loader boundary.</p></td>
 </tr>
 </tbody>
 </table>
@@ -402,10 +379,10 @@ name for credential purposes.</p>
 <table class="autosummary longtable docutils align-default">
 <tbody>
 <tr class="row-odd"><td><p><a class="reference internal" href="#psweep.config.model_registry.ModelDefinition" title="psweep.config.model_registry.ModelDefinition"><code class="xref py py-obj docutils literal notranslate"><span class="pre">ModelDefinition</span></code></a></p></td>
-<td><p>A fully normalized model tier — immutable after normalization.</p></td>
+<td><p>Identify a reference and its concrete client model.</p></td>
 </tr>
 <tr class="row-even"><td><p><a class="reference internal" href="#psweep.config.model_registry.ModelRegistry" title="psweep.config.model_registry.ModelRegistry"><code class="xref py py-obj docutils literal notranslate"><span class="pre">ModelRegistry</span></code></a></p></td>
-<td><p>Resolve model tier references to <a class="reference internal" href="#psweep.config.model_registry.ModelDefinition" title="psweep.config.model_registry.ModelDefinition"><code class="xref py py-class docutils literal notranslate"><span class="pre">ModelDefinition</span></code></a> objects.</p></td>
+<td><p>Resolve aliases and validate single/multi-model references.</p></td>
 </tr>
 </tbody>
 </table>
@@ -417,142 +394,49 @@ name for credential purposes.</p>
 <dt class="sig sig-object py" id="psweep.config.model_registry.ModelRegistryError">
 <span class="property"><span class="k"><span class="pre">exception</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">psweep.config.model_registry.</span></span><span class="sig-name descname"><span class="pre">ModelRegistryError</span></span><a class="headerlink" href="#psweep.config.model_registry.ModelRegistryError" title="Link to this definition">¶</a></dt>
 <dd><p>Bases: <code class="xref py py-obj docutils literal notranslate"><span class="pre">ValueError</span></code></p>
-<p>Raised when a model registry cannot be built or validated.</p>
-<p>Kept local to this module (rather than reusing <code class="docutils literal notranslate"><span class="pre">RuntimeConfigError</span></code>) so
-the registry has no dependency back on the loader; the loader converts these
-into <code class="docutils literal notranslate"><span class="pre">RuntimeConfigError</span></code> at its boundary.</p>
+<p>Report invalid aliases or references at the loader boundary.</p>
 <p>Initialize self.  See help(type(self)) for accurate signature.</p>
 </dd></dl>
 
 <dl class="py class">
 <dt class="sig sig-object py" id="psweep.config.model_registry.ModelDefinition">
 <span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">psweep.config.model_registry.</span></span><span class="sig-name descname"><span class="pre">ModelDefinition</span></span><a class="headerlink" href="#psweep.config.model_registry.ModelDefinition" title="Link to this definition">¶</a></dt>
-<dd><p>A fully normalized model tier — immutable after normalization.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Variables<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>tier</strong> – The tier/alias name this definition was resolved from (e.g. <code class="docutils literal notranslate"><span class="pre">primary</span></code>)
-or the literal model name when the reference was not a defined alias.</p></li>
-<li><p><strong>model</strong> – The concrete model / deployment name passed to the LLM client.</p></li>
-<li><p><strong>provider</strong> – Optional <em>declared</em> provider hint (from a long-form config entry). This
-is metadata only; runtime credentials come from <code class="docutils literal notranslate"><span class="pre">resolve_llm_kwargs</span></code>
-(env-driven). <code class="docutils literal notranslate"><span class="pre">None</span></code> means “use the environment-configured provider”.</p></li>
-<li><p><strong>context_window</strong> – Maximum prompt tokens for this model, or <code class="docutils literal notranslate"><span class="pre">None</span></code> if unknown. Folded in
-from a per-tier <code class="docutils literal notranslate"><span class="pre">context_window</span></code> or the top-level
-<code class="docutils literal notranslate"><span class="pre">model_context_windows</span></code> map at normalization time.</p></li>
-<li><p><strong>params</strong> – Optional extra generation parameters declared in long-form config.
-Frozen semantics: treat as read-only after construction.</p></li>
-</ul>
-</dd>
-</dl>
+<dd><p>Identify a reference and its concrete client model.</p>
 </dd></dl>
 
 <dl class="py class">
 <dt class="sig sig-object py" id="psweep.config.model_registry.ModelRegistry">
-<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">psweep.config.model_registry.</span></span><span class="sig-name descname"><span class="pre">ModelRegistry</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">tiers</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Mapping</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference internal" href="#psweep.config.model_registry.ModelDefinition" title="psweep.config.model_registry.ModelDefinition"><span class="pre">ModelDefinition</span></a><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">defaults</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Mapping</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">str</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">llm_config</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Mapping</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">context_windows</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Mapping</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">int</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">resolve_kwargs</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Callable</span><span class="p"><span class="pre">[</span></span><span class="pre">Ellipsis</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#psweep.config.model_registry.ModelRegistry" title="Link to this definition">¶</a></dt>
-<dd><p>Resolve model tier references to <a class="reference internal" href="#psweep.config.model_registry.ModelDefinition" title="psweep.config.model_registry.ModelDefinition"><code class="xref py py-class docutils literal notranslate"><span class="pre">ModelDefinition</span></code></a> objects.</p>
-<p>The registry is built once per run via <a class="reference internal" href="#psweep.config.model_registry.ModelRegistry.from_config" title="psweep.config.model_registry.ModelRegistry.from_config"><code class="xref py py-meth docutils literal notranslate"><span class="pre">from_config()</span></code></a> (the single
-normalization boundary) and then queried by every LLM-using stage.</p>
-<p>Construct a registry from already-normalized tiers.</p>
-<p>Prefer <a class="reference internal" href="#psweep.config.model_registry.ModelRegistry.from_config" title="psweep.config.model_registry.ModelRegistry.from_config"><code class="xref py py-meth docutils literal notranslate"><span class="pre">from_config()</span></code></a> for building from raw config. Direct
-construction is primarily for tests and internal use.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>tiers</strong> – Alias/tier name -&gt; <a class="reference internal" href="#psweep.config.model_registry.ModelDefinition" title="psweep.config.model_registry.ModelDefinition"><code class="xref py py-class docutils literal notranslate"><span class="pre">ModelDefinition</span></code></a>.</p></li>
-<li><p><strong>defaults</strong> – Optional phase-name -&gt; tier/model default used by
-<a class="reference internal" href="#psweep.config.model_registry.ModelRegistry.resolve_for_phase" title="psweep.config.model_registry.ModelRegistry.resolve_for_phase"><code class="xref py py-meth docutils literal notranslate"><span class="pre">resolve_for_phase()</span></code></a> when a phase supplies no explicit model.</p></li>
-<li><p><strong>llm_config</strong> – Env-derived provider/credentials dict (<code class="docutils literal notranslate"><span class="pre">get_config().llm_config</span></code>).
-May be <code class="docutils literal notranslate"><span class="pre">None</span></code>; the delegated <code class="docutils literal notranslate"><span class="pre">resolve_llm_kwargs</span></code> will lazily
-load the global config in that case.</p></li>
-<li><p><strong>context_windows</strong> – Concrete-model-name -&gt; context window map (the legacy
-<code class="docutils literal notranslate"><span class="pre">model_context_windows</span></code> block). Used to fold a window into
-on-the-fly literal definitions.</p></li>
-<li><p><strong>resolve_kwargs</strong> – Injected <code class="docutils literal notranslate"><span class="pre">resolve_llm_kwargs</span></code>-compatible callable. When <code class="docutils literal notranslate"><span class="pre">None</span></code>,
-it is imported lazily from <code class="docutils literal notranslate"><span class="pre">psweep.extraction.llm_factory</span></code> so this
-module never imports the factory at import time (cycle-safe).</p></li>
-</ul>
-</dd>
-</dl>
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">psweep.config.model_registry.</span></span><span class="sig-name descname"><span class="pre">ModelRegistry</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">tiers</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">collections.abc.Mapping</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference internal" href="#psweep.config.model_registry.ModelDefinition" title="psweep.config.model_registry.ModelDefinition"><span class="pre">ModelDefinition</span></a><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">llm_config</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">collections.abc.Mapping</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#psweep.config.model_registry.ModelRegistry" title="Link to this definition">¶</a></dt>
+<dd><p>Resolve aliases and validate single/multi-model references.</p>
+<p>Store aliases and distinguish omitted/empty credentials.</p>
 <dl class="py method">
 <dt class="sig sig-object py" id="psweep.config.model_registry.ModelRegistry.from_config">
-<span class="property"><span class="k"><span class="pre">classmethod</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">from_config</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">config_dict</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Mapping</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">llm_config</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Mapping</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">resolve_kwargs</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Callable</span><span class="p"><span class="pre">[</span></span><span class="pre">Ellipsis</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#psweep.config.model_registry.ModelRegistry" title="psweep.config.model_registry.ModelRegistry"><span class="pre">ModelRegistry</span></a></span></span><a class="headerlink" href="#psweep.config.model_registry.ModelRegistry.from_config" title="Link to this definition">¶</a></dt>
-<dd><p>Normalize a runtime config dict into a <a class="reference internal" href="#psweep.config.model_registry.ModelRegistry" title="psweep.config.model_registry.ModelRegistry"><code class="xref py py-class docutils literal notranslate"><span class="pre">ModelRegistry</span></code></a>.</p>
-<p>This is the ONE place that understands the raw config shapes:</p>
-<ul class="simple">
-<li><p><code class="docutils literal notranslate"><span class="pre">models:</span> <span class="pre">{primary:</span> <span class="pre">gpt-4.1}</span></code> — string form.</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">models:</span> <span class="pre">{primary:</span> <span class="pre">{model:</span> <span class="pre">gpt-4.1,</span> <span class="pre">provider:</span> <span class="pre">azure,</span>
-<span class="pre">context_window:</span> <span class="pre">200000,</span> <span class="pre">params:</span> <span class="pre">{...}}}</span></code> — long-form dict.</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">model_context_windows:</span> <span class="pre">{gpt-4.1:</span> <span class="pre">200000}</span></code> — legacy side-map folded
-into each matching tier’s <code class="docutils literal notranslate"><span class="pre">context_window</span></code>.</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">model_defaults:</span> <span class="pre">{extraction:</span> <span class="pre">primary}</span></code> — optional per-phase
-defaults (additive; safe to omit).</p></li>
-</ul>
-<p>A missing or empty <code class="docutils literal notranslate"><span class="pre">models</span></code> block yields an empty-tier registry that
-still resolves every reference as a literal model name (backward-compat).</p>
+<span class="property"><span class="k"><span class="pre">classmethod</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">from_config</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">config_dict</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">collections.abc.Mapping</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">llm_config</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">collections.abc.Mapping</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#psweep.config.model_registry.ModelRegistry" title="psweep.config.model_registry.ModelRegistry"><span class="pre">ModelRegistry</span></a></span></span><a class="headerlink" href="#psweep.config.model_registry.ModelRegistry.from_config" title="Link to this definition">¶</a></dt>
+<dd><p>Build from the strict loader’s plain-string alias map.</p>
 </dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="psweep.config.model_registry.ModelRegistry.get_model">
 <span class="sig-name descname"><span class="pre">get_model</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">tier_name</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#psweep.config.model_registry.ModelDefinition" title="psweep.config.model_registry.ModelDefinition"><span class="pre">ModelDefinition</span></a></span></span><a class="headerlink" href="#psweep.config.model_registry.ModelRegistry.get_model" title="Link to this definition">¶</a></dt>
-<dd><p>Resolve one tier/model reference to a <a class="reference internal" href="#psweep.config.model_registry.ModelDefinition" title="psweep.config.model_registry.ModelDefinition"><code class="xref py py-class docutils literal notranslate"><span class="pre">ModelDefinition</span></code></a>.</p>
-<p>Precedence:</p>
-<ol class="arabic simple">
-<li><p><code class="docutils literal notranslate"><span class="pre">tier_name</span></code> matches a defined alias -&gt; that tier’s definition.</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">tier_name</span></code> is any other non-empty string -&gt; a literal model
-definition (with a context window folded in if one is declared).</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">tier_name</span></code> is <code class="docutils literal notranslate"><span class="pre">None</span></code>/empty -&gt; the environment “floor” model.</p></li>
-</ol>
+<dd><p>Resolve an alias, literal, or omitted environment model.</p>
 </dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="psweep.config.model_registry.ModelRegistry.get_models">
-<span class="sig-name descname"><span class="pre">get_models</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">tier_names</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Sequence</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">list</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="#psweep.config.model_registry.ModelDefinition" title="psweep.config.model_registry.ModelDefinition"><span class="pre">ModelDefinition</span></a><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#psweep.config.model_registry.ModelRegistry.get_models" title="Link to this definition">¶</a></dt>
-<dd><p>Resolve a list of references, de-duplicating by concrete model name.</p>
-<p>Order is preserved (first occurrence wins). This is the primitive a
-multi-model consumer (e.g. QA/QC) uses to expand a <code class="docutils literal notranslate"><span class="pre">models:</span></code> list.</p>
-</dd></dl>
-
-<dl class="py method">
-<dt class="sig sig-object py" id="psweep.config.model_registry.ModelRegistry.resolve_for_phase">
-<span class="sig-name descname"><span class="pre">resolve_for_phase</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">phase_name</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">explicit</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#psweep.config.model_registry.ModelDefinition" title="psweep.config.model_registry.ModelDefinition"><span class="pre">ModelDefinition</span></a></span></span><a class="headerlink" href="#psweep.config.model_registry.ModelRegistry.resolve_for_phase" title="Link to this definition">¶</a></dt>
-<dd><p>Resolve the model for a pipeline phase using hybrid precedence.</p>
-<p>Precedence: an <code class="docutils literal notranslate"><span class="pre">explicit</span></code> per-phase reference (the phase’s <code class="docutils literal notranslate"><span class="pre">model:</span></code>
-value) wins; otherwise a registry-level default for <code class="docutils literal notranslate"><span class="pre">phase_name</span></code>;
-otherwise the environment floor.</p>
+<span class="sig-name descname"><span class="pre">get_models</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">tier_names</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">collections.abc.Sequence</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">list</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="#psweep.config.model_registry.ModelDefinition" title="psweep.config.model_registry.ModelDefinition"><span class="pre">ModelDefinition</span></a><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#psweep.config.model_registry.ModelRegistry.get_models" title="Link to this definition">¶</a></dt>
+<dd><p>Resolve in order, deduplicating concrete models.</p>
 </dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="psweep.config.model_registry.ModelRegistry.to_llm_kwargs">
 <span class="sig-name descname"><span class="pre">to_llm_kwargs</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">tier_name</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#psweep.config.model_registry.ModelRegistry.to_llm_kwargs" title="Link to this definition">¶</a></dt>
-<dd><p>Resolve LLM client kwargs for a tier via the single credential path.</p>
-<p>Returns <code class="docutils literal notranslate"><span class="pre">{model,</span> <span class="pre">api_key,</span> <span class="pre">provider,</span> <span class="pre">azure_endpoint,</span> <span class="pre">azure_api_version}</span></code>
-by delegating to <code class="docutils literal notranslate"><span class="pre">resolve_llm_kwargs</span></code>. The concrete provider and
-credentials come from the env-driven <code class="docutils literal notranslate"><span class="pre">llm_config</span></code> — never re-derived
-in the registry.</p>
+<dd><p>Resolve client kwargs through shared credential handling.</p>
 </dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="psweep.config.model_registry.ModelRegistry.validate">
-<span class="sig-name descname"><span class="pre">validate</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">references</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Iterable</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">multi_references</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Iterable</span><span class="p"><span class="pre">[</span></span><span class="pre">tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Sequence</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="headerlink" href="#psweep.config.model_registry.ModelRegistry.validate" title="Link to this definition">¶</a></dt>
-<dd><p>Fail-fast load-time validation.</p>
-<p>Validates, in order:</p>
-<ul class="simple">
-<li><p><strong>Structure</strong> — every tier has a non-empty model, a valid (or absent)
-declared provider, a positive-or-absent context window, and a mapping
-of params.</p></li>
-<li><p><strong>Defaults</strong> — each per-phase default is a non-empty string.</p></li>
-<li><p><strong>References</strong> (single <code class="docutils literal notranslate"><span class="pre">model:</span></code> fields) — each must be a non-empty
-string (both aliases and literals are accepted, so resolvability is
-guaranteed once the value is a valid string).</p></li>
-<li><p><strong>Multi-references</strong> (<code class="docutils literal notranslate"><span class="pre">models:</span></code> lists, e.g. QA/QC) — each must
-resolve to at least <code class="xref py py-data docutils literal notranslate"><span class="pre">MIN_MULTI_MODELS</span></code> distinct models.</p></li>
-</ul>
-<dl class="field-list simple">
-<dt class="field-odd">Raises<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference internal" href="#psweep.config.model_registry.ModelRegistryError" title="psweep.config.model_registry.ModelRegistryError"><strong>ModelRegistryError</strong></a> – With a clear, actionable message on the first violation found.</p>
-</dd>
-</dl>
+<span class="sig-name descname"><span class="pre">validate</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">references</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">collections.abc.Iterable</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">multi_references</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">collections.abc.Iterable</span><span class="p"><span class="pre">[</span></span><span class="pre">tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">collections.abc.Sequence</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="headerlink" href="#psweep.config.model_registry.ModelRegistry.validate" title="Link to this definition">¶</a></dt>
+<dd><p>Validate aliases, references, and distinct-model minimum.</p>
 </dd></dl>
 
 </dd></dl>
@@ -619,8 +503,6 @@ resolve to at least <code class="xref py py-data docutils literal notranslate"><
           <div class="toc-tree">
             <ul>
 <li><a class="reference internal" href="#">psweep.config.model_registry</a><ul>
-<li><a class="reference internal" href="#import-cycle-discipline">Import-cycle discipline</a></li>
-<li><a class="reference internal" href="#provider-stays-env-driven">Provider stays env-driven</a></li>
 <li><a class="reference internal" href="#exceptions">Exceptions</a></li>
 <li><a class="reference internal" href="#classes">Classes</a></li>
 <li><a class="reference internal" href="#module-contents">Module Contents</a><ul>
@@ -630,7 +512,6 @@ resolve to at least <code class="xref py py-data docutils literal notranslate"><
 <li><a class="reference internal" href="#psweep.config.model_registry.ModelRegistry.from_config"><code class="docutils literal notranslate"><span class="pre">ModelRegistry.from_config()</span></code></a></li>
 <li><a class="reference internal" href="#psweep.config.model_registry.ModelRegistry.get_model"><code class="docutils literal notranslate"><span class="pre">ModelRegistry.get_model()</span></code></a></li>
 <li><a class="reference internal" href="#psweep.config.model_registry.ModelRegistry.get_models"><code class="docutils literal notranslate"><span class="pre">ModelRegistry.get_models()</span></code></a></li>
-<li><a class="reference internal" href="#psweep.config.model_registry.ModelRegistry.resolve_for_phase"><code class="docutils literal notranslate"><span class="pre">ModelRegistry.resolve_for_phase()</span></code></a></li>
 <li><a class="reference internal" href="#psweep.config.model_registry.ModelRegistry.to_llm_kwargs"><code class="docutils literal notranslate"><span class="pre">ModelRegistry.to_llm_kwargs()</span></code></a></li>
 <li><a class="reference internal" href="#psweep.config.model_registry.ModelRegistry.validate"><code class="docutils literal notranslate"><span class="pre">ModelRegistry.validate()</span></code></a></li>
 </ul>

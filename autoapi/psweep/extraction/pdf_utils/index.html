@@ -290,6 +290,7 @@
 <li class="toctree-l3 has-children"><a class="reference internal" href="../../utils/index.html">psweep.utils</a><input aria-label="Toggle navigation of psweep.utils" class="toctree-checkbox" id="toctree-checkbox-10" name="toctree-checkbox-10" role="switch" type="checkbox"/><label for="toctree-checkbox-10"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l4"><a class="reference internal" href="../../utils/config/index.html">psweep.utils.config</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../utils/error_taxonomy/index.html">psweep.utils.error_taxonomy</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../utils/file_io/index.html">psweep.utils.file_io</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../utils/item_matcher/index.html">psweep.utils.item_matcher</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../utils/logger/index.html">psweep.utils.logger</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../utils/model_pricing/index.html">psweep.utils.model_pricing</a></li>
@@ -355,17 +356,20 @@
         <article role="main" id="furo-main-content">
           <section id="module-psweep.extraction.pdf_utils">
 <span id="psweep-extraction-pdf-utils"></span><h1>psweep.extraction.pdf_utils<a class="headerlink" href="#module-psweep.extraction.pdf_utils" title="Link to this heading">¶</a></h1>
-<p>PDF extraction utilities using LLMs.</p>
+<p>PDF text extraction with native parsers and scoped OCR fallback.</p>
 <section id="functions">
 <h2>Functions<a class="headerlink" href="#functions" title="Link to this heading">¶</a></h2>
 <div class="table-wrapper autosummary longtable docutils container">
 <table class="autosummary longtable docutils align-default">
 <tbody>
 <tr class="row-odd"><td><p><a class="reference internal" href="#psweep.extraction.pdf_utils.extract_pages_text" title="psweep.extraction.pdf_utils.extract_pages_text"><code class="xref py py-obj docutils literal notranslate"><span class="pre">extract_pages_text</span></code></a>(→ list[str])</p></td>
-<td><p>Return the plain text of each page as a list (index 0 = page 1).</p></td>
+<td><p>Return plain text per page (index 0 = page 1), best-effort.</p></td>
 </tr>
 <tr class="row-even"><td><p><a class="reference internal" href="#psweep.extraction.pdf_utils.extract_text_from_pdf" title="psweep.extraction.pdf_utils.extract_text_from_pdf"><code class="xref py py-obj docutils literal notranslate"><span class="pre">extract_text_from_pdf</span></code></a>(pdf_path[, page_range, ...])</p></td>
-<td><p>Extract text from a PDF file with adaptive method selection.</p></td>
+<td><p>Extract selected pages with native, pypdf, then OCR fallbacks.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#psweep.extraction.pdf_utils.validate_pdf_scope" title="psweep.extraction.pdf_utils.validate_pdf_scope"><code class="xref py py-obj docutils literal notranslate"><span class="pre">validate_pdf_scope</span></code></a>(→ tuple[int, int])</p></td>
+<td><p>Check actual PDF bounds without parsing text or starting OCR.</p></td>
 </tr>
 </tbody>
 </table>
@@ -376,40 +380,25 @@
 <dl class="py function">
 <dt class="sig sig-object py" id="psweep.extraction.pdf_utils.extract_pages_text">
 <span class="sig-prename descclassname"><span class="pre">psweep.extraction.pdf_utils.</span></span><span class="sig-name descname"><span class="pre">extract_pages_text</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">pdf_path</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">pathlib.Path</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">list</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#psweep.extraction.pdf_utils.extract_pages_text" title="Link to this definition">¶</a></dt>
-<dd><p>Return the plain text of each page as a list (index 0 = page 1).</p>
-<p>Used by page targeting to score/locate the pages that hold a target section
-without loading the whole document into the extraction context. Best-effort:
-returns an empty list if PyMuPDF is unavailable or the file can’t be opened.</p>
+<dd><p>Return plain text per page (index 0 = page 1), best-effort.</p>
 </dd></dl>
 
 <dl class="py function">
 <dt class="sig sig-object py" id="psweep.extraction.pdf_utils.extract_text_from_pdf">
 <span class="sig-prename descclassname"><span class="pre">psweep.extraction.pdf_utils.</span></span><span class="sig-name descname"><span class="pre">extract_text_from_pdf</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">pdf_path</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">pathlib.Path</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">page_range</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">tuple</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">return_meta</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ocr_corrections</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">list</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#psweep.extraction.pdf_utils.extract_text_from_pdf" title="Link to this definition">¶</a></dt>
-<dd><p>Extract text from a PDF file with adaptive method selection.</p>
-<p>Strategy:</p>
-<ol class="arabic simple">
-<li><p>Use PyMuPDF as the primary extractor - most reliable</p></li>
-<li><p>Fall back to pypdf when PyMuPDF is unavailable or yields no text</p></li>
-<li><p>OCR fallback (Tesseract via PyMuPDF) for image-based PDFs</p></li>
-</ol>
-<p>This ensures optimal extraction method is used based on PDF characteristics.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>pdf_path</strong> (<em>Path</em>) – Path to the PDF file</p></li>
-<li><p><strong>page_range</strong> (<em>Optional</em><em>[</em><em>tuple</em><em>]</em>) – Optional tuple (start_page, end_page) to extract only specific pages (1-indexed)</p></li>
-<li><p><strong>return_meta</strong> (<em>bool</em>) – If True, return <code class="docutils literal notranslate"><span class="pre">(text,</span> <span class="pre">{&quot;used_ocr&quot;:</span> <span class="pre">bool})</span></code> so callers
-can decide whether the (expensive) OCR path ran — used to cache only
-OCR results and re-extract cheap native PDFs fresh.</p></li>
-</ul>
-</dd>
-<dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>Extracted text string, or <code class="docutils literal notranslate"><span class="pre">(text,</span> <span class="pre">meta)</span></code> when <code class="docutils literal notranslate"><span class="pre">return_meta</span></code> is True.</p>
-</dd>
-<dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p>str or tuple</p>
-</dd>
-</dl>
+<dd><p>Extract selected pages with native, pypdf, then OCR fallbacks.</p>
+<p>Bounds are 1-indexed and inclusive. Overlapping bounds are clamped;
+invalid scopes raise ValueError. Every parser honors the scope.
+<code class="docutils literal notranslate"><span class="pre">return_meta</span></code> always returns a pair, including on failure.
+Metadata describes actual <code class="docutils literal notranslate"><span class="pre">page_range</span></code>, total <code class="docutils literal notranslate"><span class="pre">page_count</span></code>, and
+<code class="docutils literal notranslate"><span class="pre">extracted_pages</span></code> (OCR can skip failed pages). OCR also returns
+<code class="docutils literal notranslate"><span class="pre">raw_ocr_text</span></code> for caching before applying current corrections.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="psweep.extraction.pdf_utils.validate_pdf_scope">
+<span class="sig-prename descclassname"><span class="pre">psweep.extraction.pdf_utils.</span></span><span class="sig-name descname"><span class="pre">validate_pdf_scope</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">pdf_path</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">pathlib.Path</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">page_range</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">tuple</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">int</span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#psweep.extraction.pdf_utils.validate_pdf_scope" title="Link to this definition">¶</a></dt>
+<dd><p>Check actual PDF bounds without parsing text or starting OCR.</p>
 </dd></dl>
 
 </section>
@@ -478,6 +467,7 @@ OCR results and re-extract cheap native PDFs fresh.</p></li>
 <li><a class="reference internal" href="#module-contents">Module Contents</a><ul>
 <li><a class="reference internal" href="#psweep.extraction.pdf_utils.extract_pages_text"><code class="docutils literal notranslate"><span class="pre">extract_pages_text()</span></code></a></li>
 <li><a class="reference internal" href="#psweep.extraction.pdf_utils.extract_text_from_pdf"><code class="docutils literal notranslate"><span class="pre">extract_text_from_pdf()</span></code></a></li>
+<li><a class="reference internal" href="#psweep.extraction.pdf_utils.validate_pdf_scope"><code class="docutils literal notranslate"><span class="pre">validate_pdf_scope()</span></code></a></li>
 </ul>
 </li>
 </ul>

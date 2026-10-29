@@ -17,6 +17,7 @@ Submodules
 
    /autoapi/psweep/utils/config/index
    /autoapi/psweep/utils/error_taxonomy/index
+   /autoapi/psweep/utils/file_io/index
    /autoapi/psweep/utils/item_matcher/index
    /autoapi/psweep/utils/logger/index
    /autoapi/psweep/utils/model_pricing/index

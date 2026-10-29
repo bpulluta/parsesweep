@@ -19,10 +19,10 @@ psweep.extraction.page_locator
    2. LLM confirm — send a compact index (page number + snippet) of just the
       candidate pages and ask which contiguous range contains the section.
 
-   Results are cached in a ``.pages/<stem>.json`` sidecar next to the file (keyed
-   on the file's size/mtime and the section description) so the LLM call happens
-   once. Everything is best-effort: on any failure ``locate`` returns ``None`` and
-   the caller falls back to full-document extraction.
+   Results are cached in a ``.pages/<stem>.json`` sidecar, verified against
+   source SHA-256 and resolved model/effective settings. Cached bounds and
+   caps are checked without parsing. ``locate`` returns ``None`` on failure
+   so the caller can fall back to full-document extraction.
 
 
 
@@ -37,7 +37,7 @@ Classes
 Module Contents
 ---------------
 
-.. py:class:: PageLocator(section_description: str, *, model: str | None = None, models: dict[str, str] | None = None, default_model: str | None = None, trigger_chars: int = DEFAULT_PAGE_TRIGGER_CHARS, max_selected_pages: int = DEFAULT_MAX_SELECTED_PAGES, keywords: list[str] | None = None, context_pages: int = 1, snippet_chars: int = 600)
+.. py:class:: PageLocator(section_description: str, *, model: str | None = None, models: dict[str, str] | None = None, default_model: str | None = None, llm_config: dict | None = None, trigger_chars: int = DEFAULT_PAGE_TRIGGER_CHARS, max_selected_pages: int = DEFAULT_MAX_SELECTED_PAGES, keywords: list[str] | None = None, context_pages: int = 1, snippet_chars: int = 600)
 
    Bases: :py:obj:`_BaseLocator`
 
@@ -48,6 +48,12 @@ Module Contents
    .. py:method:: locate(pdf_path: str | pathlib.Path, pages: list[str] | None = None) -> tuple[int, int] | None
 
       Return the 1-indexed inclusive page range for the section, or None.
+
+
+
+   .. py:method:: locate_cached(pdf_path: str | pathlib.Path) -> tuple[int, int] | None
+
+      Return a verified range without parsing or client setup.
 
 
 

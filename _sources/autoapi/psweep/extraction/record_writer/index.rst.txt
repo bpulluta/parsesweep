@@ -5,7 +5,7 @@ psweep.extraction.record_writer
 
 .. autoapi-nested-parse::
 
-   Canonical extraction-record writer shared by CLI and pipeline APIs.
+   Canonical extraction-record writer for the shared workflow.
 
 
 
@@ -23,23 +23,23 @@ Functions
 Module Contents
 ---------------
 
-.. py:function:: build_extraction_record(*, doc_path: pathlib.Path, result: Any, model: str, provider: str | None, runtime_artifact: Optional[Dict[str, Any]] = None, run_id: Optional[str] = None, schema_id: Optional[str] = None, identifier_fields: Optional[Sequence[str]] = None) -> tuple[Dict[str, Any], int]
+.. py:function:: build_extraction_record(*, doc_path: pathlib.Path, result: Any, model: str, provider: str | None, runtime_artifact: dict[str, Any] | None = None, run_id: str | None = None, schema_id: str | None = None, schema_metadata: psweep.utils.schema_metadata.SchemaMetadata, input_fingerprint: str | None = None) -> tuple[dict[str, Any], int]
 
-   Build the canonical ParseSweep extraction-record payload.
+   Build a source-identified record using domain schema metadata.
 
 
-.. py:function:: build_lineage(*, runtime_artifact: Optional[Dict[str, Any]], run_id: Optional[str], model: str, provider: str | None, schema_id: Optional[str], default_run_fragment: str, extracted_at: str) -> Dict[str, Any]
+.. py:function:: build_lineage(*, runtime_artifact: dict[str, Any] | None, run_id: str | None, model: str, provider: str | None, schema_id: str | None, default_run_fragment: str, extracted_at: str) -> dict[str, Any]
 
    Build canonical lineage metadata for extraction records.
 
 
-.. py:function:: record_extraction_scope(result: Any, *, page_range: Optional[tuple[int, int]] = None, section_filtered: bool = False) -> None
+.. py:function:: record_extraction_scope(result: Any, *, page_range: tuple[int, int] | None = None, section_filtered: bool = False, parser_scope: dict | None = None) -> None
 
-   Retain selected-input limitations alongside the canonical result.
+   Retain selected-input limitations in the canonical result.
 
 
-.. py:function:: write_extraction_record(output_path: pathlib.Path, *, doc_path: pathlib.Path, result: Any, model: str, provider: str | None, runtime_artifact: Optional[Dict[str, Any]] = None, run_id: Optional[str] = None, schema_id: Optional[str] = None, identifier_fields: Optional[Sequence[str]] = None) -> int
+.. py:function:: write_extraction_record(output_path: pathlib.Path, *, doc_path: pathlib.Path, result: Any, model: str, provider: str | None, runtime_artifact: dict[str, Any] | None = None, run_id: str | None = None, schema_id: str | None = None, schema_metadata: psweep.utils.schema_metadata.SchemaMetadata, input_fingerprint: str | None = None, record_validator: Any = None) -> int
 
-   Write a canonical extraction record and return the extracted item count.
+   Publish a record atomically and return its item count.
 
 

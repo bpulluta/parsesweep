@@ -290,6 +290,7 @@
 <li class="toctree-l3 has-children"><a class="reference internal" href="../../utils/index.html">psweep.utils</a><input aria-label="Toggle navigation of psweep.utils" class="toctree-checkbox" id="toctree-checkbox-10" name="toctree-checkbox-10" role="switch" type="checkbox"/><label for="toctree-checkbox-10"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l4"><a class="reference internal" href="../../utils/config/index.html">psweep.utils.config</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../utils/error_taxonomy/index.html">psweep.utils.error_taxonomy</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../utils/file_io/index.html">psweep.utils.file_io</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../utils/item_matcher/index.html">psweep.utils.item_matcher</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../utils/logger/index.html">psweep.utils.logger</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../utils/model_pricing/index.html">psweep.utils.model_pricing</a></li>
@@ -367,6 +368,9 @@
 <tr class="row-even"><td><p><a class="reference internal" href="#psweep.extraction.schema_utils.load_schema" title="psweep.extraction.schema_utils.load_schema"><code class="xref py py-obj docutils literal notranslate"><span class="pre">load_schema</span></code></a>(→ Dict[str, Any])</p></td>
 <td><p>Load JSON schema from file.</p></td>
 </tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#psweep.extraction.schema_utils.record_validator" title="psweep.extraction.schema_utils.record_validator"><code class="xref py py-obj docutils literal notranslate"><span class="pre">record_validator</span></code></a>()</p></td>
+<td><p>Load the canonical record-envelope validator once per process.</p></td>
+</tr>
 </tbody>
 </table>
 </div>
@@ -397,6 +401,12 @@
 <dd class="field-even"><p><a class="reference internal" href="../../exceptions/index.html#psweep.exceptions.ConfigurationError" title="psweep.exceptions.ConfigurationError"><strong>ConfigurationError</strong></a> – If the file is missing or not valid JSON</p>
 </dd>
 </dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="psweep.extraction.schema_utils.record_validator">
+<span class="sig-prename descclassname"><span class="pre">psweep.extraction.schema_utils.</span></span><span class="sig-name descname"><span class="pre">record_validator</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#psweep.extraction.schema_utils.record_validator" title="Link to this definition">¶</a></dt>
+<dd><p>Load the canonical record-envelope validator once per process.</p>
 </dd></dl>
 
 </section>
@@ -465,6 +475,7 @@
 <li><a class="reference internal" href="#module-contents">Module Contents</a><ul>
 <li><a class="reference internal" href="#psweep.extraction.schema_utils.build_schema_validator"><code class="docutils literal notranslate"><span class="pre">build_schema_validator()</span></code></a></li>
 <li><a class="reference internal" href="#psweep.extraction.schema_utils.load_schema"><code class="docutils literal notranslate"><span class="pre">load_schema()</span></code></a></li>
+<li><a class="reference internal" href="#psweep.extraction.schema_utils.record_validator"><code class="docutils literal notranslate"><span class="pre">record_validator()</span></code></a></li>
 </ul>
 </li>
 </ul>

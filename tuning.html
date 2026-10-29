@@ -290,6 +290,7 @@
 <li class="toctree-l3 has-children"><a class="reference internal" href="autoapi/psweep/utils/index.html">psweep.utils</a><input aria-label="Toggle navigation of psweep.utils" class="toctree-checkbox" id="toctree-checkbox-10" name="toctree-checkbox-10" role="switch" type="checkbox"/><label for="toctree-checkbox-10"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/utils/config/index.html">psweep.utils.config</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/utils/error_taxonomy/index.html">psweep.utils.error_taxonomy</a></li>
+<li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/utils/file_io/index.html">psweep.utils.file_io</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/utils/item_matcher/index.html">psweep.utils.item_matcher</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/utils/logger/index.html">psweep.utils.logger</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/utils/model_pricing/index.html">psweep.utils.model_pricing</a></li>
@@ -428,9 +429,10 @@ per stage:</p>
 <li><p><strong>Limit a test run</strong> with <code class="docutils literal notranslate"><span class="pre">-n</span> <span class="pre">5</span></code> on <code class="docutils literal notranslate"><span class="pre">extract</span></code> to iterate quickly before a
 full pass.</p></li>
 </ul>
-<p>Cached work is reused automatically: <code class="docutils literal notranslate"><span class="pre">extract</span></code> skips documents that already
-have output JSON. Pass <code class="docutils literal notranslate"><span class="pre">--fresh</span></code> to force a re-run after you change the schema,
-model tier, or page settings.</p>
+<p>Validated work is reused automatically: matching source/schema/settings and
+record-byte evidence skip model calls. Source, model, scope, or schema changes
+invalidate reuse; malformed or old unverifiable JSON is re-extracted. <code class="docutils literal notranslate"><span class="pre">--fresh</span></code>
+forces a whole-output reset after preflight, rebuilding only the selected subset.</p>
 </section>
 </section>
 <section id="compilation">
@@ -543,8 +545,11 @@ artifacts, and old v1 entries cause reacquisition; opt-in search caching is
 separate. Publication locks reject concurrent corpus writers; journal recovery
 restores interrupted discovery curated/provenance swaps on the next writer.
 Do not treat that small protocol as a general pipeline transaction.</p>
-<p>Extraction skips existing output JSON by default. <code class="docutils literal notranslate"><span class="pre">--fresh</span></code> bypasses discovery
-checkpoints and enabled search cache, and re-extracts existing JSON:</p>
+<p>Extraction validates reuse evidence instead of trusting JSON existence.
+<code class="docutils literal notranslate"><span class="pre">extract</span> <span class="pre">--fresh</span></code> resets its entire resolved output after successful preflight;
+with a limit/filter, only that subset is rebuilt. Invalid input/schema/scope,
+missing required credentials, or overlapping paths preserve existing output.
+<code class="docutils literal notranslate"><span class="pre">run</span> <span class="pre">--fresh</span></code> also bypasses discovery checkpoints and enabled search cache:</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>pixi<span class="w"> </span>run<span class="w"> </span>psweep<span class="w"> </span>extract<span class="w"> </span>--config<span class="w"> </span>config/my_domain/run.yaml<span class="w"> </span>--fresh
 pixi<span class="w"> </span>run<span class="w"> </span>psweep<span class="w"> </span>run<span class="w">     </span>--config<span class="w"> </span>config/my_domain/run.yaml<span class="w"> </span>--fresh
 </pre></div>
@@ -554,9 +559,11 @@ pixi<span class="w"> </span>run<span class="w"> </span>psweep<span class="w"> </
 source/text digests must match; partial or stale pairs are misses, metadata is
 replaced last, and old stem-only caches are not reused. LLM review sidecars use
 <code class="docutils literal notranslate"><span class="pre">.review/&lt;filename&gt;.json</span></code>; curation carries these full-name pairs/sidecars.
-Native extraction, OCR correction rules, and <code class="docutils literal notranslate"><span class="pre">.pages/</span></code> targeting behavior are
-unchanged. Delete <code class="docutils literal notranslate"><span class="pre">.text/</span></code> or <code class="docutils literal notranslate"><span class="pre">.pages/</span></code> for a cold OCR or targeting run; <code class="docutils literal notranslate"><span class="pre">--fresh</span></code>
-is not a new OCR-rule invalidation mechanism.</p>
+Raw OCR is cached before current correction rules are applied, so changing
+rules does not repeat OCR. Old corrected OCR caches are misses. <code class="docutils literal notranslate"><span class="pre">.pages/</span></code> and
+<code class="docutils literal notranslate"><span class="pre">.sections/</span></code> products verify source content and resolved model/settings; full-name
+section pairs also validate their text digest. Delete these directories for a
+cold OCR/targeting run; they are separate from record reuse.</p>
 <p>See the <a class="reference internal" href="config-reference.html"><span class="std std-doc">Configuration Reference</span></a> for the full defaults
 table and the <a class="reference internal" href="commands/index.html"><span class="std std-doc">Command Reference</span></a> for every option.</p>
 </section>

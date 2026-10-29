@@ -5,7 +5,7 @@ psweep.extraction.pdf_utils
 
 .. autoapi-nested-parse::
 
-   PDF extraction utilities using LLMs.
+   PDF text extraction with native parsers and scoped OCR fallback.
 
 
 
@@ -16,6 +16,7 @@ Functions
 
    psweep.extraction.pdf_utils.extract_pages_text
    psweep.extraction.pdf_utils.extract_text_from_pdf
+   psweep.extraction.pdf_utils.validate_pdf_scope
 
 
 Module Contents
@@ -23,35 +24,23 @@ Module Contents
 
 .. py:function:: extract_pages_text(pdf_path: pathlib.Path) -> list[str]
 
-   Return the plain text of each page as a list (index 0 = page 1).
-
-   Used by page targeting to score/locate the pages that hold a target section
-   without loading the whole document into the extraction context. Best-effort:
-   returns an empty list if PyMuPDF is unavailable or the file can't be opened.
+   Return plain text per page (index 0 = page 1), best-effort.
 
 
 .. py:function:: extract_text_from_pdf(pdf_path: pathlib.Path, page_range: Optional[tuple] = None, return_meta: bool = False, ocr_corrections: Optional[list] = None)
 
-   Extract text from a PDF file with adaptive method selection.
+   Extract selected pages with native, pypdf, then OCR fallbacks.
 
-   Strategy:
+   Bounds are 1-indexed and inclusive. Overlapping bounds are clamped;
+   invalid scopes raise ValueError. Every parser honors the scope.
+   ``return_meta`` always returns a pair, including on failure.
+   Metadata describes actual ``page_range``, total ``page_count``, and
+   ``extracted_pages`` (OCR can skip failed pages). OCR also returns
+   ``raw_ocr_text`` for caching before applying current corrections.
 
-   1. Use PyMuPDF as the primary extractor - most reliable
-   2. Fall back to pypdf when PyMuPDF is unavailable or yields no text
-   3. OCR fallback (Tesseract via PyMuPDF) for image-based PDFs
 
-   This ensures optimal extraction method is used based on PDF characteristics.
+.. py:function:: validate_pdf_scope(pdf_path: pathlib.Path, page_range: tuple) -> tuple[int, int]
 
-   :param pdf_path: Path to the PDF file
-   :type pdf_path: Path
-   :param page_range: Optional tuple (start_page, end_page) to extract only specific pages (1-indexed)
-   :type page_range: Optional[tuple]
-   :param return_meta: If True, return ``(text, {"used_ocr": bool})`` so callers
-                       can decide whether the (expensive) OCR path ran — used to cache only
-                       OCR results and re-extract cheap native PDFs fresh.
-   :type return_meta: bool
-
-   :returns: Extracted text string, or ``(text, meta)`` when ``return_meta`` is True.
-   :rtype: str or tuple
+   Check actual PDF bounds without parsing text or starting OCR.
 
 

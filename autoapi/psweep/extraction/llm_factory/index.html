@@ -290,6 +290,7 @@
 <li class="toctree-l3 has-children"><a class="reference internal" href="../../utils/index.html">psweep.utils</a><input aria-label="Toggle navigation of psweep.utils" class="toctree-checkbox" id="toctree-checkbox-10" name="toctree-checkbox-10" role="switch" type="checkbox"/><label for="toctree-checkbox-10"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l4"><a class="reference internal" href="../../utils/config/index.html">psweep.utils.config</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../utils/error_taxonomy/index.html">psweep.utils.error_taxonomy</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../utils/file_io/index.html">psweep.utils.file_io</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../utils/item_matcher/index.html">psweep.utils.item_matcher</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../utils/logger/index.html">psweep.utils.logger</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../utils/model_pricing/index.html">psweep.utils.model_pricing</a></li>
@@ -355,64 +356,35 @@
         <article role="main" id="furo-main-content">
           <section id="module-psweep.extraction.llm_factory">
 <span id="psweep-extraction-llm-factory"></span><h1>psweep.extraction.llm_factory<a class="headerlink" href="#module-psweep.extraction.llm_factory" title="Link to this heading">¶</a></h1>
-<p>Unified per-stage LLM model resolver / factory.</p>
-<p>One place that turns a stage’s <code class="docutils literal notranslate"><span class="pre">model</span></code> config value into a configured
-<code class="docutils literal notranslate"><span class="pre">LLMClient</span></code>. Every LLM-using stage (extraction, document review, page
-targeting, synthesis) routes through here, so each stage can be pointed at a
-different model for cost/quality control — across any provider.</p>
-<p>The simplest, recommended usage is to name the model directly on each stage:</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">processing</span><span class="p">:</span>
-  <span class="n">model</span><span class="p">:</span> <span class="n">gpt</span><span class="o">-</span><span class="mi">5</span>                 <span class="c1"># extraction model</span>
-<span class="n">discovery</span><span class="p">:</span>
-  <span class="n">document_review</span><span class="p">:</span>
-    <span class="n">model</span><span class="p">:</span> <span class="n">gpt</span><span class="o">-</span><span class="mi">4</span><span class="n">o</span><span class="o">-</span><span class="n">mini</span>         <span class="c1"># a cheaper model for bulk curation</span>
-</pre></div>
-</div>
-<p>Optionally, define reusable named aliases once in a top-level <code class="docutils literal notranslate"><span class="pre">models</span></code> block
-and reference an alias wherever a model is expected. The alias names are entirely
-user-chosen (there are no reserved names):</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">models</span><span class="p">:</span>
-  <span class="n">fast</span><span class="p">:</span> <span class="n">gpt</span><span class="o">-</span><span class="mi">4</span><span class="n">o</span><span class="o">-</span><span class="n">mini</span>
-  <span class="n">accurate</span><span class="p">:</span> <span class="n">gpt</span><span class="o">-</span><span class="mi">5</span>
-<span class="n">processing</span><span class="p">:</span>
-  <span class="n">model</span><span class="p">:</span> <span class="n">accurate</span>              <span class="c1"># alias, OR an explicit model string</span>
-</pre></div>
-</div>
-<p>Model-name resolution precedence (<code class="docutils literal notranslate"><span class="pre">resolve_model_name</span></code>):</p>
-<ol class="arabic simple">
-<li><p><code class="docutils literal notranslate"><span class="pre">stage_value</span></code> — an alias lookup (<code class="docutils literal notranslate"><span class="pre">stage_value</span> <span class="pre">in</span> <span class="pre">models</span></code>) when it matches
-a defined alias, otherwise treated as a literal model name.</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">default_model</span></code> — an explicit fallback the caller supplies (rarely needed).</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">llm_config[&quot;model&quot;]</span></code> — the env/<code class="docutils literal notranslate"><span class="pre">.env</span></code>-derived default.</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">DEFAULT_MODEL</span></code> (<code class="docutils literal notranslate"><span class="pre">&quot;gpt-4o-mini&quot;</span></code>) as the final floor.</p></li>
-</ol>
-<section id="credential-threading-the-one-honest-limitation">
-<h2>Credential threading &amp; the one honest limitation<a class="headerlink" href="#credential-threading-the-one-honest-limitation" title="Link to this heading">¶</a></h2>
-<p><code class="docutils literal notranslate"><span class="pre">get_config().llm_config</span></code> holds credentials for exactly ONE provider (the one
-configured in the environment). Choosing different models of the SAME provider
-(e.g. two Azure deployments, or two OpenAI models) is fully supported and is the
-intended use. If a stage’s model names a <em>different</em> provider than the configured
-one (e.g. a <code class="docutils literal notranslate"><span class="pre">claude-*</span></code> model while the run is configured for Azure), its API
-key can only come from the ambient environment; when that key is absent,
-<code class="docutils literal notranslate"><span class="pre">api_key</span></code> is <code class="docutils literal notranslate"><span class="pre">None</span></code> and LiteLLM will error at call time. Cross-provider
-per-stage selection is therefore best-effort, not guaranteed.</p>
-</section>
+<p>Resolve model names, providers, and credentials for every LLM stage.</p>
+<p>Extraction, discovery review, page targeting, QA/QC, and synthesis share
+this boundary. Stage values can be literal model names or string aliases
+from the top-level <code class="docutils literal notranslate"><span class="pre">models</span></code> map. Alias names are user-chosen.</p>
+<p>Model precedence is stage value (alias or literal), explicit caller
+fallback, environment-configured model, then <code class="docutils literal notranslate"><span class="pre">DEFAULT_MODEL</span></code>.</p>
+<p>An explicit supported provider wins over name-based detection. <code class="docutils literal notranslate"><span class="pre">None</span></code>
+and <code class="docutils literal notranslate"><span class="pre">&quot;auto&quot;</span></code> retain configured/heuristic resolution, including custom
+Azure deployment names. Credentials come from the configured provider
+when it matches, otherwise only from the target’s ambient environment.
+A missing target key remains <code class="docutils literal notranslate"><span class="pre">None</span></code>, never another provider’s key.</p>
+<p>A configured <code class="docutils literal notranslate"><span class="pre">base_url</span></code> routes all models through that proxy with its
+configured key, regardless of provider override or model name.</p>
 <section id="functions">
 <h2>Functions<a class="headerlink" href="#functions" title="Link to this heading">¶</a></h2>
 <div class="table-wrapper autosummary longtable docutils container">
 <table class="autosummary longtable docutils align-default">
 <tbody>
 <tr class="row-odd"><td><p><a class="reference internal" href="#psweep.extraction.llm_factory.build_llm_client" title="psweep.extraction.llm_factory.build_llm_client"><code class="xref py py-obj docutils literal notranslate"><span class="pre">build_llm_client</span></code></a>(→ Any)</p></td>
-<td><p>Build a configured <code class="docutils literal notranslate"><span class="pre">LLMClient</span></code> for a stage's <code class="docutils literal notranslate"><span class="pre">model</span></code> value.</p></td>
+<td><p>Build a configured LLMClient for a stage's model value.</p></td>
 </tr>
 <tr class="row-even"><td><p><a class="reference internal" href="#psweep.extraction.llm_factory.detect_provider" title="psweep.extraction.llm_factory.detect_provider"><code class="xref py py-obj docutils literal notranslate"><span class="pre">detect_provider</span></code></a>(→ str)</p></td>
-<td><p>Detect an LLM provider from a model name (domain-neutral, best-effort).</p></td>
+<td><p>Detect a provider from ordered model markers, as a fallback only.</p></td>
 </tr>
 <tr class="row-odd"><td><p><a class="reference internal" href="#psweep.extraction.llm_factory.resolve_llm_kwargs" title="psweep.extraction.llm_factory.resolve_llm_kwargs"><code class="xref py py-obj docutils literal notranslate"><span class="pre">resolve_llm_kwargs</span></code></a>(→ dict[str, Any])</p></td>
-<td><p>Resolve the kwargs needed to construct an <code class="docutils literal notranslate"><span class="pre">LLMClient</span></code> for a stage.</p></td>
+<td><p>Resolve LLM client kwargs using one provider/credential boundary.</p></td>
 </tr>
 <tr class="row-even"><td><p><a class="reference internal" href="#psweep.extraction.llm_factory.resolve_model_name" title="psweep.extraction.llm_factory.resolve_model_name"><code class="xref py py-obj docutils literal notranslate"><span class="pre">resolve_model_name</span></code></a>(→ str)</p></td>
-<td><p>Resolve a stage's <code class="docutils literal notranslate"><span class="pre">model</span></code> config value to a concrete model name.</p></td>
+<td><p>Resolve a model alias or literal using shared precedence.</p></td>
 </tr>
 </tbody>
 </table>
@@ -423,40 +395,34 @@ per-stage selection is therefore best-effort, not guaranteed.</p>
 <dl class="py function">
 <dt class="sig sig-object py" id="psweep.extraction.llm_factory.build_llm_client">
 <span class="sig-prename descclassname"><span class="pre">psweep.extraction.llm_factory.</span></span><span class="sig-name descname"><span class="pre">build_llm_client</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">stage_value</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">models</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">str</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">llm_config</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">default_model</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Any</span></span></span><a class="headerlink" href="#psweep.extraction.llm_factory.build_llm_client" title="Link to this definition">¶</a></dt>
-<dd><p>Build a configured <code class="docutils literal notranslate"><span class="pre">LLMClient</span></code> for a stage’s <code class="docutils literal notranslate"><span class="pre">model</span></code> value.</p>
+<dd><p>Build a configured LLMClient for a stage’s model value.</p>
 </dd></dl>
 
 <dl class="py function">
 <dt class="sig sig-object py" id="psweep.extraction.llm_factory.detect_provider">
 <span class="sig-prename descclassname"><span class="pre">psweep.extraction.llm_factory.</span></span><span class="sig-name descname"><span class="pre">detect_provider</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">str</span></span></span><a class="headerlink" href="#psweep.extraction.llm_factory.detect_provider" title="Link to this definition">¶</a></dt>
-<dd><p>Detect an LLM provider from a model name (domain-neutral, best-effort).</p>
-<p>This is the single source of truth for name-based provider detection; both
-the factory and <code class="docutils literal notranslate"><span class="pre">LLMClient</span></code> use it, so there is only one place that maps
-model names to providers.</p>
-<p>Detection is heuristic and only a <em>fallback</em>: the pipeline normally sets the
-provider explicitly (<code class="docutils literal notranslate"><span class="pre">get_config().llm_config['provider']</span></code> is always
-populated from the environment). Azure custom deployment names are arbitrary
-and carry no reliable marker, so the correct signal for Azure is an explicit
-<code class="docutils literal notranslate"><span class="pre">provider:</span> <span class="pre">azure</span></code> — not a name sniff. Only the canonical <code class="docutils literal notranslate"><span class="pre">azure/</span></code> prefix
-is treated as an Azure marker here.</p>
+<dd><p>Detect a provider from ordered model markers, as a fallback only.</p>
+<p>Both the factory and LLMClient use this heuristic. Azure deployments
+have arbitrary names, so explicit provider/configuration wins over
+detection; only <code class="docutils literal notranslate"><span class="pre">azure/</span></code> identifies Azure by name.</p>
 </dd></dl>
 
 <dl class="py function">
 <dt class="sig sig-object py" id="psweep.extraction.llm_factory.resolve_llm_kwargs">
-<span class="sig-prename descclassname"><span class="pre">psweep.extraction.llm_factory.</span></span><span class="sig-name descname"><span class="pre">resolve_llm_kwargs</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">stage_value</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">models</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">str</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">llm_config</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">default_model</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#psweep.extraction.llm_factory.resolve_llm_kwargs" title="Link to this definition">¶</a></dt>
-<dd><p>Resolve the kwargs needed to construct an <code class="docutils literal notranslate"><span class="pre">LLMClient</span></code> for a stage.</p>
-<p>Returns <code class="docutils literal notranslate"><span class="pre">{model,</span> <span class="pre">api_key,</span> <span class="pre">provider,</span> <span class="pre">base_url?,</span> <span class="pre">azure_endpoint?,</span> <span class="pre">azure_api_version?}</span></code>.</p>
-<p>When <code class="docutils literal notranslate"><span class="pre">LLM_BASE_URL</span></code> is configured, all calls are routed through that
-endpoint regardless of model name. The caller supplies model names exactly
-as the endpoint advertises them.</p>
+<span class="sig-prename descclassname"><span class="pre">psweep.extraction.llm_factory.</span></span><span class="sig-name descname"><span class="pre">resolve_llm_kwargs</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">stage_value</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">models</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">str</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">llm_config</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">default_model</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">provider</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#psweep.extraction.llm_factory.resolve_llm_kwargs" title="Link to this definition">¶</a></dt>
+<dd><p>Resolve LLM client kwargs using one provider/credential boundary.</p>
+<p>A supported explicit <code class="docutils literal notranslate"><span class="pre">provider</span></code> overrides name detection. <code class="docutils literal notranslate"><span class="pre">None</span></code>
+or <code class="docutils literal notranslate"><span class="pre">&quot;auto&quot;</span></code> retains configured/heuristic resolution. Credentials
+always belong to the target provider, never another configured one.</p>
+<p>A configured <code class="docutils literal notranslate"><span class="pre">base_url</span></code> retains proxy routing and its configured
+key regardless of provider/model name. Azure endpoint/version apply
+only to direct Azure routing.</p>
 </dd></dl>
 
 <dl class="py function">
 <dt class="sig sig-object py" id="psweep.extraction.llm_factory.resolve_model_name">
 <span class="sig-prename descclassname"><span class="pre">psweep.extraction.llm_factory.</span></span><span class="sig-name descname"><span class="pre">resolve_model_name</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">stage_value</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">models</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">str</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">llm_config</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">default_model</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">str</span></span></span><a class="headerlink" href="#psweep.extraction.llm_factory.resolve_model_name" title="Link to this definition">¶</a></dt>
-<dd><p>Resolve a stage’s <code class="docutils literal notranslate"><span class="pre">model</span></code> config value to a concrete model name.</p>
-<p><code class="docutils literal notranslate"><span class="pre">stage_value</span></code> may be a named alias (a key in <code class="docutils literal notranslate"><span class="pre">models</span></code>) or an explicit
-model string. See the module docstring for the full precedence chain.</p>
+<dd><p>Resolve a model alias or literal using shared precedence.</p>
 </dd></dl>
 
 </section>
@@ -521,7 +487,6 @@ model string. See the module docstring for the full precedence chain.</p>
           <div class="toc-tree">
             <ul>
 <li><a class="reference internal" href="#">psweep.extraction.llm_factory</a><ul>
-<li><a class="reference internal" href="#credential-threading-the-one-honest-limitation">Credential threading &amp; the one honest limitation</a></li>
 <li><a class="reference internal" href="#functions">Functions</a></li>
 <li><a class="reference internal" href="#module-contents">Module Contents</a><ul>
 <li><a class="reference internal" href="#psweep.extraction.llm_factory.build_llm_client"><code class="docutils literal notranslate"><span class="pre">build_llm_client()</span></code></a></li>

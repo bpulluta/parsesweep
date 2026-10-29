@@ -35,8 +35,6 @@ Functions
 .. autoapisummary::
 
    psweep.discovery.publication.artifact_sha256
-   psweep.discovery.publication.atomic_json
-   psweep.discovery.publication.atomic_write
    psweep.discovery.publication.checkpoint_artifacts_valid
    psweep.discovery.publication.csv_content
    psweep.discovery.publication.discovery_publication
@@ -75,17 +73,6 @@ Module Contents
 
    Hash a regular publication artifact without following a
    symlink.
-
-
-.. py:function:: atomic_json(path: pathlib.Path, payload: object, *, prefix: str | None = None) -> None
-
-   Atomically publish finite JSON through a same-directory file.
-
-
-.. py:function:: atomic_write(path: pathlib.Path, content: str | bytes, *, prefix: str | None = None) -> None
-
-   Replace a UTF-8 or binary file after flushing its same-
-   directory staging file.
 
 
 .. py:function:: checkpoint_artifacts_valid(entry: collections.abc.Mapping[str, object]) -> bool

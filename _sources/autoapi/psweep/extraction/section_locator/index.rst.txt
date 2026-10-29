@@ -18,9 +18,9 @@ psweep.extraction.section_locator
    2. LLM confirm — send a compact index (heading + snippet) of candidate
       chunks and ask which ones contain the described section.
 
-   Results are cached in a ``.sections/<stem>.json`` + ``.sections/<stem>.txt``
-   sidecar pair next to the source file (keyed on size/mtime and section
-   description) so the LLM call happens once.
+   Caches live in ``.sections/<filename>.json`` and ``<filename>.txt``.
+   Source/text SHA-256 and resolved model/settings verify the pair.
+   Publication replaces text before metadata; interrupted pairs miss.
 
    Everything is best-effort: on any failure ``locate`` returns ``None`` and the
    caller falls back to full-document extraction.
@@ -41,7 +41,7 @@ Classes
 Module Contents
 ---------------
 
-.. py:class:: SectionLocator(section_description: str, *, model: str | None = None, models: dict[str, str] | None = None, default_model: str | None = None, trigger_chars: int = DEFAULT_PAGE_TRIGGER_CHARS, keywords: list[str] | None = None, snippet_chars: int = 600)
+.. py:class:: SectionLocator(section_description: str, *, model: str | None = None, models: dict[str, str] | None = None, default_model: str | None = None, llm_config: dict | None = None, trigger_chars: int = DEFAULT_PAGE_TRIGGER_CHARS, keywords: list[str] | None = None, snippet_chars: int = 600)
 
    Bases: :py:obj:`psweep.extraction.page_locator._BaseLocator`
 
@@ -56,6 +56,12 @@ Module Contents
       Returns ``None`` for PDF, XLSX, CSV (unsupported or delegated), for
       documents smaller than ``trigger_chars``, and on any failure —
       signalling the caller to fall back to full-document extraction.
+
+
+
+   .. py:method:: locate_cached(file_path: str | pathlib.Path) -> str | None
+
+      Return verified section text without document parsing.
 
 
 

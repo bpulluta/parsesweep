@@ -290,6 +290,7 @@
 <li class="toctree-l3 has-children"><a class="reference internal" href="../../utils/index.html">psweep.utils</a><input aria-label="Toggle navigation of psweep.utils" class="toctree-checkbox" id="toctree-checkbox-10" name="toctree-checkbox-10" role="switch" type="checkbox"/><label for="toctree-checkbox-10"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l4"><a class="reference internal" href="../../utils/config/index.html">psweep.utils.config</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../utils/error_taxonomy/index.html">psweep.utils.error_taxonomy</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../utils/file_io/index.html">psweep.utils.file_io</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../utils/item_matcher/index.html">psweep.utils.item_matcher</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../utils/logger/index.html">psweep.utils.logger</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../utils/model_pricing/index.html">psweep.utils.model_pricing</a></li>
@@ -391,12 +392,6 @@ by the next writer.</p>
 <tr class="row-odd"><td><p><a class="reference internal" href="#psweep.discovery.publication.artifact_sha256" title="psweep.discovery.publication.artifact_sha256"><code class="xref py py-obj docutils literal notranslate"><span class="pre">artifact_sha256</span></code></a>(→ str)</p></td>
 <td><p>Hash a regular publication artifact without following a</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="#psweep.discovery.publication.atomic_json" title="psweep.discovery.publication.atomic_json"><code class="xref py py-obj docutils literal notranslate"><span class="pre">atomic_json</span></code></a>(→ None)</p></td>
-<td><p>Atomically publish finite JSON through a same-directory file.</p></td>
-</tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="#psweep.discovery.publication.atomic_write" title="psweep.discovery.publication.atomic_write"><code class="xref py py-obj docutils literal notranslate"><span class="pre">atomic_write</span></code></a>(→ None)</p></td>
-<td><p>Replace a UTF-8 or binary file after flushing its same-</p></td>
-</tr>
 <tr class="row-even"><td><p><a class="reference internal" href="#psweep.discovery.publication.checkpoint_artifacts_valid" title="psweep.discovery.publication.checkpoint_artifacts_valid"><code class="xref py py-obj docutils literal notranslate"><span class="pre">checkpoint_artifacts_valid</span></code></a>(→ bool)</p></td>
 <td><p>Validate hashed artifact evidence for a completed target.</p></td>
 </tr>
@@ -462,19 +457,6 @@ corpus.</p>
 <span class="sig-prename descclassname"><span class="pre">psweep.discovery.publication.</span></span><span class="sig-name descname"><span class="pre">artifact_sha256</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">path</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">pathlib.Path</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">str</span></span></span><a class="headerlink" href="#psweep.discovery.publication.artifact_sha256" title="Link to this definition">¶</a></dt>
 <dd><p>Hash a regular publication artifact without following a
 symlink.</p>
-</dd></dl>
-
-<dl class="py function">
-<dt class="sig sig-object py" id="psweep.discovery.publication.atomic_json">
-<span class="sig-prename descclassname"><span class="pre">psweep.discovery.publication.</span></span><span class="sig-name descname"><span class="pre">atomic_json</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">path</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">pathlib.Path</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">payload</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">object</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">prefix</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="headerlink" href="#psweep.discovery.publication.atomic_json" title="Link to this definition">¶</a></dt>
-<dd><p>Atomically publish finite JSON through a same-directory file.</p>
-</dd></dl>
-
-<dl class="py function">
-<dt class="sig sig-object py" id="psweep.discovery.publication.atomic_write">
-<span class="sig-prename descclassname"><span class="pre">psweep.discovery.publication.</span></span><span class="sig-name descname"><span class="pre">atomic_write</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">path</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">pathlib.Path</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">content</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">bytes</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">prefix</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="headerlink" href="#psweep.discovery.publication.atomic_write" title="Link to this definition">¶</a></dt>
-<dd><p>Replace a UTF-8 or binary file after flushing its same-
-directory staging file.</p>
 </dd></dl>
 
 <dl class="py function">
@@ -634,8 +616,6 @@ state.</p>
 <li><a class="reference internal" href="#psweep.discovery.publication.PublicationError"><code class="docutils literal notranslate"><span class="pre">PublicationError</span></code></a></li>
 <li><a class="reference internal" href="#psweep.discovery.publication.PublicationPaths"><code class="docutils literal notranslate"><span class="pre">PublicationPaths</span></code></a></li>
 <li><a class="reference internal" href="#psweep.discovery.publication.artifact_sha256"><code class="docutils literal notranslate"><span class="pre">artifact_sha256()</span></code></a></li>
-<li><a class="reference internal" href="#psweep.discovery.publication.atomic_json"><code class="docutils literal notranslate"><span class="pre">atomic_json()</span></code></a></li>
-<li><a class="reference internal" href="#psweep.discovery.publication.atomic_write"><code class="docutils literal notranslate"><span class="pre">atomic_write()</span></code></a></li>
 <li><a class="reference internal" href="#psweep.discovery.publication.checkpoint_artifacts_valid"><code class="docutils literal notranslate"><span class="pre">checkpoint_artifacts_valid()</span></code></a></li>
 <li><a class="reference internal" href="#psweep.discovery.publication.csv_content"><code class="docutils literal notranslate"><span class="pre">csv_content()</span></code></a></li>
 <li><a class="reference internal" href="#psweep.discovery.publication.discovery_publication"><code class="docutils literal notranslate"><span class="pre">discovery_publication()</span></code></a></li>

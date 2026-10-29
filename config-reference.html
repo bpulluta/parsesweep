@@ -290,6 +290,7 @@
 <li class="toctree-l3 has-children"><a class="reference internal" href="autoapi/psweep/utils/index.html">psweep.utils</a><input aria-label="Toggle navigation of psweep.utils" class="toctree-checkbox" id="toctree-checkbox-10" name="toctree-checkbox-10" role="switch" type="checkbox"/><label for="toctree-checkbox-10"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/utils/config/index.html">psweep.utils.config</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/utils/error_taxonomy/index.html">psweep.utils.error_taxonomy</a></li>
+<li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/utils/file_io/index.html">psweep.utils.file_io</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/utils/item_matcher/index.html">psweep.utils.item_matcher</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/utils/logger/index.html">psweep.utils.logger</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/utils/model_pricing/index.html">psweep.utils.model_pricing</a></li>
@@ -495,7 +496,7 @@ shared runtime definitions; templates show explicit choices separately.</p>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">skip_existing</span></code></p></td>
 <td><p>extraction</p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">true</span></code></p></td>
-<td><p>Never (use <code class="docutils literal notranslate"><span class="pre">--fresh</span></code> to re-run)</p></td>
+<td><p>Validated record reuse; <code class="docutils literal notranslate"><span class="pre">--fresh</span></code> resets whole output after preflight</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">timeout_seconds</span></code></p></td>
 <td><p>extraction</p></td>
@@ -711,8 +712,21 @@ size/mtime and source SHA-256 plus cached-text SHA-256. Partial/stale/mismatched
 pairs are misses; temporary-file replacement publishes metadata last. Old
 stem-only pairs are not reused. LLM reviewer sidecars use
 <code class="docutils literal notranslate"><span class="pre">.review/&lt;filename&gt;.json</span></code>; curation carries these full-name sidecars with
-selected documents. Native extraction, OCR correction rules, and page-targeting
-behavior are unchanged by this identity migration.</p>
+selected documents. OCR caches now hold raw text, applying current corrections
+on consumption; older corrected entries invalidate rather than silently reuse.
+Page/section products fingerprint source content and resolved model/settings;
+section cache pairs use full filenames, text digests, and metadata-last staging.
+Native, pypdf, and OCR paths honor selected page bounds and retain actual scope.</p>
+<p>Extraction reuses records only when source/schema/settings and record-byte
+evidence match. Missing proof or invalid JSON triggers re-extraction, without a
+new resume setting. Valid reuse needs no provider credentials or calls. <code class="docutils literal notranslate"><span class="pre">--fresh</span></code>
+resets the whole resolved output after successful preflight; filtered/limited
+fresh runs rebuild only that subset. Overlapping output/input paths are rejected.
+Exit 0 means success/reuse (including valid zero-item payloads); exit 1 includes
+partial failure; empty selection exits 2. Pipeline drivers halt downstream work.
+Atomic per-file record/manifest replacement is not a whole-run transaction or
+concurrent-writer certification. Inert category/profile settings and YAML schema
+pack unwrapping are retired; use direct JSON schemas and supported string aliases.</p>
 </section>
 <section id="advanced-column-flattening-overrides">
 <h3>Advanced: column-flattening overrides<a class="headerlink" href="#advanced-column-flattening-overrides" title="Link to this heading">¶</a></h3>
@@ -907,9 +921,9 @@ placeholder models and schema paths must be replaced before those stages run.</p
 <span class="w">  </span><span class="nt">input_dir</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">documents/your_domain</span><span class="w">        </span><span class="c1"># or discovered/your_domain/curated</span>
 <span class="w">  </span><span class="nt">output_dir</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">extracted/your_domain</span>
 <span class="w">  </span><span class="nt">model</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">primary</span><span class="w">                          </span><span class="c1"># PIN the tier — don&#39;t rely on .env default</span>
-<span class="w">  </span><span class="c1"># Skip/refresh hygiene: extract skips files with existing output JSON by</span>
-<span class="w">  </span><span class="c1"># default (skip_existing=true). Re-run cheaply after config tweaks with no</span>
-<span class="w">  </span><span class="c1"># flag; only pass --fresh after changing schema, model tier, or pages.</span>
+<span class="w">  </span><span class="c1"># Reuse validates source/schema/model/scope and record-byte evidence.</span>
+<span class="w">  </span><span class="c1"># Stale or unverifiable outputs re-extract under skip_existing=true.</span>
+<span class="w">  </span><span class="c1"># --fresh resets the WHOLE output after preflight, rebuilding selected inputs.</span>
 <span class="w">  </span><span class="c1"># max_context: 600000                   # chars per document (default: 600000)</span>
 <span class="w">  </span><span class="c1"># pages:                                 # how to select pages from large PDFs</span>
 <span class="w">  </span><span class="c1">#   csv: config/your_domain/page_ranges.csv  # manual ranges per file (wins)</span>

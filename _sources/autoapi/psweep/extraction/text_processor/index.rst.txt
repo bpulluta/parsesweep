@@ -23,7 +23,6 @@ Functions
 .. autoapisummary::
 
    psweep.extraction.text_processor.find_data_arrays
-   psweep.extraction.text_processor.find_main_data_array
 
 
 Module Contents
@@ -40,7 +39,9 @@ Module Contents
    :type max_chars: int
 
 
-   .. py:method:: calculate_completeness(data: Dict[str, Any], validation_notes: List[str]) -> float
+   .. py:method:: calculate_completeness(data: dict[str, Any]) -> float
+      :staticmethod:
+
 
       Calculate completeness score based on fields populated.
 
@@ -51,16 +52,16 @@ Module Contents
       - 0.5: Has item arrays with populated fields
 
       :param data: Extracted data dictionary
-      :type data: Dict[str, Any]
-      :param validation_notes: List of validation notes (unused but kept for compatibility)
-      :type validation_notes: List[str]
+      :type data: dict[str, Any]
 
       :returns: Score from 0-1 indicating data completeness
       :rtype: float
 
 
 
-   .. py:method:: normalize_string_fields(data: Dict[str, Any]) -> Dict[str, Any]
+   .. py:method:: normalize_string_fields(data: dict[str, Any]) -> dict[str, Any]
+      :staticmethod:
+
 
       Normalize string fields for consistency.
 
@@ -68,14 +69,14 @@ Module Contents
       Works generically with any schema structure.
 
       :param data: Extracted data dictionary
-      :type data: Dict[str, Any]
+      :type data: dict[str, Any]
 
       :returns: Data with normalized string fields
-      :rtype: Dict[str, Any]
+      :rtype: dict[str, Any]
 
 
 
-   .. py:method:: normalize_with_schema(data: Dict[str, Any], schema: Dict[str, Any]) -> Dict[str, Any]
+   .. py:method:: normalize_with_schema(data: dict[str, Any], schema: dict[str, Any], validator=None) -> dict[str, Any]
 
       Fill absent optional fields with null only when their schema permits it.
 
@@ -83,16 +84,16 @@ Module Contents
       remain absent rather than becoming invalid null values.
 
       :param data: Extracted data dictionary
-      :type data: Dict[str, Any]
+      :type data: dict[str, Any]
       :param schema: JSON schema defining expected structure
-      :type schema: Dict[str, Any]
+      :type schema: dict[str, Any]
 
       :returns: Data with absent nullable optional fields filled
-      :rtype: Dict[str, Any]
+      :rtype: dict[str, Any]
 
 
 
-   .. py:method:: optimize(text: str) -> Tuple[str, bool]
+   .. py:method:: optimize(text: str) -> tuple[str, bool]
 
       Optimize text for extraction by truncating if needed.
 
@@ -100,11 +101,11 @@ Module Contents
       :type text: str
 
       :returns: Tuple of (optimized_text, was_truncated)
-      :rtype: Tuple[str, bool]
+      :rtype: tuple[str, bool]
 
 
 
-   .. py:method:: run_sanity_checks(data: Dict[str, Any], schema_metadata=None) -> List[str]
+   .. py:method:: run_sanity_checks(data: dict[str, Any], schema_metadata=None) -> list[str]
 
       Run post-extraction sanity checks to catch obvious errors.
 
@@ -112,15 +113,15 @@ Module Contents
       identifier_fields (when available) to build human-readable item labels.
 
       :param data: Extracted data dictionary
-      :type data: Dict[str, Any]
+      :type data: dict[str, Any]
       :param schema_metadata: Optional SchemaMetadata for identifier field lookup
 
       :returns: List of warning messages
-      :rtype: List[str]
+      :rtype: list[str]
 
 
 
-.. py:function:: find_data_arrays(data: Dict[str, Any]) -> List[Tuple[str, list]]
+.. py:function:: find_data_arrays(data: dict[str, Any]) -> list[tuple[str, list]]
 
    Return ``(field_name, list_value)`` for every non-empty list-valued
    top-level field, in document (insertion) order.
@@ -128,13 +129,5 @@ Module Contents
    This is the single source of truth for "which top-level fields hold the
    extracted item arrays", used by item counting, completeness scoring, and
    record writing so the "find the data arrays" scan is not reimplemented.
-
-
-.. py:function:: find_main_data_array(data: Dict[str, Any]) -> Tuple[Optional[str], int]
-
-   Return ``(field_name, item_count)`` for the largest non-empty list-valued
-   top-level field, or ``(None, 0)`` when there are none.
-
-   On ties the first such field in document order wins.
 
 

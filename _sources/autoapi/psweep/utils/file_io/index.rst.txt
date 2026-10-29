@@ -1,0 +1,45 @@
+psweep.utils.file_io
+====================
+
+.. py:module:: psweep.utils.file_io
+
+.. autoapi-nested-parse::
+
+   Small file primitives for atomic publication and content identity.
+
+
+
+Functions
+---------
+
+.. autoapisummary::
+
+   psweep.utils.file_io.artifact_sha256
+   psweep.utils.file_io.atomic_json
+   psweep.utils.file_io.atomic_write
+   psweep.utils.file_io.staged_file
+
+
+Module Contents
+---------------
+
+.. py:function:: artifact_sha256(path: pathlib.Path) -> str
+
+   Hash file content without retaining the artifact in memory.
+
+
+.. py:function:: atomic_json(path: pathlib.Path, payload: object, *, prefix: str | None = None) -> None
+
+   Serialize finite JSON completely, then atomically replace.
+
+
+.. py:function:: atomic_write(path: pathlib.Path, content: str | bytes, *, prefix: str | None = None) -> None
+
+   Replace a file with staged bytes on the same filesystem.
+
+
+.. py:function:: staged_file(path: pathlib.Path, content: str | bytes, *, prefix: str | None = None) -> collections.abc.Iterator[pathlib.Path]
+
+   Stage flushed bytes beside the destination; clean up on exit.
+
+

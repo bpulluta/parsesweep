@@ -290,6 +290,7 @@
 <li class="toctree-l3 has-children"><a class="reference internal" href="autoapi/psweep/utils/index.html">psweep.utils</a><input aria-label="Toggle navigation of psweep.utils" class="toctree-checkbox" id="toctree-checkbox-10" name="toctree-checkbox-10" role="switch" type="checkbox"/><label for="toctree-checkbox-10"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/utils/config/index.html">psweep.utils.config</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/utils/error_taxonomy/index.html">psweep.utils.error_taxonomy</a></li>
+<li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/utils/file_io/index.html">psweep.utils.file_io</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/utils/item_matcher/index.html">psweep.utils.item_matcher</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/utils/logger/index.html">psweep.utils.logger</a></li>
 <li class="toctree-l4"><a class="reference internal" href="autoapi/psweep/utils/model_pricing/index.html">psweep.utils.model_pricing</a></li>
@@ -375,6 +376,23 @@ and this project adheres to <a class="reference external" href="https://semver.o
 <section id="changed">
 <h3>Changed<a class="headerlink" href="#changed" title="Link to this heading">¶</a></h3>
 <ul class="simple">
+<li><p>Extraction CLI/API share one workflow, model resolution, selection and outcomes.
+Omitted models inherit environment defaults; explicit providers and generic
+endpoint overrides no longer lose routing or borrow another provider’s key.</p></li>
+<li><p>Extraction reuse validates source/schema/effective settings and record-byte
+evidence. Stale, invalid, or older unverifiable JSON is re-extracted. <code class="docutils literal notranslate"><span class="pre">--fresh</span></code>
+resets the entire resolved output only after preflight; filtered/limited runs
+rebuild only selected inputs. Invalid requests preserve prior output.</p></li>
+<li><p>Extraction exits 0 for success/verified reuse, 1 for operational or partial
+failure, and 2 for empty selection; valid zero-item payloads still succeed.
+Full-pipeline drivers stop before downstream stages after failed extraction.</p></li>
+<li><p>Retired inert extraction profile/category controls, YAML schema-pack unwrapping,
+and unreachable long-form model/model-default abstractions; use JSON schemas
+and string aliases. Core record schema now declares already-emitted item count
+and coverage, plus optional input fingerprint; payload contracts stay closed.</p></li>
+<li><p>OCR caches hold raw text and apply current corrections without repeated OCR;
+incompatible corrected caches invalidate. Page/section products verify content
+and effective model/settings; section pairs use full filenames and text digests.</p></li>
 <li><p>Discovery YAML now uses only canonical <code class="docutils literal notranslate"><span class="pre">search</span></code>, <code class="docutils literal notranslate"><span class="pre">search.max_results</span></code>, and
 selection <code class="docutils literal notranslate"><span class="pre">max_per_target</span></code>/<code class="docutils literal notranslate"><span class="pre">require_any</span></code>/<code class="docutils literal notranslate"><span class="pre">exclude</span></code>. Migrate retired <code class="docutils literal notranslate"><span class="pre">seeker</span></code>,
 <code class="docutils literal notranslate"><span class="pre">browser</span></code>, <code class="docutils literal notranslate"><span class="pre">max_results_per_query</span></code>, <code class="docutils literal notranslate"><span class="pre">primary_per_target</span></code>,
@@ -440,6 +458,14 @@ effective default drifted between <code class="docutils literal notranslate"><sp
 <section id="fixed">
 <h3>Fixed<a class="headerlink" href="#fixed" title="Link to this heading">¶</a></h3>
 <ul class="simple">
+<li><p>Preserve selected pages across native/pypdf/OCR fallbacks, actual parsed scope,
+nested schema identifiers, declared main-array counts, and distinct source IDs.</p></li>
+<li><p>Prevent empty discovery-index selection falling back to directory extraction;
+include mixed root/nested documents, exclude generated sidecars, reject output
+collisions/overlap, and apply limits after validated reuse consistently.</p></li>
+<li><p>Atomically publish validated records/manifests through shared file primitives;
+retain returned usage through parsing/schema/write failures and include locator
+and retry calls without claiming unknown billing is measured zero.</p></li>
 <li><p>OCR cache writes stage temporary files and replace metadata last. Readers
 verify source size/mtime and source/text SHA-256 digests, treating partial,
 stale, or mismatched pairs as misses. Curation uses the canonical cache-path
