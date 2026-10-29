@@ -8,15 +8,17 @@ from click.testing import CliRunner
 import pytest
 
 from _helpers import write_json as _write_json
-from psweep.cli.commands import (
+from psweep.cli.commands_compile import (
     _build_dedup_preview_report,
-    _context_budget_suggestions_for_process,
-    _extract_and_save_result,
-    _generate_run_id,
-    _run_validation_extraction,
-    _resolve_schema_ref,
     _should_fail_on_suspicious,
 )
+from psweep.cli.commands_extract import (
+    _context_budget_suggestions_for_process,
+    _run_validation_extraction,
+)
+from psweep.extraction.schema_utils import load_schema
+from psweep.extraction.provenance import generate_run_id
+from psweep.extraction.record_writer import write_extraction_record
 from psweep.cli.main import cli
 from psweep.utils.schema_metadata import SchemaMetadata
 
@@ -29,10 +31,11 @@ def _write_file(path: Path, content: str) -> None:
     path.write_text(content, encoding='utf-8')
 
 
-def test_resolve_schema_ref_passes_json_through(tmp_path) -> None:
+def test_schema_loader_accepts_direct_json_contract(tmp_path) -> None:
+    """Extraction uses the domain schema directly, without pack unwrapping."""
     schema = tmp_path / 'schema.json'
     _write_json(schema, {'type': 'object'})
-    assert _resolve_schema_ref(schema) == schema
+    assert load_schema(schema) == {"type": "object"}
 
 
 def test_context_budget_suggestions_for_process_use_matching_repo_page_ranges_config(tmp_path) -> None:
@@ -852,7 +855,27 @@ def test_compile_cli_dry_run_json_report_can_fail_on_suspicious_threshold(tmp_pa
     assert not output_dir.exists() or not any(output_dir.iterdir())
 
 
-def test_extract_and_save_result_includes_lineage_fields(tmp_path) -> None:
+@pytest.fixture
+def writer_metadata(tmp_path):
+    """Provide schema-owned identifiers/counts for record-writer tests."""
+    path = tmp_path / "record_domain.schema.json"
+    _write_json(path, {
+        "$metadata": {"extraction": {
+            "main_data_array": "items",
+            "identifier_fields": ["metadata.jurisdiction"],
+        }},
+        "type": "object",
+        "properties": {
+            "metadata": {"type": "object"}, "items": {"type": "array"},
+        },
+    })
+    return SchemaMetadata(path)
+
+
+def test_write_extraction_record_includes_lineage_fields(
+    tmp_path, writer_metadata,
+) -> None:
+    """Canonical writing preserves runtime-artifact and token lineage."""
     result = SimpleNamespace(
         data={
             'metadata': {'jurisdiction': 'Example County'},
@@ -881,18 +904,18 @@ def test_extract_and_save_result_includes_lineage_fields(tmp_path) -> None:
         },
     }
 
-    count = _extract_and_save_result(
-        doc_path=Path('example.pdf'),
+    document = tmp_path / "example.pdf"
+    document.write_bytes(b"synthetic source")
+    count = write_extraction_record(
+        tmp_path / "example.json",
+        doc_path=document,
         result=result,
-        output_dir=tmp_path,
-        category='tariffs',
         model='gpt-5',
-        validation_enabled=False,
+        schema_metadata=writer_metadata,
         runtime_artifact=runtime_artifact,
         run_id='run://deterministic1234',
         provider='azure',
         schema_id='https://example.org/schema/tariffs',
-        identifier_fields=['jurisdiction'],
     )
 
     assert count == 2
@@ -900,11 +923,12 @@ def test_extract_and_save_result_includes_lineage_fields(tmp_path) -> None:
     output_path = tmp_path / 'example.json'
     saved = json.loads(output_path.read_text(encoding='utf-8'))
     assert saved['contract_version'] == '1.0.0'
-    assert saved['record_id'] == 'record://deterministic1234/example'
+    assert saved["record_id"].startswith("record://deterministic1234/")
+    assert len(saved["record_id"].rsplit("/", 1)[1]) == 64
     assert saved['document']['source_filename'] == 'example.pdf'
     # Identifier is schema-driven: the caller-supplied identifier field
-    # ('jurisdiction') selects the source_document_id — no domain term is
-    # hardcoded in _extract_and_save_result.
+    # ('metadata.jurisdiction') selects the source_document_id — no domain
+    # term is hardcoded in the record writer.
     assert saved['document']['source_document_id'] == 'Example County'
     # Token metrics now flow through from the extraction result.
     assert saved['processing_metrics']['input_tokens'] == 111
@@ -920,7 +944,10 @@ def test_extract_and_save_result_includes_lineage_fields(tmp_path) -> None:
     assert saved['processing_metrics']['cost_usd'] == 0.123
 
 
-def test_extract_and_save_result_persists_structured_processing_errors(tmp_path) -> None:
+def test_write_extraction_record_persists_structured_processing_errors(
+    tmp_path, writer_metadata,
+) -> None:
+    """Structured processing errors survive atomic record publication."""
     result = SimpleNamespace(
         data={'items': [{'name': 'a'}]},
         cost=0.123,
@@ -943,13 +970,14 @@ def test_extract_and_save_result_persists_structured_processing_errors(tmp_path)
         ],
     )
 
-    _extract_and_save_result(
-        doc_path=Path('example.pdf'),
+    document = tmp_path / "example.pdf"
+    document.write_bytes(b"synthetic source")
+    write_extraction_record(
+        tmp_path / "example.json",
+        doc_path=document,
         result=result,
-        output_dir=tmp_path,
-        category='tariffs',
         model='gpt-5',
-        validation_enabled=False,
+        schema_metadata=writer_metadata,
         runtime_artifact=None,
         run_id='run://deterministic1234',
         provider='azure',
@@ -963,20 +991,21 @@ def test_extract_and_save_result_persists_structured_processing_errors(tmp_path)
     assert saved['lineage']['profile_id'] == 'default'
 
 
-def test_generate_run_id_is_deterministic_for_same_inputs() -> None:
-    run_id_1 = _generate_run_id(
+def test_validation_run_id_is_deterministic_for_same_inputs() -> None:
+    """Validation keeps order-independent IDs used by live QA callers."""
+    run_id_1 = generate_run_id(
         schema_path=Path('schemas/personal/electricity_tariff_schema.json'),
         provider='azure',
         model='gpt-5',
-        enable_validation=False,
+        enable_validation=True,
         doc_files=[Path('documents/tariffs/a.pdf'), Path('documents/tariffs/b.pdf')],
         artifact_id='artifact://runtime/abc123def4567890',
     )
-    run_id_2 = _generate_run_id(
+    run_id_2 = generate_run_id(
         schema_path=Path('schemas/personal/electricity_tariff_schema.json'),
         provider='azure',
         model='gpt-5',
-        enable_validation=False,
+        enable_validation=True,
         doc_files=[Path('documents/tariffs/b.pdf'), Path('documents/tariffs/a.pdf')],
         artifact_id='artifact://runtime/abc123def4567890',
     )

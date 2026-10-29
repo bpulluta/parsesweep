@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 
 
-_EXCLUDED_DIRS = {"validation", "run_manifests", "qa_qc"}
+INTERNAL_RECORD_DIRS = {"validation", "run_manifests", "qa_qc"}
 _UNRESOLVED_ARTIFACT_ID = "artifact://runtime/unresolved"
 
 
@@ -22,7 +22,9 @@ def list_compile_record_files(input_dir: Path) -> list[Path]:
     return sorted(
         path
         for path in input_dir.rglob("*.json")
-        if not _EXCLUDED_DIRS.intersection(path.relative_to(input_dir).parts)
+        if not INTERNAL_RECORD_DIRS.intersection(
+            path.relative_to(input_dir).parts
+        )
     )
 
 

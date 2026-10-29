@@ -1,7 +1,11 @@
 from pathlib import Path
 
+import openpyxl
+import pytest
+
 from psweep.extraction.document_utils import (
     _extract_from_docx,
+    _extract_from_xlsx,
     _HTMLTextExtractor,
     extract_text_from_document,
     is_supported_document,
@@ -85,3 +89,52 @@ class TestHtmlExtractorTableExactOutput:
         ex = _HTMLTextExtractor()
         ex.feed(html)
         assert ex.get_text() == "AG\t500\tfeet\n\nR1\t\tx"
+
+
+def test_xlsx_workbook_closed_on_success_and_failure(tmp_path, monkeypatch):
+    """Workbook handles close after serialization and row failures."""
+
+    class Workbook:
+        sheetnames = ["Sheet1"]
+        closed = False
+        fail = False
+
+        def __getitem__(self, key):
+            return self
+
+        def iter_rows(self, **kwargs):
+            if self.fail:
+                raise OSError("bad row")
+            return iter([(1, None, "value")])
+
+        def close(self):
+            self.closed = True
+
+    wb = Workbook()
+    monkeypatch.setattr(openpyxl, "load_workbook", lambda *_a, **_k: wb)
+    assert (
+        _extract_from_xlsx(tmp_path / "a.xlsx")
+        == "\n### Sheet: Sheet1 ###\n\n1 |  | value"
+    )
+    assert wb.closed
+    wb.closed, wb.fail = False, True
+    with pytest.raises(RuntimeError, match="bad row"):
+        _extract_from_xlsx(tmp_path / "a.xlsx")
+    assert wb.closed
+
+
+def test_document_pdf_return_meta_passes_actual_scope(tmp_path, monkeypatch):
+    """Document parsing exposes the parser's bounded actual PDF scope."""
+    path = tmp_path / "a.pdf"
+    path.write_bytes(b"fake")
+    monkeypatch.setattr(
+        "psweep.extraction.pdf_utils.extract_text_from_pdf",
+        lambda *_a, **_k: (
+            "selected",
+            {"used_ocr": False, "page_range": (2, 3), "page_count": 3},
+        ),
+    )
+    assert extract_text_from_document(path, (2, 9), return_meta=True) == (
+        "selected",
+        {"used_ocr": False, "page_range": (2, 3), "page_count": 3},
+    )

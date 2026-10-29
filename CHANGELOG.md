@@ -17,6 +17,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `CONTRIBUTING.md` and this `CHANGELOG.md`.
 
 ### Changed
+- Extraction CLI/API share one workflow, model resolution, selection and outcomes.
+  Omitted models inherit environment defaults; explicit providers and generic
+  endpoint overrides no longer lose routing or borrow another provider's key.
+- Extraction reuse validates source/schema/effective settings and record-byte
+  evidence. Stale, invalid, or older unverifiable JSON is re-extracted. `--fresh`
+  resets the entire resolved output only after preflight; filtered/limited runs
+  rebuild only selected inputs. Invalid requests preserve prior output.
+- Extraction exits 0 for success/verified reuse, 1 for operational or partial
+  failure, and 2 for empty selection; valid zero-item payloads still succeed.
+  Full-pipeline drivers stop before downstream stages after failed extraction.
+- Retired inert extraction profile/category controls, YAML schema-pack unwrapping,
+  and unreachable long-form model/model-default abstractions; use JSON schemas
+  and string aliases. Core record schema now declares already-emitted item count
+  and coverage, plus optional input fingerprint; payload contracts stay closed.
+- OCR caches hold raw text and apply current corrections without repeated OCR;
+  incompatible corrected caches invalidate. Page/section products verify content
+  and effective model/settings; section pairs use full filenames and text digests.
 - Discovery YAML now uses only canonical `search`, `search.max_results`, and
   selection `max_per_target`/`require_any`/`exclude`. Migrate retired `seeker`,
   `browser`, `max_results_per_query`, `primary_per_target`,
@@ -79,6 +96,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Docs toolchain switched from MkDocs to Sphinx.
 
 ### Fixed
+- Preserve selected pages across native/pypdf/OCR fallbacks, actual parsed scope,
+  nested schema identifiers, declared main-array counts, and distinct source IDs.
+- Prevent empty discovery-index selection falling back to directory extraction;
+  include mixed root/nested documents, exclude generated sidecars, reject output
+  collisions/overlap, and apply limits after validated reuse consistently.
+- Atomically publish validated records/manifests through shared file primitives;
+  retain returned usage through parsing/schema/write failures and include locator
+  and retry calls without claiming unknown billing is measured zero.
 - OCR cache writes stage temporary files and replace metadata last. Readers
   verify source size/mtime and source/text SHA-256 digests, treating partial,
   stale, or mismatched pairs as misses. Curation uses the canonical cache-path

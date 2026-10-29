@@ -28,20 +28,24 @@ import typer.main
 from typer.core import TyperGroup
 
 from psweep import __version__
+from psweep.cli.commands_benchmark import benchmark
+from psweep.cli.commands_check import check
+from psweep.cli.commands_compile import compile as compile_command
+from psweep.cli.commands_curate import curate
+from psweep.cli.commands_discover import discover
+from psweep.cli.commands_extract import extract
+from psweep.cli.commands_validate import validate
 from psweep.discovery.request_inputs import (
     normalize_discover_inputs,
     validate_discover_plan,
 )
 from psweep.pipeline import (
     build_run_stage_commands,
-    clear_run_extract_output,
     count_curated_documents,
     count_extracted_documents,
-    read_checkpoint_entries,
     resolve_run_discovery_enabled,
     resolve_run_extraction_dir,
     resolve_run_validation,
-    run_checkpoint_path,
 )
 
 
@@ -342,11 +346,6 @@ def run(
             view.success("Runtime config validation passed for run command")
         raise typer.Exit(0)
 
-    checkpointed: list[str] = (
-        [] if fresh else read_checkpoint_entries(run_checkpoint_path(domain))
-    )
-
-    new_targets = [t for t in planned_target_labels if t not in checkpointed]
     curated_dir = Path(f"discovered/{domain}/curated")
     curated_count = count_curated_documents(curated_dir)
 
@@ -364,14 +363,10 @@ def run(
             f"{limited_total}/{len(target_labels)} configured "
             f"(limited by --target-limit)"
         )
-    elif checkpointed and not fresh:
-        plan_rows["Targets"] = (
-            f"{len(planned_target_labels)} total "
-            f"({len(checkpointed)} cached, {len(new_targets)} new)"
-        )
     else:
         plan_rows["Targets"] = (
-            f"{len(planned_target_labels)} total (all {'fresh' if fresh else 'new'})"
+            f"{len(planned_target_labels)} configured "
+            "(reuse verified by discovery)"
         )
     if curated_count and not fresh:
         plan_rows["Curated"] = f"{curated_count} docs (preserved)"
@@ -398,13 +393,6 @@ def run(
     plan_rows["Stages"] = " → ".join(stages_list)
 
     view.config(plan_rows, title="Run Plan")
-
-    if new_targets and not view.is_quiet:
-        if len(new_targets) <= 10:
-            for t in new_targets:
-                view.detail(f"→ {t}")
-        else:
-            view.info(f"{len(new_targets)} new targets to process")
 
     # Confirm
     if not yes and not view.is_quiet:
@@ -440,12 +428,6 @@ def run(
         ),
         extra_flags=flags,
     )
-
-    if fresh and not skip_extract:
-        if clear_run_extract_output(extraction_dir) and not view.is_quiet:
-            view.info(
-                f"--fresh: cleared extracted output at {extraction_dir.as_posix()}"
-            )
 
     _stage_labels = {
         "discover": "Discovering documents",
@@ -498,15 +480,6 @@ def run(
 
 def _build_cli() -> "click.Group":  # type: ignore[name-defined]
     """Build the final Click group with all commands registered."""
-    from psweep.cli.commands import (
-        benchmark,
-        check,
-        compile,
-        curate,
-        discover,
-        extract,
-        validate,
-    )
     from psweep.cli.utils_commands import (
         check_schema_cmd,
         config,
@@ -520,7 +493,7 @@ def _build_cli() -> "click.Group":  # type: ignore[name-defined]
     for cmd in (
         extract,
         check,
-        compile,
+        compile_command,
         discover,
         curate,
         validate,

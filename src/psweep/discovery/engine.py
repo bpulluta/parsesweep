@@ -31,6 +31,7 @@ from psweep.utils.error_taxonomy import (
 
 from .candidate_selector import CandidateSelector
 from .concurrency import bounded_results
+from psweep.utils.file_io import atomic_write
 from .connectors import DiggerInput, resolve_digger_connector
 from .connectors.digger import NullDiggerConnector
 from .constants import (
@@ -59,7 +60,6 @@ from .document_reviewer import DocumentReviewer
 from .publication import (
     PublicationPaths,
     artifact_sha256,
-    atomic_write,
     discovery_publication,
     effective_discovery_fingerprint,
     resolve_publication_paths,

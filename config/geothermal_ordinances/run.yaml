@@ -130,10 +130,9 @@ discovery:
   partition_by: [state, jurisdiction]
 
 # ── Extraction ───────────────────────────────────────────────────────────────
-# Skip/reprocess hygiene: `psweep extract` skips files that already have output
-# JSON by default (skip_existing). Re-run cheaply after config tweaks without
-# --reprocess; only pass --reprocess when you actually changed the schema, model
-# tier, or page targeting and want to overwrite existing extractions.
+# Reuse verifies source/schema/model/scope and record-byte evidence.
+# Stale or unverifiable records re-extract automatically. --fresh resets the
+# whole resolved output after preflight, rebuilding only selected documents.
 extraction:
   model: primary                     # accurate tier — extraction accuracy matters
   input_dir: discovered/geothermal_ordinances/curated
