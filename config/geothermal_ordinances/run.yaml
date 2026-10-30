@@ -5,7 +5,7 @@ domain: geothermal_ordinances
 
 # ── Model tiers ──────────────────────────────────────────────────────────────
 models:
-  primary: gpt-5.6-terra
+  primary: gpt-6.1-sol
   secondary: claude-sonnet-4-6
   judge: claude-sonnet-5
 

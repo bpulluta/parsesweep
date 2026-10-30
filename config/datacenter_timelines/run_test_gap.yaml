@@ -2,7 +2,7 @@ domain: datacenter_timelines_test_gap
 
 models:
   primary: gpt-5.4
-  secondary: gpt-5.4-mini
+  secondary: gpt-5.6-luna
 
 discovery:
   targets_csv: targets_test3_gap.csv
