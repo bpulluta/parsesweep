@@ -3,7 +3,7 @@ domain: datacenter_timelines_test
 
 # ── Model tiers ──────────────────────────────────────────────────────────────
 models:
-  primary: gpt-5.6-terra               # extraction (accuracy-critical)
+  primary: gpt-6.1-sol               # extraction (accuracy-critical)
   secondary: claude-sonnet-4-6         # validation/QA/QC
   judge: claude-sonnet-5               # arbitration
 

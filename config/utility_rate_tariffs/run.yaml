@@ -6,7 +6,7 @@ domain: utility_rate_tariffs
 # Model tiers — cheap/fast for iteration steps, accurate for extraction.
 models:
   primary: gpt-5.4          # extraction (accuracy matters)
-  secondary: gpt-5.4-mini   # discovery, page targeting, review (speed matters)
+  secondary: gpt-5.6-luna   # discovery, page targeting, review (speed matters)
 
 discovery:
   browser_escalation: {enabled: true}  # opt into protected-site recovery
