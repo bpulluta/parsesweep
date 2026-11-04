@@ -41,6 +41,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import pandas as pd
 from openpyxl import load_workbook
 from openpyxl.formatting.rule import FormulaRule
+from psweep.utils.spreadsheet import csv_frame, literal_worksheet, formula_text
 from openpyxl.worksheet.datavalidation import DataValidation
 from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
@@ -205,6 +206,8 @@ class ReportGenerator:
             all_items_df.to_excel(writer, sheet_name="All Items", index=False)
             reliability_df.to_excel(writer, sheet_name="Model Reliability", index=False)
             manifest_df.to_excel(writer, sheet_name="Run Manifest", index=False)
+            for sheet in writer.sheets.values():
+                literal_worksheet(sheet)
 
         # Apply formatting and append the reviewer-authoritative Final Verdicts sheet
         self._apply_workbook_formatting(
@@ -1512,9 +1515,30 @@ class ReportGenerator:
             f'"Unresolved","Pending")'
         )
         for label in reversed(model_label_list):
-            inner = f'IF({verdict_ref}="accept-{label}","{label}",{inner})'
+            escaped = formula_text(label)
+            inner = f'IF({verdict_ref}="accept-{escaped}","{escaped}",{inner})'
         inner = f'IF({verdict_ref}="accept-both","Both",{inner})'
         return f'=IF({status_ref}="AGREE","Both",{inner})'
+
+    @staticmethod
+    def _verdict_validation(ws, options: List[str]):
+        """Store dropdown values as literal cells, not interpolated formula text."""
+        from openpyxl.workbook.defined_name import DefinedName
+
+        workbook = ws.parent
+        title = "_review_options"
+        sheet = workbook[title] if title in workbook.sheetnames else workbook.create_sheet(title)
+        sheet.sheet_state = "hidden"
+        column = sheet.max_column + 1
+        for row, option in enumerate(options, 1):
+            cell = sheet.cell(row, column, option)
+            cell.data_type = "s"
+        letter = get_column_letter(column)
+        name = f"ReviewerVerdicts{column}"
+        workbook.defined_names.add(DefinedName(
+            name, attr_text=f"'{title}'!${letter}$1:${letter}${len(options)}",
+        ))
+        return DataValidation(type="list", formula1=name, allow_blank=True)
 
     def _build_final_verdicts_data(
         self, result: ComparisonResult, all_items_df: pd.DataFrame
@@ -1739,6 +1763,7 @@ class ReportGenerator:
                 ws.cell(current_row, col_idx, item.get(header, ""))
             current_row += 1
 
+        literal_worksheet(ws)
         if not data_row_indices:
             for r in (3, 4):
                 for c in (2, 4):
@@ -1765,7 +1790,7 @@ class ReportGenerator:
         ws.cell(3, 6, f'=COUNTA({full_range})-COUNTIF({full_range},"AGREE")')
         ws.cell(4, 2, f'=COUNTIF({full_range},"DIFFER")')
         accept_terms = "+".join(
-            f'COUNTIF({verdict_range},"accept-{label}")' for label in model_label_list
+            f'COUNTIF({verdict_range},"accept-{formula_text(label, criteria=True)}")' for label in model_label_list
         )
         ws.cell(4, 4, f'={accept_terms}+COUNTIF({verdict_range},"accept-both")+COUNTIF({verdict_range},"reject-all")')
         ws.cell(4, 6, f'=COUNTIF({verdict_range},"needs-escalation")')
@@ -1777,17 +1802,17 @@ class ReportGenerator:
             # Agreed: item status is AGREE
             ws.cell(r, 2, f'=COUNTIF({full_range},"AGREE")')
             # Only This Model: ONLY <label> rows
-            ws.cell(r, 3, f'=COUNTIF({full_range},"ONLY {label}")')
+            ws.cell(r, 3, f'=COUNTIF({full_range},"ONLY {formula_text(label, criteria=True)}")')
             # Missed by this model: sum of ONLY <other> rows
             if others:
                 missed_terms = "+".join(
-                    f'COUNTIF({full_range},"ONLY {o}")' for o in others
+                    f'COUNTIF({full_range},"ONLY {formula_text(o, criteria=True)}")' for o in others
                 )
                 ws.cell(r, 4, f"={missed_terms}")
             else:
                 ws.cell(r, 4, 0)
             # Reviewer wins for this model
-            ws.cell(r, 5, f'=COUNTIF({verdict_range},"accept-{label}")')
+            ws.cell(r, 5, f'=COUNTIF({verdict_range},"accept-{formula_text(label, criteria=True)}")')
 
         # ── Model Win formula on each data row ─────────────────────────────────
         for r in data_row_indices:
@@ -1985,11 +2010,7 @@ class ReportGenerator:
             ) if label]
             verdict_options += ["accept-both", "reject-all", "needs-escalation"]
             verdict_letter = get_column_letter(verdict_col)
-            validation = DataValidation(
-                type="list",
-                formula1=f'"{",".join(verdict_options)}"',
-                allow_blank=True,
-            )
+            validation = self._verdict_validation(ws, verdict_options)
             validation.error = "Select a valid reviewer verdict from the dropdown."
             validation.errorTitle = "Invalid Verdict"
             ws.add_data_validation(validation)
@@ -2200,11 +2221,7 @@ class ReportGenerator:
             column_letter = get_column_letter(verdict_col)
             dynamic_verdicts = [f"accept-{h}" for h in model_headers if h]
             verdict_options = dynamic_verdicts + ["accept-both", "reject-all", "needs-escalation"]
-            validation = DataValidation(
-                type="list",
-                formula1=f'"{",".join(verdict_options)}"',
-                allow_blank=True,
-            )
+            validation = self._verdict_validation(ws, verdict_options)
             validation.error = "Select a valid reviewer verdict from the dropdown."
             validation.errorTitle = "Invalid Verdict"
             ws.add_data_validation(validation)
@@ -2250,7 +2267,7 @@ class ReportGenerator:
             include_missing=include_missing_in_queue,
             include_low_signal_presence=include_low_signal_presence_in_queue,
         )
-        queue.to_csv(output_path, index=False)
+        csv_frame(queue).to_csv(output_path, index=False)
 
     # --- Completeness Validation Methods ---
 

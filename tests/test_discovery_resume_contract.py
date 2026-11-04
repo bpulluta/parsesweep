@@ -70,7 +70,7 @@ def test_file_cap_does_not_checkpoint_truncated_target(monkeypatch, tmp_path):
         },
     )
     monkeypatch.setattr(
-        "requests.get", lambda url, **_kwargs: FakeResponse(url=url)
+        "psweep.discovery.network.request_get", lambda url, **_kwargs: FakeResponse(url=url)
     )
     result = DiscoveryEngine().run(_request(tmp_path, max_files=1))
     assert result.curated_count == 1
@@ -86,7 +86,7 @@ def test_deleted_curated_file_invalidates_completion(monkeypatch, tmp_path):
         {"organic_results": [{"link": "https://example.org/a.pdf"}]},
     )
     monkeypatch.setattr(
-        "requests.get", lambda url, **_kwargs: FakeResponse(url=url)
+        "psweep.discovery.network.request_get", lambda url, **_kwargs: FakeResponse(url=url)
     )
     request = _request(tmp_path, selection_primary_per_target=1)
     DiscoveryEngine().run(request)
@@ -104,7 +104,7 @@ def test_changed_policy_invalidates_completion(monkeypatch, tmp_path):
         {"organic_results": [{"link": "https://example.org/a.pdf"}]},
     )
     monkeypatch.setattr(
-        "requests.get", lambda url, **_kwargs: FakeResponse(url=url)
+        "psweep.discovery.network.request_get", lambda url, **_kwargs: FakeResponse(url=url)
     )
     request = _request(tmp_path, selection_primary_per_target=1)
     DiscoveryEngine().run(request)
@@ -125,7 +125,7 @@ def test_cap_preserves_prior_complete_partition(monkeypatch, tmp_path):
         },
     )
     monkeypatch.setattr(
-        "requests.get", lambda url, **_kwargs: FakeResponse(url=url)
+        "psweep.discovery.network.request_get", lambda url, **_kwargs: FakeResponse(url=url)
     )
     previous = tmp_path / "domain/curated/by_label/target/prior.pdf"
     previous.parent.mkdir(parents=True)
@@ -148,7 +148,7 @@ def test_seed_failure_without_metadata_preserves_prior_host(
             raise OSError("connection failed")
         return FakeResponse(url=url)
 
-    monkeypatch.setattr("requests.get", get)
+    monkeypatch.setattr("psweep.discovery.network.request_get", get)
     request = _request(
         tmp_path,
         targets=None,
@@ -168,7 +168,7 @@ def test_empty_search_cannot_complete_a_failed_seed(monkeypatch, tmp_path):
     """Whole-target outcome, not search-only outcome, governs completion."""
     _fake_search(monkeypatch, {"organic_results": []})
     monkeypatch.setattr(
-        "requests.get", Mock(side_effect=OSError("failed seed"))
+        "psweep.discovery.network.request_get", Mock(side_effect=OSError("failed seed"))
     )
     request = _request(tmp_path, seed_urls=["https://example.org/target.pdf"])
     result = DiscoveryEngine().run(request)
@@ -196,7 +196,7 @@ def test_reused_none_retention_never_deletes_consolidated(
         {"organic_results": [{"link": "https://example.org/a.pdf"}]},
     )
     monkeypatch.setattr(
-        "requests.get", lambda url, **_kwargs: FakeResponse(url=url)
+        "psweep.discovery.network.request_get", lambda url, **_kwargs: FakeResponse(url=url)
     )
     request = _request(
         tmp_path, selection_primary_per_target=1, retention_documents="none"
@@ -226,7 +226,7 @@ def test_failed_final_publication_preserves_fixed_local_outputs(
         {"organic_results": [{"link": "https://example.org/a.pdf"}]},
     )
     monkeypatch.setattr(
-        "requests.get", lambda url, **_kwargs: FakeResponse(url=url)
+        "psweep.discovery.network.request_get", lambda url, **_kwargs: FakeResponse(url=url)
     )
     request = _request(tmp_path, selection_primary_per_target=1)
     first = DiscoveryEngine().run(request)
@@ -263,7 +263,7 @@ def test_fixed_partial_resume_does_not_invalidate_previous_target(
             raise OSError("beta unavailable")
         return FakeResponse(url=url)
 
-    monkeypatch.setattr("requests.get", get)
+    monkeypatch.setattr("psweep.discovery.network.request_get", get)
     request = _request(tmp_path, targets=targets, retry_max_attempts=1)
     assert DiscoveryEngine().run(request).status == "partial_failure"
     fail_beta[0] = False
@@ -281,7 +281,7 @@ def test_unattributed_seed_still_publishes_with_completed_targets(
         {"organic_results": [{"link": "https://example.org/a.pdf"}]},
     )
     monkeypatch.setattr(
-        "requests.get", lambda url, **_kwargs: FakeResponse(url=url)
+        "psweep.discovery.network.request_get", lambda url, **_kwargs: FakeResponse(url=url)
     )
     request = _request(
         tmp_path,

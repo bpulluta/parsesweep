@@ -1,31 +1,13 @@
-"""Typer application definition for ParseSweep.
-
-This module defines the top-level Typer app and the ``run`` command.
-All other commands are registered here — either as native Typer commands
-(after migration) or via the Click compatibility bridge (during migration).
-
-The entry point in pyproject.toml points to :func:`main` in this module:
-    psweep = "psweep.cli.app:main"
-
-Architecture note:
-    Typer is used for newly written commands (type-hint driven, auto-help,
-    tab completion). Existing Click commands are bridged in via
-    ``typer.main.get_command(app).add_command()``. The resolved Click group
-    is used as the actual entry point so bridged commands show up in --help.
-"""
+"""Canonical Click application and full-pipeline command."""
 
 from __future__ import annotations
 
-import shutil
 import subprocess
 import sys
 from pathlib import Path
-from typing import Annotated, Any, Optional, Sequence
+from typing import Optional
 
 import click
-import typer
-import typer.main
-from typer.core import TyperGroup
 
 from psweep import __version__
 from psweep.cli.commands_benchmark import benchmark
@@ -54,83 +36,20 @@ from psweep.pipeline import (
 # ---------------------------------------------------------------------------
 
 
-class ParseSweepTyperGroup(TyperGroup):
-    """Restore ClickException rendering for bridged legacy Click commands."""
+@click.group(name="psweep", invoke_without_command=True, no_args_is_help=False)
+@click.version_option(__version__, "--version", "-V", prog_name="psweep")
+@click.pass_context
+def cli(ctx: click.Context) -> None:
+    """Extract structured data from documents using LLMs and schemas.
 
-    def main(
-        self,
-        args: Sequence[str] | None = None,
-        prog_name: str | None = None,
-        complete_var: str | None = None,
-        standalone_mode: bool = True,
-        windows_expand_args: bool = True,
-        **extra: Any,
-    ) -> Any:
-        """Run the group, keeping ClickException rendering for bridged cmds."""
-        try:
-            return super().main(
-                args=args,
-                prog_name=prog_name,
-                complete_var=complete_var,
-                standalone_mode=standalone_mode,
-                windows_expand_args=windows_expand_args,
-                **extra,
-            )
-        except click.exceptions.Exit as exc:
-            if standalone_mode:
-                raise SystemExit(exc.exit_code) from exc
-            return exc.exit_code
-        except click.ClickException as exc:
-            if not standalone_mode:
-                raise
-            exc.show()
-            raise SystemExit(exc.exit_code) from exc
+    Run without arguments for the interactive guided menu.
+    """
+    from psweep.security import prepare_protected_runtime
 
-
-app = typer.Typer(
-    name="psweep",
-    help=(
-        "📄 [bold]ParseSweep[/bold] — AI-powered structured data extraction "
-        "from documents.\n\n"
-        "[dim]Run [cyan]psweep[/cyan] with no arguments for an interactive "
-        "guided menu.[/dim]"
-    ),
-    invoke_without_command=True,
-    rich_markup_mode="rich",
-    add_completion=True,
-    no_args_is_help=False,
-    cls=ParseSweepTyperGroup,
-    pretty_exceptions_enable=False,
-)
-
-
-# ---------------------------------------------------------------------------
-# Top-level callback — handles --version and no-args interactive mode
-# ---------------------------------------------------------------------------
-
-
-def _version_callback(value: bool) -> None:
-    if value:
-        typer.echo(f"psweep {__version__}")
-        raise typer.Exit()
-
-
-@app.callback(invoke_without_command=True)
-def callback(
-    ctx: typer.Context,
-    version: Annotated[
-        bool,
-        typer.Option(
-            "--version",
-            "-V",
-            help="Show version and exit.",
-            is_eager=True,
-            callback=_version_callback,
-            expose_value=False,
-        ),
-    ] = False,
-) -> None:
-    """ParseSweep: extract structured data from any document using LLMs + schemas."""
+    try:
+        prepare_protected_runtime()
+    except ValueError as exc:
+        raise click.ClickException(str(exc)) from exc
     if ctx.invoked_subcommand is None:
         # No subcommand given — launch the interactive guided menu
         from psweep.cli.interactive import run_interactive_menu
@@ -142,85 +61,45 @@ def callback(
 # ---------------------------------------------------------------------------
 
 
-@app.command()
+@cli.command()
+@click.option("--config", "config_path", required=True, type=click.Path(path_type=Path),
+              help="Path to the domain run configuration.")
+@click.option("--fresh", is_flag=True, help="Re-run discovery, extraction, and compilation.")
+@click.option("--target-limit", "-n", type=click.IntRange(min=1), help="Limit discovery targets.")
+@click.option("--retention-documents", help="Discovery retention: all, curated, or none.")
+@click.option("--skip-discover", is_flag=True, help="Use existing curated documents.")
+@click.option("--skip-extract", is_flag=True, help="Compile existing extracted records.")
+@click.option("--validate-config", "validate_config_only", is_flag=True,
+              help="Validate the run configuration without executing stages.")
+@click.option("--config-strict/--no-config-strict", default=True,
+              help="Fail on unknown configuration keys.")
+@click.option("--yes", "-y", is_flag=True, help="Skip confirmation.")
+@click.option("--quiet", "-q", is_flag=True, help="Minimal output.")
+@click.option("--verbose", "-v", is_flag=True, help="Detailed output.")
 def run(
-    config_path: Annotated[
-        Path,
-        typer.Option("--config", help="Path to the domain run config file (e.g. config/<domain>/run.yaml).", show_default=False),
-    ],
-    fresh: Annotated[
-        bool,
-        typer.Option(
-            "--fresh",
-            help="Ignore all previous work and start fresh — re-run every "
-            "discovery target (ignoring the checkpoint and search cache), "
-            "clear extracted and compiled outputs, then re-extract every "
-            "document from the newly discovered curated set before "
-            "recompiling.",
-        ),
-    ] = False,
-    target_limit: Annotated[
-        Optional[int],
-        typer.Option(
-            "--target-limit",
-            "-n",
-            min=1,
-            help="Limit discovery to the first N configured targets for this run.",
-        ),
-    ] = None,
-    retention_documents: Annotated[
-        Optional[str],
-        typer.Option(
-            "--retention-documents",
-            help="Discovery document retention mode: all, curated, or none.",
-        ),
-    ] = None,
-    skip_discover: Annotated[
-        bool,
-        typer.Option("--skip-discover", help="Skip discovery (use existing curated docs)."),
-    ] = False,
-    skip_extract: Annotated[
-        bool,
-        typer.Option("--skip-extract", help="Skip extraction (compile from existing JSON)."),
-    ] = False,
-    validate_config_only: Annotated[
-        bool,
-        typer.Option(
-            "--validate-config",
-            help="Validate resolved run-stage config and exit without executing stages.",
-        ),
-    ] = False,
-    config_strict: Annotated[
-        bool,
-        typer.Option(
-            "--config-strict/--no-config-strict",
-            help="Fail on unknown keys in runtime config sections during run preflight.",
-        ),
-    ] = True,
-    yes: Annotated[
-        bool,
-        typer.Option("--yes", "-y", help="Skip confirmation prompt."),
-    ] = False,
-    quiet: Annotated[
-        bool,
-        typer.Option("--quiet", "-q", help="Minimal output."),
-    ] = False,
-    verbose: Annotated[
-        bool,
-        typer.Option("--verbose", "-v", help="Detailed output."),
-    ] = False,
+    config_path: Path,
+    fresh: bool = False,
+    target_limit: int | None = None,
+    retention_documents: str | None = None,
+    skip_discover: bool = False,
+    skip_extract: bool = False,
+    validate_config_only: bool = False,
+    config_strict: bool = True,
+    yes: bool = False,
+    quiet: bool = False,
+    verbose: bool = False,
 ) -> None:
     """Run the full pipeline: discover → extract → validate (optional) → compile.
 
     Shows what will be reused from previous runs and what is new, then
-    asks for confirmation before proceeding. Use [cyan]--fresh[/cyan] to
+    asks for confirmation before proceeding. Use --fresh to
     ignore all previous work and start fresh.
 
-    [bold]Usage:[/bold]
+    Usage:
         psweep run --config config/my_domain/run.yaml
         psweep run --config config/my_domain/run.yaml --target-limit 3 --fresh --yes
 
-    [bold]Adding new targets:[/bold]
+    Adding new targets:
         1. Add rows to config/<domain>/targets.csv
         2. Run: psweep run --config config/<domain>/run.yaml
         3. Only new targets are processed; previous results are preserved.
@@ -234,8 +113,8 @@ def run(
     from psweep.cli.ui import Verbosity, set_verbosity
 
     if not config_path.exists():
-        typer.echo(f"Error: Config not found: {config_path}", err=True)
-        raise typer.Exit(1)
+        click.echo(f"Error: Config not found: {config_path}", err=True)
+        raise click.exceptions.Exit(1)
 
     resolved_verbosity = Verbosity.from_flags(quiet=quiet, verbose=verbose, debug=False)
     set_verbosity(resolved_verbosity)
@@ -247,13 +126,13 @@ def run(
                 "Invalid --retention-documents value",
                 "Expected one of: all, curated, none",
             )
-            raise typer.Exit(1)
+            raise click.exceptions.Exit(1)
 
     try:
         cfg = load_runtime_config_file(config_path)
     except RuntimeConfigError as exc:
         view.error("Runtime config validation failed", str(exc))
-        raise typer.Exit(1)
+        raise click.exceptions.Exit(1)
 
     domain = cfg.get("domain", config_path.parent.name)
     discovery_enabled = resolve_run_discovery_enabled(config_path)
@@ -336,15 +215,15 @@ def run(
                 "with extract/compile run stages. Use --retention-documents curated "
                 "or run discover-only.",
             )
-            raise typer.Exit(1)
+            raise click.exceptions.Exit(1)
     except RuntimeConfigError as exc:
         view.error("Run preflight failed", str(exc))
-        raise typer.Exit(1)
+        raise click.exceptions.Exit(1)
 
     if validate_config_only:
         if not view.is_quiet:
             view.success("Runtime config validation passed for run command")
-        raise typer.Exit(0)
+        raise click.exceptions.Exit(0)
 
     curated_dir = Path(f"discovered/{domain}/curated")
     curated_count = count_curated_documents(curated_dir)
@@ -396,21 +275,16 @@ def run(
 
     # Confirm
     if not yes and not view.is_quiet:
-        if not typer.confirm("Proceed?", default=True):
+        if not click.confirm("Proceed?", default=True):
             view.info("Cancelled.")
-            raise typer.Exit(0)
+            raise click.exceptions.Exit(0)
 
     flags: list[str] = []
     if quiet:
         flags.append("-q")
     elif verbose:
         flags.append("-v")
-    pixi_exe = shutil.which("pixi")
-    base_cmd = (
-        [pixi_exe, "run", "psweep"]
-        if pixi_exe
-        else [sys.executable, "-m", "psweep.cli.main"]
-    )
+    base_cmd = [sys.executable, "-m", "psweep.cli.main"]
 
     stage_cmds = build_run_stage_commands(
         config_path,
@@ -443,7 +317,7 @@ def run(
         result = subprocess.run(cmd)
         if result.returncode != 0:
             view.error(f"Stage '{stage_name}' failed (exit {result.returncode})")
-            raise typer.Exit(result.returncode)
+            raise click.exceptions.Exit(result.returncode)
 
     # Build a richer post-run summary from on-disk artifacts.
     summary_rows: dict[str, str] = {
@@ -478,8 +352,8 @@ def run(
 # ---------------------------------------------------------------------------
 
 
-def _build_cli() -> "click.Group":  # type: ignore[name-defined]
-    """Build the final Click group with all commands registered."""
+def _register_commands() -> None:
+    """Register every stage on the single public Click group."""
     from psweep.cli.utils_commands import (
         check_schema_cmd,
         config,
@@ -489,7 +363,6 @@ def _build_cli() -> "click.Group":  # type: ignore[name-defined]
         preview,
     )
 
-    click_group = typer.main.get_command(app)
     for cmd in (
         extract,
         check,
@@ -505,12 +378,11 @@ def _build_cli() -> "click.Group":  # type: ignore[name-defined]
         check_schema_cmd,
         config,
     ):
-        click_group.add_command(cmd)
-    return click_group
+        cli.add_command(cmd)
 
 
 # Build once at module load — this is the actual CLI entry point
-_cli = _build_cli()
+_register_commands()
 
 
 # ---------------------------------------------------------------------------
@@ -520,7 +392,7 @@ _cli = _build_cli()
 
 def main() -> None:
     """CLI entry point registered in pyproject.toml."""
-    _cli()
+    cli()
 
 
 if __name__ == "__main__":

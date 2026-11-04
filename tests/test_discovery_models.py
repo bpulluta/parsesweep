@@ -2,6 +2,8 @@ from pathlib import Path
 import re
 import json
 import csv
+import sys
+from unittest.mock import Mock
 
 from psweep.discovery import (
     DiscoveryCandidate,
@@ -140,13 +142,21 @@ def test_engine_run_emits_taxonomy_aligned_structured_errors_for_invalid_seeds(t
     assert all(record["code"] == "invalid_input" for record in records)
 
 
-def test_engine_run_emits_structured_error_when_serpapi_dependency_missing(tmp_path: Path, monkeypatch):
-    monkeypatch.setattr("importlib.util.find_spec", lambda _: None)
+def test_engine_search_uses_http_without_serpapi_sdk(tmp_path: Path, monkeypatch):
+    monkeypatch.setitem(sys.modules, "serpapi", None)
+    monkeypatch.setenv("SERPAPI_API_KEY", "synthetic-search-key")
+    response = Mock(status_code=200, headers={}, url="https://serpapi.com/search.json")
+    response.json.return_value = {"organic_results": [{
+        "link": "https://example.org/ordinance.pdf",
+        "title": "Geothermal ordinance",
+    }]}
+    request_get = Mock(return_value=response)
+    monkeypatch.setattr("psweep.discovery.network.request_get", request_get)
 
     engine = DiscoveryEngine()
     request = DiscoveryRequest(
         domain="geothermal_ordinances",
-        seed_urls=["https://example.org/valid"],
+        seed_urls=[],
         query="geothermal ordinance",
         enable_serpapi=True,
         output_documents=tmp_path / "docs",
@@ -159,13 +169,15 @@ def test_engine_run_emits_structured_error_when_serpapi_dependency_missing(tmp_p
 
     assert payload["lineage"]["seeker"]["provider"] == "serpapi"
     assert payload["lineage"]["seeker"]["enabled"] is True
-    assert payload["lineage"]["seeker"]["available"] is False
-    assert payload["error_summary"]["total_errors"] == 1
-    assert payload["errors"][0]["stage"] == "discovery.seeker_init"
+    assert payload["lineage"]["seeker"]["available"] is True
+    assert payload["status"] == "dry_run", payload["errors"]
+    assert payload["error_summary"]["total_errors"] == 0
+    assert payload["candidates"][0]["url"] == "https://example.org/ordinance.pdf"
+    request_get.assert_called_once()
+    response.close.assert_called_once()
 
 
 def test_engine_run_emits_structured_error_when_serpapi_key_missing(tmp_path: Path, monkeypatch):
-    monkeypatch.setattr("importlib.util.find_spec", lambda _: object())
     monkeypatch.delenv("SERPAPI_API_KEY", raising=False)
     monkeypatch.delenv("SERPAPI_KEY", raising=False)
 
@@ -296,7 +308,7 @@ def test_engine_run_download_stage_skips_rejected_discovered_candidates(tmp_path
             0,
         )
 
-    monkeypatch.setattr("requests.get", lambda url, **kwargs: _FakeResponse(url=url))
+    monkeypatch.setattr("psweep.discovery.network.request_get", lambda url, **kwargs: _FakeResponse(url=url))
     monkeypatch.setattr(DiscoveryEngine, "_resolve_serpapi_state", staticmethod(fake_resolve_serpapi_state))
     monkeypatch.setattr(DiscoveryEngine, "_run_seeker", staticmethod(fake_run_seeker))
 
@@ -348,7 +360,7 @@ def test_engine_run_download_stage_preserves_rejected_when_no_better_discovered_
             0,
         )
 
-    monkeypatch.setattr("requests.get", lambda url, **kwargs: _FakeResponse(url=url))
+    monkeypatch.setattr("psweep.discovery.network.request_get", lambda url, **kwargs: _FakeResponse(url=url))
     monkeypatch.setattr(DiscoveryEngine, "_resolve_serpapi_state", staticmethod(fake_resolve_serpapi_state))
     monkeypatch.setattr(DiscoveryEngine, "_run_seeker", staticmethod(fake_run_seeker))
 
@@ -379,7 +391,7 @@ def test_engine_run_retries_transient_download_failure_then_succeeds(tmp_path: P
             raise RuntimeError("temporary timeout")
         return _FakeResponse(url="https://example.org/docs/retry-ordinance.pdf")
 
-    monkeypatch.setattr("requests.get", flaky_get)
+    monkeypatch.setattr("psweep.discovery.network.request_get", flaky_get)
 
     engine = DiscoveryEngine()
     request = DiscoveryRequest(
@@ -444,7 +456,7 @@ def test_engine_run_enforces_tos_acknowledgement_for_downloads(tmp_path: Path, m
         request_urls.append(url)
         raise AssertionError("download request should not be attempted when ToS policy blocks it")
 
-    monkeypatch.setattr("requests.get", fake_get)
+    monkeypatch.setattr("psweep.discovery.network.request_get", fake_get)
 
     engine = DiscoveryEngine()
     request = DiscoveryRequest(
@@ -481,7 +493,7 @@ def test_engine_run_enforces_robots_policy_for_downloads(tmp_path: Path, monkeyp
             text=text,
         )
 
-    monkeypatch.setattr("requests.get", fake_get)
+    monkeypatch.setattr("psweep.discovery.network.request_get", fake_get)
 
     engine = DiscoveryEngine()
     request = DiscoveryRequest(
@@ -510,7 +522,7 @@ def test_engine_run_applies_request_rate_limiter_for_downloads(tmp_path: Path, m
     sleep_calls: list[float] = []
     monotonic_values = iter([0.0, 0.0, 0.03, 0.03, 0.05, 0.05, 0.10, 0.10])
 
-    monkeypatch.setattr("requests.get", lambda url, **kwargs: _FakeResponse(url=url))
+    monkeypatch.setattr("psweep.discovery.network.request_get", lambda url, **kwargs: _FakeResponse(url=url))
     monkeypatch.setattr("time.sleep", lambda seconds: sleep_calls.append(seconds))
     monkeypatch.setattr("time.monotonic", lambda: next(monotonic_values, 0.10))
 
@@ -547,7 +559,7 @@ def test_engine_run_uses_configured_request_headers_for_downloads(tmp_path: Path
             chunks=[b"<html><body><h1>Apple filing summary</h1></body></html>"],
         )
 
-    monkeypatch.setattr("requests.get", fake_get)
+    monkeypatch.setattr("psweep.discovery.network.request_get", fake_get)
     monkeypatch.setattr("time.sleep", lambda *_args, **_kwargs: None)
 
     engine = DiscoveryEngine()

@@ -387,13 +387,16 @@ values must be finite and non-negative.
 |----------|-------------|
 | `SERPAPI_API_KEY` | SerpApi key (primary); keep out of YAML. |
 | `SERPAPI_KEY` | SerpApi key (fallback). |
-| `SERPAPI_SSL_VERIFY` | SerpApi TLS verification; unchanged default `false`, set `true` to enable. |
-| `DISCOVERY_SSL_VERIFY` | Download TLS verification; unchanged default `false`, set `true` to enable. |
+| `SERPAPI_SSL_VERIFY` | Search TLS verification; overrides `PSWEEP_SSL_VERIFY`. Defaults to true. |
+| `DISCOVERY_SSL_VERIFY` | Download TLS verification; overrides `PSWEEP_SSL_VERIFY`. Defaults to true. |
+| `PSWEEP_SSL_VERIFY` | Model TLS verification and fallback for search/downloads. Defaults to true. |
 | `REQUESTS_CA_BUNDLE` | Requests CA bundle path, including enterprise certificates if applicable. |
 
-Choose verification explicitly via the environment. Other request paths can
-differ; config validation neither contacts these endpoints nor tests their
-certificate chains.
+An explicit false value is permitted only in public mode and emits a warning:
+connections and credentials can be intercepted. Prefer approved CA roots,
+including on a VPN. Protected mode rejects any false setting. Invalid boolean
+values always fail. Config validation neither contacts endpoints nor tests
+their certificate chains.
 
 ### Discovery Outputs
 

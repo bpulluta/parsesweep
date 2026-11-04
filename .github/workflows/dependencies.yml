@@ -1,0 +1,69 @@
+name: Dependency audit
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - pyproject.toml
+      - pixi.toml
+      - pixi.lock
+      - .github/workflows/dependencies.yml
+  schedule:
+    - cron: "23 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dependency-audit-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+
+      - uses: prefix-dev/setup-pixi@a0af7a228712d6121d37aba47adf55c1332c9c2e # v0.9.4
+        id: environments
+        with:
+          pixi-version: "0.83.0"
+          environments: default dev
+          locked: true
+
+      - name: Record Python and native runtime inventory
+        run: pixi list --environment default --json > runtime-inventory.json
+
+      # Only installed public package names/versions are queried. Native Conda
+      # libraries are not covered by pip-audit or this Python-only SBOM.
+      - name: Audit the installed runtime (findings fail the job)
+        run: >-
+          pixi run --locked -e dev python -m pip_audit
+          --path .pixi/envs/default/lib/python3.12/site-packages
+          --skip-editable --progress-spinner off
+          --cache-dir .pixi/audit-cache
+          --format json --output dependency-audit.json
+
+      - name: Generate runtime CycloneDX SBOM even when advisories are found
+        if: ${{ !cancelled() && steps.environments.outcome == 'success' }}
+        run: >-
+          pixi run --locked -e dev python -m pip_audit
+          --path .pixi/envs/default/lib/python3.12/site-packages
+          --skip-editable --progress-spinner off
+          --cache-dir .pixi/audit-cache
+          --format cyclonedx-json --output runtime-sbom.cdx.json
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: ${{ !cancelled() }}
+        with:
+          name: runtime-dependency-audit
+          path: |
+            dependency-audit.json
+            runtime-sbom.cdx.json
+            runtime-inventory.json
+          if-no-files-found: error
+          retention-days: 30

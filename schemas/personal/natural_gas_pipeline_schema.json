@@ -181,6 +181,9 @@
         "required": [
           "feature",
           "rule_kind",
+          "applies_to",
+          "requirement_description",
+          "source_verbatim",
           "value_category",
           "obligation",
           "summary"

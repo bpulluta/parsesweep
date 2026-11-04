@@ -1,7 +1,7 @@
 # ParseSweep
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
+[![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
 [![CI](https://github.com/bpulluta/parsesweep/actions/workflows/ci.yml/badge.svg)](https://github.com/bpulluta/parsesweep/actions/workflows/ci.yml)
 [![Docs](https://github.com/bpulluta/parsesweep/actions/workflows/docs.yml/badge.svg)](https://bpulluta.github.io/parsesweep/)
 
@@ -280,9 +280,16 @@ until explicitly configured with `browser_escalation: {enabled: true}` or
 `code_host_adapters: {enabled: true}`. Threshold-only blocks do not enable either.
 Strict robots/ToS enforcement cannot certify browser redirects or subresources;
 it fails before unsupported browser navigation. Use HTTP acquisition for
-enforcement. SerpApi/download TLS verification defaults remain `false`; choose verification
-with environment options `SERPAPI_SSL_VERIFY`, `DISCOVERY_SSL_VERIFY`, and a
-Requests CA bundle with `REQUESTS_CA_BUNDLE` if applicable.
+enforcement. TLS certificate verification defaults to on; prefer an approved
+`REQUESTS_CA_BUNDLE` for VPN/enterprise trust. Public mode retains an explicit,
+warned `PSWEEP_SSL_VERIFY=false` compatibility option; protected mode rejects it.
+Never disable verification for sensitive data. HTTP discovery rejects private/reserved destinations at
+connection time, including redirects and robots requests.
+
+Sensitive-data use requires the [protected operating guide](docs/security.md)
+and site acceptance. This release is **not certified for production/HPC use**:
+the dependency audit still has a documented upstream `filelock` constraint
+blocker. Python 3.12 is the tested runtime; newer versions are not certified.
 
 See [config/ADVANCED.yaml](config/ADVANCED.yaml) and the
 [configuration reference](docs/config-reference.md) for expanded settings.

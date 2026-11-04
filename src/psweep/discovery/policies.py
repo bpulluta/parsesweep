@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from urllib.parse import urlparse
 from urllib.robotparser import RobotFileParser
 
-from .network import RateLimiter, send_get
+from .network import RateLimiter, send_get, URLGate, NetworkPolicyError
 
 # Single source of truth for the user-facing policy defaults. Referenced by the
 # ``DiscoveryRequest`` dataclass, the CLI options, the CLI resolution fallbacks,
@@ -70,6 +70,7 @@ class DiscoveryPolicyEvaluator:
         request_headers: dict[str, str] | None,
         timeout_seconds: float = 15,
         rate_limiter: RateLimiter | None = None,
+        source_gate: URLGate | None = None,
     ) -> tuple[RobotFileParser | None, str | None]:
         """Load robots rules without recursively invoking a gate."""
         parsed = urlparse(url)
@@ -96,6 +97,7 @@ class DiscoveryPolicyEvaluator:
                 or {"User-Agent": self.DEFAULT_USER_AGENT},
                 limiter=rate_limiter,
                 raise_for_status=False,
+                gate=source_gate,
             )
             status_code = int(getattr(response, "status_code", 200) or 200)
             if status_code == 404:
@@ -111,6 +113,8 @@ class DiscoveryPolicyEvaluator:
             result = (parser, None)
             self._robots_cache[cache_key] = result
             return result
+        except NetworkPolicyError:
+            raise
         except Exception as exc:  # noqa: BLE001 - record unavailable robots rules
             result = (None, str(exc))
             self._robots_cache[cache_key] = result
@@ -130,6 +134,7 @@ class DiscoveryPolicyEvaluator:
         acknowledged_tos_domains: list[str] | None = None,
         timeout_seconds: float = 15,
         rate_limiter: RateLimiter | None = None,
+        source_gate: URLGate | None = None,
     ) -> PolicyCheckResult:
         """Evaluate robots.txt and ToS-acknowledgement policy for a URL.
 
@@ -190,6 +195,7 @@ class DiscoveryPolicyEvaluator:
             request_headers=request_headers,
             timeout_seconds=timeout_seconds,
             rate_limiter=rate_limiter,
+            source_gate=source_gate,
         )
         if parser is None:
             message = (

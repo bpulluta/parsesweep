@@ -15,19 +15,13 @@ import json
 import math
 import os
 import shutil
-import socket
 import uuid
 from dataclasses import dataclass, fields, is_dataclass
 from pathlib import Path
 from collections.abc import Iterator, Mapping
 
 from psweep.extraction.document_utils import text_cache_paths
-from psweep.utils.file_io import atomic_write, atomic_json
-
-if os.name == "nt":
-    import msvcrt
-else:
-    import fcntl
+from psweep.utils.file_io import atomic_write, atomic_json, publication_lock, PublicationLockError
 
 TOKEN_HEX_LENGTH = 32
 SHA256_HEX_LENGTH = 64
@@ -109,46 +103,12 @@ def discovery_publication(domain_dir: Path) -> Iterator[None]:
     """
     root = Path(domain_dir).resolve()
     root.mkdir(parents=True, exist_ok=True)
-    with (root / ".discovery-publication.lock").open("a+b") as handle:
-        if os.name == "nt":
-            handle.seek(0, os.SEEK_END)
-            if handle.tell() == 0:
-                handle.write(b" ")
-                handle.flush()
-            handle.seek(0)
-            try:
-                msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
-            except OSError as exc:
-                msg = f"Discovery publication already active in {root}"
-                raise PublicationError(msg) from exc
-        else:
-            try:
-                fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-            except OSError as exc:
-                msg = f"Discovery publication already active in {root}"
-                raise PublicationError(msg) from exc
-        try:
-            handle.seek(0)
-            handle.truncate()
-            handle.write(
-                json.dumps(
-                    {
-                        "pid": os.getpid(),
-                        "host": socket.gethostname(),
-                        "token": uuid.uuid4().hex,
-                    }
-                ).encode()
-            )
-            handle.flush()
-            os.fsync(handle.fileno())
+    try:
+        with publication_lock(root / ".discovery-publication.lock"):
             _recover(root)
             yield
-        finally:
-            if os.name == "nt":
-                handle.seek(0)
-                msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
-            else:
-                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+    except PublicationLockError as exc:
+        raise PublicationError(str(exc)) from exc
 
 
 def _journal_path(root: Path) -> Path:

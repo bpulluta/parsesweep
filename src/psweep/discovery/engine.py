@@ -5,7 +5,6 @@ from __future__ import annotations
 import contextlib
 import csv
 import hashlib
-import importlib.util
 import json
 import os
 import re
@@ -16,6 +15,7 @@ from dataclasses import dataclass, field
 from dataclasses import replace as dataclass_replace
 from datetime import datetime, timezone
 from io import StringIO
+from itertools import chain
 from pathlib import Path
 from typing import Callable
 from urllib.parse import unquote, urlparse
@@ -595,19 +595,7 @@ class DiscoveryEngine:
 
         notes: list[str] = []
         errors: list[dict[str, object]] = []
-        is_available = importlib.util.find_spec("serpapi") is not None
-
-        if not is_available:
-            errors.append(
-                build_error_record(
-                    RuntimeError(
-                        "SerpApi feature flag enabled but optional dependency is not installed"
-                    ),
-                    stage="discovery.seeker_init",
-                    provider="serpapi",
-                )
-            )
-        elif not (os.getenv("SERPAPI_API_KEY") or os.getenv("SERPAPI_KEY")):
+        if not (os.getenv("SERPAPI_API_KEY") or os.getenv("SERPAPI_KEY")):
             errors.append(
                 build_error_record(
                     ValueError(
@@ -624,7 +612,7 @@ class DiscoveryEngine:
             {
                 "provider": "serpapi",
                 "enabled": True,
-                "available": is_available,
+                "available": True,
             },
             normalize_error_records(errors),
             notes,
@@ -1067,15 +1055,25 @@ class DiscoveryEngine:
 
     @classmethod
     def _resolve_request_headers(
-        cls, request: DiscoveryRequest
+        cls, request: DiscoveryRequest, url: str | None = None,
+        adapter_headers: dict[str, str] | None = None,
     ) -> dict[str, str]:
-        headers = dict(cls._DEFAULT_REQUEST_HEADERS)
+        from requests.structures import CaseInsensitiveDict
+        from .code_host_adapters import resolve_adapter
+
+        headers = CaseInsensitiveDict(cls._DEFAULT_REQUEST_HEADERS)
+        cfg = request.code_host_adapters
+        enabled = cfg if isinstance(cfg, bool) else (cfg or {}).get("enabled", False)
+        adapter = resolve_adapter(url) if enabled and url else None
+        if adapter:
+            headers.update(adapter.request_headers())
+        headers.update(adapter_headers or {})
         for key, value in (request.request_headers or {}).items():
             normalized_key = str(key or "").strip()
             normalized_value = str(value or "").strip()
             if normalized_key and normalized_value:
                 headers[normalized_key] = normalized_value
-        return headers
+        return dict(headers)
 
     @staticmethod
     def _policy_status_from_blocking_code(blocking_code: str | None) -> str:
@@ -1105,12 +1103,17 @@ class DiscoveryEngine:
         return self._policy_evaluator.evaluate(
             url=url,
             ssl_verify=ssl_verify,
-            request_headers=self._resolve_request_headers(request),
+            request_headers=self._resolve_request_headers(request, url),
             robots_policy_mode=request.robots_policy_mode,
             tos_policy_mode=request.tos_policy_mode,
             acknowledged_tos_domains=request.acknowledged_tos_domains,
             timeout_seconds=request.timeout_seconds or 15,
             rate_limiter=self._rate_limiter,
+            source_gate=lambda target: matches_allowed_domain(
+                target, request.allowed_domains
+            ) and not matches_url_exclusion(
+                target, compile_url_patterns(request.selection_exclude_url_patterns)
+            ),
         )
 
     def _network_gate(
@@ -1345,7 +1348,7 @@ class DiscoveryEngine:
                         url=url,
                         ssl_verify=ssl_verify,
                         retry_policy=retry_policy,
-                        request_headers=self._resolve_request_headers(request),
+                        request_headers=self._resolve_request_headers(request, url),
                         rate_limiter=rate_limiter,
                         request=request,
                     )
@@ -1393,6 +1396,19 @@ class DiscoveryEngine:
             extension = self._infer_extension_from_url_or_mime(
                 final_url, mime_type
             )
+            chunks = iter(_chunks())
+            normalized_mime = (mime_type or "").split(";", 1)[0].strip().lower()
+            if extension is None and normalized_mime in {"", "application/octet-stream"}:
+                # Some ordinance APIs return PDF bytes without a filename or MIME.
+                prefix = b""
+                while len(prefix) < 5:
+                    chunk = next(chunks, None)
+                    if chunk is None:
+                        break
+                    prefix += chunk
+                if prefix.startswith(b"%PDF-"):
+                    extension = ".pdf"
+                chunks = chain((prefix,), chunks)
             if extension is None:
                 return (
                     idx,
@@ -1473,7 +1489,7 @@ class DiscoveryEngine:
                     hasher = hashlib.sha256()
                     with target_path.open("xb") as handle:
                         own_target = True
-                        for chunk in _chunks():
+                        for chunk in chunks:
                             if not chunk:
                                 continue
                             handle.write(chunk)
@@ -1559,17 +1575,9 @@ class DiscoveryEngine:
 
     @staticmethod
     def _downloads_ssl_verify() -> bool:
-        raw_value = (
-            os.getenv("DISCOVERY_SSL_VERIFY")
-            or os.getenv("PSWEEP_SSL_VERIFY")
-            or "false"
-        )
-        return str(raw_value).strip().lower() not in {
-            "0",
-            "false",
-            "no",
-            "off",
-        }
+        from psweep.security import resolve_tls_verification
+
+        return resolve_tls_verification("DISCOVERY_SSL_VERIFY")
 
     @staticmethod
     def _infer_extension_from_url_or_mime(
@@ -3337,16 +3345,13 @@ class DiscoveryEngine:
         Adapter API endpoints use policy checks, not document selection.
         Headers and TLS verification remain shared with acquisition.
         """
-        base_headers = self._resolve_request_headers(request)
-
         def gate(endpoint: str) -> object:
             return self._evaluate_request_policy(
                 url=endpoint, request=request, ssl_verify=ssl_verify
             )
 
         def _get(url: str, headers: dict) -> tuple[int, str]:
-            merged = dict(base_headers)
-            merged.update(headers or {})
+            merged = self._resolve_request_headers(request, url, headers)
             response, _ = send_get(
                 url,
                 headers=merged,

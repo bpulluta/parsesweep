@@ -47,6 +47,7 @@ from psweep.extraction.provenance import generate_run_id
 @click.option("--quiet", "-q", is_flag=True, help="Minimal output")
 @click.option("--verbose", "-v", is_flag=True, help="Detailed output")
 @click.option("--debug", is_flag=True, help="Debug mode with full logs")
+@click.option("--yes", "-y", is_flag=True, help="Skip QA/QC extraction confirmation")
 def validate(
     config_path: str,
     limit: Optional[int],
@@ -55,6 +56,7 @@ def validate(
     quiet: bool,
     verbose: bool,
     debug: bool,
+    yes: bool,
 ) -> None:
     """Run explicit QA/QC validation: multi-model extraction + comparison."""
     from psweep.cli.commands import (
@@ -180,7 +182,6 @@ def validate(
             view=view,
             report_limit=limit,
             discovery_checkpoint_path=discovery_checkpoint_path,
-            extraction_base_dir=extraction_output_dir,
             schema=schema_dict,
         )
         if exit_code != 0:
@@ -281,7 +282,7 @@ def validate(
         runtime_artifact=None,
         run_id=run_id,
         config_path=config_path,
-        prompt_confirm=not view.is_quiet,
+        prompt_confirm=not (yes or view.is_quiet),
         skip_existing=not fresh,
         seed_output_dir=extraction_output_dir,
         write_primary_canonical=False,
@@ -303,7 +304,6 @@ def validate(
         view=view,
         report_limit=None,
         discovery_checkpoint_path=discovery_checkpoint_path,
-        extraction_base_dir=extraction_output_dir,
         schema=loaded_schema,
     )
     if exit_code != 0:

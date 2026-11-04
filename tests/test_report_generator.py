@@ -23,6 +23,49 @@ class TestReportGenerator:
         """Create a ReportGenerator instance."""
         return ReportGenerator()
 
+    def test_untrusted_evidence_stays_literal_and_scorecards_still_work(
+        self, generator, sample_comparison_result, tmp_path
+    ):
+        import csv
+        from openpyxl import load_workbook
+        from openpyxl.formula.tokenizer import Tokenizer
+
+        payload = '=HYPERLINK("https://example.invalid","evidence")'
+        model = 'model",HYPERLINK("https://example.invalid"),"*?'
+        result = sample_comparison_result
+        result.document_name = payload
+        result.models[0] = model
+        for comparison in result.context_comparisons + result.item_comparisons:
+            comparison.model_values = {
+                model if key == "gpt-4.1" else key: payload
+                for key in comparison.model_values
+            }
+        xlsx, csv_path = generator.generate_report(result, tmp_path)
+        workbook = load_workbook(xlsx, data_only=False)
+        literal_count = 0
+        formula_count = 0
+        for sheet in workbook:
+            for row in sheet:
+                for cell in row:
+                    if cell.value == payload:
+                        literal_count += 1
+                        assert cell.data_type == "s"
+                    if cell.data_type == "f":
+                        formula_count += 1
+                        assert sheet.title == "Final Verdicts"
+                        functions = [
+                            token.value for token in Tokenizer(cell.value).items
+                            if token.type == "FUNC"
+                        ]
+                        assert "HYPERLINK(" not in functions
+        assert literal_count > 0
+        assert formula_count > 0
+        with csv_path.open(newline="") as handle:
+            cells = [cell for row in csv.reader(handle) for cell in row]
+        assert payload not in cells
+        assert "'" + payload in cells
+        assert json.loads((tmp_path / "comparison_summary.json").read_text())["document_name"] == payload
+
     @pytest.fixture
     def sample_comparison_result(self):
         """Create a sample ComparisonResult for testing."""

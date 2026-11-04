@@ -25,6 +25,15 @@ BASE_URL = "https://proxy.example.com/v1"
 SCHEMA = {"type": "object", "properties": {}}
 
 
+def test_connection_error_remains_actionable_without_provider_details():
+    message = LLMClient._safe_provider_error(
+        RuntimeError("Connection error. private-endpoint.example synthetic-secret")
+    )
+    assert "connection error" in message
+    assert "private-endpoint" not in message
+    assert "synthetic-secret" not in message
+
+
 # ── helpers ──────────────────────────────────────────────────────────────────
 
 
@@ -153,7 +162,8 @@ class TestProxyApiParams:
         )
         assert "temperature" not in params
 
-    def test_no_api_key_in_params_when_not_provided(self):
+    def test_no_api_key_in_params_when_not_provided(self, monkeypatch):
+        monkeypatch.setenv("OPENAI_API_KEY", "synthetic-sdk-environment-key")
         client = LLMClient(model="gpt-4o-mini", base_url=BASE_URL)
         ok_response = _make_response(json.dumps({"items": []}))
         with patch("psweep.extraction.llm_client.completion", return_value=ok_response) as mock_c, \
@@ -169,7 +179,9 @@ class TestProxyApiParams:
         assert isinstance(params["timeout"], int)
 
     def test_timeout_constructor_kwarg_overrides_default(self):
-        client = LLMClient(model="gpt-4o-mini", base_url=BASE_URL, timeout=30)
+        client = LLMClient(
+            api_key="test-key", model="gpt-4o-mini", base_url=BASE_URL, timeout=30,
+        )
         assert client.timeout == 30
         ok_response = _make_response(json.dumps({"items": []}))
         with patch("psweep.extraction.llm_client.completion", return_value=ok_response) as mock_c, \

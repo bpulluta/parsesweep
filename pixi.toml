@@ -6,46 +6,13 @@ platforms = ["win-64", "osx-arm64", "osx-64", "linux-64"]
 version = "2.0.1"
 
 [dependencies]
-poppler = ">=24.8.0,<25"
-python = ">=3.9,<3.13"
-
-# Core dependencies for psweep
-beautifulsoup4 = ">=4.12.0,<5"
-click = ">=8.1.0,<9"
-lxml = ">=4.9.0,<6"
-numpy = ">=1.24.0,<2"
-openai = ">=1.0.0,<2"
-pandas = ">=2.0.0,<3"
-python-dotenv = ">=1.0.0,<2"
-pydantic = ">=2.5.0,<3"
-jsonschema = ">=4.20.0,<5"
-tqdm = ">=4.66.0,<5"
-pyyaml = ">=6.0.0,<7"
-requests = ">=2.31.0,<3"
+# Native tools stay in Conda; pyproject.toml owns Python runtime requirements.
+poppler = ">=24.8.0"
+python = ">=3.12,<3.13"
 tesseract = ">=5.5.1,<6"
-langchain-text-splitters = ">=1.0.0,<2"
 pdftotext = ">=2.2.2,<3"
-openpyxl = ">=3.1.5,<4"
-python-docx = ">=1.1.0,<2"
-rich = ">=13.7.0,<14"
-pytest = ">=9.0.2,<10"
-
-# PyPI-only dependencies
+pytest = ">=9.0.3,<10"
 [pypi-dependencies]
-# Cap below 0.22: at >=0.22 the resolver pulls the split `typer` (0.27) wheel
-# alongside `typer-slim`, and the two provide the same `typer` namespace. Which
-# one wins is platform-dependent, and the newer TyperGroup fails sphinx-click's
-# isinstance(click.Group) check on linux (breaks the docs build). Pin to the
-# consistent 0.21.x line that resolves to a single typer everywhere.
-typer = ">=0.12.0,<0.22"
-InquirerPy = ">=0.3.4"
-pymupdf4llm = ">=0.0.5"
-pymupdf = ">=1.23.0"
-pypdf = ">=3.17.0"
-langextract = ">=1.0.0"
-selenium = ">=4.15.0"  # Moved to PyPI for better cross-platform support
-litellm = ">=1.52.0"  # Unified LLM interface for OpenAI, Claude, Gemini, etc.
-google-search-results = ">=2.4.2"  # Optional: SerpApi seeker for discovery
 psweep = { path = ".", editable = true}
 
 [environments]
@@ -53,21 +20,11 @@ default = { solve-group = "default" }
 dev = { features = ["dev"], solve-group = "default" }
 docs = { features = ["docs"], solve-group = "default" }
 
-[feature.dev.dependencies]
-ruff = ">=0.14.1,<0.15"
-pytest = ">=7.4.0"
-matplotlib = ">=3.8.0,<4"
-pytest-cov = ">=4.1.0"
-jupyter = ">=1.1.1,<2"
-ipykernel = ">=7.1.0,<8"
+[feature.dev.pypi-dependencies]
+psweep = { path = ".", editable = true, extras = ["dev"] }
 
 [feature.docs.pypi-dependencies]
-sphinx = ">=9.1.0"
-sphinx-autoapi = ">=3.0.0"
-furo = ">=2024.8.6"
-myst-parser = ">=4.0.0"
-sphinx-click = ">=6.0.0"
-sphinx-copybutton = ">=0.5.2"
+psweep = { path = ".", editable = true, extras = ["docs"] }
 
 [tasks]
 # `python -m pytest` works in every env; the bare `pytest` console script is not

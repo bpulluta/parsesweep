@@ -30,6 +30,7 @@ getting-started
 commands/index
 config-reference
 tuning
+security
 schemas/index
 ```
 

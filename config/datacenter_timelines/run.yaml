@@ -36,7 +36,7 @@ domain: datacenter_timelines
 
 # ── Model tiers ──────────────────────────────────────────────────────────────
 models:
-  primary: gpt-5.4                     # extraction (accuracy-critical)
+  primary: gpt-6.1-sol                    # extraction (accuracy-critical)
   secondary: gpt-5.6-luna              # discovery review, page targeting (speed/cost)
 
 # COST CONTROL (optional): each LLM stage accepts a `model:` naming the model to

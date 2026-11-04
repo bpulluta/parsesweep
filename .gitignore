@@ -116,6 +116,7 @@ config/testing/
 AGENTS.md
 .claude/
 .github/*
+!.github/dependabot.yml
 !.github/workflows/
 !.github/workflows/*.yml
 !.github/workflows/*.yaml

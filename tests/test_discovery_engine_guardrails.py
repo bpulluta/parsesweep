@@ -85,7 +85,7 @@ def test_forbidden_download_retries_via_browser(tmp_path, monkeypatch):
             self.closed = True
 
     dummy_browser = DummyBrowser()
-    monkeypatch.setattr("requests.get", fake_get)
+    monkeypatch.setattr("psweep.discovery.network.request_get", fake_get)
     monkeypatch.setattr(
         DiscoveryEngine,
         "_open_browser_for_download",
@@ -435,8 +435,26 @@ def _allow_all_policy(monkeypatch):
     )
 
 
+def test_code_host_headers_are_opt_in_host_scoped_and_operator_overridable():
+    url = "https://library.municode.com/tx/keller/codes/code_of_ordinances"
+    resolve = DiscoveryEngine._resolve_request_headers
+    request = _shell_request()
+    assert resolve(request, url)["User-Agent"].startswith("Mozilla/")
+    assert "X-CSRF" not in resolve(request, "https://example.com/code")
+    assert "X-CSRF" not in resolve(_shell_request(code_host_adapters=False), url)
+    overridden = resolve(
+        _shell_request(request_headers={"user-agent": "Operator/1"}), url,
+        {"User-Agent": "Adapter/1"},
+    )
+    assert overridden["user-agent"] == "Operator/1"
+    assert sum(k.lower() == "user-agent" for k in overridden) == 1
+
+
 class _FakeAdapter:
     name = "fake"
+
+    def request_headers(self):
+        return {}
 
     def can_handle(self, url):
         return True

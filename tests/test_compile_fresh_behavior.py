@@ -54,7 +54,7 @@ def test_compile_fresh_clears_custom_output_directory(tmp_path: Path, monkeypatc
     _patch_compiler(monkeypatch)
     extracted_dir = tmp_path / "extracted"
     extracted_dir.mkdir(parents=True)
-    (extracted_dir / "dummy.json").write_text("{}", encoding="utf-8")
+    (extracted_dir / "dummy.json").write_text('{"payload": {"requirements": []}}', encoding="utf-8")
 
     output_dir = tmp_path / "custom-output"
     output_dir.mkdir(parents=True)
@@ -84,7 +84,7 @@ def test_compile_fresh_dry_run_does_not_clear_output_directory(
     _patch_compiler(monkeypatch)
     extracted_dir = tmp_path / "extracted"
     extracted_dir.mkdir(parents=True)
-    (extracted_dir / "dummy.json").write_text("{}", encoding="utf-8")
+    (extracted_dir / "dummy.json").write_text('{"payload": {"requirements": []}}', encoding="utf-8")
 
     output_dir = tmp_path / "custom-output"
     output_dir.mkdir(parents=True)

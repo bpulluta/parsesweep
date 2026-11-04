@@ -75,6 +75,9 @@ extraction:
 
 - **Limit a test run** with `-n 5` on `extract` to iterate quickly before a
   full pass.
+- **Run unattended** with `psweep run --config run.yaml --yes`. This approves
+  the planned stages, including QA/QC, without a second prompt. For standalone
+  QA/QC use `psweep validate --config run.yaml --yes`; quiet mode is not required.
 
 Validated work is reused automatically: matching source/schema/settings and
 record-byte evidence skip model calls. Source, model, scope, or schema changes
@@ -148,6 +151,24 @@ Check scope and exclusion evidence before increasing budgets. Search caps do
 not guarantee downloads or recall. Optional paid `document_review.keep_top`
 controls retention after acquisition; review does not expand the search.
 
+A successful SerpApi response explicitly reporting an empty Google result set
+is recorded as zero results, not a provider failure. Other queries continue.
+Authentication errors, malformed responses, and exhausted timeouts still fail
+explicitly; they are not treated as empty searches.
+
+For large target lists, use metadata-driven query templates and document-type
+criteria, not lists of jurisdiction websites or manually supplied seeds.
+For example, ordinance discovery can require a legal-document signal with
+`selection.relevance_require_legal_marker_terms: [ordinance, zoning, code, chapter, bylaw]`.
+This gate checks the source URL, title and snippet, so opaque download URLs
+on previously unknown hosts remain eligible. Generated search-query reasons
+do not count as source evidence. The gate narrows acquisition; document review
+must still verify relevance, jurisdiction and adoption status from the content.
+
+Report the number of targets yielding reviewed documents separately from the
+number searched. A completed pipeline for one document is not proof of coverage
+for every target, and no search result is not proof that no regulation exists.
+
 ### Domain filters or partitions changed unexpectedly
 
 Use canonical `search`, `max_results`, and selection
@@ -177,10 +198,32 @@ browser navigation, including escalation. Use HTTP acquisition when enforcement
 is required. Throttle with `runtime.min_request_interval_ms` and
 `runtime.max_concurrent_downloads`.
 
-SerpApi/download TLS verification remains the user's environment choice;
-`SERPAPI_SSL_VERIFY` and `DISCOVERY_SSL_VERIFY` retain default `false`.
-Configure verification explicitly (and `REQUESTS_CA_BUNDLE` if needed);
-validation does not test live certificate chains.
+TLS verification is on by default. Configure `REQUESTS_CA_BUNDLE` if VPN or
+enterprise trust is insufficient. Public-only compatibility options are
+`PSWEEP_SSL_VERIFY=false` for models and the search/download fallback, or
+stage-specific `SERPAPI_SSL_VERIFY=false` / `DISCOVERY_SSL_VERIFY=false`.
+They warn because credentials and content can be intercepted; protected mode
+rejects them. Verification settings cannot resolve an HTTP 403 authorization
+or server-client compatibility response. Configuration validation
+does not test live certificate chains. Browser acquisition additionally
+requires explicit externally enforced isolation; see [Security](security.md).
+
+Opted-in code-host adapters use their identifying headers on the initial page
+as well as API calls; explicit operator headers take precedence. Municode
+landing URLs may identify only a table of contents. Seed the canonical
+`codes/...?...nodeId=<section>` URL for the actual chapter/article when search
+returns a catalogue or an unrelated amendment.
+Grouped Municode API responses are restricted to the requested node and its
+descendants, retaining section headings for citations. Amendment links are not
+silently treated as current-code sections.
+
+Model calls disable automatic SDK/provider retries so a timeout does not
+silently multiply paid attempts. The configured timeout is a transport limit,
+not a whole-pipeline deadline. Large documents may require their original
+larger timeout; verify schema-valid output and reported unknown-cost calls,
+not merely HTTP availability. QA/QC reports load evidence from the compared
+model-output directory; `validate --compare-only --yes` rebuilds reports
+without repeating successful extraction.
 
 ### Automation reports no downloads
 

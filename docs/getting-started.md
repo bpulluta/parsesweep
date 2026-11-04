@@ -133,10 +133,14 @@ HTTP robots/ToS enforcement is supported. Strict enforcement cannot certify
 browser redirects or subresources and fails before unsupported browser
 navigation. Use HTTP acquisition when enforcement is required.
 
-SerpApi and download TLS verification defaults remain `false`. Environment
-options `SERPAPI_SSL_VERIFY`, `DISCOVERY_SSL_VERIFY`, and `REQUESTS_CA_BUNDLE`
-control verification and the Requests CA bundle; these are independent of
-config validation.
+TLS verification is on by default. `REQUESTS_CA_BUNDLE` selects approved
+VPN/private roots when needed. Public mode supports explicit
+`PSWEEP_SSL_VERIFY=false` with an interception-risk warning; protected mode
+forbids it. Never use that compatibility option for sensitive data.
+These controls are independent of config
+validation. Use Python 3.12 (the tested runtime) and `pixi install --locked`
+for reproducible environments. Pip installations include Python dependencies;
+Poppler, Tesseract, and their native libraries still need provisioning.
 
 For CSV targets, optional keyword classification, LLM review, crawling, or
 other stage settings, use the [Configuration Reference](config-reference.md)

@@ -308,7 +308,7 @@ def build_run_stage_commands(
             )
         )
     if validation and not skip_extract:
-        validate_flags = [*extra_flags]
+        validate_flags = ["--yes", *extra_flags]
         if fresh:
             validate_flags.append("--fresh")
         stage_cmds.append(
@@ -1307,6 +1307,7 @@ def compile_extractions(
     CompilationResult
     """
     from psweep.compilation.data_compiler import DataCompiler
+    from psweep.security import protected_mode, validate_protected_paths
 
     ext_dir = Path(extraction_dir)
     schema_path = Path(schema)
@@ -1323,6 +1324,7 @@ def compile_extractions(
     out_dir = (
         Path(output_dir) if output_dir else Path("compiled") / ext_dir.name
     )
+    validate_protected_paths({"input_dir": ext_dir, "output_dir": out_dir})
     resolved: dict = {"schema": str(schema_path)}
     if config_path:
         cfg = load_runtime_config_file(Path(config_path))
@@ -1357,6 +1359,11 @@ def compile_extractions(
         debug=False,
     )
     provenance_warnings = analyze_compile_input_provenance(ext_dir)
+    if protected_mode() and provenance_warnings:
+        raise ValueError(
+            "Protected compilation rejected provenance: "
+            + "; ".join(provenance_warnings)
+        )
     df, _schema_info = compiler.compile_from_directory(
         ext_dir,
         apply_deduplication=not dry_run,

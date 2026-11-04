@@ -297,7 +297,7 @@ def test_same_named_counties_keep_independent_review_caps(monkeypatch, tmp_path)
 
     monkeypatch.setattr(SerpApiSeeker, "_build_search_callable", lambda self: search)
     monkeypatch.setattr(
-        "requests.get",
+        "psweep.discovery.network.request_get",
         lambda url, **kwargs: FakeResponse(url=url, chunks=[b"%PDF-1.4\n" + url.encode()]),
     )
     monkeypatch.setattr(DocumentReviewer, "_ensure_client", lambda self: object())

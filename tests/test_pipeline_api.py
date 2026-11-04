@@ -321,6 +321,67 @@ def test_build_run_stage_commands_wires_validation(tmp_path: Path) -> None:
     validate_cmd = dict(stage_cmds)["validate"]
     assert validate_cmd[:4] == ["pixi", "run", "psweep", "validate"]
     assert validate_cmd[validate_cmd.index("--config") + 1] == str(config_path)
+    assert "--yes" in validate_cmd
+
+
+@pytest.mark.parametrize("confirm", [True, False])
+def test_validate_confirmation_can_be_explicitly_skipped(tmp_path, monkeypatch, confirm):
+    docs = tmp_path / "documents"
+    docs.mkdir()
+    (docs / "synthetic.txt").write_text("Synthetic measurement: 42")
+    schema = tmp_path / "schema.json"
+    schema.write_text(json.dumps({
+        "type": "object",
+        "properties": {"items": {"type": "array", "items": {
+            "type": "object", "properties": {"name": {"type": "string"}},
+        }}},
+        "$metadata": {"extraction": {
+            "main_data_array": "items", "identifier_fields": ["name"],
+        }},
+    }))
+    config = tmp_path / "run.yaml"
+    config.write_text(yaml.safe_dump({
+        "domain": "synthetic",
+        "models": {"primary": "gpt-primary", "secondary": "gpt-secondary"},
+        "extraction": {"input_dir": str(docs), "schema": str(schema),
+                       "output_dir": str(tmp_path / "extracted")},
+        "validation": {"models": ["primary", "secondary"],
+                       "record_matching": {"key_fields": ["name"]},
+                       "comparison": {"primary_fields": ["name"]},
+                       "output_dir": str(tmp_path / "validated")},
+    }))
+    extraction = Mock(return_value=None)
+    monkeypatch.setattr("psweep.cli.commands_extract._run_validation_extraction", extraction)
+    args = ["validate", "--config", str(config)]
+    if not confirm:
+        args.append("--yes")
+    result = CliRunner().invoke(cli, args)
+    assert extraction.call_count == 1, result.output
+    assert extraction.call_args.kwargs["prompt_confirm"] is confirm
+
+
+def test_comparison_report_uses_the_compared_model_directory(tmp_path, monkeypatch):
+    from psweep.cli.commands_compare import generate_comparison_reports
+
+    doc_dir = tmp_path / "validated" / "validation" / "document"
+    doc_dir.mkdir(parents=True)
+    for model in ("first", "second"):
+        (doc_dir / f"{model}.json").write_text('{"payload": {"items": []}}')
+    engine = Mock()
+    engine.compare_outputs.return_value = SimpleNamespace(
+        models=["first", "second"], summary={},
+    )
+    report = Mock()
+    monkeypatch.setattr("psweep.validation.ComparisonEngine", Mock(return_value=engine))
+    monkeypatch.setattr("psweep.validation.ReportGenerator", Mock(return_value=report))
+    view = Mock(is_quiet=True)
+    view.make_progress.return_value = None
+    result = generate_comparison_reports(
+        validation_path_obj=doc_dir.parent, schema_metadata=None,
+        validation_config={}, runtime_artifact=None, view=view,
+    )
+    assert result == 0
+    assert report.generate_report.call_args.kwargs["extraction_dir"] == doc_dir
 
 
 def test_build_run_stage_commands_propagates_fresh_to_validation(

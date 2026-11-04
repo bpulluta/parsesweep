@@ -73,7 +73,6 @@ def generate_comparison_reports(
     view,
     report_limit: int | None = None,
     discovery_checkpoint_path: Optional[Path] = None,
-    extraction_base_dir: Optional[Path] = None,
     schema: Optional[Dict[str, Any]] = None,
 ) -> int:
     """Generate comparison reports from previously extracted QA/QC JSON sidecars."""
@@ -190,7 +189,7 @@ def generate_comparison_reports(
                     include_missing_in_queue=include_missing_in_queue,
                     include_low_signal_presence_in_queue=include_low_signal_presence_in_queue,
                     discovery_checkpoint_path=discovery_checkpoint_path,
-                    extraction_dir=extraction_base_dir / doc_dir.name if extraction_base_dir else None,
+                    extraction_dir=doc_dir,
                 )
 
                 results.append(

@@ -16,9 +16,16 @@ import os
 import re
 from typing import Dict, Any, Optional, List
 
+# Pricing metadata must not initiate an unapproved network request at import time.
+os.environ["LITELLM_LOCAL_MODEL_COST_MAP"] = "True"
+
 import litellm
 from litellm import completion, completion_cost
 
+from ..security import (
+    ca_bundle, protected_mode, require_model_endpoint, resolve_tls_verification,
+    tls_context,
+)
 from ..utils.model_pricing import get_pricing
 from ..exceptions import ExtractionError
 from .llm_factory import DEFAULT_MODEL, detect_provider
@@ -70,7 +77,7 @@ class LLMClient:
         Parameters
         ----------
         api_key : str
-            API key for the provider (will auto-set environment variables)
+            API key passed directly to this client, without mutating environment variables
         model : str
             Model name (e.g., "gpt-4o-mini", "claude-3.5-sonnet", "gemini-1.5-pro")
         provider : str
@@ -107,6 +114,12 @@ class LLMClient:
             )
         self.raw_model = model  # Keep original for cost tracking
         self.base_url = base_url
+        require_model_endpoint(base_url)
+        self.ssl_verify = resolve_tls_verification("PSWEEP_SSL_VERIFY")
+        self._tls_context = tls_context(self.ssl_verify)
+        self._provider_tls = ca_bundle() if self.ssl_verify else False
+        self._azure_endpoint = azure_endpoint
+        self._azure_api_version = azure_api_version
         self._api_key = (
             api_key  # Stored for direct-pass in endpoint-override mode
         )
@@ -147,16 +160,14 @@ class LLMClient:
         # Configure LiteLLM
         litellm.drop_params = True  # Drop unsupported params
         litellm.suppress_debug_info = True
-
-        # Set up environment variables for LiteLLM
-        self._configure_environment(api_key, azure_endpoint, azure_api_version)
+        litellm.set_verbose = False
+        litellm.turn_off_message_logging = True
 
         # Load pricing database
         self.pricing_db = get_pricing()
 
-        endpoint_info = f", base_url={self.base_url}" if self.base_url else ""
         logger.info(
-            f"Initialized LLM client: provider={self.provider}, model={self.model}{endpoint_info}"
+            f"Initialized LLM client: provider={self.provider}, model={self.model}"
         )
 
     def _format_model_for_litellm(self, model: str, provider: str) -> str:
@@ -200,39 +211,52 @@ class LLMClient:
         else:
             return model
 
-    def _configure_environment(
-        self,
-        api_key: Optional[str],
-        azure_endpoint: Optional[str],
-        azure_api_version: Optional[str],
-    ):
-        """Configure environment variables for LiteLLM."""
-        if self.base_url:
-            # Endpoint-override mode: set the proxy URL and key as the OpenAI
-            # environment so LiteLLM routes all calls through this endpoint.
-            os.environ["OPENAI_BASE_URL"] = self.base_url
-            if api_key:
-                os.environ["OPENAI_API_KEY"] = api_key
-            return
+    def _complete(self, params: Dict[str, Any]):
+        """Use client-scoped TLS and disable hidden provider retries."""
+        require_model_endpoint(self.base_url)
+        protected = protected_mode()
+        custom_tls = self._provider_tls is not True
+        if not protected and not self.base_url and not (
+            custom_tls and self.provider in {"openai", "azure"}
+        ):
+            return completion(**params, num_retries=0)
+        if protected and not self._api_key:
+            raise ValueError("Protected model endpoint requires explicit credentials")
+        import httpx
+        from openai import AzureOpenAI, OpenAI
 
-        if not api_key:
-            return
-
-        # Direct-provider mode: set provider-specific environment variables.
-        if self.provider == "azure":
-            os.environ["AZURE_API_KEY"] = api_key
-            if azure_endpoint:
-                os.environ["AZURE_API_BASE"] = azure_endpoint
-            if azure_api_version:
-                os.environ["AZURE_API_VERSION"] = azure_api_version
+        logging.getLogger("openai").setLevel(logging.WARNING)
+        request = dict(params)
+        request["model"] = request["model"].removeprefix("openai/")
+        for key in ("base_url", "api_key", "timeout", "ssl_verify"):
+            request.pop(key, None)
+        with httpx.Client(
+            verify=self._tls_context, trust_env=False, follow_redirects=False,
+            timeout=self.timeout,
+        ) as transport:
+            client: OpenAI
+            if not self.base_url and self.provider == "azure":
+                client = AzureOpenAI(
+                    azure_endpoint=self._azure_endpoint,
+                    api_version=self._azure_api_version,
+                    api_key=self._api_key,
+                    timeout=self.timeout,
+                    max_retries=0,
+                    http_client=transport,
+                )
             else:
-                os.environ["AZURE_API_VERSION"] = "2024-02-15-preview"
-        elif self.provider == "anthropic":
-            os.environ["ANTHROPIC_API_KEY"] = api_key
-        elif self.provider == "gemini":
-            os.environ["GEMINI_API_KEY"] = api_key
-        else:
-            os.environ["OPENAI_API_KEY"] = api_key
+                client = OpenAI(
+                    base_url=self.base_url,
+                    api_key=self._api_key,
+                    timeout=self.timeout,
+                    max_retries=0,
+                    http_client=transport,
+                )
+            with client:
+                if protected:
+                    # Sensitive requests never enter provider plugins/callbacks.
+                    return client.chat.completions.create(**request)
+                return completion(**params, client=client, num_retries=0)
 
     def extract(
         self,
@@ -288,7 +312,15 @@ class LLMClient:
             "model": self.model,
             "messages": messages,
             "timeout": self.timeout,
+            "ssl_verify": self._provider_tls,
         }
+        if self._api_key:
+            api_params["api_key"] = self._api_key
+        if not self.base_url and self.provider == "azure":
+            if self._azure_endpoint:
+                api_params["api_base"] = self._azure_endpoint
+            if self._azure_api_version:
+                api_params["api_version"] = self._azure_api_version
         if not self.base_url and self._explicit_provider:
             api_params["custom_llm_provider"] = (
                 "meta_llama" if self.provider == "meta" else self.provider
@@ -328,21 +360,16 @@ class LLMClient:
         # error messages: proxy/network errors vs model returned non-JSON text.
         self.usage["calls"] += 1
         try:
-            response = completion(**api_params)
-        except json.JSONDecodeError as e:
+            response = self._complete(api_params)
+        except json.JSONDecodeError:
             # LiteLLM failed to parse the HTTP response body from the proxy.
             # Common causes: empty body, SSE stream when non-streaming expected,
             # or an HTML/text error page from a gateway.
-            hint = (
-                f" Verify '{self.raw_model}' is configured in the proxy at {self.base_url!r}."
-                if self.base_url
-                else ""
-            )
             self.usage["unknown_cost_calls"] += 1
             raise ExtractionError(
-                f"Proxy returned a non-JSON response body for model={self.raw_model!r}.{hint}"
-                f" Raw parse error: {e}"
-            ) from e
+                f"Proxy returned a non-JSON response body for model={self.raw_model!r}. "
+                "Verify the model and endpoint configuration."
+            ) from None
         except Exception as e:
             # Some routed/provider-backed models reject `temperature` entirely.
             # Retry once without temperature when the provider explicitly says the
@@ -353,19 +380,19 @@ class LLMClient:
                 retry_params.pop("temperature", None)
                 self.usage["calls"] += 1
                 try:
-                    response = completion(**retry_params)
+                    response = self._complete(retry_params)
                 except Exception as retry_error:
                     self.usage["unknown_cost_calls"] += 1
-                    logger.exception(
+                    logger.error(
                         f"LLM extraction failed after retry without temperature "
                         f"(provider={self.provider}, model={self.model})"
                     )
-                    raise ExtractionError(str(retry_error)) from retry_error
+                    raise ExtractionError(self._safe_provider_error(retry_error)) from None
             else:
-                logger.exception(
+                logger.error(
                     f"LLM extraction failed (provider={self.provider}, model={self.model})"
                 )
-                raise ExtractionError(str(e)) from e
+                raise ExtractionError(self._safe_provider_error(e)) from None
 
         usage = getattr(response, "usage", None)
         input_tokens = getattr(usage, "prompt_tokens", None)
@@ -374,7 +401,7 @@ class LLMClient:
             cost = completion_cost(completion_response=response)
         except Exception as exc:  # noqa: BLE001 - optional provider pricing must not discard a response
             # Estimates are not measured billing evidence.
-            logger.debug("Response cost unavailable: %s", exc)
+            logger.debug("Response cost unavailable (%s)", type(exc).__name__)
             cost = None
         measured = {
             "cost": cost,
@@ -394,9 +421,8 @@ class LLMClient:
             content = self._clean_json_content(raw_content)
             if not content:
                 (logger.debug if suppress_errors else logger.error)(
-                    "Empty response from API (model=%s): raw=%r",
+                    "Empty response from API (model=%s)",
                     self.model,
-                    raw_content,
                 )
                 message = (
                     f"Empty response from provider={self.provider}, "
@@ -427,13 +453,11 @@ class LLMClient:
                         "Model returned non-JSON content: %s",
                         e,
                     )
-                    logger.debug("Cleaned content: %r", content[:500])
-                    logger.debug("Raw content: %r", (raw_content or "")[:500])
                     message = (
                         "Model returned non-JSON content "
                         f"(provider={self.provider}, model={self.model}): {e}"
                     )
-                    raise ExtractionError(message) from e
+                    raise ExtractionError(message) from None
 
         except ExtractionError as exc:
             exc.usage = measured
@@ -473,6 +497,19 @@ class LLMClient:
             flags=re.DOTALL,
         ).strip()
         return cleaned
+
+    @staticmethod
+    def _safe_provider_error(error: Exception) -> str:
+        """Retain useful failure categories without copying untrusted provider text."""
+        message = str(error).lower()
+        markers = (
+            "context_length_exceeded", "context_window_exceeded",
+            "maximum context length", "rate limit", "429", "timeout",
+            "certificate verify failed", "connection error", "connection reset",
+            "service unavailable", "authentication",
+        )
+        category = next((marker for marker in markers if marker in message), "provider failure")
+        return f"LLM request failed: {category} ({type(error).__name__})"
 
     @staticmethod
     def _should_retry_without_temperature(

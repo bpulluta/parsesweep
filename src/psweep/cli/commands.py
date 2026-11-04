@@ -73,6 +73,13 @@ def _resolve_runtime_command_inputs(
         if extraction_section.get("input_dir"):
             result["_extraction_input_dir"] = extraction_section["input_dir"]
 
+    from psweep.security import validate_protected_paths
+    from psweep.config import RuntimeConfigError
+
+    try:
+        validate_protected_paths(result)
+    except ValueError as exc:
+        raise RuntimeConfigError(str(exc)) from exc
     return result
 
 

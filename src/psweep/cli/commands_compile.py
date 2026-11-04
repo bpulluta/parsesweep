@@ -93,7 +93,9 @@ def _should_fail_on_provenance(
     provenance_warnings: List[str],
 ) -> bool:
     """Return whether provenance warnings should hard-fail compilation."""
-    return provenance_policy == "fail" and bool(provenance_warnings)
+    from psweep.security import protected_mode
+
+    return (protected_mode() or provenance_policy == "fail") and bool(provenance_warnings)
 
 
 @click.command()
@@ -302,6 +304,8 @@ def compile(
 
     emit_json_report = dry_run and report_format.lower() == "json"
     record_json_files = list_compile_record_files(input_dir)
+    if not record_json_files:
+        raise click.ClickException(f"No extraction records found in {input_dir}")
 
     if fail_on_suspicious != "none" and not dry_run:
         print_error(
@@ -310,7 +314,10 @@ def compile(
         )
         sys.exit(1)
 
-    input_provenance_warnings = analyze_compile_input_provenance(input_dir)
+    try:
+        input_provenance_warnings = analyze_compile_input_provenance(input_dir)
+    except ValueError as exc:
+        raise click.ClickException(str(exc)) from exc
     would_fail_on_provenance = _should_fail_on_provenance(
         provenance_policy=provenance_policy,
         provenance_warnings=input_provenance_warnings,
@@ -424,10 +431,11 @@ def compile(
         if input_provenance_warnings and not emit_json_report:
             view.warnings(input_provenance_warnings)
         if df.empty:
-            if fresh and not dry_run and output_dir.exists():
-                import shutil
-
-                shutil.rmtree(output_dir)
+            if fresh and not dry_run:
+                compiler.export(
+                    df, output_dir, input_dir.name.replace("_", "-"),
+                    schema_metadata.get_output_formats(), fresh=True,
+                )
             if input_provenance_warnings and emit_json_report:
                 click.echo(
                     json.dumps(

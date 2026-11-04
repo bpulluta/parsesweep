@@ -83,7 +83,7 @@ def patch_requests_get(
 ) -> None:
     """Patch ``requests.get`` to return a single :class:`FakeResponse`."""
     monkeypatch.setattr(
-        "requests.get",
+        "psweep.discovery.network.request_get",
         lambda *_args, **_kwargs: FakeResponse(
             url=url,
             content_type=content_type,

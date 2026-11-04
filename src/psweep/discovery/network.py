@@ -8,6 +8,7 @@ from typing import Any, Protocol
 from urllib.parse import urljoin, urlparse
 
 from .retry import compute_backoff, is_transient_error
+from .transport import NetworkPolicyError, request_get, validate_public_url
 
 URLGate = Callable[[str], object]
 RetryConfig = tuple[int, float, float]
@@ -21,16 +22,6 @@ class RateLimiter(Protocol):
     def wait(self) -> None:
         """Wait until the next outbound request may start."""
         ...
-
-
-class NetworkPolicyError(RuntimeError):
-    """A URL gate denied acquisition or could not be evaluated."""
-
-    def __init__(self, url: str, reason: str, result: object = None) -> None:
-        self.url = url
-        self.result = result
-        self.blocking_code = getattr(result, "blocking_code", None)
-        super().__init__(f"Discovery acquisition denied for '{url}': {reason}")
 
 
 def check_url(url: str, gate: URLGate | None) -> None:
@@ -102,11 +93,12 @@ def _get_redirect_chain(
         # Requests removes dot segments and decodes unreserved escapes.
         # Gate the actual serialized URL before any request is sent.
         current_url = str(requests.Request("GET", current_url).prepare().url)
+        validate_public_url(current_url)
         check_url(current_url, gate)
         if limiter is not None:
             limiter.wait()
         cookie_options = {"cookies": cookies} if cookies else {}
-        response = requests.get(
+        response = request_get(
             current_url,
             headers=current_headers,
             timeout=timeout,
@@ -171,6 +163,9 @@ def send_get(
     to interpret missing rules without invoking a recursive gate.
     """
     max_attempts, initial_backoff, max_backoff = retry
+    from psweep.security import resolve_tls_verification
+
+    verify = resolve_tls_verification("PSWEEP_SSL_VERIFY", verify)
     for attempt in range(1, max(1, max_attempts) + 1):
         response = None
         try:

@@ -3,9 +3,7 @@
 from __future__ import annotations
 
 import json
-import os
 import sys
-import warnings as std_warnings
 from pathlib import Path
 from typing import Optional
 
@@ -549,35 +547,14 @@ def discover(
                     view.status("info", f"... and {remaining} more target(s)")
             console.print()
 
-    # Keep urllib3 TLS warnings out of the CLI output and surface a single
-    # styled warning instead so the run view remains cohesive.
+    from psweep.security import resolve_tls_verification
+
     try:
-        from urllib3.exceptions import InsecureRequestWarning
-
-        std_warnings.filterwarnings("ignore", category=InsecureRequestWarning)
-    except Exception:
-        pass
-
-    def _env_ssl_verify(env_var: str, fallback_var: str) -> bool:
-        raw = os.getenv(env_var) or os.getenv(fallback_var) or "false"
-        return str(raw).strip().lower() not in {"0", "false", "no", "off"}
-
-    seeker_ssl_verify = _env_ssl_verify(
-        "SERPAPI_SSL_VERIFY", "PSWEEP_SSL_VERIFY"
-    )
-    download_ssl_verify = _env_ssl_verify(
-        "DISCOVERY_SSL_VERIFY", "PSWEEP_SSL_VERIFY"
-    )
-
-    if resolved_enable_serpapi and not seeker_ssl_verify:
-        view.warning(
-            "SerpApi TLS verification is disabled (SERPAPI_SSL_VERIFY=false).",
-            "Set SERPAPI_SSL_VERIFY=true to suppress insecure-request warnings.",
-        )
-    if not resolved_dry_run and not download_ssl_verify:
-        view.warning(
-            "Download TLS verification is disabled (DISCOVERY_SSL_VERIFY=false)."
-        )
+        resolve_tls_verification("DISCOVERY_SSL_VERIFY")
+        if resolved_enable_serpapi:
+            resolve_tls_verification("SERPAPI_SSL_VERIFY")
+    except ValueError as exc:
+        raise click.ClickException(str(exc)) from exc
 
     discover_live = None
     discover_dashboard = None

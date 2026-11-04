@@ -5,7 +5,6 @@ Universal DataCompiler - Works with ANY schema automatically.
 Clean, simple, and intelligent. No configuration needed.
 """
 
-import json
 import pandas as pd
 from pathlib import Path
 from typing import Dict, Any, Tuple
@@ -23,6 +22,9 @@ from .excel_formatter import ExcelFormatter
 from .csv_exporter import CsvExporter
 from ..exceptions import SchemaMetadataError
 from ..utils.normalizers import normalize_state_column
+from ..extraction.schema_utils import build_schema_validator
+from .input_provenance import read_compile_record
+from jsonschema import ValidationError
 
 
 EXCEL_MAX_DATA_ROWS = 1_048_575
@@ -79,6 +81,7 @@ class DataCompiler:
         self.deduplicator = Deduplicator(schema_metadata=schema_metadata)
         self.excel_formatter = ExcelFormatter()
         self.csv_exporter = CsvExporter()
+        self.payload_validator = build_schema_validator(schema_metadata.schema)
 
     def compile_from_directory(
         self,
@@ -97,14 +100,16 @@ class DataCompiler:
             Tuple of (DataFrame, schema_info dict)
         """
         from .input_provenance import list_compile_record_files
+        from psweep.security import validate_protected_paths
 
+        validate_protected_paths({"input_dir": json_dir})
         json_files = list_compile_record_files(json_dir)
         if not json_files:
-            print(f"No JSON files found in {json_dir}")
-            return pd.DataFrame(), {}
+            raise ValueError(f"No extraction records found in {json_dir}")
 
         # Structure is schema-owned; do not parse a sample record twice.
         self.schema_info = self.detector.detect_structure({})
+        nested_array_key = self.schema_metadata.get_row_array()
 
         if self.verbose:
             print(f"📋 Schema detected: {self.schema_info['type']}")
@@ -138,15 +143,16 @@ class DataCompiler:
                     f"\n[DEBUG] Processing file {idx}/{self.file_count}: {json_file.name}"
                 )
 
-            with open(json_file) as f:
-                raw_data = json.load(f)
-
-            # Canonical extraction-record contract stores extractable data in payload.
-            if isinstance(raw_data, dict) and isinstance(raw_data.get("payload"), dict):
-                data = raw_data["payload"]
-                context_source = data
-            else:
-                continue
+            raw_data = read_compile_record(json_file)
+            data = raw_data["payload"]
+            context_source = data
+            try:
+                self.payload_validator.validate(data)
+            except ValidationError as exc:
+                field = ".".join(str(part) for part in exc.absolute_path) or "payload"
+                raise ValueError(
+                    f"{json_file}: invalid extraction payload at {field} ({exc.validator})"
+                ) from exc
 
             # Extract identifier/context fields
             context = self.detector.extract_context(
@@ -164,25 +170,11 @@ class DataCompiler:
                     f"{json_file}: {main_key} must be an array of objects"
                 )
 
-            # Check if items have a nested array that should be flattened
-            # Pattern: parent_array → nested_array (e.g., rate_schedules → charges)
-            nested_array_key = None
-            if main_array and isinstance(main_array[0], dict):
-                # Find first array field in the item (if any)
-                for key, value in main_array[0].items():
-                    if (
-                        isinstance(value, list)
-                        and value
-                        and isinstance(value[0], dict)
-                    ):
-                        nested_array_key = key
-                        break
-
             if nested_array_key:
                 # Preserve child rows and parents with no children.
                 file_items = 0
                 for parent_item in main_array:
-                    nested_items = parent_item.get(nested_array_key, [])
+                    nested_items = parent_item.get(nested_array_key) or []
                     parent_context = self.flattener.flatten_item({
                         key: value for key, value in parent_item.items()
                         if key != nested_array_key
@@ -194,6 +186,12 @@ class DataCompiler:
                         continue
                     for nested_item in nested_items:
                         nested_row = self.flattener.flatten_item(nested_item)
+                        overlapping = set(nested_row) & (set(context) | set(parent_context))
+                        if overlapping:
+                            raise ValueError(
+                                f"{json_file}: nested row columns collide with parent/context: "
+                                f"{', '.join(sorted(overlapping))}; use distinct schema field names"
+                            )
                         row = {**context, **parent_context, **nested_row}
                         rows.append(row)
                         file_items += 1
@@ -476,6 +474,25 @@ class DataCompiler:
                 )
 
     def export(self, df, output_dir: Path, base_name: str, formats, *, fresh=False):
+        """Serialize writers and recover interrupted output publication first."""
+        from psweep.compilation.publication import recover_export
+        from psweep.utils.file_io import publication_lock
+        from psweep.security import validate_protected_paths
+
+        output_dir = Path(output_dir)
+        validate_protected_paths({"output_dir": output_dir})
+        if output_dir.is_symlink():
+            raise ValueError("Compilation output must not be a symbolic link")
+        output_dir = output_dir.resolve()
+        if output_dir in {Path.cwd(), Path.home(), Path(output_dir.anchor)}:
+            raise ValueError("Compilation requires a dedicated output directory")
+        if not base_name or Path(base_name).name != base_name or base_name in {".", ".."}:
+            raise ValueError("Compilation base name must be a filename, not a path")
+        with publication_lock(output_dir.parent / f".{output_dir.name}-publication.lock"):
+            recover_export(output_dir)
+            return self._export_locked(df, output_dir, base_name, formats, fresh=fresh)
+
+    def _export_locked(self, df, output_dir: Path, base_name: str, formats, *, fresh=False):
         """Prepare once, preflight, then publish from a staging dir with rollback.
 
         All requested writers run inside a fresh temporary stage directory beside
@@ -498,14 +515,16 @@ class DataCompiler:
         (holding that backup) is kept and the raised error reports where it is,
         rather than claiming the output is unchanged.
 
-        Limitations: this is staged publication with rollback, not a crash-safe
-        transaction. Writers run before any live file is touched, but publication
-        is a sequence of renames — a process/power crash mid-publish, or a
-        concurrent writer in the same output dir, can leave a brief or partial
-        state; there is no locking.
+        A persistent journal lets the next locked writer recover process
+        interruption. Readers must still wait for successful completion;
+        multiple output files are not an atomic read snapshot. Power-loss
+        durability and distributed-filesystem locks require site validation.
         """
         import shutil
         import tempfile
+        from psweep.compilation.publication import (
+            prepare_export, commit_export, journal_path, recover_export,
+        )
 
         frame = self._prepare_output_dataframe(df)
         self.validate_export(frame, formats)
@@ -515,6 +534,10 @@ class DataCompiler:
             plan.append((f"{base_name}.csv", self.save_csv))
         if "excel" in formats:
             plan.append((f"{base_name}.xlsx", self.save_excel))
+        if not plan:
+            raise ValueError("At least one export format is required")
+        if fresh and frame.empty:
+            plan = []
 
         output_dir.parent.mkdir(parents=True, exist_ok=True)
         stage_root = Path(
@@ -534,6 +557,7 @@ class DataCompiler:
                 staged_path = files_dir / filename
                 writer(frame, staged_path, prepared=True)
                 staged.append((filename, staged_path))
+            prepare_export(output_dir, stage_root, [name for name, _ in staged], fresh)
             if fresh:
                 emitted = self._publish_fresh(
                     files_dir, backup_dir, output_dir, staged, preserved
@@ -542,7 +566,10 @@ class DataCompiler:
                 emitted = self._publish_in_place(
                     backup_dir, output_dir, staged, preserved
                 )
+            commit_export(output_dir)
         except (OSError, ValueError) as exc:
+            if journal_path(output_dir).exists():
+                recover_export(output_dir)
             if preserved:
                 raise ValueError(
                     "Export failed; rollback incomplete. Recovery details: "
@@ -552,8 +579,8 @@ class DataCompiler:
                 f"Export failed; prior output unchanged. {exc}"
             ) from exc
         finally:
-            if not preserved:
-                shutil.rmtree(stage_root, ignore_errors=True)
+            if not preserved and not journal_path(output_dir).exists() and stage_root.exists():
+                shutil.rmtree(stage_root)
         return emitted, frame
 
     @staticmethod

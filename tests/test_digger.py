@@ -25,6 +25,7 @@ from urllib.parse import urlparse
 
 import pytest
 import requests
+from psweep.discovery import network
 
 from psweep.discovery.connectors import (
     BaseDiggerConnector,
@@ -95,7 +96,7 @@ def test_http_crawl_gates_children_without_filtering_hub_paths(monkeypatch):
         checks.append(url)
         return not url.endswith("/private")
 
-    monkeypatch.setattr(requests, "get", get)
+    monkeypatch.setattr(network, "request_get", get)
     artifacts = HttpDiggerConnector().discover(
         DiggerInput(
             seed_urls=["https://county.gov/hub"],
@@ -128,7 +129,7 @@ def test_centralized_http_gates_seed_and_redirect_and_closes(monkeypatch):
         calls.append(url)
         return response
 
-    monkeypatch.setattr(requests, "get", get)
+    monkeypatch.setattr(network, "request_get", get)
     artifacts = HttpDiggerConnector().discover(
         DiggerInput(
             seed_urls=[response.url],
@@ -146,7 +147,7 @@ def test_centralized_http_gates_seed_and_redirect_and_closes(monkeypatch):
     assert response.closed
 
 
-def test_http_fetch_keeps_return_shape_and_ssl_false(monkeypatch):
+def test_http_fetch_keeps_return_shape_and_verified_tls(monkeypatch):
     """The HTML fetch contract remains text and attempt count."""
     response = Response("https://county.gov/hub", text="html")
     options = []
@@ -155,15 +156,15 @@ def test_http_fetch_keeps_return_shape_and_ssl_false(monkeypatch):
         options.append(kwargs)
         return response
 
-    monkeypatch.setattr(requests, "get", get)
+    monkeypatch.setattr(network, "request_get", get)
     assert HttpDiggerConnector()._fetch_html(
         url=response.url,
         timeout_seconds=6,
-        ssl_verify=False,
+        ssl_verify=True,
         request_headers={"X-App": "value"},
         retry_config=(1, 0, 0),
     ) == ("html", 1)
-    assert options[0]["verify"] is False
+    assert options[0]["verify"] is True
     assert options[0]["timeout"] == 6
     assert options[0]["headers"] == {"X-App": "value"}
     assert response.closed
@@ -186,7 +187,7 @@ def test_http_redirect_resolves_links_against_landing_page(monkeypatch, sweep):
         calls.append(url)
         return responses[len(calls) - 1]
 
-    monkeypatch.setattr(requests, "get", get)
+    monkeypatch.setattr(network, "request_get", get)
     artifacts = HttpDiggerConnector().discover(
         DiggerInput(
             seed_urls=["https://county.gov/hub"],
@@ -230,8 +231,8 @@ def test_render_navigation_is_gated_and_paced(monkeypatch, connector):
     )
     monkeypatch.setattr("psweep.discovery.browser.BrowserSession", FakeBrowser)
     monkeypatch.setattr(
-        requests,
-        "get",
+        network,
+        "request_get",
         lambda url, **_kwargs: Response(url, text="<app-root></app-root>"),
     )
     checks = []
@@ -283,8 +284,8 @@ def test_render_denied_final_url_discards_links(monkeypatch, connector):
     )
     monkeypatch.setattr("psweep.discovery.browser.BrowserSession", FakeBrowser)
     monkeypatch.setattr(
-        requests,
-        "get",
+        network,
+        "request_get",
         lambda url, **_kwargs: Response(url, text="<app-root></app-root>"),
     )
     artifacts = connector().discover(
@@ -308,8 +309,8 @@ def test_strict_browser_policy_fails_before_navigation(monkeypatch, connector):
     monkeypatch.setattr(FakeBrowser, "navigations", [])
     monkeypatch.setattr("psweep.discovery.browser.BrowserSession", FakeBrowser)
     monkeypatch.setattr(
-        requests,
-        "get",
+        network,
+        "request_get",
         lambda url, **_kwargs: Response(url, text="<app-root></app-root>"),
     )
     with pytest.raises(RuntimeError, match=r"subresource|intercept"):
@@ -347,8 +348,8 @@ def test_browser_gate_denies_before_each_navigation(monkeypatch, connector):
     )
     monkeypatch.setattr("psweep.discovery.browser.BrowserSession", FakeBrowser)
     monkeypatch.setattr(
-        requests,
-        "get",
+        network,
+        "request_get",
         lambda url, **_kwargs: Response(url, text="<app-root></app-root>"),
     )
     artifacts = connector().discover(

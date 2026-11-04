@@ -7,7 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Configured legal-document markers use source titles and snippets as well as
+  URLs, allowing opaque downloads on unknown hosts without jurisdiction
+  allowlists. Generated query reasons remain excluded from source evidence.
+- Confirmed successful SerpApi searches with no Google results no longer abort
+  discovery or discard other queries' candidates. Provider failures remain
+  explicit; empty queries are recorded with zero results.
+
 ### Added
+- Public-only DNS-pinned acquisition, decoded response limits, verified local
+  TLS integration tests, and an opt-in external smoke-test layer.
+- Protected operating mode with an approved HTTPS model endpoint, private
+  POSIX workspace/cache checks, and an HPC acceptance/runbook checklist.
+- Compilation writer locks and interruption-recovery journals.
 - Short discovery-only starter template, with expanded settings in
   `config/ADVANCED.yaml` and discovery-first onboarding documentation.
 - Embedded documentation: NumPy docstrings rendered to a Sphinx site
@@ -17,6 +30,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `CONTRIBUTING.md` and this `CHANGELOG.md`.
 
 ### Changed
+- Municode recovery retains the requested code subtree and section headings,
+  rather than including unrelated neighboring articles or losing citations.
+  Amendment URLs are not misrepresented as current-code nodes.
+- QA/QC reports read evidence from the actual compared model directory, not
+  the canonical single-model extraction directory.
+- Opted-in code-host headers also apply to initial acquisition; case-insensitive
+  operator overrides take precedence on pages and API calls.
+- Model transport uses client-scoped TLS for configured gateways and disables
+  hidden automatic retries, preserving explicit temperature-compatibility retry.
+- Extraction schema errors identify the violated schema rule without copying
+  rejected record values into diagnostics or chained tracebacks.
+- Full-pipeline approval also covers QA/QC extraction: `run --yes` no longer
+  aborts at a second interactive prompt. Standalone `validate --yes` is available.
+- Comparative document review includes its complete response schema in the
+  model prompt, including required per-group reasons, before strict validation.
+- Extensionless downloads with missing/generic binary MIME are accepted as PDF
+  only when their streamed bytes start with a PDF signature; sniffed bytes and
+  response size limits are preserved.
+- Search-driven discovery uses the built-in HTTP SerpApi connector throughout;
+  startup no longer checks for the retired optional SerpApi SDK.
+- Python minimum is 3.12; refreshed Python/native locks and release CI.
+  Scheduled dependency audits remain fail-closed when advisories are unresolved.
+- TLS verification defaults to on. Explicit public-mode false settings remain
+  available with interception-risk warnings; protected mode rejects them.
+  Prefer system/approved CA roots. Acquisition ignores proxies and `.netrc`.
+- A single Click application replaces the Typer migration bridge. Commands,
+  interactive menu, subprocess entry point, and exit semantics are retained.
+  Pipeline subprocesses use the active interpreter, never an ambient Pixi
+  executable that could select another environment or fail outside the repo.
+- Browser discovery requires external isolation and a preinstalled driver;
+  it never disables Chrome's sandbox and is prohibited in protected mode.
+- Model credentials are per-client rather than process-global; provider
+  exceptions and raw model responses are not copied into application logs.
+- CSV evidence is formula-escaped; XLSX evidence is literal while trusted
+  QA/QC formulas and literal-cell dropdowns remain functional.
+- Compilation rejects malformed payloads before publication, expands nested
+  rows from schema rather than item order, and reports incomplete provenance.
+  Protected compilation requires canonical records and complete provenance.
+  Missing records fail without touching exports; valid zero-item `--fresh`
+  results use the same locked, recoverable publication path.
 - Extraction CLI/API share one workflow, model resolution, selection and outcomes.
   Omitted models inherit environment defaults; explicit providers and generic
   endpoint overrides no longer lose routing or borrow another provider's key.
@@ -64,8 +117,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   This is not a general pipeline transaction or large-scale certification.
 - Strict robots/ToS enforcement cannot cover browser redirects/subresources
   and fails before unsupported browser navigation; use HTTP acquisition for
-  enforcement. TLS verification remains an explicit user environment choice
-  with unchanged SerpApi/download defaults of `false`.
+  enforcement. TLS verification is on by default; protected mode rejects
+  insecure environment settings.
 - OCR sidecars now use `.text/<filename>.txt` and `<filename>.meta.json`, and
   reviewer sidecars use `.review/<filename>.json`, avoiding same-stem format
   collisions. Old stem-only caches are not reused. Native extraction, OCR

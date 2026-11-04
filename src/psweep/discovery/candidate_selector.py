@@ -445,7 +445,7 @@ class CandidateSelector:
 
         if self._relevance_require_legal_marker_terms:
             if not any(
-                term in url_text
+                term in text
                 for term in self._relevance_require_legal_marker_terms
             ):
                 return False

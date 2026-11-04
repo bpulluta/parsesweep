@@ -379,6 +379,26 @@ def test_comparative_dedup_exception_marks_survivors_without_losing_grades(
     assert costs["total_cost_usd"] == 0
 
 
+def test_comparative_prompt_includes_the_complete_response_contract(tmp_path):
+    """Custom prompts must request required group reasons as well as indices."""
+    records = [_record(tmp_path, f"report{i}.pdf") for i in range(2)]
+
+    class Client:
+        def extract(self, **kwargs):
+            assert json.dumps(kwargs["schema"], indent=2) in kwargs["user_prompt"]
+            return {"data": {"redundancy_groups": [{
+                "keep_index": 0, "redundant_indices": [1], "reason": "same text",
+            }]}}
+
+    reviewer = _stub_reviewer(keep_top=2)
+    reviewer._deduplicate_redundant = True
+    reviewer._client = Client()
+    reviewer.review(records, [])
+    assert records[0]["review_selected"] is True
+    assert records[1]["review_selected"] is False
+    assert not any(record.get("review_failed") for record in records)
+
+
 def test_client_setup_failure_is_explicit_and_sanitized(tmp_path):
     """Setup errors do not leak credentials into records or notes."""
     records = [_record(tmp_path)]
