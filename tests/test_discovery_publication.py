@@ -451,3 +451,31 @@ def test_atomic_json_failure_keeps_prior_bytes(tmp_path, monkeypatch):
         pub.atomic_json(path, {"new": True})
     assert path.read_bytes() == before
     assert not list(tmp_path.glob(".manifest.json-*"))
+
+
+@pytest.mark.parametrize("blocked", [False, True])
+def test_merged_index_keeps_one_path_per_owner(tmp_path, blocked):
+    """Renamed and unselected owners lose their old path whatever its name,
+    except in blocked partitions."""
+    index = tmp_path / "download_index.csv"
+    index.write_text(
+        "relative_path,target_id,url\n"
+        "p/old-slug.pdf,t,https://a.gov/doc\n"
+        "p/held.pdf,t,https://a.gov/rejected\n"
+        "p/other.pdf,u,https://b.gov/other\n"
+    )
+    content, removed = pub._merged_index(
+        run_index=None,
+        domain_index=index,
+        promoted_paths=set() if blocked else {"p/new-slug.pdf"},
+        replaced_partitions=set(),
+        withdrawn={("t", "https://a.gov/rejected")},
+        is_blocked=lambda _part: blocked,
+        run_content="relative_path,target_id,url\np/new-slug.pdf,t,https://a.gov/doc\n",
+    )
+    paths = {row.split(",")[0] for row in content.splitlines()[1:]}
+    if blocked:
+        assert not removed and paths == {"p/old-slug.pdf", "p/held.pdf", "p/other.pdf"}
+    else:
+        assert removed == {"p/old-slug.pdf", "p/held.pdf"}
+        assert paths == {"p/new-slug.pdf", "p/other.pdf"}

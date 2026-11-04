@@ -23,6 +23,8 @@ from collections.abc import Iterator, Mapping
 from psweep.extraction.document_utils import text_cache_paths
 from psweep.utils.file_io import atomic_write, atomic_json, publication_lock, PublicationLockError
 
+from .retry import is_retryable
+
 TOKEN_HEX_LENGTH = 32
 SHA256_HEX_LENGTH = 64
 CHECKPOINT_VERSION = 2
@@ -49,10 +51,19 @@ class PublicationPaths:
 DocumentOwner = tuple[str, str]
 
 
+def owner_key(target_id: object, source_url: object) -> str | None:
+    """Checkpoint key of a target or shared source; owns its documents."""
+    if target_id:
+        return str(target_id)
+    if source_url:
+        return f"source-{hashlib.md5(str(source_url).encode()).hexdigest()[:12]}"
+    return None
+
+
 def document_owner(row: Mapping[str, object]) -> DocumentOwner:
-    """Owner of a published document: its target (or shared source) and URL."""
+    """Owner of a published document: its target or shared source, and URL."""
     return (
-        str(row.get("target_id") or row.get("source_url") or ""),
+        owner_key(row.get("target_id"), row.get("source_url")) or "",
         str(row.get("url") or ""),
     )
 
@@ -70,22 +81,24 @@ def assign_document_names(
 ) -> None:
     """Give every downloaded record one stable, readable consolidated path.
 
-    Each record's ``relative_path`` holds the plain name it asks for. An owner
-    keeps the path it already holds in the consolidated ``index``; otherwise
-    it gets the plain name unless another owner holds it, then a short owner
-    hash. Curated records claim first, so failed or unselected downloads
-    never push a published document to a suffixed name. Index rows in
-    ``replaced`` partitions (``--fresh``) are ignored.
+    Call under the publication lock so ``index`` is current. Each record's
+    ``relative_path`` holds the plain name it asks for. An owner keeps the
+    path it holds in ``index`` while it asks for the same plain name;
+    otherwise it gets the plain name unless another owner holds it, then a
+    short owner hash (publication withdraws the owner's old path). Curated
+    records claim first, so failed or unselected downloads never push a
+    published document to a suffixed name. Index rows in ``replaced``
+    partitions (``--fresh``) are ignored.
     """
     held: dict[str, DocumentOwner] = {}
-    owned: dict[tuple[DocumentOwner, str], str] = {}
+    owned: dict[DocumentOwner, str] = {}
     for row in _csv_read(index)[1] if index.exists() else ():
         path = row["relative_path"]
         if _under(Path(path).parent, replaced):
             continue
         owner = document_owner(row)
         held[path] = owner
-        owned[(owner, _owner_name(path, owner, suffixed=False))] = path
+        owned[owner] = path
     review_ran = _review_ran(records)
     named = sorted(
         (record for record in records if record.get("relative_path")),
@@ -94,12 +107,12 @@ def assign_document_names(
     for record in named:
         owner = document_owner(record)
         plain = _owner_name(str(record["relative_path"]), owner, suffixed=False)
-        path = owned.get((owner, plain))
-        if path is None:
+        path = owned.get(owner)
+        if path is None or _owner_name(path, owner, suffixed=False) != plain:
             free = held.get(plain, owner) == owner
             path = plain if free else _owner_name(plain, owner, suffixed=True)
             held[path] = owner
-            owned[(owner, plain)] = path
+            owned[owner] = path
         record["relative_path"] = path
 
 
@@ -456,16 +469,13 @@ def _review_ran(records: list[dict[str, object]]) -> bool:
     return any(record.get("review_selected") is not None for record in records)
 
 
-def _withdrawn_paths(
-    records: list[dict[str, object]],
-) -> dict[str, DocumentOwner]:
-    """The run's downloaded but unselected documents and their owners."""
+def _withdrawn_owners(records: list[dict[str, object]]) -> set[DocumentOwner]:
+    """Owners whose document this run finally did not select."""
     review_ran = _review_ran(records)
     return {
-        str(record["relative_path"]): document_owner(record)
+        document_owner(record)
         for record in records
-        if record.get("status") == "downloaded"
-        and record.get("relative_path")
+        if not is_retryable(record)
         and not record_is_curated(record, review_ran=review_ran)
     }
 
@@ -583,14 +593,18 @@ def _merged_index(
     domain_index: Path,
     promoted_paths: set[str],
     replaced_partitions: set[Path],
-    withdrawn: Mapping[str, DocumentOwner] | None = None,
+    withdrawn: set[DocumentOwner] = frozenset(),
+    completed: set[str] = frozenset(),
+    is_blocked=lambda _partition: False,
     run_content: str | None = None,
 ) -> tuple[str, set[str]]:
     """Merge run provenance; return the index and the withdrawn paths removed.
 
-    A path is only replaced or withdrawn by its owner (``document_owner``).
+    A path is only replaced or withdrawn by its owner (``document_owner``),
+    and each owner keeps at most one path. Outside blocked partitions an
+    unpromoted row is withdrawn when its owner was promoted elsewhere, is in
+    ``withdrawn``, or belongs to a ``completed`` target or source.
     """
-    withdrawn = withdrawn or {}
     fieldnames, existing = (
         _csv_read(domain_index) if domain_index.exists() else ([], [])
     )
@@ -600,6 +614,24 @@ def _merged_index(
         reader = csv.DictReader(io.StringIO(run_content))
         incoming_fields, incoming = list(reader.fieldnames or ()), list(reader)
     fieldnames = list(dict.fromkeys([*fieldnames, *incoming_fields, "path"]))
+    promoted: dict[str, dict] = {}
+    for row in incoming:
+        key = row.get("relative_path", "")
+        if key not in promoted_paths:
+            continue
+        _relative(key)
+        if key in promoted:
+            msg = f"Duplicate run index path: {key}"
+            raise PublicationError(msg)
+        promoted[key] = {
+            **row,
+            "path": (domain_index.parent / "curated" / key).as_posix(),
+        }
+    if promoted.keys() != promoted_paths:
+        missing = sorted(promoted_paths - promoted.keys())
+        msg = f"Missing provenance for curated paths: {missing}"
+        raise PublicationError(msg)
+    promoted_owners = {document_owner(row) for row in promoted.values()}
     rows: dict[str, dict] = {}
     removed: set[str] = set()
     for row in existing:
@@ -607,34 +639,26 @@ def _merged_index(
         rel = _relative(key)
         if _under(rel.parent, replaced_partitions):
             continue
-        if withdrawn.get(key) == document_owner(row):
+        owner = document_owner(row)
+        if (
+            key not in promoted
+            and not is_blocked(rel.parent)
+            and (
+                owner in promoted_owners
+                or owner in withdrawn
+                or owner[0] in completed
+            )
+        ):
             removed.add(key)
-        else:
-            if key in rows:
-                msg = f"Duplicate consolidated index path: {key}"
-                raise PublicationError(msg)
-            rows[key] = row
-    found: set[str] = set()
-    for row in incoming:
-        key = row.get("relative_path", "")
-        if key not in promoted_paths:
             continue
-        _relative(key)
-        if key in found:
-            msg = f"Duplicate run index path: {key}"
+        if key in rows:
+            msg = f"Duplicate consolidated index path: {key}"
             raise PublicationError(msg)
-        found.add(key)
-        if key in rows and document_owner(rows[key]) != document_owner(row):
+        if key in promoted and owner != document_owner(promoted[key]):
             msg = f"Curated path is owned by another target or source: {key}"
             raise PublicationError(msg)
-        rows[key] = {
-            **row,
-            "path": (domain_index.parent / "curated" / key).as_posix(),
-        }
-    if found != promoted_paths:
-        missing = sorted(promoted_paths - found)
-        msg = f"Missing provenance for curated paths: {missing}"
-        raise PublicationError(msg)
+        rows[key] = row
+    rows.update(promoted)
     return csv_content(fieldnames, list(rows.values())), removed
 
 
@@ -668,15 +692,17 @@ def _stage_promotion(
     blocked_partitions,
     run_index: Path | None,
     run_content: str | None = None,
-    withdrawn: Mapping[str, DocumentOwner] | None = None,
+    withdrawn: set[DocumentOwner] = frozenset(),
+    completed: set[str] = frozenset(),
 ) -> list[tuple[Path, Path | None]]:
     """Stage a run's publication into consolidated curation.
 
     ``attempted_partitions`` (``--fresh`` runs) are replaced wholesale; any
-    other selected document is published file by file, and ``withdrawn``
-    paths (the run's own unselected documents) are removed when the
-    consolidated index records the same owner, so documents
-    of other targets sharing a partition are kept.
+    other selected document is published file by file. Outside blocked
+    partitions, the consolidated documents of ``withdrawn`` owners, of
+    ``completed`` targets/sources not promoted now, and the old paths of
+    renamed owners are removed (see ``_merged_index``), so documents of
+    other targets sharing a partition are kept.
     """
     if source.resolve() == (root / "curated").resolve():
         msg = "Run curation and consolidated curation must have distinct paths"
@@ -727,11 +753,9 @@ def _stage_promotion(
             domain_index=root / "download_index.csv",
             promoted_paths=promoted,
             replaced_partitions=replacements,
-            withdrawn={
-                key: owner
-                for key, owner in (withdrawn or {}).items()
-                if key not in promoted and not is_blocked(_relative(key).parent)
-            },
+            withdrawn=withdrawn,
+            completed=completed,
+            is_blocked=is_blocked,
             run_content=run_content,
         )
         for key in sorted(removed):
@@ -807,10 +831,11 @@ def publish_manual_curation(
     metadata_updates: Mapping[Path, str],
     attempted_partitions=None,
     blocked_partitions=None,
+    completed: set[str] = frozenset(),
     _lock_held: bool = False,
 ) -> tuple[Path, int]:
     """Publish local/consolidated human curation and its provenance
-    together.
+    together; ``completed`` targets/sources reconcile their documents.
     """
     root = paths.domain_dir
     if paths.run_curated_dir == root / "curated":
@@ -833,7 +858,8 @@ def publish_manual_curation(
                 blocked_partitions=blocked_partitions,
                 run_index=run_index,
                 run_content=run_index_content,
-                withdrawn=_withdrawn_paths(download_records),
+                withdrawn=_withdrawn_owners(download_records),
+                completed=completed,
             )
             swaps.append((paths.run_curated_dir, local))
             updates = {**metadata_updates, run_index: run_index_content}

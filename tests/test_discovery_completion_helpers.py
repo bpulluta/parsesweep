@@ -157,6 +157,7 @@ def test_publication_failure_occurs_before_final_metadata_writes(
             result=result,
             manifest=manifest,
             completed_entries={},
+            new_entries={},
             attempted_parts=set(),
             blocked=_PartitionIndex(),
             all_reused=False,
@@ -166,4 +167,7 @@ def test_publication_failure_occurs_before_final_metadata_writes(
     assert result.review_index_path in metadata
     assert paths.manifest_path in metadata
     assert paths.manifest_path.parent / "outcomes/current.json" in metadata
-    assert not list(tmp_path.iterdir())
+    # Only the publication lock exists; no metadata was written.
+    assert [p.name for p in tmp_path.rglob("*") if p.is_file()] == [
+        ".discovery-publication.lock"
+    ]

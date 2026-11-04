@@ -61,8 +61,9 @@ def compute_backoff(
 def is_transient_error(exc: BaseException) -> bool:
     """Return True when a later attempt of the same request may succeed.
 
-    Timeouts, connection errors, truncated streams, browser network failures
-    and HTTP 429/5xx are transient; TLS certificate errors and other HTTP 4xx
+    Timeouts, connection errors, truncated streams and HTTP 429/5xx are
+    transient; status-less browser failures (``Failed to fetch`` also covers
+    CORS and mixed-content rejections) are transient only on network markers; TLS certificate errors and other HTTP 4xx
     responses are terminal. A policy rejection is transient only when its
     evaluation failed transiently (e.g. robots.txt timed out) or a transient
     error caused it. Typed errors are classified by type and status; only
@@ -77,8 +78,8 @@ def is_transient_error(exc: BaseException) -> bool:
         return False
     if isinstance(exc, requests.exceptions.HTTPError) and exc.response is not None:
         return _transient_status(exc.response.status_code)
-    if isinstance(exc, BrowserDownloadError):
-        return exc.status is None or _transient_status(exc.status)
+    if isinstance(exc, BrowserDownloadError) and exc.status is not None:
+        return _transient_status(exc.status)
     if isinstance(
         exc,
         (

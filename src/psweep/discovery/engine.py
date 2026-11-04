@@ -67,6 +67,7 @@ from .publication import (
     effective_discovery_fingerprint,
     resolve_publication_paths,
     materialize_curated,
+    owner_key,
     record_is_curated,
     promote_curated,
     merge_download_index,
@@ -2003,8 +2004,8 @@ class DiscoveryEngine:
                 exc, stage="discovery.crawl", provider=request.crawl_provider,
             )
             notes.append("Crawl failed; continuing with uncrawled candidates.")
-            sources = set(pages) if error["retryable"] else set()
-            unfinished = [c for c in candidates if c.url in sources | unevaluated]
+            retry_urls = (set(pages) if error["retryable"] else set()) | unevaluated
+            unfinished = [c for c in candidates if c.url in retry_urls]
             return candidates, normalize_error_records([error]), notes, state, unfinished
 
         origins: dict[str, list[DiscoveryCandidate]] = {}
@@ -2360,19 +2361,9 @@ class DiscoveryEngine:
     # Checkpointing helpers
     # ------------------------------------------------------------------
 
-    @staticmethod
-    def _completion_key(target_id: object, source_url: object) -> str | None:
-        """Checkpoint key: the target id, or a stable id for a shared source."""
-        if target_id:
-            return str(target_id)
-        if source_url:
-            digest = hashlib.md5(str(source_url).encode()).hexdigest()[:12]
-            return f"source-{digest}"
-        return None
-
     @classmethod
     def _record_completion_key(cls, record: dict[str, object]) -> str | None:
-        return cls._completion_key(record.get("target_id"), record.get("source_url"))
+        return owner_key(record.get("target_id"), record.get("source_url"))
 
     @staticmethod
     def _input_digest(request: DiscoveryRequest, target: dict[str, object]) -> str:
@@ -2424,7 +2415,7 @@ class DiscoveryEngine:
                 request.targets or [],
                 lambda target: identify_target(target, request.partition_by),
             ),
-            "sources": (request.sources, lambda url: cls._completion_key(None, url)),
+            "sources": (request.sources, lambda url: owner_key(None, url)),
         }
         remaining: dict[str, list] = {}
         notes: list[str] = []
@@ -3094,7 +3085,9 @@ class DiscoveryEngine:
                 continue  # target already has curated docs
 
             for rec in records:
-                if not rec.get("browser_escalated") and rec.get("status") == "downloaded":
+                if not rec.get("browser_escalated") and rec.get("status") in {
+                    "downloaded", "skipped_unreadable"
+                }:
                     # Check if this is a JS shell from a code-hosting domain
                     url = str(rec.get("url") or "")
                     from urllib.parse import urlparse
@@ -3627,7 +3620,7 @@ class DiscoveryEngine:
     ) -> None:
         """Keep the owners of unfinished candidates incomplete and blocked."""
         for candidate in candidates:
-            key = self._completion_key(candidate.target_id, candidate.source_url)
+            key = owner_key(candidate.target_id, candidate.source_url)
             if key:
                 incomplete_keys.add(key)
             blocked.add(
@@ -3870,73 +3863,89 @@ class DiscoveryEngine:
         result: DiscoveryResult,
         manifest: DiscoveryManifest,
         completed_entries: dict[str, dict[str, object]],
+        new_entries: dict[str, dict[str, object]],
         attempted_parts: set[Path],
         blocked: _PartitionIndex,
         all_reused: bool,
     ) -> Path:
-        """Render metadata before publishing it with selected curation.
+        """Name documents, render metadata, and publish it with selected
+        curation under one corpus lock.
 
         Reuse returns a new snapshot, preserving the editable run.
         Immutable snapshots also provide checkpoint manifest evidence.
         """
-        payload = manifest.to_dict()
-        if result.status == "reused":
-            payload["lineage"]["reused_manifests"] = list(
-                {
-                    path
-                    for entry in completed_entries.values()
-                    for path in entry.get("artifacts", {})
-                    if path.endswith(".json")
-                }
-            )
         snapshot_path = (
             paths.manifest_path.parent / "outcomes" / f"{result.run_id}.json"
         )
-        manifest_content = json.dumps(payload, indent=2, sort_keys=True)
-        if all_reused:
-            atomic_write(snapshot_path, manifest_content)
-            result.manifest_path = snapshot_path
-            return snapshot_path
-        metadata_updates = {
-            paths.manifest_path: manifest_content,
-            snapshot_path: manifest_content,
-        }
-        if not request.dry_run:
-            index_content = self._write_download_index(
-                request=request,
-                run_id=result.run_id,
-                manifest_path=paths.manifest_path,
-                download_records=manifest.downloads,
-                index_path=paths.run_index,
-                render_only=True,
-            )
-            metadata_updates[paths.run_index] = index_content
-            metadata_updates[snapshot_path.with_suffix(".index.csv")] = (
-                index_content
-            )
-            if result.review_index_path:
-                metadata_updates[result.review_index_path] = (
-                    self._write_review_index(
-                        request=request,
-                        download_records=manifest.downloads,
-                        run_dir=paths.manifest_path.parent,
-                        render_only=True,
-                    )
+        publishes = not request.dry_run and not all_reused
+        with (
+            discovery_publication(paths.domain_dir)
+            if publishes
+            else contextlib.nullcontext()
+        ):
+            if publishes:
+                assign_document_names(
+                    manifest.downloads,
+                    paths.domain_dir / "download_index.csv",
+                    attempted_parts,
                 )
-            if result.curated_dir is not None:
-                publish_manual_curation(
-                    paths=paths,
-                    download_records=manifest.downloads,
-                    run_index=paths.run_index,
-                    run_index_content=index_content,
-                    metadata_updates=metadata_updates,
-                    attempted_partitions=attempted_parts,
-                    blocked_partitions=blocked,
+            payload = manifest.to_dict()
+            if result.status == "reused":
+                payload["lineage"]["reused_manifests"] = list(
+                    {
+                        path
+                        for entry in completed_entries.values()
+                        for path in entry.get("artifacts", {})
+                        if path.endswith(".json")
+                    }
                 )
+            manifest_content = json.dumps(payload, indent=2, sort_keys=True)
+            if all_reused:
+                atomic_write(snapshot_path, manifest_content)
+                result.manifest_path = snapshot_path
                 return snapshot_path
-        # Metadata-only outcomes do not replace curation.
-        for path, content in metadata_updates.items():
-            atomic_write(path, content)
+            metadata_updates = {
+                paths.manifest_path: manifest_content,
+                snapshot_path: manifest_content,
+            }
+            if publishes:
+                index_content = self._write_download_index(
+                    request=request,
+                    run_id=result.run_id,
+                    manifest_path=paths.manifest_path,
+                    download_records=manifest.downloads,
+                    index_path=paths.run_index,
+                    render_only=True,
+                )
+                metadata_updates[paths.run_index] = index_content
+                metadata_updates[snapshot_path.with_suffix(".index.csv")] = (
+                    index_content
+                )
+                if result.review_index_path:
+                    metadata_updates[result.review_index_path] = (
+                        self._write_review_index(
+                            request=request,
+                            download_records=manifest.downloads,
+                            run_dir=paths.manifest_path.parent,
+                            render_only=True,
+                        )
+                    )
+                if result.curated_dir is not None:
+                    publish_manual_curation(
+                        paths=paths,
+                        download_records=manifest.downloads,
+                        run_index=paths.run_index,
+                        run_index_content=index_content,
+                        metadata_updates=metadata_updates,
+                        attempted_partitions=attempted_parts,
+                        blocked_partitions=blocked,
+                        completed=set(new_entries),
+                        _lock_held=True,
+                    )
+                    return snapshot_path
+            # Metadata-only outcomes do not replace curation.
+            for path, content in metadata_updates.items():
+                atomic_write(path, content)
         return snapshot_path
 
     def _save_completion_evidence(
@@ -4224,16 +4233,6 @@ class DiscoveryEngine:
                         )
                     )
 
-                assign_document_names(
-                    download_records,
-                    paths.domain_dir / "download_index.csv",
-                    {
-                        Path(str(record["relative_path"])).parent
-                        for record in download_records
-                        if record.get("relative_path")
-                    } if request.fresh else set(),
-                )
-
                 def record_partition(record: dict[str, object]) -> Path:
                     return self._partition(
                         request,
@@ -4396,6 +4395,7 @@ class DiscoveryEngine:
             result=result,
             manifest=manifest,
             completed_entries=completed_checkpoint_keys,
+            new_entries=new_checkpoint_entries,
             attempted_parts=attempted_parts,
             blocked=blocked_parts,
             all_reused=all_reused,

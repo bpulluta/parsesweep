@@ -31,7 +31,7 @@ class BrowserUnavailableError(RuntimeError):
 
 
 class BrowserDownloadError(RuntimeError):
-    """An in-browser ``fetch()`` failed; ``status`` is None for network errors."""
+    """An in-browser ``fetch()`` failed; ``status`` is None when it rejected."""
 
     def __init__(self, message: str, *, status: int | None = None) -> None:
         super().__init__(message)
