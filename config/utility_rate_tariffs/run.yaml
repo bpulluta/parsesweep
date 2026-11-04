@@ -7,6 +7,7 @@ domain: utility_rate_tariffs
 models:
   primary: gpt-6.1-sol        # extraction (accuracy matters)
   secondary: gpt-5.6-luna   # discovery, page targeting, review (speed matters)
+  judge: gpt-5.4-nano         # validation judge
 
 discovery:
   targets: targets.csv
@@ -141,7 +142,7 @@ compilation:
   normalization:
     state_column: state
   output:
-    default_format: excel
+    default_format: both
     column_order: [utility_name, state, effective_date, rate_name, is_rider,
       sector, applicable_riders, rate_calculation_formula, charge_type,
       charge_description, rate, unit, season, time_period]
@@ -149,14 +150,10 @@ compilation:
     auto_width: true
 
 validation:
-  models: [primary, secondary]
-  comparison_approach: numeric_only
-  projection:
-    type: nested_array_items
-    source_array: rate_schedules
-    nested_array: charges
-    parent_fields: [rate_name, is_rider, sector]
-  record_matching:
-    key_fields: [rate_name, charge_type, charge_description, season, time_period]
-  comparison:
-    primary_fields: [rate, unit]
+  models: [secondary]
+  judge: judge
+  # tier_min_kwh keeps tiered charges of one rate from colliding.
+  key_fields: [state, utility_name, rate_name, charge_type, charge_description, season,
+    time_period, tier_min_kwh]
+  quote_field: extracted_text
+  fields: [rate, unit]

@@ -55,7 +55,7 @@ from psweep.workspace import (
     domain_schemas,
     infer_domain,
 )
-from psweep.cli.cost_tracker import estimate_extraction_cost
+from psweep.utils.model_pricing import estimate_extraction_cost
 from psweep.scaffolding import (
     ConfigValidationError,
     available_main_array_fields,
@@ -432,12 +432,10 @@ def preview(document_path: str):
         text = extract_text_from_document(doc_path)
         text_length = len(text)
 
-        # Estimate cost/time using the configured model's pricing (shared helper).
         config = get_config()
         model_name = config.llm_config.get("model", DEFAULT_MODEL)
         est = estimate_extraction_cost(text_length, model_name)
         estimated_tokens = est.input_tokens
-        total_cost = est.total_cost
 
         section("Content Analysis")
         analysis_table = key_values(
@@ -476,7 +474,7 @@ def preview(document_path: str):
         print_cost_estimate(
             total_docs=1,
             estimated_tokens=estimated_tokens,
-            estimated_cost=total_cost,
+            estimated_cost=est.format_cost(),
             estimated_time=est.estimated_minutes,
             model=model_name,
         )
@@ -592,7 +590,6 @@ def estimate(documents_path: str, workers: int, pages_csv: str):
         print_warning("Could not analyze documents for estimation")
         return
 
-    # Calculate averages and estimates (shared estimator, configured model).
     avg_chars = total_chars / sample_size
     estimated_total_chars = avg_chars * len(doc_files)
 
@@ -603,10 +600,6 @@ def estimate(documents_path: str, workers: int, pages_csv: str):
         estimated_total_chars, model_name, workers=workers
     )
     estimated_tokens = est.input_tokens
-    input_cost_per_1m = est.input_rate
-    output_cost_per_1m = est.output_rate
-    output_tokens = est.output_tokens
-    total_cost = est.total_cost
     estimated_minutes = est.estimated_minutes
 
     # Display analysis
@@ -633,11 +626,13 @@ def estimate(documents_path: str, workers: int, pages_csv: str):
 
     # Display cost breakdown
     section(f"Cost Breakdown ({model_name})")
+    input_rate = "" if est.input_rate is None else f" @ ${est.input_rate:.2f}/1M"
+    output_rate = "" if est.output_rate is None else f" @ ${est.output_rate:.2f}/1M"
     cost_table = key_values(
         {
-            "Input Tokens": f"~{estimated_tokens:,} @ ${input_cost_per_1m:.2f}/1M",
-            "Output Tokens": f"~{int(output_tokens):,} @ ${output_cost_per_1m:.2f}/1M",
-            "Total Estimated Cost": f"${total_cost:.2f}",
+            "Input Tokens": f"~{estimated_tokens:,}{input_rate}",
+            "Output Tokens": f"~{int(est.output_tokens):,}{output_rate}",
+            "Total Estimated Cost": est.format_cost(),
         }
     )
     console.print(cost_table)
@@ -774,14 +769,6 @@ def check_schema_cmd(schema_path: str):
             warnings.append(
                 "$metadata.compilation.value_typing is deprecated; keep vocabularies in schema properties[*].enum"
             )
-        if isinstance(metadata.get("validation"), dict):
-            warnings.append(
-                "$metadata.validation is deprecated in this runtime; use schema-level JSON Schema constraints (required/type/enum) and runtime QA/QC config"
-            )
-        if isinstance(metadata.get("qa_qc"), dict):
-            warnings.append(
-                "$metadata.qa_qc is deprecated for active workflows; define QA/QC settings in config/<domain>/run.yaml under 'validation'"
-            )
     else:
         issues.append(
             "Missing $metadata section (required for the modernized runtime)"
@@ -894,7 +881,7 @@ def config(show_runtime_catalog: bool, output_format: str):
 
     if show_runtime_catalog:
         section("Runtime Variable Catalog")
-        for section_name in ("extraction", "compilation", "discovery"):
+        for section_name in ("extraction", "compilation", "discovery", "validation"):
             entries = VARIABLE_CATALOG.get(section_name, [])
             if not entries:
                 continue

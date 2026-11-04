@@ -17,10 +17,11 @@
 
 domain: aq_permits_va
 
-# Model tiers — accurate for extraction, fast/cheap for review + QA/QC contrast.
+# Model tiers — accurate for extraction, fast/cheap for review.
 models:
-  primary: compassop-gpt-4.1          # extraction (accuracy matters)
-  secondary: compassop-gpt-4.1-mini   # QA/QC contrast model (speed/cost)
+  primary: gpt-6.1-sol      # extraction
+  secondary: gpt-5.6-luna   # review, validation challenger
+  judge: gpt-5.4-nano       # validation judge
 
 discovery:
   sources:
@@ -45,6 +46,7 @@ discovery:
     action: warn
 
 extraction:
+  model: primary
   # OCR-artifact corrections for scanned air-emissions permits. Applied in order
   # to OCR-derived PDF text only. These are domain-specific (emissions units,
   # chemical formulas, manufacturer names); other domains simply omit this block.
@@ -83,20 +85,10 @@ extraction:
     # Space between a numeric value and its rate unit (4.20lbs/hr -> 4.20 lbs/hr).
     - {pattern: '(\d+\.?\d*)([a-z]+/[a-z]+)', replacement: '\1 \2', ignore_case: true}
 
+# No verbatim field: the judge decides equivalence only.
 validation:
-  models: [primary, secondary]
-  comparison_approach: numeric_only
-  record_matching:
-    key_fields:
-      - referenceNumber
-      - make
-      - model
-  comparison:
-    primary_fields:
-      - ratedCapacityKW
-      - ratedCapacityBHP
-      - ratedCapacityHP
-      - ratedCapacityMMBtuPerHr
-      - operatingHoursPerUnitLimit
-      - operatingHoursCombinedLimit
-      - numGenerators
+  models: [secondary]
+  judge: judge
+  key_fields: [permitNumber, referenceNumber, make, model]
+  fields: [ratedCapacityKW, ratedCapacityBHP, ratedCapacityHP, ratedCapacityMMBtuPerHr,
+    operatingHoursPerUnitLimit, operatingHoursCombinedLimit, numGenerators]

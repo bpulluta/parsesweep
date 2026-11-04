@@ -9,7 +9,7 @@ import uuid
 import stat
 from contextlib import contextmanager
 from pathlib import Path
-from collections.abc import Iterator
+from collections.abc import Iterable, Iterator
 
 
 class PublicationLockError(ValueError):
@@ -84,9 +84,12 @@ def publication_lock(path: Path) -> Iterator[None]:
 
 @contextmanager
 def staged_file(
-    path: Path, content: str | bytes, *, prefix: str | None = None
+    path: Path,
+    content: str | bytes | Iterable[str],
+    *,
+    prefix: str | None = None,
 ) -> Iterator[Path]:
-    """Stage flushed bytes beside the destination; clean up on exit."""
+    """Stage flushed bytes (or streamed text chunks) beside the destination."""
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary: Path | None = None
@@ -98,11 +101,12 @@ def staged_file(
             delete=False,
         ) as handle:
             temporary = Path(handle.name)
-            handle.write(
-                content.encode("utf-8")
-                if isinstance(content, str)
-                else content
-            )
+            if isinstance(content, (str, bytes)):
+                content = (content,)
+            for chunk in content:
+                handle.write(
+                    chunk.encode("utf-8") if isinstance(chunk, str) else chunk
+                )
             handle.flush()
             os.fsync(handle.fileno())
         yield temporary
@@ -112,7 +116,10 @@ def staged_file(
 
 
 def atomic_write(
-    path: Path, content: str | bytes, *, prefix: str | None = None
+    path: Path,
+    content: str | bytes | Iterable[str],
+    *,
+    prefix: str | None = None,
 ) -> None:
     """Replace a file with staged bytes on the same filesystem."""
     with staged_file(path, content, prefix=prefix) as temporary:

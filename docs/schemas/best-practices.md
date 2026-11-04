@@ -12,7 +12,7 @@ Design schemas to match how you want to analyze the data.
 For authoring, use this mental model:
 
 - `Schema` (`config/<domain>/schema.json`): The **extraction contract**. Fields, descriptions, examples, row shape, identifiers, and deduplication keys. Field-level enum values belong here (in `properties`), not in `$metadata`.
-- `Runtime config` (`config/<domain>/run.yaml`): **Runtime behavior and presentation**. Models, discovery settings, QA/QC lanes, and all compilation output settings (column order, exclude_fields, default_format, freeze_columns). This file drives *how* a run behaves and *how* output looks.
+- `Runtime config` (`config/<domain>/run.yaml`): **Runtime behavior and presentation**. Models, discovery settings, and all compilation output settings (column order, exclude_fields, default_format, freeze_columns). This file drives *how* a run behaves and *how* output looks.
 
 **Separation rule:** `$metadata` in the schema owns `extraction.*` and `identity.deduplication` (data identity — what makes a record unique). Everything else — output formatting, normalization, model tiers — lives only in `config/<domain>/run.yaml`. Output config in `$metadata` is not supported and will be rejected by `check-schema`.
 
@@ -26,7 +26,6 @@ Most new extraction setups should begin with a schema only. That keeps iteration
 
 Add or update `config/<domain>/run.yaml` later if you need any of the following:
 
-- shared QA/QC lanes for a domain
 - shared compilation output settings such as column order or renames
 - model tier assignments or discovery configuration
 - domain-level runtime overrides you do not want to repeat on the CLI
@@ -80,7 +79,7 @@ This loop is the safest way to add fields and tune descriptions without re-runni
 Use this decision rule:
 
 - `No`: You are still defining fields, examples, descriptions, identifiers, or deduplication keys for one schema.
-- `Yes`: You want shared runtime QA/QC behavior, shared compilation presentation (column order, renames), or domain-level model/discovery settings.
+- `Yes`: You want shared compilation presentation (column order, renames), or domain-level model/discovery settings.
 
 Keep authoring friction low by delaying `config/<domain>/run.yaml` until you actually need shared runtime behavior.
 
@@ -181,30 +180,6 @@ This example shows the full metadata surface that belongs in the schema. All out
 | `identity.deduplication.ignore_fields` | Fields to ignore when deduplicating | `["notes", "timestamp"]` |
 | `domain` | Category for organization | `"Environmental - Air Quality"` |
 | `version` | Schema version (semver) | `"2.1.0"` |
-
-### Optional: Validation (QA/QC) Runtime Configuration (in `run.yaml`)
-
-Validation behavior is runtime policy and belongs in the `validation` section of
-`config/<domain>/run.yaml` (the `validate` command reads it, mirroring how
-`compile` reads `compilation`):
-
-```yaml
-validation:
-  models: [primary, secondary]      # two model tiers to contrast
-  comparison_approach: mixed        # mixed | numeric_only | text_review
-  record_matching:
-    key_fields: [feature, specific_subject, applies_to]
-    semantic_match_threshold: 0.38
-  comparison:
-    primary_fields: [value, units]
-  judge:
-    enabled: true
-    model: judge
-    apply_on: all                   # none | non_numeric | all
-```
-
-Run `pixi run psweep validate --config config/<domain>/run.yaml` so both models
-and all matching/comparison settings come from the same runtime config.
 
 ---
 
@@ -876,33 +851,28 @@ New multi-field decomposition:
 
 Regulatory domains (natural gas, geothermal, solar, and future domains) share the
 same requirement-row shape. Keeping field **names and semantics identical** across
-domains lets one compilation, dedup, and QA/QC path serve every domain, and lets
+domains lets one compilation and dedup path serve every domain, and lets
 analysts compare across domains.
 
-### QA/QC hardening conventions (recommended across all regulatory domains)
+### Schema hardening conventions (recommended across all regulatory domains)
 
-These conventions came from live multi-model validation runs and improve
-precision/recall **without adding domain-specific runtime code**:
+These conventions improve precision/recall **without adding domain-specific runtime code**:
 
 1. **Add a row-type discriminator when rows mix different requirement kinds.**
    - Use a canonical field like `rule_kind` (enum) to distinguish
      `limit`, `deadline`, `duration`, `monitoring`, `equipment_standard`, etc.
-   - Include it in schema dedup keys **and** QA/QC `record_matching.key_fields`
-     in `config/<domain>/run.yaml` so like-for-like rows are compared.
+   - Include it in schema dedup keys so like-for-like rows are merged.
 2. **Encode quantitative vs qualitative constraints in the schema.**
    - Quantitative rows should require numeric semantics (`value`, `units`,
      `value_interpretation`).
    - Qualitative rows should force quantitative-only fields to null.
-3. **Keep schema as contract; keep QA/QC policy in config.**
+3. **Keep schema as contract; keep runtime policy in config.**
    - Schema: field shape, enums, conditional constraints, dedup identity.
-   - Config: model pair, judge model, comparison fields, matching behavior.
-4. **Treat output shape drift as a first-class validation failure.**
+   - Config: model tiers, discovery, and compilation output.
+4. **Treat output shape drift as a first-class contract failure.**
    - `main_data_array` is contractually an array; if provider output drifts
      (e.g., object-map keyed by `"0"`, `"1"`), normalize deterministically in
-     runtime and log it, then continue comparison.
-5. **Do not choose production models from agreement % alone.**
-   - Use multi-doc runs and source-grounded review of `ONLY model-x` and `DIFFER`
-     rows to determine whether misses are recall gaps or true false positives.
+     runtime and log it.
 
 ### Canonical requirement-row fields (universal — same name in every domain)
 

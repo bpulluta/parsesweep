@@ -4,8 +4,8 @@
 domain: solar
 
 models:
-  primary: compassop-gpt-4.1
-  secondary: compassop-gpt-4.1-mini
+  primary: gpt-6.1-sol
+  secondary: gpt-5.6-luna
 
 extraction:
   model: primary

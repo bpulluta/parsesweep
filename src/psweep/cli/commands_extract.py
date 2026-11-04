@@ -2,57 +2,23 @@
 
 from __future__ import annotations
 
-import contextlib
 import json
 import sys
-from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Optional
 
 import click
 from dotenv import load_dotenv
 
-from psweep.cli.run_view import RunView
-from psweep.cli.dashboard import create_live_dashboard
-from psweep.cli.ui import (
-    Verbosity,
-    ask_confirm,
-    print_error,
-)
 from psweep.config import RuntimeConfigError
-from psweep.extraction.document_utils import (
-    extract_text_from_document,
-)
 from psweep.exceptions import ParseSweepError
 from psweep.extraction.llm_factory import DEFAULT_MAX_CONTEXT
-from psweep.extraction.record_writer import write_extraction_record
 from psweep.pipeline import _execute_extraction, _prepare_extraction
-from psweep.utils.schema_metadata import SchemaMetadata
-from psweep.validation.utils import sanitize_model_name
 
 
-def _render_extraction(plan, view, live_dashboard):
+def _render_extraction(plan, view):
     """Keep progress display outside shared extraction execution."""
-    dashboard = None
-    live = None
-    if live_dashboard and not view.is_quiet:
-        live, dashboard = create_live_dashboard(
-            len(plan["pending"]),
-            plan["llm"]["model"],
-        )
 
     def progress(doc_path, result):
-        if dashboard is not None:
-            if result is None:
-                dashboard.start_document(doc_path.name)
-            else:
-                dashboard.complete_document(
-                    doc_path.name,
-                    success=result["success"],
-                    cost=result.get("cost") or 0,
-                    input_tokens=result.get("input_tokens") or 0,
-                    output_tokens=result.get("output_tokens") or 0,
-                )
-            return
         if view.is_quiet or result is None:
             return
         if result["success"]:
@@ -62,8 +28,7 @@ def _render_extraction(plan, view, live_dashboard):
                 f"Extraction failed for {doc_path.name}", result["error"]
             )
 
-    with live if live is not None else contextlib.nullcontext():
-        return _execute_extraction(plan, on_progress=progress)
+    return _execute_extraction(plan, on_progress=progress)
 
 
 @click.command()
@@ -146,11 +111,6 @@ def _render_extraction(plan, view, live_dashboard):
 )
 @click.option("--debug", is_flag=True, help="Debug mode with full logs")
 @click.option(
-    "--live-dashboard",
-    is_flag=True,
-    help="Show live dashboard during extraction",
-)
-@click.option(
     "--pages",
     type=str,
     default=None,
@@ -177,7 +137,6 @@ def extract(
     quiet: bool,
     verbose: bool,
     debug: bool,
-    live_dashboard: bool,
     pages: Optional[str],
     pages_csv: Optional[str],
 ):
@@ -219,7 +178,6 @@ def extract(
             "model",
             "limit",
             "max_context",
-            "live_dashboard",
             "fresh",
         ]
     )
@@ -277,11 +235,7 @@ def extract(
             }
         )
 
-        outcome = _render_extraction(
-            plan,
-            view,
-            resolved_inputs.get("live_dashboard", live_dashboard),
-        )
+        outcome = _render_extraction(plan, view)
     except (ParseSweepError, OSError, ValueError, TypeError) as exc:
         view.error("Extraction failed", str(exc))
         raise click.exceptions.Exit(1) from exc
@@ -319,363 +273,5 @@ def extract(
                     f"--schema {schema}"
                 )
             )
-            view.next_steps(
-                [
-                    f"Inspect a result: pixi run psweep check "
-                    f"{outcome.output_dir}/<name>.json --show-data",
-                    f"Compile into a spreadsheet: {compile_cmd}",
-                ]
-            )
+            view.next_steps([f"Compile into a spreadsheet: {compile_cmd}"])
     raise click.exceptions.Exit(outcome.exit_code)
-
-
-def _run_validation_extraction(
-    doc_files: List[Path],
-    loaded_schema: dict,
-    schema_path: Path,
-    output_dir: Path,
-    registry,
-    validation_models: List[str],
-    max_context: int,
-    timeout_seconds: Optional[int],
-    page_range_map: dict,
-    verbosity: str,
-    runtime_artifact: Optional[Dict[str, Any]] = None,
-    run_id: Optional[str] = None,
-    config_path: Optional[str] = None,
-    prompt_confirm: bool = True,
-    skip_existing: bool = True,
-    seed_output_dir: Optional[Path] = None,
-    write_primary_canonical: bool = True,
-    view: Optional[RunView] = None,
-) -> Optional[Path]:
-    """Run QA/QC multi-model extraction for documents.
-
-    Model tiers and credentials are resolved through the unified
-    :class:`ModelRegistry`; ``validation_models`` is the ``validation.models`` reference
-    list from the run config.
-    """
-    from psweep.validation import run_multi_model_extraction
-
-    if len({path.stem for path in doc_files}) != len(doc_files):
-        message = (
-            "QA/QC document stem collision; scope or rename ambiguous sources"
-        )
-        raise ValueError(message)
-    qa_model_defs = registry.get_models(list(validation_models))
-    qa_models = [definition.model for definition in qa_model_defs]
-    seed_output_dir = seed_output_dir or output_dir
-    if len(qa_model_defs) < 2:
-        hint = (
-            f"resolved to: {qa_models}"
-            if qa_models
-            else "resolved to nothing — validation.models is empty or missing"
-        )
-        print_error(
-            "QA/QC Configuration Error",
-            f"QA/QC requires at least 2 distinct models, but {hint}",
-            [
-                "Add a validation: section to your run config YAML with at least 2 model tiers:",
-                "  validation:",
-                "    models: [primary, secondary]",
-                "Make sure both tiers are defined in the top-level models: block",
-                "Each tier must resolve to a different model name",
-                "See config/testing/validation_cross_provider.yaml for a ready-to-use example",
-            ],
-        )
-        return None
-
-    primary_def = qa_model_defs[0]
-    primary_llm_kwargs = registry.to_llm_kwargs(primary_def.tier)
-    qa_provider = primary_llm_kwargs.get("provider", "openai")
-
-    # Build a provider-aware model list for the config display
-    model_provider_labels = []
-    for defn in qa_model_defs:
-        kw = registry.to_llm_kwargs(defn.tier)
-        provider_label = kw.get("provider", "openai")
-        model_provider_labels.append(f"{defn.model} [{provider_label}]")
-
-    view = view or RunView("extract", verbosity=Verbosity(verbosity))
-    if view.command == "extract":
-        view.header("QA/QC MULTI-MODEL VALIDATION")
-        view.config(
-            {
-                "Models": ", ".join(model_provider_labels),
-                "Documents": str(len(doc_files)),
-                "Endpoint": primary_llm_kwargs.get("base_url")
-                or "direct provider",
-            }
-        )
-    if not view.is_quiet:
-        view.warning(
-            f"This will run {len(qa_models)}x extractions per document",
-            f"Max fresh extractions: {len(doc_files)} docs × {len(qa_models)} models "
-            f"= {len(doc_files) * len(qa_models)} (lower when model outputs are reused)",
-        )
-        if prompt_confirm and not ask_confirm(
-            "Proceed with QA/QC extraction?", default=True
-        ):
-            view.info("Operation cancelled")
-            return None
-
-    results = []
-    total_cost = 0.0
-    total_time = 0.0
-    total_fresh_extractions = 0
-    total_reused_outputs = 0
-    view.phase("Extracting with multiple models")
-
-    # The primary model (first in the QA/QC list) doubles as a compile-ready
-    # deliverable. Its extraction is written to the normal per-document location,
-    # plus multi-model sidecars under validation/ for comparison.
-    primary_model = primary_def.model
-    progress = view.make_progress()
-    task_id = None
-    if progress is not None:
-        task_id = progress.add_task(
-            "Extracting QA/QC", total=len(doc_files), phase=""
-        )
-
-    def _update_phase(message: str) -> None:
-        if progress is not None and task_id is not None:
-            progress.update(task_id, phase=message)
-
-    progress_ctx = (
-        progress if progress is not None else contextlib.nullcontext()
-    )
-    with progress_ctx:
-        for doc_idx, doc_path in enumerate(doc_files, 1):
-            if progress is not None and task_id is not None:
-                progress.update(
-                    task_id,
-                    description=f"Extracting [{doc_idx}/{len(doc_files)}] {doc_path.name[:48]}",
-                )
-                _update_phase("→ reading")
-            elif not view.is_quiet:
-                view.status(
-                    "info", f"[{doc_idx}/{len(doc_files)}] {doc_path.name}"
-                )
-
-            try:
-                page_range = page_range_map.get(doc_path)
-                text = extract_text_from_document(
-                    doc_path, page_range=page_range
-                )
-                seed_records_by_model = {}
-                if skip_existing:
-                    canonical_path = seed_output_dir / f"{doc_path.stem}.json"
-                    if canonical_path.exists():
-                        try:
-                            with open(canonical_path, encoding="utf-8") as fh:
-                                existing_record = json.load(fh)
-                            existing_model = (
-                                (existing_record.get("lineage") or {}).get(
-                                    "model"
-                                )
-                                if isinstance(existing_record, dict)
-                                else None
-                            )
-                            if (
-                                isinstance(existing_model, str)
-                                and existing_model in qa_models
-                                and isinstance(
-                                    existing_record.get("payload"), dict
-                                )
-                            ):
-                                seed_records_by_model[existing_model] = (
-                                    existing_record
-                                )
-                        except Exception as exc:
-                            if view.verbosity.shows_detail:
-                                view.status(
-                                    "warning",
-                                    f"Could not reuse existing extraction for {doc_path.name}",
-                                    str(exc)[:80],
-                                )
-
-                    qa_doc_dir = output_dir / "validation" / doc_path.stem
-                    if qa_doc_dir.exists():
-                        for model_name in qa_models:
-                            if model_name in seed_records_by_model:
-                                continue
-                            model_path = (
-                                qa_doc_dir
-                                / f"{sanitize_model_name(model_name)}.json"
-                            )
-                            if not model_path.exists():
-                                continue
-                            try:
-                                with open(model_path, encoding="utf-8") as fh:
-                                    existing_record = json.load(fh)
-                                if isinstance(
-                                    existing_record.get("payload"), dict
-                                ):
-                                    seed_records_by_model[model_name] = (
-                                        existing_record
-                                    )
-                            except Exception as exc:
-                                if view.verbosity.shows_detail:
-                                    view.status(
-                                        "warning",
-                                        f"Could not reuse QA/QC output for {doc_path.name} ({model_name})",
-                                        str(exc)[:80],
-                                    )
-
-                if view.verbosity.shows_detail:
-                    view.status("info", f"Extracted {len(text):,} characters")
-
-                def _model_status(event: Dict[str, Any]) -> None:
-                    model_name = str(event.get("model") or "model")
-                    kind = str(event.get("event") or "")
-                    if kind == "model_start":
-                        _update_phase(f"→ running {model_name}")
-                    elif kind == "model_reused":
-                        _update_phase(f"→ reused {model_name}")
-                    elif kind == "model_success":
-                        cost = event.get("cost")
-                        display = (
-                            "unknown cost" if cost is None else f"${cost:.4f}"
-                        )
-                        _update_phase(f"→ done {model_name} {display}")
-                    elif kind == "model_error":
-                        _update_phase(f"→ failed {model_name}")
-
-                model_results = run_multi_model_extraction(
-                    doc_text=text,
-                    doc_name=doc_path.stem,
-                    schema=loaded_schema,
-                    registry=registry,
-                    model_tiers=validation_models,
-                    output_dir=output_dir,
-                    max_context_chars=max_context,
-                    timeout_seconds=timeout_seconds,
-                    runtime_artifact=runtime_artifact,
-                    run_id=run_id,
-                    schema_id=schema_path.as_posix(),
-                    seed_records_by_model=seed_records_by_model,
-                    model_status_callback=_model_status,
-                )
-
-                primary_result = model_results.get(primary_model)
-                if (
-                    write_primary_canonical
-                    and primary_result is not None
-                    and primary_result.success
-                    and primary_result.result is not None
-                ):
-                    write_extraction_record(
-                        seed_output_dir / f"{doc_path.stem}.json",
-                        doc_path=doc_path,
-                        source_document_id=doc_path.name,
-                        result=primary_result.result,
-                        model=primary_model,
-                        runtime_artifact=runtime_artifact,
-                        run_id=run_id,
-                        provider=qa_provider,
-                        schema_id=schema_path.as_posix(),
-                        schema_metadata=SchemaMetadata(schema_path),
-                    )
-
-                doc_cost = sum(r.cost or 0 for r in model_results.values())
-                unknown_costs = sum(
-                    r.cost is None for r in model_results.values()
-                )
-                doc_time = sum(
-                    r.processing_time for r in model_results.values()
-                )
-                successful = sum(
-                    1 for r in model_results.values() if r.success
-                )
-                doc_fresh = sum(
-                    1
-                    for r in model_results.values()
-                    if r.success and not r.reused
-                )
-                doc_reused = sum(
-                    1 for r in model_results.values() if r.success and r.reused
-                )
-
-                total_cost += doc_cost
-                total_time += doc_time
-                total_fresh_extractions += doc_fresh
-                total_reused_outputs += doc_reused
-
-                results.append(
-                    {
-                        "file": doc_path.name,
-                        "success": True,
-                        "models_successful": successful,
-                        "models_total": len(qa_models),
-                        "cost": doc_cost,
-                        "unknown_cost_models": unknown_costs,
-                        "time": doc_time,
-                        "fresh_extractions": doc_fresh,
-                        "reused_outputs": doc_reused,
-                    }
-                )
-
-                level = (
-                    "success" if successful == len(qa_models) else "warning"
-                )
-                view.status(
-                    level,
-                    f"{successful}/{len(qa_models)} models",
-                    f"${doc_cost:.4f} known • {unknown_costs} unknown • "
-                    f"{doc_time:.1f}s",
-                )
-
-            except Exception as e:
-                results.append(
-                    {
-                        "file": doc_path.name,
-                        "success": False,
-                        "error": str(e),
-                    }
-                )
-                view.status("error", "Extraction failed", str(e)[:60])
-
-            if progress is not None and task_id is not None:
-                progress.update(task_id, phase="", advance=1)
-
-    if not view.is_quiet:
-        successful_docs = [r for r in results if r.get("success")]
-        failed_docs = [r for r in results if not r.get("success")]
-
-        summary_stats = {
-            "Documents Processed": str(len(results)),
-            "Successful": str(len(successful_docs)),
-        }
-        if failed_docs:
-            summary_stats["Failed"] = str(len(failed_docs))
-        summary_stats["Models Used"] = (
-            f"{len(qa_models)} ({', '.join(qa_models[:3])}"
-            f"{'...' if len(qa_models) > 3 else ''})"
-        )
-        summary_stats["Fresh Model Extractions"] = str(total_fresh_extractions)
-        summary_stats["Reused Existing Outputs"] = str(total_reused_outputs)
-        summary_stats["Known Cost"] = f"${total_cost:.4f}"
-        summary_stats["Unknown Cost Models"] = str(
-            sum(r.get("unknown_cost_models", 0) for r in results)
-        )
-        summary_stats["Total Time"] = f"{total_time:.1f}s"
-
-        view.summary(summary_stats, title="QA/QC Extraction Summary")
-
-        validation_output = output_dir / "validation"
-        view.outputs({"QA/QC outputs": str(validation_output.absolute())})
-
-        validate_compare_command = "pixi run psweep validate"
-        if config_path:
-            validate_compare_command += (
-                f" --config {Path(config_path).as_posix()}"
-            )
-        validate_compare_command += " --compare-only"
-        view.next_steps(
-            [
-                "Rebuild QA/QC reports with validate (no re-extraction): "
-                f"{validate_compare_command}"
-            ]
-        )
-
-    return output_dir / "validation"

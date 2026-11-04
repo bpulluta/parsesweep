@@ -9,7 +9,6 @@ import pytest
 from psweep.extraction.provenance import (
     SourceContext,
     build_source_context_map,
-    generate_run_id,
     prepend_source_context,
     source_context,
 )
@@ -17,50 +16,6 @@ from psweep.extraction.provenance import (
 
 def _prepend(text, doc, context_map):
     return prepend_source_context(text, source_context(doc, context_map))
-
-
-def test_validation_run_id_is_deterministic_and_input_sensitive():
-    """Validation lineage remains deterministic and document-order neutral."""
-    kwargs = dict(
-        schema_path=Path("schemas/widgets.json"),
-        provider="azure",
-        model="gpt-x",
-        enable_validation=True,
-        doc_files=[Path("documents/b.pdf"), Path("documents/a.pdf")],
-        artifact_id=None,
-    )
-    run_id_1 = generate_run_id(**kwargs)
-    # Same inputs (document order permuted) -> same id, since docs are sorted.
-    run_id_2 = generate_run_id(
-        **{
-            **kwargs,
-            "doc_files": [Path("documents/a.pdf"), Path("documents/b.pdf")],
-        }
-    )
-    assert run_id_1 == run_id_2
-    assert run_id_1.startswith("run://")
-    assert len(run_id_1) == len("run://") + 16
-
-    # A changed input -> different id.
-    run_id_diff = generate_run_id(**{**kwargs, "model": "gpt-y"})
-    assert run_id_diff != run_id_1
-
-    # Regular extraction is an attempt, never the validation identity.
-    run_id_regular = generate_run_id(**{**kwargs, "enable_validation": False})
-    assert run_id_regular != run_id_1
-
-
-def test_regular_run_id_is_unique_for_identical_inputs():
-    """Repeated regular runs retain distinct execution histories."""
-    kwargs = {
-        "schema_path": Path("schemas/widgets.json"),
-        "provider": "openai",
-        "model": "example-model",
-        "enable_validation": False,
-        "doc_files": [Path("documents/a.pdf")],
-        "artifact_id": None,
-    }
-    assert generate_run_id(**kwargs) != generate_run_id(**kwargs)
 
 
 def test_build_source_context_map_from_index(tmp_path):

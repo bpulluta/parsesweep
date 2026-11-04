@@ -5,13 +5,10 @@ from __future__ import annotations
 import subprocess
 import sys
 from pathlib import Path
-from typing import Optional
 
 import click
 
 from psweep import __version__
-from psweep.cli.commands_benchmark import benchmark
-from psweep.cli.commands_check import check
 from psweep.cli.commands_compile import compile as compile_command
 from psweep.cli.commands_curate import curate
 from psweep.cli.commands_discover import discover
@@ -24,39 +21,20 @@ from psweep.pipeline import (
     count_curated_documents,
     count_extracted_documents,
     resolve_run_discovery_enabled,
-    resolve_run_validation,
 )
 from psweep.workspace import Workspace
 
 
-# ---------------------------------------------------------------------------
-# App
-# ---------------------------------------------------------------------------
-
-
-@click.group(name="psweep", invoke_without_command=True, no_args_is_help=False)
+@click.group(name="psweep", no_args_is_help=True)
 @click.version_option(__version__, "--version", "-V", prog_name="psweep")
-@click.pass_context
-def cli(ctx: click.Context) -> None:
-    """Extract structured data from documents using LLMs and schemas.
-
-    Run without arguments for the interactive guided menu.
-    """
+def cli() -> None:
+    """Extract structured data from documents using LLMs and schemas."""
     from psweep.security import prepare_protected_runtime
 
     try:
         prepare_protected_runtime()
     except ValueError as exc:
         raise click.ClickException(str(exc)) from exc
-    if ctx.invoked_subcommand is None:
-        # No subcommand given — launch the interactive guided menu
-        from psweep.cli.interactive import run_interactive_menu
-        run_interactive_menu()
-
-
-# ---------------------------------------------------------------------------
-# `run` command — full pipeline orchestrator
-# ---------------------------------------------------------------------------
 
 
 @cli.command()
@@ -82,7 +60,7 @@ def run(
     quiet: bool = False,
     verbose: bool = False,
 ) -> None:
-    """Run the full pipeline: discover → extract → validate (optional) → compile.
+    """Run the full pipeline: discover → extract → compile → validate.
 
     Shows what will be reused from previous runs and what is new, then
     asks for confirmation before proceeding. Use --fresh to
@@ -129,6 +107,9 @@ def run(
     if not skip_extract:
         preflight_commands.append("extract")
     preflight_commands.append("compile")
+    validation = cfg.get("validation") if not skip_extract else None
+    if validation:
+        preflight_commands.append("validate")
 
     try:
         discover_fields: dict[str, object] | None = None
@@ -218,17 +199,23 @@ def run(
     if not skip_discover and discovery_enabled:
         stages_list.append("discover")
 
-    validation = resolve_run_validation(config_path)
-    validation_model_count: Optional[int] = None
-    if validation:
-        validation_model_count = len(validation.get("models") or []) or None
-
     if not skip_extract:
         stages_list.append("extract")
-    if bool(validation) and not skip_extract:
-        count = f" ×{validation_model_count} models" if validation_model_count else ""
-        stages_list.append(f"validate{count}")
     stages_list.append("compile")
+    if validation:
+        stages_list.append("validate")
+        plan_rows["Validate"] = ", ".join(
+            [
+                f"{1 + len(validation['models'])} contenders",
+                f"{len(validation['references'])} references",
+                f"judge {validation['judge'] or 'off'}",
+                *(
+                    [f"min_accuracy {validation['min_accuracy']}"]
+                    if validation["min_accuracy"] is not None
+                    else []
+                ),
+            ]
+        )
     plan_rows["Stages"] = " → ".join(stages_list)
 
     view.config(plan_rows, title="Run Plan")
@@ -265,8 +252,8 @@ def run(
     _stage_labels = {
         "discover": "Discovering documents",
         "extract": "Extracting data",
-        "validate": "Running QA/QC validation",
         "compile": "Compiling results",
+        "validate": "Validating results",
     }
     total_stages = len(stage_cmds)
     for i, (stage_name, cmd) in enumerate(stage_cmds, 1):
@@ -300,16 +287,6 @@ def run(
     view.summary(summary_rows, title="Pipeline Complete")
 
 
-# ---------------------------------------------------------------------------
-# Build the final CLI: Typer app + bridged Click commands
-#
-# Pattern: generate the Click group from the Typer app once, then add
-# existing Click commands to it. Use this Click group as the entry point.
-# This means --help shows ALL commands (Typer-native + bridged Click ones)
-# and tab completion works for the full command surface.
-# ---------------------------------------------------------------------------
-
-
 def _register_commands() -> None:
     """Register every stage on the single public Click group."""
     from psweep.cli.utils_commands import (
@@ -323,12 +300,10 @@ def _register_commands() -> None:
 
     for cmd in (
         extract,
-        check,
         compile_command,
+        validate,
         discover,
         curate,
-        validate,
-        benchmark,
         init,
         init_domain_schema_cmd,
         preview,
@@ -339,13 +314,7 @@ def _register_commands() -> None:
         cli.add_command(cmd)
 
 
-# Build once at module load — this is the actual CLI entry point
 _register_commands()
-
-
-# ---------------------------------------------------------------------------
-# Entry point
-# ---------------------------------------------------------------------------
 
 
 def main() -> None:

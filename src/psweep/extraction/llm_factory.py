@@ -1,6 +1,6 @@
 """Resolve model names, providers, and credentials for every LLM stage.
 
-Extraction, discovery review, page targeting, and QA/QC share this
+Extraction, discovery review, page targeting, and validation share this
 boundary. Stage values can be literal model names or string aliases
 from the top-level ``models`` map. Alias names are user-chosen.
 
@@ -22,6 +22,7 @@ from __future__ import annotations
 import logging
 import os
 from typing import Any
+from urllib.parse import urlsplit
 
 logger = logging.getLogger(__name__)
 
@@ -189,6 +190,21 @@ def resolve_llm_kwargs(
             else None
         ),
     }
+
+
+def model_identity(
+    stage_value: str | None,
+    *,
+    models: dict[str, str] | None = None,
+    provider: str | None = None,
+) -> tuple[str, str | None, str | None]:
+    """``(model, provider, endpoint)`` that a stage value routes to; never a key."""
+    kwargs = resolve_llm_kwargs(stage_value, models=models, provider=provider)
+    endpoint = kwargs.get("base_url") or kwargs.get("azure_endpoint")
+    if endpoint:
+        parts = urlsplit(endpoint)
+        endpoint = f"{parts.scheme}://{parts.netloc}{parts.path}"
+    return kwargs["model"], kwargs.get("provider"), endpoint
 
 
 def build_llm_client(

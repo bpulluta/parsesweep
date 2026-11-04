@@ -52,8 +52,7 @@ Native libraries were refreshed, not comprehensively vulnerability-scanned.
   extraction accuracy; schemas and review are not proof of factual correctness.
   No model/tool-execution permission is granted by document content.
 * CSV exports prefix formula-like strings with an apostrophe; numeric values
-  remain numeric. XLSX evidence cells remain strings. Authored QA/QC formulas
-  escape model labels, and dropdowns reference literal cells. Canonical JSON
+  remain numeric. XLSX evidence cells remain strings. Canonical JSON
   retains original evidence. CSV machine ledgers are not spreadsheet reports:
   import them as text rather than opening them with spreadsheet auto-detection.
 

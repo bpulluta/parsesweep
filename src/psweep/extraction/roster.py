@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import functools
 import hashlib
 import json
 import re
@@ -274,33 +275,42 @@ def candidates_block(roster: Roster, target_ids: Iterable[str]) -> str:
     return "\n".join(lines) + "\n"
 
 
-def _evidence_nodes(node: Any, path: Sequence[str], location: str = ""):
+def evidence_nodes(node: Any, path: Sequence[str], location: str = ""):
     if not path:
         yield location, node
     elif path[0] == "*":
         for index, child in enumerate(node if isinstance(node, list) else ()):
-            yield from _evidence_nodes(child, path[1:], f"{location}[{index}]")
+            yield from evidence_nodes(child, path[1:], f"{location}[{index}]")
     elif isinstance(node, dict) and path[0] in node:
         key = f"{location}.{path[0]}" if location else path[0]
-        yield from _evidence_nodes(node[path[0]], path[1:], key)
+        yield from evidence_nodes(node[path[0]], path[1:], key)
+
+
+@functools.lru_cache(maxsize=8)
+def _haystacks(source_text: str) -> frozenset[str]:
+    return frozenset(
+        f" {normalize(text)} "
+        for text in (source_text, _LINE_HYPHEN.sub(r"\1 ", source_text))
+    )
+
+
+def quote_present(quote: Any, source_text: str) -> bool:
+    """True when the normalized quote occurs, on word boundaries, in the normalized source."""
+    needle = normalize(quote) if quote is not None else ""
+    return bool(needle) and any(f" {needle} " in haystack for haystack in _haystacks(source_text))
 
 
 def verify_quotes(data: dict, paths: Sequence[Sequence[str]], source_text: str) -> list[str]:
     """Null evidence whose quote is absent from the normalized source; return one warning each."""
-    haystacks = {
-        f" {normalize(text)} "
-        for text in (source_text, _LINE_HYPHEN.sub(r"\1 ", source_text))
-    }
     warnings = []
     for path in paths:
-        for location, evidence in _evidence_nodes(data, path):
+        for location, evidence in evidence_nodes(data, path):
             if not isinstance(evidence, dict):
                 continue
             quote = evidence.get("quote")
             if quote is None and evidence.get("value") is None:
                 continue
-            needle = normalize(quote) if quote is not None else ""
-            if needle and any(f" {needle} " in haystack for haystack in haystacks):
+            if quote_present(quote, source_text):
                 continue
             evidence["value"] = evidence["quote"] = None
             shown = json.dumps(quote[:160], ensure_ascii=False) if quote else "null"

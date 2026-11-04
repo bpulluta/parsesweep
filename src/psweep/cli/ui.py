@@ -554,7 +554,7 @@ def create_file_tree(root_path: Path, title: str = None) -> Tree:
 def print_cost_estimate(
     total_docs: int,
     estimated_tokens: int,
-    estimated_cost: float,
+    estimated_cost: str,
     estimated_time: float,
     model: str = DEFAULT_MODEL,
 ) -> None:
@@ -563,7 +563,7 @@ def print_cost_estimate(
         ("Total documents", str(total_docs)),
         ("Estimated tokens", f"~{estimated_tokens:,}"),
         ("Model", model),
-        ("Estimated cost", f"[{ui.theme.cost}]${estimated_cost:.2f}[/{ui.theme.cost}]"),
+        ("Estimated cost", f"[{ui.theme.cost}]{estimated_cost}[/{ui.theme.cost}]"),
         ("Processing time", f"~{estimated_time:.1f} min"),
     ]
     console.print()

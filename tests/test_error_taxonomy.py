@@ -34,7 +34,7 @@ def test_build_error_record_classifies_context_window_exceeded() -> None:
         RuntimeError("context_window_exceeded: estimated request size 353161 prompt chars exceeds model budget"),
         stage="extract",
         document_path="documents/tariffs/PSCo_Electric_Entire_Tariff.pdf",
-        model="compassop-gpt-4.1-mini",
+        model="gpt-4.1-mini",
         provider="azure",
     )
 

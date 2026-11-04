@@ -595,9 +595,7 @@ class Deduplicator:
         return normalized
 
     # Stop-words stripped when comparing fuzzy key-field *values* under the
-    # "words" normalize mode (e.g. duplicate hour ranges). Deliberately narrow
-    # and distinct from item_matcher.STOP_WORDS (name-token matching) and
-    # value_normalizer._UNIT_STOPWORDS (measurement-unit relational words):
+    # "words" normalize mode (e.g. duplicate hour ranges). Deliberately narrow:
     # widening it would silently merge rows that differ in meaningful content.
     _WORDS_NORMALIZE_STOPWORDS = frozenset(
         {

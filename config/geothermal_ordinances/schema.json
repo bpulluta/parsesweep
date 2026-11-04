@@ -15,7 +15,10 @@
           "in.": "inches",
           "dB(A)": "dBA",
           "db(a)": "dBA",
-          "DB(A)": "dBA"
+          "DB(A)": "dBA",
+          "decibels": "dB",
+          "hr": "hours",
+          "hrs": "hours"
         }
       }
     },

@@ -35,9 +35,7 @@ from psweep.utils.schema_metadata import SchemaMetadata
 
 
 def test_detect_provider_has_no_hardcoded_customer_prefix():
-    # The old code special-cased a specific customer deployment prefix; a bare
-    # deployment name must NOT be sniffed as azure — provider is set explicitly.
-    assert detect_provider("compassop-gpt-4.1-mini") == "openai"
+    # A bare deployment name is not sniffed as azure; provider is set explicitly.
     assert detect_provider("my-azure-deployment") == "openai"
 
 

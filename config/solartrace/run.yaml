@@ -5,7 +5,8 @@ domain: solartrace
 
 models:
   primary: gpt-6.1-sol      # extraction
-  secondary: gpt-5.6-luna   # review
+  secondary: gpt-5.6-luna   # review, validation challenger
+  judge: gpt-5.4-nano       # validation judge
 
 discovery:
   targets: targets.csv      # state, ahj, geo_id; optional `urls` column for known pages
@@ -40,3 +41,9 @@ compilation:
       Electrical Stamp From Licensed Electrician Required, Third-Party Permitting Available,
       Median Permit Cost, Number of Inspections Required, Rough-In Inspection Required,
       Virtual Inspections Available, Fire Review Required, sources, confidence, evidence]
+
+# Prior survey data, not an exemplar: scored without a min_accuracy gate.
+validation:
+  models: [secondary]
+  references: [samples/ahj_requirements.csv]
+  judge: judge

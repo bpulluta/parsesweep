@@ -94,7 +94,7 @@ location. Every stage output is derived from `domain` under `outputs/<domain>/`.
 
 Every command accepts `--config`. All supplied sections are validated at load;
 each command executes only its own section. Only the explicitly selected file
-is loaded. Adjacent `discovery`, `extraction`, `compilation`, or `validation`
+is loaded. Adjacent `discovery`, `extraction`, or `compilation`
 YAML/JSON overrides beside a `run` config are retired: move their sections into
 that file and remove the adjacent files. Add extraction and compilation later
 to the same config:
@@ -111,6 +111,7 @@ Run stages independently or chain the configured stages:
 pixi run psweep discover --config config/my_domain/run.yaml
 pixi run psweep extract  --config config/my_domain/run.yaml
 pixi run psweep compile  --config config/my_domain/run.yaml
+pixi run psweep validate --config config/my_domain/run.yaml   # needs a validation: block
 
 # Full pipeline, once its sections are configured
 pixi run psweep run --config config/my_domain/run.yaml
@@ -122,14 +123,12 @@ pixi run psweep run --config config/my_domain/run.yaml
 
 | Command | Purpose |
 |---------|---------|
-| `run` | Run full pipeline (discover → extract → compile) from a config file |
+| `run` | Run full pipeline (discover → extract → compile → validate) from a config file |
 | `extract` | Extract structured data from documents to JSON |
 | `compile` | Merge extracted JSONs into Excel/CSV with deduplication |
+| `validate` | Score the compiled table against challenger models and human sheets |
 | `discover` | Find and download documents from the web |
 | `curate` | Filter discovered documents via review |
-| `validate` | Run QA/QC validation (multi-model extract + report, or report-only) |
-| `benchmark` | Performance profiling across runs |
-| `check` | Validate an extraction result |
 | `check-schema` | Validate a schema file |
 | `init` | Interactive project setup |
 | `init-domain-schema` | Create a starter schema for a new domain |
@@ -147,7 +146,6 @@ pixi run psweep extract --config config/my_domain/run.yaml
   --schema PATH       Schema-only mode (quick testing without a config file)
   -n N                Limit to N files
   --fresh             Re-extract existing files (ignore cached output)
-  --live-dashboard    Real-time progress display
   --validate-config   Dry run — validate inputs only
 ```
 
@@ -354,7 +352,7 @@ extraction:
 ```
 
 Use [config/ADVANCED.yaml](config/ADVANCED.yaml) for additional model aliases,
-page targeting, output shaping, or QA/QC. These are existing optional
+page targeting, or output shaping. These are existing optional
 settings, not requirements for discovery.
 
 ### 3. Extract and Compile
@@ -399,37 +397,6 @@ extraction:
 
 ---
 
-## QA/QC Multi-Model Validation
-
-Run 2+ models on the same documents using the centralized run config:
-
-```bash
-pixi run psweep validate --config config/my_domain/run.yaml
-
-# Rebuild reports later without re-running extraction
-pixi run psweep validate --config config/my_domain/run.yaml --compare-only
-```
-
-Configure in the `validation:` section of your config:
-
-```yaml
-validation:
-  models: [primary, secondary]
-  report:
-    include_missing_in_queue: true
-    include_low_signal_presence_in_queue: false
-  comparison_approach: mixed
-  record_matching:
-    key_fields: [field1, field2]
-  comparison:
-    primary_fields: [value, unit]
-  judge:
-    enabled: true
-    model: judge
-```
-
----
-
 ## Roster Compilation
 
 When `discovery` declares `targets` and `partition_by`, compile emits **one row per roster target** in roster order — the shape of a "fill in this table" deliverable. Each schema attribute is resolved across every record that names the target: agreeing values win outright, conflicts prefer target-scoped sources then the value backed by the most sources. Missing values are `NA`. Extra target columns (e.g. `geo_id`) pass through unchanged, and three columns explain each row:
@@ -439,6 +406,36 @@ When `discovery` declares `targets` and `partition_by`, compile emits **one row 
 - `evidence` — compact JSON of `{field: {value, quote, url}}` per filled cell
 
 No extra config is needed and compile makes no LLM calls. Without a roster, compile emits one row per extracted item and applies schema-owned deduplication.
+
+---
+
+## Validation and Model Benchmarking
+
+`psweep validate` scores the compiled table (the **primary**, from `extraction.model`) against challenger models and human reference sheets. With a `validation:` block, `run` adds validate after compile. Challengers go through the same extract and compile code into `validated/<alias>/`. Records, compiled tables and judge verdicts are reused, so a re-run makes 0 LLM calls. `--fresh` clears `validated/`.
+
+```yaml
+validation:
+  references: [samples/exemplar.csv]  # human sheets; headers are the compiled titles
+  min_accuracy: 0.9                   # gate: exit 1 below it (needs references)
+  models: [secondary]                 # challenger aliases from models:
+  judge: judge                        # alias that rules on disputed cells
+  fields: [field_a, field_b]          # optional focus (default: every scored field)
+  # rows mode (no roster) only: key_fields: [state, county, feature], quote_field: source_verbatim
+```
+
+The workflow has three stages:
+
+1. **Converge on an exemplar.** Label a few targets by hand, list the sheet under `references` and set `min_accuracy`. Every miss is attributed to discovery (`miss = no_docs`: the target has no curated document) or to extraction (`miss = extraction`). Fix discovery or the schema descriptions and re-run until the gate passes.
+2. **Expand blind and compare models.** Add challenger `models` and a `judge`, optionally focused with `fields`. Disputed cells go to the judge, which checks every candidate against its quote. The leaderboard ranks contenders by consensus F1, quote support and cost per document.
+3. **Scale.** `psweep validate --sample N [--seed S]` writes `validated/sample_N.csv` with no LLM calls. The key columns and source URLs are filled and the values are left blank. Fill it in blind, save it under `config/<domain>/samples/` and add it to `references`. Accuracy is reported with a 95% Wilson interval.
+
+Outputs in `outputs/<domain>/validated/`:
+
+- `cells.csv`: one line per compared cell, with each contender's value, quote and URL, the judge's verdict and a `review_priority`.
+- `summary.csv`: metrics per model × column × base.
+- `summary.json`: the same metrics plus agreement, diagnosis, gate and run accounting.
+
+The console prints a leaderboard and a `Next:` line that points at the largest gap.
 
 ---
 
@@ -453,20 +450,20 @@ parsesweep/
 │       ├── run.yaml
 │       ├── schema.json        # extraction schema (default `schema:`)
 │       ├── targets.csv        # optional authored target rows
+│       ├── samples/           # optional human reference sheets (validation)
 │       └── page_ranges.csv    # optional manual extraction page ranges
 ├── documents/                 # Optional local input documents
 ├── outputs/                   # Generated; derived from `domain`, never set in YAML
 │   └── my_domain/
 │       ├── discovered/        # Web discovery runs + consolidated curated/
 │       ├── extracted/         # JSON extraction output
-│       ├── validated/         # QA/QC validation output
+│       ├── validated/         # cells.csv, summary.csv, summary.json (validate)
 │       └── compiled/          # <domain>.csv / <domain>.xlsx + run_accounting.json
 └── src/psweep/                # Source code
     ├── cli/                   # CLI commands
     ├── discovery/             # Web document discovery
     ├── extraction/            # Document extraction
     ├── compilation/           # Data compilation (roster + item rows)
-    ├── validation/            # QA/QC multi-model comparison
     └── utils/                 # Shared utilities
 ```
 
@@ -486,9 +483,9 @@ renders both templates and documents defaults, validation, and limitations.
 | `discovery:` | `discover` | For web acquisition; no extraction schema required |
 | `extraction:` | `extract` | Needs a schema (top-level `schema:` or sibling `schema.json`) |
 | `compilation:` | `compile` | Needs a schema and extracted records |
-| `validation:` | `validate` | QA/QC validation stage |
+| `validation:` | `validate`, `run` | Needs a compiled CSV and `models` or `references` |
 | `domain:` | All | Names the domain; outputs go to `outputs/<domain>/` (default: config dir name) |
-| `schema:` | extract/compile/validate | Optional; default `schema.json` beside the config |
+| `schema:` | extract/compile | Optional; default `schema.json` beside the config |
 | `models:` | Configured LLM stages | Optional aliases; does not auto-enable review |
 
 ### Key Extraction Settings

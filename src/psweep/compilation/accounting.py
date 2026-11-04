@@ -7,7 +7,8 @@ run manifests. It lives here (rather than in the thin CLI layer) so it can be
 built and tested without invoking the ``compile`` Click command.
 
 Public API: :func:`build_pipeline_accounting`,
-:func:`write_compilation_run_manifest`, :func:`collect_discovery_manifests`.
+:func:`write_compilation_run_manifest`, :func:`latest_compilation_manifest`,
+:func:`collect_discovery_manifests`.
 """
 
 from __future__ import annotations
@@ -431,9 +432,8 @@ def build_pipeline_accounting(
                 run_record["started_at"] = run_started
             if run_completed:
                 run_record["completed_at"] = run_completed
-            mode = mf.get("mode")
-            if mode and mode != "single_model":
-                run_record["mode"] = mode
+            if mf.get("mode"):
+                run_record["mode"] = mf["mode"]
             runs_data.append(run_record)
 
         # Sort runs by completed_at (chronological) — works even if some are None.
@@ -771,6 +771,8 @@ def write_compilation_run_manifest(
     mode: str,
     stats: Dict[str, Any],
     started_at: datetime,
+    build_fingerprint: str,
+    table_sha256: Optional[str],
 ) -> Optional[Path]:
     """Persist one immutable compilation run manifest (compile makes no LLM calls)."""
     run_manifest_dir = output_dir / "run_manifests"
@@ -788,7 +790,11 @@ def write_compilation_run_manifest(
             "finished_at": completed_at.isoformat().replace("+00:00", "Z"),
             "elapsed_seconds": _round_secs((completed_at - started_at).total_seconds()),
         },
-        "lineage": {"schema_id": schema_id},
+        "lineage": {
+            "schema_id": schema_id,
+            "build_fingerprint": build_fingerprint,
+            "table_sha256": table_sha256,
+        },
         "outputs": stats,
     }
     manifest_path = run_manifest_dir / f"{stamp}.manifest.json"
@@ -797,3 +803,15 @@ def write_compilation_run_manifest(
         return manifest_path
     except OSError:
         return None
+
+
+def latest_compilation_manifest(output_dir: Path) -> Optional[Dict[str, Any]]:
+    """The newest compilation run manifest (stamped file names sort chronologically)."""
+    paths = sorted((Path(output_dir) / "run_manifests").glob("*.manifest.json"))
+    if not paths:
+        return None
+    try:
+        manifest = json.loads(paths[-1].read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    return manifest if isinstance(manifest, dict) else None

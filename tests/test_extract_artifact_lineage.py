@@ -12,9 +12,7 @@ from psweep.cli.commands_compile import (
     _build_dedup_preview_report,
     _should_fail_on_suspicious,
 )
-from psweep.cli.commands_extract import _run_validation_extraction
 from psweep.extraction.schema_utils import load_schema
-from psweep.extraction.provenance import generate_run_id
 from psweep.extraction.record_writer import write_extraction_record
 from psweep.cli.main import cli
 from psweep.utils.schema_metadata import SchemaMetadata
@@ -250,52 +248,6 @@ def test_validate_schema_cli_reports_nested_metadata_fields_correctly(tmp_path) 
     assert 'Main data array: items' in result.output
     assert 'Deduplication key fields: name' in result.output
     assert "$metadata.extraction missing 'main_data_array'" not in result.output
-
-
-def test_run_validation_extraction_prints_compare_command_with_selected_lane(tmp_path, monkeypatch, capsys) -> None:
-    from psweep.config.model_registry import ModelRegistry
-
-    document_path = tmp_path / 'documents' / 'qa_doc.pdf'
-    document_path.parent.mkdir(parents=True, exist_ok=True)
-    document_path.write_text('placeholder', encoding='utf-8')
-
-    class _DummyResult:
-        def __init__(self, cost: float, processing_time: float, success: bool = True):
-            self.cost = cost
-            self.processing_time = processing_time
-            self.success = success
-
-    registry = ModelRegistry(
-        llm_config={'provider': 'openai', 'api_key': 'test-key'}
-    )
-    monkeypatch.setattr('psweep.extraction.document_utils.extract_text_from_document', lambda *args, **kwargs: 'doc text')
-    monkeypatch.setattr(
-        'psweep.validation.run_multi_model_extraction',
-        lambda **kwargs: {
-            'model-a': _DummyResult(cost=0.1, processing_time=1.0),
-            'model-b': _DummyResult(cost=0.2, processing_time=1.5),
-        },
-    )
-    monkeypatch.setattr('psweep.cli.commands_extract.ask_confirm', lambda *args, **kwargs: True)
-
-    _run_validation_extraction(
-        doc_files=[document_path],
-        loaded_schema={'type': 'object'},
-        schema_path=REPO_ROOT / 'config/geothermal_ordinances/schema.json',
-        output_dir=tmp_path / 'extracted',
-        registry=registry,
-        validation_models=['model-a', 'model-b'],
-        max_context=400000,
-        timeout_seconds=None,
-        page_range_map={},
-        verbosity='normal',
-        runtime_artifact=None,
-        run_id='run://test',
-    )
-
-    captured = capsys.readouterr().out
-    assert 'pixi run psweep validate' in captured
-    assert '--compare-only' in captured
 
 
 def test_build_dedup_preview_report_includes_duplicate_groups() -> None:
@@ -925,26 +877,3 @@ def test_write_extraction_record_persists_structured_processing_errors(
     assert saved['quality']['errors'][0]['category'] == 'document_processing'
     assert saved['quality']['errors'][0]['code'] == 'document_extraction_failed'
     assert saved['lineage']['artifact_id'] == 'artifact://runtime/deterministic1234'
-
-
-def test_validation_run_id_is_deterministic_for_same_inputs() -> None:
-    """Validation keeps order-independent IDs used by live QA callers."""
-    run_id_1 = generate_run_id(
-        schema_path=Path('config/utility_rate_tariffs/schema.json'),
-        provider='azure',
-        model='gpt-5',
-        enable_validation=True,
-        doc_files=[Path('documents/tariffs/a.pdf'), Path('documents/tariffs/b.pdf')],
-        artifact_id='artifact://runtime/abc123def4567890',
-    )
-    run_id_2 = generate_run_id(
-        schema_path=Path('config/utility_rate_tariffs/schema.json'),
-        provider='azure',
-        model='gpt-5',
-        enable_validation=True,
-        doc_files=[Path('documents/tariffs/b.pdf'), Path('documents/tariffs/a.pdf')],
-        artifact_id='artifact://runtime/abc123def4567890',
-    )
-
-    assert run_id_1 == run_id_2
-    assert run_id_1.startswith('run://')

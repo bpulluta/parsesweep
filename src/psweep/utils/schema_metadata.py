@@ -1018,7 +1018,3 @@ class SchemaMetadata:
             return candidate
         return candidate if order[candidate] > order[current] else current
 
-    # --- QA/QC ---
-    # All QA/QC runtime config (record_matching, comparison fields, expected_requirements,
-    # model tiers, lane behavior) lives in config/<domain>/run.yaml.
-    # Schema metadata carries only the extraction contract — nothing QA/QC-specific.

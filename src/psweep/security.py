@@ -185,9 +185,12 @@ def validate_protected_paths(values: dict) -> None:
         "extracted_dir",
         "output",
         "output_dir",
-        "validated_dir",
     ):
         value = values.get(key)
         if value and not Path(value).resolve().is_relative_to(root):
             msg = f"Protected {key} must remain inside the private workspace"
+            raise ValueError(msg)
+    for value in values.get("references") or ():
+        if not Path(value).resolve().is_relative_to(root):
+            msg = "Protected references must remain inside the private workspace"
             raise ValueError(msg)

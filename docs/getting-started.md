@@ -290,9 +290,21 @@ normalization.
 # Merge per-document JSON into Excel/CSV
 pixi run psweep compile --config config/my_domain/run.yaml
 
-# With the relevant sections configured: discover → extract → compile
+# With the relevant sections configured: discover → extract → compile → validate
 pixi run psweep run --config config/my_domain/run.yaml
 ```
+
+To check quality, label a few targets by hand in a CSV whose headers match the
+compiled columns. Then add a `validation:` block:
+
+```yaml
+validation:
+  references: [samples/exemplar.csv]
+  min_accuracy: 0.9
+```
+
+`pixi run psweep validate --config config/my_domain/run.yaml` prints a
+leaderboard and a `Next:` hint, and writes `outputs/my_domain/validated/`.
 
 See the [Command Reference](commands/index.md) for every command, option, and
 its default.

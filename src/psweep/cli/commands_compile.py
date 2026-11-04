@@ -27,6 +27,7 @@ from psweep.compilation.input_provenance import (
     list_compile_record_files,
 )
 from psweep.config import RuntimeConfigError
+from psweep.utils.file_io import artifact_sha256
 from psweep.workspace import Workspace
 from psweep.compilation.accounting import (
     build_pipeline_accounting,
@@ -358,6 +359,7 @@ def compile(
             view.phase(
                 f"Found {len(record_json_files)} extracted JSON file(s) in {input_dir.name}"
             )
+        build_fingerprint = None if dry_run else compiler.fingerprint(input_dir)
         with with_status("Loading extracted JSON files...", quiet=quiet):
             df, schema_info = compiler.compile_from_directory(
                 input_dir,
@@ -366,12 +368,7 @@ def compile(
 
         if input_provenance_warnings and not emit_json_report:
             view.warnings(input_provenance_warnings)
-        if df.empty:
-            if fresh and not dry_run:
-                compiler.export(
-                    df, output_dir, base_name,
-                    schema_metadata.get_output_formats(), fresh=True,
-                )
+        if df.empty and dry_run:
             if input_provenance_warnings and emit_json_report:
                 click.echo(
                     json.dumps(
@@ -383,6 +380,8 @@ def compile(
                 return
             print_warning("No data found to compile")
             return
+        if df.empty:
+            print_warning("No data found to compile; publishing an empty table")
 
         if not emit_json_report:
             view.status(
@@ -532,6 +531,7 @@ def compile(
             df, output_dir, base_name, output_formats, fresh=fresh
         )
         output_column_count = len(output_frame.columns)
+        csv_table = output_dir / f"{base_name}.csv"
 
         if "csv" in output_formats:
             csv_path = output_dir / f"{base_name}.csv"
@@ -593,6 +593,8 @@ def compile(
             mode=compiler.mode,
             stats=compile_stats,
             started_at=compile_started_at,
+            build_fingerprint=build_fingerprint,
+            table_sha256=artifact_sha256(csv_table) if csv_table.is_file() else None,
         )
 
         acct_path = output_dir / "run_accounting.json"

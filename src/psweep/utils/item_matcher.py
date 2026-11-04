@@ -1,57 +1,12 @@
-#!/usr/bin/env python3
-"""
-Item matching utilities for comparing and indexing data items.
+"""Nested-value lookup and schema key-field to column mapping."""
 
-Provides reusable logic for matching items across different sources
-based on identifier fields. Used by both compilation deduplication
-and QA/QC comparison.
-"""
+import logging
+import re
+from typing import Any, Dict, List
 
 import pandas as pd
-import re
-from typing import Dict, List, Tuple, Any, Optional, Set
-import logging
 
 logger = logging.getLogger(__name__)
-
-# Stop-words removed when tokenizing free-text item *names/descriptions* for
-# fuzzy matching (extract_key_tokens/normalize_for_matching). Broad English
-# stop-words plus name-noise like "work"/"works". Intentionally distinct from
-# deduplicator._WORDS_NORMALIZE_STOPWORDS (narrow value-phrasing set) and
-# value_normalizer._UNIT_STOPWORDS (measurement-unit relational words).
-STOP_WORDS = frozenset(
-    [
-        "a",
-        "an",
-        "the",
-        "of",
-        "for",
-        "in",
-        "on",
-        "to",
-        "and",
-        "or",
-        "with",
-        "by",
-        "at",
-        "from",
-        "is",
-        "are",
-        "be",
-        "been",
-        "being",
-        "was",
-        "were",
-        "it",
-        "its",
-        "this",
-        "that",
-        "these",
-        "those",
-        "work",
-        "works",
-    ]
-)
 
 
 def _normalize_field_name_for_matching(value: str) -> str:
@@ -76,81 +31,6 @@ def _normalize_field_name_for_matching(value: str) -> str:
         collapsed_tokens.append("".join(pending_initialism))
 
     return " ".join(collapsed_tokens)
-
-
-def extract_key_tokens(text: str) -> Set[str]:
-    """
-    Extract key tokens from text for fuzzy matching.
-
-    Normalizes text by:
-
-    - Converting to lowercase
-    - Removing punctuation
-    - Splitting into words
-    - Removing stop words
-    - Keeping only meaningful content words
-
-    Parameters
-    ----------
-    text : str
-        Text string to tokenize
-
-    Returns
-    -------
-    Set[str]
-        Set of normalized key tokens
-
-    Examples
-    --------
-    >>> extract_key_tokens("site preparation for drilling")
-    {'site', 'preparation', 'drilling'}
-    >>> extract_key_tokens("work in preparation of the site for drilling")
-    {'preparation', 'site', 'drilling'}
-    """
-    if not text:
-        return set()
-
-    # Normalize: lowercase, remove punctuation, split on whitespace
-    text_clean = re.sub(r"[^\w\s]", " ", text.lower())
-    words = text_clean.split()
-
-    # Filter out stop words and short words
-    tokens = {w for w in words if w not in STOP_WORDS and len(w) > 1}
-
-    return tokens
-
-
-def normalize_for_matching(value: str) -> str:
-    """
-    Normalize a string value for fuzzy matching.
-
-    Extracts key tokens and joins them sorted, enabling matching
-    despite verbosity differences like:
-
-    - "site preparation for drilling"
-    - "work in preparation of the site for drilling"
-
-    Both normalize to: "drilling preparation site"
-
-    Parameters
-    ----------
-    value : str
-        String value to normalize
-
-    Returns
-    -------
-    str
-        Normalized string with sorted key tokens
-
-    Examples
-    --------
-    >>> normalize_for_matching("site preparation for drilling")
-    'drilling preparation site'
-    >>> normalize_for_matching("work in preparation of the site for drilling")
-    'drilling preparation site'
-    """
-    tokens = extract_key_tokens(value)
-    return " ".join(sorted(tokens))
 
 
 def get_nested_value(obj: Dict[str, Any], dot_path: str) -> Any:
@@ -195,70 +75,6 @@ def get_nested_value(obj: Dict[str, Any], dot_path: str) -> Any:
     return current
 
 
-def create_item_index(
-    items: List[Dict[str, Any]],
-    identifier_fields: List[str],
-    fuzzy_fields: Optional[List[str]] = None,
-) -> Dict[Tuple, Dict[str, Any]]:
-    """
-    Create an index of items by their identifier fields.
-
-    Values are normalized for consistent matching:
-
-    - Strings: lowercase, stripped whitespace
-    - Fuzzy fields: token-normalized (removes stop words, sorts keywords)
-    - None values preserved
-
-    Parameters
-    ----------
-    items : List[Dict[str, Any]]
-        List of data items (dicts)
-    identifier_fields : List[str]
-        List of dot-notation field paths to use as keys
-    fuzzy_fields : Optional[List[str]]
-        Optional list of fields to apply token normalization
-
-    Returns
-    -------
-    Dict[Tuple, Dict[str, Any]]
-        Dictionary mapping identifier tuples to items
-
-    Examples
-    --------
-    >>> items = [
-    ...     {"id": "1", "name": "Item 1"},
-    ...     {"id": "2", "name": "Item 2"}
-    ... ]
-    >>> index = create_item_index(items, ["id"])
-    >>> index[("1",)]["name"]
-    "Item 1"
-    """
-    index = {}
-    fuzzy_set = set(fuzzy_fields) if fuzzy_fields else set()
-
-    for item in items:
-        values = []
-        for field_path in identifier_fields:
-            value = get_nested_value(item, field_path)
-
-            # Normalize value for key creation
-            if value is None:
-                values.append(None)
-            elif isinstance(value, str):
-                # Apply token normalization for fuzzy fields
-                if field_path in fuzzy_set:
-                    values.append(normalize_for_matching(value))
-                else:
-                    # Standard normalization: lowercase and strip
-                    values.append(value.strip().lower())
-            else:
-                values.append(value)
-
-        index[tuple(values)] = item
-
-    return index
-
-
 def map_key_fields_to_columns(
     df: pd.DataFrame,
     key_fields: List[str],
@@ -271,8 +87,6 @@ def map_key_fields_to_columns(
     Handles case variations and common naming patterns.
     For nested fields like "jurisdiction.state", looks for "State" column.
     Handles transformations like "specific_subject" -> "Specific Subject".
-
-    This function is extracted from deduplicator for reuse in QA/QC.
 
     Parameters
     ----------

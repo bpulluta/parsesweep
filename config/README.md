@@ -55,12 +55,13 @@ config/
     ├── run.yaml
     ├── schema.json                  # extraction schema (default for `schema:`)
     ├── targets.csv                  # optional authored target rows
+    ├── samples/                     # optional human reference sheets
     └── page_ranges.csv              # optional manual extraction page ranges
 
 outputs/my_domain/                   # derived from `domain`; never set in YAML
 ├── discovered/
 ├── extracted/
-├── validated/
+├── validated/                       # cells.csv, summary.csv, summary.json
 └── compiled/                     # <domain>.csv, <domain>.xlsx
 ```
 
@@ -68,11 +69,11 @@ outputs/my_domain/                   # derived from `domain`; never set in YAML
 
 ## Runtime Config Overview
 
-All three pipeline commands (`discover`, `extract`, `compile`) accept a `--config`
+All pipeline commands (`discover`, `extract`, `compile`, `validate`) accept a `--config`
 flag pointing at a YAML file. All supplied sections are validated when loaded;
 a command executes only its own section. Only that explicit file is loaded.
 Adjacent section overrides beside `run.yaml`, `run.yml`, or `run.json` are
-retired. Move their `discovery`/`extraction`/`compilation`/`validation` sections
+retired. Move their `discovery`/`extraction`/`compilation` sections
 into the selected config and remove the adjacent files; the loader reports
 which files need migration. Explicit section-wrapped configs remain supported.
 
@@ -447,7 +448,7 @@ If a domain needs different discovery behavior, encode it in that domain's `run.
 |----------|------|
 | Required | `schema` (top-level; defaults to `schema.json` beside the config) |
 | Optional | `pages`, `provider`, `model`, `limit` |
-| Advanced | `max_context`, `max_concurrent`, `skip_existing`, `live_dashboard` |
+| Advanced | `max_context`, `max_concurrent`, `skip_existing` |
 
 `skip_existing` means verified reuse: matching source/schema/effective settings
 and valid record-byte evidence are required. Stale, malformed, and old unverifiable
@@ -471,6 +472,25 @@ maps; unreachable long-form definitions and `model_defaults` are rejected.
 
 ---
 
+## Validation Config Reference
+
+`validate` needs a compiled CSV (`compilation.output.default_format`: `csv` or
+`both`). Every name is checked at load, with a did-you-mean suggestion.
+
+| Key | Meaning |
+|-----|---------|
+| `models` | Challenger `models:` aliases, extracted and compiled into `validated/<alias>/`; must differ from `extraction.model` and from each other |
+| `references` | Human CSV sheets (paths relative to the config) whose headers are compiled column titles; the label is the file stem |
+| `judge` | `models:` alias that rules on disputed cells; omit to skip judging |
+| `fields` | Optional focus subset of scorable fields (default: all) |
+| `min_accuracy` | Gate in (0, 1]: `validate` exits 1 below it; needs `references` |
+| `key_fields`, `quote_field` | Rows mode only (no roster): row identity and the per-item quote; roster mode keys on the roster and reads quotes from `evidence` |
+
+At least one of `models` or `references` is required. See the README section
+"Validation and Model Benchmarking" for the workflow.
+
+---
+
 ## Adding Extraction and Compilation
 
 After inspecting acquired documents, create `config/my_domain/schema.json` and
@@ -483,7 +503,7 @@ extraction:
 
 Configure LLM credentials in the environment before extraction. For local
 inputs, pass the directory positionally to `psweep extract`. [ADVANCED.yaml](ADVANCED.yaml)
-contains the expanded model, output, page-targeting, and QA/QC
+contains the expanded model, output, and page-targeting
 examples; placeholder schema paths refer to files you create locally, not
 published private schemas.
 

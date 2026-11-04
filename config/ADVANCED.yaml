@@ -7,9 +7,9 @@
 #   - extraction: required for the extract command
 #   - compilation: required for the compile command
 #   - discovery: only if you need web document discovery
-#   - validation: only if you use multi-model QA/QC validation
+#   - validation: only to score results against models or human sheets
 # Credentials belong in environment variables or .env, never this file.
-# Outputs are derived from `domain`: outputs/<domain>/{discovered,extracted,validated,compiled}.
+# Outputs are derived from `domain`: outputs/<domain>/{discovered,extracted,compiled,validated}.
 
 domain: your_domain_name
 # schema: config/your_domain/schema.json  # default: schema.json beside this file
@@ -136,37 +136,20 @@ compilation:
 # SerpApi/download TLS verification defaults remain false. Configure
 # SERPAPI_SSL_VERIFY and DISCOVERY_SSL_VERIFY in the environment as needed.
 
-# ─── QA/QC (optional) ─────────────────────────────────────────────────────────
-# Run two models on the same documents and compare their outputs field-by-field.
-# Uncomment the block below to enable. Keep this minimal.
-#
+# ─── VALIDATION (optional) ────────────────────────────────────────────────────
+# `psweep validate` scores the compiled table (the primary) against challenger
+# models and human sheets; `run` adds it after compile when this block exists.
+# Outputs: outputs/<domain>/validated/{cells.csv,summary.csv,summary.json}.
 # validation:
-#   models: [primary, secondary]      # Two model tiers to contrast.
-#   report:
-#     include_csv: false
-#     include_missing_in_queue: true
-#     include_low_signal_presence_in_queue: false  # keep obligation-only one-sided rows out of reviewer queue
-#     identity_columns: compact                     # compact | expanded
-#     include_value_unit_column: true
-#     evidence_detail: full                         # full | compact | off
-#     evidence_max_chars: 200
-#   comparison_approach: mixed            # mixed | numeric_only | text_review
-#   record_matching:
-#     key_fields: [feature, applies_to, specific_subject]
-#     fuzzy_key_fields: [applies_to, specific_subject]
-#     semantic_match_threshold: 0.38
-#   comparison:
-#     primary_fields: [value, units, value_interpretation, obligation]
-#     collapse_percent_context: false   # true = treat "percent above/below ..." as "percent"
-#     unit_equivalence_groups:          # optional unit synonym groups
-#       - [feet, ft]
-#       - [hours, hrs, hr]
-#       - [decibels, dB, dBA, dB(A)]
-#   judge:                                # Optional but recommended for mixed/text_review.
-#     enabled: true
-#     model: judge
-#     apply_on: all                       # none | non_numeric | all
-#     row_equivalence: true
-#     pair_unmatched: true
-#     min_confidence: high
-#     strictness: "If uncertain, mark non-equivalent."
+#   references: [samples/exemplar.csv]  # human sheets (CSV, relative to this file);
+#                                        # headers are the compiled table's titles
+#   min_accuracy: 0.9                    # gate (needs references): exit 1 below it
+#   models: [secondary]                  # challengers: aliases from models:
+#   judge: judge                         # alias that rules on disputed cells
+#   fields: [field_a, field_b]           # focus; default: every scored field
+#   # Rows mode (no roster) only:
+#   key_fields: [state, county, feature] # row identity; include a context field
+#   quote_field: source_verbatim         # matches rows whose keys differ
+# Converge on an exemplar with references + min_accuracy, compare challengers
+# blind with models + judge, then scale with `validate --sample N` and add the
+# labelled sample to references.

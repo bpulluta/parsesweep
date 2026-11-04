@@ -19,20 +19,6 @@ def test_load_runtime_config_file_rejects_unknown_top_level(tmp_path: Path):
         load_runtime_config_file(config_path)
 
 
-def test_load_runtime_config_file_rejects_renamed_qaqc_section(tmp_path: Path):
-    """A pre-rename 'qaqc:' section fails with a clear migration message."""
-    config_path = tmp_path / "run.yaml"
-    config_path.write_text(
-        "domain: x\nqaqc:\n  models: [a, b]\n", encoding="utf-8"
-    )
-
-    with pytest.raises(
-        RuntimeConfigError,
-        match="'qaqc' config section was renamed to 'validation'",
-    ):
-        load_runtime_config_file(config_path)
-
-
 def test_resolve_command_config_merges_cli_and_file_values(tmp_path: Path):
     config_path = tmp_path / "run.yaml"
     config_path.write_text(
@@ -1121,3 +1107,173 @@ extraction:
     )
     with pytest.raises(RuntimeConfigError, match="reasoning_models"):
         load_runtime_config_file(run_path)
+
+
+# ── validation: section (strict, resolved at load time) ──
+
+_EVIDENCE = {
+    "type": "object",
+    "required": ["value", "quote"],
+    "properties": {"value": {"type": ["number", "null"]}, "quote": {"type": ["string", "null"]}},
+}
+
+
+def _validation_config(
+    tmp_path: Path, validation, *, rows: bool = False, fmt: str = "csv", models=None
+) -> Path:
+    import json
+
+    if rows:
+        items = {f: {"type": ["string", "null"]} for f in ("feature", "value", "verbatim")}
+        schema = {
+            "$metadata": {
+                "extraction": {"main_data_array": "rules", "context_objects": ["place"]},
+                "identity": {"deduplication": {"key_fields": ["feature", "value"]}},
+            },
+            "properties": {
+                "place": {"type": "object", "properties": {"state": {"type": "string"}}},
+                "rules": {"type": "array", "items": {"type": "object", "properties": items}},
+            },
+        }
+    else:
+        schema = {
+            "$metadata": {
+                "extraction": {"main_data_array": "sites"},
+                "identity": {"deduplication": {"key_fields": ["state", "site"]}},
+            },
+            "properties": {
+                "sites": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "state": {"type": "string", "title": "State"},
+                            "site": {"type": "string", "title": "Site"},
+                            "x": {**_EVIDENCE, "title": "X"},
+                        },
+                    },
+                }
+            },
+        }
+    (tmp_path / "schema.json").write_text(json.dumps(schema), encoding="utf-8")
+    (tmp_path / "targets.csv").write_text("state,site,region\nCO,Alder,r1\n", encoding="utf-8")
+    (tmp_path / "samples").mkdir(exist_ok=True)
+    for name in ("s", "primary", "match", "x_quote", "bad name", "a", "site"):
+        (tmp_path / "samples" / f"{name}.csv").write_text("State,Site\n", encoding="utf-8")
+    run = {
+        "domain": "probe",
+        "models": models or {"primary": "m-p", "a": "m-a", "second": "m-b", "judge": "m-j"},
+        "extraction": {"model": "primary"},
+        "compilation": {"output": {"default_format": fmt}},
+        "validation": validation,
+    }
+    if not rows:
+        run["discovery"] = {
+            "targets": "targets.csv",
+            "queries": ["{site}"],
+            "partition_by": ["state", "site"],
+        }
+    path = tmp_path / "run.yaml"
+    path.write_text(yaml.safe_dump(run), encoding="utf-8")
+    return path
+
+
+@pytest.mark.parametrize(
+    ("validation", "message"),
+    [
+        ({}, "'validation' section must be a non-empty mapping"),
+        ({"references": ["samples/s.csv"], "judg": "judge"}, "did you mean 'judge'"),
+        ({"fields": ["x"]}, "validation needs models or references to compare"),
+        ({"models": []}, "validation.models must be a non-empty list of names"),
+        ({"models": ["a", "a"]}, "validation.models lists 'a' twice"),
+        ({"models": ["a"], "min_accuracy": 0.9}, "min_accuracy needs validation.references"),
+        ({"references": ["samples/s.csv"], "min_accuracy": 1.5}, r"must be in \(0, 1\]"),
+        ({"references": ["samples/s.csv"], "min_accuracy": True}, r"must be in \(0, 1\]"),
+        ({"models": ["secnd"]}, "'secnd' is not a models: alias — did you mean 'second'"),
+        ({"models": ["a"], "judge": "jduge"}, "validation.judge: 'jduge' is not a models: alias"),
+        ({"models": ["primary"]}, "extraction.model is always a contender"),
+        ({"references": ["samples/none.csv"]}, "samples/none.csv is not a CSV file"),
+        ({"references": ["targets.csv", "schema.json"]}, "schema.json is not a CSV file"),
+        ({"models": ["a"], "key_fields": ["state"]}, "roster mode keys rows by roster identity"),
+        ({"models": ["a"], "quote_field": "x"}, "roster mode reads quotes from the evidence"),
+        ({"models": ["a"], "fields": ["site"]}, "'site' is a key field"),
+        ({"models": ["a"], "fields": ["region"]}, "'region' is a targets passthrough column"),
+        ({"models": ["a"], "fields": ["xx"]}, "'xx' is not a scorable field"),
+    ],
+)
+def test_validation_section_rejects(tmp_path: Path, validation, message):
+    with pytest.raises(RuntimeConfigError, match=message):
+        load_runtime_config_file(_validation_config(tmp_path, validation))
+
+
+def test_validation_models_must_differ(tmp_path: Path):
+    models = {"primary": "m-p", "a": "m-a", "b": "m-a"}
+    path = _validation_config(tmp_path, {"models": ["a", "b"]}, models=models)
+    with pytest.raises(RuntimeConfigError, match="'a' and 'b' resolve to the same model"):
+        load_runtime_config_file(path)
+
+
+def test_validation_requires_csv_output(tmp_path: Path):
+    path = _validation_config(tmp_path, {"models": ["a"]}, fmt="excel")
+    with pytest.raises(RuntimeConfigError, match="validation reads the compiled CSV"):
+        load_runtime_config_file(path)
+
+
+@pytest.mark.parametrize(
+    ("validation", "message"),
+    [
+        ({"models": ["a"]}, "rows mode needs validation.key_fields"),
+        ({"models": ["a"], "key_fields": ["feture"]}, "did you mean 'feature'"),
+        (
+            {"models": ["a"], "key_fields": ["state", "feature"], "quote_field": "verbatm"},
+            "'verbatm' is not an item field — did you mean 'verbatim'",
+        ),
+        (
+            {"models": ["a"], "key_fields": ["state", "feature"], "quote_field": "feature"},
+            "'feature' is also a key field",
+        ),
+        (
+            {"models": ["a"], "key_fields": ["feature"], "quote_field": "verbatim"},
+            "quote_field matching needs a scope",
+        ),
+        (
+            {"models": ["a"], "key_fields": ["state", "feature"], "fields": ["state"]},
+            "'state' is a key field",
+        ),
+    ],
+)
+def test_validation_rows_mode_rejects(tmp_path: Path, validation, message):
+    with pytest.raises(RuntimeConfigError, match=message):
+        load_runtime_config_file(_validation_config(tmp_path, validation, rows=True))
+
+
+@pytest.mark.parametrize(
+    "validation",
+    [
+        {"references": ["samples/primary.csv"]},
+        {"references": ["samples/match.csv"]},
+        {"references": ["samples/x_quote.csv"]},
+        {"references": ["samples/bad name.csv"]},
+        {"references": ["samples/site.csv"]},  # a key title, case-insensitively
+        {"models": ["a"], "references": ["samples/a.csv"]},
+    ],
+)
+def test_validation_labels_must_not_collide(tmp_path: Path, validation):
+    with pytest.raises(RuntimeConfigError, match="collides with a cells.csv column"):
+        load_runtime_config_file(_validation_config(tmp_path, validation))
+
+
+def test_validation_section_resolves(tmp_path: Path):
+    path = _validation_config(tmp_path, {"models": ["a"], "references": ["samples/s.csv"]})
+    settings = resolve_command_config(
+        command="validate", cli_values={}, config_data=load_runtime_config_file(path)
+    )["validation"]
+    assert settings == {
+        "models": ["a"],
+        "references": [(tmp_path / "samples/s.csv").as_posix()],
+        "judge": None,
+        "fields": [],
+        "key_fields": [],
+        "quote_field": None,
+        "min_accuracy": None,
+    }

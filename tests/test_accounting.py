@@ -11,6 +11,7 @@ from psweep.compilation.accounting import (
     build_pipeline_accounting,
     canonical_discovery_manifest_path,
     collect_discovery_manifests,
+    latest_compilation_manifest,
     write_compilation_run_manifest,
 )
 from psweep.workspace import Workspace
@@ -60,7 +61,7 @@ def test_build_pipeline_accounting_from_extraction_run_manifest(
         extraction_dir / "run_manifests" / "abc.manifest.json",
         {
             "run_id": "run://abc",
-            "mode": "single_model",
+            "mode": "rows",
             "costs": {
                 "total_cost_usd": 0.5,
                 "total_input_tokens": 100,
@@ -144,6 +145,8 @@ def test_write_compilation_run_manifest_roundtrip(tmp_path):
         mode="roster",
         stats=stats,
         started_at=started_at,
+        build_fingerprint="f" * 64,
+        table_sha256="t" * 64,
     )
     assert manifest_path is not None
     assert manifest_path.parent == tmp_path / "run_manifests"
@@ -152,6 +155,10 @@ def test_write_compilation_run_manifest_roundtrip(tmp_path):
     assert saved["mode"] == "roster"
     assert saved["outputs"] == stats
     assert "costs" not in saved
+    assert saved["lineage"]["build_fingerprint"] == "f" * 64
+    assert saved["lineage"]["table_sha256"] == "t" * 64
+    assert latest_compilation_manifest(tmp_path) == saved
+    assert latest_compilation_manifest(tmp_path / "missing") is None
 
     accounting = build_pipeline_accounting(
         domain="widgets",

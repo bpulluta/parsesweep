@@ -7,7 +7,7 @@ domain: geothermal_ordinances
 models:
   primary: gpt-6.1-sol
   secondary: claude-sonnet-4-6
-  judge: claude-sonnet-5
+  judge: gpt-5.4-nano     # validation only
 
 # ── Discovery ────────────────────────────────────────────────────────────────
 discovery:
@@ -205,48 +205,10 @@ compilation:
     freeze_columns: 4
     auto_width: true
 
-# ── QA/QC ────────────────────────────────────────────────────────────────────
+# ── Validation ───────────────────────────────────────────────────────────────
 validation:
-  models: [primary, secondary]
-  report:
-    include_csv: false
-    include_missing_in_queue: true
-    include_low_signal_presence_in_queue: false
-    identity_columns: compact
-    include_value_unit_column: true
-    evidence_detail: compact
-    evidence_max_chars: 260
-  comparison_approach: mixed
-  record_matching:
-    key_fields: [feature, rule_kind, applies_to, specific_subject]
-    fuzzy_key_fields: [applies_to, specific_subject]
-    semantic_match_threshold: 0.38
-    anchor:
-      fields: [source_verbatim]
-      method: char_ngram
-      ngram: 4
-      auto_threshold: 0.65
-      review_threshold: 0.35
-      max_candidates_per_row: 3
-      min_anchor_chars: 12
-  comparison:
-    primary_fields: [value, units, value_interpretation, obligation]
-    # Optional: collapse "percent above/below ..." unit variants to "percent".
-    # Keep false unless you explicitly want basis-insensitive percent matching.
-    collapse_percent_context: true
-    unit_equivalence_groups:
-      - [feet, ft]
-      - [hours, hrs, hr]
-      - [decibels, dB, dBA, dB(A), CNEL dB, CNEL dB(A)]
-      - ["HH:MM (24-hour)", "a.m./p.m."]
-  judge:
-    enabled: true
-    model: judge
-    timeout_seconds: 300
-    max_calls_per_document: 30
-    reuse_cached_decisions: true
-    apply_on: non_numeric
-    row_equivalence: true
-    pair_unmatched: true
-    min_confidence: high
-    strictness: "If any ambiguity exists, return equivalent=false for human review."
+  models: [secondary]
+  judge: judge
+  key_fields: [state, county, feature, rule_kind, applies_to, specific_subject]
+  quote_field: source_verbatim
+  fields: [value, units, value_interpretation, obligation]
