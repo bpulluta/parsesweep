@@ -60,8 +60,8 @@ def test_regular_run_id_is_unique_for_identical_inputs():
 def test_build_source_context_map_from_index(tmp_path):
     index_path = tmp_path / "download_index.csv"
     index_path.write_text(
-        "path,final_url,target_label,source_jurisdiction,status\n"
-        "docs/report.pdf,https://example.com/report.pdf,Example Site,new-york-city,downloaded\n",
+        "path,final_url,source_scope,target_id,target_label,status\n"
+        "docs/report.pdf,https://example.com/report.pdf,target,abc123,Example Site,downloaded\n",
         encoding="utf-8",
     )
 
@@ -72,7 +72,10 @@ def test_build_source_context_map_from_index(tmp_path):
     entry = context_map["report.pdf"]
     assert entry["url"] == "https://example.com/report.pdf"
     assert entry["target_label"] == "Example Site"
-    assert entry["target_metadata"] == {"source_jurisdiction": "new-york-city"}
+    assert entry["source_scope"] == "target"
+    assert entry["target_metadata"] == {}
+    text = prepend_source_context("BODY", Path("docs/report.pdf"), context_map)
+    assert 'DISCOVERY_SOURCE_SCOPE: "target"' in text
 
 
 def test_build_source_context_map_parses_target_metadata(tmp_path):
@@ -143,17 +146,16 @@ def test_prepend_source_context_noop_when_no_match():
     assert prepend_source_context("BODY", Path("unknown.pdf"), {}) == "BODY"
 
 
-def test_generic_target_metadata_is_preserved_without_query_noise(tmp_path):
-    """Non-legal target fields remain hints, including zero and false."""
+def test_generic_target_metadata_is_preserved_without_search_inputs(tmp_path):
+    """Target fields remain hints (including zero and false); ``query``/``urls`` do not."""
     index = tmp_path / "download_index.csv"
     metadata = {
         "equipment_class": "pump",
         "batch": 0,
         "active": False,
         "facility": {"name": "A"},
-        "search_query": "do not extract me",
-        "search_queries": ["also noise"],
-        "queries": ["noise"],
+        "query": "do not extract me noise",
+        "urls": ["https://noise.example.org/a.pdf"],
     }
     with index.open("w", encoding="utf-8", newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=["path", "target_metadata"])
@@ -165,7 +167,7 @@ def test_generic_target_metadata_is_preserved_without_query_noise(tmp_path):
     expected = {
         key: value
         for key, value in metadata.items()
-        if key not in {"search_query", "search_queries", "queries"}
+        if key not in {"query", "urls"}
     }
     assert context["sample.txt"]["target_metadata"] == expected
     text = prepend_source_context("BODY", Path("sample.txt"), context)

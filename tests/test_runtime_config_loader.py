@@ -15,7 +15,7 @@ def test_load_runtime_config_file_rejects_unknown_top_level(tmp_path: Path):
     config_path = tmp_path / "run.yaml"
     config_path.write_text("unknown_key: true\n", encoding="utf-8")
 
-    with pytest.raises(RuntimeConfigError, match="Unknown top-level config keys"):
+    with pytest.raises(RuntimeConfigError, match="unknown key 'unknown_key'"):
         load_runtime_config_file(config_path)
 
 
@@ -52,7 +52,6 @@ extraction:
         command="extract",
         cli_values={"max_context": 222222},
         config_data=config_data,
-        strict=True,
     )
 
     assert resolved["path"] == "documents/geothermal_ordinances"
@@ -76,12 +75,11 @@ compilation:
     )
     config_data = load_runtime_config_file(config_path)
 
-    with pytest.raises(RuntimeConfigError, match="Unknown keys in 'compilation' section"):
+    with pytest.raises(RuntimeConfigError, match="unknown key 'compilation.random_flag'"):
         resolve_command_config(
             command="compile",
             cli_values={},
             config_data=config_data,
-            strict=True,
         )
 
 
@@ -118,7 +116,6 @@ compilation:
         command="compile",
         cli_values={},
         config_data=config_data,
-        strict=True,
     )
 
     assert resolved["provenance_policy"] == "fail"
@@ -201,35 +198,34 @@ def test_load_runtime_config_file_rejects_invalid_ocr_corrections(
 
 
 def test_load_runtime_config_file_accepts_valid_discovery_section(tmp_path: Path):
-        config_path = tmp_path / "run.yaml"
-        config_path.write_text(
-                """
+    config_path = tmp_path / "run.yaml"
+    config_path.write_text(
+        """
 discovery:
-    seeds:
-        - https://example.org/docs
-    topology:
-        mode: hybrid
-    query_families:
-        geothermal_generic:
-            - "{jurisdiction} {state} geothermal ordinance pdf"
-    runtime:
-        max_pages: 50
-        max_concurrent_downloads: 3
-        min_request_interval_ms: 150
-    policy:
-        robots_mode: warn
-        tos_mode: enforce
-        acknowledged_tos_domains:
-            - county.gov
+  sources:
+    - https://example.org/docs
+  queries:
+    - "{jurisdiction} {state} geothermal ordinance pdf"
+  crawl:
+    max_depth: 1
+    max_pages: 50
+  runtime:
+    max_concurrent_downloads: 3
+    min_request_interval_ms: 150
+  policy:
+    robots_mode: warn
+    tos_mode: enforce
+    acknowledged_tos_domains:
+      - county.gov
 """,
-                encoding="utf-8",
-        )
+        encoding="utf-8",
+    )
 
-        loaded = load_runtime_config_file(config_path)
-        assert loaded["discovery"]["topology"]["mode"] == "hybrid"
-        assert loaded["discovery"]["runtime"]["max_concurrent_downloads"] == 3
-        assert loaded["discovery"]["runtime"]["min_request_interval_ms"] == 150
-        assert loaded["discovery"]["policy"]["robots_mode"] == "warn"
+    loaded = load_runtime_config_file(config_path)
+    assert loaded["discovery"]["crawl"]["max_depth"] == 1
+    assert loaded["discovery"]["runtime"]["max_concurrent_downloads"] == 3
+    assert loaded["discovery"]["policy"]["robots_mode"] == "warn"
+
 
 
 @pytest.mark.parametrize(
@@ -240,8 +236,8 @@ discovery:
             "discovery.runtime.max_concurrent_downloads",
         ),
         ("  policy:\n    robots_mode: maybe\n", "discovery.policy.robots_mode"),
-        ("  topology:\n    mode: unknown_mode\n", "discovery.topology.mode"),
-        ("  - not\n  - an\n  - object\n", "'discovery' section must be an object"),
+        ("  crawl:\n    provider: crawlee\n", "discovery.crawl.provider"),
+        ("  - not\n  - an\n  - object\n", "'discovery' must be an object"),
     ],
 )
 def test_load_runtime_config_file_rejects_invalid_discovery_config(
@@ -261,12 +257,12 @@ def test_load_runtime_config_file_accepts_browser_escalation_bool(
     """The documented bool shorthand for browser_escalation loads (regression)."""
     config_path = tmp_path / "run.yaml"
     config_path.write_text(
-        f"discovery:\n  browser_escalation: {str(flag).lower()}\n",
+        f"discovery:\n  crawl:\n    browser_escalation: {str(flag).lower()}\n",
         encoding="utf-8",
     )
 
     loaded = load_runtime_config_file(config_path)
-    assert loaded["discovery"]["browser_escalation"] is flag
+    assert loaded["discovery"]["crawl"]["browser_escalation"] is flag
 
 
 def test_load_runtime_config_file_accepts_browser_escalation_mapping(
@@ -275,33 +271,28 @@ def test_load_runtime_config_file_accepts_browser_escalation_mapping(
     config_path = tmp_path / "run.yaml"
     config_path.write_text(
         "discovery:\n"
-        "  browser_escalation:\n"
-        "    enabled: true\n"
-        "    min_shell_chars: 8000\n"
-        "    min_rendered_chars: 10000\n"
-        "    settle_seconds: 20\n",
+        "  crawl:\n"
+        "    browser_escalation:\n"
+        "      enabled: true\n"
+        "      min_shell_chars: 8000\n"
+        "      min_rendered_chars: 10000\n"
+        "      settle_seconds: 20\n",
         encoding="utf-8",
     )
 
     loaded = load_runtime_config_file(config_path)
-    assert loaded["discovery"]["browser_escalation"]["min_shell_chars"] == 8000
+    assert loaded["discovery"]["crawl"]["browser_escalation"]["min_shell_chars"] == 8000
 
 
 @pytest.mark.parametrize(
     ("escalation_block", "match"),
     [
         (
-            "    enabled: true\n    bogus_key: 1\n",
+            "      enabled: true\n      bogus_key: 1\n",
             "unknown key",
         ),
-        (
-            "    min_shell_chars: -5\n",
-            "min_shell_chars must be >= 0",
-        ),
-        (
-            "    min_shell_chars: not-an-int\n",
-            "min_shell_chars must be an integer",
-        ),
+        ("      min_shell_chars: -5\n", "min_shell_chars' must be an integer >= 0"),
+        ("      min_shell_chars: x\n", "min_shell_chars' must be an integer >= 0"),
     ],
 )
 def test_load_runtime_config_file_rejects_invalid_browser_escalation(
@@ -310,7 +301,7 @@ def test_load_runtime_config_file_rejects_invalid_browser_escalation(
     """Inner-key validation now runs at load time (single source of truth)."""
     config_path = tmp_path / "run.yaml"
     config_path.write_text(
-        f"discovery:\n  browser_escalation:\n{escalation_block}",
+        f"discovery:\n  crawl:\n    browser_escalation:\n{escalation_block}",
         encoding="utf-8",
     )
 
@@ -369,235 +360,58 @@ def test_load_runtime_config_file_rejects_all_split_files_for_same_section(
     assert "extraction.json" in str(exc.value)
 
 
-def test_resolve_command_config_supports_acquire_alias(tmp_path: Path):
+def test_resolve_command_config_maps_crawl_and_runtime_fields(tmp_path: Path):
     run_path = tmp_path / "run.yaml"
     run_path.write_text(
         """
-domain: geothermal_ordinances
+domain: demo
 discovery:
-  seeds:
-    - https://example.org/a
-  query: geothermal ordinance
-  output:
-    documents_dir: documents/geothermal_ordinances/acquired
-    manifest_path: output/discovery/geothermal_ordinances/manifest.json
-""",
-        encoding="utf-8",
-    )
-
-    config_data = load_runtime_config_file(run_path)
-    resolved = resolve_command_config(
-        command="discover",
-        cli_values={},
-        config_data=config_data,
-        strict=True,
-    )
-
-    assert resolved["seed_urls"] == ["https://example.org/a"]
-    assert resolved["query"] == "geothermal ordinance"
-    assert resolved["output_documents"] == "documents/geothermal_ordinances/acquired"
-    assert resolved["output_manifest"] == "output/discovery/geothermal_ordinances/manifest.json"
-    assert resolved["domain"] == "geothermal_ordinances"
-
-
-def test_resolve_command_config_sets_serpapi_flag_from_search_provider(tmp_path: Path):
-    run_path = tmp_path / "run.yaml"
-    run_path.write_text(
-        """
-discovery:
-  seeds:
-    - https://example.org/a
-  search:
-    provider: serpapi
-    enabled: true
-""",
-        encoding="utf-8",
-    )
-
-    config_data = load_runtime_config_file(run_path)
-    resolved = resolve_command_config(
-        command="discover",
-        cli_values={},
-        config_data=config_data,
-        strict=True,
-    )
-
-    assert resolved["enable_serpapi"] is True
-
-
-def test_resolve_command_config_maps_discovery_topology_and_runtime_fields(tmp_path: Path):
-        run_path = tmp_path / "run.yaml"
-        run_path.write_text(
-                """
-discovery:
-    seeds:
-        - https://county.gov/hub
-    topology:
-        mode: distributed
-    digger:
-        allowed_domains:
-            - county.gov
-        discovery_rules:
-            include_url_patterns:
-                - \\.pdf$
-            include_link_text_patterns:
-                - ordinance
-    runtime:
-        max_depth: 4
-        max_pages: 25
-        max_files: 8
-        timeout_seconds: 12
-        max_concurrent_downloads: 4
-        min_request_interval_ms: 120
-""",
-                encoding="utf-8",
-        )
-
-        config_data = load_runtime_config_file(run_path)
-        resolved = resolve_command_config(
-                command="discover",
-                cli_values={},
-                config_data=config_data,
-                strict=True,
-        )
-
-        assert resolved["topology_mode"] == "distributed"
-        assert resolved["allowed_domains"] == ["county.gov"]
-        assert resolved["include_url_patterns"] == [r"\.pdf$"]
-        assert resolved["include_link_text_patterns"] == ["ordinance"]
-        assert resolved["max_depth"] == 4
-        assert resolved["max_pages"] == 25
-        assert resolved["max_files"] == 8
-        assert resolved["timeout_seconds"] == 12
-        assert resolved["max_concurrent_downloads"] == 4
-        assert resolved["min_request_interval_ms"] == 120
-
-
-def test_resolve_command_config_maps_centralized_hub_sweep_fields(tmp_path: Path):
-        run_path = tmp_path / "run.yaml"
-        run_path.write_text(
-                """
-discovery:
-    hub_pages:
-        - https://docs.county.gov/index.html
-    topology:
-        mode: centralized
-    routing:
-        index_links:
-            - url: https://docs.county.gov/geothermal-ordinance.pdf
-              text: Geothermal Ordinance
-    digger:
-        index_page_mode:
-            enabled: true
-            collect_all_matching_links: true
-        discovery_rules:
-            include_url_patterns:
-                - \\.pdf$
-""",
-                encoding="utf-8",
-        )
-
-        config_data = load_runtime_config_file(run_path)
-        resolved = resolve_command_config(
-                command="discover",
-                cli_values={},
-                config_data=config_data,
-                strict=True,
-        )
-
-        assert resolved["topology_mode"] == "centralized"
-        assert resolved["hub_pages"] == ["https://docs.county.gov/index.html"]
-        assert resolved["index_page_mode"] == {
-                "enabled": True,
-                "collect_all_matching_links": True,
-        }
-        assert resolved["index_links"] == [
-                {
-                        "url": "https://docs.county.gov/geothermal-ordinance.pdf",
-                        "text": "Geothermal Ordinance",
-                }
-        ]
-
-
-def test_resolve_command_config_maps_request_headers(tmp_path: Path):
-        run_path = tmp_path / "run.yaml"
-        run_path.write_text(
-                """
-discovery:
+  sources:
+    - https://county.gov/hub
+  crawl:
+    provider: selenium
+    max_depth: 2
+    max_pages: 25
+    allowed_domains:
+      - county.gov
+    include_url_patterns:
+      - \\.pdf$
+    include_link_text_patterns:
+      - ordinance
     request_headers:
-            User-Agent: "ParseSweep/2.0 (custom contact: example@example.com)"
-            Accept-Language: "en-US,en;q=0.9"
+      User-Agent: "ParseSweep/2.0 (contact: example@example.com)"
+  runtime:
+    max_files: 8
+    timeout_seconds: 12
+    max_concurrent_downloads: 4
+    min_request_interval_ms: 120
+  retry_policy:
+    max_attempts: 5
+    initial_backoff_seconds: 2
 """,
-                encoding="utf-8",
-        )
+        encoding="utf-8",
+    )
 
-        config_data = load_runtime_config_file(run_path)
-        resolved = resolve_command_config(
-                command="discover",
-                cli_values={},
-                config_data=config_data,
-                strict=True,
-        )
+    resolved = resolve_command_config(
+        command="discover", cli_values={}, config_data=load_runtime_config_file(run_path),
+    )
 
-        assert resolved["request_headers"] == {
-                "User-Agent": "ParseSweep/2.0 (custom contact: example@example.com)",
-                "Accept-Language": "en-US,en;q=0.9",
-        }
+    assert resolved["sources"] == ["https://county.gov/hub"]
+    assert resolved["crawl_provider"] == "selenium"
+    assert resolved["_config_sources"]["crawl_provider"] == "config.discovery.crawl.provider"
+    assert resolved["allowed_domains"] == ["county.gov"]
+    assert resolved["include_url_patterns"] == [r"\.pdf$"]
+    assert resolved["include_link_text_patterns"] == ["ordinance"]
+    assert resolved["request_headers"] == {
+        "User-Agent": "ParseSweep/2.0 (contact: example@example.com)"
+    }
+    assert (resolved["max_depth"], resolved["max_pages"], resolved["max_files"]) == (2, 25, 8)
+    assert resolved["timeout_seconds"] == 12
+    assert resolved["max_concurrent_downloads"] == 4
+    assert resolved["min_request_interval_ms"] == 120
+    assert resolved["retry_max_attempts"] == 5
+    assert resolved["retry_initial_backoff_seconds"] == 2
 
-
-def test_resolve_command_config_maps_digger_connector_and_retry_policy(tmp_path: Path):
-        run_path = tmp_path / "run.yaml"
-        run_path.write_text(
-                """
-discovery:
-    seeds:
-        - https://example.org/hub
-    digger:
-        connector: crawlee_playwright
-    retry_policy:
-        max_attempts: 5
-        initial_backoff_seconds: 2
-        max_backoff_seconds: 16
-""",
-                encoding="utf-8",
-        )
-
-        config_data = load_runtime_config_file(run_path)
-        resolved = resolve_command_config(
-                command="discover",
-                cli_values={},
-                config_data=config_data,
-                strict=True,
-        )
-
-        assert resolved["digger_provider"] == "crawlee_playwright"
-        assert resolved["retry_max_attempts"] == 5
-        assert resolved["retry_initial_backoff_seconds"] == 2
-
-
-def test_resolve_command_config_maps_digger_provider_alias(tmp_path: Path):
-        run_path = tmp_path / "run.yaml"
-        run_path.write_text(
-                """
-discovery:
-    seeds:
-        - https://example.org/hub
-    digger:
-        provider: http
-""",
-                encoding="utf-8",
-        )
-
-        config_data = load_runtime_config_file(run_path)
-        resolved = resolve_command_config(
-                command="discover",
-                cli_values={},
-                config_data=config_data,
-                strict=True,
-        )
-
-        assert resolved["digger_provider"] == "http"
-        assert resolved["_config_sources"]["digger_provider"] == "config.discovery.digger.provider"
 
 
 def test_resolve_command_config_maps_link_prioritization_block(tmp_path: Path):
@@ -605,7 +419,7 @@ def test_resolve_command_config_maps_link_prioritization_block(tmp_path: Path):
         run_path.write_text(
                 """
 discovery:
-    seeds:
+    sources:
         - https://example.org/hub
     link_prioritization:
         mode: heuristic
@@ -624,7 +438,6 @@ discovery:
                 command="discover",
                 cli_values={},
                 config_data=config_data,
-                strict=True,
         )
 
         assert resolved["link_prioritization_mode"] == "heuristic"
@@ -638,7 +451,7 @@ def test_resolve_command_config_maps_selection_relevance_terms(tmp_path: Path):
         run_path.write_text(
                 """
 discovery:
-    seeds:
+    sources:
         - https://example.org/hub
     selection:
         require_any:
@@ -663,7 +476,6 @@ discovery:
                 command="discover",
                 cli_values={},
                 config_data=config_data,
-                strict=True,
         )
 
         assert resolved["selection_relevance_require_any_terms"] == ["ordinance", "municipal code"]
@@ -678,7 +490,7 @@ def test_resolve_command_config_maps_split_selection_exclusions(tmp_path: Path):
         run_path.write_text(
                 """
 discovery:
-  seeds:
+  sources:
         - https://example.org/a
   selection:
         max_per_host_per_target: 2
@@ -695,7 +507,6 @@ discovery:
                 command="discover",
                 cli_values={},
                 config_data=config_data,
-                strict=True,
         )
 
         assert resolved["selection_max_per_host_per_target"] == 2
@@ -708,7 +519,7 @@ def test_resolve_command_config_maps_generic_selection_templates(tmp_path: Path)
         run_path.write_text(
                 """
 discovery:
-    seeds:
+    sources:
         - https://example.org/hub
     selection:
         max_per_target: 3
@@ -732,7 +543,6 @@ discovery:
                 command="discover",
                 cli_values={},
                 config_data=config_data,
-                strict=True,
         )
 
         assert resolved["selection_primary_per_target"] == 3
@@ -751,7 +561,7 @@ def test_discovery_selection_max_per_target_must_cover_review_keep_top(
     run_path.write_text(
         """
 discovery:
-  seeds:
+  sources:
         - https://example.org/hub
   selection:
         max_per_target: 2
@@ -773,7 +583,7 @@ def test_discovery_selection_and_review_accept_equal_limits(tmp_path: Path):
         run_path.write_text(
             """
 discovery:
-  seeds:
+  sources:
         - https://example.org/hub
   selection:
         max_per_target: 3
@@ -788,7 +598,6 @@ discovery:
             command="discover",
             cli_values={},
             config_data=data,
-            strict=True,
         )
         assert resolved["selection_primary_per_target"] == 3
         assert resolved["document_review"]["keep_top"] == 3
@@ -799,7 +608,7 @@ def test_resolve_command_config_maps_discovery_policy_fields(tmp_path: Path):
         run_path.write_text(
                 """
 discovery:
-    seeds:
+    sources:
         - https://example.org/hub
     policy:
         robots_mode: enforce
@@ -816,7 +625,6 @@ discovery:
                 command="discover",
                 cli_values={},
                 config_data=config_data,
-                strict=True,
         )
 
         assert resolved["robots_policy_mode"] == "enforce"
@@ -824,7 +632,7 @@ discovery:
         assert resolved["acknowledged_tos_domains"] == ["example.org", "county.gov"]
 
 
-def test_resolve_command_config_maps_targets_and_query_family_controls(tmp_path: Path):
+def test_resolve_command_config_maps_targets_queries_and_search(tmp_path: Path):
     run_path = tmp_path / "run.yaml"
     run_path.write_text(
         """
@@ -834,30 +642,25 @@ discovery:
       power_class_kw: 200-300
     - manufacturer: John Deere
       power_class_kw: 200-300
-  query_families:
-    generator_similar_power:
-      - "{manufacturer} {power_class_kw} kW generator spec pdf"
+  queries:
+    - "{manufacturer} {power_class_kw} kW generator spec pdf"
   search:
-    provider: serpapi
-    use_query_family: generator_similar_power
     max_results: 7
+    params:
+      tbm: nws
 """,
         encoding="utf-8",
     )
 
-    config_data = load_runtime_config_file(run_path)
     resolved = resolve_command_config(
-        command="discover",
-        cli_values={},
-        config_data=config_data,
-        strict=True,
+        command="discover", cli_values={}, config_data=load_runtime_config_file(run_path),
     )
 
-    assert isinstance(resolved["targets"], list)
     assert len(resolved["targets"]) == 2
-    assert resolved["query_families"]["generator_similar_power"][0].startswith("{manufacturer}")
-    assert resolved["use_query_family"] == "generator_similar_power"
+    assert resolved["queries"][0].startswith("{manufacturer}")
     assert resolved["seeker_max_results"] == 7
+    assert resolved["seeker_params"] == {"tbm": "nws"}
+
 
 
 def test_models_block_flows_to_every_command(tmp_path: Path):
@@ -882,7 +685,7 @@ compilation:
     assert data["models"] == {"fast": "gpt-4o-mini", "accurate": "gpt-5"}
     for command in ("discover", "extract", "compile"):
         merged = resolve_command_config(
-            command=command, cli_values={}, config_data=data, strict=True
+            command=command, cli_values={}, config_data=data
         )
         assert merged["models"] == {"fast": "gpt-4o-mini", "accurate": "gpt-5"}
 
@@ -1036,7 +839,7 @@ def test_model_context_windows_validates_and_passes_through(tmp_path: Path):
     )
     config_data = load_runtime_config_file(cfg)
     resolved = resolve_command_config(
-        command="extract", cli_values={}, config_data=config_data, strict=True
+        command="extract", cli_values={}, config_data=config_data
     )
     assert resolved["model_context_windows"] == {"my-deploy": 300000}
 
@@ -1078,7 +881,6 @@ def test_synthesis_block_accepts_valid_config(tmp_path: Path):
         command="compile",
         cli_values={},
         config_data=config_data,
-        strict=True,
     )
     assert resolved["synthesis"]["group_by"] == ["entity.name"]
 
@@ -1100,7 +902,6 @@ def test_synthesis_accepts_branching_ordering_and_exclusive_pairs(tmp_path: Path
         command="compile",
         cli_values={},
         config_data=config_data,
-        strict=True,
     )
     assert resolved["synthesis"]["ordering_constraints"] == [["a", "b"], ["b", "c"]]
 
@@ -1118,7 +919,6 @@ def test_synthesis_accepts_item_group_by(tmp_path: Path):
         command="compile",
         cli_values={},
         config_data=config_data,
-        strict=True,
     )
     assert resolved["synthesis"]["item_group_by"] == ["phase_label"]
 
@@ -1214,20 +1014,16 @@ def _resolve_discovery(body: str) -> dict:
     ("block", "match"),
     [
         (
-            "  search:\n    provider: serpapi\n    max_result: 7\n",
-            "Unknown keys in 'discovery.search': max_result",
-        ),
-        (
-            "  search:\n    provider: serpapi\n    maxresults: 5\n",
-            "Unknown keys in 'discovery.search': maxresults",
+            "  search:\n    max_result: 7\n",
+            "unknown key 'discovery.search.max_result' — did you mean 'max_results'",
         ),
         (
             "  retry_policy:\n    max_attempt: 3\n",
-            "Unknown keys in 'discovery.retry_policy': max_attempt",
+            "unknown key 'discovery.retry_policy.max_attempt'",
         ),
         (
             "  document_review:\n    keep_topp: 1\n",
-            "Unknown keys in 'discovery.document_review': keep_topp",
+            "unknown key 'discovery.document_review.keep_topp'",
         ),
     ],
 )
@@ -1237,7 +1033,7 @@ def test_load_runtime_config_file_rejects_unknown_subblock_key(
     """A typo inside a consumed discovery sub-block fails loudly (not no-op)."""
     config_path = tmp_path / "run.yaml"
     config_path.write_text(
-        "discovery:\n  seeds:\n    - https://example.org/a\n" + block,
+        "discovery:\n  sources:\n    - https://example.org/a\n" + block,
         encoding="utf-8",
     )
     with pytest.raises(RuntimeConfigError, match=match):
@@ -1245,15 +1041,14 @@ def test_load_runtime_config_file_rejects_unknown_subblock_key(
 
 
 def test_load_runtime_config_file_accepts_known_subblock_keys(tmp_path: Path):
-    """serpapi_params stays an unrestricted passthrough (shallow check only)."""
+    """search.params stays an unrestricted passthrough (shallow check only)."""
     config_path = tmp_path / "run.yaml"
     config_path.write_text(
         "discovery:\n"
-        "  seeds:\n    - https://example.org/a\n"
+        "  sources:\n    - https://example.org/a\n"
         "  search:\n"
-        "    provider: serpapi\n"
         "    max_results: 5\n"
-        "    serpapi_params:\n"
+        "    params:\n"
         "      tbm: nws\n"
         "      any_verbatim_key: ok\n",
         encoding="utf-8",
@@ -1265,7 +1060,7 @@ def test_load_runtime_config_file_accepts_known_subblock_keys(tmp_path: Path):
 def test_browser_escalation_resolves_to_discovery_inputs():
     """discovery.browser_escalation reaches the engine request payload."""
     resolved = _resolve_discovery(
-        "discovery:\n  query: q\n  browser_escalation:\n"
+        "discovery:\n  queries: [q]\n  crawl:\n   browser_escalation:\n"
         "    min_shell_chars: 1500\n    settle_seconds: 20\n"
     )
     assert resolved["browser_escalation"] == {
@@ -1278,20 +1073,20 @@ def test_browser_escalation_resolves_to_discovery_inputs():
     ("body", "match"),
     [
         (
-            "discovery:\n  query: q\n  browser_escalation:\n    min_shel_chars: 1500\n",
+            "discovery:\n  queries: [q]\n  crawl:\n   browser_escalation:\n    min_shel_chars: 1500\n",
             "unknown key",
         ),
         (
-            "discovery:\n  query: q\n  browser_escalation:\n    min_shell_chars: abc\n",
-            "must be an integer",
+            "discovery:\n  queries: [q]\n  crawl:\n   browser_escalation:\n    min_shell_chars: abc\n",
+            "must be an integer >= 0",
         ),
         (
-            "discovery:\n  query: q\n  browser_escalation:\n    settle_seconds: -1\n",
-            "must be >= 0",
+            "discovery:\n  queries: [q]\n  crawl:\n   browser_escalation:\n    settle_seconds: -1\n",
+            "must be a finite number >= 0",
         ),
         (
-            "discovery:\n  query: q\n  browser_escalation: [1]\n",
-            "must be a mapping or bool",
+            "discovery:\n  queries: [q]\n  crawl:\n   browser_escalation: [1]\n",
+            "must be an object",
         ),
     ],
 )
@@ -1304,7 +1099,7 @@ def test_browser_escalation_rejects_invalid_config(body: str, match: str):
 def test_code_host_adapters_resolves_to_discovery_inputs():
     """discovery.code_host_adapters reaches the engine request payload."""
     resolved = _resolve_discovery(
-        "discovery:\n  query: q\n  code_host_adapters:\n    enabled: false\n"
+        "discovery:\n  queries: [q]\n  crawl:\n   code_host_adapters:\n    enabled: false\n"
     )
     assert resolved["code_host_adapters"] == {"enabled": False}
 
@@ -1312,7 +1107,7 @@ def test_code_host_adapters_resolves_to_discovery_inputs():
 def test_code_host_adapters_bool_shorthand_resolves():
     """The bool shorthand toggles the whole adapter layer."""
     resolved = _resolve_discovery(
-        "discovery:\n  query: q\n  code_host_adapters: false\n"
+        "discovery:\n  queries: [q]\n  crawl:\n   code_host_adapters: false\n"
     )
     assert resolved["code_host_adapters"] == {"enabled": False}
 
@@ -1321,13 +1116,13 @@ def test_code_host_adapters_bool_shorthand_resolves():
     ("body", "match"),
     [
         (
-            "discovery:\n  query: q\n  code_host_adapters:\n"
+            "discovery:\n  queries: [q]\n  crawl:\n   code_host_adapters:\n"
             "    enabled: true\n    bogus_key: 1\n",
             "unknown key",
         ),
         (
-            "discovery:\n  query: q\n  code_host_adapters: [1]\n",
-            "must be a mapping or bool",
+            "discovery:\n  queries: [q]\n  crawl:\n   code_host_adapters: [1]\n",
+            "must be an object",
         ),
     ],
 )
@@ -1343,7 +1138,7 @@ def test_load_runtime_config_file_rejects_invalid_code_host_adapters(
     """Inner-key validation runs at load time too (single source of truth)."""
     config_path = tmp_path / "run.yaml"
     config_path.write_text(
-        "discovery:\n  code_host_adapters:\n    enabled: true\n    typo: 1\n",
+        "discovery:\n  crawl:\n    code_host_adapters:\n      enabled: true\n      typo: 1\n",
         encoding="utf-8",
     )
     with pytest.raises(RuntimeConfigError, match="unknown key"):
@@ -1355,7 +1150,7 @@ def test_link_prioritization_shopping_keywords_resolve(tmp_path: Path):
     run_path.write_text(
         """
 discovery:
-  seeds:
+  sources:
     - https://example.com/hub
   link_prioritization:
     keywords:
@@ -1371,7 +1166,6 @@ discovery:
         command="discover",
         cli_values={},
         config_data=config_data,
-        strict=True,
     )
     assert resolved["link_prioritization_shopping_keywords"] == [
         "wishlist",
@@ -1384,7 +1178,7 @@ def test_link_prioritization_shopping_keywords_must_be_str_list(tmp_path: Path):
     run_path.write_text(
         """
 discovery:
-  seeds:
+  sources:
     - https://example.com/hub
   link_prioritization:
     shopping_path_keywords:
@@ -1403,7 +1197,7 @@ def test_link_prioritization_rejects_unknown_inner_key(tmp_path: Path):
     run_path.write_text(
         """
 discovery:
-  seeds:
+  sources:
     - https://example.com/hub
   link_prioritization:
     power_range_kw: [200, 300]
@@ -1432,7 +1226,6 @@ extraction:
         command="extract",
         cli_values={},
         config_data=config_data,
-        strict=True,
     )
     assert resolved["reasoning_models"] == ["halo-reason", "my-thinker"]
 

@@ -34,15 +34,16 @@ from .concurrency import bounded_results
 from psweep.utils.file_io import atomic_write
 from psweep.workspace import Workspace
 from .connectors import DiggerInput, resolve_digger_connector
-from .connectors.digger import NullDiggerConnector
+from .targets import TARGET_INPUT_FIELDS, identify_target, target_identity
 from .constants import (
     DEFAULT_MAX_CONCURRENT_DOWNLOADS,
     DOCUMENT_EXTENSIONS,
     DOWNLOADABLE_EXTENSIONS,
     MIME_TO_EXTENSION,
-    ROUTE_REASON_CENTRALIZED,
-    ROUTE_REASON_DISTRIBUTED,
+    CONFIGURED_SOURCE,
+    ROUTE_REASON_CRAWLED,
     SEEKER_ONLY_SCORE_WEIGHTS,
+    USER_AGENT,
 )
 from .link_prioritizer import LinkPrioritizer
 from .models import (
@@ -62,6 +63,7 @@ from .publication import (
     PublicationPaths,
     artifact_sha256,
     discovery_publication,
+    assign_document_names,
     effective_discovery_fingerprint,
     resolve_publication_paths,
     materialize_curated,
@@ -73,7 +75,7 @@ from .publication import (
     save_checkpoint_entries,
     publish_manual_curation,
 )
-from .retry import compute_backoff, is_transient_error
+from .retry import compute_backoff, error_record, is_retryable, is_transient_error
 from .urls import (
     compile_url_patterns,
     decode_discovery_url,
@@ -84,10 +86,8 @@ from .urls import (
     url_host,
 )
 
-# Single source of truth for the download-organization default. Referenced by
-# ``DiscoveryRequest`` and the ``discover`` CLI option/fallback.
-DEFAULT_PARTITION_MODE = "auto"
-
+# Download partition and index label for shared (non-target) documents.
+SHARED_PARTITION = "_shared"
 
 # Browser escalation defaults for JS-rendered HTML shells. Explicit
 # discovery.browser_escalation thresholds take precedence.
@@ -147,29 +147,20 @@ class DiscoveryRequest:
     """Normalized command inputs for a discovery run."""
 
     domain: str
-    seed_urls: list[str]
-    query: str | None
-    enable_serpapi: bool
-    output_documents: Path | None
-    output_manifest: Path | None
-    dry_run: bool
-    state: str | None = None
-    jurisdiction: str | None = None
-    partition_mode: str = DEFAULT_PARTITION_MODE
-    # Optional {full-name: short-key} jurisdiction alias map. Supplements the
-    # built-in US-state table (config wins on conflicts) so non-US jurisdiction
-    # schemes work under partition_mode=jurisdiction. None -> US default only.
-    jurisdiction_aliases: dict[str, str] | None = None
-    digger_provider: str = "seed_only"
-    topology_mode: str | None = None
-    hub_pages: list[str] | None = None
+    dry_run: bool = False
+    # Shared configured URLs (``discovery.sources``); always downloaded/kept.
+    sources: list[str] = field(default_factory=list)
+    # Search query templates; a target row ``query`` overrides them per target.
+    queries: list[str] = field(default_factory=list)
+    targets: list[dict[str, object]] | None = None
+    crawl_provider: str = "http"
+    # 0 = never follow links; N = fetch HTML pages up to N-1 links deep.
+    max_depth: int = 0
+    max_pages: int = 50
     allowed_domains: list[str] | None = None
     include_url_patterns: list[str] | None = None
     include_link_text_patterns: list[str] | None = None
-    index_page_mode: dict[str, object] | None = None
-    index_links: list[dict[str, object] | str] | None = None
-    max_depth: int | None = None
-    max_pages: int | None = None
+    # Download/crawl artifact cap; None = unbounded. Configured URLs never count.
     max_files: int | None = None
     timeout_seconds: int | None = None
     retry_max_attempts: int = 3
@@ -188,10 +179,6 @@ class DiscoveryRequest:
     robots_policy_mode: str = DEFAULT_ROBOTS_POLICY_MODE
     tos_policy_mode: str = DEFAULT_TOS_POLICY_MODE
     acknowledged_tos_domains: list[str] | None = None
-    targets: list[dict[str, object]] | None = None
-    query_templates: list[str] | None = None
-    query_families: dict[str, list[str]] | None = None
-    use_query_family: str | None = None
     seeker_max_results: int = 10
     # Link prioritization
     link_prioritization_mode: str = "heuristic"
@@ -217,13 +204,11 @@ class DiscoveryRequest:
     # Post-download document classification (keyword) + LLM review (curation)
     document_classifier: dict[str, object] | None = None
     document_review: dict[str, object] | None = None
-    # Query-template context aliases (coalesce first non-empty source field)
-    query_context_aliases: dict[str, list[str]] | None = None
     # Output partitioning by target-metadata fields (generic, domain-neutral)
     partition_by: list[str] | None = None
     # Use a real browser to clear bot-manager challenges (Akamai/Cloudflare)
     # for downloads on protected sites.
-    browser_mode: bool = False
+    browser_downloads: bool = False
     # JS-shell browser re-render policy (see _escalate_js_shells_to_browser):
     # {enabled, settle_seconds, min_shell_chars, min_rendered_chars}
     browser_escalation: dict[str, object] | None = None
@@ -234,7 +219,7 @@ class DiscoveryRequest:
     # Extra SerpApi query params forwarded verbatim to the seeker (e.g.
     # {"tbm": "nws"} for Google News, {"tbs": "qdr:y"} for recency). Enables
     # dated-news discovery for temporal domains.
-    seeker_extra_params: dict[str, object] | None = None
+    seeker_params: dict[str, object] | None = None
     # Model-tiering map ({tier_name: model_name}) from the top-level run.yaml
     # ``models:`` block. Acquire-side LLM stages (document review) resolve their
     # ``model`` tier reference against this map via ``extraction.llm_factory``.
@@ -247,7 +232,7 @@ class DiscoveryRequest:
     # prune already-completed targets) and refresh the seeker cache (force live
     # fetches even when ``seeker_cache`` is enabled). Drives the ``discover
     # --fresh`` / ``run --fresh`` "start fresh" UX.
-    reprocess: bool = False
+    fresh: bool = False
     # Optional callback for human-friendly progress messages emitted by engine stages.
     progress_callback: Callable[[str], None] | None = None
     # Downloaded-document retention policy:
@@ -339,31 +324,23 @@ class DiscoveryEngine:
             callback(message)
 
     @staticmethod
-    def _target_label(target: dict[str, object] | None, fallback_index: int) -> str:
+    def _target_label(
+        target: dict[str, object] | None,
+        fallback_index: int,
+        fields: list[str] | None = None,
+    ) -> str:
+        """``label`` column, else the target's identity values."""
         if not isinstance(target, dict):
             return f"target-{fallback_index}"
-        for key in (
-            "label",
-            "site_name",
-            "jurisdiction",
-            "county",
-            "company_name",
-            "query",
-        ):
-            value = target.get(key)
-            if isinstance(value, str) and value.strip():
-                label = value.strip()
-                state = target.get("state")
-                if key in {"jurisdiction", "county"} and isinstance(state, str) and state.strip():
-                    state = state.strip()
-                    if not label.casefold().endswith(f", {state}".casefold()):
-                        return f"{label}, {state}"
-                return label
-        return f"target-{fallback_index}"
+        label = str(target.get("label") or "").strip()
+        if not label:
+            label = ", ".join(
+                str(value).strip()
+                for value in target_identity(target, fields).values()
+                if str(value or "").strip()
+            )
+        return label or str(target.get("query") or f"target-{fallback_index}")
 
-    _DEFAULT_REQUEST_HEADERS = {
-        "User-Agent": "ParseSweep/2.0 (+discovery)"
-    }
     _ALLOWED_RETENTION_MODES = {"all", "curated", "none"}
     # File-type sets / MIME map are centralized in constants.py.
     _SUPPORTED_EXTENSIONS = DOWNLOADABLE_EXTENSIONS
@@ -378,161 +355,62 @@ class DiscoveryEngine:
         self, request: DiscoveryRequest, started_at: datetime
     ) -> str:
         timestamp = started_at.strftime("%Y%m%dT%H%M%S%fZ")
-        fingerprint_basis = "|".join(
-            [
-                request.domain,
-                request.query or "",
-                "1" if request.dry_run else "0",
-                *sorted(request.seed_urls),
-            ]
-        )
-        fingerprint = hashlib.sha256(
-            fingerprint_basis.encode("utf-8")
-        ).hexdigest()[:8]
-        return f"acq-{self._slugify_domain(request.domain)}-{timestamp}-{fingerprint}"
+        return f"acq-{self._slugify_domain(request.domain)}-{timestamp}"
 
+    @staticmethod
     def _resolve_output_paths(
-        self,
-        request: DiscoveryRequest,
-        run_id: str,
+        request: DiscoveryRequest, run_id: str,
     ) -> tuple[Path, Path]:
         # One self-contained directory per run: manifest.json,
         # download_index.csv, review.csv, documents/, curated/.
         run_dir = Workspace(request.domain).discovered / "runs" / run_id
-
-        if request.output_documents is not None:
-            documents_dir = request.output_documents
-        else:
-            documents_dir = run_dir / "documents"
-
-        if request.output_manifest is not None:
-            manifest_path = request.output_manifest
-        else:
-            manifest_path = run_dir / "manifest.json"
-        return documents_dir, manifest_path
+        return run_dir / "documents", run_dir / "manifest.json"
 
     @staticmethod
-    def _seed_candidates(
-        seed_urls: list[str],
-    ) -> list[DiscoveryCandidate]:
+    def _configured_candidates(request: DiscoveryRequest) -> list[DiscoveryCandidate]:
+        """Stage shared ``sources`` and target ``urls`` as configured candidates."""
+        score = CandidateScore(
+            url_signal=0.35, anchor_signal=0.0, content_signal=0.0, trust_signal=0.55,
+        )
         candidates: list[DiscoveryCandidate] = []
-        for seed_url in seed_urls:
-            score = CandidateScore(
-                url_signal=0.35,
-                anchor_signal=0.0,
-                content_signal=0.0,
-                trust_signal=0.55,
-            )
+        seen: set[tuple[str, str | None]] = set()
+        targets = ((None, url) for url in request.sources)
+        rows = (
+            (target, str(url))
+            for target in request.targets or ()
+            for url in target.get("urls") or ()
+        )
+        for target, url in chain(targets, rows):
+            target_id = identify_target(target, request.partition_by) if target else None
+            if (url, target_id) in seen:
+                continue
+            seen.add((url, target_id))
             candidates.append(
                 DiscoveryCandidate(
-                    url=seed_url,
-                    source="seed_url",
+                    url=url,
+                    source=CONFIGURED_SOURCE,
                     score=score,
-                    reasons=["Seed URL staged for seeker/digger expansion"],
+                    reasons=["Configured URL"],
+                    target_metadata=DiscoveryEngine._target_metadata(target),
+                    source_scope="target" if target else "shared",
+                    source_url=url,
+                    target_id=target_id,
                 )
             )
         return candidates
 
     @staticmethod
-    def _attribute_seeds_to_targets(
-        seed_candidates: list[DiscoveryCandidate],
-        targets: list[dict[str, object]],
-    ) -> None:
-        """Match seed URLs to targets and assign target_metadata.
-
-        Fully generic: scores every field value in each target against the URL.
-        Works with any targets.csv schema — jurisdiction, state, county, city,
-        municipality, district, label, or any custom field. No hardcoded field
-        names.
-
-        Scoring: for each target, every word from any field value that appears
-        in the URL contributes its character length to the score. Longer/more
-        specific matches win. Minimum score threshold prevents false positives.
-        """
-        if not targets or not seed_candidates:
-            return
-
-        for candidate in seed_candidates:
-            if candidate.target_metadata:
-                continue  # Already attributed (e.g., from seeker)
-
-            parsed = urlparse(decode_discovery_url(candidate.url))
-            url_lower = unquote(parsed.path + "?" + parsed.query).lower()
-            best_target: dict[str, object] | None = None
-            best_score = 0
-            tied = False
-
-            for target in targets:
-                score = 0
-                # Score ALL string fields in the target against the URL
-                for _field, val in target.items():
-                    if not isinstance(val, str) or not val.strip():
-                        continue
-                    # Split multi-word values and check each part
-                    # e.g., "Drumore Township" → ["drumore", "township"]
-                    for part in val.lower().split():
-                        if len(part) > 2 and part in url_lower:
-                            score += len(part)
-
-                if score > best_score:
-                    best_score = score
-                    best_target = target
-                    tied = False
-                elif score == best_score and score > 0:
-                    tied = True
-
-            # A shared agency/host does not establish a unique target identity.
-            if best_target and best_score >= 4 and not tied:
-                candidate.target_metadata = dict(best_target)
+    def _target_metadata(target: dict[str, object] | None) -> dict[str, object] | None:
+        """Target fields exposed downstream (``urls``/``query`` are inputs, not metadata)."""
+        if not target:
+            return None
+        return {k: v for k, v in target.items() if k not in TARGET_INPUT_FIELDS}
 
     @staticmethod
-    def _normalize_seed_urls(
-        seed_urls: list[str],
-    ) -> tuple[list[str], list[dict[str, object]]]:
-        valid_seed_urls: list[str] = []
-        error_records: list[dict[str, object]] = []
-
-        for raw_seed in seed_urls:
-            try:
-                if not isinstance(raw_seed, str):
-                    raise ValueError("Seed URL must be a string")
-                seed = raw_seed.strip()
-                if not seed:
-                    raise ValueError("Seed URL must not be empty")
-                if not re.match(r"^https?://", seed, flags=re.IGNORECASE):
-                    raise ValueError(
-                        f"Seed URL must start with http:// or https://: {seed}"
-                    )
-                valid_seed_urls.append(seed)
-            except Exception as exc:
-                error_records.append(
-                    build_error_record(
-                        exc,
-                        stage="discovery.seed_validation",
-                        document_path=str(raw_seed),
-                    )
-                )
-
-        # Preserve first-seen order while removing duplicates.
-        deduped: list[str] = []
-        seen: set[str] = set()
-        for seed in valid_seed_urls:
-            if seed in seen:
-                continue
-            deduped.append(seed)
-            seen.add(seed)
-
-        return deduped, normalize_error_records(error_records)
-
-    @staticmethod
-    def _has_discovery_inputs(request: DiscoveryRequest) -> bool:
-        """Return whether request includes query-driven discovery inputs."""
-        return bool(
-            request.query
-            or request.targets
-            or request.query_templates
-            or request.query_families
-            or request.use_query_family
+    def _search_enabled(request: DiscoveryRequest) -> bool:
+        """Search runs iff ``queries`` is set or any target row has a ``query``."""
+        return bool(request.queries) or any(
+            target.get("query") for target in request.targets or ()
         )
 
     @staticmethod
@@ -540,15 +418,12 @@ class DiscoveryEngine:
         *,
         request: DiscoveryRequest,
         candidates: list[DiscoveryCandidate],
-        normalized_seed_urls: list[str],
         errors: list[dict[str, object]],
         notes: list[str],
         discovered_count: int = 0,
     ) -> tuple[list[dict[str, object]], list[str]]:
         """Distinguish failed, empty, and filtered searches."""
-        if not DiscoveryEngine._has_discovery_inputs(request):
-            return errors, notes
-        if candidates or normalized_seed_urls:
+        if not DiscoveryEngine._search_enabled(request) or candidates:
             return errors, notes
 
         if discovered_count:
@@ -563,14 +438,9 @@ class DiscoveryEngine:
                 *notes,
                 "No candidates were produced; inspect search errors.",
             ]
-        elif request.enable_serpapi:
-            message = (
-                "Search returned no candidates. Adjust query or target inputs."
-            )
         else:
             message = (
-                "Search is disabled and no seed candidates are available. "
-                "Enable search or supply seeds."
+                "Search returned no candidates. Adjust query or target inputs."
             )
         return errors, [*notes, message]
 
@@ -578,31 +448,23 @@ class DiscoveryEngine:
     def _resolve_serpapi_state(
         request: DiscoveryRequest,
     ) -> tuple[dict[str, object], list[dict[str, object]], list[str]]:
-        if not request.enable_serpapi:
-            return (
-                {
-                    "provider": "seed_only",
-                    "enabled": False,
-                    "available": False,
-                },
-                [],
-                [],
-            )
+        if not DiscoveryEngine._search_enabled(request):
+            return {"provider": "serpapi", "enabled": False, "available": False}, [], []
 
         notes: list[str] = []
         errors: list[dict[str, object]] = []
-        if not (os.getenv("SERPAPI_API_KEY") or os.getenv("SERPAPI_KEY")):
+        if not os.getenv("SERPAPI_API_KEY"):
             errors.append(
-                build_error_record(
+                error_record(
                     ValueError(
-                        "SerpApi feature flag enabled but SERPAPI_API_KEY or SERPAPI_KEY is not set"
+                        "Search queries are configured but SERPAPI_API_KEY is not set"
                     ),
                     stage="discovery.seeker_init",
                     provider="serpapi",
                 )
             )
         else:
-            notes.append("SerpApi feature flag enabled; seeker connected.")
+            notes.append("Search enabled; SerpApi seeker connected.")
 
         return (
             {
@@ -619,7 +481,7 @@ class DiscoveryEngine:
         """Return the canonical SerpApi cache directory for this request."""
         if not getattr(request, "seeker_cache", False):
             return None
-        return str(Workspace(request.domain).discovered / ".serpapi_cache")
+        return str(Workspace(request.domain).serpapi_cache)
 
     @staticmethod
     def _build_selector(request: DiscoveryRequest) -> CandidateSelector:
@@ -742,26 +604,26 @@ class DiscoveryEngine:
                     )
                     * 60.0,
                 ),
-                cache_refresh=bool(
-                    getattr(request, "reprocess", False)
-                    and not getattr(request, "dry_run", False)
-                ),
+                cache_refresh=request.fresh and not request.dry_run,
             )
             seeker_inputs = DiscoveryEngine._build_seeker_inputs(request)
             # Collect results per-target so selection can be applied independently
             raw_candidates_by_target: list[list[dict[str, object]]] = []
             total_inputs = len(seeker_inputs)
-            for idx, seeker_input in enumerate(seeker_inputs, start=1):
-                target = (
-                    request.targets[idx - 1]
-                    if request.targets and idx - 1 < len(request.targets)
-                    else None
+            seeker_targets = request.targets or [None]
+            for idx, (target, seeker_input) in enumerate(
+                zip(seeker_targets, seeker_inputs, strict=True), start=1,
+            ):
+                target_label = DiscoveryEngine._target_label(
+                    target, idx, request.partition_by
                 )
-                target_label = DiscoveryEngine._target_label(target, idx)
-                query_preview = (seeker_input.query or "").strip() or "(resolved from templates)"
+                if not seeker_input.queries:
+                    raw_candidates_by_target.append([])
+                    continue
                 DiscoveryEngine._emit_progress(
                     request,
-                    f"seeker {idx}/{total_inputs}: searching {target_label} | query={query_preview}",
+                    f"seeker {idx}/{total_inputs}: searching {target_label} "
+                    f"| queries={len(seeker_input.queries)}",
                 )
                 try:
                     discovered = seeker.discover(seeker_input)
@@ -769,7 +631,7 @@ class DiscoveryEngine:
                     discovered = exc.candidates
                     incomplete_targets.add(idx - 1)
                     for message in exc.query_errors:
-                        errors.append(build_error_record(
+                        errors.append(error_record(
                             TimeoutError(f"{target_label}: {message}"),
                             stage="discovery.seeker_discover",
                             provider="serpapi",
@@ -783,18 +645,20 @@ class DiscoveryEngine:
                     # Preserve already-completed targets and keep this target retryable.
                     discovered = []
                     incomplete_targets.add(idx - 1)
-                    errors.append(build_error_record(
+                    errors.append(error_record(
                         exc, stage="discovery.seeker_discover", provider="serpapi",
                     ))
                     notes.append(f"Search failed for {target_label}; target remains retryable.")
-                raw_candidates_by_target.append(discovered)
+                raw_candidates_by_target.append(
+                    [{**raw, "_target": target} for raw in discovered]
+                )
                 DiscoveryEngine._emit_progress(
                     request,
                     f"seeker {idx}/{total_inputs}: {target_label} -> {len(discovered)} candidate(s)",
                 )
         except Exception as exc:
             errors.append(
-                build_error_record(
+                error_record(
                     exc,
                     stage="discovery.seeker_discover",
                     provider="serpapi",
@@ -811,6 +675,7 @@ class DiscoveryEngine:
             url = decode_discovery_url(str(raw.get("url") or ""))
             if not url:
                 return None
+            target = raw.get("_target")
             return DiscoveryCandidate(
                 url=url,
                 source=raw.get("source", "serpapi_google"),
@@ -824,6 +689,9 @@ class DiscoveryEngine:
                 reasons=list(raw.get("reasons") or []),
                 title=raw.get("title") or None,
                 snippet=raw.get("snippet") or None,
+                target_metadata=DiscoveryEngine._target_metadata(target),
+                source_scope="target" if target else "shared",
+                target_id=identify_target(target, request.partition_by) if target else None,
             )
 
         candidates_by_target: list[list[DiscoveryCandidate]] = [
@@ -854,8 +722,17 @@ class DiscoveryEngine:
             selector.select(
                 candidates_by_target,
                 primary_per_target=primary_per_target,
-                target_contexts=request.targets or None,
+                target_contexts=[
+                    DiscoveryEngine._target_metadata(target)
+                    for target in request.targets
+                ] if request.targets else None,
                 include_metrics=True,
+                labels=[
+                    DiscoveryEngine._target_label(
+                        target, idx, request.partition_by
+                    )
+                    for idx, target in enumerate(request.targets, start=1)
+                ] if request.targets else None,
             )
         )
         DiscoveryEngine._annotate_search_metrics(
@@ -920,107 +797,38 @@ class DiscoveryEngine:
         )
 
     @staticmethod
-    def _target_template_context(
-        target: dict[str, object],
-        aliases: dict[str, list[str]] | None = None,
-    ) -> dict[str, str]:
-        context: dict[str, str] = {}
-        for key, value in target.items():
-            if value is None:
-                continue
-            if isinstance(value, (str, int, float, bool)):
-                text = str(value).strip()
-                if text:
-                    context[str(key)] = text
-                continue
-            if isinstance(value, list) and value:
-                first = value[0]
-                if isinstance(first, (str, int, float, bool)):
-                    text = str(first).strip()
-                    if text:
-                        context[str(key)] = text
-                        singular_key = str(key)
-                        if (
-                            singular_key.endswith("s")
-                            and len(singular_key) > 1
-                        ):
-                            context[singular_key[:-1]] = text
+    def _target_template_context(target: dict[str, object]) -> dict[str, str]:
+        """Scalar target fields usable as ``{field}`` query-template tokens."""
+        return {
+            str(key): str(value).strip()
+            for key, value in target.items()
+            if key not in TARGET_INPUT_FIELDS
+            and isinstance(value, (str, int, float, bool))
+            and str(value).strip()
+        }
 
-        # Explicit aliases resolve to the first nonempty target field.
-        effective_aliases = aliases or {}
-        for alias, sources in effective_aliases.items():
-            if context.get(alias):
-                continue
-            for source_field in sources:
-                resolved = context.get(source_field)
-                if resolved:
-                    context[alias] = resolved
-                    break
+    @staticmethod
+    def _seeker_input(
+        request: DiscoveryRequest, target: dict[str, object] | None,
+    ):
+        """One search input; a target row ``query`` overrides ``queries``."""
+        from .connectors.base import SeekerInput
 
-        return context
+        row_query = str((target or {}).get("query") or "").strip()
+        return SeekerInput(
+            queries=[row_query] if row_query else list(request.queries),
+            max_results=max(1, int(request.seeker_max_results)),
+            context=DiscoveryEngine._target_template_context(target or {}),
+            params=request.seeker_params,
+        )
 
     @staticmethod
     def _build_seeker_inputs(request: DiscoveryRequest):
-        from .connectors.base import SeekerInput
-
-        base_extra: dict[str, object] = {}
-        if request.query_templates:
-            base_extra["query_templates"] = request.query_templates
-        if request.query_families:
-            base_extra["query_families"] = request.query_families
-        if request.use_query_family:
-            base_extra["use_query_family"] = request.use_query_family
-        if request.seeker_extra_params:
-            # Verbatim SerpApi params (e.g. tbm=nws for Google News). Nested
-            # under a reserved key so the seeker merges them into the request
-            # without confusing them with engine control keys.
-            base_extra["serpapi_params"] = dict(request.seeker_extra_params)
-
-        targets = request.targets or []
-        inputs: list[SeekerInput] = []
-
-        if targets:
-            for target in targets:
-                if not isinstance(target, dict):
-                    continue
-                target_query = str(
-                    target.get("query") or request.query or ""
-                ).strip()
-                extra_params = dict(base_extra)
-                extra_params["template_context"] = (
-                    DiscoveryEngine._target_template_context(
-                        target, request.query_context_aliases
-                    )
-                )
-                inputs.append(
-                    SeekerInput(
-                        query=target_query,
-                        max_results=max(1, int(request.seeker_max_results)),
-                        extra_params=extra_params,
-                    )
-                )
-
-        if not inputs:
-            template_context = {}
-            if request.state:
-                template_context["state"] = request.state
-            if request.jurisdiction:
-                template_context["jurisdiction"] = request.jurisdiction
-
-            extra_params = dict(base_extra)
-            if template_context:
-                extra_params["template_context"] = template_context
-            inputs.append(
-                SeekerInput(
-                    query=request.query or "",
-                    max_results=max(1, int(request.seeker_max_results)),
-                    extra_params=extra_params,
-                )
-            )
-
-        return inputs
-
-    _is_transient_network_error = staticmethod(is_transient_error)
+        """One seeker input per target (or one shared input without targets)."""
+        return [
+            DiscoveryEngine._seeker_input(request, target)
+            for target in request.targets or [None]
+        ]
 
     @staticmethod
     def _retry_backoff_for_attempt(
@@ -1057,7 +865,7 @@ class DiscoveryEngine:
         from requests.structures import CaseInsensitiveDict
         from .code_host_adapters import resolve_adapter
 
-        headers = CaseInsensitiveDict(cls._DEFAULT_REQUEST_HEADERS)
+        headers = CaseInsensitiveDict({"User-Agent": USER_AGENT})
         cfg = request.code_host_adapters
         enabled = cfg if isinstance(cfg, bool) else (cfg or {}).get("enabled", False)
         adapter = resolve_adapter(url) if enabled and url else None
@@ -1118,10 +926,15 @@ class DiscoveryEngine:
         ssl_verify: bool,
         *,
         document: bool = False,
+        configured: bool = False,
     ) -> Callable[[str], object]:
-        """Share policy and source checks across acquisition paths."""
+        """Share policy and source checks; configured URLs get policy checks only."""
 
         def gate(url: str) -> object:
+            if configured:
+                return self._evaluate_request_policy(
+                    url=url, request=request, ssl_verify=ssl_verify
+                )
             if not matches_allowed_domain(url, request.allowed_domains):
                 return False
             if matches_url_exclusion(
@@ -1181,8 +994,11 @@ class DiscoveryEngine:
         request: DiscoveryRequest,
         ssl_verify: bool,
         stage_name: str,
-    ) -> tuple[list[str], list[str]]:
+    ) -> tuple[list[str], list[str], set[str]]:
+        """Return allowed URLs, policy notes, and URLs blocked only by a
+        transient policy evaluation failure (retry on a later run)."""
         allowed_urls: list[str] = []
+        retryable_urls: set[str] = set()
         blocked_counts: Counter[str] = Counter()
         warning_counts: Counter[str] = Counter()
 
@@ -1194,6 +1010,8 @@ class DiscoveryEngine:
             )
             if policy_result.allowed:
                 allowed_urls.append(url)
+            elif policy_result.retryable:
+                retryable_urls.add(url)
             if policy_result.blocking_code:
                 blocked_counts[policy_result.blocking_code] += 1
             for code in policy_result.warning_codes:
@@ -1204,7 +1022,7 @@ class DiscoveryEngine:
             blocked_counts=blocked_counts,
             warning_counts=warning_counts,
             request=request,
-        )
+        ), retryable_urls
 
     def _download_with_retry(
         self,
@@ -1215,9 +1033,12 @@ class DiscoveryEngine:
         request_headers: dict[str, str],
         rate_limiter: _RequestRateLimiter | None = None,
         request: DiscoveryRequest | None = None,
+        configured: bool = False,
     ):
         gate = (
-            self._network_gate(request, ssl_verify, document=True)
+            self._network_gate(
+                request, ssl_verify, document=True, configured=configured
+            )
             if request
             else None
         )
@@ -1286,8 +1107,12 @@ class DiscoveryEngine:
                 [],
             )
 
-        allowed, reason = self._passes_final_url_selection_guard(
-            final_url=url, request=request
+        configured = candidate.source == CONFIGURED_SOURCE
+        allowed, reason = (
+            (True, None) if configured
+            else self._passes_final_url_selection_guard(
+                final_url=url, request=request
+            )
         )
         if not allowed:
             return (
@@ -1307,7 +1132,7 @@ class DiscoveryEngine:
             request=request,
             ssl_verify=ssl_verify,
         )
-        if not policy_result.allowed:
+        if not policy_result.allowed and not policy_result.retryable:
             return (
                 idx,
                 {
@@ -1327,8 +1152,12 @@ class DiscoveryEngine:
         target_path = None
         own_target = False
         try:
+            if not policy_result.allowed:
+                raise NetworkPolicyError(
+                    url, "; ".join(policy_result.messages), policy_result
+                )
             if browser is not None:
-                self._browser_policy_gate(request, url)
+                self._browser_policy_gate(request, url, configured=configured)
                 if rate_limiter is not None:
                     rate_limiter.wait()
                 content, mime_type, final_url = browser.download_bytes(url)
@@ -1347,6 +1176,7 @@ class DiscoveryEngine:
                         request_headers=self._resolve_request_headers(request, url),
                         rate_limiter=rate_limiter,
                         request=request,
+                        configured=configured,
                     )
                     final_url = response.url or url
                     mime_type = (response.headers or {}).get("Content-Type")
@@ -1358,7 +1188,7 @@ class DiscoveryEngine:
                         request
                     ) or not self._should_retry_download_with_browser(exc):
                         raise
-                    self._browser_policy_gate(request, url)
+                    self._browser_policy_gate(request, url, configured=configured)
 
                     browser_session = browser
                     browser_owned = False
@@ -1425,7 +1255,8 @@ class DiscoveryEngine:
             # Strict file scope rejects MIME mismatches.
             # Web/script path rules keep their source-boundary meaning.
             if (
-                request.include_url_patterns
+                not configured
+                and request.include_url_patterns
                 and url_extension(final_url) in DOCUMENT_EXTENSIONS
                 and extension != url_extension(final_url)
             ):
@@ -1443,9 +1274,9 @@ class DiscoveryEngine:
                     list(policy_result.warning_codes),
                 )
             passed_final_url_guard, reject_code = (
-                self._passes_final_url_selection_guard(
-                    final_url=final_url,
-                    request=request,
+                (True, None) if configured
+                else self._passes_final_url_selection_guard(
+                    final_url=final_url, request=request,
                 )
             )
             if not passed_final_url_guard:
@@ -1466,16 +1297,13 @@ class DiscoveryEngine:
                     list(policy_result.warning_codes),
                 )
 
-            partition_mode, partition_meta, partition_dir = (
-                self._resolve_partition_dir(
-                    documents_dir=documents_dir,
-                    url=final_url,
-                    request=request,
-                    target_metadata=candidate.target_metadata,
-                )
-            )
+            # The requested name; publication assigns the final consolidated name.
+            relative = self._partition(
+                request, candidate.target_id, candidate.target_metadata
+            ) / self._safe_filename(final_url, extension)
+            partition_dir = documents_dir / relative.parent
             partition_dir.mkdir(parents=True, exist_ok=True)
-            filename = self._safe_filename(final_url, extension, idx)
+            filename = relative.name
             target_path = partition_dir / filename
             suffix = 1
 
@@ -1505,51 +1333,38 @@ class DiscoveryEngine:
                 {
                     "url": url,
                     "final_url": final_url,
-                    "partition_mode": partition_mode,
                     "status": "downloaded",
                     "mime_type": mime_type,
                     "path": target_path.as_posix(),
-                    "relative_path": target_path.relative_to(
-                        documents_dir
-                    ).as_posix(),
+                    "relative_path": relative.as_posix(),
                     "bytes": bytes_written,
                     "content_hash": content_hash,
                     "attempt_count": attempt_count,
                     "download_method": download_method,
                     "policy_warning_codes": list(policy_result.warning_codes),
-                    "target_label": (
-                        self._target_label(candidate.target_metadata, idx)
-                        if candidate.target_metadata
-                        else None
-                    ),
-                    "target_metadata": candidate.target_metadata,
-                    **partition_meta,
                 },
                 None,
                 True,
                 list(policy_result.warning_codes),
             )
-        except NetworkPolicyError as exc:
-            return (
-                idx,
-                {
-                    "url": url,
-                    "final_url": exc.url,
-                    "status": "skipped_selection_filter",
-                    "reason": str(exc),
-                },
-                None,
-                False,
-                list(policy_result.warning_codes),
-            )
         except Exception as exc:
+            if isinstance(exc, NetworkPolicyError) and not is_transient_error(exc):
+                return (
+                    idx,
+                    {
+                        "url": url,
+                        "final_url": exc.url,
+                        "status": "skipped_selection_filter",
+                        "reason": str(exc),
+                    },
+                    None,
+                    False,
+                    list(policy_result.warning_codes),
+                )
             if own_target and target_path is not None:
                 target_path.unlink(missing_ok=True)
-            error = build_error_record(
-                exc,
-                stage="discovery.download",
-                document_path=url,
-                provider="http",
+            error = error_record(
+                exc, stage="discovery.download", document_path=url, provider="http",
             )
             return (
                 idx,
@@ -1557,6 +1372,7 @@ class DiscoveryEngine:
                     "url": url,
                     "status": "failed",
                     "error": str(exc),
+                    "retryable": error["retryable"],
                     "policy_warning_codes": list(policy_result.warning_codes),
                 },
                 error,
@@ -1591,18 +1407,10 @@ class DiscoveryEngine:
         return None
 
     @staticmethod
-    def _safe_filename(url: str, ext: str, index: int) -> str:
-        parsed = urlparse(url)
-        base = Path(unquote(parsed.path)).name
-        if not base:
-            base = f"candidate-{index:03d}{ext}"
-
-        base_no_query = base.split("?", 1)[0]
-        stem = Path(base_no_query).stem or f"candidate-{index:03d}"
+    def _safe_filename(url: str, ext: str) -> str:
+        stem = Path(unquote(urlparse(url).path)).stem
         sanitized_stem = re.sub(r"[^A-Za-z0-9._-]+", "-", stem).strip(".-_")
-        if not sanitized_stem:
-            sanitized_stem = f"candidate-{index:03d}"
-        return f"{sanitized_stem}{ext}"
+        return f"{sanitized_stem or 'document'}{ext}"
 
     _normalize_url_text = staticmethod(normalize_url_text)
     _url_host = staticmethod(url_host)
@@ -1635,174 +1443,29 @@ class DiscoveryEngine:
         return True, None
 
     @staticmethod
-    def _host_partition_dir(documents_dir: Path, url: str) -> tuple[str, Path]:
-        """Return host partition key and target directory for downloaded files."""
-        parsed = urlparse(url)
-        host = (parsed.hostname or "unknown-host").lower()
-        sanitized_host = re.sub(r"[^A-Za-z0-9.-]+", "-", host).strip(".-")
-        if not sanitized_host:
-            sanitized_host = "unknown-host"
-        partition_dir = documents_dir / "by_host" / sanitized_host
-        return sanitized_host, partition_dir
-
-    @staticmethod
     def _slug(value: str) -> str:
         return re.sub(r"[^A-Za-z0-9]+", "-", value.strip().lower()).strip("-")
 
     @classmethod
-    def _effective_state_aliases(
-        cls, extra: dict[str, str] | None
-    ) -> dict[str, str]:
-        """Return only explicitly configured geographic aliases."""
-        return {
-            str(k).strip().lower(): str(v).strip().lower()
-            for k, v in (extra or {}).items()
-        }
-
-    @classmethod
-    def _normalize_state_key(
-        cls, value: str | None, aliases: dict[str, str] | None = None
-    ) -> str | None:
-        if value is None:
-            return None
-        normalized = value.strip().lower()
-        if not normalized:
-            return None
-        alias_map = aliases or {}
-        if len(normalized) == 2 and normalized.isalpha():
-            return normalized
-        return alias_map.get(normalized) or cls._slug(normalized)
-
-    @classmethod
-    def _jurisdiction_partition_dir(
+    def _partition(
         cls,
-        documents_dir: Path,
-        *,
-        state: str | None,
-        jurisdiction: str | None,
-        aliases: dict[str, str] | None = None,
-    ) -> tuple[str, str, Path]:
-        state_key = cls._normalize_state_key(state, aliases) or "unknown-state"
-        jurisdiction_key = (
-            cls._slug(jurisdiction or "unknown-jurisdiction")
-            or "unknown-jurisdiction"
-        )
-        partition_dir = (
-            documents_dir / "by_jurisdiction" / state_key / jurisdiction_key
-        )
-        return state_key, jurisdiction_key, partition_dir
-
-    @classmethod
-    def _generic_partition_dir(
-        cls,
-        documents_dir: Path,
-        *,
-        fields: list[str],
-        target_metadata: dict[str, object] | None,
-    ) -> tuple[dict[str, str], Path]:
-        """Partition by arbitrary target-metadata fields (domain-neutral).
-
-        Produces ``by_<field1>/<value1>/<value2>/...`` and emits a
-        ``source_<field>`` metadata entry per field. Missing values fall back
-        to ``unknown-<field>``.
-        """
-        meta = target_metadata or {}
-        partition_dir = documents_dir / ("by_" + "_".join(fields))
-        source_meta: dict[str, str] = {}
-        for field_name in fields:
-            raw = meta.get(field_name)
-            value_key = cls._slug(str(raw)) if raw else f"unknown-{field_name}"
-            value_key = value_key or f"unknown-{field_name}"
-            source_meta[f"source_{field_name}"] = value_key
-            partition_dir = partition_dir / value_key
-        return source_meta, partition_dir
-
-    @classmethod
-    def _resolve_partition_dir(
-        cls,
-        *,
-        documents_dir: Path,
-        url: str,
         request: DiscoveryRequest,
-        target_metadata: dict[str, object] | None = None,
-    ) -> tuple[str, dict[str, str], Path]:
-        # Partitioning layers, most general first:
-        #   1. partition_by  — the domain-agnostic, scalable path: partition by
-        #      ANY target-metadata field(s) (county, region, year, manufacturer,
-        #      ...). This is the mechanism to use for arbitrary schemes and it
-        #      takes precedence over everything below.
-        #   2. jurisdiction  — an OPTIONAL geographic convenience that adds
-        #      query-based inference of a jurisdiction + short-key (aliases from
-        #      discovery.jurisdiction_aliases, defaulting to the US-state table).
-        #   3. host          — fall back to partitioning by URL host.
-        # Only (1) is required for universality; (2)/(3) are conveniences.
-        if request.partition_by:
-            source_meta, partition_dir = cls._generic_partition_dir(
-                documents_dir,
-                fields=list(request.partition_by),
-                target_metadata=target_metadata,
-            )
-            return ("fields", source_meta, partition_dir)
-
-        requested_mode = (
-            request.partition_mode or DEFAULT_PARTITION_MODE
-        ).strip().lower()
-        mode = (
-            requested_mode
-            if requested_mode in {"auto", "jurisdiction", "host"}
-            else DEFAULT_PARTITION_MODE
+        target_id: str | None,
+        target_metadata: dict[str, object] | None,
+    ) -> Path:
+        """Relative document partition: ``_shared``, ``by_<fields>/...`` or ``_targets/<id>``."""
+        if target_id is None:
+            return Path(SHARED_PARTITION)
+        if not request.partition_by:
+            return Path("_targets", target_id)
+        meta = target_metadata or {}
+        return Path(
+            "by_" + "_".join(request.partition_by),
+            *(
+                cls._slug(str(meta.get(name) or "")) or f"unknown-{name}"
+                for name in request.partition_by
+            ),
         )
-
-        alias_map = cls._effective_state_aliases(request.jurisdiction_aliases)
-        context = target_metadata or {}
-        jurisdiction = request.jurisdiction or context.get("jurisdiction")
-        state = request.state or context.get("state")
-
-        if mode == "jurisdiction":
-            state_key, jurisdiction_key, partition_dir = (
-                cls._jurisdiction_partition_dir(
-                    documents_dir,
-                    state=state,
-                    jurisdiction=jurisdiction,
-                    aliases=alias_map,
-                )
-            )
-            return (
-                "jurisdiction",
-                {
-                    "source_state": state_key,
-                    "source_jurisdiction": jurisdiction_key,
-                },
-                partition_dir,
-            )
-
-        if mode == "host":
-            host_key, partition_dir = cls._host_partition_dir(
-                documents_dir, url
-            )
-            return ("host", {"source_host": host_key}, partition_dir)
-
-        # auto mode: use jurisdiction partition when both hints exist; fallback to host.
-        if jurisdiction and state:
-            state_key, jurisdiction_key, partition_dir = (
-                cls._jurisdiction_partition_dir(
-                    documents_dir,
-                    state=state,
-                    jurisdiction=jurisdiction,
-                    aliases=alias_map,
-                )
-            )
-            return (
-                "jurisdiction",
-                {
-                    "source_state": state_key,
-                    "source_jurisdiction": jurisdiction_key,
-                },
-                partition_dir,
-            )
-
-        host_key, partition_dir = cls._host_partition_dir(documents_dir, url)
-        return ("host", {"source_host": host_key}, partition_dir)
 
     def _download_candidates(
         self,
@@ -1810,13 +1473,13 @@ class DiscoveryEngine:
         request: DiscoveryRequest,
         candidates: list[DiscoveryCandidate],
         documents_dir: Path,
-        max_downloads: int = 10,
+        max_downloads: int | None = None,
     ) -> tuple[list[dict[str, object]], list[dict[str, object]], list[str]]:
-        """Download supported candidate files for non-dry discovery runs."""
+        """Download candidates; configured URLs are staged outside ``max_downloads``."""
         try:
             import requests  # noqa: F401
         except ImportError as exc:
-            error = build_error_record(
+            error = error_record(
                 RuntimeError(
                     "requests dependency is required for discovery downloads"
                 ),
@@ -1838,7 +1501,9 @@ class DiscoveryEngine:
         rate_limiter = self._rate_limiter or _RequestRateLimiter(
             request.min_request_interval_ms
         )
-        staged_candidates = list(candidates[:max_downloads])
+        configured = [c for c in candidates if c.source == CONFIGURED_SOURCE]
+        others = [c for c in candidates if c.source != CONFIGURED_SOURCE]
+        staged_candidates = configured + others[:max_downloads]
         self._emit_progress(
             request,
             f"download: staging {len(staged_candidates)} candidate(s) for fetch",
@@ -1859,7 +1524,7 @@ class DiscoveryEngine:
         # THROUGH a real browser. A single Chrome session is shared and
         # downloads run serially (the driver is not thread-safe).
         browser = None
-        if request.browser_mode:
+        if request.browser_downloads:
             browser, note = self._open_browser_for_download()
             download_notes_extra.append(note)
 
@@ -1903,13 +1568,18 @@ class DiscoveryEngine:
             policy_warning_codes,
         ) in sorted(completed, key=lambda item: item[0]):
             candidate = staged_candidates[_ - 1]
-            download_record.setdefault(
-                "target_metadata", candidate.target_metadata,
-            )
-            download_record.setdefault(
-                "target_label",
-                self._target_label(candidate.target_metadata, _)
-                if candidate.target_metadata else None,
+            download_record.update(
+                target_label=(
+                    self._target_label(
+                        candidate.target_metadata, _, request.partition_by
+                    )
+                    if candidate.target_id else SHARED_PARTITION
+                ),
+                target_metadata=candidate.target_metadata,
+                source=candidate.source,
+                source_scope=candidate.source_scope,
+                source_url=candidate.source_url,
+                target_id=candidate.target_id,
             )
             downloads.append(download_record)
             status = str(download_record.get("status") or "unknown")
@@ -1921,7 +1591,9 @@ class DiscoveryEngine:
                 f"download: {status} | {url_preview}",
             )
             if maybe_error is not None:
-                errors.append(maybe_error)
+                errors.append(
+                    {**maybe_error, "target_label": download_record["target_label"]}
+                )
             if was_downloaded:
                 downloaded_count += 1
             blocking_code = download_record.get("policy_blocking_code")
@@ -1981,8 +1653,10 @@ class DiscoveryEngine:
         This stage ensures routed URLs still obey draft/relevance/domain/document
         constraints before download.
         """
+        configured = [c for c in candidates if c.source == CONFIGURED_SOURCE]
+        candidates = [c for c in candidates if c.source != CONFIGURED_SOURCE]
         if not candidates:
-            return candidates, []
+            return configured, []
 
         selector = DiscoveryEngine._build_selector(request)
         groups: dict[str, list[DiscoveryCandidate]] = {}
@@ -2001,7 +1675,7 @@ class DiscoveryEngine:
             f"Post-routing selection eligibility reduced {len(candidates)} candidate(s) to {len(filtered)}."
         ]
         notes.extend([f"Post-routing {n}" for n in filter_notes])
-        return filtered, notes
+        return configured + filtered, notes
 
     @staticmethod
     def _filter_candidates_for_download(
@@ -2010,13 +1684,13 @@ class DiscoveryEngine:
         """Keep downloads focused on viable discovered candidates.
 
         Simplification rule:
-        - Always honor explicit seed URLs provided by the user.
+        - Always honor explicitly configured URLs.
         - For discovered candidates, skip low-confidence rejected items by default.
         """
         if not candidates:
             return [], []
 
-        discovered = [c for c in candidates if c.source != "seed_url"]
+        discovered = [c for c in candidates if c.source != CONFIGURED_SOURCE]
         has_viable_discovered = any(
             c.score.acceptance_class() != "rejected" for c in discovered
         )
@@ -2024,7 +1698,7 @@ class DiscoveryEngine:
         filtered: list[DiscoveryCandidate] = []
         rejected_skipped = 0
         for candidate in candidates:
-            if candidate.source == "seed_url":
+            if candidate.source == CONFIGURED_SOURCE:
                 filtered.append(candidate)
                 continue
 
@@ -2101,49 +1775,6 @@ class DiscoveryEngine:
         }
 
     @staticmethod
-    def _candidate_has_reason(
-        candidate: DiscoveryCandidate, reason: str
-    ) -> bool:
-        return any(note == reason for note in (candidate.reasons or []))
-
-    @staticmethod
-    def _qualifying_index_fixture_urls(
-        request: DiscoveryRequest,
-    ) -> list[str]:
-        qualifying_urls: list[str] = []
-        seen_urls: set[str] = set()
-
-        for raw_link in request.index_links or []:
-            if isinstance(raw_link, str):
-                url = raw_link
-                link_text = ""
-            elif isinstance(raw_link, dict):
-                url = str(raw_link.get("url") or "")
-                link_text = str(raw_link.get("text") or "")
-            else:
-                continue
-
-            if not url.lower().startswith(("http://", "https://")):
-                continue
-            if not NullDiggerConnector._matches_include_patterns(
-                url=url,
-                link_text=link_text,
-                include_url_patterns=request.include_url_patterns,
-                include_link_text_patterns=request.include_link_text_patterns,
-            ):
-                continue
-            if not NullDiggerConnector._matches_allowed_domain(
-                url, request.allowed_domains
-            ):
-                continue
-            if url in seen_urls:
-                continue
-            seen_urls.add(url)
-            qualifying_urls.append(url)
-
-        return qualifying_urls
-
-    @staticmethod
     def _build_unknown_target_metrics(
         *,
         request: DiscoveryRequest,
@@ -2192,112 +1823,18 @@ class DiscoveryEngine:
             "targets": target_selection_metrics,
         }
 
-    def _build_centralized_page_sweep_metrics(
-        self,
-        *,
-        request: DiscoveryRequest,
-        candidates: list[DiscoveryCandidate],
-    ) -> dict[str, object]:
-        if request.topology_mode not in {"centralized", "hybrid"}:
-            return {
-                "applicable": False,
-                "reason": "topology_not_centralized",
-            }
-
-        qualifying_urls = self._qualifying_index_fixture_urls(request)
-        centralized_urls = {
-            candidate.url
-            for candidate in candidates
-            if self._candidate_has_reason(
-                candidate, ROUTE_REASON_CENTRALIZED
-            )
-        }
-
-        recovered_link_count = sum(
-            1 for url in qualifying_urls if url in centralized_urls
-        )
-        recovery_rate = (
-            recovered_link_count / len(qualifying_urls)
-            if qualifying_urls
-            else None
-        )
-        threshold = 0.95
-
-        return {
-            "applicable": True,
-            "measurement_mode": "seeded_index_links"
-            if request.index_links
-            else "live_hub_pages",
-            "hub_page_count": len(request.hub_pages or []),
-            "qualifying_link_count": len(qualifying_urls),
-            "recovered_link_count": recovered_link_count,
-            "recovery_rate": round(recovery_rate, 4)
-            if recovery_rate is not None
-            else None,
-            "coverage_threshold": threshold,
-            "meets_coverage_threshold": bool(
-                recovery_rate is not None and recovery_rate >= threshold
-            ),
-        }
-
-    def _build_hybrid_mixed_source_metrics(
-        self,
-        *,
-        request: DiscoveryRequest,
-        candidates: list[DiscoveryCandidate],
-    ) -> dict[str, object]:
-        if request.topology_mode != "hybrid":
-            return {
-                "applicable": False,
-                "reason": "topology_not_hybrid",
-            }
-
-        centralized_count = sum(
-            1
-            for candidate in candidates
-            if self._candidate_has_reason(
-                candidate, ROUTE_REASON_CENTRALIZED
-            )
-        )
-        distributed_count = sum(
-            1
-            for candidate in candidates
-            if self._candidate_has_reason(
-                candidate, ROUTE_REASON_DISTRIBUTED
-            )
-        )
-        both_paths_resolved = centralized_count > 0 and distributed_count > 0
-
-        return {
-            "applicable": True,
-            "centralized_candidate_count": centralized_count,
-            "distributed_candidate_count": distributed_count,
-            "both_paths_resolved": both_paths_resolved,
-            "coverage_threshold": "both_paths_required",
-            "meets_coverage_threshold": both_paths_resolved,
-        }
-
     def _build_acceptance_metrics(
         self,
         *,
         request: DiscoveryRequest,
         seeker_state: dict[str, object],
         target_selection_metrics: list[dict[str, object]],
-        candidates: list[DiscoveryCandidate],
     ) -> dict[str, object]:
         return {
             "unknown_target_discovery": self._build_unknown_target_metrics(
                 request=request,
                 seeker_state=seeker_state,
                 target_selection_metrics=target_selection_metrics,
-            ),
-            "centralized_page_sweep": self._build_centralized_page_sweep_metrics(
-                request=request,
-                candidates=candidates,
-            ),
-            "hybrid_mixed_source_resolution": self._build_hybrid_mixed_source_metrics(
-                request=request,
-                candidates=candidates,
             ),
         }
 
@@ -2324,44 +1861,25 @@ class DiscoveryEngine:
     def _browser_recovery_enabled(request: DiscoveryRequest) -> bool:
         """Require explicit browser opt-in for automatic recovery."""
         cfg = request.browser_escalation
-        return request.browser_mode or cfg is True or (
+        return request.browser_downloads or cfg is True or (
             isinstance(cfg, dict) and cfg.get("enabled") is True
         )
 
     @staticmethod
-    def _copy_candidate_with_reason(
-        candidate: DiscoveryCandidate,
-        reason: str,
-    ) -> DiscoveryCandidate:
-        reasons = list(candidate.reasons)
-        if reason not in reasons:
-            reasons.append(reason)
-        return dataclass_replace(candidate, reasons=reasons)
-
-    @staticmethod
     def _build_constraints(request: DiscoveryRequest) -> dict[str, object]:
         constraints: dict[str, object] = {
-            "partition_mode": request.partition_mode,
+            "crawl_provider": request.crawl_provider,
         }
-
-        if request.topology_mode:
-            constraints["topology_mode"] = request.topology_mode
-        if request.digger_provider:
-            constraints["digger_provider"] = request.digger_provider
+        if request.partition_by:
+            constraints["partition_by"] = list(request.partition_by)
         if request.allowed_domains:
             constraints["allowed_domains"] = request.allowed_domains
-        if request.hub_pages:
-            constraints["hub_pages"] = request.hub_pages
         if request.include_url_patterns:
             constraints["include_url_patterns"] = request.include_url_patterns
         if request.include_link_text_patterns:
             constraints["include_link_text_patterns"] = (
                 request.include_link_text_patterns
             )
-        if request.index_page_mode:
-            constraints["index_page_mode"] = request.index_page_mode
-        if request.index_links is not None:
-            constraints["index_link_count"] = len(request.index_links)
 
         for field_name in (
             "max_depth",
@@ -2398,12 +1916,10 @@ class DiscoveryEngine:
         }
         if request.targets:
             constraints["target_count"] = len(request.targets)
-        if request.use_query_family:
-            constraints["use_query_family"] = request.use_query_family
-        if request.query_templates:
-            constraints["query_template_count"] = len(request.query_templates)
-        if request.query_families:
-            constraints["query_family_count"] = len(request.query_families)
+        if request.sources:
+            constraints["source_count"] = len(request.sources)
+        if request.queries:
+            constraints["query_count"] = len(request.queries)
         constraints["link_prioritization"] = {
             "mode": request.link_prioritization_mode,
             "top_k": request.link_top_k,
@@ -2415,503 +1931,127 @@ class DiscoveryEngine:
 
         return constraints
 
-    # ------------------------------------------------------------------
-    # Shared routing helpers (used by distributed + centralized routing).
-    # These factor out the parts that were previously duplicated verbatim
-    # across ``_route_distributed_candidates`` and
-    # ``_route_centralized_candidates``. Behavior is unchanged: per-mode
-    # differences (seed selection, extra digger params, routing-state
-    # extras, note strings, and the distributed non-crawled merge-back)
-    # stay in the two orchestrator methods below.
-    # ------------------------------------------------------------------
-
-    def _discover_routing_artifacts(
+    def _crawl_candidates(
         self,
         *,
         request: DiscoveryRequest,
-        filtered_seed_urls: list[str],
-        ssl_verify: bool,
-        extra_params: dict[str, object] | None = None,
-    ) -> tuple[list[object] | None, list[dict[str, object]]]:
-        """Run the digger ``discover`` call shared by both routing modes.
+        candidates: list[DiscoveryCandidate],
+    ) -> tuple[
+        list[DiscoveryCandidate],
+        list[dict[str, object]],
+        list[str],
+        dict[str, object],
+        list[DiscoveryCandidate],
+    ]:
+        """Follow links from HTML candidates when ``crawl.max_depth > 0``.
 
-        Returns ``(artifacts, errors)``. ``artifacts is None`` signals the
-        connector raised (caller should fall back to unrouted candidates);
-        the error record is included in ``errors``. ``extra_params`` carries
-        mode-specific digger params (empty for distributed, the index-page
-        options for centralized) merged ahead of the shared ssl/header/retry
-        params.
+        Every input candidate is kept; linked documents become new candidates
+        attributed to their source page's target and subject to selection.
+        Also returns the source candidates whose crawl is unfinished
+        (retryable page failure or exhausted budget).
         """
-        errors: list[dict[str, object]] = []
+        state: dict[str, object] = {
+            "applied": False,
+            "provider": request.crawl_provider,
+            "max_depth": request.max_depth,
+        }
+        if request.max_depth <= 0:
+            return candidates, [], [], state, []
+
+        pages = list(dict.fromkeys(
+            candidate.url
+            for candidate in candidates
+            if url_extension(candidate.url) not in DOCUMENT_EXTENSIONS
+        ))
+        ssl_verify = self._downloads_ssl_verify()
+        pages, notes, unevaluated = self._filter_urls_for_policy(
+            urls=pages, request=request, ssl_verify=ssl_verify, stage_name="Crawl",
+        )
+        if not pages:
+            notes.append("Crawl skipped: no HTML source pages to follow.")
+            return candidates, [], notes, state, [
+                c for c in candidates if c.url in unevaluated
+            ]
+
+        self._emit_progress(request, f"crawl: following links from {len(pages)} page(s)")
         try:
-            connector = resolve_digger_connector(request.digger_provider)
-            artifacts = connector.discover(
+            result = resolve_digger_connector(request.crawl_provider).discover(
                 DiggerInput(
-                    seed_urls=filtered_seed_urls,
-                    max_depth=request.max_depth or 2,
-                    max_pages=request.max_pages or 50,
-                    max_files=request.max_files or 20,
+                    sources=pages,
+                    max_depth=request.max_depth,
+                    max_pages=request.max_pages,
+                    max_files=request.max_files,
                     timeout_seconds=request.timeout_seconds or 30,
                     allowed_domains=request.allowed_domains,
                     include_url_patterns=request.include_url_patterns,
                     include_link_text_patterns=request.include_link_text_patterns,
                     extra_params={
-                        **(extra_params or {}),
                         "ssl_verify": ssl_verify,
-                        "request_headers": self._resolve_request_headers(
-                            request
-                        ),
+                        "request_headers": self._resolve_request_headers(request),
                         "retry": self._resolve_retry_policy(request),
-                        "browser_escalation": self._browser_recovery_enabled(
-                            request
-                        ),
-                        "request_gate": self._network_gate(
-                            request, ssl_verify
-                        ),
-                        "response_url_gate": self._network_gate(
-                            request, ssl_verify
-                        ),
+                        "browser_escalation": self._browser_recovery_enabled(request),
+                        "request_gate": self._network_gate(request, ssl_verify),
+                        "response_url_gate": self._network_gate(request, ssl_verify),
                         "rate_limiter": self._rate_limiter,
-                        "browser_policy_strict": request.robots_policy_mode
-                        == "enforce"
+                        "browser_policy_strict": request.robots_policy_mode == "enforce"
                         or request.tos_policy_mode == "enforce",
                     },
                 )
             )
         except Exception as exc:
-            errors.append(
-                build_error_record(
-                    exc,
-                    stage="discovery.routing",
-                    provider=request.digger_provider,
-                )
+            error = error_record(
+                exc, stage="discovery.crawl", provider=request.crawl_provider,
             )
-            return None, errors
-        return artifacts, errors
+            notes.append("Crawl failed; continuing with uncrawled candidates.")
+            sources = set(pages) if error["retryable"] else set()
+            unfinished = [c for c in candidates if c.url in sources | unevaluated]
+            return candidates, normalize_error_records([error]), notes, state, unfinished
 
-    @staticmethod
-    def _digger_discovery_modes(artifacts: list[object]) -> list[str]:
-        """Sorted set of ``discovery_mode`` values across digger artifacts."""
-        return sorted(
-            {
-                str(artifact.metadata.get("discovery_mode") or "unknown")
-                for artifact in artifacts
-                if isinstance(artifact.metadata, dict)
-            }
-        )
-
-    def _build_routed_candidates_from_artifacts(
-        self,
-        *,
-        candidates: list[DiscoveryCandidate],
-        artifacts: list[object],
-        route_reason: str,
-    ) -> tuple[list[DiscoveryCandidate], set[str]]:
-        """Merge digger artifacts back onto candidates for a routing mode.
-
-        Existing candidates are re-tagged with ``route_reason``; artifacts
-        with no matching candidate become new crawl-child candidates that
-        inherit target provenance. Returns ``(routed_candidates, seen_urls)``
-        so the distributed path can append its non-crawled candidates after.
-        """
-        candidate_by_url: dict[str, list[DiscoveryCandidate]] = {}
+        origins: dict[str, list[DiscoveryCandidate]] = {}
         for candidate in candidates:
-            candidate_by_url.setdefault(candidate.url, []).append(candidate)
-
-        routed_candidates: list[DiscoveryCandidate] = []
-        seen_urls: set[str] = set()
-        for artifact in artifacts:
-            seen_urls.add(artifact.url)
-            existing = candidate_by_url.get(artifact.url)
-            if existing:
-                routed_candidates.extend(
-                    self._copy_candidate_with_reason(candidate, route_reason)
-                    for candidate in existing
-                )
-                continue
+            origins.setdefault(candidate.url, []).append(candidate)
+        seen = {(c.url, c.target_id) for c in candidates}
+        crawled: list[DiscoveryCandidate] = []
+        for artifact in result.artifacts:
             metadata = artifact.metadata or {}
-            origins = candidate_by_url.get(
-                str(metadata.get("source_seed")), []
-            )
-            contexts = [
-                candidate.target_metadata for candidate in origins
-            ] or [None]
-            routed_candidates.extend(
-                DiscoveryCandidate(
-                    url=artifact.url,
-                    source=artifact.source,
-                    score=CandidateScore(url_signal=0.35, trust_signal=0.55),
-                    reasons=[route_reason],
-                    mime_type=artifact.mime_type,
-                    extension=artifact.extension,
-                    target_metadata=context,
-                    snippet=str(metadata.get("link_text") or "") or None,
-                )
-                for context in contexts
-            )
-        return self._dedupe_candidates_by_url(routed_candidates), seen_urls
-
-    def _route_distributed_candidates(
-        self,
-        *,
-        request: DiscoveryRequest,
-        candidates: list[DiscoveryCandidate],
-    ) -> tuple[
-        list[DiscoveryCandidate],
-        list[dict[str, object]],
-        list[str],
-        dict[str, object],
-    ]:
-        notes: list[str] = []
-        errors: list[dict[str, object]] = []
-        routing_state: dict[str, object] = {
-            "mode": "distributed",
-            "applied": False,
-            "connector": request.digger_provider,
-        }
-
-        if not candidates:
-            notes.append(
-                "Distributed routing skipped because no candidates were available."
-            )
-            return candidates, errors, notes, routing_state
-
-        # Only route crawlable HTML pages (non-document URLs) from domains
-        # configured for deep crawling. PDFs and other direct-download files
-        # don't benefit from link-following. This prevents wasting the crawl
-        # budget on sites that serve content directly (no navigation needed).
-        crawlable_urls = list(
-            dict.fromkeys(
-                candidate.url
-                for candidate in candidates
-                if url_extension(candidate.url) not in DOWNLOADABLE_EXTENSIONS
-                and matches_allowed_domain(
-                    candidate.url, request.allowed_domains
-                )
-            )
-        )
-
-        if not crawlable_urls:
-            notes.append(
-                "Distributed routing skipped: no crawlable HTML pages from allowed domains."
-            )
-            # Filter by allowed_domains to maintain domain boundary.
-            if request.allowed_domains:
-                from .connectors.digger import NullDiggerConnector
-                candidates = [
-                    c for c in candidates
-                    if NullDiggerConnector._matches_allowed_domain(
-                        c.url, request.allowed_domains
+            for origin in origins.get(str(metadata.get("source_url")), ()):
+                if (artifact.url, origin.target_id) in seen:
+                    continue
+                seen.add((artifact.url, origin.target_id))
+                crawled.append(
+                    DiscoveryCandidate(
+                        url=artifact.url,
+                        source=artifact.source,
+                        score=CandidateScore(url_signal=0.35, trust_signal=0.55),
+                        reasons=[ROUTE_REASON_CRAWLED],
+                        mime_type=artifact.mime_type,
+                        extension=artifact.extension,
+                        target_metadata=origin.target_metadata,
+                        snippet=str(metadata.get("link_text") or "") or None,
+                        source_scope=origin.source_scope,
+                        source_url=origin.source_url or origin.url,
+                        target_id=origin.target_id,
                     )
-                ]
-            return candidates, errors, notes, routing_state
-
+                )
+        state.update(
+            applied=True,
+            page_count=len(pages),
+            artifact_count=len(result.artifacts),
+            incomplete_sources=sorted(result.incomplete_sources),
+        )
         notes.append(
-            f"Distributed routing: {len(crawlable_urls)} crawlable page(s) "
-            f"from {len(candidates)} candidate(s) sent to digger."
+            f"Crawl followed {len(pages)} page(s) and added {len(crawled)} linked candidate(s)."
         )
-
-        ssl_verify = self._downloads_ssl_verify()
-        filtered_seed_urls, policy_notes = self._filter_urls_for_policy(
-            urls=crawlable_urls,
-            request=request,
-            ssl_verify=ssl_verify,
-            stage_name="Routing",
-        )
-        notes.extend(policy_notes)
-        if not filtered_seed_urls:
+        if result.incomplete_sources:
             notes.append(
-                "Distributed routing skipped because policy controls filtered all routing URLs."
+                f"Crawl unfinished for {len(result.incomplete_sources)} source page(s) "
+                "(retryable failure or crawl budget); they stay incomplete."
             )
-            return candidates, errors, notes, routing_state
-
-        artifacts, discover_errors = self._discover_routing_artifacts(
-            request=request,
-            filtered_seed_urls=filtered_seed_urls,
-            ssl_verify=ssl_verify,
-        )
-        errors.extend(discover_errors)
-        if artifacts is None:
-            notes.append(
-                "Distributed routing failed; falling back to unrouted candidates."
-            )
-            return (
-                candidates,
-                normalize_error_records(errors),
-                notes,
-                routing_state,
-            )
-
-        routing_state.update(
-            {
-                "applied": True,
-                "artifact_count": len(artifacts),
-                "discovery_modes": self._digger_discovery_modes(artifacts),
-            }
-        )
-
-        if not artifacts:
-            notes.append(
-                "Distributed routing produced no digger artifacts; falling back to unrouted candidates."
-            )
-            return (
-                candidates,
-                normalize_error_records(errors),
-                notes,
-                routing_state,
-            )
-
-        routed_candidates, seen_urls = (
-            self._build_routed_candidates_from_artifacts(
-                candidates=candidates,
-                artifacts=artifacts,
-                route_reason=ROUTE_REASON_DISTRIBUTED,
-            )
-        )
-
-        notes.append(
-            f"Distributed routing staged {len(routed_candidates)} candidate(s) through digger."
-        )
-
-        # Merge digger artifacts with original non-crawled candidates (PDFs
-        # and other direct-download files that bypassed the digger).
-        for candidate in candidates:
-            if candidate.url not in seen_urls:
-                routed_candidates.append(candidate)
-                seen_urls.add(candidate.url)
-
-        return (
-            routed_candidates,
-            normalize_error_records(errors),
-            notes,
-            routing_state,
-        )
-
-    def _route_centralized_candidates(
-        self,
-        *,
-        request: DiscoveryRequest,
-        candidates: list[DiscoveryCandidate],
-    ) -> tuple[
-        list[DiscoveryCandidate],
-        list[dict[str, object]],
-        list[str],
-        dict[str, object],
-    ]:
-        notes: list[str] = []
-        errors: list[dict[str, object]] = []
-        routing_state: dict[str, object] = {
-            "mode": "centralized",
-            "applied": False,
-            "connector": request.digger_provider,
-        }
-
-        hub_pages = list(request.hub_pages or [])
-        seed_urls = hub_pages or [candidate.url for candidate in candidates]
-        if not seed_urls:
-            notes.append(
-                "Centralized routing skipped because no hub pages or candidates were available."
-            )
-            return candidates, errors, notes, routing_state
-
-        ssl_verify = self._downloads_ssl_verify()
-        filtered_seed_urls, policy_notes = self._filter_urls_for_policy(
-            urls=seed_urls,
-            request=request,
-            ssl_verify=ssl_verify,
-            stage_name="Routing",
-        )
-        notes.extend(policy_notes)
-        if not filtered_seed_urls:
-            notes.append(
-                "Centralized routing skipped because policy controls filtered all hub pages or routing URLs."
-            )
-            return candidates, errors, notes, routing_state
-
-        index_page_mode = {
-            "enabled": True,
-            "collect_all_matching_links": True,
-        }
-        if isinstance(request.index_page_mode, dict):
-            index_page_mode.update(request.index_page_mode)
-
-        extra_params: dict[str, object] = {
-            "index_page_mode": index_page_mode,
-        }
-        if request.index_links is not None:
-            extra_params["index_links"] = request.index_links
-
-        artifacts, discover_errors = self._discover_routing_artifacts(
-            request=request,
-            filtered_seed_urls=filtered_seed_urls,
-            ssl_verify=ssl_verify,
-            extra_params=extra_params,
-        )
-        errors.extend(discover_errors)
-        if artifacts is None:
-            notes.append(
-                "Centralized routing failed; falling back to unrouted candidates."
-            )
-            return (
-                candidates,
-                normalize_error_records(errors),
-                notes,
-                routing_state,
-            )
-
-        routing_state.update(
-            {
-                "applied": True,
-                "artifact_count": len(artifacts),
-                "discovery_modes": self._digger_discovery_modes(artifacts),
-                "hub_page_count": len(hub_pages),
-                "index_link_count": len(request.index_links or []),
-            }
-        )
-
-        if not artifacts:
-            notes.append(
-                "Centralized routing produced no sweep artifacts; falling back to unrouted candidates."
-            )
-            return (
-                candidates,
-                normalize_error_records(errors),
-                notes,
-                routing_state,
-            )
-
-        routed_candidates, _seen_urls = (
-            self._build_routed_candidates_from_artifacts(
-                candidates=candidates,
-                artifacts=artifacts,
-                route_reason=ROUTE_REASON_CENTRALIZED,
-            )
-        )
-
-        notes.append(
-            f"Centralized routing staged {len(routed_candidates)} candidate(s) through hub sweep."
-        )
-        return (
-            routed_candidates,
-            normalize_error_records(errors),
-            notes,
-            routing_state,
-        )
-
-    @staticmethod
-    def _dedupe_candidates_by_url(
-        candidates: list[DiscoveryCandidate],
-    ) -> list[DiscoveryCandidate]:
-        deduped: list[DiscoveryCandidate] = []
-        seen: set[tuple[str, str]] = set()
-        for candidate in candidates:
-            association = (
-                candidate.url,
-                json.dumps(
-                    candidate.target_metadata, sort_keys=True, default=str
-                ),
-            )
-            if association in seen:
-                continue
-            seen.add(association)
-            deduped.append(candidate)
-        return deduped
-
-    def _route_hybrid_candidates(
-        self,
-        *,
-        request: DiscoveryRequest,
-        candidates: list[DiscoveryCandidate],
-    ) -> tuple[
-        list[DiscoveryCandidate],
-        list[dict[str, object]],
-        list[str],
-        dict[str, object],
-    ]:
-        notes: list[str] = []
-        errors: list[dict[str, object]] = []
-        routing_state: dict[str, object] = {
-            "mode": "hybrid",
-            "applied": True,
-            "stages": [],
-        }
-
-        (
-            centralized_candidates,
-            centralized_errors,
-            centralized_notes,
-            centralized_state,
-        ) = self._route_centralized_candidates(
-            request=request,
-            candidates=candidates,
-        )
-        errors.extend(centralized_errors)
-        notes.extend(centralized_notes)
-        routing_state["stages"].append({"centralized": centralized_state})
-
-        centralized_routed_candidates = centralized_candidates
-        if int(centralized_state.get("artifact_count") or 0) == 0:
-            centralized_routed_candidates = []
-
-        centralized_urls = {
-            candidate.url for candidate in centralized_routed_candidates
-        }
-        fallback_candidates = [
-            candidate
-            for candidate in candidates
-            if candidate.url not in centralized_urls
+        unfinished = [
+            c for c in candidates
+            if c.url in result.incomplete_sources or c.url in unevaluated
         ]
-
-        (
-            distributed_candidates,
-            distributed_errors,
-            distributed_notes,
-            distributed_state,
-        ) = self._route_distributed_candidates(
-            request=request,
-            candidates=fallback_candidates,
-        )
-        errors.extend(distributed_errors)
-        notes.extend(distributed_notes)
-        routing_state["stages"].append({"distributed": distributed_state})
-
-        # Use the distributed results directly. When routing was skipped
-        # (e.g., all candidates are PDFs), distributed_candidates contains
-        # the original candidates filtered by allowed_domains.
-        distributed_routed_candidates = distributed_candidates
-
-        routing_state["centralized_candidate_count"] = len(
-            centralized_routed_candidates
-        )
-        routing_state["distributed_candidate_count"] = len(
-            distributed_routed_candidates
-        )
-
-        combined_candidates = self._dedupe_candidates_by_url(
-            [*centralized_routed_candidates, *distributed_routed_candidates]
-        )
-        routing_state["final_candidate_count"] = len(combined_candidates)
-
-        if combined_candidates:
-            notes.append(
-                f"Hybrid routing produced {len(combined_candidates)} candidate(s) after centralized-plus-distributed sequencing."
-            )
-            return (
-                combined_candidates,
-                normalize_error_records(errors),
-                notes,
-                routing_state,
-            )
-
-        notes.append(
-            "Hybrid routing produced no routed candidates; falling back to unrouted candidates."
-        )
-        return (
-            candidates,
-            normalize_error_records(errors),
-            notes,
-            routing_state,
-        )
+        return candidates + crawled, [], notes, state, unfinished
 
     @staticmethod
     def _write_download_index(
@@ -2929,10 +2069,9 @@ class DiscoveryEngine:
             "run_id",
             "domain",
             "target_label",
-            "partition_mode",
-            "source_state",
-            "source_jurisdiction",
-            "source_host",
+            "target_id",
+            "source_scope",
+            "source_url",
             "status",
             "classification_passed",
             "url",
@@ -2960,12 +2099,9 @@ class DiscoveryEngine:
                         "run_id": run_id,
                         "domain": request.domain,
                         "target_label": record.get("target_label"),
-                        "partition_mode": record.get("partition_mode"),
-                        "source_state": record.get("source_state"),
-                        "source_jurisdiction": record.get(
-                            "source_jurisdiction"
-                        ),
-                        "source_host": record.get("source_host"),
+                        "target_id": record.get("target_id"),
+                        "source_scope": record.get("source_scope"),
+                        "source_url": record.get("source_url"),
                         "status": record.get("status"),
                         "classification_passed": record.get(
                             "classification_passed"
@@ -3011,8 +2147,7 @@ class DiscoveryEngine:
         fieldnames = [
             "target",
             "partition",
-            "state",
-            "jurisdiction",
+            "source_scope",
             "doc_kind",
             "relevance",
             "llm_is_primary",
@@ -3048,8 +2183,7 @@ class DiscoveryEngine:
                     {
                         "target": record.get("target_label"),
                         "partition": partition,
-                        "state": record.get("source_state"),
-                        "jurisdiction": record.get("source_jurisdiction"),
+                        "source_scope": record.get("source_scope"),
                         "doc_kind": record.get("review_doc_kind"),
                         "relevance": record.get("review_relevance"),
                         "llm_is_primary": record.get("review_is_primary"),
@@ -3148,26 +2282,15 @@ class DiscoveryEngine:
         review_ran = any(
             "review_selected" in record for record in download_records
         )
-        kept_rel_paths: set[str] = set()
-        for record in download_records:
-            if cls._record_is_curated(
-                record,
-                review_ran=review_ran,
-                review_failed=bool(record.get("review_failed")),
-            ):
-                rel = record.get("relative_path")
-                if rel:
-                    kept_rel_paths.add(str(rel))
-
         if documents_dir.exists():
             for record in download_records:
-                rel = record.get("relative_path")
-                if not rel:
+                if not record.get("path") or cls._record_is_curated(
+                    record,
+                    review_ran=review_ran,
+                    review_failed=bool(record.get("review_failed")),
+                ):
                     continue
-                rel_text = str(rel)
-                if rel_text in kept_rel_paths:
-                    continue
-                file_path = documents_dir / rel_text
+                file_path = Path(str(record["path"]))
                 _remove_file(file_path)
                 if file_path.parent.exists():
                     cache_dir = file_path.parent / TEXT_CACHE_DIRNAME
@@ -3238,23 +2361,95 @@ class DiscoveryEngine:
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _target_checkpoint_key(target: dict[str, object]) -> str:
-        """Stable key for a target row used in checkpoint tracking."""
-        label = target.get("label")
-        if label and len(target) == 1:
-            return str(label)
-        return hashlib.md5(
-            json.dumps(target, sort_keys=True, default=str).encode()
-        ).hexdigest()[:12]
+    def _completion_key(target_id: object, source_url: object) -> str | None:
+        """Checkpoint key: the target id, or a stable id for a shared source."""
+        if target_id:
+            return str(target_id)
+        if source_url:
+            digest = hashlib.md5(str(source_url).encode()).hexdigest()[:12]
+            return f"source-{digest}"
+        return None
+
+    @classmethod
+    def _record_completion_key(cls, record: dict[str, object]) -> str | None:
+        return cls._completion_key(record.get("target_id"), record.get("source_url"))
 
     @staticmethod
-    def _checkpoint_path(manifest_path: Path) -> Path:
-        """Path to the domain-level checkpoint file."""
-        run_dir = manifest_path.parent
-        domain_dir = (
-            run_dir.parent.parent if run_dir.parent.name == "runs" else run_dir
+    def _input_digest(request: DiscoveryRequest, target: dict[str, object]) -> str:
+        """Digest of what a target executes: its URLs, rendered queries and
+        rendered selection terms. Passthrough fields leave it unchanged."""
+        from .connectors.serpapi_seeker import resolve_search_queries
+
+        context = CandidateSelector._normalize_template_context(
+            DiscoveryEngine._target_metadata(target) or {}
         )
-        return domain_dir / "checkpoint.json"
+        payload = {
+            "urls": target.get("urls") or [],
+            "queries": resolve_search_queries(
+                DiscoveryEngine._seeker_input(request, target)
+            ),
+            "selection": [
+                CandidateSelector._resolve_templates(templates or [], context)
+                for templates in (
+                    request.selection_target_identity_require_any_templates,
+                    request.selection_target_identity_require_all_templates,
+                    request.selection_target_identity_exclude_any_templates,
+                )
+            ],
+        }
+        encoded = json.dumps(payload, sort_keys=True, default=str)
+        return hashlib.sha256(encoded.encode()).hexdigest()[:16]
+
+    @classmethod
+    def _input_digests(cls, request: DiscoveryRequest) -> dict[str, str]:
+        """Completion key → input digest for every target (sources have none)."""
+        return {
+            identify_target(target, request.partition_by): cls._input_digest(request, target)
+            for target in request.targets or ()
+        }
+
+    @classmethod
+    def _skip_completed_inputs(
+        cls,
+        request: DiscoveryRequest,
+        completed: dict[str, dict[str, object]],
+    ) -> tuple[DiscoveryRequest, list[str]]:
+        """Drop completed targets and shared sources from a resumed run.
+
+        A target is skipped only when its id and input digest both match.
+        """
+        digests = cls._input_digests(request)
+        inputs = {
+            "targets": (
+                request.targets or [],
+                lambda target: identify_target(target, request.partition_by),
+            ),
+            "sources": (request.sources, lambda url: cls._completion_key(None, url)),
+        }
+        remaining: dict[str, list] = {}
+        notes: list[str] = []
+        for name, (items, key) in inputs.items():
+            remaining[name] = [
+                item for item in items
+                if key(item) not in completed
+                or completed[key(item)].get("input_digest") != digests.get(key(item))
+            ]
+            skipped = len(items) - len(remaining[name])
+            if skipped:
+                notes.append(
+                    f"Checkpoint: skipped {skipped} already-completed {name[:-1]}(s) "
+                    f"(of {len(items)} total). Use --fresh to include them."
+                )
+        if not notes:
+            return request, notes
+        return (
+            dataclass_replace(
+                request,
+                targets=None if request.targets is None else remaining["targets"],
+                sources=remaining["sources"],
+            ),
+            notes,
+        )
 
     @staticmethod
     def _load_checkpoint(
@@ -3295,8 +2490,8 @@ class DiscoveryEngine:
         """Run keyword-based content classification on downloaded files.
 
         Reads the first pages of each downloaded file and checks for
-        required_keywords.  Records that fail and have action='filter'
-        get their status changed to 'rejected_classifier'.
+        required_keywords.  Failing records get status 'rejected_classifier'
+        when action='filter', except configured URLs, which are always kept.
         """
         from .validators import ContentSampler
 
@@ -3319,7 +2514,7 @@ class DiscoveryEngine:
                 record["classification_score"] = result.confidence_score
                 if not result.success:
                     failed += 1
-                    if action == "filter":
+                    if action == "filter" and record.get("source") != CONFIGURED_SOURCE:
                         record["status"] = "rejected_classifier"
                 else:
                     passed += 1
@@ -3695,10 +2890,11 @@ class DiscoveryEngine:
                                             >= min_rendered_chars
                                         ):
                                             # Save a new validated file.
-                                            deeper_path = file_path.with_stem(
-                                                f"{file_path.stem}-deep"
-                                            )
                                             new_record = dict(record)
+                                            new_record["url"] = deeper_url
+                                            requested = Path(str(record.get("relative_path") or ""))
+                                            relative = requested.with_stem(f"{requested.stem}-deep")
+                                            deeper_path = file_path.with_stem(f"{file_path.stem}-deep")
                                             self._replace_recovered_content(
                                                 deeper_path,
                                                 deeper_html,
@@ -3712,15 +2908,7 @@ class DiscoveryEngine:
                                             new_record["path"] = str(
                                                 deeper_path
                                             )
-                                            new_record["relative_path"] = str(
-                                                Path(
-                                                    record.get(
-                                                        "relative_path", ""
-                                                    )
-                                                ).parent
-                                                / deeper_path.name
-                                            )
-                                            new_record["url"] = deeper_url
+                                            new_record["relative_path"] = relative.as_posix()
                                             new_record["final_url"] = (
                                                 deeper_final_url
                                             )
@@ -3763,25 +2951,14 @@ class DiscoveryEngine:
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _group_records_by_target_label(
+    def _group_records_by_target(
         download_records: list[dict[str, object]],
     ) -> dict[str, list[dict[str, object]]]:
-        """Group download records by their target label.
-
-        Records with no usable target label are dropped (matching the prior
-        per-stage grouping). Shared by both post-review retry stages.
-        """
-        from collections import defaultdict
-
-        by_target: dict[str, list[dict[str, object]]] = defaultdict(list)
+        """Group target-scoped download records by ``target_id`` (shared records are skipped)."""
+        by_target: dict[str, list[dict[str, object]]] = {}
         for rec in download_records:
-            meta = rec.get("target_metadata") or {}
-            key = (
-                DiscoveryEngine._target_checkpoint_key(meta)
-                if meta else str(rec.get("target_label") or "")
-            )
-            if key:
-                by_target[key].append(rec)
+            if rec.get("target_id"):
+                by_target.setdefault(str(rec["target_id"]), []).append(rec)
         return by_target
 
     def _download_and_review_retry_candidates(
@@ -3909,7 +3086,7 @@ class DiscoveryEngine:
             return download_records, notes
 
         # Find targets with 0 curated AND JS-shell downloads from code-hosting domains
-        by_target = self._group_records_by_target_label(download_records)
+        by_target = self._group_records_by_target(download_records)
 
         shell_urls: list[tuple[str, str, dict[str, object]]] = []
         for target_key, records in by_target.items():
@@ -3925,7 +3102,7 @@ class DiscoveryEngine:
                     if any(d in host for d in code_hosting_domains):
                         file_path = rec.get("path")
                         if file_path and _Path(str(file_path)).suffix.lower() in {".html", ".htm"}:
-                            shell_urls.append((target_key, url, rec.get("target_metadata") or {}))
+                            shell_urls.append((target_key, url, rec))
                             break
 
         if not shell_urls:
@@ -3952,9 +3129,9 @@ class DiscoveryEngine:
 
         digger = HttpDiggerConnector()
         crawled = 0
-        for target_key, url, target_meta in shell_urls:
+        for target_key, url, shell in shell_urls:
             di = DiggerInput(
-                seed_urls=[url],
+                sources=[url],
                 max_depth=JS_SHELL_RETRY_MAX_DEPTH,
                 max_pages=JS_SHELL_RETRY_MAX_PAGES,
                 max_files=JS_SHELL_RETRY_MAX_FILES,
@@ -3979,11 +3156,11 @@ class DiscoveryEngine:
                 },
             )
             try:
-                artifacts = digger.discover(di)
+                artifacts = digger.discover(di).artifacts
             except (OSError, RuntimeError, ValueError) as exc:
                 # Isolate network, browser, and crawl-input failures.
                 self._retry_errors.append(
-                    build_error_record(
+                    error_record(
                         exc, stage="discovery.retry_crawl", provider="http"
                     )
                 )
@@ -4002,7 +3179,10 @@ class DiscoveryEngine:
                         url_signal=JS_SHELL_RETRY_URL_SIGNAL, anchor_signal=0.0,
                         content_signal=0.0, trust_signal=JS_SHELL_RETRY_TRUST_SIGNAL,
                     ),
-                    target_metadata=target_meta,
+                    target_metadata=shell.get("target_metadata"),
+                    source_scope=shell.get("source_scope"),
+                    source_url=shell.get("source_url") or url,
+                    target_id=shell.get("target_id"),
                 )
                 for a in artifacts
             ]
@@ -4121,7 +3301,7 @@ class DiscoveryEngine:
         # Group records by target, find targets with 0 curated
         from urllib.parse import urlparse
 
-        by_target = self._group_records_by_target_label(download_records)
+        by_target = self._group_records_by_target(download_records)
 
         failed_targets: list[tuple[str, str, dict[str, object]]] = []
         for target_key, records in by_target.items():
@@ -4145,8 +3325,7 @@ class DiscoveryEngine:
                     # Keep first 2-3 path segments as the jurisdiction scope
                     scope = "/".join(path_parts[:3]) if len(path_parts) >= 3 else "/".join(path_parts[:2])
                     site_prefix = f"{host}/{scope}" if scope else host
-                    meta = rec.get("target_metadata") or {}
-                    failed_targets.append((target_key, site_prefix, meta))
+                    failed_targets.append((target_key, site_prefix, rec))
                     break
 
         if not failed_targets:
@@ -4188,23 +3367,20 @@ class DiscoveryEngine:
                 ),
             )
             * 60.0,
-            cache_refresh=bool(
-                getattr(request, "reprocess", False)
-                and not getattr(request, "dry_run", False)
-            ),
+            cache_refresh=request.fresh and not request.dry_run,
         )
 
         retry_candidates = []
-        for target_key, site_prefix, target_meta in failed_targets:
+        for target_key, site_prefix, origin in failed_targets:
             query = f"site:{site_prefix} {keyword_or}"
             try:
                 before = seeker.queries_run
                 results = seeker.discover(
-                    SeekerInput(query=query, max_results=5)
+                    SeekerInput(queries=[query], max_results=5)
                 )
             except Exception as exc:
                 self._retry_errors.append(
-                    build_error_record(
+                    error_record(
                         exc,
                         stage="discovery.retry_search",
                         provider="serpapi",
@@ -4223,13 +3399,7 @@ class DiscoveryEngine:
             for result in results[:2]:
                 url = result.get("link") or result.get("url")
                 if url:
-                    retry_candidates.append(
-                        {
-                            "url": url,
-                            "target_metadata": target_meta,
-                            "source": "code_hosting_retry",
-                        }
-                    )
+                    retry_candidates.append((url, origin))
 
             retry_notes.append(
                 f"Code-hosting retry for '{target_key}': queried site:{site_prefix}, "
@@ -4245,7 +3415,7 @@ class DiscoveryEngine:
 
         candidates_for_download = [
             DiscoveryCandidate(
-                url=c["url"],
+                url=url,
                 source="code_hosting_retry",
                 score=CandidateScore(
                     url_signal=0.6,
@@ -4253,9 +3423,11 @@ class DiscoveryEngine:
                     content_signal=0.0,
                     trust_signal=0.4,
                 ),
-                target_metadata=c.get("target_metadata"),
+                target_metadata=origin.get("target_metadata"),
+                source_scope=origin.get("source_scope"),
+                target_id=origin.get("target_id"),
             )
-            for c in retry_candidates
+            for url, origin in retry_candidates
         ]
 
         # Download + review the retry batch via the shared retry core. The
@@ -4297,7 +3469,7 @@ class DiscoveryEngine:
         )
 
     def _browser_policy_gate(
-        self, request: DiscoveryRequest, url: str
+        self, request: DiscoveryRequest, url: str, *, configured: bool = False,
     ) -> None:
         """Gate navigation, not uncontrolled browser subresources."""
         if (
@@ -4310,7 +3482,10 @@ class DiscoveryEngine:
             )
             raise RuntimeError(msg)
         check_url(
-            url, self._network_gate(request, self._downloads_ssl_verify())
+            url,
+            self._network_gate(
+                request, self._downloads_ssl_verify(), configured=configured
+            ),
         )
         if self._rate_limiter:
             self._rate_limiter.wait()
@@ -4339,8 +3514,10 @@ class DiscoveryEngine:
                 records,
                 request.document_review,
                 notes,
+                cache_dir=Workspace(request.domain).review_cache,
                 models=request.models,
                 classifier_keywords=classifier.get("nice_to_have_keywords"),
+                identity_fields=request.partition_by,
             )
         return records, notes, costs
 
@@ -4349,13 +3526,15 @@ class DiscoveryEngine:
         downloads: list[dict[str, object]],
         review_cfg: dict[str, object],
         notes: list[str],
+        cache_dir: Path,
         models: dict[str, object] | None = None,
         classifier_keywords: list[str] | None = None,
+        identity_fields: list[str] | None = None,
     ) -> tuple[list[dict[str, object]], list[str], dict[str, object]]:
         """LLM-grade downloaded files and promote the primary one(s).
 
-        Annotate records and move selected files into ``reviewed/``
-        when configured. Review errors remain isolated
+        Annotate records in place; grades are reused from ``cache_dir``.
+        Review errors remain isolated
         from acquisition and prevent incomplete curation from replacing
         previously published documents.
 
@@ -4389,103 +3568,71 @@ class DiscoveryEngine:
                 if str(field).strip()
             ]
             or None,
+            cache_dir=cache_dir,
+            identity_fields=identity_fields,
         )
+        # Configured URLs bypass review and keep_top: always selected.
+        reviewable = [r for r in downloads if r.get("source") != CONFIGURED_SOURCE]
+        for record in downloads:
+            if record.get("source") == CONFIGURED_SOURCE:
+                record["review_selected"] = record.get("status") == "downloaded"
         try:
-            downloads, notes = reviewer.review(downloads, notes)
+            reviewable, notes = reviewer.review(reviewable, notes)
             return downloads, notes, reviewer.get_costs()
         except Exception as exc:  # noqa: BLE001 - review is best-effort
             # Failed review protects prior consolidated partitions.
-            for _rec in downloads:
+            for _rec in reviewable:
                 _rec["review_failed"] = True
+                _rec["review_retryable"] = True
             notes.append(f"Document review error (skipped): {exc}")
             return downloads, notes, reviewer.get_costs()
-
-    def _completion_partition(
-        self,
-        request: DiscoveryRequest,
-        documents_dir: Path,
-        *,
-        url: str = "",
-        target_metadata: dict[str, object] | None = None,
-    ) -> Path:
-        """Resolve relative completion and promotion partitions."""
-        _, _, partition = self._resolve_partition_dir(
-            documents_dir=documents_dir,
-            url=url,
-            request=request,
-            target_metadata=target_metadata,
-        )
-        return partition.relative_to(documents_dir)
 
     def _initial_completion_blocks(
         self,
         *,
         request: DiscoveryRequest,
-        documents_dir: Path,
-        original_targets: list[dict[str, object]],
-        completed_entries: dict[str, dict[str, object]],
         selection_metrics: list[dict[str, object]],
         seeker_failed: bool,
     ) -> tuple[set[str], _PartitionIndex]:
-        """Protect reused targets and unfinished searches."""
+        """Block partitions of active targets whose search is unfinished."""
+        targets = request.targets or []
         incomplete_keys = {
-            self._target_checkpoint_key(
-                request.targets[int(metric["target_index"])]
-            )
+            identify_target(targets[int(metric["target_index"])], request.partition_by)
             for metric in selection_metrics
-            if metric.get("search_complete") is False and request.targets
+            if metric.get("search_complete") is False and targets
         }
         if seeker_failed:
-            incomplete_keys.update(
-                self._target_checkpoint_key(target)
-                for target in original_targets
-            )
+            incomplete_keys.update(identify_target(t, request.partition_by) for t in targets)
         blocked = _PartitionIndex()
-        target_partitioned = bool(
-            request.partition_by
-            or request.partition_mode == "jurisdiction"
-            or (request.state and request.jurisdiction)
-        )
-        for target in original_targets:
-            key = self._target_checkpoint_key(target)
-            if key not in incomplete_keys and key not in completed_entries:
-                continue
-            blocked.add(
-                self._completion_partition(
-                    request, documents_dir, target_metadata=target
+        for target in targets:
+            key = identify_target(target, request.partition_by)
+            if key in incomplete_keys:
+                blocked.add(
+                    self._partition(request, key, self._target_metadata(target))
                 )
-                if target_partitioned
-                else Path()
-            )
-        if not original_targets and any(
+        if not targets and any(
             metric.get("search_complete") is False
             for metric in selection_metrics
         ):
             blocked.add(Path())
         return incomplete_keys, blocked
 
-    def _block_capped_candidates(
+    def _block_candidates(
         self,
         *,
         request: DiscoveryRequest,
-        documents_dir: Path,
         candidates: list[DiscoveryCandidate],
-        download_cap: int,
         incomplete_keys: set[str],
         blocked: _PartitionIndex,
     ) -> None:
-        """Protect targets and partitions truncated by downloads."""
-        for candidate in candidates[download_cap:]:
-            if candidate.target_metadata:
-                incomplete_keys.add(
-                    self._target_checkpoint_key(candidate.target_metadata)
-                )
+        """Keep the owners of unfinished candidates incomplete and blocked."""
+        for candidate in candidates:
+            key = self._completion_key(candidate.target_id, candidate.source_url)
+            if key:
+                incomplete_keys.add(key)
             blocked.add(
-                self._completion_partition(
-                    request,
-                    documents_dir,
-                    url=candidate.url,
-                    target_metadata=candidate.target_metadata,
+                self._partition(
+                    request, candidate.target_id, candidate.target_metadata
                 )
             )
 
@@ -4493,50 +3640,46 @@ class DiscoveryEngine:
         self,
         *,
         request: DiscoveryRequest,
-        documents_dir: Path,
         download_records: list[dict[str, object]],
         incomplete_keys: set[str],
         blocked: _PartitionIndex,
         run_id: str,
         started_at: datetime,
     ) -> dict[str, dict[str, object]]:
-        """Count successes after blocking all failed partitions.
+        """Complete targets and sources whose outcomes are all final.
 
+        Every non-retryable outcome (download, terminal failure, skip,
+        rejection) counts toward completion. Retryable failures block their
+        partition and keep the key incomplete.
         Entries stay in memory until publication provides evidence.
-        Unattributed failures also protect their partitions.
         """
         failed_keys: set[str] = set()
         for record in download_records:
-            if not (
-                record.get("status") == "failed" or record.get("review_failed")
-            ):
+            if not is_retryable(record):
                 continue
-            metadata = record.get("target_metadata")
-            if metadata:
-                failed_keys.add(self._target_checkpoint_key(metadata))
+            key = self._record_completion_key(record)
+            if key:
+                failed_keys.add(key)
             blocked.add(
-                self._completion_partition(
+                self._partition(
                     request,
-                    documents_dir,
-                    url=str(record.get("url") or ""),
-                    target_metadata=metadata,
+                    record.get("target_id"),
+                    record.get("target_metadata"),
                 )
             )
 
         entries: dict[str, dict[str, object]] = {}
         for record in download_records:
-            metadata = record.get("target_metadata")
-            if not metadata or record.get("status") != "downloaded":
+            key = self._record_completion_key(record)
+            if not key:
                 continue
-            key = self._target_checkpoint_key(metadata)
             if key in failed_keys or key in incomplete_keys:
                 continue
             if blocked and self._partition_is_blocked(
-                self._completion_partition(
+                self._partition(
                     request,
-                    documents_dir,
-                    url=str(record.get("url") or ""),
-                    target_metadata=metadata,
+                    record.get("target_id"),
+                    record.get("target_metadata"),
                 ),
                 blocked,
             ):
@@ -4547,14 +3690,13 @@ class DiscoveryEngine:
                     "run_id": run_id,
                     "download_count": 0,
                 }
-            entries[key]["download_count"] += 1
+            entries[key]["download_count"] += record.get("status") == "downloaded"
         return entries
 
     def _empty_target_completions(
         self,
         *,
         request: DiscoveryRequest,
-        documents_dir: Path,
         selection_metrics: list[dict[str, object]],
         download_records: list[dict[str, object]],
         incomplete_keys: set[str],
@@ -4566,9 +3708,9 @@ class DiscoveryEngine:
         if request.dry_run or not request.targets:
             return set()
         attempted_keys = {
-            self._target_checkpoint_key(record["target_metadata"])
+            record["target_id"]
             for record in download_records
-            if record.get("target_metadata")
+            if record.get("target_id")
         }
         empty_parts: set[Path] = set()
         for metric in selection_metrics:
@@ -4578,7 +3720,7 @@ class DiscoveryEngine:
             ):
                 continue
             target = request.targets[int(metric["target_index"])]
-            key = self._target_checkpoint_key(target)
+            key = identify_target(target, request.partition_by)
             if key in incomplete_keys or key in attempted_keys:
                 continue
             entries[key] = {
@@ -4587,15 +3729,9 @@ class DiscoveryEngine:
                 "outcome": "empty",
                 "download_count": 0,
             }
-            if (
-                request.partition_by
-                or request.partition_mode == "jurisdiction"
-            ):
-                empty_parts.add(
-                    self._completion_partition(
-                        request, documents_dir, target_metadata=target
-                    )
-                )
+            empty_parts.add(
+                self._partition(request, key, self._target_metadata(target))
+            )
         return empty_parts
 
     @staticmethod
@@ -4635,7 +3771,7 @@ class DiscoveryEngine:
                     record_is_curated(record, review_ran=reviewed)
                     for record in download_records
                 )
-            elif empty_parts and request.reprocess:
+            elif empty_parts and request.fresh:
                 result.curated_dir = paths.run_curated_dir
         result.status = discovery_status(
             dry_run=request.dry_run,
@@ -4668,7 +3804,6 @@ class DiscoveryEngine:
         paths: PublicationPaths,
         result: DiscoveryResult,
         started_at: datetime,
-        normalized_seed_urls: list[str],
         candidates: list[DiscoveryCandidate],
         download_records: list[dict[str, object]],
         stage_summaries: dict[str, object],
@@ -4683,9 +3818,8 @@ class DiscoveryEngine:
             started_at=started_at.isoformat(),
             input={
                 "domain": request.domain,
-                "seed_urls": normalized_seed_urls,
-                "query": request.query,
-                "enable_serpapi": request.enable_serpapi,
+                "sources": list(request.sources),
+                "queries": list(request.queries),
                 "dry_run": request.dry_run,
             },
             constraints=self._build_constraints(request),
@@ -4827,11 +3961,10 @@ class DiscoveryEngine:
         }
         curated_paths: dict[str, dict[str, str]] = {}
         for record in download_records:
-            metadata = record.get("target_metadata")
+            key = self._record_completion_key(record)
             relative_path = record.get("relative_path")
-            if not metadata or not relative_path:
+            if not key or not relative_path:
                 continue
-            key = self._target_checkpoint_key(metadata)
             if key not in entries:
                 continue
             path = paths.domain_dir / "curated" / str(relative_path)
@@ -4879,7 +4012,7 @@ class DiscoveryEngine:
             fingerprint=fingerprint,
         )
         # Reuse and empty runs keep the prior latest-downloads pointer.
-        if request.output_manifest is None and download_records:
+        if download_records:
             self._refresh_latest_pointer(
                 paths.manifest_path.parent, domain_dir=paths.domain_dir
             )
@@ -4917,13 +4050,10 @@ class DiscoveryEngine:
         if not request.dry_run:
             with discovery_publication(paths.domain_dir):
                 pass
-        normalized_seed_urls, seed_errors = self._normalize_seed_urls(
-            request.seed_urls
-        )
         seeker_state, seeker_errors, seeker_notes = (
             self._resolve_serpapi_state(request)
         )
-        all_errors = normalize_error_records([*seed_errors, *seeker_errors])
+        all_errors = normalize_error_records(seeker_errors)
         self._emit_progress(
             request,
             f"run: discovery started (run_id={run_id})",
@@ -4932,7 +4062,7 @@ class DiscoveryEngine:
         # --fresh clears evidence instead of reusing completions.
         original_targets = list(request.targets or [])
         checkpoint_path = paths.domain_dir / "checkpoint.json"
-        if request.reprocess:
+        if request.fresh:
             if not request.dry_run:
                 with contextlib.suppress(OSError):
                     checkpoint_path.unlink(missing_ok=True)
@@ -4941,24 +4071,11 @@ class DiscoveryEngine:
             completed_checkpoint_keys = self._load_checkpoint(
                 checkpoint_path, fingerprint=fingerprint
             )
-        if completed_checkpoint_keys and request.targets:
-            original_target_count = len(request.targets)
-            request = dataclass_replace(
-                request,
-                targets=[
-                    t
-                    for t in request.targets
-                    if self._target_checkpoint_key(t)
-                    not in completed_checkpoint_keys
-                ],
-            )
-            skipped_count = original_target_count - len(request.targets)
-            if skipped_count:
-                seeker_notes.append(
-                    f"Checkpoint: skipped {skipped_count} already-completed "
-                    f"target(s) (of {original_target_count} total). "
-                    f"Use --fresh to include them."
-                )
+        original_sources = list(request.sources)
+        request, skip_notes = self._skip_completed_inputs(
+            request, completed_checkpoint_keys
+        )
+        seeker_notes.extend(skip_notes)
 
         # Search only active targets with a healthy provider.
         prioritizer_lineage: list[dict[str, object]] = []
@@ -4979,109 +4096,54 @@ class DiscoveryEngine:
             ) = self._run_seeker(
                 request, seeker_state, seeker_notes, all_errors
             )
-            self._emit_progress(
-                request,
-                f"run: seeker stage completed with "
-                f"{len(seeker_candidates)} candidate(s)",
-            )
             seeker_raw_count = sum(
                 int(metric.get("input_candidates", 0))
                 for metric in target_selection_metrics
             )
+            self._emit_progress(
+                request,
+                f"run: seeker stage completed: {seeker_raw_count} candidate(s) "
+                f"found across {len(target_selection_metrics)} target(s), "
+                f"{len(seeker_candidates)} selected",
+            )
 
-        # Merge eligible seeds after resume filtering.
-        seed_candidates = self._seed_candidates(normalized_seed_urls)
-
-        # Attribute seeds for partitioning, review, and resume.
-        if seed_candidates and original_targets:
-            self._attribute_seeds_to_targets(seed_candidates, original_targets)
-            seed_candidates = [
-                candidate
-                for candidate in seed_candidates
-                if not candidate.target_metadata
-                or self._target_checkpoint_key(candidate.target_metadata)
-                not in completed_checkpoint_keys
-            ]
-        seed_candidates = [
-            candidate
-            for candidate in seed_candidates
-            if self._passes_final_url_selection_guard(
-                final_url=candidate.url, request=request
-            )[0]
-        ]
-
-        if seeker_candidates and seed_candidates:
-            # A seed already discovered by search is downloaded once.
-            seeker_urls = {c.url for c in seeker_candidates}
-            unique_seeds = [
-                c for c in seed_candidates if c.url not in seeker_urls
-            ]
-            candidates = seeker_candidates + unique_seeds
-            if unique_seeds:
-                seeker_notes.append(
-                    f"Merged {len(unique_seeds)} seed URL(s) with "
-                    f"{len(seeker_candidates)} seeker candidate(s)."
-                )
-        elif seeker_candidates:
-            candidates = seeker_candidates
-        else:
-            candidates = seed_candidates
-
-        candidates = [
-            candidate
-            for candidate in candidates
-            if self._passes_final_url_selection_guard(
-                final_url=candidate.url, request=request
-            )[0]
+        # Configured URLs of resumed targets were dropped with their rows.
+        configured = self._configured_candidates(request)
+        configured_keys = {(c.url, c.target_id) for c in configured}
+        candidates = configured + [
+            c for c in seeker_candidates
+            if (c.url, c.target_id) not in configured_keys
         ]
         all_errors, seeker_notes = self._append_discovery_gap_diagnostics(
             request=request,
             candidates=candidates,
-            normalized_seed_urls=normalized_seed_urls,
             errors=all_errors,
             notes=seeker_notes,
             discovered_count=seeker_raw_count,
         )
-
         candidates_after_seeker = len(candidates)
 
-        routing_notes: list[str] = []
-        routing_state: dict[str, object] = {
-            "mode": request.topology_mode or "default",
-            "applied": False,
-        }
-        route = {
-            "distributed": self._route_distributed_candidates,
-            "centralized": self._route_centralized_candidates,
-            "hybrid": self._route_hybrid_candidates,
-        }.get(request.topology_mode)
-        if route is not None:
-            candidates, routing_errors, routing_notes, routing_state = route(
-                request=request, candidates=candidates
-            )
-            all_errors = normalize_error_records(
-                [*all_errors, *routing_errors]
-            )
-
-        # Refilter crawls without flattening search-only selections.
-        routing_applied = bool(routing_state.get("applied"))
-        if candidates and routing_applied:
-            candidates, post_routing_filter_notes = (
+        candidates, crawl_errors, crawl_notes, crawl_state, crawl_unfinished = (
+            self._crawl_candidates(request=request, candidates=candidates)
+        )
+        all_errors = normalize_error_records([*all_errors, *crawl_errors])
+        if crawl_state["applied"]:
+            # Crawled links obey selection; configured URLs pass through.
+            candidates, post_crawl_notes = (
                 self._apply_post_routing_selection_filters(
-                    request=request,
-                    candidates=candidates,
+                    request=request, candidates=candidates,
                 )
             )
-            routing_notes.extend(post_routing_filter_notes)
-
-        candidates = [
-            candidate
-            for candidate in candidates
-            if self._passes_final_url_selection_guard(
-                final_url=candidate.url, request=request
-            )[0]
-        ]
-        candidates_after_routing = len(candidates)
+            crawl_notes.extend(post_crawl_notes)
+            candidates = [
+                candidate
+                for candidate in candidates
+                if candidate.source == CONFIGURED_SOURCE
+                or self._passes_final_url_selection_guard(
+                    final_url=candidate.url, request=request
+                )[0]
+            ]
+        candidates_after_crawl = len(candidates)
 
         documents_dir.mkdir(parents=True, exist_ok=True)
         manifest_path.parent.mkdir(parents=True, exist_ok=True)
@@ -5089,11 +4151,14 @@ class DiscoveryEngine:
         download_records: list[dict[str, object]] = []
         incomplete_keys, blocked_parts = self._initial_completion_blocks(
             request=request,
-            documents_dir=documents_dir,
-            original_targets=original_targets,
-            completed_entries=completed_checkpoint_keys,
             selection_metrics=target_selection_metrics,
             seeker_failed=bool(seeker_errors),
+        )
+        self._block_candidates(
+            request=request,
+            candidates=crawl_unfinished,
+            incomplete_keys=incomplete_keys,
+            blocked=blocked_parts,
         )
         download_notes: list[str] = []
         review_costs: dict[str, object] = {}
@@ -5108,17 +4173,17 @@ class DiscoveryEngine:
             download_notes.extend(gating_notes)
             download_errors: list[dict[str, object]] = []
             if candidates_for_download:
-                download_cap = request.max_files or len(
-                    candidates_for_download
-                )
-                self._block_capped_candidates(
-                    request=request,
-                    documents_dir=documents_dir,
-                    candidates=candidates_for_download,
-                    download_cap=download_cap,
-                    incomplete_keys=incomplete_keys,
-                    blocked=blocked_parts,
-                )
+                download_cap = request.max_files
+                if download_cap is not None:
+                    self._block_candidates(
+                        request=request,
+                        candidates=[
+                            c for c in candidates_for_download
+                            if c.source != CONFIGURED_SOURCE
+                        ][download_cap:],
+                        incomplete_keys=incomplete_keys,
+                        blocked=blocked_parts,
+                    )
                 download_records, download_errors, stage_download_notes = (
                     self._download_candidates(
                         request=request,
@@ -5159,37 +4224,35 @@ class DiscoveryEngine:
                         )
                     )
 
-                hard_blocks = set(blocked_parts)
-                for record in download_records:
-                    if record.get("status") == "failed":
-                        hard_blocks.add(
-                            self._completion_partition(
-                                request,
-                                documents_dir,
-                                url=str(record.get("url") or ""),
-                                target_metadata=record.get("target_metadata"),
-                            )
-                        )
-                review_only_blocks = {
-                    self._completion_partition(
+                assign_document_names(
+                    download_records,
+                    paths.domain_dir / "download_index.csv",
+                    {
+                        Path(str(record["relative_path"])).parent
+                        for record in download_records
+                        if record.get("relative_path")
+                    } if request.fresh else set(),
+                )
+
+                def record_partition(record: dict[str, object]) -> Path:
+                    return self._partition(
                         request,
-                        documents_dir,
-                        url=str(record.get("url") or ""),
-                        target_metadata=record.get("target_metadata"),
+                        record.get("target_id"),
+                        record.get("target_metadata"),
                     )
+
+                hard_blocks = set(blocked_parts) | {
+                    record_partition(record)
                     for record in download_records
-                    if record.get("review_failed")
-                    and self._completion_partition(
-                        request,
-                        documents_dir,
-                        url=str(record.get("url") or ""),
-                        target_metadata=record.get("target_metadata"),
-                    )
-                    not in hard_blocks
+                    if record.get("status") == "failed" and is_retryable(record)
                 }
+                review_only_blocks = {
+                    record_partition(record)
+                    for record in download_records
+                    if record.get("review_failed") and is_retryable(record)
+                } - hard_blocks
                 new_checkpoint_entries = self._download_completions(
                     request=request,
-                    documents_dir=documents_dir,
                     download_records=download_records,
                     incomplete_keys=incomplete_keys,
                     blocked=blocked_parts,
@@ -5204,7 +4267,7 @@ class DiscoveryEngine:
                 review_costs[key] = review_costs.get(key, 0) + value
             seeker_queries_run += self._retry_search_calls
             if download_records:
-                if request.reprocess:
+                if request.fresh:
                     attempted_parts.update(
                         Path(str(record["relative_path"])).parent
                         for record in download_records
@@ -5219,7 +4282,6 @@ class DiscoveryEngine:
 
         empty_parts = self._empty_target_completions(
             request=request,
-            documents_dir=documents_dir,
             selection_metrics=target_selection_metrics,
             download_records=download_records,
             incomplete_keys=incomplete_keys,
@@ -5227,12 +4289,15 @@ class DiscoveryEngine:
             run_id=run_id,
             started_at=started_at,
         )
-        if request.reprocess:
+        if request.fresh:
             attempted_parts.update(empty_parts)
+        for key, digest in self._input_digests(request).items():
+            if key in new_checkpoint_entries:
+                new_checkpoint_entries[key]["input_digest"] = digest
         for record in download_records:
             if record.get("review_failed"):
-                all_errors.append(
-                    build_error_record(
+                all_errors.append({
+                    **build_error_record(
                         RuntimeError(
                             str(
                                 record.get("review_error")
@@ -5243,12 +4308,15 @@ class DiscoveryEngine:
                         document_path=str(
                             record.get("path") or record.get("url")
                         ),
-                    )
-                )
+                    ),
+                    "retryable": is_retryable(record),
+                    "target_label": record.get("target_label"),
+                })
         all_errors = normalize_error_records(all_errors)
         all_reused = bool(
-            original_targets
+            (original_targets or original_sources)
             and not request.targets
+            and not request.sources
             and completed_checkpoint_keys
             and not candidates
             and not download_records
@@ -5274,12 +4342,11 @@ class DiscoveryEngine:
             paths=paths,
             result=result,
             started_at=started_at,
-            normalized_seed_urls=normalized_seed_urls,
             candidates=candidates,
             download_records=download_records,
             stage_summaries={
                 "seeker": {
-                    "provider": seeker_state.get("provider", "seed_only"),
+                    "provider": seeker_state["provider"],
                     "enabled": bool(seeker_state.get("enabled")),
                     "queries_executed": seeker_queries_run,
                     "candidates_discovered": seeker_raw_count,
@@ -5289,11 +4356,12 @@ class DiscoveryEngine:
                     ),
                     "link_top_k": request.link_top_k,
                 },
-                "routing": {
-                    "mode": request.topology_mode or "default",
-                    "applied": bool(routing_state.get("applied")),
+                "crawl": {
+                    "provider": request.crawl_provider,
+                    "max_depth": request.max_depth,
+                    "applied": bool(crawl_state["applied"]),
                     "candidates_in": candidates_after_seeker,
-                    "candidates_out": candidates_after_routing,
+                    "candidates_out": candidates_after_crawl,
                 },
                 "downloads": self._build_download_summary(download_records),
                 "document_review": (
@@ -5303,24 +4371,24 @@ class DiscoveryEngine:
                     request=request,
                     seeker_state=seeker_state,
                     target_selection_metrics=target_selection_metrics,
-                    candidates=candidates,
                 ),
             },
             lineage={
                 "blocked_partitions": [str(part) for part in blocked_parts],
+                "replaced_partitions": [str(part) for part in attempted_parts],
                 "review_only_blocked_partitions": [
                     str(part) for part in review_only_blocks
                 ],
                 "request_fingerprint": fingerprint,
                 "seeker": seeker_state,
-                "routing": routing_state,
+                "crawl": crawl_state,
                 "link_prioritization": {
                     "mode": request.link_prioritization_mode,
                     "top_k": request.link_top_k,
                     "candidates": prioritizer_lineage,
                 },
             },
-            notes=[*seeker_notes, *routing_notes, *download_notes],
+            notes=[*seeker_notes, *crawl_notes, *download_notes],
         )
         snapshot_path = self._publish_completion(
             request=request,

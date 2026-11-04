@@ -5,6 +5,7 @@ from unittest.mock import Mock
 
 import pytest
 
+from psweep.discovery.targets import identify_target
 from psweep.discovery.engine import (
     DiscoveryEngine,
     DiscoveryRequest,
@@ -17,11 +18,6 @@ from psweep.discovery.publication import resolve_publication_paths
 def _request(tmp_path, **changes):
     values = {
         "domain": "fixture",
-        "seed_urls": [],
-        "query": None,
-        "enable_serpapi": False,
-        "output_documents": tmp_path / "domain/runs/current/documents",
-        "output_manifest": tmp_path / "domain/runs/current/manifest.json",
         "dry_run": False,
         "partition_by": ["label"],
     }
@@ -29,37 +25,50 @@ def _request(tmp_path, **changes):
     return DiscoveryRequest(**values)
 
 
-def test_failed_shared_partition_blocks_other_target_completion(tmp_path):
-    """All failures are blocked before counting successful target records."""
+def _paths(tmp_path, request):
+    run = tmp_path / "domain/runs/current"
+    return resolve_publication_paths(
+        run / "documents", run / "manifest.json", request.domain
+    )
+
+
+@pytest.mark.parametrize("retryable", [True, False])
+def test_only_retryable_failures_block_completion(tmp_path, retryable):
+    """Retryable failures block the partition; terminal ones (4xx/TLS) do not."""
     request = _request(tmp_path, partition_by=["group"])
     first = {"label": "first", "group": "shared"}
     second = {"label": "second", "group": "shared"}
     blocked = _PartitionIndex()
     entries = DiscoveryEngine()._download_completions(
         request=request,
-        documents_dir=request.output_documents,
         download_records=[
-            {"status": "downloaded", "target_metadata": first},
-            {"status": "failed", "target_metadata": second},
+            {"status": "downloaded", "target_id": "first", "target_metadata": first},
+            {"status": "failed", "retryable": retryable, "target_id": "second",
+             "target_metadata": second},
         ],
         incomplete_keys=set(),
         blocked=blocked,
         run_id="current",
         started_at=datetime.now(timezone.utc),
     )
-    assert not entries
-    assert blocked
+    if retryable:
+        assert not entries
+        assert blocked
+    else:
+        assert not blocked
+        assert {k: v["download_count"] for k, v in entries.items()} == {
+            "first": 1, "second": 0,
+        }
 
 
 def test_empty_completion_excludes_incomplete_and_attempted_targets(tmp_path):
-    """An exhausted search cannot complete a target with an attempted seed."""
+    """An exhausted search cannot complete a target with an attempted download."""
     targets = [{"label": label} for label in ("empty", "failed", "capped")]
     request = _request(tmp_path, targets=targets)
     engine = DiscoveryEngine()
     entries = {}
     parts = engine._empty_target_completions(
         request=request,
-        documents_dir=request.output_documents,
         selection_metrics=[
             {
                 "target_index": index,
@@ -68,13 +77,17 @@ def test_empty_completion_excludes_incomplete_and_attempted_targets(tmp_path):
             }
             for index in range(len(targets))
         ],
-        download_records=[{"status": "failed", "target_metadata": targets[1]}],
-        incomplete_keys={engine._target_checkpoint_key(targets[2])},
+        download_records=[{
+            "status": "failed",
+            "target_id": identify_target(targets[1]),
+            "target_metadata": targets[1],
+        }],
+        incomplete_keys={identify_target(targets[2])},
         entries=entries,
         run_id="current",
         started_at=datetime.now(timezone.utc),
     )
-    assert set(entries) == {engine._target_checkpoint_key(targets[0])}
+    assert set(entries) == {identify_target(targets[0])}
     assert next(iter(entries.values()))["outcome"] == "empty"
     assert len(parts) == 1
 
@@ -82,9 +95,7 @@ def test_empty_completion_excludes_incomplete_and_attempted_targets(tmp_path):
 def test_reuse_preview_does_not_render_or_write_artifacts(tmp_path):
     """Result preview only resolves already-published corpus locations."""
     request = _request(tmp_path, retention_documents="none")
-    paths = resolve_publication_paths(
-        request.output_documents, request.output_manifest, request.domain
-    )
+    paths = _paths(tmp_path, request)
     result = DiscoveryEngine()._preview_completion_result(
         request=request,
         paths=paths,
@@ -112,9 +123,7 @@ def test_publication_failure_occurs_before_final_metadata_writes(
 ):
     """Rendered indexes and outcome metadata share one transaction."""
     request = _request(tmp_path)
-    paths = resolve_publication_paths(
-        request.output_documents, request.output_manifest, request.domain
-    )
+    paths = _paths(tmp_path, request)
     engine = DiscoveryEngine()
     records = [{"status": "downloaded", "relative_path": "target/doc.pdf"}]
     result = engine._preview_completion_result(

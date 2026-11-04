@@ -9,6 +9,7 @@ import requests
 from psweep.discovery import network
 
 from psweep.discovery.network import NetworkPolicyError, send_get
+from psweep.discovery.retry import is_transient_error
 from psweep.discovery.policies import (
     DiscoveryPolicyEvaluator,
     PolicyCheckResult,
@@ -304,11 +305,15 @@ def test_policy_modes_do_not_change_the_gate_contract(
         assert calls == ["https://county.gov/robots.txt"]
 
 
-@pytest.mark.parametrize("status, allowed", [(404, True), (503, False)])
+@pytest.mark.parametrize(
+    "status, allowed, retryable",
+    [(404, True, False), (403, False, False), (503, False, True)],
+)
 def test_robots_missing_rules_and_fetch_failures_keep_semantics(
-    monkeypatch, status, allowed
+    monkeypatch, status, allowed, retryable
 ):
-    """Missing rules allow access; unavailable rules fail under enforce."""
+    """Missing rules allow access; unavailable rules fail under enforce, and
+    only a transient robots failure is retryable."""
     response = Response("https://county.gov/robots.txt", status=status)
     monkeypatch.setattr(network, "request_get", lambda *_args, **_kwargs: response)
     result = DiscoveryPolicyEvaluator().evaluate(
@@ -319,7 +324,32 @@ def test_robots_missing_rules_and_fetch_failures_keep_semantics(
     )
     assert result.allowed is allowed
     assert result.blocking_code == (None if allowed else "robots_unavailable")
+    assert result.retryable is retryable
     assert response.closed
+
+
+def test_robots_timeout_is_retryable_and_cached_per_host(monkeypatch):
+    """A timed-out robots.txt is probed once per host and stays retryable."""
+    calls = []
+
+    def get(url, **_kwargs):
+        calls.append(url)
+        raise requests.ReadTimeout("read timed out")
+
+    monkeypatch.setattr(network, "request_get", get)
+    evaluator = DiscoveryPolicyEvaluator()
+    results = [
+        evaluator.evaluate(
+            url=f"https://county.gov/{name}.pdf", ssl_verify=True,
+            robots_policy_mode="enforce", tos_policy_mode="ignore",
+        )
+        for name in ("a", "b")
+    ]
+    assert [r.retryable for r in results] == [True, True]
+    assert all(r.blocking_code == "robots_unavailable" for r in results)
+    assert len(calls) == 1
+    error = NetworkPolicyError("https://county.gov/a.pdf", "robots", results[0])
+    assert is_transient_error(error)
 
 
 def test_get_status_errors_are_closed_without_exempting_404(monkeypatch):

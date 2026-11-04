@@ -137,4 +137,4 @@ def test_synthetic_config_resolves_all_stages_strictly(tmp_path, schema_path):
     }))
     config = load_runtime_config_file(path)
     for command in ("discover", "extract", "compile"):
-        resolve_command_config(command=command, cli_values={}, config_data=config, strict=True)
+        resolve_command_config(command=command, cli_values={}, config_data=config)

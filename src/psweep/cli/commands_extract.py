@@ -259,11 +259,6 @@ def _render_extraction(plan, view, live_dashboard):
     help="Validate resolved command inputs and exit without extracting",
 )
 @click.option(
-    "--config-strict",
-    is_flag=True,
-    help="Fail on unknown keys in runtime config sections",
-)
-@click.option(
     "--output",
     "-o",
     type=click.Path(),
@@ -359,7 +354,6 @@ def extract(
     config_path: Optional[str],
     show_effective_config: bool,
     validate_config_only: bool,
-    config_strict: bool,
     output: Optional[str],
     schema: Optional[str],
     model: str,
@@ -426,14 +420,12 @@ def extract(
         resolved_inputs = _resolve_runtime_command_inputs(
             command_name="extract",
             config_path=config_path,
-            strict=config_strict,
             cli_values=cli_overrides,
         )
     except RuntimeConfigError as exc:
         view.error("Runtime config resolution failed", str(exc))
         sys.exit(1)
 
-    view.warnings(resolved_inputs.get("_config_warnings", []))
     if show_effective_config and not view.is_quiet:
         _print_effective_config("extract", resolved_inputs)
     resolved_inputs.setdefault("max_context", max_context)

@@ -92,6 +92,11 @@ class DiscoveryCandidate:
     target_metadata: dict[str, Any] | None = field(default=None)
     title: str | None = None
     snippet: str | None = None
+    # Provenance: "target" or "shared" scope, the configured URL it came
+    # from (itself, or the page it was crawled from), and the owning target.
+    source_scope: str | None = None
+    source_url: str | None = None
+    target_id: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize this candidate to a plain dict for JSON output.
@@ -117,6 +122,9 @@ class DiscoveryCandidate:
             "target_metadata": self.target_metadata,
             "title": self.title,
             "snippet": self.snippet,
+            "source_scope": self.source_scope,
+            "source_url": self.source_url,
+            "target_id": self.target_id,
         }
 
 

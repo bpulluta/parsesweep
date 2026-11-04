@@ -1,7 +1,6 @@
 """Configured web document discovery and curated publication."""
 
 from .engine import (
-    DEFAULT_PARTITION_MODE,
     DiscoveryEngine,
     DiscoveryRequest,
     DiscoveryResult,
@@ -17,7 +16,6 @@ from .policies import (
 )
 
 __all__ = [
-    "DEFAULT_PARTITION_MODE",
     "DEFAULT_ROBOTS_POLICY_MODE",
     "DEFAULT_TOS_POLICY_MODE",
     "DiscoveryEngine",

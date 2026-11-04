@@ -18,7 +18,11 @@ from psweep.cli.ui import (
     print_header,
     set_verbosity,
 )
-from psweep.config import load_runtime_config_file, resolve_command_config
+from psweep.config import (
+    config_key_paths,
+    load_runtime_config_file,
+    resolve_command_config,
+)
 
 
 def _explicit_cli_overrides(param_names: List[str]) -> Dict[str, Any]:
@@ -37,10 +41,13 @@ def _explicit_cli_overrides(param_names: List[str]) -> Dict[str, Any]:
 def _print_effective_config(
     command_name: str, resolved_values: Dict[str, Any]
 ) -> None:
-    """Print resolved runtime config values and their source layer."""
+    """Print resolved values under their config key paths with source layer."""
     sources = resolved_values.get("_config_sources", {})
+    paths = config_key_paths(command_name)
     display = {
-        key: f"{value} [dim]({sources.get(key, 'default')})[/dim]"
+        paths.get(key, key): (
+            f"{value} [dim]({sources.get(key, 'default').split('.')[0]})[/dim]"
+        )
         for key, value in resolved_values.items()
         if not key.startswith("_")
     }
@@ -52,7 +59,6 @@ def _resolve_runtime_command_inputs(
     *,
     command_name: str,
     config_path: Optional[str],
-    strict: bool,
     cli_values: Dict[str, Any],
 ) -> Dict[str, Any]:
     """Load and resolve command inputs from config files and CLI overrides."""
@@ -65,7 +71,6 @@ def _resolve_runtime_command_inputs(
         command=command_name,
         cli_values=cli_values,
         config_data=config_data,
-        strict=strict,
     )
 
     from psweep.security import validate_protected_paths

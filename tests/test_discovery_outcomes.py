@@ -51,7 +51,7 @@ def test_cli_exit_matches_manifest_at_every_verbosity(
             review_index_path=None,
         ),
     )
-    result = CliRunner().invoke(discover, ["--query", "fixture", *flags])
+    result = CliRunner().invoke(discover, ["--domain", "fixture", "--query", "fixture", *flags])
     assert result.exit_code == expected, result.output
     if "-q" in flags:
         assert str(manifest) in result.output
@@ -73,7 +73,7 @@ def test_bad_manifest_fails_closed(monkeypatch, tmp_path, body):
             documents_dir=tmp_path,
         ),
     )
-    result = CliRunner().invoke(discover, ["--query", "fixture", "-q"])
+    result = CliRunner().invoke(discover, ["--domain", "fixture", "--query", "fixture", "-q"])
     assert result.exit_code == 1
     assert "manifest" in result.output.lower()
 
@@ -91,11 +91,7 @@ def test_stream_failure_does_not_leave_final_document(monkeypatch, tmp_path):
     monkeypatch.setattr("psweep.discovery.network.request_get", Mock(return_value=response))
     request = DiscoveryRequest(
         domain="fixture",
-        seed_urls=[],
-        query=None,
-        enable_serpapi=False,
-        output_documents=None,
-        output_manifest=None,
+        sources=[],
         dry_run=False,
         robots_policy_mode="ignore",
         tos_policy_mode="ignore",

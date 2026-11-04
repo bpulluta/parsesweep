@@ -46,6 +46,16 @@ class Workspace:
         return self.discovered / "curated"
 
     @property
+    def serpapi_cache(self) -> Path:
+        """Domain-level SerpApi response cache shared by all runs."""
+        return self.discovered / ".serpapi_cache"
+
+    @property
+    def review_cache(self) -> Path:
+        """Domain-level, content-addressed document grade cache."""
+        return self.discovered / ".review_cache"
+
+    @property
     def latest(self) -> Path:
         """Internal pointer to the most recent discovery run."""
         return self.discovered / "latest"

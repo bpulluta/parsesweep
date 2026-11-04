@@ -11,30 +11,22 @@ discovery:
     - "industrial pump installation manual filetype:pdf"
 
   # Common choices — uncomment only when changing the defaults.
-  # Queries auto-enable SerpApi when search is omitted; explicit false wins.
-  # Seed-only alternative: remove queries above and use seeds (no auto search).
-  # seeds: [https://example.org/documents/manual.pdf]
+  # Search runs only when queries (or a target `query`) are set.
+  # Direct-URL alternative: remove queries above and list sources (always kept).
+  # sources: [https://example.org/documents/manual.pdf]
   # search:
   #   max_results: 10            # unique candidates PER QUERY, not downloads
-  #   cache: false               # OFF by default; true opts into search caching
+  #   cache: false               # true caches search results
   # selection:
   #   max_per_target: 1          # acquisition count per target; not LLM review
   #   exclude: [news, blog, press release]
 
-  # Strict source scope needs both host and URL-path restrictions.
-  # Provider site:/filetype: hints alone do not enforce scope.
-  # allowed_domains: [example.org]
-  # discovery_rules:
+  # Link following is off by default (crawl.max_depth: 0).
+  # crawl:
+  #   max_depth: 1
+  #   allowed_domains: [example.org]
   #   include_url_patterns: ['^https?://(?:www\.)?example\.org/documents/']
-
-  # PDF candidates are preferred when present. HTML/HTM and extensionless
-  # HTTP(S) URLs are provisionally eligible; GET/MIME verifies ambiguity.
-  # Direct acquisition (no crawl), concurrency 2, retry attempts 3, policy warn.
-  # Browser mode and recovery are OFF; each recovery path needs explicit opt-in.
-  # browser_escalation: {enabled: true}
-  # code_host_adapters: {enabled: true}
-  # Strict robots/ToS enforcement fails before unsupported browser navigation:
-  # browser redirects/subresources cannot be certified; use HTTP enforcement.
+  #   browser_escalation: {enabled: true}   # opt-in JS-shell recovery
 
   # Optional PAID LLM review; never auto-enabled. Requires LLM credentials.
   # document_review:

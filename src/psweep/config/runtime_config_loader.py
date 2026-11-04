@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-import csv
 import json
-import math
 import os
 import re
 from pathlib import Path
@@ -12,14 +10,11 @@ from typing import Any
 
 import yaml
 
-from psweep.discovery.constants import RESERVED_SEARCH_PARAMS
 from psweep.workspace import Workspace, default_schema_path, infer_domain
 
+from .discovery_config import discovery_key_paths, resolve_discovery_section
+from .errors import RuntimeConfigError, reject_unknown_keys
 from .model_registry import ModelRegistry, ModelRegistryError
-
-
-class RuntimeConfigError(ValueError):
-    """Raised when runtime config cannot be loaded or validated."""
 
 
 VARIABLE_CATALOG: dict[str, list[dict[str, str]]] = {
@@ -169,117 +164,26 @@ VARIABLE_CATALOG: dict[str, list[dict[str, str]]] = {
         },
     ],
     "discovery": [
-        {
-            "name": "queries",
-            "level": "required",
-            "description": (
-                "Search queries; enable seedless search when provided."
-            ),
-        },
-        {
-            "name": "seeds",
-            "level": "optional",
-            "description": (
-                "Known source URLs; query-driven discovery needs none."
-            ),
-        },
-        {
-            "name": "allowed_domains",
-            "level": "optional",
-            "description": "Restrict crawl scope to approved hostnames.",
-        },
-        {
-            "name": "enable_serpapi",
-            "level": "optional",
-            "description": "Enable optional SerpApi seeker provider.",
-        },
-        {
-            "name": "discovery_rules",
-            "level": "optional",
-            "description": (
-                "URL/text include patterns and crawl discovery settings."
-            ),
-        },
-        {
-            "name": "selection.exclude_url_patterns",
-            "level": "advanced",
-            "description": (
-                "Regex patterns applied to candidate URLs before selection."
-            ),
-        },
-        {
-            "name": "selection.exclude_text_patterns",
-            "level": "advanced",
-            "description": (
-                "Regex patterns applied to candidate URL/title/snippet text."
-            ),
-        },
-        {
-            "name": "document_classifier",
-            "level": "advanced",
-            "description": (
-                "Keyword checks applied to downloaded document content."
-            ),
-        },
-        {
-            "name": "runtime.max_concurrent_downloads",
-            "level": "advanced",
-            "description": "Max parallel file downloads in discovery runs.",
-        },
-        {
-            "name": "runtime.min_request_interval_ms",
-            "level": "advanced",
-            "description": "Min delay between discovery requests (ms).",
-        },
-        {
-            "name": "runtime.target_limit",
-            "level": "optional",
-            "description": "Limit discovery to first N configured targets.",
-        },
-        {
-            "name": "policy.robots_mode",
-            "level": "advanced",
-            "description": "Robots policy: ignore, warn, or enforce.",
-        },
-        {
-            "name": "policy.tos_mode",
-            "level": "advanced",
-            "description": "ToS mode: ignore, warn, or enforce.",
-        },
-        {
-            "name": "browser_mode",
-            "level": "optional",
-            "description": (
-                "Download via headless Chrome for bot-protected sites "
-                "(default: false)."
-            ),
-        },
-        {
-            "name": "browser_escalation",
-            "level": "advanced",
-            "description": (
-                "Auto-retry thin/JS-rendered pages with a headless browser "
-                "(enabled, settle_seconds, min_shell_chars, "
-                "min_rendered_chars)."
-            ),
-        },
-        {
-            "name": "code_host_adapters",
-            "level": "advanced",
-            "description": (
-                "Capture ordinance text from JS code hosts (e.g. "
-                "Municode) via their server API instead of a browser "
-                "render (enabled). Default: enabled."
-            ),
-        },
-        {
-            "name": "retention",
-            "level": "advanced",
-            "description": (
-                "Which discovered documents to keep on disk "
-                "(documents: all, curated, or none)."
-            ),
-        },
+        {"name": "targets", "level": "optional",
+         "description": "Targets: .csv/.json path, inline list, or {cross_product: {dimensions}}."},
+        {"name": "sources", "level": "optional",
+         "description": "Shared document/page URLs downloaded for every run."},
+        {"name": "queries", "level": "optional",
+         "description": "Search query templates ({field} / {field?}); enable search."},
+        {"name": "crawl", "level": "optional",
+         "description": "Link following: provider, max_depth (0 = off), max_pages, allowed_domains, patterns."},
+        {"name": "runtime", "level": "advanced",
+         "description": "max_files, timeout_seconds, max_concurrent_downloads, min_request_interval_ms."},
+        {"name": "selection", "level": "advanced",
+         "description": "Per-target candidate filters and caps."},
+        {"name": "document_classifier", "level": "advanced",
+         "description": "Keyword checks applied to downloaded document content."},
+        {"name": "document_review", "level": "advanced",
+         "description": "LLM curation of downloaded documents."},
+        {"name": "policy", "level": "advanced",
+         "description": "robots_mode / tos_mode: ignore, warn, or enforce."},
+        {"name": "retention", "level": "advanced",
+         "description": "Which downloaded documents to keep (documents: all, curated, none)."},
     ],
 }
 
@@ -305,50 +209,6 @@ _ALLOWED_TOP_LEVEL = {
     "validation",
 }
 _ALLOWED_SECTION_FIELDS = {
-    "discovery": {
-        "domain",
-        "seeds",
-        # --- shorthand keys (simple form) ---
-        "queries",           # list of templates; auto-creates _default family
-        "follow_links",      # bool; true=distributed crawl, false=direct only
-        "request_delay_ms",  # int; alias for runtime.min_request_interval_ms
-        # --- full-form keys ---
-        "query",
-        "state",
-        "jurisdiction",
-        "jurisdiction_aliases",
-        "partition_mode",
-        "enable_serpapi",
-        "query_templates",
-        "query_families",
-        "allowed_domains",
-        "targets",
-        "targets_csv",
-        "hub_pages",
-        "topology",
-        "search",
-        "digger",
-        "discovery_rules",
-        "runtime",
-        "output",
-        "output_documents",
-        "output_manifest",
-        "routing",
-        "retry_policy",
-        "link_prioritization",
-        "selection",
-        "policy",
-        "request_headers",
-        "dry_run",
-        "document_classifier",
-        "document_review",
-        "query_context_aliases",
-        "partition_by",
-        "browser_mode",
-        "browser_escalation",
-        "code_host_adapters",
-        "retention",
-    },
     "extraction": {
         "input_dir",
         "pages",           # unified block (csv + auto_locate); normalized to pages_csv / page_targeting internally
@@ -375,873 +235,10 @@ _ALLOWED_SECTION_FIELDS = {
     },
 }
 
-_ALLOWED_TOPOLOGY_MODES = {"distributed", "centralized", "hybrid"}
-_ACQUISITION_LIST_FIELDS = {
-    "seeds",
-    "queries",
-    "query_templates",
-    "allowed_domains",
-    "targets",
-    "hub_pages",
-}
-_ACQUISITION_OBJECT_FIELDS = {
-    "topology",
-    "query_families",
-    "search",
-    "digger",
-    "discovery_rules",
-    "runtime",
-    "output",
-    "routing",
-    "retry_policy",
-    "link_prioritization",
-    "selection",
-    "policy",
-    "request_headers",
-    "document_classifier",
-    "document_review",
-    "retention",
-}
-
-# Consumed blocks are closed. Provider parameters and target/query
-# metadata remain open because their keys are data, not runtime options.
-_RETIRED_DISCOVERY_FIELDS = {
-    "pipeline", "scoring", "dedupe", "file_filters", "keyword_validation",
-}
-_DISCOVERY_RULE_KEYS = {"include_url_patterns", "include_link_text_patterns"}
-_INDEX_PAGE_KEYS = {"enabled", "collect_all_matching_links"}
-
-# Canonical YAML keys map to internal request keys. Validation and merge
-# share these maps so accepted controls cannot silently become no-ops.
-_ACQ_SEARCH_KEY_MAP: dict[str, str] = {
-    "query_templates": "query_templates",
-    "use_query_family": "use_query_family",
-    "max_results": "seeker_max_results",
-    "cache": "seeker_cache",
-    "cache_ttl_minutes": "seeker_cache_ttl_minutes",
-}
-_ACQ_SELECTION_KEY_MAP: dict[str, str] = {
-    "max_per_target": "selection_primary_per_target",
-    "exclude_draft": "selection_exclude_draft",
-    "draft_patterns": "selection_draft_patterns",
-    "require_any": "selection_relevance_require_any_terms",
-    "relevance_require_legal_marker_terms": (
-        "selection_relevance_require_legal_marker_terms"
-    ),
-    "exclude": "selection_relevance_exclude_any_terms",
-    "exclude_url_patterns": "selection_exclude_url_patterns",
-    "exclude_text_patterns": "selection_exclude_text_patterns",
-    "max_per_host_per_target": "selection_max_per_host_per_target",
-    "relevance_allowed_domain_patterns": (
-        "selection_relevance_allowed_domain_patterns"
-    ),
-    "require_supported_document": "selection_require_supported_document",
-    "target_identity_require_any_templates": (
-        "selection_target_identity_require_any_templates"
-    ),
-    "target_identity_require_all_templates": (
-        "selection_target_identity_require_all_templates"
-    ),
-    "target_identity_exclude_any_templates": (
-        "selection_target_identity_exclude_any_templates"
-    ),
-}
-_RETIRED_DISCOVERY_KEYS: dict[str, dict[str, str]] = {
-    "discovery": {"seeker": "search", "browser": "browser_mode"},
-    "discovery.search": {"max_results_per_query": "max_results"},
-    "discovery.document_review": {
-        "action": "remove action; review materializes selected curation",
-    },
-    "discovery.selection": {
-        "primary_per_target": "max_per_target",
-        "relevance_require_any_terms": "require_any",
-        "relevance_exclude_any_terms": "exclude",
-    },
-}
-
-_ACQUISITION_OBJECT_ALLOWED_KEYS: dict[str, set[str]] = {
-    "runtime": {
-        "max_depth", "max_pages", "max_files", "timeout_seconds",
-        "max_concurrent_downloads", "min_request_interval_ms", "target_limit",
-    },
-    "policy": {"robots_mode", "tos_mode", "acknowledged_tos_domains"},
-    "topology": {"mode"},
-    "output": {"documents_dir", "manifest_path"},
-    "discovery_rules": _DISCOVERY_RULE_KEYS,
-    "selection": set(_ACQ_SELECTION_KEY_MAP),
-    "search": set(_ACQ_SEARCH_KEY_MAP) | {
-        "provider", "enabled", "serpapi_params", "google_news",
-    },
-    "digger": {
-        "provider",
-        "connector",
-        "allowed_domains",
-        "index_page_mode",
-        "discovery_rules",
-    },
-    "routing": {
-        "index_links",
-    },
-    "retry_policy": {
-        "max_attempts",
-        "initial_backoff_seconds",
-        "max_backoff_seconds",
-    },
-    "link_prioritization": {
-        "mode",
-        "top_k",
-        "keywords",
-        "domain_scores",
-        "shopping_path_keywords",
-    },
-    "document_classifier": {
-        "required_keywords",
-        "nice_to_have_keywords",
-        "min_required_matches",
-        "action",
-    },
-    "document_review": {
-        "document_description",
-        "model",
-        "keep_top",
-        "max_chars",
-        "keywords",
-        "deduplicate_redundant",
-        "deduplication",
-    },
-}
-
-_ALLOWED_POLICY_MODES = {"ignore", "warn", "enforce"}
 _ALLOWED_PROVENANCE_POLICIES = {"warn", "fail"}
 
 _SECTION_NAMES = ("discovery", "extraction", "compilation", "validation")
 _CONFIG_SUFFIXES = (".yaml", ".yml", ".json")
-
-
-def _load_targets_from_csv(csv_path: Path) -> list[dict[str, Any]]:
-    """Load targets from a CSV file.
-
-    Parameters
-    ----------
-    csv_path:
-        Path to CSV file with headers as target field names.
-
-    Returns
-    -------
-    list[dict[str, Any]]
-        Target rows as dictionaries; empty strings become None.
-
-    Raises
-    ------
-    RuntimeConfigError
-        If the file is missing, empty, or cannot be parsed.
-    """
-    if not csv_path.exists():
-        msg = f"Targets CSV file not found: {csv_path.as_posix()}"
-        raise RuntimeConfigError(msg)
-
-    try:
-        with csv_path.open(encoding="utf-8") as f:
-            reader = csv.DictReader(f)
-            fieldnames = reader.fieldnames
-            targets: list[dict[str, Any]] = [
-                {k: v or None for k, v in row.items()}
-                for row in reader
-            ]
-    except RuntimeConfigError:
-        raise
-    except Exception as e:
-        msg = f"Failed to load targets CSV: {csv_path.as_posix()}: {e}"
-        raise RuntimeConfigError(msg) from e
-
-    if not fieldnames:
-        msg = f"CSV file is empty: {csv_path.as_posix()}"
-        raise RuntimeConfigError(msg)
-    return targets
-
-
-def _resolve_targets(
-    discovery: dict[str, Any],
-    config_dir: Path,
-) -> None:
-    """Resolve all target sources into ``discovery['targets']`` in-place.
-
-    Handles three forms:
-    - ``targets_csv``: authored CSV of target rows (merged with inline).
-    - ``targets`` as a list: inline targets (unchanged).
-    - ``targets`` as a dict with ``source``: a generated source
-      (``dataset`` or ``cross_product``) resolved via a target provider.
-
-    Parameters
-    ----------
-    discovery:
-        Discovery section of the config dict (mutated in-place).
-    config_dir:
-        Config file directory for resolving relative dataset paths.
-
-    Raises
-    ------
-    RuntimeConfigError
-        If a source is misconfigured or unreadable.
-    """
-    from psweep.discovery.targets import (
-        TargetProviderError,
-        resolve_target_provider,
-    )
-
-    generated: list[dict[str, Any]] = []
-
-    # 1. targets_csv shorthand → authored rows.
-    targets_csv = discovery.get("targets_csv")
-    if isinstance(targets_csv, str):
-        csv_path = Path(targets_csv)
-        if not csv_path.is_absolute():
-            csv_path = config_dir / csv_path
-        generated.extend(_load_targets_from_csv(csv_path))
-    discovery.pop("targets_csv", None)
-
-    # 2. targets: either an inline list (unchanged) or a generated source dict.
-    targets = discovery.get("targets")
-    if isinstance(targets, dict):
-        try:
-            provider = resolve_target_provider(targets, config_dir=config_dir)
-            discovery["targets"] = generated + provider.provide()
-        except TargetProviderError as exc:
-            raise RuntimeConfigError(str(exc)) from exc
-    elif isinstance(targets, list):
-        discovery["targets"] = generated + targets
-    elif generated:
-        discovery["targets"] = generated
-
-
-def _validate_discovery_shorthands(discovery: dict[str, Any]) -> None:
-    """Validate shorthand keys for simpler domain configs."""
-    queries = discovery.get("queries")
-    if isinstance(queries, list) and not all(
-        isinstance(q, str) for q in queries
-    ):
-        msg = "'discovery.queries' must be an array of strings"
-        raise RuntimeConfigError(msg)
-
-    follow_links = discovery.get("follow_links")
-    if follow_links is not None and not isinstance(follow_links, bool):
-        msg = "'discovery.follow_links' must be a boolean"
-        raise RuntimeConfigError(msg)
-
-    if "request_delay_ms" in discovery:
-        _validate_discovery_integer(
-            discovery["request_delay_ms"], "discovery.request_delay_ms", 0,
-        )
-
-
-def _validate_discovery_runtime(runtime: dict[str, Any]) -> None:
-    for field in (
-        "max_concurrent_downloads", "min_request_interval_ms", "target_limit",
-        "max_depth", "max_pages", "max_files", "timeout_seconds",
-    ):
-        if field in runtime:
-            minimum = (
-                0 if field in {"max_depth", "min_request_interval_ms"} else 1
-            )
-            _validate_discovery_integer(
-                runtime[field], f"discovery.runtime.{field}", minimum,
-            )
-
-
-def _validate_discovery_request_headers(request_headers: Any) -> None:
-    if not isinstance(request_headers, dict):
-        msg = "'discovery.request_headers' must be an object"
-        raise RuntimeConfigError(msg)
-    for key, value in request_headers.items():
-        if (
-            not isinstance(key, str)
-            or not key.strip()
-            or not isinstance(value, str)
-            or not value.strip()
-        ):
-            msg = (
-                "'discovery.request_headers' must map"
-                " non-empty string keys to non-empty string values"
-            )
-            raise RuntimeConfigError(msg)
-
-
-def _validate_discovery_policy(policy: dict[str, Any]) -> None:
-    for field_name in ("robots_mode", "tos_mode"):
-        mode = policy.get(field_name)
-        if mode is not None and (
-            not isinstance(mode, str) or mode not in _ALLOWED_POLICY_MODES
-        ):
-            allowed = ", ".join(sorted(_ALLOWED_POLICY_MODES))
-            msg = (
-                f"'discovery.policy.{field_name}'"
-                f" must be one of: {allowed}"
-            )
-            raise RuntimeConfigError(msg)
-
-    acknowledged = policy.get("acknowledged_tos_domains")
-    if acknowledged is not None and (
-        not isinstance(acknowledged, list)
-        or not all(
-            isinstance(item, str) and item.strip() for item in acknowledged
-        )
-    ):
-        msg = (
-            "'discovery.policy.acknowledged_tos_domains'"
-            " must be an array of non-empty strings"
-        )
-        raise RuntimeConfigError(msg)
-
-
-def _validate_discovery_link_prioritization(lp: dict[str, Any]) -> None:
-    """Validate ``discovery.link_prioritization`` value types.
-
-    Unknown inner keys are already rejected by
-    ``_validate_acquisition_object_keys``; this checks value shapes so a
-    malformed list/mapping fails loudly at load time rather than silently
-    no-op'ing.
-    """
-    loc = "discovery.link_prioritization"
-
-    mode = lp.get("mode")
-    if mode is not None and not isinstance(mode, str):
-        msg = f"'{loc}.mode' must be a string"
-        raise RuntimeConfigError(msg)
-
-    top_k = lp.get("top_k")
-    if top_k is not None and (
-        isinstance(top_k, bool) or not isinstance(top_k, int) or top_k < 0
-    ):
-        msg = f"'{loc}.top_k' must be a non-negative integer"
-        raise RuntimeConfigError(msg)
-
-    for key in ("keywords", "shopping_path_keywords"):
-        value = lp.get(key)
-        if value is not None and (
-            not isinstance(value, list)
-            or not all(isinstance(v, str) and v.strip() for v in value)
-        ):
-            msg = f"'{loc}.{key}' must be an array of non-empty strings"
-            raise RuntimeConfigError(msg)
-
-    domain_scores = lp.get("domain_scores")
-    if domain_scores is not None and (
-        not isinstance(domain_scores, dict)
-        or not all(
-            isinstance(k, str)
-            and k.strip()
-            and isinstance(v, (int, float))
-            and not isinstance(v, bool)
-            for k, v in domain_scores.items()
-        )
-    ):
-        msg = f"'{loc}.domain_scores' must map domain substrings to numbers"
-        raise RuntimeConfigError(msg)
-
-
-def _validate_discovery_jurisdiction_aliases(aliases: Any) -> None:
-    """Validate ``discovery.jurisdiction_aliases`` (see engine _STATE_ALIASES).
-
-    Must be a mapping of non-empty full-name strings to non-empty short-key
-    strings, so a malformed map fails loudly at load rather than silently
-    no-op'ing when partition_mode=jurisdiction.
-    """
-    if not isinstance(aliases, dict) or not all(
-        isinstance(k, str) and k.strip() and isinstance(v, str) and v.strip()
-        for k, v in aliases.items()
-    ):
-        msg = (
-            "'discovery.jurisdiction_aliases' must map non-empty full-name "
-            "strings to non-empty short-key strings"
-        )
-        raise RuntimeConfigError(msg)
-
-
-def _validate_discovery_topology(topology: dict[str, Any]) -> None:
-    mode = topology.get("mode")
-    if mode is not None and (
-        not isinstance(mode, str) or mode not in _ALLOWED_TOPOLOGY_MODES
-    ):
-        allowed = ", ".join(sorted(_ALLOWED_TOPOLOGY_MODES))
-        msg = f"'discovery.topology.mode' must be one of: {allowed}"
-        raise RuntimeConfigError(msg)
-
-
-def _validate_discovery_query_families(
-    query_families: dict[str, Any],
-) -> None:
-    for family_name, templates in query_families.items():
-        _validate_discovery_string(
-            family_name, "discovery.query_families name",
-        )
-        _validate_discovery_strings(
-            templates, f"discovery.query_families.{family_name}",
-        )
-
-
-def _validate_discovery_retention(retention: dict[str, Any]) -> None:
-    unknown = [key for key in retention if key != "documents"]
-    if unknown:
-        msg = (
-            "Unknown keys in 'discovery.retention': "
-            + ", ".join(sorted(unknown))
-        )
-        raise RuntimeConfigError(msg)
-    documents = retention.get("documents")
-    if documents is None:
-            return
-    allowed = {"all", "curated", "none"}
-    if not isinstance(documents, str) or documents.strip().lower() not in allowed:
-            msg = (
-                "'discovery.retention.documents' must be one of: "
-                + ", ".join(sorted(allowed))
-            )
-            raise RuntimeConfigError(msg)
-
-
-def _validate_discovery_selection_review_consistency(
-    discovery: dict[str, Any],
-) -> None:
-    selection = discovery.get("selection")
-    review = discovery.get("document_review")
-    if not isinstance(selection, dict) or not isinstance(review, dict):
-        return
-
-    max_per_target = selection.get("max_per_target")
-    keep_top = review.get("keep_top")
-    if max_per_target is None or keep_top is None:
-        return
-    if max_per_target < keep_top:
-        msg = (
-            "'discovery.selection.max_per_target' must be >= "
-            "'discovery.document_review.keep_top' so review can retain up to "
-            "the configured top documents."
-        )
-        raise RuntimeConfigError(msg)
-
-
-def _validate_discovery_object_keys(
-    value: Any, allowed_keys: set[str], location: str,
-) -> None:
-    """Reject malformed blocks and unknown runtime options."""
-    if not isinstance(value, dict):
-        msg = f"'{location}' must be an object"
-        raise RuntimeConfigError(msg)
-    unknown = sorted(str(key) for key in value if key not in allowed_keys)
-    if unknown:
-        msg = (
-            f"Unknown keys in '{location}': "
-            + ", ".join(unknown)
-            + ". Allowed: "
-            + ", ".join(sorted(allowed_keys))
-        )
-        raise RuntimeConfigError(msg)
-
-
-def _validate_acquisition_object_keys(discovery: dict[str, Any]) -> None:
-    """Reject unknown options, including consumed nested sub-blocks."""
-    for field, allowed_keys in _ACQUISITION_OBJECT_ALLOWED_KEYS.items():
-        if field in discovery:
-            _validate_discovery_object_keys(
-                discovery[field],
-                allowed_keys,
-                f"discovery.{field}",
-            )
-    digger = discovery.get("digger") or {}
-    for key, allowed in (
-        ("discovery_rules", _DISCOVERY_RULE_KEYS),
-        ("index_page_mode", _INDEX_PAGE_KEYS),
-    ):
-        if key in digger:
-            _validate_discovery_object_keys(
-                digger[key],
-                allowed,
-                f"discovery.digger.{key}",
-            )
-    review = discovery.get("document_review") or {}
-    if "deduplication" in review:
-        _validate_discovery_object_keys(
-            review["deduplication"],
-            {"key_fields"},
-            "discovery.document_review.deduplication",
-        )
-
-
-def _validate_discovery_boolean(value: Any, location: str) -> None:
-    """Require actual YAML/JSON booleans rather than truthy strings."""
-    if not isinstance(value, bool):
-        msg = f"'{location}' must be a boolean"
-        raise RuntimeConfigError(msg)
-
-
-def _validate_discovery_integer(
-    value: Any,
-    location: str,
-    minimum: int,
-) -> None:
-    """Require integer limits without bools or truncation."""
-    if isinstance(value, bool) or not isinstance(value, int):
-        msg = f"{location} must be an integer >= {minimum}"
-        raise RuntimeConfigError(msg)
-    if value < minimum:
-        msg = f"{location} must be >= {minimum}"
-        raise RuntimeConfigError(msg)
-
-
-def _validate_discovery_number(
-    value: Any,
-    location: str,
-    minimum: float = 0,
-) -> None:
-    """Require finite numeric budgets without string coercion."""
-    if (
-        isinstance(value, bool)
-        or not isinstance(value, (int, float))
-        or not math.isfinite(value)
-    ):
-        msg = f"{location} must be a finite number >= {minimum}"
-        raise RuntimeConfigError(msg)
-    if value < minimum:
-        msg = f"{location} must be >= {minimum}"
-        raise RuntimeConfigError(msg)
-
-
-def _validate_discovery_string(value: Any, location: str) -> None:
-    """Require a non-empty string for names and descriptions."""
-    if not isinstance(value, str) or not value.strip():
-        msg = f"'{location}' must be a non-empty string"
-        raise RuntimeConfigError(msg)
-
-
-def _validate_discovery_pattern(pattern: str, location: str) -> None:
-    """Compile a regex and report failures as config errors."""
-    try:
-        re.compile(pattern)
-    except re.error as exc:
-        msg = f"'{location}' has an invalid regular expression: {exc}"
-        raise RuntimeConfigError(msg) from exc
-
-
-def _validate_discovery_strings(
-    value: Any,
-    location: str,
-    *,
-    patterns: bool = False,
-) -> None:
-    """Validate string lists and regexes before acquisition."""
-    if not isinstance(value, list) or not all(
-        isinstance(item, str) and item.strip() for item in value
-    ):
-        msg = f"'{location}' must be an array of non-empty strings"
-        raise RuntimeConfigError(msg)
-    if patterns:
-        for pattern in value:
-            _validate_discovery_pattern(pattern, location)
-
-
-def _validate_search_passthrough(
-    params: dict[str, Any], location: str,
-) -> None:
-    """Protect search controls, keeping provider options open."""
-    reserved = RESERVED_SEARCH_PARAMS.intersection(params)
-    if reserved:
-        msg = (
-            f"'{location}.serpapi_params' has reserved keys: "
-            + ", ".join(sorted(reserved))
-        )
-        raise RuntimeConfigError(msg)
-
-
-def _validate_discovery_search(values: dict[str, Any], location: str) -> None:
-    """Validate search controls, keeping provider parameters open."""
-    for field in ("enabled", "cache", "google_news"):
-        if field in values:
-            _validate_discovery_boolean(values[field], f"{location}.{field}")
-    if "max_results" in values:
-        _validate_discovery_integer(
-            values["max_results"], f"{location}.max_results", 1
-        )
-    if "provider" in values and values["provider"] != "serpapi":
-        msg = f"'{location}.provider' must be serpapi"
-        raise RuntimeConfigError(msg)
-    if "query_templates" in values:
-        _validate_discovery_strings(
-            values["query_templates"],
-            f"{location}.query_templates",
-        )
-    if "serpapi_params" in values and not isinstance(
-        values["serpapi_params"], dict
-    ):
-        msg = f"'{location}.serpapi_params' must be an object"
-        raise RuntimeConfigError(msg)
-    _validate_search_passthrough(values.get("serpapi_params") or {}, location)
-    if "cache_ttl_minutes" in values:
-        _validate_discovery_number(
-            values["cache_ttl_minutes"],
-            f"{location}.cache_ttl_minutes",
-        )
-    if "use_query_family" in values:
-        _validate_discovery_string(
-            values["use_query_family"], f"{location}.use_query_family"
-        )
-
-
-def _validate_discovery_selection(selection: dict[str, Any]) -> None:
-    """Validate candidate-selection limits, terms, and regexes."""
-    boolean_fields = {"exclude_draft", "require_supported_document"}
-    limits = {
-        "max_per_target": 1,
-        "max_per_host_per_target": 0,
-    }
-    regex_fields = {
-        "draft_patterns",
-        "exclude_url_patterns",
-        "exclude_text_patterns",
-    }
-    for field, value in selection.items():
-        location = f"discovery.selection.{field}"
-        if field in boolean_fields:
-            _validate_discovery_boolean(value, location)
-        elif field in limits:
-            _validate_discovery_integer(value, location, limits[field])
-        else:
-            _validate_discovery_strings(
-                value,
-                location,
-                patterns=field in regex_fields,
-            )
-
-
-def _validate_discovery_document_options(
-    values: dict[str, Any],
-    block: str,
-) -> None:
-    """Validate classifier/reviewer controls before processing."""
-    location = f"discovery.{block}"
-    for field in ("required_keywords", "nice_to_have_keywords", "keywords"):
-        if field in values:
-            _validate_discovery_strings(values[field], f"{location}.{field}")
-    for field in ("min_required_matches", "keep_top", "max_chars"):
-        if field in values:
-            minimum = 0 if field == "min_required_matches" else 1
-            _validate_discovery_integer(
-                values[field], f"{location}.{field}", minimum
-            )
-    if "action" in values and (
-        not isinstance(values["action"], str)
-        or values["action"] not in {"warn", "filter"}
-    ):
-        msg = f"'{location}.action' must be warn or filter"
-        raise RuntimeConfigError(msg)
-    if "deduplicate_redundant" in values:
-        _validate_discovery_boolean(
-            values["deduplicate_redundant"],
-            f"{location}.deduplicate_redundant",
-        )
-    for field in ("model", "document_description"):
-        if field in values:
-            _validate_discovery_string(values[field], f"{location}.{field}")
-    dedup = values.get("deduplication") or {}
-    if "key_fields" in dedup:
-        _validate_discovery_strings(
-            dedup["key_fields"], f"{location}.deduplication.key_fields"
-        )
-
-
-def _validate_discovery_routing_options(discovery: dict[str, Any]) -> None:
-    """Validate routing rules and explicit query-context aliases."""
-    digger = discovery.get("digger") or {}
-    if "allowed_domains" in digger:
-        _validate_discovery_strings(
-            digger["allowed_domains"], "discovery.digger.allowed_domains"
-        )
-    for field in ("provider", "connector"):
-        if field in digger:
-            _validate_discovery_string(
-                digger[field], f"discovery.digger.{field}"
-            )
-    for rules, location in (
-        (discovery.get("discovery_rules") or {}, "discovery.discovery_rules"),
-        (
-            digger.get("discovery_rules") or {},
-            "discovery.digger.discovery_rules",
-        ),
-    ):
-        for field, value in rules.items():
-            _validate_discovery_strings(
-                value, f"{location}.{field}", patterns=True
-            )
-    for field, value in (digger.get("index_page_mode") or {}).items():
-        _validate_discovery_boolean(
-            value, f"discovery.digger.index_page_mode.{field}"
-        )
-    aliases = discovery.get("query_context_aliases")
-    if aliases is not None:
-        _validate_discovery_query_aliases(aliases)
-    routing = discovery.get("routing") or {}
-    if "index_links" in routing:
-        _validate_discovery_index_links(routing["index_links"])
-
-
-def _validate_discovery_index_links(links: Any) -> None:
-    """Validate seeded URLs without accepting unused link attributes."""
-    location = "discovery.routing.index_links"
-    if not isinstance(links, list):
-        msg = f"'{location}' must be an array"
-        raise RuntimeConfigError(msg)
-    for link in links:
-        if isinstance(link, str):
-            _validate_discovery_string(link, location)
-        else:
-            _validate_discovery_object_keys(link, {"url", "text"}, location)
-            _validate_discovery_string(link.get("url"), f"{location}.url")
-            if "text" in link and not isinstance(link["text"], str):
-                msg = f"'{location}.text' must be a string"
-                raise RuntimeConfigError(msg)
-
-
-def _validate_discovery_query_aliases(aliases: Any) -> None:
-    """Validate user-defined aliases while keeping metadata open."""
-    if not isinstance(aliases, dict):
-        msg = "'discovery.query_context_aliases' must be an object"
-        raise RuntimeConfigError(msg)
-    for name, fields in aliases.items():
-        _validate_discovery_string(name, "discovery.query_context_aliases key")
-        _validate_discovery_strings(
-            fields, f"discovery.query_context_aliases.{name}"
-        )
-
-
-def _validate_discovery_text_options(discovery: dict[str, Any]) -> None:
-    """Validate top-level text, output paths, and family templates."""
-    for field in (
-        "query",
-        "state",
-        "jurisdiction",
-        "domain",
-        "partition_mode",
-        "output_documents",
-        "output_manifest",
-    ):
-        if field in discovery:
-            _validate_discovery_string(discovery[field], f"discovery.{field}")
-    partition = discovery.get("partition_mode")
-    if partition is not None and partition.lower() not in {
-        "auto",
-        "host",
-        "jurisdiction",
-    }:
-        msg = "'discovery.partition_mode' must be auto, host, or jurisdiction"
-        raise RuntimeConfigError(msg)
-    for field, value in (discovery.get("output") or {}).items():
-        _validate_discovery_string(value, f"discovery.output.{field}")
-
-
-def _validate_discovery_option_values(discovery: dict[str, Any]) -> None:
-    """Validate consumed values before merge-time coercion or I/O."""
-    _validate_discovery_text_options(discovery)
-    for field in ("enable_serpapi", "browser_mode", "dry_run"):
-        if field in discovery:
-            _validate_discovery_boolean(discovery[field], f"discovery.{field}")
-    for field in (
-        "seeds",
-        "queries",
-        "query_templates",
-        "allowed_domains",
-        "hub_pages",
-        "partition_by",
-    ):
-        if field in discovery:
-            _validate_discovery_strings(discovery[field], f"discovery.{field}")
-    _validate_discovery_search(
-        discovery.get("search") or {}, "discovery.search"
-    )
-    _validate_discovery_selection(discovery.get("selection") or {})
-    for block in ("document_classifier", "document_review"):
-        _validate_discovery_document_options(discovery.get(block) or {}, block)
-    _validate_discovery_routing_options(discovery)
-    retry = discovery.get("retry_policy") or {}
-    if "max_attempts" in retry:
-        _validate_discovery_integer(
-            retry["max_attempts"], "discovery.retry_policy.max_attempts", 1
-        )
-    for field in ("initial_backoff_seconds", "max_backoff_seconds"):
-        if field in retry:
-            _validate_discovery_number(
-                retry[field], f"discovery.retry_policy.{field}"
-            )
-
-
-def _reject_retired_discovery_keys(discovery: dict[str, Any]) -> None:
-    """Reject retired aliases even when canonical keys are present."""
-    for location, replacements in _RETIRED_DISCOVERY_KEYS.items():
-        values = discovery
-        if location != "discovery":
-            values = discovery.get(location.removeprefix("discovery."))
-        if not isinstance(values, dict):
-            continue
-        for retired, replacement in replacements.items():
-            if retired in values:
-                msg = (
-                    f"'{location}.{retired}' is retired. "
-                    f"Use '{location}.{replacement}' instead and remove "
-                    "the retired key; aliases are not merged."
-                )
-                raise RuntimeConfigError(msg)
-
-
-def _validate_discovery_section_schema(discovery: dict[str, Any]) -> None:
-    _reject_retired_discovery_keys(discovery)
-    retired = sorted(_RETIRED_DISCOVERY_FIELDS.intersection(discovery))
-    if retired:
-        msg = (
-            "Unsupported discovery config blocks (never consumed): "
-            + ", ".join(retired)
-            + ". Remove them from the run config."
-        )
-        raise RuntimeConfigError(msg)
-    for field in _ACQUISITION_LIST_FIELDS:
-        value = discovery.get(field)
-        if value is not None and not isinstance(value, list):
-            msg = f"'discovery.{field}' must be an array"
-            raise RuntimeConfigError(msg)
-
-    for field in _ACQUISITION_OBJECT_FIELDS:
-        value = discovery.get(field)
-        if field in discovery and not isinstance(value, dict):
-            msg = f"'discovery.{field}' must be an object"
-            raise RuntimeConfigError(msg)
-
-    _validate_acquisition_object_keys(discovery)
-    _validate_discovery_option_values(discovery)
-
-    # browser_escalation accepts a bool shorthand or a mapping; validate it (and
-    # its inner keys) here at load time so the same strict check runs whether or
-    # not the resolve path is exercised.
-    escalation = discovery.get("browser_escalation")
-    if escalation is not None:
-        _normalize_browser_escalation(escalation)
-
-    adapters = discovery.get("code_host_adapters")
-    if adapters is not None:
-        _normalize_code_host_adapters(adapters)
-
-    _validate_discovery_shorthands(discovery)
-
-    for field, validator in (
-        ("topology", _validate_discovery_topology),
-        ("query_families", _validate_discovery_query_families),
-        ("runtime", _validate_discovery_runtime),
-        ("request_headers", _validate_discovery_request_headers),
-        ("policy", _validate_discovery_policy),
-        ("link_prioritization", _validate_discovery_link_prioritization),
-        ("jurisdiction_aliases", _validate_discovery_jurisdiction_aliases),
-        ("retention", _validate_discovery_retention),
-    ):
-        if field in discovery:
-            validator(discovery[field])
-
-    _validate_discovery_selection_review_consistency(discovery)
 
 
 def _validate_models_block(models: Any) -> None:
@@ -1360,8 +357,7 @@ def _normalize_pages_block(extraction: dict[str, Any]) -> None:
 def _validate_extraction_section_schema(extraction: dict[str, Any]) -> None:
     """Deep-validate the ``extraction`` section at load time.
 
-    Mirrors ``_validate_discovery_section_schema`` so config-supplied values
-    are checked with the same rigor as CLI flags (Click type/choice guards are
+    Config-supplied values are checked with the same rigor as CLI flags (Click type/choice guards are
     bypassed when a value comes from YAML). Domain-neutral: only structural
     types and ranges are enforced.
     """
@@ -1959,11 +955,9 @@ def load_runtime_config_file(config_path: Path) -> dict[str, Any]:
     config_data = _read_config_file(config_path)
     _reject_renamed_qaqc_section(config_data, config_path)
 
-    unknown_top = [key for key in config_data if key not in _ALLOWED_TOP_LEVEL]
-    if unknown_top:
-        raise RuntimeConfigError(
-            "Unknown top-level config keys: " + ", ".join(sorted(unknown_top))
-        )
+    reject_unknown_keys(
+        config_data, _ALLOWED_TOP_LEVEL, config_path=config_path.as_posix()
+    )
     _reject_derived_path_keys(config_data, config_path)
     _resolve_workspace_keys(config_data, config_path)
 
@@ -1975,13 +969,7 @@ def load_runtime_config_file(config_path: Path) -> dict[str, Any]:
 
     discovery = config_data.get("discovery")
     if discovery is not None:
-        if not isinstance(discovery, dict):
-            msg = "'discovery' section must be an object in runtime config"
-            raise RuntimeConfigError(msg)
-        _reject_retired_discovery_keys(discovery)
-        # targets_csv must be resolved before schema validation
-        _resolve_targets(discovery, config_path.parent)
-        _validate_discovery_section_schema(discovery)
+        resolve_discovery_section(discovery, config_path.as_posix())
 
     extraction = config_data.get("extraction")
     if extraction is not None:
@@ -2016,24 +1004,6 @@ def catalog_for_command(command: str) -> list[dict[str, str]]:
         msg = f"Unsupported command for catalog: {command}"
         raise RuntimeConfigError(msg)
     return VARIABLE_CATALOG["global"] + VARIABLE_CATALOG[section]
-
-
-def _validate_section_keys(
-    section_name: str,
-    section_data: dict[str, Any],
-    *,
-    strict: bool,
-) -> list[str]:
-    warnings: list[str] = []
-    allowed = _ALLOWED_SECTION_FIELDS.get(section_name, set())
-    unknown = [key for key in section_data if key not in allowed]
-    if unknown:
-        unknown_keys = ", ".join(sorted(unknown))
-        msg = f"Unknown keys in '{section_name}' section: {unknown_keys}"
-        if strict:
-            raise RuntimeConfigError(msg)
-        warnings.append(msg)
-    return warnings
 
 
 _REQUIRED_FIELDS: dict[str, tuple[str, ...]] = {
@@ -2071,425 +1041,10 @@ def _missing_fields_message(
     return "; ".join(parts)
 
 
-# ── Discovery merge helpers ──────────────────────────────────────
-# One helper per discovery subsection.
-# Shorthands run first; verbose keys win when both are present.
-
-_ACQ_SIMPLE_KEYS: tuple[tuple[str, str], ...] = (
-    ("hub_pages", "hub_pages"),
-    ("targets", "targets"),
-    ("query_templates", "query_templates"),
-    ("query_families", "query_families"),
-    ("allowed_domains", "allowed_domains"),
-    ("request_headers", "request_headers"),
-)
-
-_ACQ_RUNTIME_KEYS: tuple[str, ...] = (
-    "max_depth",
-    "max_pages",
-    "max_files",
-    "timeout_seconds",
-    "max_concurrent_downloads",
-    "min_request_interval_ms",
-    "target_limit",
-)
-
-def _set(
-    merged: dict[str, Any],
-    sources: dict[str, str],
-    key: str,
-    value: Any,
-    source: str,
-) -> None:
-    merged[key] = value
-    sources[key] = source
-
-
-def _merge_acq_shorthands(
-    section: dict[str, Any],
-    merged: dict[str, Any],
-    sources: dict[str, str],
-) -> None:
-    queries = section.get("queries")
-    if isinstance(queries, list) and queries:
-        _set(merged, sources, "query_families", {"_default": queries},
-             "config.discovery.queries")
-        _set(merged, sources, "use_query_family", "_default",
-             "config.discovery.queries")
-
-    follow_links = section.get("follow_links")
-    if follow_links is True:
-        _set(merged, sources, "topology_mode", "distributed",
-             "config.discovery.follow_links")
-    elif follow_links is False and "topology_mode" not in merged:
-        _set(merged, sources, "topology_mode", None,
-             "config.discovery.follow_links")
-
-    delay = section.get("request_delay_ms")
-    if delay is not None:
-        _set(merged, sources, "min_request_interval_ms", delay,
-             "config.discovery.request_delay_ms")
-
-
-def _merge_acq_topology(
-    section: dict[str, Any],
-    merged: dict[str, Any],
-    sources: dict[str, str],
-) -> None:
-    topo = section.get("topology")
-    if isinstance(topo, dict) and topo.get("mode") is not None:
-        _set(merged, sources, "topology_mode", topo["mode"],
-             "config.discovery.topology.mode")
-
-
-def _merge_acq_discovery_rules(
-    rules: dict[str, Any],
-    merged: dict[str, Any],
-    sources: dict[str, str],
-    prefix: str,
-) -> None:
-    for key in ("include_url_patterns", "include_link_text_patterns"):
-        if key in rules:
-            _set(merged, sources, key, rules[key],
-                 f"config.discovery.{prefix}.{key}")
-
-
-def _merge_acq_runtime(
-    section: dict[str, Any],
-    merged: dict[str, Any],
-    sources: dict[str, str],
-) -> None:
-    runtime = section.get("runtime")
-    if not isinstance(runtime, dict):
-        return
-    for key in _ACQ_RUNTIME_KEYS:
-        if key in runtime:
-            _set(merged, sources, key, runtime[key],
-                 f"config.discovery.runtime.{key}")
-
-
-def _merge_acq_retry(
-    section: dict[str, Any],
-    merged: dict[str, Any],
-    sources: dict[str, str],
-) -> None:
-    rp = section.get("retry_policy")
-    if not isinstance(rp, dict):
-        return
-    for src, dst in (
-        ("max_attempts", "retry_max_attempts"),
-        ("initial_backoff_seconds", "retry_initial_backoff_seconds"),
-        ("max_backoff_seconds", "retry_max_backoff_seconds"),
-    ):
-        if src in rp:
-            _set(merged, sources, dst, rp[src],
-                 f"config.discovery.retry_policy.{src}")
-
-
-def _merge_acq_policy(
-    section: dict[str, Any],
-    merged: dict[str, Any],
-    sources: dict[str, str],
-) -> None:
-    pol = section.get("policy")
-    if not isinstance(pol, dict):
-        return
-    for src, dst in (
-        ("robots_mode", "robots_policy_mode"),
-        ("tos_mode", "tos_policy_mode"),
-    ):
-        if src in pol:
-            _set(merged, sources, dst, pol[src],
-                 f"config.discovery.policy.{src}")
-    if "acknowledged_tos_domains" in pol:
-        _set(merged, sources, "acknowledged_tos_domains",
-             pol["acknowledged_tos_domains"],
-             "config.discovery.policy.acknowledged_tos_domains")
-
-
-def _merge_acq_output(
-    section: dict[str, Any],
-    merged: dict[str, Any],
-    sources: dict[str, str],
-) -> None:
-    out = section.get("output")
-    if not isinstance(out, dict):
-        return
-    if "documents_dir" in out:
-        _set(merged, sources, "output_documents", out["documents_dir"],
-             "config.discovery.output.documents_dir")
-    if "manifest_path" in out:
-        _set(merged, sources, "output_manifest", out["manifest_path"],
-             "config.discovery.output.manifest_path")
-
-
-def _merge_acq_search(
-    section: dict[str, Any],
-    merged: dict[str, Any],
-    sources: dict[str, str],
-) -> None:
-    cfg = section.get("search")
-    if not isinstance(cfg, dict):
-        return
-    if "enabled" in cfg:
-        _set(merged, sources, "enable_serpapi", cfg["enabled"],
-             "config.discovery.search.enabled")
-    elif cfg.get("provider") == "serpapi" and "enable_serpapi" not in merged:
-        _set(merged, sources, "enable_serpapi", True,
-             "config.discovery.search.provider")
-    for src, dst in _ACQ_SEARCH_KEY_MAP.items():
-        if src in cfg:
-            _set(merged, sources, dst, cfg[src],
-                 f"config.discovery.search.{src}")
-
-    # Verbatim SerpApi params + the google_news convenience flag → merged into a
-    # single seeker_extra_params dict forwarded to the seeker.
-    seeker_params: dict[str, Any] = {}
-    raw_params = cfg.get("serpapi_params")
-    if isinstance(raw_params, dict):
-        seeker_params.update(raw_params)
-    if cfg.get("google_news") is True:
-        seeker_params.setdefault("tbm", "nws")
-    if seeker_params:
-        _set(merged, sources, "seeker_extra_params", seeker_params,
-             "config.discovery.search.serpapi_params")
-
-
-def _merge_acq_digger(
-    section: dict[str, Any],
-    merged: dict[str, Any],
-    sources: dict[str, str],
-) -> None:
-    cfg = section.get("digger")
-    if not isinstance(cfg, dict):
-        return
-    for src, dst in (
-        ("provider", "digger_provider"),
-        ("connector", "digger_provider"),
-        ("allowed_domains", "allowed_domains"),
-    ):
-        if src in cfg:
-            _set(merged, sources, dst, cfg[src],
-                 f"config.discovery.digger.{src}")
-    if isinstance(cfg.get("index_page_mode"), dict):
-        _set(merged, sources, "index_page_mode", cfg["index_page_mode"],
-             "config.discovery.digger.index_page_mode")
-    digger_rules = cfg.get("discovery_rules")
-    if isinstance(digger_rules, dict):
-        _merge_acq_discovery_rules(
-            digger_rules, merged, sources, "digger.discovery_rules"
-        )
-
-
-def _merge_acq_link_prioritization(
-    section: dict[str, Any],
-    merged: dict[str, Any],
-    sources: dict[str, str],
-) -> None:
-    lp = section.get("link_prioritization")
-    if not isinstance(lp, dict):
-        return
-    for src, dst in (
-        ("mode", "link_prioritization_mode"),
-        ("top_k", "link_top_k"),
-        ("keywords", "link_prioritization_keywords"),
-        ("domain_scores", "link_prioritization_domain_scores"),
-        ("shopping_path_keywords", "link_prioritization_shopping_keywords"),
-    ):
-        if src in lp:
-            _set(merged, sources, dst, lp[src],
-                 f"config.discovery.link_prioritization.{src}")
-
-
-def _merge_acq_selection(
-    section: dict[str, Any],
-    merged: dict[str, Any],
-    sources: dict[str, str],
-) -> None:
-    sel = section.get("selection")
-    if not isinstance(sel, dict):
-        return
-    for src_key, dst_key in _ACQ_SELECTION_KEY_MAP.items():
-        if src_key in sel:
-            _set(merged, sources, dst_key, sel[src_key],
-                 f"config.discovery.selection.{src_key}")
-
-
-def _merge_acq_routing(
-    section: dict[str, Any],
-    merged: dict[str, Any],
-    sources: dict[str, str],
-) -> None:
-    routing = section.get("routing")
-    if not isinstance(routing, dict):
-        return
-    if "index_links" in routing:
-        _set(merged, sources, "index_links", routing["index_links"],
-             "config.discovery.routing.index_links")
-
-
-def _merge_discovery_fields(
-    section: dict[str, Any],
-    merged: dict[str, Any],
-    sources: dict[str, str],
-) -> None:
-    # Shorthands first; verbose subsections override when both present.
-    _merge_acq_shorthands(section, merged, sources)
-    _merge_acq_topology(section, merged, sources)
-    for sec_key, merged_key in _ACQ_SIMPLE_KEYS:
-        if sec_key in section:
-            _set(merged, sources, merged_key, section[sec_key],
-                 f"config.discovery.{sec_key}")
-    discovery_rules = section.get("discovery_rules")
-    if isinstance(discovery_rules, dict):
-        _merge_acq_discovery_rules(
-            discovery_rules, merged, sources, "discovery_rules"
-        )
-    _merge_acq_runtime(section, merged, sources)
-    _merge_acq_retry(section, merged, sources)
-    _merge_acq_policy(section, merged, sources)
-    _merge_acq_output(section, merged, sources)
-    _merge_acq_search(section, merged, sources)
-    _merge_acq_digger(section, merged, sources)
-    _merge_acq_routing(section, merged, sources)
-    _merge_acq_link_prioritization(section, merged, sources)
-    _merge_acq_selection(section, merged, sources)
-    classifier = section.get("document_classifier")
-    if isinstance(classifier, dict):
-        _set(merged, sources, "document_classifier", classifier,
-             "config.discovery.document_classifier")
-    review = section.get("document_review")
-    if isinstance(review, dict):
-        _set(merged, sources, "document_review", review,
-             "config.discovery.document_review")
-    retention = section.get("retention")
-    if isinstance(retention, dict) and retention.get("documents") is not None:
-        _set(
-            merged,
-            sources,
-            "retention_documents",
-            str(retention.get("documents")),
-            "config.discovery.retention.documents",
-        )
-    aliases = section.get("query_context_aliases")
-    if isinstance(aliases, dict):
-        _set(merged, sources, "query_context_aliases", aliases,
-             "config.discovery.query_context_aliases")
-    partition_by = section.get("partition_by")
-    if isinstance(partition_by, list):
-        _set(merged, sources, "partition_by", partition_by,
-             "config.discovery.partition_by")
-    browser_flag = section.get("browser_mode")
-    if browser_flag is not None:
-        _set(merged, sources, "browser_mode", bool(browser_flag),
-             "config.discovery.browser_mode")
-    escalation = section.get("browser_escalation")
-    if escalation is not None:
-        _set(
-            merged,
-            sources,
-            "browser_escalation",
-            _normalize_browser_escalation(escalation),
-            "config.discovery.browser_escalation",
-        )
-    adapters = section.get("code_host_adapters")
-    if adapters is not None:
-        _set(
-            merged,
-            sources,
-            "code_host_adapters",
-            _normalize_code_host_adapters(adapters),
-            "config.discovery.code_host_adapters",
-        )
-
-
-_BROWSER_ESCALATION_INT_KEYS = ("min_shell_chars", "min_rendered_chars")
-
-
-def _normalize_browser_escalation(value: object) -> dict[str, object]:
-    """Validate ``discovery.browser_escalation`` (strict; no silent fallback)."""
-
-    if isinstance(value, bool):
-        return {"enabled": value}
-    if not isinstance(value, dict):
-        raise RuntimeConfigError(
-            "config.discovery.browser_escalation must be a mapping or bool."
-        )
-    allowed = {
-        "enabled",
-        "settle_seconds",
-        *_BROWSER_ESCALATION_INT_KEYS,
-    }
-    unknown = sorted(set(value) - allowed)
-    if unknown:
-        raise RuntimeConfigError(
-            "config.discovery.browser_escalation has unknown key(s): "
-            f"{', '.join(unknown)}. Allowed: {', '.join(sorted(allowed))}."
-        )
-    normalized: dict[str, object] = {}
-    if "enabled" in value:
-        _validate_discovery_boolean(
-            value["enabled"], "config.discovery.browser_escalation.enabled",
-        )
-        normalized["enabled"] = value["enabled"]
-    if "settle_seconds" in value:
-        _validate_discovery_number(
-            value["settle_seconds"],
-            "config.discovery.browser_escalation.settle_seconds",
-        )
-        normalized["settle_seconds"] = float(value["settle_seconds"])
-    for key in _BROWSER_ESCALATION_INT_KEYS:
-        if key in value:
-            _validate_discovery_integer(
-                value[key], f"config.discovery.browser_escalation.{key}", 0,
-            )
-            normalized[key] = value[key]
-    return normalized
-
-
-def _normalize_code_host_adapters(value: object) -> dict[str, object]:
-    """Validate ``discovery.code_host_adapters`` (strict; no silent fallback).
-
-    Accepts a bool shorthand (``true``/``false`` toggles the whole layer) or a
-    mapping with an ``enabled`` flag. Unknown keys are rejected so a typo never
-    silently no-ops.
-    """
-
-    if isinstance(value, bool):
-        return {"enabled": value}
-    if not isinstance(value, dict):
-        raise RuntimeConfigError(
-            "config.discovery.code_host_adapters must be a mapping or bool."
-        )
-    allowed = {"enabled"}
-    unknown = sorted(set(value) - allowed)
-    if unknown:
-        raise RuntimeConfigError(
-            "config.discovery.code_host_adapters has unknown key(s): "
-            f"{', '.join(unknown)}. Allowed: {', '.join(sorted(allowed))}."
-        )
-    normalized: dict[str, object] = {}
-    if "enabled" in value:
-        _validate_discovery_boolean(
-            value["enabled"], "config.discovery.code_host_adapters.enabled",
-        )
-        normalized["enabled"] = value["enabled"]
-    return normalized
-
-
 # ── Top-level field map (all commands) ──────────────────────────
 
 _FIELD_MAP: dict[str, str] = {
     "domain": "domain",
-    "seed_urls": "seeds",
-    "query": "query",
-    "state": "state",
-    "jurisdiction": "jurisdiction",
-    "jurisdiction_aliases": "jurisdiction_aliases",
-    "partition_mode": "partition_mode",
-    "enable_serpapi": "enable_serpapi",
-    "output_documents": "output_documents",
-    "output_manifest": "output_manifest",
     "dry_run": "dry_run",
     "path": "input_dir",
     "pages_csv": "pages_csv",
@@ -2499,7 +1054,6 @@ _FIELD_MAP: dict[str, str] = {
     "provider": "provider",
     "model": "model",
     "limit": "limit",
-    "target_limit": "target_limit",
     "skip_existing": "skip_existing",
     "max_context": "max_context",
     "timeout_seconds": "timeout_seconds",
@@ -2514,22 +1068,36 @@ _FIELD_MAP: dict[str, str] = {
 }
 
 
+def config_key_paths(command: str) -> dict[str, str]:
+    """Map resolved field names to the config key paths users write."""
+    section_name = _SECTION_ALIASES[command]
+    if section_name == "discovery":
+        return discovery_key_paths()
+    return {
+        field: f"{section_name}.{key}" for field, key in _FIELD_MAP.items()
+    }
+
+
 def _merge_config_fields(
     *,
     section_name: str,
     section: dict[str, Any],
     cli_values: dict[str, Any],
+    config_path: str | None,
 ) -> tuple[dict[str, Any], dict[str, str]]:
     merged: dict[str, Any] = {}
     sources: dict[str, str] = {}
 
-    for cli_key, section_key in _FIELD_MAP.items():
-        if section_key in section:
-            merged[cli_key] = section.get(section_key)
-            sources[cli_key] = f"config.{section_name}.{section_key}"
-
     if section_name == "discovery":
-        _merge_discovery_fields(section, merged, sources)
+        for field, (value, source) in resolve_discovery_section(
+            section, config_path
+        ).items():
+            merged[field], sources[field] = value, source
+    else:
+        for cli_key, section_key in _FIELD_MAP.items():
+            if section_key in section:
+                merged[cli_key] = section.get(section_key)
+                sources[cli_key] = f"config.{section_name}.{section_key}"
 
     for cli_key, value in cli_values.items():
         if value is not None:
@@ -2593,7 +1161,6 @@ def resolve_command_config(
     command: str,
     cli_values: dict[str, Any],
     config_data: dict[str, Any] | None,
-    strict: bool = False,
 ) -> dict[str, Any]:
     """Resolve command inputs from runtime config and CLI overrides."""
     section_name = _SECTION_ALIASES.get(command)
@@ -2607,15 +1174,18 @@ def resolve_command_config(
         msg = f"'{section_name}' section must be an object in runtime config"
         raise RuntimeConfigError(msg)
 
-    if section_name == "discovery":
-        _validate_discovery_section_schema(section)
-    elif section_name == "extraction":
+    config_path = cfg.get("_config_path")
+    if section_name in _ALLOWED_SECTION_FIELDS:
+        reject_unknown_keys(
+            section, _ALLOWED_SECTION_FIELDS[section_name], section_name, config_path
+        )
+    if section_name == "extraction":
         _validate_extraction_section_schema(section)
-    warnings = _validate_section_keys(section_name, section, strict=strict)
     merged, sources = _merge_config_fields(
         section_name=section_name,
         section=section,
         cli_values=cli_values,
+        config_path=config_path,
     )
 
     if cli_values.get("domain") is None and "domain" in cfg:
@@ -2662,6 +1232,5 @@ def resolve_command_config(
         merged["_model_registry"] = cfg.get("_model_registry")
         sources["_model_registry"] = "config._model_registry"
 
-    merged["_config_warnings"] = warnings
     merged["_config_sources"] = sources
     return merged

@@ -254,7 +254,7 @@ def test_context_windows_remain_separate_from_alias_resolution(
     )
     config_data = load_runtime_config_file(config_path)
     resolved = resolve_command_config(
-        command="extract", cli_values={}, config_data=config_data, strict=True
+        command="extract", cli_values={}, config_data=config_data
     )
     windows = resolved["model_context_windows"]
     assert windows == {"deployment": 20000, "other": 30000}

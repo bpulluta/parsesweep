@@ -80,7 +80,6 @@ def validate(
         resolved_inputs = _resolve_runtime_command_inputs(
             command_name="validate",
             config_path=config_path,
-            strict=False,
             cli_values={},
         )
     except RuntimeConfigError as exc:

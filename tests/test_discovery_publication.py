@@ -204,29 +204,20 @@ def test_missing_source_and_copy_failure_preserve_old_curation(
     assert (curated / record["relative_path"]).read_bytes() == before
 
 
-def test_materialization_carries_text_and_full_filename_review_sidecars(
-    tmp_path,
-):
-    """Materialization carries text and full filename review
-    sidecars.
-    """
+def test_materialization_carries_full_filename_text_caches(tmp_path):
+    """Materialization carries full-filename text caches."""
     documents = tmp_path / "documents"
     record = _record(documents)
     source = Path(record["path"])
     (source.parent / ".text").mkdir()
     (source.parent / ".text/report.pdf.txt").write_text("extracted")
     (source.parent / ".text/report.pdf.meta.json").write_text("{}")
-    (source.parent / ".review").mkdir()
-    (source.parent / ".review/report.pdf.json").write_text(
-        '{"cache_key":"identity"}'
-    )
     curated, count, errors = pub.materialize_curated(
         documents_dir=documents, download_records=[record]
     )
     assert count == 1 and errors == 0
     assert (curated / "county/.text/report.pdf.txt").read_text() == "extracted"
     assert (curated / "county/.text/report.pdf.meta.json").exists()
-    assert (curated / "county/.review/report.pdf.json").exists()
 
 
 def test_explicit_index_provenance_is_promoted_and_fields_unioned(tmp_path):

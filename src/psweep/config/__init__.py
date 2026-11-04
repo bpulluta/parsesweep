@@ -15,6 +15,7 @@ from .runtime_config_loader import (
     VARIABLE_CATALOG,
     build_model_registry,
     catalog_for_command,
+    config_key_paths,
     load_runtime_config_file,
     resolve_command_config,
 )
@@ -30,6 +31,7 @@ __all__ = [
     "VARIABLE_CATALOG",
     "build_model_registry",
     "catalog_for_command",
+    "config_key_paths",
     "load_runtime_config_file",
     "resolve_command_config",
 ]

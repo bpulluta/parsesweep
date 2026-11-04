@@ -39,15 +39,14 @@ discovery:
     - "industrial pump installation manual filetype:pdf"
 ```
 
-`discovery.queries` auto-enables SerpApi when search is omitted. An explicit
-`search.enabled: false` disables it. If you already
-know the document URLs, replace `queries` with `seeds`; seed-only discovery
-does not auto-enable search and needs no search credential:
+Search runs only when `discovery.queries` is set. If you already know the
+document URLs, replace `queries` with `sources`; they are always downloaded and
+kept, and need no search credential:
 
 ```yaml
 domain: my_domain
 discovery:
-  seeds:
+  sources:
     - https://example.org/documents/manual.pdf
 ```
 
@@ -110,8 +109,8 @@ with a URL-path regex:
 discovery:
   queries:
     - "site:example.org installation manual filetype:pdf"
-  allowed_domains: [example.org]
-  discovery_rules:
+  crawl:
+    allowed_domains: [example.org]
     include_url_patterns: ['^https?://(?:www\.)?example\.org/documents/']
 ```
 
@@ -156,12 +155,12 @@ Publication locks reject concurrent corpus writers; a discovery journal lets
 the next writer recover interrupted curated/provenance swaps. This is not a
 general pipeline transaction.
 
-OCR caches use `.text/<filename>.txt` and `.text/<filename>.meta.json`;
-review sidecars use `.review/<filename>.json`. Full filenames avoid collisions
-between formats with the same stem. OCR readers verify source size/mtime and
-source/text digests; partial pairs are misses and old stem-only caches are not
-reused. Metadata is replaced last. Curation carries these sidecars with selected
-files; native extraction and OCR correction rules are unchanged.
+OCR caches use `.text/<filename>.txt` and `.text/<filename>.meta.json`. Full
+filenames avoid collisions between formats with the same stem. OCR readers
+verify source size/mtime and source/text digests; partial pairs are misses and
+old stem-only caches are not reused. Metadata is replaced last. Curation carries
+these caches with selected files. LLM review grades are cached by content in
+`discovered/.review_cache/` and reused across runs.
 
 ## Add extraction when you have suitable documents
 

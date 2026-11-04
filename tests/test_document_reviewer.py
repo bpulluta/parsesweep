@@ -2,12 +2,11 @@
 
 The live LLM call is stubbed; these verify per-target ranking, in-place
 selection (files are NOT moved — the engine materializes curated/ separately),
-per-file ``.review`` sidecars, and graceful skips.
+the content-addressed grade cache, and graceful skips.
 """
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 import pytest
@@ -60,17 +59,19 @@ def test_seed_only_review_preserves_shared_cap(tmp_path):
 def test_malformed_cache_shape_is_a_miss(tmp_path):
     """An array-shaped grade cache is rejected and regraded."""
     record = _record(tmp_path, "one.pdf", "target")
-    cache = tmp_path / ".review/one.pdf.json"
+    reviewer = DocumentReviewer(
+        document_description="records", cache_dir=tmp_path / ".review_cache"
+    )
+    cache = tmp_path / ".review_cache" / f"{reviewer._cache_key(record['path'])}.json"
     cache.parent.mkdir()
     cache.write_text("[]")
-    reviewer = DocumentReviewer(document_description="records")
     _stub_grades(reviewer, {"one.pdf": {"is_primary": True, "relevance": 0.9, "doc_kind": "record", "reason": "fixture"}})
     reviewer.review([record], [])
     assert record["review_selected"] and not record["review_cached"]
 
 
 class TestReviewSelection:
-    def test_primary_selected_in_place_with_sidecar(self, tmp_path: Path):
+    def test_primary_selected_in_place(self, tmp_path: Path):
         ordinance = _record(tmp_path, "ordinance.pdf", "County A")
         deck = _record(tmp_path, "slides.pdf", "County A")
         reviewer = DocumentReviewer(
@@ -100,13 +101,6 @@ class TestReviewSelection:
         assert ordinance["path"] == (tmp_path / "ordinance.pdf").as_posix()
         assert (tmp_path / "ordinance.pdf").exists()
         assert "reviewed" not in ordinance["path"]
-        # A per-file review sidecar captures the verdict for human review.
-        sidecar = tmp_path / ".review" / "ordinance.pdf.json"
-        assert sidecar.exists()
-        payload = json.loads(sidecar.read_text(encoding="utf-8"))
-        assert payload["llm"]["is_primary"] is True
-        assert payload["selection"]["selected"] is True
-        assert payload["human"]["decision"] is None
         # non-primary stays put and is not selected
         assert deck.get("review_selected") is False
         assert (tmp_path / "slides.pdf").exists()
@@ -205,16 +199,19 @@ class TestReviewGradeCache:
             }
         }
 
-        # First run: grades via the (stubbed) LLM and writes a sidecar w/ cache_key.
-        r1 = DocumentReviewer(document_description="the enacted ordinance")
+        cache = tmp_path / ".review_cache"
+        r1 = DocumentReviewer(
+            document_description="the enacted ordinance", cache_dir=cache
+        )
         _stub_grades(r1, grades)
         _, notes1 = r1.review([dict(rec)], [])
-        assert any("reused from cache" in n for n in notes1)
-        sidecar = tmp_path / ".review" / "ordinance.pdf.json"
-        assert "cache_key" in json.loads(sidecar.read_text(encoding="utf-8"))
+        assert any("0 reused from cache" in n for n in notes1)
+        assert len(list(cache.glob("*.json"))) == 1
 
         # Second run: file unchanged → grade reused, LLM must NOT be called.
-        r2 = DocumentReviewer(document_description="the enacted ordinance")
+        r2 = DocumentReviewer(
+            document_description="the enacted ordinance", cache_dir=cache
+        )
 
         def _boom(_p):  # pragma: no cover - asserts no LLM call on cache hit
             raise AssertionError("LLM grade should not be called on cache hit")
@@ -235,12 +232,15 @@ class TestReviewGradeCache:
                 "doc_kind": "ordinance", "reason": "x",
             }
         }
-        r1 = DocumentReviewer(document_description="desc one")
+        cache = tmp_path / ".review_cache"
+        r1 = DocumentReviewer(document_description="desc one", cache_dir=cache)
         _stub_grades(r1, grades)
         r1.review([dict(rec)], [])
 
         # Different description → different cache key → must re-grade.
-        r2 = DocumentReviewer(document_description="a different description")
+        r2 = DocumentReviewer(
+            document_description="a different description", cache_dir=cache
+        )
         _stub_grades(r2, grades)
         rec2 = dict(rec)
         _, notes2 = r2.review([rec2], [])
@@ -256,12 +256,13 @@ class TestReviewGradeCache:
                 "doc_kind": "comment", "reason": "x",
             }
         }
-        r1 = DocumentReviewer(document_description="public comments")
+        cache = tmp_path / ".review_cache"
+        r1 = DocumentReviewer(document_description="public comments", cache_dir=cache)
         _stub_grades(r1, grades)
         r1.review([dict(rec)], [])
 
         # Same file bytes/mtime, but different download provenance → re-grade.
-        r2 = DocumentReviewer(document_description="public comments")
+        r2 = DocumentReviewer(document_description="public comments", cache_dir=cache)
         seen: list[str] = []
 
         def _grade(p, **kw):
@@ -278,7 +279,7 @@ class TestReviewGradeCache:
         assert any("graded 1 file" in n for n in notes2)
 
         # Unchanged provenance on a third run → cache hit.
-        r3 = DocumentReviewer(document_description="public comments")
+        r3 = DocumentReviewer(document_description="public comments", cache_dir=cache)
         _stub_grades(r3, {})
         rec3 = dict(rec2)
         r3.review([rec3], [])
@@ -351,17 +352,6 @@ class TestReviewSourceUrlContext:
     def test_missing_url_is_not_fabricated(self, tmp_path: Path, monkeypatch):
         prompt = self._review_one(tmp_path, monkeypatch)
         assert "SOURCE_URL" not in prompt
-
-    def test_sidecar_records_source_url(self, tmp_path: Path, monkeypatch):
-        self._review_one(
-            tmp_path, monkeypatch, final_url="https://efsec.wa.gov/c.pdf"
-        )
-        payload = json.loads(
-            (tmp_path / ".review" / "Bury.pdf.json").read_text(
-                encoding="utf-8",
-            )
-        )
-        assert payload["source_url"] == "https://efsec.wa.gov/c.pdf"
 
 
 class TestReviewSampleWindowing:

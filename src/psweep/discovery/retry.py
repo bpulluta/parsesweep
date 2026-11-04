@@ -1,18 +1,25 @@
-"""Shared retry primitives for the discovery module.
+"""Shared retry primitives: backoff math and retryable-failure classification.
 
-Exponential backoff and transient-error classification were previously
-implemented three times (engine downloads, SerpApi seeker, HTTP digger) with
-byte-identical backoff math and near-identical marker lists. Centralizing them
-removes the drift risk; each caller keeps its own retry *loop* (they differ in
-rate-limiting and return shapes) but shares this math and this predicate.
+Every in-run retry loop and every cross-run completion decision uses these, so
+"may succeed later" has one definition.
 """
 
 from __future__ import annotations
 
-# Substrings that mark a retryable, transient failure. Union of what the three
-# call sites checked independently — a superset is safe for retries.
+import re
+from collections.abc import Mapping
+
+import requests
+
+from psweep.utils.error_taxonomy import build_error_record
+
+from .browser import BrowserDownloadError
+from .transport import NetworkPolicyError
+
+# Message markers for untyped transient failures (e.g. Selenium timeouts).
 _TRANSIENT_MARKERS: tuple[str, ...] = (
     "timeout",
+    "timed out",
     "temporarily unavailable",
     "try again",
     "rate limit",
@@ -20,13 +27,16 @@ _TRANSIENT_MARKERS: tuple[str, ...] = (
     "connection aborted",
     "connection refused",
     "name resolution",
-    "dns",
-    "ssl",
-    "tls",
-    "429",
-    "503",
-    "504",
+    # Chrome network error codes (Selenium navigation and error pages).
+    "net::err_connection_",
+    "net::err_timed_out",
+    "net::err_name_not_resolved",
+    "net::err_internet_disconnected",
+    "net::err_network_changed",
+    "net::err_address_unreachable",
+    "net::err_empty_response",
 )
+_URL = re.compile(r"\S+://\S+")
 
 
 def compute_backoff(
@@ -49,25 +59,58 @@ def compute_backoff(
 
 
 def is_transient_error(exc: BaseException) -> bool:
-    """Return True when *exc* looks like a retryable transient failure.
+    """Return True when a later attempt of the same request may succeed.
 
-    Checks ``requests`` network exception types when available, then falls back
-    to substring markers in the exception message.
+    Timeouts, connection errors, truncated streams, browser network failures
+    and HTTP 429/5xx are transient; TLS certificate errors and other HTTP 4xx
+    responses are terminal. A policy rejection is transient only when its
+    evaluation failed transiently (e.g. robots.txt timed out) or a transient
+    error caused it. Typed errors are classified by type and status; only
+    untyped errors fall back to message markers.
     """
-    try:  # Optional: requests may not be importable in minimal environments.
-        import requests
+    if isinstance(exc, NetworkPolicyError):
+        cause = exc.__cause__
+        return bool(getattr(exc.result, "retryable", False)) or (
+            cause is not None and is_transient_error(cause)
+        )
+    if isinstance(exc, requests.exceptions.SSLError):
+        return False
+    if isinstance(exc, requests.exceptions.HTTPError) and exc.response is not None:
+        return _transient_status(exc.response.status_code)
+    if isinstance(exc, BrowserDownloadError):
+        return exc.status is None or _transient_status(exc.status)
+    if isinstance(
+        exc,
+        (
+            requests.exceptions.Timeout,
+            requests.exceptions.ConnectionError,
+            requests.exceptions.ChunkedEncodingError,
+            TimeoutError,
+            ConnectionError,
+        ),
+    ):
+        return True
+    message = _URL.sub("", str(exc)).lower()
+    return any(marker in message for marker in _TRANSIENT_MARKERS)
 
-        if isinstance(
-            exc,
-            (
-                requests.exceptions.Timeout,
-                requests.exceptions.ConnectionError,
-                requests.exceptions.SSLError,
-            ),
-        ):
-            return True
-    except Exception:  # noqa: BLE001 - requests missing / import side effects
-        pass
 
-    lowered = str(exc).lower()
-    return any(marker in lowered for marker in _TRANSIENT_MARKERS)
+def _transient_status(status: int) -> bool:
+    return status == 429 or status >= 500
+
+
+def error_record(exc: BaseException, **context: str | None) -> dict[str, object]:
+    """Build the canonical error record, classified by :func:`is_transient_error`."""
+    return {**build_error_record(exc, **context), "retryable": is_transient_error(exc)}
+
+
+def is_retryable(record: Mapping[str, object]) -> bool:
+    """Return True when a failed download/review record may succeed on re-run.
+
+    Only retryable failures block partition publication and keep a target
+    incomplete; terminal failures stay recorded but do not block.
+    """
+    if record.get("status") == "failed":
+        return bool(record.get("retryable"))
+    if record.get("review_failed"):
+        return bool(record.get("review_retryable"))
+    return False

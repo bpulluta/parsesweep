@@ -9,8 +9,9 @@ models:
   secondary: gpt-5.6-luna   # discovery, page targeting, review (speed matters)
 
 discovery:
-  browser_escalation: {enabled: true}  # opt into protected-site recovery
-  targets_csv: targets.csv
+  targets: targets.csv
+  crawl:
+    browser_escalation: {enabled: true}  # opt into protected-site recovery
   queries:
     # Geography + utility brand — finds the most likely official tariff
     - '"{utility_name}" {state} electric tariff filetype:pdf'
@@ -21,7 +22,6 @@ discovery:
     # Utility name + rate schedule keyword (no state filter — catches state subsidiaries)
     - '"{utility_name}" electric rate schedule "residential" filetype:pdf'
   search:
-    provider: serpapi
     max_results: 10
     cache: true
   selection:

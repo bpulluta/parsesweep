@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
+from psweep.discovery.targets import TARGET_INPUT_FIELDS
 from psweep.discovery.urls import redact_url
 from psweep.utils.error_taxonomy import summarize_error_records
 from psweep.workspace import DISCOVERED_DIRNAME
@@ -122,7 +123,7 @@ def _source_index(
 
 
 def _source_context_entry(row: dict[str, str]) -> dict[str, Any]:
-    """Retain generic target metadata, excluding search-query noise."""
+    """Retain generic target metadata, excluding search inputs and URLs."""
     meta = {}
     if row.get("target_metadata"):
         try:
@@ -133,15 +134,11 @@ def _source_context_entry(row: dict[str, str]) -> dict[str, Any]:
             meta = {
                 key: value
                 for key, value in parsed.items()
-                if key
-                not in {"query", "queries", "search_query", "search_queries"}
+                if key not in TARGET_INPUT_FIELDS
             }
-    # Index source_* columns are hints, not document facts.
-    for key, value in row.items():
-        if key and key.startswith("source_") and value:
-            meta.setdefault(key, value)
     return {
         "url": (row.get("final_url") or row.get("url") or "").strip(),
+        "source_scope": row.get("source_scope") or "",
         "target_label": row.get("target_label") or "",
         "target_metadata": meta,
     }
@@ -243,6 +240,7 @@ def prepend_source_context(
         url = json.dumps(redact_url(info["url"]), ensure_ascii=True)[1:-1]
         lines.append(f"SOURCE_URL: {url}")
     for key, label in (
+        ("source_scope", "DISCOVERY_SOURCE_SCOPE"),
         ("target_label", "DISCOVERY_TARGET_LABEL"),
         ("target_metadata", "DISCOVERY_TARGET_METADATA"),
     ):

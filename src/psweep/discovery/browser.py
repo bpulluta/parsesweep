@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import time
 import os
+import re
 from pathlib import Path
 from typing import Any
 
@@ -28,6 +29,21 @@ from psweep.security import protected_mode
 class BrowserUnavailableError(RuntimeError):
     """Raised when Selenium or a usable Chrome/driver is not available."""
 
+
+class BrowserDownloadError(RuntimeError):
+    """An in-browser ``fetch()`` failed; ``status`` is None for network errors."""
+
+    def __init__(self, message: str, *, status: int | None = None) -> None:
+        super().__init__(message)
+        self.status = status
+
+
+class BrowserNavigationError(RuntimeError):
+    """Chrome showed its error page; the message carries the ``net::ERR_*``
+    code so retry classification matches Selenium navigation errors."""
+
+
+_CHROME_ERROR_CODE = re.compile(r"\bERR_[A-Z_]+\b")
 
 _DEFAULT_UA = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
@@ -138,7 +154,7 @@ class BrowserSession:
         if self._driver is None:
             msg = "BrowserSession used outside its context manager."
             raise BrowserUnavailableError(msg)
-        self._driver.get(url)
+        self._navigate(url)
         if settle_seconds > 0:
             time.sleep(settle_seconds)
         return self._driver.page_source or ""
@@ -180,7 +196,7 @@ class BrowserSession:
         origin = f"{parsed.scheme}://{parsed.netloc}/"
         current = self._driver.current_url or ""
         if not current.startswith(f"{parsed.scheme}://{parsed.netloc}"):
-            self._driver.get(origin)
+            self._navigate(origin)
             time.sleep(2)
 
         self._driver.set_script_timeout(timeout_seconds + 5)
@@ -210,14 +226,23 @@ class BrowserSession:
         raw = self._driver.execute_async_script(script, url)
         payload = json.loads(raw) if raw else {}
         if not payload.get("ok"):
-            detail = payload.get("error") or f"HTTP {payload.get('status')}"
+            status = payload.get("status")
+            detail = payload.get("error") or f"HTTP {status}"
             msg = f"Browser download failed for {url}: {detail}"
-            raise RuntimeError(msg)
+            raise BrowserDownloadError(msg, status=int(status) if status else None)
         return (
             base64.b64decode(payload.get("data") or ""),
             payload.get("ct"),
             str(payload.get("url") or ""),
         )
+
+    def _navigate(self, url: str) -> None:
+        """Load *url*, raising when Chrome lands on its network error page."""
+        self._driver.get(url)
+        if str(self._driver.current_url or "").startswith("chrome-error://"):
+            match = _CHROME_ERROR_CODE.search(self._driver.page_source or "")
+            code = f"net::{match.group()}" if match else "chrome error page"
+            raise BrowserNavigationError(f"Browser navigation failed for {url}: {code}")
 
     def close(self) -> None:
         """Quit the underlying browser driver and release its resources."""

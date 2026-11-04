@@ -17,7 +17,7 @@ import os
 import shutil
 import uuid
 from dataclasses import dataclass, fields, is_dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from collections.abc import Iterator, Mapping
 
 from psweep.extraction.document_utils import text_cache_paths
@@ -44,6 +44,63 @@ class PublicationPaths:
     domain_dir: Path
     run_curated_dir: Path
     run_index: Path
+
+
+DocumentOwner = tuple[str, str]
+
+
+def document_owner(row: Mapping[str, object]) -> DocumentOwner:
+    """Owner of a published document: its target (or shared source) and URL."""
+    return (
+        str(row.get("target_id") or row.get("source_url") or ""),
+        str(row.get("url") or ""),
+    )
+
+
+def _owner_name(path: str, owner: DocumentOwner, *, suffixed: bool) -> str:
+    """The plain path an owner asked for, or its owner-hash variant."""
+    tag = "-" + hashlib.sha256("\0".join(owner).encode()).hexdigest()[:8]
+    name = PurePosixPath(path)
+    stem = name.stem.removesuffix(tag)
+    return name.with_name(f"{stem}{tag if suffixed else ''}{name.suffix}").as_posix()
+
+
+def assign_document_names(
+    records: list[dict[str, object]], index: Path, replaced: set[Path]
+) -> None:
+    """Give every downloaded record one stable, readable consolidated path.
+
+    Each record's ``relative_path`` holds the plain name it asks for. An owner
+    keeps the path it already holds in the consolidated ``index``; otherwise
+    it gets the plain name unless another owner holds it, then a short owner
+    hash. Curated records claim first, so failed or unselected downloads
+    never push a published document to a suffixed name. Index rows in
+    ``replaced`` partitions (``--fresh``) are ignored.
+    """
+    held: dict[str, DocumentOwner] = {}
+    owned: dict[tuple[DocumentOwner, str], str] = {}
+    for row in _csv_read(index)[1] if index.exists() else ():
+        path = row["relative_path"]
+        if _under(Path(path).parent, replaced):
+            continue
+        owner = document_owner(row)
+        held[path] = owner
+        owned[(owner, _owner_name(path, owner, suffixed=False))] = path
+    review_ran = _review_ran(records)
+    named = sorted(
+        (record for record in records if record.get("relative_path")),
+        key=lambda record: not record_is_curated(record, review_ran=review_ran),
+    )
+    for record in named:
+        owner = document_owner(record)
+        plain = _owner_name(str(record["relative_path"]), owner, suffixed=False)
+        path = owned.get((owner, plain))
+        if path is None:
+            free = held.get(plain, owner) == owner
+            path = plain if free else _owner_name(plain, owner, suffixed=True)
+            held[path] = owner
+            owned[(owner, plain)] = path
+        record["relative_path"] = path
 
 
 def resolve_publication_paths(
@@ -334,6 +391,21 @@ def _publish(
         _recover(root)
         raise
     _recover(root)
+    _prune_empty_parents(
+        (root / "curated").absolute(),
+        [Path(e["destination"]) for e in entries if not e["staged"]],
+    )
+
+
+def _prune_empty_parents(base: Path, removed: list[Path]) -> None:
+    for path in removed:
+        for parent in path.parents:
+            if base not in parent.parents:
+                break
+            try:
+                parent.rmdir()
+            except OSError:
+                break
 
 
 def _new_stage(root: Path) -> Path:
@@ -380,14 +452,29 @@ def _link(source: Path, destination: Path) -> None:
         shutil.copy2(source, destination)
 
 
+def _review_ran(records: list[dict[str, object]]) -> bool:
+    return any(record.get("review_selected") is not None for record in records)
+
+
+def _withdrawn_paths(
+    records: list[dict[str, object]],
+) -> dict[str, DocumentOwner]:
+    """The run's downloaded but unselected documents and their owners."""
+    review_ran = _review_ran(records)
+    return {
+        str(record["relative_path"]): document_owner(record)
+        for record in records
+        if record.get("status") == "downloaded"
+        and record.get("relative_path")
+        and not record_is_curated(record, review_ran=review_ran)
+    }
+
+
 def _stage_curated(
     documents_dir: Path, records: list[dict[str, object]], destination: Path
 ) -> int:
     destination.mkdir()
-    review_ran = any(
-        "review_selected" in record and record["review_selected"] is not None
-        for record in records
-    )
+    review_ran = _review_ran(records)
     seen: set[Path] = set()
     count = 0
     for record in records:
@@ -399,12 +486,7 @@ def _stage_curated(
             msg = f"Selected document has no source: {rel}"
             raise PublicationError(msg)
         source = Path(str(raw_source)).resolve()
-        expected = (documents_dir / rel).resolve()
-        if (
-            source != expected
-            or not source.is_relative_to(documents_dir.resolve())
-            or not source.is_file()
-        ):
+        if not source.is_relative_to(documents_dir.resolve()) or not source.is_file():
             msg = (
                 "Selected document source missing or outside documents "
                 f"directory: {source}"
@@ -421,9 +503,6 @@ def _stage_curated(
         ):
             if cache.is_file():
                 _link(cache, curated_cache)
-        sidecar = source.parent / ".review" / f"{source.name}.json"
-        if sidecar.is_file():
-            _link(sidecar, dest.parent / ".review" / sidecar.name)
         count += 1
     return count
 
@@ -504,8 +583,14 @@ def _merged_index(
     domain_index: Path,
     promoted_paths: set[str],
     replaced_partitions: set[Path],
+    withdrawn: Mapping[str, DocumentOwner] | None = None,
     run_content: str | None = None,
-) -> str:
+) -> tuple[str, set[str]]:
+    """Merge run provenance; return the index and the withdrawn paths removed.
+
+    A path is only replaced or withdrawn by its owner (``document_owner``).
+    """
+    withdrawn = withdrawn or {}
     fieldnames, existing = (
         _csv_read(domain_index) if domain_index.exists() else ([], [])
     )
@@ -516,10 +601,15 @@ def _merged_index(
         incoming_fields, incoming = list(reader.fieldnames or ()), list(reader)
     fieldnames = list(dict.fromkeys([*fieldnames, *incoming_fields, "path"]))
     rows: dict[str, dict] = {}
+    removed: set[str] = set()
     for row in existing:
         key = row.get("relative_path", "")
         rel = _relative(key)
-        if not _under(rel.parent, replaced_partitions):
+        if _under(rel.parent, replaced_partitions):
+            continue
+        if withdrawn.get(key) == document_owner(row):
+            removed.add(key)
+        else:
             if key in rows:
                 msg = f"Duplicate consolidated index path: {key}"
                 raise PublicationError(msg)
@@ -534,6 +624,9 @@ def _merged_index(
             msg = f"Duplicate run index path: {key}"
             raise PublicationError(msg)
         found.add(key)
+        if key in rows and document_owner(rows[key]) != document_owner(row):
+            msg = f"Curated path is owned by another target or source: {key}"
+            raise PublicationError(msg)
         rows[key] = {
             **row,
             "path": (domain_index.parent / "curated" / key).as_posix(),
@@ -542,12 +635,11 @@ def _merged_index(
         missing = sorted(promoted_paths - found)
         msg = f"Missing provenance for curated paths: {missing}"
         raise PublicationError(msg)
-    return csv_content(fieldnames, list(rows.values()))
+    return csv_content(fieldnames, list(rows.values())), removed
 
 
-def _promotion_files(source: Path, is_blocked) -> tuple[list, set, set]:
+def _promotion_files(source: Path, is_blocked) -> tuple[list, set]:
     files: list[tuple[Path, Path, Path]] = []
-    partitions: set[Path] = set()
     promoted: set[str] = set()
     for src in source.rglob("*"):
         if not src.is_file():
@@ -561,11 +653,10 @@ def _promotion_files(source: Path, is_blocked) -> tuple[list, set, set]:
             partition = partition.parent
         if is_blocked(partition):
             continue
-        partitions.add(partition)
         files.append((src, rel, partition))
         if not any(part.startswith(".") for part in rel.parts):
             promoted.add(rel.as_posix())
-    return files, partitions, promoted
+    return files, promoted
 
 
 def _stage_promotion(
@@ -577,7 +668,16 @@ def _stage_promotion(
     blocked_partitions,
     run_index: Path | None,
     run_content: str | None = None,
+    withdrawn: Mapping[str, DocumentOwner] | None = None,
 ) -> list[tuple[Path, Path | None]]:
+    """Stage a run's publication into consolidated curation.
+
+    ``attempted_partitions`` (``--fresh`` runs) are replaced wholesale; any
+    other selected document is published file by file, and ``withdrawn``
+    paths (the run's own unselected documents) are removed when the
+    consolidated index records the same owner, so documents
+    of other targets sharing a partition are kept.
+    """
     if source.resolve() == (root / "curated").resolve():
         msg = "Run curation and consolidated curation must have distinct paths"
         raise PublicationError(msg)
@@ -592,13 +692,13 @@ def _stage_promotion(
     def is_blocked(part):
         return part in blocked_ancestors or _under(part, blocked)
 
-    files, partitions, promoted = _promotion_files(source, is_blocked)
+    files, promoted = _promotion_files(source, is_blocked)
     attempted = {
         _relative(part, partition=True)
         for part in (attempted_partitions or ())
     }
     replacements = _minimal(
-        partitions | {part for part in attempted if not is_blocked(part)}
+        {part for part in attempted if not is_blocked(part)}
     )
     staged_root = staging / "promoted"
     staged_root.mkdir()
@@ -615,14 +715,30 @@ def _stage_promotion(
             swaps.append((root / "curated" / part, stage_part))
         else:
             swaps.append((root / "curated" / part, None))
+    for i, (_, rel, partition) in enumerate(files):
+        if _under(partition, replacements):
+            continue
+        stage_file = staging / f"file-{i}"
+        (staged_root / rel).replace(stage_file)
+        swaps.append((root / "curated" / rel, stage_file))
     if run_index is not None:
-        content = _merged_index(
+        content, removed = _merged_index(
             run_index=run_index,
             domain_index=root / "download_index.csv",
             promoted_paths=promoted,
             replaced_partitions=replacements,
+            withdrawn={
+                key: owner
+                for key, owner in (withdrawn or {}).items()
+                if key not in promoted and not is_blocked(_relative(key).parent)
+            },
             run_content=run_content,
         )
+        for key in sorted(removed):
+            document = root / "curated" / key
+            for path in (document, *text_cache_paths(document)):
+                if _exists(path):
+                    swaps.append((path, None))
         staged_index = staging / "index"
         atomic_write(staged_index, content)
         swaps.append((root / "download_index.csv", staged_index))
@@ -673,15 +789,13 @@ def merge_download_index(
 ) -> None:
     """Atomically publish the index for known promoted documents."""
     with discovery_publication(domain_index.parent):
-        atomic_write(
-            domain_index,
-            _merged_index(
-                run_index=run_index,
-                domain_index=domain_index,
-                promoted_paths=promoted_paths,
-                replaced_partitions=replaced_partitions,
-            ),
+        content, _ = _merged_index(
+            run_index=run_index,
+            domain_index=domain_index,
+            promoted_paths=promoted_paths,
+            replaced_partitions=replaced_partitions,
         )
+        atomic_write(domain_index, content)
 
 
 def publish_manual_curation(
@@ -711,18 +825,6 @@ def publish_manual_curation(
             count = _stage_curated(
                 paths.documents_dir, download_records, local
             )
-            # Updated review sidecars must travel with curation, not
-            # stale copies.
-            for path, content in metadata_updates.items():
-                if path.parent.name == ".review" and path.is_relative_to(
-                    paths.documents_dir
-                ):
-                    rel = path.relative_to(paths.documents_dir)
-                    staged_sidecar = local / rel
-                    if staged_sidecar.exists():
-                        # Never mutate a source hardlink.
-                        staged_sidecar.unlink()
-                        atomic_write(staged_sidecar, content)
             swaps = _stage_promotion(
                 source=local,
                 root=root,
@@ -731,6 +833,7 @@ def publish_manual_curation(
                 blocked_partitions=blocked_partitions,
                 run_index=run_index,
                 run_content=run_index_content,
+                withdrawn=_withdrawn_paths(download_records),
             )
             swaps.append((paths.run_curated_dir, local))
             updates = {**metadata_updates, run_index: run_index_content}
@@ -912,11 +1015,15 @@ def save_checkpoint_entries(
 def effective_discovery_fingerprint(request: object) -> str:
     """Fingerprint effective discovery semantics and configured
     output locations.
+
+    ``targets`` and ``sources`` are inputs checkpointed per item, so
+    adding one does not invalidate completed work.
     """
     excluded = {
         "targets",
+        "sources",
         "progress_callback",
-        "reprocess",
+        "fresh",
         "dry_run",
         "seeker_cache",
         "seeker_cache_ttl_minutes",

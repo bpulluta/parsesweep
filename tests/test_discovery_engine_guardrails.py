@@ -19,30 +19,23 @@ def _read_manifest(path: Path) -> dict:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def test_query_discovery_without_candidates_emits_explicit_error(tmp_path):
-    """Query-based runs without seeds should fail loudly when discovery cannot produce candidates."""
-    documents_dir = tmp_path / "documents"
-    manifest_path = tmp_path / "manifest.json"
-
+def test_queries_without_credentials_emit_explicit_error(tmp_path, monkeypatch):
+    """Configured queries without credentials fail loudly instead of returning nothing."""
+    monkeypatch.chdir(tmp_path)
     request = DiscoveryRequest(
         domain="guardrail_test",
-        seed_urls=[],
-        query="xcel residential tariff pdf",
-        enable_serpapi=False,
-        output_documents=documents_dir,
-        output_manifest=manifest_path,
+        sources=[],
+        queries=["xcel residential tariff pdf"],
         dry_run=True,
     )
 
     result = DiscoveryEngine().run(request)
     manifest = _read_manifest(result.manifest_path)
 
-    assert manifest["status"] == "dry_run"
-    assert manifest["error_summary"]["total_errors"] == 0
-    assert manifest["errors"] == []
+    assert manifest["status"] == "failed"
     assert any(
-        "Search is disabled" in note
-        for note in manifest.get("notes", [])
+        "SERPAPI_API_KEY is not set" in error["message"]
+        for error in manifest["errors"]
     )
 
 
@@ -51,11 +44,7 @@ def test_forbidden_download_retries_via_browser(tmp_path, monkeypatch):
     manifest_path = tmp_path / "manifest.json"
     request = DiscoveryRequest(
         domain="guardrail_test",
-        seed_urls=[],
-        query=None,
-        enable_serpapi=False,
-        output_documents=documents_dir,
-        output_manifest=manifest_path,
+        sources=[],
         dry_run=False,
         browser_escalation={"enabled": True},
     )
@@ -184,23 +173,20 @@ def test_promote_curated_swaps_attempted_and_clears_stale_on_fresh(tmp_path):
 
     assert (domain_dir / "curated" / "host" / "path" / "new.pdf").exists()
     assert not (domain_dir / "curated" / "host" / "path" / "old.pdf").exists()
-    assert not (domain_dir / "curated" / "other" / "stale").exists()
+    assert not (domain_dir / "curated" / "other").exists()
+    assert (domain_dir / "curated").is_dir()
     assert not list(domain_dir.glob(".curated-*"))
 
 
 def test_code_hosting_retry_respects_fresh_cache_refresh(monkeypatch, tmp_path):
     request = DiscoveryRequest(
         domain="guardrail_test",
-        seed_urls=[],
-        query=None,
-        enable_serpapi=False,
-        output_documents=tmp_path / "documents",
-        output_manifest=tmp_path / "manifest.json",
+        sources=[],
         dry_run=False,
         link_prioritization_domain_scores={"municode.com": 0.25},
         seeker_cache=True,
         seeker_cache_ttl_minutes=30.0,
-        reprocess=True,
+        fresh=True,
         retry_max_attempts=4,
         retry_initial_backoff_seconds=2.0,
         retry_max_backoff_seconds=10.0,
@@ -209,6 +195,7 @@ def test_code_hosting_retry_respects_fresh_cache_refresh(monkeypatch, tmp_path):
     download_records = [
         {
             "url": "https://library.municode.com/tx/city/example/code",
+            "target_id": "example-target",
             "target_metadata": {"label": "example-target"},
             "review_selected": False,
         }
@@ -273,11 +260,7 @@ def test_download_single_candidate_decodes_escaped_url_before_fetch(
     manifest_path = tmp_path / "manifest.json"
     request = DiscoveryRequest(
         domain="guardrail_test",
-        seed_urls=[],
-        query=None,
-        enable_serpapi=False,
-        output_documents=documents_dir,
-        output_manifest=manifest_path,
+        sources=[],
         dry_run=False,
     )
     candidate = DiscoveryCandidate(
@@ -378,11 +361,7 @@ def test_browser_escalation_uses_recalibrated_shell_default(tmp_path, monkeypatc
 
     request = DiscoveryRequest(
         domain="d",
-        seed_urls=[],
-        query=None,
-        enable_serpapi=False,
-        output_documents=None,
-        output_manifest=None,
+        sources=[],
         dry_run=False,
         browser_escalation={"enabled": True},
     )
@@ -410,11 +389,7 @@ def test_browser_escalation_uses_recalibrated_shell_default(tmp_path, monkeypatc
 def _shell_request(**overrides):
     base = dict(
         domain="d",
-        seed_urls=[],
-        query=None,
-        enable_serpapi=False,
-        output_documents=None,
-        output_manifest=None,
+        sources=[],
         dry_run=False,
         code_host_adapters={"enabled": True},
     )

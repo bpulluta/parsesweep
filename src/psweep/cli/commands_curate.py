@@ -24,31 +24,8 @@ from psweep.discovery.publication import (
     record_is_curated,
     resolve_publication_paths,
 )
+from psweep.discovery.retry import is_retryable
 from psweep.workspace import Workspace
-
-
-def _review_sidecar_update(record: dict) -> tuple[Path, str] | None:
-    """Change only the human block of the full-filename review
-    sidecar.
-    """
-    source = Path(str(record.get("path") or ""))
-    sidecar = source.parent / ".review" / f"{source.name}.json"
-    if not sidecar.exists():
-        return None
-    payload = json.loads(sidecar.read_text(encoding="utf-8"))
-    if not isinstance(payload, dict) or not isinstance(
-        payload.get("human", {}), dict
-    ):
-        message = f"Invalid review sidecar: {sidecar}"
-        raise PublicationError(message)
-    payload["human"] = {
-        **payload.get("human", {}),
-        "decision": record.get("human_decision") or None,
-        "notes": record.get("human_notes") or None,
-    }
-    return sidecar, json.dumps(
-        payload, indent=2, sort_keys=True, allow_nan=False
-    )
 
 
 def _manifest_path(value: object, *, field: str) -> Path:
@@ -132,14 +109,13 @@ def _apply_human_decision(
     return bool(decision and before != effective)
 
 
-def _apply_ledger(rows: list[dict], records: list[dict]) -> tuple[dict, int]:
+def _apply_ledger(rows: list[dict], records: list[dict]) -> int:
     by_path = _records_by_path(records)
     review_ran = any(
         record.get("review_selected") is not None for record in records
     )
     seen: set[str] = set()
     overridden = 0
-    updates: dict[Path, str] = {}
     for row in rows:
         relative = row.get("relative_path") or ""
         if relative not in by_path or relative in seen:
@@ -150,14 +126,11 @@ def _apply_ledger(rows: list[dict], records: list[dict]) -> tuple[dict, int]:
         seen.add(relative)
         record = by_path[relative]
         overridden += _apply_human_decision(row, record, review_ran=review_ran)
-        sidecar = _review_sidecar_update(record)
-        if sidecar is not None:
-            updates[sidecar[0]] = sidecar[1]
     for record in records:
         record["curated_selected"] = record_is_curated(
             record, review_ran=review_ran
         )
-    return updates, overridden
+    return overridden
 
 
 def _updated_index(path: Path, records: list[dict]) -> str:
@@ -184,65 +157,51 @@ def _updated_index(path: Path, records: list[dict]) -> str:
     return csv_content(fields, rows)
 
 
-def _partition_decisions(manifest: dict) -> tuple[set[Path], set[Path]]:
-    records = _records_by_path(manifest["downloads"])
-    attempted = {
-        Path(key).parent
-        for key, record in records.items()
-        if record.get("status") == "downloaded"
-    }
-    blocked = {
-        Path(key).parent
-        for key, record in records.items()
-        if record.get("review_failed")
-        and record.get("human_decision") not in {"keep", "reject"}
-    }
-    values = manifest["lineage"].get("blocked_partitions", [])
+def _lineage_partitions(lineage: dict, key: str) -> set[Path]:
+    values = lineage.get(key, [])
     if not isinstance(values, list) or any(
         not isinstance(value, str) for value in values
     ):
-        message = (
-            "Manifest blocked_partitions must be a list of relative paths"
-        )
+        message = f"Manifest {key} must be a list of relative paths"
         raise PublicationError(message)
-    review_only = manifest["lineage"].get("review_only_blocked_partitions", [])
-    if not isinstance(review_only, list) or not all(
-        isinstance(value, str) for value in review_only
-    ):
-        message = (
-            "Manifest review-only blocks must be a list of relative paths"
-        )
-        raise PublicationError(message)
+    return {Path(value) for value in values}
+
+
+def _partition_decisions(manifest: dict) -> tuple[set[Path], set[Path]]:
+    records = _records_by_path(manifest["downloads"])
+    lineage = manifest["lineage"]
+    blocked = {
+        Path(key).parent
+        for key, record in records.items()
+        if is_retryable(record)
+        and record.get("human_decision") not in {"keep", "reject"}
+    }
     resolved_reviews = {
         Path(key).parent
         for key, record in records.items()
         if record.get("review_failed")
         and record.get("human_decision") in {"keep", "reject"}
     }
-    released = {Path(value) for value in review_only} & resolved_reviews
-    blocked.update(
-        Path(value) for value in values if Path(value) not in released
+    released = (
+        _lineage_partitions(lineage, "review_only_blocked_partitions")
+        & resolved_reviews
     )
-    return attempted, blocked
+    blocked.update(_lineage_partitions(lineage, "blocked_partitions") - released)
+    return _lineage_partitions(lineage, "replaced_partitions"), blocked
 
 
-def _curate_run(
-    run_dir: Path, *, manifest_path: Path | None = None
-) -> tuple[Path, int, int, int]:
+def _curate_run(run_dir: Path) -> tuple[Path, int, int, int]:
     # Derive corpus identity before reading potentially interrupted
     # files.
     domain_dir = (
         run_dir.parent.parent if run_dir.parent.name == "runs" else run_dir
     )
     with discovery_publication(domain_dir):
-        actual_manifest = manifest_path or run_dir / "manifest.json"
-        if not actual_manifest.exists():
-            message = (
-                f"Discovery manifest not found: {actual_manifest}. "
-                "For a custom manifest filename, use --config <run.yaml>."
-            )
+        manifest_path = run_dir / "manifest.json"
+        if not manifest_path.exists():
+            message = f"Discovery manifest not found: {manifest_path}"
             raise PublicationError(message)
-        return _curate_locked(actual_manifest, domain_dir)
+        return _curate_locked(manifest_path, domain_dir)
 
 
 def _curate_locked(
@@ -276,7 +235,7 @@ def _curate_locked(
         ),
         {"relative_path", "human_decision"},
     )
-    updates, overridden = _apply_ledger(rows, manifest["downloads"])
+    overridden = _apply_ledger(rows, manifest["downloads"])
     lineage.update(
         {
             "domain_dir": domain_dir.as_posix(),
@@ -291,9 +250,11 @@ def _curate_locked(
             },
         }
     )
-    updates[manifest_path.resolve()] = json.dumps(
-        manifest, indent=2, sort_keys=True, allow_nan=False
-    )
+    updates = {
+        manifest_path.resolve(): json.dumps(
+            manifest, indent=2, sort_keys=True, allow_nan=False
+        )
+    }
     attempted, blocked = _partition_decisions(manifest)
     curated, count = publish_manual_curation(
         paths=paths,
@@ -321,25 +282,21 @@ def _latest_run(domain: str) -> Path:
 
 def _resolve_run(
     target: str | None, config_path: str | None, run_dir_opt: str | None
-) -> tuple[Path, Path | None]:
+) -> Path:
     if run_dir_opt:
-        return Path(run_dir_opt).resolve(), None
+        return Path(run_dir_opt).resolve()
     resolved = {}
     if config_path:
         resolved = resolve_command_config(
             command="discover",
             config_data=load_runtime_config_file(Path(config_path)),
-            strict=False,
             cli_values={},
         )
-    if resolved.get("output_manifest"):
-        manifest = Path(str(resolved["output_manifest"])).resolve()
-        return manifest.parent, manifest
     domain = target or resolved.get("domain")
     if not domain:
         message = "Pass --config <run.yaml>, a domain name, or --run <dir>."
         raise PublicationError(message)
-    return _latest_run(str(domain)), None
+    return _latest_run(str(domain))
 
 
 @click.command()
@@ -351,7 +308,7 @@ def _resolve_run(
     default=None,
     help=(
         "Path to runtime config (.yaml/.yml/.json) — "
-        "locates the domain's latest run or explicit manifest"
+        "locates the domain's latest run"
     ),
 )
 @click.option(
@@ -377,12 +334,10 @@ def curate(
         "curate", quiet=quiet, verbose=verbose, debug=debug
     )
     try:
-        run_dir, manifest = _resolve_run(target, config_path, run_dir_opt)
+        run_dir = _resolve_run(target, config_path, run_dir_opt)
         view.header("CURATION")
         view.config({"Run folder": run_dir.as_posix()})
-        curated_dir, count, reviewed, overridden = _curate_run(
-            run_dir, manifest_path=manifest
-        )
+        curated_dir, count, reviewed, overridden = _curate_run(run_dir)
     except (OSError, ValueError, TypeError, RuntimeConfigError) as exc:
         print_error("Curation publication failed", str(exc))
         if debug:

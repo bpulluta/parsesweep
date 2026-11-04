@@ -32,7 +32,6 @@ def _resolve(path: Path, command: str) -> dict:
         command=command,
         cli_values={},
         config_data=load_runtime_config_file(path),
-        strict=True,
     )
 
 

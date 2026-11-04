@@ -182,12 +182,11 @@ Use `selection.draft_patterns` with `exclude_draft`,
 `link_prioritization.domain_scores`, and `shopping_path_keywords` for observed
 domain mismatches. `link_prioritization.keywords` replaces the generic fallback.
 Concrete provider/vendor source filters belong in the domain config; parsers
-do not add them automatically. `allowed_domains` plus URL rules enforce source
-scope; soft ranking boosts are not an allowlist.
+do not add them automatically. `crawl.allowed_domains` plus URL rules enforce
+source scope; soft ranking boosts are not an allowlist.
 
-Supply `state`/`jurisdiction` fields explicitly, or use `partition_by` for
-arbitrary metadata layouts. Query text never infers geography and discovery
-has no built-in US alias table; supply any `jurisdiction_aliases` yourself.
+Use `partition_by` with explicit target fields for metadata layouts; query text
+never infers geography.
 
 ### Crawl politeness / policy
 
@@ -255,8 +254,9 @@ pixi run psweep run     --config config/my_domain/run.yaml --fresh
 OCR cache identity is separate from existing output JSON: it uses
 `.text/<filename>.txt` and `.text/<filename>.meta.json`. Source size/mtime and
 source/text digests must match; partial or stale pairs are misses, metadata is
-replaced last, and old stem-only caches are not reused. LLM review sidecars use
-`.review/<filename>.json`; curation carries these full-name pairs/sidecars.
+replaced last, and old stem-only caches are not reused; curation carries these
+full-name pairs. LLM review grades are cached by document content and grading
+inputs in `discovered/.review_cache/`, so re-runs reuse them.
 Raw OCR is cached before current correction rules are applied, so changing
 rules does not repeat OCR. Old corrected OCR caches are misses. `.pages/` and
 `.sections/` products verify source content and resolved model/settings; full-name

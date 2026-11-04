@@ -8,6 +8,7 @@ from urllib.parse import parse_qs, urlsplit
 import pytest
 
 from psweep.discovery.connectors import SerpApiSeeker, SeekerInput
+from psweep.discovery.connectors.serpapi_seeker import render_query_template
 
 
 @pytest.fixture
@@ -37,12 +38,9 @@ def response(count=2):
     }
 
 
-@pytest.mark.parametrize(
-    "source", ["explicit", "SERPAPI_API_KEY", "SERPAPI_KEY"]
-)
+@pytest.mark.parametrize("source", ["explicit", "SERPAPI_API_KEY"])
 def test_credentials(source, monkeypatch):
     monkeypatch.delenv("SERPAPI_API_KEY", raising=False)
-    monkeypatch.delenv("SERPAPI_KEY", raising=False)
     if source == "explicit":
         seeker = SerpApiSeeker(api_key="synthetic-key")
     else:
@@ -53,8 +51,7 @@ def test_credentials(source, monkeypatch):
 
 def test_missing_credentials_fail(monkeypatch):
     monkeypatch.delenv("SERPAPI_API_KEY", raising=False)
-    monkeypatch.delenv("SERPAPI_KEY", raising=False)
-    with pytest.raises(ValueError, match="SERPAPI_API_KEY or SERPAPI_KEY"):
+    with pytest.raises(ValueError, match="SERPAPI_API_KEY environment variable"):
         SerpApiSeeker()
 
 
@@ -67,7 +64,7 @@ def test_no_legacy_sdk_dependency(monkeypatch):
 def test_normalized_candidates(search, count):
     search.return_value = response(count)
     candidates = SerpApiSeeker().discover(
-        SeekerInput(query="synthetic documents")
+        SeekerInput(queries=["synthetic documents"])
     )
     assert len(candidates) == count
     for index, candidate in enumerate(candidates):
@@ -93,7 +90,7 @@ def test_confirmed_empty_search_preserves_other_queries(search):
     ]
     seeker = SerpApiSeeker()
     candidates = seeker.discover(
-        SeekerInput(query="", extra_params={"query_templates": ["first", "empty", "last"]})
+        SeekerInput(queries=["first", "empty", "last"])
     )
     assert len(candidates) == 2
     assert search.call_count == 3
@@ -120,13 +117,13 @@ def test_other_provider_errors_are_not_empty_successes(search, changes):
         **changes,
     }
     with pytest.raises(RuntimeError, match="SerpApi search failed"):
-        SerpApiSeeker().discover(SeekerInput(query="q"))
+        SerpApiSeeker().discover(SeekerInput(queries=["q"]))
 
 
 @pytest.mark.parametrize("query", ["", "   "])
 def test_empty_query_fails_without_call(search, query):
-    with pytest.raises(ValueError, match="cannot be resolved"):
-        SerpApiSeeker().discover(SeekerInput(query=query))
+    with pytest.raises(ValueError, match="could be rendered"):
+        SerpApiSeeker().discover(SeekerInput(queries=[query]))
     search.assert_not_called()
 
 
@@ -138,7 +135,7 @@ def test_invalid_result_urls_are_excluded(search):
             {"link": "ftp://example.org/document"},
         ]
     )
-    assert len(SerpApiSeeker().discover(SeekerInput(query="q"))) == 1
+    assert len(SerpApiSeeker().discover(SeekerInput(queries=["q"]))) == 1
 
 
 def test_provider_failure_is_explicit_and_redacts_credentials(search):
@@ -146,29 +143,23 @@ def test_provider_failure_is_explicit_and_redacts_credentials(search):
         "request failed /search?q=example&api_key=synthetic-search-key&output=json"
     )
     with pytest.raises(RuntimeError, match="SerpApi search failed") as caught:
-        SerpApiSeeker().discover(SeekerInput(query="q"))
+        SerpApiSeeker().discover(SeekerInput(queries=["q"]))
     assert "synthetic-search-key" not in str(caught.value)
     assert "api_key=<redacted>" in str(caught.value)
 
 
 def test_transient_failure_retries(search):
     search.side_effect = [RuntimeError("connection timeout"), response()]
-    assert len(SerpApiSeeker().discover(SeekerInput(query="q"))) == 2
+    assert len(SerpApiSeeker().discover(SeekerInput(queries=["q"]))) == 2
     assert search.call_count == 2
 
 
 def test_extra_parameters_and_template_context(search):
     SerpApiSeeker().discover(
         SeekerInput(
-            query="{jurisdiction} {state} ordinance {known_id?}",
-            extra_params={
-                "template_context": {
-                    "jurisdiction": "Example County",
-                    "state": "CO",
-                },
-                "gl": "us",
-                "hl": "en",
-            },
+            queries=["{jurisdiction} {state} ordinance {known_id?}"],
+            context={"jurisdiction": "Example County", "state": "CO"},
+            params={"gl": "us", "hl": "en"},
         )
     )
     params = search.call_args.args[0]
@@ -178,35 +169,26 @@ def test_extra_parameters_and_template_context(search):
     assert "template_context" not in params
 
 
-def test_query_family_falls_back_to_complete_template(search):
+def test_templates_missing_required_tokens_are_skipped(search):
     SerpApiSeeker().discover(
         SeekerInput(
-            query="",
-            extra_params={
-                "use_query_family": "documents",
-                "query_families": {
-                    "documents": [
-                        "{jurisdiction} {missing}",
-                        "{jurisdiction} documents",
-                    ]
-                },
-                "template_context": {"jurisdiction": "Example County"},
-            },
+            queries=["{jurisdiction} {missing}", "{jurisdiction} documents"],
+            context={"jurisdiction": "Example County"},
         )
     )
-    assert search.call_args.args[0]["q"] == "Example County documents"
+    assert [c.args[0]["q"] for c in search.call_args_list] == ["Example County documents"]
 
 
 def test_required_template_token_fails():
     with pytest.raises(ValueError, match="Missing required template token"):
-        SerpApiSeeker._render_query_template(
+        render_query_template(
             "{jurisdiction} {state}", {"jurisdiction": "Example"}
         )
 
 
 def test_optional_template_token_is_removed():
     assert (
-        SerpApiSeeker._render_query_template(
+        render_query_template(
             "{jurisdiction} {state} {known_id?}",
             {"jurisdiction": "Example", "state": "CO"},
         )
@@ -216,11 +198,8 @@ def test_optional_template_token_is_removed():
 
 def test_search_params():
     assert SerpApiSeeker._build_search_params(
-        SeekerInput(
-            query="q",
-            max_results=20,
-            extra_params={"location": "Denver, CO"},
-        )
+        SeekerInput(queries=["q"], max_results=20, params={"location": "Denver, CO"}),
+        "q",
     ) == {"q": "q", "engine": "google", "num": 20, "location": "Denver, CO"}
 
 
@@ -277,7 +256,7 @@ def test_verified_transport_is_the_default(monkeypatch):
     monkeypatch.setattr("psweep.discovery.network.request_get", get)
     assert (
         len(
-            SerpApiSeeker(api_key="synthetic").discover(SeekerInput(query="q"))
+            SerpApiSeeker(api_key="synthetic").discover(SeekerInput(queries=["q"]))
         )
         == 2
     )
@@ -299,7 +278,7 @@ def test_insecure_settings_are_rejected_in_protected_mode(monkeypatch, setting):
 def test_cache_reuses_results_across_instances(search, tmp_path):
     search.return_value = response()
     cache = str(tmp_path / "cache")
-    request = SeekerInput(query="q")
+    request = SeekerInput(queries=["q"])
     first = SerpApiSeeker(cache_dir=cache).discover(request)
     search.assert_called_once()
     search.reset_mock()
@@ -311,7 +290,7 @@ def test_cache_reuses_results_across_instances(search, tmp_path):
 def test_no_cache_means_two_remote_calls(search):
     seeker = SerpApiSeeker()
     for _ in range(2):
-        seeker.discover(SeekerInput(query="q"))
+        seeker.discover(SeekerInput(queries=["q"]))
     assert search.call_count == 2
 
 
@@ -319,7 +298,7 @@ def test_cache_refresh_fetches_and_updates_persistent_results(
     search, tmp_path
 ):
     cache = str(tmp_path / "cache")
-    request = SeekerInput(query="q")
+    request = SeekerInput(queries=["q"])
     search.return_value = response(1)
     SerpApiSeeker(cache_dir=cache).discover(request)
     search.return_value = response(2)

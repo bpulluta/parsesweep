@@ -44,10 +44,7 @@ from psweep.compilation.input_provenance import (
     analyze_compile_input_provenance,
     INTERNAL_RECORD_DIRS,
 )
-from psweep.discovery.request_inputs import (
-    normalize_discover_inputs,
-    validate_discover_plan,
-)
+from psweep.discovery.request_inputs import discovery_request_fields
 from jsonschema import ValidationError
 
 from psweep.exceptions import APIKeyError
@@ -177,7 +174,6 @@ def build_run_stage_commands(
     discovery_enabled: bool | None = None,
     fresh: bool = False,
     target_limit: int | None = None,
-    retention_documents: str | None = None,
     extract_input_path: str | Path | None = None,
     extra_flags: Sequence[str] = (),
 ) -> list[tuple[str, list[str]]]:
@@ -203,10 +199,6 @@ def build_run_stage_commands(
         discover_flags = [*extra_flags]
         if target_limit is not None:
             discover_flags.extend(["--target-limit", str(target_limit)])
-        if retention_documents is not None:
-            discover_flags.extend(
-                ["--retention-documents", str(retention_documents)]
-            )
         if fresh:
             discover_flags.append("--fresh")
         stage_cmds.append(
@@ -1182,7 +1174,6 @@ def compile_extractions(
                 "extracted_dir": str(ext_dir),
             },
             config_data=cfg,
-            strict=False,
         )
     if report_format is not None:
         resolved["compilation_output"] = {
@@ -1275,7 +1266,6 @@ def run_pipeline(
             command="compile",
             cli_values={},
             config_data=runtime_cfg,
-            strict=True,
         )
     )
     if not skip_extract:
@@ -1285,19 +1275,18 @@ def run_pipeline(
             command="extract",
             cli_values={},
             config_data=runtime_cfg,
-            strict=True,
         )
         load_schema(Path(extract_inputs["schema"]))
 
     discovery_enabled = resolve_run_discovery_enabled(cfg_path)
     if discovery_enabled and not skip_discover:
-        discovery_inputs = resolve_command_config(
-            command="discover",
-            cli_values={},
-            config_data=runtime_cfg,
-            strict=True,
+        discovery_request_fields(
+            resolve_command_config(
+                command="discover",
+                cli_values={},
+                config_data=runtime_cfg,
+            )
         )
-        validate_discover_plan(normalize_discover_inputs(discovery_inputs))
     domain = runtime_cfg["domain"]
     stage_cmds = build_run_stage_commands(
         cfg_path,
