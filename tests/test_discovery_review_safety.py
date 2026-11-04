@@ -15,6 +15,7 @@ import pytest
 
 from psweep.discovery import document_reviewer
 from psweep.discovery.document_reviewer import DocumentReviewer
+from psweep.discovery.retry import is_retryable
 from psweep.extraction import document_utils, llm_factory
 
 
@@ -491,12 +492,18 @@ def test_invalid_comparative_assessment_preserves_grade_and_usage(
     assert costs["usage_unknown_calls"] == 0
 
 
-def test_unreadable_document_is_a_terminal_review_failure(tmp_path, monkeypatch):
-    """Insufficient text cannot improve on re-run, so it must not block."""
+def test_unreadable_document_is_a_terminal_skip_with_one_note(tmp_path, monkeypatch):
+    """Too little text is a terminal skip, not an error, with one aggregated note."""
     monkeypatch.setattr(document_utils, "extract_text_from_document", lambda _path: "")
-    record = _record(tmp_path)
+    records = [_record(tmp_path, f"r{i}.pdf") for i in range(2)]
     reviewer = DocumentReviewer(document_description="records")
     reviewer._client = object()
-    reviewer.review([record], [])
-    assert record["review_failed"] is True
-    assert record["review_retryable"] is False
+    _, notes = reviewer.review(records, [])
+    for record in records:
+        assert record["status"] == "skipped_unreadable"
+        assert record["review_selected"] is False
+        assert not record.get("review_failed") and not is_retryable(record)
+    assert [n for n in notes if "too little text" in n] == [
+        "2 document(s) had too little text to review; "
+        "JS-rendered pages need discovery.crawl.browser_escalation."
+    ]

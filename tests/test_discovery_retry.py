@@ -26,7 +26,11 @@ def _http_error(status):
         (ValueError("unsupported content type"), False),
         (requests.exceptions.ChunkedEncodingError("truncated stream"), True),
         (TimeoutError("query timed out"), True),
-        (BrowserDownloadError("Browser download failed: Failed to fetch"), True),
+        # fetch() rejections also cover CORS/mixed-content/cert failures.
+        (BrowserDownloadError("Browser download failed: TypeError: Failed to fetch"), False),
+        (BrowserDownloadError("Browser download failed: net::ERR_CERT_DATE_INVALID"), False),
+        (BrowserDownloadError("Browser download failed: net::ERR_CONNECTION_RESET"), True),
+        (BrowserDownloadError("Browser download failed: script timeout"), True),
         (BrowserDownloadError("Browser download failed: HTTP 500", status=500), True),
         (BrowserDownloadError("Browser download failed: HTTP 429", status=429), True),
         (BrowserDownloadError(

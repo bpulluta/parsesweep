@@ -45,6 +45,13 @@ class ReviewError(Exception):
         super().__init__(message)
 
 
+class UnreadableDocumentError(ReviewError):
+    """No reviewable text; recorded as a terminal ``skipped_unreadable``."""
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message, retryable=False)
+
+
 # Field name constants — use these everywhere instead of string literals so a
 # typo is a NameError at import time rather than a silent runtime no-op.
 FIELD_REVIEW_SELECTED = "review_selected"
@@ -474,13 +481,13 @@ class DocumentReviewer:
                 text = ContentSampler.extract_text(file_path)
             except Exception as exc:
                 message = "document text extraction failed"
-                raise ReviewError(message, retryable=False) from exc
+                raise UnreadableDocumentError(message) from exc
         if (
             not text
             or len(text.strip()) < ContentSampler.MIN_EXTRACTION_LENGTH
         ):
             message = "insufficient extracted text for document review"
-            raise ReviewError(message, retryable=False)
+            raise UnreadableDocumentError(message)
 
         sample = self._build_review_sample(text)
         coverage = {
@@ -733,6 +740,10 @@ class DocumentReviewer:
                 )
                 self._require_grade(grade)
                 self._write_cached_grade(cache_key, grade)
+        except UnreadableDocumentError as exc:
+            record.update(status="skipped_unreadable", reason=str(exc))
+            record[FIELD_REVIEW_SELECTED] = False
+            return record, None, False
         except ReviewError as exc:
             self._mark_review_failure(record, exc)
             return record, None, False
@@ -947,6 +958,12 @@ class DocumentReviewer:
             f"selected {selected} primary document(s) "
             f"(keep_top={self._keep_top})."
         )
+        unreadable = sum(r.get("status") == "skipped_unreadable" for r in gradable)
+        if unreadable:
+            notes.append(
+                f"{unreadable} document(s) had too little text to review; "
+                "JS-rendered pages need discovery.crawl.browser_escalation."
+            )
         if self._total_cost > 0:
             notes.append(
                 f"Document review cost: ${self._total_cost:.4f} "

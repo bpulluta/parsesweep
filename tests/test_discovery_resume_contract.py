@@ -2,6 +2,7 @@
 
 import io
 import json
+from pathlib import Path
 from unittest.mock import Mock
 
 import pytest
@@ -466,7 +467,6 @@ def test_document_names_are_stable_and_failures_reserve_nothing(monkeypatch, tmp
     assert suffixed.read_bytes().endswith(x.encode())
 
     # Re-running both maps each owner to the same path with one index row each.
-    missing.add(x)
     request.targets = [{"label": "target", "urls": [x, y]}]
     DiscoveryEngine().run(request)
     assert (curated / "report.pdf").read_bytes().endswith(y.encode())
@@ -630,3 +630,122 @@ def test_crawl_page_with_transient_policy_failure_stays_unfinished(monkeypatch, 
         request=_request(tmp_path, max_depth=1), candidates=[page],
     )
     assert unfinished == [page]
+
+
+def _index_rows(tmp_path):
+    import csv
+
+    with (tmp_path / DOMAIN_DIR / "download_index.csv").open() as handle:
+        return list(csv.DictReader(handle))
+
+
+def test_owner_whose_name_changes_keeps_one_curated_path(monkeypatch, tmp_path):
+    """A redirect to a new slug moves the owner's document; nothing is duplicated."""
+    _fake_search(monkeypatch, {"organic_results": []})
+    landing = {"https://a.gov/doc": "https://a.gov/files/old-slug.pdf"}
+
+    def get(url, **_kwargs):
+        return FakeResponse(url=landing.get(url, url), chunks=[b"%PDF-1.4\n", url.encode()])
+
+    monkeypatch.setattr("psweep.discovery.network.request_get", get)
+    curated = tmp_path / DOMAIN_DIR / "curated/by_label/target"
+    request = _request(tmp_path, targets=[{"label": "target", "urls": ["https://a.gov/doc"]}])
+    DiscoveryEngine().run(request)
+    old = curated / "old-slug.pdf"
+    from psweep.extraction.document_utils import text_cache_paths
+
+    cache = text_cache_paths(old)[0]
+    cache.parent.mkdir(exist_ok=True)
+    cache.write_text("cached")
+    assert old.is_file()
+
+    landing["https://a.gov/doc"] = "https://a.gov/files/new-slug.pdf"
+    request.targets = [{"label": "target", "urls": ["https://a.gov/doc", "https://a.gov/b.pdf"]}]
+    DiscoveryEngine().run(request)
+    assert {p.name for p in curated.glob("*.pdf")} == {"new-slug.pdf", "b.pdf"}
+    assert not cache.exists()
+    rows = [row for row in _index_rows(tmp_path) if row["url"] == "https://a.gov/doc"]
+    assert [row["relative_path"] for row in rows] == ["by_label/target/new-slug.pdf"]
+
+
+def test_completed_target_withdraws_documents_it_no_longer_finds(monkeypatch, tmp_path):
+    """A completed re-run reconciles its documents; a blocked one withdraws nothing."""
+    _fake_search(monkeypatch, {"organic_results": []})
+    unavailable = set()
+
+    def get(url, **_kwargs):
+        if url in unavailable:
+            response = requests.Response()
+            response.status_code = 503
+            raise requests.HTTPError("503 Server Error", response=response)
+        return FakeResponse(url=url, chunks=[b"%PDF-1.4\n", url.encode()])
+
+    monkeypatch.setattr("psweep.discovery.network.request_get", get)
+    curated = tmp_path / DOMAIN_DIR / "curated/by_label/target"
+    other = {"label": "other", "urls": ["https://o.gov/o.pdf"]}
+
+    def run(*urls):
+        request = _request(tmp_path, targets=[{"label": "target", "urls": list(urls)}, other])
+        DiscoveryEngine().run(request)
+        return {p.name for p in curated.glob("*.pdf")}
+
+    assert run("https://a.gov/a.pdf", "https://a.gov/b.pdf") == {"a.pdf", "b.pdf"}
+    assert run("https://a.gov/a.pdf", "https://a.gov/c.pdf") == {"a.pdf", "c.pdf"}
+    unavailable.add("https://a.gov/d.pdf")
+    assert run("https://a.gov/d.pdf") == {"a.pdf", "c.pdf"}
+    urls = {row["url"] for row in _index_rows(tmp_path)}
+    assert urls == {"https://a.gov/a.pdf", "https://a.gov/c.pdf", "https://o.gov/o.pdf"}
+
+
+def test_names_resolve_against_the_index_current_at_publication(monkeypatch, tmp_path):
+    """A run that published the same name meanwhile never aborts this run."""
+    _fake_search(monkeypatch, {"organic_results": []})
+    _fetch_by_url(monkeypatch)
+    publish = DiscoveryEngine._publish_completion
+    overlapping = []
+
+    def publish_after_overlap(self, **kwargs):
+        if not overlapping:
+            overlapping.append(True)
+            DiscoveryEngine().run(_request(tmp_path, sources=["https://b.gov/ordinance.pdf"]))
+        return publish(self, **kwargs)
+
+    monkeypatch.setattr(DiscoveryEngine, "_publish_completion", publish_after_overlap)
+    result = DiscoveryEngine().run(_request(tmp_path, sources=["https://a.gov/ordinance.pdf"]))
+    assert result.status == "success"
+    curated = tmp_path / DOMAIN_DIR / "curated/_shared"
+    assert (curated / "ordinance.pdf").read_bytes().endswith(b"b.gov/ordinance.pdf")
+    (mine,) = curated.glob("ordinance-*.pdf")
+    assert mine.read_bytes().endswith(b"a.gov/ordinance.pdf")
+    assert {row["url"] for row in _index_rows(tmp_path)} == {
+        "https://a.gov/ordinance.pdf", "https://b.gov/ordinance.pdf",
+    }
+
+
+def test_unreadable_search_hit_is_a_skip_not_a_run_error(monkeypatch, tmp_path):
+    """Too little text completes the target without a partial_failure."""
+    from psweep.discovery.document_reviewer import DocumentReviewer, UnreadableDocumentError
+
+    search = _fake_search(monkeypatch, {"organic_results": [
+        {"link": "https://a.gov/good.pdf"}, {"link": "https://a.gov/shell.pdf"},
+    ]})
+    _fetch_by_url(monkeypatch)
+
+    def grade(_self, path, **_kwargs):
+        if path.endswith("shell.pdf"):
+            raise UnreadableDocumentError("insufficient extracted text for document review")
+        return {"is_primary": True, "relevance": 0.9, "doc_kind": "record", "reason": "ok"}
+
+    monkeypatch.setattr(DocumentReviewer, "_ensure_client", lambda _self: object())
+    monkeypatch.setattr(DocumentReviewer, "_grade", grade)
+    request = _request(tmp_path, document_review={
+        "document_description": "records", "keep_top": 2, "deduplicate_redundant": False,
+    })
+    result = DiscoveryEngine().run(request)
+    manifest = json.loads(result.manifest_path.read_text())
+    assert result.status == "success" and manifest["errors"] == []
+    statuses = {Path(r["url"]).name: r["status"] for r in manifest["downloads"]}
+    assert statuses == {"good.pdf": "downloaded", "shell.pdf": "skipped_unreadable"}
+    assert sum("too little text" in note for note in manifest["notes"]) == 1
+    assert DiscoveryEngine().run(request).status == "reused"
+    assert search.call_count == 1
