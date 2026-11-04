@@ -64,6 +64,7 @@
     },
     "compilation": {
       "flattening": {
+        "unit_fields": ["units"],
         "unit_normalizations": {
           "'": "feet",
           "\u2032": "feet",

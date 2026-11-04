@@ -105,16 +105,11 @@ def test_invalid_schema_owned_output_fails_before_fresh_or_calls(
     workspace.compiled.mkdir(parents=True)
     sentinel = workspace.compiled / "keep.txt"
     sentinel.write_text("previous output")
-    cfg = _config(tmp_path, contract_schema, synthesis={
-        "enabled": True, "group_by": ["source.url"], "model": "fake",
-    })
-    build_client = Mock(side_effect=AssertionError("must not call LLM factory"))
-    monkeypatch.setattr("psweep.extraction.llm_factory.build_llm_client", build_client)
+    cfg = _config(tmp_path, contract_schema)
     result = CliRunner().invoke(cli, ["compile", "--config", str(cfg), "--fresh"])
     assert result.exit_code != 0
     assert "default_format" in result.output
     assert sentinel.read_text() == "previous output"
-    build_client.assert_not_called()
     validation = CliRunner().invoke(cli, ["compile", "--config", str(cfg), "--validate-config"])
     assert validation.exit_code != 0
     assert "default_format" in validation.output
@@ -607,5 +602,5 @@ def test_nested_row_expansion_is_schema_owned_and_order_invariant(tmp_path):
         compiler = DataCompiler(SchemaMetadata(schema_path), verbose=False)
         frame, _ = compiler.compile_from_directory(directory, apply_deduplication=False)
         assert len(frame) == 3
-        frames.append(frame.sort_values(["Name", "Value"]).reset_index(drop=True))
+        frames.append(frame.sort_values(["name", "value"]).reset_index(drop=True))
     pd.testing.assert_frame_equal(*frames)

@@ -278,14 +278,8 @@ def build_run_stage_commands(
 
 
 def count_curated_documents(curated_dir: Path) -> int:
-    """Count curated docs, skipping ``.text`` sidecars and ``.json``."""
-    if not curated_dir.exists():
-        return 0
-    return sum(
-        1
-        for f in curated_dir.rglob("*")
-        if f.is_file() and ".text" not in str(f) and f.suffix != ".json"
-    )
+    """Count the documents extraction would read."""
+    return len(_input_documents(curated_dir, required=False)[0])
 
 
 def count_extracted_documents(extraction_dir: Path) -> int:
@@ -1239,8 +1233,6 @@ def compile_extractions(
     if not schema_path.exists():
         raise FileNotFoundError(f"Schema not found: {schema_path}")
 
-    out_dir = Path(output_dir or Workspace(infer_domain(ext_dir)).compiled)
-    validate_protected_paths({"input_dir": ext_dir, "output_dir": out_dir})
     resolved: dict = {"schema": str(schema_path)}
     if config_path:
         cfg = load_runtime_config_file(Path(config_path))
@@ -1252,24 +1244,18 @@ def compile_extractions(
             },
             config_data=cfg,
         )
+    workspace = Workspace(resolved.get("domain") or infer_domain(ext_dir))
+    out_dir = Path(output_dir or workspace.compiled)
+    validate_protected_paths({"input_dir": ext_dir, "output_dir": out_dir})
     if report_format is not None:
         resolved["compilation_output"] = {
             **resolved.get("compilation_output", {}),
             "default_format": report_format,
         }
     schema_metadata = resolve_compilation_metadata(resolved)
-    if (
-        schema_metadata.metadata.get("compilation", {})
-        .get("synthesis", {})
-        .get("enabled")
-    ):
-        message = (
-            "Library compile_extractions does not run synthesis; "
-            "use the compile CLI"
-        )
-        raise ValueError(message)
     compiler = DataCompiler(
         schema_metadata=schema_metadata,
+        inputs=resolved,
         verbose=False,
         debug=False,
     )
@@ -1292,7 +1278,10 @@ def compile_extractions(
             from io import StringIO
 
             with redirect_stdout(StringIO()):
-                export_df = compiler.deduplicator.deduplicate(df.copy())
+                export_df = (
+                    df if compiler.mode == "roster"
+                    else compiler.deduplicator.deduplicate(df.copy())
+                )
             frame = compiler._prepare_output_dataframe(export_df)
             compiler.validate_export(
                 frame, schema_metadata.get_output_formats()
@@ -1301,7 +1290,7 @@ def compile_extractions(
             output_files, _ = compiler.export(
                 df,
                 out_dir,
-                ext_dir.name.replace("_", "-"),
+                workspace.compiled_name,
                 schema_metadata.get_output_formats(),
             )
 
@@ -1310,6 +1299,7 @@ def compile_extractions(
         output_files=output_files,
         total_rows=max(rows, 0),
         deduplicated=not dry_run
+        and compiler.mode == "rows"
         and bool(schema_metadata.get_deduplication_key_fields()),
         warnings=provenance_warnings,
     )

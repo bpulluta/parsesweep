@@ -121,7 +121,7 @@ class LLMClient:
                 "Add a 'models:' block at the top of your run config "
                 "(e.g. 'primary: your-deployment') and set "
                 "'model: primary' under the relevant stage "
-                "(extraction:, compilation.synthesis:, etc.), "
+                "(extraction:, discovery.document_review:, etc.), "
                 "or set LLM_MODEL / AZURE_OPENAI_MODEL / OPENAI_MODEL in your .env file."
             )
         self.raw_model = model  # Keep original for cost tracking

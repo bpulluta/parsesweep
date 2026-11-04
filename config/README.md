@@ -61,7 +61,7 @@ outputs/my_domain/                   # derived from `domain`; never set in YAML
 ├── discovered/
 ├── extracted/
 ├── validated/
-└── compiled/
+└── compiled/                     # <domain>.csv, <domain>.xlsx
 ```
 
 ---
@@ -483,7 +483,7 @@ extraction:
 
 Configure LLM credentials in the environment before extraction. For local
 inputs, pass the directory positionally to `psweep extract`. [ADVANCED.yaml](ADVANCED.yaml)
-contains the expanded model, output, page-targeting, synthesis, and QA/QC
+contains the expanded model, output, page-targeting, and QA/QC
 examples; placeholder schema paths refer to files you create locally, not
 published private schemas.
 

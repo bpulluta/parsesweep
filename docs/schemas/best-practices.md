@@ -12,9 +12,9 @@ Design schemas to match how you want to analyze the data.
 For authoring, use this mental model:
 
 - `Schema` (`config/<domain>/schema.json`): The **extraction contract**. Fields, descriptions, examples, row shape, identifiers, and deduplication keys. Field-level enum values belong here (in `properties`), not in `$metadata`.
-- `Runtime config` (`config/<domain>/run.yaml`): **Runtime behavior and presentation**. Models, discovery settings, QA/QC lanes, and all compilation output settings (column order, renames, exclude_fields, default_format, freeze_columns). This file drives *how* a run behaves and *how* output looks.
+- `Runtime config` (`config/<domain>/run.yaml`): **Runtime behavior and presentation**. Models, discovery settings, QA/QC lanes, and all compilation output settings (column order, exclude_fields, default_format, freeze_columns). This file drives *how* a run behaves and *how* output looks.
 
-**Separation rule:** `$metadata` in the schema owns `extraction.*` and `identity.deduplication` (data identity — what makes a record unique). Everything else — output formatting, normalization, synthesis, model tiers — lives only in `config/<domain>/run.yaml`. Output config in `$metadata` is not supported and will be rejected by `check-schema`.
+**Separation rule:** `$metadata` in the schema owns `extraction.*` and `identity.deduplication` (data identity — what makes a record unique). Everything else — output formatting, normalization, model tiers — lives only in `config/<domain>/run.yaml`. Output config in `$metadata` is not supported and will be rejected by `check-schema`.
 
 ---
 
@@ -135,7 +135,7 @@ ERROR: Schema missing required $metadata section
 
 ### Complete `$metadata` Structure
 
-This example shows the full metadata surface that belongs in the schema. All output presentation settings (`column_order`, `exclude_fields`, `column_renames`, `freeze_columns`, `auto_width`, `default_format`) and normalization settings belong in `config/<domain>/run.yaml` — not here.
+This example shows the full metadata surface that belongs in the schema. All output presentation settings (`column_order`, `exclude_fields`, `freeze_columns`, `auto_width`, `default_format`) and normalization settings belong in `config/<domain>/run.yaml` — not here.
 
 ```json
 {
@@ -736,7 +736,7 @@ Check:
 pixi run psweep compile outputs/samples/extracted/
 
 # Review outputs
-open outputs/samples/compiled/*.xlsx
+open outputs/samples/compiled/samples.xlsx
 ```
 
 Verify:

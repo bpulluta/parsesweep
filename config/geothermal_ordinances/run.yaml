@@ -163,52 +163,26 @@ extraction:
 # ── Compilation ──────────────────────────────────────────────────────────────
 compilation:
   normalization:
-    # Derive a 5-digit Census county FIPS join key from state + county
-    # (county-level geography). Domain-agnostic GIS/DS key.
-    county_fips: true
+    state_column: state
+    # Derive a 5-digit Census county FIPS join key (county_fips column).
+    county_fips: {state: state, county: county}
   output:
     default_format: both
+    annotation_column: notes
+    # Output headers (schema title, else field name).
     exclude_fields:
       - Run Id
       - Artifact Id
       - Error Count
       - Error Categories
       - Error Messages
-      - Applies_To_Geothermal
-      - Extraction_Approach
-      - Reasoning
-    column_renames:
-      State: state
-      County: county
-      Subdivision: subdivision
-      Jurisdiction_Type: jurisdiction_type
-      Jurisdiction Type: jurisdiction_type
-      Year: year
-      Source: source
-      Feature: feature
-      Specific Subject: specific_subject
-      Applies To: applies_to
-      Requirement Description: requirement_description
-      Value Category: value_category
-      Value: value
-      Value Interpretation: value_interpretation
-      Units: units
-      Range Low: range_low
-      Range High: range_high
-      Obligation: obligation
-      Condition: condition
-      Applicable Values: applicable_values
-      Source Verbatim: source_verbatim
-      Summary: summary
-      Section: section
-      Notes: notes
-      Fips: FIPS
+      - reasoning
     column_order:
       - county
       - state
       - subdivision
       - jurisdiction_type
-      - FIPS
+      - county_fips
       - feature
       - specific_subject
       - applies_to

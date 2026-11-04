@@ -72,6 +72,11 @@ class Workspace:
     def compiled(self) -> Path:
         return self.root / "compiled"
 
+    @property
+    def compiled_name(self) -> str:
+        """Base name of the compiled CSV/XLSX (``<domain>.csv``); the one place it is derived."""
+        return self.domain
+
 
 def default_schema_path(config_path: Path) -> Path:
     """Schema expected beside a run config when ``schema:`` is omitted."""

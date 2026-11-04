@@ -13,7 +13,9 @@ extraction:
 
 compilation:
   normalization:
-    # Derive a 5-digit Census county FIPS join key from state + county.
-    county_fips: true
+    state_column: state
+    # Derive a 5-digit Census county FIPS join key (county_fips column).
+    county_fips: {state: state, county: county}
   output:
     default_format: both
+    annotation_column: notes

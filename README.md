@@ -354,7 +354,7 @@ extraction:
 ```
 
 Use [config/ADVANCED.yaml](config/ADVANCED.yaml) for additional model aliases,
-page targeting, output shaping, synthesis, or QA/QC. These are existing optional
+page targeting, output shaping, or QA/QC. These are existing optional
 settings, not requirements for discovery.
 
 ### 3. Extract and Compile
@@ -430,42 +430,15 @@ validation:
 
 ---
 
-## Multi-Source Synthesis
+## Roster Compilation
 
-When extracting from many documents about the same entities (news articles, filings, reports for the same set of companies or sites), the **synthesis** stage reconciles multiple per-document records into one authoritative row per entity — resolving conflicts, tracking confidence, and collecting citation URLs.
+When `discovery` declares `targets` and `partition_by`, compile emits **one row per roster target** in roster order — the shape of a "fill in this table" deliverable. Each schema attribute is resolved across every record that names the target: agreeing values win outright, conflicts prefer target-scoped sources then the value backed by the most sources. Missing values are `NA`. Extra target columns (e.g. `geo_id`) pass through unchanged, and three columns explain each row:
 
-Configure in the `compilation.synthesis:` block:
+- `sources` — the URLs that contributed values
+- `confidence` — `high` (≥2 agreeing sources), `medium` (one source), `low` (conflict), or `none`
+- `evidence` — compact JSON of `{field: {value, quote, url}}` per filled cell
 
-```yaml
-compilation:
-  synthesis:
-    enabled: true
-    min_sources_for_llm: 2          # skip LLM call when only 1 source
-    group_by: ["entity.name"]       # one output row per distinct entity
-    identity_fields:
-      - entity.category
-      - entity.location
-    citation_field: source_provenance.citation_url
-    reconcile_fields:
-      - {field: status}
-      - {field: date_announced, evidence: evidence_announced}
-      - {field: value, evidence: value_evidence}
-```
-
-Synthesis runs automatically on `compile` when enabled. It uses the same LLM configured in your environment (override with `synthesis.model:` for a specific stage).
-
-### Keeping repeated sub-entities apart
-
-By default every item found in the extracted array is folded into one row per entity. When a record repeats sub-entities (phases, expansions, line items, permit conditions...), add `item_group_by` — item-level field paths — to synthesize one row per sub-entity instead:
-
-```yaml
-  synthesis:
-    enabled: true
-    group_by: ["entity.name"]       # one output row per distinct entity ...
-    item_group_by: ["phase_label"]  # ... per distinct sub-entity within it
-```
-
-Items are bucketed by that key across *all* sources for the entity, so the same phase reported by three documents is still reconciled once. Items missing the key are kept in their own row rather than dropped, and the item-group fields appear as columns alongside `group_by` and `identity_fields`. Leaf names must not collide with `group_by` leaf names — that is rejected at config load.
+No extra config is needed and compile makes no LLM calls. Without a roster, compile emits one row per extracted item and applies schema-owned deduplication.
 
 ---
 
@@ -487,12 +460,12 @@ parsesweep/
 │       ├── discovered/        # Web discovery runs + consolidated curated/
 │       ├── extracted/         # JSON extraction output
 │       ├── validated/         # QA/QC validation output
-│       └── compiled/          # Final Excel/CSV output
+│       └── compiled/          # <domain>.csv / <domain>.xlsx + run_accounting.json
 └── src/psweep/                # Source code
     ├── cli/                   # CLI commands
     ├── discovery/             # Web document discovery
     ├── extraction/            # Document extraction
-    ├── compilation/           # Data compilation + synthesis
+    ├── compilation/           # Data compilation (roster + item rows)
     ├── validation/            # QA/QC multi-model comparison
     └── utils/                 # Shared utilities
 ```
@@ -538,20 +511,14 @@ extraction:
 compilation:
   # Dedup identity is schema-owned — set $metadata.identity.deduplication
   # .key_fields in the schema, not here (used by extract/compile/api alike).
-  normalization:
-    state_column: State            # auto-abbreviate state names
-  output:
+  normalization:                   # keys name schema fields
+    state_column: state            # auto-abbreviate state names
+  output:                          # headers = schema field `title`, else field name
     default_format: excel          # excel, csv, or both
-    column_order: [f1, f2, ...]    # custom column ordering
-    column_renames: {Old: new}     # rename columns
-    exclude_fields: [internal_f]   # hide columns
+    column_order: [Header 1, ...]  # output headers listed first
+    exclude_fields: [Header]       # hide output headers
     freeze_columns: 2              # freeze in Excel
     auto_width: true               # auto-size columns
-  synthesis:                       # optional — multi-source reconciliation
-    enabled: true
-    group_by: ["entity.key_field"]
-    reconcile_fields:
-      - {field: some_field}
 ```
 
 ### Model Overrides (Optional)

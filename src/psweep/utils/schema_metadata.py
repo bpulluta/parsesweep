@@ -130,7 +130,6 @@ class SchemaMetadata:
                 ("compilation_output", "output"),
                 ("normalization", "normalization"),
                 ("severity_tokens", "severity_tokens"),
-                ("synthesis", "synthesis"),
             )
             if isinstance(resolved.get(source), dict)
         }
@@ -230,31 +229,11 @@ class SchemaMetadata:
         """
         extraction = self.metadata.get("extraction", {})
         identity = self.metadata.get("identity", {})
-        legacy_compilation = self.metadata.get("compilation", {})
-
         # Check for required extraction metadata
         if not extraction.get("main_data_array"):
             raise SchemaMetadataError(
                 "Schema metadata missing required field: extraction.main_data_array\n"
                 "This field specifies the key containing the main data array.",
-                schema_path=str(self.schema_path),
-            )
-
-        # Breaking-change guard: deduplication moved to metadata.identity.
-        if (
-            isinstance(legacy_compilation, dict)
-            and isinstance(legacy_compilation.get("deduplication"), dict)
-        ):
-            raise SchemaMetadataError(
-                "Schema metadata uses deprecated field: compilation.deduplication\n"
-                "Move this block to identity.deduplication.\n"
-                "Example:\n"
-                '"identity": {\n'
-                '  "deduplication": {\n'
-                '    "key_fields": ["field_a"],\n'
-                '    "ignore_fields": ["notes"]\n'
-                "  }\n"
-                "}\n",
                 schema_path=str(self.schema_path),
             )
 
@@ -267,7 +246,6 @@ class SchemaMetadata:
         self._validate_cross_feature_redundancy(identity)
         self._validate_identity_deduplication(identity)
         self._validate_compilation_block()
-        self._validate_synthesis_schema()
 
     def _validate_cross_feature_redundancy(self, identity: Dict[str, Any]) -> None:
         """Strictly validate the optional cross_feature_redundancy dedup block."""
@@ -472,35 +450,6 @@ class SchemaMetadata:
         if severity_tokens is not None:
             self._validate_severity_tokens_block(severity_tokens)
 
-    def _validate_synthesis_schema(self) -> None:
-        """Check existing synthesis inputs against the effective domain schema."""
-        synthesis = self.metadata.get("compilation", {}).get("synthesis")
-        if not synthesis:
-            return
-        from ..config.runtime_config_loader import _validate_synthesis_block
-
-        _validate_synthesis_block(synthesis)
-        if not synthesis.get("enabled"):
-            return
-        main = synthesis.get("item_array") or self.get_main_data_array()
-        main_schema = self.schema.get("properties", {}).get(main)
-        if not isinstance(main_schema, dict) or "items" not in main_schema:
-            self._raise_meta(f"Synthesis unknown schema array: {main}")
-        for key in ("group_by", "identity_fields"):
-            for field in synthesis.get(key, []):
-                self.resolve_schema_field(field, root=self.schema)
-        for key in ("citation_field", "relevance_flag"):
-            if synthesis.get(key):
-                self.resolve_schema_field(synthesis[key], root=self.schema)
-        for field in synthesis.get("item_group_by", []):
-            self.resolve_schema_field(field, root=main_schema["items"])
-        for entry in synthesis.get("reconcile_fields", []):
-            for key in ("field", "evidence", "precision"):
-                if entry.get(key):
-                    self.resolve_schema_field(
-                        entry[key], root=main_schema["items"],
-                    )
-
     def _validate_severity_tokens_block(self, severity_tokens: Any) -> None:
         """Validate ``compilation.severity_tokens`` (see get_severity_tokens)."""
         loc = "compilation.severity_tokens"
@@ -519,23 +468,10 @@ class SchemaMetadata:
             )
 
     def _validate_flattening_block(self, flattening: Any) -> None:
-        """Validate ``compilation.flattening`` (see get_flattening_config)."""
         loc = "compilation.flattening"
         if not isinstance(flattening, dict):
             self._raise_meta(f"Schema metadata field {loc} must be an object.")
-        allowed = {
-            "row_array",
-            "type_fields",
-            "skip_fields",
-            "distinguishing_fields",
-            "value_fields",
-            "unit_fields",
-            "season_fields",
-            "placeholder_values",
-            "expand_max_items",
-            "expand_max_fields",
-            "unit_normalizations",
-        }
+        allowed = {"row_array", "unit_fields", "unit_normalizations"}
         unknown = sorted(set(flattening) - allowed)
         if unknown:
             self._raise_meta(
@@ -545,37 +481,21 @@ class SchemaMetadata:
         row_array = flattening.get("row_array")
         if row_array is not None and (not isinstance(row_array, str) or not row_array):
             self._raise_meta(f"{loc}.row_array must be a nonempty field name or null.")
-
-        for key in (
-            "type_fields",
-            "skip_fields",
-            "distinguishing_fields",
-            "value_fields",
-            "unit_fields",
-            "season_fields",
-        ):
-            self._require_str_list_meta(flattening.get(key), f"{loc}.{key}")
-
-        placeholders = flattening.get("placeholder_values")
-        if placeholders is not None and not isinstance(placeholders, list):
-            self._raise_meta(f"{loc}.placeholder_values must be an array.")
-
-        for key in ("expand_max_items", "expand_max_fields"):
-            self._require_positive_int_meta(flattening.get(key), f"{loc}.{key}")
-
+        self._require_str_list_meta(flattening.get("unit_fields"), f"{loc}.unit_fields")
         unit_norm = flattening.get("unit_normalizations")
         if unit_norm is not None:
-            if not isinstance(unit_norm, dict):
-                self._raise_meta(
-                    f"{loc}.unit_normalizations must be an object mapping "
-                    "unit symbols to canonical units."
-                )
-            for k, v in unit_norm.items():
-                if not isinstance(k, str) or not isinstance(v, str):
-                    self._raise_meta(
-                        f"{loc}.unit_normalizations must map strings to "
-                        "strings."
-                    )
+            if not isinstance(unit_norm, dict) or not all(
+                isinstance(k, str) and isinstance(v, str) for k, v in unit_norm.items()
+            ):
+                self._raise_meta(f"{loc}.unit_normalizations must map strings to strings.")
+            if not flattening.get("unit_fields"):
+                self._raise_meta(f"{loc}.unit_normalizations requires {loc}.unit_fields.")
+        self._require_output_fields(flattening.get("unit_fields") or [], f"{loc}.unit_fields")
+
+    def _require_output_fields(self, fields: List[str], loc: str) -> None:
+        unknown = [field for field in fields if field not in self._output_properties()]
+        if unknown:
+            self._raise_meta(f"{loc} names unknown schema field(s): {', '.join(unknown)}.")
 
     def get_row_array(self) -> Optional[str]:
         """Resolve nested row expansion from the schema, never from data order."""
@@ -604,7 +524,6 @@ class SchemaMetadata:
         return candidates[0] if candidates else None
 
     def _validate_normalization_block(self, normalization: Any) -> None:
-        """Validate ``compilation.normalization`` (see state_column accessor)."""
         loc = "compilation.normalization"
         if not isinstance(normalization, dict):
             self._raise_meta(f"Schema metadata field {loc} must be an object.")
@@ -615,30 +534,29 @@ class SchemaMetadata:
                 f"{loc} has unknown key(s): {', '.join(unknown)}. "
                 f"Allowed: {', '.join(sorted(allowed))}."
             )
-        # state_column may be null (opt-out) or a non-empty column name.
-        if "state_column" in normalization:
-            column = normalization.get("state_column")
-            if column is not None and (
-                not isinstance(column, str) or not column
+        column = normalization.get("state_column")
+        if column is not None:
+            if not isinstance(column, str) or not column:
+                self._raise_meta(f"{loc}.state_column must be a non-empty string.")
+            self._require_output_fields([column], f"{loc}.state_column")
+        county_fips = normalization.get("county_fips")
+        if county_fips is not None:
+            if not isinstance(county_fips, dict) or set(county_fips) != {"state", "county"} or not all(
+                isinstance(value, str) and value for value in county_fips.values()
             ):
                 self._raise_meta(
-                    f"{loc}.state_column must be a non-empty string or null."
+                    f"{loc}.county_fips must be an object naming the state and county "
+                    "fields, e.g. {state: state, county: county}."
                 )
-        county_fips = normalization.get("county_fips")
-        if county_fips is not None and not isinstance(county_fips, bool):
-            self._raise_meta(
-                f"{loc}.county_fips must be a boolean."
-            )
+            self._require_output_fields(list(county_fips.values()), f"{loc}.county_fips")
 
     def _validate_output_block(self, output: Any) -> None:
-        """Validate ``compilation.output`` structure/types."""
         loc = "compilation.output"
         if not isinstance(output, dict):
             self._raise_meta(f"Schema metadata field {loc} must be an object.")
         allowed = {
             "default_format",
             "exclude_fields",
-            "column_renames",
             "column_order",
             "freeze_columns",
             "auto_width",
@@ -674,17 +592,6 @@ class SchemaMetadata:
                 f"(got {max_len!r})."
             )
 
-        renames = output.get("column_renames")
-        if renames is not None:
-            if not isinstance(renames, dict):
-                self._raise_meta(f"{loc}.column_renames must be an object.")
-            for k, v in renames.items():
-                if not isinstance(k, str) or not k or not isinstance(v, str):
-                    self._raise_meta(
-                        f"{loc}.column_renames must map non-empty strings to "
-                        "strings."
-                    )
-
         freeze = output.get("freeze_columns")
         if freeze is not None and (
             isinstance(freeze, bool) or not isinstance(freeze, int) or freeze < 0
@@ -697,10 +604,6 @@ class SchemaMetadata:
         auto_width = output.get("auto_width")
         if auto_width is not None and not isinstance(auto_width, bool):
             self._raise_meta(f"{loc}.auto_width must be a boolean.")
-
-    def has_metadata(self) -> bool:
-        """Check if schema includes metadata section."""
-        return bool(self.metadata)
 
     def _deep_merge_dicts(
         self, base: Dict[str, Any], overrides: Dict[str, Any]
@@ -725,16 +628,6 @@ class SchemaMetadata:
     def get_context_objects(self) -> List[str]:
         """Get keys containing context/metadata objects."""
         return self.metadata.get("extraction", {}).get("context_objects", [])
-
-    def get_display_name_template(self) -> Optional[str]:
-        """Get template for generating display names."""
-        return self.metadata.get("extraction", {}).get("display_name_template")
-
-    def get_document_type(self) -> str:
-        """Get human-readable document type."""
-        return self.metadata.get("extraction", {}).get(
-            "document_type", "Document"
-        )
 
     # --- Compilation Metadata ---
 
@@ -842,131 +735,60 @@ class SchemaMetadata:
         cfg = dedup.get("cross_feature_redundancy")
         return cfg if isinstance(cfg, dict) else None
 
-    def get_deduplication_strategy(self) -> str:
-        """Get deduplication strategy (latest, earliest, merge)."""
-        dedup = self.metadata.get("identity", {}).get("deduplication", {})
-        return dedup.get("strategy", "latest")
-
-    def get_comparison_mode(self) -> str:
-        """Get comparison mode for deduplication (exact, fuzzy)."""
-        dedup = self.metadata.get("identity", {}).get("deduplication", {})
-        return dedup.get("comparison_mode", "exact")
-
     def get_output_exclude_fields(self) -> List[str]:
         """Get fields that should be excluded from compiled outputs."""
         output = self.metadata.get("compilation", {}).get("output", {})
         return output.get("exclude_fields", [])
 
-    def _schema_item_properties(self) -> List[str]:
-        """Return field names from the main data array's item properties, in declaration order."""
-        main_key = self.get_main_data_array()
-        props = self.schema.get("properties", {})
-        item_schema = props.get(main_key, {}).get("items", {})
-        return list(item_schema.get("properties", {}).keys())
+    @staticmethod
+    def _types(prop: Dict[str, Any]) -> set:
+        declared = prop.get("type")
+        if isinstance(declared, str):
+            return {declared}
+        if isinstance(declared, list):
+            return {t for t in declared if isinstance(t, str)}
+        return set()
 
-    def _schema_context_properties(self) -> List[str]:
-        """Return field names from all context objects (e.g. jurisdiction), in declaration order."""
-        props = self.schema.get("properties", {})
-        fields: List[str] = []
-        for obj_key in self.get_context_objects():
-            obj_schema = props.get(obj_key, {})
-            fields.extend(obj_schema.get("properties", {}).keys())
-        return fields
+    def _properties(self, node: Any, path: List[str]) -> Dict[str, Any]:
+        found = self._schema_node_at_path(node, path) or {}
+        return {
+            name: self._schema_node_at_path(found, [name]) or {}
+            for name in found.get("properties", {})
+        }
 
-    def get_field_types(self) -> Dict[str, set]:
-        """Map each item/context field name to its set of JSON-declared types.
-
-        Domain-agnostic: reads the schema's declared ``type`` for every item and
-        context property (a string like ``"number"`` or a list like
-        ``["integer", "string", "null"]``). The compiler uses this to coerce
-        output columns to their true dtype without hardcoding any field name.
-        Keys are the schema's own (snake_case) field names, which match the
-        post-rename output columns.
-        """
-
-        def _types(prop: Dict[str, Any]) -> set:
-            declared = prop.get("type")
-            if isinstance(declared, str):
-                return {declared}
-            if isinstance(declared, list):
-                return {t for t in declared if isinstance(t, str)}
-            return set()
-
-        props = self.schema.get("properties", {})
-        result: Dict[str, set] = {}
-        main_key = self.get_main_data_array()
-        item_props = (
-            props.get(main_key, {}).get("items", {}).get("properties", {})
-        )
-        for name, prop in item_props.items():
-            if isinstance(prop, dict):
-                result[name] = _types(prop)
-        for obj_key in self.get_context_objects():
-            obj_props = props.get(obj_key, {}).get("properties", {})
-            for name, prop in obj_props.items():
-                if isinstance(prop, dict):
-                    result[name] = _types(prop)
+    def _output_properties(self) -> Dict[str, Dict[str, Any]]:
+        """Context, item, and row-array child properties keyed by output field, in schema order."""
+        result: Dict[str, Dict[str, Any]] = {}
+        for context in self.get_context_objects():
+            result.update(self._properties(self.schema, [context]))
+        main = self._schema_node_at_path(self.schema, [self.get_main_data_array()]) or {}
+        item = main.get("items", {})
+        row_array = self.get_row_array()
+        for name, prop in self._properties(item, []).items():
+            if name != row_array:
+                result[name] = prop
+        if row_array:
+            child = (self._schema_node_at_path(item, [row_array]) or {}).get("items", {})
+            result.update(self._properties(child, []))
         return result
 
-    @staticmethod
-    def _to_snake_case(name: str) -> str:
-        """Convert a CamelCase or Title Case column header to snake_case."""
-        import re
-        s = re.sub(r"([A-Z]+)([A-Z][a-z])", r"\1_\2", name)
-        s = re.sub(r"([a-z\d])([A-Z])", r"\1_\2", s)
-        return s.replace(" ", "_").lower()
+    def get_output_fields(self) -> List[str]:
+        return list(self._output_properties())
 
-    def get_column_renames(self) -> Dict[str, str]:
-        """Return column rename mapping.
+    def get_field_types(self) -> Dict[str, set]:
+        return {name: self._types(prop) for name, prop in self._output_properties().items()}
 
-        Merges two sources in priority order (highest last):
-
-        1. Auto-derived snake_case renames for every item field AND context
-           object field in the schema (Title Case → snake_case).
-        2. Explicit overrides from compilation.output.column_renames in config/schema.
-
-        This ensures new schema fields are always renamed correctly without
-        manual config updates.
-        """
-        auto: Dict[str, str] = {}
-        for field in self._schema_item_properties() + self._schema_context_properties():
-            snake = self._to_snake_case(field)
-            if snake != field:
-                auto[field] = snake
-            title = field.replace("_", " ").title()
-            if title != field:
-                auto[title] = snake
-            # Handle Title_Underscore form produced by the flattener (e.g. Jurisdiction_Type)
-            title_us = "_".join(w.capitalize() for w in field.split("_"))
-            if title_us != field:
-                auto[title_us] = snake
-
-        output = self.metadata.get("compilation", {}).get("output", {})
-        explicit = output.get("column_renames", {})
-        auto.update(explicit)
-        return auto
+    def get_column_titles(self) -> Dict[str, str]:
+        """Output header per field: the schema ``title`` when set (else the field name)."""
+        return {
+            name: prop["title"]
+            for name, prop in self._output_properties().items()
+            if isinstance(prop.get("title"), str) and prop["title"]
+        }
 
     def get_column_order(self) -> List[str]:
-        """Return column ordering.
-
-        If compilation.output.column_order is set, it acts as a *priority prefix*:
-        those columns appear first (in the listed order), then all remaining
-        schema item fields appear in their declaration order, then context fields.
-        If column_order is empty/absent, item fields then context fields are used.
-        """
-        output = self.metadata.get("compilation", {}).get("output", {})
-        priority = output.get("column_order", [])
-
-        schema_fields = [self._to_snake_case(f) for f in self._schema_item_properties()]
-        context_fields = [self._to_snake_case(f) for f in self._schema_context_properties()]
-
-        if not priority:
-            return schema_fields + context_fields
-
-        priority_set = set(priority)
-        remainder_items = [f for f in schema_fields if f not in priority_set]
-        remainder_ctx = [f for f in context_fields if f not in priority_set]
-        return priority + remainder_items + remainder_ctx
+        """Output headers listed first; remaining columns keep their default order."""
+        return self.metadata.get("compilation", {}).get("output", {}).get("column_order", [])
 
     def get_freeze_columns(self) -> int:
         """Get number of columns to freeze in Excel output."""
@@ -997,46 +819,17 @@ class SchemaMetadata:
         return output.get("center_align_max_length")
 
     def get_flattening_config(self) -> Dict[str, Any]:
-        """Return the optional ``compilation.flattening`` block.
-
-        Domain-neutral knobs the flattener consults to decide how arrays of
-        objects become spreadsheet columns. Every key is optional; when a key
-        is absent the flattener falls back to its documented general defaults,
-        so schemas that declare nothing keep the legacy behavior.
-        """
         return self.metadata.get("compilation", {}).get("flattening", {})
 
     def get_state_normalization_column(self) -> Optional[str]:
-        """Column whose US-state names should be normalized to abbreviations.
+        """Field whose US-state names are abbreviated (opt-in)."""
+        normalization = self.metadata.get("compilation", {}).get("normalization", {})
+        return normalization.get("state_column")
 
-        Driven by ``compilation.normalization.state_column``. Defaults to
-        ``"State"`` to preserve existing behavior for schemas that have a
-        jurisdiction State column.  Set to ``null``/``""`` in a schema to
-        opt a non-US / non-jurisdiction domain out entirely.
-
-        To make state normalization opt-in for a new domain schema, set
-        ``compilation.normalization.state_column: null`` explicitly.
-        """
-        normalization = self.metadata.get("compilation", {}).get(
-            "normalization", {}
-        )
-        if "state_column" not in normalization:
-            return "State"
-        column = normalization.get("state_column")
-        return column or None
-
-    def get_derive_county_fips(self) -> bool:
-        """Whether to derive a ``county_fips`` join key from state + county.
-
-        Opt-in via ``compilation.normalization.county_fips: true``. When on, the
-        compiler adds a 5-digit Census county FIPS column from the ``state`` and
-        ``county`` columns — a domain-agnostic GIS/DS join key. Off by default,
-        and only meaningful for county-level geography (not place/municipality).
-        """
-        normalization = self.metadata.get("compilation", {}).get(
-            "normalization", {}
-        )
-        return bool(normalization.get("county_fips", False))
+    def get_county_fips_columns(self) -> Optional[Dict[str, str]]:
+        """``{state, county}`` fields that derive the ``county_fips`` column (opt-in)."""
+        normalization = self.metadata.get("compilation", {}).get("normalization", {})
+        return normalization.get("county_fips")
 
     def get_severity_tokens(self) -> tuple[frozenset, frozenset]:
         """Return the ``(high, medium)`` field-name severity token sets.
@@ -1084,23 +877,6 @@ class SchemaMetadata:
                 )
 
         return hints
-
-    # --- Validation Metadata ---
-
-    def get_required_fields(self) -> List[str]:
-        """Get fields that must be present in extraction."""
-        validation = self.metadata.get("validation", {})
-        return validation.get("required_fields", [])
-
-    def get_quality_checks(self) -> List[Dict[str, Any]]:
-        """Get custom quality validation rules."""
-        validation = self.metadata.get("validation", {})
-        return validation.get("quality_checks", [])
-
-    def get_completeness_threshold(self) -> float:
-        """Get minimum completeness score (0.0-1.0)."""
-        validation = self.metadata.get("validation", {})
-        return validation.get("completeness_threshold", 0.7)
 
     # --- Helper Methods ---
 
@@ -1160,18 +936,6 @@ class SchemaMetadata:
             )
 
         return []
-
-    def get_domain(self) -> str:
-        """Get domain/category from metadata."""
-        return self.metadata.get("domain", "Unknown")
-
-    def get_version(self) -> str:
-        """Get schema version from metadata."""
-        return self.metadata.get("version", "1.0.0")
-
-    def get_description(self) -> str:
-        """Get schema description from metadata."""
-        return self.metadata.get("description", "")
 
     def _collect_object_field_severity_hints(
         self,

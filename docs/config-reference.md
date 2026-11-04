@@ -73,7 +73,6 @@ shared runtime definitions; templates show explicit choices separately.
 | `pages.auto_locate.trigger_chars` | extraction | `200000` | Target only docs above a size |
 | `pages.auto_locate.max_selected_pages` | extraction | `30` | Sections span more/fewer pages |
 | `output.default_format` | compilation | `both` when unset | You want only `csv` or `excel` |
-| `synthesis.min_sources_for_llm` | compilation | `2` | Tune when the LLM reconciler runs |
 | dedup `key_fields` | schema `$metadata.identity.deduplication` | none | Compiled sheet has duplicate rows |
 
 The [Command Reference](commands/index.md) also renders every CLI option's
@@ -241,13 +240,11 @@ pack unwrapping are retired; use direct JSON schemas and supported string aliase
 
 ### Advanced: column-flattening overrides
 
-When compiling nested records into flat spreadsheet columns, ParseSweep uses a
-set of heuristic field-name defaults (which fields name a *type*, hold a
-*value*, carry a *unit*, and so on). These ship tuned for tabular/rate-style
-data; if your domain names fields differently, override them per-schema in the
-schema's `$metadata.compilation.flattening` block (e.g. `type_fields`,
-`value_fields`, `unit_fields`, `skip_fields`) — no code changes needed. Every
-knob falls back to the built-in default when omitted.
+Nested objects flatten to `parent_child` columns and scalar lists join with
+commas. The schema's `$metadata.compilation.flattening` block accepts only
+`row_array` (which nested object array expands to one row per child),
+`unit_fields`, and `unit_normalizations` (an opt-in value map applied to the
+named unit fields, e.g. `{"ft": "feet"}`).
 
 ## Schema-driven compilation
 
@@ -257,23 +254,27 @@ a regulation can declare requirements; a public-comment schema can declare
 sentiment and evidence. Fields absent from that domain are not invented as
 empty consumer columns.
 
-Use the existing `compilation.output` settings to rename, prioritize, or exclude
-columns. For example, a measurement schema declaring `manufacturer`,
-`rated_power_kw`, and `measurement_quote` can use:
+Each output header is the schema field's `title`, or the field name when no
+title is set — rename a column by setting its `title`. `compilation.output`
+prioritizes or excludes columns by those exact headers; unknown headers fail
+validation. For example, a measurement schema whose `measurement_quote` field
+has `"title": "Evidence"` can use:
 
 ```yaml
 compilation:
   output:
     default_format: csv
-    column_renames:
-      Manufacturer: manufacturer
-      Rated Power Kw: rated_power_kw
-      Measurement Quote: evidence
-    column_order: [manufacturer, rated_power_kw, evidence]
+    column_order: [manufacturer, rated_power_kw, Evidence]
 ```
 
 `column_order` is a priority prefix, not an exact column selection; remaining
-schema fields are retained. `exclude_fields` removes unwanted fields. Nested
+schema fields are retained. `exclude_fields` removes unwanted headers.
+`compilation.normalization` keys (`state_column`, `county_fips: {state, county}`)
+name schema fields instead.
+
+When `discovery` declares `targets` and `partition_by`, compile switches to
+roster mode: one row per target in roster order, extra target columns passed
+through, and `sources`, `confidence`, and `evidence` columns per row. Nested
 flattening uses the schema's existing `compilation.flattening` settings.
 Canonical extraction JSON remains the source for lossless arrays/objects,
 quality warnings, coverage, document identity, and lineage. Spreadsheet output
@@ -282,7 +283,7 @@ is a presentation, not a replacement for that record.
 Runtime compilation settings override schema `$metadata.compilation` settings.
 With no format setting, CLI and Python API emit CSV and Excel. Compilation and
 `run --validate-config` validate the merged contract before scanning records,
-calling synthesis models, or clearing outputs with `--fresh`. Excel batches
+or clearing outputs with `--fresh`. Excel batches
 above 1,048,575 data rows or with cells over 32,767 characters fail before
 either export; select CSV to preserve full evidence. Requested files are written
 to staging before publication; caught writer/publication failures restore prior
@@ -291,8 +292,8 @@ and their paths appear in the error. This is not a crash-safe multi-file
 transaction: do not run concurrent writers into the same output directory.
 
 Semantic summaries and classifications belong in the extraction schema's
-instructions and constraints. Existing `compilation.synthesis` handles
-cross-document reconciliation. Deterministic code validates structure,
+instructions and constraints. Roster compilation reconciles values across
+documents deterministically. Deterministic code validates structure,
 provenance, identity, and export contracts; JSON Schema validation, including
 declared calendar-date formats, does **not** certify quotation authenticity,
 sentiment, or geographical support. US county-FIPS derivation remains an

@@ -1,6 +1,24 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$metadata": {
+    "compilation": {
+      "flattening": {
+        "unit_fields": ["units"],
+        "unit_normalizations": {
+          "'": "feet",
+          "\u2032": "feet",
+          "ft": "feet",
+          "ft.": "feet",
+          "\"": "inches",
+          "\u2033": "inches",
+          "in": "inches",
+          "in.": "inches",
+          "dB(A)": "dBA",
+          "db(a)": "dBA",
+          "DB(A)": "dBA"
+        }
+      }
+    },
     "domain": "Geothermal Energy Ordinances",
     "version": "5.0.0",
     "extraction": {

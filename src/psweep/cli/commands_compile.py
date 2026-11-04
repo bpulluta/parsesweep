@@ -27,11 +27,11 @@ from psweep.compilation.input_provenance import (
     list_compile_record_files,
 )
 from psweep.config import RuntimeConfigError
+from psweep.workspace import Workspace
 from psweep.compilation.accounting import (
     build_pipeline_accounting,
     write_compilation_run_manifest,
 )
-from psweep.utils.config import get_config
 
 
 def _build_dedup_preview_report(
@@ -275,12 +275,6 @@ def compile(
     provenance_policy = str(
         resolved_inputs.get("provenance_policy", provenance_policy)
     ).strip().lower()
-    synthesis_cfg = resolved_inputs["_schema_metadata"].metadata.get(
-        "compilation", {}
-    ).get("synthesis")
-    synthesis_active = isinstance(synthesis_cfg, dict) and bool(
-        synthesis_cfg.get("enabled")
-    )
 
     input_dir = Path(extracted_dir)
     if not input_dir.exists():
@@ -288,6 +282,7 @@ def compile(
         sys.exit(1)
 
     output_dir = Path(output)
+    base_name = Workspace(resolved_inputs["domain"]).compiled_name
 
     emit_json_report = dry_run and report_format.lower() == "json"
     record_json_files = list_compile_record_files(input_dir)
@@ -330,11 +325,10 @@ def compile(
         view.phase("Analyzing schema structure")
     compiler = DataCompiler(
         schema_metadata=schema_metadata,
+        inputs=resolved_inputs,
         verbose=view.verbosity.shows_detail,
         debug=view.verbosity is Verbosity.DEBUG,
     )
-    synth_client = None
-    synthesizer = None
     compile_started_at = datetime.now(timezone.utc)
     if would_fail_on_provenance and emit_json_report:
         click.echo(
@@ -359,68 +353,23 @@ def compile(
         sys.exit(2)
 
     try:
-        if synthesis_active:
-            from psweep.compilation.synthesizer import Synthesizer
-            from psweep.extraction.llm_factory import build_llm_client
-
-            synth_model = synthesis_cfg.get("model")
-            env_model = get_config().llm_config.get("model")
-            if not synth_model and not resolved_inputs.get("models") and not env_model:
-                raise click.UsageError(
-                    "No model configured for the compilation synthesis stage. "
-                    "Add 'model: primary' under 'compilation.synthesis:' "
-                    "in your run config, or set AZURE_OPENAI_MODEL in your .env file."
-                )
-            synth_client = build_llm_client(
-                synth_model,
-                models=resolved_inputs.get("models"),
+        quiet = emit_json_report or view.is_quiet
+        if not quiet:
+            view.phase(
+                f"Found {len(record_json_files)} extracted JSON file(s) in {input_dir.name}"
             )
-            if not emit_json_report:
-                view.phase(
-                    "Synthesizing one record per entity "
-                    f"(model={synth_client.raw_model})"
-                )
-            synthesizer = Synthesizer(
-                schema_metadata=schema_metadata,
-                config=synthesis_cfg,
-                llm_client=synth_client,
-                verbose=view.verbosity.shows_detail,
+        with with_status("Loading extracted JSON files...", quiet=quiet):
+            df, schema_info = compiler.compile_from_directory(
+                input_dir,
+                apply_deduplication=not dry_run,
             )
-            quiet = emit_json_report or view.is_quiet
-            with with_status(
-                f"Synthesizing with {synth_client.raw_model}...", quiet=quiet
-            ):
-                df = synthesizer.synthesize_from_directory(input_dir)
-            if not emit_json_report:
-                total_rows = synthesizer.llm_calls + synthesizer.deterministic_rows
-                view.status(
-                    "info",
-                    f"Synthesis: {synthesizer.llm_calls} LLM reconciliation "
-                    f"call(s), {synthesizer.deterministic_rows} resolved "
-                    f"deterministically (no API) of {total_rows} synthesized row(s)",
-                )
-            schema_info = {
-                "type": f"Synthesized: {schema_metadata.get_main_data_array()}",
-                "main_array_key": (synthesis_cfg.get("group_by") or ["entity"])[0],
-            }
-        else:
-            quiet = emit_json_report or view.is_quiet
-            if not quiet:
-                view.phase(
-                    f"Found {len(record_json_files)} extracted JSON file(s) in {input_dir.name}"
-                )
-            with with_status("Loading extracted JSON files...", quiet=quiet):
-                df, schema_info = compiler.compile_from_directory(
-                    input_dir,
-                    apply_deduplication=not dry_run,
-                )
 
         if input_provenance_warnings and not emit_json_report:
             view.warnings(input_provenance_warnings)
         if df.empty:
             if fresh and not dry_run:
                 compiler.export(
-                    df, output_dir, input_dir.name.replace("_", "-"),
+                    df, output_dir, base_name,
                     schema_metadata.get_output_formats(), fresh=True,
                 )
             if input_provenance_warnings and emit_json_report:
@@ -436,8 +385,11 @@ def compile(
             return
 
         if not emit_json_report:
-            view.success(f"Schema detected: {schema_info['type']}")
-            view.status("info", f"Main entity: {schema_info['main_array_key']}")
+            view.status(
+                "info",
+                f"{schema_info['type']}: {schema_info['main_array_key']} "
+                f"({compiler.mode} mode)",
+            )
 
         if dry_run:
             from contextlib import redirect_stdout
@@ -445,16 +397,27 @@ def compile(
 
             with redirect_stdout(StringIO()):
                 export_df = (
-                    df if synthesis_active
+                    df if compiler.mode == "roster"
                     else compiler.deduplicator.deduplicate(df.copy())
                 )
             output_frame = compiler._prepare_output_dataframe(export_df)
             compiler.validate_export(output_frame, schema_metadata.get_output_formats())
 
-        if dry_run and synthesis_active:
-            print_info(
-                f"Dry run: synthesized {len(df)} entity row(s); no files written."
-            )
+        if dry_run and compiler.mode == "roster":
+            if emit_json_report or view.is_quiet:
+                roster_report = {
+                    "mode": compiler.mode,
+                    "schema_type": schema_info["type"],
+                    "main_array_key": schema_info["main_array_key"],
+                    "rows": len(df),
+                    **compiler.roster_stats,
+                    "warnings": input_provenance_warnings,
+                    "provenance_policy": provenance_policy,
+                    "would_fail_on_provenance": would_fail_on_provenance,
+                }
+                click.echo(json.dumps(roster_report, indent=2, sort_keys=True))
+            else:
+                print_info(f"Dry run: {len(df)} roster row(s); no files written.")
             return
 
         if dry_run:
@@ -464,6 +427,7 @@ def compile(
                 dedup_preview=dedup_preview,
                 rows_before_dedup=len(df),
             )
+            preview_report["mode"] = compiler.mode
             if input_provenance_warnings:
                 preview_report["warnings"] = [
                     *(preview_report.get("warnings") or []),
@@ -563,7 +527,6 @@ def compile(
             return
 
         view.phase("Creating outputs")
-        base_name = input_dir.name.replace("_", "-")
         output_formats = schema_metadata.get_output_formats()
         emitted_paths, output_frame = compiler.export(
             df, output_dir, base_name, output_formats, fresh=fresh
@@ -599,27 +562,10 @@ def compile(
                 "Columns": str(output_column_count),
                 "Outputs": ", ".join(output_formats),
             }
-            if not synthesis_active and compiler.duplicates_removed > 0:
+            if compiler.duplicates_removed > 0:
                 summary_stats["Duplicates Removed"] = str(compiler.duplicates_removed)
-            if synthesis_active:
-                summary_stats["Model"] = synth_client.raw_model
-
-            if schema_info.get("category_field"):
-                from psweep.utils.normalizers import camel_to_title
-
-                category_display = camel_to_title(
-                    schema_info.get("category_field", "")
-                )
-                if category_display and category_display in df.columns:
-                    top_categories = df[category_display].value_counts().head(5)
-                    if not top_categories.empty:
-                        top_cat_str = ", ".join(
-                            [
-                                f"{cat} ({count})"
-                                for cat, count in list(top_categories.items())[:3]
-                            ]
-                        )
-                        summary_stats[f"Top {category_display}s"] = top_cat_str
+            for key, value in (compiler.roster_stats or {}).items():
+                summary_stats[key.replace("_", " ").title()] = str(value)
 
             view.summary(summary_stats, title="Compilation Summary")
             view.outputs(
@@ -634,23 +580,18 @@ def compile(
         # Run accounting — always written regardless of verbosity / quiet mode.
         # This is a structured record of costs, not presentation output.
         # ------------------------------------------------------------------
-        _summary_stats_for_acct = {
+        compile_stats = {
             "records": len(df),
             "columns": output_column_count,
             "duplicates_removed": compiler.duplicates_removed,
-            "output_format": ", ".join(output_formats),
+            "output_formats": output_formats,
+            **(compiler.roster_stats or {}),
         }
         write_compilation_run_manifest(
             output_dir=output_dir,
             schema_id=str(matched_schema),
-            synthesis_active=synthesis_active,
-            synthesis_model=(getattr(synth_client, "raw_model", None) if synth_client else None),
-            synthesis_provider=(getattr(synth_client, "provider", None) if synth_client else None),
-            synthesis_llm_calls=(int(getattr(synthesizer, "llm_calls", 0)) if synthesizer else 0),
-            records=len(df),
-            columns=output_column_count,
-            duplicates_removed=compiler.duplicates_removed,
-            output_formats=output_formats,
+            mode=compiler.mode,
+            stats=compile_stats,
             started_at=compile_started_at,
         )
 
@@ -660,7 +601,7 @@ def compile(
                 domain=resolved_inputs["domain"],
                 extraction_dir=input_dir,
                 output_dir=output_dir,
-                compilation_stats=_summary_stats_for_acct,
+                compilation_stats=compile_stats,
             )
             acct_path.write_text(
                 json.dumps(accounting, indent=2) + "\n",

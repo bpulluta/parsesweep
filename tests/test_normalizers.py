@@ -50,13 +50,13 @@ class TestNormalizeState:
 
 class TestNormalizeStateColumn:
     def test_normalizes_in_place(self):
-        df = pd.DataFrame({"State": ["Utah", "California", "NY", "tx"]})
-        normalize_state_column(df)
-        assert df["State"].tolist() == ["UT", "CA", "NY", "TX"]
+        df = pd.DataFrame({"state": ["Utah", "California", "NY", "tx"]})
+        normalize_state_column(df, "state")
+        assert df["state"].tolist() == ["UT", "CA", "NY", "TX"]
 
     def test_missing_column_is_noop(self):
         df = pd.DataFrame({"Other": ["x"]})
-        normalize_state_column(df)  # should not raise
+        normalize_state_column(df, "state")  # should not raise
         assert df["Other"].tolist() == ["x"]
 
 

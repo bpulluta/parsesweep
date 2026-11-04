@@ -1,30 +1,29 @@
-#!/usr/bin/env python3
-"""
-Universal DataCompiler - Works with ANY schema automatically.
+"""Compile extraction records into one analysis-ready table."""
 
-Clean, simple, and intelligent. No configuration needed.
-"""
+from pathlib import Path
+from typing import Any, Dict, Iterator, List, Optional, Tuple
 
 import pandas as pd
-from pathlib import Path
-from typing import Dict, Any, Tuple
-from .schema_detector import SchemaDetector
+from jsonschema import ValidationError
+
+from .csv_exporter import CsvExporter
 from .data_flattener import DataFlattener
 from .deduplicator import (
-    Deduplicator,
-    COL_RUN_ID,
     COL_ARTIFACT_ID,
-    COL_ERROR_COUNT,
     COL_ERROR_CATEGORIES,
+    COL_ERROR_COUNT,
     COL_ERROR_MESSAGES,
+    COL_RUN_ID,
+    PROVENANCE_COLUMNS,
+    Deduplicator,
 )
 from .excel_formatter import ExcelFormatter
-from .csv_exporter import CsvExporter
+from .input_provenance import list_compile_record_files, read_compile_record
+from .roster import compile_roster
 from ..exceptions import SchemaMetadataError
-from ..utils.normalizers import normalize_state_column
+from ..extraction.roster import load_roster
 from ..extraction.schema_utils import build_schema_validator
-from .input_provenance import read_compile_record
-from jsonschema import ValidationError
+from ..utils.normalizers import add_county_fips_column, normalize_state_column
 
 
 EXCEL_MAX_DATA_ROWS = 1_048_575
@@ -32,426 +31,208 @@ EXCEL_MAX_CELL_CHARACTERS = 32_767
 
 
 class DataCompiler:
-    """
-    Universal data compiler that automatically handles any extraction schema.
+    """Roster mode emits one row per discovery target; otherwise one row per item.
 
-    Simply point it at extracted JSON files and it:
-
-    - Detects schema structure automatically
-    - Intelligently flattens nested data for spreadsheets
-    - Creates readable, analysis-ready output
-    - Handles both simple and complex nested structures
-
-    No configuration required - just works.
+    ``inputs`` are the resolved compile inputs; ``targets``/``partition_by``
+    activate roster mode exactly as in extraction.
     """
 
-    def __init__(self, schema_metadata, verbose=True, debug=False):
-        """
-        Initialize compiler.
-
-        Parameters
-        ----------
-        schema_metadata
-            SchemaMetadata instance (required in v2.0+)
-        verbose
-            Whether to print informational messages (default: True)
-        debug
-            Whether to print debug-level details (default: False)
-
-        Raises
-        ------
-        SchemaMetadataError
-            If schema_metadata is not provided
-        """
+    def __init__(self, schema_metadata, inputs: Optional[Dict[str, Any]] = None,
+                 verbose=True, debug=False):
         if not schema_metadata:
-            raise SchemaMetadataError(
-                "DataCompiler requires schema metadata.\n"
-                "Schema metadata is required as of ParseSweep v2.0."
-            )
-
-        self.schema_info = None
+            raise SchemaMetadataError("DataCompiler requires schema metadata.")
         self.schema_metadata = schema_metadata
+        self.inputs = inputs or {}
+        self.roster = load_roster(self.inputs, schema_metadata)
+        self.roster_stats: Optional[Dict[str, int]] = None
         self.verbose = verbose
         self.debug = debug
         self.file_count = 0
         self.total_items = 0
         self.duplicates_removed = 0
-        self.detector = SchemaDetector(schema_metadata=schema_metadata)
-        self.flattener = DataFlattener(schema_metadata=schema_metadata)
+        self.flattener = DataFlattener(schema_metadata)
         self.deduplicator = Deduplicator(schema_metadata=schema_metadata)
         self.excel_formatter = ExcelFormatter()
         self.csv_exporter = CsvExporter()
         self.payload_validator = build_schema_validator(schema_metadata.schema)
+
+    @property
+    def mode(self) -> str:
+        return "rows" if self.roster is None else "roster"
+
+    def _records(self, files: List[Path]) -> Iterator[Dict[str, Any]]:
+        for path in files:
+            record = read_compile_record(path)
+            try:
+                self.payload_validator.validate(record["payload"])
+            except ValidationError as exc:
+                field = ".".join(str(part) for part in exc.absolute_path) or "payload"
+                raise ValueError(
+                    f"{path}: invalid extraction payload at {field} ({exc.validator})"
+                ) from exc
+            yield record
 
     def compile_from_directory(
         self,
         json_dir: Path,
         *,
         apply_deduplication: bool = True,
-    ) -> Tuple[pd.DataFrame, Dict]:
-        """
-        Load all JSON files and compile into DataFrame.
-
-        Searches recursively through nested subdirectories.
-
-        Returns
-        -------
-        Tuple[pd.DataFrame, Dict]
-            Tuple of (DataFrame, schema_info dict)
-        """
-        from .input_provenance import list_compile_record_files
+    ) -> Tuple[pd.DataFrame, Dict[str, Any]]:
+        """Return the compiled frame (field-name columns) and a schema summary."""
         from psweep.security import validate_protected_paths
 
         validate_protected_paths({"input_dir": json_dir})
-        json_files = list_compile_record_files(json_dir)
-        if not json_files:
+        files = list_compile_record_files(json_dir)
+        if not files:
             raise ValueError(f"No extraction records found in {json_dir}")
-
-        # Structure is schema-owned; do not parse a sample record twice.
-        self.schema_info = self.detector.detect_structure({})
-        nested_array_key = self.schema_metadata.get_row_array()
-
+        self.file_count = len(files)
+        main = self.schema_metadata.get_main_data_array()
+        schema_info = {
+            "type": self.schema_metadata.metadata.get("extraction", {}).get(
+                "document_type", "Document"
+            ),
+            "main_array_key": main,
+        }
         if self.verbose:
-            print(f"📋 Schema detected: {self.schema_info['type']}")
-            print(f"   Main entity: {self.schema_info['main_array_key']}")
-            print(
-                f"   Identifier fields: {', '.join(self.schema_info['id_fields'])}"
+            print(f"📋 {schema_info['type']}: {main} ({self.mode} mode)")
+
+        if self.roster is not None:
+            df, self.roster_stats = compile_roster(
+                self._records(files), self.schema_metadata, self.roster, self.inputs["targets"]
             )
+            self.total_items = len(df)
+            self.duplicates_removed = 0
+            return df, schema_info
 
-        if self.debug:
-            print("\n[DEBUG] Full schema metadata:")
-            metadata = self.schema_metadata.metadata
-            print(f"  Domain: {metadata.get('domain', 'N/A')}")
-            print(f"  Version: {metadata.get('version', 'N/A')}")
-            if "extraction" in metadata:
-                print("  Extraction config:")
-                for key, value in metadata["extraction"].items():
-                    print(f"    {key}: {value}")
-            if "identity" in metadata and "deduplication" in metadata["identity"]:
-                dedup = metadata["identity"]["deduplication"]
-                print("  Deduplication config:")
-                print(f"    Key fields: {dedup.get('key_fields', [])}")
-                print(f"    Ignore fields: {dedup.get('ignore_fields', [])}")
-
-        # Extract data from all files
-        rows = []
-        self.file_count = len(json_files)
-
-        for idx, json_file in enumerate(json_files, 1):
-            if self.debug:
-                print(
-                    f"\n[DEBUG] Processing file {idx}/{self.file_count}: {json_file.name}"
-                )
-
-            raw_data = read_compile_record(json_file)
-            data = raw_data["payload"]
-            context_source = data
-            try:
-                self.payload_validator.validate(data)
-            except ValidationError as exc:
-                field = ".".join(str(part) for part in exc.absolute_path) or "payload"
-                raise ValueError(
-                    f"{json_file}: invalid extraction payload at {field} ({exc.validator})"
-                ) from exc
-
-            # Extract identifier/context fields
-            context = self.detector.extract_context(
-                context_source, self.schema_info
-            )
-            context.update(self._extract_lineage_context(raw_data))
-
-            # Refuse malformed records instead of silently dropping their rows.
-            main_key = self.schema_info["main_array_key"]
-            main_array = data.get(main_key, [])
-            if not isinstance(main_array, list) or any(
-                not isinstance(item, dict) for item in main_array
-            ):
-                raise ValueError(
-                    f"{json_file}: {main_key} must be an array of objects"
-                )
-
-            if nested_array_key:
-                # Preserve child rows and parents with no children.
-                file_items = 0
-                for parent_item in main_array:
-                    nested_items = parent_item.get(nested_array_key) or []
-                    parent_context = self.flattener.flatten_item({
-                        key: value for key, value in parent_item.items()
-                        if key != nested_array_key
-                    })
-
-                    if not nested_items:
-                        rows.append({**context, **parent_context})
-                        file_items += 1
-                        continue
-                    for nested_item in nested_items:
-                        nested_row = self.flattener.flatten_item(nested_item)
-                        overlapping = set(nested_row) & (set(context) | set(parent_context))
-                        if overlapping:
-                            raise ValueError(
-                                f"{json_file}: nested row columns collide with parent/context: "
-                                f"{', '.join(sorted(overlapping))}; use distinct schema field names"
-                            )
-                        row = {**context, **parent_context, **nested_row}
-                        rows.append(row)
-                        file_items += 1
-
-                if self.debug:
-                    print(
-                        f"  Extracted {file_items} nested items from {len(main_array)} parent items"
-                    )
-            else:
-                # Standard: one row per main array item
-                file_items = len(main_array)
-                for item in main_array:
-                    row = {**context, **self.flattener.flatten_item(item)}
-                    rows.append(row)
-
-                if self.debug:
-                    print(f"  Extracted {file_items} items")
-
-        # Create DataFrame and deduplicate
-        df = pd.DataFrame(rows)
-        del rows
-        # Declared optional identity fields may be absent in every record;
-        # represent them as null, but leave misspelled/unknown keys to fail.
-        identity_fields = (
+        df = self._item_rows(files, main)
+        for field in (
             self.schema_metadata.get_deduplication_key_fields()
             + self.schema_metadata.get_deduplication_partition_fields()
-        )
-        from ..utils.item_matcher import map_key_fields_to_columns
-
-        for field in identity_fields:
-            if map_key_fields_to_columns(df, [field], warn_on_missing=False):
-                continue
-            try:
-                self.schema_metadata.resolve_schema_field(field)
-            except SchemaMetadataError:
-                continue
-            df[self.flattener.make_column_name(field.split(".")[-1])] = None
+        ):
+            column = field.split(".")[-1]
+            if column not in df.columns and column in self.schema_metadata.get_output_fields():
+                df[column] = None
         df = self.flattener.normalize_units(df)
-
-        # Normalize state names to 2-letter abbreviations for consistency.
-        # Config-gated: defaults to a column named "State" (legacy behavior);
-        # a schema can point at a different column or opt out entirely.
         state_column = self.schema_metadata.get_state_normalization_column()
         if state_column:
             normalize_state_column(df, state_column)
 
-        # Track stats
         self.total_items = len(df)
-
-        # Row-level deduplication (schema-driven, universal)
         self.duplicates_removed = 0
         if apply_deduplication:
-            df_before = len(df)
+            before = len(df)
             df = self.deduplicator.deduplicate(df)
-            self.duplicates_removed = df_before - len(df)
-
-            if self.verbose and self.duplicates_removed > 0:
-                key_fields = (
-                    self.schema_metadata.metadata.get("identity", {})
-                    .get("deduplication", {})
-                    .get("key_fields", [])
-                )
-                print(
-                    f"\n🔄 Removed {self.duplicates_removed} duplicate(s) based on key fields: {key_fields}"
-                )
-
+            self.duplicates_removed = before - len(df)
+            if self.verbose and self.duplicates_removed:
+                print(f"\n🔄 Removed {self.duplicates_removed} duplicate(s)")
         if self.debug:
-            print("\n[DEBUG] DataFrame info:")
-            print(f"  Shape: {df.shape[0]} rows × {df.shape[1]} columns")
-            print(
-                f"  Memory usage: {df.memory_usage(deep=True).sum() / 1024:.1f} KB"
-            )
-            print("  Column dtypes:")
-            for col, dtype in df.dtypes.items():
-                print(f"    {col}: {dtype}")
+            print(f"\n[DEBUG] Shape: {df.shape[0]} rows × {df.shape[1]} columns")
+        return df, schema_info
 
-        return df, self.schema_info
+    def _item_rows(self, files: List[Path], main: str) -> pd.DataFrame:
+        row_array = self.schema_metadata.get_row_array()
+        contexts = self.schema_metadata.get_context_objects()
+        flatten = self.flattener.flatten_item
+        rows = []
+        for path, record in zip(files, self._records(files)):
+            payload = record["payload"]
+            context = {
+                key: value
+                for name in contexts
+                for key, value in (payload.get(name) or {}).items()
+            }
+            context.update(self._lineage_context(record))
+            items = payload.get(main, [])
+            if not isinstance(items, list) or any(not isinstance(item, dict) for item in items):
+                raise ValueError(f"{path}: {main} must be an array of objects")
+            for item in items:
+                if not row_array:
+                    rows.append({**context, **flatten(item)})
+                    continue
+                parent = {
+                    **context,
+                    **flatten({k: v for k, v in item.items() if k != row_array}),
+                }
+                children = item.get(row_array) or []
+                if not children:
+                    rows.append(parent)
+                for child in children:
+                    child_row = flatten(child)
+                    overlap = set(child_row) & set(parent)
+                    if overlap:
+                        raise ValueError(
+                            f"{path}: nested row columns collide with parent/context: "
+                            f"{', '.join(sorted(overlap))}; use distinct schema field names"
+                        )
+                    rows.append({**parent, **child_row})
+        return pd.DataFrame(rows)
 
-    def _extract_lineage_context(
-        self, raw_data: Dict[str, Any]
-    ) -> Dict[str, Any]:
-        """Extract lineage context fields from extraction wrappers for compiled outputs."""
+    @staticmethod
+    def _lineage_context(record: Dict[str, Any]) -> Dict[str, Any]:
+        lineage = record.get("lineage") if isinstance(record.get("lineage"), dict) else {}
         context: Dict[str, Any] = {}
-
-        lineage = (
-            raw_data.get("lineage")
-            if isinstance(raw_data.get("lineage"), dict)
-            else None
-        )
-        if not lineage:
-            return context
-
-        run_id = lineage.get("run_id")
-        artifact_id = lineage.get("artifact_id")
-
-        if run_id:
-            context[COL_RUN_ID] = run_id
-        if artifact_id:
-            context[COL_ARTIFACT_ID] = artifact_id
-
-        quality = (
-            raw_data.get("quality")
-            if isinstance(raw_data.get("quality"), dict)
-            else {}
-        )
-        errors = (
-            quality.get("errors")
-            if isinstance(quality.get("errors"), list)
-            else []
-        )
+        if lineage.get("run_id"):
+            context[COL_RUN_ID] = lineage["run_id"]
+        if lineage.get("artifact_id"):
+            context[COL_ARTIFACT_ID] = lineage["artifact_id"]
+        quality = record.get("quality") if isinstance(record.get("quality"), dict) else {}
+        errors = [e for e in quality.get("errors") or [] if isinstance(e, dict)]
         if errors:
             context[COL_ERROR_COUNT] = len(errors)
             context[COL_ERROR_CATEGORIES] = "; ".join(
-                sorted(
-                    {
-                        error.get("category", "internal")
-                        for error in errors
-                        if isinstance(error, dict)
-                    }
-                )
+                sorted({error.get("category", "internal") for error in errors})
             )
             context[COL_ERROR_MESSAGES] = " | ".join(
-                error.get("message", "Unknown error")
-                for error in errors
-                if isinstance(error, dict)
+                error.get("message", "Unknown error") for error in errors
             )
-
         return context
 
-    def _apply_exclude_fields(self, df: pd.DataFrame) -> pd.DataFrame:
-        """
-        Remove columns named in schema output.exclude_fields.
-
-        Schema-driven and universal. Matching is case/format-insensitive: both the
-        configured names and the DataFrame columns are normalized to snake_case
-        before comparison, so a field is named once regardless of casing and there
-        is no need to list both "Applicable Values" and "applicable_values".
-        """
-        exclude_fields = self.schema_metadata.get_output_exclude_fields()
-
-        if not exclude_fields:
-            return df
-
-        norm = self.schema_metadata._to_snake_case
-        excluded = {norm(str(name)) for name in exclude_fields}
-        cols_to_drop = [col for col in df.columns if norm(str(col)) in excluded]
-
-        if cols_to_drop:
-            if self.verbose:
-                print(
-                    f"\n🚫 Excluding {len(cols_to_drop)} column(s): {', '.join(cols_to_drop)}"
-                )
-            df = df.drop(columns=cols_to_drop)
-
-        return df
-
     def _coerce_schema_types(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Coerce columns to schema-declared dtypes and unify missing values.
-
-        Domain-agnostic and schema-driven — no field name is hardcoded:
-
-        - Unify missing: empty strings become ``pd.NA`` so the frame has a single
-          missing-value representation (item nulls were ``""``, context nulls were
-          ``NaN``).
-        - Fields the schema types as purely numeric (``number``/``integer``,
-          optionally ``null``, but NOT ``string``) are parsed with
-          ``pd.to_numeric`` so they load as real numbers instead of
-          object-with-blanks. Fields that also allow ``string`` (e.g. a value
-          axis still carrying codes/times pre-Tier-2) are left untouched.
-        - Any float column whose non-null values are all whole numbers is
-          downcast to nullable ``Int64`` — universally kills the ``2012.0``
-          year artifact (an int column promoted to float by a single null).
-        """
+        """Unify missing values as ``pd.NA``; parse purely numeric fields; whole floats → Int64."""
         out = df.replace("", pd.NA)
-        renames = self.schema_metadata.get_column_renames()
-        type_map = {
-            renames.get(field, renames.get(self.flattener.make_column_name(field), field)): types
-            for field, types in self.schema_metadata.get_field_types().items()
-        }
         numeric = {"number", "integer"}
-        for col in out.columns:
-            types = type_map.get(col)
-            if types and (types & numeric) and not (types - (numeric | {"null"})):
-                out[col] = pd.to_numeric(out[col], errors="coerce")
-        for col in out.columns:
-            series = out[col]
+        for column, types in self.schema_metadata.get_field_types().items():
+            if column in out.columns and types & numeric and not types - (numeric | {"null"}):
+                out[column] = pd.to_numeric(out[column], errors="coerce")
+        for column in out.columns:
+            series = out[column]
             if pd.api.types.is_float_dtype(series):
                 non_null = series.dropna()
                 if len(non_null) and (non_null == non_null.round()).all():
-                    out[col] = series.astype("Int64")
+                    out[column] = series.astype("Int64")
         return out
 
     def _prepare_output_dataframe(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Apply schema-driven output shaping before saving exports.
+        """Shape the export: schema-ordered columns, FIPS, title headers, exclude, order.
 
-        Ordering is deliberate: rename to the schema's canonical (snake_case)
-        names first so every later step works in one namespace, then coerce to
-        schema-declared dtypes, then exclude, then order. Universal and
-        config-light — no per-domain or per-field special-casing.
+        ``exclude_fields`` and ``column_order`` name final output headers exactly.
         """
-        prepared_df = df.copy()
+        metadata = self.schema_metadata
+        out = df.copy()
+        if self.roster is None:
+            fields = metadata.get_output_fields()
+            out = out.reindex(columns=fields + [c for c in out.columns if c not in fields])
+            out = self._coerce_schema_types(out)
+        fips = metadata.get_county_fips_columns()
+        if fips:
+            add_county_fips_column(out, fips["state"], fips["county"])
+        out = out.rename(columns=metadata.get_column_titles())
+        duplicated = sorted(set(out.columns[out.columns.duplicated()]))
+        if duplicated:
+            raise ValueError(f"Duplicate output headers: {', '.join(duplicated)}")
 
-        # 1. Canonical rename first (auto snake_case + explicit overrides).
-        column_renames = self.schema_metadata.get_column_renames()
-        if column_renames:
-            prepared_df = prepared_df.rename(
-                columns={
-                    column: renamed
-                    for column, renamed in column_renames.items()
-                    if column in prepared_df.columns
-                }
+        exclude = metadata.get_output_exclude_fields()
+        order = metadata.get_column_order()
+        known = set(out.columns) | PROVENANCE_COLUMNS | {self.deduplicator._annotation_col}
+        unknown = [name for name in [*exclude, *order] if name not in known]
+        if unknown:
+            raise ValueError(
+                "compilation.output exclude_fields/column_order name unknown output "
+                f"header(s): {', '.join(unknown)}"
             )
-
-        # 2. Reindex to the full schema projection so the column SET is stable
-        #    and predictable across runs (a field the schema declares but a run
-        #    didn't emit appears as an empty column, instead of vanishing). Extra
-        #    non-schema columns (lineage) are preserved; excludes trim later.
-        schema_fields = (
-            self.schema_metadata._schema_item_properties()
-            + self.schema_metadata._schema_context_properties()
-        )
-        for field in schema_fields:
-            display = self.flattener.make_column_name(field)
-            output_field = column_renames.get(
-                field, column_renames.get(display, self.schema_metadata._to_snake_case(field))
-            )
-            if output_field not in prepared_df.columns:
-                prepared_df[output_field] = pd.NA
-
-        # 3. Coerce to schema dtypes + unify missing values.
-        prepared_df = self._coerce_schema_types(prepared_df)
-
-        # 3b. Optional GIS/DS join key: derive county_fips from state + county
-        #     (opt-in; only meaningful for county-level geography).
-        if self.schema_metadata.get_derive_county_fips():
-            from ..utils.normalizers import add_county_fips_column
-
-            add_county_fips_column(
-                prepared_df, "state", "county", "county_fips"
-            )
-
-        # 4. Exclude fields (normalized name match, so casing/format is moot).
-        prepared_df = self._apply_exclude_fields(prepared_df)
-
-        # 5. Column order (priority prefix; remainder in schema order).
-        column_order = self.schema_metadata.get_column_order()
-        if column_order:
-            ordered_columns = [
-                column
-                for column in column_order
-                if column in prepared_df.columns
-            ]
-            remaining_columns = [
-                column
-                for column in prepared_df.columns
-                if column not in ordered_columns
-            ]
-            prepared_df = prepared_df[ordered_columns + remaining_columns]
-
-        return prepared_df
+        out = out.drop(columns=[name for name in exclude if name in out.columns])
+        first = [name for name in order if name in out.columns]
+        return out[first + [name for name in out.columns if name not in first]]
 
     @staticmethod
     def validate_export(df: pd.DataFrame, formats) -> None:
