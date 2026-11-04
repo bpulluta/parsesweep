@@ -9,7 +9,7 @@ import signal
 from concurrent.futures import Future
 from contextlib import contextmanager
 from pathlib import Path
-from threading import Barrier
+from threading import Barrier, Lock
 
 import pytest
 
@@ -233,20 +233,41 @@ def test_invalid_grade_fails_explicitly_and_retains_usage(tmp_path, invalid):
     assert record["review_selected"] is False
     assert "grade" in record["review_error"]
     costs = reviewer.get_costs()
-    assert costs["total_cost_usd"] == 0.25
-    assert costs["total_input_tokens"] == 10
-    assert costs["total_output_tokens"] == 3
-    assert costs["llm_calls"] == 1
+    assert costs["total_cost_usd"] == 0.5
+    assert costs["total_input_tokens"] == 20
+    assert costs["total_output_tokens"] == 6
+    assert costs["llm_calls"] == 2
+
+
+def test_invalid_grade_is_retried_once(tmp_path):
+    """A malformed first grade does not fail (and block) the target."""
+    record = _record(tmp_path)
+    replies = [{**_GRADE, "is_primary": "false"}, _GRADE]
+
+    class Client:
+        def extract(self, **kwargs):
+            return {"data": replies.pop(0)}
+
+    reviewer = DocumentReviewer(document_description="records")
+    reviewer._client = Client()
+    reviewer.review([record], [])
+    assert not record.get("review_failed")
+    assert reviewer.get_costs()["llm_calls"] == 2
 
 
 def test_parallel_grades_accumulate_all_returned_usage(tmp_path):
     """Concurrent valid and invalid grades retain exact response usage."""
     records = [_record(tmp_path, f"report{i}.pdf") for i in range(4)]
     barrier = Barrier(4)
+    calls = []
+    lock = Lock()
 
     class Client:
         def extract(self, **kwargs):
-            invalid = barrier.wait(timeout=5) == 0
+            with lock:
+                calls.append(None)
+                first_round = len(calls) <= 4
+            invalid = barrier.wait(timeout=5) == 0 if first_round else True
             return {
                 "data": {**_GRADE, "is_primary": "false"}
                 if invalid
@@ -263,10 +284,10 @@ def test_parallel_grades_accumulate_all_returned_usage(tmp_path):
     reviewer._client = Client()
     reviewer.review(records, [])
     costs = reviewer.get_costs()
-    assert costs["total_cost_usd"] == 0.5
-    assert costs["llm_calls"] == 4
-    assert costs["total_input_tokens"] == 44
-    assert costs["total_output_tokens"] == 28
+    assert costs["total_cost_usd"] == 0.625
+    assert costs["llm_calls"] == 5
+    assert costs["total_input_tokens"] == 55
+    assert costs["total_output_tokens"] == 35
     assert sum(record.get("review_failed", False) for record in records) == 1
     assert all(
         not record["review_selected"]

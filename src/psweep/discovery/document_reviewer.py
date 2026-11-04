@@ -28,6 +28,7 @@ from .urls import redact_url, redact_urls_in_text
 from .validators import ContentSampler
 
 _REVIEW_WORKERS = 4
+_GRADE_ATTEMPTS = 2
 _GRADE_FIELDS = ("is_primary", "relevance", "doc_kind", "reason")
 
 
@@ -519,26 +520,25 @@ class DocumentReviewer:
             "a one-sentence reason.\n\n"
             f"EXCERPT:\n{sample}"
         )
-        try:
-            result = self._client.extract(
-                text=sample,
-                schema=_REVIEW_SCHEMA,
-                system_prompt=_REVIEW_SYSTEM,
-                user_prompt=user_prompt,
-            )
-        except Exception as exc:
-            self._track_usage()
-            message = f"LLM grade call failed ({type(exc).__name__})"
-            raise ReviewError(message, usage_unknown=True) from exc
-        # Retain returned usage even when the grade data is invalid.
-        self._track_usage(result)
-        grade = result.get("data") if isinstance(result, dict) else None
-        if not self._valid_grade(grade):
-            message = (
-                "invalid LLM grade: expected boolean, finite score and strings"
-            )
-            raise ReviewError(message)
-        return {**grade, "coverage": coverage}
+        for _ in range(_GRADE_ATTEMPTS):
+            try:
+                result = self._client.extract(
+                    text=sample,
+                    schema=_REVIEW_SCHEMA,
+                    system_prompt=_REVIEW_SYSTEM,
+                    user_prompt=user_prompt,
+                )
+            except Exception as exc:
+                self._track_usage()
+                message = f"LLM grade call failed ({type(exc).__name__})"
+                raise ReviewError(message, usage_unknown=True) from exc
+            # Retain returned usage even when the grade data is invalid.
+            self._track_usage(result)
+            grade = result.get("data") if isinstance(result, dict) else None
+            if self._valid_grade(grade):
+                return {**grade, "coverage": coverage}
+        message = "invalid LLM grade: expected boolean, finite score and strings"
+        raise ReviewError(message)
 
     # Raw grade cache (selection is always recomputed).
 
