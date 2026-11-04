@@ -853,153 +853,30 @@ def test_model_context_windows_rejects_non_positive(tmp_path: Path):
         load_runtime_config_file(cfg)
 
 
-# ── compilation.synthesis validation ──────────────────────────────
-# The synthesis block was previously an unchecked passthrough, so a mistyped
-# key (e.g. group_bye) silently produced empty output. These lock the guard.
+def test_compilation_synthesis_block_is_rejected(tmp_path: Path):
+    from psweep.config.runtime_config_loader import resolve_command_config
 
-_VALID_SYNTHESIS = (
-    "schema: s.json\n"
-    "compilation:\n"
-    "  synthesis:\n"
-    "    enabled: true\n"
-    "    min_sources_for_llm: 2\n"
-    "    group_by: [entity.name]\n"
-    "    identity_fields: [entity.city]\n"
-    "    relevance_flag: applicability.on_topic\n"
-    "    citation_field: provenance.url\n"
-    "    reconcile_fields:\n"
-    "      - {field: start, evidence: ev_start}\n"
-    "      - {field: end}\n"
-    "    ordering_constraint: [start, end]\n"
-    "    narrative_fields: [status]\n"
-)
-
-
-def test_synthesis_block_accepts_valid_config(tmp_path: Path):
-    config_data = load_runtime_config_file(_write(tmp_path, _VALID_SYNTHESIS))
-    resolved = resolve_command_config(
-        command="compile",
-        cli_values={},
-        config_data=config_data,
+    cfg = load_runtime_config_file(
+        _write(tmp_path, "schema: s.json\ncompilation:\n  synthesis: {enabled: true}\n")
     )
-    assert resolved["synthesis"]["group_by"] == ["entity.name"]
+    with pytest.raises(RuntimeConfigError, match="synthesis"):
+        resolve_command_config(command="compile", cli_values={}, config_data=cfg)
 
 
-def test_synthesis_accepts_branching_ordering_and_exclusive_pairs(tmp_path: Path):
-    body = (
-        "schema: s.json\ncompilation:\n"
-        "  synthesis:\n    group_by: [x]\n"
-        "    reconcile_fields:\n"
-        "      - {field: a}\n"
-        "      - {field: b}\n"
-        "      - {field: c}\n"
-        "    ordering_constraints: [[a, b], [b, c]]\n"
-        "    ordering_exclusive_pairs: [[b, c]]\n"
-        "    ordering_infer_precision_from_pins: false\n"
+def test_compile_inputs_carry_discovery_roster(tmp_path: Path):
+    from psweep.config.runtime_config_loader import resolve_command_config
+
+    (tmp_path / "targets.csv").write_text("state,ahj\nAZ,Pima County\n", encoding="utf-8")
+    cfg = load_runtime_config_file(
+        _write(
+            tmp_path,
+            "schema: s.json\ndiscovery:\n  targets: targets.csv\n"
+            "  partition_by: [state, ahj]\n",
+        )
     )
-    config_data = load_runtime_config_file(_write(tmp_path, body))
-    resolved = resolve_command_config(
-        command="compile",
-        cli_values={},
-        config_data=config_data,
-    )
-    assert resolved["synthesis"]["ordering_constraints"] == [["a", "b"], ["b", "c"]]
-
-
-def test_synthesis_accepts_item_group_by(tmp_path: Path):
-    """item_group_by is an optional list of item-level paths that splits each
-    entity into one row per sub-entity."""
-    body = (
-        "schema: s.json\ncompilation:\n"
-        "  synthesis:\n    enabled: true\n    group_by: [entity.name]\n"
-        "    item_group_by: [phase_label]\n"
-    )
-    config_data = load_runtime_config_file(_write(tmp_path, body))
-    resolved = resolve_command_config(
-        command="compile",
-        cli_values={},
-        config_data=config_data,
-    )
-    assert resolved["synthesis"]["item_group_by"] == ["phase_label"]
-
-
-@pytest.mark.parametrize(
-    ("case_id", "body", "match"),
-    [
-        (
-            "item_group_by_must_be_string_list",
-            "schema: s.json\ncompilation:\n"
-            "  synthesis:\n    group_by: [x]\n    item_group_by: [\"\"]\n",
-            "item_group_by must be a list of non-empty strings",
-        ),
-        (
-            "item_group_by_may_not_shadow_group_by_column",
-            "schema: s.json\ncompilation:\n"
-            "  synthesis:\n    group_by: [entity.name]\n"
-            "    item_group_by: [phase.name]\n",
-            "collide with group_by output column\\(s\\): name",
-        ),
-        (
-            "unknown_key",
-            "schema: s.json\ncompilation:\n"
-            "  synthesis:\n    enabled: true\n    group_by: [x]\n    group_bye: [x]\n",
-            "Unknown keys in 'compilation.synthesis'",
-        ),
-        (
-            "enabled_requires_group_by",
-            "schema: s.json\ncompilation:\n"
-            "  synthesis:\n    enabled: true\n",
-            "group_by is required",
-        ),
-        (
-            "reconcile_fields_require_field_key",
-            "schema: s.json\ncompilation:\n"
-            "  synthesis:\n    group_by: [x]\n"
-            "    reconcile_fields:\n      - {evidence: ev}\n",
-            "non-empty string 'field'",
-        ),
-        (
-            "ordering_must_reference_reconciled_fields",
-            "schema: s.json\ncompilation:\n"
-            "  synthesis:\n    group_by: [x]\n"
-            "    reconcile_fields:\n      - {field: start}\n"
-            "    ordering_constraint: [start, missing]\n",
-            "not in reconcile_fields: missing",
-        ),
-        (
-            "min_sources_must_be_non_negative_int",
-            "schema: s.json\ncompilation:\n"
-            "  synthesis:\n    group_by: [x]\n    min_sources_for_llm: -1\n",
-            "min_sources_for_llm",
-        ),
-        (
-            "invalid_ordering_exclusive_pairs_shape",
-            "schema: s.json\ncompilation:\n"
-            "  synthesis:\n    group_by: [x]\n"
-            "    reconcile_fields:\n      - {field: a}\n      - {field: b}\n"
-            "    ordering_exclusive_pairs: [[a, b, c]]\n",
-            "ordering_exclusive_pairs must be a list of 2-item string lists",
-        ),
-        (
-            "unknown_fields_in_ordering_constraints",
-            "schema: s.json\ncompilation:\n"
-            "  synthesis:\n    group_by: [x]\n"
-            "    reconcile_fields:\n      - {field: start}\n"
-            "    ordering_constraints: [[start, missing]]\n",
-            "ordering_constraints references field\\(s\\) not in reconcile_fields: missing",
-        ),
-    ],
-)
-def test_synthesis_block_rejects_invalid_config(
-    tmp_path: Path, case_id: str, body: str, match: str
-):
-    """compilation.synthesis validation rejects malformed blocks loudly.
-
-    Previously the block was an unchecked passthrough, so typos silently
-    produced empty output. Each case locks one guard.
-    """
-    with pytest.raises(RuntimeConfigError, match=match):
-        load_runtime_config_file(_write(tmp_path, body))
+    resolved = resolve_command_config(command="compile", cli_values={}, config_data=cfg)
+    assert resolved["partition_by"] == ["state", "ahj"]
+    assert resolved["targets"]
 
 
 def _resolve_discovery(body: str) -> dict:

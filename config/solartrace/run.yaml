@@ -30,3 +30,13 @@ discovery:
 extraction:
   model: primary
   max_context: 200000
+
+compilation:
+  output:
+    default_format: both
+    # Output headers: schema titles, roster passthrough columns, then metadata.
+    column_order: [State, AHJ Name, geo_id, SolSmart Awardee, Online Permitting,
+      Online Instant Permitting, Structural Stamp From Professional Engineer Required,
+      Electrical Stamp From Licensed Electrician Required, Third-Party Permitting Available,
+      Median Permit Cost, Number of Inspections Required, Rough-In Inspection Required,
+      Virtual Inspections Available, Fire Review Required, sources, confidence, evidence]

@@ -71,8 +71,9 @@ def build_pipeline_accounting(
     """Build run_accounting.json: a factual, cumulative log of discover, extract and compile.
 
     Histories accumulate across immutable run manifests (discovery runs, plus
-    ``run_manifests/`` under the extraction and compilation dirs). LLM costs sum
-    into ``summary.total_cost_usd``; flat-rate search APIs count queries only.
+    ``run_manifests/`` under the extraction and compilation dirs). Discovery and
+    extraction LLM costs sum into ``summary.total_cost_usd``; compilation makes no
+    LLM calls and records output stats only; flat-rate search APIs count queries only.
     """
     warnings: List[str] = []
 
@@ -657,10 +658,6 @@ def build_pipeline_accounting(
     # Compilation stage (cumulative across compilation run manifests)
     # ------------------------------------------------------------------
     compilation_runs: List[Dict[str, Any]] = []
-    compilation_cost_acc: List[float] = []
-    compilation_llm_calls = 0
-    compilation_input_tokens = 0
-    compilation_output_tokens = 0
     compile_manifest_dir = output_dir / "run_manifests"
     compile_manifest_files = (
         sorted(compile_manifest_dir.glob("*.manifest.json"))
@@ -676,60 +673,23 @@ def build_pipeline_accounting(
             continue
         if not isinstance(mf, dict):
             continue
-
-        raw_stem = mf_path.stem
-        clean_stem = (
-            raw_stem.removesuffix(".manifest")
-            if raw_stem.endswith(".manifest")
-            else raw_stem
-        )
-        run_id = str(mf.get("run_id") or clean_stem)
+        run_id = str(mf.get("run_id") or mf_path.name.removesuffix(".manifest.json"))
         if run_id in seen_compile_run_ids:
             continue
         seen_compile_run_ids.add(run_id)
-
-        costs = mf.get("costs") or {}
-        lineage = mf.get("lineage") or {}
         run_timing = mf.get("timing") or {}
-        outputs = mf.get("outputs") or {}
         status_block = mf.get("status") or {}
-        run_cost = _round_cost(float(costs.get("total_cost_usd") or 0.0))
-        run_input = int(costs.get("total_input_tokens") or 0)
-        run_output = int(costs.get("total_output_tokens") or 0)
-        run_calls = int(costs.get("llm_calls") or 0)
-        run_record: Dict[str, Any] = _omit_none(
-            {
-                "run_id": run_id,
-                "status": (
-                    status_block.get("result")
-                    if isinstance(status_block, dict)
-                    else status_block
-                )
-                or "completed",
-                "mode": mf.get("mode"),
-                "cost_usd": run_cost if run_cost else None,
-                "llm_calls": run_calls if run_calls else None,
-                "input_tokens": run_input if run_input else None,
-                "output_tokens": run_output if run_output else None,
-                "tokens": (run_input + run_output) if (run_input + run_output) else None,
-                "model": lineage.get("model"),
-                "provider": lineage.get("provider"),
-                "schema_id": lineage.get("schema_id"),
-                "started_at": run_timing.get("started_at"),
-                "completed_at": (
-                    run_timing.get("finished_at")
-                    or run_timing.get("completed_at")
-                ),
-                "records": outputs.get("records"),
-                "columns": outputs.get("columns"),
-                "output_formats": outputs.get("output_formats"),
-            }
-        )
-        compilation_runs.append(run_record)
-        compilation_cost_acc.append(run_cost)
-        compilation_llm_calls += run_calls
-        compilation_input_tokens += run_input
-        compilation_output_tokens += run_output
+        compilation_runs.append(_omit_none({
+            "run_id": run_id,
+            "status": (
+                status_block.get("result") if isinstance(status_block, dict) else status_block
+            ) or "completed",
+            "mode": mf.get("mode"),
+            "schema_id": (mf.get("lineage") or {}).get("schema_id"),
+            "started_at": run_timing.get("started_at"),
+            "completed_at": run_timing.get("finished_at"),
+            **(mf.get("outputs") or {}),
+        }))
 
     stages["compilation"] = {
         "status": "completed",
@@ -740,28 +700,6 @@ def build_pipeline_accounting(
         compilation_runs.sort(key=lambda run: run.get("completed_at") or "")
         stages["compilation"]["run_count"] = len(compilation_runs)
         stages["compilation"]["runs"] = compilation_runs
-        stages["compilation"]["aggregate"] = _omit_none(
-            {
-                "metered_llm_cost_usd": _round_cost(math.fsum(compilation_cost_acc)),
-                "llm_calls": compilation_llm_calls or None,
-                "input_tokens": (
-                    compilation_input_tokens if compilation_input_tokens else None
-                ),
-                "output_tokens": (
-                    compilation_output_tokens if compilation_output_tokens else None
-                ),
-                "tokens": (
-                    compilation_input_tokens + compilation_output_tokens
-                    if (compilation_input_tokens + compilation_output_tokens) > 0
-                    else None
-                ),
-            }
-        )
-        total_llm_cost = _round_cost(
-            math.fsum([total_llm_cost, math.fsum(compilation_cost_acc)])
-        )
-        total_llm_calls += compilation_llm_calls
-        total_tokens += compilation_input_tokens + compilation_output_tokens
 
     # ------------------------------------------------------------------
     # Summary block — designed for quick first-read at any scale
@@ -830,61 +768,32 @@ def write_compilation_run_manifest(
     *,
     output_dir: Path,
     schema_id: str,
-    synthesis_active: bool,
-    synthesis_model: Optional[str],
-    synthesis_provider: Optional[str],
-    synthesis_llm_calls: int,
-    records: int,
-    columns: int,
-    duplicates_removed: int,
-    output_formats: List[str],
+    mode: str,
+    stats: Dict[str, Any],
     started_at: datetime,
 ) -> Optional[Path]:
-    """Persist one immutable compilation run manifest for cumulative accounting."""
+    """Persist one immutable compilation run manifest (compile makes no LLM calls)."""
     run_manifest_dir = output_dir / "run_manifests"
     run_manifest_dir.mkdir(parents=True, exist_ok=True)
 
     completed_at = datetime.now(timezone.utc)
-    run_id = f"compile://{completed_at.strftime('%Y%m%dT%H%M%S%fZ')}"
-    manifest_path = (
-        run_manifest_dir
-        / f"{completed_at.strftime('%Y%m%dT%H%M%S%fZ')}.manifest.json"
-    )
+    stamp = completed_at.strftime("%Y%m%dT%H%M%S%fZ")
     manifest = {
-        "manifest_version": "1.0.0",
-        "run_id": run_id,
-        "mode": "synthesis" if synthesis_active else "deterministic",
-        "status": {
-            "result": "success",
-        },
+        "manifest_version": "2.0.0",
+        "run_id": f"compile://{stamp}",
+        "mode": mode,
+        "status": {"result": "success"},
         "timing": {
             "started_at": started_at.isoformat().replace("+00:00", "Z"),
             "finished_at": completed_at.isoformat().replace("+00:00", "Z"),
             "elapsed_seconds": _round_secs((completed_at - started_at).total_seconds()),
         },
-        "lineage": {
-            "schema_id": schema_id,
-            "model": synthesis_model,
-            "provider": synthesis_provider,
-        },
-        "costs": {
-            "total_cost_usd": 0.0,
-            "llm_calls": synthesis_llm_calls,
-            "total_input_tokens": 0,
-            "total_output_tokens": 0,
-        },
-        "outputs": {
-            "records": records,
-            "columns": columns,
-            "duplicates_removed": duplicates_removed,
-            "output_formats": output_formats,
-        },
+        "lineage": {"schema_id": schema_id},
+        "outputs": stats,
     }
+    manifest_path = run_manifest_dir / f"{stamp}.manifest.json"
     try:
-        manifest_path.write_text(
-            json.dumps(_omit_none(manifest), indent=2) + "\n",
-            encoding="utf-8",
-        )
+        manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
         return manifest_path
     except OSError:
         return None

@@ -1,7 +1,7 @@
 """Resolve model names, providers, and credentials for every LLM stage.
 
-Extraction, discovery review, page targeting, QA/QC, and synthesis share
-this boundary. Stage values can be literal model names or string aliases
+Extraction, discovery review, page targeting, and QA/QC share this
+boundary. Stage values can be literal model names or string aliases
 from the top-level ``models`` map. Alias names are user-chosen.
 
 Model precedence is stage value (alias or literal), explicit caller

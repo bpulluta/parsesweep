@@ -139,7 +139,7 @@ extraction:
 
 compilation:
   normalization:
-    state_column: State
+    state_column: state
   output:
     default_format: excel
     column_order: [utility_name, state, effective_date, rate_name, is_rider,

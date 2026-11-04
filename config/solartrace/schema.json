@@ -134,7 +134,7 @@
             }
           },
           "structural_stamp": {
-            "title": "Structural stamp",
+            "title": "Structural Stamp From Professional Engineer Required",
             "description": "Whether residential PV plans need a structural engineer stamp.",
             "type": "object",
             "additionalProperties": false,
@@ -165,7 +165,7 @@
             }
           },
           "electrical_stamp": {
-            "title": "Electrical stamp",
+            "title": "Electrical Stamp From Licensed Electrician Required",
             "description": "Whether residential PV plans need an electrical engineer stamp.",
             "type": "object",
             "additionalProperties": false,
@@ -196,7 +196,7 @@
             }
           },
           "third_party_permitting": {
-            "title": "Third-Party Permitting",
+            "title": "Third-Party Permitting Available",
             "description": "Third-party plan review/inspection is allowed.",
             "type": "object",
             "additionalProperties": false,
@@ -227,7 +227,7 @@
             }
           },
           "rough_in": {
-            "title": "Rough-In",
+            "title": "Rough-In Inspection Required",
             "description": "A rough-in inspection is required.",
             "type": "object",
             "additionalProperties": false,
@@ -257,7 +257,7 @@
             }
           },
           "virtual_inspections": {
-            "title": "Virtual Inspections",
+            "title": "Virtual Inspections Available",
             "description": "Remote/virtual inspections are offered.",
             "type": "object",
             "additionalProperties": false,
@@ -287,7 +287,7 @@
             }
           },
           "fire_review": {
-            "title": "Fire Review",
+            "title": "Fire Review Required",
             "description": "Separate fire-department review for residential PV.",
             "type": "object",
             "additionalProperties": false,

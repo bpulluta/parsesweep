@@ -137,24 +137,30 @@ def test_accounting_uses_discovery_contract_dry_run_flag(
 
 def test_write_compilation_run_manifest_roundtrip(tmp_path):
     started_at = datetime.now(timezone.utc)
+    stats = {"records": 3, "columns": 6, "roster_targets": 3, "conflicts": 1}
     manifest_path = write_compilation_run_manifest(
         output_dir=tmp_path,
         schema_id="config/widgets/schema.json",
-        synthesis_active=False,
-        synthesis_model=None,
-        synthesis_provider=None,
-        synthesis_llm_calls=0,
-        records=5,
-        columns=4,
-        duplicates_removed=1,
-        output_formats=["csv", "excel"],
+        mode="roster",
+        stats=stats,
         started_at=started_at,
     )
     assert manifest_path is not None
     assert manifest_path.parent == tmp_path / "run_manifests"
     saved = json.loads(manifest_path.read_text(encoding="utf-8"))
-    assert saved["manifest_version"] == "1.0.0"
-    assert saved["mode"] == "deterministic"
-    assert saved["outputs"]["records"] == 5
-    assert saved["outputs"]["duplicates_removed"] == 1
-    assert saved["costs"]["total_cost_usd"] == 0.0
+    assert saved["manifest_version"] == "2.0.0"
+    assert saved["mode"] == "roster"
+    assert saved["outputs"] == stats
+    assert "costs" not in saved
+
+    accounting = build_pipeline_accounting(
+        domain="widgets",
+        extraction_dir=tmp_path / "missing",
+        output_dir=tmp_path,
+        compilation_stats=stats,
+    )
+    stage = accounting["stages"]["compilation"]
+    assert stage["conflicts"] == 1
+    assert stage["runs"][0]["mode"] == "roster"
+    assert stage["runs"][0]["roster_targets"] == 3
+    assert "aggregate" not in stage

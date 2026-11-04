@@ -21,7 +21,7 @@ def test_schema_controls_columns_types_and_yaml_presentation(tmp_path, domain):
     if domain == "manual":
         fields = {
             "model_number": {"type": "string"},
-            "rated_power_kw": {"type": ["number", "null"]},
+            "rated_power_kw": {"type": ["number", "null"], "title": "output_kw"},
             "measurements": {"type": "array", "items": {"type": "number"}},
         }
         item = {
@@ -30,7 +30,6 @@ def test_schema_controls_columns_types_and_yaml_presentation(tmp_path, domain):
             "measurements": [2.5, 3.5],
         }
         key = "model_number"
-        rename = {"Rated Power Kw": "output_kw"}
         order = ["model_number", "output_kw"]
     elif domain == "regulation":
         fields = {
@@ -40,7 +39,6 @@ def test_schema_controls_columns_types_and_yaml_presentation(tmp_path, domain):
         }
         item = {"requirement": "Setback", "limit": 300, "unit": "feet"}
         key = "requirement"
-        rename = {}
         order = ["requirement", "limit", "unit"]
     else:
         fields = {
@@ -54,7 +52,6 @@ def test_schema_controls_columns_types_and_yaml_presentation(tmp_path, domain):
             "evidence_quote": "There are benefits and drawbacks.",
         }
         key = "evidence_quote"
-        rename = {}
         order = ["speaker", "sentiment", "evidence_quote"]
     schema = {
         **common,
@@ -81,7 +78,6 @@ def test_schema_controls_columns_types_and_yaml_presentation(tmp_path, domain):
                     "partition_fields": ["source.url"],
                 }
             },
-            "compilation": {"normalization": {"state_column": None}},
         },
     }
     path = tmp_path / "schema.json"
@@ -105,7 +101,6 @@ def test_schema_controls_columns_types_and_yaml_presentation(tmp_path, domain):
                 "domain": domain,
                 "compilation": {
                     "output": {
-                        "column_renames": rename,
                         "column_order": order,
                     }
                 },
@@ -232,9 +227,11 @@ def test_nested_rows_preserve_parents_without_children(tmp_path):
     compiler = DataCompiler(SchemaMetadata(schema), verbose=False)
     frame, _ = compiler.compile_from_directory(directory)
     assert len(frame) == 3
-    assert set(frame["Name"]) == {"Assembly", "Standalone", "Unspecified"}
-    assert frame.loc[frame["Name"] == "Assembly", "Serial"].iloc[0] == "P-1"
-    assert frame.loc[frame["Name"] == "Standalone", "Serial"].isna().all()
+    assert set(frame["name"]) == {"Assembly", "Standalone", "Unspecified"}
+    assert frame.loc[frame["name"] == "Assembly", "serial"].iloc[0] == "P-1"
+    assert frame.loc[frame["name"] == "Standalone", "serial"].isna().all()
+    output = compiler._prepare_output_dataframe(frame)
+    assert "parts" not in output.columns
 
 
 @pytest.mark.parametrize(
@@ -447,7 +444,7 @@ def test_declared_optional_identity_absent_in_all_records_remains_null(tmp_path)
     compiler = DataCompiler(SchemaMetadata(schema), verbose=False)
     frame, _ = compiler.compile_from_directory(directory)
     assert len(frame) == 2
-    assert frame["Variant"].isna().all()
+    assert frame["variant"].isna().all()
 
 
 def test_unknown_fixed_profile_is_rejected_not_silently_ignored(tmp_path):

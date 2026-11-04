@@ -1,10 +1,8 @@
-"""Universal, schema-driven output shaping in DataCompiler._prepare_output_dataframe.
+"""Schema-driven output shaping in DataCompiler._prepare_output_dataframe.
 
-These lock the Phase-A tidiness foundation (domain-agnostic, no field-name
-hardcoding): schema-type coercion, unified missing values, the stable
-schema-projection column set, and normalized (case/format-insensitive) exclude
-matching. Everything is driven by the schema, so the same behavior holds for any
-domain.
+Input frames carry schema field names; output headers are schema titles (else
+field names). Coercion, the schema column set, and exact-header exclude/order
+are all driven by the schema, so the same behavior holds for any domain.
 """
 
 from __future__ import annotations
@@ -13,6 +11,7 @@ import json
 from pathlib import Path
 
 import pandas as pd
+import pytest
 
 from psweep.compilation.data_compiler import DataCompiler
 from psweep.utils.schema_metadata import SchemaMetadata
@@ -53,7 +52,7 @@ def _schema(path: Path, *, exclude=None) -> None:
                         # Pure numeric -> coerced
                         "range_low": {"type": ["number", "null"]},
                         "applicable_values": {"type": ["array", "null"]},
-                        "reasoning": {"type": "string"},
+                        "reasoning": {"type": "string", "title": "Reasoning"},
                         # Declared but never emitted -> reindex adds it
                         "missing_field": {"type": "string"},
                     },
@@ -65,6 +64,12 @@ def _schema(path: Path, *, exclude=None) -> None:
     path.write_text(json.dumps(schema), encoding="utf-8")
 
 
+def _schema_path(tmp_path: Path) -> Path:
+    sp = tmp_path / "schema.json"
+    _schema(sp)
+    return sp
+
+
 def _compiler(tmp_path: Path, *, exclude=None) -> DataCompiler:
     sp = tmp_path / "schema.json"
     _schema(sp, exclude=exclude)
@@ -74,7 +79,6 @@ def _compiler(tmp_path: Path, *, exclude=None) -> DataCompiler:
 
 
 def _prep(tmp_path: Path, rows, *, exclude=None) -> pd.DataFrame:
-    # Input columns are the flattener's humanized names (pre-rename).
     return _compiler(tmp_path, exclude=exclude)._prepare_output_dataframe(
         pd.DataFrame(rows)
     )
@@ -94,8 +98,8 @@ def test_pure_numeric_field_is_coerced_but_mixed_value_is_not(tmp_path: Path):
     out = _prep(
         tmp_path,
         [
-            {"Feature": "a", "Value": "500", "Range Low": "", "Year": 2012},
-            {"Feature": "b", "Value": "07:00", "Range Low": "100", "Year": 2013},
+            {"feature": "a", "value": "500", "range_low": "", "year": 2012},
+            {"feature": "b", "value": "07:00", "range_low": "100", "year": 2013},
         ],
     )
     # range_low (pure numeric) -> numeric; blank -> NA
@@ -109,8 +113,8 @@ def test_integer_valued_float_column_downcast_kills_2012_point_0(tmp_path: Path)
     out = _prep(
         tmp_path,
         [
-            {"Feature": "a", "Year": 2012},
-            {"Feature": "b", "Year": None},  # forces float promotion pre-fix
+            {"feature": "a", "year": 2012},
+            {"feature": "b", "year": None},  # forces float promotion pre-fix
         ],
     )
     assert str(out["year"].dtype) == "Int64"
@@ -118,45 +122,49 @@ def test_integer_valued_float_column_downcast_kills_2012_point_0(tmp_path: Path)
 
 
 def test_empty_strings_unified_to_na(tmp_path: Path):
-    out = _prep(tmp_path, [{"Feature": "a", "Value": ""}])
+    out = _prep(tmp_path, [{"feature": "a", "value": ""}])
     assert out["value"].isna().all()  # "" became NA, not literal ""
 
 
-def test_numeric_schema_type_survives_explicit_rename(tmp_path: Path):
-    schema = tmp_path / "schema.json"
-    _schema(schema)
-    compiler = DataCompiler(SchemaMetadata(schema, {"compilation": {"output": {
-        "column_renames": {"Range Low": "threshold"},
-    }}}), verbose=False)
-    out = compiler._prepare_output_dataframe(pd.DataFrame([
-        {"Feature": "a", "Range Low": "100.5"},
-        {"Feature": "b", "Range Low": ""},
-    ]))
-    assert "range_low" not in out
-    assert pd.api.types.is_numeric_dtype(out["threshold"])
-    assert out.iloc[0]["threshold"] == 100.5
-    assert pd.isna(out.iloc[1]["threshold"])
+def test_headers_come_from_schema_titles(tmp_path: Path):
+    out = _prep(tmp_path, [{"feature": "a", "reasoning": "because"}])
+    assert "Reasoning" in out.columns
+    assert "reasoning" not in out.columns
+    assert list(out.columns[:2]) == ["id", "year"]
 
 
 def test_reindex_adds_declared_but_unemitted_field(tmp_path: Path):
-    out = _prep(tmp_path, [{"Feature": "a", "Value": "1"}])
+    out = _prep(tmp_path, [{"feature": "a", "value": "1"}])
     assert "missing_field" in out.columns  # schema field surfaced as a column
     assert out["missing_field"].isna().all()
 
 
-def test_exclude_matches_normalized_name_regardless_of_casing(tmp_path: Path):
-    # Config says "Reasoning"; the column is "reasoning" after rename -> excluded.
-    out = _prep(
-        tmp_path, [{"Feature": "a", "Reasoning": "because"}], exclude=["Reasoning"]
+def test_exclude_and_order_use_exact_output_headers(tmp_path: Path):
+    compiler = DataCompiler(SchemaMetadata(_schema_path(tmp_path), {"compilation": {
+        "output": {"exclude_fields": ["Reasoning"], "column_order": ["value", "feature"]},
+    }}), verbose=False)
+    out = compiler._prepare_output_dataframe(
+        pd.DataFrame([{"feature": "a", "value": "1", "reasoning": "because"}])
     )
-    assert "reasoning" not in out.columns
+    assert "Reasoning" not in out.columns
+    assert list(out.columns[:2]) == ["value", "feature"]
+
+
+@pytest.mark.parametrize("key", ["exclude_fields", "column_order"])
+def test_unknown_output_header_is_rejected(tmp_path: Path, key):
+    # The field name is not the header once a title is set.
+    compiler = DataCompiler(SchemaMetadata(_schema_path(tmp_path), {"compilation": {
+        "output": {key: ["reasoning"]},
+    }}), verbose=False)
+    with pytest.raises(ValueError, match="unknown output header"):
+        compiler._prepare_output_dataframe(pd.DataFrame([{"feature": "a"}]))
 
 
 def test_array_field_preserved_as_its_own_column(tmp_path: Path):
     # applicable_values arrives pre-joined from the flattener; stays its own col.
     out = _prep(
         tmp_path,
-        [{"Feature": "a", "Value": "", "Applicable Values": "A, B"}],
+        [{"feature": "a", "value": "", "applicable_values": "A, B"}],
     )
     assert out["applicable_values"].tolist() == ["A, B"]
     assert out["value"].isna().all()  # value stays empty/numeric, not overloaded
@@ -174,7 +182,9 @@ def _schema_with_fips(path: Path) -> None:
                 "document_type": "Test",
             },
             "identity": {"deduplication": {"key_fields": ["feature"]}},
-            "compilation": {"normalization": {"county_fips": True}},
+            "compilation": {
+                "normalization": {"county_fips": {"state": "state", "county": "county"}}
+            },
         },
         "type": "object",
         "properties": {
@@ -208,8 +218,8 @@ def test_county_fips_derived_when_enabled(tmp_path: Path):
     out = compiler._prepare_output_dataframe(
         pd.DataFrame(
             [
-                {"State": "NV", "County": "Churchill", "Feature": "a"},
-                {"State": "CA", "County": "Imperial County", "Feature": "b"},
+                {"state": "NV", "county": "Churchill", "feature": "a"},
+                {"state": "CA", "county": "Imperial County", "feature": "b"},
             ]
         )
     )
@@ -219,5 +229,5 @@ def test_county_fips_derived_when_enabled(tmp_path: Path):
 
 def test_county_fips_absent_when_not_enabled(tmp_path: Path):
     # Default schema (no normalization.county_fips) -> no county_fips column.
-    out = _prep(tmp_path, [{"Feature": "a"}])
+    out = _prep(tmp_path, [{"feature": "a"}])
     assert "county_fips" not in out.columns

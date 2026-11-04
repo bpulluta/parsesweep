@@ -282,8 +282,9 @@ options.
 ## Compile and run the whole pipeline
 
 Compilation reads `outputs/my_domain/extracted` with the same schema and writes
-`outputs/my_domain/compiled`; add a `compilation:` section only for settings
-such as output formats or normalization.
+`outputs/my_domain/compiled/my_domain.csv` (and `.xlsx`), named after the domain;
+add a `compilation:` section only for settings such as output formats or
+normalization.
 
 ```bash
 # Merge per-document JSON into Excel/CSV

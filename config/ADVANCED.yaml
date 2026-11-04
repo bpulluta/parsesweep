@@ -58,11 +58,14 @@ compilation:
   # Dedup identity is schema-owned at $metadata.identity.deduplication.
   # Keep uniqueness fields in the schema so every workflow (extract/compile/api)
   # uses the same record identity contract.
+  # Headers come from each schema field's `title` (else the field name).
+  # Roster mode (discovery.targets + partition_by) emits one row per target with
+  # sources/confidence/evidence columns; otherwise one row per extracted item.
   output:
     default_format: excel                 # excel, csv, or both
-    # column_order: [field1, field2, ...]   # custom column ordering
-    # column_renames: {OldName: new_name}   # rename output columns
-    # exclude_fields: [internal_field]     # hide columns from output
+    # column_order: [Header 1, Header 2]   # output headers listed first; rest keep default order
+    # exclude_fields: [internal_header]    # hide output headers
+    # annotation_column: Notes             # header for dedup annotations
     # freeze_columns: 2                    # freeze first N columns in Excel
     # auto_width: true                     # auto-size Excel columns
     # center_align_columns: [state, type]  # Excel: force-center these columns (default: a
@@ -71,24 +74,10 @@ compilation:
   # severity_tokens:                       # extend the dedup conflict-severity name heuristic
   #   high: [flow, throughput]             # extra HIGH-severity field-name tokens (unioned with defaults)
   #   medium: [tier]                       # extra MEDIUM-severity tokens
-  # normalization:
-  #   state_column: State                 # auto-abbreviate US state names
-  #   county_fips: true                   # derive a 5-digit Census county FIPS
-  #                                       # join key from the state + county
-  #                                       # columns (GIS/DS). County-level only.
-  #
-  # synthesis:                            # multi-source reconciliation
-  #   enabled: true                       # reconcile many docs → one row per entity
-  #   min_sources_for_llm: 2              # skip LLM when only 1 source (cheaper)
-  #   group_by: ["entity.key_field"]      # one output row per distinct value
-  #   item_group_by: ["item_field"]       # optional: one row per sub-entity
-  #                                       # (phase/expansion/line item) within it
-  #   identity_fields:                    # context fields (first non-empty wins)
-  #     - entity.category
-  #   citation_field: source.url          # becomes citation list in output
-  #   reconcile_fields:
-  #     - {field: some_field}
-  #     - {field: dated_field, evidence: evidence_field}
+  # normalization:                        # keys name schema fields
+  #   state_column: state                 # auto-abbreviate US state names
+  #   county_fips: {state: state, county: county}  # derive a 5-digit Census
+  #                                       # county_fips join key (GIS/DS)
 
 # ─── DISCOVERY (optional) ─────────────────────────────────────────────────────
 # Candidates come from three inputs: shared `sources`, per-target `urls`, and

@@ -695,11 +695,11 @@ def test_compile_cli_dry_run_json_report_is_machine_readable(tmp_path) -> None:
     assert report['suspicious_groups_count'] == 1
     assert report['suspicious_groups_by_severity'] == {'high': 1, 'medium': 0, 'low': 0}
     assert report['key_fields'] == ['name']
-    assert report['compare_columns'] == ['Name']
+    assert report['compare_columns'] == ['name']
     assert len(report['duplicate_groups']) == 1
     assert report['duplicate_groups'][0]['suspicious'] is True
     assert report['duplicate_groups'][0]['severity'] == 'high'
-    assert report['duplicate_groups'][0]['conflicting_columns'] == ['Id', 'Value']
+    assert report['duplicate_groups'][0]['conflicting_columns'] == ['id', 'value']
     assert report['warnings']
     assert report['fail_on_suspicious'] == 'none'
     assert report['would_fail_on_suspicious'] is False

@@ -106,27 +106,15 @@ Preview what would be merged without writing output: `psweep compile --dry-run`.
 
 ### Many documents describe the same entity
 
-Turn on **synthesis** to reconcile many per-document records into one
-authoritative row per entity:
+Declare the entities as a discovery roster (`discovery.targets` plus
+`partition_by`). Compile then emits one row per target, reconciling values
+across all of that target's documents and recording `sources`, `confidence`,
+and `evidence` per row — no extra compile config and no LLM calls:
 
 ```yaml
-compilation:
-  synthesis:
-    enabled: true
-    min_sources_for_llm: 2           # default: 2 — skip the LLM when only 1 source
-    group_by: ["entity.key_field"]
-```
-
-### One entity, several repeated sub-entities
-
-If records repeat sub-entities (phases, expansions, line items), keep them as
-separate rows instead of collapsing them into the entity row:
-
-```yaml
-compilation:
-  synthesis:
-    group_by: ["entity.key_field"]
-    item_group_by: ["item_level_field"]   # one row per sub-entity per entity
+discovery:
+  targets: targets.csv          # one row per entity
+  partition_by: [state, county]
 ```
 
 ## Discovery (web acquisition)

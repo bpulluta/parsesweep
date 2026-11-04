@@ -2,7 +2,6 @@
 
 import pytest
 from pathlib import Path
-from psweep.compilation.schema_detector import SchemaDetector
 from psweep.compilation.deduplicator import Deduplicator
 from psweep.compilation.data_compiler import DataCompiler
 from psweep.exceptions import SchemaMetadataError
@@ -20,8 +19,3 @@ class TestComponentMetadataValidation:
         """Test that Deduplicator raises error when schema_metadata is None."""
         with pytest.raises(SchemaMetadataError, match="metadata"):
             Deduplicator(schema_metadata=None)
-    
-    def test_schema_detector_rejects_none_metadata(self):
-        """Test that SchemaDetector raises error when schema_metadata is None."""
-        with pytest.raises(SchemaMetadataError, match="metadata"):
-            SchemaDetector(schema_metadata=None)
