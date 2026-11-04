@@ -189,7 +189,6 @@ def test_run_preflight_rejects_empty_discovery(tmp_path, monkeypatch, schema_pat
         tmp_path,
         {"runtime": {"max_files": 3}},
         schema=str(schema_path),
-        extraction={"input_dir": "missing"},
     )
     with patch("psweep.cli.app.subprocess.run") as run:
         invocation = CliRunner().invoke(
@@ -305,7 +304,6 @@ def test_python_run_rejects_empty_discovery_before_subprocess(
         tmp_path,
         {"runtime": {"max_files": 3}},
         schema=str(schema_path),
-        extraction={"input_dir": "missing"},
     )
     with (
         patch("psweep.pipeline.subprocess.run") as run,

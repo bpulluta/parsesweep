@@ -91,20 +91,21 @@ def test_domain_defaults_to_config_dir_and_outputs_are_derived(tmp_path):
 def test_top_level_schema_overrides_sibling_default(tmp_path):
     path = _domain_config(
         tmp_path,
-        "schema: shared/contract.json\nextraction:\n  input_dir: documents/demo\n",
+        "schema: shared/contract.json\nextraction:\n  skip_existing: true\n",
     )
     (path.parent / "schema.json").write_text("{}")
     for command in ("extract", "compile"):
         resolved = _resolve(path, command)
         assert resolved["schema"] == "shared/contract.json"
         assert resolved["_config_sources"]["schema"] == "config.schema"
-    assert _resolve(path, "extract")["path"] == "documents/demo"
+    assert _resolve(path, "extract")["path"] == "outputs/demo/discovered/curated"
 
 
 @pytest.mark.parametrize(
     "section,key",
     [
         ("extraction", "schema"),
+        ("extraction", "input_dir"),
         ("extraction", "output_dir"),
         ("compilation", "schema"),
         ("compilation", "input_dir"),

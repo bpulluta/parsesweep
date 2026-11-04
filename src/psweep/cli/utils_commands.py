@@ -58,11 +58,11 @@ from psweep.workspace import (
 from psweep.cli.cost_tracker import estimate_extraction_cost
 from psweep.scaffolding import (
     ConfigValidationError,
-    _available_main_array_fields,
-    _build_schema_starter_from_reference,
-    _default_schema_output_path,
-    _display_cli_path,
-    _write_schema_starter,
+    available_main_array_fields,
+    build_schema_starter_from_reference,
+    default_schema_output_path,
+    display_cli_path,
+    write_schema_starter,
 )
 
 
@@ -173,21 +173,21 @@ def init_domain_schema_cmd(
         output_path = (
             Path(output).resolve()
             if output
-            else _default_schema_output_path(repo_root, schema_name)
+            else default_schema_output_path(repo_root, schema_name)
         )
         reference_schema_path = Path(reference_schema).resolve()
         selected_fields = list(include_fields)
 
-        schema_data = _build_schema_starter_from_reference(
+        schema_data = build_schema_starter_from_reference(
             reference_schema_path,
             schema_name=schema_name,
             domain_name=domain_name,
             document_type=document_type,
             include_fields=selected_fields or None,
         )
-        _write_schema_starter(output_path, schema_data, force=force)
+        write_schema_starter(output_path, schema_data, force=force)
 
-        main_item_fields = _available_main_array_fields(schema_data)
+        main_item_fields = available_main_array_fields(schema_data)
         result = {
             "status": "ready",
             "created": {
@@ -201,9 +201,6 @@ def init_domain_schema_cmd(
                 "main_data_array": schema_data["$metadata"]["extraction"][
                     "main_data_array"
                 ],
-                "identifier_fields": schema_data["$metadata"]["extraction"][
-                    "identifier_fields"
-                ],
                 "selected_fields": main_item_fields,
                 "interactive": interactive,
                 "force": force,
@@ -211,13 +208,13 @@ def init_domain_schema_cmd(
             "next_steps": [
                 {
                     "title": "Validate starter schema",
-                    "command": f"pixi run psweep check-schema {_display_cli_path(output_path, repo_root)}",
+                    "command": f"pixi run psweep check-schema {display_cli_path(output_path, repo_root)}",
                 },
                 {
                     "title": "Create runtime config from template",
                     "command": (
                         "cp config/TEMPLATE.yaml "
-                        f"{_display_cli_path(output_path.parent / 'run.yaml', repo_root)}"
+                        f"{display_cli_path(output_path.parent / 'run.yaml', repo_root)}"
                     ),
                 },
             ],
@@ -466,7 +463,7 @@ def preview(document_path: str):
             section("Schema Detection")
             status_item(
                 "success",
-                f"Matched schema: {_display_cli_path(matched_schema, config.project_root)}",
+                f"Matched schema: {display_cli_path(matched_schema, config.project_root)}",
             )
 
             # Load and show field count
@@ -489,7 +486,7 @@ def preview(document_path: str):
 
         section("Ready to Extract")
         schema_hint = (
-            _display_cli_path(matched_schema, config.project_root)
+            display_cli_path(matched_schema, config.project_root)
             if matched_schema
             else CONFIG_ROOT / infer_domain(doc_path) / SCHEMA_FILENAME
         )
@@ -737,16 +734,6 @@ def check_schema_cmd(schema_path: str):
         )
         print_success("Has $metadata section")
 
-        if extraction_metadata.get("identifier_fields"):
-            id_fields = extraction_metadata["identifier_fields"]
-            status_item(
-                "info", f"Identifier fields: {', '.join(id_fields)}"
-            )
-        else:
-            warnings.append(
-                "$metadata.extraction missing 'identifier_fields' (required for runtime document identification)"
-            )
-
         if extraction_metadata.get("main_data_array"):
             main_array = extraction_metadata["main_data_array"]
             status_item("info", f"Main data array: {main_array}")
@@ -903,7 +890,7 @@ def config(show_runtime_catalog: bool, output_format: str):
     if schemas:
         section("Available Schemas")
         for schema in schemas:
-            status_item("info", _display_cli_path(schema, config_obj.project_root))
+            status_item("info", display_cli_path(schema, config_obj.project_root))
 
     if show_runtime_catalog:
         section("Runtime Variable Catalog")

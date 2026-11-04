@@ -1,0 +1,337 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "SolarTRACE AHJ residential solar permitting attributes",
+  "type": "object",
+  "required": [
+    "jurisdictions"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "jurisdictions": {
+      "type": "array",
+      "description": "One item per Authority Having Jurisdiction (AHJ) the document gives information about.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "state",
+          "ahj",
+          "solsmart_awardee",
+          "online_permitting",
+          "online_instant_permitting",
+          "structural_stamp",
+          "electrical_stamp",
+          "third_party_permitting",
+          "rough_in",
+          "virtual_inspections",
+          "fire_review"
+        ],
+        "properties": {
+          "state": {
+            "type": "string",
+            "title": "State",
+            "description": "Two-letter state code."
+          },
+          "ahj": {
+            "type": "string",
+            "title": "AHJ Name",
+            "description": "Jurisdiction name exactly as given in ROSTER CANDIDATES when present."
+          },
+          "solsmart_awardee": {
+            "title": "SolSmart Awardee",
+            "description": "SolSmart designation level of the AHJ.",
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "value",
+              "quote"
+            ],
+            "properties": {
+              "value": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "enum": [
+                  "Platinum",
+                  "Gold",
+                  "Silver",
+                  "Bronze",
+                  "No",
+                  null
+                ]
+              },
+              "quote": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Verbatim sentence or table row from the document supporting value; null when value is null."
+              }
+            }
+          },
+          "online_permitting": {
+            "title": "Online Permitting",
+            "description": "Residential solar permit applications can be submitted online.",
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "value",
+              "quote"
+            ],
+            "properties": {
+              "value": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "enum": [
+                  "Yes",
+                  "No",
+                  null
+                ]
+              },
+              "quote": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Verbatim sentence or table row from the document supporting value; null when value is null."
+              }
+            }
+          },
+          "online_instant_permitting": {
+            "title": "Online Instant Permitting",
+            "description": "Automated instant permit issuance and which platform.",
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "value",
+              "quote"
+            ],
+            "properties": {
+              "value": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "enum": [
+                  "No",
+                  "Yes (SolarAPP+)",
+                  "Yes (Symbium)",
+                  "Yes (Other)",
+                  "Yes (only DORA state-level permit)",
+                  null
+                ]
+              },
+              "quote": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Verbatim sentence or table row from the document supporting value; null when value is null."
+              }
+            }
+          },
+          "structural_stamp": {
+            "title": "Structural stamp",
+            "description": "Whether residential PV plans need a structural engineer stamp.",
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "value",
+              "quote"
+            ],
+            "properties": {
+              "value": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "enum": [
+                  "Always",
+                  "Sometimes",
+                  "Never",
+                  null
+                ]
+              },
+              "quote": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Verbatim sentence or table row from the document supporting value; null when value is null."
+              }
+            }
+          },
+          "electrical_stamp": {
+            "title": "Electrical stamp",
+            "description": "Whether residential PV plans need an electrical engineer stamp.",
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "value",
+              "quote"
+            ],
+            "properties": {
+              "value": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "enum": [
+                  "Always",
+                  "Sometimes",
+                  "Never",
+                  null
+                ]
+              },
+              "quote": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Verbatim sentence or table row from the document supporting value; null when value is null."
+              }
+            }
+          },
+          "third_party_permitting": {
+            "title": "Third-Party Permitting",
+            "description": "Third-party plan review/inspection is allowed.",
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "value",
+              "quote"
+            ],
+            "properties": {
+              "value": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "enum": [
+                  "Yes",
+                  "No",
+                  "Sometimes",
+                  null
+                ]
+              },
+              "quote": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Verbatim sentence or table row from the document supporting value; null when value is null."
+              }
+            }
+          },
+          "rough_in": {
+            "title": "Rough-In",
+            "description": "A rough-in inspection is required.",
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "value",
+              "quote"
+            ],
+            "properties": {
+              "value": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "enum": [
+                  "Yes",
+                  "No",
+                  null
+                ]
+              },
+              "quote": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Verbatim sentence or table row from the document supporting value; null when value is null."
+              }
+            }
+          },
+          "virtual_inspections": {
+            "title": "Virtual Inspections",
+            "description": "Remote/virtual inspections are offered.",
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "value",
+              "quote"
+            ],
+            "properties": {
+              "value": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "enum": [
+                  "Yes",
+                  "No",
+                  null
+                ]
+              },
+              "quote": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Verbatim sentence or table row from the document supporting value; null when value is null."
+              }
+            }
+          },
+          "fire_review": {
+            "title": "Fire Review",
+            "description": "Separate fire-department review for residential PV.",
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "value",
+              "quote"
+            ],
+            "properties": {
+              "value": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "enum": [
+                  "Yes",
+                  "No",
+                  "Not for Resi",
+                  null
+                ]
+              },
+              "quote": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Verbatim sentence or table row from the document supporting value; null when value is null."
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "$metadata": {
+    "extraction": {
+      "main_data_array": "jurisdictions"
+    },
+    "identity": {
+      "deduplication": {
+        "key_fields": [
+          "state",
+          "ahj"
+        ]
+      }
+    }
+  }
+}

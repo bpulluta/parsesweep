@@ -14,6 +14,7 @@ from psweep.extraction.section_locator import (
     _Chunk,
     _pipe_row,
     _table_to_markdown,
+    split_text_sections,
 )
 
 
@@ -111,21 +112,18 @@ class TestHtmlSplitPreservesTables:
 
 class TestTxtSplit:
     def test_sections_split_by_markers(self):
-        locator = SectionLocator("setback requirements")
-        chunks = locator._split_txt_sections(TXT_WITH_SECTIONS)
+        chunks = split_text_sections(TXT_WITH_SECTIONS)
         headings = [c.heading for c in chunks]
         assert any("Section 2" in h or "Setback" in h for h in headings)
 
     def test_section_content_included(self):
-        locator = SectionLocator("setback requirements")
-        chunks = locator._split_txt_sections(TXT_WITH_SECTIONS)
+        chunks = split_text_sections(TXT_WITH_SECTIONS)
         all_text = "\n".join(c.text for c in chunks)
         assert "500 feet" in all_text
 
     def test_fallback_to_paragraph_chunks_when_no_markers(self):
         long_txt = ("Word content here.\n\n" * 50).strip()
-        locator = SectionLocator("some section")
-        chunks = locator._split_txt_sections(long_txt)
+        chunks = split_text_sections(long_txt)
         # Should produce at least one chunk
         assert len(chunks) >= 1
 

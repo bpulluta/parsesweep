@@ -275,8 +275,8 @@ def test_real_protected_cli_pipeline_reuse_and_exports(tls_server, tmp_path):
     unrelated_pixi = tools / "pixi"
     unrelated_pixi.write_text("#!/bin/sh\nexit 97\n")
     unrelated_pixi.chmod(0o755)
-    documents = workspace / "documents"
-    documents.mkdir()
+    documents = workspace / "outputs" / "synthetic" / "discovered" / "curated"
+    documents.mkdir(parents=True)
     (documents / "sample.txt").write_text(
         "Synthetic audit document. Sample measurement is 42 units."
     )
@@ -302,7 +302,6 @@ def test_real_protected_cli_pipeline_reuse_and_exports(tls_server, tmp_path):
                 "$metadata": {
                     "extraction": {
                         "main_data_array": "items",
-                        "identifier_fields": ["name"],
                     },
                     "identity": {"deduplication": {"key_fields": ["name"]}},
                 },
@@ -315,7 +314,6 @@ def test_real_protected_cli_pipeline_reuse_and_exports(tls_server, tmp_path):
             {
                 "domain": "synthetic",
                 "schema": str(schema),
-                "extraction": {"input_dir": str(documents)},
             }
         )
     )

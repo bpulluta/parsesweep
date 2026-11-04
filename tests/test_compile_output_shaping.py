@@ -27,7 +27,6 @@ def _schema(path: Path, *, exclude=None) -> None:
             "extraction": {
                 "main_data_array": "items",
                 "context_objects": ["ctx"],
-                "identifier_fields": ["ctx.id"],
                 "document_type": "Test",
             },
             "identity": {"deduplication": {"key_fields": ["feature"]}},
@@ -172,7 +171,6 @@ def _schema_with_fips(path: Path) -> None:
             "extraction": {
                 "main_data_array": "items",
                 "context_objects": ["ctx"],
-                "identifier_fields": ["ctx.id"],
                 "document_type": "Test",
             },
             "identity": {"deduplication": {"key_fields": ["feature"]}},

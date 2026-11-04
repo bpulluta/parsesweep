@@ -20,7 +20,6 @@ def workflow(tmp_path, monkeypatch):
         "$metadata": {
             "extraction": {
                 "main_data_array": "items",
-                "identifier_fields": ["source.id"],
             }
         },
         "type": "object",

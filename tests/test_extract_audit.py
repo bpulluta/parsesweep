@@ -1,7 +1,7 @@
 """Extraction audit regressions for the canonical workflow and record.
 
-Cover schema-owned identifiers/counts, record/provenance identity, strict
-contracts, atomic writing, generic index selection and provider accounting.
+Cover schema-owned counts, record/provenance identity, strict contracts,
+atomic writing and provider accounting.
 """
 
 from pathlib import Path
@@ -17,7 +17,8 @@ from psweep.extraction.llm_client import LLMClient
 import pytest
 from jsonschema import ValidationError
 
-from psweep.pipeline import _extract_one_document, _input_documents
+from psweep.extraction.provenance import SourceContext
+from psweep.pipeline import _extract_one_document
 from psweep.extraction.record_writer import (
     build_extraction_record,
     record_extraction_scope,
@@ -48,44 +49,7 @@ def test_detect_provider_recognizes_canonical_markers():
     assert detect_provider("mistral-large-2") == "mistral"
 
 
-# ── generic index filters ───────────────────────────────────────────────────
-
-
-def _filter_index(tmp_path, filters):
-    doc = tmp_path / "doc.txt"
-    doc.write_text("source", encoding="utf-8")
-    index = tmp_path / "download_index.csv"
-    index.write_text(
-        "path,status,source_state,source_jurisdiction,domain\n"
-        "doc.txt,downloaded,ca,imperial-county,tariffs\n",
-        encoding="utf-8",
-    )
-    documents, _ = _input_documents(tmp_path, str(index), filters)
-    return documents
-
-
-def test_generic_filter_parses_column_value_pairs(tmp_path):
-    """The shared planner applies all generic filters to its inventory."""
-    assert _filter_index(tmp_path, ["source_state=CA", "domain=Tariffs"])
-    assert not _filter_index(tmp_path, ["source_state=NV", "domain=Tariffs"])
-
-
-def test_generic_filter_slugifies_multiword_values(tmp_path):
-    """Formatted multiword terms match the index's normalized slugs."""
-    assert _filter_index(
-        tmp_path,
-        ["source_state=CA", "source_jurisdiction=Imperial County"],
-    )
-
-
-def test_row_matches_filters_is_case_and_format_insensitive(tmp_path):
-    """Case changes do not alter matching, but different terms do."""
-    assert _filter_index(tmp_path, ["source_jurisdiction=IMPERIAL-COUNTY"])
-    assert _filter_index(tmp_path, ["source_jurisdiction=Imperial County"])
-    assert not _filter_index(tmp_path, ["source_jurisdiction=san-diego"])
-
-
-# ── schema-driven identifier fields ─────────────────────────────────────────
+# ── canonical record envelope ───────────────────────────────────────────────
 
 
 def _make_result(data):
@@ -108,7 +72,6 @@ def record_metadata(tmp_path):
         "$metadata": {
             "extraction": {
                 "main_data_array": "items",
-                "identifier_fields": ["metadata.jurisdiction"],
             }
         },
         "type": "object",
@@ -132,55 +95,52 @@ def source_document(tmp_path):
     return doc
 
 
-def test_identifier_uses_only_schema_declared_path(
-    tmp_path,
-    record_metadata,
-    source_document,
+def test_record_document_identity_is_caller_supplied(
+    record_metadata, source_document
 ):
-    """Unrelated fields never replace a missing declared identifier."""
-    record_metadata.metadata["extraction"]["identifier_fields"] = [
-        "metadata.id"
-    ]
-    result = _make_result(
-        {
-            "metadata": {
-                "jurisdiction": "Example County",
-                "name": "unrelated",
-            },
-            "items": [{"a": 1}],
-        }
+    """source_document_id is the curated path; provenance is index-derived."""
+    source = SourceContext(
+        url="https://example.org/a.pdf",
+        scope="target",
+        target_id="abc123def456",
+        target_label="AZ / Pima County",
+        target_metadata={},
     )
-    write_extraction_record(
-        tmp_path / "doc.json",
+    record, _ = build_extraction_record(
         doc_path=source_document,
-        result=result,
-        model="gpt-5",
+        source_document_id="AZ/Pima/doc.pdf",
+        source=source,
+        result=_make_result({"metadata": {"jurisdiction": "X"}, "items": []}),
+        model="example",
         provider="openai",
         schema_metadata=record_metadata,
     )
-    saved = json.loads((tmp_path / "doc.json").read_text(encoding="utf-8"))
-    assert saved["document"]["source_document_id"] == "doc"
+    document = record["document"]
+    assert document["source_document_id"] == "AZ/Pima/doc.pdf"
+    assert document["source_url"] == "https://example.org/a.pdf"
+    assert document["source_scope"] == "target"
+    assert document["target_id"] == "abc123def456"
+    record_validator().validate(record)
 
 
-def test_identifier_uses_schema_supplied_fields(
-    tmp_path,
-    record_metadata,
-    source_document,
+def test_record_without_index_row_has_null_provenance(
+    record_metadata, source_document
 ):
-    """Exact dotted paths select the document identifier."""
-    result = _make_result(
-        {"metadata": {"jurisdiction": "Example County"}, "items": [{"a": 1}]}
-    )
-    write_extraction_record(
-        tmp_path / "doc.json",
+    record, _ = build_extraction_record(
         doc_path=source_document,
-        result=result,
-        model="gpt-5",
+        source_document_id="doc.pdf",
+        result=_make_result({"items": []}),
+        model="example",
         provider="openai",
         schema_metadata=record_metadata,
     )
-    saved = json.loads((tmp_path / "doc.json").read_text(encoding="utf-8"))
-    assert saved["document"]["source_document_id"] == "Example County"
+    assert {
+        key: record["document"][key]
+        for key in ("source_url", "source_scope", "target_id")
+    } == {"source_url": None, "source_scope": None, "target_id": None}
+    assert record["quality"]["status"] == "extracted"
+    assert record["quality"]["completeness"] == 0.9
+    assert record["quality"]["unverified_quotes"] == 0
 
 
 @pytest.mark.parametrize("items", [[], [{"a": 1}]])
@@ -193,6 +153,7 @@ def test_record_counts_declared_array_not_largest(
     result = _make_result({"items": items, "references": list(range(10))})
     record, count = build_extraction_record(
         doc_path=source_document,
+        source_document_id="doc.txt",
         result=result,
         model="example",
         provider="openai",
@@ -200,47 +161,6 @@ def test_record_counts_declared_array_not_largest(
     )
     assert count == len(items)
     assert record["item_count"] == len(items)
-
-
-@pytest.mark.parametrize("value,identifier", [(0, "0"), (False, "False")])
-def test_nested_identifier_preserves_zero_and_false(
-    record_metadata,
-    source_document,
-    value,
-    identifier,
-):
-    """Valid falsy scalar identifiers do not become the filename fallback."""
-    result = _make_result({"metadata": {"jurisdiction": value}, "items": []})
-    record, _ = build_extraction_record(
-        doc_path=source_document,
-        result=result,
-        model="example",
-        provider="openai",
-        schema_metadata=record_metadata,
-    )
-    assert record["document"]["source_document_id"] == identifier
-
-
-def test_identifier_joins_declared_paths_in_schema_order(
-    record_metadata, source_document
-):
-    """Multi-field identities include all and only declared scalar values."""
-    record_metadata.metadata["extraction"]["identifier_fields"] = [
-        "metadata.code",
-        "metadata.active",
-        "metadata.missing",
-    ]
-    result = _make_result(
-        {"metadata": {"code": 0, "active": False}, "items": []}
-    )
-    record, _ = build_extraction_record(
-        doc_path=source_document,
-        result=result,
-        model="example",
-        provider="openai",
-        schema_metadata=record_metadata,
-    )
-    assert record["document"]["source_document_id"] == "0-False"
 
 
 def test_record_source_identity_distinguishes_partitions_and_formats(
@@ -259,6 +179,7 @@ def test_record_source_identity_distinguishes_partitions_and_formats(
         doc.write_bytes(b"source")
         record, _ = build_extraction_record(
             doc_path=doc,
+            source_document_id="doc.txt",
             result=_make_result({"items": []}),
             model="example",
             provider="openai",
@@ -279,6 +200,7 @@ def test_record_emits_source_digest_and_optional_reuse_fingerprint(
     """Evidence hashes are canonical lowerhex, without provider secrets."""
     record, _ = build_extraction_record(
         doc_path=source_document,
+        source_document_id="doc.txt",
         result=_make_result({"items": []}),
         model="example",
         provider="openai",
@@ -298,7 +220,7 @@ def test_emitted_record_and_payload_validate_closed_contract(
     record_metadata,
     source_document,
 ):
-    """Counts and coverage fit envelope1.0, rejecting unknown fields."""
+    """Counts and coverage fit envelope 1.1, rejecting unknown fields."""
     result = _make_result({"items": []})
     result.coverage = {
         "input_characters": 15,
@@ -308,6 +230,7 @@ def test_emitted_record_and_payload_validate_closed_contract(
     record_extraction_scope(result, page_range=(2, 4), section_filtered=True)
     record, _ = build_extraction_record(
         doc_path=source_document,
+        source_document_id="doc.txt",
         result=result,
         model="example",
         provider="openai",
@@ -317,7 +240,7 @@ def test_emitted_record_and_payload_validate_closed_contract(
     validator = record_validator()
     validator.validate(record)
     build_schema_validator(record_metadata.schema).validate(record["payload"])
-    assert record["contract_version"] == "1.0.0"
+    assert record["contract_version"] == "1.1.0"
     assert record["processing_metrics"]["coverage"]["selected_page_range"] == [
         2,
         4,
@@ -342,6 +265,7 @@ def test_record_rejects_invalid_declared_array(
     with pytest.raises(SchemaValidationError, match="main data array"):
         build_extraction_record(
             doc_path=source_document,
+            source_document_id="doc.txt",
             result=_make_result({"items": items}),
             model="example",
             provider="openai",
@@ -369,6 +293,7 @@ def test_record_write_is_atomic_on_replace_failure(
         write_extraction_record(
             output,
             doc_path=source_document,
+            source_document_id="doc.txt",
             result=_make_result({"items": []}),
             model="example",
             provider="openai",
@@ -399,6 +324,7 @@ def test_writer_validates_envelope_before_replacing_existing_json(
         write_extraction_record(
             output,
             doc_path=source_document,
+            source_document_id="doc.txt",
             result=result,
             model="example",
             provider="openai",
@@ -415,6 +341,7 @@ def test_writer_default_run_identity_is_unique(
     """Direct regular writer calls also retain separate attempt identity."""
     kwargs = {
         "doc_path": source_document,
+        "source_document_id": "doc.txt",
         "result": _make_result({"items": []}),
         "model": "example",
         "provider": "openai",
@@ -436,6 +363,7 @@ def test_writer_rejects_malformed_input_fingerprint(
     with pytest.raises(ValueError, match="input_fingerprint"):
         build_extraction_record(
             doc_path=source_document,
+            source_document_id="doc.txt",
             result=_make_result({"items": []}),
             model="example",
             provider="openai",
@@ -454,6 +382,7 @@ def test_writer_missing_source_cannot_replace_existing_record(
         write_extraction_record(
             output,
             doc_path=tmp_path / "missing.txt",
+            source_document_id="doc.txt",
             result=_make_result({"items": []}),
             model="example",
             provider="openai",
@@ -465,6 +394,25 @@ def test_writer_missing_source_cannot_replace_existing_record(
 
 
 # ── _extract_one_document (shared per-document core) ─────────────────────────
+
+
+def _plan(tmp_path, metadata, doc):
+    return {
+        "llm": {"model": "gpt-5", "provider": "openai"},
+        "inputs": {},
+        "outputs": {doc: tmp_path / "sample.json"},
+        "roster": None,
+        "candidates": {},
+        "anchors": {},
+        "roster_errors": {},
+        "context": {},
+        "root": tmp_path,
+        "schema": metadata.schema,
+        "schema_path": metadata.schema_path,
+        "metadata": metadata,
+        "evidence_paths": [],
+        "fingerprints": {doc: "a" * 64},
+    }
 
 
 def test_extract_one_document_success_shape(tmp_path, record_metadata):
@@ -479,16 +427,9 @@ def test_extract_one_document_success_shape(tmp_path, record_metadata):
 
     res = _extract_one_document(
         doc,
+        _plan(tmp_path, record_metadata, doc),
         extractor=extractor,
-        loaded_schema=record_metadata.schema,
-        schema_metadata=record_metadata,
-        source_context_map={},
-        output_path=tmp_path / "sample.json",
-        model="gpt-5",
         run_id="run://abc",
-        provider="openai",
-        schema_path=record_metadata.schema_path,
-        input_fingerprint="a" * 64,
     )
 
     assert res["success"] is True
@@ -509,16 +450,9 @@ def test_extract_one_document_failure_shape(tmp_path, record_metadata):
 
     res = _extract_one_document(
         doc,
+        _plan(tmp_path, record_metadata, doc),
         extractor=extractor,
-        loaded_schema=record_metadata.schema,
-        schema_metadata=record_metadata,
-        source_context_map={},
-        output_path=tmp_path / "sample.json",
-        model="gpt-5",
         run_id="run://abc",
-        provider="openai",
-        schema_path=record_metadata.schema_path,
-        input_fingerprint="a" * 64,
     )
 
     assert res["success"] is False

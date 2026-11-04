@@ -14,6 +14,8 @@ import json
 import logging
 import os
 import re
+import threading
+import time
 from typing import Dict, Any, Optional, List
 
 # Pricing metadata must not initiate an unapproved network request at import time.
@@ -29,6 +31,8 @@ from ..security import (
 from ..utils.model_pricing import get_pricing
 from ..exceptions import ExtractionError
 from .llm_factory import DEFAULT_MODEL, detect_provider
+from ..discovery.retry import compute_backoff
+from .schema_utils import strict_compatible
 from .text_processor import find_data_arrays
 
 logger = logging.getLogger(__name__)
@@ -45,6 +49,14 @@ DEFAULT_REASONING_MODEL_MARKERS: tuple[str, ...] = (
     "o4",
     "thinking",
 )
+
+
+def prompt_schema(schema: Dict[str, Any]) -> Dict[str, Any]:
+    """Return the schema the model sees: everything except ``$metadata``."""
+    return {key: value for key, value in schema.items() if key != "$metadata"}
+
+
+RATE_LIMIT_ATTEMPTS = 4
 
 
 class LLMClient:
@@ -130,6 +142,7 @@ class LLMClient:
             "output_tokens": 0,
             "unknown_cost_calls": 0,
         }
+        self._usage_lock = threading.Lock()
         self.context_windows = dict(context_windows or {})
         # Reasoning-model markers: built-in defaults unioned with any
         # config-supplied ``reasoning_models`` (extra markers, lowercased).
@@ -169,6 +182,11 @@ class LLMClient:
         logger.info(
             f"Initialized LLM client: provider={self.provider}, model={self.model}"
         )
+
+    def _count(self, **deltas) -> None:
+        with self._usage_lock:
+            for key, value in deltas.items():
+                self.usage[key] += value
 
     def _format_model_for_litellm(self, model: str, provider: str) -> str:
         """
@@ -258,6 +276,18 @@ class LLMClient:
                     return client.chat.completions.create(**request)
                 return completion(**params, client=client, num_retries=0)
 
+    def _complete_with_backoff(self, params: Dict[str, Any]):
+        """Retry only provider rate limits (HTTP 429) with the shared backoff."""
+        for attempt in range(1, RATE_LIMIT_ATTEMPTS + 1):
+            time.sleep(compute_backoff(attempt, initial_backoff_seconds=2.0, max_backoff_seconds=30.0))
+            try:
+                return self._complete(params)
+            except Exception as exc:
+                if attempt == RATE_LIMIT_ATTEMPTS or getattr(exc, "status_code", None) != 429:
+                    raise
+                self._count(calls=1, unknown_cost_calls=1)
+        return None
+
     def extract(
         self,
         text: str,
@@ -344,7 +374,7 @@ class LLMClient:
             # it to each backend's native JSON mode, and litellm.drop_params=True
             # silently drops it for backends that don't support it.
             # Diagnostic confirmed: proxies forward this correctly.
-            api_params["response_format"] = {"type": "json_object"}
+            api_params["response_format"] = self._response_format(schema)
             # Inject a JSON instruction when the messages don't already mention JSON.
             # Required by Azure's json_object mode; also reinforces intent for
             # models that add markdown fences or preamble despite response_format.
@@ -358,14 +388,14 @@ class LLMClient:
         # ── API call ─────────────────────────────────────────────────────────
         # Split from content parsing so the two failure modes produce distinct
         # error messages: proxy/network errors vs model returned non-JSON text.
-        self.usage["calls"] += 1
+        self._count(calls=1)
         try:
-            response = self._complete(api_params)
+            response = self._complete_with_backoff(api_params)
         except json.JSONDecodeError:
             # LiteLLM failed to parse the HTTP response body from the proxy.
             # Common causes: empty body, SSE stream when non-streaming expected,
             # or an HTML/text error page from a gateway.
-            self.usage["unknown_cost_calls"] += 1
+            self._count(unknown_cost_calls=1)
             raise ExtractionError(
                 f"Proxy returned a non-JSON response body for model={self.raw_model!r}. "
                 "Verify the model and endpoint configuration."
@@ -374,15 +404,15 @@ class LLMClient:
             # Some routed/provider-backed models reject `temperature` entirely.
             # Retry once without temperature when the provider explicitly says the
             # parameter is deprecated/unsupported.
-            self.usage["unknown_cost_calls"] += 1
+            self._count(unknown_cost_calls=1)
             if self._should_retry_without_temperature(e, api_params):
                 retry_params = dict(api_params)
                 retry_params.pop("temperature", None)
-                self.usage["calls"] += 1
+                self._count(calls=1)
                 try:
                     response = self._complete(retry_params)
                 except Exception as retry_error:
-                    self.usage["unknown_cost_calls"] += 1
+                    self._count(unknown_cost_calls=1)
                     logger.error(
                         f"LLM extraction failed after retry without temperature "
                         f"(provider={self.provider}, model={self.model})"
@@ -408,10 +438,12 @@ class LLMClient:
             "input_tokens": input_tokens,
             "output_tokens": output_tokens,
         }
-        self.usage["cost"] += cost or 0
-        self.usage["input_tokens"] += input_tokens or 0
-        self.usage["output_tokens"] += output_tokens or 0
-        self.usage["unknown_cost_calls"] += int(cost is None)
+        self._count(
+            cost=cost or 0,
+            input_tokens=input_tokens or 0,
+            output_tokens=output_tokens or 0,
+            unknown_cost_calls=int(cost is None),
+        )
         try:
             raw_content = (
                 response.choices[0].message.content
@@ -476,6 +508,22 @@ class LLMClient:
             "input_tokens": input_tokens,
             "output_tokens": output_tokens,
         }
+
+    def _response_format(self, schema: Dict[str, Any]) -> Dict[str, Any]:
+        """Use strict json_schema only when the provider and schema both allow it."""
+        sent = prompt_schema(schema)
+        try:
+            supported = litellm.supports_response_schema(
+                model=self.model, custom_llm_provider=None
+            )
+        except Exception:  # noqa: BLE001 - unknown models fall back to JSON mode
+            supported = False
+        if not self.base_url and supported and strict_compatible(sent):
+            return {
+                "type": "json_schema",
+                "json_schema": {"name": "extraction", "schema": sent, "strict": True},
+            }
+        return {"type": "json_object"}
 
     @staticmethod
     def _clean_json_content(raw: str | None) -> str:
@@ -566,45 +614,26 @@ class LLMClient:
             "Reduce max_context_chars or use page ranges/chunking for large documents."
         )
 
-    def _build_extraction_prompt(
-        self, text: str, schema: Dict[str, Any]
-    ) -> str:
-        """Build the extraction prompt with schema and document text."""
-        prompt = f"""Extract ALL data from this document into valid JSON matching the schema below.
+    @staticmethod
+    def _build_extraction_prompt(text: str, schema: Dict[str, Any]) -> str:
+        """Build a domain-neutral prompt from the schema without ``$metadata``."""
+        array = (
+            schema.get("$metadata", {}).get("extraction", {}).get("main_data_array")
+        )
+        target = f'every "{array}" item' if array else "all data"
+        return f"""Extract {target} from the document text into JSON matching the schema below.
 
-══════════════════════════════════════════════════════════════════════════════
-CORE PRINCIPLES
-══════════════════════════════════════════════════════════════════════════════
+RULES
+1. Extract exactly as written; do not normalize, convert units, paraphrase, or infer.
+2. Search the entire document, including tables, lists, and appendices.
+3. Follow the schema descriptions; use null where the document does not state a value.
+4. Blocks marked "added by ParseSweep" are guidance, not document content.
 
-1. EXTRACT EXACTLY AS WRITTEN - Do not normalize, convert units, paraphrase, or infer
-2. PRESERVE DOCUMENT STRUCTURE - Extract requirements as organized in the document
-3. SEARCH ENTIRE DOCUMENT - Information may appear in tables, narrative sections, appendices
-4. VERIFY COMPLETENESS - Review all sections before returning
-5. FOLLOW SCHEMA GUIDANCE - Pay attention to schema descriptions and exclusion rules
-
-EXTRACTION STRATEGY:
-1. Read schema carefully - defines what to extract and exclude
-2. Scan document structure - identify relevant sections
-3. Extract systematically - work through document section by section
-4. Cross-reference - check for related information in different locations
-5. Validate completeness - ensure nothing was missed
-
-══════════════════════════════════════════════════════════════════════════════
 JSON SCHEMA
-══════════════════════════════════════════════════════════════════════════════
+{json.dumps(prompt_schema(schema), indent=2)}
 
-{json.dumps(schema, indent=2)}
-
-══════════════════════════════════════════════════════════════════════════════
 DOCUMENT TEXT
-══════════════════════════════════════════════════════════════════════════════
-
 {text}
-
-══════════════════════════════════════════════════════════════════════════════
-OUTPUT INSTRUCTIONS
-══════════════════════════════════════════════════════════════════════════════
 
 Return ONLY valid JSON matching the schema above. No markdown, no explanations.
 """
-        return prompt

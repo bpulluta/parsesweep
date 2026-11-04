@@ -33,7 +33,9 @@ import io
 import shutil
 import subprocess
 import sys
-from dataclasses import dataclass, field
+from collections import deque
+from concurrent.futures import ThreadPoolExecutor
+from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional, Sequence
@@ -58,23 +60,36 @@ from psweep.extraction.page_locator import (
 from psweep.extraction.section_locator import SectionLocator
 from psweep.extraction.pdf_utils import validate_pdf_scope
 from psweep.extraction.llm_factory import (
+    DEFAULT_MAX_CONCURRENT,
     DEFAULT_MAX_CONTEXT,
     resolve_llm_kwargs,
 )
 from psweep.extraction.provenance import (
     build_source_context_map,
     prepend_source_context,
+    source_context,
     build_run_manifest,
     generate_run_id,
 )
 from psweep.extraction.record_writer import (
+    CONTRACT_VERSION,
     record_extraction_scope,
     write_extraction_record,
 )
+from psweep.extraction.roster import (
+    batch,
+    candidate_hash,
+    candidates_block,
+    load_roster,
+    scan_candidates,
+    verify_quotes,
+)
 from psweep.extraction.schema_utils import (
     build_schema_validator,
+    evidence_paths,
     record_validator,
 )
+from psweep.extraction.text_processor import calculate_completeness
 from psweep.utils.error_taxonomy import build_error_record
 from psweep.utils.file_io import artifact_sha256, atomic_json, atomic_write
 from psweep.utils.page_range import load_pages_csv, parse_page_range
@@ -304,11 +319,11 @@ def _document_eligible(path: Path, root: Path) -> bool:
     )
 
 
-def _input_documents(path: Path, index: str | None, filters: Sequence[str]):
+def _input_documents(path: Path, *, required: bool = True):
     """Resolve authoritative documents and their common input root."""
-    if index is not None:
-        return _index_documents(Path(index), filters)
     if not path.exists():
+        if not required:
+            return [], path
         message = f"Documents path not found: {path}"
         raise FileNotFoundError(message)
     root = path if path.is_dir() else path.parent
@@ -320,79 +335,10 @@ def _input_documents(path: Path, index: str | None, filters: Sequence[str]):
     return documents, root
 
 
-def _indexed_source(row: dict, index: Path) -> tuple[Path, Path]:
-    """Resolve an indexed document and its declared corpus root."""
-    source = Path(row["path"])
-    document = (
-        source
-        if source.is_absolute() or source.is_file()
-        else index.parent / source
-    ).resolve()
-    relative = Path(row.get("relative_path") or document.name)
-    if relative.is_absolute() or ".." in relative.parts:
-        message = "Download index relative_path must stay inside its corpus"
-        raise ValueError(message)
-    corpus = document.parent
-    if tuple(document.parts[-len(relative.parts) :]) == relative.parts:
-        for _ in relative.parts[1:]:
-            corpus = corpus.parent
-    return document, corpus
-
-
-def _index_filter_value(value) -> str:
-    """Normalize index filters for punctuation-insensitive matching."""
-    return re.sub(r"[^a-z0-9]+", "-", str(value).lower()).strip("-")
-
-
-def _index_documents(index: Path, filters: Sequence[str]):
-    """Read explicit index scope without falling back to scanning."""
-    parsed_filters = []
-    for value in filters:
-        key, separator, term = value.partition("=")
-        if not separator or not key.strip():
-            message = "Index filters require column=value"
-            raise ValueError(message)
-        parsed_filters.append((key.strip(), term))
-
-    documents, roots = [], []
-    with Path(index).open(encoding="utf-8", newline="") as handle:
-        reader = csv.DictReader(handle)
-        required = {"status", "path", *(key for key, _ in parsed_filters)}
-        if not required.issubset(reader.fieldnames or []):
-            message = "Download index is missing required columns"
-            raise ValueError(message)
-        for row in reader:
-            if None in row or None in row.values():
-                message = "Download index has malformed rows"
-                raise ValueError(message)
-            if row["status"] != "downloaded":
-                continue
-            doc, corpus = _indexed_source(row, index)
-            roots.append(corpus)
-            if any(
-                _index_filter_value(row[key]) != _index_filter_value(term)
-                for key, term in parsed_filters
-            ):
-                continue
-            if not doc.is_file():
-                message = f"Selected index document is missing: {doc}"
-                raise FileNotFoundError(message)
-            if _document_eligible(doc, doc.parent):
-                documents.append(doc)
-    root = Path(
-        os.path.commonpath(
-            [str(root) for root in roots] or [str(index.parent)]
-        )
-    )
-    return sorted(set(documents)), root
-
-
 def _validate_extract_paths(
     output: Path,
     root: Path,
     protected: Sequence[Path],
-    *,
-    inventory: bool = True,
 ):
     """Reject destructive or self-inventoried output overlaps."""
     if output == Path(output.anchor):
@@ -401,7 +347,7 @@ def _validate_extract_paths(
     if (
         output == root
         or output in root.parents
-        or (inventory and root.is_dir() and root in output.parents)
+        or (root.is_dir() and root in output.parents)
     ):
         message = "Extraction input/output overlap is not allowed"
         raise ValueError(message)
@@ -441,7 +387,7 @@ def _reusable_record(path: Path, fingerprint: str, evidence: dict, validator):
             return None
         record = json.loads(path.read_text(encoding="utf-8"))
         if (
-            record["contract_version"] != "1.0.0"
+            record["contract_version"] != CONTRACT_VERSION
             or record["lineage"].get("input_fingerprint") != fingerprint
         ):
             return None
@@ -499,8 +445,8 @@ def _manual_ranges(inputs: dict, documents: list[Path], root: Path) -> dict:
     return ranges
 
 
-def _extraction_fingerprints(
-    inputs, llm, locator, schema_path, documents, ranges, context
+def _extraction_fingerprints(  # noqa: PLR0913 - full effective behavior
+    inputs, llm, locator, schema_path, documents, ranges, context, roster, anchors
 ):
     """Bind reused records to effective behavior and source bytes."""
     targeting = inputs.get("page_targeting") or {}
@@ -522,6 +468,7 @@ def _extraction_fingerprints(
             "max_context": inputs.get("max_context", DEFAULT_MAX_CONTEXT),
             "schema_sha256": artifact_sha256(schema_path),
             "page_targeting": targeting,
+            "roster_fields": roster.fields if roster else None,
             "locator": {
                 key: (locator or {}).get(key)
                 for key in (
@@ -536,6 +483,7 @@ def _extraction_fingerprints(
     )
     fingerprints = {}
     for doc in documents:
+        info = source_context(doc, context)
         cached = document_utils.read_text_cache(doc, return_meta=True)
         data = {
             **policy,
@@ -547,7 +495,10 @@ def _extraction_fingerprints(
             "source": str(doc),
             "source_sha256": artifact_sha256(doc),
             "manual_pages": ranges.get(doc),
-            "context": context.get(str(doc), context.get(doc.name)),
+            "context": asdict(info) if info else None,
+            "candidates": (
+                candidate_hash(roster, anchors[doc]) if doc in anchors else None
+            ),
         }
         fingerprints[doc] = hashlib.sha256(
             json.dumps(data, sort_keys=True).encode()
@@ -555,7 +506,7 @@ def _extraction_fingerprints(
     return fingerprints
 
 
-def _extraction_layout(inputs, from_index, index_filters, config_path):
+def _extraction_layout(inputs, config_path, *, validate_only=False):
     """Resolve schema, documents, outputs, and protected paths once."""
     schema_path = Path(inputs["schema"]).resolve()
     metadata = SchemaMetadata(schema_path)
@@ -574,24 +525,17 @@ def _extraction_layout(inputs, from_index, index_filters, config_path):
             raise ValueError(message)
     path = Path(inputs["path"]).resolve()
     output = Path(inputs["output"]).resolve()
-    documents, root = _input_documents(path, from_index, index_filters)
+    documents, root = _input_documents(path, required=not validate_only)
     root = root.resolve()
     protected = [
         schema_path,
         *(
             Path(value)
-            for value in (config_path, from_index, inputs.get("pages_csv"))
+            for value in (config_path, inputs.get("pages_csv"))
             if value
         ),
     ]
-    inventory_root = root if from_index and documents else path
-
-    _validate_extract_paths(
-        output,
-        inventory_root,
-        [*protected, *documents],
-        inventory=not from_index,
-    )
+    _validate_extract_paths(output, path, [*protected, *documents])
     outputs = {
         doc: output / doc.relative_to(root).with_suffix(".json")
         for doc in documents
@@ -673,13 +617,11 @@ def _prepare_extraction(
     inputs: dict,
     *,
     fresh: bool = False,
-    from_index: str | None = None,
-    index_filters: Sequence[str] = (),
     config_path: str | None = None,
     validate_only: bool = False,
 ):
     """Verify work before output mutation or provider calls."""
-    plan = _extraction_layout(inputs, from_index, index_filters, config_path)
+    plan = _extraction_layout(inputs, config_path, validate_only=validate_only)
     documents = plan["documents"]
     ranges = _manual_ranges(inputs, documents, plan["root"])
     llm = resolve_llm_kwargs(
@@ -689,8 +631,12 @@ def _prepare_extraction(
         llm_config=inputs.get("llm_config"),
     )
     locator = _extraction_locator_config(inputs, llm)
-    context = build_source_context_map(
-        Path(inputs["path"]).resolve(), from_index
+    context = build_source_context_map(Path(inputs["path"]).resolve())
+    roster = load_roster(inputs, plan["metadata"])
+    candidates, anchors, roster_errors = (
+        _roster_plan(documents, plan["root"], context, roster, inputs)
+        if roster and not validate_only
+        else ({}, {}, {})
     )
     fingerprints = _extraction_fingerprints(
         inputs,
@@ -700,6 +646,8 @@ def _prepare_extraction(
         documents,
         ranges,
         context,
+        roster,
+        anchors,
     )
     if fresh and not validate_only:
         for doc, selected in ranges.items():
@@ -713,6 +661,8 @@ def _prepare_extraction(
     validator = build_schema_validator(plan["schema"])
     reused = {}
     for doc in documents:
+        if doc in roster_errors:
+            continue
         record = _reusable_record(
             plan["outputs"][doc], fingerprints[doc], evidence, validator
         )
@@ -730,6 +680,11 @@ def _prepare_extraction(
         "llm": llm,
         "ranges": ranges,
         "context": context,
+        "roster": roster,
+        "candidates": candidates,
+        "anchors": anchors,
+        "roster_errors": roster_errors,
+        "evidence_paths": evidence_paths(plan["schema"]),
         "fingerprints": fingerprints,
         "inputs": inputs,
         "fresh": fresh,
@@ -760,51 +715,158 @@ def _document_text(doc_path, page_range, section_text, corrections):
     return text, effective, scope
 
 
-def _extract_one_document(  # noqa: PLR0913 - explicit per-document scope and lineage
-    doc_path: Path,
-    *,
-    extractor,
-    loaded_schema: dict,
-    schema_metadata,
-    schema_path: Path,
-    output_path: Path,
-    model: str,
-    provider: str,
-    run_id: str,
-    input_fingerprint: str,
-    page_range=None,
-    section_text=None,
-    source_context_map=None,
-    ocr_corrections=None,
-) -> dict:
+def _roster_plan(documents, root, context, roster, inputs):
+    """Anchor every document to roster targets before any provider call."""
+    candidates, anchors, errors = {}, {}, {}
+    for doc in documents:
+        info = source_context(doc, context)
+        if info is None:
+            errors[doc] = (
+                "No download_index row for "
+                f"{doc.relative_to(root).as_posix()}; roster extraction "
+                "needs discovery source context"
+            )
+        elif info.scope == "shared":
+            try:
+                text = _document_text(
+                    doc, None, None, inputs.get("ocr_corrections")
+                )[0]
+            except Exception as exc:  # noqa: BLE001 - isolate unreadable documents
+                errors[doc] = f"Roster candidate scan failed: {exc}"
+                continue
+            candidates[doc] = scan_candidates(text, roster)
+            anchors[doc] = set().union(*(ids for _, ids in candidates[doc]))
+        else:
+            anchors[doc] = {info.target_id} & roster.targets.keys()
+    return candidates, anchors, errors
+
+
+def _no_roster_match(array):
+    return extraction_api.ExtractionResult(
+        data={array: []},
+        completeness_score=0.0,
+        cost=0.0,
+        processing_time=0.0,
+        validation_notes=[],
+        status="no_roster_match",
+    )
+
+
+def _keep_roster_items(data, array, roster, target_ids) -> int:
+    """Keep only items naming one of ``target_ids``; return the dropped count."""
+    allowed = {
+        roster.key(roster.targets[target_id]) for target_id in target_ids
+    }
+    items = data.get(array) or []
+    data[array] = [item for item in items if roster.key(item) in allowed]
+    return len(items) - len(data[array])
+
+
+def _roster_extract(extractor, schema, array, roster, candidates, budget):
+    """Extract shared-document candidate windows and drop off-roster items."""
+    budget -= len(
+        candidates_block(roster, set().union(*(ids for _, ids in candidates)))
+    )
+    results, items, dropped = [], [], 0
+    for text, target_ids in batch(candidates, max(budget, 1)):
+        result = extractor.extract(
+            candidates_block(roster, target_ids) + text, schema
+        )
+        dropped += _keep_roster_items(result.data, array, roster, target_ids)
+        items.extend(result.data[array])
+        results.append(result)
+    data = {**results[0].data, array: items}
+    costs = [result.cost for result in results]
+
+    def total(name):
+        values = [getattr(result, name) for result in results]
+        return None if None in values else sum(values)
+
+    return extraction_api.ExtractionResult(
+        data=data,
+        completeness_score=calculate_completeness(data),
+        cost=None if None in costs else sum(costs),
+        processing_time=sum(result.processing_time for result in results),
+        validation_notes=[
+            note for result in results for note in result.validation_notes
+        ],
+        input_tokens=total("input_tokens"),
+        output_tokens=total("output_tokens"),
+        coverage={
+            "input_characters": sum(r.coverage["input_characters"] for r in results),
+            "extracted_characters": sum(
+                r.coverage["extracted_characters"] for r in results
+            ),
+            "context_truncated": any(r.coverage["context_truncated"] for r in results),
+        },
+        off_candidate_items=dropped,
+    )
+
+
+def _extract_one_document(doc_path: Path, plan: dict, *, extractor, run_id, page_range=None, section_text=None) -> dict:
     """Extract and persist one record without UI or batch decisions."""
     result = None
+    llm, inputs = plan["llm"], plan["inputs"]
+    model, provider = llm["model"], llm["provider"]
+    output_path = plan["outputs"][doc_path]
+    roster = plan["roster"]
+    array = plan["metadata"].get_main_data_array()
+    info = source_context(doc_path, plan["context"])
+    anchors = plan["anchors"].get(doc_path)
     try:
-        text, effective_range, parser_scope = _document_text(
-            doc_path,
-            page_range,
-            section_text,
-            ocr_corrections,
-        )
-        text = prepend_source_context(text, doc_path, source_context_map or {})
-        result = extractor.extract(text, loaded_schema)
-        record_extraction_scope(
-            result,
-            page_range=effective_range,
-            section_filtered=section_text is not None,
-            parser_scope=parser_scope,
-        )
+        if doc_path in plan["roster_errors"]:
+            raise ValueError(plan["roster_errors"][doc_path])
+        if anchors == set():
+            text, result = "", _no_roster_match(array)
+        elif doc_path in plan["candidates"]:
+            text = _document_text(
+                doc_path, None, None, inputs.get("ocr_corrections")
+            )[0]
+            result = _roster_extract(
+                extractor,
+                plan["schema"],
+                array,
+                roster,
+                plan["candidates"][doc_path],
+                inputs.get("max_context", DEFAULT_MAX_CONTEXT),
+            )
+        else:
+            text, effective_range, parser_scope = _document_text(
+                doc_path,
+                page_range,
+                section_text,
+                inputs.get("ocr_corrections"),
+            )
+            prompt = prepend_source_context(text, info)
+            if anchors:
+                prompt = candidates_block(roster, anchors) + prompt
+            result = extractor.extract(prompt, plan["schema"])
+            record_extraction_scope(
+                result,
+                page_range=effective_range,
+                section_filtered=section_text is not None,
+                parser_scope=parser_scope,
+            )
+            if anchors:
+                result.off_candidate_items = _keep_roster_items(
+                    result.data, array, roster, anchors
+                )
+        rejected = verify_quotes(result.data, plan["evidence_paths"], text)
+        result.unverified_quotes = len(rejected)
+        result.validation_notes = [*(result.validation_notes or []), *rejected]
         output_path.parent.mkdir(parents=True, exist_ok=True)
         count = write_extraction_record(
             output_path,
             doc_path=doc_path,
+            source_document_id=doc_path.relative_to(plan["root"]).as_posix(),
+            source=info,
             result=result,
             model=model,
             provider=provider,
             run_id=run_id,
-            schema_id=str(schema_path),
-            schema_metadata=schema_metadata,
-            input_fingerprint=input_fingerprint,
+            schema_id=str(plan["schema_path"]),
+            schema_metadata=plan["metadata"],
+            input_fingerprint=plan["fingerprints"][doc_path],
         )
         return {
             "file": doc_path.name,
@@ -850,7 +912,13 @@ def _extract_one_document(  # noqa: PLR0913 - explicit per-document scope and li
 def _target_extraction_inputs(plan: dict):
     """Resolve optional targeting once for planned documents only."""
     inputs, llm = plan["inputs"], plan["llm"]
-    pending = plan["pending"]
+    pending = [
+        doc
+        for doc in plan["pending"]
+        if doc not in plan["candidates"]
+        and doc not in plan["roster_errors"]
+        and plan["anchors"].get(doc) != set()
+    ]
     plan["targeting_incomplete"] = set()
     ranges = dict(plan["ranges"])
     sections = {}
@@ -1025,7 +1093,6 @@ def _execute_extraction(
     if pending:
         extractor = extraction_api.DocumentExtractor(
             **llm,
-            schema_metadata=plan["metadata"],
             max_context_chars=inputs.get("max_context", DEFAULT_MAX_CONTEXT),
             context_windows=inputs.get("model_context_windows"),
             reasoning_models=inputs.get("reasoning_models"),
@@ -1071,28 +1138,38 @@ def _execute_extraction(
                 ),
             }
         )
-    for doc in pending:
-        if on_progress:
-            on_progress(doc, None)
-        result = _extract_one_document(
-            doc,
-            extractor=extractor,
-            loaded_schema=plan["schema"],
-            schema_metadata=plan["metadata"],
-            schema_path=plan["schema_path"],
-            output_path=plan["outputs"][doc],
-            model=llm["model"],
-            provider=llm["provider"],
-            run_id=run_id,
-            input_fingerprint=plan["fingerprints"][doc],
-            page_range=ranges.get(doc),
-            section_text=sections.get(doc),
-            source_context_map=plan["context"],
-            ocr_corrections=inputs.get("ocr_corrections"),
-        )
-        results.append(result)
-        if on_progress:
-            on_progress(doc, result)
+    workers = inputs.get("max_concurrent", DEFAULT_MAX_CONCURRENT)
+    queue, window = iter(pending), deque()
+    pool = ThreadPoolExecutor(max_workers=workers)
+    try:
+        while True:
+            while len(window) < workers * 2 and (doc := next(queue, None)):
+                if on_progress:
+                    on_progress(doc, None)
+                window.append(
+                    (
+                        doc,
+                        pool.submit(
+                            _extract_one_document,
+                            doc,
+                            plan,
+                            extractor=extractor,
+                            run_id=run_id,
+                            page_range=ranges.get(doc),
+                            section_text=sections.get(doc),
+                        ),
+                    )
+                )
+            if not window:
+                break
+            doc, future = window.popleft()
+            results.append(future.result())
+            if on_progress:
+                on_progress(doc, results[-1])
+    except BaseException:
+        pool.shutdown(wait=False, cancel_futures=True)
+        raise
+    pool.shutdown()
     return _complete_extraction(
         plan,
         results,

@@ -21,8 +21,6 @@ def test_process_validate_config_with_run_yaml(tmp_path, schema_path):
     config_path.write_text(
         f"""
 schema: {schema_path.as_posix()}
-extraction:
-  input_dir: {documents.as_posix()}
 """,
         encoding="utf-8",
     )
@@ -30,7 +28,7 @@ extraction:
     runner = CliRunner()
     result = runner.invoke(
         cli,
-        ["extract", "--config", str(config_path), "--validate-config"],
+        ["extract", str(documents), "--config", str(config_path), "--validate-config"],
     )
 
     assert result.exit_code == 0
@@ -44,7 +42,7 @@ def test_process_validate_config_rejects_unknown_key(tmp_path, schema_path):
         f"""
 schema: {schema_path.as_posix()}
 extraction:
-  input_dir: documents/geothermal_ordinances
+  skip_existing: true
   mystery_option: true
 """,
         encoding="utf-8",
@@ -93,7 +91,7 @@ def test_run_validate_config_only_passes_with_valid_runtime_config(tmp_path, sch
 domain: demo
 schema: {schema_path.as_posix()}
 extraction:
-  input_dir: documents/demo
+  skip_existing: true
 """,
         encoding="utf-8",
     )
@@ -113,7 +111,7 @@ def test_run_validate_config_fails_on_unknown_keys(tmp_path, schema_path):
 domain: demo
 schema: {schema_path.as_posix()}
 extraction:
-  input_dir: documents/demo
+  skip_existing: true
   mystery_option: true
 """,
         encoding="utf-8",
@@ -142,7 +140,7 @@ def test_run_fresh_delegates_safe_cleanup_to_extraction(tmp_path, monkeypatch, s
 domain: demo
 schema: {schema_path.as_posix()}
 extraction:
-  input_dir: documents/demo
+  skip_existing: true
 """,
         encoding="utf-8",
     )
@@ -176,7 +174,7 @@ discovery:
       query: q1
 schema: {schema_path.as_posix()}
 extraction:
-  input_dir: docs/demo
+  skip_existing: true
 """,
         encoding="utf-8",
     )
@@ -402,10 +400,9 @@ def test_extract_fresh_preserves_output_when_input_path_missing(tmp_path, monkey
     stale_record = workspace.extracted / "stale.json"
     stale_record.write_text("{}", encoding="utf-8")
 
-    missing_input = tmp_path / workspace.latest / "curated"
     schema_path = tmp_path / "schema.json"
     schema_path.write_text(
-        '{"$metadata":{"extraction":{"main_data_array":"items","identifier_fields":["name"]},"identity":{"deduplication":{"key_fields":["name"],"ignore_fields":[]}}}}',
+        '{"$metadata":{"extraction":{"main_data_array":"items"},"identity":{"deduplication":{"key_fields":["name"],"ignore_fields":[]}}}}',
         encoding="utf-8",
     )
     config_path = tmp_path / "run.yaml"
@@ -413,8 +410,6 @@ def test_extract_fresh_preserves_output_when_input_path_missing(tmp_path, monkey
         f"""
 domain: demo
 schema: {schema_path.as_posix()}
-extraction:
-  input_dir: {missing_input.as_posix()}
 """,
         encoding="utf-8",
     )
@@ -613,3 +608,20 @@ discovery:
     assert "discovery.selection.max_per_target" in output
     assert "seeker_max_results" not in output
     assert "selection_primary_per_target" not in output
+
+
+def test_extract_validate_config_does_not_require_documents(tmp_path, schema_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    config_path = tmp_path / "run.yaml"
+    config_path.write_text(
+        "domain: demo\n", encoding="utf-8"
+    )
+    assert schema_path.parent == tmp_path
+    result = CliRunner().invoke(
+        cli, ["extract", "--config", str(config_path), "--validate-config", "-q"]
+    )
+    assert result.exit_code == 0, result.output
+    assert not (tmp_path / "outputs").exists()
+    real = CliRunner().invoke(cli, ["extract", "--config", str(config_path), "-q"])
+    assert real.exit_code != 0
+    assert "Documents path not found" in _panel_text(real.output)

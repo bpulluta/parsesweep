@@ -30,6 +30,7 @@ DEFAULT_MODEL = "gpt-4o-mini"
 # Single source for the character limit shared by CLI/API extraction,
 # multi-model validation, and DocumentExtractor. See the defaults tests.
 DEFAULT_MAX_CONTEXT = 600000
+DEFAULT_MAX_CONCURRENT = 4
 
 # Canonical runtime providers, covering every detect_provider result.
 # "auto" requests resolution rather than naming a runtime provider.

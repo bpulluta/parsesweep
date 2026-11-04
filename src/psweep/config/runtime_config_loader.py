@@ -38,14 +38,6 @@ VARIABLE_CATALOG: dict[str, list[dict[str, str]]] = {
     ],
     "extraction": [
         {
-            "name": "input_dir",
-            "level": "optional",
-            "description": (
-                "Source document file or directory "
-                "(default: outputs/<domain>/discovered/curated)."
-            ),
-        },
-        {
             "name": "pages_csv",
             "level": "optional",
             "description": "CSV mapping file names to page ranges (from pages.csv or CLI --pages-csv).",
@@ -73,11 +65,6 @@ VARIABLE_CATALOG: dict[str, list[dict[str, str]]] = {
             ),
         },
         {
-            "name": "profile",
-            "level": "optional",
-            "description": "Runtime profile id used for artifact lineage.",
-        },
-        {
             "name": "provider",
             "level": "optional",
             "description": (
@@ -99,6 +86,11 @@ VARIABLE_CATALOG: dict[str, list[dict[str, str]]] = {
             "name": "max_context",
             "level": "advanced",
             "description": "Maximum characters to pass to extraction context.",
+        },
+        {
+            "name": "max_concurrent",
+            "level": "advanced",
+            "description": "Documents extracted in parallel (default: 4).",
         },
         {
             "name": "timeout_seconds",
@@ -210,7 +202,6 @@ _ALLOWED_TOP_LEVEL = {
 }
 _ALLOWED_SECTION_FIELDS = {
     "extraction": {
-        "input_dir",
         "pages",           # unified block (csv + auto_locate); normalized to pages_csv / page_targeting internally
         "pages_csv",       # internal (set by _normalize_pages_block or CLI --pages-csv)
         "page_targeting",  # internal (set by _normalize_pages_block)
@@ -219,6 +210,7 @@ _ALLOWED_SECTION_FIELDS = {
         "limit",
         "skip_existing",
         "max_context",
+        "max_concurrent",
         "timeout_seconds",
         "live_dashboard",
         "ocr_corrections",  # optional per-domain OCR text-correction rules
@@ -362,17 +354,13 @@ def _validate_extraction_section_schema(extraction: dict[str, Any]) -> None:
     types and ranges are enforced.
     """
 
-    if "profile" in extraction:
-        message = "extraction.profile is retired; remove this inert setting."
-        raise RuntimeConfigError(message)
-
     def _require_positive_int(name: str, value: Any) -> None:
         if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
             raise RuntimeConfigError(
                 f"extraction.{name} must be a positive integer (got {value!r})"
             )
 
-    for name in ("max_context", "limit", "timeout_seconds"):
+    for name in ("max_context", "max_concurrent", "limit", "timeout_seconds"):
         if name in extraction and extraction[name] is not None:
             _require_positive_int(name, extraction[name])
 
@@ -395,7 +383,7 @@ def _validate_extraction_section_schema(extraction: dict[str, Any]) -> None:
                 + ", ".join(sorted(allowed))
             )
 
-    for name in ("input_dir", "pages", "pages_csv", "model"):
+    for name in ("pages", "pages_csv", "model"):
         if name in extraction and extraction[name] is not None:
             if not isinstance(extraction[name], str):
                 raise RuntimeConfigError(
@@ -909,6 +897,7 @@ _DERIVED_REMEDY = "stage outputs are derived from `domain` under outputs/<domain
 _DERIVED_PATH_KEYS: dict[tuple[str, str], str] = {
     ("extraction", "schema"): _SCHEMA_REMEDY,
     ("compilation", "schema"): _SCHEMA_REMEDY,
+    ("extraction", "input_dir"): _DERIVED_REMEDY,
     ("extraction", "output_dir"): _DERIVED_REMEDY,
     ("compilation", "input_dir"): _DERIVED_REMEDY,
     ("compilation", "output_dir"): _DERIVED_REMEDY,
@@ -1046,7 +1035,6 @@ def _missing_fields_message(
 _FIELD_MAP: dict[str, str] = {
     "domain": "domain",
     "dry_run": "dry_run",
-    "path": "input_dir",
     "pages_csv": "pages_csv",
     "pages": "pages",
     "page_targeting": "page_targeting",
@@ -1056,6 +1044,7 @@ _FIELD_MAP: dict[str, str] = {
     "limit": "limit",
     "skip_existing": "skip_existing",
     "max_context": "max_context",
+    "max_concurrent": "max_concurrent",
     "timeout_seconds": "timeout_seconds",
     "live_dashboard": "live_dashboard",
     "report_format": "report_format",
@@ -1193,6 +1182,11 @@ def resolve_command_config(
         sources["domain"] = "config.domain"
     if section_name != "discovery":
         _apply_workspace_defaults(section_name, merged, sources, cfg)
+    if section_name == "extraction" and isinstance(cfg.get("discovery"), dict):
+        discovery = resolve_discovery_section(cfg["discovery"], config_path)
+        for field in ("targets", "partition_by"):
+            if field in discovery:
+                merged[field], sources[field] = discovery[field]
 
     missing = [
         name for name in _REQUIRED_FIELDS.get(section_name, ()) if not merged.get(name)

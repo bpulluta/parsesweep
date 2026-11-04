@@ -10,7 +10,7 @@ from psweep.utils.file_io import atomic_json
 def test_build_run_manifest_sorts_documents_and_output_records() -> None:
     runtime_artifact = {
         "artifact_id": "artifact://runtime/abc123def4567890",
-        "lineage": {"profile_id": "default"},
+        "lineage": {},
     }
 
     manifest = build_run_manifest(
@@ -42,7 +42,6 @@ def test_build_run_manifest_sorts_documents_and_output_records() -> None:
         manifest["lineage"]["artifact_id"]
         == "artifact://runtime/abc123def4567890"
     )
-    assert manifest["lineage"]["profile_id"] == "default"
     assert manifest["lineage"]["provider"] == "azure"
     assert manifest["lineage"]["model"] == "gpt-5"
     assert manifest["documents"] == [

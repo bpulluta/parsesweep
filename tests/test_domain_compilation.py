@@ -74,7 +74,6 @@ def test_schema_controls_columns_types_and_yaml_presentation(tmp_path, domain):
             "extraction": {
                 "main_data_array": "items",
                 "context_objects": ["source"],
-                "identifier_fields": ["source.url"],
             },
             "identity": {
                 "deduplication": {
@@ -164,7 +163,6 @@ def test_schema_uri_partitions_preserve_source_path_case(tmp_path):
             "extraction": {
                 "main_data_array": "items",
                 "context_objects": ["source"],
-                "identifier_fields": ["source.url"],
             },
             "identity": {
                 "deduplication": {
@@ -211,7 +209,6 @@ def test_nested_rows_preserve_parents_without_children(tmp_path):
                 "$metadata": {
                     "extraction": {
                         "main_data_array": "items",
-                        "identifier_fields": ["name"],
                     },
                 }
             }
@@ -253,7 +250,6 @@ def test_fully_populated_keys_do_not_require_pairwise_matching(
                 "$metadata": {
                     "extraction": {
                         "main_data_array": "items",
-                        "identifier_fields": ["name"],
                     },
                     "identity": {
                         "deduplication": {
@@ -293,7 +289,6 @@ def test_wildcard_fuzzy_matching_preserves_greedy_source_order(tmp_path):
                 "$metadata": {
                     "extraction": {
                         "main_data_array": "items",
-                        "identifier_fields": ["name"],
                     },
                     "identity": {
                         "deduplication": {
@@ -335,7 +330,6 @@ def test_fuzzy_index_matches_reference_for_missing_and_populated_keys(
                 "$metadata": {
                     "extraction": {
                         "main_data_array": "items",
-                        "identifier_fields": ["name"],
                     },
                     "identity": {
                         "deduplication": {
@@ -392,7 +386,6 @@ def test_malformed_main_array_never_becomes_empty_success(tmp_path, items):
                 "$metadata": {
                     "extraction": {
                         "main_data_array": "items",
-                        "identifier_fields": ["name"],
                     },
                 }
             }
@@ -422,7 +415,6 @@ def test_incomplete_identity_never_deduplicates_on_partial_keys(
                 "$metadata": {
                     "extraction": {
                         "main_data_array": "items",
-                        "identifier_fields": ["name"],
                     },
                     "identity": {"deduplication": dedup},
                 }
@@ -444,7 +436,7 @@ def test_declared_optional_identity_absent_in_all_records_remains_null(tmp_path)
             "name": {"type": "string"}, "variant": {"type": ["string", "null"]},
         }}},
     }, "$metadata": {
-        "extraction": {"main_data_array": "items", "identifier_fields": ["name"]},
+        "extraction": {"main_data_array": "items"},
         "identity": {"deduplication": {"key_fields": ["name", "variant"]}},
     }}))
     directory = tmp_path / "input"
@@ -471,7 +463,6 @@ def test_unknown_fixed_profile_is_rejected_not_silently_ignored(tmp_path):
                 "$metadata": {
                     "extraction": {
                         "main_data_array": "items",
-                        "identifier_fields": ["id"],
                     }
                 }
             }

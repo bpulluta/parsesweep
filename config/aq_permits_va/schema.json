@@ -3,10 +3,6 @@
   "$metadata": {
     "extraction": {
       "main_data_array": "generatorSets",
-      "identifier_fields": [
-        "permitDetails.permitNumber",
-        "permitDetails.facilityName"
-      ],
       "context_objects": [
         "permitDetails"
       ]

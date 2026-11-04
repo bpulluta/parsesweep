@@ -102,7 +102,6 @@ to the same config:
 ```yaml
 # schema: config/my_domain/schema.json      # default: schema.json beside run.yaml
 extraction:
-  # input_dir: documents/my_domain          # default: outputs/my_domain/discovered/curated
   model: your-model-name
 ```
 
@@ -314,7 +313,6 @@ Or create manually — a minimal schema:
   "$metadata": {
     "extraction": {
       "main_data_array": "items",
-      "identifier_fields": ["metadata.name"],
       "context_objects": ["metadata"]
     }
   },
@@ -352,7 +350,6 @@ workflow, you can instead create a config containing only these sections:
 domain: my_domain
 
 extraction:
-  input_dir: documents/my_domain       # default: outputs/my_domain/discovered/curated
   model: your-model-name
 ```
 
@@ -525,8 +522,8 @@ renders both templates and documents defaults, validation, and limitations.
 
 ```yaml
 extraction:
-  input_dir: path/to/documents     # default: outputs/<domain>/discovered/curated
-  max_context: 600000              # chars per document
+  max_context: 600000              # chars per document (and per shared-doc roster batch)
+  max_concurrent: 4                # parallel documents
   pages:                           # page selection for large PDFs
     csv: path/to/ranges.csv        # manual ranges (win over auto)
     auto_locate:                   # LLM fallback for uncovered docs
@@ -773,7 +770,7 @@ Copy `.env.example` to `.env` and uncomment one block. Run `psweep init` for int
 
 **"No documents found"** — Check file extensions are supported and path exists.
 
-**"Schema missing $metadata"** — Schema needs `$metadata.extraction.main_data_array` and `identifier_fields`.
+**"Schema missing $metadata"** — Schema needs `$metadata.extraction.main_data_array`.
 
 **Large document timeout** — Add `pages.auto_locate` in your config or increase `max_context`.
 

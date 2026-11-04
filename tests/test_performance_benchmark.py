@@ -82,7 +82,6 @@ def test_collect_benchmark_metrics_computes_extraction_parity(tmp_path) -> None:
             "$metadata": {
                 "extraction": {
                     "main_data_array": "items",
-                    "identifier_fields": ["document_id"],
                 },
                 "identity": {
                     "deduplication": {
@@ -165,7 +164,6 @@ def test_collect_benchmark_metrics_computes_extraction_parity_from_payload_recor
             "$metadata": {
                 "extraction": {
                     "main_data_array": "items",
-                    "identifier_fields": ["document_id"],
                 },
                 "identity": {
                     "deduplication": {
@@ -316,7 +314,6 @@ def test_collect_benchmark_metrics_computes_compilation_correctness(tmp_path) ->
             "$metadata": {
                 "extraction": {
                     "main_data_array": "items",
-                    "identifier_fields": ["metadata.id"],
                 },
                 "identity": {
                     "deduplication": {
@@ -795,7 +792,6 @@ def test_benchmark_cli_reports_extraction_parity_in_quiet_mode(tmp_path) -> None
             "$metadata": {
                 "extraction": {
                     "main_data_array": "items",
-                    "identifier_fields": ["document_id"],
                 },
                 "identity": {
                     "deduplication": {
@@ -951,7 +947,6 @@ def test_benchmark_cli_reports_compilation_correctness_in_quiet_mode(tmp_path) -
             "$metadata": {
                 "extraction": {
                     "main_data_array": "items",
-                    "identifier_fields": ["metadata.id"],
                 },
                 "identity": {
                     "deduplication": {

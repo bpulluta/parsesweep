@@ -19,7 +19,6 @@ def temp_schema_with_metadata(tmp_path):
             "extraction": {
                 "main_data_array": "test_items",
                 "context_objects": ["metadata_obj", "info_obj"],
-                "identifier_fields": ["metadata_obj.id", "metadata_obj.name"],
                 "display_name_template": "{name} - {id}",
                 "document_type": "Test Document"
             },
@@ -262,20 +261,11 @@ class TestV2Requirements:
             (
                 {
                     "$schema": "http://json-schema.org/draft-07/schema#",
-                    "$metadata": {"extraction": {"identifier_fields": ["id"]}},
+                    "$metadata": {"extraction": {"context_objects": []}},
                     "type": "object",
                 },
                 "no_main_array.json",
                 "main_data_array",
-            ),
-            (
-                {
-                    "$schema": "http://json-schema.org/draft-07/schema#",
-                    "$metadata": {"extraction": {"main_data_array": "items"}},
-                    "type": "object",
-                },
-                "no_identifiers.json",
-                "identifier_fields",
             ),
         ],
     )
@@ -291,8 +281,7 @@ class TestV2Requirements:
             "$schema": "http://json-schema.org/draft-07/schema#",
             "$metadata": {
                 "extraction": {
-                    "main_data_array": "items",
-                    "identifier_fields": ["id"]
+                    "main_data_array": "items"
                 }
             },
             "type": "object",
@@ -308,7 +297,6 @@ class TestV2Requirements:
         meta = SchemaMetadata(schema_path)
         assert meta.has_metadata() is True
         assert meta.get_main_data_array() == "items"
-        assert meta.get_identifier_fields() == ["id"]
 
     def test_legacy_compilation_deduplication_raises(self, tmp_path):
         """Legacy compilation.deduplication should fail fast with migration guidance."""
@@ -317,7 +305,6 @@ class TestV2Requirements:
             "$metadata": {
                 "extraction": {
                     "main_data_array": "items",
-                    "identifier_fields": ["id"],
                 },
                 "compilation": {
                     "deduplication": {
@@ -369,9 +356,7 @@ class TestEdgeCases:
         with open(schema_path, 'w') as f:
             json.dump(schema, f)
         
-        # In v2.0, schema with missing identifier_fields should raise error
-        with pytest.raises(SchemaMetadataError, match="identifier_fields"):
-            SchemaMetadata(schema_path)
+        assert SchemaMetadata(schema_path).get_main_data_array() == "items"
 
 
 # --- Phase 8: Tests for Expected Requirements Methods ---
@@ -404,7 +389,6 @@ def _write_schema(tmp_path, metadata_extra):
     metadata = {
         "extraction": {
             "main_data_array": "items",
-            "identifier_fields": ["id"],
         }
     }
     metadata.update(metadata_extra)

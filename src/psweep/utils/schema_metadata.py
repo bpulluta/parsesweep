@@ -104,8 +104,7 @@ class SchemaMetadata:
                 '  "$metadata": {\n'
                 '    "extraction": {\n'
                 '      "main_data_array": "your_main_array_key",\n'
-                '      "context_objects": ["context_object_keys"],\n'
-                '      "identifier_fields": ["path.to.identifier"]\n'
+                '      "context_objects": ["context_object_keys"]\n'
                 "    },\n"
                 '    "identity": {\n'
                 '      "deduplication": {\n'
@@ -238,13 +237,6 @@ class SchemaMetadata:
             raise SchemaMetadataError(
                 "Schema metadata missing required field: extraction.main_data_array\n"
                 "This field specifies the key containing the main data array.",
-                schema_path=str(self.schema_path),
-            )
-
-        if not extraction.get("identifier_fields"):
-            raise SchemaMetadataError(
-                "Schema metadata missing required field: extraction.identifier_fields\n"
-                "This field specifies the dot-notation paths to identifier fields.",
                 schema_path=str(self.schema_path),
             )
 
@@ -733,10 +725,6 @@ class SchemaMetadata:
     def get_context_objects(self) -> List[str]:
         """Get keys containing context/metadata objects."""
         return self.metadata.get("extraction", {}).get("context_objects", [])
-
-    def get_identifier_fields(self) -> List[str]:
-        """Get field paths that serve as identifiers."""
-        return self.metadata.get("extraction", {}).get("identifier_fields", [])
 
     def get_display_name_template(self) -> Optional[str]:
         """Get template for generating display names."""

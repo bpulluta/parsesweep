@@ -25,7 +25,6 @@ def _reference_schema() -> dict:
             "extraction": {
                 "main_data_array": "widgets",
                 "context_objects": [],
-                "identifier_fields": ["widget_id"],
                 "display_name_template": "{widget_id}",
                 "document_type": "Widget Catalog",
             },

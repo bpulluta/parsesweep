@@ -12,10 +12,7 @@ from psweep.cli.commands_compile import (
     _build_dedup_preview_report,
     _should_fail_on_suspicious,
 )
-from psweep.cli.commands_extract import (
-    _context_budget_suggestions_for_process,
-    _run_validation_extraction,
-)
+from psweep.cli.commands_extract import _run_validation_extraction
 from psweep.extraction.schema_utils import load_schema
 from psweep.extraction.provenance import generate_run_id
 from psweep.extraction.record_writer import write_extraction_record
@@ -38,47 +35,6 @@ def test_schema_loader_accepts_direct_json_contract(tmp_path) -> None:
     assert load_schema(schema) == {"type": "object"}
 
 
-def test_context_budget_suggestions_for_process_use_matching_repo_page_ranges_config(tmp_path) -> None:
-    # Hermetic: build a repo layout in tmp_path so the suggestion is inserted
-    # based on a file we control, not an untracked config in the real repo.
-    (tmp_path / 'config' / 'tariffs').mkdir(parents=True)
-    (tmp_path / 'config' / 'tariffs' / 'page_ranges.csv').write_text(
-        'file,start,end\n', encoding='utf-8'
-    )
-    document_path = tmp_path / 'documents' / 'tariffs' / 'PSCo_Electric_Entire_Tariff.pdf'
-    document_path.parent.mkdir(parents=True, exist_ok=True)
-    document_path.write_text('placeholder', encoding='utf-8')
-
-    suggestions = _context_budget_suggestions_for_process(
-        error_record={'code': 'context_window_exceeded'},
-        schema_path=Path('config/utility_rate_tariffs/schema.json'),
-        document_path=document_path,
-        repo_root=tmp_path,
-    )
-
-    assert suggestions is not None
-    assert '--pages START-END' in suggestions[0]
-    assert 'config/tariffs/page_ranges.csv' in suggestions[1]
-    assert '25-100 pages' in suggestions[2]
-
-
-def test_context_budget_suggestions_for_process_without_matching_config_remain_generic(tmp_path) -> None:
-    document_path = tmp_path / 'documents' / 'custom_domain' / 'sample.pdf'
-    document_path.parent.mkdir(parents=True, exist_ok=True)
-    document_path.write_text('placeholder', encoding='utf-8')
-
-    suggestions = _context_budget_suggestions_for_process(
-        error_record={'code': 'context_window_exceeded'},
-        schema_path=Path('schemas/custom_schema.json'),
-        document_path=document_path,
-        repo_root=tmp_path,
-    )
-
-    assert suggestions is not None
-    assert '--pages START-END' in suggestions[0]
-    assert all('--pages-csv config/' not in suggestion for suggestion in suggestions)
-
-
 def test_resolve_compilation_output_formats_defaults_to_both(schema_path) -> None:
     assert SchemaMetadata.for_compilation(schema_path, {}).get_output_formats() == ['csv', 'excel']
 
@@ -95,7 +51,6 @@ def test_init_domain_schema_cli_creates_lean_starter_from_reference(tmp_path) ->
                 'description': 'Detailed reference schema.',
                 'extraction': {
                     'main_data_array': 'items',
-                    'identifier_fields': ['jurisdiction.county', 'jurisdiction.state'],
                     'context_objects': ['jurisdiction'],
                     'display_name_template': '{jurisdiction.county}',
                     'document_type': 'Reference Permit',
@@ -163,7 +118,6 @@ def test_init_domain_schema_cli_creates_lean_starter_from_reference(tmp_path) ->
     assert payload['status'] == 'ready'
     assert payload['created']['schema_name'] == 'starter_domain'
     assert payload['created']['main_data_array'] == 'items'
-    assert payload['created']['identifier_fields'] == ['jurisdiction.county', 'jurisdiction.state']
 
     starter_schema = json.loads(output_path.read_text(encoding='utf-8'))
     metadata = starter_schema['$metadata']
@@ -195,7 +149,6 @@ def test_init_domain_schema_cli_can_limit_main_array_fields(tmp_path) -> None:
                 'version': '1.0.0',
                 'extraction': {
                     'main_data_array': 'requirements',
-                    'identifier_fields': ['jurisdiction.county'],
                     'context_objects': ['jurisdiction'],
                     'document_type': 'Reference Ordinance',
                 },
@@ -273,7 +226,6 @@ def test_validate_schema_cli_reports_nested_metadata_fields_correctly(tmp_path) 
                 '$metadata': {
                     'extraction': {
                         'main_data_array': 'items',
-                        'identifier_fields': ['jurisdiction.state', 'jurisdiction.county'],
                     },
                     'identity': {
                         'deduplication': {
@@ -295,10 +247,8 @@ def test_validate_schema_cli_reports_nested_metadata_fields_correctly(tmp_path) 
     result = runner.invoke(cli, ['check-schema', str(schema_path)])
 
     assert result.exit_code == 0
-    assert 'Identifier fields: jurisdiction.state, jurisdiction.county' in result.output
     assert 'Main data array: items' in result.output
     assert 'Deduplication key fields: name' in result.output
-    assert "$metadata.extraction missing 'identifier_fields'" not in result.output
     assert "$metadata.extraction missing 'main_data_array'" not in result.output
 
 
@@ -460,7 +410,6 @@ def test_compile_cli_respects_schema_format_and_dual_default(tmp_path, schema_fo
                 'extraction': {
                     'main_data_array': 'items',
                     'context_objects': ['metadata'],
-                    'identifier_fields': ['metadata.id'],
                     'document_type': 'Test Document',
                 },
                 'identity': {
@@ -498,7 +447,6 @@ def test_compile_cli_respects_schema_format_and_dual_default(tmp_path, schema_fo
             'lineage': {
                 'run_id': 'run://contract123',
                 'artifact_id': 'artifact://runtime/contract123',
-                'profile_id': 'default',
                 'model': 'gpt-5',
                 'provider': 'azure',
                 'extracted_at': '2026-03-25T00:00:00Z',
@@ -551,7 +499,6 @@ def test_compile_cli_dry_run_previews_deduplication_without_writing_outputs(tmp_
                 'extraction': {
                     'main_data_array': 'items',
                     'context_objects': ['metadata'],
-                    'identifier_fields': ['metadata.id'],
                     'document_type': 'Test Document',
                 },
                 'identity': {
@@ -594,7 +541,6 @@ def test_compile_cli_dry_run_previews_deduplication_without_writing_outputs(tmp_
             'lineage': {
                 'run_id': 'run://contract123',
                 'artifact_id': 'artifact://runtime/contract123',
-                'profile_id': 'default',
                 'model': 'gpt-5',
                 'provider': 'azure',
                 'extracted_at': '2026-03-25T00:00:00Z',
@@ -617,7 +563,6 @@ def test_compile_cli_dry_run_previews_deduplication_without_writing_outputs(tmp_
             'lineage': {
                 'run_id': 'run://contract124',
                 'artifact_id': 'artifact://runtime/contract124',
-                'profile_id': 'default',
                 'model': 'gpt-5',
                 'provider': 'azure',
                 'extracted_at': '2026-03-25T00:00:00Z',
@@ -661,7 +606,6 @@ def test_compile_cli_dry_run_json_report_is_machine_readable(tmp_path) -> None:
                 'extraction': {
                     'main_data_array': 'items',
                     'context_objects': ['metadata'],
-                    'identifier_fields': ['metadata.id'],
                     'document_type': 'Test Document',
                 },
                 'identity': {
@@ -715,7 +659,6 @@ def test_compile_cli_dry_run_json_report_is_machine_readable(tmp_path) -> None:
                 'lineage': {
                     'run_id': f'run://{record_id}',
                     'artifact_id': f'artifact://runtime/{record_id}',
-                    'profile_id': 'default',
                     'model': 'gpt-5',
                     'provider': 'azure',
                     'extracted_at': '2026-03-25T00:00:00Z',
@@ -756,7 +699,7 @@ def test_compile_cli_dry_run_json_report_is_machine_readable(tmp_path) -> None:
     assert len(report['duplicate_groups']) == 1
     assert report['duplicate_groups'][0]['suspicious'] is True
     assert report['duplicate_groups'][0]['severity'] == 'high'
-    assert report['duplicate_groups'][0]['conflicting_columns'] == ['Value']
+    assert report['duplicate_groups'][0]['conflicting_columns'] == ['Id', 'Value']
     assert report['warnings']
     assert report['fail_on_suspicious'] == 'none'
     assert report['would_fail_on_suspicious'] is False
@@ -775,7 +718,6 @@ def test_compile_cli_dry_run_json_report_can_fail_on_suspicious_threshold(tmp_pa
                 'extraction': {
                     'main_data_array': 'items',
                     'context_objects': ['metadata'],
-                    'identifier_fields': ['metadata.id'],
                     'document_type': 'Test Document',
                 },
                 'identity': {
@@ -819,7 +761,6 @@ def test_compile_cli_dry_run_json_report_can_fail_on_suspicious_threshold(tmp_pa
                 'lineage': {
                     'run_id': f'run://record-{index}',
                     'artifact_id': f'artifact://runtime/record-{index}',
-                    'profile_id': 'default',
                     'model': 'gpt-5',
                     'provider': 'azure',
                     'extracted_at': '2026-03-25T00:00:00Z',
@@ -857,12 +798,11 @@ def test_compile_cli_dry_run_json_report_can_fail_on_suspicious_threshold(tmp_pa
 
 @pytest.fixture
 def writer_metadata(tmp_path):
-    """Provide schema-owned identifiers/counts for record-writer tests."""
+    """Provide schema-owned counts for record-writer tests."""
     path = tmp_path / "record_domain.schema.json"
     _write_json(path, {
         "$metadata": {"extraction": {
             "main_data_array": "items",
-            "identifier_fields": ["metadata.jurisdiction"],
         }},
         "type": "object",
         "properties": {
@@ -897,7 +837,6 @@ def test_write_extraction_record_includes_lineage_fields(
         },
         'lineage': {
             'artifact_id': 'artifact://runtime/abc123def4567890',
-            'profile_id': 'default',
             'pack_name': 'tariffs',
             'pack_version': '1.0.0',
             'compiled_at': '2026-03-24T12:00:00Z',
@@ -909,6 +848,7 @@ def test_write_extraction_record_includes_lineage_fields(
     count = write_extraction_record(
         tmp_path / "example.json",
         doc_path=document,
+        source_document_id="doc.txt",
         result=result,
         model='gpt-5',
         schema_metadata=writer_metadata,
@@ -922,24 +862,20 @@ def test_write_extraction_record_includes_lineage_fields(
 
     output_path = tmp_path / 'example.json'
     saved = json.loads(output_path.read_text(encoding='utf-8'))
-    assert saved['contract_version'] == '1.0.0'
+    assert saved['contract_version'] == '1.1.0'
     assert saved["record_id"].startswith("record://deterministic1234/")
     assert len(saved["record_id"].rsplit("/", 1)[1]) == 64
     assert saved['document']['source_filename'] == 'example.pdf'
-    # Identifier is schema-driven: the caller-supplied identifier field
-    # ('metadata.jurisdiction') selects the source_document_id — no domain
-    # term is hardcoded in the record writer.
-    assert saved['document']['source_document_id'] == 'Example County'
+    assert saved['document']['source_document_id'] == 'doc.txt'
     # Token metrics now flow through from the extraction result.
     assert saved['processing_metrics']['input_tokens'] == 111
     assert saved['processing_metrics']['output_tokens'] == 222
     assert saved['lineage']['artifact_id'] == runtime_artifact['artifact_id']
-    assert saved['lineage']['profile_id'] == 'default'
     assert saved['lineage']['run_id'] == 'run://deterministic1234'
     assert saved['lineage']['provider'] == 'azure'
     assert saved['lineage']['schema_id'] == 'https://example.org/schema/tariffs'
     assert saved['payload']['items'][0]['name'] == 'a'
-    assert saved['quality']['overall_confidence'] == 0.95
+    assert saved['quality']['completeness'] == 0.95
     assert saved['quality']['errors'] == []
     assert saved['processing_metrics']['cost_usd'] == 0.123
 
@@ -975,6 +911,7 @@ def test_write_extraction_record_persists_structured_processing_errors(
     write_extraction_record(
         tmp_path / "example.json",
         doc_path=document,
+        source_document_id="doc.txt",
         result=result,
         model='gpt-5',
         schema_metadata=writer_metadata,
@@ -988,7 +925,6 @@ def test_write_extraction_record_persists_structured_processing_errors(
     assert saved['quality']['errors'][0]['category'] == 'document_processing'
     assert saved['quality']['errors'][0]['code'] == 'document_extraction_failed'
     assert saved['lineage']['artifact_id'] == 'artifact://runtime/deterministic1234'
-    assert saved['lineage']['profile_id'] == 'default'
 
 
 def test_validation_run_id_is_deterministic_for_same_inputs() -> None:

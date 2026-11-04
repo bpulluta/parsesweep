@@ -21,7 +21,6 @@ def _record(path: Path, *, schema_id: str, model: str, provider: str) -> None:
             "lineage": {
                 "run_id": "run://abc",
                 "artifact_id": "artifact://runtime/abc",
-                "profile_id": "default",
                 "schema_id": schema_id,
                 "model": model,
                 "provider": provider,
@@ -107,7 +106,6 @@ def test_warns_on_unresolved_and_missing_lineage_fields(tmp_path: Path) -> None:
             "lineage": {
                 "run_id": "run://abc",
                 "artifact_id": "artifact://runtime/unresolved",
-                "profile_id": "default",
                 "schema_id": None,
                 "model": "gpt-5.6-terra",
                 "provider": "openai",

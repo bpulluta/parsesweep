@@ -91,7 +91,6 @@ def _schema(output_block):
         "$metadata": {
             "extraction": {
                 "main_data_array": "items",
-                "identifier_fields": ["id"],
             },
             "compilation": {"output": output_block},
         },

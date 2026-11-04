@@ -56,7 +56,6 @@ def test_extract_documents_uses_max_context_chars(
                 "$metadata": {
                     "extraction": {
                         "main_data_array": "items",
-                        "identifier_fields": ["name"],
                     },
                     "identity": {
                         "deduplication": {
@@ -123,7 +122,6 @@ def test_extract_documents_uses_max_context_chars(
     assert captured["model"] == "gpt-fixture"
     assert captured["api_key"] == "fixture-key"
     assert captured["base_url"] == "https://proxy.example.invalid/v1"
-    assert captured["schema_metadata"].schema_path == schema_path
     assert captured["context_windows"] is None
     assert captured["reasoning_models"] is None
     assert captured["timeout"] is None
@@ -150,7 +148,7 @@ def test_compile_without_identity_reports_no_deduplication(tmp_path: Path) -> No
     directory.mkdir()
     schema = tmp_path / "schema.json"
     schema.write_text(json.dumps({"$metadata": {"extraction": {
-        "main_data_array": "items", "identifier_fields": ["name"],
+        "main_data_array": "items",
     }}}))
     (directory / "record.json").write_text(json.dumps({"payload": {
         "items": [{"name": "same"}, {"name": "same"}],
@@ -194,7 +192,6 @@ def test_compile_extractions_writes_requested_outputs(tmp_path: Path) -> None:
                 "$metadata": {
                     "extraction": {
                         "main_data_array": "items",
-                        "identifier_fields": ["name"],
                     },
                     "identity": {
                         "deduplication": {
@@ -320,8 +317,8 @@ def test_build_run_stage_commands_wires_validation(tmp_path: Path) -> None:
 @pytest.mark.parametrize("confirm", [True, False])
 def test_validate_confirmation_can_be_explicitly_skipped(tmp_path, monkeypatch, confirm):
     monkeypatch.chdir(tmp_path)
-    docs = tmp_path / "documents"
-    docs.mkdir()
+    docs = tmp_path / Workspace("synthetic").curated
+    docs.mkdir(parents=True)
     (docs / "synthetic.txt").write_text("Synthetic measurement: 42")
     schema = tmp_path / "schema.json"
     schema.write_text(json.dumps({
@@ -330,7 +327,7 @@ def test_validate_confirmation_can_be_explicitly_skipped(tmp_path, monkeypatch, 
             "type": "object", "properties": {"name": {"type": "string"}},
         }}},
         "$metadata": {"extraction": {
-            "main_data_array": "items", "identifier_fields": ["name"],
+            "main_data_array": "items",
         }},
     }))
     config = tmp_path / "run.yaml"
@@ -338,7 +335,6 @@ def test_validate_confirmation_can_be_explicitly_skipped(tmp_path, monkeypatch, 
         "domain": "synthetic",
         "models": {"primary": "gpt-primary", "secondary": "gpt-secondary"},
         "schema": str(schema),
-        "extraction": {"input_dir": str(docs)},
         "validation": {"models": ["primary", "secondary"],
                        "record_matching": {"key_fields": ["name"]},
                        "comparison": {"primary_fields": ["name"]}},
@@ -539,7 +535,6 @@ def test_extract_documents_uses_page_range_csv(tmp_path: Path, monkeypatch) -> N
                 "$metadata": {
                     "extraction": {
                         "main_data_array": "items",
-                        "identifier_fields": ["name"],
                     },
                     "identity": {
                         "deduplication": {
@@ -611,7 +606,6 @@ def _run_config(tmp_path, schema_path, *, discovery=True):
     config = {
         "domain": "acme",
         "schema": str(schema_path),
-        "extraction": {"input_dir": str(tmp_path / "documents")},
     }
     if discovery:
         config["discovery"] = {

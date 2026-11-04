@@ -26,3 +26,7 @@ discovery:
       stamps, fees, inspections, or plan/fire review.
     keep_top: 4
   partition_by: [state, ahj]
+
+extraction:
+  model: primary
+  max_context: 200000

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import csv
 import contextlib
 import json
 import sys
@@ -17,10 +16,7 @@ from psweep.cli.dashboard import create_live_dashboard
 from psweep.cli.ui import (
     Verbosity,
     ask_confirm,
-    get_verbosity,
     print_error,
-    print_info,
-    print_warning,
 )
 from psweep.config import RuntimeConfigError
 from psweep.extraction.document_utils import (
@@ -32,174 +28,6 @@ from psweep.extraction.record_writer import write_extraction_record
 from psweep.pipeline import _execute_extraction, _prepare_extraction
 from psweep.utils.schema_metadata import SchemaMetadata
 from psweep.validation.utils import sanitize_model_name
-
-
-def _format_extraction_accounting(
-    num_docs: int,
-    total_cost_usd: float,
-    total_llm_calls: int,
-    total_time_sec: float,
-    model: str | None,
-) -> str:
-    """Format concise extraction accounting summary for terminal display.
-
-    Parameters
-    ----------
-    num_docs : int
-        Number of documents successfully extracted
-    total_cost_usd : float
-        Total LLM cost in USD
-    total_llm_calls : int
-        Total number of LLM calls
-    total_time_sec : float
-        Total elapsed time in seconds
-    model : str
-        Model name/identifier
-
-    Returns
-    -------
-    str
-        Single-line accounting summary
-    """
-    return f"✓ Extraction: {num_docs} docs, {total_llm_calls} calls, ${total_cost_usd:.3f}, {total_time_sec:.1f}s [{model}]"
-
-
-def _context_budget_suggestions_for_process(
-    *,
-    error_record: Dict[str, Any],
-    schema_path: Path,
-    document_path: Path,
-    repo_root: Optional[Path] = None,
-) -> Optional[List[str]]:
-    """Return actionable CLI suggestions for context-budget failures."""
-    if error_record.get("code") != "context_window_exceeded":
-        return None
-
-    resolved_repo_root = repo_root or Path(__file__).resolve().parents[3]
-    suggestions = [
-        "Rerun with a smaller input scope using --pages START-END for a single PDF or --pages-csv for a batch.",
-        "For large documents, start with the most relevant 25-100 pages instead of a whole-document run and reduce --max-context further if needed.",
-    ]
-
-    try:
-        relative_document_path = document_path.resolve().relative_to(
-            resolved_repo_root.resolve()
-        )
-    except ValueError:
-        relative_document_path = document_path
-
-    path_parts = relative_document_path.parts
-    if len(path_parts) >= 3 and path_parts[0] == "documents":
-        config_path = (
-            resolved_repo_root / "config" / path_parts[1] / "page_ranges.csv"
-        )
-        if config_path.exists():
-            try:
-                display_path = (
-                    config_path.resolve()
-                    .relative_to(resolved_repo_root.resolve())
-                    .as_posix()
-                )
-            except ValueError:
-                display_path = config_path.as_posix()
-            suggestions.insert(
-                1,
-                f"If this document set already has a repo page-range config, rerun with --pages-csv {display_path}.",
-            )
-
-    return suggestions
-
-
-def _apply_page_targeting(
-    *,
-    doc_files: list,
-    page_range_map: dict,
-    config: dict,
-    models: dict | None = None,
-    extraction_model: str | None = None,
-    pages_csv: str | None = None,
-    output_dir: Path | None = None,
-) -> None:
-    """Fill page_range_map for large PDFs via LLM-assisted page targeting."""
-    from psweep.extraction.page_locator import (
-        DEFAULT_MAX_SELECTED_PAGES,
-        DEFAULT_PAGE_TRIGGER_CHARS,
-        PageLocator,
-    )
-    from psweep.extraction.pdf_utils import extract_pages_text
-
-    description = str(config.get("section_description") or "").strip()
-    if not description:
-        print_warning(
-            "pages.auto_locate is set but section_description is missing; "
-            "skipping page targeting."
-        )
-        return
-
-    trigger_chars = int(
-        config.get("trigger_chars", DEFAULT_PAGE_TRIGGER_CHARS)
-        or DEFAULT_PAGE_TRIGGER_CHARS
-    )
-    locator = PageLocator(
-        description,
-        model=config.get("model"),
-        models=models,
-        default_model=extraction_model,
-        trigger_chars=trigger_chars,
-        max_selected_pages=int(
-            config.get("max_selected_pages", DEFAULT_MAX_SELECTED_PAGES)
-            or DEFAULT_MAX_SELECTED_PAGES
-        ),
-        keywords=config.get("keywords"),
-    )
-
-    discovered: list[tuple[str, int, int]] = []
-    non_pdf_skipped = 0
-
-    for doc in doc_files:
-        if doc.suffix.lower() != ".pdf":
-            non_pdf_skipped += 1
-            continue
-        if doc in page_range_map:
-            continue
-        pages = extract_pages_text(doc)
-        if not pages:
-            continue
-        if sum(len(p) for p in pages) <= trigger_chars:
-            continue
-        rng = locator.locate(doc, pages=pages)
-        if rng:
-            page_range_map[doc] = rng
-            discovered.append((doc.name, rng[0], rng[1]))
-            if not get_verbosity().is_quiet:
-                print_info(
-                    f"Page targeting: {doc.name} → pages {rng[0]}-{rng[1]}"
-                )
-
-    if non_pdf_skipped and not get_verbosity().is_quiet:
-        print_info(
-            f"Page targeting skipped {non_pdf_skipped} non-PDF file(s): not a PDF"
-        )
-
-    if discovered and config.get("save_discovered", False):
-        if pages_csv:
-            dest = Path(pages_csv).parent / "discovered_page_ranges.csv"
-        elif output_dir:
-            dest = output_dir / "discovered_page_ranges.csv"
-        else:
-            return
-        dest.parent.mkdir(parents=True, exist_ok=True)
-
-        with open(dest, "w", newline="") as f:
-            writer = csv.writer(f)
-            writer.writerow(["file_path", "start_page", "end_page"])
-            for name, start, end in discovered:
-                writer.writerow([name, start, end])
-        if not get_verbosity().is_quiet:
-            print_info(
-                f"Discovered page ranges written to {dest} — review and "
-                "promote to pages.csv if correct."
-            )
 
 
 def _render_extraction(plan, view, live_dashboard):
@@ -334,21 +162,6 @@ def _render_extraction(plan, view, live_dashboard):
     default=None,
     help="CSV file mapping documents to page ranges",
 )
-@click.option(
-    "--from-index",
-    "from_index",
-    type=click.Path(exists=True),
-    default=None,
-    help="Load discovered files from a download_index.csv (bypasses PATH argument)",
-)
-@click.option(
-    "--filter",
-    "index_filters",
-    type=str,
-    multiple=True,
-    help="With --from-index: keep only rows where COLUMN matches VALUE "
-    "(format: column=value; repeatable; matches any download_index.csv column)",
-)
 def extract(
     path: Optional[str],
     config_path: Optional[str],
@@ -367,13 +180,11 @@ def extract(
     live_dashboard: bool,
     pages: Optional[str],
     pages_csv: Optional[str],
-    from_index: Optional[str] = None,
-    index_filters: tuple = (),
 ):
     """Extract structured data from documents using an LLM.
 
-    Reads PDF, DOCX, TXT, and XLSX files from PATH (or the configured
-    input_dir) and writes one JSON file per document to the output directory.
+    Reads PDF, DOCX, TXT, and XLSX files from PATH (default: the domain's
+    curated discovery directory) and writes one JSON file per document to the output directory.
     Already-processed files are skipped by default; pass --fresh to re-extract
     documents that already have output JSON (cached text/sidecars are still
     reused). Output defaults to ``outputs/<domain>/extracted/`` when --output is omitted;
@@ -413,9 +224,6 @@ def extract(
         ]
     )
 
-    if from_index and "path" not in cli_overrides:
-        cli_overrides["path"] = str(Path(from_index).resolve().parent)
-
     try:
         resolved_inputs = _resolve_runtime_command_inputs(
             command_name="extract",
@@ -434,8 +242,6 @@ def extract(
         plan = _prepare_extraction(
             resolved_inputs,
             fresh=fresh,
-            from_index=from_index,
-            index_filters=index_filters,
             config_path=config_path,
             validate_only=validate_config_only,
         )
@@ -761,6 +567,7 @@ def _run_validation_extraction(
                     write_extraction_record(
                         seed_output_dir / f"{doc_path.stem}.json",
                         doc_path=doc_path,
+                        source_document_id=doc_path.name,
                         result=primary_result.result,
                         model=primary_model,
                         runtime_artifact=runtime_artifact,

@@ -18,6 +18,7 @@ from psweep.discovery.publication import (
 from psweep.extraction.provenance import (
     build_source_context_map,
     prepend_source_context,
+    source_context,
 )
 from psweep.pipeline import _extract_one_document, compile_extractions
 from psweep.utils.schema_metadata import SchemaMetadata
@@ -192,11 +193,11 @@ def test_source_context_ambiguous_basename_never_picks_last_row(tmp_path):
         "documents/a/report.pdf,a/report.pdf,https://agency.gov/a.pdf\n"
         "documents/b/report.pdf,b/report.pdf,https://agency.gov/b.pdf\n"
     )
-    context = build_source_context_map(None, str(index))
+    context = build_source_context_map(index.parent)
     assert "report.pdf" not in context
-    assert prepend_source_context("BODY", tmp_path / "elsewhere/report.pdf", context) == "BODY"
+    assert prepend_source_context("BODY", source_context(tmp_path / "elsewhere/report.pdf", context)) == "BODY"
     assert "https://agency.gov/a.pdf" in prepend_source_context(
-        "BODY", tmp_path / "curated/a/../a/report.pdf", context,
+        "BODY", source_context(tmp_path / "curated/a/../a/report.pdf", context),
     )
 
 
@@ -208,7 +209,7 @@ def test_source_context_canonical_collision_is_explicit(tmp_path):
         "documents/../documents/report.pdf,https://agency.gov/b.pdf\n"
     )
     with pytest.raises(ValueError, match="[Cc]onflict|[Aa]mbiguous"):
-        build_source_context_map(None, str(index))
+        build_source_context_map(index.parent)
 
 
 @pytest.mark.parametrize("change", ["target", "model_alias", "max_chars", "keywords"])
@@ -318,13 +319,13 @@ def test_full_mocked_discover_curate_preserves_partial_and_distinct_sources(monk
     assert prior.read_bytes() == b"prior complete evidence"
     assert result.curated_count == 3
     assert not (tmp_path / DOMAIN_DIR / "curated/by_label/redirect/report.pdf").exists()
-    context = build_source_context_map(tmp_path / DOMAIN_DIR / "curated", None)
+    context = build_source_context_map(tmp_path / DOMAIN_DIR / "curated")
     assert "report.pdf" not in context
     for label in ("first", "second"):
         path = tmp_path / DOMAIN_DIR / f"curated/by_label/{label}/report.pdf"
         assert path.exists()
-        assert f"https://agency.gov/{label}/report.pdf" in prepend_source_context("BODY", path, context)
-    assert "https://agency.gov/prior.pdf" in prepend_source_context("BODY", prior, context)
+        assert f"https://agency.gov/{label}/report.pdf" in prepend_source_context("BODY", source_context(path, context))
+    assert "https://agency.gov/prior.pdf" in prepend_source_context("BODY", source_context(prior, context))
     checkpoint = DiscoveryEngine._load_checkpoint(tmp_path / DOMAIN_DIR / "checkpoint.json")
     assert set(checkpoint) == {  # an off-domain redirect is a final outcome
         identify_target({"label": label})
@@ -364,16 +365,20 @@ def test_full_mocked_discover_curate_preserves_partial_and_distinct_sources(monk
     )
     output = tmp_path / "extracted"
     output.mkdir()
+    root = tmp_path / DOMAIN_DIR / "curated"
     for label in ("first", "second", "partial"):
         (output / label).mkdir()
-        document = tmp_path / DOMAIN_DIR / f"curated/by_label/{label}/report.pdf"
+        document = root / f"by_label/{label}/report.pdf"
+        plan = {
+            "llm": {"model": "gpt-fixture", "provider": "openai"},
+            "inputs": {}, "outputs": {document: output / label / "report.json"},
+            "roster": None, "candidates": {}, "anchors": {}, "roster_errors": {}, "context": context, "root": root,
+            "schema": schema, "schema_path": schema_path, "metadata": metadata,
+            "evidence_paths": [], "fingerprints": {document: "a" * 64},
+        }
         result = _extract_one_document(
-            document, extractor=extractor, loaded_schema=schema,
-            schema_metadata=metadata, schema_path=schema_path,
-            output_path=output / label / "report.json", model="gpt-fixture",
-            run_id="run://integration", provider="openai",
-            input_fingerprint="a" * 64,
-            page_range=(1, 1), source_context_map=context,
+            document, plan, extractor=extractor, run_id="run://integration",
+            page_range=(1, 1),
         )
         assert result["success"], result
     assert set(seen_origins) == {

@@ -8,7 +8,6 @@ from pathlib import Path
 
 import pytest
 
-from psweep.cli import commands_extract as commands
 from psweep.extraction.page_locator import PageLocator
 
 
@@ -258,125 +257,6 @@ class TestRangeResponses:
         assert locator.locate(source, pages=["rates"] * 5) == expected
 
 
-class TestProcessIntegration:
-    def test_apply_page_targeting_respects_manual_and_size(
-        self, tmp_path, monkeypatch
-    ):
-        big = tmp_path / "big.pdf"
-        big.write_bytes(b"%PDF fake")
-        small = tmp_path / "small.pdf"
-        small.write_bytes(b"%PDF fake")
-        manual = tmp_path / "manual.pdf"
-        manual.write_bytes(b"%PDF fake")
-
-        # big.pdf: huge text -> targeting runs; small.pdf: tiny -> skipped.
-        page_text = {
-            big: ["x" * 300_000],
-            small: ["short"],
-            manual: ["x" * 300_000],
-        }
-        monkeypatch.setattr(
-            "psweep.extraction.pdf_utils.extract_pages_text",
-            lambda p: page_text[Path(p)],
-        )
-        monkeypatch.setattr(
-            "psweep.extraction.page_locator.PageLocator.locate",
-            lambda self, doc, pages=None: (5, 9),
-        )
-
-        page_range_map = {manual: (1, 3)}  # manual range present
-        commands._apply_page_targeting(
-            doc_files=[big, small, manual],
-            page_range_map=page_range_map,
-            config={
-                "enabled": True,
-                "section_description": "rate schedules",
-                "trigger_chars": 200_000,
-            },
-        )
-        assert page_range_map[big] == (5, 9)  # located
-        assert small not in page_range_map  # too small, untouched
-        assert page_range_map[manual] == (1, 3)  # CSV entry wins
-
-    def test_apply_page_targeting_skips_explicit_full_doc(
-        self, tmp_path, monkeypatch
-    ):
-        """CSV entry with empty pages (explicit full-doc) blocks targeting."""
-        doc = tmp_path / "full.pdf"
-        doc.write_bytes(b"%PDF fake")
-
-        monkeypatch.setattr(
-            "psweep.extraction.pdf_utils.extract_pages_text",
-            lambda p: ["x" * 300_000],
-        )
-        monkeypatch.setattr(
-            "psweep.extraction.page_locator.PageLocator.locate",
-            lambda self, doc, pages=None: (5, 9),
-        )
-
-        # Explicit full-doc entry (None value, but key IS present)
-        page_range_map = {doc: None}
-        commands._apply_page_targeting(
-            doc_files=[doc],
-            page_range_map=page_range_map,
-            config={
-                "enabled": True,
-                "section_description": "rate schedules",
-                "trigger_chars": 200_000,
-            },
-        )
-        assert page_range_map[doc] is None  # still None, targeting skipped
-
-    def test_apply_page_targeting_writes_discovered_csv(
-        self, tmp_path, monkeypatch
-    ):
-        """Discovered page ranges are written to a CSV for human review."""
-        doc = tmp_path / "big.pdf"
-        doc.write_bytes(b"%PDF fake")
-
-        monkeypatch.setattr(
-            "psweep.extraction.pdf_utils.extract_pages_text",
-            lambda p: ["x" * 300_000],
-        )
-        monkeypatch.setattr(
-            "psweep.extraction.page_locator.PageLocator.locate",
-            lambda self, doc, pages=None: (10, 20),
-        )
-
-        page_range_map: dict = {}
-        out_dir = tmp_path / "output"
-        out_dir.mkdir()
-        commands._apply_page_targeting(
-            doc_files=[doc],
-            page_range_map=page_range_map,
-            config={
-                "enabled": True,
-                "section_description": "rate schedules",
-                "trigger_chars": 200_000,
-                "save_discovered": True,
-            },
-            output_dir=out_dir,
-        )
-        csv_path = out_dir / "discovered_page_ranges.csv"
-        assert csv_path.exists()
-        content = csv_path.read_text()
-        assert "big.pdf" in content
-        assert "10" in content and "20" in content
-
-    def test_apply_page_targeting_noop_without_description(
-        self, tmp_path, monkeypatch, capsys
-    ):
-        doc = tmp_path / "d.pdf"
-        doc.write_bytes(b"%PDF fake")
-        page_range_map: dict = {}
-        commands._apply_page_targeting(
-            doc_files=[doc],
-            page_range_map=page_range_map,
-            config={"enabled": True},  # no section_description
-        )
-        assert page_range_map == {}
-
-
 class TestNonPdfGuard:
     def test_locate_on_non_pdf_returns_none(self, tmp_path):
         """PageLocator.locate() on a non-PDF path returns None without raising."""
@@ -386,24 +266,6 @@ class TestNonPdfGuard:
         # Pass an empty pages list to avoid pymupdf I/O; locate() returns None early.
         result = loc.locate(html, pages=[])
         assert result is None
-
-    def test_apply_page_targeting_skips_non_pdf(self, tmp_path, monkeypatch):
-        """Non-PDF files in doc_files are skipped; no range added to map."""
-        html = tmp_path / "doc.html"
-        html.write_text("<html></html>")
-
-        monkeypatch.setattr(
-            "psweep.extraction.page_locator.PageLocator.locate",
-            lambda self, doc, pages=None: (1, 5),
-        )
-
-        page_range_map: dict = {}
-        commands._apply_page_targeting(
-            doc_files=[html],
-            page_range_map=page_range_map,
-            config={"enabled": True, "section_description": "rate schedules"},
-        )
-        assert html not in page_range_map
 
     def test_llm_failure_in_page_locator_emits_no_error_log(
         self, tmp_path, monkeypatch, caplog

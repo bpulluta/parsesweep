@@ -52,7 +52,6 @@ def synthetic_evidence_schema() -> dict:
             "extraction": {
                 "main_data_array": "comments",
                 "context_objects": ["source"],
-                "identifier_fields": ["source.url"],
                 "document_type": "Evidence record",
             },
             "identity": {"deduplication": {

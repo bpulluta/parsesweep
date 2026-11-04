@@ -446,8 +446,8 @@ If a domain needs different discovery behavior, encode it in that domain's `run.
 | Category | Keys |
 |----------|------|
 | Required | `schema` (top-level; defaults to `schema.json` beside the config) |
-| Optional | `input_dir`, `pages`, `provider`, `model`, `limit` |
-| Advanced | `max_context`, `skip_existing`, `live_dashboard` |
+| Optional | `pages`, `provider`, `model`, `limit` |
+| Advanced | `max_context`, `max_concurrent`, `skip_existing`, `live_dashboard` |
 
 `skip_existing` means verified reuse: matching source/schema/effective settings
 and valid record-byte evidence are required. Stale, malformed, and old unverifiable
@@ -456,7 +456,6 @@ output after preflight, then rebuilds only selected documents. Failed preflight
 preserves old outputs. Extract exits 0 for success/reuse, 1 for any operational
 failure (including partial), and 2 for empty selection; zero-item payloads are valid.
 
-The inert `extraction.profile`, `--profile`, and `--category` surfaces are retired.
 Use a JSON schema directly, not YAML schema packs. Model aliases remain string
 maps; unreachable long-form definitions and `model_defaults` are rejected.
 
@@ -483,7 +482,7 @@ extraction:
 ```
 
 Configure LLM credentials in the environment before extraction. For local
-inputs, set `extraction.input_dir: documents/my_domain`. [ADVANCED.yaml](ADVANCED.yaml)
+inputs, pass the directory positionally to `psweep extract`. [ADVANCED.yaml](ADVANCED.yaml)
 contains the expanded model, output, page-targeting, synthesis, and QA/QC
 examples; placeholder schema paths refer to files you create locally, not
 published private schemas.
