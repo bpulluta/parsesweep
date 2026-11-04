@@ -16,6 +16,9 @@ from psweep.discovery.network import send_get
 from psweep.security import resolve_tls_verification
 
 
+_TEMPLATE_TOKEN = re.compile(r"\{([a-zA-Z0-9_]+)(\?)?\}")
+
+
 class SerpApiSearchTimeout(RuntimeError):
     """Explicit incomplete search, carrying results from completed queries."""
 
@@ -65,14 +68,14 @@ class SerpApiSeeker(BaseSeekerConnector):
         ----------
         api_key : str | None
             Optional override for SERPAPI_API_KEY env var.
-            If not provided, falls back to SERPAPI_API_KEY or SERPAPI_KEY.
+            If not provided, read from SERPAPI_API_KEY.
         ssl_verify : bool | None
             Optional override for TLS verification behavior.
             If omitted, defaults to env-driven value from
             SERPAPI_SSL_VERIFY / PSWEEP_SSL_VERIFY (verified by default).
         """
         self.api_key = (
-            api_key or os.getenv("SERPAPI_API_KEY") or os.getenv("SERPAPI_KEY")
+            api_key or os.getenv("SERPAPI_API_KEY")
         )
         self.ssl_verify = self._resolve_ssl_verify(ssl_verify)
         self.retry_max_attempts = max(1, int(retry_max_attempts))
@@ -159,7 +162,7 @@ class SerpApiSeeker(BaseSeekerConnector):
         """Verify SerpApi credentials are explicitly configured."""
         if not self.api_key:
             raise ValueError(
-                "SerpApi connector requires SERPAPI_API_KEY or SERPAPI_KEY environment variable or api_key parameter."
+                "SerpApi connector requires the SERPAPI_API_KEY environment variable or api_key parameter."
             )
 
     def discover(self, seeker_input: SeekerInput) -> list[dict[str, Any]]:
@@ -188,27 +191,10 @@ class SerpApiSeeker(BaseSeekerConnector):
         RuntimeError
             If SerpApi fails for another reason; aborts without partial success.
         """
-        template_context = {}
-        if isinstance(seeker_input.extra_params, dict):
-            maybe_context = seeker_input.extra_params.get("template_context")
-            if isinstance(maybe_context, dict):
-                template_context = {
-                    str(key): str(value)
-                    for key, value in maybe_context.items()
-                    if value is not None
-                }
-
-        if (
-            isinstance(seeker_input.extra_params, dict)
-            and "timeout_seconds" in seeker_input.extra_params
-        ):
-            self.timeout_seconds = seeker_input.extra_params["timeout_seconds"]
-        rendered_queries = self._resolve_search_queries(
-            seeker_input, template_context
-        )
+        rendered_queries = resolve_search_queries(seeker_input)
         if not rendered_queries:
             raise ValueError(
-                "Seeker query cannot be resolved. Provide --query or query family templates."
+                "No search query could be rendered from the configured templates."
             )
 
         search_callable = self._build_search_callable()
@@ -378,161 +364,23 @@ class SerpApiSeeker(BaseSeekerConnector):
 
     @staticmethod
     def _build_search_params(
-        seeker_input: SeekerInput,
-        rendered_query: str | None = None,
+        seeker_input: SeekerInput, rendered_query: str,
     ) -> dict[str, Any]:
-        """Build SerpApi search parameters."""
-        params = {
-            "q": rendered_query
-            if rendered_query is not None
-            else seeker_input.query,
+        """Build SerpApi params; ``search.params`` may not override reserved keys."""
+        extra = seeker_input.params or {}
+        reserved = RESERVED_SEARCH_PARAMS.intersection(extra)
+        if reserved:
+            msg = (
+                "SerpApi reserved parameters cannot be overridden: "
+                + ", ".join(sorted(reserved))
+            )
+            raise ValueError(msg)
+        return {
             "engine": "google",
+            **{str(key): value for key, value in extra.items()},
+            "q": rendered_query,
             "num": seeker_input.max_results,
         }
-
-        # Engine control keys consumed by query resolution — never forward these
-        # to SerpApi.
-        control_keys = {
-            "template_context",
-            "query_templates",
-            "query_families",
-            "use_query_family",
-            "serpapi_params", "timeout_seconds",
-        }
-
-        if seeker_input.extra_params:
-            for key, value in seeker_input.extra_params.items():
-                if key in control_keys:
-                    continue
-                params[key] = value
-
-            # Verbatim SerpApi params (e.g. {"tbm": "nws"} for Google News,
-            # {"tbs": "qdr:y"} for recency). Merged last so they win.
-            passthrough = seeker_input.extra_params.get("serpapi_params")
-            if isinstance(passthrough, dict):
-                reserved = RESERVED_SEARCH_PARAMS.intersection(passthrough)
-                if reserved:
-                    msg = (
-                        "SerpApi reserved parameters cannot be overridden: "
-                        + ", ".join(sorted(reserved))
-                    )
-                    raise ValueError(msg)
-                for key, value in passthrough.items():
-                    params[str(key)] = value
-
-        # The connector owns query, count, and credential controls.
-        params["q"] = (
-            rendered_query
-            if rendered_query is not None
-            else seeker_input.query
-        )
-        params["num"] = seeker_input.max_results
-        params.pop("api_key", None)
-
-        return params
-
-    @staticmethod
-    def _render_query_template(template: str, context: dict[str, str]) -> str:
-        """
-        Render a query template containing required and optional tokens.
-
-        Supported syntax:
-
-        - {field}: required token, raises when missing
-        - {field?}: optional token, removed when missing
-        """
-        rendered = template
-        token_pattern = re.compile(r"\{([a-zA-Z0-9_]+)(\?)?\}")
-
-        def replace_token(match: re.Match[str]) -> str:
-            token_name = match.group(1)
-            optional = match.group(2) == "?"
-
-            value = context.get(token_name)
-            if value is None or not str(value).strip():
-                if optional:
-                    return ""
-                raise ValueError(
-                    f"Missing required template token: {token_name}"
-                )
-            return str(value).strip()
-
-        rendered = token_pattern.sub(replace_token, rendered)
-        rendered = re.sub(r"\s+", " ", rendered).strip()
-        return rendered
-
-    @staticmethod
-    def _resolve_search_queries(
-        seeker_input: SeekerInput,
-        template_context: dict[str, str],
-    ) -> list[str]:
-        """
-        Resolve one or more rendered search queries.
-
-        Resolution order:
-
-        1. Explicit seeker_input.query (highest priority)
-        2. Selected query family templates (`use_query_family` + `query_families`)
-        3. Top-level query_templates fallback
-        """
-        rendered_queries: list[str] = []
-        raw_query = (seeker_input.query or "").strip()
-        extra_params = (
-            seeker_input.extra_params
-            if isinstance(seeker_input.extra_params, dict)
-            else {}
-        )
-
-        if raw_query:
-            rendered = SerpApiSeeker._render_query_template(
-                raw_query, template_context
-            )
-            if rendered:
-                return [rendered]
-
-        templates_to_try: list[str] = []
-        use_query_family = str(
-            extra_params.get("use_query_family") or ""
-        ).strip()
-        query_families = extra_params.get("query_families")
-        if use_query_family and isinstance(query_families, dict):
-            family_templates = query_families.get(use_query_family)
-            if isinstance(family_templates, list):
-                templates_to_try.extend(
-                    str(template)
-                    for template in family_templates
-                    if isinstance(template, str)
-                )
-
-        if not templates_to_try:
-            top_level_templates = extra_params.get("query_templates")
-            if isinstance(top_level_templates, list):
-                templates_to_try.extend(
-                    str(template)
-                    for template in top_level_templates
-                    if isinstance(template, str)
-                )
-
-        for template in templates_to_try:
-            try:
-                rendered = SerpApiSeeker._render_query_template(
-                    template, template_context
-                )
-            except ValueError:
-                # Skip templates that require missing hints and continue with broader fallback.
-                continue
-            if rendered:
-                rendered_queries.append(rendered)
-
-        # Preserve order while deduplicating rendered queries.
-        deduped_queries: list[str] = []
-        seen_queries: set[str] = set()
-        for query in rendered_queries:
-            if query in seen_queries:
-                continue
-            seen_queries.add(query)
-            deduped_queries.append(query)
-        return deduped_queries
 
     @staticmethod
     def _normalize_results(
@@ -644,3 +492,34 @@ class SerpApiSeeker(BaseSeekerConnector):
     def supports_provider(self, provider: str) -> bool:
         """Check if this connector supports the provider."""
         return provider.lower() in {"serpapi", "serpapi_google"}
+
+
+def resolve_search_queries(seeker_input: SeekerInput) -> list[str]:
+    """Render each template against the context; skip ones missing required tokens."""
+    context = seeker_input.context or {}
+    rendered: dict[str, None] = {}
+    for template in seeker_input.queries:
+        try:
+            query = render_query_template(template, context)
+        except ValueError:
+            continue
+        if query:
+            rendered[query] = None
+    return list(rendered)
+
+
+def render_query_template(template: str, context: dict[str, Any]) -> str:
+    """Render ``{field}`` (required) and ``{field?}`` (optional) tokens."""
+
+    def replace_token(match: re.Match[str]) -> str:
+        value = context.get(match.group(1))
+        if value is None or not str(value).strip():
+            if match.group(2):
+                return ""
+            raise ValueError(
+                f"Missing required template token: {match.group(1)}"
+            )
+        return str(value).strip()
+
+    rendered = _TEMPLATE_TOKEN.sub(replace_token, template)
+    return re.sub(r"\s+", " ", rendered).strip()

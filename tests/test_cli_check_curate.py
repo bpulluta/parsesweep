@@ -313,27 +313,9 @@ def test_curate_human_keep_overrides_underlying_rejection(tmp_path):
     )
 
 
-def test_curate_human_override_publishes_manifest_index_and_sidecar_identity(
-    tmp_path,
-):
-    """Curate human override publishes manifest index and sidecar
-    identity.
-    """
+def test_curate_human_override_publishes_manifest_and_index(tmp_path):
+    """Human decisions live in the manifest and indexes only."""
     run, document, index, review = _curation_fixture(tmp_path)
-    sidecar = document.parent / ".review" / "report.pdf.json"
-    sidecar.parent.mkdir()
-    identity = {
-        "file": "report.pdf",
-        "source_url": "https://agency.gov/report.pdf",
-        "cache_key": "immutable",
-        "llm": {"is_primary": True},
-        "selection": {"selected": True},
-        "coverage": {"mode": "full"},
-        "human": {"decision": None},
-    }
-    sidecar.write_text(json.dumps(identity))
-    wrong_stem = sidecar.parent / "report.json"
-    wrong_stem.write_text('{"untouched":true}')
     result = CliRunner().invoke(cli, ["curate", "--run", str(run), "--quiet"])
     assert result.exit_code == 0, result.output
     review.write_text(
@@ -353,12 +335,6 @@ def test_curate_human_override_publishes_manifest_index_and_sidecar_identity(
     assert result.exit_code == 0, result.output
     assert not (run / "curated/report.pdf").exists()
     assert not (tmp_path / "domain/curated/report.pdf").exists()
-    updated = json.loads(sidecar.read_text())
-    assert {
-        key: value for key, value in updated.items() if key != "human"
-    } == {key: value for key, value in identity.items() if key != "human"}
-    assert updated["human"] == {"decision": "reject", "notes": "not current"}
-    assert wrong_stem.read_text() == '{"untouched":true}'
     manifest = json.loads((run / "manifest.json").read_text())
     assert manifest["lineage"]["curated_count"] == 0
     assert manifest["downloads"][0]["review_selected"] is True
@@ -373,6 +349,66 @@ def test_curate_human_override_publishes_manifest_index_and_sidecar_identity(
         assert list(csv.DictReader(handle)) == []
 
 
+def test_curate_reject_removes_only_the_runs_document(tmp_path):
+    """Other runs' documents in the same partition survive a rejection."""
+    run, document, _, review = _curation_fixture(tmp_path)
+    consolidated = tmp_path / "domain/curated"
+    consolidated.mkdir(parents=True)
+    (consolidated / "other.pdf").write_bytes(b"other target")
+    (tmp_path / "domain/download_index.csv").write_text(
+        "relative_path,url\nother.pdf,https://agency.gov/other.pdf\n"
+    )
+    review.write_text(
+        csv_content(
+            ["relative_path", "human_decision"],
+            [{"relative_path": "report.pdf", "human_decision": "reject"}],
+        )
+    )
+    result = CliRunner().invoke(cli, ["curate", "--run", str(run), "--quiet"])
+    assert result.exit_code == 0, result.output
+    assert (consolidated / "other.pdf").read_bytes() == b"other target"
+    assert not (consolidated / "report.pdf").exists()
+    with (tmp_path / "domain/download_index.csv").open() as handle:
+        assert [r["relative_path"] for r in csv.DictReader(handle)] == ["other.pdf"]
+
+
+def test_curate_reject_never_withdraws_another_owners_path(tmp_path):
+    """A rejection only withdraws a path whose index owner is this run's."""
+    run, _, _, review = _curation_fixture(tmp_path)
+    consolidated = tmp_path / "domain/curated"
+    consolidated.mkdir(parents=True)
+    (consolidated / "report.pdf").write_bytes(b"other owner")
+    (tmp_path / "domain/download_index.csv").write_text(
+        "relative_path,url,target_id\nreport.pdf,https://other.gov/report.pdf,t2\n"
+    )
+    review.write_text(
+        csv_content(
+            ["relative_path", "human_decision"],
+            [{"relative_path": "report.pdf", "human_decision": "reject"}],
+        )
+    )
+    result = CliRunner().invoke(cli, ["curate", "--run", str(run), "--quiet"])
+    assert result.exit_code == 0, result.output
+    assert (consolidated / "report.pdf").read_bytes() == b"other owner"
+    with (tmp_path / "domain/download_index.csv").open() as handle:
+        (row,) = csv.DictReader(handle)
+    assert row["url"] == "https://other.gov/report.pdf"
+
+
+def test_curate_refuses_to_overwrite_another_owners_path(tmp_path):
+    """Publishing onto a path owned by someone else fails closed."""
+    run, _, _, _ = _curation_fixture(tmp_path)
+    consolidated = tmp_path / "domain/curated"
+    consolidated.mkdir(parents=True)
+    (consolidated / "report.pdf").write_bytes(b"other owner")
+    (tmp_path / "domain/download_index.csv").write_text(
+        "relative_path,url,target_id\nreport.pdf,https://other.gov/report.pdf,t2\n"
+    )
+    result = CliRunner().invoke(cli, ["curate", "--run", str(run), "--quiet"])
+    assert result.exit_code != 0
+    assert (consolidated / "report.pdf").read_bytes() == b"other owner"
+
+
 def test_curate_flat_paths_stay_inside_custom_run(tmp_path):
     """Curate flat paths stay inside custom run."""
     run, _, _, _ = _curation_fixture(tmp_path, flat=True)
@@ -384,7 +420,7 @@ def test_curate_flat_paths_stay_inside_custom_run(tmp_path):
     assert not (tmp_path / "download_index.csv").exists()
 
 
-@pytest.mark.parametrize("failure", ["missing", "link", "manifest", "sidecar"])
+@pytest.mark.parametrize("failure", ["missing", "link", "manifest"])
 def test_curate_failure_exit_one_preserves_all_prior_publications(
     tmp_path, monkeypatch, failure
 ):
@@ -404,10 +440,6 @@ def test_curate_failure_exit_one_preserves_all_prior_publications(
             "_link",
             lambda *_: (_ for _ in ()).throw(OSError("link failed")),
         )
-    elif failure == "sidecar":
-        sidecar = document.parent / ".review/report.pdf.json"
-        sidecar.parent.mkdir()
-        sidecar.write_text("{")
     else:
         replace = Path.replace
 
@@ -439,43 +471,15 @@ def test_curate_missing_manifest_is_not_legacy_ledger_fallback(tmp_path):
     assert not (run / "curated").exists()
 
 
-def test_curate_config_locates_actual_custom_manifest_filename(
-    tmp_path, monkeypatch
-):
-    """Curate config locates actual custom manifest filename."""
-    run, _, _, _ = _curation_fixture(tmp_path, flat=True)
-    custom = run / "actual-manifest.json"
-    (run / "manifest.json").rename(custom)
-    config = tmp_path / "run.yaml"
-    config.write_text(
-        f"domain: fixture\ndiscovery:\n  output_manifest: {custom}\n"
-    )
-    monkeypatch.setattr(
-        "psweep.cli.commands_curate.resolve_command_config",
-        lambda **_kwargs: {
-            "domain": "fixture",
-            "output_manifest": str(custom),
-        },
-    )
-    result = CliRunner().invoke(
-        cli, ["curate", "--config", str(config), "--quiet"]
-    )
-    assert result.exit_code == 0, result.output
-    assert (run / "run-curated/report.pdf").exists()
-    assert json.loads(custom.read_text())["lineage"]["curated_count"] == 1
-    assert not (run / "manifest.json").exists()
-    result = CliRunner().invoke(cli, ["curate", "--run", str(run), "--quiet"])
-    assert result.exit_code == 1
-    assert "use --config" in result.output
-
-
 @pytest.mark.parametrize("review_only", [True, False])
 def test_human_keep_releases_only_review_failure_blocks(tmp_path, review_only):
     """Human review cannot release search/download incompleteness."""
     run, _, _, review = _curation_fixture(tmp_path)
     manifest_path = run / "manifest.json"
     manifest = json.loads(manifest_path.read_text())
-    manifest["downloads"][0].update(review_failed=True, review_selected=False)
+    manifest["downloads"][0].update(
+        review_failed=True, review_retryable=True, review_selected=False
+    )
     manifest["lineage"]["blocked_partitions"] = ["."]
     manifest["lineage"]["review_only_blocked_partitions"] = (
         ["."] if review_only else []

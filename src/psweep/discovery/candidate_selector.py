@@ -109,6 +109,7 @@ class CandidateSelector:
         primary_per_target: int = 1,
         target_contexts: list[dict[str, object]] | None = None,
         include_metrics: bool = False,
+        labels: list[str] | None = None,
     ) -> (
         tuple[list[DiscoveryCandidate], list[str]]
         | tuple[list[DiscoveryCandidate], list[str], list[dict[str, Any]]]
@@ -133,6 +134,8 @@ class CandidateSelector:
             used to enrich selection notes and metrics.
         include_metrics:
             When ``True``, also return the per-target selection metrics.
+        labels:
+            Optional per-target display names for notes (default ``#<n>``).
 
         Returns
         -------
@@ -152,10 +155,11 @@ class CandidateSelector:
         target_metrics: list[dict[str, Any]] = []
 
         for target_idx, target_candidates in enumerate(candidates_by_target):
+            name = labels[target_idx] if labels else f"#{target_idx + 1}"
             original_count = len(target_candidates)
             if not target_candidates:
                 notes.append(
-                    f"Target {target_idx}: seeker returned 0 candidates; nothing to select."
+                    f"{name}: seeker returned 0 candidates; nothing to select."
                 )
                 target_metrics.append(
                     {
@@ -181,7 +185,7 @@ class CandidateSelector:
                 draft_count = original_count - len(filtered)
                 if draft_count > 0:
                     notes.append(
-                        f"Target {target_idx}: draft filter excluded {draft_count} of "
+                        f"{name}: draft filter excluded {draft_count} of "
                         f"{original_count} candidate(s)."
                     )
                 target_candidates = filtered
@@ -195,14 +199,14 @@ class CandidateSelector:
                 excluded_count = len(target_candidates) - len(filtered)
                 if excluded_count > 0:
                     notes.append(
-                        f"Target {target_idx}: configured exclusion patterns excluded {excluded_count} of "
+                        f"{name}: configured exclusion patterns excluded {excluded_count} of "
                         f"{len(target_candidates)} candidate(s)."
                     )
                 target_candidates = filtered
 
             if not target_candidates:
                 notes.append(
-                    f"Target {target_idx}: all {original_count} candidate(s) excluded as draft/stale; "
+                    f"{name}: all {original_count} candidate(s) excluded as draft/stale; "
                     "nothing selected."
                 )
                 target_metrics.append(
@@ -231,14 +235,14 @@ class CandidateSelector:
                 )
                 if identity_excluded_count > 0:
                     notes.append(
-                        f"Target {target_idx}: identity filter excluded {identity_excluded_count} of "
+                        f"{name}: identity filter excluded {identity_excluded_count} of "
                         f"{len(target_candidates)} candidate(s)."
                     )
                 target_candidates = identity_filtered
 
             if not target_candidates:
                 notes.append(
-                    f"Target {target_idx}: all candidate(s) excluded by identity rules; "
+                    f"{name}: all candidate(s) excluded by identity rules; "
                     "nothing selected."
                 )
                 target_metrics.append(
@@ -267,14 +271,14 @@ class CandidateSelector:
                 )
                 if relevance_excluded_count > 0:
                     notes.append(
-                        f"Target {target_idx}: relevance filter excluded {relevance_excluded_count} of "
+                        f"{name}: relevance filter excluded {relevance_excluded_count} of "
                         f"{len(target_candidates)} candidate(s)."
                     )
                 target_candidates = relevance_filtered
 
             if not target_candidates:
                 notes.append(
-                    f"Target {target_idx}: all candidate(s) excluded by relevance rules; "
+                    f"{name}: all candidate(s) excluded by relevance rules; "
                     "nothing selected."
                 )
                 target_metrics.append(
@@ -299,14 +303,14 @@ class CandidateSelector:
                 )
                 if unsupported_excluded_count > 0:
                     notes.append(
-                        f"Target {target_idx}: supported-document filter excluded {unsupported_excluded_count} of "
+                        f"{name}: supported-document filter excluded {unsupported_excluded_count} of "
                         f"{len(target_candidates)} candidate(s)."
                     )
                 target_candidates = supported_only
 
             if not target_candidates:
                 notes.append(
-                    f"Target {target_idx}: all candidate(s) excluded as unsupported document type; "
+                    f"{name}: all candidate(s) excluded as unsupported document type; "
                     "nothing selected."
                 )
                 target_metrics.append(
@@ -349,18 +353,18 @@ class CandidateSelector:
             date_info = [str(d) for _, d in top_items if d is not None]
             if date_info:
                 notes.append(
-                    f"Target {target_idx}: selected {len(top_candidates)} of "
+                    f"{name}: selected {len(top_candidates)} of "
                     f"{len(target_candidates)} candidate(s); "
                     f"effective date(s): {', '.join(date_info)}."
                 )
             else:
                 notes.append(
-                    f"Target {target_idx}: selected {len(top_candidates)} of "
+                    f"{name}: selected {len(top_candidates)} of "
                     f"{len(target_candidates)} candidate(s) (no effective date detected in URL)."
                 )
             if self._max_per_host_per_target > 0:
                 notes.append(
-                    f"Target {target_idx}: per-host cap={self._max_per_host_per_target} "
+                    f"{name}: per-host cap={self._max_per_host_per_target} "
                     f"applied to selected candidates."
                 )
 

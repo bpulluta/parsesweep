@@ -121,3 +121,14 @@ def url_extension(url: str) -> str:
     except Exception:
         path = (url or "").lower()
     return Path(path).suffix.lower()
+
+
+def is_http_url(url: object) -> bool:
+    """Return True for an absolute http(s) URL with a host."""
+    if not isinstance(url, str):
+        return False
+    try:
+        parsed = urlparse(url.strip())
+    except ValueError:
+        return False
+    return parsed.scheme in {"http", "https"} and bool(parsed.hostname)

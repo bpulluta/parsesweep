@@ -1,14 +1,9 @@
-"""Shared constants for the discovery module.
-
-Single source of truth for file-type sets, MIME mapping, and the routing-reason
-string literals that are produced in one place and matched by equality in
-another. Centralizing these removes the historical duplication/drift across
-engine, selector, prioritizer, and connectors.
-"""
+"""Shared constants for the discovery module."""
 
 from __future__ import annotations
 
 DEFAULT_MAX_CONCURRENT_DOWNLOADS = 2
+USER_AGENT = "ParseSweep/2.0 (+discovery)"
 RESERVED_SEARCH_PARAMS = frozenset({"q", "num", "api_key"})
 
 
@@ -41,12 +36,13 @@ MIME_TO_EXTENSION: dict[str, str] = {
 
 
 # ---------------------------------------------------------------------------
-# Routing reason strings — produced in one method, matched by equality in the
-# metrics builders. Kept here so producer and matcher can never drift apart.
+# Candidate provenance markers
 # ---------------------------------------------------------------------------
 
-ROUTE_REASON_DISTRIBUTED = "Routed via distributed digger path"
-ROUTE_REASON_CENTRALIZED = "Routed via centralized hub sweep"
+# Candidate source for explicitly configured URLs (target ``urls`` and shared
+# ``sources``): always downloaded and kept, exempt from selection/review caps.
+CONFIGURED_SOURCE = "configured"
+ROUTE_REASON_CRAWLED = "Linked from a crawled source page"
 
 
 # ---------------------------------------------------------------------------

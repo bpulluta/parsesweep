@@ -9,6 +9,11 @@ from psweep.cli.main import cli
 from psweep.workspace import Workspace
 
 
+def _panel_text(output: str) -> str:
+    """Join Rich panel lines so wrapped error messages can be matched."""
+    return " ".join(re.sub(r"[│╭╮╰╯─]", " ", output).split())
+
+
 def test_process_validate_config_with_run_yaml(tmp_path, schema_path):
     documents = tmp_path / "documents"
     documents.mkdir()
@@ -33,7 +38,7 @@ extraction:
         assert "Runtime config validation passed" in result.output
 
 
-def test_process_validate_config_strict_rejects_unknown_key(tmp_path, schema_path):
+def test_process_validate_config_rejects_unknown_key(tmp_path, schema_path):
     config_path = tmp_path / "run.yaml"
     config_path.write_text(
         f"""
@@ -53,12 +58,11 @@ extraction:
             "--config",
             str(config_path),
             "--validate-config",
-            "--config-strict",
         ],
     )
 
     assert result.exit_code != 0
-    assert "Unknown keys in 'extraction' section" in result.output
+    assert "unknown key 'extraction.mystery_option'" in _panel_text(result.output)
 
 
 def test_compile_validate_config_quiet_returns_json(tmp_path, schema_path):
@@ -102,7 +106,7 @@ extraction:
     assert result.exit_code == 0
 
 
-def test_run_validate_config_strict_fails_on_unknown_keys_by_default(tmp_path, schema_path):
+def test_run_validate_config_fails_on_unknown_keys(tmp_path, schema_path):
     config_path = tmp_path / "run.yaml"
     config_path.write_text(
         f"""
@@ -118,37 +122,10 @@ extraction:
     runner = CliRunner()
     result = runner.invoke(
         cli,
-        ["run", "--config", str(config_path), "--validate-config"],
+        ["run", "--config", str(config_path), "--validate-config", "-q"],
     )
     assert result.exit_code != 0
-    assert "Unknown keys in 'extraction' section" in result.output
-
-
-def test_run_validate_config_allows_unknown_keys_when_not_strict(tmp_path, schema_path):
-    config_path = tmp_path / "run.yaml"
-    config_path.write_text(
-        f"""
-domain: demo
-schema: {schema_path.as_posix()}
-extraction:
-  input_dir: documents/demo
-  mystery_option: true
-""",
-        encoding="utf-8",
-    )
-
-    runner = CliRunner()
-    result = runner.invoke(
-        cli,
-        [
-            "run",
-            "--config",
-            str(config_path),
-            "--validate-config",
-            "--no-config-strict",
-        ],
-    )
-    assert result.exit_code == 0
+    assert "unknown key 'extraction.mystery_option'" in _panel_text(result.output)
 
 
 def test_run_fresh_delegates_safe_cleanup_to_extraction(tmp_path, monkeypatch, schema_path):
@@ -241,13 +218,13 @@ def test_config_runtime_catalog_json_output():
     assert "discovery" in catalog
 
 
-def test_acquire_validate_config_with_run_yaml(tmp_path):
+def test_discover_validate_config_with_run_yaml(tmp_path):
     config_path = tmp_path / "run.yaml"
     config_path.write_text(
         """
 domain: geothermal_ordinances
 discovery:
-  seeds:
+  sources:
     - https://example.org/docs
 """,
         encoding="utf-8",
@@ -263,110 +240,36 @@ discovery:
     assert "Runtime config validation passed" in result.output
 
 
-def test_acquire_dry_run_writes_manifest(tmp_path):
-    manifest_path = tmp_path / "manifest.json"
-    docs_dir = tmp_path / "docs"
-
-    runner = CliRunner()
-    result = runner.invoke(
+def test_discover_dry_run_writes_manifest(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    result = CliRunner().invoke(
         cli,
         [
-            "discover",
-            "--seed-url",
-            "https://example.org/docs",
-            "--output-documents",
-            str(docs_dir),
-            "--output-manifest",
-            str(manifest_path),
-            "--dry-run",
-            "-q",
+            "discover", "--domain", "demo",
+            "--source", "https://example.org/docs", "--dry-run", "-q",
         ],
     )
 
     assert result.exit_code == 0
-    assert manifest_path.exists()
-    assert docs_dir.exists()
+    assert list(Workspace("demo").discovered.glob("runs/*/manifest.json"))
 
 
-def test_discover_dry_run_fresh_preserves_checkpoint(tmp_path):
-    # Checkpoint lives at manifest.parent.parent.parent/checkpoint.json.
-    run_dir = tmp_path / "runs" / "run-x"
-    run_dir.mkdir(parents=True)
-    manifest_path = run_dir / "manifest.json"
-    checkpoint_path = tmp_path / "checkpoint.json"
-    checkpoint_path.write_text(
-        '{"version": 1, "entries": {"Aurora CO": {"run_id": "old"}}}',
-        encoding="utf-8",
-    )
+def test_discover_dry_run_preserves_checkpoint(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    checkpoint_path = Workspace("demo").discovered / "checkpoint.json"
+    checkpoint_path.parent.mkdir(parents=True)
+    checkpoint_path.write_text('{"version": 1, "entries": {}}', encoding="utf-8")
 
-    runner = CliRunner()
-    result = runner.invoke(
-        cli,
-        [
-            "discover",
-            "--seed-url",
-            "https://example.org/docs",
-            "--output-documents",
-            str(tmp_path / "docs"),
-            "--output-manifest",
-            str(manifest_path),
-            "--dry-run",
-            "--fresh",
-            "-q",
-        ],
-    )
-
-    assert result.exit_code == 0
-    assert checkpoint_path.exists()
-
-
-def test_discover_default_preserves_checkpoint(tmp_path):
-    run_dir = tmp_path / "runs" / "run-x"
-    run_dir.mkdir(parents=True)
-    manifest_path = run_dir / "manifest.json"
-    checkpoint_path = tmp_path / "checkpoint.json"
-    checkpoint_path.write_text(
-        '{"version": 1, "entries": {"Aurora CO": {"run_id": "old"}}}',
-        encoding="utf-8",
-    )
-
-    runner = CliRunner()
-    result = runner.invoke(
-        cli,
-        [
-            "discover",
-            "--seed-url",
-            "https://example.org/docs",
-            "--output-documents",
-            str(tmp_path / "docs"),
-            "--output-manifest",
-            str(manifest_path),
-            "--dry-run",
-            "-q",
-        ],
-    )
-
-    assert result.exit_code == 0
-    assert checkpoint_path.exists()
-
-
-def test_acquire_validate_config_accepts_serpapi_flag(tmp_path):
-    runner = CliRunner()
-    result = runner.invoke(
-        cli,
-        [
-            "discover",
-            "--seed-url",
-            "https://example.org/docs",
-            "--enable-serpapi",
-            "--validate-config",
-            "-q",
-        ],
-    )
-
-    assert result.exit_code == 0
-    payload = json.loads(result.output)
-    assert payload["resolved"]["enable_serpapi"] is True
+    for extra in ([], ["--fresh"]):
+        result = CliRunner().invoke(
+            cli,
+            [
+                "discover", "--domain", "demo",
+                "--source", "https://example.org/docs", "--dry-run", "-q", *extra,
+            ],
+        )
+        assert result.exit_code == 0
+        assert checkpoint_path.exists()
 
 
 def _run_discover_and_capture_request(extra_args, tmp_path):
@@ -397,7 +300,9 @@ def _run_discover_and_capture_request(extra_args, tmp_path):
             cli,
             [
                 "discover",
-                "--seed-url",
+                "--domain",
+                "demo",
+                "--source",
                 "https://example.org/docs",
                 "-q",
                 *extra_args,
@@ -410,15 +315,15 @@ def test_discover_defaults_to_skip_existing(tmp_path):
     result, request = _run_discover_and_capture_request([], tmp_path)
     assert result.exit_code == 0
     assert request is not None
-    assert request.reprocess is False
+    assert request.fresh is False
     assert request.retention_documents == "all"
 
 
-def test_discover_fresh_flag_sets_request_reprocess(tmp_path):
+def test_discover_fresh_flag_sets_request_fresh(tmp_path):
     result, request = _run_discover_and_capture_request(["--fresh"], tmp_path)
     assert result.exit_code == 0
     assert request is not None
-    assert request.reprocess is True
+    assert request.fresh is True
 
 
 def test_discover_config_retention_documents_flows_to_request(tmp_path):
@@ -427,7 +332,7 @@ def test_discover_config_retention_documents_flows_to_request(tmp_path):
         """
 domain: demo
 discovery:
-  seeds:
+  sources:
     - https://example.org/docs
   retention:
     documents: none
@@ -470,7 +375,7 @@ def test_run_preflight_rejects_none_retention_with_extract_compile(tmp_path, sch
         f"""
 domain: demo
 discovery:
-  seeds:
+  sources:
     - https://example.org/docs
   retention:
     documents: none
@@ -486,7 +391,7 @@ schema: {schema_path.as_posix()}
     )
 
     assert result.exit_code != 0
-    assert "retention_documents='none'" in result.output
+    assert "discovery.retention.documents 'none'" in result.output
 
 
 def test_extract_fresh_preserves_output_when_input_path_missing(tmp_path, monkeypatch):
@@ -581,38 +486,13 @@ discovery:
     assert [row["label"] for row in request.targets] == ["one", "two"]
 
 
-def test_discover_validate_config_accepts_runtime_target_limit(tmp_path):
-    config_path = tmp_path / "run.yaml"
-    config_path.write_text(
-        """
-domain: demo
-discovery:
-  seeds:
-    - https://example.org/docs
-  runtime:
-    target_limit: 3
-""",
-        encoding="utf-8",
-    )
-
-    runner = CliRunner()
-    result = runner.invoke(
-        cli,
-        ["discover", "--config", str(config_path), "--validate-config", "-q"],
-    )
-
-    assert result.exit_code == 0
-    payload = json.loads(result.output)
-    assert payload["resolved"]["target_limit"] == 3
-
-
 def test_discover_validate_config_accepts_retention_documents(tmp_path):
     config_path = tmp_path / "run.yaml"
     config_path.write_text(
         """
 domain: demo
 discovery:
-  seeds:
+  sources:
     - https://example.org/docs
   retention:
     documents: curated
@@ -637,7 +517,7 @@ def test_discover_validate_config_rejects_unknown_retention_keys(tmp_path):
         """
 domain: demo
 discovery:
-  seeds:
+  sources:
     - https://example.org/docs
   retention:
     documents: curated
@@ -654,24 +534,22 @@ discovery:
             "--config",
             str(config_path),
             "--validate-config",
-            "--config-strict",
             "-q",
         ],
     )
 
     assert result.exit_code != 0
-    assert "Unknown keys in 'discovery.retention'" in result.output
+    assert "unknown key 'discovery.retention.unknown'" in _panel_text(result.output)
 
 
-def test_discover_uses_config_dry_run_when_not_passed_on_cli(tmp_path):
+def test_discover_dry_run_flag_flows_to_request(tmp_path):
     config_path = tmp_path / "run.yaml"
     config_path.write_text(
         """
 domain: demo
 discovery:
-  seeds:
+  sources:
     - https://example.org/docs
-  dry_run: true
 """,
         encoding="utf-8",
     )
@@ -698,68 +576,40 @@ discovery:
         runner = CliRunner()
         result = runner.invoke(
             cli,
-            ["discover", "--config", str(config_path), "-q"],
+            ["discover", "--config", str(config_path), "--dry-run", "-q"],
         )
 
     assert result.exit_code == 0
     assert captured["request"].dry_run is True
 
 
-def test_acquire_validate_config_accepts_partition_fields(tmp_path):
-        config_path = tmp_path / "run.yaml"
-        config_path.write_text(
-                """
-domain: geothermal_ordinances
+
+
+def test_discover_effective_config_shows_config_key_paths(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    config_path = tmp_path / "run.yaml"
+    config_path.write_text(
+        """
+domain: fixture
 discovery:
-    seeds:
-        - https://example.org/docs
-    state: California
-    jurisdiction: Imperial County
-    partition_mode: jurisdiction
+  queries: [records]
+  search:
+    max_results: 7
+  selection:
+    max_per_target: 2
 """,
-                encoding="utf-8",
-        )
-
-        runner = CliRunner()
-        result = runner.invoke(
-                cli,
-                ["discover", "--config", str(config_path), "--validate-config", "-q"],
-        )
-
-        assert result.exit_code == 0
-        payload = json.loads(result.output)
-        resolved = payload["resolved"]
-        assert resolved["state"] == "California"
-        assert resolved["jurisdiction"] == "Imperial County"
-        assert resolved["partition_mode"] == "jurisdiction"
-
-
-def test_acquire_validate_config_accepts_policy_fields(tmp_path):
-        config_path = tmp_path / "run.yaml"
-        config_path.write_text(
-                """
-domain: geothermal_ordinances
-discovery:
-    seeds:
-        - https://example.org/docs
-    policy:
-        robots_mode: warn
-        tos_mode: enforce
-        acknowledged_tos_domains:
-            - example.org
-""",
-                encoding="utf-8",
-        )
-
-        runner = CliRunner()
-        result = runner.invoke(
-                cli,
-                ["discover", "--config", str(config_path), "--validate-config", "-q"],
-        )
-
-        assert result.exit_code == 0
-        payload = json.loads(result.output)
-        resolved = payload["resolved"]
-        assert resolved["robots_policy_mode"] == "warn"
-        assert resolved["tos_policy_mode"] == "enforce"
-        assert resolved["acknowledged_tos_domains"] == ["example.org"]
+        encoding="utf-8",
+    )
+    result = CliRunner().invoke(
+        cli,
+        [
+            "discover", "--config", str(config_path),
+            "--show-effective-config", "--validate-config", "--dry-run",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    output = _panel_text(result.output)
+    assert "discovery.search.max_results" in output
+    assert "discovery.selection.max_per_target" in output
+    assert "seeker_max_results" not in output
+    assert "selection_primary_per_target" not in output

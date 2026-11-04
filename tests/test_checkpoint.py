@@ -13,6 +13,7 @@ from pathlib import Path
 import pytest
 
 from psweep.discovery.engine import DiscoveryEngine
+from psweep.discovery.targets import identify_target
 from psweep.discovery.publication import (
     PublicationError,
     artifact_sha256,
@@ -38,37 +39,19 @@ def _evidence(tmp_path: Path, name: str) -> dict:
     }
 
 
-class TestCheckpointKey:
-    def test_label_only_target_is_its_complete_identity(self):
-        assert (
-            DiscoveryEngine._target_checkpoint_key({"label": "Aurora CO"})
-            == "Aurora CO"
+class TestTargetId:
+    def test_identity_is_partition_by_or_non_input_fields(self):
+        target = {"label": "Aurora CO", "state": "co", "cost": "300", "urls": ["https://a.gov/1.pdf"]}
+        assert identify_target(target, ["label", "state"]) == identify_target(
+            {"state": "co", "label": "Aurora CO", "cost": "999"}, ["label", "state"]
         )
+        assert identify_target(target) != identify_target({**target, "state": "oh"})
+        assert identify_target(target) == identify_target({**target, "urls": [], "query": "x"})
 
-    def test_label_does_not_discard_other_identity_fields(self):
-        key = DiscoveryEngine._target_checkpoint_key(
-            {"label": "Aurora CO", "state": "co"}
-        )
-        assert key != DiscoveryEngine._target_checkpoint_key(
-            {"label": "Aurora CO", "state": "oh"}
-        )
-
-    def test_hash_fallback_when_no_label(self):
-        key = DiscoveryEngine._target_checkpoint_key(
-            {"state": "co", "utility_name": "Xcel"}
-        )
-        assert len(key) == 12
-        assert key.isalnum()
-
-    def test_hash_is_stable_across_key_order(self):
-        a = DiscoveryEngine._target_checkpoint_key({"x": "1", "y": "2"})
-        b = DiscoveryEngine._target_checkpoint_key({"y": "2", "x": "1"})
-        assert a == b
-
-    def test_different_targets_get_different_hashes(self):
-        a = DiscoveryEngine._target_checkpoint_key({"state": "co"})
-        b = DiscoveryEngine._target_checkpoint_key({"state": "oh"})
-        assert a != b
+    def test_id_is_short_path_safe_and_order_stable(self):
+        key = identify_target({"x": "1", "y": "2"})
+        assert len(key) == 12 and key.isalnum()
+        assert key == identify_target({"y": "2", "x": "1"})
 
 
 class TestCheckpointIO:

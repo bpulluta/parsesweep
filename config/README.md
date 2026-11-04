@@ -21,9 +21,9 @@ discovery:
 
 Set `SERPAPI_API_KEY` in your environment or `.env` — never in YAML. No schema
 or LLM credential is needed unless you add extraction or paid LLM review.
-Queries auto-enable SerpApi when search is omitted. Explicit
-`search.enabled: false` wins. Replace `queries` with
-`seeds` for known document URLs; seed-only input does not auto-enable search.
+Search runs only when `queries` (or a target `query`) is set. For known
+document URLs, replace `queries` with `sources`; configured URLs are always
+downloaded and kept.
 
 ```bash
 pixi run psweep discover --config config/my_domain/run.yaml --validate-config
@@ -31,7 +31,7 @@ pixi run psweep discover --config config/my_domain/run.yaml
 ```
 
 The default is 10 unique candidates per query and 1 acquisition per target,
-with no crawl, concurrency 2, retry attempts 3, and robots/ToS policy modes
+with no link following (`crawl.max_depth: 0`), concurrency 2, retry attempts 3, and robots/ToS policy modes
 `warn`. Search cache, browser mode, browser escalation, code-host adapters, and
 LLM document review are off. Inspect the documents before adding stages:
 `outputs/my_domain/discovered/runs/<run_id>/curated` holds one run's selected files;
@@ -76,16 +76,9 @@ retired. Move their `discovery`/`extraction`/`compilation`/`validation` sections
 into the selected config and remove the adjacent files; the loader reports
 which files need migration. Explicit section-wrapped configs remain supported.
 
-Discovery rejects unknown nested options, quoted booleans, invalid regexes,
-and invalid limits before execution, even without `--config-strict`.
-`pipeline`, `scoring`, `dedupe`, `file_filters`, and `keyword_validation` were
-unused discovery blocks and are no longer accepted. Use supported selection,
-ranking, discovery rules, and document-classifier settings instead.
-Canonical discovery YAML uses `search`, `search.max_results`, and selection
-`max_per_target`/`require_any`/`exclude`. Retired `seeker`,
-`max_results_per_query`, `primary_per_target`, `relevance_require_any_terms`, and
-`relevance_exclude_any_terms` fail with the replacement key in the error,
-even when canonical keys coexist.
+Config is always strict: unknown keys at any level, quoted booleans, invalid
+regexes, URLs, and limits fail before execution, naming the file, the key path,
+and the closest valid key.
 `discover --validate-config` checks the same normalized input plan as execution,
 without network calls or output writes; it does not check live credentials,
 provider availability, or network reliability.
@@ -93,7 +86,6 @@ provider availability, or network reliability.
 Supported validation flags (all commands):
 - `--validate-config`: validate resolved inputs and exit — no stage execution.
 - `--show-effective-config`: print resolved values with source attribution and continue.
-- `--config-strict`: fail on unknown keys in runtime config sections.
 
 ```bash
 # Validate and preview effective config for any command
@@ -124,8 +116,8 @@ Use a host allowlist **and** URL-path regex for strict sources:
 discovery:
   queries:
     - "site:example.org installation manual filetype:pdf"
-  allowed_domains: [example.org]
-  discovery_rules:
+  crawl:
+    allowed_domains: [example.org]
     include_url_patterns: ['^https?://(?:www\.)?example\.org/documents/']
 ```
 
@@ -145,111 +137,58 @@ semantic relevance.
 
 | Key | Type | Description |
 |-----|------|-------------|
-| `queries` | list | Simple queries or templates; enables SerpApi when search is omitted. |
-| `seeds` | list | Known URLs; seed-only input does not auto-enable search. |
-| `search` | dict | Provider, per-query candidate budget, opt-in cache, and provider parameters. |
-| `allowed_domains` | list | Hard host scope; combine with URL-path rules when needed. |
-| `discovery_rules` | dict | `include_url_patterns` and `include_link_text_patterns` regexes. |
-| `follow_links` | bool | Opt into crawling; omitted means direct acquisition. |
-| `topology.mode` | string | Advanced topology: `distributed`, `centralized`, or `hybrid`. |
-| `targets` | list/object | Per-target discovery inputs or a generated target source. |
-| `targets_csv` | string | Authored target rows; path relative to config directory. |
-| `query_families` | dict | Named lists of query templates. |
-| `runtime` | dict | Crawl budgets, download concurrency, and request pacing. |
-| `policy` | dict | Robots/ToS modes and acknowledged domains. |
-| `retry_policy` | dict | Attempts and backoff limits. |
-| `request_headers` | dict | Public, non-empty HTTP header names and values; no credentials. |
+| `targets` | path/list/object | `.csv`/`.json` path, inline rows, or `{cross_product: {dimensions: [...]}}`. |
+| `sources` | list | Shared document/page URLs; always downloaded and kept, saved under `_shared/`. |
+| `queries` | list | Search templates (`{field}` required, `{field?}` optional); enable search. |
+| `crawl` | dict | Link following, scope, browser options, and request headers. |
+| `search` | dict | Per-query candidate budget, opt-in cache, and SerpApi params. |
+| `runtime` | dict | `max_files`, `timeout_seconds`, concurrency, and request pacing. |
+| `selection` / `link_prioritization` | dict | Filters and ranking for search results and crawled links. |
+| `document_classifier` / `document_review` | dict | Post-download keyword check and optional LLM curation. |
+| `policy` / `retry_policy` | dict | Robots/ToS modes and retry limits. |
+| `partition_by` / `retention` | list/dict | Output layout and kept-document policy. |
 
-### `targets[]` or `targets_csv`
+### `targets`
 
-Each target supplies document-discovery inputs. Free-form fields are available
-as template variables for query rendering. Supply `state` and `jurisdiction`
-explicitly for geographic partitioning, or use `partition_by` for your own
-metadata layout. Discovery never infers geography from query text and has no
-built-in US state aliases; `jurisdiction_aliases` contains only your configured
-aliases.
+Each row is one target. Every column except `urls` and `query` is target
+metadata: it fills query templates, partitions output (`partition_by`), and is
+recorded as provenance. `urls` lists the target's own documents or pages (a
+list, or `a|b` in a CSV cell); they are always downloaded and kept. `query`
+replaces `queries` for that row. Discovery never infers geography from query
+text. Relative paths resolve against the config directory; CSV headers may
+carry a UTF-8 BOM. Use `--target-limit N` to run the first N rows; edit the
+file to run a different subset.
 
-**Option 1: Inline targets (small number of targets)**
+A target's identity is its `partition_by` values, or every metadata column when
+`partition_by` is unset. Identity names the target in checkpoints, labels,
+review prompts, and curated ownership, so it must be unique: duplicate rows fail
+with both row locations. Other columns are passthrough provenance; editing them
+re-runs nothing.
+
 ```yaml
 discovery:
   targets:
-    - manufacturer: Generac           # used in query template as {manufacturer}
-      power_class_kw: "200-300"       # used as {power_class_kw}
-      query: "Generac 250kW generator manual pdf"   # explicit query (optional)
-    - manufacturer: John Deere
-      power_class_kw: "200-300"
-
-    # Jurisdiction-style target (geothermal, ordinances, etc.)
-    - id: chaffee_county_co
-      jurisdiction: Chaffee County
-      state: CO
-      topic: geothermal ordinance
-      seeds:
-        - https://www.chaffeecounty.org/departments/land_use_code.php
-```
-
-**Option 2: CSV file (hundreds or thousands of targets)**
-```yaml
-discovery:
-  targets_csv: targets.csv   # Load targets from CSV in same directory
-  query_families:
-    generator_similar_power:
-      - "{manufacturer} {power_class_kw} kW generator spec pdf"
-  search:
-    provider: serpapi
-    use_query_family: generator_similar_power
-```
-
-**targets.csv format** (one header row, each row = one target):
-```csv
-manufacturer,power_class_kw
-Generac,200-300
-John Deere,50-100
-Caterpillar,100-200
-Cummins,150-250
-```
-
-**CSV features:**
-- Column names become template variables for `query_families`
-- Empty cells → `None` values (works with optional template placeholders `{var?}`)
-- Relative paths resolve relative to config directory
-- Can mix CSV targets with inline targets (CSV loaded first)
-
-**Why CSV targets?**
-- Inline targets keep small target sets readable in YAML
-- CSV avoids repeating target metadata in YAML for larger sets
-- A query-family template can be applied to all CSV rows
-- All CSV columns are available as template variables — no code changes needed
-
-### `query_families`
-
-Named lists of query templates. Use `{field}` placeholders filled from target fields at runtime; select a family with `search.use_query_family`.
-
-```yaml
-discovery:
-  query_families:
-    generator_similar_power:
-      - "{manufacturer} {power_class_kw} kW generator spec pdf"
-      - "{manufacturer} generator {power_class_kw} kW manual pdf"
-    geothermal_generic:
-      - "{jurisdiction} {state} geothermal ordinance pdf"
-      - "{jurisdiction} {state} geothermal land use code"
+    - {jurisdiction: Chaffee County, state: CO,
+       urls: [https://www.chaffeecounty.org/land_use_code.pdf]}
+    - {manufacturer: Generac, query: "Generac 250kW generator manual pdf"}
+  # or: targets: targets.csv
+  # or: targets: {cross_product: {dimensions: [
+  #       {name: state, values: [CO, NM]},
+  #       {name: county, dataset: counties.csv, column: county}]}}
+  queries:
+    - "{jurisdiction} {state} geothermal ordinance pdf"
 ```
 
 ### `search` Settings
 
-`search:` is the canonical block for provider, query-family selection, result
-limits, cache, and API parameters. `seeker:` is retired and fails validation
-with migration guidance; it is not merged with `search`. Explicit
-`search.enabled: false` overrides inferred search and top-level
-`enable_serpapi`; explicit CLI overrides win last.
+Search uses SerpApi and runs only when `queries` or a target `query` is set.
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
-| `provider` | string | `serpapi` | Only `serpapi` is currently supported. |
 | `max_results` | int | `10` | Local unique-candidate cap per query, including cached/news results. |
-| `use_query_family` | string | — | Name of query family to render against each target. |
-| `enabled` | bool | Inferred from query/provider configuration | Explicitly disable/enable search; not a string. |
+| `cache` | bool | `false` | Cache results on disk; a cache hit makes no live call. |
+| `cache_ttl_minutes` | number | `0` | Cache expiry; `0` never expires. |
+| `params` | dict | — | Extra SerpApi params (e.g. `{tbm: nws}`); `q`, `num`, `api_key` are reserved. |
 
 Configure candidate ranking via `link_prioritization:` (`mode`, `top_k`,
 `keywords`, `domain_scores`), not unsupported keys inside `search`.
@@ -276,9 +215,7 @@ ranking.
 # Example: generator domain with configured relevance boosts
 discovery:
   search:
-    provider: serpapi
     max_results: 6
-    use_query_family: generator_similar_power
   link_prioritization:                 # own block, not under search
     mode: heuristic
     keywords: [manual, operator, installation, spec]
@@ -333,35 +270,49 @@ discovery:
 
 Keep required identity hints consistent with the fields supplied by each target.
 Start with targeted queries and add exclusions/required terms only for observed
-mismatches. Use `allowed_domains` plus `discovery_rules` when source scope is a
-requirement, rather than relying on ranking boosts. Optional keyword
+mismatches. Use `crawl.allowed_domains` plus `crawl.include_url_patterns` when
+source scope is a requirement, rather than relying on ranking boosts. Optional keyword
 classification or paid LLM review happens after acquisition; neither establishes
 population coverage.
 
-### Optional advanced discovery features
+Selection filters, `max_per_target`, the classifier's `action: filter`, and
+`document_review.keep_top` apply to search results and crawled links only.
+Configured URLs (`sources`, target `urls`) are always kept, and shared sources
+do not count against any target's caps.
 
-See [ADVANCED.yaml](ADVANCED.yaml), the [configuration reference](../docs/config-reference.md), and the existing domain configs for stage-specific examples.
+### `crawl` Settings
 
-| Key | Purpose |
-|-----|---------|
-| `targets` (object with `source:`) | Generate targets: `dataset` (one per row) or `cross_product`. |
-| `query_context_aliases` | Coalesce alias → first non-empty target field for query templates. |
-| `browser_mode` | Off by default; explicitly use headless Chrome downloads (requires Selenium + Chrome). |
-| `browser_escalation` | Off by default; `{enabled: true}` opts into thin/JS-shell recovery. Threshold-only settings do not enable it. |
-| `code_host_adapters` | Off by default; `{enabled: true}` opts into supported code-host API recovery. Threshold-only settings do not enable it. |
-| `document_classifier` | Keyword check; `action: warn` (flag) or `filter`. |
-| `document_review` | Explicit optional paid LLM curation; requires `document_description`, `model`, and LLM credentials. `keep_top` is separate from acquisition count. Writes an editable `review.csv` (see [Curate](../README.md#curate)). |
-| `partition_by` | Output layout `by_<f1>/<v1>/<v2>/…` from target-metadata fields. |
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `provider` | string | `http` | `http` or `selenium` (requires Selenium + Chrome). |
+| `max_depth` | int | `0` | `0` = never follow links; `N` fetches HTML pages up to `N` links deep. |
+| `max_pages` | int | `50` | HTML pages fetched per crawl. |
+| `allowed_domains` | list | source hosts | Host scope for crawled links and downloads. |
+| `include_url_patterns` | list | — | Regexes; matching links are treated as documents. |
+| `include_link_text_patterns` | list | — | Regexes on link text. |
+| `browser_downloads` | bool | `false` | Download through headless Chrome (bot-protected sites). |
+| `browser_escalation` | dict | off | `{enabled: true}` opts into JS-shell browser recovery. |
+| `code_host_adapters` | dict | off | `{enabled: true}` opts into code-host API recovery. |
+| `request_headers` | dict | — | Public, non-empty HTTP headers; no credentials. |
+
+Every candidate — configured URL or search result — that is an HTML page is
+crawled when `max_depth > 0`. Crawled links are normal candidates subject to
+selection.
 
 ### `runtime` Settings
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
-| `min_request_interval_ms` | int | `0` | Minimum delay between outbound requests (ms). |
+| `max_files` | int | unbounded | Download cap; configured URLs never count. |
+| `timeout_seconds` | int | engine default | Request timeout. |
 | `max_concurrent_downloads` | int | `2` | Max parallel file downloads. |
-| `max_depth` | int | engine default | Crawl descent budget; `0` means no descent. Direct acquisition is the default topology. |
-| `max_pages` / `max_files` | int | engine default | Positive crawl/download budgets. |
-| `timeout_seconds` | int | engine default | Positive routing request timeout. |
+| `min_request_interval_ms` | int | `0` | Minimum delay between outbound requests (ms). |
+
+Other blocks: `document_classifier` (`action: warn` or `filter`),
+`document_review` (paid LLM curation; writes an editable `review.csv`, see
+[Curate](../README.md#curate)), and `partition_by` (`by_<f1>/<v1>/…` from
+target metadata; untargeted documents go to `_shared/`). See
+[ADVANCED.yaml](ADVANCED.yaml) for every key.
 
 Retry and policy controls belong in separate blocks:
 
@@ -375,8 +326,6 @@ discovery:
     robots_mode: warn              # ignore, warn, or enforce
     tos_mode: warn                 # ignore, warn, or enforce
     acknowledged_tos_domains: []
-  request_headers:
-    User-Agent: ParseSweep/2.0
 ```
 
 HTTP enforcement is available. Strict robots/ToS enforcement cannot certify
@@ -392,8 +341,7 @@ values must be finite and non-negative.
 
 | Variable | Description |
 |----------|-------------|
-| `SERPAPI_API_KEY` | SerpApi key (primary); keep out of YAML. |
-| `SERPAPI_KEY` | SerpApi key (fallback). |
+| `SERPAPI_API_KEY` | SerpApi key; keep out of YAML. |
 | `SERPAPI_SSL_VERIFY` | Search TLS verification; overrides `PSWEEP_SSL_VERIFY`. Defaults to true. |
 | `DISCOVERY_SSL_VERIFY` | Download TLS verification; overrides `PSWEEP_SSL_VERIFY`. Defaults to true. |
 | `PSWEEP_SSL_VERIFY` | Model TLS verification and fallback for search/downloads. Defaults to true. |
@@ -414,6 +362,7 @@ for downstream input:
 ```text
 outputs/<domain>/discovered/
     checkpoint.json                 # v2 resume: effective config + artifact evidence
+    .review_cache/<key>.json        # content-addressed LLM review grades (all runs)
     latest -> runs/<run_id>         # symlink to the current run
     curated/                        # consolidated selected docs -> downstream input
     runs/<run_id>/
@@ -421,10 +370,9 @@ outputs/<domain>/discovered/
         download_index.csv          # machine-readable file list (+ review cols)
         review.csv                  # human-editable curation ledger
         documents/                  # all downloads from this run (not a recall guarantee)
-            <partition>/<file>          # by_state_jurisdiction / by_host / by_<fields>
+            <partition>/<file>          # _shared / _targets/<target_id> / by_<fields>/...
             <partition>/.text/<filename>.txt        # cached OCR text
             <partition>/.text/<filename>.meta.json  # source + text digest evidence
-            <partition>/.review/<filename>.json     # LLM verdict + human override
         curated/                    # selected docs from this run
             <partition>/<file>
 ```
@@ -437,16 +385,29 @@ is present, edit `review.csv` (`human_decision` = `keep`/`reject`) and run
 
 Checkpoint v2 skips only work whose effective config fingerprint and artifact
 SHA-256 evidence still match. Changed settings, missing/altered artifacts, and
-v1 entries are not reusable. Corpus publication rejects concurrent writers and
+v1 entries are not reusable. Targets and shared `sources` are checkpointed one by one and are not part
+of the fingerprint, so adding one fetches only the new item. A target is also
+re-run when what it executes changes (its `urls`, rendered queries, or rendered
+identity selection terms). An item is
+complete once every outcome is final (downloaded, skipped, rejected, or a
+terminal failure such as HTTP 404 or a TLS error). Retryable failures (timeouts,
+429/5xx, network errors, a robots.txt that could not be fetched for such a
+reason) and a crawl cut short by such a failure or by
+`max_pages`/`max_files` keep it open for the next run. Resumed runs
+publish file by file; only `--fresh` replaces whole curated partitions. Each
+curated path belongs to one target or source and stays stable across re-runs:
+when another published owner already holds a filename, the newcomer gets a short
+deterministic hash suffix (`report-1a2b3c4d.pdf`). Failed or unselected
+downloads reserve no names.
+Corpus publication rejects concurrent writers and
 recovers interrupted curated/provenance swaps from its journal on the next
 writer; this is discovery-specific, not a general pipeline transaction.
 
 OCR pairs use full filenames, so `report.pdf` and `report.html` cannot collide.
 Source size/mtime and digest plus the cached-text digest must match; partial,
 stale, or mismatched pairs are misses. Temporary-file replacement publishes
-metadata last; no stem-only fallback exists. Curation carries OCR and full-name
-review sidecars with selected files. Native extraction/OCR correction behavior
-is unchanged.
+metadata last; no stem-only fallback exists. Curation carries OCR caches with
+selected files. Native extraction/OCR correction behavior is unchanged.
 
 Discovery exit codes are verbosity-independent: `success`, `dry_run`, and
 validated `reused` work return **0**; failed or partially failed acquisition
@@ -456,14 +417,14 @@ returns **2**. Inspect the manifest's outcome rather than counting files alone.
 **`manifest.json` observability sections:**
 - `timing`: `started_at`, `completed_at`, `elapsed_seconds`
 - `stage_summaries.seeker`: candidates discovered, after prioritization
-- `stage_summaries.routing`: mode, applied, candidates-in/out
+- `stage_summaries.crawl`: provider, max_depth, applied, candidates-in/out
 - `stage_summaries.downloads`: downloaded, skipped, failed, total_bytes
 - `candidate_summary`: total, by acceptance class (accepted/needs_review/rejected), by source
 - `lineage`: `documents_dir`, `download_index_csv`, `review_index_csv`, `curated_dir`, `curated_count`, ranked candidates
 
-**`download_index.csv` columns:** `run_id`, `domain`, `partition_mode`, `source_state`, `source_jurisdiction`, `source_host`, `status`, `url`, `final_url`, `mime_type`, `bytes`, `relative_path`, `path`, `review_selected`, `review_is_primary`, `review_relevance`, `review_doc_kind`, `error`, `target_metadata`
+**`download_index.csv` columns:** `run_id`, `domain`, `target_label`, `target_id`, `source_scope`, `source_url`, `status`, `classification_passed`, `url`, `final_url`, `mime_type`, `bytes`, `relative_path`, `path`, `review_selected`, `review_is_primary`, `review_relevance`, `review_doc_kind`, `error`, `target_metadata`
 
-**`review.csv` columns (human-editable):** `target`, `partition`, `state`, `jurisdiction`, `doc_kind`, `relevance`, `llm_is_primary`, `llm_selected`, `human_decision`, `human_notes`, `llm_reason`, `relative_path`, `path`
+**`review.csv` columns (human-editable):** `target`, `partition`, `source_scope`, `doc_kind`, `relevance`, `llm_is_primary`, `llm_selected`, `human_decision`, `human_notes`, `llm_reason`, `relative_path`, `path`
 
 ### Policy Design Decision
 

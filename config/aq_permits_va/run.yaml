@@ -4,13 +4,13 @@
 # HTTP client (requests, curl) — even with transplanted cookies (Akamai also
 # fingerprints TLS). The permit links are DNN "showpublisheddocument" URLs with
 # no file extension. So this config:
-#   - seeds the public index page,
-#   - crawls it with a real headless Chrome (digger.provider: selenium),
+#   - lists the public index page as a source,
+#   - crawls it one level deep with a real headless Chrome (crawl.provider: selenium),
 #   - treats showpublisheddocument links as documents (include_url_patterns),
-#   - downloads each PDF THROUGH the browser (browser_mode: true).
+#   - downloads each PDF THROUGH the browser (crawl.browser_downloads: true).
 #
 # Nothing here is VA-specific in code — any bot-protected, extension-less
-# document site works by changing the seed URL + include_url_patterns.
+# document site works by changing the source URL + include_url_patterns.
 #
 # Requires Selenium + Google Chrome.
 #   psweep discover --config config/aq_permits_va/run.yaml
@@ -23,22 +23,19 @@ models:
   secondary: compassop-gpt-4.1-mini   # QA/QC contrast model (speed/cost)
 
 discovery:
-  seeds:
+  sources:
     - "https://www.deq.virginia.gov/news-info/shortcuts/permits/air/issued-title-v-permits"
 
-  follow_links: true          # crawl the index (distributed topology)
-  browser_mode: true          # real browser for crawl + download (Akamai)
-
-  digger:
+  crawl:
     provider: selenium
-    allowed_domains: ["deq.virginia.gov"]
-    discovery_rules:
-      # Permit links carry no .pdf extension; match the DNN document path.
-      include_url_patterns: ["showpublisheddocument"]
-
-  runtime:
     max_depth: 1              # index page -> permit links
     max_pages: 3
+    allowed_domains: ["deq.virginia.gov"]
+    # Permit links carry no .pdf extension; match the DNN document path.
+    include_url_patterns: ["showpublisheddocument"]
+    browser_downloads: true   # real browser for downloads (Akamai)
+
+  runtime:
     max_files: 5             # a few permits, to test
     min_request_interval_ms: 1000
 

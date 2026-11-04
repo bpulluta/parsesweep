@@ -228,7 +228,7 @@ def test_build_run_stage_commands_preserves_flags(tmp_path: Path) -> None:
         "discovery:\n"
         "  targets:\n"
         "    - label: demo\n"
-        "      url: https://example.com\n",
+        "      urls: [https://example.com]\n",
         encoding="utf-8",
     )
 
@@ -239,7 +239,6 @@ def test_build_run_stage_commands_preserves_flags(tmp_path: Path) -> None:
         skip_extract=False,
         fresh=True,
         target_limit=3,
-        retention_documents="curated",
         extra_flags=("-q",),
     )
 
@@ -256,8 +255,6 @@ def test_build_run_stage_commands_preserves_flags(tmp_path: Path) -> None:
                 "-q",
                 "--target-limit",
                 "3",
-                "--retention-documents",
-                "curated",
                 "--fresh",
             ],
         ),
@@ -297,7 +294,7 @@ def test_build_run_stage_commands_wires_validation(tmp_path: Path) -> None:
         "discovery:\n"
         "  targets:\n"
         "    - label: demo\n"
-        "      url: https://example.com\n"
+        "      urls: [https://example.com]\n"
         "schema: schemas/example.json\n"
         "validation:\n"
         "  models: [primary, secondary]\n",
@@ -424,34 +421,6 @@ def test_build_run_stage_commands_applies_target_limit_only_to_discover(
     assert cmd_map["discover"][cmd_map["discover"].index("--target-limit") + 1] == "2"
     assert "--target-limit" not in cmd_map["extract"]
     assert "--target-limit" not in cmd_map["compile"]
-
-
-def test_build_run_stage_commands_applies_retention_only_to_discover(
-    tmp_path: Path,
-) -> None:
-    config_path = tmp_path / "example.yaml"
-    config_path.write_text(
-        "domain: example\n"
-        "discovery:\n"
-        "  targets:\n"
-        "    - label: demo\n"
-        "      query: test\n",
-        encoding="utf-8",
-    )
-
-    stage_cmds = build_run_stage_commands(
-        config_path,
-        base_cmd=["pixi", "run", "psweep"],
-        retention_documents="none",
-    )
-    cmd_map = dict(stage_cmds)
-    assert "--retention-documents" in cmd_map["discover"]
-    assert (
-        cmd_map["discover"][cmd_map["discover"].index("--retention-documents") + 1]
-        == "none"
-    )
-    assert "--retention-documents" not in cmd_map["extract"]
-    assert "--retention-documents" not in cmd_map["compile"]
 
 
 def test_build_run_stage_commands_uses_config_extract_input_without_target_limit(

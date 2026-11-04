@@ -1,9 +1,28 @@
-# Utility Rate Tariffs — full pipeline config
-# Usage: psweep extract --config config/utility_rate_tariffs/run.yaml
+# SolarTRACE: residential solar permitting requirements per AHJ.
+# Usage: pixi run psweep run --config config/solartrace/run.yaml
 
 domain: solartrace
 
-# Model tiers — cheap/fast for iteration steps, accurate for extraction.
 models:
-  primary: gpt-6.1-sol        # extraction (accuracy matters)
-  secondary: gpt-5.6-luna   # discovery, page targeting, review (speed matters)
+  primary: gpt-6.1-sol      # extraction
+  secondary: gpt-5.6-luna   # review
+
+discovery:
+  targets: targets.csv      # state, ahj, geo_id; optional `urls` column for known pages
+  sources:                  # shared across all targets
+    - https://energy-ready.org/communities                       # SolSmart designees
+    - https://www.gosolarapp.org/where-is-solarapp-available     # SolarAPP+ jurisdictions
+  queries:
+    - '"{ahj}" {state} residential solar permit requirements'
+    - '"{ahj}" {state} solar photovoltaic permit application checklist'
+    - '"{ahj}" {state} building permit fee schedule'
+  search: {max_results: 8, cache: true}
+  selection: {max_per_target: 8}
+  document_review:
+    model: secondary
+    document_description: >-
+      official page or document from the county (AHJ) about residential rooftop
+      solar PV permitting: submission process or portal, required documents or
+      stamps, fees, inspections, or plan/fire review.
+    keep_top: 4
+  partition_by: [state, ahj]

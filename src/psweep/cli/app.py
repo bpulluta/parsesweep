@@ -17,10 +17,8 @@ from psweep.cli.commands_curate import curate
 from psweep.cli.commands_discover import discover
 from psweep.cli.commands_extract import extract
 from psweep.cli.commands_validate import validate
-from psweep.discovery.request_inputs import (
-    normalize_discover_inputs,
-    validate_discover_plan,
-)
+from psweep.discovery.request_inputs import discovery_request_fields
+from psweep.discovery.targets import iter_targets
 from psweep.pipeline import (
     build_run_stage_commands,
     count_curated_documents,
@@ -66,13 +64,10 @@ def cli(ctx: click.Context) -> None:
               help="Path to the domain run configuration.")
 @click.option("--fresh", is_flag=True, help="Re-run discovery, extraction, and compilation.")
 @click.option("--target-limit", "-n", type=click.IntRange(min=1), help="Limit discovery targets.")
-@click.option("--retention-documents", help="Discovery retention: all, curated, or none.")
 @click.option("--skip-discover", is_flag=True, help="Use existing curated documents.")
 @click.option("--skip-extract", is_flag=True, help="Compile existing extracted records.")
 @click.option("--validate-config", "validate_config_only", is_flag=True,
               help="Validate the run configuration without executing stages.")
-@click.option("--config-strict/--no-config-strict", default=True,
-              help="Fail on unknown configuration keys.")
 @click.option("--yes", "-y", is_flag=True, help="Skip confirmation.")
 @click.option("--quiet", "-q", is_flag=True, help="Minimal output.")
 @click.option("--verbose", "-v", is_flag=True, help="Detailed output.")
@@ -80,11 +75,9 @@ def run(
     config_path: Path,
     fresh: bool = False,
     target_limit: int | None = None,
-    retention_documents: str | None = None,
     skip_discover: bool = False,
     skip_extract: bool = False,
     validate_config_only: bool = False,
-    config_strict: bool = True,
     yes: bool = False,
     quiet: bool = False,
     verbose: bool = False,
@@ -100,7 +93,7 @@ def run(
         psweep run --config config/my_domain/run.yaml --target-limit 3 --fresh --yes
 
     Adding new targets:
-        1. Add rows to config/<domain>/targets.csv
+        1. Add rows to the targets file named by discovery.targets
         2. Run: psweep run --config config/<domain>/run.yaml
         3. Only new targets are processed; previous results are preserved.
     """
@@ -119,14 +112,6 @@ def run(
     resolved_verbosity = Verbosity.from_flags(quiet=quiet, verbose=verbose, debug=False)
     set_verbosity(resolved_verbosity)
     view = RunView("run", verbosity=resolved_verbosity)
-    if retention_documents is not None:
-        retention_documents = retention_documents.strip().lower()
-        if retention_documents not in {"all", "curated", "none"}:
-            view.error(
-                "Invalid --retention-documents value",
-                "Expected one of: all, curated, none",
-            )
-            raise click.exceptions.Exit(1)
 
     try:
         cfg = load_runtime_config_file(config_path)
@@ -137,23 +122,6 @@ def run(
     domain = cfg["domain"]
     workspace = Workspace(domain)
     discovery_enabled = resolve_run_discovery_enabled(config_path)
-    discovery_cfg = cfg.get("discovery", {}) if discovery_enabled else {}
-
-    # Build run plan
-    target_labels: list[str] = []
-    configured_targets = discovery_cfg.get("targets")
-    if isinstance(configured_targets, list):
-        target_labels = [
-            str(row.get("label") or "").strip()
-            for row in configured_targets
-            if isinstance(row, dict)
-        ]
-        target_labels = [label for label in target_labels if label]
-    planned_target_labels = (
-        target_labels[:target_limit]
-        if target_limit is not None
-        else target_labels
-    )
 
     preflight_commands: list[str] = []
     if not skip_discover and discovery_enabled:
@@ -163,35 +131,26 @@ def run(
     preflight_commands.append("compile")
 
     try:
-        discover_inputs: dict[str, object] | None = None
+        discover_fields: dict[str, object] | None = None
+        configured_targets = 0
         if discovery_enabled and not skip_discover:
             discover_inputs = resolve_command_config(
                 command="discover",
-                cli_values={
-                    **(
-                        {"target_limit": target_limit}
-                        if target_limit is not None
-                        else {}
-                    ),
-                    **(
-                        {"retention_documents": retention_documents}
-                        if retention_documents is not None
-                        else {}
-                    ),
-                },
+                cli_values={"target_limit": target_limit},
                 config_data=cfg,
-                strict=config_strict,
             )
             try:
-                validate_discover_plan(normalize_discover_inputs(discover_inputs))
+                discover_fields = discovery_request_fields(discover_inputs)
             except ValueError as exc:
                 raise RuntimeConfigError(str(exc)) from exc
+            spec = discover_inputs.get("targets")
+            if spec is not None:
+                configured_targets = sum(1 for _ in iter_targets(spec))
         for command_name in preflight_commands:
             stage_inputs = resolve_command_config(
                 command=command_name,
                 cli_values={},
                 config_data=cfg,
-                strict=config_strict,
             )
             if command_name == "compile":
                 from psweep.config.runtime_config_loader import resolve_compilation_metadata
@@ -207,13 +166,13 @@ def run(
                     raise RuntimeConfigError(str(exc)) from exc
         if (
             not skip_extract
-            and discover_inputs is not None
-            and str(discover_inputs.get("retention_documents", "all")).lower() == "none"
+            and discover_fields is not None
+            and discover_fields.get("retention_documents") == "none"
         ):
             view.error(
                 "Run preflight failed",
-                "retention_documents='none' keeps no local docs and is incompatible "
-                "with extract/compile run stages. Use --retention-documents curated "
+                "discovery.retention.documents 'none' keeps no local docs and is "
+                "incompatible with extract/compile run stages. Use 'curated' "
                 "or run discover-only.",
             )
             raise click.exceptions.Exit(1)
@@ -234,16 +193,14 @@ def run(
     plan_rows: dict[str, str] = {"Domain": domain}
     if not discovery_enabled:
         plan_rows["Targets"] = "n/a (discovery not configured)"
-    elif target_limit is not None:
-        limited_total = len(planned_target_labels)
-        plan_rows["Targets"] = (
-            f"{limited_total}/{len(target_labels)} configured "
-            f"(limited by --target-limit)"
-        )
+    elif discover_fields is None:
+        plan_rows["Targets"] = "n/a (--skip-discover)"
     else:
+        planned = len(discover_fields["targets"] or [])
         plan_rows["Targets"] = (
-            f"{len(planned_target_labels)} configured "
-            "(reuse verified by discovery)"
+            f"{planned}/{configured_targets} configured (limited by --target-limit)"
+            if planned < configured_targets
+            else f"{planned} configured (reuse verified by discovery)"
         )
     if curated_count and not fresh:
         plan_rows["Curated"] = f"{curated_count} docs (preserved)"
@@ -292,7 +249,6 @@ def run(
         discovery_enabled=discovery_enabled,
         fresh=fresh,
         target_limit=target_limit,
-        retention_documents=retention_documents,
         extract_input_path=(
             workspace.latest / "curated"
             if (not skip_discover and discovery_enabled and target_limit is not None)

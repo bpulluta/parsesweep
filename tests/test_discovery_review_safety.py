@@ -98,56 +98,42 @@ def test_direct_constructor_rejects_invalid_sample_budget(max_chars):
         DocumentReviewer(document_description="records", max_chars=max_chars)
 
 
-def test_same_stem_formats_preserve_separate_human_decisions(tmp_path):
-    """PDF and HTML sidecars never borrow each other's human decisions."""
-    records = [
-        _record(tmp_path, name) for name in ("report.pdf", "report.html")
-    ]
-    review_dir = tmp_path / ".review"
-    review_dir.mkdir()
-    decisions = {"report.pdf": "keep", "report.html": "reject"}
-    for filename, decision in decisions.items():
-        (review_dir / f"{filename}.json").write_text(
-            json.dumps({"human": {"decision": decision}}),
-            encoding="utf-8",
-        )
-    (review_dir / "report.json").write_text(
-        json.dumps({"human": {"decision": "unrelated legacy decision"}}),
-        encoding="utf-8",
-    )
-    reviewer = _stub_reviewer(keep_top=2)
-    reviewer.review(records, [])
-    for filename, decision in decisions.items():
-        payload = json.loads((review_dir / f"{filename}.json").read_text())
-        assert payload["file"] == filename
-        assert payload["human"] == {"decision": decision}
-        assert payload["llm"] == _GRADE
+def test_grade_cache_is_content_addressed_across_paths(tmp_path):
+    """Identical bytes in another run directory reuse the stored grade."""
+    cache = tmp_path / ".review_cache"
+    for run in ("run1", "run2"):
+        (tmp_path / run).mkdir()
+    first, second = _record(tmp_path / "run1"), _record(tmp_path / "run2")
+    _stub_reviewer(cache_dir=cache).review([first], [])
+    reviewer = _stub_reviewer(cache_dir=cache)
+
+    def _unexpected(*_args, **_kwargs):
+        raise AssertionError("identical content must reuse the grade")
+
+    reviewer._grade = _unexpected
+    reviewer.review([second], [])
+    assert second["review_cached"] is True
+    assert second["review_grade"] == _GRADE
+    assert [path.parent for path in cache.iterdir()] == [cache]
 
 
-def test_atomic_sidecar_failure_keeps_prior_bytes(tmp_path, monkeypatch):
-    """A failed replacement leaves the prior human-bearing file intact."""
+def test_grade_cache_write_failure_is_not_a_review_failure(tmp_path, monkeypatch):
+    """An unwritable cache only costs a regrade on the next run."""
     record = _record(tmp_path)
-    sidecar = tmp_path / ".review" / "report.pdf.json"
-    sidecar.parent.mkdir()
-    original = '{"human": {"decision": "keep", "notes": "important"}}'
-    sidecar.write_text(original, encoding="utf-8")
 
     def _fail_replace(_self, _target):
         raise OSError("simulated replacement failure")
 
     monkeypatch.setattr(Path, "replace", _fail_replace)
-    reviewer = _stub_reviewer()
-    reviewer.review([record], [])
-    assert sidecar.read_text(encoding="utf-8") == original
-    assert list(sidecar.parent.iterdir()) == [sidecar]
-    assert record["review_failed"] is True
-    assert "sidecar" in record["review_error"]
+    _stub_reviewer(cache_dir=tmp_path / ".review_cache").review([record], [])
+    assert not record.get("review_failed")
+    assert record["review_selected"] is True
 
 
 def test_changed_content_with_identical_stat_invalidates_grade(tmp_path):
     """Size and timestamp equality cannot disguise changed document bytes."""
     record = _record(tmp_path)
-    reviewer = _stub_reviewer()
+    reviewer = _stub_reviewer(cache_dir=tmp_path / ".review_cache")
     reviewer.review([record], [])
     path = Path(record["path"])
     previous = path.stat()
@@ -169,8 +155,9 @@ def test_changed_content_with_identical_stat_invalidates_grade(tmp_path):
 def test_selection_changes_reuse_raw_grade(tmp_path):
     """Selection controls are not inputs to the raw LLM grade cache."""
     record = _record(tmp_path)
-    _stub_reviewer(keep_top=1).review([record], [])
-    reviewer = _stub_reviewer(keep_top=2)
+    cache = tmp_path / ".review_cache"
+    _stub_reviewer(keep_top=1, cache_dir=cache).review([record], [])
+    reviewer = _stub_reviewer(keep_top=2, cache_dir=cache)
 
     def _unexpected(*args, **kwargs):
         raise AssertionError("selection-only change must reuse grade")
@@ -187,8 +174,9 @@ def test_selection_changes_reuse_raw_grade(tmp_path):
 def test_sampling_config_invalidates_raw_grade(tmp_path, config):
     """Effective sampling configuration participates in cache identity."""
     record = _record(tmp_path)
-    _stub_reviewer().review([record], [])
-    reviewer = _stub_reviewer(**config)
+    cache = tmp_path / ".review_cache"
+    _stub_reviewer(cache_dir=cache).review([record], [])
+    reviewer = _stub_reviewer(cache_dir=cache, **config)
     reviewer.review([record], [])
     assert record["review_cached"] is False
 
@@ -367,12 +355,6 @@ def test_comparative_dedup_exception_marks_survivors_without_losing_grades(
         assert record["review_grade"] == _GRADE
         assert "dedup" in record["review_error"]
         assert "secret" not in record["review_error"]
-        sidecar = Path(record["path"]).parent / ".review"
-        payload = json.loads(
-            (sidecar / f"{Path(record['path']).name}.json").read_text(),
-        )
-        assert payload["llm"] == _GRADE
-        assert payload["selection"]["selected"] is False
     costs = reviewer.get_costs()
     assert costs["usage_unknown_calls"] == 1
     assert costs["llm_calls"] == 1
@@ -419,30 +401,17 @@ def test_client_setup_failure_is_explicit_and_sanitized(tmp_path):
 def test_invalid_cached_grade_is_regraded(tmp_path):
     """A matching cache key cannot make a malformed grade trustworthy."""
     record = _record(tmp_path)
-    reviewer = _stub_reviewer()
+    cache = tmp_path / ".review_cache"
+    reviewer = _stub_reviewer(cache_dir=cache)
     reviewer.review([record], [])
-    sidecar = tmp_path / ".review" / "report.pdf.json"
-    payload = json.loads(sidecar.read_text())
+    (entry,) = cache.iterdir()
+    payload = json.loads(entry.read_text())
     payload["llm"]["is_primary"] = "false"
-    sidecar.write_text(json.dumps(payload), encoding="utf-8")
+    entry.write_text(json.dumps(payload), encoding="utf-8")
     reviewer.review([record], [])
     assert record["review_cached"] is False
     assert record["review_is_primary"] is True
     assert not record.get("review_failed")
-
-
-def test_corrupt_prior_sidecar_is_not_overwritten(tmp_path):
-    """Unreadable human decisions are preserved rather than replaced."""
-    record = _record(tmp_path)
-    sidecar = tmp_path / ".review" / "report.pdf.json"
-    sidecar.parent.mkdir()
-    sidecar.write_text("{broken human decision", encoding="utf-8")
-    reviewer = _stub_reviewer()
-    reviewer.review([record], [])
-    assert sidecar.read_text() == "{broken human decision"
-    assert record["review_failed"] is True
-    assert record["review_selected"] is False
-    assert "sidecar" in record["review_error"]
 
 
 @pytest.mark.parametrize(
@@ -520,3 +489,14 @@ def test_invalid_comparative_assessment_preserves_grade_and_usage(
     assert costs["total_output_tokens"] == 5
     assert costs["llm_calls"] == 1
     assert costs["usage_unknown_calls"] == 0
+
+
+def test_unreadable_document_is_a_terminal_review_failure(tmp_path, monkeypatch):
+    """Insufficient text cannot improve on re-run, so it must not block."""
+    monkeypatch.setattr(document_utils, "extract_text_from_document", lambda _path: "")
+    record = _record(tmp_path)
+    reviewer = DocumentReviewer(document_description="records")
+    reviewer._client = object()
+    reviewer.review([record], [])
+    assert record["review_failed"] is True
+    assert record["review_retryable"] is False

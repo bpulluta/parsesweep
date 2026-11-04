@@ -11,10 +11,11 @@ models:
 
 # ── Discovery ────────────────────────────────────────────────────────────────
 discovery:
-  # This domain opts into code-host/API and browser recovery.
-  browser_escalation: {enabled: true}
-  code_host_adapters: {enabled: true}
-  targets_csv: targets.csv
+  targets: targets.csv
+  crawl:
+    # Opt into code-host/API and browser recovery.
+    browser_escalation: {enabled: true}
+    code_host_adapters: {enabled: true}
   queries:
     - "\"{jurisdiction}\" {state} geothermal ordinance zoning code"
     - "\"{jurisdiction}\" {state} geothermal energy regulation setback permit"
@@ -22,7 +23,6 @@ discovery:
     - "site:ecode360.com \"{jurisdiction}\" {state}"
     - "site:municode.com \"{jurisdiction}\" {state} geothermal OR energy"
   search:
-    provider: serpapi
     max_results: 10
     cache: true
   selection:

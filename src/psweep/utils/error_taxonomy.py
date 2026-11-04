@@ -104,20 +104,22 @@ def normalize_error_records(
             if isinstance(error.get("source"), dict)
             else {}
         )
-        normalized.append(
-            {
-                "stage": error.get("stage") or "unknown",
-                "category": error.get("category") or "internal",
-                "code": error.get("code") or "unexpected_processing_error",
-                "message": error.get("message") or "Unknown error",
-                "retryable": bool(error.get("retryable", False)),
-                "source": {
-                    "document_path": source.get("document_path"),
-                    "model": source.get("model"),
-                    "provider": source.get("provider"),
-                },
-            }
-        )
+        record = {
+            "stage": error.get("stage") or "unknown",
+            "category": error.get("category") or "internal",
+            "code": error.get("code") or "unexpected_processing_error",
+            "message": error.get("message") or "Unknown error",
+            "retryable": bool(error.get("retryable", False)),
+            "source": {
+                "document_path": source.get("document_path"),
+                "model": source.get("model"),
+                "provider": source.get("provider"),
+            },
+        }
+        # Discovery errors are attributed to their target (or ``_shared``).
+        if error.get("target_label"):
+            record["target_label"] = error["target_label"]
+        normalized.append(record)
 
     return sorted(
         normalized,

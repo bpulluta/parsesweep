@@ -53,10 +53,9 @@ discovery:
     - "industrial pump installation manual filetype:pdf"
 ```
 
-No extraction schema or LLM credential is needed for discovery alone. Queries
-auto-enable SerpApi when search is omitted; explicit `search.enabled: false`
-wins. For known document URLs, replace `queries`
-with `seeds`; seed-only input does not auto-enable search.
+No extraction schema or LLM credential is needed for discovery alone. Search
+runs only when `queries` are set. For known document URLs, replace `queries`
+with `sources`; configured URLs are always downloaded and kept.
 
 ```bash
 # Local input-plan validation: no network calls or run artifacts
@@ -187,8 +186,10 @@ pixi run psweep discover --config config/my_domain/run.yaml
   --config PATH                 Config YAML
   --validate-config             Validate local input plan; no network calls/output writes
   --dry-run                     Show acquisition plan; search may still contact the provider
-  --max-concurrent-downloads N   Limit parallel downloads (default: 2)
 ```
+
+Parallel downloads are set by `discovery.runtime.max_concurrent_downloads`
+(default: 2).
 
 Discovery exits **0** for `success`, `dry_run`, or validated `reused` work,
 **1** for failed or partially failed acquisition (including zero downloads due
@@ -208,7 +209,7 @@ label,jurisdiction,state,topic,technology
 
 ```yaml
 discovery:
-  targets_csv: targets.csv
+  targets: targets.csv              # a `urls` column (a|b) adds known target URLs
   queries:
     - "{jurisdiction} {state} ordinance filetype:pdf"
   search:
@@ -237,12 +238,12 @@ provider `num` is not trusted as the cap. No hidden pagination or refill is
 performed. `max_per_target` controls acquisition, while optional LLM review's
 `keep_top` controls retention after acquisition. No LLM review is auto-enabled.
 
-For strict source scope, combine `allowed_domains` and URL-path regexes:
+For strict source scope, combine `crawl.allowed_domains` and URL-path regexes:
 
 ```yaml
 discovery:
-  allowed_domains: [example.org]
-  discovery_rules:
+  crawl:
+    allowed_domains: [example.org]
     include_url_patterns: ['^https?://(?:www\.)?example\.org/documents/']
 ```
 
@@ -651,7 +652,11 @@ Extraction shows per-file cost in real-time:
 Discovery checkpoint **v2** reuse requires the same effective config and valid
 artifact digest evidence (including curated files). Changed settings, missing
 or altered artifacts, and old v1 entries cause reacquisition, not a success
-skip. Discovery publication locks reject concurrent corpus writers; its journal
+skip. Targets and shared `sources` are checkpointed one by one and are not part
+of the fingerprint, so adding one fetches only the new item; a target also
+re-runs when its `urls` or rendered queries change. Resumed runs
+publish file by file; only `--fresh` replaces whole curated partitions.
+Discovery publication locks reject concurrent corpus writers; its journal
 recovers interrupted curated/provenance swaps on the next writer. This is a
 small discovery-specific protocol, not a general pipeline transaction.
 Extraction reuses only validated records with matching source/schema digests and
@@ -695,8 +700,8 @@ identity. Source size/mtime and SHA-256 plus the cached-text SHA-256 must match;
 partial or mismatched pairs are cache misses. Writes replace temporary files
 with metadata last; old stem-only caches are not reused. OCR caches hold raw
 text so current correction rules apply without repeating OCR; older corrected
-OCR entries are invalidated. LLM review sidecars use `.review/<filename>.json`.
-Selected documents carry these sidecars into curated output. Page and section
+OCR entries are invalidated. LLM review grades are cached by document content in
+`discovered/.review_cache/` and reused across runs. Page and section
 selection caches include source content, resolved model, and effective settings;
 section caches use full filenames and text digests. These caches are separate
 from output-record reuse and opt-in search caching; delete `.text/`, `.pages/`,

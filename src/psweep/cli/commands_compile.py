@@ -118,11 +118,6 @@ def _should_fail_on_provenance(
     help="Validate resolved command inputs and exit without compiling",
 )
 @click.option(
-    "--config-strict",
-    is_flag=True,
-    help="Fail on unknown keys in runtime config sections",
-)
-@click.option(
     "--schema",
     "-s",
     type=click.Path(exists=True),
@@ -178,7 +173,6 @@ def compile(
     config_path: Optional[str],
     show_effective_config: bool,
     validate_config_only: bool,
-    config_strict: bool,
     schema: Optional[str],
     output: Optional[str],
     dry_run: bool,
@@ -235,7 +229,6 @@ def compile(
         resolved_inputs = _resolve_runtime_command_inputs(
             command_name="compile",
             config_path=config_path,
-            strict=config_strict,
             cli_values=cli_overrides,
         )
         from psweep.config.runtime_config_loader import resolve_compilation_metadata
@@ -245,8 +238,6 @@ def compile(
         view.error("Runtime config resolution failed", str(exc))
         sys.exit(1)
 
-    warnings = resolved_inputs.get("_config_warnings", [])
-    view.warnings(warnings)
 
     if show_effective_config and not get_verbosity().is_quiet:
         _print_effective_config("compile", resolved_inputs)

@@ -22,10 +22,9 @@ discovery:
 
 Set `SERPAPI_API_KEY` in the environment or `.env`, then run
 `pixi run psweep discover --config config/my_domain/run.yaml`.
-`discovery.queries` auto-enables SerpApi when search is omitted; explicit
-`search.enabled: false` wins over inference.
-Seed-only input does not auto-enable search. Replace `queries` with
-`seeds: [https://example.org/documents/manual.pdf]` for known document URLs.
+Search runs only when `discovery.queries` (or a target `query`) is set.
+Replace `queries` with `sources: [https://example.org/documents/manual.pdf]`
+for known document URLs; configured URLs are always downloaded and kept.
 
 Start from `config/TEMPLATE.yaml`; use `config/ADVANCED.yaml` for expanded
 stage settings. The existing `init-domain-schema` scaffold creates a schema,
@@ -53,18 +52,19 @@ shared runtime definitions; templates show explicit choices separately.
 
 | Setting | Section | Default | Change it when… |
 |---------|---------|---------|-----------------|
-| `search.enabled` | discovery | Inferred for `queries`; off for seed-only input | Explicitly enable/disable search |
 | `search.max_results` | discovery | `10` unique candidates per query | Change the candidate budget, not the download count |
 | `search.cache` | discovery | `false` | Opt into search-result caching |
 | `selection.max_per_target` | discovery | `1` | Acquire more candidates per target |
-| `follow_links` | discovery | `false` (direct acquisition) | Explicitly enable crawling |
+| `crawl.max_depth` | discovery | `0` (no link following) | Crawl index pages |
+| `crawl.provider` | discovery | `http` | Use `selenium` for JS/bot-protected pages |
+| `runtime.max_files` | discovery | unbounded (configured URLs never count) | Cap downloads |
 | `runtime.max_concurrent_downloads` | discovery | `2` | Change download concurrency |
 | `retry_policy.max_attempts` | discovery | `3` total attempts | Change the retry budget |
-| `browser_mode` | discovery | `false` | Explicitly use headless-browser downloads |
-| `browser_escalation.enabled` | discovery | `false` | Opt into thin/JS-shell browser recovery |
-| `code_host_adapters.enabled` | discovery | `false` | Opt into supported code-host API recovery |
+| `crawl.browser_downloads` | discovery | `false` | Download through a headless browser |
+| `crawl.browser_escalation.enabled` | discovery | `false` | Opt into thin/JS-shell browser recovery |
+| `crawl.code_host_adapters.enabled` | discovery | `false` | Opt into supported code-host API recovery |
 | `document_review` | discovery | Not configured (no LLM review) | Add explicit paid model-based curation |
-| `partition_mode` | discovery | `auto` | You need a specific output layout |
+| `partition_by` | discovery | `_targets/<id>/` per target, `_shared/` for sources | You need a metadata-based output layout |
 | `policy.robots_mode` | discovery | `warn` | Enforce (`enforce`) or silence (`ignore`) |
 | `policy.tos_mode` | discovery | `warn` | Enforce (`enforce`) or silence (`ignore`) |
 | `model` | extraction | `.env` model → `gpt-4o-mini` | You want a stronger/cheaper tier |
@@ -99,11 +99,12 @@ enabled, including when threshold settings are supplied:
 
 ```yaml
 discovery:
-  browser_escalation:
-    enabled: true
-    min_shell_chars: 8000
-  code_host_adapters:
-    enabled: true
+  crawl:
+    browser_escalation:
+      enabled: true
+      min_shell_chars: 8000
+    code_host_adapters:
+      enabled: true
 ```
 
 HTML/HTM and extensionless HTTP(S) URLs are provisionally eligible with the
@@ -113,16 +114,21 @@ GET/MIME checks verify ambiguous candidates. PDF candidates are preferred to
 web pages when present. Ranking and MIME validation do not certify document
 relevance or semantic accuracy.
 
-For strict sources, combine `allowed_domains` with a URL-path regex:
+For strict sources, combine `crawl.allowed_domains` with a URL-path regex:
 
 ```yaml
 discovery:
   queries:
     - "site:example.org installation manual filetype:pdf"
-  allowed_domains: [example.org]
-  discovery_rules:
+  crawl:
+    allowed_domains: [example.org]
     include_url_patterns: ['^https?://(?:www\.)?example\.org/documents/']
 ```
+
+Configured URLs (`sources` and target `urls`) bypass selection, the
+classifier's `action: filter`, and `document_review.keep_top`; shared sources
+do not count against any target's caps. Links crawled from them (with
+`crawl.max_depth > 0`) are ordinary candidates.
 
 Scope applies before top-one selection and to final redirects. Search `site:`
 and `filetype:` hints are not scope/type guarantees.
@@ -140,10 +146,9 @@ authority table or shopping-path list: configure `link_prioritization.domain_sco
 and `shopping_path_keywords` when needed. Configured ranking `keywords`
 replace the generic `document`/`download`/`guide`/`report` fallback.
 
-Geographic partitioning uses explicit `state` and `jurisdiction` request/target
-fields, not inference from query text. `jurisdiction_aliases` supplies only
-configured aliases; there is no built-in US discovery alias table. Use
-`partition_by` for arbitrary metadata layouts.
+Output layout comes from explicit target fields via `partition_by`, never from
+query text. Each document records `source_scope` (`shared` or `target`), its
+`target_id`, and the page it was crawled from (`source_url`).
 
 `document_review` is never enabled by query inference or model aliases. Add an
 explicit `document_description` and `model`, and configure LLM credentials,
@@ -166,50 +171,25 @@ See [Security and protected operation](security.md) for network/resource limits.
 
 ## Discovery configuration validation
 
-Discovery validates consumed nested blocks even without `--config-strict`:
-unknown options, quoted booleans such as `"false"`, invalid regular expressions,
-and invalid resource limits fail before acquisition. Use unquoted YAML
-`true`/`false`, actual integers for count limits, and finite non-negative numbers
-for delays. `runtime.max_depth: 0` disables descent; concurrency, result counts,
-page/file budgets, timeouts, and per-target selection counts must be positive.
-Host-diversity caps and request intervals may be zero.
+Config is always strict: unknown keys at any level fail with a did-you-mean
+suggestion naming the file and key path. Quoted booleans such as `"false"`,
+invalid regular expressions, non-http(s) URLs, and invalid limits also fail
+before acquisition. `crawl.max_depth: 0` disables link following; result
+counts, page/file budgets, timeouts, and per-target selection counts must be
+positive. `search.params` is an open map except the reserved `q`, `num`, and
+`api_key`.
 
-### Canonical YAML migration
+`discover --validate-config` uses the same input-plan check as execution,
+without contacting providers or writing run artifacts. It requires `sources`,
+`queries`, or target rows with `query`/`urls`. The `run` CLI and Python
+`run_pipeline` perform this check before starting discovery. Validation does
+not establish provider availability, credentials, or live network reliability.
 
-Retired aliases fail with a replacement-key error, even without strict mode
-and even if a canonical key is also supplied. They are not merged:
-
-| Retired key | Use instead |
-|-------------|-------------|
-| `discovery.seeker` | `discovery.search` (including `use_query_family`) |
-| `discovery.browser` | `discovery.browser_mode` |
-| `discovery.search.max_results_per_query` | `discovery.search.max_results` |
-| `discovery.selection.primary_per_target` | `discovery.selection.max_per_target` |
-| `discovery.selection.relevance_require_any_terms` | `discovery.selection.require_any` |
-| `discovery.selection.relevance_exclude_any_terms` | `discovery.selection.exclude` |
-
-The unused `pipeline`, `scoring`, `dedupe`, `file_filters`, and
-`keyword_validation` discovery blocks are rejected. Remove these no-op blocks;
-use `selection`, `link_prioritization`, `discovery_rules`, and
-`document_classifier` for supported behavior. Provider-specific
-`search.serpapi_params` and target metadata remain open maps, except reserved
-`q`, `num`, and `api_key` request controls cannot be overridden.
-
-`discover --validate-config` uses the same normalized input-plan check as
-execution, without invoking the engine, contacting providers, or writing run
-artifacts. It requires seeds, a query, targets, hub pages, or enabled search
-with usable templates. Quiet output includes normalized defaults and the
-applied target limit. The `run` CLI and Python `run_pipeline` perform this check
-before starting discovery; invalid run configs never fall back to raw YAML.
-Validation does not establish provider availability, credentials, or live
-network reliability.
-
-`discovery.request_headers` reaches the engine's HTTP requests. Set public
+`discovery.crawl.request_headers` reaches the engine's HTTP requests. Set public
 headers such as `User-Agent` here; do not store secrets in configs or print
 secret-bearing headers with effective-config/validation output. Browser requests
-have their own header behavior. Explicit CLI options override config values,
-including the domain. Within a config, explicit `search.enabled: false`
-disables search even if `enable_serpapi` was true.
+have their own header behavior. Explicit CLI options (`--domain`, `--source`,
+`--query`) override config values.
 
 Strict robots/ToS enforcement is available for HTTP acquisition. It cannot
 certify browser redirects or subresource requests and therefore fails before
@@ -229,7 +209,10 @@ Outcome and exit code do not depend on quiet/default/verbose rendering:
 Checkpoint **v2** requires the effective discovery config fingerprint and
 SHA-256 artifact evidence, including curated files, to match before reuse.
 Config changes, missing/changed artifacts, and old v1 entries cause
-reacquisition. Search-result caching remains a separate opt-in mechanism.
+reacquisition. Search-result caching remains a separate opt-in mechanism. Targets and shared `sources` are checkpointed one by one and are not part
+of the fingerprint, so adding one fetches only the new item; a target also
+re-runs when its `urls` or rendered queries change. Resumed runs
+publish file by file; only `--fresh` replaces whole curated partitions.
 
 Corpus publication rejects concurrent writers with a lock and journals the
 known curated/provenance swaps. The next writer recovers an interrupted
@@ -241,9 +224,9 @@ OCR pairs use `.text/<filename>.txt` and `.text/<filename>.meta.json`, so
 `report.pdf` and `report.html` do not share a cache. Readers verify source
 size/mtime and source SHA-256 plus cached-text SHA-256. Partial/stale/mismatched
 pairs are misses; temporary-file replacement publishes metadata last. Old
-stem-only pairs are not reused. LLM reviewer sidecars use
-`.review/<filename>.json`; curation carries these full-name sidecars with
-selected documents. OCR caches now hold raw text, applying current corrections
+stem-only pairs are not reused. LLM review grades are cached by document content
+and grading inputs in `discovered/.review_cache/<key>.json` and reused across
+runs. OCR caches now hold raw text, applying current corrections
 on consumption; older corrected entries invalidate rather than silently reuse.
 Page/section products fingerprint source content and resolved model/settings;
 section cache pairs use full filenames, text digests, and metadata-last staging.

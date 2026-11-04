@@ -27,11 +27,7 @@ For document discovery:
     >>> engine = DiscoveryEngine()
     >>> request = DiscoveryRequest(
     ...     domain="my-domain",
-    ...     seed_urls=["https://example.com"],
-    ...     query="geothermal ordinance",
-    ...     enable_serpapi=False,
-    ...     output_documents=None,
-    ...     output_manifest=None,
+    ...     sources=["https://example.com/ordinance.pdf"],
     ...     dry_run=True,
     ... )
     >>> result = engine.run(request)

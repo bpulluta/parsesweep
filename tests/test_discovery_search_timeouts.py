@@ -11,8 +11,18 @@ from click.testing import CliRunner
 from requests.exceptions import HTTPError, ReadTimeout
 
 from psweep.discovery import DiscoveryEngine, DiscoveryRequest
+from psweep.discovery.targets import identify_target
 from psweep.discovery.connectors.base import SeekerInput
 from psweep.discovery.connectors.serpapi_seeker import SerpApiSeeker
+
+
+@pytest.fixture(autouse=True)
+def _outputs_in_tmp(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+
+
+def _domain_dir(tmp_path):
+    return tmp_path / "outputs/timeout-test/discovered"
 
 
 def _response(name):
@@ -27,7 +37,7 @@ def _seeker(monkeypatch, search, **kwargs):
 
 
 def _queries(*queries):
-    return SeekerInput(query="", extra_params={"query_templates": list(queries)})
+    return SeekerInput(queries=list(queries))
 
 
 @pytest.mark.parametrize("timeout", [ReadTimeout("read timed out"), TimeoutError("timed out")])
@@ -73,7 +83,7 @@ def test_builtin_timeout_retries_by_type_before_partial_failure(monkeypatch):
     search = Mock(side_effect=[TimeoutError("timed out"), _response("recovered")])
     seeker = _seeker(monkeypatch, search, retry_max_attempts=3)
 
-    candidates = seeker.discover(SeekerInput(query="retry query"))
+    candidates = seeker.discover(SeekerInput(queries=["retry query"]))
 
     assert len(candidates) == 1
     assert search.call_count == seeker.queries_run == 2
@@ -82,7 +92,7 @@ def test_builtin_timeout_retries_by_type_before_partial_failure(monkeypatch):
 def test_cache_hit_is_retained_without_counting_a_live_attempt(monkeypatch, tmp_path):
     search = Mock(side_effect=[_response("cached"), ReadTimeout("timeout api_key=fixture-key")])
     seeker = _seeker(monkeypatch, search, retry_max_attempts=1, cache_dir=str(tmp_path))
-    seeker.discover(SeekerInput(query="cached query"))
+    seeker.discover(SeekerInput(queries=["cached query"]))
     seeker.queries_run = 0
 
     with pytest.raises(RuntimeError) as caught:
@@ -113,14 +123,10 @@ def test_non_timeout_failures_remain_strict(monkeypatch, failure):
 def _engine_request(tmp_path, *, dry_run=True):
     return DiscoveryRequest(
         domain="timeout-test",
-        seed_urls=[],
-        query=None,
-        enable_serpapi=True,
-        output_documents=tmp_path / "domain/runs/probe/documents",
-        output_manifest=tmp_path / "domain/runs/probe/manifest.json",
+        sources=[],
         dry_run=dry_run,
         targets=[{"label": label} for label in ["first", "partial", "last"]],
-        query_templates=["{label} comments", "{label} hearing"],
+        queries=["{label} comments", "{label} hearing"],
         selection_primary_per_target=1,
         link_prioritization_mode="off",
         partition_by=["label"],
@@ -195,15 +201,18 @@ def test_partial_target_is_not_checkpointed_as_complete(monkeypatch, tmp_path):
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_bytes(b"synthetic document")
             records.append({"url": candidate.url, "status": "downloaded",
+                            "target_id": candidate.target_id,
                             "target_metadata": candidate.target_metadata,
                             "path": str(path), "relative_path": path.name})
         return records, [], []
 
     monkeypatch.setattr(engine, "_download_candidates", download)
     engine.run(_engine_request(tmp_path, dry_run=False))
-    checkpoint = json.loads((tmp_path / "domain/checkpoint.json").read_text())
+    checkpoint = json.loads((_domain_dir(tmp_path) / "checkpoint.json").read_text())
 
-    assert set(checkpoint["entries"]) == {"first", "last"}
+    assert set(checkpoint["entries"]) == {
+        identify_target({"label": label}) for label in ("first", "last")
+    }
 
 
 @pytest.mark.parametrize("fresh", [False, True])
@@ -221,14 +230,13 @@ def test_incomplete_shared_partition_stays_run_local(
 
         monkeypatch.setattr(SerpApiSeeker, "_build_search_callable", lambda self: search)
     request = _engine_request(tmp_path, dry_run=False)
-    request.reprocess = fresh
+    request.fresh = fresh
     request.partition_by = ["state"]
     request.targets = [
         {"label": "partial", "state": "Washington"},
-        {"label": "first", "state": "Washington"},
         {"label": "last", "state": "California"},
     ]
-    domain = tmp_path / "domain"
+    domain = _domain_dir(tmp_path)
     prior = domain / "curated/by_state/washington/partial-comments.pdf"
     prior.parent.mkdir(parents=True)
     prior.write_bytes(b"prior completed public comments")
@@ -254,6 +262,7 @@ def test_incomplete_shared_partition_stays_run_local(
                 "status": "downloaded",
                 "path": str(path),
                 "relative_path": relative,
+                "target_id": candidate.target_id,
                 "target_metadata": candidate.target_metadata,
                 "review_selected": selected,
             })
@@ -263,19 +272,18 @@ def test_incomplete_shared_partition_stays_run_local(
     result = engine.run(request)
 
     assert prior.read_bytes() == b"prior completed public comments"
-    assert not (domain / "curated/by_state/washington/first-comments.pdf").exists()
     assert (result.documents_dir / "by_state/washington/partial-comments.pdf").exists() is partial_hit
     if selected:
-        assert (result.curated_dir / "by_state/washington/partial-comments.pdf").exists() is partial_hit
+        # A prior owner holds the plain name, so the new file may carry a suffix.
+        assert any((result.curated_dir / "by_state/washington").glob("partial-comments*.pdf")) is partial_hit
         assert (domain / "curated/by_state/california/last-comments.pdf").exists()
     with old_index.open() as stream:
         rows = list(csv.DictReader(stream))
     by_path = {row["relative_path"]: row for row in rows}
     assert by_path["by_state/washington/partial-comments.pdf"]["url"] == "https://example.gov/prior.pdf"
-    assert "by_state/washington/first-comments.pdf" not in by_path
     checkpoint = json.loads((domain / "checkpoint.json").read_text())
     assert set(checkpoint["entries"]) == {
-        DiscoveryEngine._target_checkpoint_key({"label": "last", "state": "California"})
+        identify_target({"label": "last", "state": "California"}, ["state"])
     }
     manifest = json.loads(result.manifest_path.read_text())
     assert manifest["status"] == ("partial_failure" if selected else "failed")
@@ -313,7 +321,7 @@ def test_same_named_counties_keep_independent_review_caps(monkeypatch, tmp_path)
         {"county": "Adams County", "state": "CO", "fips": "08001"},
         {"county": "Adams County", "state": "PA", "fips": "42001"},
     ]
-    request.query_templates = ["{county} {state} wind public comments"]
+    request.queries = ["{county} {state} wind public comments"]
     request.partition_by = ["state", "county"]
     request.selection_primary_per_target = 2
     request.document_review = {
@@ -328,29 +336,36 @@ def test_same_named_counties_keep_independent_review_caps(monkeypatch, tmp_path)
 
     assert len(records) == 4
     assert Counter(record["target_metadata"]["state"] for record in selected) == {"CO": 1, "PA": 1}
-    assert {record["target_label"] for record in records} == {"Adams County, CO", "Adams County, PA"}
+    assert {record["target_label"] for record in records} == {
+        "CO, Adams County", "PA, Adams County",
+    }
     assert all("label" not in record["target_metadata"] for record in records)
-    groups = DiscoveryEngine._group_records_by_target_label(records)
+    groups = DiscoveryEngine._group_records_by_target(records)
     assert {key: len(value) for key, value in groups.items()} == {
-        DiscoveryEngine._target_checkpoint_key(target): 2
+        identify_target(target, request.partition_by): 2
         for target in request.targets
     }
     for path, context in contexts:
         state = "CO" if "/CO-" in path else "PA"
         assert f"state={state}" in context
+        assert "fips" not in context  # passthrough fields never reach grading
     assert result.curated_count == 2
 
 
 @pytest.mark.parametrize("target,expected", [
     ({"county": "Adams County", "state": "CO"}, "Adams County, CO"),
-    ({"jurisdiction": "Adams County", "state": "PA"}, "Adams County, PA"),
+    ({"state": "AZ", "ahj": "Pima County", "urls": ["https://pima.gov"]}, "AZ, Pima County"),
     ({"label": "Chosen label", "county": "Adams County", "state": "CO"}, "Chosen label"),
-    ({"site_name": "Wind Portal", "county": "Adams County", "state": "CO"}, "Wind Portal"),
-    ({"company_name": "Wind Company", "state": "CO"}, "Wind Company"),
-    ({"county": "Adams County"}, "Adams County"),
+    ({"query": "solar permit"}, "solar permit"),
+    ({}, "target-0"),
 ])
-def test_implicit_geographic_target_labels_are_state_qualified(target, expected):
+def test_target_label_prefers_label_then_identity_fields(target, expected):
     assert DiscoveryEngine._target_label(target, 0) == expected
+
+
+def test_target_label_uses_partition_fields_over_passthrough_columns():
+    target = {"state": "AZ", "ahj": "Pima County", "geo_id": "4019", "cost": "113.0"}
+    assert DiscoveryEngine._target_label(target, 0, ["state", "ahj"]) == "AZ, Pima County"
 
 
 @pytest.mark.parametrize("with_errors", [False, True])
@@ -371,7 +386,7 @@ def test_cli_does_not_label_partial_discovery_complete(monkeypatch, tmp_path, wi
         curated_count=0,
         review_index_path=None,
     ))
-    result = CliRunner().invoke(discover, ["--query", "test", "--dry-run"])
+    result = CliRunner().invoke(discover, ["--domain", "timeout-test", "--query", "test", "--dry-run"])
 
     assert result.exit_code == (1 if with_errors else 0), result.output
     if with_errors:

@@ -571,3 +571,14 @@ class TestSelectionConfigMapping:
             config_data=config,
         )
         assert resolved["selection_max_per_host_per_target"] == 2
+
+
+def test_selection_notes_name_targets_by_label():
+    _, notes = CandidateSelector().select(
+        [[_candidate("https://a.gov/permit.pdf")], []],
+        labels=["AZ, Pima County", "CO, Boulder County"],
+    )
+    assert any(note.startswith("AZ, Pima County: selected") for note in notes)
+    assert any(note.startswith("CO, Boulder County: seeker returned 0") for note in notes)
+    _, default_notes = CandidateSelector().select([[]])
+    assert default_notes[0].startswith("#1: ")

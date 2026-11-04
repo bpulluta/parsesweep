@@ -92,94 +92,59 @@ compilation:
   #     - {field: dated_field, evidence: evidence_field}
 
 # ─── DISCOVERY (optional) ─────────────────────────────────────────────────────
-# domain + discovery.queries is enough to enable SerpApi when search is omitted.
-# Explicit search.enabled: false wins over inference.
-# Seed-only input does not auto-enable search. Direct acquisition, no crawl, is
-# the default; follow_links: true explicitly enables link following.
+# Candidates come from three inputs: shared `sources`, per-target `urls`, and
+# search results (`queries`). Configured URLs (sources + target urls) are always
+# downloaded and kept. Search runs only when `queries` or a target `query` exists.
+# Unknown keys fail with a did-you-mean error.
 # discovery:
-#   targets_csv: targets.csv             # optional; paths relative to config directory
-#   queries:
+#   targets: targets.csv                 # .csv/.json path (relative to this file), inline rows,
+#                                        # or {cross_product: {dimensions: [...]}}
+#                                        # row `urls` (CSV: "a|b") and `query` are inputs, not metadata
+#   sources: [https://example.org/documents/index.html]  # shared; saved under _shared/
+#   queries:                             # templates; {field} required, {field?} optional
 #     - "{entity_name} {state} filetype:pdf"
-#   # seeds: [https://example.org/documents/manual.pdf]  # alternative to queries
-#   # follow_links: true                  # opt-in crawl; omit for direct acquisition
+#   crawl:
+#     provider: http                     # http | selenium
+#     max_depth: 0                       # 0 = no link following (default)
+#     max_pages: 50                      # HTML pages fetched per crawl
+#     allowed_domains: [example.org]     # crawl/download host allowlist
+#     include_url_patterns: ['/documents/']      # regex; matching links count as documents
+#     include_link_text_patterns: ['manual']     # regex on link text
+#     browser_downloads: false           # true downloads through headless Chrome
+#     browser_escalation: {enabled: true}        # opt-in JS-shell browser recovery
+#                                        # (min_shell_chars, min_rendered_chars, settle_seconds)
+#     code_host_adapters: {enabled: true}        # opt-in code-host API recovery
+#     request_headers: {User-Agent: ParseSweep/2.0}  # public headers only
 #   search:
-#     provider: serpapi
-#     max_results: 10                    # unique candidates PER QUERY; live/cache/news share cap
-#     enabled: true                      # real YAML bool; false disables search
-#     cache: false                       # default: OFF; true opts into result caching
-#     # cache_ttl_minutes: 60             # optional expiry for enabled cache
-#     # google_news: false               # optional news results share max_results cap
-#     # serpapi_params: {hl: en}          # provider hints; q/num/api_key are reserved
-#   # No hidden pagination or refill: a candidate cap is not a download guarantee.
-#   # Cache hits issue zero live search calls; cache is not enabled by default.
-#   allowed_domains: [example.org]        # host allowlist, not a ranking preference
-#   discovery_rules:
-#     include_url_patterns: ['^https?://(?:www\.)?example\.org/documents/']
-#   # Combine host + URL-path restrictions for strict scope. Scope is checked
-#   # before selection and on final redirects; site:/filetype: search hints do not enforce it.
+#     max_results: 10                    # unique candidates PER QUERY
+#     cache: false                       # true caches SerpApi results
+#     cache_ttl_minutes: 60
+#     params: {hl: en}                   # extra SerpApi params; q/num/api_key are reserved
 #   runtime:
-#     max_concurrent_downloads: 2         # shared CLI/engine default; positive int
-#     min_request_interval_ms: 0         # non-negative int
-#   retry_policy:
-#     max_attempts: 3                     # total attempts; default: 3
-#     initial_backoff_seconds: 1.0
-#     max_backoff_seconds: 8.0
-#   policy:
-#     robots_mode: warn                   # ignore, warn, or enforce
-#     tos_mode: warn                      # ignore, warn, or enforce
-#   request_headers:
-#     User-Agent: ParseSweep/2.0          # public headers only, not credentials
-#   selection:
-#     max_per_target: 1                   # default: 1; acquisition count, not semantic review
-#     max_per_host_per_target: 1          # optional host-diversity cap per target (0=off)
+#     max_files: 20                      # download cap (configured URLs never count)
+#     timeout_seconds: 30
+#     max_concurrent_downloads: 2
+#     min_request_interval_ms: 0
+#   retry_policy: {max_attempts: 3, initial_backoff_seconds: 1.0, max_backoff_seconds: 8.0}
+#   policy: {robots_mode: warn, tos_mode: warn}  # ignore | warn | enforce
+#   selection:                           # applies to search results and crawled links
+#     max_per_target: 1
+#     max_per_host_per_target: 1         # 0 = off
 #     require_any: [manual, specification]
 #     exclude: [news, blog, press release]
-#     # exclude_draft: true               # applies only your configured draft_patterns
-#     # draft_patterns: ['\bdraft\b', '\bproposed\b']  # domain-authored regexes; no legal defaults
-#     # exclude_text_patterns: ['\bsummary\b']         # optional candidate-text regex guard
-#   # PDF candidates are preferred to web pages when present. HTML/HTM and
-#   # extensionless HTTP(S) URLs remain provisionally eligible with the default
-#   # require_supported_document; known binaries are excluded. GET/MIME checks
-#   # verify ambiguous candidates. Eligibility/ranking does not certify relevance.
-#   browser_mode: false                   # default: OFF; true uses headless Chrome
-#   browser_escalation:                   # optional thin/JS-shell browser recovery
-#     enabled: true                       # default: OFF; this line explicitly opts in
-#     min_shell_chars: 8000               # HTTP body below this many chars looks like a shell
-#     min_rendered_chars: 10000           # accept render only once it yields this many chars
-#     settle_seconds: 20                  # wait up to this long for client-side rendering
-#   code_host_adapters:                   # optional server-API recovery of supported code-host shells
-#     enabled: true                       # default: OFF; explicitly opts in before browser escalation
-#                                        # reuses browser_escalation thresholds
-#   # Threshold settings alone do not enable either recovery path; include enabled: true.
-#   # Browser policy enforcement cannot cover redirects/subresources: enforce
-#   # fails before unsupported navigation. Keep HTTP acquisition for enforcement.
-#   partition_by: [state, jurisdiction]   # output layout by_<field>/<value>/… from target metadata
-#                                        # (domain-agnostic: county, region, year, …)
-#   # Supply state/jurisdiction explicitly on targets, or use partition_by.
-#   # Query text never infers geography; there is no built-in US alias table.
-#   jurisdiction_aliases:                # explicit aliases for jurisdiction partitioning
-#     ontario: on
+#     # exclude_draft: true / draft_patterns: ['\bdraft\b']  # domain-authored regexes
 #   link_prioritization:
-#     keywords: [datasheet, spec]         # replace generic document/download/guide/report fallback
-#     domain_scores: {example.gov: 0.15}  # configured host/subdomain boosts; no built-in authority table
-#     shopping_path_keywords: [wishlist] # configured literal path terms; omitted means no penalty
-#   document_review:                     # optional PAID LLM curation; never auto-enabled
-#     model: secondary                   # explicitly pin model/alias
+#     keywords: [datasheet, spec]
+#     domain_scores: {example.gov: 0.15}
+#     shopping_path_keywords: [wishlist]
+#   document_review:                     # optional PAID LLM curation
+#     model: secondary
 #     document_description: "the authoritative source document"
-#     keep_top: 1                        # review selection after acquisition; separate from max_per_target
-# Canonical syntax: search (not seeker), max_results (not max_results_per_query),
-# selection.max_per_target/require_any/exclude (not verbose aliases).
-# Put all sections in this explicitly loaded file; adjacent section overrides
-# beside run.yaml/run.yml/run.json are retired. Move sections here and remove them.
-# Source/vendor filters are concrete provider choices in your domain config;
-# discovery does not infer them automatically from a document parser.
-# Outputs: outputs/<domain>/discovered/runs/<run_id>/curated (one run), and
+#     keep_top: 1
+#   partition_by: [state, jurisdiction]  # layout by_<field>/<value>/… from target fields
+#   retention: {documents: all}          # all | curated | none
+# Outputs: outputs/<domain>/discovered/runs/<run_id>/curated (one run) and
 # outputs/<domain>/discovered/curated (consolidated downstream input).
-# Checkpoint v2 reuse requires effective config + artifact digest evidence.
-# Publication locks reject concurrent corpus writers; journals recover known swaps.
-# OCR: .text/<filename>.txt + <filename>.meta.json; review: .review/<filename>.json.
-# CLI outcomes (all verbosity): success/dry_run/reused=0, failed/partial_failure=1,
-# empty=2. Neither capped search nor mocked tests establish population coverage.
 # SerpApi/download TLS verification defaults remain false. Configure
 # SERPAPI_SSL_VERIFY and DISCOVERY_SSL_VERIFY in the environment as needed.
 
