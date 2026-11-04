@@ -64,23 +64,14 @@ def test_extract_cli_option_defaults_are_single_sourced():
 
 
 def test_max_context_default_is_single_sourced_across_layers():
-    """CLI, public pipeline API, and DocumentExtractor share DEFAULT_MAX_CONTEXT.
-
-    Guards against the pre-audit drift where ``extract``/``run`` used 600k but
-    ``validate`` and the library API used 400k — validating on less context than
-    extraction produced.
-    """
+    """CLI, public pipeline API, and DocumentExtractor share DEFAULT_MAX_CONTEXT."""
     from psweep.extraction.document_extractor import DocumentExtractor
     from psweep.pipeline import extract_documents
-    from psweep.validation.multi_model_extractor import (
-        run_multi_model_extraction,
-    )
 
     assert DEFAULT_MAX_CONTEXT == 600000
     for func, param in (
         (extract_documents, "max_context"),
         (DocumentExtractor.__init__, "max_context_chars"),
-        (run_multi_model_extraction, "max_context_chars"),
     ):
         sig = inspect.signature(func)
         assert sig.parameters[param].default == DEFAULT_MAX_CONTEXT

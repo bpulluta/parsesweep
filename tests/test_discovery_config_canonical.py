@@ -2,7 +2,6 @@
 
 import json
 from pathlib import Path
-import re
 
 import pytest
 import yaml
@@ -88,7 +87,7 @@ def test_canonical_config_resolves_request_fields(tmp_path: Path):
 @pytest.mark.parametrize("run_suffix", [".yaml", ".yml", ".json"])
 @pytest.mark.parametrize(
     "section",
-    ["discovery", "extraction", "compilation", "validation"],
+    ["discovery", "extraction", "compilation"],
 )
 @pytest.mark.parametrize("section_suffix", [".yaml", ".yml", ".json"])
 def test_run_rejects_adjacent_section_files_without_reading_them(
@@ -144,7 +143,6 @@ def test_non_run_stem_does_not_auto_load_adjacent_sections(
         ("discovery", {"queries": ["manual"], "search": {"max_results": 7}}),
         ("extraction", {"skip_existing": True, "max_context": 1000}),
         ("compilation", {"dry_run": True}),
-        ("validation", {"models": ["gpt-4o", "gpt-4o-mini"]}),
     ],
 )
 def test_explicit_section_config_is_supported(
@@ -161,19 +159,3 @@ def test_explicit_section_config_is_supported(
         encoding="utf-8",
     )
     assert load_runtime_config_file(path)[section] == body
-
-
-def test_adjacent_qaqc_file_retains_validation_rename_diagnostic(
-    tmp_path: Path,
-):
-    """Retired QA/QC filenames retain actionable validation rename guidance."""
-    path = tmp_path / "run.yaml"
-    path.write_text("discovery:\n  queries: [manual]\n", encoding="utf-8")
-    (tmp_path / "qaqc.yml").write_text("models: [a, b]\n", encoding="utf-8")
-    with pytest.raises(
-        RuntimeConfigError,
-        match="renamed to 'validation'",
-    ) as exc:
-        load_runtime_config_file(path)
-    assert "validation:" in str(exc.value)
-    assert "remove" in str(exc.value)

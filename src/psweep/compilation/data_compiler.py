@@ -1,5 +1,7 @@
 """Compile extraction records into one analysis-ready table."""
 
+import hashlib
+import json
 from pathlib import Path
 from typing import Any, Dict, Iterator, List, Optional, Tuple
 
@@ -20,14 +22,25 @@ from .deduplicator import (
 from .excel_formatter import ExcelFormatter
 from .input_provenance import list_compile_record_files, read_compile_record
 from .roster import compile_roster
+from ..discovery.targets import iter_targets
 from ..exceptions import SchemaMetadataError
 from ..extraction.roster import load_roster
 from ..extraction.schema_utils import build_schema_validator
+from ..utils.file_io import artifact_sha256
 from ..utils.normalizers import add_county_fips_column, normalize_state_column
 
 
 EXCEL_MAX_DATA_ROWS = 1_048_575
 EXCEL_MAX_CELL_CHARACTERS = 32_767
+
+
+def apply_value_normalizations(df: pd.DataFrame, metadata) -> pd.DataFrame:
+    """Rows-mode value normalization (units, state names) on field-name columns."""
+    df = DataFlattener(metadata).normalize_units(df)
+    state_column = metadata.get_state_normalization_column()
+    if state_column:
+        normalize_state_column(df, state_column)
+    return df
 
 
 class DataCompiler:
@@ -59,6 +72,35 @@ class DataCompiler:
     @property
     def mode(self) -> str:
         return "rows" if self.roster is None else "roster"
+
+    def fingerprint(self, json_dir: Path) -> str:
+        """Build fingerprint: schema bytes, compile overlay, roster targets, record bytes."""
+        json_dir = Path(json_dir)
+        compilation = dict(self.schema_metadata.metadata.get("compilation") or {})
+        output = {
+            key: value for key, value in (compilation.pop("output", None) or {}).items()
+            if key != "default_format"
+        }
+        if output:
+            compilation["output"] = output
+        roster = None
+        if self.roster is not None:
+            targets = hashlib.sha256()
+            for row in iter_targets(self.inputs["targets"]):
+                targets.update(json.dumps(row, sort_keys=True, default=str).encode() + b"\n")
+            roster = {"fields": list(self.roster.fields), "targets_sha256": targets.hexdigest()}
+        identity = {
+            "schema_sha256": artifact_sha256(self.schema_metadata.schema_path),
+            "compilation": compilation,
+            "roster": roster,
+            "records": [
+                [path.relative_to(json_dir).as_posix(), artifact_sha256(path)]
+                for path in list_compile_record_files(json_dir)
+            ],
+        }
+        return hashlib.sha256(
+            json.dumps(identity, sort_keys=True, default=str).encode()
+        ).hexdigest()
 
     def _records(self, files: List[Path]) -> Iterator[Dict[str, Any]]:
         for path in files:
@@ -112,10 +154,7 @@ class DataCompiler:
             column = field.split(".")[-1]
             if column not in df.columns and column in self.schema_metadata.get_output_fields():
                 df[column] = None
-        df = self.flattener.normalize_units(df)
-        state_column = self.schema_metadata.get_state_normalization_column()
-        if state_column:
-            normalize_state_column(df, state_column)
+        df = apply_value_normalizations(df, self.schema_metadata)
 
         self.total_items = len(df)
         self.duplicates_removed = 0
@@ -317,8 +356,6 @@ class DataCompiler:
             plan.append((f"{base_name}.xlsx", self.save_excel))
         if not plan:
             raise ValueError("At least one export format is required")
-        if fresh and frame.empty:
-            plan = []
 
         output_dir.parent.mkdir(parents=True, exist_ok=True)
         stage_root = Path(

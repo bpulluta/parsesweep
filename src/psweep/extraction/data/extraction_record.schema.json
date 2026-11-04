@@ -20,7 +20,7 @@
     }
   },
   "title": "Extraction Record Contract",
-  "description": "Single-record contract consumed by extraction, QA/QC, and compilation stages.",
+  "description": "Single-record contract consumed by extraction, validation, and compilation stages.",
   "type": "object",
   "additionalProperties": false,
   "properties": {

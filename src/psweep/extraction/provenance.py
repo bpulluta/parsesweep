@@ -1,18 +1,15 @@
 """Provenance and lineage helpers for the extraction stage.
 
-Identify attempts and tie records to inputs and discovery hints.
-No CLI dependencies; validation retains its deterministic run identity.
+Tie records to inputs and discovery hints. No CLI dependencies.
 """
 
 from __future__ import annotations
 
 import csv
-import hashlib
 import json
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
-from uuid import uuid4
 
 from psweep.discovery.targets import TARGET_INPUT_FIELDS
 from psweep.discovery.urls import redact_url
@@ -20,35 +17,9 @@ from psweep.utils.error_taxonomy import summarize_error_records
 from psweep.workspace import DISCOVERED_DIRNAME
 
 
-def generate_run_id(
-    *,
-    schema_path: Path,
-    provider: str,
-    model: str,
-    enable_validation: bool,
-    doc_files: list[Path],
-    artifact_id: str | None,
-) -> str:
-    """Identify attempts uniquely, preserving validation identity."""
-    if not enable_validation:
-        return f"run://{uuid4().hex}"
-    seed = {
-        "schema": schema_path.as_posix(),
-        "provider": provider,
-        "model": model,
-        "mode": "validation",
-        "documents": sorted(path.as_posix() for path in doc_files),
-        "artifact_id": artifact_id,
-    }
-    canonical = json.dumps(seed, sort_keys=True, separators=(",", ":"))
-    digest = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
-    return f"run://{digest[:16]}"
-
-
-def build_run_manifest(  # noqa: PLR0913 - shared validation/extraction contract
+def build_run_manifest(  # noqa: PLR0913
     *,
     run_id: str,
-    mode: str,
     schema_path: Path,
     provider: str,
     model: str,
@@ -63,7 +34,7 @@ def build_run_manifest(  # noqa: PLR0913 - shared validation/extraction contract
     failed_results: list[dict[str, Any]] | None = None,
     costs: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Build a run manifest for extraction and validation executions."""
+    """Build an extraction run manifest."""
     manifest_errors = summarize_error_records(
         error
         for result in (failed_results or [])
@@ -77,7 +48,6 @@ def build_run_manifest(  # noqa: PLR0913 - shared validation/extraction contract
     manifest = {
         "manifest_version": "1.0.0",
         "run_id": run_id,
-        "mode": mode,
         "lineage": {
             "artifact_id": resolved_artifact_id,
             "schema_id": schema_path.as_posix(),
@@ -266,7 +236,6 @@ __all__ = [
     "SourceContext",
     "build_run_manifest",
     "build_source_context_map",
-    "generate_run_id",
     "prepend_source_context",
     "source_context",
 ]

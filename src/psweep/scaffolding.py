@@ -7,24 +7,11 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-from psweep.extraction import load_schema
-from psweep.utils.schema_metadata import SchemaMetadata
 from psweep.workspace import CONFIG_ROOT, SCHEMA_FILENAME
 
 
 class ConfigValidationError(ValueError):
     """Config or schema validation error."""
-
-
-def _infer_document_type_from_schema(schema_path: Path) -> str:
-    schema = load_schema(schema_path)
-
-    extraction = (schema.get("$metadata") or {}).get("extraction") or {}
-    document_type = extraction.get("document_type")
-    if isinstance(document_type, str) and document_type.strip():
-        return document_type.strip()
-
-    return schema_path.stem.replace("_", " ").title()
 
 
 def display_cli_path(path: Path, repo_root: Path) -> str:
@@ -57,154 +44,6 @@ def _schema_array_items(
 ) -> Optional[Dict[str, Any]]:
     items = schema_node.get("items")
     return items if isinstance(items, dict) else None
-
-
-def _find_nested_object_array_field(
-    schema_node: Dict[str, Any],
-) -> Optional[tuple[str, Dict[str, Any]]]:
-    for field_name, field_schema in _schema_properties(schema_node).items():
-        if not isinstance(field_schema, dict):
-            continue
-        if "array" not in _schema_type_options(field_schema):
-            continue
-        item_schema = _schema_array_items(field_schema)
-        if isinstance(item_schema, dict) and "object" in _schema_type_options(
-            item_schema
-        ):
-            return field_name, item_schema
-    return None
-
-
-def _scalar_field_names(schema_node: Dict[str, Any]) -> list[str]:
-    scalar_fields: list[str] = []
-    for field_name, field_schema in _schema_properties(schema_node).items():
-        if not isinstance(field_schema, dict):
-            continue
-        field_types = _schema_type_options(field_schema)
-        if "object" in field_types or "array" in field_types:
-            continue
-        scalar_fields.append(field_name)
-    return scalar_fields
-
-
-def _pick_fields(
-    candidate_fields: list[str], preferred_fields: list[str], limit: int = 2
-) -> list[str]:
-    selected: list[str] = []
-    for field_name in preferred_fields:
-        if field_name in candidate_fields and field_name not in selected:
-            selected.append(field_name)
-        if len(selected) >= limit:
-            return selected
-
-    for field_name in candidate_fields:
-        if field_name not in selected:
-            selected.append(field_name)
-        if len(selected) >= limit:
-            break
-
-    return selected
-
-
-def _build_validation_scaffold(
-    schema_metadata: SchemaMetadata,
-) -> Optional[Dict[str, Any]]:
-    schema_root = schema_metadata.schema
-    main_data_array = schema_metadata.get_main_data_array()
-    main_array_schema = _schema_properties(schema_root).get(main_data_array)
-    if not isinstance(main_array_schema, dict):
-        return None
-
-    main_item_schema = _schema_array_items(main_array_schema)
-    if not isinstance(main_item_schema, dict):
-        return None
-
-    dedup_key_fields = schema_metadata.get_deduplication_key_fields()
-    quantitative_preferences = [
-        "value",
-        "rate",
-        "amount",
-        "capacity",
-        "unit",
-        "units",
-    ]
-    nested_array = _find_nested_object_array_field(main_item_schema)
-    projection: Optional[Dict[str, Any]] = None
-    if nested_array is not None:
-        nested_array_name, child_item_schema = nested_array
-        parent_fields = [
-            field_name
-            for field_name in dedup_key_fields
-            if field_name in _schema_properties(main_item_schema)
-        ]
-        child_scalar_fields = _scalar_field_names(child_item_schema)
-        child_key_fields = [
-            field_name
-            for field_name in dedup_key_fields
-            if field_name in _schema_properties(child_item_schema)
-        ]
-        key_fields = parent_fields + child_key_fields
-        if not key_fields:
-            key_fields = parent_fields + child_scalar_fields[:1]
-
-        quantitative_fields = _pick_fields(
-            child_scalar_fields, quantitative_preferences
-        )
-
-        projection = {
-            "type": "nested_array_items",
-            "source_array": main_data_array,
-            "nested_array": nested_array_name,
-        }
-        if parent_fields:
-            projection["parent_fields"] = parent_fields
-    else:
-        scalar_fields = _scalar_field_names(main_item_schema)
-        key_fields = [
-            field_name
-            for field_name in dedup_key_fields
-            if field_name in _schema_properties(main_item_schema)
-        ]
-        if not key_fields:
-            key_fields = scalar_fields[:2]
-
-        quantitative_fields = _pick_fields(
-            scalar_fields, quantitative_preferences
-        )
-
-    if not key_fields or not quantitative_fields:
-        return None
-
-    scaffold: Dict[str, Any] = {
-        "comparison_approach": "numeric_only",
-        "record_matching": {"key_fields": deepcopy(key_fields)},
-        "comparison": {"primary_fields": quantitative_fields},
-    }
-    if projection is not None:
-        scaffold["projection"] = projection
-    return scaffold
-
-
-def _build_compilation_scaffold(
-    schema_metadata: SchemaMetadata,
-) -> Dict[str, Any]:
-    identity_metadata = schema_metadata.metadata.get("identity") or {}
-    deduplication_metadata = identity_metadata.get("deduplication") or {}
-
-    compilation: Dict[str, Any] = {
-        "deduplication": {
-            "key_fields": schema_metadata.get_deduplication_key_fields(),
-            "ignore_fields": schema_metadata.get_deduplication_ignore_fields(),
-        }
-    }
-
-    for field_name in ("strategy", "comparison_mode"):
-        if field_name in deduplication_metadata:
-            compilation["deduplication"][field_name] = deepcopy(
-                deduplication_metadata[field_name]
-            )
-
-    return compilation
 
 
 def _prune_schema_for_starter(node: Any) -> Any:

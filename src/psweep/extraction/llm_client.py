@@ -28,7 +28,6 @@ from ..security import (
     ca_bundle, protected_mode, require_model_endpoint, resolve_tls_verification,
     tls_context,
 )
-from ..utils.model_pricing import get_pricing
 from ..exceptions import ExtractionError
 from .llm_factory import DEFAULT_MODEL, detect_provider
 from ..discovery.retry import compute_backoff
@@ -175,9 +174,6 @@ class LLMClient:
         litellm.suppress_debug_info = True
         litellm.set_verbose = False
         litellm.turn_off_message_logging = True
-
-        # Load pricing database
-        self.pricing_db = get_pricing()
 
         logger.info(
             f"Initialized LLM client: provider={self.provider}, model={self.model}"

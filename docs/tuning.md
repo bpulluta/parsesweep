@@ -69,15 +69,12 @@ extraction:
     strong: gpt-4o
   extraction:
     model: fast          # cheap for bulk extraction
-  validation:
-    models: [fast, strong]
   ```
 
 - **Limit a test run** with `-n 5` on `extract` to iterate quickly before a
   full pass.
 - **Run unattended** with `psweep run --config run.yaml --yes`. This approves
-  the planned stages, including QA/QC, without a second prompt. For standalone
-  QA/QC use `psweep validate --config run.yaml --yes`; quiet mode is not required.
+  the planned stages without a second prompt; quiet mode is not required.
 
 Validated work is reused automatically: matching source/schema/settings and
 record-byte evidence skip model calls. Source, model, scope, or schema changes
@@ -208,9 +205,7 @@ Model calls disable automatic SDK/provider retries so a timeout does not
 silently multiply paid attempts. The configured timeout is a transport limit,
 not a whole-pipeline deadline. Large documents may require their original
 larger timeout; verify schema-valid output and reported unknown-cost calls,
-not merely HTTP availability. QA/QC reports load evidence from the compared
-model-output directory; `validate --compare-only --yes` rebuilds reports
-without repeating successful extraction.
+not merely HTTP availability.
 
 ### Automation reports no downloads
 

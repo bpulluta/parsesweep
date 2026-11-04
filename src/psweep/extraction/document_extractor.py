@@ -1,6 +1,5 @@
 """Schema-driven extraction with measured usage and scope limits.
 
-Regular extraction is single-model. Multi-model QA/QC runs separately.
 Structural validation does not certify source grounding or accuracy.
 """
 
@@ -32,7 +31,6 @@ class ExtractionResult:
     cost: float | None
     processing_time: float
     validation_notes: List[str]
-    validation_report: Optional[Any] = None  # Optional QA/QC validation report
     input_tokens: Optional[int] = None  # Prompt tokens (from provider usage)
     output_tokens: Optional[int] = (
         None  # Completion tokens (from provider usage)
@@ -45,18 +43,7 @@ class ExtractionResult:
 
 class DocumentExtractor:
     """
-    Universal document extractor with traceability and configurable context.
-
-    Architecture:
-
-    1. LLM Structured Extraction: Fast extraction with schema-driven parsing
-    2. Multi-Model QA/QC: Validates via multiple models (run separately via `psweep validate`)
-
-    Works with any document type and JSON schema - fully domain-agnostic.
-
-    Architecture:
-
-    - LLMClient: Handles all API calls via LiteLLM (100+ providers)
+    Domain-agnostic, schema-driven document extractor (LLM calls via LiteLLM).
 
     Examples
     --------
@@ -138,8 +125,6 @@ class DocumentExtractor:
         1. LLM Structured Extraction - Fast, schema-driven parsing
         2. Post-processing - Normalization
 
-        For multi-model QA/QC validation, use the CLI validate stage.
-
         Parameters
         ----------
         text : str
@@ -157,7 +142,6 @@ class DocumentExtractor:
             - cost: Total API cost in USD
             - processing_time: Total time in seconds
             - validation_notes: List of warnings/insights
-            - validation_report: Reserved for future use
 
         Examples
         --------
@@ -216,7 +200,6 @@ class DocumentExtractor:
             cost=extraction.get("cost"),
             processing_time=processing_time,
             validation_notes=validation_notes,
-            validation_report=None,
             input_tokens=extraction.get("input_tokens"),
             output_tokens=extraction.get("output_tokens"),
             coverage=coverage,

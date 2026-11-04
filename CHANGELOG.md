@@ -28,21 +28,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Provider/model mismatch warning in `llm_factory.build_llm_client()` when
   `--provider azure` is used with the default OpenAI model.
 - `CONTRIBUTING.md` and this `CHANGELOG.md`.
+- `psweep validate` and the `validation:` config block replace QA/QC. The
+  compiled primary is scored against challenger `models` (real extract and
+  compile) and human `references`, with an optional `judge` and a
+  `min_accuracy` gate (exit 1). The command writes `cells.csv`, `summary.csv`
+  and `summary.json`. `--sample N` writes a blind labelling template. `run`
+  appends validate after compile when the block exists.
+- Compile manifests record `build_fingerprint` and `table_sha256`, so stale
+  tables are detected. Extraction requires credentials only when documents are
+  pending.
 
 ### Changed
 - Municode recovery retains the requested code subtree and section headings,
   rather than including unrelated neighboring articles or losing citations.
   Amendment URLs are not misrepresented as current-code nodes.
-- QA/QC reports read evidence from the actual compared model directory, not
-  the canonical single-model extraction directory.
 - Opted-in code-host headers also apply to initial acquisition; case-insensitive
   operator overrides take precedence on pages and API calls.
 - Model transport uses client-scoped TLS for configured gateways and disables
   hidden automatic retries, preserving explicit temperature-compatibility retry.
 - Extraction schema errors identify the violated schema rule without copying
   rejected record values into diagnostics or chained tracebacks.
-- Full-pipeline approval also covers QA/QC extraction: `run --yes` no longer
-  aborts at a second interactive prompt. Standalone `validate --yes` is available.
 - Comparative document review includes its complete response schema in the
   model prompt, including required per-group reasons, before strict validation.
 - Extensionless downloads with missing/generic binary MIME are accepted as PDF
@@ -63,8 +68,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   it never disables Chrome's sandbox and is prohibited in protected mode.
 - Model credentials are per-client rather than process-global; provider
   exceptions and raw model responses are not copied into application logs.
-- CSV evidence is formula-escaped; XLSX evidence is literal while trusted
-  QA/QC formulas and literal-cell dropdowns remain functional.
+- CSV evidence is formula-escaped; XLSX evidence is literal.
 - Compilation rejects malformed payloads before publication, expands nested
   rows from schema rather than item order, and reports incomplete provenance.
   Protected compilation requires canonical records and complete provenance.

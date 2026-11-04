@@ -31,12 +31,3 @@ extraction:
   pages:
     csv: config/solar/page_ranges.csv
 ```
-
-## QA/QC (optional)
-
-```bash
-pixi run psweep validate --config config/solar/run.yaml
-
-# Rebuild QA/QC reports later without re-running extraction
-pixi run psweep validate --config config/solar/run.yaml --compare-only
-```

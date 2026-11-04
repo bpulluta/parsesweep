@@ -19,11 +19,11 @@ from psweep.workspace import Workspace
 from psweep.pipeline import (
     build_run_stage_commands,
     compile_extractions,
+    compiled_table_fresh,
     count_curated_documents,
     count_extracted_documents,
     extract_documents,
     resolve_run_discovery_enabled,
-    resolve_run_validation,
     run_pipeline,
 )
 
@@ -284,116 +284,6 @@ def test_build_run_stage_commands_preserves_flags(tmp_path: Path) -> None:
     ]
 
 
-def test_build_run_stage_commands_wires_validation(tmp_path: Path) -> None:
-    config_path = tmp_path / "example.yaml"
-    config_path.write_text(
-        "domain: example\n"
-        "discovery:\n"
-        "  targets:\n"
-        "    - label: demo\n"
-        "      urls: [https://example.com]\n"
-        "schema: schemas/example.json\n"
-        "validation:\n"
-        "  models: [primary, secondary]\n",
-        encoding="utf-8",
-    )
-
-    assert resolve_run_validation(config_path) == {"models": ["primary", "secondary"]}
-
-    stage_cmds = build_run_stage_commands(
-        config_path,
-        base_cmd=["pixi", "run", "psweep"],
-    )
-
-    stage_names = [name for name, _ in stage_cmds]
-    assert stage_names == ["discover", "extract", "validate", "compile"]
-
-    validate_cmd = dict(stage_cmds)["validate"]
-    assert validate_cmd[:4] == ["pixi", "run", "psweep", "validate"]
-    assert validate_cmd[validate_cmd.index("--config") + 1] == str(config_path)
-    assert "--yes" in validate_cmd
-
-
-@pytest.mark.parametrize("confirm", [True, False])
-def test_validate_confirmation_can_be_explicitly_skipped(tmp_path, monkeypatch, confirm):
-    monkeypatch.chdir(tmp_path)
-    docs = tmp_path / Workspace("synthetic").curated
-    docs.mkdir(parents=True)
-    (docs / "synthetic.txt").write_text("Synthetic measurement: 42")
-    schema = tmp_path / "schema.json"
-    schema.write_text(json.dumps({
-        "type": "object",
-        "properties": {"items": {"type": "array", "items": {
-            "type": "object", "properties": {"name": {"type": "string"}},
-        }}},
-        "$metadata": {"extraction": {
-            "main_data_array": "items",
-        }},
-    }))
-    config = tmp_path / "run.yaml"
-    config.write_text(yaml.safe_dump({
-        "domain": "synthetic",
-        "models": {"primary": "gpt-primary", "secondary": "gpt-secondary"},
-        "schema": str(schema),
-        "validation": {"models": ["primary", "secondary"],
-                       "record_matching": {"key_fields": ["name"]},
-                       "comparison": {"primary_fields": ["name"]}},
-    }))
-    extraction = Mock(return_value=None)
-    monkeypatch.setattr("psweep.cli.commands_extract._run_validation_extraction", extraction)
-    args = ["validate", "--config", str(config)]
-    if not confirm:
-        args.append("--yes")
-    result = CliRunner().invoke(cli, args)
-    assert extraction.call_count == 1, result.output
-    assert extraction.call_args.kwargs["prompt_confirm"] is confirm
-
-
-def test_comparison_report_uses_the_compared_model_directory(tmp_path, monkeypatch):
-    from psweep.cli.commands_compare import generate_comparison_reports
-
-    doc_dir = tmp_path / "validated" / "validation" / "document"
-    doc_dir.mkdir(parents=True)
-    for model in ("first", "second"):
-        (doc_dir / f"{model}.json").write_text('{"payload": {"items": []}}')
-    engine = Mock()
-    engine.compare_outputs.return_value = SimpleNamespace(
-        models=["first", "second"], summary={},
-    )
-    report = Mock()
-    monkeypatch.setattr("psweep.validation.ComparisonEngine", Mock(return_value=engine))
-    monkeypatch.setattr("psweep.validation.ReportGenerator", Mock(return_value=report))
-    view = Mock(is_quiet=True)
-    view.make_progress.return_value = None
-    result = generate_comparison_reports(
-        validation_path_obj=doc_dir.parent, schema_metadata=None,
-        validation_config={}, runtime_artifact=None, view=view,
-    )
-    assert result == 0
-    assert report.generate_report.call_args.kwargs["extraction_dir"] == doc_dir
-
-
-def test_build_run_stage_commands_propagates_fresh_to_validation(
-    tmp_path: Path,
-) -> None:
-    config_path = tmp_path / "example.yaml"
-    config_path.write_text(
-        "domain: example\n"
-        "schema: schemas/example.json\n"
-        "validation:\n"
-        "  models: [primary, secondary]\n",
-        encoding="utf-8",
-    )
-
-    stage_cmds = build_run_stage_commands(
-        config_path,
-        base_cmd=["pixi", "run", "psweep"],
-        fresh=True,
-    )
-    validate_cmd = dict(stage_cmds)["validate"]
-    assert "--fresh" in validate_cmd
-
-
 def test_build_run_stage_commands_applies_target_limit_only_to_discover(
     tmp_path: Path,
 ) -> None:
@@ -469,13 +359,12 @@ def test_build_run_stage_commands_wires_extract_input_path_when_provided(
     ]
 
 
-def test_build_run_stage_commands_no_validation_when_disabled(tmp_path: Path) -> None:
+def test_build_run_stage_commands_without_discovery(tmp_path: Path) -> None:
     config_path = tmp_path / "example.yaml"
     config_path.write_text(
         "domain: example\nschema: s.json\n", encoding="utf-8"
     )
 
-    assert resolve_run_validation(config_path) is None
     stage_names = [
         name
         for name, _ in build_run_stage_commands(
@@ -710,3 +599,58 @@ def test_count_extracted_documents_excludes_manifests(tmp_path: Path) -> None:
     (d / "b.json").write_text("{}", encoding="utf-8")
     (d / "run_manifests" / "m.json").write_text("{}", encoding="utf-8")
     assert count_extracted_documents(d) == 2
+
+
+@pytest.mark.parametrize(
+    ("domain", "skip_extract", "stages"),
+    [
+        ("solar", False, ["extract", "compile"]),
+        ("solartrace", False, ["discover", "extract", "compile", "validate"]),
+        ("solartrace", True, ["discover", "compile"]),
+    ],
+)
+def test_run_stages_validate_after_compile_with_a_validation_section(
+    domain, skip_extract, stages
+) -> None:
+    config_path = Path(__file__).resolve().parents[1] / "config" / domain / "run.yaml"
+    stage_cmds = build_run_stage_commands(
+        config_path, base_cmd=["psweep"], skip_extract=skip_extract, fresh=True
+    )
+    assert [name for name, _ in stage_cmds] == stages
+    if stages[-1] == "validate":
+        assert stage_cmds[-1][1] == ["psweep", "validate", "--config", str(config_path), "--fresh"]
+
+
+def test_compiled_table_fresh_tracks_records_table_and_manifest(tmp_path: Path) -> None:
+    extracted, output = tmp_path / "extracted", tmp_path / "compiled"
+    extracted.mkdir()
+    record = extracted / "record.json"
+    record.write_text(json.dumps({"payload": {"items": [{"name": "a"}]}}), encoding="utf-8")
+    schema = tmp_path / "schema.json"
+    schema.write_text(json.dumps({"$metadata": {
+        "extraction": {"main_data_array": "items"},
+        "identity": {"deduplication": {"key_fields": ["name"]}},
+    }}), encoding="utf-8")
+
+    def fresh() -> bool:
+        return compiled_table_fresh(extracted, schema, config_path=None, output_dir=output)
+
+    def compile_() -> Path:
+        result = compile_extractions(extracted, schema, output_dir=output, report_format="csv")
+        return result.output_files[0]
+
+    assert not fresh()
+    table = compile_()
+    assert fresh()
+    table.write_text(table.read_text(encoding="utf-8") + "edited\n", encoding="utf-8")
+    assert not fresh()
+    compile_()
+    record.write_text(json.dumps({"payload": {"items": [{"name": "b"}]}}), encoding="utf-8")
+    assert not fresh()
+    compile_()
+    assert fresh()
+    manifest = sorted((output / "run_manifests").glob("*.manifest.json"))[-1]
+    data = json.loads(manifest.read_text(encoding="utf-8"))
+    del data["lineage"]["build_fingerprint"]
+    manifest.write_text(json.dumps(data), encoding="utf-8")
+    assert not fresh()

@@ -1,7 +1,7 @@
 # Configuration Reference
 
 A ParseSweep run is driven by a YAML config containing any subset of
-`extraction`, `compilation`, `discovery`, and `validation`. Loading validates
+`extraction`, `compilation`, and `discovery`. Loading validates
 all supplied sections; each command executes only its own section. Only the
 explicitly selected config file is loaded. Adjacent section override files
 beside `run.yaml`, `run.yml`, or `run.json` are retired: move their settings into
@@ -74,6 +74,9 @@ shared runtime definitions; templates show explicit choices separately.
 | `pages.auto_locate.max_selected_pages` | extraction | `30` | Sections span more/fewer pages |
 | `output.default_format` | compilation | `both` when unset | You want only `csv` or `excel` |
 | dedup `key_fields` | schema `$metadata.identity.deduplication` | none | Compiled sheet has duplicate rows |
+| `judge` | validation | none (no judging) | Disputed cells need a verdict |
+| `fields` | validation | every scorable field | Focus scoring on a few columns |
+| `min_accuracy` | validation | none (no gate) | `validate` must fail below a reference accuracy |
 
 The [Command Reference](commands/index.md) also renders every CLI option's
 default directly from the live command definitions.
@@ -311,7 +314,7 @@ deduplication still require an in-memory frame. Complete exact/fuzzy keys use
 indexed grouping rather than pairwise scans. Null-as-wildcard fuzzy matching
 also uses indexed candidates while preserving ordered matching semantics;
 highly ambiguous multidimensional identity buckets can still be expensive.
-Prefer CSV for large batches; benchmark representative record sizes and
+Prefer CSV for large batches; measure representative record sizes and
 duplicate distributions before scaling. Schemas without
 identity keys do not deduplicate; choose domain-appropriate keys explicitly
 rather than inferring them in core code. Configured keys missing from both the
@@ -321,6 +324,18 @@ review caches avoid repeated parsing/model calls when grading inputs are
 unchanged. Neither feature bounds acquisition latency or whole-pipeline
 memory. Synthetic record, checkpoint, and mocked timeout tests do not establish
 100,000-target, large-document, fuzzy-dedup, or live-API readiness.
+
+## Validation
+
+The `validation:` block (`models`, `references`, `judge`, `fields`,
+`min_accuracy`, and rows-mode `key_fields`/`quote_field`) is strict: unknown
+aliases, fields, or reference paths fail at load with a did-you-mean
+suggestion. Challengers go through the real extract and compile path into
+`validated/<alias>/`. Records, compiled tables, and judge verdicts are reused
+while they stay fresh. A stale primary extraction or table is an error (run
+`extract` or `compile`), and `--fresh` clears `validated/`. `validate --sample N`
+draws a seeded blind labelling sheet; it is a sample, not a population estimate.
+Accuracy carries a 95% Wilson interval.
 
 ## Minimal discovery template
 
@@ -336,7 +351,7 @@ commented out. The active starter remains just `domain` and `discovery.queries`.
 ## Advanced annotated reference
 
 The expanded reference retains the original extraction, compilation, discovery,
-model, page-targeting, and QA/QC examples. Copy only the sections you need;
+model, and page-targeting examples. Copy only the sections you need;
 placeholder models and schema paths must be replaced before those stages run.
 
 ```{literalinclude} ../config/ADVANCED.yaml

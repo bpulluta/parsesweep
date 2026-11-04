@@ -69,11 +69,11 @@ def test_library_provenance_policy_matches_operating_mode(
         with pytest.raises(ValueError, match="missing_schema_id"):
             compile_extractions(tmp_path, contract_schema, output_dir=output)
         compile_records.assert_not_called()
+        assert not output.exists()
     else:
         result = compile_extractions(tmp_path, contract_schema, output_dir=output)
         assert result.warnings == warnings
         compile_records.assert_called_once()
-    assert not output.exists()
 
 
 @pytest.mark.parametrize("operation", ["compile", "export"])

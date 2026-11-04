@@ -27,8 +27,6 @@ import csv
 import hashlib
 import json
 import logging
-import os
-import re
 import io
 import shutil
 import subprocess
@@ -37,6 +35,7 @@ from collections import deque
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
+from uuid import uuid4
 from pathlib import Path
 from typing import Optional, Sequence
 
@@ -69,7 +68,6 @@ from psweep.extraction.provenance import (
     prepend_source_context,
     source_context,
     build_run_manifest,
-    generate_run_id,
 )
 from psweep.extraction.record_writer import (
     CONTRACT_VERSION,
@@ -153,7 +151,7 @@ class CompilationResult:
 
 @dataclass
 class PipelineResult:
-    """Combined result from a full discover → extract → [validate] → compile run."""
+    """Combined result from a full discover → extract → compile run."""
 
     domain: str
     stages_run: list[str]
@@ -166,18 +164,16 @@ def _read_config_dict(config_path: str | Path) -> dict:
     return load_runtime_config_file(Path(config_path))
 
 
-def resolve_run_validation(config_path: str | Path) -> Optional[dict]:
-    """Return ``{"models": [...]}`` when ``validation.models`` enables QA/QC, else ``None``."""
-    cfg = _read_config_dict(config_path)
-    models = (cfg.get("validation") or {}).get("models") or []
-    return {"models": models} if len(models) >= 2 else None
-
-
 def resolve_run_discovery_enabled(config_path: str | Path) -> bool:
     """Return True when discovery is configured for the run config."""
     cfg = _read_config_dict(config_path)
     discovery_section = cfg.get("discovery")
     return isinstance(discovery_section, dict) and bool(discovery_section)
+
+
+def run_validation_enabled(config_path: str | Path) -> bool:
+    """Return True when the run config has a ``validation:`` section."""
+    return bool(_read_config_dict(config_path).get("validation"))
 
 
 def build_run_stage_commands(
@@ -198,17 +194,12 @@ def build_run_stage_commands(
     checkpoint and refresh the search cache), extract (re-extract already-
     processed documents), and compile (clear compiled outputs before writing),
     giving ``run --fresh`` a fully clean pipeline across all stages.
-
-    When the config enables multi-model QA/QC, an explicit ``validate`` stage
-    is appended after extraction.
     """
     cfg_path = Path(config_path)
     stage_cmds: list[tuple[str, list[str]]] = []
 
     if discovery_enabled is None:
         discovery_enabled = resolve_run_discovery_enabled(cfg_path)
-
-    validation = resolve_run_validation(cfg_path)
 
     if not skip_discover and discovery_enabled:
         discover_flags = [*extra_flags]
@@ -242,22 +233,6 @@ def build_run_stage_commands(
                 extract_cmd,
             )
         )
-    if validation and not skip_extract:
-        validate_flags = ["--yes", *extra_flags]
-        if fresh:
-            validate_flags.append("--fresh")
-        stage_cmds.append(
-            (
-                "validate",
-                [
-                    *base_cmd,
-                    "validate",
-                    "--config",
-                    str(cfg_path),
-                    *validate_flags,
-                ],
-            )
-        )
     compile_flags = [*extra_flags]
     if fresh:
         compile_flags.append("--fresh")
@@ -267,6 +242,11 @@ def build_run_stage_commands(
             [*base_cmd, "compile", "--config", str(cfg_path), *compile_flags],
         )
     )
+    if not skip_extract and run_validation_enabled(cfg_path):
+        validate_flags = [*extra_flags, *(["--fresh"] if fresh else [])]
+        stage_cmds.append(
+            ("validate", [*base_cmd, "validate", "--config", str(cfg_path), *validate_flags])
+        )
     return stage_cmds
 
 
@@ -665,8 +645,6 @@ def _prepare_extraction(
     pending = [doc for doc in documents if doc not in reused]
     if inputs.get("limit"):
         pending = pending[: inputs["limit"]]
-    if pending and not validate_only:
-        _require_extraction_credentials(llm, None)
     return {
         **plan,
         "pending": pending,
@@ -1013,7 +991,6 @@ def _complete_extraction(
     total_cost = measured["cost"]
     manifest = build_run_manifest(
         run_id=run_id,
-        mode="single_model",
         schema_path=plan["schema_path"],
         provider=llm["provider"],
         model=llm["model"],
@@ -1085,6 +1062,7 @@ def _execute_extraction(
     inputs, llm = plan["inputs"], plan["llm"]
     extractor = None
     if pending:
+        _require_extraction_credentials(llm, None)
         extractor = extraction_api.DocumentExtractor(
             **llm,
             max_context_chars=inputs.get("max_context", DEFAULT_MAX_CONTEXT),
@@ -1092,14 +1070,7 @@ def _execute_extraction(
             reasoning_models=inputs.get("reasoning_models"),
             timeout=inputs.get("timeout_seconds"),
         )
-    run_id = generate_run_id(
-        schema_path=plan["schema_path"],
-        provider=llm["provider"],
-        model=llm["model"],
-        enable_validation=False,
-        doc_files=plan["documents"],
-        artifact_id=None,
-    )
+    run_id = f"run://{uuid4().hex}"
     started = datetime.now(timezone.utc).isoformat()
     ranges, sections, locator_clients = _target_extraction_inputs(plan)
     if plan["fresh"] and output.exists() and plan["documents"]:
@@ -1207,6 +1178,62 @@ def extract_documents(
     return _execute_extraction(plan)
 
 
+def _compiler(extraction_dir, schema, *, config_path=None, output_dir=None, report_format=None):
+    """Resolve compile settings exactly like ``psweep compile --config``."""
+    from psweep.compilation.data_compiler import DataCompiler
+    from psweep.security import validate_protected_paths
+
+    ext_dir, schema_path = Path(extraction_dir), Path(schema)
+    if not ext_dir.exists():
+        raise FileNotFoundError(f"Extraction directory not found: {ext_dir}")
+    if not schema_path.exists():
+        raise FileNotFoundError(f"Schema not found: {schema_path}")
+    resolved: dict = {"schema": str(schema_path)}
+    if config_path:
+        resolved = resolve_command_config(
+            command="compile",
+            cli_values={"schema": str(schema_path), "extracted_dir": str(ext_dir)},
+            config_data=load_runtime_config_file(Path(config_path)),
+        )
+    workspace = Workspace(resolved.get("domain") or infer_domain(ext_dir))
+    out_dir = Path(output_dir or workspace.compiled)
+    validate_protected_paths({"input_dir": ext_dir, "output_dir": out_dir})
+    if report_format is not None:
+        resolved["compilation_output"] = {
+            **resolved.get("compilation_output", {}),
+            "default_format": report_format,
+        }
+    compiler = DataCompiler(
+        schema_metadata=resolve_compilation_metadata(resolved),
+        inputs=resolved,
+        verbose=False,
+        debug=False,
+    )
+    return compiler, ext_dir, out_dir, out_dir / f"{workspace.compiled_name}.csv"
+
+
+def compiled_table_fresh(
+    extraction_dir: str | Path,
+    schema: str | Path,
+    *,
+    config_path: str | Path | None,
+    output_dir: str | Path | None,
+) -> bool:
+    """True when the newest compile manifest matches the records and the CSV bytes."""
+    from psweep.compilation.accounting import latest_compilation_manifest
+
+    compiler, ext_dir, out_dir, table = _compiler(
+        extraction_dir, schema, config_path=config_path, output_dir=output_dir
+    )
+    lineage = (latest_compilation_manifest(out_dir) or {}).get("lineage") or {}
+    return (
+        table.is_file()
+        and bool(lineage.get("build_fingerprint"))
+        and lineage.get("table_sha256") == artifact_sha256(table)
+        and lineage["build_fingerprint"] == compiler.fingerprint(ext_dir)
+    )
+
+
 def compile_extractions(
     extraction_dir: str | Path,
     schema: str | Path,
@@ -1222,49 +1249,25 @@ def compile_extractions(
     ``psweep compile --config``; ``output_dir`` defaults to
     ``outputs/<domain>/compiled`` with the domain inferred from *extraction_dir*.
     """
-    from psweep.compilation.data_compiler import DataCompiler
-    from psweep.security import protected_mode, validate_protected_paths
+    from psweep.compilation.accounting import write_compilation_run_manifest
+    from psweep.security import protected_mode
 
-    ext_dir = Path(extraction_dir)
-    schema_path = Path(schema)
-
-    if not ext_dir.exists():
-        raise FileNotFoundError(f"Extraction directory not found: {ext_dir}")
-    if not schema_path.exists():
-        raise FileNotFoundError(f"Schema not found: {schema_path}")
-
-    resolved: dict = {"schema": str(schema_path)}
-    if config_path:
-        cfg = load_runtime_config_file(Path(config_path))
-        resolved = resolve_command_config(
-            command="compile",
-            cli_values={
-                "schema": str(schema_path),
-                "extracted_dir": str(ext_dir),
-            },
-            config_data=cfg,
-        )
-    workspace = Workspace(resolved.get("domain") or infer_domain(ext_dir))
-    out_dir = Path(output_dir or workspace.compiled)
-    validate_protected_paths({"input_dir": ext_dir, "output_dir": out_dir})
-    if report_format is not None:
-        resolved["compilation_output"] = {
-            **resolved.get("compilation_output", {}),
-            "default_format": report_format,
-        }
-    schema_metadata = resolve_compilation_metadata(resolved)
-    compiler = DataCompiler(
-        schema_metadata=schema_metadata,
-        inputs=resolved,
-        verbose=False,
-        debug=False,
+    compiler, ext_dir, out_dir, table = _compiler(
+        extraction_dir,
+        schema,
+        config_path=config_path,
+        output_dir=output_dir,
+        report_format=report_format,
     )
+    schema_metadata = compiler.schema_metadata
+    started_at = datetime.now(timezone.utc)
     provenance_warnings = analyze_compile_input_provenance(ext_dir)
     if protected_mode() and provenance_warnings:
         raise ValueError(
             "Protected compilation rejected provenance: "
             + "; ".join(provenance_warnings)
         )
+    build_fingerprint = None if dry_run else compiler.fingerprint(ext_dir)
     df, _schema_info = compiler.compile_from_directory(
         ext_dir,
         apply_deduplication=not dry_run,
@@ -1272,8 +1275,8 @@ def compile_extractions(
 
     rows = len(df)
     output_files: list[Path] = []
-    if not df.empty:
-        if dry_run:
+    if dry_run:
+        if not df.empty:
             from contextlib import redirect_stdout
             from io import StringIO
 
@@ -1286,13 +1289,28 @@ def compile_extractions(
             compiler.validate_export(
                 frame, schema_metadata.get_output_formats()
             )
-        else:
-            output_files, _ = compiler.export(
-                df,
-                out_dir,
-                workspace.compiled_name,
-                schema_metadata.get_output_formats(),
-            )
+    else:
+        output_files, frame = compiler.export(
+            df,
+            out_dir,
+            table.stem,
+            schema_metadata.get_output_formats(),
+        )
+        write_compilation_run_manifest(
+            output_dir=out_dir,
+            schema_id=str(schema_metadata.schema_path),
+            mode=compiler.mode,
+            stats={
+                "records": rows,
+                "columns": len(frame.columns),
+                "duplicates_removed": compiler.duplicates_removed,
+                "output_formats": schema_metadata.get_output_formats(),
+                **(compiler.roster_stats or {}),
+            },
+            started_at=started_at,
+            build_fingerprint=build_fingerprint,
+            table_sha256=artifact_sha256(table) if table.is_file() else None,
+        )
 
     return CompilationResult(
         output_dir=out_dir,
@@ -1312,12 +1330,11 @@ def run_pipeline(
     skip_extract: bool = False,
     fresh: bool = False,
 ) -> PipelineResult:
-    """Run the full pipeline (discover → extract → compile) from a run config.
+    """Run the full pipeline (discover → extract → compile → validate) from a run config.
 
     This is a thin subprocess-based orchestrator that mirrors the CLI ``run``
     command. It is suitable for scripting and automation where you want
     programmatic control over the pipeline without the Rich terminal UI.
-    When the config enables QA/QC, a ``compare`` stage runs after ``compile``.
 
     Raises ``psweep.exceptions.PipelineError`` when any stage fails.
     """

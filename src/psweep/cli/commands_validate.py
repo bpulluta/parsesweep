@@ -1,311 +1,110 @@
-"""`validate` command for explicit QA/QC extraction + comparison."""
+"""``psweep validate``: score the primary against challengers and references."""
 
 from __future__ import annotations
 
-import sys
+import sqlite3
 from pathlib import Path
-from typing import Optional
 
 import click
-from dotenv import load_dotenv
 
-from psweep.cli.ui import print_error
-from psweep.config import RuntimeConfigError
-from psweep.extraction import load_schema
-from psweep.extraction.llm_factory import DEFAULT_MAX_CONTEXT
-from psweep.extraction.document_utils import SUPPORTED_EXTENSIONS
-from psweep.extraction.provenance import generate_run_id
-from psweep.workspace import Workspace
+
+def _gate_failure(gate: dict) -> str:
+    reasons = []
+    for label, result in gate["references"].items():
+        if result["passed"]:
+            continue
+        if count := result["out_of_scope"]:
+            rows = "row" if count == 1 else "rows"
+            reasons.append(f"{label}: {count} reference {rows} out of scope")
+        else:
+            accuracy = result["accuracy_j"]
+            shown = "—" if accuracy is None else f"{accuracy:.2f}"
+            reasons.append(
+                f"primary accuracy {shown} < min_accuracy {gate['min_accuracy']:.2f} vs {label}"
+            )
+    return "; ".join(reasons)
 
 
 @click.command()
 @click.option(
     "--config",
     "config_path",
-    type=click.Path(exists=True),
     required=True,
-    help="Domain run config file with extraction + validation sections.",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    help="Domain run config with a validation: section.",
 )
+@click.option("--fresh", is_flag=True, help="Delete validated/ and re-run every challenger.")
 @click.option(
-    "--limit",
-    "-n",
+    "--sample",
     type=click.IntRange(min=1),
-    default=None,
-    help="Process only first N documents",
+    help="Write validated/sample_<N>.csv, a blind labelling template, and exit.",
 )
+@click.option("--seed", type=int, default=0, show_default=True, help="Seed for --sample.")
 @click.option(
-    "--compare-only",
+    "--validate-config",
+    "validate_config_only",
     is_flag=True,
-    help="Skip QA/QC extraction and only regenerate comparison reports from existing validation outputs.",
+    help="Validate the validation: section and exit.",
 )
-@click.option(
-    "--fresh",
-    is_flag=True,
-    default=False,
-    show_default=True,
-    help="Re-extract all files (default: skip files already processed)",
-)
-@click.option("--quiet", "-q", is_flag=True, help="Minimal output")
-@click.option("--verbose", "-v", is_flag=True, help="Detailed output")
-@click.option("--debug", is_flag=True, help="Debug mode with full logs")
-@click.option("--yes", "-y", is_flag=True, help="Skip QA/QC extraction confirmation")
+@click.option("--quiet", "-q", is_flag=True, help="Minimal output.")
+@click.option("--verbose", "-v", is_flag=True, help="Detailed output.")
+@click.option("--debug", is_flag=True, help="Debug output.")
 def validate(
-    config_path: str,
-    limit: Optional[int],
-    compare_only: bool,
+    config_path: Path,
     fresh: bool,
+    sample: int | None,
+    seed: int,
+    validate_config_only: bool,
     quiet: bool,
     verbose: bool,
     debug: bool,
-    yes: bool,
 ) -> None:
-    """Run explicit QA/QC validation: multi-model extraction + comparison."""
-    from psweep.cli.commands import (
-        _resolve_runtime_command_inputs,
-        begin_run,
-    )
-    from psweep.cli.commands_compare import (
-        generate_comparison_reports,
-        load_runtime_validation_config,
-    )
-    from psweep.cli.commands_extract import _run_validation_extraction
-    from psweep.extraction.llm_factory import resolve_llm_kwargs
-    from psweep.pipeline import _target_extraction_inputs
+    """Compare the primary extraction with challenger models and human references.
 
+    Reuses records and judge verdicts; only missing work calls an LLM.
+
+    \b
+        psweep validate --config config/my_domain/run.yaml
+        psweep validate --config config/my_domain/run.yaml --sample 100 --seed 1
+    """
+    from psweep.cli.commands import begin_run
+    from psweep.config import RuntimeConfigError, load_runtime_config_file
+    from psweep.exceptions import ParseSweepError
+
+    if sample is not None and fresh:
+        raise click.UsageError("--sample writes a template only; drop --fresh")
     view = begin_run("validate", quiet=quiet, verbose=verbose, debug=debug)
-    load_dotenv()
-
     try:
-        resolved_inputs = _resolve_runtime_command_inputs(
-            command_name="validate",
-            config_path=config_path,
-            cli_values={},
-        )
-    except RuntimeConfigError as exc:
-        view.error("Runtime config resolution failed", str(exc))
-        sys.exit(1)
+        if validate_config_only:
+            if not load_runtime_config_file(config_path).get("validation"):
+                raise RuntimeConfigError(f"{config_path} has no validation: section")
+            view.success("Runtime config validation passed for validate command")
+            return
+        from psweep.validation import run_validation, write_sample
+        from psweep.validation.tables import leaderboard
 
-    path = Path(resolved_inputs["path"])
-    schema_path = Path(resolved_inputs["schema"])
-    workspace = Workspace(resolved_inputs["domain"])
-    extraction_output_dir = Path(resolved_inputs["output"])
-    validation_output_dir = workspace.validated
-    max_context = int(resolved_inputs.get("max_context", DEFAULT_MAX_CONTEXT))
-    timeout_seconds = resolved_inputs.get("timeout_seconds")
-    validation_models = (resolved_inputs.get("validation") or {}).get("models") or []
-    registry = resolved_inputs.get("_model_registry")
-    validation_output = validation_output_dir / "validation"
-
-    if registry is None and not compare_only:
-        view.error(
-            "QA/QC model registry missing",
-            "Run validate with --config so qa/qc models resolve from the config models block.",
-        )
-        sys.exit(1)
-    if len(validation_models) < 2 and not compare_only:
-        view.error(
-            "QA/QC configuration error",
-            "validation.models must resolve to at least 2 model tiers.",
-        )
-        sys.exit(1)
-    if not schema_path.exists():
-        print_error("Schema not found", schema_path.as_posix())
-        sys.exit(1)
-
-    try:
-        schema_metadata, runtime_artifact, validation_config = load_runtime_validation_config(
-            schema_path=schema_path,
-            config_path=config_path,
-        )
-    except Exception as exc:
-        view.error("Failed to load QA/QC config", str(exc))
-        sys.exit(1)
-
-    judge_runtime = validation_config.get("judge_runtime") or {}
-    judge_enabled = bool((validation_config.get("judge") or {}).get("enabled"))
-    judge_model = judge_runtime.get("model") or "(disabled)"
-    judge_provider = judge_runtime.get("provider") or "-"
-    report_cfg = validation_config.get("report") or {}
-
-    if compare_only:
-        view.header("VALIDATE — QA/QC")
-        view.config(
-            {
-                "Mode": "reports-only (no extraction)",
-                "QA/QC Output": str(validation_output),
-                "Comparison Approach": validation_config.get("comparison_approach")
-                or "mixed",
-                "Judge Enabled": "yes" if judge_enabled else "no",
-                "Judge Model": judge_model,
-                "Judge Provider": judge_provider,
-                "Queue Includes Presence": "yes"
-                if bool(report_cfg.get("include_missing_in_queue", False))
-                else "no",
-                "Queue Includes Low-Signal Presence": "yes"
-                if bool(
-                    report_cfg.get(
-                        "include_low_signal_presence_in_queue", False
-                    )
-                )
-                else "no",
-            }
-        )
-        if not validation_output.exists():
-            view.error(
-                "QA/QC output not found",
-                f"Expected existing outputs at {validation_output}",
+        if sample is not None:
+            path = write_sample(config_path, n=sample, seed=seed, notify=view.warning)
+            view.success(f"Wrote {path.as_posix()}")
+            view.next_steps(
+                [
+                    "Fill it blind (blank = not present; rows mode: use the schema's key "
+                    "vocabulary and paste the quote) and delete unlabelled rows",
+                    f"Save it under {config_path.parent.as_posix()}/samples/ and add it to "
+                    "validation.references",
+                ]
             )
-            sys.exit(1)
-        
-        discovery_checkpoint = workspace.curated / "checkpoint.json"
-        discovery_checkpoint_path = discovery_checkpoint if discovery_checkpoint.exists() else None
-        
-        # Load schema for evidence display
-        try:
-            schema_dict = load_schema(schema_path)
-        except Exception:
-            schema_dict = None
-        
-        exit_code = generate_comparison_reports(
-            validation_path_obj=validation_output,
-            schema_metadata=schema_metadata,
-            validation_config=validation_config,
-            runtime_artifact=runtime_artifact,
-            view=view,
-            report_limit=limit,
-            discovery_checkpoint_path=discovery_checkpoint_path,
-            schema=schema_dict,
-        )
-        if exit_code != 0:
-            sys.exit(exit_code)
-        return
-
-    if not path.exists():
-        view.error("Input path not found", str(path))
-        sys.exit(1)
-
-    loaded_schema = load_schema(schema_path)
-    supported_extensions = tuple(ext.lower() for ext in SUPPORTED_EXTENSIONS)
-    if path.is_dir():
-        doc_files = sorted(
-            f
-            for f in path.rglob("*")
-            if f.is_file()
-            and f.suffix.lower() in supported_extensions
-            and not any(part.startswith(".") for part in f.relative_to(path).parts)
-        )
-    else:
-        if path.suffix.lower() not in supported_extensions:
-            view.error("Unsupported file", str(path))
-            sys.exit(1)
-        doc_files = [path]
-
-    if not doc_files:
-        view.warning("No documents found to validate")
-        return
-    if limit and limit > 0:
-        doc_files = doc_files[:limit]
-
-    model_labels = []
-    if registry is not None:
-        for definition in registry.get_models(list(validation_models)):
-            llm_kwargs = registry.to_llm_kwargs(definition.tier)
-            provider = llm_kwargs.get("provider", "openai")
-            model_labels.append(f"{definition.model} [{provider}]")
-
-    view.header("VALIDATE — QA/QC")
-    view.config(
-        {
-            "Mode": "full (extract + compare)",
-            "Documents": str(len(doc_files)),
-            "Models": ", ".join(model_labels)
-            if model_labels
-            else ", ".join(validation_models),
-            "Comparison Approach": validation_config.get("comparison_approach")
-            or "mixed",
-            "Judge Enabled": "yes" if judge_enabled else "no",
-            "Judge Model": judge_model,
-            "Judge Provider": judge_provider,
-            "Extraction Mode": "reprocess all models"
-            if fresh
-            else "reuse existing where available",
-            "LLM Timeout (s)": str(timeout_seconds) if timeout_seconds else "default",
-            "Report Output": str(validation_output),
-        }
-    )
-
-    page_range_map = {}
-    extraction_output_dir.mkdir(parents=True, exist_ok=True)
-    validation_output_dir.mkdir(parents=True, exist_ok=True)
-    page_targeting = resolved_inputs.get("page_targeting")
-    if page_targeting and page_targeting.get("enabled"):
-        view.phase("Stage 1/3: Discovering page ranges")
-        page_range_map, _, _ = _target_extraction_inputs(
-            {
-                "inputs": resolved_inputs,
-                "llm": resolve_llm_kwargs(
-                    resolved_inputs.get("model"),
-                    models=resolved_inputs.get("models"),
-                    provider=resolved_inputs.get("provider"),
-                    llm_config=resolved_inputs.get("llm_config"),
-                ),
-                "pending": [
-                    doc for doc in doc_files if doc.suffix.lower() == ".pdf"
-                ],
-                "ranges": {},
-                "candidates": {},
-                "anchors": {},
-                "roster_errors": {},
-            }
-        )
-    else:
-        view.phase("Stage 1/3: Page targeting disabled")
-
-    run_id = generate_run_id(
-        schema_path=schema_path,
-        provider="mixed",
-        model="validation",
-        enable_validation=True,
-        doc_files=doc_files,
-        artifact_id=None,
-    )
-    view.phase("Stage 2/3: Multi-model extraction")
-    validation_output = _run_validation_extraction(
-        doc_files=doc_files,
-        loaded_schema=loaded_schema,
-        schema_path=schema_path,
-        output_dir=validation_output_dir,
-        registry=registry,
-        validation_models=validation_models,
-        max_context=max_context,
-        timeout_seconds=timeout_seconds,
-        page_range_map=page_range_map,
-        verbosity=view.verbosity.value,
-        runtime_artifact=None,
-        run_id=run_id,
-        config_path=config_path,
-        prompt_confirm=not (yes or view.is_quiet),
-        skip_existing=not fresh,
-        seed_output_dir=extraction_output_dir,
-        write_primary_canonical=False,
-        view=view,
-    )
-    if validation_output is None:
-        sys.exit(1)
-
-    view.phase("Stage 3/3: Comparison and report generation")
-    discovery_checkpoint = workspace.curated / "checkpoint.json"
-    discovery_checkpoint_path = discovery_checkpoint if discovery_checkpoint.exists() else None
-    
-    exit_code = generate_comparison_reports(
-        validation_path_obj=validation_output,
-        schema_metadata=schema_metadata,
-        validation_config=validation_config,
-        runtime_artifact=runtime_artifact,
-        view=view,
-        report_limit=None,
-        discovery_checkpoint_path=discovery_checkpoint_path,
-        schema=loaded_schema,
-    )
-    if exit_code != 0:
-        sys.exit(exit_code)
+            return
+        summary = run_validation(config_path, fresh=fresh, notify=view.info)
+    except (ValueError, OSError, sqlite3.Error, ParseSweepError) as exc:
+        view.error("Validation failed", str(exc))
+        raise click.exceptions.Exit(1) from exc
+    domain = load_runtime_config_file(config_path)["domain"]
+    if not view.is_quiet:
+        view.console.print()
+        for line in leaderboard(summary, f"validate {domain}"):
+            view.console.print(line, markup=False, highlight=False)
+    gate = summary.get("gate")
+    if gate and not gate["passed"]:
+        view.error("Validation gate failed", _gate_failure(gate))
+        raise click.exceptions.Exit(1)

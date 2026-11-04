@@ -1,7 +1,7 @@
 """Tests for the CLI cleanup audit (shared estimator, counts).
 
 Covers:
-- the single cost/token estimator in ``psweep.cli.cost_tracker``
+- the single cost/token estimator in ``psweep.utils.model_pricing``
 - the shared on-disk artifact counters in ``psweep.cli.app``
 - the ``preview`` command pricing bugfix (configured model, not DEFAULT_MODEL)
 """
@@ -10,7 +10,7 @@ Covers:
 import click.testing
 import pytest
 
-from psweep.cli.cost_tracker import (
+from psweep.utils.model_pricing import (
     CHARS_PER_TOKEN,
     OUTPUT_TOKEN_RATIO,
     TOKENS_PER_SECOND,
@@ -35,12 +35,9 @@ def test_estimate_extraction_cost_locks_math():
     assert est.model == "gpt-4o-mini"
     assert est.input_tokens == 1000
     assert est.output_tokens == pytest.approx(100.0)
-    # gpt-4o-mini pricing: (0.15, 0.60) per 1M tokens.
     assert est.input_rate == 0.15
     assert est.output_rate == 0.60
-    assert est.input_cost == pytest.approx(1000 / 1_000_000 * 0.15)
-    assert est.output_cost == pytest.approx(100 / 1_000_000 * 0.60)
-    assert est.total_cost == pytest.approx(est.input_cost + est.output_cost)
+    assert est.total_cost == pytest.approx((1000 * 0.15 + 100 * 0.60) / 1_000_000)
     # 1000 tokens / (100 tokens/sec * 1 worker) = 10 seconds.
     assert est.estimated_seconds == pytest.approx(10.0)
     assert est.estimated_minutes == pytest.approx(10.0 / 60)
@@ -67,8 +64,7 @@ def test_preview_uses_configured_model_price(tmp_path, monkeypatch):
     doc = tmp_path / "sample.txt"
     doc.write_text("hello world")
 
-    # 4,000,000 chars -> 1,000,000 tokens so gpt-4o costs a clearly non-zero,
-    # model-distinguishable amount ($5.00 in + $1.50 out = $6.50).
+    # 4,000,000 chars -> 1,000,000 tokens: gpt-4o ($2.50 in + $1.00 out) = $3.50.
     monkeypatch.setattr(
         uc, "extract_text_from_document", lambda *a, **k: "x" * 4_000_000
     )
@@ -85,8 +81,7 @@ def test_preview_uses_configured_model_price(tmp_path, monkeypatch):
     # Configured model shown (gpt-4o), NOT the default gpt-4o-mini.
     assert "gpt-4o" in result.output
     assert "gpt-4o-mini" not in result.output
-    # gpt-4o pricing (5.00 / 15.00) -> $6.50, not gpt-4o-mini's $0.21.
-    assert "$6.50" in result.output
+    assert "$3.50" in result.output
 
 
 # ── shared on-disk artifact counters ─────────────────────────────────────────

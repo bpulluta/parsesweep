@@ -1,25 +1,18 @@
 """Regression gates for independent Phase 2 integration findings."""
 
-import builtins
 import json
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock
 
 import pytest
-from click.testing import CliRunner
 
 from psweep import pipeline
-from psweep.cli.commands_extract import _run_validation_extraction
-from psweep.cli.main import cli
-from psweep.config.model_registry import ModelRegistry
-from psweep.exceptions import SchemaValidationError
 from psweep.extraction import schema_utils
 from psweep.extraction.document_utils import write_text_cache
 from psweep.extraction.page_locator import PageLocator
 from psweep.pipeline import _execute_extraction, _prepare_extraction
 from psweep.utils.config import Config
-from psweep.validation.multi_model_extractor import run_multi_model_extraction
 
 
 @pytest.fixture
@@ -269,29 +262,6 @@ def test_skipped_ocr_pages_survive_record_and_do_not_reuse(
     assert provider.call_count == 2
 
 
-def test_unknown_cost_success_remains_successful_for_qaqc(reviewed_inputs):
-    """Keep successful QA payloads valid when pricing is unavailable."""
-    inputs, provider = reviewed_inputs
-    provider.return_value["cost"] = None
-    results = run_multi_model_extraction(
-        doc_text="Source evidence",
-        doc_name="doc",
-        schema=json.loads(Path(inputs["schema"]).read_text(encoding="utf-8")),
-        registry=ModelRegistry(llm_config=inputs["llm_config"]),
-        model_tiers=["gpt-fixture"],
-        output_dir=Path(inputs["output"]),
-    )
-    assert results["gpt-fixture"].success
-    assert results["gpt-fixture"].cost is None
-    assert results["gpt-fixture"].input_tokens == 12
-    meta = json.loads(
-        (Path(inputs["output"]) / "validation/doc/metadata.json").read_text(
-            encoding="utf-8"
-        )
-    )
-    assert meta["summary"]["unknown_cost_models"] == 1
-
-
 def test_needed_locator_key_fails_before_fresh_reset(
     reviewed_inputs, monkeypatch
 ):
@@ -334,46 +304,6 @@ def test_partitioned_outputs_are_stable_and_reused(reviewed_inputs):
     assert not (Path(inputs["output"]) / "report.json").exists()
     assert (Path(inputs["output"]) / "first/report.json").is_file()
     provider.assert_not_called()
-
-
-def test_check_displays_unknown_cost(reviewed_inputs):
-    """Valid unpriced records are inspectable through the recommended CLI."""
-
-    inputs, provider = reviewed_inputs
-    provider.return_value["cost"] = None
-    result = _execute_extraction(_prepare_extraction(inputs))
-    check = CliRunner().invoke(
-        cli,
-        [
-            "check",
-            str(result.output_dir / "doc.json"),
-            "--schema",
-            inputs["schema"],
-            "--show-data",
-        ],
-    )
-    assert check.exit_code == 0, check.output
-    assert "unknown" in check.output.lower()
-
-
-def test_paid_qa_failure_retains_usage(reviewed_inputs):
-    """A failed payload still carries returned billing evidence to QA."""
-
-    inputs, provider = reviewed_inputs
-    error = SchemaValidationError("fixture invalid payload")
-    error.usage = {"cost": 0.025, "input_tokens": 13, "output_tokens": 7}
-    provider.side_effect = error
-    results = run_multi_model_extraction(
-        doc_text="Source",
-        doc_name="doc",
-        schema=json.loads(Path(inputs["schema"]).read_text(encoding="utf-8")),
-        registry=ModelRegistry(llm_config=inputs["llm_config"]),
-        model_tiers=["gpt-fixture"],
-        output_dir=Path(inputs["output"]),
-    )
-    assert not results["gpt-fixture"].success
-    assert results["gpt-fixture"].cost == 0.025
-    assert results["gpt-fixture"].input_tokens == 13
 
 
 def test_replaced_authoritative_text_invalidates_reuse(reviewed_inputs):
@@ -525,60 +455,3 @@ def test_composed_main_array_schema_is_supported(reviewed_inputs, composition):
     }
     path.write_text(json.dumps(schema), encoding="utf-8")
     assert _execute_extraction(_prepare_extraction(inputs)).exit_code == 0
-
-
-def test_qaqc_rejects_ambiguous_same_stem_before_provider(reviewed_inputs):
-    """QA namespace collisions cannot reuse a different document's payload."""
-
-    inputs, provider = reviewed_inputs
-    root = Path(inputs["path"])
-    documents = []
-    for label in ["a", "b"]:
-        path = root / label / "report.txt"
-        path.parent.mkdir()
-        path.write_text("Source", encoding="utf-8")
-        documents.append(path)
-    with pytest.raises(ValueError, match="collision"):
-        _run_validation_extraction(
-            doc_files=documents,
-            loaded_schema=json.loads(
-                Path(inputs["schema"]).read_text(encoding="utf-8")
-            ),
-            schema_path=Path(inputs["schema"]),
-            output_dir=Path(inputs["output"]),
-            registry=ModelRegistry(llm_config=inputs["llm_config"]),
-            validation_models=["gpt-fixture", "gpt-second"],
-            max_context=600000,
-            timeout_seconds=10,
-            page_range_map={},
-            runtime_artifact=None,
-            run_id="run://fixture",
-            verbosity="quiet",
-            prompt_confirm=False,
-        )
-    provider.assert_not_called()
-
-
-def test_qaqc_write_failure_keeps_returned_usage(reviewed_inputs, monkeypatch):
-    """Post-response publication failure retains paid call evidence."""
-
-    inputs, _provider = reviewed_inputs
-    original = builtins.open
-
-    def fail_record(path, *args, **kwargs):
-        if str(path).endswith("gpt-fixture.json"):
-            raise OSError("fixture disk full")
-        return original(path, *args, **kwargs)
-
-    monkeypatch.setattr(builtins, "open", fail_record)
-    results = run_multi_model_extraction(
-        doc_text="Source",
-        doc_name="doc",
-        schema=json.loads(Path(inputs["schema"]).read_text(encoding="utf-8")),
-        registry=ModelRegistry(llm_config=inputs["llm_config"]),
-        model_tiers=["gpt-fixture"],
-        output_dir=Path(inputs["output"]),
-    )
-    assert not results["gpt-fixture"].success
-    assert results["gpt-fixture"].cost == 0.01
-    assert results["gpt-fixture"].input_tokens == 12

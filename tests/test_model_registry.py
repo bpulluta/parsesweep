@@ -9,7 +9,6 @@ import pytest
 import yaml
 
 from psweep.config.model_registry import (
-    MIN_MULTI_MODELS,
     ModelDefinition,
     ModelRegistry,
     ModelRegistryError,
@@ -135,19 +134,6 @@ def test_get_model_non_string_reference_raises():
     registry = ModelRegistry.from_config({}, OPENAI_CFG)
     with pytest.raises(ModelRegistryError, match="must be a string or None"):
         registry.get_model(123)
-
-
-def test_get_models_preserves_order_and_dedups_by_concrete_model():
-    """Get models preserves order and dedups by concrete model."""
-    cfg = {"models": {"a": "gpt-5", "b": "gpt-4.1", "c": "gpt-5"}}
-    registry = ModelRegistry.from_config(cfg, OPENAI_CFG)
-    resolved = registry.get_models(["a", "b", "c", "gpt-4.1"])
-    assert [(d.tier, d.model) for d in resolved] == [
-        ("a", "gpt-5"),
-        ("b", "gpt-4.1"),
-    ]
-    assert registry.get_models(None) == []
-    assert registry.get_models([]) == []
 
 
 def test_to_llm_kwargs_delegates_once_with_concrete_model(monkeypatch):
@@ -317,54 +303,6 @@ def test_validate_rejects_invalid_single_reference(reference):
     registry = ModelRegistry.from_config({}, OPENAI_CFG)
     with pytest.raises(ModelRegistryError, match="non-empty string"):
         registry.validate(references=[reference])
-
-
-def test_validate_multi_reference_requires_two_distinct_models():
-    """Validate multi reference requires two distinct models."""
-    registry = ModelRegistry.from_config(
-        {"models": {"a": "gpt-5", "b": "gpt-4.1"}}, OPENAI_CFG
-    )
-    registry.validate(multi_references=[("validation.models", ["a", "b"])])
-
-
-@pytest.mark.parametrize("references", [["a"], ["a", "alias"], []])
-def test_validate_multi_reference_rejects_too_few_distinct_models(references):
-    """Validate multi reference rejects too few distinct models."""
-    registry = ModelRegistry.from_config(
-        {"models": {"a": "gpt-5", "alias": "gpt-5"}}, OPENAI_CFG
-    )
-    with pytest.raises(
-        ModelRegistryError, match=f"at least {MIN_MULTI_MODELS} distinct"
-    ):
-        registry.validate(multi_references=[("validation.models", references)])
-
-
-def test_validate_multi_reference_rejects_none_list():
-    """Validate multi reference rejects none list."""
-    registry = ModelRegistry.from_config({}, OPENAI_CFG)
-    with pytest.raises(
-        ModelRegistryError, match=r"validation\.models must list at least"
-    ):
-        registry.validate(multi_references=[("validation.models", None)])
-
-
-def test_validate_multi_reference_rejects_non_list():
-    """Validate multi reference rejects non list."""
-    registry = ModelRegistry.from_config({}, OPENAI_CFG)
-    with pytest.raises(ModelRegistryError, match="must be a list"):
-        registry.validate(multi_references=[("validation.models", "gpt-5")])
-
-
-@pytest.mark.parametrize("reference", [" ", 42, None])
-def test_validate_multi_reference_rejects_invalid_entry(reference):
-    """Validate multi reference rejects invalid entry."""
-    registry = ModelRegistry.from_config({}, OPENAI_CFG)
-    with pytest.raises(
-        ModelRegistryError, match="entries must be non-empty strings"
-    ):
-        registry.validate(
-            multi_references=[("validation.models", ["gpt-5", reference])]
-        )
 
 
 def test_model_definition_is_frozen():

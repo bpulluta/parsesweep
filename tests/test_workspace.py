@@ -110,7 +110,6 @@ def test_top_level_schema_overrides_sibling_default(tmp_path):
         ("compilation", "schema"),
         ("compilation", "input_dir"),
         ("compilation", "output_dir"),
-        ("validation", "output_dir"),
     ],
 )
 def test_derived_path_keys_are_rejected(tmp_path, section, key):

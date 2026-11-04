@@ -1,21 +1,10 @@
 #!/usr/bin/env python3
-"""
-Unit tests for item_matcher utilities.
-
-Tests the extracted item matching logic used by both compilation
-and QA/QC comparison.
-"""
+"""Unit tests for item_matcher utilities."""
 import logging
 
 import pytest
 import pandas as pd
-from psweep.utils.item_matcher import (
-    get_nested_value,
-    create_item_index,
-    map_key_fields_to_columns,
-    extract_key_tokens,
-    normalize_for_matching
-)
+from psweep.utils.item_matcher import get_nested_value, map_key_fields_to_columns
 
 
 class TestGetNestedValue:
@@ -34,78 +23,6 @@ class TestGetNestedValue:
     )
     def test_get_nested_value(self, obj, path, expected):
         assert get_nested_value(obj, path) == expected
-
-
-class TestTokenNormalization:
-    """Test token-based normalization functions."""
-
-    @pytest.mark.parametrize(
-        ("value", "expected"),
-        [
-            ("site preparation for drilling", {"site", "preparation", "drilling"}),
-            ("work in preparation of the site for drilling", {"preparation", "site", "drilling"}),
-            ("", set()),
-            (None, set()),
-        ],
-    )
-    def test_extract_key_tokens(self, value, expected):
-        assert extract_key_tokens(value) == expected
-
-    @pytest.mark.parametrize(
-        ("left", "right", "expected"),
-        [
-            (
-                "site preparation for drilling",
-                "work in preparation of the site for drilling",
-                "drilling preparation site",
-            ),
-        ],
-    )
-    def test_normalize_for_matching(self, left, right, expected):
-        assert normalize_for_matching(left) == normalize_for_matching(right)
-        assert normalize_for_matching(left) == expected
-
-
-class TestCreateItemIndex:
-    """Test create_item_index function."""
-    
-    def test_simple_index(self):
-        """Test creating index with simple items."""
-        items = [
-            {"id": "1", "value": "A"},
-            {"id": "2", "value": "B"}
-        ]
-        index = create_item_index(items, ["id"])
-        
-        assert len(index) == 2
-        assert index[("1",)]["value"] == "A"
-        assert index[("2",)]["value"] == "B"
-    
-    def test_composite_key_index(self):
-        """Test index with composite key - keys are normalized to lowercase."""
-        items = [
-            {"state": "CA", "city": "LA", "value": 1},
-            {"state": "CA", "city": "SF", "value": 2},
-            {"state": "TX", "city": "LA", "value": 3}
-        ]
-        index = create_item_index(items, ["state", "city"])
-        
-        assert len(index) == 3
-        # Keys are normalized to lowercase
-        assert index[("ca", "la")]["value"] == 1
-        assert index[("ca", "sf")]["value"] == 2
-        assert index[("tx", "la")]["value"] == 3
-    
-    def test_duplicate_keys(self):
-        """Test that later items overwrite earlier ones with same key."""
-        items = [
-            {"id": "1", "value": "first"},
-            {"id": "1", "value": "second"}
-        ]
-        index = create_item_index(items, ["id"])
-        
-        # Later item should overwrite
-        assert index[("1",)]["value"] == "second"
 
 
 class TestMapKeyFieldsToColumns:

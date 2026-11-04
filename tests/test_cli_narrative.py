@@ -24,7 +24,6 @@ from psweep.cli.run_view import RunView
 from psweep.cli.dashboard import (
     DiscoveryDashboard,
     create_discovery_live_dashboard,
-    create_live_dashboard,
 )
 import psweep.cli.ui as ui_module
 
@@ -125,10 +124,6 @@ class TestLiveDashboard:
         live, _ = create_discovery_live_dashboard(
             domain="x", mode="run", total_targets=3, seeker_enabled=True
         )
-        assert live.console is ui_module.console
-
-    def test_extraction_live_bound_to_shared_console(self):
-        live, _ = create_live_dashboard(total_documents=3)
         assert live.console is ui_module.console
 
     def test_push_event_dedupes_consecutive_duplicates(self):
