@@ -9,6 +9,7 @@ from click.testing import CliRunner
 
 from psweep.cli.main import cli
 from psweep.config.runtime_config_loader import RuntimeConfigError, resolve_compilation_metadata
+from psweep.workspace import Workspace
 
 
 @pytest.fixture
@@ -44,18 +45,19 @@ def _synthesis():
 def test_schema_paths_validated_before_llm_factory(tmp_path, synthesis_schema, monkeypatch, setting):
     syn = _synthesis()
     syn[setting] = [{"field": "typo"}] if setting == "reconcile_fields" else (["catalog.typo"] if setting == "group_by" else "typo")
+    monkeypatch.chdir(tmp_path)
     cfg = tmp_path / "run.yaml"
-    cfg.write_text(yaml.safe_dump({"domain": "synthetic", "compilation": {
-        "schema": str(synthesis_schema), "input_dir": str(tmp_path / "input"),
-        "output_dir": str(tmp_path / "output"), "synthesis": syn,
-    }}))
+    cfg.write_text(yaml.safe_dump({
+        "domain": "synthetic", "schema": str(synthesis_schema),
+        "compilation": {"synthesis": syn},
+    }))
     factory = Mock(side_effect=AssertionError("must not call provider"))
     monkeypatch.setattr("psweep.extraction.llm_factory.build_llm_client", factory)
     result = CliRunner().invoke(cli, ["compile", "--config", str(cfg), "--fresh"])
     assert result.exit_code != 0
     assert "typo" in result.output
     factory.assert_not_called()
-    assert not (tmp_path / "output").exists()
+    assert not Workspace("synthetic").compiled.exists()
 
 
 def test_generated_narrative_output_is_not_required_in_extraction_schema(synthesis_schema):

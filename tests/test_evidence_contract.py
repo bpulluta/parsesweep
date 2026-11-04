@@ -132,8 +132,8 @@ def test_synthetic_config_resolves_all_stages_strictly(tmp_path, schema_path):
     path.write_text(yaml.safe_dump({
         "domain": "synthetic_evidence",
         "discovery": {"targets": [{"name": "Example Target"}]},
-        "extraction": {"schema": str(schema_path), "input_dir": "input"},
-        "compilation": {"schema": str(schema_path), "input_dir": "extracted"},
+        "schema": str(schema_path),
+        "extraction": {"input_dir": "input"},
     }))
     config = load_runtime_config_file(path)
     for command in ("discover", "extract", "compile"):

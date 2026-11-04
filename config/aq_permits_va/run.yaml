@@ -48,11 +48,6 @@ discovery:
     action: warn
 
 extraction:
-  # Curated set from the latest discover run (all downloads when no
-  # document_review is configured for this domain).
-  input_dir: discovered/aq_permits_va/latest/curated
-  schema: schemas/personal/air_quality_permits_schema.json
-  output_dir: extracted/aq_permits_va
   # OCR-artifact corrections for scanned air-emissions permits. Applied in order
   # to OCR-derived PDF text only. These are domain-specific (emissions units,
   # chemical formulas, manufacturer names); other domains simply omit this block.
@@ -90,11 +85,6 @@ extraction:
     - {pattern: '\(asSO2\)', replacement: '(as SO2)'}
     # Space between a numeric value and its rate unit (4.20lbs/hr -> 4.20 lbs/hr).
     - {pattern: '(\d+\.?\d*)([a-z]+/[a-z]+)', replacement: '\1 \2', ignore_case: true}
-
-compilation:
-  input_dir: extracted/aq_permits_va
-  schema: schemas/personal/air_quality_permits_schema.json
-  output_dir: compiled/aq_permits_va
 
 validation:
   models: [primary, secondary]

@@ -9,8 +9,10 @@
 #   - discovery: only if you need web document discovery
 #   - validation: only if you use multi-model QA/QC validation
 # Credentials belong in environment variables or .env, never this file.
+# Outputs are derived from `domain`: outputs/<domain>/{discovered,extracted,validated,compiled}.
 
 domain: your_domain_name
+# schema: config/your_domain/schema.json  # default: schema.json beside this file
 
 # ─── MODELS (optional; used only by configured LLM stages) ─────────────────────
 # User-defined alias map: keys are alias names (any string), values are
@@ -29,9 +31,7 @@ models:
 
 # ─── EXTRACTION ──────────────────────────────────────────────────────────────
 extraction:
-  schema: schemas/personal/your_schema.json
-  input_dir: documents/your_domain        # or discovered/your_domain/curated
-  output_dir: extracted/your_domain
+  # input_dir: documents/your_domain      # default: outputs/<domain>/discovered/curated
   model: primary                          # PIN the tier — don't rely on .env default
   # Reuse validates source/schema/model/scope and record-byte evidence.
   # Stale or unverifiable outputs re-extract under skip_existing=true.
@@ -54,9 +54,6 @@ extraction:
 
 # ─── COMPILATION ─────────────────────────────────────────────────────────────
 compilation:
-  schema: schemas/personal/your_schema.json
-  input_dir: extracted/your_domain        # matches extraction output_dir
-  output_dir: compiled/your_domain
   # dry_run: false                        # default: false — preview dedup/merges without writing output
   # fail_on_suspicious: none               # none, high, medium, or low (dry-run threshold)
   # Dedup identity is schema-owned at $metadata.identity.deduplication.
@@ -176,8 +173,8 @@ compilation:
 # beside run.yaml/run.yml/run.json are retired. Move sections here and remove them.
 # Source/vendor filters are concrete provider choices in your domain config;
 # discovery does not infer them automatically from a document parser.
-# Outputs: discovered/<domain>/runs/<run_id>/curated (one run), and
-# discovered/<domain>/curated (consolidated downstream input).
+# Outputs: outputs/<domain>/discovered/runs/<run_id>/curated (one run), and
+# outputs/<domain>/discovered/curated (consolidated downstream input).
 # Checkpoint v2 reuse requires effective config + artifact digest evidence.
 # Publication locks reject concurrent corpus writers; journals recover known swaps.
 # OCR: .text/<filename>.txt + <filename>.meta.json; review: .review/<filename>.json.
@@ -192,7 +189,6 @@ compilation:
 #
 # validation:
 #   models: [primary, secondary]      # Two model tiers to contrast.
-#   output_dir: validated/your_domain
 #   report:
 #     include_csv: false
 #     include_missing_in_queue: true

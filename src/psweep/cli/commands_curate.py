@@ -24,6 +24,7 @@ from psweep.discovery.publication import (
     record_is_curated,
     resolve_publication_paths,
 )
+from psweep.workspace import Workspace
 
 
 def _review_sidecar_update(record: dict) -> tuple[Path, str] | None:
@@ -308,11 +309,10 @@ def _curate_locked(
 
 
 def _latest_run(domain: str) -> Path:
-    root = Path("discovered") / domain
-    latest = root / "latest"
+    latest = Workspace(domain).latest
     if latest.exists():
         return latest.resolve()
-    pointer = root / "latest.txt"
+    pointer = latest.with_name("latest.txt")
     if pointer.is_file():
         return Path(pointer.read_text(encoding="utf-8").strip()).resolve()
     message = f"No latest run found for domain: {latest} (run discover first)."

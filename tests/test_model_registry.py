@@ -249,7 +249,7 @@ def test_context_windows_remain_separate_from_alias_resolution(
     config_path.write_text(
         "models:\n  primary: deployment\n"
         "model_context_windows:\n  deployment: 20000\n  other: 30000\n"
-        "extraction:\n  schema: s.json\n  input_dir: documents\n",
+        "schema: s.json\nextraction:\n  input_dir: documents\n",
         encoding="utf-8",
     )
     config_data = load_runtime_config_file(config_path)

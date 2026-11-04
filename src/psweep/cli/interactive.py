@@ -22,6 +22,8 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.text import Text
 
+from psweep.workspace import CONFIG_ROOT, OUTPUTS_ROOT
+
 console = Console()
 
 # ---------------------------------------------------------------------------
@@ -131,7 +133,7 @@ def _collect_extract_args() -> list[str] | None:
     path = _ask_path("Documents folder:", default="documents/")
     if not path:
         return None
-    schema = _ask_path("Schema file (.json):", default="schemas/personal/")
+    schema = _ask_path("Schema file (.json):", default=f"{CONFIG_ROOT}/")
     if not schema:
         return None
     args = ["extract", path, "--schema", schema]
@@ -144,11 +146,11 @@ def _collect_extract_args() -> list[str] | None:
 
 def _collect_compile_args() -> list[str] | None:
     """Collect arguments for the `compile` command."""
-    console.print("\n[bold]Compile extractions[/bold] — needs an [cyan]extracted/ folder[/cyan] and schema.")
-    path = _ask_path("Extraction directory:", default="extracted/")
+    console.print("\n[bold]Compile extractions[/bold] — needs an [cyan]extracted folder[/cyan] and schema.")
+    path = _ask_path("Extraction directory:", default=f"{OUTPUTS_ROOT}/")
     if not path:
         return None
-    schema = _ask_path("Schema file (.json):", default="schemas/personal/")
+    schema = _ask_path("Schema file (.json):", default=f"{CONFIG_ROOT}/")
     if not schema:
         return None
     return ["compile", path, "--schema", schema]
@@ -195,7 +197,7 @@ def _collect_init_domain_schema_args() -> list[str] | None:
 
 def _collect_check_schema_args() -> list[str] | None:
     """Collect arguments for the `check-schema` command."""
-    path = _ask_path("Schema file (.json):", default="schemas/personal/")
+    path = _ask_path("Schema file (.json):", default=f"{CONFIG_ROOT}/")
     if not path:
         return None
     return ["check-schema", path]

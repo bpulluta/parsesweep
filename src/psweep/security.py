@@ -178,6 +178,7 @@ def validate_protected_paths(values: dict) -> None:
         return
     root = Path.cwd().resolve()
     for key in (
+        "path",
         "input_dir",
         "input_path",
         "documents_dir",
@@ -185,7 +186,6 @@ def validate_protected_paths(values: dict) -> None:
         "output",
         "output_dir",
         "validated_dir",
-        "_extraction_input_dir",
     ):
         value = values.get(key)
         if value and not Path(value).resolve().is_relative_to(root):

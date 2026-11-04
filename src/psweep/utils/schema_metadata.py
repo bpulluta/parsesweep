@@ -115,7 +115,7 @@ class SchemaMetadata:
                 "    }\n"
                 "  }\n"
                 "}\n\n"
-                "See: schemas/SCHEMA_BEST_PRACTICES.md for examples",
+                "See: docs/schemas/best-practices.md for examples",
                 schema_path=str(schema_path),
             )
 

@@ -12,6 +12,7 @@ from psweep.cli.main import cli
 from psweep.compilation.data_compiler import DataCompiler
 from psweep.pipeline import compile_extractions
 from psweep.utils.schema_metadata import SchemaMetadata
+from psweep.workspace import Workspace
 
 
 @pytest.fixture
@@ -37,12 +38,18 @@ def contract_schema(tmp_path):
     return path
 
 
+@pytest.fixture
+def workspace(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    return Workspace("synthetic")
+
+
 def _config(tmp_path, schema, **compilation):
     path = tmp_path / "run.yaml"
-    path.write_text(yaml.safe_dump({"domain": "synthetic", "compilation": {
-        "schema": str(schema), "input_dir": str(tmp_path / "input"),
-        "output_dir": str(tmp_path / "output"), **compilation,
-    }}))
+    data = {"domain": "synthetic", "schema": str(schema)}
+    if compilation:
+        data["compilation"] = compilation
+    path.write_text(yaml.safe_dump(data))
     return path
 
 
@@ -90,14 +97,14 @@ def test_protected_compiler_rejects_external_data_paths(
 
 
 def test_invalid_schema_owned_output_fails_before_fresh_or_calls(
-    tmp_path, contract_schema, monkeypatch
+    tmp_path, contract_schema, monkeypatch, workspace
 ):
     schema = json.loads(contract_schema.read_text())
     schema["$metadata"]["compilation"] = {"output": {"default_format": "invalid"}}
     contract_schema.write_text(json.dumps(schema))
-    (tmp_path / "input").mkdir()
-    (tmp_path / "output").mkdir()
-    sentinel = tmp_path / "output" / "keep.txt"
+    workspace.extracted.mkdir(parents=True)
+    workspace.compiled.mkdir(parents=True)
+    sentinel = workspace.compiled / "keep.txt"
     sentinel.write_text("previous output")
     cfg = _config(tmp_path, contract_schema, synthesis={
         "enabled": True, "group_by": ["source.url"], "model": "fake",
@@ -225,9 +232,9 @@ def test_excel_cell_overflow_fails_before_fresh_or_any_writer(tmp_path, contract
     assert sentinel.read_text() == "previous export"
 
 
-def test_cli_dry_run_checks_excel_evidence_limit(tmp_path, contract_schema):
-    directory = tmp_path / "input"
-    directory.mkdir()
+def test_cli_dry_run_checks_excel_evidence_limit(tmp_path, contract_schema, workspace):
+    directory = workspace.extracted
+    directory.mkdir(parents=True)
     (directory / "record.json").write_text(json.dumps({"payload": {
         "source": {"url": "https://example.org/a"},
         "items": [{"quote": "x" * 32768, "kind": "observation", "summary": "Summary"}],
@@ -509,12 +516,12 @@ def test_fresh_success_replaces_whole_directory_and_leaves_no_staging(
     assert _no_staging_leak(tmp_path)
 
 
-def test_fresh_empty_compile_removes_stale_outputs(tmp_path, contract_schema):
-    directory = tmp_path / "input"
-    directory.mkdir()
+def test_fresh_empty_compile_removes_stale_outputs(tmp_path, contract_schema, workspace):
+    directory = workspace.extracted
+    directory.mkdir(parents=True)
     (directory / "record.json").write_text(json.dumps({"payload": {"source": {"url": "https://example.org/a"}, "items": []}}))
-    output = tmp_path / "output"
-    output.mkdir()
+    output = workspace.compiled
+    output.mkdir(parents=True)
     (output / "stale.csv").write_text("old rows")
     cfg = _config(tmp_path, contract_schema)
     result = CliRunner().invoke(cli, ["compile", "--config", str(cfg), "--fresh"])
@@ -522,12 +529,12 @@ def test_fresh_empty_compile_removes_stale_outputs(tmp_path, contract_schema):
     assert not (output / "stale.csv").exists()
 
 
-def test_fresh_without_any_record_preserves_exports(tmp_path, contract_schema):
-    directory = tmp_path / "input"
-    directory.mkdir()
+def test_fresh_without_any_record_preserves_exports(tmp_path, contract_schema, workspace):
+    directory = workspace.extracted
+    directory.mkdir(parents=True)
     (directory / "metadata.json").write_text("{}")
-    output = tmp_path / "output"
-    output.mkdir()
+    output = workspace.compiled
+    output.mkdir(parents=True)
     sentinel = output / "previous.csv"
     sentinel.write_text("KEEP")
     cfg = _config(tmp_path, contract_schema)
@@ -537,18 +544,18 @@ def test_fresh_without_any_record_preserves_exports(tmp_path, contract_schema):
     assert sentinel.read_text() == "KEEP"
 
 
-def test_fresh_zero_item_publication_respects_writer_lock(tmp_path, contract_schema):
+def test_fresh_zero_item_publication_respects_writer_lock(tmp_path, contract_schema, workspace):
     from psweep.utils.file_io import publication_lock
 
-    directory = tmp_path / "input"
-    directory.mkdir()
+    directory = workspace.extracted
+    directory.mkdir(parents=True)
     (directory / "record.json").write_text(json.dumps({"payload": {"items": []}}))
-    output = tmp_path / "output"
-    output.mkdir()
+    output = workspace.compiled
+    output.mkdir(parents=True)
     sentinel = output / "previous.csv"
     sentinel.write_text("KEEP")
     cfg = _config(tmp_path, contract_schema)
-    with publication_lock(tmp_path / ".output-publication.lock"):
+    with publication_lock(output.parent / f".{output.name}-publication.lock"):
         result = CliRunner().invoke(cli, ["compile", "--config", str(cfg), "--fresh"])
     assert result.exit_code != 0
     assert "already active" in result.output
@@ -556,12 +563,12 @@ def test_fresh_zero_item_publication_respects_writer_lock(tmp_path, contract_sch
 
 
 @pytest.mark.parametrize("record", [{"payload": []}, {}, [], {"payload": {"items": "invalid"}}])
-def test_invalid_record_preserves_exports_even_with_fresh(tmp_path, contract_schema, record):
-    directory = tmp_path / "input"
-    directory.mkdir()
+def test_invalid_record_preserves_exports_even_with_fresh(tmp_path, contract_schema, record, workspace):
+    directory = workspace.extracted
+    directory.mkdir(parents=True)
     (directory / "bad.json").write_text(json.dumps(record))
-    output = tmp_path / "output"
-    output.mkdir()
+    output = workspace.compiled
+    output.mkdir(parents=True)
     sentinel = output / "previous.csv"
     sentinel.write_text("previous evidence")
     cfg = _config(tmp_path, contract_schema)

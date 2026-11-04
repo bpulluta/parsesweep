@@ -64,8 +64,8 @@ pixi run psweep discover --config config/my_domain/run.yaml --validate-config
 pixi run psweep discover --config config/my_domain/run.yaml
 ```
 
-Inspect the selected files in `discovered/my_domain/runs/<run_id>/curated` and
-the consolidated `discovered/my_domain/curated`. Defaults are **10 unique
+Inspect the selected files in `outputs/my_domain/discovered/runs/<run_id>/curated` and
+the consolidated `outputs/my_domain/discovered/curated`. Defaults are **10 unique
 candidates per query**, **1 acquisition per target**, direct acquisition/no
 crawl, concurrency **2**, retry attempts **3**, and robots/ToS policy **warn**.
 Search cache and browser recovery are **off**. No LLM review is automatic.
@@ -85,11 +85,11 @@ choices, and [config/ADVANCED.yaml](config/ADVANCED.yaml) for expanded stages.
 | File | Role |
 |------|------|
 | **Schema** (JSON) | Defines WHAT to extract — field names, types, descriptions |
-| **Config** (YAML) | Defines HOW to run — discovery inputs, paths, models, output format |
+| **Config** (YAML) | Defines HOW to run — discovery inputs, models, output format |
 
 Discovery uses the config alone. Add your own schema and LLM credentials when
-you are ready to extract; schemas under `schemas/personal/` are local inputs,
-not a prerequisite or published private schema set.
+you are ready to extract; `config/<domain>/schema.json` is the default schema
+location. Every stage output is derived from `domain` under `outputs/<domain>/`.
 
 ### Config Is the Single Entry Point
 
@@ -101,16 +101,10 @@ that file and remove the adjacent files. Add extraction and compilation later
 to the same config:
 
 ```yaml
+# schema: config/my_domain/schema.json      # default: schema.json beside run.yaml
 extraction:
-  schema: schemas/personal/my_schema.json
-  input_dir: discovered/my_domain/curated   # or documents/my_domain for local files
-  output_dir: extracted/my_domain
+  # input_dir: documents/my_domain          # default: outputs/my_domain/discovered/curated
   model: your-model-name
-compilation:
-  schema: schemas/personal/my_schema.json
-  input_dir: extracted/my_domain
-  output_dir: compiled/my_domain
-  # Dedup identity is schema-owned ($metadata.identity.deduplication.key_fields)
 ```
 
 Run stages independently or chain the configured stages:
@@ -175,7 +169,7 @@ pixi run psweep compile --config config/my_domain/run.yaml
 
 ```bash
 pixi run psweep curate --config config/my_domain/run.yaml
-pixi run psweep curate --run discovered/my_domain/latest
+pixi run psweep curate --run outputs/my_domain/discovered/runs/<run_id>
 
 # Options
   --config PATH       Config YAML or domain run config
@@ -308,7 +302,7 @@ The existing scaffold is **schema-specific**, not a discovery setup wizard:
 
 ```bash
 pixi run psweep init-domain-schema --name my_domain \
-  --reference-schema schemas/example_utility_rate_schema.json
+  --reference-schema config/utility_rate_tariffs/schema.json
 ```
 
 Or create manually — a minimal schema:
@@ -345,7 +339,7 @@ Or create manually — a minimal schema:
 }
 ```
 
-Save it to `schemas/personal/my_schema.json`. The `schemas/personal/` directory is the recommended location for your project-specific schemas.
+Save it to `config/my_domain/schema.json`, beside the domain's `run.yaml`.
 
 ### 2. Add Sections to Your Config
 
@@ -357,16 +351,8 @@ workflow, you can instead create a config containing only these sections:
 domain: my_domain
 
 extraction:
-  schema: schemas/personal/my_schema.json
-  input_dir: documents/my_domain       # or discovered/my_domain/curated
-  output_dir: extracted/my_domain
+  input_dir: documents/my_domain       # default: outputs/my_domain/discovered/curated
   model: your-model-name
-
-compilation:
-  schema: schemas/personal/my_schema.json
-  input_dir: extracted/my_domain
-  output_dir: compiled/my_domain
-  # Dedup identity is schema-owned ($metadata.identity.deduplication.key_fields)
 ```
 
 Use [config/ADVANCED.yaml](config/ADVANCED.yaml) for additional model aliases,
@@ -380,7 +366,7 @@ settings, not requirements for discovery.
 
 # Schema-only quick test (no config needed, good for iteration)
 pixi run psweep extract documents/my_domain/ \
-  --schema schemas/personal/my_schema.json -n 2
+  --schema config/my_domain/schema.json -n 2
 
 # Full run via config (recommended — picks up all settings)
 pixi run psweep extract --config config/my_domain/run.yaml
@@ -399,7 +385,6 @@ For documents over 200 pages, configure **page targeting** to automatically find
 
 ```yaml
 extraction:
-  schema: schemas/personal/my_schema.json
   pages:
     csv: config/domain/page_ranges.csv   # manual ranges (win over auto)
     auto_locate:                          # LLM fallback for uncovered docs
@@ -455,9 +440,6 @@ Configure in the `compilation.synthesis:` block:
 
 ```yaml
 compilation:
-  schema: schemas/personal/my_schema.json
-  input_dir: extracted/my_domain
-  output_dir: compiled/my_domain
   synthesis:
     enabled: true
     min_sources_for_llm: 2          # skip LLM call when only 1 source
@@ -498,14 +480,16 @@ parsesweep/
 │   ├── ADVANCED.yaml          # Expanded stage examples and annotations
 │   └── my_domain/             # Create locally
 │       ├── run.yaml
+│       ├── schema.json        # extraction schema (default `schema:`)
+│       ├── targets.csv        # optional authored target rows
 │       └── page_ranges.csv    # optional manual extraction page ranges
-├── schemas/
-│   ├── personal/              # Local project-specific schemas (JSON)
-│   └── example_utility_rate_schema.json
-├── documents/                 # Input documents (created by you)
-├── extracted/                 # JSON extraction output (generated)
-├── compiled/                  # Final Excel/CSV output (generated)
-├── discovered/                # Web discovery output (generated by discover)
+├── documents/                 # Optional local input documents
+├── outputs/                   # Generated; derived from `domain`, never set in YAML
+│   └── my_domain/
+│       ├── discovered/        # Web discovery runs + consolidated curated/
+│       ├── extracted/         # JSON extraction output
+│       ├── validated/         # QA/QC validation output
+│       └── compiled/          # Final Excel/CSV output
 └── src/psweep/                # Source code
     ├── cli/                   # CLI commands
     ├── discovery/             # Web document discovery
@@ -529,19 +513,18 @@ renders both templates and documents defaults, validation, and limitations.
 | Section | Used By | Required |
 |---------|---------|----------|
 | `discovery:` | `discover` | For web acquisition; no extraction schema required |
-| `extraction:` | `extract` | Needs `schema` and `input_dir` (or CLI input) |
-| `compilation:` | `compile` | Needs `schema` and input records |
+| `extraction:` | `extract` | Needs a schema (top-level `schema:` or sibling `schema.json`) |
+| `compilation:` | `compile` | Needs a schema and extracted records |
 | `validation:` | `validate` | QA/QC validation stage |
-| `domain:` | All | Names the domain/output namespace |
+| `domain:` | All | Names the domain; outputs go to `outputs/<domain>/` (default: config dir name) |
+| `schema:` | extract/compile/validate | Optional; default `schema.json` beside the config |
 | `models:` | Configured LLM stages | Optional aliases; does not auto-enable review |
 
 ### Key Extraction Settings
 
 ```yaml
 extraction:
-  schema: path/to/schema.json      # required
-  input_dir: path/to/documents     # required (or pass as CLI argument)
-  output_dir: extracted/domain     # default: extracted/<domain>
+  input_dir: path/to/documents     # default: outputs/<domain>/discovered/curated
   max_context: 600000              # chars per document
   pages:                           # page selection for large PDFs
     csv: path/to/ranges.csv        # manual ranges (win over auto)
@@ -555,9 +538,6 @@ extraction:
 
 ```yaml
 compilation:
-  schema: path/to/schema.json      # required
-  input_dir: extracted/domain      # required (or pass as CLI argument)
-  output_dir: compiled/domain      # default: compiled/<domain>
   # Dedup identity is schema-owned — set $metadata.identity.deduplication
   # .key_fields in the schema, not here (used by extract/compile/api alike).
   normalization:
@@ -630,7 +610,7 @@ ParseSweep tracks costs at every stage and surfaces them to the user.
 pixi run psweep extract --config config/my_domain/run.yaml --validate-config
 
 # Estimate cost before committing
-pixi run psweep estimate discovered/my_domain/latest/curated
+pixi run psweep estimate outputs/my_domain/discovered/curated
 
 # Discovery dry-run (no downloads or LLM calls)
 pixi run psweep discover --config config/my_domain/run.yaml --dry-run
@@ -654,7 +634,7 @@ Extraction shows per-file cost in real-time:
 ╰───────────────────────────╯
 ```
 
-**Pipeline accounting** — written on compile to `compiled/{domain}/run_accounting.json`:
+**Pipeline accounting** — written on compile to `outputs/{domain}/compiled/run_accounting.json`:
 ```json
 {
   "stages": {
@@ -705,7 +685,7 @@ pixi run psweep run --config config/my_domain/run.yaml --fresh
 
 | Stage | `--fresh` action |
 | --- | --- |
-| `discover` | Clears the crash-resume checkpoint (`discovered/<domain>/checkpoint.json`) and bypasses enabled SerpApi cache entries for fresh queries. It does not enable caching or search. |
+| `discover` | Clears the crash-resume checkpoint (`outputs/<domain>/discovered/checkpoint.json`) and bypasses enabled SerpApi cache entries for fresh queries. It does not enable caching or search. |
 | `extract` | After successful preflight, resets the whole resolved extraction output and re-extracts the selected subset. Filters/limits do not preserve unselected old records. |
 | `compile` | No flag — output is always rewritten. |
 
@@ -804,7 +784,7 @@ Copy `.env.example` to `.env` and uncomment one block. Run `psweep init` for int
 
 ```bash
 pixi run python -m pytest tests/   # run tests
-pixi run psweep check-schema schemas/personal/my_schema.json  # validate schema
+pixi run psweep check-schema config/my_domain/schema.json  # validate schema
 pixi run psweep extract --config ... --validate-config  # dry-run validation
 ```
 

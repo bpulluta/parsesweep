@@ -68,9 +68,9 @@ load a section-wrapped config explicitly with `--config`.
 ### Inspect what was acquired
 
 Open the run manifest and documents under
-`discovered/my_domain/runs/<run_id>/`; that run's selected files are in
+`outputs/my_domain/discovered/runs/<run_id>/`; that run's selected files are in
 `curated/`. The consolidated downstream folder is
-`discovered/my_domain/curated/`.
+`outputs/my_domain/discovered/curated/`.
 
 Discovery exit codes are the same in quiet, default, and verbose modes:
 `success`/`dry_run`/validated `reused` = **0**; `failed`/`partial_failure` = **1**
@@ -170,11 +170,11 @@ Extraction and compilation use two files per domain:
 | File | Role |
 |------|------|
 | **Schema** (JSON) | Defines *what* to extract — field names, types, descriptions |
-| **Config** (YAML) | Defines *how* to run — paths, models, page targeting, output |
+| **Config** (YAML) | Defines *how* to run — models, page targeting, output |
 
 The existing `init-domain-schema` command scaffolds a **schema**; it is not a
-discovery setup wizard. Discovery does not require it. Keep project-specific
-schemas locally under `schemas/personal/`; see
+discovery setup wizard. Discovery does not require it. Keep each domain's
+schema beside its config as `config/<domain>/schema.json`; see
 [Schema Authoring](schemas/index.md) for the contract and instructions.
 
 ### Configure LLM credentials
@@ -211,7 +211,7 @@ GEMINI_API_KEY=...
 ### Create a minimal schema
 
 Only `$metadata.extraction.main_data_array` and `identifier_fields` are
-required metadata keys. For example, `schemas/personal/my_schema.json`:
+required metadata keys. For example, `config/my_domain/schema.json`:
 
 ```json
 {
@@ -244,24 +244,22 @@ semantic quality of extracted values.
 
 ### Add extraction to the same config
 
-Only `schema` and `input_dir` are required. `output_dir`, `max_context`, and
-other settings have defaults; pin `model` when you want an explicit choice.
-For discovered inputs:
+The schema defaults to `config/my_domain/schema.json` (override with top-level
+`schema:`), input defaults to `outputs/my_domain/discovered/curated`, and output
+is derived as `outputs/my_domain/extracted`. Pin `model` when you want an
+explicit choice:
 
 ```yaml
 extraction:
-  schema: schemas/personal/my_schema.json
-  input_dir: discovered/my_domain/curated
-  output_dir: extracted/my_domain
   model: your-model-name
 ```
 
-For local documents, use `input_dir: documents/my_domain` instead. You can also
+For local documents, set `extraction.input_dir: documents/my_domain`. You can also
 test schema-only mode without a config:
 
 ```bash
 pixi run psweep extract documents/my_domain/ \
-  --schema schemas/personal/my_schema.json -n 2
+  --schema config/my_domain/schema.json -n 2
 
 # Config-driven extraction
 pixi run psweep extract --config config/my_domain/run.yaml
@@ -269,7 +267,7 @@ pixi run psweep extract --config config/my_domain/run.yaml
 
 ## Inspect, then iterate
 
-Extraction writes one JSON per document to `extracted/<domain>/`. Open a couple
+Extraction writes one JSON per document to `outputs/<domain>/extracted/`. Open a couple
 and check the results, then tune **one setting at a time**:
 
 - Output looks **truncated / missing later sections** → raise `max_context` or
@@ -285,14 +283,9 @@ options.
 
 ## Compile and run the whole pipeline
 
-Add compilation only when you are ready to use extracted records:
-
-```yaml
-compilation:
-  schema: schemas/personal/my_schema.json
-  input_dir: extracted/my_domain
-  output_dir: compiled/my_domain
-```
+Compilation reads `outputs/my_domain/extracted` with the same schema and writes
+`outputs/my_domain/compiled`; add a `compilation:` section only for settings
+such as output formats or normalization.
 
 ```bash
 # Merge per-document JSON into Excel/CSV

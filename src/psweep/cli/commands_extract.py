@@ -245,7 +245,7 @@ def _render_extraction(plan, view, live_dashboard):
     "config_path",
     type=click.Path(exists=True),
     default=None,
-    help="Domain run config file (RECOMMENDED — extraction input, schema, model, and output paths)",
+    help="Domain run config file (RECOMMENDED — schema, model, and paths derive from it)",
 )
 @click.option(
     "--show-effective-config",
@@ -267,7 +267,7 @@ def _render_extraction(plan, view, live_dashboard):
     "--output",
     "-o",
     type=click.Path(),
-    help="Output directory (auto-detected if not specified)",
+    help="Output directory (default: outputs/<domain>/extracted)",
 )
 @click.option(
     "--schema",
@@ -382,7 +382,7 @@ def extract(
     input_dir) and writes one JSON file per document to the output directory.
     Already-processed files are skipped by default; pass --fresh to re-extract
     documents that already have output JSON (cached text/sidecars are still
-    reused). Output defaults to ``extracted/<domain>/`` when --output is omitted;
+    reused). Output defaults to ``outputs/<domain>/extracted/`` when --output is omitted;
     run ``psweep extract --help`` for every option and its default.
 
     Examples
@@ -390,7 +390,7 @@ def extract(
     ::
 
         psweep extract --config config/my_domain/run.yaml --fresh
-        psweep extract docs/ --schema schemas/my_schema.json
+        psweep extract docs/ --schema config/my_domain/schema.json
         psweep extract docs/ --schema s.json --model gpt-4o --provider azure
     """
     from psweep.cli.commands import (

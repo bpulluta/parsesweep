@@ -6,12 +6,8 @@ across the discover -> extract -> compile pipeline, gathered from immutable
 run manifests. It lives here (rather than in the thin CLI layer) so it can be
 built and tested without invoking the ``compile`` Click command.
 
-Public API
-----------
-- :func:`build_pipeline_accounting` — assemble the full accounting payload.
-- :func:`write_compilation_run_manifest` — persist one compile run manifest.
-- :func:`collect_discovery_manifests` / :func:`discover_domain_roots` —
-  manifest discovery helpers, exposed for testing.
+Public API: :func:`build_pipeline_accounting`,
+:func:`write_compilation_run_manifest`, :func:`collect_discovery_manifests`.
 """
 
 from __future__ import annotations
@@ -21,6 +17,8 @@ import math
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+
+from psweep.workspace import Workspace
 
 
 def _omit_none(d: Dict[str, Any]) -> Dict[str, Any]:
@@ -47,149 +45,34 @@ def _has_any_files(path: Path) -> bool:
     return any(p.is_file() for p in path.rglob("*"))
 
 
-def _discover_domain_roots(
-    *,
-    domain: str,
-    extraction_dir: Path,
-    discovery_input_dir: Optional[str],
-) -> List[Path]:
-    """Return candidate ``discovered/<domain>`` roots for accounting lookup."""
-    roots: List[Path] = []
-    seen: set[str] = set()
-
-    def _add_root(candidate: Path) -> None:
-        key = str(candidate)
-        if key in seen:
-            return
-        seen.add(key)
-        roots.append(candidate)
-
-    for base in [Path.cwd(), extraction_dir.parent, extraction_dir.parent.parent]:
-        _add_root(base / "discovered" / domain)
-
-    if not discovery_input_dir:
-        return roots
-
-    disc_path = Path(discovery_input_dir)
-    if disc_path.is_file():
-        disc_path = disc_path.parent
-
-    for parent in [disc_path, *disc_path.parents]:
-        if parent.name == domain and parent.parent.name == "discovered":
-            _add_root(parent)
-            break
-        if parent.name == "discovered":
-            _add_root(parent / domain)
-            break
-    return roots
+def collect_discovery_manifests(domain: str) -> List[Path]:
+    """Discovery run manifests for *domain* plus the ``latest`` pointer, sorted by path."""
+    workspace = Workspace(domain)
+    manifests = list((workspace.discovered / "runs").glob("*/manifest.json"))
+    latest = workspace.latest / "manifest.json"
+    if latest.exists():
+        manifests.append(latest)
+    return sorted(manifests, key=str)
 
 
-def _collect_discovery_manifests(
-    *,
-    domain: str,
-    extraction_dir: Path,
-    discovery_input_dir: Optional[str],
-) -> List[Path]:
-    """Collect discovery run manifests (deduplicated, oldest first)."""
-    manifests: List[Path] = []
-    seen: set[str] = set()
-
-    def _add_manifest(path: Path) -> None:
-        key = str(path)
-        if key in seen or not path.exists():
-            return
-        seen.add(key)
-        manifests.append(path)
-
-    for root in _discover_domain_roots(
-        domain=domain,
-        extraction_dir=extraction_dir,
-        discovery_input_dir=discovery_input_dir,
-    ):
-        runs_dir = root / "runs"
-        if runs_dir.is_dir():
-            for manifest in sorted(runs_dir.glob("*/manifest.json")):
-                _add_manifest(manifest)
-        latest_manifest = root / "latest" / "manifest.json"
-        _add_manifest(latest_manifest)
-
-    manifests.sort(key=lambda p: str(p))
-    return manifests
+def canonical_discovery_manifest_path(domain: str, manifest_path: Path, run_id: str) -> str:
+    """Prefer ``runs/<run_id>/manifest.json`` over the ``latest`` pointer."""
+    candidate = Workspace(domain).discovered / "runs" / run_id / "manifest.json"
+    return str(candidate if candidate.exists() else manifest_path)
 
 
-def _discovery_domain_root_from_manifest(manifest_path: Path, domain: str) -> Optional[Path]:
-    """Return discovered/<domain> root for known manifest layouts."""
-    parent = manifest_path.parent
-    if (
-        parent.name == "latest"
-        and parent.parent.name == domain
-        and parent.parent.parent.name == "discovered"
-    ):
-        return parent.parent
-    if (
-        parent.parent.name == "runs"
-        and parent.parent.parent.name == domain
-        and parent.parent.parent.parent.name == "discovered"
-    ):
-        return parent.parent.parent
-    return None
-
-
-def _canonical_discovery_manifest_path(
-    *,
-    manifest_path: Path,
-    domain: str,
-    run_id: str,
-) -> str:
-    """Prefer discovered/<domain>/runs/<run_id>/manifest.json over latest symlink."""
-    domain_root = _discovery_domain_root_from_manifest(manifest_path, domain)
-    if domain_root is None:
-        return str(manifest_path)
-    candidate = domain_root / "runs" / run_id / "manifest.json"
-    if candidate.exists():
-        return str(candidate)
-    return str(manifest_path)
-
-
-def _build_pipeline_accounting(
+def build_pipeline_accounting(
     *,
     domain: str,
     extraction_dir: Path,
     output_dir: Path,
     compilation_stats: Dict[str, Any],
-    discovery_input_dir: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """Build a unified run_accounting.json for the compile stage.
+    """Build run_accounting.json: a factual, cumulative log of discover, extract and compile.
 
-    The accounting file records WHAT HAPPENED in a run. It is a factual log,
-    not a system manual: fields only appear when they carry information.
-
-    Cost model
-    ----------
-    ``summary`` is the quick-read block (cost, volume, efficiency). The
-    per-stage detail lives in ``stages.discovery``, ``stages.extraction``, and
-    ``stages.compilation``. LLM costs (extraction + document-review) accumulate
-    in ``summary.total_cost_usd``.
-
-    Search API (SerpApi and future flat-rate providers) is tracked as query
-    consumption only — it is NOT added to cost_usd because the plan is a
-    monthly flat-rate subscription, not per-query billing. Query counts appear
-    in the summary only when queries were actually made.
-
-    Reruns
-    ------
-    Stage histories are cumulative across immutable run manifests:
-    - discovery: discovered/<domain>/runs/*/manifest.json
-    - extraction: extracted/<domain>/run_manifests/*.manifest.json
-    - compilation: compiled/<domain>/run_manifests/*.manifest.json
-    This keeps accounting stable across iterative workflows where users reuse,
-    rerun, or partially reprocess stages.
-
-    Scale notes
-    -----------
-    The summary block is designed to be the first thing a user reads: six
-    fields cover cost, volume, and efficiency at any scale from a single
-    laptop run to a 100k-site batch.
+    Histories accumulate across immutable run manifests (discovery runs, plus
+    ``run_manifests/`` under the extraction and compilation dirs). LLM costs sum
+    into ``summary.total_cost_usd``; flat-rate search APIs count queries only.
     """
     warnings: List[str] = []
 
@@ -223,11 +106,8 @@ def _build_pipeline_accounting(
     discovery_providers: set[str] = set()
     discovered_run_ids_seen: set[str] = set()
 
-    discovery_manifests = _collect_discovery_manifests(
-        domain=domain,
-        extraction_dir=extraction_dir,
-        discovery_input_dir=discovery_input_dir,
-    )
+    discovery_manifests = collect_discovery_manifests(domain)
+    has_reuse_evidence = _has_any_files(Workspace(domain).curated)
     for manifest_candidate in discovery_manifests:
         try:
             disc = json.loads(manifest_candidate.read_text(encoding="utf-8"))
@@ -301,14 +181,6 @@ def _build_pipeline_accounting(
                 or dl_failed > 0
                 or dl_total > 0
             )
-            discovery_domain_root = _discovery_domain_root_from_manifest(
-                manifest_candidate,
-                domain,
-            )
-            has_reuse_evidence = bool(
-                discovery_domain_root
-                and _has_any_files(discovery_domain_root / "curated")
-            )
             is_reused = (not has_activity) and has_reuse_evidence and not source_is_dry_run
 
             if source_is_dry_run:
@@ -331,10 +203,8 @@ def _build_pipeline_accounting(
                 "status": user_status,
                 "completed_at": run_completed_at,
                 "elapsed_seconds": run_elapsed if run_elapsed else None,
-                "manifest_path": _canonical_discovery_manifest_path(
-                    manifest_path=manifest_candidate,
-                    domain=domain,
-                    run_id=run_id,
+                "manifest_path": canonical_discovery_manifest_path(
+                    domain, manifest_candidate, run_id
                 ),
             }
             if targets_total is not None:
@@ -956,7 +826,7 @@ def _build_pipeline_accounting(
     return output
 
 
-def _write_compilation_run_manifest(
+def write_compilation_run_manifest(
     *,
     output_dir: Path,
     schema_id: str,
@@ -1018,26 +888,3 @@ def _write_compilation_run_manifest(
         return manifest_path
     except OSError:
         return None
-
-
-# ---------------------------------------------------------------------------
-# Public API aliases — the underscore-named functions above are the canonical
-# implementations (kept verbatim from the former CLI module so behavior is
-# byte-for-byte identical). These aliases give the core module a clean,
-# importable surface for callers and tests.
-# ---------------------------------------------------------------------------
-build_pipeline_accounting = _build_pipeline_accounting
-write_compilation_run_manifest = _write_compilation_run_manifest
-collect_discovery_manifests = _collect_discovery_manifests
-discover_domain_roots = _discover_domain_roots
-discovery_domain_root_from_manifest = _discovery_domain_root_from_manifest
-canonical_discovery_manifest_path = _canonical_discovery_manifest_path
-
-__all__ = [
-    "build_pipeline_accounting",
-    "write_compilation_run_manifest",
-    "collect_discovery_manifests",
-    "discover_domain_roots",
-    "discovery_domain_root_from_manifest",
-    "canonical_discovery_manifest_path",
-]

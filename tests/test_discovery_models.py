@@ -12,6 +12,7 @@ from psweep.discovery import (
     DiscoveryRequest,
     CandidateScore,
 )
+from psweep.workspace import Workspace
 
 from discovery_helpers import FakeResponse as _FakeResponse
 from discovery_helpers import patch_requests_get as _patch_requests_get
@@ -79,7 +80,10 @@ def test_engine_run_emits_scaffold_candidates(tmp_path: Path):
     assert payload.count('"source": "seed_url"') == 2
 
 
-def test_engine_run_uses_deterministic_default_paths_and_lineage():
+def test_engine_run_uses_deterministic_default_paths_and_lineage(
+    tmp_path: Path, monkeypatch
+):
+    monkeypatch.chdir(tmp_path)
     engine = DiscoveryEngine()
     request = DiscoveryRequest(
         domain="geothermal_ordinances",
@@ -99,8 +103,9 @@ def test_engine_run_uses_deterministic_default_paths_and_lineage():
         result.run_id,
     )
     # Each run is one self-contained folder: documents/ lives under the run dir.
-    assert result.documents_dir.as_posix().endswith(
-        f"/runs/{result.run_id}/documents"
+    assert result.documents_dir == (
+        Workspace("geothermal_ordinances").discovered.resolve()
+        / "runs" / result.run_id / "documents"
     )
     assert (
         result.manifest_path.parent.as_posix()

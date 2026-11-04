@@ -7,58 +7,23 @@ import logging
 
 from dotenv import load_dotenv
 
+from psweep.workspace import CONFIG_ROOT
+
 logger = logging.getLogger(__name__)
 
 
 class Config:
-    """
-    Global configuration for the ParseSweep toolkit.
-
-    Manages paths for schemas, API keys, and other settings.
-    Can be initialized from environment variables or set programmatically.
-    """
+    """Global toolkit configuration: project paths and LLM provider settings."""
 
     def __init__(self, project_root: Optional[Path] = None):
-        """
-        Initialize configuration.
-
-        Parameters
-        ----------
-        project_root : Optional[Path]
-            Root directory of the project (auto-detected if None)
-        """
-        if project_root is None:
-            # Try to detect project root
-            self.project_root = self._detect_project_root()
-        else:
-            self.project_root = Path(project_root)
-
-        # Schema path
-        self.schema_dir = self.project_root / "schemas"
-        self.default_schema = (
-            self.schema_dir / "example_utility_rate_schema.json"
+        self.project_root = (
+            Path(project_root) if project_root is not None else self._detect_project_root()
         )
-
-        # Multi-provider LLM configuration
+        self.config_dir = self.project_root / CONFIG_ROOT
         self.llm_config = self._load_llm_config()
 
     def _load_llm_config(self) -> dict:
-        """
-        Load LLM provider configuration from environment.
-
-        Supports:
-
-        - Any OpenAI-compatible endpoint (LLM_BASE_URL + LLM_API_KEY) — highest priority
-        - Azure OpenAI (AZURE_OPENAI_API_KEY, AZURE_OPENAI_ENDPOINT, etc.)
-        - Anthropic Claude (ANTHROPIC_API_KEY)
-        - Google Gemini (GEMINI_API_KEY, GOOGLE_API_KEY)
-        - OpenAI (OPENAI_API_KEY)
-
-        Returns
-        -------
-        dict
-            dict with provider configuration
-        """
+        """Load LLM provider configuration from the environment and ``.env``."""
         config = {
             "provider": None,
             "model": None,
@@ -179,19 +144,7 @@ _global_config = None
 
 
 def get_config(project_root: Optional[Path] = None) -> Config:
-    """
-    Get the global configuration instance.
-
-    Parameters
-    ----------
-    project_root : Optional[Path]
-        Optional project root (used only on first call)
-
-    Returns
-    -------
-    Config
-        Config instance
-    """
+    """Return the global Config (``project_root`` applies only on first call)."""
     global _global_config
     if _global_config is None:
         _global_config = Config(project_root)

@@ -221,9 +221,6 @@ discovery:
 # ── Extraction ───────────────────────────────────────────────────────────────
 extraction:
   model: primary
-  input_dir: discovered/natural_gas_pipelines/latest/curated
-  schema: schemas/personal/natural_gas_pipeline_schema.json
-  output_dir: extracted/natural_gas_pipelines
   max_context: 600000
   timeout_seconds: 600
   pages:
@@ -248,9 +245,6 @@ extraction:
 
 # ── Compilation ──────────────────────────────────────────────────────────────
 compilation:
-  input_dir: extracted/natural_gas_pipelines
-  schema: schemas/personal/natural_gas_pipeline_schema.json
-  output_dir: compiled/natural_gas_pipelines
   provenance_policy: fail
   output:
     default_format: both
@@ -286,7 +280,6 @@ compilation:
 # validation:
 #   # Keep QA/QC lean for validation runs; 3-model runs inflate presence-only noise.
 #   models: [primary, secondary]
-#   output_dir: validated/natural_gas_pipelines
 #   report:
 #     include_csv: false
 #     include_missing_in_queue: true

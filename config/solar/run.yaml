@@ -10,14 +10,9 @@ models:
 extraction:
   model: primary
   input_dir: documents/solar/
-  schema: schemas/personal/solar_ordinance_schema.json
-  output_dir: extracted/solar/
   max_context: 600000
 
 compilation:
-  input_dir: extracted/solar/
-  schema: schemas/personal/solar_ordinance_schema.json
-  output_dir: compiled/solar/
   normalization:
     # Derive a 5-digit Census county FIPS join key from state + county.
     county_fips: true

@@ -55,22 +55,7 @@ Thumbs.db
 # ─────────────────────────────────────────────────────────
 # Output Files (can be regenerated)
 # ─────────────────────────────────────────────────────────
-extracted/
-compiled/
-discovered/
 outputs/
-validated/
-
-# ─────────────────────────────────────────────────────────
-# Proprietary Schemas & Documents (Intellectual Property)
-# ─────────────────────────────────────────────────────────
-schemas/personal/
-schemas/qaqc/
-documents/aq_permits/
-documents/geothermal_ordinances/
-documents/tariffs/
-config/aq_permits/
-config/tariffs/
 
 # ─────────────────────────────────────────────────────────
 # Archive & Old Code (for reference only)
@@ -97,10 +82,8 @@ temp/
 # ─────────────────────────────────────────────────────────
 # Data Directories (Contains Large Files - Not Version Controlled)
 # ─────────────────────────────────────────────────────────
-# User documents, validation data, and generated outputs should not be tracked
-# (generated validation output lives under validated/, ignored above; do NOT add
-# a bare `validation/` here — it would also match the src/psweep/validation
-# source package).
+# User documents and generated outputs should not be tracked (do NOT add a bare
+# `validation/` here — it would also match the src/psweep/validation package).
 documents/
 tools/
 output*/
@@ -109,7 +92,6 @@ output*/
 test-v1/
 config/audit/
 dev_docs/
-config/testing/
 
 .serena/
 .agents/

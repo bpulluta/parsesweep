@@ -42,8 +42,8 @@ discovery:
   #   document_description: "the manufacturer's installation manual"
   #   keep_top: 1                # review retention, separate from acquisition count
 
-# Inspect discovered/my_domain/runs/<run_id>/curated and the consolidated
-# discovered/my_domain/curated before configuring extraction.
+# Inspect outputs/my_domain/discovered/runs/<run_id>/curated and the consolidated
+# outputs/my_domain/discovered/curated before configuring extraction.
 # Search caps include live/cached/news candidates; no hidden pagination/refill.
 # Use search/max_results and selection.max_per_target/require_any/exclude.
 # No built-in legal draft, vendor authority, shopping, or US discovery alias lists.
@@ -51,13 +51,7 @@ discovery:
 # SerpApi/download TLS verification defaults remain false; configure
 # SERPAPI_SSL_VERIFY and DISCOVERY_SSL_VERIFY in the environment if needed.
 
-# Optional later stages — create your own schema and configure LLM credentials.
+# Optional later stages — add config/my_domain/schema.json and configure LLM
+# credentials. Outputs are derived: outputs/my_domain/{discovered,extracted,compiled}.
 # extraction:
-#   schema: schemas/personal/my_schema.json
-#   input_dir: discovered/my_domain/curated
-#   output_dir: extracted/my_domain
 #   model: your-model-name
-# compilation:
-#   schema: schemas/personal/my_schema.json
-#   input_dir: extracted/my_domain
-#   output_dir: compiled/my_domain
