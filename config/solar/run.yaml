@@ -9,7 +9,6 @@ models:
 
 extraction:
   model: primary
-  input_dir: documents/solar/
   max_context: 600000
 
 compilation:

@@ -32,8 +32,6 @@ def test_validate_compare_only_errors_when_no_validation_outputs_found(tmp_path:
     cfg_path.write_text(
         "domain: test\n"
         f"schema: {schema_path.as_posix()}\n"
-        "extraction:\n"
-        f"  input_dir: {tmp_path.as_posix()}\n"
         "validation:\n"
         "  models: [primary, secondary]\n"
         "  comparison_approach: mixed\n"
@@ -60,8 +58,6 @@ def test_validate_accepts_fresh_flag(tmp_path: Path, monkeypatch, schema_path) -
     cfg_path.write_text(
         "domain: test\n"
         f"schema: {schema_path.as_posix()}\n"
-        "extraction:\n"
-        f"  input_dir: {tmp_path.as_posix()}\n"
         "validation:\n"
         "  models: [primary, secondary]\n"
         "  comparison_approach: mixed\n"

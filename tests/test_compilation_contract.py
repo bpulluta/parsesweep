@@ -27,8 +27,7 @@ def contract_schema(tmp_path):
             }}},
         },
         "$metadata": {
-            "extraction": {"main_data_array": "items", "context_objects": ["source"],
-                           "identifier_fields": ["source.url"]},
+            "extraction": {"main_data_array": "items", "context_objects": ["source"]},
             "identity": {"deduplication": {"key_fields": ["quote"],
                                            "partition_fields": ["source.url"]}},
         },
@@ -592,7 +591,7 @@ def test_nested_row_expansion_is_schema_owned_and_order_invariant(tmp_path):
                 }},
             },
         }}},
-        "$metadata": {"extraction": {"main_data_array": "items", "identifier_fields": ["name"]}},
+        "$metadata": {"extraction": {"main_data_array": "items"}},
     }
     schema_path = tmp_path / "schema.json"
     schema_path.write_text(json.dumps(schema))

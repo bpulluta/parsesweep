@@ -8,7 +8,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
-from collections.abc import Sequence
 
 from psweep.exceptions import SchemaValidationError
 from psweep.utils.error_taxonomy import normalize_error_records
@@ -19,7 +18,10 @@ from psweep.extraction.schema_utils import (
 )
 
 if TYPE_CHECKING:
+    from psweep.extraction.provenance import SourceContext
     from psweep.utils.schema_metadata import SchemaMetadata
+
+CONTRACT_VERSION = "1.1.0"
 
 
 def _resolve_lineage_artifact_id(
@@ -57,29 +59,12 @@ def build_lineage(
             run_id=run_id,
             default_fragment=default_run_fragment,
         ),
-        "profile_id": ((runtime_artifact or {}).get("lineage") or {}).get(
-            "profile_id"
-        )
-        or "default",
         "run_id": run_id or f"run://{default_run_fragment}",
         "model": model,
         "provider": provider or "unknown",
         "schema_id": schema_id,
         "extracted_at": extracted_at,
     }
-
-
-def _extract_identifier(
-    data: dict[str, Any],
-    identifier_fields: Sequence[str],
-) -> str:
-    """Join declared scalar identifiers, retaining zero and false."""
-    parts = []
-    for field in identifier_fields:
-        value = get_nested_value(data, field)
-        if isinstance(value, (str, int, float)) and str(value).strip():
-            parts.append(str(value).strip())
-    return "-".join(parts)
 
 
 def record_extraction_scope(
@@ -127,9 +112,11 @@ def record_extraction_scope(
     result.validation_notes = warnings
 
 
-def build_extraction_record(
+def build_extraction_record(  # noqa: PLR0913 - canonical record context
     *,
     doc_path: Path,
+    source_document_id: str,
+    source: SourceContext | None = None,
     result: Any,
     model: str,
     provider: str | None,
@@ -149,10 +136,6 @@ def build_extraction_record(
         )
         raise SchemaValidationError(message)
     num_items = len(items)
-    identifier = _extract_identifier(
-        result.data,
-        schema_metadata.get_identifier_fields(),
-    )
     if input_fingerprint is not None and (
         not isinstance(input_fingerprint, str)
         or not re.fullmatch(r"[0-9a-f]{64}", input_fingerprint)
@@ -185,17 +168,23 @@ def build_extraction_record(
     record = {
         "record_id": f"record://{run_fragment}/{source_identity}",
         "item_count": num_items,
-        "contract_version": "1.0.0",
+        "contract_version": CONTRACT_VERSION,
         "document": {
-            "source_document_id": identifier or doc_path.stem,
+            "source_document_id": source_document_id,
             "source_path": doc_path.as_posix(),
             "source_filename": doc_path.name,
             "source_sha256": source_sha256,
+            "source_url": source.url if source else None,
+            "source_scope": source.scope if source else None,
+            "target_id": source.target_id if source else None,
         },
         "lineage": lineage,
         "payload": result.data,
         "quality": {
-            "overall_confidence": getattr(result, "completeness_score", None),
+            "status": getattr(result, "status", "extracted"),
+            "completeness": getattr(result, "completeness_score", None),
+            "unverified_quotes": getattr(result, "unverified_quotes", 0),
+            "off_candidate_items": getattr(result, "off_candidate_items", 0),
             "warnings": list(getattr(result, "validation_notes", []) or []),
             "errors": normalize_error_records(
                 getattr(result, "processing_errors", None)
@@ -219,6 +208,8 @@ def write_extraction_record(  # noqa: PLR0913 - canonical record context + valid
     output_path: Path,
     *,
     doc_path: Path,
+    source_document_id: str,
+    source: SourceContext | None = None,
     result: Any,
     model: str,
     provider: str | None,
@@ -232,6 +223,8 @@ def write_extraction_record(  # noqa: PLR0913 - canonical record context + valid
     """Publish a record atomically and return its item count."""
     record, num_items = build_extraction_record(
         doc_path=doc_path,
+        source_document_id=source_document_id,
+        source=source,
         result=result,
         model=model,
         provider=provider,

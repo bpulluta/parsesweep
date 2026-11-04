@@ -68,10 +68,9 @@ def validate(
         generate_comparison_reports,
         load_runtime_validation_config,
     )
-    from psweep.cli.commands_extract import (
-        _apply_page_targeting,
-        _run_validation_extraction,
-    )
+    from psweep.cli.commands_extract import _run_validation_extraction
+    from psweep.extraction.llm_factory import resolve_llm_kwargs
+    from psweep.pipeline import _target_extraction_inputs
 
     view = begin_run("validate", quiet=quiet, verbose=verbose, debug=debug)
     load_dotenv()
@@ -241,13 +240,23 @@ def validate(
     page_targeting = resolved_inputs.get("page_targeting")
     if page_targeting and page_targeting.get("enabled"):
         view.phase("Stage 1/3: Discovering page ranges")
-        _apply_page_targeting(
-            doc_files=doc_files,
-            page_range_map=page_range_map,
-            config=page_targeting,
-            models=resolved_inputs.get("models"),
-            output_dir=validation_output_dir,
-            pages_csv=None,
+        page_range_map, _, _ = _target_extraction_inputs(
+            {
+                "inputs": resolved_inputs,
+                "llm": resolve_llm_kwargs(
+                    resolved_inputs.get("model"),
+                    models=resolved_inputs.get("models"),
+                    provider=resolved_inputs.get("provider"),
+                    llm_config=resolved_inputs.get("llm_config"),
+                ),
+                "pending": [
+                    doc for doc in doc_files if doc.suffix.lower() == ".pdf"
+                ],
+                "ranges": {},
+                "candidates": {},
+                "anchors": {},
+                "roster_errors": {},
+            }
         )
     else:
         view.phase("Stage 1/3: Page targeting disabled")

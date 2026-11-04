@@ -24,7 +24,6 @@ from psweep.validation.utils import resolve_validation_runtime_config
 def _build_schema_metadata_mock(
     *,
     main_data_array: str = "requirements",
-    identifier_fields: list[str] | None = None,
     deduplication_key_fields: list[str] | None = None,
     context_objects: list[str] | None = None,
 ) -> MagicMock:
@@ -35,7 +34,6 @@ def _build_schema_metadata_mock(
     """
     mock = MagicMock()
     mock.get_main_data_array.return_value = main_data_array
-    mock.get_identifier_fields.return_value = identifier_fields or []
     mock.get_deduplication_key_fields.return_value = deduplication_key_fields or []
     mock.get_context_objects.return_value = context_objects or []
     return mock
@@ -79,7 +77,6 @@ class TestComparisonEngine:
         """Minimal schema_metadata mock — extraction contract only, no QA/QC fields."""
         mock = MagicMock()
         mock.get_main_data_array.return_value = "requirements"
-        mock.get_identifier_fields.return_value = ["jurisdiction.state"]
         mock.get_deduplication_key_fields.return_value = [
             "category", "specific_subject", "section"
         ]
@@ -113,7 +110,6 @@ class TestComparisonEngine:
         """validation_config drives match_fields and compare_fields — schema has no say."""
         mock = MagicMock()
         mock.get_main_data_array.return_value = "items"
-        mock.get_identifier_fields.return_value = []
         mock.get_context_objects.return_value = []
 
         engine = ComparisonEngine(
@@ -406,7 +402,6 @@ class TestComparisonEngine:
         """Qualitative text-review lanes should compare configured text fields instead of skipping them."""
         mock = MagicMock()
         mock.get_main_data_array.return_value = "requirements"
-        mock.get_identifier_fields.return_value = []
         mock.get_context_objects.return_value = []
 
         model_a = {
@@ -470,7 +465,6 @@ class TestComparisonEngine:
     def test_qualitative_advisory_gate_passes_for_mostly_aligned_results(self, temp_dir):
         mock = MagicMock()
         mock.get_main_data_array.return_value = "requirements"
-        mock.get_identifier_fields.return_value = ["category", "specific_subject"]
         mock.get_context_objects.return_value = []
 
         model_a = {
@@ -518,7 +512,6 @@ class TestComparisonEngine:
     def test_qualitative_advisory_gate_warns_for_moderate_divergence(self, temp_dir):
         mock = MagicMock()
         mock.get_main_data_array.return_value = "requirements"
-        mock.get_identifier_fields.return_value = ["category", "specific_subject"]
         mock.get_context_objects.return_value = []
 
         model_a = {
@@ -564,7 +557,6 @@ class TestComparisonEngine:
     def test_qualitative_advisory_gate_fails_for_missing_item_heavy_results(self, temp_dir):
         mock = MagicMock()
         mock.get_main_data_array.return_value = "requirements"
-        mock.get_identifier_fields.return_value = ["category", "specific_subject"]
         mock.get_context_objects.return_value = []
 
         model_a = {
@@ -615,7 +607,6 @@ class TestComparisonEngine:
     def test_qualitative_scope_variants_are_excluded_from_gate_math(self, temp_dir):
         mock = MagicMock()
         mock.get_main_data_array.return_value = "requirements"
-        mock.get_identifier_fields.return_value = ["category", "facility_type", "specific_subject"]
         mock.get_context_objects.return_value = []
 
         model_a = {
@@ -675,7 +666,6 @@ class TestComparisonEngine:
     def test_text_review_fallback_matches_identical_details_despite_key_differences(self, temp_dir):
         mock = MagicMock()
         mock.get_main_data_array.return_value = "requirements"
-        mock.get_identifier_fields.return_value = ["category", "facility_type", "specific_subject"]
         mock.get_context_objects.return_value = []
 
         shared_text = "Lights should be directed or shielded to confine direct rays to the Project site."
@@ -734,7 +724,6 @@ class TestComparisonEngine:
     def test_text_review_collapses_same_model_duplicates_before_fallback_matching(self, temp_dir):
         mock = MagicMock()
         mock.get_main_data_array.return_value = "requirements"
-        mock.get_identifier_fields.return_value = ["category", "facility_type", "specific_subject"]
         mock.get_context_objects.return_value = []
 
         shared_text = "Shrubs, trees, and ground cover shall be planted and maintained."
@@ -794,7 +783,6 @@ class TestComparisonEngine:
     def test_text_review_absorbs_unique_subsumed_missing_item(self, temp_dir):
         mock = MagicMock()
         mock.get_main_data_array.return_value = "requirements"
-        mock.get_identifier_fields.return_value = ["category", "facility_type", "specific_subject"]
         mock.get_context_objects.return_value = []
 
         model_a = {
@@ -848,7 +836,6 @@ class TestComparisonEngine:
     def test_text_review_merges_duplicate_keys_within_same_model(self, temp_dir):
         mock = MagicMock()
         mock.get_main_data_array.return_value = "requirements"
-        mock.get_identifier_fields.return_value = ["category", "facility_type", "specific_subject"]
         mock.get_context_objects.return_value = []
 
         model_a = {
@@ -908,7 +895,6 @@ class TestComparisonEngine:
         """
         mock = MagicMock()
         mock.get_main_data_array.return_value = "requirements"
-        mock.get_identifier_fields.return_value = ["category", "facility_type", "specific_subject"]
         mock.get_context_objects.return_value = []
 
         model_a = {
@@ -965,7 +951,6 @@ class TestComparisonEngine:
         """
         mock = MagicMock()
         mock.get_main_data_array.return_value = "requirements"
-        mock.get_identifier_fields.return_value = ["category", "facility_type", "specific_subject"]
         mock.get_context_objects.return_value = []
 
         model_a = {
@@ -1020,7 +1005,6 @@ class TestComparisonEngine:
         """
         mock = MagicMock()
         mock.get_main_data_array.return_value = "requirements"
-        mock.get_identifier_fields.return_value = ["category", "facility_type", "specific_subject"]
         mock.get_context_objects.return_value = []
 
         model_a = {
@@ -1542,7 +1526,6 @@ class TestComparisonEngine:
         """Mixed lanes can optionally use text fallback matching to reduce false missing rows."""
         mock = MagicMock()
         mock.get_main_data_array.return_value = "requirements"
-        mock.get_identifier_fields.return_value = []
         mock.get_context_objects.return_value = []
 
         shared_detail = "Setback shall be 100 feet from the property line."
@@ -1653,7 +1636,6 @@ class TestComparisonEngine:
         """Judge-assisted pair matching should align one-sided rows before field compare."""
         mock = MagicMock()
         mock.get_main_data_array.return_value = "requirements"
-        mock.get_identifier_fields.return_value = []
         mock.get_context_objects.return_value = []
 
         model_a = {
@@ -1928,7 +1910,6 @@ class TestComparisonEngineIntegration:
         """Create mock schema metadata matching geothermal schema (extraction contract only)."""
         return _build_schema_metadata_mock(
             main_data_array="requirements",
-            identifier_fields=["jurisdiction.state", "jurisdiction.county"],
             deduplication_key_fields=[
                 "category",
                 "specific_subject",
@@ -2028,7 +2009,6 @@ class TestComparisonEngineIntegration:
         """Tariff QA/QC projection should flatten nested charges into compareable items."""
         mock = _build_schema_metadata_mock(
             main_data_array="rate_schedules",
-            identifier_fields=["utility_info.utility_name"],
             context_objects=["utility_info"],
         )
 
@@ -2117,7 +2097,6 @@ class TestPotentialDuplicateDetection:
         """Create a mock SchemaMetadata (extraction contract only; no QA/QC in schema)."""
         return _build_schema_metadata_mock(
             main_data_array="requirements",
-            identifier_fields=["source.state"],
             context_objects=["source"],
         )
 
@@ -2209,7 +2188,6 @@ class TestCompletenessCalculation:
         """Create mock (extraction contract only; expected_requirements in validation_config)."""
         return _build_schema_metadata_mock(
             main_data_array="requirements",
-            identifier_fields=["source.state"],
             context_objects=["source"],
         )
 
@@ -2307,7 +2285,6 @@ class TestCompletenessCalculation:
         """Test behavior when no expected requirements are configured."""
         mock = _build_schema_metadata_mock(
             main_data_array="requirements",
-            identifier_fields=["source.state"],
             context_objects=[],
         )
         no_expected_config = {
@@ -2357,7 +2334,6 @@ class TestExtractItemArrays:
     def _make_metadata(self, main_array: str = "requirements") -> MagicMock:
         mock = MagicMock()
         mock.get_main_data_array.return_value = main_array
-        mock.get_identifier_fields.return_value = []
         mock.get_context_objects.return_value = []
         return mock
 
@@ -2424,7 +2400,6 @@ class TestProjectItemArray:
     def _make_engine(self, main_array: str = "rate_schedules") -> ComparisonEngine:
         mock = MagicMock()
         mock.get_main_data_array.return_value = main_array
-        mock.get_identifier_fields.return_value = []
         mock.get_context_objects.return_value = []
         return ComparisonEngine(mock, validation_config=self._PROJECTION_QA_QC_CONFIG)
 
@@ -2480,7 +2455,6 @@ class TestProjectItemArray:
         config = {**self._PROJECTION_QA_QC_CONFIG, "projection": {"type": "unknown_type"}}
         mock = MagicMock()
         mock.get_main_data_array.return_value = "rate_schedules"
-        mock.get_identifier_fields.return_value = []
         mock.get_context_objects.return_value = []
         engine = ComparisonEngine(mock, validation_config=config)
         assert engine._project_item_array({"rate_schedules": []}) == []

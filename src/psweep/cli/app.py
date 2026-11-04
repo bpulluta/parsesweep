@@ -157,12 +157,17 @@ def run(
 
                 resolve_compilation_metadata(stage_inputs)
             elif command_name == "extract":
+                from psweep.discovery.targets import TargetSpecError
+                from psweep.extraction.roster import load_roster
                 from psweep.extraction.schema_utils import load_schema
                 from psweep.exceptions import SchemaError, ConfigurationError
+                from psweep.utils.schema_metadata import SchemaMetadata
 
                 try:
-                    load_schema(Path(str(stage_inputs["schema"])))
-                except (SchemaError, ConfigurationError) as exc:
+                    schema_path = Path(str(stage_inputs["schema"]))
+                    load_schema(schema_path)
+                    load_roster(stage_inputs, SchemaMetadata(schema_path))
+                except (SchemaError, ConfigurationError, TargetSpecError) as exc:
                     raise RuntimeConfigError(str(exc)) from exc
         if (
             not skip_extract

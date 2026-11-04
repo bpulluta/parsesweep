@@ -31,7 +31,6 @@ models:
 
 # ─── EXTRACTION ──────────────────────────────────────────────────────────────
 extraction:
-  # input_dir: documents/your_domain      # default: outputs/<domain>/discovered/curated
   model: primary                          # PIN the tier — don't rely on .env default
   # Reuse validates source/schema/model/scope and record-byte evidence.
   # Stale or unverifiable outputs re-extract under skip_existing=true.

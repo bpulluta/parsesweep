@@ -40,7 +40,7 @@ def test_resolve_command_config_merges_cli_and_file_values(tmp_path: Path):
 domain: geothermal_ordinances
 schema: config/geothermal_ordinances/schema.json
 extraction:
-  input_dir: documents/geothermal_ordinances
+  skip_existing: true
   max_context: 111111
   timeout_seconds: 480
 """,
@@ -54,7 +54,7 @@ extraction:
         config_data=config_data,
     )
 
-    assert resolved["path"] == "documents/geothermal_ordinances"
+    assert resolved["path"] == "outputs/geothermal_ordinances/discovered/curated"
     assert resolved["schema"] == "config/geothermal_ordinances/schema.json"
     assert resolved["output"] == "outputs/geothermal_ordinances/extracted"
     assert resolved["_config_sources"]["output"] == "derived"
@@ -126,9 +126,9 @@ def test_catalog_for_command_contains_required_and_advanced_fields():
     names = {entry["name"] for entry in entries}
     levels = {entry["name"]: entry["level"] for entry in entries}
 
-    assert "input_dir" in names
+    assert "input_dir" not in names
+    assert "max_concurrent" in names
     assert "schema" in names
-    assert levels["input_dir"] == "optional"
     assert levels["schema"] == "optional"
     assert levels["max_context"] == "advanced"
     assert levels["timeout_seconds"] == "advanced"
@@ -143,7 +143,7 @@ def test_load_runtime_config_file_rejects_invalid_extraction_timeout(
         f"""
 schema: config/geothermal_ordinances/schema.json
 extraction:
-  input_dir: documents/geothermal_ordinances
+  skip_existing: true
   timeout_seconds: {timeout_value!r}
 """,
         encoding="utf-8",
@@ -159,7 +159,7 @@ def test_load_runtime_config_file_accepts_ocr_corrections(tmp_path: Path):
         """
 schema: config/geothermal_ordinances/schema.json
 extraction:
-  input_dir: documents/x
+  skip_existing: true
   ocr_corrections:
     - {pattern: '\\bIbs\\b', replacement: 'lbs'}
     - {pattern: 'gaspowered', replacement: 'gas powered', ignore_case: true}
@@ -189,7 +189,7 @@ def test_load_runtime_config_file_rejects_invalid_ocr_corrections(
     config_path.write_text(
         "schema: config/geothermal_ordinances/schema.json\n"
         "extraction:\n"
-        "  input_dir: documents/x\n"
+        "  skip_existing: true\n"
         "  ocr_corrections:\n" + rules_block,
         encoding="utf-8",
     )
@@ -324,7 +324,7 @@ def test_load_runtime_config_file_rejects_split_processing_override(
     run_path.write_text(
         "schema: config/geothermal_ordinances/schema.json\n"
         "extraction:\n"
-        "  input_dir: documents/geothermal_ordinances\n",
+        "  skip_existing: true\n",
         encoding="utf-8",
     )
     (tmp_path / "extraction.yaml").write_text(override_body, encoding="utf-8")
@@ -343,7 +343,7 @@ def test_load_runtime_config_file_rejects_all_split_files_for_same_section(
     """Every conflicting override is listed in the migration error."""
     run_path = tmp_path / "run.yaml"
     run_path.write_text(
-        "schema: s.json\nextraction:\n  input_dir: docs\n", encoding="utf-8",
+        "schema: s.json\nextraction:\n  skip_existing: true\n", encoding="utf-8",
     )
     (tmp_path / "extraction.yaml").write_text(
         "output_dir: one\n", encoding="utf-8",
@@ -675,7 +675,7 @@ discovery:
   queries: ["a"]
 schema: config/x/schema.json
 extraction:
-  input_dir: documents/demo
+  skip_existing: true
 compilation:
   dry_run: false
 """,
@@ -726,7 +726,7 @@ def test_processing_validator_rejects_invalid_fields(
 ):
     cfg = _write(
         tmp_path,
-        "schema: s.json\nextraction:\n  input_dir: d\n  " + snippet,
+        "schema: s.json\nextraction:\n  skip_existing: true\n  " + snippet,
     )
     with pytest.raises(RuntimeConfigError, match=match):
         load_runtime_config_file(cfg)
@@ -735,7 +735,7 @@ def test_processing_validator_rejects_invalid_fields(
 def test_processing_validator_accepts_valid_block(tmp_path: Path):
     cfg = _write(
         tmp_path,
-        "schema: s.json\nextraction:\n  input_dir: d\n  max_context: 600000\n"
+        "schema: s.json\nextraction:\n  skip_existing: true\n  max_context: 600000\n"
         "  provider: azure\n"
         "  pages:\n    auto_locate:\n"
         "      section_description: the rate tables\n"
@@ -770,7 +770,7 @@ def test_pages_block_variants(
 ):
     cfg = _write(
         tmp_path,
-        "schema: s.json\nextraction:\n  input_dir: d\n" + pages_block,
+        "schema: s.json\nextraction:\n  skip_existing: true\n" + pages_block,
     )
     loaded = load_runtime_config_file(cfg)
     ext = loaded["extraction"]
@@ -794,7 +794,7 @@ def test_pages_auto_locate_accepts_save_discovered(tmp_path: Path):
     """save_discovered is consumed by extract; a bool must be accepted."""
     cfg = _write(
         tmp_path,
-        "schema: s.json\nextraction:\n  input_dir: d\n"
+        "schema: s.json\nextraction:\n  skip_existing: true\n"
         "  pages:\n    auto_locate:\n"
         "      section_description: the rate tables\n"
         "      save_discovered: true\n",
@@ -807,7 +807,7 @@ def test_pages_auto_locate_rejects_non_bool_save_discovered(tmp_path: Path):
     """A mistyped (non-bool) save_discovered fails loudly instead of no-op'ing."""
     cfg = _write(
         tmp_path,
-        "schema: s.json\nextraction:\n  input_dir: d\n"
+        "schema: s.json\nextraction:\n  skip_existing: true\n"
         "  pages:\n    auto_locate:\n"
         "      section_description: the rate tables\n"
         "      save_discovered: yesplease\n",
@@ -822,7 +822,7 @@ def test_old_flat_pages_keys_rejected(tmp_path: Path):
     """Old pages_csv / page_targeting keys are no longer accepted."""
     cfg = _write(
         tmp_path,
-        "schema: s.json\nextraction:\n  input_dir: d\n"
+        "schema: s.json\nextraction:\n  skip_existing: true\n"
         "  pages_csv: old.csv\n"
         "  page_targeting:\n    enabled: true\n"
         "    section_description: old style\n",
@@ -835,7 +835,7 @@ def test_model_context_windows_validates_and_passes_through(tmp_path: Path):
     cfg = _write(
         tmp_path,
         "model_context_windows:\n  my-deploy: 300000\n"
-        "schema: s.json\nextraction:\n  input_dir: d\n",
+        "schema: s.json\nextraction:\n  skip_existing: true\n",
     )
     config_data = load_runtime_config_file(cfg)
     resolved = resolve_command_config(
@@ -1217,7 +1217,7 @@ reasoning_models:
   - my-thinker
 schema: config/x/schema.json
 extraction:
-  input_dir: documents/x
+  skip_existing: true
 """,
         encoding="utf-8",
     )
@@ -1238,7 +1238,7 @@ reasoning_models:
   - 5
 schema: config/x/schema.json
 extraction:
-  input_dir: documents/x
+  skip_existing: true
 """,
         encoding="utf-8",
     )

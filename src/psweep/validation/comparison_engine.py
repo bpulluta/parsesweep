@@ -133,7 +133,7 @@ class ComparisonEngine:
     Compare outputs from multiple models using schema metadata plus runtime QA/QC config.
 
     Uses resolved QA/QC configuration always sourced from config/<domain>/run.yaml.
-    Schema metadata carries only the extraction contract (main_data_array, identifier_fields,
+    Schema metadata carries only the extraction contract (main_data_array,
     context_objects, deduplication keys) — no QA/QC runtime settings.
 
     Examples
@@ -167,7 +167,6 @@ class ComparisonEngine:
         """
         self.schema_metadata = schema_metadata
         self.main_data_array = schema_metadata.get_main_data_array()
-        self.identifier_fields = schema_metadata.get_identifier_fields()
         self.validation_config = validation_config
 
         self.match_fields = list(self.validation_config["match_fields"])

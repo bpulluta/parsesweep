@@ -27,7 +27,7 @@ def _infer_document_type_from_schema(schema_path: Path) -> str:
     return schema_path.stem.replace("_", " ").title()
 
 
-def _display_cli_path(path: Path, repo_root: Path) -> str:
+def display_cli_path(path: Path, repo_root: Path) -> str:
     try:
         return path.resolve().relative_to(repo_root.resolve()).as_posix()
     except ValueError:
@@ -245,13 +245,13 @@ def _main_array_item_schema(schema_data: Dict[str, Any]) -> Dict[str, Any]:
     return item_schema
 
 
-def _available_main_array_fields(schema_data: Dict[str, Any]) -> list[str]:
+def available_main_array_fields(schema_data: Dict[str, Any]) -> list[str]:
     return list(
         _schema_properties(_main_array_item_schema(schema_data)).keys()
     )
 
 
-def _apply_main_array_field_selection(
+def apply_main_array_field_selection(
     schema_data: Dict[str, Any],
     selected_fields: list[str],
 ) -> Dict[str, Any]:
@@ -322,7 +322,7 @@ def _apply_main_array_field_selection(
     return schema_data
 
 
-def _build_schema_starter_from_reference(
+def build_schema_starter_from_reference(
     reference_schema_path: Path,
     *,
     schema_name: str,
@@ -358,9 +358,6 @@ def _build_schema_starter_from_reference(
         "extraction": {
             "main_data_array": reference_extraction.get("main_data_array"),
             "context_objects": reference_extraction.get("context_objects", []),
-            "identifier_fields": reference_extraction.get(
-                "identifier_fields", []
-            ),
             "display_name_template": reference_extraction.get(
                 "display_name_template"
             ),
@@ -388,14 +385,14 @@ def _build_schema_starter_from_reference(
     )
 
     if include_fields is not None:
-        starter_schema = _apply_main_array_field_selection(
+        starter_schema = apply_main_array_field_selection(
             starter_schema, include_fields
         )
 
     return starter_schema
 
 
-def _write_schema_starter(
+def write_schema_starter(
     schema_path: Path, schema_data: Dict[str, Any], force: bool
 ) -> None:
     if schema_path.exists() and not force:
@@ -409,51 +406,16 @@ def _write_schema_starter(
     )
 
 
-def _default_schema_output_path(repo_root: Path, schema_name: str) -> Path:
+def default_schema_output_path(repo_root: Path, schema_name: str) -> Path:
     return repo_root / CONFIG_ROOT / schema_name / SCHEMA_FILENAME
 
 
-# ---------------------------------------------------------------------------
-# Public API aliases — underscore names above are the canonical, verbatim
-# implementations. Public aliases give a clean importable surface.
-# ---------------------------------------------------------------------------
-infer_document_type_from_schema = _infer_document_type_from_schema
-display_cli_path = _display_cli_path
-humanize_domain_name = _humanize_domain_name
-schema_type_options = _schema_type_options
-schema_properties = _schema_properties
-schema_array_items = _schema_array_items
-find_nested_object_array_field = _find_nested_object_array_field
-scalar_field_names = _scalar_field_names
-pick_fields = _pick_fields
-build_validation_scaffold = _build_validation_scaffold
-build_compilation_scaffold = _build_compilation_scaffold
-prune_schema_for_starter = _prune_schema_for_starter
-main_array_item_schema = _main_array_item_schema
-available_main_array_fields = _available_main_array_fields
-apply_main_array_field_selection = _apply_main_array_field_selection
-build_schema_starter_from_reference = _build_schema_starter_from_reference
-write_schema_starter = _write_schema_starter
-default_schema_output_path = _default_schema_output_path
-
 __all__ = [
     "ConfigValidationError",
-    "infer_document_type_from_schema",
-    "display_cli_path",
-    "humanize_domain_name",
-    "schema_type_options",
-    "schema_properties",
-    "schema_array_items",
-    "find_nested_object_array_field",
-    "scalar_field_names",
-    "pick_fields",
-    "build_validation_scaffold",
-    "build_compilation_scaffold",
-    "prune_schema_for_starter",
-    "main_array_item_schema",
-    "available_main_array_fields",
     "apply_main_array_field_selection",
+    "available_main_array_fields",
     "build_schema_starter_from_reference",
-    "write_schema_starter",
     "default_schema_output_path",
+    "display_cli_path",
+    "write_schema_starter",
 ]

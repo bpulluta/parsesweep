@@ -63,7 +63,6 @@ pixi run psweep compile outputs/sample/extracted/ \
 Review after each pass:
 
 - Did `main_data_array` create the right rows?
-- Did `identifier_fields` identify the document correctly?
 - Did your new fields extract consistently?
 - Do `key_fields` keep distinct records separate?
 - Does the dry-run dedup report show any merges you did not intend?
@@ -104,7 +103,6 @@ ERROR: Schema missing required $metadata section
     "version": "1.0.0",
     "extraction": {
       "main_data_array": "items",
-      "identifier_fields": ["metadata.document_id"],
       "context_objects": ["metadata"]
     },
     "identity": {
@@ -148,10 +146,6 @@ This example shows the full metadata surface that belongs in the schema. All out
     
     "extraction": {
       "main_data_array": "rate_schedules",
-      "identifier_fields": [
-        "utility_info.utility_name",
-        "utility_info.state"
-      ],
       "context_objects": [
         "utility_info",
         "document_applicability"
@@ -177,7 +171,6 @@ This example shows the full metadata surface that belongs in the schema. All out
 | Field | Purpose | Example |
 |-------|---------|---------|
 | `extraction.main_data_array` | Array that becomes spreadsheet rows | `"rate_schedules"` |
-| `extraction.identifier_fields` | Fields that identify the source document | `["metadata.permit_id"]` |
 | `identity.deduplication.key_fields` | Fields that determine record uniqueness | `["name", "type", "date"]` |
 
 ### Recommended Fields
@@ -716,7 +709,6 @@ pixi run psweep check-schema config/your_domain/schema.json
 
 Checks for:
 - Required `$metadata` section
-- Valid JSONPath in identifier_fields
 - Proper field references
 
 ### 2. Test on Sample Documents

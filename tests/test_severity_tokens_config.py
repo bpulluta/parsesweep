@@ -25,7 +25,6 @@ def _schema(compilation=None):
     meta = {
         "extraction": {
             "main_data_array": "items",
-            "identifier_fields": ["id"],
         }
     }
     if compilation is not None:

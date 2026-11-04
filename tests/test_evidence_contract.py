@@ -133,7 +133,6 @@ def test_synthetic_config_resolves_all_stages_strictly(tmp_path, schema_path):
         "domain": "synthetic_evidence",
         "discovery": {"targets": [{"name": "Example Target"}]},
         "schema": str(schema_path),
-        "extraction": {"input_dir": "input"},
     }))
     config = load_runtime_config_file(path)
     for command in ("discover", "extract", "compile"):

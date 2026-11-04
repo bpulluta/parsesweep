@@ -30,7 +30,6 @@ def minimal_schema_path(tmp_path):
             "version": "2.0.0",
             "extraction": {
                 "main_data_array": "requirements",
-                "identifier_fields": ["state", "county"],
                 "context_objects": [],
             },
             "identity": {
@@ -366,7 +365,6 @@ def test_cross_feature_redundancy_is_noop_without_schema_block(tmp_path):
             "version": "2.0.0",
             "extraction": {
                 "main_data_array": "requirements",
-                "identifier_fields": ["state", "county"],
                 "context_objects": [],
             },
             "identity": {

@@ -5,10 +5,6 @@
     "version": "2.0.0",
     "extraction": {
       "main_data_array": "requirements",
-      "identifier_fields": [
-        "jurisdiction.state",
-        "jurisdiction.county"
-      ],
       "context_objects": [
         "jurisdiction",
         "document_applicability"

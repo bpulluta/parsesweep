@@ -15,7 +15,7 @@ import pytest
 def synthetic_schema(tmp_path, monkeypatch):
     schema = tmp_path / "schema.json"
     schema.write_text(json.dumps({"$metadata": {
-        "extraction": {"main_data_array": "requirements", "identifier_fields": ["value"]},
+        "extraction": {"main_data_array": "requirements"},
         "identity": {"deduplication": {"key_fields": ["value"]}},
     }}))
     monkeypatch.setitem(globals(), "SCHEMA_PATH", schema)

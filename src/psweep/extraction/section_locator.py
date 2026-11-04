@@ -128,6 +128,65 @@ def _table_to_markdown(table) -> str:
     return "\n".join(rows)
 
 
+def split_text_sections(text: str) -> list[_Chunk]:
+    """Split plain text by section markers or blank-line paragraphs."""
+    # Try explicit section markers first.
+    marker_positions = [
+        m.start() for m in _SECTION_MARKER_RE.finditer(text)
+    ]
+    if len(marker_positions) > 1:
+        chunks: list[_Chunk] = []
+        # Preamble before first marker
+        preamble = text[: marker_positions[0]].strip()
+        if preamble:
+            chunks.append(_Chunk("", preamble))
+        for i, pos in enumerate(marker_positions):
+            end = (
+                marker_positions[i + 1]
+                if i + 1 < len(marker_positions)
+                else len(text)
+            )
+            block = text[pos:end]
+            first_nl = block.find("\n")
+            if first_nl == -1:
+                heading = block.strip()
+                body = ""
+            else:
+                heading = block[:first_nl].strip()
+                body = block[first_nl:].strip()
+            if heading or body:
+                chunks.append(_Chunk(heading, body))
+        return [c for c in chunks if c.text.strip()]
+
+    # Fall back: split by blank lines and group into ~_TXT_CHUNK_CHARS chunks.
+    paragraphs = [
+        p.strip() for p in re.split(r"\n\s*\n", text) if p.strip()
+    ]
+    if len(paragraphs) <= 1:
+        return [_Chunk("", text.strip())] if text.strip() else []
+
+    chunks = []
+    cur_parts: list[str] = []
+    cur_len = 0
+    section_num = 0
+    for para in paragraphs:
+        cur_parts.append(para)
+        cur_len += len(para)
+        if cur_len >= _TXT_CHUNK_CHARS:
+            section_num += 1
+            chunks.append(
+                _Chunk(f"Part {section_num}", "\n\n".join(cur_parts))
+            )
+            cur_parts = []
+            cur_len = 0
+    if cur_parts:
+        section_num += 1
+        chunks.append(
+            _Chunk(f"Part {section_num}", "\n\n".join(cur_parts))
+        )
+    return chunks
+
+
 class SectionLocator(_BaseLocator):
     """Find the text regions holding a described section in a large non-PDF document."""
 
@@ -288,64 +347,6 @@ class SectionLocator(_BaseLocator):
             chunks.append(_Chunk(cur_heading, "\n".join(cur_parts)))
 
         return [c for c in chunks if c.text.strip()]
-
-    def _split_txt_sections(self, text: str) -> list[_Chunk]:
-        """Split plain text by section markers or blank-line paragraphs."""
-        # Try explicit section markers first.
-        marker_positions = [
-            m.start() for m in _SECTION_MARKER_RE.finditer(text)
-        ]
-        if len(marker_positions) > 1:
-            chunks: list[_Chunk] = []
-            # Preamble before first marker
-            preamble = text[: marker_positions[0]].strip()
-            if preamble:
-                chunks.append(_Chunk("", preamble))
-            for i, pos in enumerate(marker_positions):
-                end = (
-                    marker_positions[i + 1]
-                    if i + 1 < len(marker_positions)
-                    else len(text)
-                )
-                block = text[pos:end]
-                first_nl = block.find("\n")
-                if first_nl == -1:
-                    heading = block.strip()
-                    body = ""
-                else:
-                    heading = block[:first_nl].strip()
-                    body = block[first_nl:].strip()
-                if heading or body:
-                    chunks.append(_Chunk(heading, body))
-            return [c for c in chunks if c.text.strip()]
-
-        # Fall back: split by blank lines and group into ~_TXT_CHUNK_CHARS chunks.
-        paragraphs = [
-            p.strip() for p in re.split(r"\n\s*\n", text) if p.strip()
-        ]
-        if len(paragraphs) <= 1:
-            return [_Chunk("", text.strip())] if text.strip() else []
-
-        chunks = []
-        cur_parts: list[str] = []
-        cur_len = 0
-        section_num = 0
-        for para in paragraphs:
-            cur_parts.append(para)
-            cur_len += len(para)
-            if cur_len >= _TXT_CHUNK_CHARS:
-                section_num += 1
-                chunks.append(
-                    _Chunk(f"Part {section_num}", "\n\n".join(cur_parts))
-                )
-                cur_parts = []
-                cur_len = 0
-        if cur_parts:
-            section_num += 1
-            chunks.append(
-                _Chunk(f"Part {section_num}", "\n\n".join(cur_parts))
-            )
-        return chunks
 
     # -- LLM confirmation --------------------------------------------------
 
@@ -509,7 +510,7 @@ class SectionLocator(_BaseLocator):
                 )
                 if len(raw_text) <= self.trigger_chars:
                     return None
-                chunks = self._split_txt_sections(raw_text)
+                chunks = split_text_sections(raw_text)
         except Exception as exc:  # noqa: BLE001 - fall back to full extraction
             logger.debug(
                 "Section splitting failed for %s: %s", file_path.name, exc

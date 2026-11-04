@@ -27,7 +27,6 @@ def synthesis_schema(tmp_path):
         },
         "$metadata": {"extraction": {
             "main_data_array": "observations", "context_objects": ["catalog"],
-            "identifier_fields": ["catalog.id"],
         }},
     }
     path = tmp_path / "schema.json"

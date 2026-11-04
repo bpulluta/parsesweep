@@ -1,7 +1,6 @@
 """Regression gates for independent Phase 2 integration findings."""
 
 import builtins
-import csv
 import json
 from pathlib import Path
 from types import SimpleNamespace
@@ -36,7 +35,6 @@ def reviewed_inputs(tmp_path, monkeypatch):
                 "$metadata": {
                     "extraction": {
                         "main_data_array": "items",
-                        "identifier_fields": ["source.id"],
                     }
                 },
                 "type": "object",
@@ -91,7 +89,7 @@ def test_record_contract_does_not_depend_on_repository_path(
         validator = schema_utils.record_validator()
         assert (
             validator.schema["properties"]["contract_version"]["const"]
-            == "1.0.0"
+            == "1.1.0"
         )
     finally:
         schema_utils.record_validator.cache_clear()
@@ -319,46 +317,22 @@ def test_needed_locator_key_fails_before_fresh_reset(
     provider.assert_not_called()
 
 
-def test_filtered_index_has_stable_outputs(reviewed_inputs):
-    """Selecting one partition keeps its output identity and verified reuse."""
+def test_partitioned_outputs_are_stable_and_reused(reviewed_inputs):
+    """Partitioned inputs keep their output identity and verified reuse."""
 
     inputs, provider = reviewed_inputs
     root = Path(inputs["path"])
     (root / "doc.txt").unlink()
-    rows = []
     for label in ("first", "second"):
         doc = root / label / "report.txt"
         doc.parent.mkdir()
         doc.write_text("Source evidence", encoding="utf-8")
-        rows.append(
-            {
-                "status": "downloaded",
-                "path": str(doc),
-                "relative_path": f"{label}/report.txt",
-                "label": label,
-            }
-        )
-    index = root.parent / "index.csv"
-    with index.open("w", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=list(rows[0]))
-        writer.writeheader()
-        writer.writerows(rows)
-    assert (
-        _execute_extraction(
-            _prepare_extraction(inputs, from_index=str(index))
-        ).exit_code
-        == 0
-    )
+    assert _execute_extraction(_prepare_extraction(inputs)).exit_code == 0
+    assert provider.call_count == 2
     provider.reset_mock()
-    assert (
-        _execute_extraction(
-            _prepare_extraction(
-                inputs, from_index=str(index), index_filters=["label=first"]
-            )
-        ).exit_code
-        == 0
-    )
+    assert _execute_extraction(_prepare_extraction(inputs)).exit_code == 0
     assert not (Path(inputs["output"]) / "report.json").exists()
+    assert (Path(inputs["output"]) / "first/report.json").is_file()
     provider.assert_not_called()
 
 
@@ -459,36 +433,6 @@ def test_main_array_typo_preserves_fresh_output(reviewed_inputs):
     provider.assert_not_called()
 
 
-def test_index_accepts_existing_project_relative_sources(
-    reviewed_inputs, monkeypatch
-):
-    """Published project-relative source spellings remain executable."""
-
-    inputs, _provider = reviewed_inputs
-    root = Path(inputs["path"]).parent
-    monkeypatch.chdir(root)
-    index = root / "discovered/demo/index.csv"
-    index.parent.mkdir(parents=True)
-    with index.open("w", newline="") as handle:
-        writer = csv.DictWriter(
-            handle, fieldnames=["status", "path", "relative_path"]
-        )
-        writer.writeheader()
-        writer.writerow(
-            {
-                "status": "downloaded",
-                "path": "documents/doc.txt",
-                "relative_path": "doc.txt",
-            }
-        )
-    assert (
-        _execute_extraction(
-            _prepare_extraction(inputs, from_index=str(index))
-        ).exit_code
-        == 0
-    )
-
-
 @pytest.mark.parametrize("reserved", ["validation", "run_manifests", "qa_qc"])
 def test_reserved_record_partitions_fail_preflight(reviewed_inputs, reserved):
     """Reject output partitions reserved for internal products."""
@@ -581,28 +525,6 @@ def test_composed_main_array_schema_is_supported(reviewed_inputs, composition):
     }
     path.write_text(json.dumps(schema), encoding="utf-8")
     assert _execute_extraction(_prepare_extraction(inputs)).exit_code == 0
-
-
-def test_index_common_layout_does_not_reject_disjoint_outputs(reviewed_inputs):
-    """Explicit indexed inputs are not a recursive scan of every ancestor."""
-
-    inputs, _provider = reviewed_inputs
-    root = Path(inputs["path"]).parent
-    second = root / "discovered/second.txt"
-    second.parent.mkdir()
-    second.write_text("Source", encoding="utf-8")
-    index = root / "index.csv"
-    with index.open("w", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=["status", "path"])
-        writer.writeheader()
-        for document in [Path(inputs["path"]) / "doc.txt", second]:
-            writer.writerow({"status": "downloaded", "path": str(document)})
-    assert (
-        _execute_extraction(
-            _prepare_extraction(inputs, from_index=str(index))
-        ).exit_code
-        == 0
-    )
 
 
 def test_qaqc_rejects_ambiguous_same_stem_before_provider(reviewed_inputs):

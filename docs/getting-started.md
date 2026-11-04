@@ -209,16 +209,15 @@ GEMINI_API_KEY=...
 
 ### Create a minimal schema
 
-Only `$metadata.extraction.main_data_array` and `identifier_fields` are
-required metadata keys. For example, `config/my_domain/schema.json`:
+Only `$metadata.extraction.main_data_array` is a
+required metadata key. For example, `config/my_domain/schema.json`:
 
 ```json
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$metadata": {
     "extraction": {
-      "main_data_array": "items",
-      "identifier_fields": ["item_name"]
+      "main_data_array": "items"
     }
   },
   "type": "object",
@@ -253,7 +252,7 @@ extraction:
   model: your-model-name
 ```
 
-For local documents, set `extraction.input_dir: documents/my_domain`. You can also
+For local documents, pass the directory positionally. You can also
 test schema-only mode without a config:
 
 ```bash

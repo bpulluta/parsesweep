@@ -5,10 +5,6 @@
       "main_data_array": "rate_schedules",
       "context_objects": [
         "utility_info"
-      ],
-      "identifier_fields": [
-        "utility_info.utility_name",
-        "utility_info.state"
       ]
     },
     "identity": {

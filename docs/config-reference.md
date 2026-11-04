@@ -33,12 +33,8 @@ not a discovery wizard or a new config mode.
 Once you have suitable documents, extraction needs only a schema: put it at
 `config/my_domain/schema.json` (or set top-level `schema:`). Inputs default to
 `outputs/my_domain/discovered/curated`; all outputs are derived under
-`outputs/my_domain/`. `extraction.input_dir` is the only path override:
-
-```yaml
-extraction:
-  input_dir: documents/my_domain   # optional; local documents instead of discovery
-```
+`outputs/my_domain/`. For local documents, pass the path positionally:
+`pixi run psweep extract documents/my_domain/ --config config/my_domain/run.yaml`.
 
 Extraction requires LLM credentials; discovery does not unless you explicitly
 configure paid `document_review`. Add a setting only when you have a reason
@@ -70,7 +66,7 @@ shared runtime definitions; templates show explicit choices separately.
 | `model` | extraction | `.env` model → `gpt-4o-mini` | You want a stronger/cheaper tier |
 | `max_context` | extraction | `600000` | Output is truncated on large docs |
 | `schema` | top level | `schema.json` beside the config | The schema lives elsewhere |
-| `extraction.input_dir` | extraction | `outputs/<domain>/discovered/curated` | Documents are local |
+| `max_concurrent` | extraction | `4` | Provider rate limits allow more (or fewer) parallel documents |
 | `skip_existing` | extraction | `true` | Validated record reuse; `--fresh` resets whole output after preflight |
 | `timeout_seconds` | extraction | `120` (`LLM_TIMEOUT` env) | Very large docs time out |
 | `provider` | extraction | `auto` | Auto-detection picks the wrong one |

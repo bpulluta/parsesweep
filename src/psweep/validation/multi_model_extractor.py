@@ -43,7 +43,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Sequence
 
 from ..extraction.llm_factory import DEFAULT_MAX_CONTEXT
-from ..extraction.record_writer import build_lineage
+from ..extraction.record_writer import CONTRACT_VERSION, build_lineage
 from .utils import sanitize_model_name
 
 if TYPE_CHECKING:
@@ -235,7 +235,7 @@ def run_multi_model_extraction(
             # Save canonical extraction-record output per model.
             output_data = {
                 "record_id": f"record://{lineage['run_id'].replace('run://', '')}/{doc_name}/{safe_model_name}",
-                "contract_version": "1.0.0",
+                "contract_version": CONTRACT_VERSION,
                 "document": {
                     "source_document_id": doc_name,
                     "source_path": doc_name,
@@ -244,7 +244,7 @@ def run_multi_model_extraction(
                 "lineage": lineage,
                 "payload": result.data,
                 "quality": {
-                    "overall_confidence": result.completeness_score,
+                    "completeness": result.completeness_score,
                     "warnings": result.validation_notes or [],
                     "errors": normalize_error_records(
                         getattr(result, "processing_errors", None)

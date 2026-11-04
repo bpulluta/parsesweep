@@ -142,7 +142,7 @@ def test_non_run_stem_does_not_auto_load_adjacent_sections(
     "section,body",
     [
         ("discovery", {"queries": ["manual"], "search": {"max_results": 7}}),
-        ("extraction", {"input_dir": "docs", "max_context": 1000}),
+        ("extraction", {"skip_existing": True, "max_context": 1000}),
         ("compilation", {"dry_run": True}),
         ("validation", {"models": ["gpt-4o", "gpt-4o-mini"]}),
     ],

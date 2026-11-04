@@ -33,7 +33,6 @@ def schema():
         "$schema": "http://json-schema.org/draft-07/schema#",
         "$metadata": {"extraction": {
             "main_data_array": "items", "context_objects": ["source"],
-            "identifier_fields": ["source.id"],
         }},
         "type": "object",
         "required": ["source", "items"],
@@ -202,6 +201,16 @@ def test_nullable_reference_is_filled_without_inventing_nonnullable_values(schem
     assert "nonnullable_ref" not in result.data["items"][0]
 
 
+def _plan(tmp_path, document, schema, schema_path, metadata):
+    return {
+        "llm": {"model": "gpt-4o-mini", "provider": "openai"},
+        "inputs": {}, "outputs": {document: tmp_path / "document.json"},
+        "roster": None, "candidates": {}, "anchors": {}, "roster_errors": {}, "context": {}, "root": tmp_path,
+        "schema": schema, "schema_path": schema_path, "metadata": metadata,
+        "evidence_paths": [], "fingerprints": {document: "a" * 64},
+    }
+
+
 def test_workflow_document_failure_keeps_contract_taxonomy_and_no_record(
     tmp_path, schema, payload,
 ):
@@ -215,11 +224,8 @@ def test_workflow_document_failure_keeps_contract_taxonomy_and_no_record(
     del payload["items"][0]["quote"]
     with patch.object(extractor.client, "extract", return_value={"data": payload, "cost": 0.0}):
         result = _extract_one_document(
-            document, extractor=extractor, loaded_schema=schema,
-            schema_metadata=metadata, schema_path=schema_path,
-            output_path=tmp_path / "document.json", model="gpt-4o-mini",
-            run_id="run://contract", provider="openai",
-            input_fingerprint="a" * 64,
+            document, _plan(tmp_path, document, schema, schema_path, metadata),
+            extractor=extractor, run_id="run://contract",
         )
     assert result["success"] is False
     assert result["errors"][0]["category"] == "schema_contract"
@@ -273,7 +279,8 @@ def test_context_truncation_survives_canonical_record(tmp_path, schema, payload)
     schema_path = tmp_path / "schema.json"
     schema_path.write_text(json.dumps(schema))
     record, count = build_extraction_record(
-        doc_path=document, result=result, model="gpt-4o-mini",
+        doc_path=document,
+        source_document_id="doc.txt", result=result, model="gpt-4o-mini",
         provider="openai",
         schema_metadata=SchemaMetadata(schema_path),
     )
@@ -308,7 +315,7 @@ def test_mocked_page_limited_extract_compiles_without_private_inputs(tmp_path, m
         domain_schema = {
             "$schema": "http://json-schema.org/draft-07/schema#",
             "$metadata": {
-                "extraction": {"main_data_array": "observations", "context_objects": ["catalog"], "identifier_fields": ["catalog.url"]},
+                "extraction": {"main_data_array": "observations", "context_objects": ["catalog"]},
                 "identity": {"deduplication": {"key_fields": ["serial"], "partition_fields": ["catalog.url"]}},
             },
             "type": "object",
@@ -383,11 +390,8 @@ def test_workflow_selected_input_scope_survives_record(
         return_value={"data": payload, "cost": 0.0},
     ) as client:
         result = _extract_one_document(
-            document, extractor=extractor, loaded_schema=schema,
-            schema_metadata=metadata, schema_path=schema_path,
-            output_path=tmp_path / "document.json", model="gpt-4o-mini",
-            run_id="run://contract", provider="openai",
-            input_fingerprint="a" * 64,
+            document, _plan(tmp_path, document, schema, schema_path, metadata),
+            extractor=extractor, run_id="run://contract",
             page_range=(5, 9) if scope == "pages" else None,
             section_text="Selected section" if scope == "sections" else None,
         )
@@ -410,7 +414,7 @@ def test_workflow_selected_input_scope_survives_record(
 def test_pipeline_does_not_write_invalid_extraction(tmp_path, monkeypatch, schema):
     from psweep.pipeline import extract_documents
 
-    schema["$metadata"] = {"extraction": {"main_data_array": "items", "identifier_fields": ["source.id"]}}
+    schema["$metadata"] = {"extraction": {"main_data_array": "items"}}
     schema_path = tmp_path / "schema.json"
     schema_path.write_text(json.dumps(schema))
     documents = tmp_path / "documents"

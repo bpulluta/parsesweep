@@ -23,7 +23,6 @@ def _write_schema(path: Path) -> None:
             "extraction": {
                 "main_data_array": "items",
                 "context_objects": ["metadata"],
-                "identifier_fields": ["metadata.id"],
                 "document_type": "Test Document",
             },
             "identity": {
@@ -61,7 +60,6 @@ def test_compilation_includes_run_id_from_extraction_record_payload(tmp_path) ->
             "lineage": {
                 "run_id": "run://deterministic1111",
                 "artifact_id": "artifact://runtime/abc123",
-                "profile_id": "default",
                 "model": "gpt-5",
                 "provider": "azure",
                 "extracted_at": "2026-03-24T00:00:00Z",
@@ -102,7 +100,6 @@ def test_compilation_includes_run_id_from_validation_extraction_record(tmp_path)
             "lineage": {
                 "run_id": "run://deterministic2222",
                 "artifact_id": "artifact://runtime/def456",
-                "profile_id": "default",
                 "model": "gpt-4o",
                 "provider": "openai",
                 "extracted_at": "2026-03-24T00:00:00Z",
@@ -142,7 +139,6 @@ def test_compilation_supports_extraction_record_payload_lineage(tmp_path) -> Non
             },
             "lineage": {
                 "artifact_id": "artifact://runtime/ghi789",
-                "profile_id": "default",
                 "run_id": "run://deterministic3333",
                 "model": "gpt-5",
                 "provider": "azure",
@@ -214,7 +210,6 @@ def test_compilation_skips_non_record_metadata_files(tmp_path) -> None:
             },
             "lineage": {
                 "artifact_id": "artifact://runtime/jkl012",
-                "profile_id": "default",
                 "run_id": "run://deterministic4444",
                 "model": "gpt-4o",
                 "provider": "openai",
@@ -254,7 +249,6 @@ def test_compilation_exclude_fields_can_come_from_runtime_overrides(tmp_path) ->
             },
             "lineage": {
                 "artifact_id": "artifact://runtime/mno345",
-                "profile_id": "default",
                 "run_id": "run://deterministic5555",
                 "model": "gpt-5",
                 "provider": "azure",
@@ -370,7 +364,6 @@ def test_preview_deduplication_flags_conflicting_non_key_values_as_suspicious(tm
         [
             {
                 "Jurisdiction": "Example Borough",
-                "Id": "doc-1",
                 "Name": "Charge A",
                 "Value": 10,
                 "Run Id": "run://1",
@@ -378,7 +371,6 @@ def test_preview_deduplication_flags_conflicting_non_key_values_as_suspicious(tm
             },
             {
                 "Jurisdiction": "Example Borough",
-                "Id": "doc-2",
                 "Name": "Charge A",
                 "Value": 12,
                 "Run Id": "run://2",
@@ -412,7 +404,6 @@ def test_preview_deduplication_uses_schema_numeric_fields_for_high_severity(tmp_
                 "extraction": {
                     "main_data_array": "items",
                     "context_objects": ["metadata"],
-                    "identifier_fields": ["metadata.id"],
                     "document_type": "Test Document",
                 },
                 "identity": {
@@ -445,7 +436,6 @@ def test_preview_deduplication_uses_schema_numeric_fields_for_high_severity(tmp_
         [
             {
                 "Jurisdiction": "Example Borough",
-                "Id": "doc-1",
                 "Name": "Charge A",
                 "Distance Measure": 10,
                 "Run Id": "run://1",
@@ -453,7 +443,6 @@ def test_preview_deduplication_uses_schema_numeric_fields_for_high_severity(tmp_
             },
             {
                 "Jurisdiction": "Example Borough",
-                "Id": "doc-2",
                 "Name": "Charge A",
                 "Distance Measure": 12,
                 "Run Id": "run://2",
@@ -484,7 +473,6 @@ def _write_record_with_state(path: Path, state: str) -> None:
             "lineage": {
                 "run_id": "run://s",
                 "artifact_id": "artifact://s",
-                "profile_id": "default",
                 "model": "gpt-5",
                 "provider": "azure",
                 "extracted_at": "2026-03-24T00:00:00Z",
@@ -545,7 +533,6 @@ def test_preview_deduplication_keeps_distinct_numeric_keys_with_missing_values(
                 "extraction": {
                     "main_data_array": "items",
                     "context_objects": ["metadata"],
-                    "identifier_fields": ["metadata.id"],
                 },
                 "identity": {
                     "deduplication": {

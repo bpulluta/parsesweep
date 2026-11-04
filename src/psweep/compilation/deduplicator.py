@@ -297,13 +297,6 @@ class Deduplicator:
         excluded_columns = set(compare_cols)
         excluded_columns.update(PROVENANCE_COLUMNS)
         excluded_columns.update(self._get_metadata_columns(df))
-
-        identifier_fields = self.schema_metadata.get_identifier_fields()
-        excluded_columns.update(
-            map_key_fields_to_columns(
-                df, identifier_fields, warn_on_missing=False
-            )
-        )
         return excluded_columns
 
     def _collect_conflicting_columns(

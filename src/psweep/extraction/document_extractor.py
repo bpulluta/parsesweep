@@ -14,7 +14,11 @@ from jsonschema import ValidationError
 from ..exceptions import SchemaValidationError
 from .llm_client import LLMClient
 from .llm_factory import DEFAULT_MAX_CONTEXT, DEFAULT_MODEL
-from .text_processor import TextProcessor
+from .text_processor import (
+    calculate_completeness,
+    normalize_string_fields,
+    normalize_with_schema,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +38,9 @@ class ExtractionResult:
         None  # Completion tokens (from provider usage)
     )
     coverage: Optional[Dict[str, Any]] = None
+    status: str = "extracted"
+    unverified_quotes: int = 0
+    off_candidate_items: int = 0
 
 
 class DocumentExtractor:
@@ -50,7 +57,6 @@ class DocumentExtractor:
     Architecture:
 
     - LLMClient: Handles all API calls via LiteLLM (100+ providers)
-    - TextProcessor: Optimizes text and normalizes output
 
     Examples
     --------
@@ -65,7 +71,6 @@ class DocumentExtractor:
         api_key: str = None,
         model: str = DEFAULT_MODEL,
         max_context_chars: int = DEFAULT_MAX_CONTEXT,
-        schema_metadata=None,
         provider: str = None,
         azure_endpoint: str = None,
         azure_api_version: str = None,
@@ -85,8 +90,6 @@ class DocumentExtractor:
             Model to use (default: gpt-4o-mini)
         max_context_chars : int
             Maximum characters to extract from document (default: 400000)
-        schema_metadata
-            Optional SchemaMetadata for metadata-driven processing
         provider : str
             LLM provider ("openai", "azure", "anthropic", "gemini", etc.)
         azure_endpoint : str
@@ -112,7 +115,6 @@ class DocumentExtractor:
         self.api_key = api_key
         self.model = model
         self.max_context_chars = max_context_chars
-        self.schema_metadata = schema_metadata
 
         # Initialize LLM client with multi-provider support
         self.client = LLMClient(
@@ -127,9 +129,6 @@ class DocumentExtractor:
             reasoning_models=reasoning_models,
         )
 
-        # Initialize text processor
-        self.processor = TextProcessor(max_chars=max_context_chars)
-
     def extract(self, text: str, schema: Dict[str, Any]) -> ExtractionResult:
         """
         Extract structured data from document.
@@ -137,7 +136,7 @@ class DocumentExtractor:
         This method orchestrates:
 
         1. LLM Structured Extraction - Fast, schema-driven parsing
-        2. Post-processing - Normalization and sanity checks
+        2. Post-processing - Normalization
 
         For multi-model QA/QC validation, use the CLI validate stage.
 
@@ -168,11 +167,11 @@ class DocumentExtractor:
         """
         start_time = time.time()
         validation_notes = []
-        excerpt, truncated = self.processor.optimize(text)
+        excerpt = text[: self.max_context_chars]
         coverage = {
             "input_characters": len(text),
             "extracted_characters": len(excerpt),
-            "context_truncated": truncated,
+            "context_truncated": len(excerpt) < len(text),
         }
         if coverage["context_truncated"]:
             validation_notes.append(
@@ -193,18 +192,12 @@ class DocumentExtractor:
             # Validate before normalization hides contract violations.
             self._validate_payload(validated_data, validator)
 
-            # Stage 2: Post-extraction sanity checks and normalization
-            validated_data = self.processor.normalize_with_schema(
+            # Stage 2: Post-extraction normalization
+            validated_data = normalize_with_schema(
                 validated_data, schema, validator=validator
             )
-            validated_data = self.processor.normalize_string_fields(
-                validated_data
-            )
+            validated_data = normalize_string_fields(validated_data)
             self._validate_payload(validated_data, validator)
-            sanity_warnings = self.processor.run_sanity_checks(
-                validated_data, schema_metadata=self.schema_metadata
-            )
-            validation_notes.extend(sanity_warnings)
 
         except Exception as exc:
             exc.usage = {
@@ -215,7 +208,7 @@ class DocumentExtractor:
 
         processing_time = time.time() - start_time
 
-        completeness = self.processor.calculate_completeness(validated_data)
+        completeness = calculate_completeness(validated_data)
 
         return ExtractionResult(
             data=validated_data,

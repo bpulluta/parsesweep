@@ -206,7 +206,7 @@ class TestRunMultiModelExtraction:
         # Verify file content
         with open(output_dir / "gpt-4o.json") as f:
             data = json.load(f)
-            assert data["contract_version"] == "1.0.0"
+            assert data["contract_version"] == "1.1.0"
             assert data["lineage"]["model"] == "gpt-4o"
             assert data["quality"]["errors"] == []
             assert "payload" in data
@@ -263,7 +263,6 @@ class TestRunMultiModelExtraction:
             },
             "lineage": {
                 "artifact_id": "artifact://runtime/abc123def4567890",
-                "profile_id": "default",
                 "pack_name": "tariffs",
                 "pack_version": "1.0.0",
                 "compiled_at": "2026-03-24T12:00:00Z",
@@ -286,10 +285,9 @@ class TestRunMultiModelExtraction:
         with open(output_path) as f:
             data = json.load(f)
 
-        assert data["contract_version"] == "1.0.0"
+        assert data["contract_version"] == "1.1.0"
         assert data["lineage"]["run_id"] == "run://abc123def4567890"
         assert data["lineage"]["artifact_id"] == runtime_artifact["artifact_id"]
-        assert data["lineage"]["profile_id"] == "default"
         assert data["lineage"]["provider"] == "openai"
         assert data["lineage"]["schema_id"] == "config/utility_rate_tariffs/schema.json"
         assert data["payload"]["items"][0]["name"] == "Item 1"
@@ -312,7 +310,6 @@ class TestRunMultiModelExtraction:
             },
             "lineage": {
                 "artifact_id": "artifact://runtime/abc123def4567890",
-                "profile_id": "default",
                 "pack_name": "tariffs",
                 "pack_version": "1.0.0",
                 "compiled_at": "2026-03-24T12:00:00Z",
@@ -336,7 +333,6 @@ class TestRunMultiModelExtraction:
 
         assert metadata["run_id"] == "run://abc123def4567890"
         assert metadata["artifact_id"] == runtime_artifact["artifact_id"]
-        assert metadata["lineage"]["profile_id"] == "default"
         assert metadata["lineage"]["run_id"] == "run://abc123def4567890"
         assert metadata["contract_versions"]["extraction_record"] == "1.0.0"
     
