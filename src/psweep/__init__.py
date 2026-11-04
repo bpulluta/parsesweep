@@ -8,7 +8,7 @@ deduplication, and automated data compilation.
 Programmatic API — engine level:
     >>> from psweep import DocumentExtractor, load_schema
     >>> extractor = DocumentExtractor(model="gpt-4o-mini")
-    >>> schema = load_schema("schemas/personal/my_schema.json")
+    >>> schema = load_schema("config/my_domain/schema.json")
     >>> result = extractor.extract(document_text, schema)
     >>> print(result.data)
 
@@ -16,7 +16,7 @@ Programmatic API — pipeline level (recommended for batch use):
     >>> from psweep.pipeline import extract_documents, compile_extractions
     >>> result = extract_documents(
     ...     "documents/my_domain/",
-    ...     schema="schemas/personal/my_schema.json",
+    ...     schema="config/my_domain/schema.json",
     ... )
     >>> print(f"Extracted {result.successful}/{result.total} documents")
     >>> compiled = compile_extractions(result.output_dir, schema=result.schema_path)

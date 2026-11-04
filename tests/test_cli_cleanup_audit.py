@@ -1,13 +1,11 @@
-"""Tests for the CLI cleanup audit (shared estimator, path resolver, counts).
+"""Tests for the CLI cleanup audit (shared estimator, counts).
 
 Covers:
 - the single cost/token estimator in ``psweep.cli.cost_tracker``
-- the shared path-layout resolvers in ``psweep.pipeline``
 - the shared on-disk artifact counters in ``psweep.cli.app``
 - the ``preview`` command pricing bugfix (configured model, not DEFAULT_MODEL)
 """
 
-from pathlib import Path
 
 import click.testing
 import pytest
@@ -21,10 +19,6 @@ from psweep.cli.cost_tracker import (
 from psweep.pipeline import (
     count_curated_documents as _count_curated_documents,
     count_extracted_documents as _count_extracted_documents,
-    discover_domain,
-    resolve_compile_output_dir,
-    resolve_extract_output_dir,
-    swap_layout_component,
 )
 
 
@@ -81,7 +75,8 @@ def test_preview_uses_configured_model_price(tmp_path, monkeypatch):
 
     class _FakeConfig:
         llm_config = {"model": "gpt-4o"}
-        schema_dir = tmp_path / "no_schemas"  # empty -> no schema detection
+        config_dir = tmp_path / "no_config"  # empty -> no schema detection
+        project_root = tmp_path
 
     monkeypatch.setattr(uc, "get_config", lambda: _FakeConfig())
 
@@ -92,48 +87,6 @@ def test_preview_uses_configured_model_price(tmp_path, monkeypatch):
     assert "gpt-4o-mini" not in result.output
     # gpt-4o pricing (5.00 / 15.00) -> $6.50, not gpt-4o-mini's $0.21.
     assert "$6.50" in result.output
-
-
-# ── shared path-layout resolver ──────────────────────────────────────────────
-
-
-def test_swap_layout_component_swaps_first_component():
-    assert swap_layout_component(
-        Path("extracted/tariffs"), "extracted", "compiled"
-    ) == Path("compiled/tariffs")
-
-
-def test_swap_layout_component_fallback_to_cwd():
-    assert swap_layout_component(
-        Path("foo/bar"), "extracted", "compiled"
-    ) == Path.cwd() / "compiled" / "bar"
-
-
-def test_resolve_compile_output_dir_swaps_extracted():
-    assert resolve_compile_output_dir(
-        Path("extracted/tariffs")
-    ) == Path("compiled/tariffs")
-
-
-def test_resolve_extract_output_dir_swaps_documents_dir():
-    assert resolve_extract_output_dir(
-        Path("documents/tariffs"), is_dir=True
-    ) == Path("extracted/tariffs")
-
-
-def test_resolve_extract_output_dir_uses_parent_for_files():
-    assert resolve_extract_output_dir(
-        Path("documents/tariffs/a.pdf"), is_dir=False
-    ) == Path("extracted/tariffs")
-
-
-def test_resolve_extract_output_dir_discovered_domain(tmp_path):
-    curated = tmp_path / "discovered" / "mydomain" / "curated"
-    curated.mkdir(parents=True)
-    assert discover_domain(curated) == "mydomain"
-    assert resolve_extract_output_dir(curated, is_dir=True) == (
-        Path.cwd() / "extracted" / "mydomain"
-    )
 
 
 # ── shared on-disk artifact counters ─────────────────────────────────────────

@@ -32,6 +32,7 @@ from psweep.utils.error_taxonomy import (
 from .candidate_selector import CandidateSelector
 from .concurrency import bounded_results
 from psweep.utils.file_io import atomic_write
+from psweep.workspace import Workspace
 from .connectors import DiggerInput, resolve_digger_connector
 from .connectors.digger import NullDiggerConnector
 from .constants import (
@@ -395,14 +396,9 @@ class DiscoveryEngine:
         request: DiscoveryRequest,
         run_id: str,
     ) -> tuple[Path, Path]:
-        # Everything for a run lives under one self-contained directory:
-        #   discovered/<domain>/runs/<run_id>/
-        #     manifest.json, download_index.csv, review.csv
-        #     documents/   (all downloads)
-        #     curated/     (final selected docs)
-        run_dir = (
-            Path("discovered") / request.domain / "runs" / run_id
-        )
+        # One self-contained directory per run: manifest.json,
+        # download_index.csv, review.csv, documents/, curated/.
+        run_dir = Workspace(request.domain).discovered / "runs" / run_id
 
         if request.output_documents is not None:
             documents_dir = request.output_documents
@@ -623,7 +619,7 @@ class DiscoveryEngine:
         """Return the canonical SerpApi cache directory for this request."""
         if not getattr(request, "seeker_cache", False):
             return None
-        return str(Path("discovered") / request.domain / ".serpapi_cache")
+        return str(Workspace(request.domain).discovered / ".serpapi_cache")
 
     @staticmethod
     def _build_selector(request: DiscoveryRequest) -> CandidateSelector:

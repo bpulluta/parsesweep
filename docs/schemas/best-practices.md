@@ -11,7 +11,7 @@ Design schemas to match how you want to analyze the data.
 
 For authoring, use this mental model:
 
-- `Schema` (`schemas/personal/<domain>_schema.json`): The **extraction contract**. Fields, descriptions, examples, row shape, identifiers, and deduplication keys. Field-level enum values belong here (in `properties`), not in `$metadata`.
+- `Schema` (`config/<domain>/schema.json`): The **extraction contract**. Fields, descriptions, examples, row shape, identifiers, and deduplication keys. Field-level enum values belong here (in `properties`), not in `$metadata`.
 - `Runtime config` (`config/<domain>/run.yaml`): **Runtime behavior and presentation**. Models, discovery settings, QA/QC lanes, and all compilation output settings (column order, renames, exclude_fields, default_format, freeze_columns). This file drives *how* a run behaves and *how* output looks.
 
 **Separation rule:** `$metadata` in the schema owns `extraction.*` and `identity.deduplication` (data identity — what makes a record unique). Everything else — output formatting, normalization, synthesis, model tiers — lives only in `config/<domain>/run.yaml`. Output config in `$metadata` is not supported and will be rejected by `check-schema`.
@@ -39,22 +39,22 @@ Use a short loop while evolving a schema:
 
 ```bash
 # 1. Validate schema structure
-pixi run psweep check-schema schemas/my_schema.json
+pixi run psweep check-schema config/my_domain/schema.json
 
 # 2. Extract a tiny sample
 pixi run psweep extract documents/sample/ \
-  --schema schemas/my_schema.json \
+  --schema config/my_domain/schema.json \
   -n 2 \
   --fresh
 
 # 3. Consolidate the sample
-pixi run psweep compile extracted/sample/ \
-  --schema schemas/my_schema.json \
+pixi run psweep compile outputs/sample/extracted/ \
+  --schema config/my_domain/schema.json \
   --verbose
 
 # 4. Preview deduplication before writing outputs
-pixi run psweep compile extracted/sample/ \
-  --schema schemas/my_schema.json \
+pixi run psweep compile outputs/sample/extracted/ \
+  --schema config/my_domain/schema.json \
   --dry-run \
   --report-format json \
   --fail-on-suspicious high
@@ -198,7 +198,6 @@ Validation behavior is runtime policy and belongs in the `validation` section of
 ```yaml
 validation:
   models: [primary, secondary]      # two model tiers to contrast
-  output_dir: validated/<domain>
   comparison_approach: mixed        # mixed | numeric_only | text_review
   record_matching:
     key_fields: [feature, specific_subject, applies_to]
@@ -712,7 +711,7 @@ fields, guard the negated branch with `required` so it applies only when present
 ### 1. Validate Schema Structure
 
 ```bash
-pixi run psweep check-schema schemas/your_schema.json
+pixi run psweep check-schema config/your_domain/schema.json
 ```
 
 Checks for:
@@ -725,12 +724,12 @@ Checks for:
 ```bash
 # Extract 1-2 sample documents
 pixi run psweep extract documents/samples/ \
-  --schema schemas/your_schema.json \
+  --schema config/your_domain/schema.json \
   --limit 2
 
 # Review JSON outputs
-ls -la extracted/samples/
-cat extracted/samples/sample_001.json
+ls -la outputs/samples/extracted/
+cat outputs/samples/extracted/sample_001.json
 ```
 
 Check:
@@ -742,10 +741,10 @@ Check:
 
 ```bash
 # Consolidate to Excel/CSV
-pixi run psweep compile extracted/samples/
+pixi run psweep compile outputs/samples/extracted/
 
 # Review outputs
-open compiled/samples/*.xlsx
+open outputs/samples/compiled/*.xlsx
 ```
 
 Verify:
@@ -964,7 +963,7 @@ Use the same dedup keys in every regulatory domain (vocabularies belong in `prop
 
 ### Creating a new regulatory domain schema
 
-1. Copy an existing regulatory schema (`natural_gas_pipeline_schema.json` is the
+1. Copy an existing regulatory schema (`config/natural_gas_pipelines/schema.json` is the
    reference) as a template.
 2. Replace the `feature` enum with your domain's standardized features.
 3. Update the domain-specific **examples** in `specific_subject`, `applies_to`,
@@ -973,34 +972,34 @@ Use the same dedup keys in every regulatory domain (vocabularies belong in `prop
 4. Set `$metadata.domain` and bump `version`; keep the canonical
    `key_fields` and `ignore_fields` in `$metadata.identity.deduplication` unchanged.
 5. Adjust `document_applicability` and `jurisdiction` gate fields for the domain.
-6. Validate: `pixi run psweep check-schema schemas/personal/<domain>_schema.json`.
+6. Validate: `pixi run psweep check-schema config/<domain>/schema.json`.
 
 ---
 
 ## Production Examples
 
-Reference these working schemas in the `schemas/` directory:
+Reference these working schemas under `config/`:
 
 ### Air Quality Permits
-- **File:** `air_quality_permits_schema.json`
+- **File:** `config/aq_permits_va/schema.json`
 - **Pattern:** Permit-based with equipment nested
 - **Main array:** `equipment`
 - **Good for:** Environmental compliance tracking
 
 ### Electricity Tariffs
-- **File:** `electricity_tariff_schema.json`
+- **File:** `config/utility_rate_tariffs/schema.json`
 - **Pattern:** Rate schedule with charges nested
 - **Main array:** `rate_schedules`
 - **Good for:** Utility rate analysis
 
 ### Geothermal Ordinances
-- **File:** `personal/geothermal_ordinance_schema.json`
+- **File:** `config/geothermal_ordinances/schema.json`
 - **Pattern:** Requirements-based, 4-axis value typing
 - **Main array:** `requirements`
 - **Good for:** Regulatory compliance
 
 ### Natural Gas Pipelines & Compressor Stations
-- **File:** `personal/natural_gas_pipeline_schema.json`
+- **File:** `config/natural_gas_pipelines/schema.json`
 - **Pattern:** Requirements-based, 4-axis value typing (reference schema for new regulatory domains)
 - **Main array:** `requirements`
 - **Good for:** Regulatory compliance, cross-jurisdiction comparison

@@ -6,6 +6,7 @@ from unittest.mock import patch
 from click.testing import CliRunner
 
 from psweep.cli.main import cli
+from psweep.workspace import Workspace
 
 
 def test_process_validate_config_with_run_yaml(tmp_path, schema_path):
@@ -14,9 +15,9 @@ def test_process_validate_config_with_run_yaml(tmp_path, schema_path):
     config_path = tmp_path / "run.yaml"
     config_path.write_text(
         f"""
+schema: {schema_path.as_posix()}
 extraction:
   input_dir: {documents.as_posix()}
-  schema: {schema_path.as_posix()}
 """,
         encoding="utf-8",
     )
@@ -36,9 +37,9 @@ def test_process_validate_config_strict_rejects_unknown_key(tmp_path, schema_pat
     config_path = tmp_path / "run.yaml"
     config_path.write_text(
         f"""
+schema: {schema_path.as_posix()}
 extraction:
   input_dir: documents/geothermal_ordinances
-  schema: {schema_path.as_posix()}
   mystery_option: true
 """,
         encoding="utf-8",
@@ -64,9 +65,7 @@ def test_compile_validate_config_quiet_returns_json(tmp_path, schema_path):
     config_path = tmp_path / "run.yaml"
     config_path.write_text(
         f"""
-compilation:
-  input_dir: processed/geothermal_ordinances
-  schema: {schema_path.as_posix()}
+schema: {schema_path.as_posix()}
 """,
         encoding="utf-8",
     )
@@ -88,12 +87,9 @@ def test_run_validate_config_only_passes_with_valid_runtime_config(tmp_path, sch
     config_path.write_text(
         f"""
 domain: demo
+schema: {schema_path.as_posix()}
 extraction:
   input_dir: documents/demo
-  schema: {schema_path.as_posix()}
-compilation:
-  input_dir: extracted/demo
-  schema: {schema_path.as_posix()}
 """,
         encoding="utf-8",
     )
@@ -111,13 +107,10 @@ def test_run_validate_config_strict_fails_on_unknown_keys_by_default(tmp_path, s
     config_path.write_text(
         f"""
 domain: demo
+schema: {schema_path.as_posix()}
 extraction:
   input_dir: documents/demo
-  schema: {schema_path.as_posix()}
   mystery_option: true
-compilation:
-  input_dir: extracted/demo
-  schema: {schema_path.as_posix()}
 """,
         encoding="utf-8",
     )
@@ -136,13 +129,10 @@ def test_run_validate_config_allows_unknown_keys_when_not_strict(tmp_path, schem
     config_path.write_text(
         f"""
 domain: demo
+schema: {schema_path.as_posix()}
 extraction:
   input_dir: documents/demo
-  schema: {schema_path.as_posix()}
   mystery_option: true
-compilation:
-  input_dir: extracted/demo
-  schema: {schema_path.as_posix()}
 """,
         encoding="utf-8",
     )
@@ -161,10 +151,11 @@ compilation:
     assert result.exit_code == 0
 
 
-def test_run_fresh_delegates_safe_cleanup_to_extraction(tmp_path, schema_path):
+def test_run_fresh_delegates_safe_cleanup_to_extraction(tmp_path, monkeypatch, schema_path):
     """The parent run must not delete before its child preflight."""
+    monkeypatch.chdir(tmp_path)
     config_path = tmp_path / "run.yaml"
-    extraction_dir = tmp_path / "extracted" / "demo"
+    extraction_dir = Workspace("demo").extracted
     extraction_dir.mkdir(parents=True)
     stale_record = extraction_dir / "stale.json"
     stale_record.write_text("{}", encoding="utf-8")
@@ -172,13 +163,9 @@ def test_run_fresh_delegates_safe_cleanup_to_extraction(tmp_path, schema_path):
     config_path.write_text(
         f"""
 domain: demo
+schema: {schema_path.as_posix()}
 extraction:
   input_dir: documents/demo
-  schema: {schema_path.as_posix()}
-  output_dir: {extraction_dir.as_posix()}
-compilation:
-  input_dir: {extraction_dir.as_posix()}
-  schema: {schema_path.as_posix()}
 """,
         encoding="utf-8",
     )
@@ -200,8 +187,8 @@ compilation:
 def test_run_summary_prefers_latest_curated_when_discovery_runs(tmp_path, monkeypatch, schema_path):
     config_path = tmp_path / "run.yaml"
     monkeypatch.chdir(tmp_path)
-    extraction_dir = tmp_path / "extracted" / "demo"
-    extraction_dir.mkdir(parents=True)
+    workspace = Workspace("demo")
+    workspace.extracted.mkdir(parents=True)
 
     config_path.write_text(
         f"""
@@ -210,19 +197,15 @@ discovery:
   targets:
     - label: t1
       query: q1
+schema: {schema_path.as_posix()}
 extraction:
   input_dir: docs/demo
-  schema: {schema_path.as_posix()}
-  output_dir: {extraction_dir.as_posix()}
-compilation:
-  input_dir: {extraction_dir.as_posix()}
-  schema: {schema_path.as_posix()}
 """,
         encoding="utf-8",
     )
 
-    latest_curated = tmp_path / "discovered" / "demo" / "latest" / "curated"
-    consolidated_curated = tmp_path / "discovered" / "demo" / "curated"
+    latest_curated = workspace.latest / "curated"
+    consolidated_curated = workspace.curated
     latest_curated.mkdir(parents=True)
     consolidated_curated.mkdir(parents=True)
     (latest_curated / "one.pdf").write_text("x", encoding="utf-8")
@@ -491,12 +474,7 @@ discovery:
     - https://example.org/docs
   retention:
     documents: none
-extraction:
-  input_dir: discovered/demo/curated
-  schema: {schema_path.as_posix()}
-compilation:
-  input_dir: extracted/demo
-  schema: {schema_path.as_posix()}
+schema: {schema_path.as_posix()}
 """,
         encoding="utf-8",
     )
@@ -511,14 +489,15 @@ compilation:
     assert "retention_documents='none'" in result.output
 
 
-def test_extract_fresh_preserves_output_when_input_path_missing(tmp_path):
+def test_extract_fresh_preserves_output_when_input_path_missing(tmp_path, monkeypatch):
     """Missing source inputs cannot delete prior extraction records."""
-    extraction_dir = tmp_path / "extracted" / "demo"
-    extraction_dir.mkdir(parents=True)
-    stale_record = extraction_dir / "stale.json"
+    monkeypatch.chdir(tmp_path)
+    workspace = Workspace("demo")
+    workspace.extracted.mkdir(parents=True)
+    stale_record = workspace.extracted / "stale.json"
     stale_record.write_text("{}", encoding="utf-8")
 
-    missing_input = tmp_path / "discovered" / "demo" / "latest" / "curated"
+    missing_input = tmp_path / workspace.latest / "curated"
     schema_path = tmp_path / "schema.json"
     schema_path.write_text(
         '{"$metadata":{"extraction":{"main_data_array":"items","identifier_fields":["name"]},"identity":{"deduplication":{"key_fields":["name"],"ignore_fields":[]}}}}',
@@ -528,10 +507,9 @@ def test_extract_fresh_preserves_output_when_input_path_missing(tmp_path):
     config_path.write_text(
         f"""
 domain: demo
+schema: {schema_path.as_posix()}
 extraction:
   input_dir: {missing_input.as_posix()}
-  schema: {schema_path.as_posix()}
-  output_dir: {extraction_dir.as_posix()}
 """,
         encoding="utf-8",
     )

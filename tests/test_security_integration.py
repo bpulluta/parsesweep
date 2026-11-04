@@ -17,6 +17,7 @@ import requests
 
 from psweep.discovery.network import send_get, NetworkPolicyError
 from psweep.extraction.llm_client import LLMClient
+from psweep.workspace import Workspace
 
 pytestmark = pytest.mark.integration
 PAYLOAD = {"items": [{"name": "synthetic", "value": 42}]}
@@ -313,16 +314,8 @@ def test_real_protected_cli_pipeline_reuse_and_exports(tls_server, tmp_path):
         json.dumps(
             {
                 "domain": "synthetic",
-                "extraction": {
-                    "input_dir": str(documents),
-                    "schema": str(schema),
-                    "output_dir": str(workspace / "extracted"),
-                },
-                "compilation": {
-                    "input_dir": str(workspace / "extracted"),
-                    "schema": str(schema),
-                    "output_dir": str(workspace / "compiled"),
-                },
+                "schema": str(schema),
+                "extraction": {"input_dir": str(documents)},
             }
         )
     )
@@ -354,19 +347,20 @@ def test_real_protected_cli_pipeline_reuse_and_exports(tls_server, tmp_path):
 
     run("run", "--config", str(config), "--skip-discover", "--yes", "--quiet")
     assert len(calls) == 1
-    record_files = [path for path in (workspace / "extracted").glob("*.json")]
+    stage_dirs = Workspace("synthetic")
+    record_files = list((workspace / stage_dirs.extracted).glob("*.json"))
     assert len(record_files) == 1
     assert json.loads(record_files[0].read_text())["payload"] == PAYLOAD
     run("run", "--config", str(config), "--skip-discover", "--yes", "--quiet")
     assert len(calls) == 1, (
         "Verified reuse must not send another model request"
     )
-    (csv_path,) = (workspace / "compiled").glob("*.csv")
+    (csv_path,) = (workspace / stage_dirs.compiled).glob("*.csv")
     with csv_path.open(newline="") as stream:
         rows = list(csv.DictReader(stream))
     assert len(rows) == 1 and rows[0]["name"] == "synthetic"
     assert float(rows[0]["value"]) == 42
-    (xlsx,) = (workspace / "compiled").glob("*.xlsx")
+    (xlsx,) = (workspace / stage_dirs.compiled).glob("*.xlsx")
     workbook = load_workbook(xlsx, read_only=True, data_only=True)
     assert any(42 in row for sheet in workbook for row in sheet.values)
     workbook.close()

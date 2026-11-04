@@ -20,7 +20,6 @@ from psweep.exceptions import (
 )
 
 from psweep.extraction import load_schema
-from psweep.utils.config import get_config
 
 
 @click.command()
@@ -47,8 +46,8 @@ def check(
 
     \b
     EXAMPLES:
-        psweep check extracted/data/doc.json
-        psweep check extracted/data/doc.json --show-data
+        psweep check outputs/my_domain/extracted/doc.json
+        psweep check outputs/my_domain/extracted/doc.json --show-data
     """
     from psweep.cli.commands import begin_run
     from psweep.cli.ui import console, display_json
@@ -71,7 +70,10 @@ def check(
     recorded_schema = (
         lineage.get("schema_id") if isinstance(lineage, dict) else None
     )
-    schema_ref = schema or recorded_schema or get_config().default_schema
+    schema_ref = schema or recorded_schema
+    if not schema_ref:
+        view.error("Schema not recorded", "supply --schema for this record")
+        sys.exit(1)
     schema_path = Path(schema_ref)
     if not schema_path.exists():
         view.error(

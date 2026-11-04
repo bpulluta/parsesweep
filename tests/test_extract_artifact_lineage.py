@@ -51,7 +51,7 @@ def test_context_budget_suggestions_for_process_use_matching_repo_page_ranges_co
 
     suggestions = _context_budget_suggestions_for_process(
         error_record={'code': 'context_window_exceeded'},
-        schema_path=Path('schemas/personal/electricity_tariff_schema.json'),
+        schema_path=Path('config/utility_rate_tariffs/schema.json'),
         document_path=document_path,
         repo_root=tmp_path,
     )
@@ -138,7 +138,7 @@ def test_init_domain_schema_cli_creates_lean_starter_from_reference(tmp_path) ->
     )
 
     runner = CliRunner()
-    output_path = tmp_path / 'schemas/personal/starter_domain_schema.json'
+    output_path = tmp_path / 'config/starter_domain/schema.json'
     result = runner.invoke(
         cli,
         [
@@ -231,7 +231,7 @@ def test_init_domain_schema_cli_can_limit_main_array_fields(tmp_path) -> None:
     )
 
     runner = CliRunner()
-    output_path = tmp_path / 'schemas/personal/trimmed_schema.json'
+    output_path = tmp_path / 'config/trimmed/schema.json'
     result = runner.invoke(
         cli,
         [
@@ -331,7 +331,7 @@ def test_run_validation_extraction_prints_compare_command_with_selected_lane(tmp
     _run_validation_extraction(
         doc_files=[document_path],
         loaded_schema={'type': 'object'},
-        schema_path=REPO_ROOT / 'schemas/personal/geothermal_ordinance_schema.json',
+        schema_path=REPO_ROOT / 'config/geothermal_ordinances/schema.json',
         output_dir=tmp_path / 'extracted',
         registry=registry,
         validation_models=['model-a', 'model-b'],
@@ -994,7 +994,7 @@ def test_write_extraction_record_persists_structured_processing_errors(
 def test_validation_run_id_is_deterministic_for_same_inputs() -> None:
     """Validation keeps order-independent IDs used by live QA callers."""
     run_id_1 = generate_run_id(
-        schema_path=Path('schemas/personal/electricity_tariff_schema.json'),
+        schema_path=Path('config/utility_rate_tariffs/schema.json'),
         provider='azure',
         model='gpt-5',
         enable_validation=True,
@@ -1002,7 +1002,7 @@ def test_validation_run_id_is_deterministic_for_same_inputs() -> None:
         artifact_id='artifact://runtime/abc123def4567890',
     )
     run_id_2 = generate_run_id(
-        schema_path=Path('schemas/personal/electricity_tariff_schema.json'),
+        schema_path=Path('config/utility_rate_tariffs/schema.json'),
         provider='azure',
         model='gpt-5',
         enable_validation=True,

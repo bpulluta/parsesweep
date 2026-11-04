@@ -15,6 +15,7 @@ from psweep.extraction import load_schema
 from psweep.extraction.llm_factory import DEFAULT_MAX_CONTEXT
 from psweep.extraction.document_utils import SUPPORTED_EXTENSIONS
 from psweep.extraction.provenance import generate_run_id
+from psweep.workspace import Workspace
 
 
 @click.command()
@@ -88,15 +89,9 @@ def validate(
 
     path = Path(resolved_inputs["path"])
     schema_path = Path(resolved_inputs["schema"])
-    extraction_output_dir = Path(
-        resolved_inputs.get("output")
-        or (Path.cwd() / "extracted" / resolved_inputs.get("domain", path.name))
-    )
-    validation_cfg = resolved_inputs.get("validation") or {}
-    validation_output_dir = Path(
-        validation_cfg.get("output_dir")
-        or (Path.cwd() / "validated" / resolved_inputs.get("domain", path.name))
-    )
+    workspace = Workspace(resolved_inputs["domain"])
+    extraction_output_dir = Path(resolved_inputs["output"])
+    validation_output_dir = workspace.validated
     max_context = int(resolved_inputs.get("max_context", DEFAULT_MAX_CONTEXT))
     timeout_seconds = resolved_inputs.get("timeout_seconds")
     validation_models = (resolved_inputs.get("validation") or {}).get("models") or []
@@ -164,8 +159,7 @@ def validate(
             )
             sys.exit(1)
         
-        domain = resolved_inputs.get("domain", path.name)
-        discovery_checkpoint = Path.cwd() / "discovered" / domain / "curated" / "checkpoint.json"
+        discovery_checkpoint = workspace.curated / "checkpoint.json"
         discovery_checkpoint_path = discovery_checkpoint if discovery_checkpoint.exists() else None
         
         # Load schema for evidence display
@@ -292,8 +286,7 @@ def validate(
         sys.exit(1)
 
     view.phase("Stage 3/3: Comparison and report generation")
-    domain = resolved_inputs.get("domain", path.name)
-    discovery_checkpoint = Path.cwd() / "discovered" / domain / "curated" / "checkpoint.json"
+    discovery_checkpoint = workspace.curated / "checkpoint.json"
     discovery_checkpoint_path = discovery_checkpoint if discovery_checkpoint.exists() else None
     
     exit_code = generate_comparison_reports(

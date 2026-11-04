@@ -47,7 +47,14 @@ from psweep.cli.ui import (
     section,
     status_item,
 )
-from psweep.utils.page_range import load_pages_csv
+from psweep.workspace import (
+    CONFIG_ROOT,
+    OUTPUTS_ROOT,
+    SCHEMA_FILENAME,
+    Workspace,
+    domain_schemas,
+    infer_domain,
+)
 from psweep.cli.cost_tracker import estimate_extraction_cost
 from psweep.scaffolding import (
     ConfigValidationError,
@@ -92,7 +99,7 @@ def _cli_repo_root() -> Path:
 @click.option(
     "--output",
     type=click.Path(dir_okay=False),
-    help="Output schema path (defaults to schemas/personal/<name>_schema.json)",
+    help="Output schema path (defaults to config/<name>/schema.json)",
 )
 @click.option(
     "--force",
@@ -209,8 +216,8 @@ def init_domain_schema_cmd(
                 {
                     "title": "Create runtime config from template",
                     "command": (
-                        f"mkdir -p config/{schema_name.replace('_schema', '')} && "
-                        f"cp config/TEMPLATE.yaml config/{schema_name.replace('_schema', '')}/run.yaml"
+                        "cp config/TEMPLATE.yaml "
+                        f"{_display_cli_path(output_path.parent / 'run.yaml', repo_root)}"
                     ),
                 },
             ],
@@ -348,49 +355,34 @@ def init():
 
     project_root = Path.cwd()
     docs_dir = project_root / "documents" / doc_type
-    processed_dir = project_root / "extracted" / doc_type
-    compiled_dir = project_root / "compiled" / doc_type
-
     docs_dir.mkdir(parents=True, exist_ok=True)
-    processed_dir.mkdir(parents=True, exist_ok=True)
-    compiled_dir.mkdir(parents=True, exist_ok=True)
 
     print_success("Created directory structure:")
     console.print(
         create_file_tree(project_root / "documents", "Project Structure")
     )
 
-    # Schema selection
     section("Step 4: Schema Selection")
 
-    config = get_config()
-    schemas = list(config.schema_dir.glob("*.json"))
-
+    schemas = {p.parent.name: p for p in domain_schemas(get_config().config_dir)}
+    schema_path = CONFIG_ROOT / doc_type / SCHEMA_FILENAME
     if schemas:
-        schema_names = [s.stem for s in schemas]
-
-        # Try to auto-detect based on doc_type via fuzzy stem matching
         import difflib
 
-        suggested_schema = None
-        close = difflib.get_close_matches(doc_type, schema_names, n=1, cutoff=0.3)
+        close = difflib.get_close_matches(doc_type, list(schemas), n=1, cutoff=0.3)
         if close:
-            suggested_schema = close[0]
+            schema_path = CONFIG_ROOT / close[0] / SCHEMA_FILENAME
+            print_info(f"Suggested schema: {schema_path}")
+        if len(schemas) > 1:
+            console.print(f"\nAvailable domain schemas: {', '.join(schemas)}")
 
-        if suggested_schema:
-            print_info(f"Suggested schema: {suggested_schema}")
-
-        if len(schema_names) > 1:
-            console.print(f"\nAvailable schemas: {', '.join(schema_names)}")
-
-    # Summary
     rule()
     print_success("Setup complete!")
     print_next_steps(
         [
             f"Add your documents to: {docs_dir}",
-            f"Run extraction: psweep extract {docs_dir}",
-            f"Compile results: psweep compile {processed_dir}",
+            f"Run extraction: psweep extract {docs_dir} --schema {schema_path}",
+            f"Compile results: psweep compile {Workspace(doc_type).extracted} --schema {schema_path}",
         ]
     )
     console.print()
@@ -459,25 +451,23 @@ def preview(document_path: str):
         )
         console.print(analysis_table)
 
-        # Try to detect schema via fuzzy stem matching
+        # Fuzzy-match the document name against domain names under config/.
         matched_schema = None
-
-        candidates = sorted(config.schema_dir.glob("*.json"), key=lambda p: p.stem)
+        candidates = {p.parent.name: p for p in domain_schemas(config.config_dir)}
         if candidates:
             import difflib
 
-            stems = [c.stem for c in candidates]
             close = difflib.get_close_matches(
-                Path(doc_path).stem, stems, n=1, cutoff=0.3
+                Path(doc_path).stem, list(candidates), n=1, cutoff=0.3
             )
-            if close:
-                matched_schema = next(c for c in candidates if c.stem == close[0])
-            else:
-                matched_schema = candidates[0]
+            matched_schema = candidates[close[0] if close else next(iter(candidates))]
 
         if matched_schema:
             section("Schema Detection")
-            status_item("success", f"Matched schema: {matched_schema.name}")
+            status_item(
+                "success",
+                f"Matched schema: {_display_cli_path(matched_schema, config.project_root)}",
+            )
 
             # Load and show field count
             schema = load_schema(matched_schema)
@@ -498,9 +488,12 @@ def preview(document_path: str):
         console.print(f"{sample}...\n")
 
         section("Ready to Extract")
-        console.print(
-            f"Run: psweep extract {doc_path} --schema schemas/example_utility_rate_schema.json\n"
+        schema_hint = (
+            _display_cli_path(matched_schema, config.project_root)
+            if matched_schema
+            else CONFIG_ROOT / infer_domain(doc_path) / SCHEMA_FILENAME
         )
+        console.print(f"Run: psweep extract {doc_path} --schema {schema_hint}\n")
 
     except Exception as e:
         print_error("Failed to analyze document", str(e))
@@ -665,9 +658,8 @@ def estimate(documents_path: str, workers: int, pages_csv: str):
     # Confirmation prompt
     console.print()
     if ask_confirm("Proceed with extraction?", default=False):
-        console.print(
-            f"\nRun: psweep extract {docs_path} --schema schemas/example_utility_rate_schema.json\n"
-        )
+        schema_hint = CONFIG_ROOT / infer_domain(docs_path) / SCHEMA_FILENAME
+        console.print(f"\nRun: psweep extract {docs_path} --schema {schema_hint}\n")
     else:
         print_info("Operation cancelled")
 
@@ -683,8 +675,7 @@ def check_schema_cmd(schema_path: str):
 
     \b
     EXAMPLES:
-        psweep check-schema schemas/my_schema.json
-        psweep check-schema schemas/example_utility_rate_schema.json
+        psweep check-schema config/my_domain/schema.json
     """
     schema_file = Path(schema_path)
 
@@ -902,17 +893,17 @@ def config(show_runtime_catalog: bool, output_format: str):
         key_values(
             {
                 "Project Root": str(config_obj.project_root),
-                "Schemas": str(config_obj.schema_dir),
+                "Domain Configs": str(config_obj.config_dir),
+                "Outputs": str(OUTPUTS_ROOT),
             }
         )
     )
 
-    # Available schemas
-    schemas = list(config_obj.schema_dir.glob("*.json"))
+    schemas = domain_schemas(config_obj.config_dir)
     if schemas:
         section("Available Schemas")
         for schema in schemas:
-            status_item("info", schema.name)
+            status_item("info", _display_cli_path(schema, config_obj.project_root))
 
     if show_runtime_catalog:
         section("Runtime Variable Catalog")

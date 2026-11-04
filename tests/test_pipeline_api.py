@@ -15,6 +15,7 @@ from psweep.exceptions import PipelineError
 import pytest
 from psweep.config import RuntimeConfigError
 
+from psweep.workspace import Workspace
 from psweep.pipeline import (
     build_run_stage_commands,
     compile_extractions,
@@ -22,7 +23,6 @@ from psweep.pipeline import (
     count_extracted_documents,
     extract_documents,
     resolve_run_discovery_enabled,
-    resolve_run_extraction_dir,
     resolve_run_validation,
     run_pipeline,
 )
@@ -298,17 +298,13 @@ def test_build_run_stage_commands_wires_validation(tmp_path: Path) -> None:
         "  targets:\n"
         "    - label: demo\n"
         "      url: https://example.com\n"
-        "extraction:\n"
-        "  schema: schemas/example.json\n"
-        "  output_dir: extracted/example\n"
+        "schema: schemas/example.json\n"
         "validation:\n"
         "  models: [primary, secondary]\n",
         encoding="utf-8",
     )
 
-    resolved = resolve_run_validation(config_path)
-    assert resolved is not None
-    assert resolved["validation_dir"] == Path("extracted/example/validation")
+    assert resolve_run_validation(config_path) == {"models": ["primary", "secondary"]}
 
     stage_cmds = build_run_stage_commands(
         config_path,
@@ -326,6 +322,7 @@ def test_build_run_stage_commands_wires_validation(tmp_path: Path) -> None:
 
 @pytest.mark.parametrize("confirm", [True, False])
 def test_validate_confirmation_can_be_explicitly_skipped(tmp_path, monkeypatch, confirm):
+    monkeypatch.chdir(tmp_path)
     docs = tmp_path / "documents"
     docs.mkdir()
     (docs / "synthetic.txt").write_text("Synthetic measurement: 42")
@@ -343,12 +340,11 @@ def test_validate_confirmation_can_be_explicitly_skipped(tmp_path, monkeypatch, 
     config.write_text(yaml.safe_dump({
         "domain": "synthetic",
         "models": {"primary": "gpt-primary", "secondary": "gpt-secondary"},
-        "extraction": {"input_dir": str(docs), "schema": str(schema),
-                       "output_dir": str(tmp_path / "extracted")},
+        "schema": str(schema),
+        "extraction": {"input_dir": str(docs)},
         "validation": {"models": ["primary", "secondary"],
                        "record_matching": {"key_fields": ["name"]},
-                       "comparison": {"primary_fields": ["name"]},
-                       "output_dir": str(tmp_path / "validated")},
+                       "comparison": {"primary_fields": ["name"]}},
     }))
     extraction = Mock(return_value=None)
     monkeypatch.setattr("psweep.cli.commands_extract._run_validation_extraction", extraction)
@@ -390,8 +386,7 @@ def test_build_run_stage_commands_propagates_fresh_to_validation(
     config_path = tmp_path / "example.yaml"
     config_path.write_text(
         "domain: example\n"
-        "extraction:\n"
-        "  schema: schemas/example.json\n"
+        "schema: schemas/example.json\n"
         "validation:\n"
         "  models: [primary, secondary]\n",
         encoding="utf-8",
@@ -496,7 +491,7 @@ def test_build_run_stage_commands_wires_extract_input_path_when_provided(
     stage_cmds = build_run_stage_commands(
         config_path,
         base_cmd=["pixi", "run", "psweep"],
-        extract_input_path="discovered/example/latest/curated",
+        extract_input_path="outputs/example/discovered/latest/curated",
     )
     extract_cmd = dict(stage_cmds)["extract"]
     assert extract_cmd[:6] == [
@@ -504,7 +499,7 @@ def test_build_run_stage_commands_wires_extract_input_path_when_provided(
         "run",
         "psweep",
         "extract",
-        "discovered/example/latest/curated",
+        "outputs/example/discovered/latest/curated",
         "--config",
     ]
 
@@ -512,7 +507,7 @@ def test_build_run_stage_commands_wires_extract_input_path_when_provided(
 def test_build_run_stage_commands_no_validation_when_disabled(tmp_path: Path) -> None:
     config_path = tmp_path / "example.yaml"
     config_path.write_text(
-        "domain: example\nextraction:\n  schema: s.json\n", encoding="utf-8"
+        "domain: example\nschema: s.json\n", encoding="utf-8"
     )
 
     assert resolve_run_validation(config_path) is None
@@ -531,7 +526,7 @@ def test_resolve_run_discovery_enabled_rejects_split_override(
     """Pipeline helpers do not restore retired implicit config overrides."""
     config_path = tmp_path / "run.yaml"
     config_path.write_text(
-        "domain: example\nextraction:\n  schema: schemas/example.json\n",
+        "domain: example\nschema: schemas/example.json\n",
         encoding="utf-8",
     )
     (tmp_path / "discovery.yaml").write_text(
@@ -549,8 +544,7 @@ def test_build_run_stage_commands_skips_discover_without_discovery_config(
     config_path = tmp_path / "example.yaml"
     config_path.write_text(
         "domain: example\n"
-        "extraction:\n"
-        "  schema: s.json\n",
+        "schema: s.json\n",
         encoding="utf-8",
     )
 
@@ -643,18 +637,12 @@ def test_extract_documents_uses_page_range_csv(tmp_path: Path, monkeypatch) -> N
 
 
 def _run_config(tmp_path, schema_path, *, discovery=True):
-    output = tmp_path / "extracted" / "acme"
+    """Callers chdir to tmp_path so derived outputs land there."""
+    output = tmp_path / Workspace("acme").extracted
     config = {
         "domain": "acme",
-        "extraction": {
-            "schema": str(schema_path),
-            "input_dir": str(tmp_path / "documents"),
-            "output_dir": str(output),
-        },
-        "compilation": {
-            "schema": str(schema_path), "input_dir": str(output),
-            "output_dir": str(tmp_path / "compiled"),
-        },
+        "schema": str(schema_path),
+        "extraction": {"input_dir": str(tmp_path / "documents")},
     }
     if discovery:
         config["discovery"] = {
@@ -680,7 +668,7 @@ def test_run_ui_does_not_predict_reuse_from_raw_checkpoint(
     monkeypatch.chdir(tmp_path)
     config, _ = _run_config(tmp_path, schema_path)
     if checkpoint is not None:
-        path = tmp_path / "discovered/acme/checkpoint.json"
+        path = tmp_path / Workspace("acme").discovered / "checkpoint.json"
         path.parent.mkdir(parents=True)
         path.write_text(checkpoint, encoding="utf-8")
     plans = []
@@ -700,15 +688,6 @@ def test_run_ui_does_not_predict_reuse_from_raw_checkpoint(
     command = subprocess.call_args.args[0]
     assert "discover" in command
     assert "--fresh" not in command
-
-
-def test_resolve_run_extraction_dir_uses_config_value() -> None:
-    cfg = {"extraction": {"output_dir": "custom/out"}}
-    assert resolve_run_extraction_dir(cfg, "acme") == Path("custom/out")
-
-
-def test_resolve_run_extraction_dir_defaults_to_domain() -> None:
-    assert resolve_run_extraction_dir({}, "acme") == Path("extracted/acme")
 
 
 @pytest.mark.parametrize("entrypoint", ["cli", "api"])

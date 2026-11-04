@@ -26,9 +26,9 @@ from psweep.pipeline import (
     count_curated_documents,
     count_extracted_documents,
     resolve_run_discovery_enabled,
-    resolve_run_extraction_dir,
     resolve_run_validation,
 )
+from psweep.workspace import Workspace
 
 
 # ---------------------------------------------------------------------------
@@ -134,7 +134,8 @@ def run(
         view.error("Runtime config validation failed", str(exc))
         raise click.exceptions.Exit(1)
 
-    domain = cfg.get("domain", config_path.parent.name)
+    domain = cfg["domain"]
+    workspace = Workspace(domain)
     discovery_enabled = resolve_run_discovery_enabled(config_path)
     discovery_cfg = cfg.get("discovery", {}) if discovery_enabled else {}
 
@@ -225,11 +226,8 @@ def run(
             view.success("Runtime config validation passed for run command")
         raise click.exceptions.Exit(0)
 
-    curated_dir = Path(f"discovered/{domain}/curated")
-    curated_count = count_curated_documents(curated_dir)
-
-    extraction_dir = resolve_run_extraction_dir(cfg, domain)
-    extracted_count = count_extracted_documents(extraction_dir)
+    curated_count = count_curated_documents(workspace.curated)
+    extracted_count = count_extracted_documents(workspace.extracted)
 
     # Show run plan
     view.header()
@@ -296,7 +294,7 @@ def run(
         target_limit=target_limit,
         retention_documents=retention_documents,
         extract_input_path=(
-            Path(f"discovered/{domain}/latest/curated")
+            workspace.latest / "curated"
             if (not skip_discover and discovery_enabled and target_limit is not None)
             else None
         ),
@@ -326,17 +324,16 @@ def run(
     }
     # Report run-scoped discovery output when this invocation executed discovery.
     # Fallback to consolidated curated only when latest is unavailable.
-    latest_curated_dir = Path(f"discovered/{domain}/latest/curated")
-    consolidated_curated_dir = Path(f"discovered/{domain}/curated")
+    latest_curated_dir = workspace.latest / "curated"
     final_curated_dir = (
         latest_curated_dir
         if (not skip_discover and discovery_enabled and latest_curated_dir.exists())
-        else consolidated_curated_dir
+        else workspace.curated
     )
     doc_count = count_curated_documents(final_curated_dir)
     if doc_count:
         summary_rows["Documents found"] = str(doc_count)
-    final_extracted = count_extracted_documents(extraction_dir)
+    final_extracted = count_extracted_documents(workspace.extracted)
     if final_extracted:
         summary_rows["Extracted"] = str(final_extracted)
     view.summary(summary_rows, title="Pipeline Complete")

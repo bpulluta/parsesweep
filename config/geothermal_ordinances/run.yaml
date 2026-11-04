@@ -136,9 +136,6 @@ discovery:
 # whole resolved output after preflight, rebuilding only selected documents.
 extraction:
   model: primary                     # accurate tier — extraction accuracy matters
-  input_dir: discovered/geothermal_ordinances/curated
-  schema: schemas/personal/geothermal_ordinance_schema.json
-  output_dir: extracted/geothermal_ordinances
   max_context: 600000
   timeout_seconds: 600              # 4-6 can exceed default 120s on long code chapters
   pages:                                   # cost control for oversized municipal codes
@@ -165,9 +162,6 @@ extraction:
 
 # ── Compilation ──────────────────────────────────────────────────────────────
 compilation:
-  input_dir: extracted/geothermal_ordinances
-  schema: schemas/personal/geothermal_ordinance_schema.json
-  output_dir: compiled/geothermal_ordinances
   normalization:
     # Derive a 5-digit Census county FIPS join key from state + county
     # (county-level geography). Domain-agnostic GIS/DS key.
@@ -240,7 +234,6 @@ compilation:
 # ── QA/QC ────────────────────────────────────────────────────────────────────
 validation:
   models: [primary, secondary]
-  output_dir: validated/geothermal_ordinances
   report:
     include_csv: false
     include_missing_in_queue: true

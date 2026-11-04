@@ -25,9 +25,9 @@ discovery:
   targets_csv: targets.csv
   search:
     provider: serpapi
+schema: schema.json
 extraction:
   input_dir: documents
-  schema: schemas/test.json
 """,
             encoding="utf-8",
         )
@@ -61,9 +61,9 @@ discovery:
   targets_csv: targets.csv
   search:
     provider: serpapi
+schema: schema.json
 extraction:
   input_dir: documents
-  schema: schemas/test.json
 """,
             encoding="utf-8",
         )
@@ -93,9 +93,9 @@ discovery:
       state: NC
   search:
     provider: serpapi
+schema: schema.json
 extraction:
   input_dir: documents
-  schema: schemas/test.json
 """,
             encoding="utf-8",
         )
@@ -126,9 +126,9 @@ discovery:
   targets_csv: targets.csv
   search:
     provider: serpapi
+schema: schema.json
 extraction:
   input_dir: documents
-  schema: schemas/test.json
 """,
             encoding="utf-8",
         )
@@ -148,9 +148,9 @@ discovery:
   targets_csv: nonexistent.csv
   search:
     provider: serpapi
+schema: schema.json
 extraction:
   input_dir: documents
-  schema: schemas/test.json
 """,
             encoding="utf-8",
         )
@@ -175,9 +175,9 @@ discovery:
   targets_csv: targets.csv
   search:
     provider: serpapi
+schema: schema.json
 extraction:
   input_dir: documents
-  schema: schemas/test.json
 """,
             encoding="utf-8",
         )
@@ -207,9 +207,9 @@ discovery:
   search:
     provider: serpapi
     use_query_family: utility_tariff
+schema: schema.json
 extraction:
   input_dir: documents
-  schema: schemas/test.json
 """,
             encoding="utf-8",
         )

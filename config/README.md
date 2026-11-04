@@ -34,16 +34,16 @@ The default is 10 unique candidates per query and 1 acquisition per target,
 with no crawl, concurrency 2, retry attempts 3, and robots/ToS policy modes
 `warn`. Search cache, browser mode, browser escalation, code-host adapters, and
 LLM document review are off. Inspect the documents before adding stages:
-`discovered/my_domain/runs/<run_id>/curated` holds one run's selected files;
-`discovered/my_domain/curated` is the consolidated downstream folder.
+`outputs/my_domain/discovered/runs/<run_id>/curated` holds one run's selected files;
+`outputs/my_domain/discovered/curated` is the consolidated downstream folder.
 
 [TEMPLATE.yaml](TEMPLATE.yaml) keeps discovery active and later extraction and
 compilation commented out. [ADVANCED.yaml](ADVANCED.yaml) preserves the expanded
 stage examples and annotations. Copy only settings you need, replacing model
 and schema placeholders before running those stages. The existing
 `init-domain-schema` command scaffolds an extraction schema, not a discovery
-wizard; no new setup command or config knob is needed. Keep project-specific
-schemas under the local `schemas/personal/` directory.
+wizard; no new setup command or config knob is needed. Keep each domain's
+schema beside its config as `config/<domain>/schema.json`.
 
 ## Structure
 
@@ -53,8 +53,15 @@ config/
 ├── ADVANCED.yaml                    # Expanded stage examples and annotations
 └── my_domain/                       # Create locally for your domain
     ├── run.yaml
+    ├── schema.json                  # extraction schema (default for `schema:`)
     ├── targets.csv                  # optional authored target rows
     └── page_ranges.csv              # optional manual extraction page ranges
+
+outputs/my_domain/                   # derived from `domain`; never set in YAML
+├── discovered/
+├── extracted/
+├── validated/
+└── compiled/
 ```
 
 ---
@@ -405,7 +412,7 @@ most recent run that produced downloads and a consolidated curated folder
 for downstream input:
 
 ```text
-discovered/<domain>/
+outputs/<domain>/discovered/
     checkpoint.json                 # v2 resume: effective config + artifact evidence
     latest -> runs/<run_id>         # symlink to the current run
     curated/                        # consolidated selected docs -> downstream input
@@ -422,9 +429,9 @@ discovered/<domain>/
             <partition>/<file>
 ```
 
-Use `discovered/<domain>/curated` for consolidated downstream extraction, or
-`discovered/<domain>/runs/<run_id>/curated` to inspect/use one run. The
-`latest/curated` pointer refers only to that latest run. Where a review ledger
+Extraction reads the consolidated `outputs/<domain>/discovered/curated` by
+default; inspect `outputs/<domain>/discovered/runs/<run_id>/curated` for one run.
+The internal `latest` pointer refers only to that latest run. Where a review ledger
 is present, edit `review.csv` (`human_decision` = `keep`/`reject`) and run
 `pixi run psweep curate` to rebuild curated selections.
 
@@ -477,8 +484,8 @@ If a domain needs different discovery behavior, encode it in that domain's `run.
 
 | Category | Keys |
 |----------|------|
-| Required | `input_dir`, `schema` |
-| Optional | `output_dir`, `pages`, `provider`, `model`, `limit` |
+| Required | `schema` (top-level; defaults to `schema.json` beside the config) |
+| Optional | `input_dir`, `pages`, `provider`, `model`, `limit` |
 | Advanced | `max_context`, `skip_existing`, `live_dashboard` |
 
 `skip_existing` means verified reuse: matching source/schema/effective settings
@@ -498,31 +505,24 @@ maps; unreachable long-form definitions and `model_defaults` are rejected.
 
 | Category | Keys |
 |----------|------|
-| Required | `input_dir`, `schema` |
-| Optional | `output_dir`, `dry_run`, `report_format` |
+| Required | `schema` (top-level; shared with extraction) |
+| Optional | `dry_run`, `report_format` |
 | Advanced | `fail_on_suspicious` |
 
 ---
 
 ## Adding Extraction and Compilation
 
-After inspecting acquired documents, create your own extraction schema and add
-only the needed sections to the same domain config:
+After inspecting acquired documents, create `config/my_domain/schema.json` and
+add only the needed sections to the same domain config:
 
 ```yaml
 extraction:
-  schema: schemas/personal/my_schema.json
-  input_dir: discovered/my_domain/curated
-  output_dir: extracted/my_domain
   model: your-model-name
-compilation:
-  schema: schemas/personal/my_schema.json
-  input_dir: extracted/my_domain
-  output_dir: compiled/my_domain
 ```
 
 Configure LLM credentials in the environment before extraction. For local
-inputs, use `documents/my_domain` instead. [ADVANCED.yaml](ADVANCED.yaml)
+inputs, set `extraction.input_dir: documents/my_domain`. [ADVANCED.yaml](ADVANCED.yaml)
 contains the expanded model, output, page-targeting, synthesis, and QA/QC
 examples; placeholder schema paths refer to files you create locally, not
 published private schemas.

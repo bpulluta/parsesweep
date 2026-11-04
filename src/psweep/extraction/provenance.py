@@ -15,6 +15,7 @@ from uuid import uuid4
 
 from psweep.discovery.urls import redact_url
 from psweep.utils.error_taxonomy import summarize_error_records
+from psweep.workspace import DISCOVERED_DIRNAME
 
 
 def generate_run_id(
@@ -115,7 +116,7 @@ def _source_index(
             candidate = up / "download_index.csv"
             if candidate.is_file():
                 return candidate
-            if up.name == "discovered":
+            if up.name == DISCOVERED_DIRNAME:
                 break
     return None
 

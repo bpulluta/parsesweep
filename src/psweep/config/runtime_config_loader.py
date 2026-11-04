@@ -13,6 +13,7 @@ from typing import Any
 import yaml
 
 from psweep.discovery.constants import RESERVED_SEARCH_PARAMS
+from psweep.workspace import Workspace, default_schema_path, infer_domain
 
 from .model_registry import ModelRegistry, ModelRegistryError
 
@@ -25,27 +26,29 @@ VARIABLE_CATALOG: dict[str, list[dict[str, str]]] = {
     "global": [
         {
             "name": "domain",
-            "level": "required",
+            "level": "optional",
             "description": (
-                "Domain key used for organizing config and outputs."
+                "Domain key; outputs are derived under outputs/<domain>/ "
+                "(default: the config directory name)."
+            ),
+        },
+        {
+            "name": "schema",
+            "level": "optional",
+            "description": (
+                "Schema path for extraction, validation, and compilation "
+                "(default: schema.json beside the config file)."
             ),
         },
     ],
     "extraction": [
         {
             "name": "input_dir",
-            "level": "required",
-            "description": "Source document file or directory to process.",
-        },
-        {
-            "name": "schema",
-            "level": "required",
-            "description": "Schema path used during extraction.",
-        },
-        {
-            "name": "output_dir",
             "level": "optional",
-            "description": "Override destination for extracted JSON records.",
+            "description": (
+                "Source document file or directory "
+                "(default: outputs/<domain>/discovered/curated)."
+            ),
         },
         {
             "name": "pages_csv",
@@ -122,21 +125,6 @@ VARIABLE_CATALOG: dict[str, list[dict[str, str]]] = {
         },
     ],
     "compilation": [
-        {
-            "name": "input_dir",
-            "level": "required",
-            "description": "Directory of extraction JSON records.",
-        },
-        {
-            "name": "schema",
-            "level": "required",
-            "description": "Schema path used during extraction.",
-        },
-        {
-            "name": "output_dir",
-            "level": "optional",
-            "description": "Override destination for compiled output.",
-        },
         {
             "name": "output",
             "level": "optional",
@@ -307,6 +295,7 @@ _SECTION_ALIASES = {
 
 _ALLOWED_TOP_LEVEL = {
     "domain",
+    "schema",
     "models",
     "model_context_windows",
     "reasoning_models",
@@ -362,8 +351,6 @@ _ALLOWED_SECTION_FIELDS = {
     },
     "extraction": {
         "input_dir",
-        "schema",
-        "output_dir",
         "pages",           # unified block (csv + auto_locate); normalized to pages_csv / page_targeting internally
         "pages_csv",       # internal (set by _normalize_pages_block or CLI --pages-csv)
         "page_targeting",  # internal (set by _normalize_pages_block)
@@ -377,9 +364,6 @@ _ALLOWED_SECTION_FIELDS = {
         "ocr_corrections",  # optional per-domain OCR text-correction rules
     },
     "compilation": {
-        "input_dir",
-        "schema",
-        "output_dir",
         "output",
         "normalization",
         "severity_tokens",
@@ -1415,8 +1399,7 @@ def _validate_extraction_section_schema(extraction: dict[str, Any]) -> None:
                 + ", ".join(sorted(allowed))
             )
 
-    for name in ("input_dir", "schema", "output_dir", "pages", "pages_csv",
-                 "model", "profile"):
+    for name in ("input_dir", "pages", "pages_csv", "model"):
         if name in extraction and extraction[name] is not None:
             if not isinstance(extraction[name], str):
                 raise RuntimeConfigError(
@@ -1924,6 +1907,48 @@ def _reject_renamed_qaqc_section(
         raise RuntimeConfigError(msg)
 
 
+_SCHEMA_REMEDY = "use top-level `schema:` or a schema.json beside the config"
+_DERIVED_REMEDY = "stage outputs are derived from `domain` under outputs/<domain>/"
+# Path keys the domain workspace derives; each maps to its user-facing remedy.
+_DERIVED_PATH_KEYS: dict[tuple[str, str], str] = {
+    ("extraction", "schema"): _SCHEMA_REMEDY,
+    ("compilation", "schema"): _SCHEMA_REMEDY,
+    ("extraction", "output_dir"): _DERIVED_REMEDY,
+    ("compilation", "input_dir"): _DERIVED_REMEDY,
+    ("compilation", "output_dir"): _DERIVED_REMEDY,
+    ("validation", "output_dir"): _DERIVED_REMEDY,
+}
+
+
+def _reject_derived_path_keys(
+    config_data: dict[str, Any], config_path: Path
+) -> None:
+    found = [
+        f"{section}.{key} ({remedy})"
+        for (section, key), remedy in _DERIVED_PATH_KEYS.items()
+        if isinstance(config_data.get(section), dict)
+        and key in config_data[section]
+    ]
+    if found:
+        msg = f"Remove from {config_path.as_posix()}: " + "; ".join(found)
+        raise RuntimeConfigError(msg)
+
+
+def _resolve_workspace_keys(
+    config_data: dict[str, Any], config_path: Path
+) -> None:
+    """Default ``domain`` to the config directory name and type-check ``schema``."""
+    domain = config_data.setdefault("domain", config_path.parent.name)
+    try:
+        Workspace(domain)
+    except ValueError as exc:
+        raise RuntimeConfigError(f"domain: {exc}") from exc
+    schema = config_data.get("schema")
+    if schema is not None and (not isinstance(schema, str) or not schema.strip()):
+        raise RuntimeConfigError("schema must be a non-empty path string")
+    config_data["_config_path"] = config_path.as_posix()
+
+
 def load_runtime_config_file(config_path: Path) -> dict[str, Any]:
     """Load a run-level or section-level runtime config file."""
     if not config_path.exists():
@@ -1939,6 +1964,8 @@ def load_runtime_config_file(config_path: Path) -> dict[str, Any]:
         raise RuntimeConfigError(
             "Unknown top-level config keys: " + ", ".join(sorted(unknown_top))
         )
+    _reject_derived_path_keys(config_data, config_path)
+    _resolve_workspace_keys(config_data, config_path)
 
     _validate_models_block(config_data.get("models"))
     _validate_model_context_windows_block(
@@ -2009,14 +2036,39 @@ def _validate_section_keys(
     return warnings
 
 
-def _required_fields_for_section(section_name: str) -> list[str]:
-    if section_name == "discovery":
-        return []
-    if section_name == "extraction":
-        return ["schema", "path"]
-    if section_name == "compilation":
-        return ["schema", "extracted_dir"]
-    return ["schema"]
+_REQUIRED_FIELDS: dict[str, tuple[str, ...]] = {
+    "extraction": ("schema", "path"),
+    "compilation": ("schema", "extracted_dir"),
+}
+# Required field -> (what the stage needs, YAML remedy, CLI remedy). Fields with
+# no YAML remedy are always derived when a config file is present.
+_MISSING_FIELD_HINTS: dict[str, tuple[str, str | None, str]] = {
+    "schema": (
+        "a schema",
+        "add `schema:` to {config} or create {default_schema}",
+        "pass --schema <file>",
+    ),
+    "path": ("input documents", None, "pass a documents path"),
+    "extracted_dir": ("extraction records", None, "pass an extracted directory"),
+}
+
+
+def _missing_fields_message(
+    section_name: str, missing: list[str], config_path: str | None
+) -> str:
+    parts = []
+    for name in missing:
+        need, yaml_remedy, cli_remedy = _MISSING_FIELD_HINTS[name]
+        remedy = (
+            yaml_remedy.format(
+                config=config_path,
+                default_schema=default_schema_path(Path(config_path)).as_posix(),
+            )
+            if config_path and yaml_remedy
+            else cli_remedy
+        )
+        parts.append(f"{section_name} needs {need}: {remedy}")
+    return "; ".join(parts)
 
 
 # ── Discovery merge helpers ──────────────────────────────────────
@@ -2440,9 +2492,6 @@ _FIELD_MAP: dict[str, str] = {
     "output_manifest": "output_manifest",
     "dry_run": "dry_run",
     "path": "input_dir",
-    "extracted_dir": "input_dir",
-    "output": "output_dir",
-    "schema": "schema",
     "pages_csv": "pages_csv",
     "pages": "pages",
     "page_targeting": "page_targeting",
@@ -2501,6 +2550,44 @@ def resolve_compilation_metadata(resolved: dict[str, Any]):
         raise RuntimeConfigError(f"Compilation contract is invalid: {exc}") from exc
 
 
+# Section -> (resolved field, Workspace attribute) pairs for derived stage paths.
+_WORKSPACE_DEFAULTS: dict[str, tuple[tuple[str, str], ...]] = {
+    "extraction": (("path", "curated"), ("output", "extracted")),
+    "compilation": (("extracted_dir", "extracted"), ("output", "compiled")),
+}
+# Config-less runs infer the domain from this input field.
+_DOMAIN_PROBE_FIELD = {"extraction": "path", "compilation": "extracted_dir"}
+
+
+def _apply_workspace_defaults(
+    section_name: str,
+    merged: dict[str, Any],
+    sources: dict[str, str],
+    cfg: dict[str, Any],
+) -> None:
+    """Fill the schema and stage paths that the domain workspace derives."""
+    config_path = cfg.get("_config_path")
+    if not merged.get("schema"):
+        if cfg.get("schema"):
+            merged["schema"], sources["schema"] = cfg["schema"], "config.schema"
+        elif config_path and default_schema_path(Path(config_path)).is_file():
+            merged["schema"] = default_schema_path(Path(config_path)).as_posix()
+            sources["schema"] = "derived"
+    if not merged.get("domain"):
+        probe = merged.get(_DOMAIN_PROBE_FIELD[section_name])
+        if not probe:
+            return
+        merged["domain"], sources["domain"] = infer_domain(Path(probe)), "derived"
+    try:
+        workspace = Workspace(merged["domain"])
+    except ValueError as exc:
+        raise RuntimeConfigError(f"domain: {exc}") from exc
+    for field, attr in _WORKSPACE_DEFAULTS[section_name]:
+        if not merged.get(field):
+            merged[field] = getattr(workspace, attr).as_posix()
+            sources[field] = "derived"
+
+
 def resolve_command_config(
     *,
     command: str,
@@ -2531,17 +2618,19 @@ def resolve_command_config(
         cli_values=cli_values,
     )
 
-    required_fields = _required_fields_for_section(section_name)
-
-    missing = [name for name in required_fields if not merged.get(name)]
-    if missing:
-        joined = ", ".join(missing)
-        msg = "Missing required runtime configuration field(s): " + joined
-        raise RuntimeConfigError(msg)
-
-    if "domain" in cfg and cli_values.get("domain") is None:
-        merged["domain"] = cfg.get("domain")
+    if cli_values.get("domain") is None and "domain" in cfg:
+        merged["domain"] = cfg["domain"]
         sources["domain"] = "config.domain"
+    if section_name != "discovery":
+        _apply_workspace_defaults(section_name, merged, sources, cfg)
+
+    missing = [
+        name for name in _REQUIRED_FIELDS.get(section_name, ()) if not merged.get(name)
+    ]
+    if missing:
+        raise RuntimeConfigError(
+            _missing_fields_message(section_name, missing, cfg.get("_config_path"))
+        )
 
     # Top-level model alias map is available to every command (process,
     # discover, compile) so any LLM stage can resolve an alias reference.

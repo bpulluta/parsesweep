@@ -238,7 +238,7 @@ def test_code_hosting_retry_respects_fresh_cache_refresh(monkeypatch, tmp_path):
         classifier_keywords=["pipeline"],
     )
 
-    assert captured_kwargs["cache_dir"] == "discovered/guardrail_test/.serpapi_cache"
+    assert captured_kwargs["cache_dir"] == "outputs/guardrail_test/discovered/.serpapi_cache"
     assert captured_kwargs["cache_ttl_seconds"] == 1800.0
     assert captured_kwargs["cache_refresh"] is True
     assert captured_kwargs["retry_max_attempts"] == 4

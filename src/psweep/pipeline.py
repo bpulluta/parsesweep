@@ -10,7 +10,7 @@ Quick start:
     >>> from psweep.pipeline import extract_documents, compile_extractions
     >>> result = extract_documents(
     ...     "documents/my_domain/",
-    ...     schema="schemas/personal/my_schema.json",
+    ...     schema="config/my_domain/schema.json",
     ... )
     >>> print(f"Extracted {result.successful}/{result.total} documents")
     >>> compiled = compile_extractions(result.output_dir, schema=result.schema_path)
@@ -18,7 +18,7 @@ Quick start:
 
 For full config-driven runs (recommended for complex domains):
     >>> from psweep.pipeline import run_pipeline
-    >>> run_pipeline("config/my_domain/my_domain.yaml")
+    >>> run_pipeline("config/my_domain/run.yaml")
 """
 
 from __future__ import annotations
@@ -82,65 +82,9 @@ from psweep.utils.error_taxonomy import build_error_record
 from psweep.utils.file_io import artifact_sha256, atomic_json, atomic_write
 from psweep.utils.page_range import load_pages_csv, parse_page_range
 from psweep.utils.schema_metadata import SchemaMetadata
+from psweep.workspace import Workspace, infer_domain
 
 logger = logging.getLogger(__name__)
-
-
-# ---------------------------------------------------------------------------
-# Path-layout helpers
-#
-# Single source of truth for the documents -> extracted -> compiled directory
-# layout and the discovered/<domain>/... convention shared by the CLI commands.
-# ---------------------------------------------------------------------------
-
-
-def discover_domain(path: Path) -> Optional[str]:
-    """Return ``<domain>`` for a ``discovered/<domain>/...`` path, else ``None``.
-
-    The path is resolved first so the convention holds regardless of how the
-    input was spelled (relative, symlinked, or absolute).
-    """
-    resolved_parts = list(Path(path).resolve().parts)
-    if "discovered" in resolved_parts:
-        i = resolved_parts.index("discovered")
-        if i + 1 < len(resolved_parts):
-            return resolved_parts[i + 1]
-    return None
-
-
-def swap_layout_component(path: Path, source: str, target: str) -> Path:
-    """Swap the first ``source`` path component for ``target``.
-
-    Falls back to ``Path.cwd() / target / path.name`` when ``path`` has no
-    ``source`` component. This is the shared documents->extracted->compiled
-    directory swap.
-    """
-    path = Path(path)
-    parts = list(path.parts)
-    if source in parts:
-        parts[parts.index(source)] = target
-        return Path(*parts)
-    return Path.cwd() / target / path.name
-
-
-def resolve_extract_output_dir(input_path: Path, *, is_dir: bool) -> Path:
-    """Default ``extracted/...`` output dir for an extract input path.
-
-    ``discovered/<domain>/...`` inputs map to ``extracted/<domain>``; otherwise a
-    ``documents`` component is swapped to ``extracted``; otherwise
-    ``extracted/<name>``.
-    """
-    input_path = Path(input_path)
-    probe = input_path if is_dir else input_path.parent
-    domain = discover_domain(probe)
-    if domain:
-        return Path.cwd() / "extracted" / domain
-    return swap_layout_component(probe, "documents", "extracted")
-
-
-def resolve_compile_output_dir(input_dir: Path) -> Path:
-    """Default ``compiled/...`` output dir for a compile input directory."""
-    return swap_layout_component(Path(input_dir), "extracted", "compiled")
 
 
 # ---------------------------------------------------------------------------
@@ -211,26 +155,10 @@ def _read_config_dict(config_path: str | Path) -> dict:
 
 
 def resolve_run_validation(config_path: str | Path) -> Optional[dict]:
-    """Resolve QA/QC orchestration settings from a domain run config.
-
-    QA/QC is enabled for ``run`` when the top-level ``validation.models`` list is
-    present. Returns ``None`` when absent, otherwise a dict describing validate
-    stage inputs.
-    """
+    """Return ``{"models": [...]}`` when ``validation.models`` enables QA/QC, else ``None``."""
     cfg = _read_config_dict(config_path)
-    validation_section = cfg.get("validation") or {}
-    models = validation_section.get("models") or []
-    if len(models) < 2:
-        return None
-
-    domain = cfg.get("domain", Path(config_path).parent.name)
-    extraction = cfg.get("extraction") or {}
-    output_dir = Path(extraction.get("output_dir", f"extracted/{domain}"))
-    return {
-        "schema": extraction.get("schema"),
-        "validation_dir": output_dir / "validation",
-        "models": models,
-    }
+    models = (cfg.get("validation") or {}).get("models") or []
+    return {"models": models} if len(models) >= 2 else None
 
 
 def resolve_run_discovery_enabled(config_path: str | Path) -> bool:
@@ -338,10 +266,7 @@ def build_run_stage_commands(
 # ---------------------------------------------------------------------------
 # Run-command on-disk helpers
 #
-# Pure, UI-free logic shared by the CLI ``run`` driver: artifact counting,
-# checkpoint inspection, and the extraction-output layout. Keeping these here
-# (rather than inline in app.py) makes ``run`` a thin driver and the logic
-# unit-testable without spawning the CLI.
+# UI-free artifact counting shared by the CLI ``run`` driver.
 # ---------------------------------------------------------------------------
 
 
@@ -368,16 +293,6 @@ def count_extracted_documents(extraction_dir: Path) -> int:
         else 0
     )
     return all_json - manifest_json
-
-
-def resolve_run_extraction_dir(cfg: dict, domain: str) -> Path:
-    """Resolve the extraction output dir for a run config.
-
-    Uses ``extraction.output_dir`` when set, else the ``extracted/<domain>``
-    convention.
-    """
-    extraction_cfg = cfg.get("extraction") or {}
-    return Path(extraction_cfg.get("output_dir", f"extracted/{domain}"))
 
 
 # ---------------------------------------------------------------------------
@@ -666,10 +581,7 @@ def _extraction_layout(inputs, from_index, index_filters, config_path):
             )
             raise ValueError(message)
     path = Path(inputs["path"]).resolve()
-    output = Path(
-        inputs.get("output")
-        or resolve_extract_output_dir(path, is_dir=path.is_dir())
-    ).resolve()
+    output = Path(inputs["output"]).resolve()
     documents, root = _input_documents(path, from_index, index_filters)
     root = root.resolve()
     protected = [
@@ -1211,54 +1123,16 @@ def extract_documents(
     limit: int | None = None,
     pages_csv: str | Path | None = None,
 ) -> ExtractionRunResult:
-    """Extract structured data from all documents in a folder.
+    """Extract every document under *documents_path* (no CLI, Rich, or sys.exit).
 
-    This is a pure Python function — no CLI, no Rich, no sys.exit. It calls
-    :class:`psweep.extraction.DocumentExtractor` for each supported document,
-    persists per-document JSON, and returns an aggregated result.
-
-    Parameters
-    ----------
-    documents_path:
-        Folder containing PDF/DOCX/TXT/XLSX/CSV documents.
-    schema:
-        Path to a valid ParseSweep v2.0+ JSON schema with ``$metadata``.
-    output_dir:
-        Where to write extracted JSON files. Defaults to
-        ``extracted/<documents_path.name>/``.
-    model:
-        LLM model identifier (e.g. ``gpt-4o-mini``, ``claude-3.5-sonnet``).
-    provider:
-        LLM provider. ``"auto"`` detects from environment variables.
-    max_context:
-        Maximum characters to send to the LLM per document.
-    skip_existing:
-        If True, skip documents whose output JSON already exists.
-    limit:
-        Cap the number of documents processed (useful for testing).
-    pages_csv:
-        Optional CSV mapping filenames to page ranges.
-
-    Returns
-    -------
-    ExtractionRunResult
-        Aggregated counts, cost, and output location.
-
-    Raises
-    ------
-    psweep.exceptions.APIKeyError
-        If no LLM credentials are found.
-    psweep.exceptions.SchemaError
-        If the schema is invalid or missing ``$metadata``.
-    psweep.exceptions.ExtractionError
-        If a document fails to extract (per-document errors are collected and
-        returned in ``result.errors`` rather than raised, unless *all* fail).
+    ``output_dir`` defaults to ``outputs/<domain>/extracted`` with the domain
+    inferred from *documents_path*; per-document errors land in ``result.errors``.
     """
     docs_path = Path(documents_path)
     inputs = {
         "path": str(docs_path),
         "schema": str(schema),
-        "output": str(output_dir or Path("extracted") / docs_path.name),
+        "output": str(output_dir or Workspace(infer_domain(docs_path)).extracted),
         "model": model,
         "provider": provider,
         "max_context": max_context,
@@ -1281,30 +1155,9 @@ def compile_extractions(
 ) -> CompilationResult:
     """Compile extracted JSON files into Excel/CSV output.
 
-    Parameters
-    ----------
-    extraction_dir:
-        Directory containing ``.json`` extraction files.
-    schema:
-        Path to the same schema used during extraction.
-    config_path:
-        Optional path to the domain run config (e.g.
-        ``config/<domain>/<domain>.yaml``). When provided, the
-        ``compilation.output`` settings (exclude_fields, column_renames,
-        column_order, etc.) and ``compilation.normalization`` from the config
-        are applied to the output. Matches the behavior of
-        ``pixi run psweep compile --config``.
-    output_dir:
-        Where to write compiled output. Defaults to ``compiled/<name>/``.
-    report_format:
-        ``"xlsx"``, ``"csv"``, or ``"both"``. If omitted, runtime output settings
-        override schema output settings; absent both, CSV and Excel are emitted.
-    dry_run:
-        If True, parse and validate but write no output files.
-
-    Returns
-    -------
-    CompilationResult
+    ``config_path`` applies the run config's ``compilation`` settings like
+    ``psweep compile --config``; ``output_dir`` defaults to
+    ``outputs/<domain>/compiled`` with the domain inferred from *extraction_dir*.
     """
     from psweep.compilation.data_compiler import DataCompiler
     from psweep.security import protected_mode, validate_protected_paths
@@ -1317,13 +1170,7 @@ def compile_extractions(
     if not schema_path.exists():
         raise FileNotFoundError(f"Schema not found: {schema_path}")
 
-    # See ``extract_documents`` above: the Python API keeps the minimal
-    # ``compiled/<input-dir-name>`` convention rather than the CLI's
-    # ``resolve_compile_output_dir`` (which swaps a nested ``extracted`` component
-    # in place and returns an absolute path). Pass ``output_dir`` for full control.
-    out_dir = (
-        Path(output_dir) if output_dir else Path("compiled") / ext_dir.name
-    )
+    out_dir = Path(output_dir or Workspace(infer_domain(ext_dir)).compiled)
     validate_protected_paths({"input_dir": ext_dir, "output_dir": out_dir})
     resolved: dict = {"schema": str(schema_path)}
     if config_path:
@@ -1414,26 +1261,7 @@ def run_pipeline(
     programmatic control over the pipeline without the Rich terminal UI.
     When the config enables QA/QC, a ``compare`` stage runs after ``compile``.
 
-    Parameters
-    ----------
-    config_path:
-        Path to a domain run config file (e.g. ``config/<domain>/<domain>.yaml``).
-    skip_discover:
-        If True, skip the discovery stage.
-    skip_extract:
-        If True, skip the extraction stage (compile from existing JSON).
-    fresh:
-        If True, re-run discovery without checkpoint reuse, re-extract already-
-        processed documents, and clear compiled outputs before recompiling.
-
-    Returns
-    -------
-    PipelineResult
-
-    Raises
-    ------
-    psweep.exceptions.PipelineError
-        If any stage fails.
+    Raises ``psweep.exceptions.PipelineError`` when any stage fails.
     """
     from psweep.exceptions import PipelineError
 
@@ -1470,7 +1298,7 @@ def run_pipeline(
             strict=True,
         )
         validate_discover_plan(normalize_discover_inputs(discovery_inputs))
-    domain = runtime_cfg.get("domain", cfg_path.parent.name)
+    domain = runtime_cfg["domain"]
     stage_cmds = build_run_stage_commands(
         cfg_path,
         base_cmd=[sys.executable, "-m", "psweep.cli.main"],

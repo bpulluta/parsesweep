@@ -7,7 +7,6 @@ import json
 
 import pytest
 from pathlib import Path
-from types import SimpleNamespace
 
 from click.testing import CliRunner
 
@@ -16,7 +15,7 @@ from psweep.discovery import publication
 from psweep.discovery.publication import csv_content
 
 
-def test_check_command_valid_payload(monkeypatch, tmp_path: Path) -> None:
+def test_check_command_valid_payload(tmp_path: Path) -> None:
     """Check command valid payload."""
     schema_path = tmp_path / "schema.json"
     schema_path.write_text(
@@ -36,20 +35,23 @@ def test_check_command_valid_payload(monkeypatch, tmp_path: Path) -> None:
         encoding="utf-8",
     )
 
-    monkeypatch.setattr(
-        "psweep.cli.commands_check.get_config",
-        lambda: SimpleNamespace(default_schema=str(schema_path)),
-    )
-
     runner = CliRunner()
-    result = runner.invoke(cli, ["check", str(extraction_path)])
+    result = runner.invoke(
+        cli, ["check", str(extraction_path), "--schema", str(schema_path)]
+    )
     assert result.exit_code == 0
     assert "Schema validation passed" in result.output
 
 
-def test_check_command_invalid_json_exits_nonzero(
-    monkeypatch, tmp_path: Path
-) -> None:
+def test_check_without_recorded_or_explicit_schema_fails(tmp_path: Path) -> None:
+    extraction_path = tmp_path / "doc.json"
+    extraction_path.write_text(json.dumps({"payload": {}}), encoding="utf-8")
+    result = CliRunner().invoke(cli, ["check", str(extraction_path)])
+    assert result.exit_code == 1
+    assert "Schema not recorded" in result.output
+
+
+def test_check_command_invalid_json_exits_nonzero(tmp_path: Path) -> None:
     """Check command invalid json exits nonzero."""
     schema_path = tmp_path / "schema.json"
     schema_path.write_text(
@@ -59,19 +61,15 @@ def test_check_command_invalid_json_exits_nonzero(
     extraction_path = tmp_path / "bad.json"
     extraction_path.write_text("{invalid", encoding="utf-8")
 
-    monkeypatch.setattr(
-        "psweep.cli.commands_check.get_config",
-        lambda: SimpleNamespace(default_schema=str(schema_path)),
-    )
-
     runner = CliRunner()
-    result = runner.invoke(cli, ["check", str(extraction_path)])
+    result = runner.invoke(
+        cli, ["check", str(extraction_path), "--schema", str(schema_path)]
+    )
     assert result.exit_code == 1
     assert "Invalid JSON file" in result.output
 
 
-def test_check_uses_recorded_schema_instead_of_default(monkeypatch, tmp_path):
-    """Check uses recorded schema instead of default."""
+def test_check_uses_recorded_schema(tmp_path):
     schema_path = tmp_path / "resolved.json"
     schema_path.write_text(
         json.dumps(
@@ -90,10 +88,6 @@ def test_check_uses_recorded_schema_instead_of_default(monkeypatch, tmp_path):
                 "payload": {"quote": "Evidence"},
             }
         )
-    )
-    monkeypatch.setattr(
-        "psweep.cli.commands_check.get_config",
-        lambda: SimpleNamespace(default_schema="not-present.json"),
     )
     result = CliRunner().invoke(cli, ["check", str(extraction)])
     assert result.exit_code == 0, result.output
@@ -119,12 +113,7 @@ def test_check_explicit_schema_and_calendar_format(tmp_path):
     assert "Schema validation failed" in result.output
 
 
-def test_check_missing_recorded_schema_does_not_silently_fallback(
-    monkeypatch, tmp_path
-):
-    """Check missing recorded schema does not silently fallback."""
-    default = tmp_path / "default.json"
-    default.write_text(json.dumps({"type": "object"}))
+def test_check_missing_recorded_schema_fails(tmp_path):
     extraction = tmp_path / "record.json"
     extraction.write_text(
         json.dumps(
@@ -133,10 +122,6 @@ def test_check_missing_recorded_schema_does_not_silently_fallback(
                 "payload": {},
             }
         )
-    )
-    monkeypatch.setattr(
-        "psweep.cli.commands_check.get_config",
-        lambda: SimpleNamespace(default_schema=str(default)),
     )
     result = CliRunner().invoke(cli, ["check", str(extraction)])
     assert result.exit_code == 1

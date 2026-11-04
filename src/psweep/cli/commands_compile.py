@@ -27,10 +27,9 @@ from psweep.compilation.input_provenance import (
     list_compile_record_files,
 )
 from psweep.config import RuntimeConfigError
-from psweep.pipeline import resolve_compile_output_dir
 from psweep.compilation.accounting import (
-    _build_pipeline_accounting,
-    _write_compilation_run_manifest,
+    build_pipeline_accounting,
+    write_compilation_run_manifest,
 )
 from psweep.utils.config import get_config
 
@@ -105,7 +104,7 @@ def _should_fail_on_provenance(
     "config_path",
     type=click.Path(exists=True),
     default=None,
-    help="Domain run config file (RECOMMENDED — compile input, schema, and output paths)",
+    help="Domain run config file (RECOMMENDED — schema and paths derive from it)",
 )
 @click.option(
     "--show-effective-config",
@@ -134,7 +133,7 @@ def _should_fail_on_provenance(
     "--output",
     "-o",
     type=click.Path(),
-    help="Output directory (auto-detected if not specified)",
+    help="Output directory (default: outputs/<domain>/compiled)",
 )
 @click.option(
     "--dry-run",
@@ -193,8 +192,8 @@ def compile(
 ) -> None:
     """Compile extracted JSON files into clean Excel/CSV output.
 
-    Reads per-document JSON files from EXTRACTED_DIR (or the configured
-    input_dir), deduplicates records using the schema's identity rules, and
+    Reads per-document JSON files from EXTRACTED_DIR (default:
+    outputs/<domain>/extracted), deduplicates records using the schema's identity rules, and
     writes a consolidated Excel and/or CSV file to the output directory.
 
     Use --fresh to clear the compiled output directory (stale CSV/XLSX) before
@@ -207,8 +206,8 @@ def compile(
     ::
 
         psweep compile --config config/my_domain/run.yaml
-        psweep compile extracted/my_domain/ --schema schemas/my_schema.json
-        psweep compile extracted/ --schema s.json --dry-run --verbose
+        psweep compile outputs/my_domain/extracted --schema config/my_domain/schema.json
+        psweep compile outputs/my_domain/extracted --schema s.json --dry-run --verbose
     """
     from psweep.cli.commands import (
         _explicit_cli_overrides,
@@ -276,7 +275,7 @@ def compile(
 
     extracted_dir = resolved_inputs["extracted_dir"]
     schema = resolved_inputs["schema"]
-    output = resolved_inputs.get("output", output)
+    output = resolved_inputs["output"]
     dry_run = resolved_inputs.get("dry_run", dry_run)
     report_format = resolved_inputs.get("report_format", report_format)
     fail_on_suspicious = resolved_inputs.get(
@@ -297,10 +296,7 @@ def compile(
         print_error("Input directory not found", input_dir.as_posix())
         sys.exit(1)
 
-    if output:
-        output_dir = Path(output)
-    else:
-        output_dir = resolve_compile_output_dir(input_dir)
+    output_dir = Path(output)
 
     emit_json_report = dry_run and report_format.lower() == "json"
     record_json_files = list_compile_record_files(input_dir)
@@ -653,7 +649,7 @@ def compile(
             "duplicates_removed": compiler.duplicates_removed,
             "output_format": ", ".join(output_formats),
         }
-        _write_compilation_run_manifest(
+        write_compilation_run_manifest(
             output_dir=output_dir,
             schema_id=str(matched_schema),
             synthesis_active=synthesis_active,
@@ -669,12 +665,11 @@ def compile(
 
         acct_path = output_dir / "run_accounting.json"
         try:
-            accounting = _build_pipeline_accounting(
-                domain=resolved_inputs.get("domain", input_dir.name),
+            accounting = build_pipeline_accounting(
+                domain=resolved_inputs["domain"],
                 extraction_dir=input_dir,
                 output_dir=output_dir,
                 compilation_stats=_summary_stats_for_acct,
-                discovery_input_dir=resolved_inputs.get("_extraction_input_dir"),
             )
             acct_path.write_text(
                 json.dumps(accounting, indent=2) + "\n",

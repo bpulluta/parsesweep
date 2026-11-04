@@ -16,6 +16,7 @@ from psweep.config import (
 from psweep.discovery import DiscoveryRequest, DiscoveryResult
 from psweep.discovery.request_inputs import normalize_discover_inputs
 from psweep.pipeline import resolve_run_discovery_enabled, run_pipeline
+from psweep.workspace import Workspace
 
 
 def _write_config(tmp_path, discovery, **sections):
@@ -197,21 +198,18 @@ def test_executable_hubs_and_templates_pass_preflight(tmp_path, discovery):
     run.assert_not_called()
 
 
-def test_run_preflight_rejects_empty_discovery(tmp_path, schema_path):
+def test_run_preflight_rejects_empty_discovery(tmp_path, monkeypatch, schema_path):
     """Run preflights discovery before clearing outputs or starting stages."""
-    output = tmp_path / "extracted"
-    output.mkdir()
+    monkeypatch.chdir(tmp_path)
+    output = Workspace("demo").extracted
+    output.mkdir(parents=True)
     sentinel = output / "previous.json"
     sentinel.write_text("{}", encoding="utf-8")
     config = _write_config(
         tmp_path,
         {"runtime": {"max_pages": 3}},
-        extraction={
-            "input_dir": "missing",
-            "schema": str(schema_path),
-            "output_dir": str(output),
-        },
-        compilation={"input_dir": str(output), "schema": str(schema_path)},
+        schema=str(schema_path),
+        extraction={"input_dir": "missing"},
     )
     with patch("psweep.cli.app.subprocess.run") as run:
         invocation = CliRunner().invoke(
@@ -373,8 +371,8 @@ def test_python_run_rejects_empty_discovery_before_subprocess(
     config = _write_config(
         tmp_path,
         {"runtime": {"max_pages": 3}},
-        extraction={"input_dir": "missing", "schema": str(schema_path)},
-        compilation={"input_dir": "missing", "schema": str(schema_path)},
+        schema=str(schema_path),
+        extraction={"input_dir": "missing"},
     )
     with (
         patch("psweep.pipeline.subprocess.run") as run,

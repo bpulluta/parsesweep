@@ -76,7 +76,7 @@ def payload():
 def test_natural_gas_required_fields_are_explicit_and_keep_exclusions(field):
     schema_path = (
         Path(__file__).resolve().parents[1]
-        / "schemas/personal/natural_gas_pipeline_schema.json"
+        / "config/natural_gas_pipelines/schema.json"
     )
     schema = json.loads(schema_path.read_text())["properties"]["requirements"]["items"]
     validator = build_schema_validator(schema)

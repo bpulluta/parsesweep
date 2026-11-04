@@ -37,10 +37,10 @@ def test_resolve_command_config_merges_cli_and_file_values(tmp_path: Path):
     config_path = tmp_path / "run.yaml"
     config_path.write_text(
         """
+domain: geothermal_ordinances
+schema: config/geothermal_ordinances/schema.json
 extraction:
   input_dir: documents/geothermal_ordinances
-  schema: schemas/personal/geothermal_ordinance_schema.json
-  output_dir: processed/geothermal_ordinances
   max_context: 111111
   timeout_seconds: 480
 """,
@@ -56,8 +56,9 @@ extraction:
     )
 
     assert resolved["path"] == "documents/geothermal_ordinances"
-    assert resolved["schema"] == "schemas/personal/geothermal_ordinance_schema.json"
-    assert resolved["output"] == "processed/geothermal_ordinances"
+    assert resolved["schema"] == "config/geothermal_ordinances/schema.json"
+    assert resolved["output"] == "outputs/geothermal_ordinances/extracted"
+    assert resolved["_config_sources"]["output"] == "derived"
     assert resolved["max_context"] == 222222
     assert resolved["timeout_seconds"] == 480
     assert resolved["_config_sources"]["max_context"] == "cli"
@@ -67,9 +68,8 @@ def test_resolve_command_config_strict_unknown_section_key_raises(tmp_path: Path
     config_path = tmp_path / "run.yaml"
     config_path.write_text(
         """
+schema: config/geothermal_ordinances/schema.json
 compilation:
-  input_dir: processed/geothermal_ordinances
-  schema: schemas/personal/geothermal_ordinance_schema.json
   random_flag: true
 """,
         encoding="utf-8",
@@ -91,9 +91,8 @@ def test_load_runtime_config_file_rejects_invalid_compilation_provenance_policy(
     config_path = tmp_path / "run.yaml"
     config_path.write_text(
         """
+schema: config/geothermal_ordinances/schema.json
 compilation:
-  input_dir: processed/geothermal_ordinances
-  schema: schemas/personal/geothermal_ordinance_schema.json
   provenance_policy: maybe
 """,
         encoding="utf-8",
@@ -107,9 +106,8 @@ def test_resolve_command_config_maps_compilation_provenance_policy(tmp_path: Pat
     config_path = tmp_path / "run.yaml"
     config_path.write_text(
         """
+schema: config/geothermal_ordinances/schema.json
 compilation:
-  input_dir: processed/geothermal_ordinances
-  schema: schemas/personal/geothermal_ordinance_schema.json
   provenance_policy: FAIL
 """,
         encoding="utf-8",
@@ -133,7 +131,8 @@ def test_catalog_for_command_contains_required_and_advanced_fields():
 
     assert "input_dir" in names
     assert "schema" in names
-    assert levels["input_dir"] == "required"
+    assert levels["input_dir"] == "optional"
+    assert levels["schema"] == "optional"
     assert levels["max_context"] == "advanced"
     assert levels["timeout_seconds"] == "advanced"
 
@@ -145,9 +144,9 @@ def test_load_runtime_config_file_rejects_invalid_extraction_timeout(
     config_path = tmp_path / "run.yaml"
     config_path.write_text(
         f"""
+schema: config/geothermal_ordinances/schema.json
 extraction:
   input_dir: documents/geothermal_ordinances
-  schema: schemas/personal/geothermal_ordinance_schema.json
   timeout_seconds: {timeout_value!r}
 """,
         encoding="utf-8",
@@ -161,9 +160,9 @@ def test_load_runtime_config_file_accepts_ocr_corrections(tmp_path: Path):
     config_path = tmp_path / "run.yaml"
     config_path.write_text(
         """
+schema: config/geothermal_ordinances/schema.json
 extraction:
   input_dir: documents/x
-  schema: schemas/personal/geothermal_ordinance_schema.json
   ocr_corrections:
     - {pattern: '\\bIbs\\b', replacement: 'lbs'}
     - {pattern: 'gaspowered', replacement: 'gas powered', ignore_case: true}
@@ -191,9 +190,9 @@ def test_load_runtime_config_file_rejects_invalid_ocr_corrections(
 ):
     config_path = tmp_path / "run.yaml"
     config_path.write_text(
+        "schema: config/geothermal_ordinances/schema.json\n"
         "extraction:\n"
         "  input_dir: documents/x\n"
-        "  schema: schemas/personal/geothermal_ordinance_schema.json\n"
         "  ocr_corrections:\n" + rules_block,
         encoding="utf-8",
     )
@@ -332,10 +331,9 @@ def test_load_runtime_config_file_rejects_split_processing_override(
     """Flat and wrapped overrides must be migrated into the run config."""
     run_path = tmp_path / "run.yaml"
     run_path.write_text(
+        "schema: config/geothermal_ordinances/schema.json\n"
         "extraction:\n"
-        "  input_dir: documents/geothermal_ordinances\n"
-        "  schema: schemas/personal/geothermal_ordinance_schema.json\n"
-        "  output_dir: processed/from-run\n",
+        "  input_dir: documents/geothermal_ordinances\n",
         encoding="utf-8",
     )
     (tmp_path / "extraction.yaml").write_text(override_body, encoding="utf-8")
@@ -354,7 +352,7 @@ def test_load_runtime_config_file_rejects_all_split_files_for_same_section(
     """Every conflicting override is listed in the migration error."""
     run_path = tmp_path / "run.yaml"
     run_path.write_text(
-        "extraction:\n  input_dir: docs\n  schema: s.json\n", encoding="utf-8",
+        "schema: s.json\nextraction:\n  input_dir: docs\n", encoding="utf-8",
     )
     (tmp_path / "extraction.yaml").write_text(
         "output_dir: one\n", encoding="utf-8",
@@ -872,12 +870,11 @@ models:
   accurate: gpt-5
 discovery:
   queries: ["a"]
+schema: config/x/schema.json
 extraction:
   input_dir: documents/demo
-  schema: schemas/personal/x.json
 compilation:
-  input_dir: processed/demo
-  schema: schemas/personal/x.json
+  dry_run: false
 """,
         encoding="utf-8",
     )
@@ -926,7 +923,7 @@ def test_processing_validator_rejects_invalid_fields(
 ):
     cfg = _write(
         tmp_path,
-        "extraction:\n  schema: s.json\n  input_dir: d\n  " + snippet,
+        "schema: s.json\nextraction:\n  input_dir: d\n  " + snippet,
     )
     with pytest.raises(RuntimeConfigError, match=match):
         load_runtime_config_file(cfg)
@@ -935,7 +932,7 @@ def test_processing_validator_rejects_invalid_fields(
 def test_processing_validator_accepts_valid_block(tmp_path: Path):
     cfg = _write(
         tmp_path,
-        "extraction:\n  schema: s.json\n  input_dir: d\n  max_context: 600000\n"
+        "schema: s.json\nextraction:\n  input_dir: d\n  max_context: 600000\n"
         "  provider: azure\n"
         "  pages:\n    auto_locate:\n"
         "      section_description: the rate tables\n"
@@ -970,7 +967,7 @@ def test_pages_block_variants(
 ):
     cfg = _write(
         tmp_path,
-        "extraction:\n  schema: s.json\n  input_dir: d\n" + pages_block,
+        "schema: s.json\nextraction:\n  input_dir: d\n" + pages_block,
     )
     loaded = load_runtime_config_file(cfg)
     ext = loaded["extraction"]
@@ -994,7 +991,7 @@ def test_pages_auto_locate_accepts_save_discovered(tmp_path: Path):
     """save_discovered is consumed by extract; a bool must be accepted."""
     cfg = _write(
         tmp_path,
-        "extraction:\n  schema: s.json\n  input_dir: d\n"
+        "schema: s.json\nextraction:\n  input_dir: d\n"
         "  pages:\n    auto_locate:\n"
         "      section_description: the rate tables\n"
         "      save_discovered: true\n",
@@ -1007,7 +1004,7 @@ def test_pages_auto_locate_rejects_non_bool_save_discovered(tmp_path: Path):
     """A mistyped (non-bool) save_discovered fails loudly instead of no-op'ing."""
     cfg = _write(
         tmp_path,
-        "extraction:\n  schema: s.json\n  input_dir: d\n"
+        "schema: s.json\nextraction:\n  input_dir: d\n"
         "  pages:\n    auto_locate:\n"
         "      section_description: the rate tables\n"
         "      save_discovered: yesplease\n",
@@ -1022,7 +1019,7 @@ def test_old_flat_pages_keys_rejected(tmp_path: Path):
     """Old pages_csv / page_targeting keys are no longer accepted."""
     cfg = _write(
         tmp_path,
-        "extraction:\n  schema: s.json\n  input_dir: d\n"
+        "schema: s.json\nextraction:\n  input_dir: d\n"
         "  pages_csv: old.csv\n"
         "  page_targeting:\n    enabled: true\n"
         "    section_description: old style\n",
@@ -1035,7 +1032,7 @@ def test_model_context_windows_validates_and_passes_through(tmp_path: Path):
     cfg = _write(
         tmp_path,
         "model_context_windows:\n  my-deploy: 300000\n"
-        "extraction:\n  schema: s.json\n  input_dir: d\n",
+        "schema: s.json\nextraction:\n  input_dir: d\n",
     )
     config_data = load_runtime_config_file(cfg)
     resolved = resolve_command_config(
@@ -1058,9 +1055,8 @@ def test_model_context_windows_rejects_non_positive(tmp_path: Path):
 # key (e.g. group_bye) silently produced empty output. These lock the guard.
 
 _VALID_SYNTHESIS = (
+    "schema: s.json\n"
     "compilation:\n"
-    "  input_dir: d\n"
-    "  schema: s.json\n"
     "  synthesis:\n"
     "    enabled: true\n"
     "    min_sources_for_llm: 2\n"
@@ -1089,7 +1085,7 @@ def test_synthesis_block_accepts_valid_config(tmp_path: Path):
 
 def test_synthesis_accepts_branching_ordering_and_exclusive_pairs(tmp_path: Path):
     body = (
-        "compilation:\n  input_dir: d\n  schema: s.json\n"
+        "schema: s.json\ncompilation:\n"
         "  synthesis:\n    group_by: [x]\n"
         "    reconcile_fields:\n"
         "      - {field: a}\n"
@@ -1113,7 +1109,7 @@ def test_synthesis_accepts_item_group_by(tmp_path: Path):
     """item_group_by is an optional list of item-level paths that splits each
     entity into one row per sub-entity."""
     body = (
-        "compilation:\n  input_dir: d\n  schema: s.json\n"
+        "schema: s.json\ncompilation:\n"
         "  synthesis:\n    enabled: true\n    group_by: [entity.name]\n"
         "    item_group_by: [phase_label]\n"
     )
@@ -1132,39 +1128,39 @@ def test_synthesis_accepts_item_group_by(tmp_path: Path):
     [
         (
             "item_group_by_must_be_string_list",
-            "compilation:\n  input_dir: d\n  schema: s.json\n"
+            "schema: s.json\ncompilation:\n"
             "  synthesis:\n    group_by: [x]\n    item_group_by: [\"\"]\n",
             "item_group_by must be a list of non-empty strings",
         ),
         (
             "item_group_by_may_not_shadow_group_by_column",
-            "compilation:\n  input_dir: d\n  schema: s.json\n"
+            "schema: s.json\ncompilation:\n"
             "  synthesis:\n    group_by: [entity.name]\n"
             "    item_group_by: [phase.name]\n",
             "collide with group_by output column\\(s\\): name",
         ),
         (
             "unknown_key",
-            "compilation:\n  input_dir: d\n  schema: s.json\n"
+            "schema: s.json\ncompilation:\n"
             "  synthesis:\n    enabled: true\n    group_by: [x]\n    group_bye: [x]\n",
             "Unknown keys in 'compilation.synthesis'",
         ),
         (
             "enabled_requires_group_by",
-            "compilation:\n  input_dir: d\n  schema: s.json\n"
+            "schema: s.json\ncompilation:\n"
             "  synthesis:\n    enabled: true\n",
             "group_by is required",
         ),
         (
             "reconcile_fields_require_field_key",
-            "compilation:\n  input_dir: d\n  schema: s.json\n"
+            "schema: s.json\ncompilation:\n"
             "  synthesis:\n    group_by: [x]\n"
             "    reconcile_fields:\n      - {evidence: ev}\n",
             "non-empty string 'field'",
         ),
         (
             "ordering_must_reference_reconciled_fields",
-            "compilation:\n  input_dir: d\n  schema: s.json\n"
+            "schema: s.json\ncompilation:\n"
             "  synthesis:\n    group_by: [x]\n"
             "    reconcile_fields:\n      - {field: start}\n"
             "    ordering_constraint: [start, missing]\n",
@@ -1172,13 +1168,13 @@ def test_synthesis_accepts_item_group_by(tmp_path: Path):
         ),
         (
             "min_sources_must_be_non_negative_int",
-            "compilation:\n  input_dir: d\n  schema: s.json\n"
+            "schema: s.json\ncompilation:\n"
             "  synthesis:\n    group_by: [x]\n    min_sources_for_llm: -1\n",
             "min_sources_for_llm",
         ),
         (
             "invalid_ordering_exclusive_pairs_shape",
-            "compilation:\n  input_dir: d\n  schema: s.json\n"
+            "schema: s.json\ncompilation:\n"
             "  synthesis:\n    group_by: [x]\n"
             "    reconcile_fields:\n      - {field: a}\n      - {field: b}\n"
             "    ordering_exclusive_pairs: [[a, b, c]]\n",
@@ -1186,7 +1182,7 @@ def test_synthesis_accepts_item_group_by(tmp_path: Path):
         ),
         (
             "unknown_fields_in_ordering_constraints",
-            "compilation:\n  input_dir: d\n  schema: s.json\n"
+            "schema: s.json\ncompilation:\n"
             "  synthesis:\n    group_by: [x]\n"
             "    reconcile_fields:\n      - {field: start}\n"
             "    ordering_constraints: [[start, missing]]\n",
@@ -1425,9 +1421,9 @@ def test_reasoning_models_passthrough_and_resolve(tmp_path: Path):
 reasoning_models:
   - halo-reason
   - my-thinker
+schema: config/x/schema.json
 extraction:
   input_dir: documents/x
-  schema: schemas/personal/x.json
 """,
         encoding="utf-8",
     )
@@ -1447,9 +1443,9 @@ def test_reasoning_models_must_be_str_list(tmp_path: Path):
         """
 reasoning_models:
   - 5
+schema: config/x/schema.json
 extraction:
   input_dir: documents/x
-  schema: schemas/personal/x.json
 """,
         encoding="utf-8",
     )

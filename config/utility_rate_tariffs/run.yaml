@@ -115,9 +115,6 @@ discovery:
 extraction:
   model: primary                           # pin tier — never silently falls back to
                                            # the .env default if tiers/env change
-  input_dir: discovered/utility_rate_tariffs/latest/curated
-  schema: schemas/personal/electricity_tariff_schema.json
-  output_dir: extracted/utility_rate_tariffs
   max_context: 400000                      # explicit; trigger_chars matches so page
                                            # targeting only fires for docs that would
                                            # be truncated (zero-regression approach)
@@ -141,9 +138,6 @@ extraction:
       save_discovered: true                # write discovered ranges for human review
 
 compilation:
-  input_dir: extracted/utility_rate_tariffs
-  schema: schemas/personal/electricity_tariff_schema.json
-  output_dir: compiled/utility_rate_tariffs
   normalization:
     state_column: State
   output:

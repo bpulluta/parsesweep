@@ -31,13 +31,14 @@ Start from `config/TEMPLATE.yaml`; use `config/ADVANCED.yaml` for expanded
 stage settings. The existing `init-domain-schema` scaffold creates a schema,
 not a discovery wizard or a new config mode.
 
-Once you have suitable documents, only two keys are required to extract —
-`schema` and `input_dir`:
+Once you have suitable documents, extraction needs only a schema: put it at
+`config/my_domain/schema.json` (or set top-level `schema:`). Inputs default to
+`outputs/my_domain/discovered/curated`; all outputs are derived under
+`outputs/my_domain/`. `extraction.input_dir` is the only path override:
 
 ```yaml
 extraction:
-  schema: schemas/personal/my_schema.json
-  input_dir: discovered/my_domain/curated
+  input_dir: documents/my_domain   # optional; local documents instead of discovery
 ```
 
 Extraction requires LLM credentials; discovery does not unless you explicitly
@@ -68,7 +69,8 @@ shared runtime definitions; templates show explicit choices separately.
 | `policy.tos_mode` | discovery | `warn` | Enforce (`enforce`) or silence (`ignore`) |
 | `model` | extraction | `.env` model → `gpt-4o-mini` | You want a stronger/cheaper tier |
 | `max_context` | extraction | `600000` | Output is truncated on large docs |
-| `output_dir` | extraction | `extracted/<domain>` | You want a custom location |
+| `schema` | top level | `schema.json` beside the config | The schema lives elsewhere |
+| `extraction.input_dir` | extraction | `outputs/<domain>/discovered/curated` | Documents are local |
 | `skip_existing` | extraction | `true` | Validated record reuse; `--fresh` resets whole output after preflight |
 | `timeout_seconds` | extraction | `120` (`LLM_TIMEOUT` env) | Very large docs time out |
 | `provider` | extraction | `auto` | Auto-detection picks the wrong one |
@@ -147,8 +149,8 @@ configured aliases; there is no built-in US discovery alias table. Use
 explicit `document_description` and `model`, and configure LLM credentials,
 only when you want paid model-based curation. Without it, acquisition uses
 heuristics; inspect the files before extraction. Run-scoped selected files are
-under `discovered/<domain>/runs/<run_id>/curated`; the consolidated downstream
-folder is `discovered/<domain>/curated`.
+under `outputs/<domain>/discovered/runs/<run_id>/curated`; the consolidated downstream
+folder is `outputs/<domain>/discovered/curated`.
 
 Credentials belong only in environment variables or `.env`, not YAML.
 TLS verification defaults to true. `SERPAPI_SSL_VERIFY` and
