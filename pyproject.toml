@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=68.0", "wheel"]
+requires = ["setuptools>=84.1.0", "wheel>=0.46.2"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -7,7 +7,7 @@ name = "psweep"
 version = "2.0.1"
 description = "ParseSweep: Universal document extraction system - extract structured data from ANY document type using schemas + LLMs"
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.12"
 license = {text = "MIT"}
 authors = [
     {name = "NREL Team", email = "contact@nrel.gov"}
@@ -18,48 +18,57 @@ classifiers = [
     "Intended Audience :: Science/Research",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.9",
-    "Programming Language :: Python :: 3.10",
-    "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Topic :: Scientific/Engineering",
 ]
 
 dependencies = [
-    "pandas>=2.0.0",
-    "numpy>=1.24.0",
-    "requests>=2.31.0",
-    "beautifulsoup4>=4.12.0",
-    "lxml>=4.9.0",
-    "selenium>=4.15.0",
-    "pymupdf4llm>=0.0.5",
-    "pymupdf>=1.23.0",
-    "pypdf>=3.17.0",
-    "openai>=1.0.0",
-    "langextract>=1.0.0",
-    "pydantic>=2.5.0",
-    "jsonschema>=4.20.0",
-    "tqdm>=4.66.0",
-    "python-dotenv>=1.0.0",
-    "pyyaml>=6.0.1",
-    "click>=8.1.0",
-    # <0.22: newer typer splits into typer + typer-slim (same namespace); the
-    # combo breaks sphinx-click's isinstance(click.Group) on linux. See pixi.toml.
-    "typer>=0.12.0,<0.22",
-    "InquirerPy>=0.3.4",
-    "langchain-text-splitters>=1.0.0,<2",
+    "pandas>=2.1.0,<3",
+    "numpy>=1.26.0,<2",
+    "requests>=2.33.0,<3",
+    "httpx>=0.28.1,<1",
+    "urllib3>=2.8.0,<3",
+    "truststore>=0.10.5,<1",
+    "beautifulsoup4>=4.12.0,<5",
+    "lxml>=6.1.0,<7",
+    "selenium>=4.15.0,<5",
+    "pymupdf4llm>=0.0.5,<1",
+    "pymupdf>=1.26.7,<2",
+    "pypdf>=6.21.3,<7",
+    "openai>=2.20.0,<3",
+    "litellm>=1.96.2,<2",
+    # Avoid later 3.x lock regressions while LiteLLM excludes fixed 4.2.1.
+    # Two local-filesystem advisories still affect this compatible release.
+    "filelock==3.20.3",
+    "langextract>=1.0.0,<2",
+    "pydantic>=2.5.0,<3",
+    "jsonschema>=4.20.0,<5",
+    "tqdm>=4.66.0,<5",
+    "python-dotenv>=1.2.2,<2",
+    "pyyaml>=6.0.3,<7",
+    "click>=8.1.0,<9",
+    "InquirerPy>=0.3.4,<1",
+    "langchain-text-splitters>=1.1.2,<2",
+    "openpyxl>=3.1.5,<4",
+    "python-docx>=1.1.0,<2",
+    "rich>=13.9.4,<14",
 ]
 
 [project.optional-dependencies]
-discovery = [
-  "google-search-results>=2.4.2",
-]
 dev = [
-    "pytest>=7.4.0",
+    "pytest>=9.0.3,<10",
     "pytest-cov>=4.1.0",
     "black>=23.0.0",
-    "ruff>=0.1.0",
+    "ruff>=0.14.1,<0.15",
     "mypy>=1.7.0",
+    "pip-audit>=2.10.1,<3",
+    "pip>=26.2,<27",
+    "build>=1.6.1,<2",
+    "setuptools>=84.1.0",
+    "wheel>=0.46.2",
+    "matplotlib>=3.8.0,<4",
+    "jupyter>=1.1.1,<2",
+    "ipykernel>=7.1.0,<8",
 ]
 docs = [
     "sphinx>=9.1.0",
@@ -91,12 +100,12 @@ psweep = ["**/data/*.csv", "**/data/*.json"]
 
 [tool.black]
 line-length = 100
-target-version = ['py39']
+target-version = ['py312']
 
 
 [tool.ruff]
 line-length = 79
-target-version = "py39"
+target-version = "py312"
 
 [tool.ruff.format]
 quote-style = "double"

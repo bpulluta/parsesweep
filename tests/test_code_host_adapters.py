@@ -8,6 +8,7 @@ never touch the network.
 from __future__ import annotations
 
 import json
+from urllib.parse import parse_qs, urlsplit
 
 from psweep.discovery.code_host_adapters import (
     MunicodeAdapter,
@@ -41,6 +42,7 @@ def _friendswood_get(calls: list[tuple[str, dict]] | None = None):
             body = {
                 "Docs": [
                     {
+                        "Id": "PTIICICO_CH26EN_ARTVIIOIGA",
                         "Content": (
                             "<div><h2>Sec. 26-290. Natural gas compressor "
                             "stations.</h2><p>A minimum building setback of "
@@ -74,6 +76,12 @@ class TestCanHandle:
     def test_resolve_adapter_selects_municode_only(self):
         assert isinstance(resolve_adapter(_PUBLIC_URL), MunicodeAdapter)
         assert resolve_adapter("https://ecode360.com/12345") is None
+
+    def test_request_headers_are_an_independent_copy(self):
+        adapter = MunicodeAdapter()
+        headers = adapter.request_headers()
+        headers["User-Agent"] = "operator"
+        assert "ParseSweep" in adapter.request_headers()["User-Agent"]
 
 
 class TestFetchText:
@@ -151,8 +159,14 @@ class TestFetchText:
                 return 200, json.dumps(
                     {
                         "Docs": [
-                            {"Content": 12345},  # malformed
-                            {"Content": "<p>compressor setback 500 feet</p>"},
+                            {
+                                "Id": "PTIICICO_CH26EN_ARTVIIOIGA_BAD",
+                                "Content": 12345,
+                            },
+                            {
+                                "Id": "PTIICICO_CH26EN_ARTVIIOIGA_OK",
+                                "Content": "<p>compressor setback 500 feet</p>",
+                            },
                         ]
                     }
                 )
@@ -161,6 +175,55 @@ class TestFetchText:
         text = MunicodeAdapter().fetch_text(_PUBLIC_URL, _get)
         assert text is not None
         assert "compressor setback 500 feet" in text
+
+
+def test_grouped_api_content_keeps_only_requested_subtree_and_headings():
+    docs = [
+        {"Id": "CH10_OTHER", "Content": "<p>Unrelated chapter material</p>"},
+        {"Id": "CH10_GAS", "TitleHtml": "<h2>Gas pipelines</h2>", "Content": ""},
+        {
+            "Id": "CH10_GAS_SEC1",
+            "TitleHtml": "<h3>Sec. 10-1</h3>",
+            "Content": "<p>A 500-foot setback applies.</p>",
+        },
+        {"Id": "CH10_GASOTHER", "Content": "<p>Unrelated sibling</p>"},
+    ]
+    text = MunicodeAdapter()._fetch_content(
+        1, 2, "CH10_GAS", lambda *_: (200, json.dumps({"Docs": docs})),
+    )
+    assert text == "Gas pipelines\nSec. 10-1\nA 500-foot setback applies."
+
+
+def test_heading_only_or_wrong_node_response_is_not_a_document():
+    for docs in (
+        [{"Id": "OTHER", "Content": "Unrelated body"}],
+        [{"Id": "NODE", "TitleHtml": "Catalogue heading", "Content": None}],
+    ):
+        assert MunicodeAdapter()._fetch_content(
+            1, 2, "NODE", lambda *_: (200, json.dumps({"Docs": docs})),
+        ) is None
+
+
+def test_node_value_cannot_override_api_query_parameters():
+    calls = []
+
+    def get(url, headers):
+        calls.append(url)
+        return 200, '{"Docs":[]}'
+
+    MunicodeAdapter()._fetch_content(1, 2, "NODE&jobId=other", get)
+    query = parse_qs(urlsplit(calls[0]).query)
+    assert query["jobId"] == ["2"]
+    assert query["nodeId"] == ["NODE&jobId=other"]
+
+
+def test_amendment_link_is_not_misrepresented_as_current_code():
+    calls = []
+    assert MunicodeAdapter().fetch_text(
+        "https://library.municode.com/tx/keller/ordinances/code_of_ordinances?nodeId=N",
+        _friendswood_get(calls),
+    ) is None
+    assert calls == []
 
 
 class TestStripHtml:

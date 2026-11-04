@@ -22,7 +22,7 @@ def contract_schema(tmp_path):
             "source": {"type": "object", "properties": {"url": {"type": "string"}}},
             "items": {"type": "array", "items": {"type": "object", "properties": {
                 "kind": {"type": "string"}, "summary": {"type": "string"},
-                "quote": {"type": "string"}, "details": {"type": "array"},
+                "quote": {"type": "string"}, "details": {"type": ["array", "object"]},
             }}},
         },
         "$metadata": {
@@ -44,6 +44,49 @@ def _config(tmp_path, schema, **compilation):
         "output_dir": str(tmp_path / "output"), **compilation,
     }}))
     return path
+
+
+@pytest.mark.parametrize("mode", ["public", "protected"])
+def test_library_provenance_policy_matches_operating_mode(
+    tmp_path, contract_schema, monkeypatch, mode
+):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("PSWEEP_SECURITY_MODE", mode)
+    warnings = ["missing_schema_id: 1 extraction record has no schema lineage"]
+    monkeypatch.setattr(
+        "psweep.pipeline.analyze_compile_input_provenance", lambda _: warnings
+    )
+    compile_records = Mock(return_value=(pd.DataFrame(), {}))
+    monkeypatch.setattr(DataCompiler, "compile_from_directory", compile_records)
+    output = tmp_path / "output"
+    if mode == "protected":
+        with pytest.raises(ValueError, match="missing_schema_id"):
+            compile_extractions(tmp_path, contract_schema, output_dir=output)
+        compile_records.assert_not_called()
+    else:
+        result = compile_extractions(tmp_path, contract_schema, output_dir=output)
+        assert result.warnings == warnings
+        compile_records.assert_called_once()
+    assert not output.exists()
+
+
+@pytest.mark.parametrize("operation", ["compile", "export"])
+def test_protected_compiler_rejects_external_data_paths(
+    tmp_path, contract_schema, monkeypatch, operation
+):
+    workspace = tmp_path / "private"
+    workspace.mkdir(mode=0o700)
+    monkeypatch.chdir(workspace)
+    monkeypatch.setenv("PSWEEP_SECURITY_MODE", "protected")
+    compiler = DataCompiler(SchemaMetadata(contract_schema), verbose=False)
+    external = tmp_path / "external"
+    with pytest.raises(ValueError, match="inside the private workspace"):
+        if operation == "compile":
+            compiler.compile_from_directory(external)
+        else:
+            compiler.export(pd.DataFrame({"quote": ["Evidence"]}),
+                            external, "facts", ["csv"])
+    assert not external.exists()
 
 
 def test_invalid_schema_owned_output_fails_before_fresh_or_calls(
@@ -127,7 +170,7 @@ def test_export_prepares_once_and_checks_excel_limit_before_either_write(
 def test_compiler_reads_each_input_once_and_skips_internal_sidecars(
     tmp_path, contract_schema, monkeypatch
 ):
-    import psweep.compilation.data_compiler as module
+    import psweep.compilation.input_provenance as module
 
     directory = tmp_path / "records"
     directory.mkdir()
@@ -403,6 +446,51 @@ def test_nonfresh_success_publishes_both_formats_and_keeps_unrelated(
     assert _no_staging_leak(tmp_path)
 
 
+@pytest.mark.parametrize("fresh", [False, True])
+def test_process_interruption_is_recovered_before_next_writer(
+    tmp_path, contract_schema, monkeypatch, fresh
+):
+    from pathlib import Path
+    from psweep.compilation.publication import recover_export, journal_path
+    from psweep.utils.file_io import publication_lock
+
+    compiler = _compiler(contract_schema)
+    output = tmp_path / "output"
+    output.mkdir()
+    (output / "facts.csv").write_text("ORIGINAL")
+    replace = Path.replace
+
+    def interrupted(path, target):
+        result = replace(path, target)
+        if path.name == "files" or (path.parent.name == "files" and path.suffix == ".csv"):
+            raise KeyboardInterrupt("simulated process interruption after promotion")
+        return result
+
+    with monkeypatch.context() as patch:
+        patch.setattr(Path, "replace", interrupted)
+        with pytest.raises(KeyboardInterrupt):
+            compiler.export(pd.DataFrame({"quote": ["new"]}), output, "facts", ["csv"], fresh=fresh)
+    assert journal_path(output).exists()
+    with publication_lock(output.parent / ".output-publication.lock"):
+        recover_export(output)
+    assert (output / "facts.csv").read_text() == "ORIGINAL"
+    assert not journal_path(output).exists()
+    assert _no_staging_leak(tmp_path)
+
+
+def test_active_compilation_writer_prevents_second_writer(tmp_path, contract_schema):
+    from psweep.utils.file_io import publication_lock
+
+    output = tmp_path / "output"
+    with publication_lock(tmp_path / ".output-publication.lock"):
+        with pytest.raises(ValueError, match="already active"):
+            _compiler(contract_schema).export(
+                pd.DataFrame({"quote": ["new"]}), output, "facts", ["csv"],
+            )
+    assert not output.exists()
+    assert _no_staging_leak(tmp_path)
+
+
 def test_fresh_success_replaces_whole_directory_and_leaves_no_staging(
     tmp_path, contract_schema
 ):
@@ -432,3 +520,86 @@ def test_fresh_empty_compile_removes_stale_outputs(tmp_path, contract_schema):
     result = CliRunner().invoke(cli, ["compile", "--config", str(cfg), "--fresh"])
     assert result.exit_code == 0, result.output
     assert not (output / "stale.csv").exists()
+
+
+def test_fresh_without_any_record_preserves_exports(tmp_path, contract_schema):
+    directory = tmp_path / "input"
+    directory.mkdir()
+    (directory / "metadata.json").write_text("{}")
+    output = tmp_path / "output"
+    output.mkdir()
+    sentinel = output / "previous.csv"
+    sentinel.write_text("KEEP")
+    cfg = _config(tmp_path, contract_schema)
+    result = CliRunner().invoke(cli, ["compile", "--config", str(cfg), "--fresh"])
+    assert result.exit_code != 0
+    assert "No extraction records" in result.output
+    assert sentinel.read_text() == "KEEP"
+
+
+def test_fresh_zero_item_publication_respects_writer_lock(tmp_path, contract_schema):
+    from psweep.utils.file_io import publication_lock
+
+    directory = tmp_path / "input"
+    directory.mkdir()
+    (directory / "record.json").write_text(json.dumps({"payload": {"items": []}}))
+    output = tmp_path / "output"
+    output.mkdir()
+    sentinel = output / "previous.csv"
+    sentinel.write_text("KEEP")
+    cfg = _config(tmp_path, contract_schema)
+    with publication_lock(tmp_path / ".output-publication.lock"):
+        result = CliRunner().invoke(cli, ["compile", "--config", str(cfg), "--fresh"])
+    assert result.exit_code != 0
+    assert "already active" in result.output
+    assert sentinel.read_text() == "KEEP"
+
+
+@pytest.mark.parametrize("record", [{"payload": []}, {}, [], {"payload": {"items": "invalid"}}])
+def test_invalid_record_preserves_exports_even_with_fresh(tmp_path, contract_schema, record):
+    directory = tmp_path / "input"
+    directory.mkdir()
+    (directory / "bad.json").write_text(json.dumps(record))
+    output = tmp_path / "output"
+    output.mkdir()
+    sentinel = output / "previous.csv"
+    sentinel.write_text("previous evidence")
+    cfg = _config(tmp_path, contract_schema)
+    result = CliRunner().invoke(cli, [
+        "compile", "--config", str(cfg), "--fresh", "--provenance-policy", "fail",
+    ])
+    assert result.exit_code != 0, result.output
+    assert "bad.json" in result.output
+    assert sentinel.read_text() == "previous evidence"
+
+
+def test_nested_row_expansion_is_schema_owned_and_order_invariant(tmp_path):
+    schema = {
+        "type": "object",
+        "properties": {"items": {"type": "array", "items": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string"},
+                "children": {"type": "array", "items": {
+                    "type": "object", "properties": {"value": {"type": "number"}},
+                }},
+            },
+        }}},
+        "$metadata": {"extraction": {"main_data_array": "items", "identifier_fields": ["name"]}},
+    }
+    schema_path = tmp_path / "schema.json"
+    schema_path.write_text(json.dumps(schema))
+    directory = tmp_path / "input"
+    directory.mkdir()
+    items = [
+        {"name": "empty", "children": []},
+        {"name": "full", "children": [{"value": 1}, {"value": 2}]},
+    ]
+    frames = []
+    for ordered in (items, list(reversed(items))):
+        (directory / "record.json").write_text(json.dumps({"payload": {"items": ordered}}))
+        compiler = DataCompiler(SchemaMetadata(schema_path), verbose=False)
+        frame, _ = compiler.compile_from_directory(directory, apply_deduplication=False)
+        assert len(frame) == 3
+        frames.append(frame.sort_values(["Name", "Value"]).reset_index(drop=True))
+    pd.testing.assert_frame_equal(*frames)

@@ -27,6 +27,7 @@ discovery:
     cache: true
   selection:
     max_per_target: 15
+    relevance_require_legal_marker_terms: [ordinance, zoning, code, chapter, bylaw]
     exclude_draft: true
     draft_patterns:
       - '\bdraft\b'

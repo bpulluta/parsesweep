@@ -6,11 +6,14 @@ import os
 import re
 import time
 from typing import Any
+from urllib.parse import urlencode, urlsplit
 
 from psweep.discovery.constants import RESERVED_SEARCH_PARAMS
 from psweep.utils.file_io import atomic_json
 from ..retry import compute_backoff, is_transient_error
 from .base import BaseSeekerConnector, SeekerInput
+from psweep.discovery.network import send_get
+from psweep.security import resolve_tls_verification
 
 
 class SerpApiSearchTimeout(RuntimeError):
@@ -66,7 +69,7 @@ class SerpApiSeeker(BaseSeekerConnector):
         ssl_verify : bool | None
             Optional override for TLS verification behavior.
             If omitted, defaults to env-driven value from
-            SERPAPI_SSL_VERIFY / PSWEEP_SSL_VERIFY (default: false).
+            SERPAPI_SSL_VERIFY / PSWEEP_SSL_VERIFY (verified by default).
         """
         self.api_key = (
             api_key or os.getenv("SERPAPI_API_KEY") or os.getenv("SERPAPI_KEY")
@@ -149,28 +152,11 @@ class SerpApiSeeker(BaseSeekerConnector):
 
     @staticmethod
     def _resolve_ssl_verify(explicit: bool | None) -> bool:
-        """Resolve SSL verification behavior from explicit arg or environment."""
-        if explicit is not None:
-            return bool(explicit)
-
-        raw_value = (
-            os.getenv("SERPAPI_SSL_VERIFY")
-            or os.getenv("PSWEEP_SSL_VERIFY")
-            or "false"
-        )
-        normalized = str(raw_value).strip().lower()
-        return normalized not in {"0", "false", "no", "off"}
+        """Resolve the public-only TLS compatibility option explicitly."""
+        return resolve_tls_verification("SERPAPI_SSL_VERIFY", explicit)
 
     def _ensure_prepared(self) -> None:
-        """Verify SerpApi is available and configured."""
-        try:
-            import serpapi  # noqa: F401
-        except ImportError:
-            raise RuntimeError(
-                "SerpApi seeker requires optional 'serpapi' dependency. "
-                "Install with: pixi install"
-            )
-
+        """Verify SerpApi credentials are explicitly configured."""
         if not self.api_key:
             raise ValueError(
                 "SerpApi connector requires SERPAPI_API_KEY or SERPAPI_KEY environment variable or api_key parameter."
@@ -283,12 +269,24 @@ class SerpApiSeeker(BaseSeekerConnector):
 
     @staticmethod
     def _validate_response(response: Any) -> None:
-        """Reject errors and malformed live/cache results."""
+        """Accept confirmed empty searches; reject errors and malformed results."""
         if not isinstance(response, dict):
             msg = "SerpApi response must be an object"
             raise TypeError(msg)
         if response.get("error"):
-            raise RuntimeError(str(response["error"]))
+            metadata = response.get("search_metadata")
+            information = response.get("search_information")
+            confirmed_empty = (
+                response["error"] == "Google hasn't returned any results for this query."
+                and isinstance(metadata, dict)
+                and metadata.get("status") == "Success"
+                and isinstance(information, dict)
+                and information.get("organic_results_state") == "Fully empty"
+                and not response.get("organic_results")
+                and not response.get("news_results")
+            )
+            if not confirmed_empty:
+                raise RuntimeError(str(response["error"]))
         for field in ("organic_results", "news_results"):
             if field in response and (
                 not isinstance(response[field], list)
@@ -357,57 +355,20 @@ class SerpApiSeeker(BaseSeekerConnector):
         return sanitized
 
     def _build_search_callable(self):
-        """Return a search callable compatible with available SerpApi client APIs."""
-        if not self.ssl_verify:
-            return self._search_via_http
-
-        try:
-            from serpapi import Client
-
-            try:
-                client = Client(api_key=self.api_key)
-            except Exception as exc:
-                raise RuntimeError(
-                    f"SerpApi initialization failed: {exc}"
-                ) from exc
-
-            return client.search
-        except ImportError:
-            pass
-
-        try:
-            from serpapi import GoogleSearch
-        except ImportError as exc:
-            raise RuntimeError(
-                "SerpApi seeker requires optional 'serpapi' dependency."
-            ) from exc
-
-        def _search_with_google_search(
-            params: dict[str, Any],
-        ) -> dict[str, Any]:
-            request_params = dict(params)
-            request_params["api_key"] = self.api_key
-            return GoogleSearch(request_params).get_dict()
-
-        return _search_with_google_search
+        """Return the single verified, bounded SerpApi transport."""
+        return self._search_via_http
 
     def _search_via_http(self, params: dict[str, Any]) -> dict[str, Any]:
-        """Issue a direct SerpApi HTTP request with explicit TLS verify control."""
-        try:
-            import requests
-        except ImportError as exc:
-            raise RuntimeError(
-                "requests dependency is required for SerpApi HTTP fallback"
-            ) from exc
-
+        """Query SerpApi through the shared public-destination boundary."""
         request_params = dict(params)
         request_params["api_key"] = self.api_key
 
-        response = requests.get(
-            "https://serpapi.com/search.json",
-            params=request_params,
+        response, _ = send_get(
+            "https://serpapi.com/search.json?" + urlencode(request_params, doseq=True),
             timeout=self.timeout_seconds,
             verify=self.ssl_verify,
+            gate=lambda url: urlsplit(url).scheme == "https"
+            and urlsplit(url).hostname == "serpapi.com",
         )
         try:
             response.raise_for_status()

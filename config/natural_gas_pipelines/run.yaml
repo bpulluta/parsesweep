@@ -43,6 +43,7 @@ discovery:
     # (which sort below PDFs) reach the digger. Document review keep_top
     # is the real output gatekeeper.
     max_per_target: 40
+    relevance_require_legal_marker_terms: [ordinance, zoning, code, chapter, bylaw]
     exclude_draft: true
     draft_patterns:
       - '\bdraft\b'

@@ -235,8 +235,9 @@ class DocumentExtractor:
         try:
             validator.validate(data)
         except ValidationError as exc:
-            path = ".".join(map(str, exc.absolute_path)) or "payload"
+            path = ".".join(map(str, exc.absolute_schema_path)) or "schema"
             message = (
-                f"Extraction schema validation failed at {path}: {exc.message}"
+                f"Extraction schema validation failed at schema {path} "
+                f"(rule: {exc.validator})"
             )
-            raise SchemaValidationError(message) from exc
+            raise SchemaValidationError(message) from None

@@ -1,6 +1,7 @@
 """Resolved extraction schemas are enforced before a result can succeed."""
 
 import json
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
@@ -8,6 +9,7 @@ import pytest
 
 from psweep.exceptions import SchemaValidationError
 from psweep.extraction.document_extractor import DocumentExtractor
+from psweep.extraction.schema_utils import build_schema_validator
 from psweep.utils.error_taxonomy import build_error_record
 from psweep.utils.schema_metadata import SchemaMetadata
 from psweep.pipeline import _extract_one_document
@@ -68,6 +70,39 @@ def payload():
     return {"source": {"id": "one"}, "items": [{"quote": "Quoted evidence", "locator": "Page 1"}]}
 
 
+@pytest.mark.parametrize(
+    "field", ["applies_to", "requirement_description", "source_verbatim"]
+)
+def test_natural_gas_required_fields_are_explicit_and_keep_exclusions(field):
+    schema_path = (
+        Path(__file__).resolve().parents[1]
+        / "schemas/personal/natural_gas_pipeline_schema.json"
+    )
+    schema = json.loads(schema_path.read_text())["properties"]["requirements"]["items"]
+    validator = build_schema_validator(schema)
+    row = {
+        "feature": "noise",
+        "rule_kind": "limit",
+        "applies_to": "compressor station",
+        "requirement_description": None,
+        "source_verbatim": "Exterior noise shall not exceed 55 dBA.",
+        "value_category": "quantitative",
+        "value": 55,
+        "units": "dBA",
+        "value_interpretation": "maximum",
+        "obligation": "required",
+        "summary": "Exterior noise must not exceed 55 dBA.",
+    }
+    assert field in schema["required"]
+    validator.validate(row)
+    del row[field]
+    assert any(error.validator == "required" for error in validator.iter_errors(row))
+    row[field] = None
+    validator.validate(row)
+    row[field] = "drilling"
+    assert any(error.validator == "not" for error in validator.iter_errors(row))
+
+
 def extract_reply(schema, payload):
     extractor = DocumentExtractor(api_key="test-key", model="gpt-4o-mini")
     with patch.object(extractor.client, "extract", return_value={"data": payload, "cost": 0.0}):
@@ -103,6 +138,19 @@ def test_optional_missing_fields_respect_schema_nullability(schema, payload):
     assert result.data["items"][0]["date"] is None
     assert "label" not in result.data["source"]
     assert "count" not in result.data["items"][0]
+
+
+def test_invalid_record_is_not_copied_into_schema_error_or_traceback(schema, payload):
+    import traceback
+
+    marker = "SYNTHETIC PRIVATE EVIDENCE"
+    payload["items"][0]["count"] = marker
+    with pytest.raises(SchemaValidationError) as error:
+        extract_reply(schema, payload)
+    diagnostic = "".join(traceback.format_exception(error.value))
+    assert marker not in diagnostic
+    assert "count.type" in str(error.value)
+    assert "rule: type" in str(error.value)
 
 
 def test_normalization_cannot_invalidate_success(schema, payload):

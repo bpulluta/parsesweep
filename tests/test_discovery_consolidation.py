@@ -51,7 +51,7 @@ def _download(engine, request, candidate, browser=None):
 ])
 def test_excluded_seed_never_fetches(monkeypatch, tmp_path, url):
     fetch = Mock(side_effect=AssertionError("excluded seed was fetched"))
-    monkeypatch.setattr("requests.get", fetch)
+    monkeypatch.setattr("psweep.discovery.network.request_get", fetch)
     request = _request(tmp_path, seed_urls=[url],
                        selection_exclude_url_patterns=[r"/conf/", r"token=blocked"])
     result = DiscoveryEngine().run(request)
@@ -64,7 +64,7 @@ def test_final_redirect_policy_blocks_download(monkeypatch, tmp_path, browser):
     final = "https://unapproved.example.org/conf/comment.pdf"
     request = _request(tmp_path, allowed_domains=["agency.gov"],
                        selection_exclude_url_patterns=[r"/conf/"])
-    monkeypatch.setattr("requests.get", lambda *args, **kwargs: FakeResponse(url=final))
+    monkeypatch.setattr("psweep.discovery.network.request_get", lambda *args, **kwargs: FakeResponse(url=final))
     session = SimpleNamespace(download_bytes=lambda url: (b"PDF", "application/pdf", final))
     _, record, error, downloaded, _ = _download(
         DiscoveryEngine(), request, make_candidate("https://agency.gov/comment.pdf"),
@@ -313,7 +313,7 @@ def test_full_mocked_discover_curate_preserves_partial_and_distinct_sources(monk
         final = "https://outside.example.org/report.pdf" if "/redirect/" in url else url
         return FakeResponse(url=final, chunks=[b"%PDF\n" + url.encode()])
 
-    monkeypatch.setattr("requests.get", fetch)
+    monkeypatch.setattr("psweep.discovery.network.request_get", fetch)
     monkeypatch.setattr(DocumentReviewer, "_ensure_client", lambda self: object())
     monkeypatch.setattr(DocumentReviewer, "_grade", lambda self, *args, **kwargs: {
         "is_primary": True, "relevance": 0.9, "doc_kind": "synthetic", "reason": "raw grade",
@@ -514,7 +514,7 @@ def test_failed_download_retains_target_and_prior_curation(monkeypatch, tmp_path
             raise ConnectionError("fixture failure")
         return FakeResponse(url=url, chunks=[b"%PDF good"])
 
-    monkeypatch.setattr("requests.get", fetch)
+    monkeypatch.setattr("psweep.discovery.network.request_get", fetch)
     prior = tmp_path / "domain/curated/by_label/alpha/prior.pdf"
     prior.parent.mkdir(parents=True)
     prior.write_bytes(b"prior complete")

@@ -333,7 +333,7 @@ class TestPerTargetSelection:
         assert selected == [structural]
         assert any("relevance filter excluded" in n for n in notes)
 
-    def test_relevance_legal_marker_must_exist_in_url_not_only_reason(self):
+    def test_relevance_legal_marker_ignores_generated_reason(self):
         sel = CandidateSelector(
             exclude_draft=False,
             relevance_require_legal_marker_terms=["ordinance"],
@@ -345,6 +345,50 @@ class TestPerTargetSelection:
         url_marker = _candidate("https://example.com/geothermal-ordinance-2025.pdf")
         selected, _ = sel.select([[reason_only, url_marker]], primary_per_target=1)
         assert selected == [url_marker]
+
+    @pytest.mark.parametrize("field", ["title", "snippet"])
+    def test_legal_marker_accepts_source_metadata_on_opaque_urls(self, field):
+        sel = CandidateSelector(
+            exclude_draft=False,
+            relevance_require_any_terms=["geothermal"],
+            relevance_require_legal_marker_terms=["ordinance"],
+        )
+        document = _candidate(
+            "https://unfamiliar.example/download/12345",
+            **{field: "Adopted geothermal ordinance"},
+        )
+        selected, _ = sel.select([[document]])
+        assert selected == [document]
+
+    def test_source_type_gate_scales_without_known_hosts_or_seed_urls(self):
+        sel = CandidateSelector(
+            exclude_draft=False,
+            relevance_require_any_terms=["geothermal"],
+            relevance_require_legal_marker_terms=["ordinance", "zoning"],
+        )
+        documents = [
+            _candidate(
+                f"https://county-{index}.example/download/{index}",
+                title=f"County {index} geothermal zoning ordinance",
+            )
+            for index in range(1000)
+        ]
+        pools = [
+            [
+                _candidate(
+                    f"https://news-{index}.example/item/{index}",
+                    title="Geothermal drilling investment update",
+                ),
+                document,
+            ]
+            for index, document in enumerate(documents)
+        ]
+        selected, _, metrics = sel.select(
+            pools, primary_per_target=1, include_metrics=True
+        )
+        assert selected == documents
+        assert len(metrics) == 1000
+        assert all(metric["selected_candidates"] == 1 for metric in metrics)
 
     def test_allowed_domain_no_longer_hard_filters_in_selector(self):
         # Recall-first: allowed-domain preference is now a soft ranking boost in

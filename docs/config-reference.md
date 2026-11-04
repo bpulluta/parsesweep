@@ -151,9 +151,16 @@ under `discovered/<domain>/runs/<run_id>/curated`; the consolidated downstream
 folder is `discovered/<domain>/curated`.
 
 Credentials belong only in environment variables or `.env`, not YAML.
-`SERPAPI_SSL_VERIFY` and `DISCOVERY_SSL_VERIFY` retain their default `false`;
-set them explicitly to choose TLS verification. `REQUESTS_CA_BUNDLE` selects
-a Requests CA bundle. These options do not change what config validation checks.
+TLS verification defaults to true. `SERPAPI_SSL_VERIFY` and
+`DISCOVERY_SSL_VERIFY` override the `PSWEEP_SSL_VERIFY` fallback for search and
+downloads; models use `PSWEEP_SSL_VERIFY`. Explicit request arguments take
+precedence. False values are allowed with a warning only in public mode;
+protected mode rejects any configured false value, even if overridden.
+Invalid boolean values fail. Prefer `REQUESTS_CA_BUNDLE` (or `SSL_CERT_FILE`)
+for approved VPN/private roots instead of disabling verification. Discovery
+ignores environment proxies and `.netrc` credentials.
+`PSWEEP_MAX_RESPONSE_BYTES` bounds each decoded response (default 50 MiB).
+See [Security and protected operation](security.md) for network/resource limits.
 
 ## Discovery configuration validation
 

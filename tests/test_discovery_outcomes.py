@@ -88,7 +88,7 @@ def test_stream_failure_does_not_leave_final_document(monkeypatch, tmp_path):
 
     response = BrokenStream(url="https://example.org/doc.pdf")
     response.close = Mock()
-    monkeypatch.setattr("requests.get", Mock(return_value=response))
+    monkeypatch.setattr("psweep.discovery.network.request_get", Mock(return_value=response))
     request = DiscoveryRequest(
         domain="fixture",
         seed_urls=[],
@@ -105,7 +105,7 @@ def test_stream_failure_does_not_leave_final_document(monkeypatch, tmp_path):
         candidate=make_candidate(response.url),
         request=request,
         documents_dir=tmp_path,
-        ssl_verify=False,
+        ssl_verify=True,
         retry_policy={
             "max_attempts": 1,
             "initial_backoff_seconds": 0,

@@ -1,0 +1,198 @@
+﻿State,AHJ Name,geo_id,SolSmart Awardee,Online Permitting,Online Instant Permitting,Structural Stamp From Professional Engineer Required,Electrical Stamp From Licensed Electrician Required,Third-Party Permitting Available,Median Permit Cost,Number of Inspections Required,Rough-In Inspection Required,Virtual Inspections Available,Fire Review Required
+AZ,Apache County,4001,No,NA,No,NA,NA,NA,NA,NA,NA,NA,NA
+AZ,Cochise County,4003,No,Yes,No,NA,NA,NA,NA,NA,No,NA,No
+AZ,Coconino County,4005,No,No,No,Never,Never,NA,NA,NA,No,NA,NA
+AZ,Gila County,4007,No,No,No,Sometimes,Never,NA,325.0,1.0,No,NA,NA
+AZ,Graham County,4009,No,Yes,No,NA,NA,NA,NA,NA,NA,NA,NA
+AZ,Greenlee County,4011,No,NA,No,NA,NA,NA,NA,NA,NA,NA,NA
+AZ,La Paz County,4012,No,NA,No,Always,Never,NA,NA,NA,No,NA,NA
+AZ,Maricopa County,4013,Bronze,Yes,No,Sometimes,Never,NA,300.0,2.0,No,No,No
+AZ,Mohave County,4015,No,NA,No,Never,Never,NA,NA,NA,No,NA,NA
+AZ,Navajo County,4017,No,NA,No,Never,Never,NA,NA,NA,No,NA,NA
+AZ,Pima County,4019,Gold,Yes,Yes (SolarAPP+),Sometimes,Never,NA,113.0,1.0,No,Yes,No
+AZ,Pinal County,4021,No,Yes,No,Never,Never,NA,300.115,1.0,No,Yes,No
+AZ,Santa Cruz County,4023,No,No,No,Always,NA,NA,171.295,1.0,No,No,No
+AZ,Yavapai County,4025,No,Yes,No,Sometimes,Sometimes,NA,255.98,2.0,No,No,No
+AZ,Yuma County,4027,No,Yes,No,Never,Never,NA,NA,NA,No,NA,NA
+AR,Faulkner County,5045,NA,NA,NA,NA,NA,NA,NA,NA,NA,NA,NA
+AR,Garland County,5051,NA,NA,NA,NA,NA,NA,NA,NA,NA,NA,NA
+AR,Lonoke County,5085,NA,NA,NA,NA,NA,NA,NA,NA,NA,NA,NA
+AR,Pulaski County,5119,NA,NA,NA,NA,NA,NA,NA,NA,NA,NA,NA
+AR,Saline County,5125,NA,NA,NA,NA,NA,NA,NA,NA,NA,NA,NA
+CA,Alameda County,6001,No,Yes,Yes (SolarAPP+),Never,Never,NA,857.86,2.0,No,No,NA
+CA,Alpine County,6003,No,NA,No,Never,NA,NA,346.0,NA,No,NA,NA
+CA,Amador County,6005,No,Yes,No,Never,Never,NA,755.24,1.0,No,No,NA
+CA,Butte County,6007,No,Yes,No,Sometimes,Never,NA,428.34,2.0,No,NA,NA
+CA,Calaveras County,6009,No,No,No,Never,Sometimes,NA,281.88,1.0,No,No,NA
+CA,Colusa County,6011,No,Yes,Yes (SolarAPP+),Never,Never,NA,216.82,1.0,No,NA,NA
+CA,Contra Costa County,6013,Bronze,Yes,Yes (SolarAPP+),Sometimes,Sometimes,NA,438.54,2.0,No,Yes,NA
+CA,Del Norte County,6015,No,NA,No,Always,Always,NA,NA,NA,No,NA,NA
+CA,El Dorado County,6017,No,Yes,Yes (Symbium),Sometimes,Never,NA,452.0,2.0,No,No,NA
+CA,Fresno County,6019,No,Yes,Yes (SolarAPP+),Never,Never,NA,460.35,1.0,No,No,NA
+CA,Glenn County,6021,No,No,No,Sometimes,Never,NA,292.31,1.0,No,NA,NA
+CA,Humboldt County,6023,No,Yes,Yes (SolarAPP+),Never,Never,NA,NA,NA,No,NA,NA
+CA,Imperial County,6025,No,Yes,Yes (SolarAPP+),Always,Never,NA,NA,0,No,NA,NA
+CA,Inyo County,6027,Bronze,No,No,Always,NA,NA,3806.88,NA,No,NA,NA
+CA,Kern County,6029,No,Yes,Yes (SolarAPP+),Sometimes,Never,No,511.99,1.0,No,No,NA
+CA,Kings County,6031,No,Yes,Yes (SolarAPP+),Sometimes,Never,NA,566.47,1.0,No,NA,NA
+CA,Lake County,6033,No,Yes,Yes (SolarAPP+),Never,Never,NA,441.155,1.0,No,No,NA
+CA,Lassen County,6035,No,NA,No,Never,NA,NA,NA,NA,No,NA,NA
+CA,Los Angeles County,6037,No,Yes,Yes (Other),Always,Sometimes,No,396.58,2.0,No,Yes,NA
+CA,Madera County,6039,No,Yes,Yes (SolarAPP+),Always,Never,NA,571.18,1.0,No,No,NA
+CA,Marin County,6041,Bronze,No,No,Sometimes,Never,NA,176.81,3.0,No,No,NA
+CA,Mariposa County,6043,No,No,No,Always,Never,NA,882.54,1.0,No,No,NA
+CA,Mendocino County,6045,No,Yes,Yes (SolarAPP+),Always,Never,NA,468.37,2.0,No,No,NA
+CA,Merced County,6047,No,Yes,Yes (SolarAPP+),Always,Never,NA,460.525,1.0,No,No,NA
+CA,Modoc County,6049,No,Yes,Yes (SolarAPP+),Never,NA,NA,NA,NA,No,NA,NA
+CA,Mono County,6051,No,NA,No,Always,Never,NA,NA,NA,No,NA,NA
+CA,Monterey County,6053,No,Yes,Yes (SolarAPP+),Always,Sometimes,NA,570.16,1.0,No,No,NA
+CA,Napa County,6055,No,No,No,Never,Sometimes,NA,450.0,2.0,No,No,NA
+CA,Nevada County,6057,No,No,No,Always,Sometimes,NA,462.13,2.0,No,No,NA
+CA,Orange County,6059,No,Yes,Yes (SolarAPP+),Always,Never,NA,790.14,2.0,No,No,NA
+CA,Placer County,6061,No,Yes,Yes (SolarAPP+),Always,Always,NA,400.96,1.0,No,No,NA
+CA,Plumas County,6063,No,Yes,No,Always,NA,NA,NA,NA,No,NA,NA
+CA,Riverside County,6065,No,Yes,Yes (SolarAPP+),Always,Sometimes,No,441.25,1.0,No,No,NA
+CA,Sacramento County,6067,Gold,Yes,Yes (SolarAPP+),Sometimes,Sometimes,NA,472.79,2.0,No,No,NA
+CA,San Benito County,6069,No,Yes,Yes (SolarAPP+),Always,Never,NA,1015.78,2.0,No,No,NA
+CA,San Bernardino County,6071,No,Yes,Yes (SolarAPP+),Always,Never,No,465.75,1.0,No,No,NA
+CA,San Diego County,6073,Gold,Yes,No,Never,Sometimes,No,283.94,1.0,No,No,NA
+CA,San Francisco County,6075,Gold,Yes,Yes (SolarAPP+),NA,NA,NA,523.35,2.0,NA,Yes,NA
+CA,San Joaquin County,6077,No,Yes,Yes (SolarAPP+),Always,Never,NA,450.85,1.0,No,No,NA
+CA,San Luis Obispo County,6079,Gold,Yes,Yes (SolarAPP+),Sometimes,Never,NA,392.39,1.0,No,No,NA
+CA,San Mateo County,6081,No,Yes,Yes (SolarAPP+),Sometimes,Never,NA,528.52,2.0,No,No,NA
+CA,Santa Barbara County,6083,Bronze,Yes,Yes (SolarAPP+),Always,Sometimes,No,527.43,2.0,No,Yes,NA
+CA,Santa Clara County,6085,No,Yes,Yes (SolarAPP+),Sometimes,Never,NA,728.42,1.0,No,No,NA
+CA,Santa Cruz County,6087,No,Yes,Yes (SolarAPP+),Always,Never,NA,557.19,1.0,No,No,NA
+CA,Shasta County,6089,No,Yes,Yes (SolarAPP+),Sometimes,Never,NA,410.9,NA,No,NA,NA
+CA,Sierra County,6091,No,Yes,No,Always,NA,NA,NA,NA,NA,NA,NA
+CA,Siskiyou County,6093,No,NA,No,Never,NA,NA,NA,NA,No,NA,NA
+CA,Solano County,6095,No,Yes,Yes (SolarAPP+),Sometimes,Never,NA,461.0,1.0,No,NA,NA
+CA,Sonoma County,6097,Gold,Yes,Yes (SolarAPP+),Sometimes,Never,NA,624.18,2.0,No,No,NA
+CA,Stanislaus County,6099,No,Yes,Yes (SolarAPP+),Sometimes,Never,NA,516.03,2.0,No,NA,NA
+CA,Sutter County,6101,No,No,No,Never,Never,NA,303.0,1.0,No,No,NA
+CA,Tehama County,6103,No,Yes,Yes (SolarAPP+),Never,Never,NA,455.8,NA,No,NA,NA
+CA,Trinity County,6105,No,NA,No,Never,NA,NA,NA,NA,No,NA,NA
+CA,Tulare County,6107,No,Yes,Yes (SolarAPP+),Sometimes,Never,No,392.96,1.0,No,No,NA
+CA,Tuolumne County,6109,No,Yes,No,Never,Never,NA,480.92,1.0,No,No,NA
+CA,Ventura County,6111,No,Yes,Yes (SolarAPP+),Always,Never,NA,584.43,1.0,No,No,NA
+CA,Yolo County,6113,Bronze,Yes,Yes (SolarAPP+),Always,Never,NA,577.1,1.0,No,NA,NA
+CA,Yuba County,6115,No,Yes,Yes (SolarAPP+),Sometimes,Never,NA,500.75,1.0,No,No,NA
+CO,Adams County,8001,Gold,Yes,No,Always,Sometimes,NA,665.525,1.0,No,No,No
+CO,Alamosa County,8003,No,Yes,Yes (only DORA state-level permit),Never,NA,NA,NA,NA,No,NA,NA
+CO,Arapahoe County,8005,No,No,No,Always,Never,NA,394.87,1.0,Yes,NA,No
+CO,Archuleta County,8007,No,Yes,Yes (only DORA state-level permit),NA,NA,NA,NA,NA,NA,NA,NA
+CO,Boulder County,8013,Silver,Yes,No,Always,Always,NA,465.59,1.0,No,No,No
+CO,Chaffee County,8015,No,NA,No,NA,NA,NA,NA,NA,NA,NA,NA
+CO,Clear Creek County,8019,Gold,Yes,Yes (only DORA state-level permit),Always,Never,NA,1672.295,2.0,Yes,No,NA
+CO,Conejos County,8021,No,Yes,Yes (only DORA state-level permit),NA,NA,NA,NA,NA,NA,NA,NA
+CO,Crowley County,8025,No,Yes,Yes (only DORA state-level permit),NA,NA,NA,NA,NA,NA,NA,NA
+CO,Custer County,8027,No,Yes,Yes (only DORA state-level permit),NA,NA,NA,NA,NA,NA,NA,NA
+CO,Delta County,8029,Gold,Yes,No,Never,NA,NA,NA,NA,No,NA,NA
+CO,Douglas County,8035,No,No,No,Always,Never,NA,510.95,1.0,No,No,No
+CO,Eagle County,8037,No,Yes,No,NA,NA,NA,NA,NA,NA,NA,NA
+CO,Elbert County,8039,No,Yes,Yes (only DORA state-level permit),Always,Never,NA,756.13,1.0,No,No,NA
+CO,El Paso County,8041,No,Yes,No,Always,Never,NA,NA,NA,No,NA,NA
+CO,Fremont County,8043,No,Yes,Yes (only DORA state-level permit),NA,NA,NA,NA,NA,NA,NA,NA
+CO,Garfield County,8045,Gold,Yes,Yes (only DORA state-level permit),NA,NA,NA,NA,NA,NA,NA,NA
+CO,Gilpin County,8047,No,Yes,Yes (SolarAPP+),Always,Never,NA,NA,3,Yes,NA,No
+CO,Grand County,8049,No,Yes,Yes (only DORA state-level permit),NA,NA,NA,NA,NA,NA,NA,NA
+CO,Gunnison County,8051,No,Yes,Yes (only DORA state-level permit),NA,NA,NA,NA,NA,NA,NA,NA
+CO,Jefferson County,8059,Gold,Yes,No,Always,Never,NA,281.88,1.0,No,No,No
+CO,Lake County,8065,No,Yes,Yes (only DORA state-level permit),Always,NA,NA,NA,NA,No,NA,NA
+CO,La Plata County,8067,No,Yes,Yes (only DORA state-level permit),NA,NA,NA,NA,NA,NA,NA,NA
+CO,Larimer County,8069,Silver,Yes,No,Always,Never,NA,516.45,1.0,No,No,No
+CO,Las Animas County,8071,No,Yes,Yes (only DORA state-level permit),NA,NA,NA,NA,NA,NA,NA,NA
+CO,Logan County,8075,No,Yes,Yes (only DORA state-level permit),NA,NA,NA,NA,NA,NA,NA,NA
+CO,Mesa County,8077,No,NA,No,Always,NA,NA,103.5,NA,No,NA,NA
+CO,Moffat County,8081,No,Yes,Yes (only DORA state-level permit),NA,NA,NA,NA,NA,NA,NA,NA
+CO,Montezuma County,8083,No,Yes,Yes (only DORA state-level permit),NA,NA,NA,NA,NA,NA,NA,NA
+CO,Montrose County,8085,No,Yes,Yes (only DORA state-level permit),NA,NA,NA,NA,NA,NA,NA,NA
+CO,Morgan County,8087,No,Yes,Yes (only DORA state-level permit),Always,NA,NA,NA,NA,No,NA,NA
+CO,Otero County,8089,No,Yes,Yes (only DORA state-level permit),NA,NA,NA,NA,NA,NA,NA,NA
+CO,Park County,8093,No,Yes,Yes (only DORA state-level permit),Always,Never,NA,NA,NA,NA,NA,NA
+CO,Phillips County,8095,No,Yes,Yes (only DORA state-level permit),NA,NA,NA,NA,NA,NA,NA,NA
+CO,Pitkin County,8097,No,NA,No,NA,NA,NA,NA,NA,NA,NA,NA
+CO,Pueblo County,8101,Bronze,Yes,No,Always,Never,NA,415.6,1.0,No,No,NA
+CO,Routt County,8107,Silver,Yes,No,NA,NA,NA,NA,NA,NA,NA,NA
+CO,Saguache County,8109,No,Yes,Yes (only DORA state-level permit),NA,NA,NA,NA,NA,NA,NA,NA
+CO,San Miguel County,8113,Gold,No,No,Never,NA,NA,NA,NA,No,NA,NA
+CO,Summit County,8117,Gold,No,No,Always,Always,NA,NA,2,No,NA,No
+CO,Teller County,8119,No,Yes,No,Always,Never,NA,NA,NA,NA,NA,NA
+CO,Washington County,8121,No,Yes,Yes (only DORA state-level permit),NA,NA,NA,NA,NA,NA,NA,NA
+CO,Weld County,8123,No,No,No,Always,Always,NA,300.0,1.0,No,NA,No
+CO,Yuma County,8125,No,Yes,Yes (only DORA state-level permit),NA,NA,NA,NA,NA,NA,NA,NA
+CT,Fairfield County,9001,Gold,No,No,Always,NA,NA,771.415,1.0,No,No,NA
+CT,Hartford County,9003,Gold,No,No,Always,NA,NA,52.21,NA,No,NA,NA
+CT,Litchfield County,9005,Bronze,Yes,No,Always,NA,NA,20.6,1.0,No,NA,NA
+CT,Middlesex County,9007,No,NA,No,NA,NA,NA,NA,NA,NA,NA,NA
+CT,New Haven County,9009,No,Yes,No,Always,NA,NA,NA,NA,No,NA,NA
+CT,New London County,9011,No,No,No,Always,NA,NA,1097.01,1.0,No,NA,NA
+CT,Tolland County,9013,No,Yes,No,Always,NA,NA,532.43,1.0,No,NA,NA
+CT,Windham County,9015,No,Yes,No,Always,NA,NA,230.0,1.0,No,NA,NA
+DE,Kent County,10001,No,Yes,No,Always,Never,NA,143.94,NA,No,NA,No
+DE,New Castle County,10003,No,Yes,No,Always,Always,NA,0.0,1.0,No,No,No
+DE,Sussex County,10005,No,Yes,No,Never,Never,NA,263.28,1.0,No,NA,NA
+FL,Alachua County,12001,Silver,Yes,No,Always,Always,Yes,261.9,1.0,NA,No,No
+FL,Baker County,12003,No,Yes,No,NA,NA,Yes,NA,NA,NA,NA,NA
+FL,Bay County,12005,No,NA,No,NA,NA,Yes,NA,NA,NA,NA,NA
+FL,Bradford County,12007,No,NA,No,NA,NA,Yes,NA,NA,NA,NA,NA
+FL,Brevard County,12009,No,Yes,No,Always,Always,Yes,278.02,1.0,NA,No,No
+FL,Broward County,12011,Bronze,Yes,No,NA,NA,Yes,NA,NA,NA,NA,No
+FL,Charlotte County,12015,No,Yes,No,Always,Always,Yes,94.0,2.0,NA,No,No
+FL,Citrus County,12017,No,Yes,No,Always,Always,Yes,132.55,1.0,NA,NA,No
+FL,Clay County,12019,No,No,No,Always,NA,Yes,NA,NA,NA,NA,NA
+FL,Collier County,12021,No,Yes,No,Always,Always,Yes,195.66,2.0,NA,No,No
+FL,Columbia County,12023,No,NA,No,NA,NA,Yes,NA,NA,NA,NA,NA
+FL,DeSoto County,12027,No,Yes,No,Always,Always,Yes,NA,NA,NA,NA,NA
+FL,Dixie County,12029,No,NA,No,NA,NA,Yes,NA,NA,NA,NA,NA
+FL,Duval County,12031,No,NA,No,NA,NA,Yes,NA,NA,NA,NA,NA
+FL,Escambia County,12033,No,NA,No,NA,NA,Yes,NA,NA,NA,NA,NA
+FL,Flagler County,12035,No,Yes,No,Always,Always,Yes,1898.16,1.0,NA,No,NA
+FL,Franklin County,12037,No,NA,No,NA,NA,Yes,NA,NA,NA,NA,NA
+FL,Gadsden County,12039,No,NA,No,NA,NA,Yes,NA,NA,NA,NA,NA
+FL,Glades County,12043,No,NA,No,Always,Always,Yes,NA,NA,NA,NA,NA
+FL,Gulf County,12045,No,NA,No,NA,NA,Yes,NA,NA,NA,NA,NA
+FL,Hamilton County,12047,No,NA,No,NA,NA,Yes,NA,NA,NA,NA,NA
+FL,Hardee County,12049,No,NA,No,NA,NA,Yes,NA,NA,NA,NA,NA
+FL,Hendry County,12051,No,No,No,Always,NA,Yes,NA,NA,NA,NA,NA
+FL,Hernando County,12053,No,Yes,No,Always,Always,Yes,356.84,2.0,NA,Yes,No
+FL,Highlands County,12055,No,No,No,Always,Always,Yes,2255.315,1.0,NA,No,No
+FL,Hillsborough County,12057,No,Yes,No,Always,Always,Yes,256.25,1.0,Yes,Yes,No
+FL,Holmes County,12059,No,NA,No,NA,NA,Yes,NA,NA,NA,NA,NA
+FL,Indian River County,12061,No,Yes,No,Always,Always,Yes,168.19,2.0,NA,No,No
+FL,Jackson County,12063,No,NA,No,NA,NA,Yes,NA,NA,NA,NA,NA
+FL,Jefferson County,12065,No,NA,No,NA,NA,Yes,NA,NA,NA,NA,NA
+FL,Lake County,12069,No,Yes,No,Always,Always,Yes,220.45,1.0,NA,No,No
+FL,Lee County,12071,No,Yes,No,Always,NA,Yes,132.81,2.0,NA,No,No
+FL,Leon County,12073,Gold,Yes,No,NA,NA,Yes,NA,NA,NA,NA,NA
+FL,Levy County,12075,No,NA,No,NA,NA,Yes,NA,NA,NA,NA,NA
+FL,Liberty County,12077,No,NA,No,NA,NA,Yes,NA,NA,NA,NA,NA
+FL,Madison County,12079,No,NA,No,NA,NA,Yes,NA,NA,NA,NA,NA
+FL,Manatee County,12081,No,Yes,No,Always,Always,Yes,134.6,2.0,NA,No,No
+FL,Marion County,12083,No,No,No,Always,Always,Yes,147.92,2.0,NA,No,No
+FL,Martin County,12085,No,Yes,No,Always,Always,Yes,761.625,1.0,NA,NA,No
+FL,Miami-Dade County,12086,Gold,Yes,No,Always,Always,Yes,475.08,3.0,Yes,Yes,No
+FL,Monroe County,12087,No,Yes,No,NA,NA,Yes,NA,NA,NA,NA,No
+FL,Nassau County,12089,No,No,No,Always,Always,Yes,NA,NA,NA,NA,NA
+FL,Okaloosa County,12091,No,NA,No,NA,NA,Yes,NA,NA,NA,NA,NA
+FL,Okeechobee County,12093,No,NA,No,Always,NA,Yes,NA,NA,NA,NA,NA
+FL,Orange County,12095,Gold,No,No,Always,Always,Yes,247.18,2.0,Yes,No,No
+FL,Osceola County,12097,No,Yes,No,Always,Always,Yes,323.95,1.0,No,No,No
+FL,Palm Beach County,12099,Gold,Yes,Yes (SolarAPP+),Always,Always,Yes,720.835,1.0,NA,No,No
+FL,Pasco County,12101,No,Yes,No,Always,Always,Yes,462.76,2.0,NA,Yes,No
+FL,Pinellas County,12103,No,Yes,No,Always,Always,Yes,354.755,2.0,No,No,No
+FL,Polk County,12105,No,Yes,No,Always,Always,Yes,216.93,1.0,No,No,No
+FL,Putnam County,12107,No,NA,No,Always,Always,Yes,NA,1.0,NA,NA,NA
+FL,St. Johns County,12109,No,Yes,No,Always,Always,Yes,123.0,1.0,NA,No,NA
+FL,St. Lucie County,12111,No,Yes,Yes (SolarAPP+),Always,Always,Yes,NA,1.0,NA,NA,NA
+FL,Santa Rosa County,12113,No,NA,No,NA,NA,Yes,NA,NA,NA,NA,NA
+FL,Sarasota County,12115,Bronze,Yes,No,Always,Always,Yes,183.69,1.0,NA,Yes,No
+FL,Seminole County,12117,No,Yes,No,Always,Always,Yes,592.76,2.0,No,No,No
+FL,Sumter County,12119,No,Yes,No,Always,Always,Yes,113.19,1.0,NA,No,No
+FL,Suwannee County,12121,No,Yes,No,NA,NA,Yes,NA,NA,NA,NA,NA
+FL,Taylor County,12123,No,NA,No,NA,NA,Yes,NA,NA,NA,NA,NA
+FL,Union County,12125,No,NA,No,NA,NA,Yes,NA,NA,NA,NA,NA
+FL,Volusia County,12127,No,Yes,No,Always,Always,Yes,530.225,3.0,NA,NA,No
+FL,Wakulla County,12129,No,NA,No,NA,NA,Yes,NA,NA,NA,NA,NA
+FL,Walton County,12131,No,NA,No,NA,NA,Yes,NA,NA,NA,NA,NA
+FL,Washington County,12133,No,NA,No,NA,NA,Yes,NA,NA,NA,NA,NA

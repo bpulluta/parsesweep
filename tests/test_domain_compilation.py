@@ -199,6 +199,15 @@ def test_nested_rows_preserve_parents_without_children(tmp_path):
     schema.write_text(
         json.dumps(
             {
+                "type": "object",
+                "properties": {"items": {"type": "array", "items": {
+                    "type": "object", "properties": {
+                        "name": {"type": "string"},
+                        "parts": {"type": "array", "items": {
+                            "type": "object", "properties": {"serial": {"type": "string"}},
+                        }},
+                    },
+                }}},
                 "$metadata": {
                     "extraction": {
                         "main_data_array": "items",

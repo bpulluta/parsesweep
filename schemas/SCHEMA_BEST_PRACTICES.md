@@ -467,6 +467,14 @@ Use the same fields across all items in an array.
 "description": "... Null if not stated."
 ```
 
+Nullable does not mean optional: list a field in the containing object's
+`required` array when every record must include it, even when its value is
+`null`. Keep those declarations consistent with conditional constraints.
+In particular, `properties` alone also validates an absent property; inside
+`not`/`anyOf`, this can unintentionally make omission invalid. Declare mandatory
+fields explicitly instead of relying on that side effect. For genuinely optional
+fields, guard the negated branch with `required` so it applies only when present.
+
 **4. Include in column_order** - Place temporal fields early in Excel output for visibility:
 ```json
 "column_order": [

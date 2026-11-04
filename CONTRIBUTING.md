@@ -35,6 +35,22 @@ Run the full suite before opening a PR:
 pixi run test
 ```
 
+Ordinary tests block external sockets and disable dotenv loading. Local
+HTTP/TLS servers use synthetic data; external endpoint tests require an
+explicit `--live` opt-in:
+
+```bash
+pixi run test -m integration
+pixi run test -m live --live
+```
+
+Use the `unit`, `contract`, `integration`, and `live` markers for new tests.
+Mock the narrow remote transport boundary, not entire installed modules.
+Keep regression invariants when consolidating repeated fixtures. Release
+validation must also run a synthetic subprocess CLI pipeline and inspect its
+actual outputs; passing mocked requests is not an end-to-end smoke test.
+Never use real credentials or sensitive documents in tests.
+
 Lint and format with ruff (docstrings are enforced NumPy-style):
 
 ```bash

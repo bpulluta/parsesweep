@@ -635,7 +635,8 @@ class DocumentReviewer:
             "Documents covering genuinely different content are NOT "
             "redundant — return empty redundancy_groups if all docs are "
             "complementary. "
-            "Return your answer as a JSON object."
+            "Return your answer as a JSON object matching this schema:\n"
+            + json.dumps(_DEDUP_SCHEMA, indent=2)
         )
 
         try:

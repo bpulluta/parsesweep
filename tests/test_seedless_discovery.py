@@ -334,7 +334,7 @@ def test_pdf_named_html_is_not_a_strict_pdf(monkeypatch, tmp_path):
         content_type="text/html",
         chunks=[b"<html>not PDF</html>"],
     )
-    monkeypatch.setattr("requests.get", lambda *_args, **_kwargs: response)
+    monkeypatch.setattr("psweep.discovery.network.request_get", lambda *_args, **_kwargs: response)
     request = _request(
         tmp_path,
         include_url_patterns=[r"\.pdf$"],
@@ -346,7 +346,7 @@ def test_pdf_named_html_is_not_a_strict_pdf(monkeypatch, tmp_path):
         candidate=make_candidate(url),
         request=request,
         documents_dir=tmp_path / "documents",
-        ssl_verify=False,
+        ssl_verify=True,
         retry_policy={
             "max_attempts": 1,
             "initial_backoff_seconds": 0,
@@ -360,23 +360,31 @@ def test_pdf_named_html_is_not_a_strict_pdf(monkeypatch, tmp_path):
 
 
 @pytest.mark.parametrize(
-    "content_type, expected",
+    "content_type, chunks, expected",
     [
-        ("text/html", ".html"),
-        ("application/pdf", ".pdf"),
-        ("application/zip", None),
+        ("text/html", [b"<html>Evidence</html>"], ".html"),
+        ("application/pdf", [b"%PDF-1.4\n"], ".pdf"),
+        ("application/zip", [b"PK archive"], None),
+        ("application/octet-stream", [b"%P", b"", b"DF", b"-1.4\n", b"evidence"], ".pdf"),
+        ("", [b"%PDF-1.4\n"], ".pdf"),
+        ("application/octet-stream", [b"MZ executable"], None),
+        ("application/octet-stream", [b"<html>not a PDF</html>"], None),
+        ("application/octet-stream", [b""], None),
     ],
 )
 def test_extensionless_download_is_checked_by_actual_mime(
     monkeypatch,
     tmp_path,
     content_type,
+    chunks,
     expected,
 ):
     """Ambiguous URLs use the existing GET, not another HEAD/probe call."""
     url = "https://example.org/download?id=1"
-    get = Mock(return_value=FakeResponse(url=url, content_type=content_type))
-    monkeypatch.setattr("requests.get", get)
+    get = Mock(return_value=FakeResponse(
+        url=url, content_type=content_type, chunks=chunks,
+    ))
+    monkeypatch.setattr("psweep.discovery.network.request_get", get)
     request = _request(
         tmp_path, robots_policy_mode="ignore", tos_policy_mode="ignore"
     )
@@ -385,7 +393,7 @@ def test_extensionless_download_is_checked_by_actual_mime(
         candidate=make_candidate(url),
         request=request,
         documents_dir=tmp_path / "documents",
-        ssl_verify=False,
+        ssl_verify=True,
         retry_policy={
             "max_attempts": 1,
             "initial_backoff_seconds": 0,
@@ -398,6 +406,7 @@ def test_extensionless_download_is_checked_by_actual_mime(
     assert saved is (expected is not None)
     if expected:
         assert record["path"].endswith(expected)
+        assert Path(record["path"]).read_bytes() == b"".join(chunks)
     else:
         assert record["status"] == "skipped_unsupported_type"
 
@@ -444,7 +453,7 @@ def test_html_source_path_rules_are_not_content_type_rules(
 ):
     """Arbitrary source-path scope is applied to real URLs only."""
     monkeypatch.setattr(
-        "requests.get",
+        "psweep.discovery.network.request_get",
         Mock(
             return_value=FakeResponse(
                 url=url,
@@ -464,7 +473,7 @@ def test_html_source_path_rules_are_not_content_type_rules(
         candidate=make_candidate(url),
         request=request,
         documents_dir=tmp_path / "documents",
-        ssl_verify=False,
+        ssl_verify=True,
         retry_policy={
             "max_attempts": 1,
             "initial_backoff_seconds": 0,

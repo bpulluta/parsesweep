@@ -25,7 +25,7 @@ import html
 import json
 import re
 from typing import Callable, Optional, Protocol
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, urlencode, urlparse
 
 # get(url, headers) -> (status_code, response_text). Raises on transport error.
 HttpGet = Callable[[str, dict], "tuple[int, str]"]
@@ -58,6 +58,10 @@ class CodeHostAdapter(Protocol):
 
     name: str
 
+    def request_headers(self) -> dict[str, str]:
+        """Return headers for the host's public landing pages and API."""
+        ...
+
     def can_handle(self, url: str) -> bool:
         """Return True if this adapter handles ``url``'s host."""
         ...
@@ -75,8 +79,8 @@ class MunicodeAdapter:
     token). Given a public URL such as
     ``https://library.municode.com/tx/friendswood/codes/code_of_ordinances?nodeId=<node>``
     the resolution chain is: client (state + name) -> product -> latest job ->
-    node content. ``groupChunks=true`` returns the node's whole subtree in one
-    call so a link that points at a chapter/article still yields its sections.
+    node content. Grouped responses can include neighboring sections; retain
+    only the requested node and descendants, with their section headings.
     """
 
     name = "municode"
@@ -99,14 +103,20 @@ class MunicodeAdapter:
         host = (urlparse(url).hostname or "").lower()
         return any(host == h or host.endswith("." + h) for h in self._HOSTS)
 
+    def request_headers(self) -> dict[str, str]:
+        """Use the same identifying client headers throughout acquisition."""
+        return dict(self._HEADERS)
+
     def fetch_text(self, url: str, get: HttpGet) -> Optional[str]:
         """Resolve the Municode API chain for ``url`` and return clean text."""
         parts = urlparse(url)
         segments = [s for s in parts.path.split("/") if s]
-        if len(segments) < 2:
+        if len(segments) < 4 or segments[2] != "codes":
             return None
         state, client = segments[0], segments[1]
         node = parse_qs(parts.query).get("nodeId", [None])[0]
+        if not node:
+            return None
 
         client_id = self._resolve_client_id(state, client, get)
         if client_id is None:
@@ -179,22 +189,40 @@ class MunicodeAdapter:
         # Without a nodeId we cannot target a section; fall through to browser.
         if not node:
             return None
-        url = (
-            f"{self._API}/CodesContent?productId={product_id}"
-            f"&jobId={job_id}&nodeId={node}&groupChunks=true"
+        query = urlencode(
+            {
+                "productId": product_id,
+                "jobId": job_id,
+                "nodeId": node,
+                "groupChunks": "true",
+            }
         )
+        url = f"{self._API}/CodesContent?{query}"
         data = self._get_json(url, get)
         if not isinstance(data, dict):
             return None
         docs = data.get("Docs")
         if not isinstance(docs, list) or not docs:
             return None
-        parts = [
-            _strip_html(d["Content"])
+        selected = [
+            d
             for d in docs
-            if isinstance(d, dict) and isinstance(d.get("Content"), str)
+            if isinstance(d, dict)
+            and isinstance(d.get("Id"), str)
+            and (d["Id"] == node or d["Id"].startswith(node + "_"))
         ]
-        text = "\n".join(p for p in parts if p)
+        if not any(
+            isinstance(d.get("Content"), str) and _strip_html(d["Content"])
+            for d in selected
+        ):
+            return None
+        parts = [
+            _strip_html(d[key])
+            for d in selected
+            for key in ("TitleHtml", "Content")
+            if isinstance(d.get(key), str)
+        ]
+        text = "\n".join(part for part in parts if part)
         return text.strip() or None
 
 

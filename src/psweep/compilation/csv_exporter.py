@@ -7,6 +7,7 @@ Simple, clean CSV output.
 
 import pandas as pd
 from pathlib import Path
+from psweep.utils.spreadsheet import csv_frame
 
 
 class CsvExporter:
@@ -33,4 +34,4 @@ class CsvExporter:
         >>> exporter.save(df, Path("output.csv"))
         """
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        df.to_csv(output_path, index=False)
+        csv_frame(df).to_csv(output_path, index=False)

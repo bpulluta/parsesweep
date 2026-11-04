@@ -17,9 +17,12 @@ Selenium/Chrome are optional; :func:`browser_available` reports readiness and
 
 from __future__ import annotations
 
-import subprocess
 import time
+import os
+from pathlib import Path
 from typing import Any
+
+from psweep.security import protected_mode
 
 
 class BrowserUnavailableError(RuntimeError):
@@ -41,69 +44,14 @@ def browser_available() -> bool:
     return True
 
 
-def _detect_chrome_version() -> str | None:
-    """Return the installed Chrome major version, if detectable."""
-    import re
-    import shutil
-
-    candidates = [
-        "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-        shutil.which("google-chrome"),
-        shutil.which("google-chrome-stable"),
-        shutil.which("chromium"),
-        shutil.which("chromium-browser"),
-    ]
-    for binary in candidates:
-        if not binary:
-            continue
-        try:
-            out = subprocess.run(
-                [binary, "--version"],
-                capture_output=True,
-                text=True,
-                timeout=15,
-                check=False,
-            ).stdout
-        except Exception:  # noqa: BLE001
-            continue
-        match = re.search(r"(\d+)\.\d+\.\d+", out or "")
-        if match:
-            return match.group(1)
-    return None
-
-
 def _resolve_chrome_service() -> Any:
-    """Build a Chrome ``Service`` with a driver matching the installed Chrome.
-
-    Selenium Manager normally auto-resolves the driver, but a stale
-    ``chromedriver`` on PATH can shadow it with a mismatched version. We ask
-    Selenium Manager for a driver matching the *detected* browser version and
-    pin the Service to it; on any failure we fall back to default resolution.
-    """
-    import json
-
+    """Require a pre-provisioned driver; never download executable code at runtime."""
     from selenium.webdriver.chrome.service import Service
 
-    try:
-        from selenium.webdriver.common.selenium_manager import (
-            SeleniumManager,
-        )
-
-        binary = SeleniumManager()._get_binary()  # noqa: SLF001
-        cmd = [str(binary), "--browser", "chrome", "--output", "json"]
-        version = _detect_chrome_version()
-        if version:
-            cmd += ["--browser-version", version]
-        result = subprocess.run(
-            cmd, capture_output=True, text=True, timeout=180, check=False
-        )
-        payload = json.loads(result.stdout or "{}").get("result", {})
-        driver_path = payload.get("driver_path")
-        if driver_path:
-            return Service(driver_path)
-    except Exception:  # noqa: BLE001 - fall back to default resolution
-        pass
-    return Service()
+    driver = os.environ.get("PSWEEP_CHROMEDRIVER", "")
+    if not driver or not Path(driver).is_file() or not os.access(driver, os.X_OK):
+        raise BrowserUnavailableError("PSWEEP_CHROMEDRIVER must name an installed executable")
+    return Service(driver)
 
 
 class BrowserSession:
@@ -129,6 +77,11 @@ class BrowserSession:
         self.close()
 
     def _start(self) -> None:
+        if protected_mode() or os.environ.get("PSWEEP_BROWSER_ISOLATED") != "1":
+            raise BrowserUnavailableError(
+                "Browser discovery requires public mode and PSWEEP_BROWSER_ISOLATED=1 "
+                "in an externally network-isolated sandbox; it is forbidden in protected mode"
+            )
         if not browser_available():
             msg = (
                 "Selenium is required for browser-based discovery. "
@@ -143,7 +96,6 @@ class BrowserSession:
         if self._headless:
             opts.add_argument("--headless=new")
         for arg in (
-            "--no-sandbox",
             "--disable-dev-shm-usage",
             "--disable-blink-features=AutomationControlled",
             "--window-size=1400,1000",

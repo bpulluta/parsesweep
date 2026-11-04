@@ -532,6 +532,7 @@ class SchemaMetadata:
         if not isinstance(flattening, dict):
             self._raise_meta(f"Schema metadata field {loc} must be an object.")
         allowed = {
+            "row_array",
             "type_fields",
             "skip_fields",
             "distinguishing_fields",
@@ -549,6 +550,9 @@ class SchemaMetadata:
                 f"{loc} has unknown key(s): {', '.join(unknown)}. "
                 f"Allowed: {', '.join(sorted(allowed))}."
             )
+        row_array = flattening.get("row_array")
+        if row_array is not None and (not isinstance(row_array, str) or not row_array):
+            self._raise_meta(f"{loc}.row_array must be a nonempty field name or null.")
 
         for key in (
             "type_fields",
@@ -580,6 +584,32 @@ class SchemaMetadata:
                         f"{loc}.unit_normalizations must map strings to "
                         "strings."
                     )
+
+    def get_row_array(self) -> Optional[str]:
+        """Resolve nested row expansion from the schema, never from data order."""
+        main = self._schema_node_at_path(self.schema, [self.get_main_data_array()]) or {}
+        item = self._schema_node_at_path(main.get("items", {}), []) or {}
+        candidates = []
+        for name in item.get("properties", {}):
+            node = self._schema_node_at_path(item, [name]) or {}
+            types = node.get("type", [])
+            child = self._schema_node_at_path(node.get("items", {}), []) or {}
+            if ("array" == types or "array" in types) and (
+                child.get("type") == "object" or "properties" in child
+            ):
+                candidates.append(name)
+        flattening = self.get_flattening_config() or {}
+        if "row_array" in flattening:
+            selected = flattening["row_array"]
+            if selected is not None and selected not in candidates:
+                self._raise_meta("compilation.flattening.row_array must name an object array in the main item schema")
+            return selected
+        if len(candidates) > 1:
+            self._raise_meta(
+                "Multiple nested object arrays require compilation.flattening.row_array "
+                "(use null to retain arrays as columns)"
+            )
+        return candidates[0] if candidates else None
 
     def _validate_normalization_block(self, normalization: Any) -> None:
         """Validate ``compilation.normalization`` (see state_column accessor)."""

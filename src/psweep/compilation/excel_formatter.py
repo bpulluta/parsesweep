@@ -10,6 +10,7 @@ from pathlib import Path
 from openpyxl import load_workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
+from psweep.utils.spreadsheet import literal_worksheet
 
 # Built-in defaults for column centering. These are the single source of truth
 # for the centering heuristic; a domain can override either one via
@@ -94,6 +95,7 @@ class ExcelFormatter:
         # Write data
         with pd.ExcelWriter(output_path, engine="openpyxl") as writer:
             df_clean.to_excel(writer, sheet_name="Data", index=False)
+            literal_worksheet(writer.sheets["Data"])
 
         # Load workbook for styling
         wb = load_workbook(output_path)
