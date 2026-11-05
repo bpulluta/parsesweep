@@ -176,6 +176,41 @@ def test_passthrough_is_verbatim_string_and_target_inputs_are_dropped(compiled):
     assert "urls" not in frame.columns
 
 
+def test_lists_and_objects_are_one_cell_and_empty_values_are_na(tmp_path):
+    schema = json.loads(json.dumps(SCHEMA))
+    fields = schema["properties"]["rows"]["items"]["properties"]
+    fields["documents"] = {"type": "array", "items": {"type": "string"}}
+    fields["fee"] = {"type": ["object", "null"]}
+    records = tmp_path / "records"
+    records.mkdir()
+    documents = ["site plan", "one-line diagram"]
+    _write(
+        records,
+        "a",
+        "https://m.gov",
+        "target",
+        [_item("AZ", "Maricopa County", documents=documents, fee={"amount": 300})],
+    )
+    _write(
+        records,
+        "b",
+        "https://p.gov",
+        "target",
+        [_item("AZ", "Pima County", documents=[], fee={})],
+    )
+    compiler = DataCompiler(_metadata(tmp_path, schema), inputs=INPUTS, verbose=False)
+    frame, _ = compiler.compile_from_directory(records)
+    maricopa, pima = _row(frame, "Maricopa County"), _row(frame, "Pima County")
+    assert (maricopa["documents"], maricopa["fee"]) == (
+        "site plan, one-line diagram",
+        '{"amount":300}',
+    )
+    assert json.loads(maricopa["evidence"])["documents"]["value"] == documents
+    assert (pima["documents"], pima["fee"], pima["sources"]) == (NA, NA, NA)
+    assert pima["confidence"] == "none"
+    assert json.loads(pima["evidence"]) == {}
+
+
 def test_off_roster_items_are_counted_not_written(compiled):
     compiler, frame = compiled
     assert "Travis County" not in frame["ahj"].tolist()

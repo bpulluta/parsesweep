@@ -14,7 +14,8 @@ web/sources  JSON per     one table     models and
 
 Documents can be PDF, Word, text, HTML, CSV, Excel, JSON or audio recordings —
 see [Document types and limits](config-reference.md#document-types-and-limits).
-Start with [Getting Started](getting-started.md).
+Start with [Getting Started](getting-started.md): run the bundled example, then
+build your own domain.
 
 ## Documentation
 

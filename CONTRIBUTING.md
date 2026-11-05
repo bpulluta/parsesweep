@@ -21,6 +21,14 @@ pixi install
 Configure LLM credentials in a `.env` file (see
 [Getting Started](docs/getting-started.md)) before running the pipeline.
 
+## Repository layout
+
+Tracked: `src/`, `tests/`, `docs/`, `config/README.md`, `config/TEMPLATE.yaml`,
+`config/example/`, and CI/packaging files (`.github/`, `pyproject.toml`,
+`pixi.toml`, `pixi.lock`). Your domains under `config/`, `outputs/` and
+`documents/` are git-ignored; personal scratch folders belong in
+`.git/info/exclude`, not `.gitignore`.
+
 ## Branching
 
 - Always work on a feature branch — never commit directly to `main`.

@@ -219,8 +219,9 @@ schema field names.
 
 - **Context objects** listed in `context_objects` are copied into every row.
 - **Nested objects** become `parent_child` columns (`location.county` →
-  `location_county`).
-- **Arrays of primitives** become one comma-joined cell.
+  `location_county`); anything nested deeper stays one compact-JSON cell.
+- **Arrays of primitives** become one comma-joined cell, in item, nested and
+  context fields alike.
 - **One nested array of objects** in the main item becomes the *row array*:
   each child yields a row that repeats the parent fields. With several such
   arrays, name one in `$metadata.compilation.flattening.row_array`, or set it
@@ -251,8 +252,9 @@ All other presentation (column order, formats) lives in `run.yaml`
    readable without the source.
 3. **Keep item fields consistent** across items: the same names, types and
    units. Separate values from units.
-4. **Keep nesting shallow.** Two levels below the item are enough; deeper
-   objects produce long `a_b_c` column names.
+4. **Keep nesting shallow.** One object level below the item becomes
+   `parent_child` columns; deeper objects stay compact JSON, which is hard to
+   filter or validate.
 
 ## Evidence and Negative Answers
 
@@ -272,6 +274,35 @@ from inventing negatives:
 State these rules in the field descriptions, for example: "Use 'No' only when
 the quoted text explicitly states it for this jurisdiction; null if the
 document is silent."
+
+### Evidence Fields
+
+To keep the text behind an answer, make the field an object whose properties
+are exactly `value` and `quote`:
+
+```json
+"online_application": {
+  "type": "object",
+  "properties": {
+    "value": {"type": ["boolean", "null"], "description": "true when ...; null if the page does not say"},
+    "quote": {"type": ["string", "null"], "description": "The sentence that supports value, copied verbatim; null when value is null"}
+  },
+  "required": ["value", "quote"]
+}
+```
+
+- Both keys are required, `value` must accept `null` and `quote` must be
+  `["string", "null"]`; `psweep run --validate-config` rejects other shapes.
+- Extraction keeps a value only when its quote occurs in the document text
+  (case, punctuation and spacing are ignored; a long quote may elide its
+  middle as `head … tail`). Otherwise both become `null`, and the extraction
+  record counts the rejection in `quality.unverified_quotes`.
+- In roster mode the cell holds the value and `evidence` keeps its quote and
+  source URL; in rows mode the field becomes `<field>_value` and
+  `<field>_quote` columns.
+- The validation judge checks disputed values against their quotes.
+
+`config/example/schema.json` has one evidence field next to plain fields.
 
 ## Temporal Metadata Best Practices
 
@@ -698,8 +729,8 @@ New multi-field decomposition:
 
 ## Cross-Domain Consistency Guidelines
 
-Regulatory domains (natural gas, geothermal, solar, and future domains) share the
-same requirement-row shape. Keeping field **names and semantics identical** across
+Regulatory domains (ordinances, permits and codes in any sector) share the same
+requirement-row shape. Keeping field **names and semantics identical** across
 domains lets one compilation and dedup path serve every domain, and lets
 analysts compare across domains.
 
@@ -774,46 +805,31 @@ Use the same dedup keys in every regulatory domain (vocabularies belong in `prop
 
 ### Creating a new regulatory domain schema
 
-1. Copy an existing regulatory schema (`config/natural_gas_pipelines/schema.json` is the
-   reference) as a template.
-2. Replace the `feature` enum with your domain's standardized features.
-3. Update the domain-specific **examples** in `specific_subject`, `applies_to`,
-   `condition`, and `requirement_description` — keep the field names and their
-   instructive descriptions intact.
-4. Set `$metadata.domain` and bump `version`; keep the canonical
-   `key_fields` and `ignore_fields` in `$metadata.identity.deduplication` unchanged.
-5. Adjust `document_applicability` and `jurisdiction` gate fields for the domain.
+1. Copy `config/example/schema.json`, name its main array `requirements`, and
+   give its items the canonical fields above.
+2. Define the `feature` enum with your domain's standardized features.
+3. Write domain-specific **examples** into the descriptions of `specific_subject`,
+   `applies_to`, `condition`, and `requirement_description`, following the
+   prompt instructions above.
+4. Set `$metadata.domain` and `version`, and use the canonical `key_fields` and
+   `ignore_fields` above in `$metadata.identity.deduplication`.
+5. Add `document_applicability` and `jurisdiction` gate fields for the domain.
 6. Validate: `pixi run psweep check-schema config/<domain>/schema.json`.
 
 ---
 
-## Production Examples
+## Common Schema Shapes
 
-Reference these working schemas under `config/`:
+`config/example/schema.json` is the minimal runnable schema: one row per target
+(roster mode) with boolean and list fields. Larger domains usually take one of
+these shapes:
 
-### Air Quality Permits
-- **File:** `config/aq_permits_va/schema.json`
-- **Pattern:** Permit-based with equipment nested
-- **Main array:** `equipment`
-- **Good for:** Environmental compliance tracking
-
-### Electricity Tariffs
-- **File:** `config/utility_rate_tariffs/schema.json`
-- **Pattern:** Rate schedule with charges nested
-- **Main array:** `rate_schedules`
-- **Good for:** Utility rate analysis
-
-### Geothermal Ordinances
-- **File:** `config/geothermal_ordinances/schema.json`
-- **Pattern:** Requirements-based, 4-axis value typing
-- **Main array:** `requirements`
-- **Good for:** Regulatory compliance
-
-### Natural Gas Pipelines & Compressor Stations
-- **File:** `config/natural_gas_pipelines/schema.json`
-- **Pattern:** Requirements-based, 4-axis value typing (reference schema for new regulatory domains)
-- **Main array:** `requirements`
-- **Good for:** Regulatory compliance, cross-jurisdiction comparison
+| Shape | Main array | One row per | Good for |
+|-------|------------|-------------|----------|
+| Target facts | `items` | Target (`key_fields` equal `partition_by`) | One answer per target and field |
+| Permits with equipment | `equipment` | Equipment item; permit details in a context object | Environmental compliance tracking |
+| Rate schedules with charges | `rate_schedules` | Charge (`charges` is the row array) | Utility rate analysis |
+| Requirements | `requirements` | Requirement, typed on the four axes above | Regulatory compliance, cross-jurisdiction comparison |
 
 ---
 
@@ -839,7 +855,7 @@ Reference these working schemas under `config/`:
 ## Tips for Success
 
 1. **Start with the end in mind** - Design your schema based on how you want to analyze the data in Excel
-2. **Use production schemas as templates** - Copy and modify rather than starting from scratch
+2. **Start from a working schema** - Copy `config/example/schema.json` and modify it rather than starting from scratch
 3. **Test early and often** - Extract 1-2 documents before processing hundreds
 4. **Keep it simple** - Fewer levels of nesting = clearer outputs
 5. **Be consistent** - Same structure across all items in an array enables expansion

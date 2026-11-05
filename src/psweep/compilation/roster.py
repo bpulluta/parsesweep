@@ -10,6 +10,7 @@ from typing import Any
 
 import pandas as pd
 
+from psweep.compilation.data_flattener import to_cell
 from psweep.discovery.targets import TARGET_INPUT_FIELDS, identify_target, iter_targets
 from psweep.extraction.roster import Roster
 from psweep.extraction.schema_utils import evidence_paths
@@ -21,7 +22,10 @@ _NUMBER = re.compile(r"[+-]?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?|[+-]?\.\d+")
 
 
 def _missing(value: Any) -> bool:
-    return value is None or (isinstance(value, str) and not value.strip())
+    """None, blank text and empty lists or objects carry no answer."""
+    if isinstance(value, str):
+        value = value.strip()
+    return value is None or (isinstance(value, (str, list, dict)) and not value)
 
 
 def value_key(value: Any) -> tuple[str, Any]:
@@ -128,7 +132,7 @@ def compile_roster(
             conflicts += bool(flags)
             # Cite a quoted, target-scoped source (the AHJ's own page) over a shared listing.
             first = min(chosen, key=lambda c: (not c["quote"], c["scope"] != "target"))
-            row[field] = first["value"]
+            row[field] = to_cell(first["value"])
             cell_evidence[field] = {
                 "value": first["value"],
                 **({"quote": first["quote"]} if field in evidence else {}),

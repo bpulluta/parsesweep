@@ -1,8 +1,8 @@
 # Getting Started
 
-This tutorial builds one domain end to end: find documents, extract fields,
-compile a table and check its quality. Every key used here is described in the
-[Configuration Reference](config-reference.md).
+This tutorial runs the bundled example, then builds one domain end to end: find
+documents, extract fields, compile a table and check its quality. Every key used
+here is described in the [Configuration Reference](config-reference.md).
 
 ## 1. Install
 
@@ -15,20 +15,51 @@ pixi install --locked
 ## 2. Credentials
 
 Credentials live in `.env` in the project root (or the environment), never in
-YAML. `pixi run psweep init` writes them interactively.
+YAML. Copy `.env.example`, or let `pixi run psweep init` write an OpenAI or
+Azure key.
 
 ```bash
 # .env
-SERPAPI_API_KEY=your-serpapi-key       # web search (discovery queries)
-
 # exactly one LLM provider, for extraction, review and validation:
 OPENAI_API_KEY=sk-...
 # ANTHROPIC_API_KEY=... | GEMINI_API_KEY=... |
 # AZURE_OPENAI_API_KEY=... + AZURE_OPENAI_ENDPOINT + AZURE_OPENAI_API_VERSION |
 # LLM_BASE_URL=https://proxy.example.com/v1 + LLM_API_KEY=...  (OpenAI-compatible proxy)
+
+SERPAPI_API_KEY=your-serpapi-key       # only for web search (discovery queries)
 ```
 
-## 3. Discover documents
+## 3. Run the example
+
+`config/example/` is a complete domain: three counties and their solar permit
+pages in `targets.csv`, a three-field `schema.json`, and this `run.yaml`:
+
+```{literalinclude} ../config/example/run.yaml
+:language: yaml
+:caption: config/example/run.yaml
+```
+
+```bash
+pixi run psweep run --config config/example/run.yaml
+```
+
+It needs only the LLM key: discovery downloads each target's `urls`, so nothing
+is searched. The run makes three LLM calls, one per page, and writes
+`outputs/example/compiled/example.csv` and `.xlsx` with one row per county:
+
+```text
+state,name,online_application,solarapp_plus,required_documents,sources,confidence,evidence
+```
+
+The schema fields hold the extracted answers (`NA` where a page is silent;
+the `required_documents` list is one comma-joined cell), `sources` lists the
+pages used and `confidence` grades how well the sources agree (a single source
+gives `medium`). `evidence` ties each value to its page; `online_application`
+is an [evidence field](schemas/best-practices.md#evidence-fields), so its entry
+also carries the sentence that supports it, checked against the page text. The
+rest of this tutorial builds a domain of your own from `config/TEMPLATE.yaml`.
+
+## 4. Discover documents
 
 ```bash
 mkdir -p config/my_domain
@@ -47,9 +78,11 @@ discovery:
     - '"{name}" {state} installation manual filetype:pdf'
 ```
 
-If you already know the URLs, use `sources` instead of `queries`; that needs
-no search key. Other ways to reach data (exports, listings, code hosts,
-recordings) are in [Source Patterns](sources.md).
+If you already know each target's pages, list them in a `urls` column of
+`targets.csv` instead of writing `queries`, as the example does; URLs shared by
+every target go in `sources`. Neither needs a search key. Other ways to reach
+data (exports, listings, code hosts, recordings) are in
+[Source Patterns](sources.md).
 
 ```bash
 pixi run psweep discover --config config/my_domain/run.yaml --validate-config
@@ -66,7 +99,7 @@ pixi run psweep discover --config config/my_domain/run.yaml -n 3
 Check that the acquired documents are the ones you need before going further;
 [Tuning](tuning.md) maps common problems to settings.
 
-## 4. Write the schema
+## 5. Write the schema
 
 `config/my_domain/schema.json` defines what to extract. The only required
 metadata is the main array:
@@ -105,7 +138,7 @@ descriptions are the model's instructions. `psweep init-domain-schema`
 scaffolds a schema, and `psweep check-schema` reviews one; see
 [Schema Authoring](schemas/index.md).
 
-## 5. Extract and compile
+## 6. Extract and compile
 
 ```bash
 pixi run psweep extract --config config/my_domain/run.yaml -n 2
@@ -121,7 +154,7 @@ roster it emits one row per target with `sources`, `confidence` and
 For local documents, skip discovery and pass the folder:
 `psweep extract documents/my_domain/ --config …`.
 
-## 6. Validate
+## 7. Validate
 
 Label a few targets by hand in `config/my_domain/samples/exemplar.csv`
 (headers matching the compiled columns), then:
@@ -141,7 +174,7 @@ The console prints a leaderboard and a `Next:` line;
 workflow (exemplar → model comparison → blind sample) is in
 [Tuning](tuning.md#validation).
 
-## 7. Run everything
+## 8. Run everything
 
 ```bash
 pixi run psweep run --config config/my_domain/run.yaml

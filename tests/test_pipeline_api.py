@@ -28,6 +28,8 @@ from psweep.pipeline import (
     run_pipeline,
 )
 
+from _helpers import EXAMPLE_CONFIG
+
 
 @pytest.fixture(autouse=True)
 def controlled_configuration(monkeypatch):
@@ -493,7 +495,7 @@ def test_extract_documents_uses_page_range_csv(tmp_path: Path, monkeypatch) -> N
 # Run orchestrators delegate artifact reuse and cleanup to their stage owners.
 
 
-def _run_config(tmp_path, schema_path, *, discovery=True):
+def _run_config(tmp_path, schema_path, *, discovery=True, validation=False):
     """Callers chdir to tmp_path so derived outputs land there."""
     output = tmp_path / Workspace("acme").extracted
     config = {
@@ -505,6 +507,9 @@ def _run_config(tmp_path, schema_path, *, discovery=True):
             "queries": ["{label} documents"],
             "targets": [{"label": "alpha"}, {"label": "beta"}],
         }
+    if validation:
+        (tmp_path / "labels.csv").write_text("label\nalpha\n", encoding="utf-8")
+        config["validation"] = {"references": ["labels.csv"]}
     path = tmp_path / "run.yaml"
     path.write_text(yaml.safe_dump(config), encoding="utf-8")
     return path, output
@@ -658,23 +663,28 @@ def test_count_extracted_documents_excludes_manifests(tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize(
-    ("domain", "skip_extract", "stages"),
+    ("sections", "skip_extract", "stages"),
     [
-        ("solar", False, ["extract", "compile"]),
-        ("solartrace", False, ["discover", "extract", "compile", "validate"]),
-        ("solartrace", True, ["discover", "compile"]),
+        ({"discovery": False}, False, ["extract", "compile"]),
+        ({"validation": True}, False, ["discover", "extract", "compile", "validate"]),
+        ({"validation": True}, True, ["discover", "compile"]),
     ],
 )
 def test_run_stages_validate_after_compile_with_a_validation_section(
-    domain, skip_extract, stages
+    tmp_path, schema_path, sections, skip_extract, stages
 ) -> None:
-    config_path = Path(__file__).resolve().parents[1] / "config" / domain / "run.yaml"
+    config_path, _ = _run_config(tmp_path, schema_path, **sections)
     stage_cmds = build_run_stage_commands(
         config_path, base_cmd=["psweep"], skip_extract=skip_extract, fresh=True
     )
     assert [name for name, _ in stage_cmds] == stages
     if stages[-1] == "validate":
         assert stage_cmds[-1][1] == ["psweep", "validate", "--config", str(config_path), "--fresh"]
+
+
+def test_example_config_runs_discover_extract_compile() -> None:
+    stage_cmds = build_run_stage_commands(EXAMPLE_CONFIG, base_cmd=["psweep"])
+    assert [name for name, _ in stage_cmds] == ["discover", "extract", "compile"]
 
 
 def test_compiled_table_fresh_tracks_records_table_and_manifest(tmp_path: Path) -> None:

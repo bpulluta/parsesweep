@@ -10,7 +10,7 @@ import pandas as pd
 from jsonschema import ValidationError
 
 from .csv_exporter import CsvExporter
-from .data_flattener import DataFlattener
+from .data_flattener import DataFlattener, to_cell
 from .deduplicator import (
     COL_ARTIFACT_ID,
     COL_ERROR_CATEGORIES,
@@ -180,7 +180,9 @@ class DataCompiler:
         for path, record in zip(files, self._records(files), strict=True):
             payload = record["payload"]
             context = {
-                key: value for name in contexts for key, value in (payload.get(name) or {}).items()
+                key: to_cell(value)
+                for name in contexts
+                for key, value in (payload.get(name) or {}).items()
             }
             context.update(self._lineage_context(record))
             items = payload.get(main, [])

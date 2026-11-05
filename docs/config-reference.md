@@ -39,6 +39,10 @@ pixi run psweep discover --config config/<domain>/run.yaml --show-effective-conf
 :caption: config/TEMPLATE.yaml
 ```
 
+`config/example/` is the smallest runnable domain: three targets with known
+`urls`, so it needs no search key.
+[Getting Started](getting-started.md#3-run-the-example) runs it.
+
 ### Top-level keys
 
 | Key | Default | Meaning |
@@ -195,7 +199,7 @@ Optional, paid LLM curation; it runs only when `document_description` is set.
 | Key | Default | Meaning |
 |-----|---------|---------|
 | `document_description` | — | What a correct document is; may use `{field}` target templates. |
-| `model` | default model | `models:` alias or model name. |
+| `model` | [default model](#environment-variables) | `models:` alias or model name. |
 | `keep_top` | `1` | Primary documents kept per target. |
 | `max_chars` | `12000` | Text sent per document. |
 | `keywords` | classifier keywords | Terms used to pick the excerpt sent for review. |
@@ -237,7 +241,7 @@ positionally) and writes one JSON record per document to
 
 | Key | Default | Meaning |
 |-----|---------|---------|
-| `model` | `LLM_MODEL` → `gpt-4o-mini` | `models:` alias or model name. |
+| `model` | [default model](#environment-variables) | `models:` alias or model name. |
 | `provider` | `auto` | `openai`, `azure`, `anthropic`, `gemini` or `auto`. |
 | `transcription_model` | — | `models:` alias that transcribes audio; required when audio is present. |
 | `limit` | — | Process only the first N documents. |
@@ -332,9 +336,13 @@ the schema — see [Schema Authoring](schemas/best-practices.md).
 **Roster mode.** When `discovery` declares `targets` and `partition_by`,
 compile emits one row per target in roster order. Agreeing values win; conflicts
 prefer target-scoped sources, then the value backed by most sources; missing
-values are `NA`. Extra target columns pass through, plus `sources`,
-`confidence` (`high` ≥ 2 agreeing sources, `medium`, `low` on conflict,
-`none`) and `evidence` (`{field: {value, quote, url}}`).
+values (null, blank, or an empty list or object) are `NA`. A list of primitives
+becomes one comma-joined cell; other lists and objects become compact JSON.
+Extra target columns pass through, plus `sources`, `confidence` (`high` ≥ 2
+agreeing sources, `medium`, `low` on conflict, `none`) and `evidence`
+(`{field: {value, url}}`, adding the `quote` of each
+[evidence field](schemas/best-practices.md#evidence-fields) and
+`conflict: true` when sources disagree).
 
 Excel batches above 1,048,575 rows or with cells over 32,767 characters fail
 before export; use CSV for large outputs.
@@ -454,7 +462,7 @@ outputs/<domain>/
 | `LLM_BASE_URL` + `LLM_API_KEY` | Any OpenAI-compatible endpoint (highest priority). |
 | `AZURE_OPENAI_API_KEY`, `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_API_VERSION` | Azure OpenAI. |
 | `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY` | Direct providers. |
-| `LLM_MODEL` | Default model when the config names none. |
+| `LLM_MODEL` (with `LLM_BASE_URL`), `AZURE_OPENAI_MODEL`, `ANTHROPIC_MODEL`, `GEMINI_MODEL`, `OPENAI_MODEL` | The active provider's default model, used when the config names none. If unset, Anthropic uses `claude-3.5-sonnet`, Gemini `gemini-1.5-pro`, and every other provider `gpt-4o-mini`. |
 | `LLM_TIMEOUT` | LLM request timeout (seconds). |
 | `PSWEEP_MAX_RESPONSE_BYTES` | Streamed-download byte limit. |
 | `REQUESTS_CA_BUNDLE` / `SSL_CERT_FILE` | Approved CA roots. |

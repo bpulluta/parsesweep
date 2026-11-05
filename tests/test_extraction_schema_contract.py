@@ -1,7 +1,6 @@
 """Resolved extraction schemas are enforced before a result can succeed."""
 
 import json
-from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
@@ -77,31 +76,32 @@ def payload():
     return {"source": {"id": "one"}, "items": [{"quote": "Quoted evidence", "locator": "Page 1"}]}
 
 
-@pytest.mark.parametrize("field", ["applies_to", "requirement_description", "source_verbatim"])
-def test_natural_gas_required_fields_are_explicit_and_keep_exclusions(field):
-    schema_path = Path(__file__).resolve().parents[1] / "config/natural_gas_pipelines/schema.json"
-    schema = json.loads(schema_path.read_text())["properties"]["requirements"]["items"]
-    validator = build_schema_validator(schema)
-    row = {
-        "feature": "noise",
-        "rule_kind": "limit",
-        "applies_to": "compressor station",
-        "requirement_description": None,
-        "source_verbatim": "Exterior noise shall not exceed 55 dBA.",
-        "value_category": "quantitative",
-        "value": 55,
-        "units": "dBA",
-        "value_interpretation": "maximum",
-        "obligation": "required",
-        "summary": "Exterior noise must not exceed 55 dBA.",
-    }
-    assert field in schema["required"]
+NULLABLE = ("applies_to", "source_verbatim")
+
+
+@pytest.mark.parametrize("field", NULLABLE)
+def test_required_nullable_fields_keep_pattern_exclusions(field):
+    validator = build_schema_validator(
+        {
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "type": "object",
+            "required": list(NULLABLE),
+            "properties": {name: {"type": ["string", "null"]} for name in NULLABLE},
+            "not": {
+                "anyOf": [
+                    {"properties": {name: {"type": "string", "pattern": r"(?i)\bdrilling\b"}}}
+                    for name in NULLABLE
+                ]
+            },
+        }
+    )
+    row = {"applies_to": "compressor station", "source_verbatim": None}
     validator.validate(row)
     del row[field]
     assert any(error.validator == "required" for error in validator.iter_errors(row))
     row[field] = None
     validator.validate(row)
-    row[field] = "drilling"
+    row[field] = "Drilling"
     assert any(error.validator == "not" for error in validator.iter_errors(row))
 
 

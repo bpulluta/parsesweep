@@ -15,7 +15,7 @@ def test_build_run_manifest_sorts_documents_and_output_records() -> None:
 
     manifest = build_run_manifest(
         run_id="run://deterministic1234",
-        schema_path=Path("config/utility_rate_tariffs/schema.json"),
+        schema_path=Path("config/my_domain/schema.json"),
         provider="azure",
         model="gpt-5",
         runtime_artifact=runtime_artifact,
@@ -56,7 +56,7 @@ def test_build_run_manifest_sorts_documents_and_output_records() -> None:
 def test_build_run_manifest_summarizes_failed_error_records() -> None:
     manifest = build_run_manifest(
         run_id="run://deterministic1234",
-        schema_path=Path("config/utility_rate_tariffs/schema.json"),
+        schema_path=Path("config/my_domain/schema.json"),
         provider="azure",
         model="gpt-5",
         runtime_artifact=None,

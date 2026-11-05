@@ -53,6 +53,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Confirmed successful SerpApi searches with no Google results no longer abort
   discovery or discard other queries' candidates. Provider failures remain
   explicit; empty queries are recorded with zero results.
+- Compiled cells render lists and objects by one rule: a list of primitives is
+  one comma-joined cell, other lists and objects are compact JSON. Roster
+  cells, nested object fields and context fields previously showed Python
+  reprs. In roster mode an empty list or object is `NA`, like a null.
 
 ### Added
 - Public-only DNS-pinned acquisition, decoded response limits, verified local
@@ -62,6 +66,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Compilation writer locks and interruption-recovery journals.
 - Discovery-first onboarding documentation and a source-patterns guide
   (`docs/sources.md`).
+- `config/example/`: a runnable three-county demo that needs no search key.
 - Embedded documentation: NumPy docstrings rendered to a Sphinx site
   (autoapi + sphinx-click) and published to GitHub Pages via CI.
 - Provider/model mismatch warning in `llm_factory.build_llm_client()` when
@@ -171,8 +176,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   config/CLI disable still wins. HTML and extensionless documents are eligible
   without disabling the supported-document filter; real MIME gates downloads.
 - Browser recovery and code-host adapters are now explicit opt-ins; threshold
-  blocks alone do not enable them. Existing dependent domain configs pin their
-  recovery settings. Search caching remains opt-in.
+  blocks alone do not enable them. Search caching remains opt-in.
 - Discovery validates nested options, booleans, regexes, and resource limits
   before execution. Quoted booleans and previously ignored `pipeline`,
   `scoring`, `dedupe`, `file_filters`, and `keyword_validation` blocks are
@@ -191,6 +195,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Robots and ToS policy default is now `warn` everywhere (previously the
   effective default drifted between `ignore` and `warn` across layers).
 - Docs toolchain switched from MkDocs to Sphinx.
+
+### Removed
+- Bundled domain configs are removed from the repository: `config/` ships only
+  `README.md`, `TEMPLATE.yaml` and `example/`, and domain folders you create
+  there are git-ignored.
+- The unused `psweep.utils.logger` module and the empty `psweep.core` package.
+- The README image.
 
 ### Fixed
 - Preserve selected pages across native/pypdf/OCR fallbacks, actual parsed scope,
@@ -218,7 +229,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   unvalidated YAML.
 - Standardized all docstrings to NumPy style — `ruff check src/` reports 0
   enforced pydocstyle (D) violations (was 58).
-- README broken-image alt text.
 
 ## [2.0.1]
 
