@@ -15,6 +15,11 @@ ffmpeg = { version = ">=9.0.2,<10", build = "lgpl*" }
 [pypi-dependencies]
 psweep = { path = ".", editable = true}
 
+[pypi-options]
+# LiteLLM caps filelock <4 (used only by its proxy CLI); 4.2.1 fixes
+# GHSA-69hj-f68j-2879 and GHSA-8mx5-7m5m-r77g. Drop once LiteLLM allows 4.x.
+dependency-overrides = { filelock = ">=4.2.1,<5" }
+
 [environments]
 default = { solve-group = "default" }
 dev = { features = ["dev"], solve-group = "default" }
