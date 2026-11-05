@@ -29,15 +29,15 @@ import json
 import logging
 import io
 import shutil
-import subprocess
+import subprocess  # noqa: S404 - runs psweep stage subprocesses, no shell
 import sys
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, UTC
 from uuid import uuid4
 from pathlib import Path
-from typing import Callable, Optional, Sequence
+from collections.abc import Callable, Sequence
 
 from psweep.config import load_runtime_config_file, resolve_command_config
 from psweep.config.runtime_config_loader import resolve_compilation_metadata
@@ -156,8 +156,8 @@ class PipelineResult:
     domain: str
     stages_run: list[str]
     partial_stages: list[str] = field(default_factory=list)
-    extraction: Optional[ExtractionRunResult] = None
-    compilation: Optional[CompilationResult] = None
+    extraction: ExtractionRunResult | None = None
+    compilation: CompilationResult | None = None
 
 
 def _read_config_dict(config_path: str | Path) -> dict:
@@ -269,11 +269,7 @@ def count_extracted_documents(extraction_dir: Path) -> int:
         return 0
     manifests_dir = extraction_dir / "run_manifests"
     all_json = sum(1 for _ in extraction_dir.rglob("*.json"))
-    manifest_json = (
-        sum(1 for _ in manifests_dir.rglob("*.json"))
-        if manifests_dir.exists()
-        else 0
-    )
+    manifest_json = sum(1 for _ in manifests_dir.rglob("*.json")) if manifests_dir.exists() else 0
     return all_json - manifest_json
 
 
@@ -287,9 +283,7 @@ def _document_eligible(path: Path, root: Path) -> bool:
     return (
         path.is_file()
         and document_utils.is_supported_document(path)
-        and not any(
-            part.startswith(".") for part in path.relative_to(root).parts
-        )
+        and not any(part.startswith(".") for part in path.relative_to(root).parts)
         and not path.name.endswith(".section_target.txt")
     )
 
@@ -303,9 +297,7 @@ def _input_documents(path: Path, *, required: bool = True):
         raise FileNotFoundError(message)
     root = path if path.is_dir() else path.parent
     documents = sorted(
-        p
-        for p in (root.rglob("*") if path.is_dir() else [path])
-        if _document_eligible(p, root)
+        p for p in (root.rglob("*") if path.is_dir() else [path]) if _document_eligible(p, root)
     )
     return documents, root
 
@@ -319,11 +311,7 @@ def _validate_extract_paths(
     if output == Path(output.anchor):
         message = "Extraction output cannot be a filesystem root"
         raise ValueError(message)
-    if (
-        output == root
-        or output in root.parents
-        or (root.is_dir() and root in output.parents)
-    ):
+    if output == root or output in root.parents or (root.is_dir() and root in output.parents):
         message = "Extraction input/output overlap is not allowed"
         raise ValueError(message)
     for path in protected:
@@ -342,7 +330,7 @@ def _reuse_evidence(output: Path) -> dict:
             for record, value in manifest.get("reuse", {}).items():
                 if isinstance(value, dict):
                     evidence.setdefault(record, []).append(value)
-        except (OSError, ValueError, TypeError, AttributeError):  # noqa: PERF203 - corrupt manifests invalidate only their own evidence
+        except (OSError, ValueError, TypeError, AttributeError):
             continue
     return evidence
 
@@ -368,11 +356,7 @@ def _reusable_record(path: Path, fingerprint: str, evidence: dict, validator):
             return None
         record_validator().validate(record)
         validator.validate(record["payload"])
-        if (
-            record.get("processing_metrics", {})
-            .get("coverage", {})
-            .get("parser_partial")
-        ):
+        if record.get("processing_metrics", {}).get("coverage", {}).get("parser_partial"):
             return None
     except (
         OSError,
@@ -401,9 +385,7 @@ def _manual_ranges(inputs: dict, documents: list[Path], root: Path) -> dict:
     pages_csv = inputs.get("pages_csv")
     if pages_csv:
         mappings = load_pages_csv(Path(pages_csv))
-        canonical = {
-            Path(key).resolve(): value for key, value in mappings.items()
-        }
+        canonical = {Path(key).resolve(): value for key, value in mappings.items()}
         for doc in documents:
             if doc.resolve() in canonical:
                 ranges[doc] = canonical[doc.resolve()]
@@ -420,7 +402,7 @@ def _manual_ranges(inputs: dict, documents: list[Path], root: Path) -> dict:
     return ranges
 
 
-def _extraction_fingerprints(  # noqa: PLR0913 - full effective behavior
+def _extraction_fingerprints(
     inputs,
     llm,
     locator,
@@ -483,16 +465,12 @@ def _extraction_fingerprints(  # noqa: PLR0913 - full effective behavior
             "source_sha256": artifact_sha256(doc),
             "manual_pages": ranges.get(doc),
             "context": asdict(info) if info else None,
-            "candidates": (
-                candidate_hash(roster, anchors[doc]) if doc in anchors else None
-            ),
+            "candidates": (candidate_hash(roster, anchors[doc]) if doc in anchors else None),
         }
         if audio:
             # A transcript derives from source bytes and this identity.
             data["transcription"] = getattr(transcriber, "identity", None)
-        fingerprints[doc] = hashlib.sha256(
-            json.dumps(data, sort_keys=True).encode()
-        ).hexdigest()
+        fingerprints[doc] = hashlib.sha256(json.dumps(data, sort_keys=True).encode()).hexdigest()
     return fingerprints
 
 
@@ -509,9 +487,7 @@ def _extraction_layout(inputs, config_path, *, validate_only=False):
             and types != "array"
             and not (isinstance(types, list) and "array" in types)
         ):
-            message = (
-                f"Extraction main_data_array must resolve to an array: {array}"
-            )
+            message = f"Extraction main_data_array must resolve to an array: {array}"
             raise ValueError(message)
     path = Path(inputs["path"]).resolve()
     output = Path(inputs["output"]).resolve()
@@ -519,41 +495,24 @@ def _extraction_layout(inputs, config_path, *, validate_only=False):
     root = root.resolve()
     protected = [
         schema_path,
-        *(
-            Path(value)
-            for value in (config_path, inputs.get("pages_csv"))
-            if value
-        ),
+        *(Path(value) for value in (config_path, inputs.get("pages_csv")) if value),
     ]
     _validate_extract_paths(output, path, [*protected, *documents])
-    outputs = {
-        doc: output / doc.relative_to(root).with_suffix(".json")
-        for doc in documents
-    }
+    outputs = {doc: output / doc.relative_to(root).with_suffix(".json") for doc in documents}
     if any(
-        INTERNAL_RECORD_DIRS.intersection(
-            target.relative_to(output).parts[:-1]
-        )
+        INTERNAL_RECORD_DIRS.intersection(target.relative_to(output).parts[:-1])
         for target in outputs.values()
     ):
-        message = (
-            "Extraction output partition uses a reserved internal "
-            "record directory"
-        )
+        message = "Extraction output partition uses a reserved internal record directory"
         raise ValueError(message)
     protected = {path.resolve() for path in [*protected, *documents]}
     for target in outputs.values():
         resolved = target.resolve()
         if output not in resolved.parents or resolved in protected:
-            message = (
-                "Extraction output destination escapes or overlaps inputs: "
-                f"{target}"
-            )
+            message = f"Extraction output destination escapes or overlaps inputs: {target}"
             raise ValueError(message)
     if len({target.resolve() for target in outputs.values()}) != len(outputs):
-        message = (
-            "Extraction output filename collision; rename or partition sources"
-        )
+        message = "Extraction output filename collision; rename or partition sources"
         raise ValueError(message)
     return {
         "schema_path": schema_path,
@@ -584,8 +543,7 @@ def _extraction_locator_config(inputs: dict, llm: dict) -> dict | None:
     targeting = inputs.get("page_targeting") or {}
     keywords = targeting.get("keywords")
     if keywords is not None and (
-        not isinstance(keywords, list)
-        or any(not isinstance(keyword, str) for keyword in keywords)
+        not isinstance(keywords, list) or any(not isinstance(keyword, str) for keyword in keywords)
     ):
         message = "pages.auto_locate.keywords must be a list of strings"
         raise ValueError(message)
@@ -625,9 +583,7 @@ def _prepare_extraction(
     context = build_source_context_map(Path(inputs["path"]).resolve())
     roster = load_roster(inputs, plan["metadata"])
     candidates, anchors, roster_errors = (
-        _roster_plan(
-            documents, plan["root"], context, roster, inputs, transcriber
-        )
+        _roster_plan(documents, plan["root"], context, roster, inputs, transcriber)
         if roster and not validate_only
         else ({}, {}, {})
     )
@@ -648,18 +604,14 @@ def _prepare_extraction(
             if selected is not None and doc.suffix.lower() == ".pdf":
                 validate_pdf_scope(doc, selected)
     evidence = (
-        _reuse_evidence(plan["output"])
-        if not fresh and inputs.get("skip_existing", True)
-        else {}
+        _reuse_evidence(plan["output"]) if not fresh and inputs.get("skip_existing", True) else {}
     )
     validator = build_schema_validator(plan["schema"])
     reused = {}
     for doc in documents:
         if doc in roster_errors:
             continue
-        record = _reusable_record(
-            plan["outputs"][doc], fingerprints[doc], evidence, validator
-        )
+        record = _reusable_record(plan["outputs"][doc], fingerprints[doc], evidence, validator)
         if record is not None:
             reused[doc] = record
     pending = [doc for doc in documents if doc not in reused]
@@ -693,9 +645,7 @@ def _prepare_extraction(
     }
 
 
-def _document_text(
-    doc_path, page_range, section_text, corrections, transcriber=None
-):
+def _document_text(doc_path, page_range, section_text, corrections, transcriber=None):
     """Prepare text and effective scope for one document."""
     scope = {}
     if section_text is not None:
@@ -732,9 +682,9 @@ def _roster_plan(documents, root, context, roster, inputs, transcriber=None):
             )
         elif info.scope == "shared":
             try:
-                text = _document_text(
-                    doc, None, None, inputs.get("ocr_corrections"), transcriber
-                )[0]
+                text = _document_text(doc, None, None, inputs.get("ocr_corrections"), transcriber)[
+                    0
+                ]
             except Exception as exc:  # noqa: BLE001 - isolate unreadable documents
                 errors[doc] = f"Roster candidate scan failed: {exc}"
                 continue
@@ -758,9 +708,7 @@ def _no_roster_match(array):
 
 def _keep_roster_items(data, array, roster, target_ids) -> int:
     """Keep only items naming one of ``target_ids``; return the dropped count."""
-    allowed = {
-        roster.key(roster.targets[target_id]) for target_id in target_ids
-    }
+    allowed = {roster.key(roster.targets[target_id]) for target_id in target_ids}
     items = data.get(array) or []
     data[array] = [item for item in items if roster.key(item) in allowed]
     return len(items) - len(data[array])
@@ -768,9 +716,9 @@ def _keep_roster_items(data, array, roster, target_ids) -> int:
 
 def _roster_extract(extractor, schema, array, roster, candidates, budget, info):
     """Extract shared-document candidate windows and drop off-roster items."""
-    budget -= len(
-        candidates_block(roster, set().union(*(ids for _, ids in candidates)))
-    ) + len(prepend_source_context("", info))
+    budget -= len(candidates_block(roster, set().union(*(ids for _, ids in candidates)))) + len(
+        prepend_source_context("", info)
+    )
     results, items, dropped = [], [], 0
     for text, target_ids in batch(candidates, max(budget, 1)):
         result = extractor.extract(
@@ -792,23 +740,21 @@ def _roster_extract(extractor, schema, array, roster, candidates, budget, info):
         completeness_score=calculate_completeness(data),
         cost=None if None in costs else sum(costs),
         processing_time=sum(result.processing_time for result in results),
-        validation_notes=[
-            note for result in results for note in result.validation_notes
-        ],
+        validation_notes=[note for result in results for note in result.validation_notes],
         input_tokens=total("input_tokens"),
         output_tokens=total("output_tokens"),
         coverage={
             "input_characters": sum(r.coverage["input_characters"] for r in results),
-            "extracted_characters": sum(
-                r.coverage["extracted_characters"] for r in results
-            ),
+            "extracted_characters": sum(r.coverage["extracted_characters"] for r in results),
             "context_truncated": any(r.coverage["context_truncated"] for r in results),
         },
         off_candidate_items=dropped,
     )
 
 
-def _extract_one_document(doc_path: Path, plan: dict, *, extractor, run_id, page_range=None, section_text=None) -> dict:
+def _extract_one_document(
+    doc_path: Path, plan: dict, *, extractor, run_id, page_range=None, section_text=None
+) -> dict:
     """Extract and persist one record without UI or batch decisions."""
     result = None
     llm, inputs = plan["llm"], plan["inputs"]
@@ -859,9 +805,7 @@ def _extract_one_document(doc_path: Path, plan: dict, *, extractor, run_id, page
                 parser_scope=parser_scope,
             )
             if anchors:
-                result.off_candidate_items = _keep_roster_items(
-                    result.data, array, roster, anchors
-                )
+                result.off_candidate_items = _keep_roster_items(result.data, array, roster, anchors)
         rejected = verify_quotes(
             result.data,
             text,
@@ -895,7 +839,7 @@ def _extract_one_document(doc_path: Path, plan: dict, *, extractor, run_id, page
             "output_path": str(output_path),
             "coverage": getattr(result, "coverage", {}),
         }
-    except Exception as exc:  # noqa: BLE001 - isolate attempted-document failures
+    except Exception as exc:
         logger.debug(
             "Document extraction failed for %s",
             doc_path,
@@ -916,12 +860,8 @@ def _extract_one_document(doc_path: Path, plan: dict, *, extractor, run_id, page
                 )
             ],
             "cost": getattr(result, "cost", usage.get("cost")),
-            "input_tokens": getattr(
-                result, "input_tokens", usage.get("input_tokens")
-            ),
-            "output_tokens": getattr(
-                result, "output_tokens", usage.get("output_tokens")
-            ),
+            "input_tokens": getattr(result, "input_tokens", usage.get("input_tokens")),
+            "output_tokens": getattr(result, "output_tokens", usage.get("output_tokens")),
         }
 
 
@@ -945,24 +885,16 @@ def _target_extraction_inputs(plan: dict):
             "model": targeting.get("model"),
             "models": inputs.get("models"),
             "default_model": llm["model"],
-            "llm_config": (
-                inputs.get("llm_config") if targeting.get("model") else llm
-            ),
+            "llm_config": (inputs.get("llm_config") if targeting.get("model") else llm),
             "keywords": targeting.get("keywords"),
-            "trigger_chars": targeting.get(
-                "trigger_chars", DEFAULT_PAGE_TRIGGER_CHARS
-            ),
+            "trigger_chars": targeting.get("trigger_chars", DEFAULT_PAGE_TRIGGER_CHARS),
         }
         page_locator = PageLocator(
             targeting["section_description"],
-            max_selected_pages=targeting.get(
-                "max_selected_pages", DEFAULT_MAX_SELECTED_PAGES
-            ),
+            max_selected_pages=targeting.get("max_selected_pages", DEFAULT_MAX_SELECTED_PAGES),
             **options,
         )
-        section_locator = SectionLocator(
-            targeting["section_description"], **options
-        )
+        section_locator = SectionLocator(targeting["section_description"], **options)
         for doc in pending:
             if doc.suffix.lower() == ".pdf" and doc not in ranges:
                 page_locator.incomplete = False
@@ -988,9 +920,7 @@ def _target_extraction_inputs(plan: dict):
     return ranges, sections, locator_clients
 
 
-def _complete_extraction(
-    plan, results, extractor, locator_clients, run_id, started
-):
+def _complete_extraction(plan, results, extractor, locator_clients, run_id, started):
     """Aggregate outcomes and publish immutable run evidence."""
     output = plan["output"]
     pending = plan["pending"]
@@ -1009,24 +939,16 @@ def _complete_extraction(
         else "empty"
     )
     main_usage = getattr(getattr(extractor, "client", None), "usage", None)
-    returned_usage = any(
-        result.get("input_tokens") is not None for result in results
-    )
+    returned_usage = any(result.get("input_tokens") is not None for result in results)
     if main_usage is not None and (main_usage["calls"] or not returned_usage):
         measured = dict(main_usage)
     else:
         measured = {
             "calls": len(pending),
             "cost": sum(result.get("cost") or 0 for result in results),
-            "input_tokens": sum(
-                result.get("input_tokens") or 0 for result in results
-            ),
-            "output_tokens": sum(
-                result.get("output_tokens") or 0 for result in results
-            ),
-            "unknown_cost_calls": sum(
-                result.get("cost") is None for result in results
-            ),
+            "input_tokens": sum(result.get("input_tokens") or 0 for result in results),
+            "output_tokens": sum(result.get("output_tokens") or 0 for result in results),
+            "unknown_cost_calls": sum(result.get("cost") is None for result in results),
         }
     spent = {llm["model"]} if measured["calls"] else set()
     for client in (*locator_clients, plan.get("transcriber")):
@@ -1043,11 +965,9 @@ def _complete_extraction(
         model=llm["model"],
         runtime_artifact=None,
         doc_files=[*plan["reused"], *pending],
-        successful_output_paths=[
-            Path(result["output_path"]) for result in successes
-        ],
+        successful_output_paths=[Path(result["output_path"]) for result in successes],
         started_at=started,
-        finished_at=datetime.now(timezone.utc).isoformat(),
+        finished_at=datetime.now(UTC).isoformat(),
         total_processed=len(results),
         successful_count=len(successes),
         failed_count=len(failed),
@@ -1064,9 +984,7 @@ def _complete_extraction(
     )
     manifest["status"]["result"] = status
     manifest["coverage"] = {
-        result["output_path"]: result["coverage"]
-        for result in successes
-        if result.get("coverage")
+        result["output_path"]: result["coverage"] for result in successes if result.get("coverage")
     }
     successful_paths = {result["output_path"] for result in successes}
     manifest["reuse"] = {
@@ -1079,11 +997,7 @@ def _complete_extraction(
         and doc not in plan.get("targeting_incomplete", set())
         and str(plan["outputs"][doc]) in successful_paths
     }
-    manifest_path = (
-        output
-        / "run_manifests"
-        / f"{run_id.removeprefix('run://')}.manifest.json"
-    )
+    manifest_path = output / "run_manifests" / f"{run_id.removeprefix('run://')}.manifest.json"
     atomic_json(manifest_path, manifest)
     return ExtractionRunResult(
         total=len(results),
@@ -1101,9 +1015,7 @@ def _complete_extraction(
     )
 
 
-def _execute_extraction(
-    plan: dict, *, on_progress=None
-) -> ExtractionRunResult:
+def _execute_extraction(plan: dict, *, on_progress=None) -> ExtractionRunResult:
     """Execute the plan once and publish its measured outcome."""
     output, pending = plan["output"], plan["pending"]
     inputs, llm = plan["inputs"], plan["llm"]
@@ -1118,7 +1030,7 @@ def _execute_extraction(
             timeout=inputs.get("timeout_seconds"),
         )
     run_id = f"run://{uuid4().hex}"
-    started = datetime.now(timezone.utc).isoformat()
+    started = datetime.now(UTC).isoformat()
     ranges, sections, locator_clients = _target_extraction_inputs(plan)
     if plan["fresh"] and output.exists() and plan["documents"]:
         shutil.rmtree(output)
@@ -1129,12 +1041,8 @@ def _execute_extraction(
             buffer = io.StringIO(newline="")
             writer = csv.writer(buffer)
             writer.writerow(["file_path", "start_page", "end_page"])
-            writer.writerows(
-                (str(doc), *rng) for doc, rng in ranges.items() if rng
-            )
-            atomic_write(
-                output / "discovered_page_ranges.csv", buffer.getvalue()
-            )
+            writer.writerows((str(doc), *rng) for doc, rng in ranges.items() if rng)
+            atomic_write(output / "discovered_page_ranges.csv", buffer.getvalue())
     results = []
     for doc, record in plan["reused"].items():
         results.append(
@@ -1145,9 +1053,7 @@ def _execute_extraction(
                 "items": record.get("item_count", 0),
                 "cost": 0,
                 "output_path": str(plan["outputs"][doc]),
-                "coverage": record.get("processing_metrics", {}).get(
-                    "coverage", {}
-                ),
+                "coverage": record.get("processing_metrics", {}).get("coverage", {}),
             }
         )
     workers = inputs.get("max_concurrent", DEFAULT_MAX_CONCURRENT)
@@ -1307,12 +1213,11 @@ def compile_extractions(
         report_format=report_format,
     )
     schema_metadata = compiler.schema_metadata
-    started_at = datetime.now(timezone.utc)
+    started_at = datetime.now(UTC)
     provenance_warnings = analyze_compile_input_provenance(ext_dir)
     if protected_mode() and provenance_warnings:
         raise ValueError(
-            "Protected compilation rejected provenance: "
-            + "; ".join(provenance_warnings)
+            "Protected compilation rejected provenance: " + "; ".join(provenance_warnings)
         )
     build_fingerprint = None if dry_run else compiler.fingerprint(ext_dir)
     df, _schema_info = compiler.compile_from_directory(
@@ -1329,13 +1234,12 @@ def compile_extractions(
 
             with redirect_stdout(StringIO()):
                 export_df = (
-                    df if compiler.mode == "roster"
+                    df
+                    if compiler.mode == "roster"
                     else compiler.deduplicator.deduplicate(df.copy())
                 )
-            frame = compiler._prepare_output_dataframe(export_df)
-            compiler.validate_export(
-                frame, schema_metadata.get_output_formats()
-            )
+            frame = compiler._prepare_output_dataframe(export_df)  # noqa: SLF001 - package-internal helper
+            compiler.validate_export(frame, schema_metadata.get_output_formats())
     else:
         output_files, frame = compiler.export(
             df,
@@ -1455,7 +1359,7 @@ def execute_run_stages(
     for index, (stage, cmd) in enumerate(stage_cmds, 1):
         if on_stage is not None:
             on_stage(index, stage)
-        returncode = subprocess.run(cmd).returncode
+        returncode = subprocess.run(cmd, check=False).returncode  # noqa: S603 - argv built from sys.executable
         if returncode == EXIT_PARTIAL:
             partial.append(stage)
         elif returncode != 0:

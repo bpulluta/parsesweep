@@ -18,7 +18,10 @@ from urllib3.connectionpool import HTTPConnectionPool, HTTPSConnectionPool
 from urllib3.exceptions import NameResolutionError, NewConnectionError
 
 from psweep.security import (
-    ca_bundle, protected_mode, resolve_tls_verification, tls_context,
+    ca_bundle,
+    protected_mode,
+    resolve_tls_verification,
+    tls_context,
 )
 
 
@@ -32,9 +35,7 @@ class NetworkPolicyError(RuntimeError):
         self.retryable = bool(getattr(result, "retryable", False))
         parsed = urlsplit(url)
         origin = f"{parsed.scheme}://{parsed.hostname or 'unknown-host'}"
-        super().__init__(
-            f"Discovery acquisition denied for {origin}: {reason}"
-        )
+        super().__init__(f"Discovery acquisition denied for {origin}: {reason}")
 
 
 MAX_PAGE_BYTES = 50 * 1024 * 1024
@@ -84,9 +85,7 @@ def public_address(address: str) -> bool:
 def validate_public_url(url: str) -> None:
     """Check URL syntax and literal addresses before policy gates."""
     if protected_mode():
-        raise NetworkPolicyError(
-            url, "public discovery is disabled in protected mode"
-        )
+        raise NetworkPolicyError(url, "public discovery is disabled in protected mode")
     parsed = urlsplit(url)
     if (
         parsed.scheme not in {"http", "https"}
@@ -95,43 +94,32 @@ def validate_public_url(url: str) -> None:
         or parsed.password is not None
         or "%" in parsed.hostname
     ):
-        raise NetworkPolicyError(
-            url, "an HTTP(S) URL without credentials is required"
-        )
+        raise NetworkPolicyError(url, "an HTTP(S) URL without credentials is required")
     try:
         ipaddress.ip_address(parsed.hostname)
     except ValueError:
         return
     if not public_address(parsed.hostname):
-        raise NetworkPolicyError(
-            url, "non-public destinations are not permitted"
-        )
+        raise NetworkPolicyError(url, "non-public destinations are not permitted")
 
 
 def _connect_public(connection: HTTPConnection) -> socket.socket:
     """Resolve once and connect only to validated addresses."""
     host = connection.host
     try:
-        addresses = socket.getaddrinfo(
-            host, connection.port, type=socket.SOCK_STREAM
-        )
+        addresses = socket.getaddrinfo(host, connection.port, type=socket.SOCK_STREAM)
     except socket.gaierror as exc:
         raise NameResolutionError(host, connection, exc) from exc
     if not addresses or any(
-        not isinstance(row[4][0], str) or not public_address(row[4][0])
-        for row in addresses
+        not isinstance(row[4][0], str) or not public_address(row[4][0]) for row in addresses
     ):
         msg = f"http://{host}"
-        raise NetworkPolicyError(
-            msg, "DNS returned a non-public or empty address set"
-        )
+        raise NetworkPolicyError(msg, "DNS returned a non-public or empty address set")
     last_error = None
     for family, kind, protocol, _, address in addresses:
         sock = socket.socket(family, kind, protocol)
         try:
-            if connection.timeout is None or isinstance(
-                connection.timeout, Real
-            ):
+            if connection.timeout is None or isinstance(connection.timeout, Real):
                 sock.settimeout(connection.timeout)
             for option in connection.socket_options or []:
                 sock.setsockopt(*option)
@@ -144,9 +132,7 @@ def _connect_public(connection: HTTPConnection) -> socket.socket:
             last_error = exc
         else:
             return sock
-    raise NewConnectionError(
-        connection, "Could not connect to an approved address"
-    ) from last_error
+    raise NewConnectionError(connection, "Could not connect to an approved address") from last_error
 
 
 class PublicHTTPConnection(HTTPConnection):
@@ -188,9 +174,7 @@ class PublicHTTPAdapter(HTTPAdapter):
 
     def build_connection_pool_key_attributes(self, request, verify, cert=None):
         """Use approved private roots or system trust."""
-        host, options = super().build_connection_pool_key_attributes(
-            request, verify, cert
-        )
+        host, options = super().build_connection_pool_key_attributes(request, verify, cert)
         options["ssl_context"] = tls_context(verify=verify is not False)
         return host, options
 
@@ -230,9 +214,7 @@ class BoundedResponse:
         try:
             while True:
                 self._check_limits()
-                chunk = self._response.raw.read1(
-                    chunk_size, decode_content=True
-                )
+                chunk = self._response.raw.read1(chunk_size, decode_content=True)
                 self._bytes_read += len(chunk)
                 self._check_limits()
                 if not chunk:
@@ -266,9 +248,7 @@ class BoundedResponse:
     @property
     def text(self) -> str:
         """Decode a bounded response using its declared encoding."""
-        return self.content.decode(
-            self._response.encoding or "utf-8", errors="replace"
-        )
+        return self.content.decode(self._response.encoding or "utf-8", errors="replace")
 
     def json(self):
         """Decode a bounded JSON response."""
@@ -303,9 +283,7 @@ def request_get(
     validate_public_url(url)
     verify = resolve_tls_verification("PSWEEP_SSL_VERIFY", verify)
     if allow_redirects:
-        raise NetworkPolicyError(
-            url, "redirects must pass the shared destination gate"
-        )
+        raise NetworkPolicyError(url, "redirects must pass the shared destination gate")
     deadline = time.monotonic() + timeout
     with requests.Session() as session:
         # Proxies/netrc could bypass policy or add ambient credentials.

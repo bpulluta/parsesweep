@@ -37,9 +37,7 @@ def test_cli_exit_matches_manifest_at_every_verbosity(
 ):
     """Quiet output cannot bypass recorded failure or empty results."""
     manifest = tmp_path / "manifest.json"
-    manifest.write_text(
-        json.dumps({"status": status, "errors": errors, "notes": []})
-    )
+    manifest.write_text(json.dumps({"status": status, "errors": errors, "notes": []}))
     monkeypatch.setattr(
         DiscoveryEngine,
         "run",

@@ -82,25 +82,19 @@ def test_http_crawl_gates_children_without_filtering_hub_paths(monkeypatch):
             include_url_patterns=[r"\.pdf$"],
             extra_params={
                 "request_gate": gate,
-                "rate_limiter": SimpleNamespace(
-                    wait=lambda: waits.append(True)
-                ),
+                "rate_limiter": SimpleNamespace(wait=lambda: waits.append(True)),
             },
         ),
     )
     assert calls == list(pages)
     assert "https://county.gov/private" in checks
     assert waits == [True, True]
-    assert [artifact.url for artifact in result.artifacts] == [
-        "https://county.gov/doc.pdf"
-    ]
+    assert [artifact.url for artifact in result.artifacts] == ["https://county.gov/doc.pdf"]
 
 
 def test_http_redirect_to_denied_url_is_not_followed(monkeypatch):
     """Source-page redirects use the crawl's network guard."""
-    response = Response(
-        "https://county.gov/hub", status=302, location="/private"
-    )
+    response = Response("https://county.gov/hub", status=302, location="/private")
     calls = []
 
     def get(url, **kwargs):
@@ -148,12 +142,8 @@ def test_http_redirect_resolves_links_against_landing_page(monkeypatch):
     """Relative child links use the observed HTTP landing-page directory."""
     calls = []
     responses = [
-        Response(
-            "https://county.gov/hub", status=302, location="/codes/index"
-        ),
-        Response(
-            "https://county.gov/codes/index", text='<a href="doc.pdf">Doc</a>'
-        ),
+        Response("https://county.gov/hub", status=302, location="/codes/index"),
+        Response("https://county.gov/codes/index", text='<a href="doc.pdf">Doc</a>'),
     ]
 
     def get(url, **kwargs):
@@ -163,18 +153,16 @@ def test_http_redirect_resolves_links_against_landing_page(monkeypatch):
     monkeypatch.setattr(network, "request_get", get)
     result = HttpDiggerConnector().discover(
         DiggerInput(
-            sources=["https://county.gov/hub"], max_depth=1, max_pages=5,
+            sources=["https://county.gov/hub"],
+            max_depth=1,
+            max_pages=5,
         ),
     )
-    assert [artifact.url for artifact in result.artifacts] == [
-        "https://county.gov/codes/doc.pdf"
-    ]
+    assert [artifact.url for artifact in result.artifacts] == ["https://county.gov/codes/doc.pdf"]
     assert all(response.closed for response in responses)
 
 
-@pytest.mark.parametrize(
-    "connector", [HttpDiggerConnector, SeleniumDiggerConnector]
-)
+@pytest.mark.parametrize("connector", [HttpDiggerConnector, SeleniumDiggerConnector])
 def test_render_navigation_is_gated_and_paced(monkeypatch, connector):
     """Both Selenium crawling and HTTP rendering gate each navigation."""
     hub = "https://county.gov/hub"
@@ -213,9 +201,7 @@ def test_render_navigation_is_gated_and_paced(monkeypatch, connector):
             extra_params={
                 "request_gate": checks.append,
                 "response_url_gate": final_checks.append,
-                "rate_limiter": SimpleNamespace(
-                    wait=lambda: waits.append(True)
-                ),
+                "rate_limiter": SimpleNamespace(wait=lambda: waits.append(True)),
                 "browser_escalation": True,
             },
         ),
@@ -226,14 +212,10 @@ def test_render_navigation_is_gated_and_paced(monkeypatch, connector):
     assert final_checks.count(hub) >= 1
     assert final_checks.count(child) >= 1
     assert len(waits) == (4 if connector is HttpDiggerConnector else 2)
-    assert [artifact.url for artifact in result.artifacts] == [
-        "https://county.gov/doc.pdf"
-    ]
+    assert [artifact.url for artifact in result.artifacts] == ["https://county.gov/doc.pdf"]
 
 
-@pytest.mark.parametrize(
-    "connector", [HttpDiggerConnector, SeleniumDiggerConnector]
-)
+@pytest.mark.parametrize("connector", [HttpDiggerConnector, SeleniumDiggerConnector])
 def test_render_denied_final_url_discards_links(monkeypatch, connector):
     """Post-navigation checks reject documents from a denied landing page."""
     hub = "https://county.gov/hub"
@@ -271,9 +253,7 @@ def test_render_denied_final_url_discards_links(monkeypatch, connector):
     assert result.artifacts == []
 
 
-@pytest.mark.parametrize(
-    "connector", [HttpDiggerConnector, SeleniumDiggerConnector]
-)
+@pytest.mark.parametrize("connector", [HttpDiggerConnector, SeleniumDiggerConnector])
 def test_strict_browser_policy_fails_before_navigation(monkeypatch, connector):
     """A strict boundary cannot claim to intercept browser subresources."""
     monkeypatch.setattr(FakeBrowser, "navigations", [])
@@ -361,9 +341,7 @@ def test_refused_page_is_retried_through_the_browser(
     if not browser:
         monkeypatch.setattr(FakeBrowser, "_start", lambda self: 1 / 0)
     monkeypatch.setattr("psweep.discovery.browser.BrowserSession", FakeBrowser)
-    monkeypatch.setattr(
-        network, "request_get", lambda url, **_kwargs: Response(url, status=403)
-    )
+    monkeypatch.setattr(network, "request_get", lambda url, **_kwargs: Response(url, status=403))
     result = HttpDiggerConnector().discover(
         DiggerInput(
             sources=[hub],
@@ -418,7 +396,9 @@ def test_depth_one_fetches_only_sources():
 def test_depth_two_follows_pages_but_skips_navigation_links():
     urls, fetched, _, artifacts = _crawl(max_depth=2)
     assert fetched == [
-        HUB, "https://county.gov/showpublisheddocument/12", "https://county.gov/codes"
+        HUB,
+        "https://county.gov/showpublisheddocument/12",
+        "https://county.gov/codes",
     ]
     assert urls == ["https://county.gov/docs/a.pdf", "https://county.gov/codes/c.pdf"]
     assert {a.metadata["source_url"] for a in artifacts} == {HUB}
@@ -426,9 +406,12 @@ def test_depth_two_follows_pages_but_skips_navigation_links():
 
 def test_shared_links_are_attributed_to_every_source_with_one_fetch():
     codes = "https://county.gov/codes"
-    urls, fetched, _, artifacts = _crawl(sources=[HUB, codes])
+    _urls, fetched, _, artifacts = _crawl(sources=[HUB, codes])
     pairs = {(a.url, a.metadata["source_url"]) for a in artifacts}
-    assert {("https://county.gov/codes/c.pdf", HUB), ("https://county.gov/codes/c.pdf", codes)} <= pairs
+    assert {
+        ("https://county.gov/codes/c.pdf", HUB),
+        ("https://county.gov/codes/c.pdf", codes),
+    } <= pairs
     assert fetched.count(codes) == 1
 
 
@@ -590,9 +573,7 @@ def test_resolve_digger_connector():
         resolve_digger_connector("browser")
 
 
-@pytest.mark.parametrize(
-    "connector", [HttpDiggerConnector, SeleniumDiggerConnector]
-)
+@pytest.mark.parametrize("connector", [HttpDiggerConnector, SeleniumDiggerConnector])
 def test_crawl_browser_sends_the_configured_user_agent(monkeypatch, connector):
     """Browser crawls identify with the same User-Agent as HTTP fetches."""
     hub = "https://county.gov/hub"
@@ -655,8 +636,6 @@ def test_open_browser_returns_none_when_unavailable(monkeypatch):
     monkeypatch.setattr(browser_mod.BrowserSession, "_start", _boom)
     from psweep.discovery.engine import DiscoveryRequest
 
-    session, note = DiscoveryEngine._open_browser_for_download(
-        DiscoveryRequest(domain="x")
-    )
+    session, note = DiscoveryEngine._open_browser_for_download(DiscoveryRequest(domain="x"))
     assert session is None
     assert "unavailable" in note.lower()

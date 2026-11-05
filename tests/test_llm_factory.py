@@ -31,10 +31,7 @@ def test_alias_lookup_wins_when_stage_value_is_an_alias():
     """Alias lookup wins when stage value is an alias."""
     models = {"fast": "gpt-4o-mini", "accurate": "gpt-5"}
     assert (
-        llm_factory.resolve_model_name(
-            "accurate", models=models, llm_config=OPENAI_CFG
-        )
-        == "gpt-5"
+        llm_factory.resolve_model_name("accurate", models=models, llm_config=OPENAI_CFG) == "gpt-5"
     )
 
 
@@ -42,9 +39,7 @@ def test_literal_model_string_passes_through_when_not_an_alias():
     """Literal model string passes through when not an alias."""
     models = {"fast": "gpt-4o-mini"}
     assert (
-        llm_factory.resolve_model_name(
-            "claude-3.5-sonnet", models=models, llm_config=OPENAI_CFG
-        )
+        llm_factory.resolve_model_name("claude-3.5-sonnet", models=models, llm_config=OPENAI_CFG)
         == "claude-3.5-sonnet"
     )
 
@@ -73,17 +68,13 @@ def test_default_model_literal_used_when_no_stage_value():
 
 def test_falls_back_to_llm_config_model_when_nothing_specified():
     """Falls back to llm config model when nothing specified."""
-    assert (
-        llm_factory.resolve_model_name(None, models={}, llm_config=OPENAI_CFG)
-        == "gpt-4o-mini"
-    )
+    assert llm_factory.resolve_model_name(None, models={}, llm_config=OPENAI_CFG) == "gpt-4o-mini"
 
 
 def test_final_floor_is_default_model():
     """Final floor is default model."""
     assert (
-        llm_factory.resolve_model_name(None, models={}, llm_config={})
-        == llm_factory.DEFAULT_MODEL
+        llm_factory.resolve_model_name(None, models={}, llm_config={}) == llm_factory.DEFAULT_MODEL
     )
 
 
@@ -93,9 +84,7 @@ def test_final_floor_is_default_model():
 def test_same_provider_alias_threads_configured_azure_creds():
     """Same provider alias threads configured azure creds."""
     models = {"fast": "fast-deploy", "accurate": "accurate-deploy"}
-    kw = llm_factory.resolve_llm_kwargs(
-        "fast", models=models, llm_config=AZURE_CFG
-    )
+    kw = llm_factory.resolve_llm_kwargs("fast", models=models, llm_config=AZURE_CFG)
     assert kw["model"] == "fast-deploy"
     assert kw["provider"] == "azure"  # deployment name corrected to azure
     assert kw["api_key"] == "azure-key"
@@ -105,9 +94,7 @@ def test_same_provider_alias_threads_configured_azure_creds():
 
 def test_openai_same_provider_threads_openai_key():
     """Openai same provider threads openai key."""
-    kw = llm_factory.resolve_llm_kwargs(
-        "gpt-4o", models={}, llm_config=OPENAI_CFG
-    )
+    kw = llm_factory.resolve_llm_kwargs("gpt-4o", models={}, llm_config=OPENAI_CFG)
     assert kw["provider"] == "openai"
     assert kw["api_key"] == "openai-key"
     assert kw["azure_endpoint"] is None
@@ -116,9 +103,7 @@ def test_openai_same_provider_threads_openai_key():
 def test_cross_provider_falls_back_to_ambient_env_key(monkeypatch):
     """Cross provider falls back to ambient env key."""
     monkeypatch.setenv("ANTHROPIC_API_KEY", "anthropic-ambient")
-    kw = llm_factory.resolve_llm_kwargs(
-        "claude-3.5-sonnet", models={}, llm_config=OPENAI_CFG
-    )
+    kw = llm_factory.resolve_llm_kwargs("claude-3.5-sonnet", models={}, llm_config=OPENAI_CFG)
     assert kw["provider"] == "anthropic"
     assert kw["api_key"] == "anthropic-ambient"
 
@@ -126,9 +111,7 @@ def test_cross_provider_falls_back_to_ambient_env_key(monkeypatch):
 def test_cross_provider_without_key_yields_none(monkeypatch):
     """Cross provider without key yields none."""
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-    kw = llm_factory.resolve_llm_kwargs(
-        "claude-3.5-sonnet", models={}, llm_config=OPENAI_CFG
-    )
+    kw = llm_factory.resolve_llm_kwargs("claude-3.5-sonnet", models={}, llm_config=OPENAI_CFG)
     assert kw["provider"] == "anthropic"
     assert kw["api_key"] is None
 
@@ -160,9 +143,7 @@ def test_cross_provider_mistral_uses_mistral_api_key(monkeypatch):
     # mistral is now a recognized cross-provider fallback (MISTRAL_API_KEY).
     """Cross provider mistral uses mistral api key."""
     monkeypatch.setenv("MISTRAL_API_KEY", "mistral-ambient")
-    kw = llm_factory.resolve_llm_kwargs(
-        "mistral-large-2", models={}, llm_config=OPENAI_CFG
-    )
+    kw = llm_factory.resolve_llm_kwargs("mistral-large-2", models={}, llm_config=OPENAI_CFG)
     assert kw["provider"] == "mistral"
     assert kw["api_key"] == "mistral-ambient"
 
@@ -172,9 +153,7 @@ def test_cross_provider_mistral_uses_mistral_api_key(monkeypatch):
 
 def test_provider_env_keys_are_a_subset_of_known_providers():
     """Provider env keys are a subset of known providers."""
-    assert set(llm_factory._PROVIDER_ENV_KEY).issubset(
-        llm_factory.KNOWN_PROVIDERS
-    )
+    assert set(llm_factory._PROVIDER_ENV_KEY).issubset(llm_factory.KNOWN_PROVIDERS)
 
 
 @pytest.mark.parametrize(
@@ -198,9 +177,7 @@ def test_provider_env_keys_are_a_subset_of_known_providers():
         ("llama-mistral", "meta"),
     ],
 )
-def test_detect_provider_preserves_known_results_and_marker_priority(
-    model, provider
-):
+def test_detect_provider_preserves_known_results_and_marker_priority(model, provider):
     """Preserve every heuristic provider result and ordered marker priority."""
     assert llm_factory.detect_provider(model) == provider
     assert provider in llm_factory.KNOWN_PROVIDERS
@@ -250,9 +227,7 @@ def test_explicit_openai_overrides_configured_azure(monkeypatch):
 def test_explicit_azure_uses_ambient_azure_endpoint_and_version(monkeypatch):
     """Explicit azure uses ambient azure endpoint and version."""
     monkeypatch.setenv("AZURE_OPENAI_API_KEY", "ambient-azure")
-    monkeypatch.setenv(
-        "AZURE_OPENAI_ENDPOINT", "https://ambient.azure.example"
-    )
+    monkeypatch.setenv("AZURE_OPENAI_ENDPOINT", "https://ambient.azure.example")
     monkeypatch.setenv("AZURE_OPENAI_API_VERSION", "ambient-version")
     cfg = {
         **OPENAI_CFG,
@@ -271,9 +246,7 @@ def test_explicit_azure_uses_ambient_azure_endpoint_and_version(monkeypatch):
 
 
 @pytest.mark.parametrize("provider", sorted(llm_factory.KNOWN_PROVIDERS))
-def test_explicit_cross_provider_never_borrows_foreign_key(
-    monkeypatch, provider
-):
+def test_explicit_cross_provider_never_borrows_foreign_key(monkeypatch, provider):
     """Explicit cross provider never borrows foreign key."""
     for env_var in (*llm_factory._PROVIDER_ENV_KEY.values(), "GOOGLE_API_KEY"):
         monkeypatch.delenv(env_var, raising=False)
@@ -303,9 +276,7 @@ def test_explicit_gemini_uses_google_key_when_gemini_key_missing(monkeypatch):
 def test_explicit_unknown_provider_is_rejected(provider):
     """Explicit unknown provider is rejected."""
     with pytest.raises(ValueError, match=r"provider.*must be"):
-        llm_factory.resolve_llm_kwargs(
-            "gpt-4o", llm_config=OPENAI_CFG, provider=provider
-        )
+        llm_factory.resolve_llm_kwargs("gpt-4o", llm_config=OPENAI_CFG, provider=provider)
 
 
 def test_explicit_provider_is_case_insensitive():
@@ -320,9 +291,7 @@ def test_explicit_provider_is_case_insensitive():
 
 
 @pytest.mark.parametrize("provider", [None, "auto", "azure", "anthropic"])
-def test_proxy_endpoint_keeps_proxy_credentials_with_provider_override(
-    monkeypatch, provider
-):
+def test_proxy_endpoint_keeps_proxy_credentials_with_provider_override(monkeypatch, provider):
     """Proxy endpoint keeps proxy credentials with provider override."""
     monkeypatch.setenv("ANTHROPIC_API_KEY", "not-proxy-key")
     monkeypatch.setenv("AZURE_OPENAI_API_KEY", "not-proxy-key")
@@ -339,9 +308,7 @@ def test_proxy_endpoint_keeps_proxy_credentials_with_provider_override(
     assert kwargs["model"] == "anthropic/claude-deployment"
     assert kwargs["api_key"] == "proxy-key"
     assert kwargs["base_url"] == "https://proxy.example/v1"
-    assert kwargs["provider"] == (
-        provider if provider not in {None, "auto"} else "openai"
-    )
+    assert kwargs["provider"] == (provider if provider not in {None, "auto"} else "openai")
     assert not kwargs.get("azure_endpoint")
     assert not kwargs.get("azure_api_version")
 
@@ -374,9 +341,7 @@ def test_ambient_azure_without_endpoint_does_not_borrow_configured_values(
         "azure_endpoint": "foreign",
         "azure_api_version": "foreign",
     }
-    kwargs = llm_factory.resolve_llm_kwargs(
-        "deployment", llm_config=cfg, provider="azure"
-    )
+    kwargs = llm_factory.resolve_llm_kwargs("deployment", llm_config=cfg, provider="azure")
     assert kwargs["api_key"] is None
     assert kwargs["azure_endpoint"] is None
     assert kwargs["azure_api_version"] is None

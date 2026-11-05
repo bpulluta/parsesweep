@@ -44,6 +44,7 @@ def _int(minimum: int) -> Check:
         if isinstance(value, bool) or not isinstance(value, int) or value < minimum:
             _fail(loc, f"an integer >= {minimum}")
         return value
+
     return check
 
 
@@ -69,6 +70,7 @@ def _choice(*options: str) -> Check:
         if value not in options:
             _fail(loc, "one of: " + ", ".join(options))
         return value
+
     return check
 
 
@@ -85,9 +87,7 @@ def _patterns(value: Any, loc: str) -> list[str]:
         try:
             re.compile(pattern)
         except re.error as exc:
-            raise RuntimeConfigError(
-                f"'{loc}' has an invalid regular expression: {exc}"
-            ) from exc
+            raise RuntimeConfigError(f"'{loc}' has an invalid regular expression: {exc}") from exc
     return value
 
 
@@ -109,8 +109,7 @@ def _string_map(value: Any, loc: str) -> dict[str, str]:
 
 def _domain_scores(value: Any, loc: str) -> dict[str, float]:
     if not isinstance(value, dict) or not all(
-        isinstance(k, str) and k.strip()
-        and isinstance(v, (int, float)) and not isinstance(v, bool)
+        isinstance(k, str) and k.strip() and isinstance(v, (int, float)) and not isinstance(v, bool)
         for k, v in value.items()
     ):
         _fail(loc, "a map of domain substrings to numbers")
@@ -122,9 +121,7 @@ def _search_params(value: Any, loc: str) -> dict[str, Any]:
         _fail(loc, "an object")
     reserved = RESERVED_SEARCH_PARAMS.intersection(value)
     if reserved:
-        raise RuntimeConfigError(
-            f"'{loc}' has reserved keys: {', '.join(sorted(reserved))}"
-        )
+        raise RuntimeConfigError(f"'{loc}' has reserved keys: {', '.join(sorted(reserved))}")
     return value
 
 
@@ -149,11 +146,13 @@ def _walk(
 
 def _block(schema: dict[str, Any], *, toggle: bool = False) -> Check:
     """Validate a nested block that is passed through as one value."""
+
     def check(value: Any, loc: str) -> dict[str, Any]:
         if toggle and isinstance(value, bool):
             return {"enabled": value}
         _walk(value, schema, loc, None)
         return dict(value)
+
     return check
 
 
@@ -161,7 +160,7 @@ _POLICY_MODE = _choice("ignore", "warn", "enforce")
 
 DISCOVERY_SCHEMA: dict[str, Any] = {
     # ``targets`` is validated separately: it needs the config directory.
-    "targets": _Key(lambda value, loc: value, "targets"),
+    "targets": _Key(lambda value, _loc: value, "targets"),
     "sources": _Key(_urls, "sources"),
     "queries": _Key(_strings, "queries"),
     "partition_by": _Key(_strings, "partition_by"),
@@ -211,9 +210,7 @@ DISCOVERY_SCHEMA: dict[str, Any] = {
         "exclude_url_patterns": _Key(_patterns, "selection_exclude_url_patterns"),
         "exclude_text_patterns": _Key(_patterns, "selection_exclude_text_patterns"),
         "max_per_host_per_target": _Key(_int(0), "selection_max_per_host_per_target"),
-        "require_supported_document": _Key(
-            _bool, "selection_require_supported_document"
-        ),
+        "require_supported_document": _Key(_bool, "selection_require_supported_document"),
         "target_require_any": _Key(_strings, "selection_target_require_any"),
         "target_require_all": _Key(_strings, "selection_target_require_all"),
         "target_exclude": _Key(_strings, "selection_target_exclude"),
@@ -223,9 +220,7 @@ DISCOVERY_SCHEMA: dict[str, Any] = {
         "top_k": _Key(_int(0), "link_top_k"),
         "keywords": _Key(_strings, "link_prioritization_keywords"),
         "domain_scores": _Key(_domain_scores, "link_prioritization_domain_scores"),
-        "shopping_path_keywords": _Key(
-            _strings, "link_prioritization_shopping_keywords"
-        ),
+        "shopping_path_keywords": _Key(_strings, "link_prioritization_shopping_keywords"),
     },
     "document_classifier": _Key(
         _block(
@@ -273,8 +268,7 @@ def _check_review_capacity(fields: dict[str, tuple[Any, str]]) -> None:
     keep_top = (fields.get("document_review", ({},))[0]).get("keep_top")
     if max_per_target is not None and keep_top is not None and max_per_target < keep_top:
         raise RuntimeConfigError(
-            "'discovery.selection.max_per_target' must be >= "
-            "'discovery.document_review.keep_top'"
+            "'discovery.selection.max_per_target' must be >= 'discovery.document_review.keep_top'"
         )
 
 
@@ -291,9 +285,7 @@ def discovery_key_paths(
     return paths
 
 
-def resolve_discovery_section(
-    section: Any, config_path: str | None
-) -> dict[str, tuple[Any, str]]:
+def resolve_discovery_section(section: Any, config_path: str | None) -> dict[str, tuple[Any, str]]:
     """Validate ``discovery`` and return ``{request_field: (value, source)}``.
 
     Errors name the config file and the full key path.

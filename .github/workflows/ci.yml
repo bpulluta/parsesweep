@@ -44,31 +44,10 @@ jobs:
       - name: Run tests
         run: pixi run --locked -e dev test
 
-      # The codebase carries known ruff debt (E501/W505/formatting) that is not
-      # gated here. What IS enforced is the docstring standard the project
-      # maintains: zero pydocstyle (D) violations under the project's ruff
-      # config. Keep this green — it is the contract Phases 2-3 established.
-      - name: Docstring lint (pydocstyle D must stay at 0)
-        run: |
-          pixi run --locked -e dev python - <<'PY'
-          import subprocess
-          import sys
-          import tomllib
-          from pathlib import Path
-
-          config = tomllib.loads(Path("pyproject.toml").read_text())
-          # CLI selection takes precedence over config ignores; preserve policy.
-          ignored = config["tool"]["ruff"]["lint"]["ignore"]
-          sys.exit(subprocess.call([
-              "ruff", "check", "src/", "--select", "D",
-              "--ignore", ",".join(ignored),
-          ]))
-          PY
-
-      - name: Selected correctness and security rules
-        run: >-
-          pixi run --locked -e dev ruff check src/
-          --select F821,F822,F823,B006,B012,B023,S102,S307,S501,S502,S506,S602
+      # Ruff config lives in pyproject.toml; `lint` checks src and tests,
+      # including formatting.
+      - name: Lint
+        run: pixi run --locked -e dev lint
 
       - name: Build wheel and source distribution
         run: pixi run --locked -e dev python -m build --no-isolation

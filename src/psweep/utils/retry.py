@@ -75,7 +75,8 @@ def _is_challenge(exc: BaseException) -> bool:
 def may_retry_in_run(exc: BaseException) -> bool:
     """Return True when the same run should repeat the request: transient
     errors and sampled bot-manager challenges. Only transient errors leave
-    a target incomplete for the next run (``is_transient_error``)."""
+    a target incomplete for the next run (``is_transient_error``).
+    """
     return is_transient_error(exc) or _is_challenge(exc)
 
 
@@ -120,7 +121,8 @@ def is_transient_error(exc: BaseException) -> bool:
 
 def _tls_failure(exc: BaseException | None) -> bool:
     """Return True when a TLS error raised or caused ``exc``; SDKs wrap
-    certificate failures as connection errors or HTTP 500s."""
+    certificate failures as connection errors or HTTP 500s.
+    """
     seen: set[int] = set()
     while exc is not None and id(exc) not in seen:
         if isinstance(exc, (ssl.SSLError, requests.exceptions.SSLError)):

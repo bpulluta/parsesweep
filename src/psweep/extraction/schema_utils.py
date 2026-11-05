@@ -4,12 +4,12 @@ import json
 from functools import lru_cache
 from importlib.resources import files
 from pathlib import Path
-from typing import Any, Dict, Union
+from typing import Any
 
-from ..config.file_loader import load_json_file
+from psweep.config.file_loader import load_json_file
 
 
-def load_schema(schema_path: Union[str, Path]) -> Dict[str, Any]:
+def load_schema(schema_path: str | Path) -> dict[str, Any]:
     """
     Load JSON schema from file.
 
@@ -34,7 +34,7 @@ def load_schema(schema_path: Union[str, Path]) -> Dict[str, Any]:
     return schema
 
 
-def _resolve_ref(schema: Dict[str, Any], node: Any) -> Any:
+def _resolve_ref(schema: dict[str, Any], node: Any) -> Any:
     seen = set()
     while isinstance(node, dict) and isinstance(node.get("$ref"), str):
         ref = node["$ref"]
@@ -50,7 +50,7 @@ def _resolve_ref(schema: Dict[str, Any], node: Any) -> Any:
     return node
 
 
-def evidence_paths(schema: Dict[str, Any]) -> list[tuple[str, ...]]:
+def evidence_paths(schema: dict[str, Any]) -> list[tuple[str, ...]]:
     """Return paths of ``{value, quote}`` evidence objects (``*`` = array item).
 
     An object whose properties are exactly ``value`` and ``quote`` is an
@@ -59,7 +59,7 @@ def evidence_paths(schema: Dict[str, Any]) -> list[tuple[str, ...]]:
     """
     from jsonschema.validators import validator_for
 
-    from ..exceptions import SchemaValidationError
+    from psweep.exceptions import SchemaValidationError
 
     root = validator_for(schema)(schema)
     paths: list[tuple[str, ...]] = []
@@ -101,11 +101,28 @@ def evidence_paths(schema: Dict[str, Any]) -> list[tuple[str, ...]]:
 
 _STRICT_UNSUPPORTED = frozenset(
     {
-        "$ref", "allOf", "oneOf", "not", "if", "then", "else",
-        "patternProperties", "dependentRequired", "dependentSchemas",
-        "minLength", "maxLength", "minItems", "maxItems", "uniqueItems",
-        "minimum", "maximum", "exclusiveMinimum", "exclusiveMaximum",
-        "multipleOf", "format", "pattern",
+        "$ref",
+        "allOf",
+        "oneOf",
+        "not",
+        "if",
+        "then",
+        "else",
+        "patternProperties",
+        "dependentRequired",
+        "dependentSchemas",
+        "minLength",
+        "maxLength",
+        "minItems",
+        "maxItems",
+        "uniqueItems",
+        "minimum",
+        "maximum",
+        "exclusiveMinimum",
+        "exclusiveMaximum",
+        "multipleOf",
+        "format",
+        "pattern",
     }
 )
 
@@ -127,22 +144,18 @@ def strict_compatible(node: Any) -> bool:
             or set(node.get("required", [])) != set(properties)
         ):
             return False
-    return all(
-        strict_compatible(node[key])
-        for key in ("items", "anyOf")
-        if key in node
-    ) and all(
+    return all(strict_compatible(node[key]) for key in ("items", "anyOf") if key in node) and all(
         strict_compatible(child)
         for key in ("properties", "$defs")
         for child in (node.get(key) or {}).values()
     )
 
 
-def build_schema_validator(schema: Dict[str, Any]):
+def build_schema_validator(schema: dict[str, Any]):
     """Validate a schema definition and return its format-aware validator."""
     from jsonschema import FormatChecker, SchemaError
     from jsonschema.validators import validator_for
-    from ..exceptions import SchemaValidationError
+    from psweep.exceptions import SchemaValidationError
 
     validator_class = validator_for(schema)
     try:
@@ -156,9 +169,7 @@ def build_schema_validator(schema: Dict[str, Any]):
 @lru_cache(maxsize=1)
 def record_validator():
     """Load the canonical record-envelope validator once per process."""
-    path = files("psweep.extraction").joinpath(
-        "data/extraction_record.schema.json"
-    )
+    path = files("psweep.extraction").joinpath("data/extraction_record.schema.json")
     return build_schema_validator(
         json.loads(path.read_text(encoding="utf-8")),
     )

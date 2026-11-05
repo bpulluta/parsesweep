@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from copy import deepcopy
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any
 
 from psweep.workspace import CONFIG_ROOT, SCHEMA_FILENAME
 
@@ -15,6 +15,7 @@ class ConfigValidationError(ValueError):
 
 
 def display_cli_path(path: Path, repo_root: Path) -> str:
+    """Display ``path`` relative to ``repo_root`` when inside it, else absolute."""
     try:
         return path.resolve().relative_to(repo_root.resolve()).as_posix()
     except ValueError:
@@ -25,7 +26,7 @@ def _humanize_domain_name(name: str) -> str:
     return name.replace("_", " ").replace("-", " ").strip().title()
 
 
-def _schema_type_options(schema_node: Dict[str, Any]) -> set[str]:
+def _schema_type_options(schema_node: dict[str, Any]) -> set[str]:
     type_value = schema_node.get("type")
     if isinstance(type_value, str):
         return {type_value}
@@ -34,21 +35,21 @@ def _schema_type_options(schema_node: Dict[str, Any]) -> set[str]:
     return set()
 
 
-def _schema_properties(schema_node: Dict[str, Any]) -> Dict[str, Any]:
+def _schema_properties(schema_node: dict[str, Any]) -> dict[str, Any]:
     properties = schema_node.get("properties")
     return properties if isinstance(properties, dict) else {}
 
 
 def _schema_array_items(
-    schema_node: Dict[str, Any],
-) -> Optional[Dict[str, Any]]:
+    schema_node: dict[str, Any],
+) -> dict[str, Any] | None:
     items = schema_node.get("items")
     return items if isinstance(items, dict) else None
 
 
 def _prune_schema_for_starter(node: Any) -> Any:
     if isinstance(node, dict):
-        pruned: Dict[str, Any] = {}
+        pruned: dict[str, Any] = {}
         for key, value in node.items():
             if key in {"examples", "enum", "default"}:
                 continue
@@ -59,7 +60,7 @@ def _prune_schema_for_starter(node: Any) -> Any:
     return deepcopy(node)
 
 
-def _main_array_item_schema(schema_data: Dict[str, Any]) -> Dict[str, Any]:
+def _main_array_item_schema(schema_data: dict[str, Any]) -> dict[str, Any]:
     metadata = schema_data.get("$metadata") or {}
     extraction = metadata.get("extraction") or {}
     main_data_array = extraction.get("main_data_array")
@@ -70,41 +71,33 @@ def _main_array_item_schema(schema_data: Dict[str, Any]) -> Dict[str, Any]:
 
     main_array_schema = _schema_properties(schema_data).get(main_data_array)
     if not isinstance(main_array_schema, dict):
-        raise ConfigValidationError(
-            f"Reference schema is missing properties.{main_data_array}"
-        )
+        raise ConfigValidationError(f"Reference schema is missing properties.{main_data_array}")
 
     item_schema = _schema_array_items(main_array_schema)
-    if not isinstance(
-        item_schema, dict
-    ) or "object" not in _schema_type_options(item_schema):
+    if not isinstance(item_schema, dict) or "object" not in _schema_type_options(item_schema):
         raise ConfigValidationError(
             f"Reference schema properties.{main_data_array}.items must be an object schema"
         )
     return item_schema
 
 
-def available_main_array_fields(schema_data: Dict[str, Any]) -> list[str]:
-    return list(
-        _schema_properties(_main_array_item_schema(schema_data)).keys()
-    )
+def available_main_array_fields(schema_data: dict[str, Any]) -> list[str]:
+    """Field names of the main-array item schema."""
+    return list(_schema_properties(_main_array_item_schema(schema_data)).keys())
 
 
 def apply_main_array_field_selection(
-    schema_data: Dict[str, Any],
+    schema_data: dict[str, Any],
     selected_fields: list[str],
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
+    """Restrict the main-array item schema to ``selected_fields``."""
     item_schema = _main_array_item_schema(schema_data)
     item_properties = _schema_properties(item_schema)
     if not selected_fields:
-        raise ConfigValidationError(
-            "Starter schema field selection cannot be empty"
-        )
+        raise ConfigValidationError("Starter schema field selection cannot be empty")
 
     unknown_fields = [
-        field_name
-        for field_name in selected_fields
-        if field_name not in item_properties
+        field_name for field_name in selected_fields if field_name not in item_properties
     ]
     if unknown_fields:
         raise ConfigValidationError(
@@ -112,16 +105,13 @@ def apply_main_array_field_selection(
         )
 
     item_schema["properties"] = {
-        field_name: deepcopy(item_properties[field_name])
-        for field_name in selected_fields
+        field_name: deepcopy(item_properties[field_name]) for field_name in selected_fields
     }
 
     required_fields = item_schema.get("required")
     if isinstance(required_fields, list):
         filtered_required = [
-            field_name
-            for field_name in required_fields
-            if field_name in selected_fields
+            field_name for field_name in required_fields if field_name in selected_fields
         ]
         if filtered_required:
             item_schema["required"] = filtered_required
@@ -165,13 +155,12 @@ def build_schema_starter_from_reference(
     reference_schema_path: Path,
     *,
     schema_name: str,
-    domain_name: Optional[str],
-    document_type: Optional[str],
-    include_fields: Optional[list[str]] = None,
-) -> Dict[str, Any]:
-    reference_schema = json.loads(
-        reference_schema_path.read_text(encoding="utf-8")
-    )
+    domain_name: str | None,
+    document_type: str | None,
+    include_fields: list[str] | None = None,
+) -> dict[str, Any]:
+    """Build a starter schema from a reference schema."""
+    reference_schema = json.loads(reference_schema_path.read_text(encoding="utf-8"))
     starter_schema = _prune_schema_for_starter(reference_schema)
 
     reference_metadata = reference_schema.get("$metadata") or {}
@@ -181,16 +170,11 @@ def build_schema_starter_from_reference(
     inferred_label = _humanize_domain_name(schema_name)
 
     resolved_document_type = (
-        document_type
-        or inferred_label
-        or starter_schema.get("title")
-        or inferred_label
+        document_type or inferred_label or starter_schema.get("title") or inferred_label
     )
-    resolved_domain_name = (
-        domain_name or inferred_label or resolved_document_type
-    )
+    resolved_domain_name = domain_name or inferred_label or resolved_document_type
 
-    starter_metadata: Dict[str, Any] = {
+    starter_metadata: dict[str, Any] = {
         "domain": resolved_domain_name,
         "version": "0.1.0",
         "description": f"Lean starter schema for {resolved_document_type}.",
@@ -201,15 +185,11 @@ def build_schema_starter_from_reference(
         },
     }
 
-    deduplication: Dict[str, Any] = {}
+    deduplication: dict[str, Any] = {}
     if reference_deduplication.get("key_fields"):
-        deduplication["key_fields"] = deepcopy(
-            reference_deduplication["key_fields"]
-        )
+        deduplication["key_fields"] = deepcopy(reference_deduplication["key_fields"])
     if reference_deduplication.get("ignore_fields"):
-        deduplication["ignore_fields"] = deepcopy(
-            reference_deduplication["ignore_fields"]
-        )
+        deduplication["ignore_fields"] = deepcopy(reference_deduplication["ignore_fields"])
     if deduplication:
         starter_metadata["identity"] = {"deduplication": deduplication}
 
@@ -221,28 +201,22 @@ def build_schema_starter_from_reference(
     )
 
     if include_fields is not None:
-        starter_schema = apply_main_array_field_selection(
-            starter_schema, include_fields
-        )
+        starter_schema = apply_main_array_field_selection(starter_schema, include_fields)
 
     return starter_schema
 
 
-def write_schema_starter(
-    schema_path: Path, schema_data: Dict[str, Any], force: bool
-) -> None:
+def write_schema_starter(schema_path: Path, schema_data: dict[str, Any], force: bool) -> None:
+    """Write the starter schema; refuse to overwrite unless ``force``."""
     if schema_path.exists() and not force:
-        raise ConfigValidationError(
-            f"Schema already exists: {schema_path.as_posix()}"
-        )
+        raise ConfigValidationError(f"Schema already exists: {schema_path.as_posix()}")
 
     schema_path.parent.mkdir(parents=True, exist_ok=True)
-    schema_path.write_text(
-        json.dumps(schema_data, indent=2) + "\n", encoding="utf-8"
-    )
+    schema_path.write_text(json.dumps(schema_data, indent=2) + "\n", encoding="utf-8")
 
 
 def default_schema_output_path(repo_root: Path, schema_name: str) -> Path:
+    """Default path of a domain schema under the config root."""
     return repo_root / CONFIG_ROOT / schema_name / SCHEMA_FILENAME
 
 

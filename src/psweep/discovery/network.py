@@ -9,7 +9,10 @@ from urllib.parse import urljoin, urlparse
 
 from psweep.utils.retry import compute_backoff, may_retry_in_run
 from .transport import (
-    MAX_PAGE_BYTES, NetworkPolicyError, request_get, validate_public_url,
+    MAX_PAGE_BYTES,
+    NetworkPolicyError,
+    request_get,
+    validate_public_url,
 )
 
 URLGate = Callable[[str], object]
@@ -64,11 +67,7 @@ def _redirect_headers(
         following.netloc,
     ):
         return headers
-    return {
-        name: value
-        for name, value in headers.items()
-        if name.lower() not in _ORIGIN_HEADERS
-    }
+    return {name: value for name, value in headers.items() if name.lower() not in _ORIGIN_HEADERS}
 
 
 def _get_redirect_chain(
@@ -84,7 +83,7 @@ def _get_redirect_chain(
     max_bytes: int,
 ) -> Any:
     """Check each target before following a bounded redirect chain."""
-    import requests  # noqa: PLC0415 - dependency is optional at import time
+    import requests
 
     current_url = url
     current_headers = headers
@@ -122,7 +121,7 @@ def _get_redirect_chain(
                     cookies.update(response_cookies)
                 if hop >= requests.sessions.DEFAULT_REDIRECT_LIMIT:
                     message = "Discovery redirect limit exceeded"
-                    raise requests.TooManyRedirects(  # noqa: TRY301
+                    raise requests.TooManyRedirects(
                         message,
                         response=response,
                     )

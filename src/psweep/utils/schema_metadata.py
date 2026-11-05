@@ -8,11 +8,11 @@ As of v2.0, all schemas MUST include a $metadata section.
 
 from copy import deepcopy
 from pathlib import Path
-from typing import Dict, Any, List, Optional
+from typing import Any
 import logging
 
 from psweep.exceptions import SchemaMetadataError
-from ..extraction.schema_utils import load_schema
+from psweep.extraction.schema_utils import load_schema
 
 logger = logging.getLogger(__name__)
 
@@ -68,7 +68,7 @@ class SchemaMetadata:
     def __init__(
         self,
         schema_path: Path,
-        metadata_overrides: Optional[Dict[str, Any]] = None,
+        metadata_overrides: dict[str, Any] | None = None,
     ):
         """
         Initialize with schema file path.
@@ -90,9 +90,7 @@ class SchemaMetadata:
         self.metadata = deepcopy(self.schema.get("$metadata", {}))
 
         if metadata_overrides:
-            self.metadata = self._deep_merge_dicts(
-                self.metadata, metadata_overrides
-            )
+            self.metadata = self._deep_merge_dicts(self.metadata, metadata_overrides)
 
         # Require metadata section in v2.0+
         if not self.metadata:
@@ -122,7 +120,7 @@ class SchemaMetadata:
         self._validate_metadata()
 
     @classmethod
-    def for_compilation(cls, schema_path: Path, resolved: Dict[str, Any]):
+    def for_compilation(cls, schema_path: Path, resolved: dict[str, Any]):
         """Build the effective schema/runtime compilation contract once."""
         compilation = {
             target: resolved[source]
@@ -136,8 +134,10 @@ class SchemaMetadata:
         return cls(schema_path, {"compilation": compilation} if compilation else None)
 
     def _schema_node_at_path(
-        self, node: dict, parts: list[str],
-    ) -> Optional[dict]:
+        self,
+        node: dict,
+        parts: list[str],
+    ) -> dict | None:
         """Resolve local references along the path and at its leaf."""
         for part in [*parts, None]:
             visited = set()
@@ -159,7 +159,10 @@ class SchemaMetadata:
         return node
 
     def resolve_schema_field(
-        self, path: str, *, root: Optional[dict] = None,
+        self,
+        path: str,
+        *,
+        root: dict | None = None,
     ) -> tuple[str, dict]:
         """Resolve an item/context alias or an exact root-relative path."""
         if root is not None:
@@ -180,7 +183,8 @@ class SchemaMetadata:
             found = descend(scoped_item, parts[1:])
             if found is not None:
                 canonical = (
-                    path if len(parts) > 1 and parts[1] in self.get_context_objects()
+                    path
+                    if len(parts) > 1 and parts[1] in self.get_context_objects()
                     else ".".join(parts[1:])
                 )
                 candidates.append((canonical, found))
@@ -202,13 +206,18 @@ class SchemaMetadata:
             self._raise_meta(f"Compilation {reason} schema field: {path}")
         return candidates[0]
 
-    def get_output_formats(self) -> List[str]:
+    def get_output_formats(self) -> list[str]:
         """Resolve effective formats; an absent setting retains CSV + Excel."""
-        requested = self.metadata.get("compilation", {}).get("output", {}).get(
-            "default_format", "both"
+        requested = (
+            self.metadata.get("compilation", {}).get("output", {}).get("default_format", "both")
         )
-        formats = {"csv": ["csv"], "excel": ["excel"], "xlsx": ["excel"],
-                   "both": ["csv", "excel"], "all": ["csv", "excel"]}
+        formats = {
+            "csv": ["csv"],
+            "excel": ["excel"],
+            "xlsx": ["excel"],
+            "both": ["csv", "excel"],
+            "all": ["csv", "excel"],
+        }
         normalized = str(requested).strip().lower()
         if normalized not in formats:
             self._raise_meta("compilation.output.default_format must be csv, excel, or both")
@@ -247,7 +256,7 @@ class SchemaMetadata:
         self._validate_identity_deduplication(identity)
         self._validate_compilation_block()
 
-    def _validate_cross_feature_redundancy(self, identity: Dict[str, Any]) -> None:
+    def _validate_cross_feature_redundancy(self, identity: dict[str, Any]) -> None:
         """Strictly validate the optional cross_feature_redundancy dedup block."""
         if not isinstance(identity, dict):
             return
@@ -279,12 +288,9 @@ class SchemaMetadata:
 
         def _require_str_list(key: str, *, allow_empty: bool) -> None:
             value = cfg.get(key)
-            if value is None or not isinstance(value, list) or (
-                not allow_empty and not value
-            ):
+            if value is None or not isinstance(value, list) or (not allow_empty and not value):
                 raise SchemaMetadataError(
-                    f"{loc}.{key} must be a{'' if allow_empty else ' non-empty'} "
-                    "array of strings.",
+                    f"{loc}.{key} must be a{'' if allow_empty else ' non-empty'} array of strings.",
                     schema_path=str(self.schema_path),
                 )
             if not all(isinstance(v, str) and v for v in value):
@@ -307,23 +313,15 @@ class SchemaMetadata:
         """Raise a SchemaMetadataError carrying the schema path (helper)."""
         raise SchemaMetadataError(message, schema_path=str(self.schema_path))
 
-    def _require_str_list_meta(
-        self, value: Any, loc: str, *, allow_empty: bool = True
-    ) -> None:
+    def _require_str_list_meta(self, value: Any, loc: str, *, allow_empty: bool = True) -> None:
         """Require ``value`` to be a list of non-empty strings (or absent)."""
         if value is None:
             return
         if not isinstance(value, list) or (not allow_empty and not value):
             qualifier = "an" if allow_empty else "a non-empty"
-            self._raise_meta(
-                f"Schema metadata field {loc} must be {qualifier} array of "
-                "strings."
-            )
+            self._raise_meta(f"Schema metadata field {loc} must be {qualifier} array of strings.")
         if not all(isinstance(v, str) and v for v in value):
-            self._raise_meta(
-                f"Schema metadata field {loc} must contain only non-empty "
-                "strings."
-            )
+            self._raise_meta(f"Schema metadata field {loc} must contain only non-empty strings.")
 
     def _require_positive_int_meta(self, value: Any, loc: str) -> None:
         """Require ``value`` to be a positive integer (or absent)."""
@@ -331,13 +329,10 @@ class SchemaMetadata:
             return
         if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
             self._raise_meta(
-                f"Schema metadata field {loc} must be a positive integer "
-                f"(got {value!r})."
+                f"Schema metadata field {loc} must be a positive integer (got {value!r})."
             )
 
-    def _validate_identity_deduplication(
-        self, identity: Dict[str, Any]
-    ) -> None:
+    def _validate_identity_deduplication(self, identity: dict[str, Any]) -> None:
         """Strictly validate the ``identity.deduplication`` block structure.
 
         Domain-neutral structural/type checks with unknown-key rejection so a
@@ -378,15 +373,12 @@ class SchemaMetadata:
         fuzzy = dedup.get("fuzzy_key_fields")
         if fuzzy is not None:
             if not isinstance(fuzzy, list):
-                self._raise_meta(
-                    f"{loc}.fuzzy_key_fields must be an array."
-                )
+                self._raise_meta(f"{loc}.fuzzy_key_fields must be an array.")
             for entry in fuzzy:
                 if isinstance(entry, str):
                     if not entry:
                         self._raise_meta(
-                            f"{loc}.fuzzy_key_fields string entries must be "
-                            "non-empty."
+                            f"{loc}.fuzzy_key_fields string entries must be non-empty."
                         )
                 elif isinstance(entry, dict):
                     field = entry.get("field")
@@ -398,8 +390,7 @@ class SchemaMetadata:
                     normalize = entry.get("normalize")
                     if normalize is not None and not isinstance(normalize, str):
                         self._raise_meta(
-                            f"{loc}.fuzzy_key_fields['{field}'].normalize must "
-                            "be a string."
+                            f"{loc}.fuzzy_key_fields['{field}'].normalize must be a string."
                         )
                 else:
                     self._raise_meta(
@@ -421,9 +412,7 @@ class SchemaMetadata:
         if compilation is None:
             return
         if not isinstance(compilation, dict):
-            self._raise_meta(
-                "Schema metadata field compilation must be an object."
-            )
+            self._raise_meta("Schema metadata field compilation must be an object.")
 
         flattening = compilation.get("flattening")
         if flattening is not None:
@@ -450,13 +439,10 @@ class SchemaMetadata:
         unknown = sorted(set(severity_tokens) - allowed)
         if unknown:
             self._raise_meta(
-                f"{loc} has unknown key(s): {', '.join(unknown)}. "
-                "Allowed: high, medium."
+                f"{loc} has unknown key(s): {', '.join(unknown)}. Allowed: high, medium."
             )
         for key in ("high", "medium"):
-            self._require_str_list_meta(
-                severity_tokens.get(key), f"{loc}.{key}"
-            )
+            self._require_str_list_meta(severity_tokens.get(key), f"{loc}.{key}")
 
     def _validate_flattening_block(self, flattening: Any) -> None:
         loc = "compilation.flattening"
@@ -483,12 +469,12 @@ class SchemaMetadata:
                 self._raise_meta(f"{loc}.unit_normalizations requires {loc}.unit_fields.")
         self._require_output_fields(flattening.get("unit_fields") or [], f"{loc}.unit_fields")
 
-    def _require_output_fields(self, fields: List[str], loc: str) -> None:
+    def _require_output_fields(self, fields: list[str], loc: str) -> None:
         unknown = [field for field in fields if field not in self._output_properties()]
         if unknown:
             self._raise_meta(f"{loc} names unknown schema field(s): {', '.join(unknown)}.")
 
-    def get_row_array(self) -> Optional[str]:
+    def get_row_array(self) -> str | None:
         """Resolve nested row expansion from the schema, never from data order."""
         main = self._schema_node_at_path(self.schema, [self.get_main_data_array()]) or {}
         item = self._schema_node_at_path(main.get("items", {}), []) or {}
@@ -497,7 +483,7 @@ class SchemaMetadata:
             node = self._schema_node_at_path(item, [name]) or {}
             types = node.get("type", [])
             child = self._schema_node_at_path(node.get("items", {}), []) or {}
-            if ("array" == types or "array" in types) and (
+            if (types == "array" or "array" in types) and (
                 child.get("type") == "object" or "properties" in child
             ):
                 candidates.append(name)
@@ -505,7 +491,10 @@ class SchemaMetadata:
         if "row_array" in flattening:
             selected = flattening["row_array"]
             if selected is not None and selected not in candidates:
-                self._raise_meta("compilation.flattening.row_array must name an object array in the main item schema")
+                self._raise_meta(
+                    "compilation.flattening.row_array must name "
+                    "an object array in the main item schema"
+                )
             return selected
         if len(candidates) > 1:
             self._raise_meta(
@@ -532,8 +521,10 @@ class SchemaMetadata:
             self._require_output_fields([column], f"{loc}.state_column")
         county_fips = normalization.get("county_fips")
         if county_fips is not None:
-            if not isinstance(county_fips, dict) or set(county_fips) != {"state", "county"} or not all(
-                isinstance(value, str) and value for value in county_fips.values()
+            if (
+                not isinstance(county_fips, dict)
+                or set(county_fips) != {"state", "county"}
+                or not all(isinstance(value, str) and value for value in county_fips.values())
             ):
                 self._raise_meta(
                     f"{loc}.county_fips must be an object naming the state and county "
@@ -574,13 +565,10 @@ class SchemaMetadata:
 
         max_len = output.get("center_align_max_length")
         if max_len is not None and (
-            isinstance(max_len, bool)
-            or not isinstance(max_len, (int, float))
-            or max_len < 0
+            isinstance(max_len, bool) or not isinstance(max_len, (int, float)) or max_len < 0
         ):
             self._raise_meta(
-                f"{loc}.center_align_max_length must be a non-negative number "
-                f"(got {max_len!r})."
+                f"{loc}.center_align_max_length must be a non-negative number (got {max_len!r})."
             )
 
         freeze = output.get("freeze_columns")
@@ -588,17 +576,14 @@ class SchemaMetadata:
             isinstance(freeze, bool) or not isinstance(freeze, int) or freeze < 0
         ):
             self._raise_meta(
-                f"{loc}.freeze_columns must be a non-negative integer "
-                f"(got {freeze!r})."
+                f"{loc}.freeze_columns must be a non-negative integer (got {freeze!r})."
             )
 
         auto_width = output.get("auto_width")
         if auto_width is not None and not isinstance(auto_width, bool):
             self._raise_meta(f"{loc}.auto_width must be a boolean.")
 
-    def _deep_merge_dicts(
-        self, base: Dict[str, Any], overrides: Dict[str, Any]
-    ) -> Dict[str, Any]:
+    def _deep_merge_dicts(self, base: dict[str, Any], overrides: dict[str, Any]) -> dict[str, Any]:
         """Recursively merge override values onto the base metadata dictionary."""
         merged = deepcopy(base)
 
@@ -616,23 +601,23 @@ class SchemaMetadata:
         """Get the key containing the main data array."""
         return self.metadata.get("extraction", {}).get("main_data_array")
 
-    def get_context_objects(self) -> List[str]:
+    def get_context_objects(self) -> list[str]:
         """Get keys containing context/metadata objects."""
         return self.metadata.get("extraction", {}).get("context_objects", [])
 
     # --- Compilation Metadata ---
 
-    def get_deduplication_key_fields(self) -> List[str]:
+    def get_deduplication_key_fields(self) -> list[str]:
         """Get fields that define uniqueness for deduplication."""
         dedup = self.metadata.get("identity", {}).get("deduplication", {})
         return dedup.get("key_fields", [])
 
-    def get_deduplication_ignore_fields(self) -> List[str]:
+    def get_deduplication_ignore_fields(self) -> list[str]:
         """Get fields to ignore during deduplication comparison."""
         dedup = self.metadata.get("identity", {}).get("deduplication", {})
         return dedup.get("ignore_fields", [])
 
-    def get_deduplication_fuzzy_fields(self) -> List[str]:
+    def get_deduplication_fuzzy_fields(self) -> list[str]:
         """Get key fields that use empty-as-wildcard + case-insensitive matching.
 
         Declared as ``identity.deduplication.fuzzy_key_fields`` in the schema.
@@ -686,7 +671,7 @@ class SchemaMetadata:
                 config[entry["field"]] = {k: v for k, v in entry.items() if k != "field"}
         return config
 
-    def get_deduplication_partition_fields(self) -> List[str]:
+    def get_deduplication_partition_fields(self) -> list[str]:
         """Get fields that isolate deduplication scope (never merge across them).
 
         Declared as ``identity.deduplication.partition_fields`` in the schema.
@@ -705,7 +690,7 @@ class SchemaMetadata:
             return explicit
         return []
 
-    def get_cross_feature_redundancy_config(self) -> Optional[Dict[str, Any]]:
+    def get_cross_feature_redundancy_config(self) -> dict[str, Any] | None:
         """Config for the optional cross-feature approval-redundancy dedup pass.
 
         Declared as ``identity.deduplication.cross_feature_redundancy``. When
@@ -726,13 +711,13 @@ class SchemaMetadata:
         cfg = dedup.get("cross_feature_redundancy")
         return cfg if isinstance(cfg, dict) else None
 
-    def get_output_exclude_fields(self) -> List[str]:
+    def get_output_exclude_fields(self) -> list[str]:
         """Get fields that should be excluded from compiled outputs."""
         output = self.metadata.get("compilation", {}).get("output", {})
         return output.get("exclude_fields", [])
 
     @staticmethod
-    def _types(prop: Dict[str, Any]) -> set:
+    def _types(prop: dict[str, Any]) -> set:
         declared = prop.get("type")
         if isinstance(declared, str):
             return {declared}
@@ -740,36 +725,38 @@ class SchemaMetadata:
             return {t for t in declared if isinstance(t, str)}
         return set()
 
-    def _properties(self, node: Any, path: List[str]) -> Dict[str, Any]:
+    def _properties(self, node: Any, path: list[str]) -> dict[str, Any]:
         found = self._schema_node_at_path(node, path) or {}
         return {
             name: self._schema_node_at_path(found, [name]) or {}
             for name in found.get("properties", {})
         }
 
-    def _output_properties(self) -> Dict[str, Dict[str, Any]]:
+    def _output_properties(self) -> dict[str, dict[str, Any]]:
         """Context, item, and row-array child properties keyed by output field, in schema order."""
-        result: Dict[str, Dict[str, Any]] = {}
+        result: dict[str, dict[str, Any]] = {}
         for context in self.get_context_objects():
             result.update(self._properties(self.schema, [context]))
         main = self._schema_node_at_path(self.schema, [self.get_main_data_array()]) or {}
         item = main.get("items", {})
         row_array = self.get_row_array()
-        for name, prop in self._properties(item, []).items():
-            if name != row_array:
-                result[name] = prop
+        result.update(
+            {name: prop for name, prop in self._properties(item, []).items() if name != row_array}
+        )
         if row_array:
             child = (self._schema_node_at_path(item, [row_array]) or {}).get("items", {})
             result.update(self._properties(child, []))
         return result
 
-    def get_output_fields(self) -> List[str]:
+    def get_output_fields(self) -> list[str]:
+        """Output field names in schema order."""
         return list(self._output_properties())
 
-    def get_field_types(self) -> Dict[str, set]:
+    def get_field_types(self) -> dict[str, set]:
+        """JSON types allowed for each output field."""
         return {name: self._types(prop) for name, prop in self._output_properties().items()}
 
-    def get_column_titles(self) -> Dict[str, str]:
+    def get_column_titles(self) -> dict[str, str]:
         """Output header per field: the schema ``title`` when set (else the field name)."""
         return {
             name: prop["title"]
@@ -777,7 +764,7 @@ class SchemaMetadata:
             if isinstance(prop.get("title"), str) and prop["title"]
         }
 
-    def get_column_order(self) -> List[str]:
+    def get_column_order(self) -> list[str]:
         """Output headers listed first; remaining columns keep their default order."""
         return self.metadata.get("compilation", {}).get("output", {}).get("column_order", [])
 
@@ -791,7 +778,7 @@ class SchemaMetadata:
         output = self.metadata.get("compilation", {}).get("output", {})
         return output.get("auto_width", True)
 
-    def get_center_align_columns(self) -> Optional[List[str]]:
+    def get_center_align_columns(self) -> list[str] | None:
         """Return explicit center-aligned Excel column names, if configured.
 
         ``None`` means "unset" — the formatter uses its built-in default name
@@ -800,7 +787,7 @@ class SchemaMetadata:
         output = self.metadata.get("compilation", {}).get("output", {})
         return output.get("center_align_columns")
 
-    def get_center_align_max_length(self) -> Optional[float]:
+    def get_center_align_max_length(self) -> float | None:
         """Return the average-length threshold for center-aligning columns.
 
         ``None`` means "unset" — the formatter uses its built-in default
@@ -809,15 +796,16 @@ class SchemaMetadata:
         output = self.metadata.get("compilation", {}).get("output", {})
         return output.get("center_align_max_length")
 
-    def get_flattening_config(self) -> Dict[str, Any]:
+    def get_flattening_config(self) -> dict[str, Any]:
+        """The ``compilation.flattening`` metadata block."""
         return self.metadata.get("compilation", {}).get("flattening", {})
 
-    def get_state_normalization_column(self) -> Optional[str]:
+    def get_state_normalization_column(self) -> str | None:
         """Field whose US-state names are abbreviated (opt-in)."""
         normalization = self.metadata.get("compilation", {}).get("normalization", {})
         return normalization.get("state_column")
 
-    def get_county_fips_columns(self) -> Optional[Dict[str, str]]:
+    def get_county_fips_columns(self) -> dict[str, str] | None:
         """``{state, county}`` fields that derive the ``county_fips`` column (opt-in)."""
         normalization = self.metadata.get("compilation", {}).get("normalization", {})
         return normalization.get("county_fips")
@@ -834,17 +822,13 @@ class SchemaMetadata:
         """
         compilation = self.metadata.get("compilation", {}) or {}
         tokens = compilation.get("severity_tokens", {}) or {}
-        high = HIGH_SEVERITY_TOKENS | {
-            str(t).lower() for t in (tokens.get("high") or [])
-        }
-        medium = MEDIUM_SEVERITY_TOKENS | {
-            str(t).lower() for t in (tokens.get("medium") or [])
-        }
+        high = HIGH_SEVERITY_TOKENS | {str(t).lower() for t in (tokens.get("high") or [])}
+        medium = MEDIUM_SEVERITY_TOKENS | {str(t).lower() for t in (tokens.get("medium") or [])}
         return frozenset(high), frozenset(medium)
 
-    def get_compilation_field_severity_hints(self) -> Dict[str, str]:
+    def get_compilation_field_severity_hints(self) -> dict[str, str]:
         """Return schema-derived severity hints for compiled output fields."""
-        hints: Dict[str, str] = {}
+        hints: dict[str, str] = {}
         properties = self.schema.get("properties", {})
 
         for context_key in self.get_context_objects():
@@ -871,7 +855,7 @@ class SchemaMetadata:
 
     # --- Helper Methods ---
 
-    def extract_main_data_array(self, data: dict) -> List[Dict[str, Any]]:
+    def extract_main_data_array(self, data: dict) -> list[dict[str, Any]]:
         """
         Extract main data array from extraction results.
 
@@ -901,39 +885,44 @@ class SchemaMetadata:
                 # Some providers occasionally emit array-like objects keyed by
                 # string indices ("0", "1", ...). Normalize these deterministically.
                 try:
-                    normalized = [
-                        array_data[key]
-                        for key in sorted(array_data.keys(), key=int)
-                    ]
+                    normalized = [array_data[key] for key in sorted(array_data.keys(), key=int)]
                 except (TypeError, ValueError):
                     logger.warning(
-                        f"Field '{main_array_key}' exists but is not a list. "
-                        "Received dict with non-numeric keys; expected array-like data."
+                        (
+                            "Field '%s' exists but is not a list. Received dict "
+                            "with non-numeric keys; expected array-like data."
+                        ),
+                        main_array_key,
                     )
                     return []
                 logger.warning(
-                    f"Field '{main_array_key}' was emitted as an object-map; "
-                    "normalizing to list by numeric key order."
+                    (
+                        "Field '%s' was emitted as an object-map; "
+                        "normalizing to list by numeric key order."
+                    ),
+                    main_array_key,
                 )
                 return normalized
             logger.warning(
-                f"Field '{main_array_key}' exists but is not a list. "
-                f"Expected array but got {type(array_data).__name__}."
+                "Field '%s' exists but is not a list. Expected array but got %s.",
+                main_array_key,
+                type(array_data).__name__,
             )
         else:
             logger.warning(
-                f"Main data array key '{main_array_key}' not found in extraction data. "
-                f"Available keys: {list(data.keys())}"
+                "Main data array key '%s' not found in extraction data. Available keys: %s",
+                main_array_key,
+                list(data.keys()),
             )
 
         return []
 
     def _collect_object_field_severity_hints(
         self,
-        schema_node: Dict[str, Any],
-        hints: Dict[str, str],
+        schema_node: dict[str, Any],
+        hints: dict[str, str],
         *,
-        prefix: Optional[str],
+        prefix: str | None,
     ) -> None:
         """Collect severity hints from an object schema using compilation naming rules."""
         properties = schema_node.get("properties", {})
@@ -945,9 +934,7 @@ class SchemaMetadata:
                 continue
 
             column_name = f"{prefix}_{field_name}" if prefix else field_name
-            severity = self._infer_schema_field_severity(
-                field_name, field_schema
-            )
+            severity = self._infer_schema_field_severity(field_name, field_schema)
             if severity:
                 existing = hints.get(column_name)
                 hints[column_name] = self._max_severity(existing, severity)
@@ -961,10 +948,7 @@ class SchemaMetadata:
                 )
             elif field_type == "array":
                 item_schema = field_schema.get("items", {})
-                if (
-                    isinstance(item_schema, dict)
-                    and item_schema.get("type") == "object"
-                ):
+                if isinstance(item_schema, dict) and item_schema.get("type") == "object":
                     # Nested object arrays can become direct row columns when projected.
                     self._collect_object_field_severity_hints(
                         item_schema,
@@ -975,8 +959,8 @@ class SchemaMetadata:
     def _infer_schema_field_severity(
         self,
         field_name: str,
-        field_schema: Dict[str, Any],
-    ) -> Optional[str]:
+        field_schema: dict[str, Any],
+    ) -> str | None:
         """Infer severity from the user-authored schema field definition."""
         normalized_name = field_name.replace("_", " ").lower()
         high_tokens, medium_tokens = self.get_severity_tokens()
@@ -986,9 +970,7 @@ class SchemaMetadata:
         elif not isinstance(field_types, list):
             field_types = []
 
-        if any(
-            field_type in {"number", "integer"} for field_type in field_types
-        ):
+        if any(field_type in {"number", "integer"} for field_type in field_types):
             return "high"
 
         if any(token in normalized_name for token in high_tokens):
@@ -1002,10 +984,9 @@ class SchemaMetadata:
 
         return None
 
-    def _max_severity(self, current: Optional[str], candidate: str) -> str:
+    def _max_severity(self, current: str | None, candidate: str) -> str:
         """Keep the highest-severity hint when multiple schema paths map to a field."""
         order = {"low": 0, "medium": 1, "high": 2}
         if current is None:
             return candidate
         return candidate if order[candidate] > order[current] else current
-

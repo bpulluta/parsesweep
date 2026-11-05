@@ -5,9 +5,9 @@ from __future__ import annotations
 import json
 import logging
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, UTC
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import click
 
@@ -37,10 +37,10 @@ from psweep.compilation.accounting import (
 
 def _build_dedup_preview_report(
     *,
-    schema_info: Dict[str, Any],
-    dedup_preview: Dict[str, Any],
+    schema_info: dict[str, Any],
+    dedup_preview: dict[str, Any],
     rows_before_dedup: int,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Build a stable dry-run report payload for machine-readable output."""
     return {
         "schema_type": schema_info["type"],
@@ -52,9 +52,7 @@ def _build_dedup_preview_report(
         "compare_columns": dedup_preview["compare_columns"],
         "warnings": dedup_preview.get("warnings") or [],
         "suspicious_groups_count": dedup_preview.get("suspicious_groups_count", 0),
-        "suspicious_groups_by_severity": dedup_preview.get(
-            "suspicious_groups_by_severity"
-        )
+        "suspicious_groups_by_severity": dedup_preview.get("suspicious_groups_by_severity")
         or {
             "high": 0,
             "medium": 0,
@@ -66,7 +64,7 @@ def _build_dedup_preview_report(
 
 
 def _should_fail_on_suspicious(
-    preview_report: Dict[str, Any],
+    preview_report: dict[str, Any],
     threshold: str,
 ) -> bool:
     """Return whether suspicious-group counts meet or exceed the requested threshold."""
@@ -77,10 +75,7 @@ def _should_fail_on_suspicious(
     if threshold == "high":
         return severity_counts.get("high", 0) > 0
     if threshold == "medium":
-        return (
-            severity_counts.get("high", 0) > 0
-            or severity_counts.get("medium", 0) > 0
-        )
+        return severity_counts.get("high", 0) > 0 or severity_counts.get("medium", 0) > 0
     if threshold == "low":
         return preview_report.get("suspicious_groups_count", 0) > 0
 
@@ -90,7 +85,7 @@ def _should_fail_on_suspicious(
 def _should_fail_on_provenance(
     *,
     provenance_policy: str,
-    provenance_warnings: List[str],
+    provenance_warnings: list[str],
 ) -> bool:
     """Return whether provenance warnings should hard-fail compilation."""
     from psweep.security import protected_mode
@@ -148,7 +143,10 @@ def _should_fail_on_provenance(
     type=click.Choice(["none", "high", "medium", "low"], case_sensitive=False),
     default="none",
     show_default=True,
-    help="With --dry-run, exit non-zero when suspicious duplicate groups meet this severity threshold",
+    help=(
+        "With --dry-run, exit non-zero when suspicious "
+        "duplicate groups meet this severity threshold"
+    ),
 )
 @click.option(
     "--provenance-policy",
@@ -164,18 +162,21 @@ def _should_fail_on_provenance(
     "--fresh",
     is_flag=True,
     default=False,
-    help="Clear the compiled output directory (stale CSV/XLSX) before writing new results. Pair with 'extract --fresh' for a guaranteed clean pipeline.",
+    help=(
+        "Clear the compiled output directory (stale CSV/XLSX) before writing new "
+        "results. Pair with 'extract --fresh' for a guaranteed clean pipeline."
+    ),
 )
 @click.option("--quiet", "-q", is_flag=True, help="Minimal output (machine-readable)")
 @click.option("--verbose", "-v", is_flag=True, help="Detailed output with statistics")
 @click.option("--debug", is_flag=True, help="Debug mode with full logs")
-def compile(
-    extracted_dir: Optional[str],
-    config_path: Optional[str],
+def compile(  # noqa: A001 - public CLI command name
+    extracted_dir: str | None,
+    config_path: str | None,
     show_effective_config: bool,
     validate_config_only: bool,
-    schema: Optional[str],
-    output: Optional[str],
+    schema: str | None,
+    output: str | None,
     dry_run: bool,
     report_format: str,
     fail_on_suspicious: str,
@@ -239,7 +240,6 @@ def compile(
         view.error("Runtime config resolution failed", str(exc))
         sys.exit(1)
 
-
     if show_effective_config and not get_verbosity().is_quiet:
         _print_effective_config("compile", resolved_inputs)
         console.print()
@@ -270,12 +270,10 @@ def compile(
     output = resolved_inputs["output"]
     dry_run = resolved_inputs.get("dry_run", dry_run)
     report_format = resolved_inputs.get("report_format", report_format)
-    fail_on_suspicious = resolved_inputs.get(
-        "fail_on_suspicious", fail_on_suspicious
+    fail_on_suspicious = resolved_inputs.get("fail_on_suspicious", fail_on_suspicious)
+    provenance_policy = (
+        str(resolved_inputs.get("provenance_policy", provenance_policy)).strip().lower()
     )
-    provenance_policy = str(
-        resolved_inputs.get("provenance_policy", provenance_policy)
-    ).strip().lower()
 
     input_dir = Path(extracted_dir)
     if not input_dir.exists():
@@ -316,11 +314,13 @@ def compile(
 
     schema_metadata = resolved_inputs["_schema_metadata"]
     if not emit_json_report and not view.is_quiet:
-        view.config({
-            "Input": str(input_dir),
-            "Output": str(output_dir),
-            "Schema": str(matched_schema),
-        })
+        view.config(
+            {
+                "Input": str(input_dir),
+                "Output": str(output_dir),
+                "Schema": str(matched_schema),
+            }
+        )
 
     if not emit_json_report:
         view.phase("Analyzing schema structure")
@@ -330,7 +330,7 @@ def compile(
         verbose=view.verbosity.shows_detail,
         debug=view.verbosity is Verbosity.DEBUG,
     )
-    compile_started_at = datetime.now(timezone.utc)
+    compile_started_at = datetime.now(UTC)
     if would_fail_on_provenance and emit_json_report:
         click.echo(
             json.dumps(
@@ -356,9 +356,7 @@ def compile(
     try:
         quiet = emit_json_report or view.is_quiet
         if not quiet:
-            view.phase(
-                f"Found {len(record_json_files)} extracted JSON file(s) in {input_dir.name}"
-            )
+            view.phase(f"Found {len(record_json_files)} extracted JSON file(s) in {input_dir.name}")
         build_fingerprint = None if dry_run else compiler.fingerprint(input_dir)
         with with_status("Loading extracted JSON files...", quiet=quiet):
             df, schema_info = compiler.compile_from_directory(
@@ -386,8 +384,7 @@ def compile(
         if not emit_json_report:
             view.status(
                 "info",
-                f"{schema_info['type']}: {schema_info['main_array_key']} "
-                f"({compiler.mode} mode)",
+                f"{schema_info['type']}: {schema_info['main_array_key']} ({compiler.mode} mode)",
             )
 
         if dry_run:
@@ -396,10 +393,11 @@ def compile(
 
             with redirect_stdout(StringIO()):
                 export_df = (
-                    df if compiler.mode == "roster"
+                    df
+                    if compiler.mode == "roster"
                     else compiler.deduplicator.deduplicate(df.copy())
                 )
-            output_frame = compiler._prepare_output_dataframe(export_df)
+            output_frame = compiler._prepare_output_dataframe(export_df)  # noqa: SLF001 - package-internal helper
             compiler.validate_export(output_frame, schema_metadata.get_output_formats())
 
         if dry_run and compiler.mode == "roster":
@@ -460,8 +458,7 @@ def compile(
                     or "none",
                     "Fail Threshold": preview_report["fail_on_suspicious"],
                     "Key Fields": ", ".join(preview_report["key_fields"]) or "none",
-                    "Compare Columns": ", ".join(preview_report["compare_columns"])
-                    or "none",
+                    "Compare Columns": ", ".join(preview_report["compare_columns"]) or "none",
                 }
                 view.summary(preview_stats, title="Deduplication Preview")
 
@@ -476,7 +473,7 @@ def compile(
                         ", ".join(
                             f"{field}={value}"
                             for field, value in group["sample_values"].items()
-                            if value not in (None, "")
+                            if value not in (None, "")  # noqa: PLR6201 - cells may be unhashable
                         )
                         or "no populated key values"
                     )
@@ -519,8 +516,7 @@ def compile(
                     if preview_report["would_fail_on_provenance"]:
                         view.error(
                             "Compile input provenance checks failed",
-                            "Dry-run found provenance warnings while "
-                            "provenance_policy='fail'",
+                            "Dry-run found provenance warnings while provenance_policy='fail'",
                         )
                 sys.exit(2)
             return
@@ -538,9 +534,7 @@ def compile(
             csv_size_mb = csv_path.stat().st_size / (1024 * 1024)
 
             if view.verbosity.shows_detail:
-                view.success(
-                    f"CSV saved: {csv_path.name} ({csv_size_mb:.2f} MB, {len(df)} rows)"
-                )
+                view.success(f"CSV saved: {csv_path.name} ({csv_size_mb:.2f} MB, {len(df)} rows)")
             else:
                 view.success(f"CSV saved ({len(df)} rows)")
 
@@ -612,15 +606,13 @@ def compile(
             if not get_verbosity().is_quiet:
                 view.outputs({"Accounting": str(acct_path.absolute())})
         except (OSError, ValueError) as exc:
-            logging.getLogger(__name__).warning(
-                "run_accounting.json could not be written: %s", exc
-            )
+            logging.getLogger(__name__).warning("run_accounting.json could not be written: %s", exc)
 
         if get_verbosity().is_quiet:
             for emitted_path in emitted_paths:
                 console.print(str(emitted_path.absolute()))
 
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 - CLI boundary: report any failure, then exit non-zero
         view.error("Compilation failed", str(exc))
         if view.verbosity is Verbosity.DEBUG:
             import traceback

@@ -11,16 +11,16 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any, Dict, Union
+from typing import Any
 
 import yaml
 
-from ..exceptions import ConfigurationError
+from psweep.exceptions import ConfigurationError
 
-PathLike = Union[str, Path]
+PathLike = str | Path
 
 
-def load_json_file(path: PathLike) -> Dict[str, Any]:
+def load_json_file(path: PathLike) -> dict[str, Any]:
     """Load and parse a JSON file, raising ``ConfigurationError`` on failure."""
     file_path = Path(path)
     try:
@@ -30,12 +30,10 @@ def load_json_file(path: PathLike) -> Dict[str, Any]:
     try:
         return json.loads(raw_text)
     except json.JSONDecodeError as exc:
-        raise ConfigurationError(
-            f"Invalid JSON in {file_path}: {exc}"
-        ) from exc
+        raise ConfigurationError(f"Invalid JSON in {file_path}: {exc}") from exc
 
 
-def load_yaml_file(path: PathLike) -> Dict[str, Any]:
+def load_yaml_file(path: PathLike) -> dict[str, Any]:
     """Load and parse a YAML file, raising ``ConfigurationError`` on failure."""
     file_path = Path(path)
     try:
@@ -45,12 +43,10 @@ def load_yaml_file(path: PathLike) -> Dict[str, Any]:
     try:
         return yaml.safe_load(raw_text) or {}
     except yaml.YAMLError as exc:
-        raise ConfigurationError(
-            f"Invalid YAML in {file_path}: {exc}"
-        ) from exc
+        raise ConfigurationError(f"Invalid YAML in {file_path}: {exc}") from exc
 
 
-def load_config_file(path: PathLike) -> Dict[str, Any]:
+def load_config_file(path: PathLike) -> dict[str, Any]:
     """Load a config file, dispatching on extension (.json/.yaml/.yml)."""
     file_path = Path(path)
     suffix = file_path.suffix.lower()
@@ -59,6 +55,5 @@ def load_config_file(path: PathLike) -> Dict[str, Any]:
     if suffix == ".json":
         return load_json_file(file_path)
     raise ConfigurationError(
-        f"Unsupported config extension '{suffix}' for {file_path}. "
-        "Use .yaml, .yml, or .json"
+        f"Unsupported config extension '{suffix}' for {file_path}. Use .yaml, .yml, or .json"
     )

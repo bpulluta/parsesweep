@@ -14,9 +14,7 @@ from psweep.discovery import publication as pub
 from psweep.discovery.engine import DiscoveryEngine
 
 
-def _record(
-    documents: Path, relative: str = "county/report.pdf", **extra
-) -> dict:
+def _record(documents: Path, relative: str = "county/report.pdf", **extra) -> dict:
     source = documents / relative
     source.parent.mkdir(parents=True, exist_ok=True)
     source.write_bytes(b"new report")
@@ -31,9 +29,7 @@ def _record(
 def _index(path: Path, rows: list[dict]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
-        pub.csv_content(
-            ["relative_path", "path", "url", "review_selected"], rows
-        ),
+        pub.csv_content(["relative_path", "path", "url", "review_selected"], rows),
         encoding="utf-8",
     )
 
@@ -63,16 +59,12 @@ def test_resolve_default_external_documents_and_flat_locations(tmp_path):
     domain = tmp_path / "domain"
     run = domain / "runs/r1"
     documents = tmp_path / "external/documents"
-    paths = pub.resolve_publication_paths(
-        documents, run / "manifest.json", "example"
-    )
+    paths = pub.resolve_publication_paths(documents, run / "manifest.json", "example")
     assert paths.domain_dir == domain
     assert paths.run_curated_dir == documents.parent / "curated"
     assert paths.run_index == run / "download_index.csv"
     flat = tmp_path / "flat"
-    paths = pub.resolve_publication_paths(
-        flat / "documents", flat / "manifest.json", "example"
-    )
+    paths = pub.resolve_publication_paths(flat / "documents", flat / "manifest.json", "example")
     assert paths.domain_dir == flat
     assert paths.run_curated_dir == flat / "run-curated"
     assert paths.run_index == flat / "run-download_index.csv"
@@ -112,9 +104,7 @@ def test_prepared_journal_before_any_swap_keeps_prior_files(tmp_path):
     assert not stage.exists()
 
 
-def test_crash_during_rollback_is_recovered_next_invocation(
-    tmp_path, monkeypatch
-):
+def test_crash_during_rollback_is_recovered_next_invocation(tmp_path, monkeypatch):
     """Crash during rollback is recovered next invocation."""
     root = tmp_path / "domain"
     root.mkdir()
@@ -152,9 +142,7 @@ def test_committed_journal_cleanup_keeps_successful_publication(tmp_path):
     assert not stage.exists()
 
 
-@pytest.mark.parametrize(
-    "relative", ["../escape.pdf", "/escape.pdf", "", ".review/report.pdf"]
-)
+@pytest.mark.parametrize("relative", ["../escape.pdf", "/escape.pdf", "", ".review/report.pdf"])
 def test_unsafe_selected_path_preserves_old_curation(tmp_path, relative):
     """Unsafe selected path preserves old curation."""
     documents = tmp_path / "documents"
@@ -164,28 +152,20 @@ def test_unsafe_selected_path_preserves_old_curation(tmp_path, relative):
     (old / "prior.pdf").write_bytes(b"prior")
     record["relative_path"] = relative
     with pytest.raises(pub.PublicationError):
-        DiscoveryEngine._materialize_curated(
-            documents_dir=documents, download_records=[record]
-        )
+        DiscoveryEngine._materialize_curated(documents_dir=documents, download_records=[record])
     assert (old / "prior.pdf").read_bytes() == b"prior"
     assert not list(tmp_path.glob(".discovery-stage-*"))
 
 
-def test_missing_source_and_copy_failure_preserve_old_curation(
-    tmp_path, monkeypatch
-):
+def test_missing_source_and_copy_failure_preserve_old_curation(tmp_path, monkeypatch):
     """Missing source and copy failure preserve old curation."""
     documents = tmp_path / "documents"
     record = _record(documents)
-    curated, _, _ = pub.materialize_curated(
-        documents_dir=documents, download_records=[record]
-    )
+    curated, _, _ = pub.materialize_curated(documents_dir=documents, download_records=[record])
     before = (curated / record["relative_path"]).read_bytes()
     Path(record["path"]).unlink()
     with pytest.raises(pub.PublicationError, match="source missing"):
-        pub.materialize_curated(
-            documents_dir=documents, download_records=[record]
-        )
+        pub.materialize_curated(documents_dir=documents, download_records=[record])
     assert (curated / record["relative_path"]).read_bytes() == before
     Path(record["path"]).write_bytes(b"replacement")
     monkeypatch.setattr(
@@ -199,9 +179,7 @@ def test_missing_source_and_copy_failure_preserve_old_curation(
         lambda *_: (_ for _ in ()).throw(OSError("copy failure")),
     )
     with pytest.raises(OSError, match="copy failure"):
-        pub.materialize_curated(
-            documents_dir=documents, download_records=[record]
-        )
+        pub.materialize_curated(documents_dir=documents, download_records=[record])
     assert (curated / record["relative_path"]).read_bytes() == before
 
 
@@ -225,37 +203,26 @@ def test_explicit_index_provenance_is_promoted_and_fields_unioned(tmp_path):
     """Explicit index provenance is promoted and fields unioned."""
     domain, run = _corpus(tmp_path)
     explicit = tmp_path / "outside/actual-index.csv"
-    _index(
-        explicit, [{"relative_path": "county/new.pdf", "url": "actual-origin"}]
-    )
+    _index(explicit, [{"relative_path": "county/new.pdf", "url": "actual-origin"}])
     (domain / "download_index.csv").write_text(
         "relative_path,url,prior_only\nother/stay.pdf,old-origin,retained\n"
     )
-    pub.promote_curated(
-        run_curated_dir=run / "curated", domain_dir=domain, run_index=explicit
-    )
+    pub.promote_curated(run_curated_dir=run / "curated", domain_dir=domain, run_index=explicit)
     with (domain / "download_index.csv").open() as handle:
         rows = {row["relative_path"]: row for row in csv.DictReader(handle)}
     assert rows["county/new.pdf"]["url"] == "actual-origin"
-    assert rows["county/new.pdf"]["path"] == str(
-        domain / "curated/county/new.pdf"
-    )
+    assert rows["county/new.pdf"]["path"] == str(domain / "curated/county/new.pdf")
     assert rows["other/stay.pdf"]["prior_only"] == "retained"
 
 
-def test_index_replace_failure_rolls_back_all_partitions_and_index(
-    tmp_path, monkeypatch
-):
+def test_index_replace_failure_rolls_back_all_partitions_and_index(tmp_path, monkeypatch):
     """Index replace failure rolls back all partitions and index."""
     domain, run = _corpus(tmp_path)
     before = (domain / "download_index.csv").read_bytes()
     replace = Path.replace
 
     def fail_index(source, destination):
-        if (
-            source.name.startswith("new-")
-            and Path(destination) == domain / "download_index.csv"
-        ):
+        if source.name.startswith("new-") and Path(destination) == domain / "download_index.csv":
             raise OSError("index publication failed")
         return replace(source, destination)
 
@@ -374,9 +341,7 @@ def test_next_invocation_recovers_interrupted_swap_and_dead_owner(tmp_path):
     assert not (domain / ".discovery-publication.json").exists()
 
 
-@pytest.mark.parametrize(
-    "corruption", ["json", "token", "destination", "backup"]
-)
+@pytest.mark.parametrize("corruption", ["json", "token", "destination", "backup"])
 def test_corrupt_recovery_plan_fails_without_overwriting(tmp_path, corruption):
     """Corrupt recovery plan fails without overwriting."""
     domain = tmp_path / "domain"
@@ -444,9 +409,7 @@ def test_separate_process_lock_rejects_active_and_releases_after_exit(
         child.close()
 
 
-def test_latest_pointer_atomic_and_flat_does_not_write_ancestors(
-    tmp_path, monkeypatch
-):
+def test_latest_pointer_atomic_and_flat_does_not_write_ancestors(tmp_path, monkeypatch):
     """Latest pointer atomic and flat does not write ancestors."""
     flat = tmp_path / "flat"
     flat.mkdir()
@@ -457,9 +420,7 @@ def test_latest_pointer_atomic_and_flat_does_not_write_ancestors(
     monkeypatch.setattr(
         pub.os,
         "symlink",
-        lambda *_args, **_kwargs: (_ for _ in ()).throw(
-            OSError("no symlinks")
-        ),
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(OSError("no symlinks")),
     )
     pub.refresh_latest_pointer(flat, domain_dir=flat)
     assert (flat / "latest.txt").read_text().strip() == str(flat)
@@ -484,7 +445,8 @@ def test_atomic_json_failure_keeps_prior_bytes(tmp_path, monkeypatch):
 @pytest.mark.parametrize("blocked", [False, True])
 def test_merged_index_keeps_one_path_per_owner(tmp_path, blocked):
     """Renamed and unselected owners lose their old path whatever its name,
-    except in blocked partitions."""
+    except in blocked partitions.
+    """
     index = tmp_path / "download_index.csv"
     index.write_text(
         "relative_path,target_id,url\n"

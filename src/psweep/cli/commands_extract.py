@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import sys
-from typing import Optional
 
 import click
 from dotenv import load_dotenv
@@ -25,16 +24,12 @@ def _render_extraction(plan, view):
         if result["success"]:
             view.success(f"{doc_path.name}: {result['items']} items")
         else:
-            view.error(
-                f"Extraction failed for {doc_path.name}", result["error"]
-            )
+            view.error(f"Extraction failed for {doc_path.name}", result["error"])
 
     return _execute_extraction(plan, on_progress=progress)
 
 
-@click.command(
-    epilog=f"Supported file types: {', '.join(sorted(SUPPORTED_EXTENSIONS))}"
-)
+@click.command(epilog=f"Supported file types: {', '.join(sorted(SUPPORTED_EXTENSIONS))}")
 @click.argument("path", type=click.Path(), required=False)
 @click.option(
     "--config",
@@ -106,12 +101,8 @@ def _render_extraction(plan, view):
     show_default=True,
     help="Max document characters to process",
 )
-@click.option(
-    "--quiet", "-q", is_flag=True, help="Minimal output (machine-readable)"
-)
-@click.option(
-    "--verbose", "-v", is_flag=True, help="Detailed output with statistics"
-)
+@click.option("--quiet", "-q", is_flag=True, help="Minimal output (machine-readable)")
+@click.option("--verbose", "-v", is_flag=True, help="Detailed output with statistics")
 @click.option("--debug", is_flag=True, help="Debug mode with full logs")
 @click.option(
     "--pages",
@@ -126,22 +117,22 @@ def _render_extraction(plan, view):
     help="CSV file mapping documents to page ranges",
 )
 def extract(
-    path: Optional[str],
-    config_path: Optional[str],
+    path: str | None,  # noqa: ARG001 - read via _explicit_cli_overrides
+    config_path: str | None,
     show_effective_config: bool,
     validate_config_only: bool,
-    output: Optional[str],
-    schema: Optional[str],
-    model: str,
+    output: str | None,  # noqa: ARG001 - read via _explicit_cli_overrides
+    schema: str | None,
+    model: str,  # noqa: ARG001 - read via _explicit_cli_overrides
     provider: str,
-    limit: Optional[int],
+    limit: int | None,  # noqa: ARG001 - read via _explicit_cli_overrides
     fresh: bool,
     max_context: int,
     quiet: bool,
     verbose: bool,
     debug: bool,
-    pages: Optional[str],
-    pages_csv: Optional[str],
+    pages: str | None,  # noqa: ARG001 - read via _explicit_cli_overrides
+    pages_csv: str | None,  # noqa: ARG001 - read via _explicit_cli_overrides
 ):
     """Extract structured data from documents using an LLM.
 
@@ -215,9 +206,7 @@ def extract(
                             "command": "extract",
                             "status": "valid",
                             "resolved": {
-                                k: v
-                                for k, v in resolved_inputs.items()
-                                if not k.startswith("_")
+                                k: v for k, v in resolved_inputs.items() if not k.startswith("_")
                             },
                         },
                         indent=2,
@@ -225,9 +214,7 @@ def extract(
                     )
                 )
             else:
-                view.success(
-                    "Runtime config validation passed for extract command"
-                )
+                view.success("Runtime config validation passed for extract command")
             return
         view.header("DOCUMENT EXTRACTION")
         view.config(
@@ -247,10 +234,7 @@ def extract(
         click.echo(str(outcome.manifest_path))
     else:
         if outcome.status == "reused":
-            view.success(
-                f"All {outcome.successful} file(s) already processed "
-                "(verified reuse)"
-            )
+            view.success(f"All {outcome.successful} file(s) already processed (verified reuse)")
         view.summary(
             {
                 "Status": outcome.status,
@@ -272,10 +256,7 @@ def extract(
             compile_cmd = (
                 f"pixi run psweep compile --config {config_path}"
                 if config_path
-                else (
-                    f"pixi run psweep compile {outcome.output_dir} "
-                    f"--schema {schema}"
-                )
+                else (f"pixi run psweep compile {outcome.output_dir} --schema {schema}")
             )
             view.next_steps([f"Compile into a spreadsheet: {compile_cmd}"])
     raise click.exceptions.Exit(outcome.exit_code)

@@ -73,15 +73,11 @@ def _schema_path(tmp_path: Path) -> Path:
 def _compiler(tmp_path: Path, *, exclude=None) -> DataCompiler:
     sp = tmp_path / "schema.json"
     _schema(sp, exclude=exclude)
-    return DataCompiler(
-        schema_metadata=SchemaMetadata(sp), verbose=False, debug=False
-    )
+    return DataCompiler(schema_metadata=SchemaMetadata(sp), verbose=False, debug=False)
 
 
 def _prep(tmp_path: Path, rows, *, exclude=None) -> pd.DataFrame:
-    return _compiler(tmp_path, exclude=exclude)._prepare_output_dataframe(
-        pd.DataFrame(rows)
-    )
+    return _compiler(tmp_path, exclude=exclude)._prepare_output_dataframe(pd.DataFrame(rows))
 
 
 def test_get_field_types_reads_schema_types(tmp_path: Path):
@@ -140,9 +136,20 @@ def test_reindex_adds_declared_but_unemitted_field(tmp_path: Path):
 
 
 def test_exclude_and_order_use_exact_output_headers(tmp_path: Path):
-    compiler = DataCompiler(SchemaMetadata(_schema_path(tmp_path), {"compilation": {
-        "output": {"exclude_fields": ["Reasoning"], "column_order": ["value", "feature"]},
-    }}), verbose=False)
+    compiler = DataCompiler(
+        SchemaMetadata(
+            _schema_path(tmp_path),
+            {
+                "compilation": {
+                    "output": {
+                        "exclude_fields": ["Reasoning"],
+                        "column_order": ["value", "feature"],
+                    },
+                }
+            },
+        ),
+        verbose=False,
+    )
     out = compiler._prepare_output_dataframe(
         pd.DataFrame([{"feature": "a", "value": "1", "reasoning": "because"}])
     )
@@ -153,9 +160,17 @@ def test_exclude_and_order_use_exact_output_headers(tmp_path: Path):
 @pytest.mark.parametrize("key", ["exclude_fields", "column_order"])
 def test_unknown_output_header_is_rejected(tmp_path: Path, key):
     # The field name is not the header once a title is set.
-    compiler = DataCompiler(SchemaMetadata(_schema_path(tmp_path), {"compilation": {
-        "output": {key: ["reasoning"]},
-    }}), verbose=False)
+    compiler = DataCompiler(
+        SchemaMetadata(
+            _schema_path(tmp_path),
+            {
+                "compilation": {
+                    "output": {key: ["reasoning"]},
+                }
+            },
+        ),
+        verbose=False,
+    )
     with pytest.raises(ValueError, match="unknown output header"):
         compiler._prepare_output_dataframe(pd.DataFrame([{"feature": "a"}]))
 
@@ -212,9 +227,7 @@ def _schema_with_fips(path: Path) -> None:
 def test_county_fips_derived_when_enabled(tmp_path: Path):
     sp = tmp_path / "schema.json"
     _schema_with_fips(sp)
-    compiler = DataCompiler(
-        schema_metadata=SchemaMetadata(sp), verbose=False, debug=False
-    )
+    compiler = DataCompiler(schema_metadata=SchemaMetadata(sp), verbose=False, debug=False)
     out = compiler._prepare_output_dataframe(
         pd.DataFrame(
             [

@@ -48,7 +48,7 @@ def _friendswood_get(calls: list[tuple[str, dict]] | None = None):
                             "stations.</h2><p>A minimum building setback of "
                             "<b>500&nbsp;feet</b> from residential districts "
                             "applies to every compressor station.</p></div>"
-                        )
+                        ),
                     }
                 ]
             }
@@ -146,9 +146,7 @@ class TestFetchText:
         # node — valid sibling docs are still returned.
         def _get(u: str, h: dict) -> tuple[int, str]:
             if "Clients/stateAbbr" in u:
-                return 200, json.dumps(
-                    [{"ClientID": 2291, "ClientName": "Friendswood"}]
-                )
+                return 200, json.dumps([{"ClientID": 2291, "ClientName": "Friendswood"}])
             if u.endswith("/api/ClientContent/2291"):
                 return 200, json.dumps({"codes": [{"productId": 13883}]})
             if u.endswith("/api/Jobs/latest/13883"):
@@ -187,7 +185,10 @@ def test_grouped_api_content_keeps_only_requested_subtree_and_headings():
         {"Id": "CH10_GASOTHER", "Content": "<p>Unrelated sibling</p>"},
     ]
     text = MunicodeAdapter()._fetch_content(
-        1, 2, "CH10_GAS", lambda *_: (200, json.dumps({"Docs": docs})),
+        1,
+        2,
+        "CH10_GAS",
+        lambda *_: (200, json.dumps({"Docs": docs})),
     )
     assert text == "Gas pipelines\nSec. 10-1\nA 500-foot setback applies."
 
@@ -197,9 +198,15 @@ def test_heading_only_or_wrong_node_response_is_not_a_document():
         [{"Id": "OTHER", "Content": "Unrelated body"}],
         [{"Id": "NODE", "TitleHtml": "Catalogue heading", "Content": None}],
     ):
-        assert MunicodeAdapter()._fetch_content(
-            1, 2, "NODE", lambda *_: (200, json.dumps({"Docs": docs})),
-        ) is None
+        assert (
+            MunicodeAdapter()._fetch_content(
+                1,
+                2,
+                "NODE",
+                lambda *_, docs=docs: (200, json.dumps({"Docs": docs})),
+            )
+            is None
+        )
 
 
 def test_node_value_cannot_override_api_query_parameters():
@@ -217,10 +224,13 @@ def test_node_value_cannot_override_api_query_parameters():
 
 def test_amendment_link_is_not_misrepresented_as_current_code():
     calls = []
-    assert MunicodeAdapter().fetch_text(
-        "https://library.municode.com/tx/keller/ordinances/code_of_ordinances?nodeId=N",
-        _friendswood_get(calls),
-    ) is None
+    assert (
+        MunicodeAdapter().fetch_text(
+            "https://library.municode.com/tx/keller/ordinances/code_of_ordinances?nodeId=N",
+            _friendswood_get(calls),
+        )
+        is None
+    )
     assert calls == []
 
 

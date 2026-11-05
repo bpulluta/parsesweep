@@ -46,15 +46,11 @@ def _fake_search(monkeypatch, response):
         ),
     )
     search = Mock(return_value=response)
-    monkeypatch.setattr(
-        SerpApiSeeker, "_build_search_callable", lambda _self: search
-    )
+    monkeypatch.setattr(SerpApiSeeker, "_build_search_callable", lambda _self: search)
     return search
 
 
-def test_empty_exhausted_target_is_completed_without_searching_again(
-    monkeypatch, tmp_path
-):
+def test_empty_exhausted_target_is_completed_without_searching_again(monkeypatch, tmp_path):
     """Empty results finish selection rather than repeating paid searches."""
     search = _fake_search(monkeypatch, {"organic_results": []})
     request = _request(tmp_path)
@@ -83,8 +79,7 @@ def test_file_cap_does_not_checkpoint_truncated_target(monkeypatch, tmp_path):
     notes = json.loads(result.manifest_path.read_text())["notes"]
     assert "The runtime.max_files budget left 1 candidate(s) undownloaded." in notes
     assert any(
-        "1 partition(s) still incomplete (budget runtime.max_files=1)" in note
-        for note in notes
+        "1 partition(s) still incomplete (budget runtime.max_files=1)" in note for note in notes
     )
     checkpoint = tmp_path / DOMAIN_DIR / "checkpoint.json"
     (entry,) = json.loads(checkpoint.read_text())["entries"].values()
@@ -154,9 +149,7 @@ def test_cap_preserves_prior_complete_partition(monkeypatch, tmp_path):
     assert not (previous.parent / "b.pdf").exists()
 
 
-def test_shared_source_failure_preserves_prior_shared_curation(
-    monkeypatch, tmp_path
-):
+def test_shared_source_failure_preserves_prior_shared_curation(monkeypatch, tmp_path):
     """Shared source errors protect the shared partition's existing curation."""
     prior = tmp_path / DOMAIN_DIR / "curated/_shared/old.pdf"
     prior.parent.mkdir(parents=True)
@@ -186,11 +179,19 @@ def test_empty_search_cannot_complete_a_failed_target_url(monkeypatch, tmp_path)
     """Whole-target outcome, not search-only outcome, governs completion."""
     _fake_search(monkeypatch, {"organic_results": []})
     monkeypatch.setattr(
-        "psweep.discovery.network.request_get", Mock(side_effect=requests.ConnectionError("failed seed"))
+        "psweep.discovery.network.request_get",
+        Mock(side_effect=requests.ConnectionError("failed seed")),
     )
-    request = _request(tmp_path, targets=[{
-        "label": "target", "query": "documents", "urls": ["https://example.org/target.pdf"],
-    }])
+    request = _request(
+        tmp_path,
+        targets=[
+            {
+                "label": "target",
+                "query": "documents",
+                "urls": ["https://example.org/target.pdf"],
+            }
+        ],
+    )
     result = DiscoveryEngine().run(request)
     assert result.status == "failed"
     checkpoint = tmp_path / DOMAIN_DIR / "checkpoint.json"
@@ -207,9 +208,7 @@ def test_fixed_empty_reuse_remains_cached_on_third_run(monkeypatch, tmp_path):
     assert search.call_count == 1
 
 
-def test_reused_none_retention_never_deletes_consolidated(
-    monkeypatch, tmp_path
-):
+def test_reused_none_retention_never_deletes_consolidated(monkeypatch, tmp_path):
     """Retention applies to fresh run-local data, not reused corpus files."""
     search = _fake_search(
         monkeypatch,
@@ -218,9 +217,7 @@ def test_reused_none_retention_never_deletes_consolidated(
     monkeypatch.setattr(
         "psweep.discovery.network.request_get", lambda url, **_kwargs: FakeResponse(url=url)
     )
-    request = _request(
-        tmp_path, selection_primary_per_target=1, retention_documents="none"
-    )
+    request = _request(tmp_path, selection_primary_per_target=1, retention_documents="none")
     first = DiscoveryEngine().run(request)
     prior = tmp_path / DOMAIN_DIR / "curated/by_label/target/a.pdf"
     assert prior.exists()
@@ -228,9 +225,7 @@ def test_reused_none_retention_never_deletes_consolidated(
     assert result.status == "reused"
     assert prior.exists() and search.call_count == 1
     manifest = json.loads(result.manifest_path.read_text())
-    assert (
-        manifest["status"] == "reused" and manifest["run_id"] == result.run_id
-    )
+    assert manifest["status"] == "reused" and manifest["run_id"] == result.run_id
     editable = json.loads(first.manifest_path.read_text())
     assert editable["status"] == "success" and editable["downloads"]
 
@@ -255,9 +250,7 @@ def test_fully_reused_run_creates_no_documents_dir(monkeypatch, tmp_path):
     assert sorted(p.name for p in run_dir.iterdir()) == ["outcomes"]
 
 
-def test_failed_final_publication_preserves_fixed_local_outputs(
-    monkeypatch, tmp_path
-):
+def test_failed_final_publication_preserves_fixed_local_outputs(monkeypatch, tmp_path):
     """Local artifacts are not written before final coherent publication."""
     _fake_search(
         monkeypatch,
@@ -280,14 +273,10 @@ def test_failed_final_publication_preserves_fixed_local_outputs(
         DiscoveryEngine().run(request)
     assert first.manifest_path.read_bytes() == before_manifest
     assert first.download_index_path.read_bytes() == before_index
-    assert (
-        first.curated_dir / "by_label/target/a.pdf"
-    ).read_bytes() == before_curated
+    assert (first.curated_dir / "by_label/target/a.pdf").read_bytes() == before_curated
 
 
-def test_fixed_partial_resume_does_not_invalidate_previous_target(
-    monkeypatch, tmp_path
-):
+def test_fixed_partial_resume_does_not_invalidate_previous_target(monkeypatch, tmp_path):
     """Each completion references immutable manifest and index evidence."""
     targets = [{"label": label, "query": label} for label in ("alpha", "beta")]
     search = _fake_search(monkeypatch, {})
@@ -349,9 +338,7 @@ def test_shared_sources_are_checkpointed_per_url(monkeypatch, tmp_path):
     assert {p.name for p in curated.glob("*.pdf")} == {"one.pdf", "two.pdf"}
 
 
-def test_terminal_failures_do_not_block_publication_or_completion(
-    monkeypatch, tmp_path
-):
+def test_terminal_failures_do_not_block_publication_or_completion(monkeypatch, tmp_path):
     """A 403 shared source and an expired-cert target URL are final outcomes."""
     search = _fake_search(monkeypatch, {"organic_results": []})
 
@@ -367,19 +354,20 @@ def test_terminal_failures_do_not_block_publication_or_completion(
     monkeypatch.setattr("psweep.discovery.network.request_get", get)
     request = _request(
         tmp_path,
-        targets=[{
-            "label": "target", "query": "documents",
-            "urls": ["https://example.org/ok.pdf", "https://example.org/expired.pdf"],
-        }],
+        targets=[
+            {
+                "label": "target",
+                "query": "documents",
+                "urls": ["https://example.org/ok.pdf", "https://example.org/expired.pdf"],
+            }
+        ],
         sources=["https://example.org/shared.pdf", "https://example.org/forbidden.pdf"],
     )
     DiscoveryEngine().run(request)
     curated = tmp_path / DOMAIN_DIR / "curated"
     assert (curated / "_shared/shared.pdf").exists()
     assert (curated / "by_label/target/ok.pdf").exists()
-    manifest = json.loads(
-        (tmp_path / DOMAIN_DIR / "latest/manifest.json").read_text()
-    )
+    manifest = json.loads((tmp_path / DOMAIN_DIR / "latest/manifest.json").read_text())
     assert len(manifest["errors"]) == 2
     assert not any(error["retryable"] for error in manifest["errors"])
     assert {
@@ -393,9 +381,14 @@ def test_terminal_failures_do_not_block_publication_or_completion(
 
 def test_seeker_progress_reports_totals_across_targets(monkeypatch, tmp_path):
     """The stage summary counts every target, not only the last one."""
-    _fake_search(monkeypatch, {"organic_results": [
-        {"link": f"https://example.org/{name}.pdf"} for name in ("a", "b", "c")
-    ]})
+    _fake_search(
+        monkeypatch,
+        {
+            "organic_results": [
+                {"link": f"https://example.org/{name}.pdf"} for name in ("a", "b", "c")
+            ]
+        },
+    )
     messages = []
     request = _request(
         tmp_path,
@@ -409,18 +402,19 @@ def test_seeker_progress_reports_totals_across_targets(monkeypatch, tmp_path):
     assert "6 candidate(s) found across 2 target(s), 2 selected" in summary
 
 
-def test_configured_url_does_not_drop_another_targets_search_hit(
-    monkeypatch, tmp_path
-):
+def test_configured_url_does_not_drop_another_targets_search_hit(monkeypatch, tmp_path):
     """Dedup against configured URLs is per target, not per URL."""
     _fake_search(monkeypatch, {"organic_results": [{"link": "https://example.org/x.pdf"}]})
     monkeypatch.setattr(
         "psweep.discovery.network.request_get", lambda url, **_kwargs: FakeResponse(url=url)
     )
-    request = _request(tmp_path, targets=[
-        {"label": "alpha", "query": "a", "urls": ["https://example.org/x.pdf"]},
-        {"label": "beta", "query": "b"},
-    ])
+    request = _request(
+        tmp_path,
+        targets=[
+            {"label": "alpha", "query": "a", "urls": ["https://example.org/x.pdf"]},
+            {"label": "beta", "query": "b"},
+        ],
+    )
     DiscoveryEngine().run(request)
     curated = tmp_path / DOMAIN_DIR / "curated/by_label"
     assert (curated / "alpha/x.pdf").exists()
@@ -450,7 +444,7 @@ def test_same_basename_from_another_owner_never_overwrites(monkeypatch, tmp_path
 
     curated = tmp_path / DOMAIN_DIR / "curated/_shared"
     plain = curated / "ordinance.pdf"
-    (hashed,) = [p for p in curated.glob("ordinance-*.pdf")]
+    (hashed,) = list(curated.glob("ordinance-*.pdf"))
     assert plain.read_bytes().endswith(first.encode())
     assert hashed.read_bytes().endswith(second.encode())
     index = (tmp_path / DOMAIN_DIR / "download_index.csv").read_text()
@@ -557,10 +551,13 @@ def test_skipped_only_outcomes_complete_target_and_source(monkeypatch, tmp_path)
     monkeypatch.setattr("psweep.discovery.network.request_get", get)
     request = _request(
         tmp_path,
-        targets=[{
-            "label": "target", "query": "documents",
-            "urls": ["https://example.org/picture"],
-        }],
+        targets=[
+            {
+                "label": "target",
+                "query": "documents",
+                "urls": ["https://example.org/picture"],
+            }
+        ],
         sources=["https://other.org/logo"],
         selection_exclude_url_patterns=["archive"],
     )
@@ -582,9 +579,7 @@ def test_resume_reruns_only_targets_whose_inputs_changed(monkeypatch, tmp_path):
     fetched = _fetch_by_url(monkeypatch)
     alpha = {"label": "alpha", "county": "Pima", "urls": ["https://a.gov/a.pdf"]}
     beta = {"label": "beta", "county": "Pinal"}
-    request = _request(
-        tmp_path, queries=["{label} {county} permits"], targets=[alpha, beta]
-    )
+    request = _request(tmp_path, queries=["{label} {county} permits"], targets=[alpha, beta])
     DiscoveryEngine().run(request)
     assert search.call_count == 2
     fetched.clear()
@@ -606,10 +601,13 @@ def test_resume_reruns_only_targets_whose_inputs_changed(monkeypatch, tmp_path):
     assert fetched == ["https://a.gov/b.pdf"]
 
 
-@pytest.mark.parametrize("robots_failure, retried", [
-    (requests.ReadTimeout("read timed out"), True),
-    (403, False),
-])
+@pytest.mark.parametrize(
+    "robots_failure, retried",
+    [
+        (requests.ReadTimeout("read timed out"), True),
+        (403, False),
+    ],
+)
 def test_robots_unavailability_completes_only_when_deterministic(
     monkeypatch, tmp_path, robots_failure, retried
 ):
@@ -632,7 +630,8 @@ def test_robots_unavailability_completes_only_when_deterministic(
 
     monkeypatch.setattr("psweep.discovery.network.request_get", get)
     request = _request(
-        tmp_path, robots_policy_mode="enforce",
+        tmp_path,
+        robots_policy_mode="enforce",
         targets=[{"label": "target", "urls": ["https://a.gov/x.pdf"]}],
     )
     first = DiscoveryEngine().run(request)
@@ -654,12 +653,19 @@ def test_crawl_page_with_transient_policy_failure_stays_unfinished(monkeypatch, 
     from psweep.discovery.policies import PolicyCheckResult
 
     engine = DiscoveryEngine()
-    monkeypatch.setattr(engine, "_evaluate_request_policy", lambda **_kw: PolicyCheckResult(
-        allowed=False, blocking_code="robots_unavailable", retryable=True,
-    ))
+    monkeypatch.setattr(
+        engine,
+        "_evaluate_request_policy",
+        lambda **_kw: PolicyCheckResult(
+            allowed=False,
+            blocking_code="robots_unavailable",
+            retryable=True,
+        ),
+    )
     page = make_candidate("https://county.gov/hub")
     *_, unfinished = engine._crawl_candidates(
-        request=_request(tmp_path, max_depth=1), candidates=[page],
+        request=_request(tmp_path, max_depth=1),
+        candidates=[page],
     )
     assert unfinished == [page]
 
@@ -750,7 +756,8 @@ def test_names_resolve_against_the_index_current_at_publication(monkeypatch, tmp
     (mine,) = curated.glob("ordinance-*.pdf")
     assert mine.read_bytes().endswith(b"a.gov/ordinance.pdf")
     assert {row["url"] for row in _index_rows(tmp_path)} == {
-        "https://a.gov/ordinance.pdf", "https://b.gov/ordinance.pdf",
+        "https://a.gov/ordinance.pdf",
+        "https://b.gov/ordinance.pdf",
     }
 
 
@@ -758,9 +765,15 @@ def test_unreadable_search_hit_is_a_skip_not_a_run_error(monkeypatch, tmp_path):
     """Too little text completes the target without a partial_failure."""
     from psweep.discovery.document_reviewer import DocumentReviewer, UnreadableDocumentError
 
-    search = _fake_search(monkeypatch, {"organic_results": [
-        {"link": "https://a.gov/good.pdf"}, {"link": "https://a.gov/shell.pdf"},
-    ]})
+    search = _fake_search(
+        monkeypatch,
+        {
+            "organic_results": [
+                {"link": "https://a.gov/good.pdf"},
+                {"link": "https://a.gov/shell.pdf"},
+            ]
+        },
+    )
     _fetch_by_url(monkeypatch)
 
     def grade(_self, path, **_kwargs):
@@ -770,9 +783,14 @@ def test_unreadable_search_hit_is_a_skip_not_a_run_error(monkeypatch, tmp_path):
 
     monkeypatch.setattr(DocumentReviewer, "_ensure_client", lambda _self: object())
     monkeypatch.setattr(DocumentReviewer, "_grade", grade)
-    request = _request(tmp_path, document_review={
-        "document_description": "records", "keep_top": 2, "deduplicate_redundant": False,
-    })
+    request = _request(
+        tmp_path,
+        document_review={
+            "document_description": "records",
+            "keep_top": 2,
+            "deduplicate_redundant": False,
+        },
+    )
     result = DiscoveryEngine().run(request)
     manifest = json.loads(result.manifest_path.read_text())
     assert result.status == "success" and manifest["errors"] == []
@@ -786,9 +804,7 @@ def test_unreadable_search_hit_is_a_skip_not_a_run_error(monkeypatch, tmp_path):
 def _listing(monkeypatch, children, *, transient=None, missing=(), trailing=()):
     """Serve an HTML listing linking ``children``; record every request."""
     listing = "https://agency.gov/permits"
-    html = " ".join(
-        f'<a href="{url}">{Path(url).stem}</a>' for url in [*children, *trailing]
-    )
+    html = " ".join(f'<a href="{url}">{Path(url).stem}</a>' for url in [*children, *trailing])
     fetched = []
 
     def get(url, **_kwargs):
@@ -832,7 +848,8 @@ def test_capped_listing_converges_across_reruns(monkeypatch, tmp_path):
         result = DiscoveryEngine().run(request)
         assert sorted(fetched) == sorted(requests_made), run
         assert {p.name for p in shared.iterdir() if p.is_file()} == {
-            "permits.html", *(f"{name}.pdf" for name in published)
+            "permits.html",
+            *(f"{name}.pdf" for name in published),
         }
         notes = json.loads(result.manifest_path.read_text())["notes"]
         if run > 1:
@@ -844,8 +861,7 @@ def test_capped_listing_converges_across_reruns(monkeypatch, tmp_path):
             ), notes
         if run < len(batches):
             assert any(
-                "partition(s) still incomplete" in n and "runtime.max_files=2" in n
-                for n in notes
+                "partition(s) still incomplete" in n and "runtime.max_files=2" in n for n in notes
             ), notes
     rows = _index_rows(tmp_path)
     assert sorted(row["relative_path"] for row in rows) == sorted(
@@ -894,15 +910,24 @@ def test_rejected_download_of_incomplete_target_is_not_fetched_again(
 
     def grade(_self, path, **_kwargs):
         primary = not path.endswith("a.pdf")
-        return {"is_primary": primary, "relevance": 0.9 if primary else 0.1,
-                "doc_kind": "record", "reason": "ok"}
+        return {
+            "is_primary": primary,
+            "relevance": 0.9 if primary else 0.1,
+            "doc_kind": "record",
+            "reason": "ok",
+        }
 
     monkeypatch.setattr(DocumentReviewer, "_ensure_client", lambda _self: object())
     monkeypatch.setattr(DocumentReviewer, "_grade", grade)
     request = _request(
-        tmp_path, selection_primary_per_target=3, retention_documents=retention,
-        document_review={"document_description": "records", "keep_top": 3,
-                         "deduplicate_redundant": False},
+        tmp_path,
+        selection_primary_per_target=3,
+        retention_documents=retention,
+        document_review={
+            "document_description": "records",
+            "keep_top": 3,
+            "deduplicate_redundant": False,
+        },
     )
     assert DiscoveryEngine().run(request).status == "partial_failure"
 
@@ -968,9 +993,7 @@ def test_file_budget_equal_to_matched_links_completes_the_listing(monkeypatch, t
     request = _listing_request(tmp_path, listing, max_files=len(children))
     assert DiscoveryEngine().run(request).status == "success"
     shared = tmp_path / DOMAIN_DIR / "curated/_shared"
-    assert {p.name for p in shared.iterdir() if p.is_file()} == {
-        "permits.html", "a.pdf", "b.pdf"
-    }
+    assert {p.name for p in shared.iterdir() if p.is_file()} == {"permits.html", "a.pdf", "b.pdf"}
     (entry,) = json.loads((tmp_path / DOMAIN_DIR / "checkpoint.json").read_text())[
         "entries"
     ].values()

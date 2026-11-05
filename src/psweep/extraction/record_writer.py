@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import re
-from datetime import datetime, timezone
+from datetime import datetime, UTC
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
@@ -33,9 +33,7 @@ def _resolve_lineage_artifact_id(
     artifact_id = (runtime_artifact or {}).get("artifact_id")
     if isinstance(artifact_id, str) and artifact_id.strip():
         return artifact_id
-    lineage_artifact = ((runtime_artifact or {}).get("lineage") or {}).get(
-        "artifact_id"
-    )
+    lineage_artifact = ((runtime_artifact or {}).get("lineage") or {}).get("artifact_id")
     if isinstance(lineage_artifact, str) and lineage_artifact.strip():
         return lineage_artifact
     run_fragment = (run_id or default_fragment).replace("run://", "")
@@ -87,8 +85,7 @@ def record_extraction_scope(
     if section_filtered:
         coverage["section_filtered"] = True
         warnings.append(
-            "Extraction limited to selected sections; "
-            "not a full-document coverage guarantee."
+            "Extraction limited to selected sections; not a full-document coverage guarantee."
         )
     scope = parser_scope or {}
     if scope.get("page_count") is not None:
@@ -112,7 +109,7 @@ def record_extraction_scope(
     result.validation_notes = warnings
 
 
-def build_extraction_record(  # noqa: PLR0913 - canonical record context
+def build_extraction_record(
     *,
     doc_path: Path,
     source_document_id: str,
@@ -130,27 +127,20 @@ def build_extraction_record(  # noqa: PLR0913 - canonical record context
     item_array_key = schema_metadata.get_main_data_array()
     items = get_nested_value(result.data, item_array_key)
     if not isinstance(items, list):
-        message = (
-            f"Schema-declared main data array '{item_array_key}' "
-            "must be an array."
-        )
+        message = f"Schema-declared main data array '{item_array_key}' must be an array."
         raise SchemaValidationError(message)
     num_items = len(items)
     if input_fingerprint is not None and (
         not isinstance(input_fingerprint, str)
         or not re.fullmatch(r"[0-9a-f]{64}", input_fingerprint)
     ):
-        message = (
-            "Extraction input_fingerprint must be a lowercase SHA-256 digest."
-        )
+        message = "Extraction input_fingerprint must be a lowercase SHA-256 digest."
         raise ValueError(message)
     source_identity = hashlib.sha256(
         doc_path.resolve().as_posix().encode("utf-8"),
     ).hexdigest()
     source_sha256 = artifact_sha256(doc_path)
-    extracted_at = (
-        datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-    )
+    extracted_at = datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
     lineage = build_lineage(
         runtime_artifact=runtime_artifact,
@@ -187,8 +177,7 @@ def build_extraction_record(  # noqa: PLR0913 - canonical record context
             "off_candidate_items": getattr(result, "off_candidate_items", 0),
             "warnings": list(getattr(result, "validation_notes", []) or []),
             "errors": normalize_error_records(
-                getattr(result, "processing_errors", None)
-                or getattr(result, "errors", None)
+                getattr(result, "processing_errors", None) or getattr(result, "errors", None)
             ),
         },
         "processing_metrics": {
@@ -204,7 +193,7 @@ def build_extraction_record(  # noqa: PLR0913 - canonical record context
     return record, num_items
 
 
-def write_extraction_record(  # noqa: PLR0913 - canonical record context + validator
+def write_extraction_record(
     output_path: Path,
     *,
     doc_path: Path,

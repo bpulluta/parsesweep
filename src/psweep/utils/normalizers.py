@@ -5,7 +5,6 @@ Data normalization utilities for consistent outputs.
 Provides standardization functions for common fields like US states.
 """
 
-from typing import Optional
 import csv
 import functools
 import re
@@ -139,7 +138,7 @@ US_STATES = {
 }
 
 
-def normalize_state(state: Optional[str]) -> Optional[str]:
+def normalize_state(state: str | None) -> str | None:
     """
     Normalize US state name to 2-letter abbreviation.
 
@@ -190,7 +189,7 @@ def normalize_state(state: Optional[str]) -> Optional[str]:
         return normalized
 
     # Not found - return original with warning
-    logger.warning(f"Unknown state value '{state}' - keeping as-is")
+    logger.warning("Unknown state value '%s' - keeping as-is", state)
     return state
 
 
@@ -226,7 +225,7 @@ def normalize_state_column(df, column_name: str) -> None:
     # Log stats
     unique_states = df[column_name].nunique()
     logger.debug(
-        f"Normalized {column_name}: {unique_states} unique states across {original_count} rows"
+        "Normalized %s: %s unique states across %s rows", column_name, unique_states, original_count
     )
 
 
@@ -276,9 +275,7 @@ def _county_fips_lookup() -> dict:
     return lookup
 
 
-def county_to_fips(
-    state: Optional[str], county: Optional[str]
-) -> Optional[str]:
+def county_to_fips(state: str | None, county: str | None) -> str | None:
     """Return the 5-digit county FIPS (GEOID) for a state + county, or None.
 
     Domain-agnostic geographic enrichment: matching is suffix-insensitive and
@@ -293,9 +290,7 @@ def county_to_fips(
     state_abbr = normalize_state(state)
     if not isinstance(state_abbr, str):
         return None
-    return _county_fips_lookup().get(
-        (state_abbr.strip().upper(), _county_key(county))
-    )
+    return _county_fips_lookup().get((state_abbr.strip().upper(), _county_key(county)))
 
 
 def add_county_fips_column(
@@ -313,6 +308,5 @@ def add_county_fips_column(
     if state_column not in df.columns or county_column not in df.columns:
         return
     df[fips_column] = [
-        county_to_fips(s, c)
-        for s, c in zip(df[state_column], df[county_column])
+        county_to_fips(s, c) for s, c in zip(df[state_column], df[county_column], strict=True)
     ]

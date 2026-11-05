@@ -271,7 +271,11 @@ def test_compilation_exclude_fields_can_come_from_runtime_overrides(tmp_path) ->
                 "extracted_at": "2026-03-24T00:00:00Z",
             },
             "payload": {
-                "metadata": {"id": "T-5", "jurisdiction": "Example District", "internal_note": "drop me"},
+                "metadata": {
+                    "id": "T-5",
+                    "jurisdiction": "Example District",
+                    "internal_note": "drop me",
+                },
                 "items": [{"name": "Charge E", "value": 50}],
             },
         },
@@ -340,9 +344,7 @@ def test_compilation_output_overrides_apply_to_saved_exports(tmp_path) -> None:
     compiler.save_csv(export_frame, csv_path)
     compiler.save_excel(export_frame, excel_path)
 
-    csv_headers = (
-        csv_path.read_text(encoding="utf-8").splitlines()[0].split(",")
-    )
+    csv_headers = csv_path.read_text(encoding="utf-8").splitlines()[0].split(",")
     assert csv_headers == [
         "jurisdiction",
         "Run Id",
@@ -506,9 +508,7 @@ def test_state_normalization_is_opt_in(tmp_path) -> None:
     extracted_dir = tmp_path / "processed/tariffs"
     _write_record_with_state(extracted_dir / "doc1.json", "Utah")
 
-    compiler = DataCompiler(
-        schema_metadata=SchemaMetadata(schema_path), verbose=False, debug=False
-    )
+    compiler = DataCompiler(schema_metadata=SchemaMetadata(schema_path), verbose=False, debug=False)
     df, _ = compiler.compile_from_directory(extracted_dir)
     assert df.iloc[0]["state"] == "Utah"
 
@@ -521,13 +521,9 @@ def test_state_normalization_abbreviates_configured_field(tmp_path) -> None:
 
     schema_metadata = SchemaMetadata(
         schema_path,
-        metadata_overrides={
-            "compilation": {"normalization": {"state_column": "state"}}
-        },
+        metadata_overrides={"compilation": {"normalization": {"state_column": "state"}}},
     )
-    compiler = DataCompiler(
-        schema_metadata=schema_metadata, verbose=False, debug=False
-    )
+    compiler = DataCompiler(schema_metadata=schema_metadata, verbose=False, debug=False)
     df, _ = compiler.compile_from_directory(extracted_dir)
     assert df.iloc[0]["state"] == "UT"
 

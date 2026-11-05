@@ -36,14 +36,13 @@ def target_identity(
     target: Mapping[str, Any], fields: Sequence[str] | None = None
 ) -> dict[str, Any]:
     """Fields that identify a target: ``partition_by`` when set, else every
-    non-input field. Other (passthrough) fields never affect identity."""
+    non-input field. Other (passthrough) fields never affect identity.
+    """
     keys = fields or [key for key in target if key not in TARGET_INPUT_FIELDS]
     return {key: target.get(key) for key in keys}
 
 
-def identify_target(
-    target: Mapping[str, Any], fields: Sequence[str] | None = None
-) -> str:
+def identify_target(target: Mapping[str, Any], fields: Sequence[str] | None = None) -> str:
     """Stable, path-safe target id hashed from :func:`target_identity`."""
     encoded = json.dumps(target_identity(target, fields), sort_keys=True, default=str)
     return hashlib.md5(encoded.encode()).hexdigest()[:12]
@@ -66,15 +65,11 @@ def _normalize_urls(value: Any, where: str, *, from_csv: bool) -> list[str]:
 def _normalize_row(row: Any, where: str, *, from_csv: bool) -> dict[str, Any]:
     if not isinstance(row, dict):
         raise TargetSpecError(f"{where}: target must be an object")
-    normalized = (
-        {key: value or None for key, value in row.items()} if from_csv else dict(row)
-    )
+    normalized = {key: value or None for key, value in row.items()} if from_csv else dict(row)
     if normalized.get("urls") is None:
         normalized.pop("urls", None)
     else:
-        normalized["urls"] = _normalize_urls(
-            normalized["urls"], where, from_csv=from_csv
-        )
+        normalized["urls"] = _normalize_urls(normalized["urls"], where, from_csv=from_csv)
     return normalized
 
 
@@ -100,15 +95,12 @@ def _iter_file(path: Path) -> Iterator[tuple[str, dict[str, Any]]]:
             where = f"{path.as_posix()}:{reader.line_num}"
             if None in row:
                 raise TargetSpecError(
-                    f"{where}: row has more cells than the "
-                    f"{len(reader.fieldnames)}-column header"
+                    f"{where}: row has more cells than the {len(reader.fieldnames)}-column header"
                 )
             yield where, _normalize_row(row, where, from_csv=True)
 
 
-def _dimension_rows(
-    dimension: dict[str, Any], where: str = "dimension"
-) -> list[dict[str, Any]]:
+def _dimension_rows(dimension: dict[str, Any], where: str = "dimension") -> list[dict[str, Any]]:
     name = dimension["name"]
     if "values" in dimension:
         return [{name: value} for value in dimension["values"]]
@@ -119,14 +111,9 @@ def _dimension_rows(
     columns = sorted({key for row in rows for key in row})
     if rows and column not in columns:
         close = get_close_matches(str(column), columns, n=1)
-        hint = (
-            f" — did you mean '{close[0]}'?"
-            if close
-            else f" (columns: {', '.join(columns)})"
-        )
+        hint = f" — did you mean '{close[0]}'?" if close else f" (columns: {', '.join(columns)})"
         raise TargetSpecError(
-            f"{where}.column: unknown column '{column}' in "
-            f"{dimension['dataset']}{hint}"
+            f"{where}.column: unknown column '{column}' in {dimension['dataset']}{hint}"
         )
     return [{name: row.get(column)} for row in rows if row.get(column) is not None]
 
@@ -192,20 +179,21 @@ def resolve_targets_spec(
         if not isinstance(dimensions, list) or not dimensions:
             raise TargetSpecError("targets.cross_product.dimensions must be a non-empty list")
         resolved_dims = []
-        for index, dim in enumerate(dimensions):
+        for index, raw_dim in enumerate(dimensions):
             where = f"targets.cross_product.dimensions[{index}]"
             if not (
-                isinstance(dim, dict)
-                and "name" in dim
-                and ("values" in dim) != ("dataset" in dim)
-                and set(dim) <= (_VALUES_DIMENSION if "values" in dim else _DATASET_DIMENSION)
+                isinstance(raw_dim, dict)
+                and "name" in raw_dim
+                and ("values" in raw_dim) != ("dataset" in raw_dim)
+                and set(raw_dim)
+                <= (_VALUES_DIMENSION if "values" in raw_dim else _DATASET_DIMENSION)
             ):
                 raise TargetSpecError(
                     f"{where} must be {{name, values}} or {{name, dataset, column?}}"
                 )
-            if not isinstance(dim["name"], str) or not dim["name"].strip():
+            if not isinstance(raw_dim["name"], str) or not raw_dim["name"].strip():
                 raise TargetSpecError(f"{where}.name must be a non-empty string")
-            dim = dict(dim)
+            dim = dict(raw_dim)
             if "values" in dim:
                 if not isinstance(dim["values"], list) or not dim["values"]:
                     raise TargetSpecError(f"{where}.values must be a non-empty list")

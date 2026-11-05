@@ -24,7 +24,8 @@ from __future__ import annotations
 import html
 import json
 import re
-from typing import Callable, Optional, Protocol
+from typing import Protocol
+from collections.abc import Callable
 from urllib.parse import parse_qs, urlencode, urlparse
 
 # get(url, headers) -> (status_code, response_text). Raises on transport error.
@@ -66,7 +67,7 @@ class CodeHostAdapter(Protocol):
         """Return True if this adapter handles ``url``'s host."""
         ...
 
-    def fetch_text(self, url: str, get: HttpGet) -> Optional[str]:
+    def fetch_text(self, url: str, get: HttpGet) -> str | None:
         """Return clean text for ``url`` via ``get``, or None if unresolved."""
         ...
 
@@ -103,7 +104,7 @@ class MunicodeAdapter:
         """Use the same identifying client headers throughout acquisition."""
         return dict(self._HEADERS)
 
-    def fetch_text(self, url: str, get: HttpGet) -> Optional[str]:
+    def fetch_text(self, url: str, get: HttpGet) -> str | None:
         """Resolve the Municode API chain for ``url`` and return clean text."""
         parts = urlparse(url)
         segments = [s for s in parts.path.split("/") if s]
@@ -139,12 +140,8 @@ class MunicodeAdapter:
         except (ValueError, TypeError):
             return None
 
-    def _resolve_client_id(
-        self, state: str, client: str, get: HttpGet
-    ) -> int | None:
-        data = self._get_json(
-            f"{self._API}/Clients/stateAbbr?stateAbbr={state}", get
-        )
+    def _resolve_client_id(self, state: str, client: str, get: HttpGet) -> int | None:
+        data = self._get_json(f"{self._API}/Clients/stateAbbr?stateAbbr={state}", get)
         if not isinstance(data, list):
             return None
         # Exact normalized match ONLY. Normalization already absorbs
@@ -208,8 +205,7 @@ class MunicodeAdapter:
             and (d["Id"] == node or d["Id"].startswith(node + "_"))
         ]
         if not any(
-            isinstance(d.get("Content"), str) and _strip_html(d["Content"])
-            for d in selected
+            isinstance(d.get("Content"), str) and _strip_html(d["Content"]) for d in selected
         ):
             return None
         parts = [
@@ -226,12 +222,12 @@ class MunicodeAdapter:
 _ADAPTERS: list[CodeHostAdapter] = [MunicodeAdapter()]
 
 
-def resolve_adapter(url: str) -> Optional[CodeHostAdapter]:
+def resolve_adapter(url: str) -> CodeHostAdapter | None:
     """Return the first bundled adapter that can handle ``url``, or ``None``."""
     for adapter in _ADAPTERS:
         try:
             if adapter.can_handle(url):
                 return adapter
-        except Exception:  # noqa: BLE001 - a bad adapter must not break discovery
+        except Exception:  # noqa: BLE001, S112 - a bad adapter must not break discovery
             continue
     return None

@@ -2,10 +2,9 @@
 
 import csv
 from pathlib import Path
-from typing import Dict, Optional, Tuple
 
 
-def parse_page_range(page_spec: str) -> Tuple[int, int]:
+def parse_page_range(page_spec: str) -> tuple[int, int]:
     """
     Parse a page range specification string.
 
@@ -42,25 +41,19 @@ def parse_page_range(page_spec: str) -> Tuple[int, int]:
                     if start < 1 or end < 1:
                         raise ValueError("Page numbers must be >= 1")
                     if start > end:
-                        raise ValueError(
-                            f"Start page ({start}) must be <= end page ({end})"
-                        )
-
-                    return (start, end)
+                        raise ValueError(f"Start page ({start}) must be <= end page ({end})")
                 except ValueError as e:
                     if "invalid literal" in str(e):
-                        raise ValueError(
-                            f"Invalid page numbers in '{page_spec}'"
-                        )
+                        raise ValueError(f"Invalid page numbers in '{page_spec}'") from e
                     raise
+                return (start, end)
 
     raise ValueError(
-        f"Invalid page range format: '{page_spec}'. "
-        f"Use format like '615-759' or '100:200'"
+        f"Invalid page range format: '{page_spec}'. Use format like '615-759' or '100:200'"
     )
 
 
-def load_pages_csv(csv_path: Path) -> Dict[str, Optional[Tuple[int, int]]]:
+def load_pages_csv(csv_path: Path) -> dict[str, tuple[int, int] | None]:
     """
     Load page range mappings from CSV file.
 
@@ -95,21 +88,14 @@ def load_pages_csv(csv_path: Path) -> Dict[str, Optional[Tuple[int, int]]]:
 
     page_mappings = {}
 
-    with open(csv_path, "r") as f:
+    with Path(csv_path).open("r", encoding="utf-8") as f:
         reader = csv.DictReader(f)
 
         # Validate headers
-        if not all(
-            h in reader.fieldnames
-            for h in ["file_path", "start_page", "end_page"]
-        ):
-            raise ValueError(
-                "CSV must have columns: file_path, start_page, end_page"
-            )
+        if not all(h in reader.fieldnames for h in ["file_path", "start_page", "end_page"]):
+            raise ValueError("CSV must have columns: file_path, start_page, end_page")
 
-        for row_num, row in enumerate(
-            reader, start=2
-        ):  # Start at 2 (header is 1)
+        for row_num, row in enumerate(reader, start=2):  # Start at 2 (header is 1)
             file_path = row["file_path"].strip()
             start_str = row["start_page"].strip()
             end_str = row["end_page"].strip()
@@ -126,12 +112,11 @@ def load_pages_csv(csv_path: Path) -> Dict[str, Optional[Tuple[int, int]]]:
                     end = int(end_str)
 
                     if start < 1 or end < 1:
-                        raise ValueError(
-                            f"Page numbers must be >= 1 (row {row_num})"
-                        )
+                        raise ValueError(f"Page numbers must be >= 1 (row {row_num})")
                     if start > end:
                         raise ValueError(
-                            f"Start page ({start}) must be <= end page ({end}) for {file_path} (row {row_num})"
+                            f"Start page ({start}) must be <= end page "
+                            f"({end}) for {file_path} (row {row_num})"
                         )
 
                     page_mappings[file_path] = (start, end)
@@ -139,11 +124,12 @@ def load_pages_csv(csv_path: Path) -> Dict[str, Optional[Tuple[int, int]]]:
                     if "invalid literal" in str(e):
                         raise ValueError(
                             f"Invalid page numbers in row {row_num}: {file_path}"
-                        )
+                        ) from e
                     raise
             else:
                 raise ValueError(
-                    f"Row {row_num}: Both start_page and end_page must be specified or both empty for {file_path}"
+                    f"Row {row_num}: Both start_page and end_page "
+                    f"must be specified or both empty for {file_path}"
                 )
 
     return page_mappings

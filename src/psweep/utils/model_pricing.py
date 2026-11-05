@@ -8,7 +8,7 @@ from dataclasses import dataclass
 # Use the bundled cost map; never fetch pricing over the network at import.
 os.environ["LITELLM_LOCAL_MODEL_COST_MAP"] = "True"
 
-import litellm  # noqa: E402
+import litellm
 
 _PROVIDER_PREFIXES = ("openai", "azure", "anthropic", "gemini", "vertex_ai")
 
@@ -51,9 +51,11 @@ class ExtractionEstimate:
 
     @property
     def estimated_minutes(self) -> float:
+        """Estimated run time in minutes."""
         return self.estimated_seconds / 60
 
     def format_cost(self) -> str:
+        """Total cost as dollars, or a note when the price is unknown."""
         if self.total_cost is None:
             return f"price unknown for {self.model}"
         return f"${self.total_cost:.2f}"
@@ -66,11 +68,9 @@ def estimate_extraction_cost(
     input_tokens = int(total_chars // CHARS_PER_TOKEN)
     output_tokens = input_tokens * OUTPUT_TOKEN_RATIO
     rates = get_model_pricing(model)
-    input_rate, output_rate = rates if rates else (None, None)
+    input_rate, output_rate = rates or (None, None)
     total_cost = (
-        (input_tokens * input_rate + output_tokens * output_rate) / 1_000_000
-        if rates
-        else None
+        (input_tokens * input_rate + output_tokens * output_rate) / 1_000_000 if rates else None
     )
     return ExtractionEstimate(
         model=model,

@@ -25,24 +25,18 @@ def test_document_extractor_propagates_llm_failure() -> None:
 
 
 def test_llm_client_raises_on_empty_response() -> None:
-    client = LLMClient(
-        api_key="test-key", model="gpt-4o-mini", provider="openai"
-    )
+    client = LLMClient(api_key="test-key", model="gpt-4o-mini", provider="openai")
     response = SimpleNamespace(choices=[])
 
     with (
-        patch(
-            "psweep.extraction.llm_client.completion", return_value=response
-        ),
+        patch("psweep.extraction.llm_client.completion", return_value=response),
         pytest.raises(ExtractionError, match="Empty response"),
     ):
         client.extract("sample text", {"type": "object", "properties": {}})
 
 
 def test_llm_client_raises_on_provider_exception() -> None:
-    client = LLMClient(
-        api_key="test-key", model="gpt-4o-mini", provider="openai"
-    )
+    client = LLMClient(api_key="test-key", model="gpt-4o-mini", provider="openai")
 
     with (
         patch(
@@ -66,11 +60,11 @@ def test_context_guard_rejects_before_provider_call():
     )
     oversized_text = "x" * 1_300_000
 
-    with patch("psweep.extraction.llm_client.completion") as completion_mock:
-        with pytest.raises(ExtractionError, match="context_window_exceeded"):
-            client.extract(
-                oversized_text, {"type": "object", "properties": {}}
-            )
+    with (
+        patch("psweep.extraction.llm_client.completion") as completion_mock,
+        pytest.raises(ExtractionError, match="context_window_exceeded"),
+    ):
+        client.extract(oversized_text, {"type": "object", "properties": {}})
 
     completion_mock.assert_not_called()
 
@@ -78,17 +72,13 @@ def test_context_guard_rejects_before_provider_call():
 def test_llm_client_no_context_guard_when_window_unset() -> None:
     # A model absent from context_windows is not guarded — the oversized request
     # is allowed through to the provider (mocked) instead of failing preflight.
-    client = LLMClient(
-        api_key="test-key", model="some-model", provider="azure"
-    )
+    client = LLMClient(api_key="test-key", model="some-model", provider="azure")
     oversized_text = "x" * 1_300_000
 
     with patch("psweep.extraction.llm_client.completion") as completion_mock:
         completion_mock.side_effect = RuntimeError("reached provider")
         with pytest.raises(ExtractionError):
-            client.extract(
-                oversized_text, {"type": "object", "properties": {}}
-            )
+            client.extract(oversized_text, {"type": "object", "properties": {}})
 
     completion_mock.assert_called_once()
 
@@ -115,18 +105,11 @@ def test_retry_without_temperature_preserves_usage():
 
     with patch("psweep.extraction.llm_client.completion") as completion_mock:
         completion_mock.side_effect = [
-            RuntimeError(
-                "invalid_request_error: `temperature` is deprecated "
-                "for this model."
-            ),
+            RuntimeError("invalid_request_error: `temperature` is deprecated for this model."),
             response,
         ]
-        with patch(
-            "psweep.extraction.llm_client.completion_cost", return_value=0.0
-        ):
-            out = client.extract(
-                "sample text", {"type": "object", "properties": {}}
-            )
+        with patch("psweep.extraction.llm_client.completion_cost", return_value=0.0):
+            out = client.extract("sample text", {"type": "object", "properties": {}})
 
     assert out["data"] == {"requirements": []}
     assert completion_mock.call_count == 2
@@ -146,12 +129,8 @@ def test_failed_response_retains_billed_usage(content):
         usage=SimpleNamespace(prompt_tokens=13, completion_tokens=7),
     )
     with (
-        patch(
-            "psweep.extraction.llm_client.completion", return_value=response
-        ),
-        patch(
-            "psweep.extraction.llm_client.completion_cost", return_value=0.025
-        ),
+        patch("psweep.extraction.llm_client.completion", return_value=response),
+        patch("psweep.extraction.llm_client.completion_cost", return_value=0.025),
         pytest.raises(ExtractionError) as caught,
     ):
         client.extract("text", {"type": "object"})

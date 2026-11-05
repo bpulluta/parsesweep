@@ -15,9 +15,7 @@ from .engine import DiscoveryRequest
 from .targets import TargetSpecError, iter_targets
 from .urls import is_http_url
 
-_REQUEST_FIELDS = frozenset(f.name for f in fields(DiscoveryRequest)) - {
-    "progress_callback"
-}
+_REQUEST_FIELDS = frozenset(f.name for f in fields(DiscoveryRequest)) - {"progress_callback"}
 
 
 def discovery_request_fields(resolved: dict[str, Any]) -> dict[str, Any]:
@@ -32,11 +30,7 @@ def discovery_request_fields(resolved: dict[str, Any]) -> dict[str, Any]:
         raise ValueError(f"--source must be an http(s) URL (got {invalid[0]!r})")
     spec = resolved.get("targets")
     try:
-        targets = (
-            list(iter_targets(spec, resolved.get("target_limit")))
-            if spec is not None
-            else []
-        )
+        targets = list(iter_targets(spec, resolved.get("target_limit"))) if spec is not None else []
     except TargetSpecError as exc:
         raise ValueError(str(exc)) from exc
     values["targets"] = targets or None

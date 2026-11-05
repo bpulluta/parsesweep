@@ -44,11 +44,8 @@ class ExcelFormatter:
             return value
         # Remove control characters (U+0000 to U+001F, except tab/newline/cr)
         # Excel doesn't allow most control characters
-        return "".join(
-            ch if ord(ch) >= 32 or ch in "\t\n\r" else ""
-            for ch in value
-        )
-    
+        return "".join(ch if ord(ch) >= 32 or ch in "\t\n\r" else "" for ch in value)
+
     def save(
         self,
         df: pd.DataFrame,
@@ -130,9 +127,7 @@ class ExcelFormatter:
             cell.fill = header_fill
             cell.font = header_font
             cell.border = thin_border
-            cell.alignment = Alignment(
-                horizontal="center", vertical="center", wrap_text=True
-            )
+            cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
 
     def _identify_center_aligned_columns(
         self,
@@ -181,9 +176,7 @@ class ExcelFormatter:
         for idx, col_name in enumerate(df.columns, start=1):
             col_letter = get_column_letter(idx)
             sample_values = df[col_name].dropna().astype(str).head(20)
-            avg_length = (
-                sample_values.str.len().mean() if len(sample_values) > 0 else 0
-            )
+            avg_length = sample_values.str.len().mean() if len(sample_values) > 0 else 0
 
             # Center if: numeric-like, dates, short categorical values
             is_short = avg_length < max_length_threshold
@@ -205,9 +198,7 @@ class ExcelFormatter:
             List of column letters to center-align
         """
         # Define fills
-        white_fill = PatternFill(
-            start_color="FFFFFFFF", end_color="FFFFFFFF", fill_type="solid"
-        )
+        white_fill = PatternFill(start_color="FFFFFFFF", end_color="FFFFFFFF", fill_type="solid")
         gray_fill = PatternFill(
             start_color="FFF2F2F2",  # Light gray
             end_color="FFF2F2F2",
@@ -218,9 +209,7 @@ class ExcelFormatter:
         thin_border = self._get_thin_border()
 
         # Style data rows with alternating colors
-        for row_idx, row in enumerate(
-            ws.iter_rows(min_row=2, max_row=ws.max_row), start=2
-        ):
+        for row_idx, row in enumerate(ws.iter_rows(min_row=2, max_row=ws.max_row), start=2):
             # Alternate row color
             row_fill = white_fill if row_idx % 2 == 0 else gray_fill
 
@@ -232,13 +221,9 @@ class ExcelFormatter:
                 # Smart alignment based on column
                 col_letter = get_column_letter(cell.column)
                 if col_letter in center_aligned_cols:
-                    cell.alignment = Alignment(
-                        horizontal="center", vertical="top", wrap_text=True
-                    )
+                    cell.alignment = Alignment(horizontal="center", vertical="top", wrap_text=True)
                 else:
-                    cell.alignment = Alignment(
-                        horizontal="left", vertical="top", wrap_text=True
-                    )
+                    cell.alignment = Alignment(horizontal="left", vertical="top", wrap_text=True)
 
     def _apply_column_widths(self, ws, center_aligned_cols: list):
         """
@@ -257,24 +242,17 @@ class ExcelFormatter:
 
             for cell in column:
                 try:
-                    cell_value = (
-                        str(cell.value) if cell.value is not None else ""
-                    )
-                    if len(cell_value) > max_length:
-                        max_length = len(cell_value)
-                except Exception:  # noqa: BLE001 - column width is cosmetic; any cell error is non-fatal
+                    cell_value = str(cell.value) if cell.value is not None else ""
+                    max_length = max(max_length, len(cell_value))
+                except Exception:  # noqa: BLE001, S110 - column width is cosmetic; any cell error is non-fatal
                     pass
 
             # Set width with reasonable limits
             # Narrower for short columns, wider for details
             if column_letter in center_aligned_cols:
-                adjusted_width = min(
-                    max(max_length + 2, 12), 25
-                )  # Centered cols: 12-25
+                adjusted_width = min(max(max_length + 2, 12), 25)  # Centered cols: 12-25
             else:
-                adjusted_width = min(
-                    max(max_length + 2, 20), 60
-                )  # Text cols: 20-60
+                adjusted_width = min(max(max_length + 2, 20), 60)  # Text cols: 20-60
 
             ws.column_dimensions[column_letter].width = adjusted_width
 

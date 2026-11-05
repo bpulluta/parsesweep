@@ -60,9 +60,7 @@ def test_scan_hits_full_roster_names(roster, text):
     assert _hits(text, roster) == {PIMA}
 
 
-@pytest.mark.parametrize(
-    "text", ["Pima residents may apply online.", "Boulder is a city."]
-)
+@pytest.mark.parametrize("text", ["Pima residents may apply online.", "Boulder is a city."])
 def test_scan_ignores_partial_names(roster, text):
     assert _hits(text, roster) == set()
 
@@ -71,7 +69,10 @@ def test_scan_keeps_unique_names_despite_other_states(roster):
     assert _hits("Pima County, Colorado has no such office.", roster) == {PIMA}
 
 
-WASHINGTON = [{"state": "PA", "ahj": "Washington County"}, {"state": "OR", "ahj": "Washington County"}]
+WASHINGTON = [
+    {"state": "PA", "ahj": "Washington County"},
+    {"state": "OR", "ahj": "Washington County"},
+]
 ADAMS = [{"state": code, "ahj": "Adams County"} for code in ("CO", "ID", "KS")]
 
 
@@ -94,15 +95,20 @@ def test_ambiguous_name_uses_address_state():
     assert _hits(text, Roster.build(WASHINGTON, FIELDS)) == _ids(WASHINGTON, "OR")
 
 
-SANTA_CRUZ = [{"state": "AZ", "ahj": "Santa Cruz County"}, {"state": "CA", "ahj": "Santa Cruz County"}]
+SANTA_CRUZ = [
+    {"state": "AZ", "ahj": "Santa Cruz County"},
+    {"state": "CA", "ahj": "Santa Cruz County"},
+]
 
 
 @pytest.mark.parametrize(
     "layout",
     [
-        "Jurisdiction Name: Santa Clara | State: CA | PV: TRUE\n"
-        "Jurisdiction Name: Santa Cruz County | State: CA | PV: TRUE\n"
-        "Jurisdiction Name: Santee | State: CA | PV: TRUE",
+        (
+            "Jurisdiction Name: Santa Clara | State: CA | PV: TRUE\n"
+            "Jurisdiction Name: Santa Cruz County | State: CA | PV: TRUE\n"
+            "Jurisdiction Name: Santee | State: CA | PV: TRUE"
+        ),
         "Jurisdiction: Santa Cruz County | state_abbr: CA",
         "Santa Clara County\n\nCA\n\nSanta Cruz County\n\nCA\n\nSantee\n\nCA",
     ],
@@ -271,7 +277,10 @@ def test_evidence_paths_walks_combinators(keyword):
     schema = {
         "type": "object",
         "properties": {
-            "items": {"type": "array", "items": {keyword: [{"type": "object", "properties": {"fee": evidence}}]}}
+            "items": {
+                "type": "array",
+                "items": {keyword: [{"type": "object", "properties": {"fee": evidence}}]},
+            }
         },
     }
     assert evidence_paths(schema) == [("items", "*", "fee")]
@@ -279,16 +288,20 @@ def test_evidence_paths_walks_combinators(keyword):
 
 def test_completeness_treats_all_null_evidence_as_empty():
     empty = {"value": None, "quote": None}
-    sparse = {"items": [{"a": empty, "b": empty, "c": {"value": "x", "quote": "x"}, "d": [empty, {}]}]}
+    sparse = {
+        "items": [{"a": empty, "b": empty, "c": {"value": "x", "quote": "x"}, "d": [empty, {}]}]
+    }
     full = {"items": [{key: {"value": "x", "quote": "x"} for key in "abcd"}]}
     assert calculate_completeness(sparse) < calculate_completeness(full)
-    assert calculate_completeness(sparse) == calculate_completeness({"items": [{"c": "x", "a": None, "b": None, "d": None}]})
+    assert calculate_completeness(sparse) == calculate_completeness(
+        {"items": [{"c": "x", "a": None, "b": None, "d": None}]}
+    )
 
 
 @pytest.mark.parametrize(
     ("source", "quote"),
     [
-        ("the county\u2019s \u201conline\u201d portal", "the county's \"online\" portal"),
+        ("the county\u2019s \u201conline\u201d portal", 'the county\'s "online" portal'),
         ("solar \u2014 storage \u2013 rooftop", "solar - storage - rooftop"),
         ("online permit\u00adting is available", "online permitting is available"),
         ("online permit-\nting is available", "online permitting is available"),

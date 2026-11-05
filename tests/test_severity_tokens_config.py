@@ -59,32 +59,26 @@ class TestGetSeverityTokens:
         meta = SchemaMetadata(
             _write(
                 tmp_path,
-                _schema(
-                    {"severity_tokens": {"high": [NOVEL], "medium": ["tier"]}}
-                ),
+                _schema({"severity_tokens": {"high": [NOVEL], "medium": ["tier"]}}),
             )
         )
         high, medium = meta.get_severity_tokens()
-        assert NOVEL in high and HIGH_SEVERITY_TOKENS <= high
-        assert "tier" in medium and MEDIUM_SEVERITY_TOKENS <= medium
+        assert NOVEL in high and high >= HIGH_SEVERITY_TOKENS
+        assert "tier" in medium and medium >= MEDIUM_SEVERITY_TOKENS
 
     def test_runyaml_override_via_metadata_overrides(self, tmp_path):
         # This mirrors how run.yaml compilation.severity_tokens reaches the
         # compiler (resolved -> metadata_overrides -> SchemaMetadata).
         meta = SchemaMetadata(
             _write(tmp_path, _schema()),
-            metadata_overrides={
-                "compilation": {"severity_tokens": {"high": [NOVEL]}}
-            },
+            metadata_overrides={"compilation": {"severity_tokens": {"high": [NOVEL]}}},
         )
         high, _ = meta.get_severity_tokens()
-        assert NOVEL in high and HIGH_SEVERITY_TOKENS <= high
+        assert NOVEL in high and high >= HIGH_SEVERITY_TOKENS
 
     def test_tokens_lowercased(self, tmp_path):
         meta = SchemaMetadata(
-            _write(
-                tmp_path, _schema({"severity_tokens": {"high": [NOVEL.upper()]}})
-            )
+            _write(tmp_path, _schema({"severity_tokens": {"high": [NOVEL.upper()]}}))
         )
         high, _ = meta.get_severity_tokens()
         assert NOVEL in high
@@ -97,28 +91,20 @@ class TestDeduplicatorUsesConfiguredTokens:
 
     def test_configured_high_token_classifies_high(self, tmp_path):
         dedup = Deduplicator(
-            SchemaMetadata(
-                _write(tmp_path, _schema({"severity_tokens": {"high": [NOVEL]}}))
-            )
+            SchemaMetadata(_write(tmp_path, _schema({"severity_tokens": {"high": [NOVEL]}})))
         )
         assert dedup._classify_conflict_severity([NOVEL]) == "high"
 
     def test_configured_medium_token_classifies_medium(self, tmp_path):
         dedup = Deduplicator(
-            SchemaMetadata(
-                _write(
-                    tmp_path, _schema({"severity_tokens": {"medium": [NOVEL]}})
-                )
-            )
+            SchemaMetadata(_write(tmp_path, _schema({"severity_tokens": {"medium": [NOVEL]}})))
         )
         assert dedup._classify_conflict_severity([NOVEL]) == "medium"
 
     def test_builtin_defaults_still_apply_alongside_config(self, tmp_path):
         # "rate" is a built-in high token; config supplements, never replaces.
         dedup = Deduplicator(
-            SchemaMetadata(
-                _write(tmp_path, _schema({"severity_tokens": {"high": [NOVEL]}}))
-            )
+            SchemaMetadata(_write(tmp_path, _schema({"severity_tokens": {"high": [NOVEL]}})))
         )
         assert dedup._classify_conflict_severity(["rate"]) == "high"
 
@@ -126,20 +112,12 @@ class TestDeduplicatorUsesConfiguredTokens:
 class TestSeverityTokensValidation:
     def test_non_dict_raises(self, tmp_path):
         with pytest.raises(SchemaMetadataError, match="severity_tokens"):
-            SchemaMetadata(
-                _write(tmp_path, _schema({"severity_tokens": ["high"]}))
-            )
+            SchemaMetadata(_write(tmp_path, _schema({"severity_tokens": ["high"]})))
 
     def test_unknown_key_raises(self, tmp_path):
         with pytest.raises(SchemaMetadataError, match="severity_tokens"):
-            SchemaMetadata(
-                _write(
-                    tmp_path, _schema({"severity_tokens": {"critical": ["x"]}})
-                )
-            )
+            SchemaMetadata(_write(tmp_path, _schema({"severity_tokens": {"critical": ["x"]}})))
 
     def test_non_str_list_raises(self, tmp_path):
         with pytest.raises(SchemaMetadataError, match="severity_tokens"):
-            SchemaMetadata(
-                _write(tmp_path, _schema({"severity_tokens": {"high": [1, 2]}}))
-            )
+            SchemaMetadata(_write(tmp_path, _schema({"severity_tokens": {"high": [1, 2]}})))

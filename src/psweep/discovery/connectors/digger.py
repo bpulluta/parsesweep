@@ -10,12 +10,19 @@ from collections.abc import Callable
 from typing import Any
 from urllib.parse import urljoin, urlparse
 
-from ..constants import DOCUMENT_EXTENSIONS, DOWNLOADABLE_EXTENSIONS, USER_AGENT
+from psweep.discovery.constants import DOCUMENT_EXTENSIONS, DOWNLOADABLE_EXTENSIONS, USER_AGENT
 from psweep.discovery.network import (
-    NetworkPolicyError, RateLimiter, URLGate, check_url, send_get,
+    NetworkPolicyError,
+    RateLimiter,
+    URLGate,
+    check_url,
+    send_get,
 )
-from ..urls import (
-    compile_url_patterns, is_http_url, matches_allowed_domain, url_extension,
+from psweep.discovery.urls import (
+    compile_url_patterns,
+    is_http_url,
+    matches_allowed_domain,
+    url_extension,
 )
 from psweep.utils.retry import browser_may_recover, is_transient_error
 from .base import BaseDiggerConnector, CrawlResult, DiggerArtifact, DiggerInput
@@ -130,8 +137,7 @@ def matches_include_patterns(url: str, link_text: str, digger_input: DiggerInput
 def _is_document_link(url: str, digger_input: DiggerInput) -> bool:
     """A downloadable extension, or an extensionless URL matching ``include_url_patterns``."""
     return url_extension(url) in DOWNLOADABLE_EXTENSIONS or bool(
-        digger_input.include_url_patterns
-        and _matches_any(url, digger_input.include_url_patterns)
+        digger_input.include_url_patterns and _matches_any(url, digger_input.include_url_patterns)
     )
 
 
@@ -149,7 +155,9 @@ LinkFetcher = Callable[[str], "list[dict[str, str]]"]
 
 
 def crawl(
-    digger_input: DiggerInput, fetch_links: LinkFetcher, source: str,
+    digger_input: DiggerInput,
+    fetch_links: LinkFetcher,
+    source: str,
 ) -> CrawlResult:
     """Follow links breadth-first from each source page within the crawl budgets.
 
@@ -193,15 +201,9 @@ def crawl(
         accepted = matches_include_patterns(link_url, link_text, digger_input)
         document = _is_document_link(link_url, digger_input)
         artifact = bool(
-            (document or (save_pages and link_text))
-            and accepted
-            and (link_url, origin) not in seen
+            (document or (save_pages and link_text)) and accepted and (link_url, origin) not in seen
         )
-        follow = (
-            bool(accepted and link_text)
-            if save_pages
-            else not _is_navigation_link(link_text)
-        )
+        follow = bool(accepted and link_text) if save_pages else not _is_navigation_link(link_text)
         page = (
             follow
             and not document
@@ -245,9 +247,7 @@ def crawl(
                 )
                 if full():
                     # Cut off only if a wanted link or page remains unvisited.
-                    if page or any(
-                        any(classify(rest, depth, origin)) for rest in links[position:]
-                    ):
+                    if page or any(any(classify(rest, depth, origin)) for rest in links[position:]):
                         incomplete.add(origin)
                     break
             if page:
@@ -266,9 +266,7 @@ class _AnchorExtractor(HTMLParser):
         self._current_text_parts: list[str] = []
         self.links: list[tuple[str, str]] = []
 
-    def handle_starttag(
-        self, tag: str, attrs: list[tuple[str, str | None]]
-    ) -> None:
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         if tag.lower() != "a":
             return
         href = ""
@@ -289,14 +287,11 @@ class _AnchorExtractor(HTMLParser):
     def handle_endtag(self, tag: str) -> None:
         if tag.lower() != "a" or not self._in_anchor or not self._current_href:
             return
-        text = " ".join(
-            part.strip() for part in self._current_text_parts if part.strip()
-        )
+        text = " ".join(part.strip() for part in self._current_text_parts if part.strip())
         self.links.append((self._current_href, text))
         self._in_anchor = False
         self._current_href = None
         self._current_text_parts = []
-
 
 
 class HttpDiggerConnector(BaseDiggerConnector):
@@ -307,15 +302,11 @@ class HttpDiggerConnector(BaseDiggerConnector):
         extra_params: dict[str, object] | None,
     ) -> tuple[int, float, float]:
         retry_cfg = {}
-        if isinstance(extra_params, dict) and isinstance(
-            extra_params.get("retry"), dict
-        ):
+        if isinstance(extra_params, dict) and isinstance(extra_params.get("retry"), dict):
             retry_cfg = extra_params.get("retry") or {}
 
         max_attempts = int(retry_cfg.get("max_attempts", 3) or 3)
-        initial_backoff = float(
-            retry_cfg.get("initial_backoff_seconds", 1.0) or 1.0
-        )
+        initial_backoff = float(retry_cfg.get("initial_backoff_seconds", 1.0) or 1.0)
         max_backoff = float(retry_cfg.get("max_backoff_seconds", 8.0) or 8.0)
 
         return (
@@ -325,14 +316,10 @@ class HttpDiggerConnector(BaseDiggerConnector):
         )
 
     @classmethod
-    def _resolve_request_headers(
-        cls, extra_params: dict[str, object] | None
-    ) -> dict[str, str]:
+    def _resolve_request_headers(cls, extra_params: dict[str, object] | None) -> dict[str, str]:
         headers = {"User-Agent": USER_AGENT}
         raw_headers = (
-            extra_params.get("request_headers")
-            if isinstance(extra_params, dict)
-            else None
+            extra_params.get("request_headers") if isinstance(extra_params, dict) else None
         )
         if isinstance(raw_headers, dict):
             for key, value in raw_headers.items():
@@ -366,9 +353,7 @@ class HttpDiggerConnector(BaseDiggerConnector):
             limiter=rate_limiter,
         )
         try:
-            content_type = str(
-                (response.headers or {}).get("Content-Type") or ""
-            ).lower()
+            content_type = str((response.headers or {}).get("Content-Type") or "").lower()
             if "html" not in content_type and "text/" not in content_type:
                 return "", attempt
             return response.text or "", attempt
@@ -376,7 +361,10 @@ class HttpDiggerConnector(BaseDiggerConnector):
             response.close()
 
     def _fetch_page_html(
-        self, *, acquisition: dict[str, Any], **fetch_options: Any,
+        self,
+        *,
+        acquisition: dict[str, Any],
+        **fetch_options: Any,
     ) -> tuple[str, str]:
         """Retain the landing URL for resolving relative links."""
         final_url = fetch_options["url"]
@@ -426,7 +414,7 @@ class HttpDiggerConnector(BaseDiggerConnector):
             if browser is None and not browser_attempted:
                 browser_attempted = True
                 try:
-                    from ..browser import BrowserSession
+                    from psweep.discovery.browser import BrowserSession
 
                     session = BrowserSession(
                         request_headers=fetch_options["request_headers"],
@@ -443,7 +431,9 @@ class HttpDiggerConnector(BaseDiggerConnector):
             refused: Exception | None = None
             try:
                 html_text, final_url = self._fetch_page_html(
-                    url=url, acquisition=acquisition, **fetch_options,
+                    url=url,
+                    acquisition=acquisition,
+                    **fetch_options,
                 )
             except Exception as exc:
                 if not (escalate and browser_may_recover(exc)):
@@ -457,7 +447,10 @@ class HttpDiggerConnector(BaseDiggerConnector):
                         raise refused
                     return []
                 html_text, final_url = _fetch_browser_html(
-                    session, url, settle_seconds=4, **acquisition,
+                    session,
+                    url,
+                    settle_seconds=4,
+                    **acquisition,
                 )
             return self._extract_links(html_text, final_url) if html_text else []
 
@@ -486,7 +479,7 @@ class SeleniumDiggerConnector(BaseDiggerConnector):
 
     def discover(self, digger_input: DiggerInput) -> CrawlResult:
         """Crawl source pages via a headless browser and return artifacts."""
-        from ..browser import BrowserSession
+        from psweep.discovery.browser import BrowserSession
 
         _require_browser_policy_support(digger_input)
         acquisition = _acquisition_options(
@@ -510,6 +503,4 @@ def resolve_digger_connector(provider: str) -> BaseDiggerConnector:
     for connector in (HttpDiggerConnector(), SeleniumDiggerConnector()):
         if connector.supports_provider(provider):
             return connector
-    raise ValueError(
-        f"Unsupported crawl provider '{provider}'. Supported: http, selenium."
-    )
+    raise ValueError(f"Unsupported crawl provider '{provider}'. Supported: http, selenium.")

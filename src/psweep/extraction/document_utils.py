@@ -11,7 +11,7 @@ import re
 from collections.abc import Iterable
 from itertools import zip_longest
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 from psweep.utils.file_io import artifact_sha256, staged_file
 from .pdf_utils import _cleanup_ocr_errors
@@ -106,9 +106,9 @@ def write_text_cache(
                     (meta_path, metadata),
                 )
             ]
-            for temporary, destination in zip(staged, (txt_path, meta_path)):
+            for temporary, destination in zip(staged, (txt_path, meta_path), strict=True):
                 temporary.replace(destination)
-    except Exception:  # noqa: BLE001 - caching is an optimization, never fatal
+    except Exception:
         logger.debug(
             "Text cache write failed for %s",
             file_path,
@@ -123,8 +123,7 @@ TABLE_TEXT_LAYOUT = dict.fromkeys((".csv", ".xlsx", ".json"), "labelled-rows")
 # The one supported file-type definition; discovery derives what it
 # downloads from it. Recordings are documents (transcribed when read).
 DOCUMENT_EXTENSIONS: frozenset[str] = (
-    frozenset({".pdf", ".doc", ".docx", ".txt", ".xlsx", ".csv", ".json"})
-    | AUDIO_EXTENSIONS
+    frozenset({".pdf", ".doc", ".docx", ".txt", ".xlsx", ".csv", ".json"}) | AUDIO_EXTENSIONS
 )
 WEB_PAGE_EXTENSIONS: frozenset[str] = frozenset({".html", ".htm"})
 SUPPORTED_EXTENSIONS: frozenset[str] = DOCUMENT_EXTENSIONS | WEB_PAGE_EXTENSIONS
@@ -194,7 +193,7 @@ class _HTMLTextExtractor(HTMLParser):
         self._skip_depth = 0
         self._in_table_cell = False
 
-    def handle_starttag(self, tag: str, attrs) -> None:
+    def handle_starttag(self, tag: str, attrs) -> None:  # noqa: ARG002 - HTMLParser API
         normalized = tag.lower()
         if normalized in self._SKIP_TAGS:
             self._skip_depth += 1
@@ -243,7 +242,7 @@ class _HTMLTextExtractor(HTMLParser):
                 if current_parts:
                     lines.append(" ".join(current_parts))
                     current_parts = []
-                elif lines and lines[-1] != "":
+                elif lines and lines[-1]:
                     lines.append("")
                 continue
             if chunk == "\t":
@@ -263,7 +262,7 @@ class _HTMLTextExtractor(HTMLParser):
             cleaned = "\t".join(" ".join(p.split()) for p in parts)
             if cleaned.strip():
                 collapsed.append(cleaned)
-            elif collapsed and collapsed[-1] != "":
+            elif collapsed and collapsed[-1]:
                 collapsed.append("")
         return "\n".join(collapsed).strip()
 
@@ -287,8 +286,8 @@ def is_supported_document(file_path: Path) -> bool:
 
 def extract_text_from_document(
     file_path: Path,
-    page_range: Optional[tuple] = None,
-    ocr_corrections: Optional[list] = None,
+    page_range: tuple | None = None,
+    ocr_corrections: list | None = None,
     *,
     return_meta: bool = False,
     transcriber=None,
@@ -348,9 +347,7 @@ def extract_text_from_document(
                 "used_ocr": used_ocr,
                 "page_count": page_count,
                 "page_range": (1, page_count) if page_count else None,
-                "extracted_pages": (
-                    list(range(1, page_count + 1)) if page_count else []
-                ),
+                "extracted_pages": (list(range(1, page_count + 1)) if page_count else []),
             }
             logger.debug("Text cache hit for %s", file_path.name)
             return (text, meta) if return_meta else text
@@ -376,9 +373,7 @@ def extract_text_from_document(
         page_count = meta.get("page_count")
         pages = meta.get("extracted_pages")
         # Skipped OCR pages must not produce a whole-document cache.
-        complete = pages is None or (
-            page_count is not None and len(pages) == page_count
-        )
+        complete = pages is None or (page_count is not None and len(pages) == page_count)
         if page_range is None and raw_text and complete:
             write_text_cache(file_path, raw_text, page_count=page_count)
         text = _cleanup_ocr_errors(raw_text, ocr_corrections)
@@ -387,8 +382,8 @@ def extract_text_from_document(
 
 def _extract_from_pdf(
     pdf_path: Path,
-    page_range: Optional[tuple] = None,
-    ocr_corrections: Optional[list] = None,
+    page_range: tuple | None = None,
+    ocr_corrections: list | None = None,
 ) -> tuple[str, dict]:
     """Extract PDF text; return ``(text, {"used_ocr": bool})``."""
     from .pdf_utils import extract_text_from_pdf
@@ -417,19 +412,16 @@ def _extract_from_docx(docx_path: Path) -> str:
     """
     try:
         import docx
-    except ImportError:
+    except ImportError as exc:
         raise RuntimeError(
             "python-docx not installed. Install with: pip install python-docx"
-        )
+        ) from exc
 
     try:
         doc = docx.Document(str(docx_path))
-        text_parts = []
 
         # Extract text from paragraphs
-        for para in doc.paragraphs:
-            if para.text.strip():
-                text_parts.append(para.text)
+        text_parts = [para.text for para in doc.paragraphs if para.text.strip()]
 
         # Extract text from tables.
         # NOTE: this path deliberately uses an *unbordered* ``a | b`` row and
@@ -440,23 +432,18 @@ def _extract_from_docx(docx_path: Path) -> str:
         # whole-document extraction stays byte-stable; do not unify.
         for table in doc.tables:
             for row in table.rows:
-                row_text = []
-                for cell in row.cells:
-                    if cell.text.strip():
-                        row_text.append(cell.text.strip())
+                row_text = [cell.text.strip() for cell in row.cells if cell.text.strip()]
                 if row_text:
                     text_parts.append(" | ".join(row_text))
 
         text = "\n".join(text_parts)
         logger.info(
-            f"✓ Extracted {len(text):,} characters from DOCX: {docx_path.name}"
+            "✓ Extracted %s characters from DOCX: %s", format(len(text), ","), docx_path.name
         )
-        return text
 
     except Exception as e:
-        raise RuntimeError(
-            f"Failed to extract from DOCX {docx_path.name}: {e}"
-        )
+        raise RuntimeError(f"Failed to extract from DOCX {docx_path.name}: {e}") from e
+    return text
 
 
 def _extract_from_txt(txt_path: Path) -> str:
@@ -479,21 +466,18 @@ def _extract_from_txt(txt_path: Path) -> str:
 
         for encoding in encodings:
             try:
-                with open(txt_path, "r", encoding=encoding) as f:
-                    text = f.read()
+                text = Path(txt_path).read_text(encoding=encoding)
                 logger.info(
-                    f"✓ Extracted {len(text):,} characters from TXT: {txt_path.name}"
+                    "✓ Extracted %s characters from TXT: %s", format(len(text), ","), txt_path.name
                 )
-                return text
             except UnicodeDecodeError:
                 continue
+            return text
 
-        raise RuntimeError(
-            "Could not decode text file with any supported encoding"
-        )
+        raise RuntimeError("Could not decode text file with any supported encoding")
 
     except Exception as e:
-        raise RuntimeError(f"Failed to extract from TXT {txt_path.name}: {e}")
+        raise RuntimeError(f"Failed to extract from TXT {txt_path.name}: {e}") from e
 
 
 _NUMERIC_CELL = re.compile(r"[-+$]?[\d,]*\.?\d+%?")
@@ -615,7 +599,7 @@ def _extract_from_json(json_path: Path) -> str:
         raise RuntimeError(message) from e
     lines = _json_lines(data)
     text = "\n".join(lines) if lines else json.dumps(data, indent=2, ensure_ascii=False)
-    logger.info(f"✓ Extracted {len(text):,} characters from JSON: {json_path.name}")
+    logger.info("✓ Extracted %s characters from JSON: %s", format(len(text), ","), json_path.name)
     return text
 
 
@@ -633,16 +617,14 @@ def _extract_from_xlsx(xlsx_path: Path) -> str:
         try:
             for sheet_name in wb.sheetnames:
                 text_parts.append(f"\n### Sheet: {sheet_name} ###\n")
-                text_parts.extend(
-                    _table_lines(wb[sheet_name].iter_rows(values_only=True))
-                )
+                text_parts.extend(_table_lines(wb[sheet_name].iter_rows(values_only=True)))
         finally:
             wb.close()
     except Exception as e:
         message = f"Failed to extract from XLSX {xlsx_path.name}: {e}"
         raise RuntimeError(message) from e
     text = "\n".join(text_parts)
-    logger.info(f"✓ Extracted {len(text):,} characters from XLSX: {xlsx_path.name}")
+    logger.info("✓ Extracted %s characters from XLSX: %s", format(len(text), ","), xlsx_path.name)
     return text
 
 
@@ -658,7 +640,7 @@ def _extract_from_csv(csv_path: Path) -> str:
     except Exception as e:
         message = f"Failed to extract from CSV {csv_path.name}: {e}"
         raise RuntimeError(message) from e
-    logger.info(f"✓ Extracted {len(text):,} characters from CSV: {csv_path.name}")
+    logger.info("✓ Extracted %s characters from CSV: %s", format(len(text), ","), csv_path.name)
     return text
 
 
@@ -676,9 +658,7 @@ def _extract_from_html(html_path: Path) -> str:
         try:
             raw_html = html_path.read_text(encoding="latin-1")
         except Exception as e:
-            raise RuntimeError(
-                f"Failed to decode HTML {html_path.name}: {e}"
-            ) from e
+            raise RuntimeError(f"Failed to decode HTML {html_path.name}: {e}") from e
     except Exception as e:
         raise RuntimeError(f"Failed to read HTML {html_path.name}: {e}") from e
 
@@ -686,9 +666,10 @@ def _extract_from_html(html_path: Path) -> str:
     # These files contain framework bootstrap code but no server-rendered content.
     if _is_js_rendered_shell(raw_html):
         logger.warning(
-            f"⚠ HTML file appears to be a JavaScript-rendered shell "
-            f"(no server-side content): {html_path.name}. "
-            f"Content requires browser rendering to extract."
+            "⚠ HTML file appears to be a JavaScript-rendered shell "
+            "(no server-side content): %s. "
+            "Content requires browser rendering to extract.",
+            html_path.name,
         )
         return ""
 
@@ -697,24 +678,22 @@ def _extract_from_html(html_path: Path) -> str:
         parser.feed(raw_html)
         text = parser.get_text()
         logger.info(
-            f"✓ Extracted {len(text):,} characters from HTML: {html_path.name}"
+            "✓ Extracted %s characters from HTML: %s", format(len(text), ","), html_path.name
         )
-        return text
     except Exception as e:
-        raise RuntimeError(
-            f"Failed to extract from HTML {html_path.name}: {e}"
-        ) from e
+        raise RuntimeError(f"Failed to extract from HTML {html_path.name}: {e}") from e
+    return text
 
 
 # Indicators that an HTML file is a JS-rendered SPA shell with no server-side content.
 _SPA_FRAMEWORK_INDICATORS = [
-    "ng-app=",          # Angular 1.x
-    "ng-strict-di=",    # Angular 1.x strict mode
-    "__NEXT_DATA__",    # Next.js
-    "id=\"__next\"",    # Next.js root
-    "id=\"root\"",      # React CRA default
-    "id=\"app\"",       # Vue.js default
-    "data-reactroot",   # React
+    "ng-app=",  # Angular 1.x
+    "ng-strict-di=",  # Angular 1.x strict mode
+    "__NEXT_DATA__",  # Next.js
+    'id="__next"',  # Next.js root
+    'id="root"',  # React CRA default
+    'id="app"',  # Vue.js default
+    "data-reactroot",  # React
     "window.__NUXT__",  # Nuxt.js
 ]
 
@@ -733,9 +712,7 @@ def _is_js_rendered_shell(raw_html: str) -> bool:
     html_lower = raw_html.lower()
 
     # Check for SPA framework indicators
-    has_framework = any(
-        indicator.lower() in html_lower for indicator in _SPA_FRAMEWORK_INDICATORS
-    )
+    has_framework = any(indicator.lower() in html_lower for indicator in _SPA_FRAMEWORK_INDICATORS)
     if not has_framework:
         return False
 

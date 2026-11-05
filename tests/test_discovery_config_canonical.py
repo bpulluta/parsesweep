@@ -21,7 +21,10 @@ from psweep.discovery.request_inputs import discovery_request_fields
         ({"seeds": ["https://a.gov"]}, "unknown key 'discovery.seeds'"),
         ({"targets_csv": "t.csv"}, "unknown key 'discovery.targets_csv' — did you mean 'targets'?"),
         ({"querys": ["x"]}, "did you mean 'queries'?"),
-        ({"crawl": {"max_dept": 1}}, "unknown key 'discovery.crawl.max_dept' — did you mean 'max_depth'?"),
+        (
+            {"crawl": {"max_dept": 1}},
+            "unknown key 'discovery.crawl.max_dept' — did you mean 'max_depth'?",
+        ),
         ({"follow_links": True}, "unknown key 'discovery.follow_links'"),
         ({"search": {"enabled": True}}, "unknown key 'discovery.search.enabled'"),
         ({"selection": {"primary_per_target": 3}}, "discovery.selection.primary_per_target"),

@@ -21,7 +21,9 @@ from pathlib import Path, PurePosixPath
 from collections.abc import Iterable, Iterator, Mapping
 
 from psweep.extraction.document_utils import (
-    read_text_cache, text_cache_paths, write_text_cache,
+    read_text_cache,
+    text_cache_paths,
+    write_text_cache,
 )
 from psweep.utils.file_io import atomic_write, atomic_json, publication_lock, PublicationLockError
 
@@ -147,9 +149,7 @@ def resolve_publication_paths(
     )
     if run_curated_dir is None and curated == root / "curated":
         curated = run / "run-curated"
-    index = run / (
-        "run-download_index.csv" if run == root else "download_index.csv"
-    )
+    index = run / ("run-download_index.csv" if run == root else "download_index.csv")
     return PublicationPaths(documents, manifest, root, curated, index)
 
 
@@ -189,10 +189,7 @@ def _journal_path(root: Path) -> Path:
 
 def _plan_digest(entries: list[dict]) -> str:
     immutable = [
-        {
-            key: entry.get(key)
-            for key in ("destination", "staged", "backup", "had_old")
-        }
+        {key: entry.get(key) for key in ("destination", "staged", "backup", "had_old")}
         for entry in entries
     ]
     return hashlib.sha256(
@@ -229,26 +226,18 @@ def _validate_journal(root: Path, data: object) -> tuple[Path, list[dict]]:
     if staging.is_symlink() or (
         not staging.is_dir()
         and data["state"] == "prepared"
-        and any(
-            entry.get("state") != "restored"
-            for entry in entries
-            if isinstance(entry, dict)
-        )
+        and any(entry.get("state") != "restored" for entry in entries if isinstance(entry, dict))
     ):
         msg = "Missing discovery publication staging directory"
         raise PublicationError(msg)
-    _validate_entries(
-        root, staging, entries, prepared=data["state"] == "prepared"
-    )
+    _validate_entries(root, staging, entries, prepared=data["state"] == "prepared")
     if data.get("plan_sha256") != _plan_digest(entries):
         msg = "Corrupt discovery publication plan checksum"
         raise PublicationError(msg)
     return staging, entries
 
 
-def _entry_destination(
-    root: Path, staging: Path, entry: dict, index: int
-) -> Path:
+def _entry_destination(root: Path, staging: Path, entry: dict, index: int) -> Path:
     if (
         not isinstance(entry, dict)
         or type(entry.get("had_old")) is not bool
@@ -275,8 +264,7 @@ def _entry_destination(
         message = "Unsafe discovery publication destination"
         raise PublicationError(message)
     if entry.get("backup") != str(staging / f"backup-{index}") or (
-        entry.get("staged") is not None
-        and entry.get("staged") != str(staging / f"new-{index}")
+        entry.get("staged") is not None and entry.get("staged") != str(staging / f"new-{index}")
     ):
         message = "Corrupt discovery publication staging paths"
         raise PublicationError(message)
@@ -297,10 +285,7 @@ def _validate_backup(entry: dict, destination: Path) -> None:
     if (
         entry["state"] == "planned"
         and not _exists(backup)
-        and (
-            not _exists(destination)
-            or (staged is not None and not _exists(staged))
-        )
+        and (not _exists(destination) or (staged is not None and not _exists(staged)))
     ):
         message = "Missing discovery publication backup; refusing recovery"
         raise PublicationError(message)
@@ -313,9 +298,7 @@ def _validate_backup(entry: dict, destination: Path) -> None:
         raise PublicationError(message)
 
 
-def _validate_entries(
-    root: Path, staging: Path, entries: list[dict], *, prepared: bool
-) -> None:
+def _validate_entries(root: Path, staging: Path, entries: list[dict], *, prepared: bool) -> None:
     destinations: set[Path] = set()
     ancestors: set[Path] = set()
     for index, entry in enumerate(entries):
@@ -359,9 +342,7 @@ def _recover(root: Path) -> None:
     journal.unlink()
 
 
-def _publish(
-    root: Path, staging: Path, swaps: list[tuple[Path, Path | None]]
-) -> None:
+def _publish(root: Path, staging: Path, swaps: list[tuple[Path, Path | None]]) -> None:
     """Install only this discovery publication's known directory/file
     swaps.
     """
@@ -435,17 +416,13 @@ def _relative(value: object, *, partition: bool = False) -> Path:
     if not text or path.is_absolute() or ".." in path.parts or "\\" in text:
         msg = f"Unsafe selected relative path: {text!r}"
         raise PublicationError(msg)
-    if not partition and (
-        path == Path() or any(part.startswith(".") for part in path.parts)
-    ):
+    if not partition and (path == Path() or any(part.startswith(".") for part in path.parts)):
         msg = f"Selected document is a sidecar path: {text!r}"
         raise PublicationError(msg)
     return path
 
 
-def record_is_curated(
-    record: Mapping[str, object], *, review_ran: bool
-) -> bool:
+def record_is_curated(record: Mapping[str, object], *, review_ran: bool) -> bool:
     """Resolve the automated default with an explicit human override."""
     decision = str(record.get("human_decision") or "").strip().lower()
     if decision in {"keep", "reject"}:
@@ -453,9 +430,7 @@ def record_is_curated(
     if record.get("review_failed"):
         return False
     return (
-        bool(record.get("review_selected"))
-        if review_ran
-        else record.get("status") == "downloaded"
+        bool(record.get("review_selected")) if review_ran else record.get("status") == "downloaded"
     )
 
 
@@ -477,14 +452,11 @@ def _withdrawn_owners(records: list[dict[str, object]]) -> set[DocumentOwner]:
     return {
         document_owner(record)
         for record in records
-        if not is_retryable(record)
-        and not record_is_curated(record, review_ran=review_ran)
+        if not is_retryable(record) and not record_is_curated(record, review_ran=review_ran)
     }
 
 
-def _stage_curated(
-    documents_dir: Path, records: list[dict[str, object]], destination: Path
-) -> int:
+def _stage_curated(documents_dir: Path, records: list[dict[str, object]], destination: Path) -> int:
     destination.mkdir()
     review_ran = _review_ran(records)
     seen: set[Path] = set()
@@ -499,10 +471,7 @@ def _stage_curated(
             raise PublicationError(msg)
         source = Path(str(raw_source)).resolve()
         if not source.is_relative_to(documents_dir.resolve()) or not source.is_file():
-            msg = (
-                "Selected document source missing or outside documents "
-                f"directory: {source}"
-            )
+            msg = f"Selected document source missing or outside documents directory: {source}"
             raise PublicationError(msg)
         if rel in seen:
             msg = f"Duplicate selected path: {rel}"
@@ -511,7 +480,7 @@ def _stage_curated(
         dest = destination / rel
         _link(source, dest)
         for cache, curated_cache in zip(
-            text_cache_paths(source), text_cache_paths(dest)
+            text_cache_paths(source), text_cache_paths(dest), strict=True
         ):
             if cache.is_file():
                 _link(cache, curated_cache)
@@ -535,9 +504,7 @@ def materialize_curated(
         staging = _new_stage(curated.parent)
         try:
             staged = staging / "curated"
-            count = _stage_curated(
-                Path(documents_dir), download_records, staged
-            )
+            count = _stage_curated(Path(documents_dir), download_records, staged)
             _publish(curated.parent, staging, [(curated, staged)])
         finally:
             if staging.exists() and not _journal_path(curated.parent).exists():
@@ -549,18 +516,11 @@ def _csv_read(path: Path) -> tuple[list[str], list[dict[str, str]]]:
     with path.open(encoding="utf-8", newline="") as handle:
         reader = csv.DictReader(handle)
         fields_ = list(reader.fieldnames or ())
-        if (
-            not fields_
-            or len(fields_) != len(set(fields_))
-            or "relative_path" not in fields_
-        ):
+        if not fields_ or len(fields_) != len(set(fields_)) or "relative_path" not in fields_:
             msg = f"Invalid discovery index: {path}"
             raise PublicationError(msg)
         rows = list(reader)
-        if any(
-            None in row or any(value is None for value in row.values())
-            for row in rows
-        ):
+        if any(None in row or any(value is None for value in row.values()) for row in rows):
             msg = f"Malformed discovery index: {path}"
             raise PublicationError(msg)
     return fields_, rows
@@ -569,9 +529,7 @@ def _csv_read(path: Path) -> tuple[list[str], list[dict[str, str]]]:
 def csv_content(fieldnames: list[str], rows: list[dict]) -> str:
     """Serialize discovery provenance rows as a complete CSV."""
     handle = io.StringIO(newline="")
-    writer = csv.DictWriter(
-        handle, fieldnames=fieldnames, extrasaction="ignore"
-    )
+    writer = csv.DictWriter(handle, fieldnames=fieldnames, extrasaction="ignore")
     writer.writeheader()
     writer.writerows(rows)
     return handle.getvalue()
@@ -582,11 +540,7 @@ def _under(partition: Path, roots: set[Path]) -> bool:
 
 
 def _minimal(partitions: set[Path]) -> set[Path]:
-    return {
-        part
-        for part in partitions
-        if not any(parent in partitions for parent in part.parents)
-    }
+    return {part for part in partitions if not any(parent in partitions for parent in part.parents)}
 
 
 def _merged_index(
@@ -607,9 +561,7 @@ def _merged_index(
     unpromoted row is withdrawn when its owner was promoted elsewhere, is in
     ``withdrawn``, or belongs to a ``completed`` target or source.
     """
-    fieldnames, existing = (
-        _csv_read(domain_index) if domain_index.exists() else ([], [])
-    )
+    fieldnames, existing = _csv_read(domain_index) if domain_index.exists() else ([], [])
     if run_content is None:
         incoming_fields, incoming = _csv_read(run_index)
     else:
@@ -645,11 +597,7 @@ def _merged_index(
         if (
             key not in promoted
             and not is_blocked(rel.parent)
-            and (
-                owner in promoted_owners
-                or owner in withdrawn
-                or owner[0] in completed
-            )
+            and (owner in promoted_owners or owner in withdrawn or owner[0] in completed)
         ):
             removed.add(key)
             continue
@@ -720,9 +668,7 @@ def inherit_text_caches(targets: Iterable[Path], donors: Iterable[Path]) -> None
     if not cached:
         return
     for path in targets:
-        if read_text_cache(path) is None and (
-            hit := cached.get(artifact_sha256(path))
-        ):
+        if read_text_cache(path) is None and (hit := cached.get(artifact_sha256(path))):
             text, meta = hit
             write_text_cache(path, text, meta["method"], page_count=meta.get("page_count"))
 
@@ -756,21 +702,14 @@ def _stage_promotion(
     if not source.is_dir():
         msg = f"Run curated directory missing: {source}"
         raise PublicationError(msg)
-    blocked = {
-        _relative(part, partition=True) for part in (blocked_partitions or ())
-    }
+    blocked = {_relative(part, partition=True) for part in (blocked_partitions or ())}
     blocked_ancestors = {parent for part in blocked for parent in part.parents}
 
     def is_blocked(part):
         return part in blocked_ancestors or _under(part, blocked)
 
-    attempted = {
-        _relative(part, partition=True)
-        for part in (attempted_partitions or ())
-    }
-    replacements = _minimal(
-        {part for part in attempted if not is_blocked(part)}
-    )
+    attempted = {_relative(part, partition=True) for part in (attempted_partitions or ())}
+    replacements = _minimal({part for part in attempted if not is_blocked(part)})
     _inherit_text_caches(source, root / "curated", replacements)
     files, promoted = _promotion_files(source)
     staged_root = staging / "promoted"
@@ -807,9 +746,9 @@ def _stage_promotion(
         )
         for key in sorted(removed):
             document = root / "curated" / key
-            for path in (document, *text_cache_paths(document)):
-                if _exists(path):
-                    swaps.append((path, None))
+            swaps.extend(
+                (path, None) for path in (document, *text_cache_paths(document)) if _exists(path)
+            )
         staged_index = staging / "index"
         atomic_write(staged_index, content)
         swaps.append((root / "download_index.csv", staged_index))
@@ -830,9 +769,7 @@ def promote_curated(
     root = Path(domain_dir).resolve()
     source = Path(run_curated_dir).resolve()
     index = (
-        Path(run_index).resolve()
-        if run_index is not None
-        else source.parent / "download_index.csv"
+        Path(run_index).resolve() if run_index is not None else source.parent / "download_index.csv"
     )
     if run_index is None and not index.exists():
         index = None
@@ -890,15 +827,11 @@ def publish_manual_curation(
     if paths.run_curated_dir == root / "curated":
         msg = "Run curation and consolidated curation must have distinct paths"
         raise PublicationError(msg)
-    with (
-        contextlib.nullcontext() if _lock_held else discovery_publication(root)
-    ):
+    with contextlib.nullcontext() if _lock_held else discovery_publication(root):
         staging = _new_stage(root)
         try:
             local = staging / "local"
-            count = _stage_curated(
-                paths.documents_dir, download_records, local
-            )
+            count = _stage_curated(paths.documents_dir, download_records, local)
             swaps = _stage_promotion(
                 source=local,
                 root=root,
@@ -923,9 +856,7 @@ def publish_manual_curation(
     return paths.run_curated_dir, count
 
 
-def refresh_latest_pointer(
-    run_dir: Path, *, domain_dir: Path | None = None
-) -> None:
+def refresh_latest_pointer(run_dir: Path, *, domain_dir: Path | None = None) -> None:
     """Atomically update the current-run pointer under the corpus
     lock.
     """
@@ -1005,16 +936,12 @@ def _checkpoint_data(path: Path) -> dict:
         raise PublicationError(msg)
     if data.get("version") == 1 and type(data.get("version")) is int:
         return {}
-    if (
-        data.get("version") != CHECKPOINT_VERSION
-        or type(data.get("version")) is not int
-    ):
+    if data.get("version") != CHECKPOINT_VERSION or type(data.get("version")) is not int:
         msg = f"Invalid checkpoint version: {path}"
         raise PublicationError(msg)
     entries = data.get("entries")
     if not isinstance(entries, dict) or any(
-        not isinstance(key, str) or not isinstance(value, dict)
-        for key, value in entries.items()
+        not isinstance(key, str) or not isinstance(value, dict) for key, value in entries.items()
     ):
         msg = f"Corrupt checkpoint entries: {path}"
         raise PublicationError(msg)
@@ -1030,9 +957,7 @@ def load_checkpoint(
     """Load matching v2 completions whose artifact evidence remains
     valid.
     """
-    if fingerprint is not None and (
-        not isinstance(fingerprint, str) or not fingerprint
-    ):
+    if fingerprint is not None and (not isinstance(fingerprint, str) or not fingerprint):
         msg = "Checkpoint fingerprint must be a nonempty string"
         raise PublicationError(msg)
     try:
@@ -1048,9 +973,7 @@ def load_checkpoint(
     }
 
 
-def load_prior_outcomes(
-    path: Path, *, fingerprint: str
-) -> dict[str, dict[str, dict[str, object]]]:
+def load_prior_outcomes(path: Path, *, fingerprint: str) -> dict[str, dict[str, dict[str, object]]]:
     """Final child outcomes saved for incomplete targets and sources.
 
     Returns ``{owner key: {url: outcome}}``. A download carries its file
@@ -1109,9 +1032,7 @@ def save_checkpoint_entries(
     ):
         msg = "Checkpoint entries must be a mapping of target keys to objects"
         raise PublicationError(msg)
-    if fingerprint is not None and (
-        not isinstance(fingerprint, str) or not fingerprint
-    ):
+    if fingerprint is not None and (not isinstance(fingerprint, str) or not fingerprint):
         msg = "Checkpoint fingerprint must be a nonempty string"
         raise PublicationError(msg)
     with discovery_publication(Path(path).resolve().parent):
@@ -1120,18 +1041,12 @@ def save_checkpoint_entries(
             {
                 key: {
                     **entry,
-                    **(
-                        {"fingerprint": fingerprint}
-                        if fingerprint is not None
-                        else {}
-                    ),
+                    **({"fingerprint": fingerprint} if fingerprint is not None else {}),
                 }
                 for key, entry in new_entries.items()
             }
         )
-        atomic_json(
-            path, {"version": 2, "entries": entries}, prefix=".checkpoint-"
-        )
+        atomic_json(path, {"version": 2, "entries": entries}, prefix=".checkpoint-")
 
 
 def effective_discovery_fingerprint(request: object) -> str:
@@ -1157,9 +1072,7 @@ def effective_discovery_fingerprint(request: object) -> str:
             if field.name not in excluded
         }
     elif isinstance(request, Mapping):
-        values = {
-            key: value for key, value in request.items() if key not in excluded
-        }
+        values = {key: value for key, value in request.items() if key not in excluded}
     else:
         msg = "Fingerprint requires an effective discovery request"
         raise PublicationError(msg)

@@ -5,12 +5,12 @@ Structural validation does not certify source grounding or accuracy.
 
 import logging
 import time
-from typing import Dict, Any, List, Optional
+from typing import Any
 from dataclasses import dataclass
 
 from jsonschema import ValidationError
 
-from ..exceptions import SchemaValidationError
+from psweep.exceptions import SchemaValidationError
 from .llm_client import LLMClient
 from .llm_factory import DEFAULT_MAX_CONTEXT, DEFAULT_MODEL
 from .text_processor import (
@@ -26,16 +26,14 @@ logger = logging.getLogger(__name__)
 class ExtractionResult:
     """Result from document extraction."""
 
-    data: Dict[str, Any]
+    data: dict[str, Any]
     completeness_score: float  # 0-1 score based on fields populated
     cost: float | None
     processing_time: float
-    validation_notes: List[str]
-    input_tokens: Optional[int] = None  # Prompt tokens (from provider usage)
-    output_tokens: Optional[int] = (
-        None  # Completion tokens (from provider usage)
-    )
-    coverage: Optional[Dict[str, Any]] = None
+    validation_notes: list[str]
+    input_tokens: int | None = None  # Prompt tokens (from provider usage)
+    output_tokens: int | None = None  # Completion tokens (from provider usage)
+    coverage: dict[str, Any] | None = None
     status: str = "extracted"
     unverified_quotes: int = 0
     off_candidate_items: int = 0
@@ -55,16 +53,16 @@ class DocumentExtractor:
 
     def __init__(
         self,
-        api_key: str = None,
+        api_key: str | None = None,
         model: str = DEFAULT_MODEL,
         max_context_chars: int = DEFAULT_MAX_CONTEXT,
-        provider: str = None,
-        azure_endpoint: str = None,
-        azure_api_version: str = None,
-        context_windows: Optional[Dict[str, int]] = None,
-        base_url: Optional[str] = None,
-        timeout: Optional[int] = None,
-        reasoning_models: Optional[List[str]] = None,
+        provider: str | None = None,
+        azure_endpoint: str | None = None,
+        azure_api_version: str | None = None,
+        context_windows: dict[str, int] | None = None,
+        base_url: str | None = None,
+        timeout: int | None = None,
+        reasoning_models: list[str] | None = None,
     ):
         """
         Initialize document extractor.
@@ -116,7 +114,7 @@ class DocumentExtractor:
             reasoning_models=reasoning_models,
         )
 
-    def extract(self, text: str, schema: Dict[str, Any]) -> ExtractionResult:
+    def extract(self, text: str, schema: dict[str, Any]) -> ExtractionResult:
         """
         Extract structured data from document.
 
@@ -177,16 +175,13 @@ class DocumentExtractor:
             self._validate_payload(validated_data, validator)
 
             # Stage 2: Post-extraction normalization
-            validated_data = normalize_with_schema(
-                validated_data, schema, validator=validator
-            )
+            validated_data = normalize_with_schema(validated_data, schema, validator=validator)
             validated_data = normalize_string_fields(validated_data)
             self._validate_payload(validated_data, validator)
 
         except Exception as exc:
             exc.usage = {
-                key: extraction.get(key)
-                for key in ("cost", "input_tokens", "output_tokens")
+                key: extraction.get(key) for key in ("cost", "input_tokens", "output_tokens")
             }
             raise
 
@@ -213,7 +208,6 @@ class DocumentExtractor:
         except ValidationError as exc:
             path = ".".join(map(str, exc.absolute_schema_path)) or "schema"
             message = (
-                f"Extraction schema validation failed at schema {path} "
-                f"(rule: {exc.validator})"
+                f"Extraction schema validation failed at schema {path} (rule: {exc.validator})"
             )
             raise SchemaValidationError(message) from None

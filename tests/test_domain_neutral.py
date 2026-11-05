@@ -20,8 +20,13 @@ class TestTargetTemplateContext:
 
     def test_reserved_and_non_scalar_fields_are_excluded(self):
         ctx = DiscoveryEngine._target_template_context(
-            {"county": "Adams", "query": "q", "urls": ["https://a.gov/x.pdf"],
-             "blank": " ", "fips": 8001}
+            {
+                "county": "Adams",
+                "query": "q",
+                "urls": ["https://a.gov/x.pdf"],
+                "blank": " ",
+                "fips": 8001,
+            }
         )
         assert ctx == {"county": "Adams", "fips": "8001"}
 

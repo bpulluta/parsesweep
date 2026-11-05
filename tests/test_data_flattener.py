@@ -1,4 +1,5 @@
 """DataFlattener keeps schema field names and only normalizes configured unit fields."""
+
 from __future__ import annotations
 
 import pandas as pd

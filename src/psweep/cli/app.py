@@ -40,8 +40,13 @@ def cli() -> None:
 
 
 @cli.command()
-@click.option("--config", "config_path", required=True, type=click.Path(path_type=Path),
-              help="Path to the domain run configuration.")
+@click.option(
+    "--config",
+    "config_path",
+    required=True,
+    type=click.Path(path_type=Path),
+    help="Path to the domain run configuration.",
+)
 @click.option("--fresh", is_flag=True, help="Re-run discovery, extraction, and compilation.")
 @click.option(
     "--target-limit",
@@ -51,8 +56,12 @@ def cli() -> None:
 )
 @click.option("--skip-discover", is_flag=True, help="Use existing curated documents.")
 @click.option("--skip-extract", is_flag=True, help="Compile existing extracted records.")
-@click.option("--validate-config", "validate_config_only", is_flag=True,
-              help="Validate the run configuration without executing stages.")
+@click.option(
+    "--validate-config",
+    "validate_config_only",
+    is_flag=True,
+    help="Validate the run configuration without executing stages.",
+)
 @click.option("--yes", "-y", is_flag=True, help="Skip confirmation.")
 @click.option("--quiet", "-q", is_flag=True, help="Minimal output.")
 @click.option("--verbose", "-v", is_flag=True, help="Detailed output.")
@@ -102,7 +111,7 @@ def run(
         cfg = load_runtime_config_file(config_path)
     except RuntimeConfigError as exc:
         view.error("Runtime config validation failed", str(exc))
-        raise click.exceptions.Exit(1)
+        raise click.exceptions.Exit(1) from None
 
     domain = cfg["domain"]
     workspace = Workspace(domain)
@@ -171,7 +180,7 @@ def run(
             raise click.exceptions.Exit(1)
     except RuntimeConfigError as exc:
         view.error("Run preflight failed", str(exc))
-        raise click.exceptions.Exit(1)
+        raise click.exceptions.Exit(1) from None
 
     if validate_config_only:
         if not view.is_quiet:
@@ -200,7 +209,10 @@ def run(
     if extracted_count and not fresh:
         plan_rows["Extracted"] = f"{extracted_count} docs (skip existing)"
     if fresh:
-        plan_rows["Mode"] = "REPROCESS (ignore checkpoint/search cache; clear extracted+compiled outputs; re-extract docs)"
+        plan_rows["Mode"] = (
+            "REPROCESS (ignore checkpoint/search cache; clear "
+            "extracted+compiled outputs; re-extract docs)"
+        )
 
     stages_list: list[str] = []
     if not skip_discover and discovery_enabled:
@@ -228,10 +240,9 @@ def run(
     view.config(plan_rows, title="Run Plan")
 
     # Confirm
-    if not yes and not view.is_quiet:
-        if not click.confirm("Proceed?", default=True):
-            view.info("Cancelled.")
-            raise click.exceptions.Exit(0)
+    if not yes and not view.is_quiet and not click.confirm("Proceed?", default=True):
+        view.info("Cancelled.")
+        raise click.exceptions.Exit(0)
 
     flags: list[str] = []
     if quiet:
@@ -256,7 +267,7 @@ def run(
         extra_flags=flags,
     )
 
-    _stage_labels = {
+    stage_labels = {
         "discover": "Discovering documents",
         "extract": "Extracting data",
         "compile": "Compiling results",
@@ -266,8 +277,7 @@ def run(
 
     def _announce(index: int, stage_name: str) -> None:
         view.phase(
-            f"Phase {index}/{total_stages}: "
-            f"{_stage_labels.get(stage_name, stage_name.title())}"
+            f"Phase {index}/{total_stages}: {stage_labels.get(stage_name, stage_name.title())}"
         )
 
     try:
@@ -279,8 +289,7 @@ def run(
     # Build a richer post-run summary from on-disk artifacts.
     summary_rows: dict[str, str] = {
         "Status": (
-            f"partial ({', '.join(partial_stages)} had errors; "
-            "re-run retries transient ones)"
+            f"partial ({', '.join(partial_stages)} had errors; re-run retries transient ones)"
             if partial_stages
             else "complete"
         ),

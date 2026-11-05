@@ -20,9 +20,7 @@ def search(monkeypatch):
     fake = Mock(return_value={"organic_results": []})
     monkeypatch.setattr(SerpApiSeeker, "_search_via_http", fake)
     monkeypatch.setenv("SERPAPI_API_KEY", "synthetic-search-key")
-    monkeypatch.setattr(
-        "psweep.discovery.connectors.serpapi_seeker.time.sleep", lambda _: None
-    )
+    monkeypatch.setattr("psweep.discovery.connectors.serpapi_seeker.time.sleep", lambda _: None)
     return fake
 
 
@@ -66,19 +64,14 @@ def test_no_legacy_sdk_dependency(monkeypatch):
 @pytest.mark.parametrize("count", [0, 2, 3])
 def test_normalized_candidates(search, count):
     search.return_value = response(count)
-    candidates = SerpApiSeeker().discover(
-        SeekerInput(queries=["synthetic documents"])
-    )
+    candidates = SerpApiSeeker().discover(SeekerInput(queries=["synthetic documents"]))
     assert len(candidates) == count
     for index, candidate in enumerate(candidates):
         assert candidate["url"] == f"https://example.org/{index}.pdf"
         assert candidate["source"] == "serpapi_google"
         assert candidate["title"] == f"Document {index}"
         assert candidate["snippet"] == f"Evidence {index}"
-        assert any(
-            f"SerpApi result rank {index + 1}" in reason
-            for reason in candidate["reasons"]
-        )
+        assert any(f"SerpApi result rank {index + 1}" in reason for reason in candidate["reasons"])
 
 
 def test_confirmed_empty_search_preserves_other_queries(search):
@@ -92,9 +85,7 @@ def test_confirmed_empty_search_preserves_other_queries(search):
         response(2),
     ]
     seeker = SerpApiSeeker()
-    candidates = seeker.discover(
-        SeekerInput(queries=["first", "empty", "last"])
-    )
+    candidates = seeker.discover(SeekerInput(queries=["first", "empty", "last"]))
     assert len(candidates) == 2
     assert search.call_count == 3
     assert [query["returned"] for query in seeker.query_results] == [1, 0, 2]
@@ -184,9 +175,7 @@ def test_templates_missing_required_tokens_are_skipped(search):
 
 def test_required_template_token_fails():
     with pytest.raises(ValueError, match="Missing required template token"):
-        render_query_template(
-            "{jurisdiction} {state}", {"jurisdiction": "Example"}
-        )
+        render_query_template("{jurisdiction} {state}", {"jurisdiction": "Example"})
 
 
 def test_optional_template_token_is_removed():
@@ -217,10 +206,7 @@ def test_search_params():
     ],
 )
 def test_supported_providers(provider, expected):
-    assert (
-        SerpApiSeeker(api_key="synthetic").supports_provider(provider)
-        is expected
-    )
+    assert SerpApiSeeker(api_key="synthetic").supports_provider(provider) is expected
 
 
 @pytest.mark.parametrize(
@@ -257,12 +243,7 @@ def test_verified_transport_is_the_default(monkeypatch):
         )
 
     monkeypatch.setattr("psweep.discovery.network.request_get", get)
-    assert (
-        len(
-            SerpApiSeeker(api_key="synthetic").discover(SeekerInput(queries=["q"]))
-        )
-        == 2
-    )
+    assert len(SerpApiSeeker(api_key="synthetic").discover(SeekerInput(queries=["q"]))) == 2
     assert parse_qs(urlsplit(calls[0][0]).query)["api_key"] == ["synthetic"]
     assert calls[0][1]["verify"] is True
     assert calls[0][1]["allow_redirects"] is False
@@ -272,9 +253,7 @@ def test_verified_transport_is_the_default(monkeypatch):
 def test_insecure_settings_are_rejected_in_protected_mode(monkeypatch, setting):
     monkeypatch.setenv("PSWEEP_SECURITY_MODE", "protected")
     monkeypatch.setenv("SERPAPI_SSL_VERIFY", setting)
-    with pytest.raises(
-        ValueError, match="Protected mode requires TLS verification"
-    ):
+    with pytest.raises(ValueError, match="Protected mode requires TLS verification"):
         SerpApiSeeker(api_key="synthetic")
 
 
@@ -297,22 +276,13 @@ def test_no_cache_means_two_remote_calls(search):
     assert search.call_count == 2
 
 
-def test_cache_refresh_fetches_and_updates_persistent_results(
-    search, tmp_path
-):
+def test_cache_refresh_fetches_and_updates_persistent_results(search, tmp_path):
     cache = str(tmp_path / "cache")
     request = SeekerInput(queries=["q"])
     search.return_value = response(1)
     SerpApiSeeker(cache_dir=cache).discover(request)
     search.return_value = response(2)
-    assert (
-        len(
-            SerpApiSeeker(cache_dir=cache, cache_refresh=True).discover(
-                request
-            )
-        )
-        == 2
-    )
+    assert len(SerpApiSeeker(cache_dir=cache, cache_refresh=True).discover(request)) == 2
     search.reset_mock()
     assert len(SerpApiSeeker(cache_dir=cache).discover(request)) == 2
     search.assert_not_called()
@@ -339,30 +309,34 @@ def test_canonical_url_strips_only_tracking_parameters(url, expected):
 def test_tracking_variants_dedupe_across_queries(search):
     search.side_effect = [
         {"organic_results": [{"link": "https://a.gov/solar?srsltid=one"}]},
-        {"organic_results": [
-            {"link": "https://a.gov/solar?srsltid=two"},
-            {"link": "https://a.gov/bids.aspx?bidId=4&utm_source=g"},
-        ]},
+        {
+            "organic_results": [
+                {"link": "https://a.gov/solar?srsltid=two"},
+                {"link": "https://a.gov/bids.aspx?bidId=4&utm_source=g"},
+            ]
+        },
     ]
     candidates = SerpApiSeeker().discover(SeekerInput(queries=["first", "second"]))
     assert [c["url"] for c in candidates] == [
-        "https://a.gov/solar", "https://a.gov/bids.aspx?bidId=4",
+        "https://a.gov/solar",
+        "https://a.gov/bids.aspx?bidId=4",
     ]
 
 
 def test_queries_interleave_by_rank_so_a_capped_selection_sees_each_query(search):
     def page(prefix, count):
-        return {"organic_results": [
-            {"link": f"https://{prefix}.gov/{rank}"} for rank in range(count)
-        ]}
+        return {
+            "organic_results": [{"link": f"https://{prefix}.gov/{rank}"} for rank in range(count)]
+        }
 
     search.side_effect = [page("a", 3), page("b", 2), page("c", 1)]
-    candidates = SerpApiSeeker().discover(
-        SeekerInput(queries=["first", "second", "third"])
-    )
+    candidates = SerpApiSeeker().discover(SeekerInput(queries=["first", "second", "third"]))
     assert [c["url"] for c in candidates] == [
-        "https://a.gov/0", "https://b.gov/0", "https://c.gov/0",
-        "https://a.gov/1", "https://b.gov/1",
+        "https://a.gov/0",
+        "https://b.gov/0",
+        "https://c.gov/0",
+        "https://a.gov/1",
+        "https://b.gov/1",
         "https://a.gov/2",
     ]
 

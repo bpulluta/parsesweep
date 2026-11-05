@@ -94,10 +94,14 @@ def validate(
             view.success(f"Wrote {path.as_posix()}")
             view.next_steps(
                 [
-                    "Fill it blind (blank = not present; rows mode: use the schema's key "
-                    "vocabulary and paste the quote) and delete unlabelled rows",
-                    f"Save it under {config_path.parent.as_posix()}/samples/ and add it to "
-                    "validation.references",
+                    (
+                        "Fill it blind (blank = not present; rows mode: use the schema's key "
+                        "vocabulary and paste the quote) and delete unlabelled rows"
+                    ),
+                    (
+                        f"Save it under {config_path.parent.as_posix()}/samples/ and add it to "
+                        "validation.references"
+                    ),
                 ]
             )
             return

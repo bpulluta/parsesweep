@@ -32,18 +32,25 @@ from psweep.pipeline import (
 @pytest.fixture(autouse=True)
 def controlled_configuration(monkeypatch):
     """Keep factory tests isolated from local .env and real credentials."""
-    config = SimpleNamespace(llm_config={
-        "provider": "openai", "model": "gpt-fixture", "api_key": "fixture-key",
-    })
+    config = SimpleNamespace(
+        llm_config={
+            "provider": "openai",
+            "model": "gpt-fixture",
+            "api_key": "fixture-key",
+        }
+    )
     monkeypatch.setattr("psweep.utils.config._global_config", config)
     monkeypatch.setattr(
-        "psweep.cli.commands_extract.load_dotenv", lambda: None,
+        "psweep.cli.commands_extract.load_dotenv",
+        lambda: None,
     )
     return config.llm_config
 
 
 def test_extract_documents_uses_max_context_chars(
-    monkeypatch, tmp_path: Path, controlled_configuration,
+    monkeypatch,
+    tmp_path: Path,
+    controlled_configuration,
 ) -> None:
     controlled_configuration["base_url"] = "https://proxy.example.invalid/v1"
     docs_dir = tmp_path / "docs"
@@ -148,14 +155,29 @@ def test_compile_without_identity_reports_no_deduplication(tmp_path: Path) -> No
     directory = tmp_path / "records"
     directory.mkdir()
     schema = tmp_path / "schema.json"
-    schema.write_text(json.dumps({"$metadata": {"extraction": {
-        "main_data_array": "items",
-    }}}))
-    (directory / "record.json").write_text(json.dumps({"payload": {
-        "items": [{"name": "same"}, {"name": "same"}],
-    }}))
-    result = compile_extractions(directory, schema, output_dir=tmp_path / "output",
-                                report_format="csv")
+    schema.write_text(
+        json.dumps(
+            {
+                "$metadata": {
+                    "extraction": {
+                        "main_data_array": "items",
+                    }
+                }
+            }
+        )
+    )
+    (directory / "record.json").write_text(
+        json.dumps(
+            {
+                "payload": {
+                    "items": [{"name": "same"}, {"name": "same"}],
+                }
+            }
+        )
+    )
+    result = compile_extractions(
+        directory, schema, output_dir=tmp_path / "output", report_format="csv"
+    )
     assert result.total_rows == 2
     assert result.deduplicated is False
 
@@ -290,11 +312,7 @@ def test_build_run_stage_commands_applies_target_limit_only_to_discover(
 ) -> None:
     config_path = tmp_path / "example.yaml"
     config_path.write_text(
-        "domain: example\n"
-        "discovery:\n"
-        "  targets:\n"
-        "    - label: demo\n"
-        "      query: test\n",
+        "domain: example\ndiscovery:\n  targets:\n    - label: demo\n      query: test\n",
         encoding="utf-8",
     )
 
@@ -315,11 +333,7 @@ def test_build_run_stage_commands_uses_config_extract_input_without_target_limit
 ) -> None:
     config_path = tmp_path / "example.yaml"
     config_path.write_text(
-        "domain: example\n"
-        "discovery:\n"
-        "  targets:\n"
-        "    - label: demo\n"
-        "      query: test\n",
+        "domain: example\ndiscovery:\n  targets:\n    - label: demo\n      query: test\n",
         encoding="utf-8",
     )
 
@@ -336,11 +350,7 @@ def test_build_run_stage_commands_wires_extract_input_path_when_provided(
 ) -> None:
     config_path = tmp_path / "example.yaml"
     config_path.write_text(
-        "domain: example\n"
-        "discovery:\n"
-        "  targets:\n"
-        "    - label: demo\n"
-        "      query: test\n",
+        "domain: example\ndiscovery:\n  targets:\n    - label: demo\n      query: test\n",
         encoding="utf-8",
     )
 
@@ -362,15 +372,11 @@ def test_build_run_stage_commands_wires_extract_input_path_when_provided(
 
 def test_build_run_stage_commands_without_discovery(tmp_path: Path) -> None:
     config_path = tmp_path / "example.yaml"
-    config_path.write_text(
-        "domain: example\nschema: s.json\n", encoding="utf-8"
-    )
+    config_path.write_text("domain: example\nschema: s.json\n", encoding="utf-8")
 
     stage_names = [
         name
-        for name, _ in build_run_stage_commands(
-            config_path, base_cmd=["pixi", "run", "psweep"]
-        )
+        for name, _ in build_run_stage_commands(config_path, base_cmd=["pixi", "run", "psweep"])
     ]
     assert stage_names == ["extract", "compile"]
 
@@ -398,17 +404,14 @@ def test_build_run_stage_commands_skips_discover_without_discovery_config(
 ) -> None:
     config_path = tmp_path / "example.yaml"
     config_path.write_text(
-        "domain: example\n"
-        "schema: s.json\n",
+        "domain: example\nschema: s.json\n",
         encoding="utf-8",
     )
 
     assert resolve_run_discovery_enabled(config_path) is False
     stage_names = [
         name
-        for name, _ in build_run_stage_commands(
-            config_path, base_cmd=["pixi", "run", "psweep"]
-        )
+        for name, _ in build_run_stage_commands(config_path, base_cmd=["pixi", "run", "psweep"])
     ]
     assert stage_names == ["extract", "compile"]
 
@@ -507,15 +510,21 @@ def _run_config(tmp_path, schema_path, *, discovery=True):
     return path, output
 
 
-@pytest.mark.parametrize("checkpoint", [
-    None,
-    "{not valid json",
-    json.dumps({"other": 1}),
-    json.dumps({"entries": {"alpha": {}, "beta": {}}}),
-    json.dumps({"entries": {"alpha": {"artifacts": {"missing": "0" * 64}}}}),
-])
+@pytest.mark.parametrize(
+    "checkpoint",
+    [
+        None,
+        "{not valid json",
+        json.dumps({"other": 1}),
+        json.dumps({"entries": {"alpha": {}, "beta": {}}}),
+        json.dumps({"entries": {"alpha": {"artifacts": {"missing": "0" * 64}}}}),
+    ],
+)
 def test_run_ui_does_not_predict_reuse_from_raw_checkpoint(
-    tmp_path: Path, schema_path: Path, monkeypatch, checkpoint,
+    tmp_path: Path,
+    schema_path: Path,
+    monkeypatch,
+    checkpoint,
 ) -> None:
     """Missing, malformed and stale checkpoint keys are not skip evidence."""
     monkeypatch.chdir(tmp_path)
@@ -546,7 +555,11 @@ def test_run_ui_does_not_predict_reuse_from_raw_checkpoint(
 @pytest.mark.parametrize("entrypoint", ["cli", "api"])
 @pytest.mark.parametrize("existing", [False, True])
 def test_parent_fresh_run_leaves_cleanup_to_extract_stage(
-    tmp_path: Path, schema_path: Path, monkeypatch, entrypoint, existing,
+    tmp_path: Path,
+    schema_path: Path,
+    monkeypatch,
+    entrypoint,
+    existing,
 ) -> None:
     """Only the extract child may mutate the extraction output directory."""
     monkeypatch.chdir(tmp_path)
@@ -569,7 +582,8 @@ def test_parent_fresh_run_leaves_cleanup_to_extract_stage(
     monkeypatch.setattr("psweep.pipeline.subprocess.run", child)
     if entrypoint == "cli":
         result = CliRunner().invoke(
-            cli, ["run", "--config", str(config), "--fresh", "--yes"],
+            cli,
+            ["run", "--config", str(config), "--fresh", "--yes"],
         )
         assert result.exit_code == 1, result.output
         assert "Stage 'extract' failed" in result.output
@@ -586,7 +600,10 @@ def test_parent_fresh_run_leaves_cleanup_to_extract_stage(
 
 @pytest.mark.parametrize("entrypoint", ["cli", "api"])
 def test_partial_stage_continues_downstream_and_reports_partial(
-    tmp_path: Path, schema_path: Path, monkeypatch, entrypoint,
+    tmp_path: Path,
+    schema_path: Path,
+    monkeypatch,
+    entrypoint,
 ) -> None:
     """A partial discover still feeds extraction; a failed stage stops the run."""
     monkeypatch.chdir(tmp_path)
@@ -666,10 +683,17 @@ def test_compiled_table_fresh_tracks_records_table_and_manifest(tmp_path: Path) 
     record = extracted / "record.json"
     record.write_text(json.dumps({"payload": {"items": [{"name": "a"}]}}), encoding="utf-8")
     schema = tmp_path / "schema.json"
-    schema.write_text(json.dumps({"$metadata": {
-        "extraction": {"main_data_array": "items"},
-        "identity": {"deduplication": {"key_fields": ["name"]}},
-    }}), encoding="utf-8")
+    schema.write_text(
+        json.dumps(
+            {
+                "$metadata": {
+                    "extraction": {"main_data_array": "items"},
+                    "identity": {"deduplication": {"key_fields": ["name"]}},
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
 
     def fresh() -> bool:
         return compiled_table_fresh(extracted, schema, config_path=None, output_dir=output)
@@ -688,7 +712,7 @@ def test_compiled_table_fresh_tracks_records_table_and_manifest(tmp_path: Path) 
     assert not fresh()
     compile_()
     assert fresh()
-    manifest = sorted((output / "run_manifests").glob("*.manifest.json"))[-1]
+    manifest = max((output / "run_manifests").glob("*.manifest.json"))
     data = json.loads(manifest.read_text(encoding="utf-8"))
     del data["lineage"]["build_fingerprint"]
     manifest.write_text(json.dumps(data), encoding="utf-8")

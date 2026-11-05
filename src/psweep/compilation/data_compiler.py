@@ -3,7 +3,8 @@
 import hashlib
 import json
 from pathlib import Path
-from typing import Any, Dict, Iterator, List, Optional, Tuple
+from typing import Any
+from collections.abc import Iterator
 
 import pandas as pd
 from jsonschema import ValidationError
@@ -22,12 +23,12 @@ from .deduplicator import (
 from .excel_formatter import ExcelFormatter
 from .input_provenance import list_compile_record_files, read_compile_record
 from .roster import compile_roster
-from ..discovery.targets import iter_targets
-from ..exceptions import SchemaMetadataError
-from ..extraction.roster import load_roster
-from ..extraction.schema_utils import build_schema_validator
-from ..utils.file_io import artifact_sha256
-from ..utils.normalizers import add_county_fips_column, normalize_state_column
+from psweep.discovery.targets import iter_targets
+from psweep.exceptions import SchemaMetadataError
+from psweep.extraction.roster import load_roster
+from psweep.extraction.schema_utils import build_schema_validator
+from psweep.utils.file_io import artifact_sha256
+from psweep.utils.normalizers import add_county_fips_column, normalize_state_column
 
 
 EXCEL_MAX_DATA_ROWS = 1_048_575
@@ -50,14 +51,15 @@ class DataCompiler:
     activate roster mode exactly as in extraction.
     """
 
-    def __init__(self, schema_metadata, inputs: Optional[Dict[str, Any]] = None,
-                 verbose=True, debug=False):
+    def __init__(
+        self, schema_metadata, inputs: dict[str, Any] | None = None, verbose=True, debug=False
+    ):
         if not schema_metadata:
             raise SchemaMetadataError("DataCompiler requires schema metadata.")
         self.schema_metadata = schema_metadata
         self.inputs = inputs or {}
         self.roster = load_roster(self.inputs, schema_metadata)
-        self.roster_stats: Optional[Dict[str, int]] = None
+        self.roster_stats: dict[str, int] | None = None
         self.verbose = verbose
         self.debug = debug
         self.file_count = 0
@@ -71,6 +73,7 @@ class DataCompiler:
 
     @property
     def mode(self) -> str:
+        """Compilation mode: ``roster`` when a roster is configured, else ``rows``."""
         return "rows" if self.roster is None else "roster"
 
     def fingerprint(self, json_dir: Path) -> str:
@@ -78,7 +81,8 @@ class DataCompiler:
         json_dir = Path(json_dir)
         compilation = dict(self.schema_metadata.metadata.get("compilation") or {})
         output = {
-            key: value for key, value in (compilation.pop("output", None) or {}).items()
+            key: value
+            for key, value in (compilation.pop("output", None) or {}).items()
             if key != "default_format"
         }
         if output:
@@ -102,7 +106,7 @@ class DataCompiler:
             json.dumps(identity, sort_keys=True, default=str).encode()
         ).hexdigest()
 
-    def _records(self, files: List[Path]) -> Iterator[Dict[str, Any]]:
+    def _records(self, files: list[Path]) -> Iterator[dict[str, Any]]:
         for path in files:
             record = read_compile_record(path)
             try:
@@ -119,7 +123,7 @@ class DataCompiler:
         json_dir: Path,
         *,
         apply_deduplication: bool = True,
-    ) -> Tuple[pd.DataFrame, Dict[str, Any]]:
+    ) -> tuple[pd.DataFrame, dict[str, Any]]:
         """Return the compiled frame (field-name columns) and a schema summary."""
         from psweep.security import validate_protected_paths
 
@@ -165,20 +169,18 @@ class DataCompiler:
             if self.verbose and self.duplicates_removed:
                 print(f"\n🔄 Removed {self.duplicates_removed} duplicate(s)")
         if self.debug:
-            print(f"\n[DEBUG] Shape: {df.shape[0]} rows × {df.shape[1]} columns")
+            print(f"\n[DEBUG] Shape: {df.shape[0]} rows × {df.shape[1]} columns")  # noqa: RUF001
         return df, schema_info
 
-    def _item_rows(self, files: List[Path], main: str) -> pd.DataFrame:
+    def _item_rows(self, files: list[Path], main: str) -> pd.DataFrame:
         row_array = self.schema_metadata.get_row_array()
         contexts = self.schema_metadata.get_context_objects()
         flatten = self.flattener.flatten_item
         rows = []
-        for path, record in zip(files, self._records(files)):
+        for path, record in zip(files, self._records(files), strict=True):
             payload = record["payload"]
             context = {
-                key: value
-                for name in contexts
-                for key, value in (payload.get(name) or {}).items()
+                key: value for name in contexts for key, value in (payload.get(name) or {}).items()
             }
             context.update(self._lineage_context(record))
             items = payload.get(main, [])
@@ -207,9 +209,9 @@ class DataCompiler:
         return pd.DataFrame(rows)
 
     @staticmethod
-    def _lineage_context(record: Dict[str, Any]) -> Dict[str, Any]:
+    def _lineage_context(record: dict[str, Any]) -> dict[str, Any]:
         lineage = record.get("lineage") if isinstance(record.get("lineage"), dict) else {}
-        context: Dict[str, Any] = {}
+        context: dict[str, Any] = {}
         if lineage.get("run_id"):
             context[COL_RUN_ID] = lineage["run_id"]
         if lineage.get("artifact_id"):
@@ -262,7 +264,7 @@ class DataCompiler:
 
         exclude = metadata.get_output_exclude_fields()
         order = metadata.get_column_order()
-        known = set(out.columns) | PROVENANCE_COLUMNS | {self.deduplicator._annotation_col}
+        known = set(out.columns) | PROVENANCE_COLUMNS | {self.deduplicator._annotation_col}  # noqa: SLF001 - package-internal helper
         unknown = [name for name in [*exclude, *order] if name not in known]
         if unknown:
             raise ValueError(
@@ -343,7 +345,10 @@ class DataCompiler:
         import shutil
         import tempfile
         from psweep.compilation.publication import (
-            prepare_export, commit_export, journal_path, recover_export,
+            prepare_export,
+            commit_export,
+            journal_path,
+            recover_export,
         )
 
         frame = self._prepare_output_dataframe(df)
@@ -358,9 +363,7 @@ class DataCompiler:
             raise ValueError("At least one export format is required")
 
         output_dir.parent.mkdir(parents=True, exist_ok=True)
-        stage_root = Path(
-            tempfile.mkdtemp(dir=output_dir.parent, prefix=".psweep-export-")
-        )
+        stage_root = Path(tempfile.mkdtemp(dir=output_dir.parent, prefix=".psweep-export-"))
         files_dir = stage_root / "files"
         backup_dir = stage_root / "backup"
         files_dir.mkdir()
@@ -377,13 +380,9 @@ class DataCompiler:
                 staged.append((filename, staged_path))
             prepare_export(output_dir, stage_root, [name for name, _ in staged], fresh)
             if fresh:
-                emitted = self._publish_fresh(
-                    files_dir, backup_dir, output_dir, staged, preserved
-                )
+                emitted = self._publish_fresh(files_dir, backup_dir, output_dir, staged, preserved)
             else:
-                emitted = self._publish_in_place(
-                    backup_dir, output_dir, staged, preserved
-                )
+                emitted = self._publish_in_place(backup_dir, output_dir, staged, preserved)
             commit_export(output_dir)
         except (OSError, ValueError) as exc:
             if journal_path(output_dir).exists():
@@ -393,9 +392,7 @@ class DataCompiler:
                     "Export failed; rollback incomplete. Recovery details: "
                     f"{'; '.join(preserved)}. {exc}"
                 ) from exc
-            raise ValueError(
-                f"Export failed; prior output unchanged. {exc}"
-            ) from exc
+            raise ValueError(f"Export failed; prior output unchanged. {exc}") from exc
         finally:
             if not preserved and not journal_path(output_dir).exists() and stage_root.exists():
                 shutil.rmtree(stage_root)

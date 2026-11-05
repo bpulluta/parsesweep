@@ -19,46 +19,34 @@ def temp_schema_with_metadata(tmp_path):
             "extraction": {
                 "main_data_array": "test_items",
                 "context_objects": ["metadata_obj", "info_obj"],
-                "document_type": "Test Document"
+                "document_type": "Test Document",
             },
             "identity": {
                 "deduplication": {
                     "key_fields": ["field1", "field2"],
-                    "ignore_fields": ["notes", "timestamp"]
+                    "ignore_fields": ["notes", "timestamp"],
                 }
             },
             "validation": {
                 "required_fields": ["metadata_obj", "test_items"],
-                "quality_checks": [
-                    {
-                        "field": "value",
-                        "type": "numeric",
-                        "range": [0, 100]
-                    }
-                ],
-                "completeness_threshold": 0.85
-            }
+                "quality_checks": [{"field": "value", "type": "numeric", "range": [0, 100]}],
+                "completeness_threshold": 0.85,
+            },
         },
         "type": "object",
         "properties": {
             "metadata_obj": {
                 "type": "object",
-                "properties": {
-                    "id": {"type": "string"},
-                    "name": {"type": "string"}
-                }
+                "properties": {"id": {"type": "string"}, "name": {"type": "string"}},
             },
-            "test_items": {
-                "type": "array",
-                "items": {"type": "object"}
-            }
-        }
+            "test_items": {"type": "array", "items": {"type": "object"}},
+        },
     }
-    
+
     schema_path = tmp_path / "test_schema.json"
-    with open(schema_path, 'w') as f:
+    with Path(schema_path).open("w", encoding="utf-8") as f:
         json.dump(schema, f)
-    
+
     return schema_path
 
 
@@ -68,34 +56,29 @@ def temp_schema_without_metadata(tmp_path):
     schema = {
         "$schema": "http://json-schema.org/draft-07/schema#",
         "type": "object",
-        "properties": {
-            "items": {
-                "type": "array",
-                "items": {"type": "object"}
-            }
-        }
+        "properties": {"items": {"type": "array", "items": {"type": "object"}}},
     }
-    
+
     schema_path = tmp_path / "no_metadata_schema.json"
-    with open(schema_path, 'w') as f:
+    with Path(schema_path).open("w", encoding="utf-8") as f:
         json.dump(schema, f)
-    
+
     return schema_path
 
 
 class TestSchemaMetadataBasics:
     """Test basic SchemaMetadata functionality."""
-    
+
     def test_has_metadata_false(self, temp_schema_without_metadata):
         """Test SchemaMetadata raises error when no metadata (v2.0+)."""
         with pytest.raises(SchemaMetadataError, match="missing required \\$metadata section"):
             SchemaMetadata(temp_schema_without_metadata)
-    
+
     def test_schema_path_stored(self, temp_schema_with_metadata):
         """Test schema path is properly stored."""
         meta = SchemaMetadata(temp_schema_with_metadata)
         assert meta.schema_path == temp_schema_with_metadata
-    
+
     def test_schema_loaded(self, temp_schema_with_metadata):
         """Test schema is properly loaded."""
         meta = SchemaMetadata(temp_schema_with_metadata)
@@ -130,13 +113,11 @@ class TestCompilationMetadata:
         meta = SchemaMetadata(
             temp_schema_with_metadata,
             metadata_overrides={
-                "compilation": {
-                    "output": {"exclude_fields": ["notes", "details"]}
-                }
+                "compilation": {"output": {"exclude_fields": ["notes", "details"]}}
             },
         )
         assert meta.get_output_exclude_fields() == ["notes", "details"]
-    
+
     def test_metadata_overrides_merge_compilation_output(self, temp_schema_with_metadata):
         """Runtime metadata overrides should drive output settings."""
         meta = SchemaMetadata(
@@ -222,34 +203,28 @@ class TestV2Requirements:
         schema_path.write_text(json.dumps(schema_payload), encoding="utf-8")
         with pytest.raises(SchemaMetadataError, match=match):
             SchemaMetadata(schema_path)
-    
+
     def test_minimal_valid_metadata(self, tmp_path):
         """Test that minimal valid metadata works in v2.0."""
         schema = {
             "$schema": "http://json-schema.org/draft-07/schema#",
-            "$metadata": {
-                "extraction": {
-                    "main_data_array": "items"
-                }
-            },
+            "$metadata": {"extraction": {"main_data_array": "items"}},
             "type": "object",
-            "properties": {
-                "items": {"type": "array"}
-            }
+            "properties": {"items": {"type": "array"}},
         }
         schema_path = tmp_path / "minimal_valid.json"
-        with open(schema_path, 'w') as f:
+        with Path(schema_path).open("w", encoding="utf-8") as f:
             json.dump(schema, f)
-        
+
         # Should not raise - this is minimal valid v2.0 schema
         meta = SchemaMetadata(schema_path)
         assert meta.get_main_data_array() == "items"
-    
+
     def test_error_message_helpful_for_migration(self, temp_schema_without_metadata):
         """Test that error messages provide helpful migration guidance."""
         try:
             SchemaMetadata(temp_schema_without_metadata)
-            assert False, "Should have raised SchemaMetadataError"
+            raise AssertionError("Should have raised SchemaMetadataError")
         except SchemaMetadataError as e:
             error_msg = str(e)
             # Check that error message mentions what's missing
@@ -258,7 +233,7 @@ class TestV2Requirements:
 
 class TestEdgeCases:
     """Test edge cases and error handling."""
-    
+
     def test_partial_metadata_sections(self, tmp_path):
         """Test schema with partial metadata (only some sections)."""
         schema = {
@@ -271,17 +246,18 @@ class TestEdgeCases:
                 # Missing compilation and validation sections
             },
             "type": "object",
-            "properties": {}
+            "properties": {},
         }
-        
+
         schema_path = tmp_path / "partial_schema.json"
-        with open(schema_path, 'w') as f:
+        with Path(schema_path).open("w", encoding="utf-8") as f:
             json.dump(schema, f)
-        
+
         assert SchemaMetadata(schema_path).get_main_data_array() == "items"
 
 
 # --- Phase 8: Tests for Expected Requirements Methods ---
+
 
 class TestExpectedRequirementsMethods:
     """QA/QC expected_requirements live in run config lanes, not schema metadata."""
@@ -459,9 +435,7 @@ class TestCompilationBlockValidation:
             ),
         ],
     )
-    def test_invalid_compilation_block_rejected(
-        self, tmp_path, compilation, match
-    ):
+    def test_invalid_compilation_block_rejected(self, tmp_path, compilation, match):
         path = _write_schema(tmp_path, {"compilation": compilation})
         with pytest.raises(SchemaMetadataError, match=match):
             SchemaMetadata(path)

@@ -13,16 +13,17 @@ import time
 from collections import Counter
 from dataclasses import dataclass, field
 from dataclasses import replace as dataclass_replace
-from datetime import datetime, timezone
+from datetime import datetime, UTC
 from io import StringIO
 from itertools import chain
 from pathlib import Path
-from typing import Callable
+from collections.abc import Callable
 from urllib.parse import unquote, urlparse
 
 from psweep.extraction.transcription import is_audio
 from psweep.extraction.document_utils import (
-    TEXT_CACHE_DIRNAME, text_cache_paths,
+    TEXT_CACHE_DIRNAME,
+    text_cache_paths,
 )
 from psweep.utils.error_taxonomy import (
     build_error_record,
@@ -100,6 +101,7 @@ from .urls import (
     url_extension,
     url_host,
 )
+import operator
 
 # Download partition and index label for shared (non-target) documents.
 SHARED_PARTITION = "_shared"
@@ -110,8 +112,13 @@ REUSED_DOWNLOAD_METHOD = "reused"
 
 # Record fields kept as the final outcome of a child of an incomplete owner.
 PRIOR_OUTCOME_FIELDS = (
-    "status", "final_url", "mime_type", "reason", "error",
-    "policy_blocking_code", "policy_reason",
+    "status",
+    "final_url",
+    "mime_type",
+    "reason",
+    "error",
+    "policy_blocking_code",
+    "policy_reason",
 )
 
 # Browser escalation defaults for JS-rendered HTML shells. Explicit
@@ -341,15 +348,14 @@ class DiscoveryEngine:
         slug = re.sub(r"[^a-z0-9]+", "-", domain.lower()).strip("-")
         return slug or "default"
 
-    def _build_run_id(
-        self, request: DiscoveryRequest, started_at: datetime
-    ) -> str:
+    def _build_run_id(self, request: DiscoveryRequest, started_at: datetime) -> str:
         timestamp = started_at.strftime("%Y%m%dT%H%M%S%fZ")
         return f"acq-{self._slugify_domain(request.domain)}-{timestamp}"
 
     @staticmethod
     def _resolve_output_paths(
-        request: DiscoveryRequest, run_id: str,
+        request: DiscoveryRequest,
+        run_id: str,
     ) -> tuple[Path, Path]:
         # One self-contained directory per run: manifest.json,
         # download_index.csv, review.csv, documents/, curated/.
@@ -360,7 +366,10 @@ class DiscoveryEngine:
     def _configured_candidates(request: DiscoveryRequest) -> list[DiscoveryCandidate]:
         """Stage shared ``sources`` and target ``urls`` as configured candidates."""
         score = CandidateScore(
-            url_signal=0.35, anchor_signal=0.0, content_signal=0.0, trust_signal=0.55,
+            url_signal=0.35,
+            anchor_signal=0.0,
+            content_signal=0.0,
+            trust_signal=0.55,
         )
         candidates: list[DiscoveryCandidate] = []
         seen: set[tuple[str, str | None]] = set()
@@ -399,9 +408,7 @@ class DiscoveryEngine:
     @staticmethod
     def _search_enabled(request: DiscoveryRequest) -> bool:
         """Search runs iff ``queries`` is set or any target row has a ``query``."""
-        return bool(request.queries) or any(
-            target.get("query") for target in request.targets or ()
-        )
+        return bool(request.queries) or any(target.get("query") for target in request.targets or ())
 
     @staticmethod
     def _append_discovery_gap_diagnostics(
@@ -429,9 +436,7 @@ class DiscoveryEngine:
                 "No candidates were produced; inspect search errors.",
             ]
         else:
-            message = (
-                "Search returned no candidates. Adjust query or target inputs."
-            )
+            message = "Search returned no candidates. Adjust query or target inputs."
         return errors, [*notes, message]
 
     @staticmethod
@@ -446,9 +451,7 @@ class DiscoveryEngine:
         if not os.getenv("SERPAPI_API_KEY"):
             errors.append(
                 build_error_record(
-                    ValueError(
-                        "Search queries are configured but SERPAPI_API_KEY is not set"
-                    ),
+                    ValueError("Search queries are configured but SERPAPI_API_KEY is not set"),
                     stage="discovery.seeker_init",
                     provider="serpapi",
                 )
@@ -483,18 +486,12 @@ class DiscoveryEngine:
         return CandidateSelector(
             exclude_draft=request.selection_exclude_draft,
             draft_patterns=request.selection_draft_patterns,
-            relevance_require_any_terms=request.selection_relevance_require_any_terms
-            or None,
-            relevance_exclude_any_terms=request.selection_relevance_exclude_any_terms
-            or None,
+            relevance_require_any_terms=request.selection_relevance_require_any_terms or None,
+            relevance_exclude_any_terms=request.selection_relevance_exclude_any_terms or None,
             exclude_url_patterns=request.selection_exclude_url_patterns or None,
             exclude_text_patterns=request.selection_exclude_text_patterns or None,
-            require_supported_document=bool(
-                request.selection_require_supported_document
-            ),
-            max_per_host_per_target=max(
-                0, int(request.selection_max_per_host_per_target or 0)
-            ),
+            require_supported_document=bool(request.selection_require_supported_document),
+            max_per_host_per_target=max(0, int(request.selection_max_per_host_per_target or 0)),
             target_require_any=request.selection_target_require_any or None,
             target_require_all=request.selection_target_require_all or None,
             target_exclude=request.selection_target_exclude or None,
@@ -556,9 +553,7 @@ class DiscoveryEngine:
         of live search attempts, including retries/timeouts (cache hits excluded;
         actual provider billing for failures may differ).
         """
-        if not seeker_state.get("enabled") or not seeker_state.get(
-            "available"
-        ):
+        if not seeker_state.get("enabled") or not seeker_state.get("available"):
             return [], current_notes, current_errors, [], [], 0
 
         notes = list(current_notes)
@@ -584,10 +579,7 @@ class DiscoveryEngine:
                 timeout_seconds=request.timeout_seconds or 45,
                 cache_ttl_seconds=max(
                     0.0,
-                    float(
-                        getattr(request, "seeker_cache_ttl_minutes", 0.0) or 0.0
-                    )
-                    * 60.0,
+                    float(getattr(request, "seeker_cache_ttl_minutes", 0.0) or 0.0) * 60.0,
                 ),
                 cache_refresh=request.fresh and not request.dry_run,
             )
@@ -597,11 +589,10 @@ class DiscoveryEngine:
             total_inputs = len(seeker_inputs)
             seeker_targets = request.targets or [None]
             for idx, (target, seeker_input) in enumerate(
-                zip(seeker_targets, seeker_inputs, strict=True), start=1,
+                zip(seeker_targets, seeker_inputs, strict=True),
+                start=1,
             ):
-                target_label = DiscoveryEngine._target_label(
-                    target, idx, request.partition_by
-                )
+                target_label = DiscoveryEngine._target_label(target, idx, request.partition_by)
                 if not seeker_input.queries:
                     raw_candidates_by_target.append([])
                     continue
@@ -615,33 +606,38 @@ class DiscoveryEngine:
                 except SerpApiSearchTimeout as exc:
                     discovered = exc.candidates
                     incomplete_targets.add(idx - 1)
-                    for message in exc.query_errors:
-                        errors.append(build_error_record(
+                    errors.extend(
+                        build_error_record(
                             TimeoutError(f"{target_label}: {message}"),
                             stage="discovery.seeker_discover",
                             provider="serpapi",
-                        ))
+                        )
+                        for message in exc.query_errors
+                    )
                     notes.append(
                         f"Partial search for {target_label}: "
                         f"{len(exc.query_errors)} query timeout(s); retained "
                         f"{len(discovered)} candidate(s)."
                     )
-                except Exception as exc:
+                except Exception as exc:  # noqa: BLE001 - review is best-effort
                     # Preserve already-completed targets and keep this target retryable.
                     discovered = []
                     incomplete_targets.add(idx - 1)
-                    errors.append(build_error_record(
-                        exc, stage="discovery.seeker_discover", provider="serpapi",
-                    ))
+                    errors.append(
+                        build_error_record(
+                            exc,
+                            stage="discovery.seeker_discover",
+                            provider="serpapi",
+                        )
+                    )
                     notes.append(f"Search failed for {target_label}; target remains retryable.")
-                raw_candidates_by_target.append(
-                    [{**raw, "_target": target} for raw in discovered]
-                )
+                raw_candidates_by_target.append([{**raw, "_target": target} for raw in discovered])
                 DiscoveryEngine._emit_progress(
                     request,
-                    f"seeker {idx}/{total_inputs}: {target_label} -> {len(discovered)} candidate(s)",
+                    f"seeker {idx}/{total_inputs}: {target_label} "
+                    f"-> {len(discovered)} candidate(s)",
                 )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - provider isolation: recorded as an error record
             errors.append(
                 build_error_record(
                     exc,
@@ -650,7 +646,11 @@ class DiscoveryEngine:
                 )
             )
             return (
-                [], notes, normalize_error_records(errors), [], [],
+                [],
+                notes,
+                normalize_error_records(errors),
+                [],
+                [],
                 seeker.queries_run if seeker is not None else 0,
             )
 
@@ -689,40 +689,37 @@ class DiscoveryEngine:
             f"{len(candidates_by_target)} target(s)."
         )
 
-        candidates_by_target, scope_counts = (
-            DiscoveryEngine._filter_seeker_scope(
-                request, candidates_by_target,
-                getattr(seeker, "query_results", []), notes,
-            )
+        candidates_by_target, scope_counts = DiscoveryEngine._filter_seeker_scope(
+            request,
+            candidates_by_target,
+            getattr(seeker, "query_results", []),
+            notes,
         )
 
         # ---------------------------------------------------------------
         # Per-target selection (draft filter + recency)
         # ---------------------------------------------------------------
-        primary_per_target = max(
-            1, int(request.selection_primary_per_target or 1)
-        )
+        primary_per_target = max(1, int(request.selection_primary_per_target or 1))
         selector = DiscoveryEngine._build_selector(request)
-        candidates, selection_notes, target_selection_metrics = (
-            selector.select(
-                candidates_by_target,
-                primary_per_target=primary_per_target,
-                target_contexts=[
-                    DiscoveryEngine._target_metadata(target)
-                    for target in request.targets
-                ] if request.targets else None,
-                include_metrics=True,
-                labels=[
-                    DiscoveryEngine._target_label(
-                        target, idx, request.partition_by
-                    )
-                    for idx, target in enumerate(request.targets, start=1)
-                ] if request.targets else None,
-            )
+        candidates, selection_notes, target_selection_metrics = selector.select(
+            candidates_by_target,
+            primary_per_target=primary_per_target,
+            target_contexts=[DiscoveryEngine._target_metadata(target) for target in request.targets]
+            if request.targets
+            else None,
+            include_metrics=True,
+            labels=[
+                DiscoveryEngine._target_label(target, idx, request.partition_by)
+                for idx, target in enumerate(request.targets, start=1)
+            ]
+            if request.targets
+            else None,
         )
         DiscoveryEngine._annotate_search_metrics(
-            target_selection_metrics, scope_counts,
-            candidates_by_target, incomplete_targets,
+            target_selection_metrics,
+            scope_counts,
+            candidates_by_target,
+            incomplete_targets,
         )
         notes.extend(selection_notes)
         notes.append(
@@ -741,24 +738,16 @@ class DiscoveryEngine:
             # (max_per_target) is the sole recall control — a hidden global cap
             # was silently dropping valid documents.
             top_k_setting = int(request.link_top_k or 0)
-            effective_top_k: int | None = (
-                max(1, top_k_setting) if top_k_setting > 0 else None
-            )
+            effective_top_k: int | None = max(1, top_k_setting) if top_k_setting > 0 else None
             if effective_top_k and len(candidates) <= effective_top_k:
                 effective_top_k = None  # no additional cap needed
             prioritizer = LinkPrioritizer(
                 keywords=request.link_prioritization_keywords,
-                domain_authority_overrides=(
-                    request.link_prioritization_domain_scores or None
-                ),
+                domain_authority_overrides=(request.link_prioritization_domain_scores or None),
                 top_k=effective_top_k,
-                shopping_path_keywords=(
-                    request.link_prioritization_shopping_keywords
-                ),
+                shopping_path_keywords=(request.link_prioritization_shopping_keywords),
             )
-            ranked_candidates, prioritizer_lineage = prioritizer.prioritize(
-                candidates
-            )
+            ranked_candidates, prioritizer_lineage = prioritizer.prioritize(candidates)
             notes.append(
                 f"Link prioritizer ({mode}) ranked {len(candidates)} candidate(s) "
                 f"\u2192 top-{len(ranked_candidates)} surfaced."
@@ -787,7 +776,8 @@ class DiscoveryEngine:
 
     @staticmethod
     def _seeker_input(
-        request: DiscoveryRequest, target: dict[str, object] | None,
+        request: DiscoveryRequest,
+        target: dict[str, object] | None,
     ):
         """One search input; a target row ``query`` overrides ``queries``."""
         from .connectors.base import SeekerInput
@@ -804,8 +794,7 @@ class DiscoveryEngine:
     def _build_seeker_inputs(request: DiscoveryRequest):
         """One seeker input per target (or one shared input without targets)."""
         return [
-            DiscoveryEngine._seeker_input(request, target)
-            for target in request.targets or [None]
+            DiscoveryEngine._seeker_input(request, target) for target in request.targets or [None]
         ]
 
     @staticmethod
@@ -827,17 +816,15 @@ class DiscoveryEngine:
     ) -> dict[str, float | int]:
         return {
             "max_attempts": max(1, int(request.retry_max_attempts)),
-            "initial_backoff_seconds": max(
-                0.0, float(request.retry_initial_backoff_seconds)
-            ),
-            "max_backoff_seconds": max(
-                0.0, float(request.retry_max_backoff_seconds)
-            ),
+            "initial_backoff_seconds": max(0.0, float(request.retry_initial_backoff_seconds)),
+            "max_backoff_seconds": max(0.0, float(request.retry_max_backoff_seconds)),
         }
 
     @classmethod
     def _resolve_request_headers(
-        cls, request: DiscoveryRequest, url: str | None = None,
+        cls,
+        request: DiscoveryRequest,
+        url: str | None = None,
         adapter_headers: dict[str, str] | None = None,
     ) -> dict[str, str]:
         from requests.structures import CaseInsensitiveDict
@@ -891,9 +878,8 @@ class DiscoveryEngine:
             acknowledged_tos_domains=request.acknowledged_tos_domains,
             timeout_seconds=request.timeout_seconds or 15,
             rate_limiter=self._rate_limiter,
-            source_gate=lambda target: matches_allowed_domain(
-                target, request.allowed_domains
-            ) and not matches_url_exclusion(
+            source_gate=lambda target: matches_allowed_domain(target, request.allowed_domains)
+            and not matches_url_exclusion(
                 target, compile_url_patterns(request.selection_exclude_url_patterns)
             ),
         )
@@ -922,14 +908,10 @@ class DiscoveryEngine:
                 return False
             if (
                 document
-                and not self._passes_final_url_selection_guard(
-                    final_url=url, request=request
-                )[0]
+                and not self._passes_final_url_selection_guard(final_url=url, request=request)[0]
             ):
                 return False
-            return self._evaluate_request_policy(
-                url=url, request=request, ssl_verify=ssl_verify
-            )
+            return self._evaluate_request_policy(url=url, request=request, ssl_verify=ssl_verify)
 
         return gate
 
@@ -948,7 +930,8 @@ class DiscoveryEngine:
             if count <= 0:
                 continue
             notes.append(
-                f"{stage_name} policy enforcement skipped {count} URL(s) due to {labels.get(code, code)}."
+                f"{stage_name} policy enforcement skipped "
+                f"{count} URL(s) due to {labels.get(code, code)}."
             )
 
         for code, count in sorted(warning_counts.items()):
@@ -960,7 +943,8 @@ class DiscoveryEngine:
                 else request.tos_policy_mode
             )
             notes.append(
-                f"{stage_name} policy warnings: {count} URL(s) proceeded despite {labels.get(code, code)} because mode={mode}."
+                f"{stage_name} policy warnings: {count} URL(s) proceeded "
+                f"despite {labels.get(code, code)} because mode={mode}."
             )
 
         return notes
@@ -974,7 +958,8 @@ class DiscoveryEngine:
         stage_name: str,
     ) -> tuple[list[str], list[str], set[str]]:
         """Return allowed URLs, policy notes, and URLs blocked only by a
-        transient policy evaluation failure (retry on a later run)."""
+        transient policy evaluation failure (retry on a later run).
+        """
         allowed_urls: list[str] = []
         retryable_urls: set[str] = set()
         blocked_counts: Counter[str] = Counter()
@@ -995,12 +980,16 @@ class DiscoveryEngine:
             for code in policy_result.warning_codes:
                 warning_counts[code] += 1
 
-        return allowed_urls, self._build_policy_notes(
-            stage_name=stage_name,
-            blocked_counts=blocked_counts,
-            warning_counts=warning_counts,
-            request=request,
-        ), retryable_urls
+        return (
+            allowed_urls,
+            self._build_policy_notes(
+                stage_name=stage_name,
+                blocked_counts=blocked_counts,
+                warning_counts=warning_counts,
+                request=request,
+            ),
+            retryable_urls,
+        )
 
     def _download_with_retry(
         self,
@@ -1014,9 +1003,7 @@ class DiscoveryEngine:
         configured: bool = False,
     ):
         gate = (
-            self._network_gate(
-                request, ssl_verify, document=True, configured=configured
-            )
+            self._network_gate(request, ssl_verify, document=True, configured=configured)
             if request
             else None
         )
@@ -1049,16 +1036,13 @@ class DiscoveryEngine:
         rate_limiter: _RequestRateLimiter | None,
         browser: object | None = None,
         prior: dict[str, object] | None = None,
-    ) -> tuple[
-        int, dict[str, object], dict[str, object] | None, bool, list[str]
-    ]:
+    ) -> tuple[int, dict[str, object], dict[str, object] | None, bool, list[str]]:
         """Fetch one candidate, or reuse its ``prior`` final outcome from an
-        earlier run without a network request (see ``_reusable_outcomes``)."""
+        earlier run without a network request (see ``_reusable_outcomes``).
+        """
         url = candidate.url
         url = decode_discovery_url(url)
-        if not isinstance(url, str) or not re.match(
-            r"^https?://", url, flags=re.IGNORECASE
-        ):
+        if not isinstance(url, str) or not re.match(r"^https?://", url, flags=re.IGNORECASE):
             return (
                 idx,
                 {"url": url, "status": "skipped_invalid_url"},
@@ -1077,10 +1061,9 @@ class DiscoveryEngine:
 
         configured = candidate.source == CONFIGURED_SOURCE
         allowed, reason = (
-            (True, None) if configured
-            else self._passes_final_url_selection_guard(
-                final_url=url, request=request
-            )
+            (True, None)
+            if configured
+            else self._passes_final_url_selection_guard(final_url=url, request=request)
         )
         if not allowed:
             return (
@@ -1096,7 +1079,8 @@ class DiscoveryEngine:
             )
 
         policy_result = (
-            PolicyCheckResult() if prior is not None
+            PolicyCheckResult()
+            if prior is not None
             else self._evaluate_request_policy(
                 url=url,
                 request=request,
@@ -1108,9 +1092,7 @@ class DiscoveryEngine:
                 idx,
                 {
                     "url": url,
-                    "status": self._policy_status_from_blocking_code(
-                        policy_result.blocking_code
-                    ),
+                    "status": self._policy_status_from_blocking_code(policy_result.blocking_code),
                     "policy_blocking_code": policy_result.blocking_code,
                     "policy_reason": "; ".join(policy_result.messages),
                 },
@@ -1124,9 +1106,7 @@ class DiscoveryEngine:
         own_target = False
         try:
             if not policy_result.allowed:
-                raise NetworkPolicyError(
-                    url, "; ".join(policy_result.messages), policy_result
-                )
+                raise NetworkPolicyError(url, "; ".join(policy_result.messages), policy_result)
             if prior is not None:
                 final_url, mime_type = str(prior["final_url"]), prior.get("mime_type")
                 attempt_count, download_method = 0, REUSED_DOWNLOAD_METHOD
@@ -1163,18 +1143,14 @@ class DiscoveryEngine:
                     def _chunks(_r: object = response) -> object:
                         return _r.iter_content(chunk_size=65536)
                 except Exception as exc:
-                    if not self._browser_recovery_enabled(
-                        request
-                    ) or not browser_may_recover(exc):
+                    if not self._browser_recovery_enabled(request) or not browser_may_recover(exc):
                         raise
                     self._browser_policy_gate(request, url, configured=configured)
 
                     browser_session = browser
                     browser_owned = False
                     if browser_session is None:
-                        browser_session, _browser_note = (
-                            self._open_browser_for_download(request)
-                        )
+                        browser_session, _browser_note = self._open_browser_for_download(request)
                         browser_owned = browser_session is not None
                     if browser_session is None:
                         raise
@@ -1182,9 +1158,7 @@ class DiscoveryEngine:
                     try:
                         if rate_limiter is not None:
                             rate_limiter.wait()
-                        content, mime_type, final_url = (
-                            browser_session.download_bytes(url)
-                        )
+                        content, mime_type, final_url = browser_session.download_bytes(url)
                         attempt_count = 1
                         download_method = "browser_fallback"
 
@@ -1198,9 +1172,7 @@ class DiscoveryEngine:
             if not final_url or not url_host(final_url):
                 raise ValueError("Download returned no verified final URL")
             final_url = decode_discovery_url(final_url)
-            extension = self._infer_extension_from_url_or_mime(
-                final_url, mime_type
-            )
+            extension = self._infer_extension_from_url_or_mime(final_url, mime_type)
             chunks = iter(_chunks())
             normalized_mime = (mime_type or "").split(";", 1)[0].strip().lower()
             if extension is None and normalized_mime in {"", "application/octet-stream"}:
@@ -1222,9 +1194,7 @@ class DiscoveryEngine:
                         "final_url": final_url,
                         "status": "skipped_unsupported_type",
                         "mime_type": mime_type,
-                        "policy_warning_codes": list(
-                            policy_result.warning_codes
-                        ),
+                        "policy_warning_codes": list(policy_result.warning_codes),
                     },
                     None,
                     False,
@@ -1253,9 +1223,11 @@ class DiscoveryEngine:
                     list(policy_result.warning_codes),
                 )
             passed_final_url_guard, reject_code = (
-                (True, None) if configured
+                (True, None)
+                if configured
                 else self._passes_final_url_selection_guard(
-                    final_url=final_url, request=request,
+                    final_url=final_url,
+                    request=request,
                 )
             )
             if not passed_final_url_guard:
@@ -1267,9 +1239,7 @@ class DiscoveryEngine:
                         "status": "skipped_selection_filter",
                         "reason": reject_code,
                         "mime_type": mime_type,
-                        "policy_warning_codes": list(
-                            policy_result.warning_codes
-                        ),
+                        "policy_warning_codes": list(policy_result.warning_codes),
                     },
                     None,
                     False,
@@ -1308,10 +1278,7 @@ class DiscoveryEngine:
                     break
                 except FileExistsError:
                     suffix += 1
-                    target_path = (
-                        partition_dir
-                        / f"{Path(filename).stem}-{suffix}{extension}"
-                    )
+                    target_path = partition_dir / f"{Path(filename).stem}-{suffix}{extension}"
 
             return (
                 idx,
@@ -1332,7 +1299,7 @@ class DiscoveryEngine:
                 True,
                 list(policy_result.warning_codes),
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - network isolation: classified into an error record
             if (
                 isinstance(exc, NetworkPolicyError)
                 and not isinstance(exc, ResponseTooLargeError)
@@ -1353,7 +1320,10 @@ class DiscoveryEngine:
             if own_target and target_path is not None:
                 target_path.unlink(missing_ok=True)
             error = build_error_record(
-                exc, stage="discovery.download", document_path=url, provider="http",
+                exc,
+                stage="discovery.download",
+                document_path=url,
+                provider="http",
             )
             return (
                 idx,
@@ -1369,9 +1339,7 @@ class DiscoveryEngine:
                 list(policy_result.warning_codes),
             )
         finally:
-            if response is not None and callable(
-                getattr(response, "close", None)
-            ):
+            if response is not None and callable(getattr(response, "close", None)):
                 response.close()
 
     @staticmethod
@@ -1381,9 +1349,7 @@ class DiscoveryEngine:
         return resolve_tls_verification("DISCOVERY_SSL_VERIFY")
 
     @staticmethod
-    def _infer_extension_from_url_or_mime(
-        url: str, mime_type: str | None
-    ) -> str | None:
+    def _infer_extension_from_url_or_mime(url: str, mime_type: str | None) -> str | None:
         normalized_mime = (mime_type or "").split(";", 1)[0].strip().lower()
         ext = DiscoveryEngine._MIME_EXTENSION_MAP.get(normalized_mime)
         if ext in DiscoveryEngine._SUPPORTED_EXTENSIONS:
@@ -1404,7 +1370,8 @@ class DiscoveryEngine:
     @staticmethod
     def _place_prior(source: Path, target: Path) -> None:
         """Hardlink reused bytes, copying across filesystems; raise
-        ``FileExistsError`` when ``target`` is taken."""
+        ``FileExistsError`` when ``target`` is taken.
+        """
         try:
             os.link(source, target)
         except FileExistsError:
@@ -1436,7 +1403,8 @@ class DiscoveryEngine:
             return False, "final_url_outside_allowed_domains"
         include_patterns = compile_url_patterns(request.include_url_patterns)
         if include_patterns and not any(
-            pattern.search(value) for pattern in include_patterns
+            pattern.search(value)
+            for pattern in include_patterns
             for value in (final_url, unquote(final_url))
         ):
             return False, "final_url_outside_include_patterns"
@@ -1444,9 +1412,7 @@ class DiscoveryEngine:
         if matches_url_exclusion(final_url, patterns):
             return False, "final_url_matches_excluded_pattern"
         text = cls._normalize_url_text(unquote(decode_discovery_url(final_url)))
-        exclude_terms = list(
-            request.selection_relevance_exclude_any_terms or []
-        )
+        exclude_terms = list(request.selection_relevance_exclude_any_terms or [])
         if any(str(term).lower() in text for term in exclude_terms):
             return False, "final_url_matches_excluded_term"
         return True, None
@@ -1490,7 +1456,8 @@ class DiscoveryEngine:
         prior: dict[str, dict[str, dict[str, object]]],
     ) -> dict[tuple[str, str], dict[str, object]]:
         """Prior final outcomes of ``candidates``; a download only while its
-        file still matches the saved SHA-256."""
+        file still matches the saved SHA-256.
+        """
         reusable: dict[tuple[str, str], dict[str, object]] = {}
         for candidate in candidates:
             key = cls._reuse_key(candidate)
@@ -1514,7 +1481,8 @@ class DiscoveryEngine:
         reusable: dict[tuple[str, str], dict[str, object]],
     ) -> tuple[list[DiscoveryCandidate], list[DiscoveryCandidate]]:
         """Split candidates into staged and cut by ``max_downloads``, which
-        only counts new fetches: configured URLs and reused outcomes are free."""
+        only counts new fetches: configured URLs and reused outcomes are free.
+        """
         staged = [c for c in candidates if c.source == CONFIGURED_SOURCE]
         cut: list[DiscoveryCandidate] = []
         fetches = 0
@@ -1540,14 +1508,13 @@ class DiscoveryEngine:
         reusable: dict[tuple[str, str], dict[str, object]] | None = None,
     ) -> tuple[list[dict[str, object]], list[dict[str, object]], list[str]]:
         """Download candidates; configured URLs and ``reusable`` prior outcomes
-        are staged outside ``max_downloads``."""
+        are staged outside ``max_downloads``.
+        """
         try:
-            import requests  # noqa: F401
+            import requests  # noqa: F401 - availability probe
         except ImportError as exc:
             error = build_error_record(
-                RuntimeError(
-                    "requests dependency is required for discovery downloads"
-                ),
+                RuntimeError("requests dependency is required for discovery downloads"),
                 stage="discovery.download",
                 provider="http",
             )
@@ -1560,16 +1527,10 @@ class DiscoveryEngine:
         downloaded_count = 0
         blocked_counts: Counter[str] = Counter()
         warning_counts: Counter[str] = Counter()
-        max_concurrent_downloads = max(
-            1, int(request.max_concurrent_downloads)
-        )
-        rate_limiter = self._rate_limiter or _RequestRateLimiter(
-            request.min_request_interval_ms
-        )
+        max_concurrent_downloads = max(1, int(request.max_concurrent_downloads))
+        rate_limiter = self._rate_limiter or _RequestRateLimiter(request.min_request_interval_ms)
         reusable = reusable or {}
-        staged_candidates, cut = self._stage_downloads(
-            candidates, max_downloads, reusable
-        )
+        staged_candidates, cut = self._stage_downloads(candidates, max_downloads, reusable)
         priors = [reusable.get(self._reuse_key(c)) for c in staged_candidates]
         self._emit_progress(
             request,
@@ -1581,14 +1542,14 @@ class DiscoveryEngine:
             download_notes_extra.append(
                 f"The runtime.max_files budget left {len(cut)} candidate(s) undownloaded."
             )
-        CompletedT = tuple[
+        completed_t = tuple[
             int,
             dict[str, object],
             dict[str, object] | None,
             bool,
             list[str],
         ]
-        completed: list[CompletedT] = []
+        completed: list[completed_t] = []
 
         # Browser mode: bot-protected sites (Akamai) block requests even with
         # transplanted cookies (TLS fingerprinting), so files are fetched
@@ -1616,19 +1577,27 @@ class DiscoveryEngine:
                         )
                     )
             else:
+
                 def fetch(item):
                     idx, candidate = item
                     return self._download_single_candidate(
-                        idx=idx, candidate=candidate, request=request,
-                        documents_dir=documents_dir, ssl_verify=ssl_verify,
-                        retry_policy=retry_policy, rate_limiter=rate_limiter,
+                        idx=idx,
+                        candidate=candidate,
+                        request=request,
+                        documents_dir=documents_dir,
+                        ssl_verify=ssl_verify,
+                        retry_policy=retry_policy,
+                        rate_limiter=rate_limiter,
                         prior=priors[idx - 1],
                     )
 
-                completed.extend(bounded_results(
-                    fetch, enumerate(staged_candidates, start=1),
-                    workers=max_concurrent_downloads,
-                ))
+                completed.extend(
+                    bounded_results(
+                        fetch,
+                        enumerate(staged_candidates, start=1),
+                        workers=max_concurrent_downloads,
+                    )
+                )
         finally:
             if browser is not None:
                 browser.close()
@@ -1639,14 +1608,13 @@ class DiscoveryEngine:
             maybe_error,
             was_downloaded,
             policy_warning_codes,
-        ) in sorted(completed, key=lambda item: item[0]):
+        ) in sorted(completed, key=operator.itemgetter(0)):
             candidate = staged_candidates[_ - 1]
             download_record.update(
                 target_label=(
-                    self._target_label(
-                        candidate.target_metadata, _, request.partition_by
-                    )
-                    if candidate.target_id else SHARED_PARTITION
+                    self._target_label(candidate.target_metadata, _, request.partition_by)
+                    if candidate.target_id
+                    else SHARED_PARTITION
                 ),
                 target_metadata=candidate.target_metadata,
                 source=candidate.source,
@@ -1664,9 +1632,7 @@ class DiscoveryEngine:
                 f"download: {status} | {url_preview}",
             )
             if maybe_error is not None:
-                errors.append(
-                    {**maybe_error, "target_label": download_record["target_label"]}
-                )
+                errors.append({**maybe_error, "target_label": download_record["target_label"]})
             if was_downloaded:
                 downloaded_count += 1
             blocking_code = download_record.get("policy_blocking_code")
@@ -1676,7 +1642,10 @@ class DiscoveryEngine:
                 warning_counts[code] += 1
 
         notes = [
-            f"Download stage completed: {downloaded_count} file(s) saved from {len(candidates)} candidate(s)."
+            (
+                f"Download stage completed: {downloaded_count} "
+                f"file(s) saved from {len(candidates)} candidate(s)."
+            )
         ]
         reused = [r for r in downloads if r.get("download_method") == REUSED_DOWNLOAD_METHOD]
         if reused:
@@ -1687,9 +1656,7 @@ class DiscoveryEngine:
                 f"{len(downloads) - len(reused)} candidate(s) fetched."
             )
         browser_fallback_count = sum(
-            1
-            for record in downloads
-            if str(record.get("download_method")) == "browser_fallback"
+            1 for record in downloads if str(record.get("download_method")) == "browser_fallback"
         )
         if browser_fallback_count:
             notes.append(
@@ -1701,16 +1668,20 @@ class DiscoveryEngine:
             notes.append(
                 "Download SSL verification disabled via DISCOVERY_SSL_VERIFY/PSWEEP_SSL_VERIFY."
             )
-        notes.append(
-            "Download retry policy: "
-            f"attempts={retry_policy['max_attempts']}, "
-            f"initial_backoff={retry_policy['initial_backoff_seconds']}s, "
-            f"max_backoff={retry_policy['max_backoff_seconds']}s."
-        )
-        notes.append(
-            "Download throughput controls: "
-            f"max_concurrent_downloads={max_concurrent_downloads}, "
-            f"min_request_interval_ms={max(0, int(request.min_request_interval_ms))}."
+        notes.extend(
+            (
+                (
+                    "Download retry policy: "
+                    f"attempts={retry_policy['max_attempts']}, "
+                    f"initial_backoff={retry_policy['initial_backoff_seconds']}s, "
+                    f"max_backoff={retry_policy['max_backoff_seconds']}s."
+                ),
+                (
+                    "Download throughput controls: "
+                    f"max_concurrent_downloads={max_concurrent_downloads}, "
+                    f"min_request_interval_ms={max(0, int(request.min_request_interval_ms))}."
+                ),
+            )
         )
         notes.extend(
             self._build_policy_notes(
@@ -1753,7 +1724,10 @@ class DiscoveryEngine:
             target_contexts=list(contexts.values()),
         )
         notes: list[str] = [
-            f"Post-routing selection eligibility reduced {len(candidates)} candidate(s) to {len(filtered)}."
+            (
+                "Post-routing selection eligibility reduced "
+                f"{len(candidates)} candidate(s) to {len(filtered)}."
+            )
         ]
         notes.extend([f"Post-routing {n}" for n in filter_notes])
         return configured + filtered, notes
@@ -1772,9 +1746,7 @@ class DiscoveryEngine:
             return [], []
 
         discovered = [c for c in candidates if c.source != CONFIGURED_SOURCE]
-        has_viable_discovered = any(
-            c.score.acceptance_class() != "rejected" for c in discovered
-        )
+        has_viable_discovered = any(c.score.acceptance_class() != "rejected" for c in discovered)
 
         filtered: list[DiscoveryCandidate] = []
         rejected_skipped = 0
@@ -1783,10 +1755,7 @@ class DiscoveryEngine:
                 filtered.append(candidate)
                 continue
 
-            if (
-                has_viable_discovered
-                and candidate.score.acceptance_class() == "rejected"
-            ):
+            if has_viable_discovered and candidate.score.acceptance_class() == "rejected":
                 rejected_skipped += 1
                 continue
             filtered.append(candidate)
@@ -1837,7 +1806,8 @@ class DiscoveryEngine:
         download_records: list[dict[str, object]],
     ) -> dict[str, object]:
         """Aggregate this run's fetch outcomes and bytes; reused prior
-        outcomes made no request and are only counted in ``reused``."""
+        outcomes made no request and are only counted in ``reused``.
+        """
         counts: dict[str, int] = {}
         total_bytes = 0
         reused = 0
@@ -1852,9 +1822,7 @@ class DiscoveryEngine:
         return {
             "total": len(download_records) - reused,
             "downloaded": counts.get("downloaded", 0),
-            "skipped": sum(
-                v for k, v in counts.items() if k.startswith("skipped")
-            ),
+            "skipped": sum(v for k, v in counts.items() if k.startswith("skipped")),
             "failed": counts.get("failed", 0),
             "reused": reused,
             "total_bytes": total_bytes,
@@ -1886,23 +1854,15 @@ class DiscoveryEngine:
             for metric in target_selection_metrics
             if int(metric.get("selected_candidates") or 0) > 0
         )
-        success_rate = (
-            targets_with_staged_candidates / target_count
-            if target_count
-            else None
-        )
+        success_rate = targets_with_staged_candidates / target_count if target_count else None
         threshold = 0.80
 
         return {
             "applicable": True,
-            "measurement_mode": "target_matrix"
-            if request.targets
-            else "single_query",
+            "measurement_mode": "target_matrix" if request.targets else "single_query",
             "target_count": target_count,
             "targets_with_staged_candidates": targets_with_staged_candidates,
-            "success_rate": round(success_rate, 4)
-            if success_rate is not None
-            else None,
+            "success_rate": round(success_rate, 4) if success_rate is not None else None,
             "coverage_threshold": threshold,
             "meets_coverage_threshold": bool(
                 success_rate is not None and success_rate >= threshold
@@ -1926,9 +1886,7 @@ class DiscoveryEngine:
         }
 
     @classmethod
-    def _open_browser_for_download(
-        cls, request: DiscoveryRequest
-    ) -> tuple[object | None, str]:
+    def _open_browser_for_download(cls, request: DiscoveryRequest) -> tuple[object | None, str]:
         """Open a shared headless-browser session for downloads, if possible.
 
         Returns ``(session_or_None, note)``. On any failure (Selenium missing,
@@ -1940,9 +1898,7 @@ class DiscoveryEngine:
         except ImportError:
             return None, "Browser mode requested but Selenium is not installed."
         try:
-            session = BrowserSession(
-                request_headers=cls._resolve_request_headers(request)
-            )
+            session = BrowserSession(request_headers=cls._resolve_request_headers(request))
             session._start()  # noqa: SLF001 - own the lifecycle here
         except BrowserUnavailableError as exc:
             return None, f"Browser mode unavailable ({exc}); used direct HTTP."
@@ -1952,8 +1908,10 @@ class DiscoveryEngine:
     def _browser_recovery_enabled(request: DiscoveryRequest) -> bool:
         """Require explicit browser opt-in for automatic recovery."""
         cfg = request.browser_escalation
-        return request.browser_downloads or cfg is True or (
-            isinstance(cfg, dict) and cfg.get("enabled") is True
+        return (
+            request.browser_downloads
+            or cfg is True
+            or (isinstance(cfg, dict) and cfg.get("enabled") is True)
         )
 
     @staticmethod
@@ -1968,9 +1926,7 @@ class DiscoveryEngine:
         if request.include_url_patterns:
             constraints["include_url_patterns"] = request.include_url_patterns
         if request.include_link_text_patterns:
-            constraints["include_link_text_patterns"] = (
-                request.include_link_text_patterns
-            )
+            constraints["include_link_text_patterns"] = request.include_link_text_patterns
 
         for field_name in (
             "max_depth",
@@ -1982,28 +1938,18 @@ class DiscoveryEngine:
             if value is not None:
                 constraints[field_name] = value
 
-        constraints["max_concurrent_downloads"] = max(
-            1, int(request.max_concurrent_downloads)
-        )
-        constraints["min_request_interval_ms"] = max(
-            0, int(request.min_request_interval_ms)
-        )
+        constraints["max_concurrent_downloads"] = max(1, int(request.max_concurrent_downloads))
+        constraints["min_request_interval_ms"] = max(0, int(request.min_request_interval_ms))
 
         constraints["retry_policy"] = {
             "max_attempts": max(1, int(request.retry_max_attempts)),
-            "initial_backoff_seconds": max(
-                0.0, float(request.retry_initial_backoff_seconds)
-            ),
-            "max_backoff_seconds": max(
-                0.0, float(request.retry_max_backoff_seconds)
-            ),
+            "initial_backoff_seconds": max(0.0, float(request.retry_initial_backoff_seconds)),
+            "max_backoff_seconds": max(0.0, float(request.retry_max_backoff_seconds)),
         }
         constraints["policy"] = {
             "robots_policy_mode": request.robots_policy_mode,
             "tos_policy_mode": request.tos_policy_mode,
-            "acknowledged_tos_domains": list(
-                request.acknowledged_tos_domains or []
-            ),
+            "acknowledged_tos_domains": list(request.acknowledged_tos_domains or []),
         }
         if request.targets:
             constraints["target_count"] = len(request.targets)
@@ -2015,9 +1961,7 @@ class DiscoveryEngine:
             "mode": request.link_prioritization_mode,
             "top_k": request.link_top_k,
             "keywords": list(request.link_prioritization_keywords or []),
-            "shopping_path_keywords": list(
-                request.link_prioritization_shopping_keywords or []
-            ),
+            "shopping_path_keywords": list(request.link_prioritization_shopping_keywords or []),
         }
 
         return constraints
@@ -2052,22 +1996,25 @@ class DiscoveryEngine:
         if request.max_depth <= 0:
             return candidates, [], [], state, []
 
-        pages = list(dict.fromkeys(
-            candidate.url
-            for candidate in candidates
-            if url_extension(candidate.url) not in DOCUMENT_EXTENSIONS
-        ))
+        pages = list(
+            dict.fromkeys(
+                candidate.url
+                for candidate in candidates
+                if url_extension(candidate.url) not in DOCUMENT_EXTENSIONS
+            )
+        )
         ssl_verify = self._downloads_ssl_verify()
         pages, notes, unevaluated = self._filter_urls_for_policy(
-            urls=pages, request=request, ssl_verify=ssl_verify, stage_name="Crawl",
+            urls=pages,
+            request=request,
+            ssl_verify=ssl_verify,
+            stage_name="Crawl",
         )
         if unevaluated:
             state["unfinished_cause"] = "crawl policy check unavailable"
         if not pages:
             notes.append("Crawl skipped: no HTML source pages to follow.")
-            return candidates, [], notes, state, [
-                c for c in candidates if c.url in unevaluated
-            ]
+            return candidates, [], notes, state, [c for c in candidates if c.url in unevaluated]
 
         self._emit_progress(request, f"crawl: following links from {len(pages)} page(s)")
         owners = {owner_key(c.target_id, c.source_url) for c in candidates}
@@ -2097,9 +2044,11 @@ class DiscoveryEngine:
                     },
                 )
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - network isolation: recorded as an error record
             error = build_error_record(
-                exc, stage="discovery.crawl", provider=request.crawl_provider,
+                exc,
+                stage="discovery.crawl",
+                provider=request.crawl_provider,
             )
             notes.append("Crawl failed; continuing with uncrawled candidates.")
             retry_urls = (set(pages) if error["retryable"] else set()) | unevaluated
@@ -2154,16 +2103,13 @@ class DiscoveryEngine:
             budgets = [
                 f"{name}={shown}"
                 for name, shown, limit, used in (
-                    ("crawl.max_pages", request.max_pages, request.max_pages,
-                     result.pages_fetched),
-                    ("runtime.max_files", request.max_files, file_budget,
-                     len(result.artifacts)),
+                    ("crawl.max_pages", request.max_pages, request.max_pages, result.pages_fetched),
+                    ("runtime.max_files", request.max_files, file_budget, len(result.artifacts)),
                 )
                 if limit is not None and used >= limit
             ]
             cause = (
-                f"budget reached ({', '.join(budgets)})" if budgets
-                else "retryable page failure"
+                f"budget reached ({', '.join(budgets)})" if budgets else "retryable page failure"
             )
             state["unfinished_cause"] = f"crawl {cause}"
             notes.append(
@@ -2171,8 +2117,7 @@ class DiscoveryEngine:
                 f"{cause}; they stay incomplete."
             )
         unfinished = [
-            c for c in candidates
-            if c.url in result.incomplete_sources or c.url in unevaluated
+            c for c in candidates if c.url in result.incomplete_sources or c.url in unevaluated
         ]
         return candidates + crawled, [], notes, state, unfinished
 
@@ -2226,9 +2171,7 @@ class DiscoveryEngine:
                         "source_scope": record.get("source_scope"),
                         "source_url": record.get("source_url"),
                         "status": record.get("status"),
-                        "classification_passed": record.get(
-                            "classification_passed"
-                        ),
+                        "classification_passed": record.get("classification_passed"),
                         "url": record.get("url"),
                         "final_url": record.get("final_url"),
                         "mime_type": record.get("mime_type"),
@@ -2240,9 +2183,7 @@ class DiscoveryEngine:
                         "review_relevance": record.get("review_relevance"),
                         "review_doc_kind": record.get("review_doc_kind"),
                         "error": record.get("error"),
-                        "target_metadata": (
-                            json.dumps(raw_meta) if raw_meta else None
-                        ),
+                        "target_metadata": (json.dumps(raw_meta) if raw_meta else None),
                     }
                 )
         if render_only:
@@ -2253,7 +2194,6 @@ class DiscoveryEngine:
     @staticmethod
     def _write_review_index(
         *,
-        request: DiscoveryRequest,
         download_records: list[dict[str, object]],
         run_dir: Path,
         render_only: bool = False,
@@ -2281,11 +2221,7 @@ class DiscoveryEngine:
             "relative_path",
             "path",
         ]
-        rows = [
-            r
-            for r in download_records
-            if r.get("status") == "downloaded" and r.get("path")
-        ]
+        rows = [r for r in download_records if r.get("status") == "downloaded" and r.get("path")]
         rows.sort(
             key=lambda r: (
                 str(r.get("target_label") or ""),
@@ -2299,9 +2235,7 @@ class DiscoveryEngine:
             writer.writeheader()
             for record in rows:
                 rel = record.get("relative_path") or ""
-                partition = (
-                    str(rel).rsplit("/", 1)[0] if "/" in str(rel) else ""
-                )
+                partition = str(rel).rsplit("/", 1)[0] if "/" in str(rel) else ""
                 writer.writerow(
                     {
                         "target": record.get("target_label"),
@@ -2348,9 +2282,7 @@ class DiscoveryEngine:
         review_ran: bool,
         review_failed: bool,
     ) -> bool:
-        return not review_failed and record_is_curated(
-            record, review_ran=review_ran
-        )
+        return not review_failed and record_is_curated(record, review_ran=review_ran)
 
     @classmethod
     def _apply_document_retention(
@@ -2376,20 +2308,14 @@ class DiscoveryEngine:
 
         files_removed = 0
         bytes_removed = 0
-        protected = {
-            path.resolve()
-            for kept in keep
-            for path in (kept, *text_cache_paths(kept))
-        }
+        protected = {path.resolve() for kept in keep for path in (kept, *text_cache_paths(kept))}
 
         def _remove_file(path: Path) -> None:
             nonlocal files_removed, bytes_removed
             try:
                 if path.exists() and path.is_file():
-                    try:
+                    with contextlib.suppress(OSError):
                         bytes_removed += int(path.stat().st_size)
-                    except OSError:
-                        pass
                     path.unlink()
                     files_removed += 1
             except OSError:
@@ -2423,9 +2349,7 @@ class DiscoveryEngine:
                 shutil.rmtree(curated_dir, ignore_errors=True)
             return files_removed, bytes_removed
 
-        review_ran = any(
-            "review_selected" in record for record in download_records
-        )
+        review_ran = any("review_selected" in record for record in download_records)
         if documents_dir.exists():
             for record in download_records:
                 if not record.get("path") or cls._record_is_curated(
@@ -2447,9 +2371,7 @@ class DiscoveryEngine:
         return files_removed, bytes_removed
 
     @staticmethod
-    def _partition_is_blocked(
-        partition: Path, blocked: _PartitionIndex
-    ) -> bool:
+    def _partition_is_blocked(partition: Path, blocked: _PartitionIndex) -> bool:
         return blocked.overlaps(partition)
 
     @staticmethod
@@ -2489,9 +2411,7 @@ class DiscoveryEngine:
         )
 
     @staticmethod
-    def _refresh_latest_pointer(
-        run_dir: Path, *, domain_dir: Path | None = None
-    ) -> None:
+    def _refresh_latest_pointer(run_dir: Path, *, domain_dir: Path | None = None) -> None:
         """Atomically update latest, with a text fallback."""
 
         refresh_latest_pointer(run_dir, domain_dir=domain_dir)
@@ -2507,19 +2427,18 @@ class DiscoveryEngine:
     @staticmethod
     def _input_digest(request: DiscoveryRequest, target: dict[str, object]) -> str:
         """Digest of what a target executes: its URLs, rendered queries and
-        rendered selection terms. Passthrough fields leave it unchanged."""
+        rendered selection terms. Passthrough fields leave it unchanged.
+        """
         from .connectors.serpapi_seeker import resolve_search_queries
 
-        context = CandidateSelector._normalize_template_context(
+        context = CandidateSelector._normalize_template_context(  # noqa: SLF001 - package-internal helper
             DiscoveryEngine._target_metadata(target) or {}
         )
         payload = {
             "urls": target.get("urls") or [],
-            "queries": resolve_search_queries(
-                DiscoveryEngine._seeker_input(request, target)
-            ),
+            "queries": resolve_search_queries(DiscoveryEngine._seeker_input(request, target)),
             "selection": [
-                CandidateSelector._resolve_templates(templates or [], context)
+                CandidateSelector._resolve_templates(templates or [], context)  # noqa: SLF001 - package-internal helper
                 for templates in (
                     request.selection_target_require_any,
                     request.selection_target_require_all,
@@ -2560,7 +2479,8 @@ class DiscoveryEngine:
         notes: list[str] = []
         for name, (items, key) in inputs.items():
             remaining[name] = [
-                item for item in items
+                item
+                for item in items
                 if key(item) not in completed
                 or completed[key(item)].get("input_digest") != digests.get(key(item))
             ]
@@ -2648,7 +2568,7 @@ class DiscoveryEngine:
                         record["status"] = "rejected_classifier"
                 else:
                     passed += 1
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 - classifier isolation: error kept on the record
                 record["classification_error"] = str(exc)
                 errors += 1
         notes.append(
@@ -2666,6 +2586,7 @@ class DiscoveryEngine:
         Adapter API endpoints use policy checks, not document selection.
         Headers and TLS verification remain shared with acquisition.
         """
+
         def gate(endpoint: str) -> object:
             return self._evaluate_request_policy(
                 url=endpoint, request=request, ssl_verify=ssl_verify
@@ -2728,9 +2649,7 @@ class DiscoveryEngine:
         if isinstance(escalation_cfg, bool):
             escalation_cfg = {}
         min_shell_chars = int(
-            escalation_cfg.get(
-                "min_shell_chars", DEFAULT_BROWSER_ESCALATION_MIN_SHELL_CHARS
-            )
+            escalation_cfg.get("min_shell_chars", DEFAULT_BROWSER_ESCALATION_MIN_SHELL_CHARS)
         )
         min_rendered_chars = int(
             escalation_cfg.get(
@@ -2763,7 +2682,7 @@ class DiscoveryEngine:
             # Shell detection: the same predicate as browser escalation.
             try:
                 text = ContentSampler.extract_text(str(path))
-            except Exception:  # noqa: BLE001 - unreadable file, skip
+            except Exception:  # noqa: BLE001, S112 - unreadable file, skip
                 continue
             if len(text.strip()) >= min_shell_chars:
                 continue  # already has server content; not a shell
@@ -2795,9 +2714,7 @@ class DiscoveryEngine:
             # literal "<"/">" in ordinance text (e.g. "lots < 5,000 sq ft").
             # The clean text is also cached below for the fast path.
             wrapped = (
-                "<!doctype html><html><body><pre>"
-                + html.escape(content)
-                + "</pre></body></html>"
+                "<!doctype html><html><body><pre>" + html.escape(content) + "</pre></body></html>"
             )
             try:
                 self._replace_recovered_content(path, wrapped, record)
@@ -2806,12 +2723,11 @@ class DiscoveryEngine:
             # Mark so downstream dedup re-hashes (bytes changed on disk) and so
             # the review index shows how the content was recovered.
             record["code_host_adapter"] = adapter.name
-            from ..extraction.document_utils import write_text_cache
+            from psweep.extraction.document_utils import write_text_cache
 
-            try:
+            # The text cache is best-effort.
+            with contextlib.suppress(Exception):
                 write_text_cache(path, content, method="code_host_api")
-            except Exception:  # noqa: BLE001 - text cache is best-effort
-                pass
             resolved += 1
 
         if resolved:
@@ -2859,14 +2775,10 @@ class DiscoveryEngine:
             return downloads, notes
 
         settle_seconds = float(
-            escalation_cfg.get(
-                "settle_seconds", DEFAULT_BROWSER_ESCALATION_SETTLE_SECONDS
-            )
+            escalation_cfg.get("settle_seconds", DEFAULT_BROWSER_ESCALATION_SETTLE_SECONDS)
         )
         min_shell_chars = int(
-            escalation_cfg.get(
-                "min_shell_chars", DEFAULT_BROWSER_ESCALATION_MIN_SHELL_CHARS
-            )
+            escalation_cfg.get("min_shell_chars", DEFAULT_BROWSER_ESCALATION_MIN_SHELL_CHARS)
         )
         min_rendered_chars = int(
             escalation_cfg.get(
@@ -2893,7 +2805,7 @@ class DiscoveryEngine:
                 text = ContentSampler.extract_text(str(path))
                 if len(text.strip()) < min_shell_chars:
                     candidates_for_escalation.append(record)
-            except Exception:
+            except Exception:  # noqa: BLE001, S112 - unreadable file is not an escalation candidate
                 continue
 
         if not candidates_for_escalation:
@@ -2923,14 +2835,10 @@ class DiscoveryEngine:
                         final_url=url, request=request
                     )
                     if not allowed:
-                        record.update(
-                            status="skipped_selection_filter", reason=reason
-                        )
+                        record.update(status="skipped_selection_filter", reason=reason)
                         continue
                     self._browser_policy_gate(request, url)
-                    rendered_html = browser.fetch_html(
-                        url, settle_seconds=settle_seconds
-                    )
+                    rendered_html = browser.fetch_html(url, settle_seconds=settle_seconds)
                     observed_url = browser.current_url
                     allowed, reason = self._passes_final_url_selection_guard(
                         final_url=observed_url, request=request
@@ -2942,20 +2850,13 @@ class DiscoveryEngine:
                         )
                         continue
                     record["final_url"] = observed_url
-                    if (
-                        not rendered_html
-                        or len(rendered_html.strip()) < MIN_RENDERED_HTML_CHARS
-                    ):
+                    if not rendered_html or len(rendered_html.strip()) < MIN_RENDERED_HTML_CHARS:
                         continue
 
                     # Validate content before replacing known bytes.
-                    text = ContentSampler.extract_text_from_string(
-                        rendered_html
-                    )
+                    text = ContentSampler.extract_text_from_string(rendered_html)
                     if len(text.strip()) >= min_rendered_chars:
-                        self._replace_recovered_content(
-                            file_path, rendered_html, record
-                        )
+                        self._replace_recovered_content(file_path, rendered_html, record)
                         escalated += 1
                         record["browser_escalated"] = True
 
@@ -2963,22 +2864,14 @@ class DiscoveryEngine:
                         # OCR'd PDFs). Users can inspect the .txt instead of
                         # opening raw HTML, and the extraction pipeline reuses
                         # it without re-parsing.
-                        from ..extraction.document_utils import (
-                            write_text_cache,
-                        )
+                        from psweep.extraction.document_utils import write_text_cache
 
-                        write_text_cache(
-                            file_path, text, method="browser_render"
-                        )
+                        write_text_cache(file_path, text, method="browser_render")
                     else:
                         # Page rendered but insufficient content (likely a TOC).
                         # Try following keyword-matching links 1 level deeper.
-                        classifier_cfg = (
-                            getattr(request, "document_classifier", None) or {}
-                        )
-                        keywords = (
-                            classifier_cfg.get("nice_to_have_keywords") or []
-                        )
+                        classifier_cfg = getattr(request, "document_classifier", None) or {}
+                        keywords = classifier_cfg.get("nice_to_have_keywords") or []
                         if keywords and rendered_html:
                             deeper_url = self._find_keyword_link_in_rendered(
                                 rendered_html, url, keywords
@@ -2990,9 +2883,7 @@ class DiscoveryEngine:
                                 )[0]
                             ):
                                 try:
-                                    self._browser_policy_gate(
-                                        request, deeper_url
-                                    )
+                                    self._browser_policy_gate(request, deeper_url)
                                     deeper_html = browser.fetch_html(
                                         deeper_url,
                                         settle_seconds=settle_seconds,
@@ -3002,29 +2893,24 @@ class DiscoveryEngine:
                                         deeper_html
                                         and deeper_final_url
                                         and (
-                                            self
-                                            ._passes_final_url_selection_guard(
+                                            self._passes_final_url_selection_guard(
                                                 final_url=deeper_final_url,
                                                 request=request,
                                             )[0]
                                         )
                                     ):
-                                        deeper_text = (
-                                            ContentSampler
-                                            .extract_text_from_string(
-                                                deeper_html
-                                            )
+                                        deeper_text = ContentSampler.extract_text_from_string(
+                                            deeper_html
                                         )
-                                        if (
-                                            len(deeper_text.strip())
-                                            >= min_rendered_chars
-                                        ):
+                                        if len(deeper_text.strip()) >= min_rendered_chars:
                                             # Save a new validated file.
                                             new_record = dict(record)
                                             new_record["url"] = deeper_url
                                             requested = Path(str(record.get("relative_path") or ""))
                                             relative = requested.with_stem(f"{requested.stem}-deep")
-                                            deeper_path = file_path.with_stem(f"{file_path.stem}-deep")
+                                            deeper_path = file_path.with_stem(
+                                                f"{file_path.stem}-deep"
+                                            )
                                             self._replace_recovered_content(
                                                 deeper_path,
                                                 deeper_html,
@@ -3035,31 +2921,24 @@ class DiscoveryEngine:
                                                 deeper_text,
                                                 method="browser_render",
                                             )
-                                            new_record["path"] = str(
-                                                deeper_path
-                                            )
+                                            new_record["path"] = str(deeper_path)
                                             new_record["relative_path"] = relative.as_posix()
-                                            new_record["final_url"] = (
-                                                deeper_final_url
-                                            )
-                                            new_record["browser_escalated"] = (
-                                                True
-                                            )
+                                            new_record["final_url"] = deeper_final_url
+                                            new_record["browser_escalated"] = True
                                             new_record["status"] = "downloaded"
                                             downloads.append(new_record)
                                             escalated += 1
-                                except Exception:
+                                except Exception:  # noqa: BLE001, S110 - deeper browser link is best-effort
                                     pass
                         record["browser_escalated"] = False
-                except Exception:
+                except Exception:  # noqa: BLE001 - browser isolation: escalation is best-effort
                     record["browser_escalated"] = False
                     continue
         finally:
             if browser is not None:
-                try:
+                # Browser close is best-effort cleanup.
+                with contextlib.suppress(Exception):
                     browser.close()
-                except Exception:
-                    pass
 
         if escalated:
             notes.append(
@@ -3097,15 +2976,13 @@ class DiscoveryEngine:
         request: DiscoveryRequest,
         candidates: list[DiscoveryCandidate],
         documents_dir: Path,
-        review_cfg: dict[str, object],
-        classifier_keywords: list[str] | None,
     ) -> tuple[list[dict[str, object]], list[str]]:
-        """Download a retry candidate batch and (optionally) review it.
+        """Download a retry candidate batch and process it like the main batch.
 
-        This is the shared crawl/download/review core for both post-review
-        retry stages. Review runs only when there are downloads AND a
-        ``review_cfg`` is configured, matching the prior per-stage logic.
-        Returns ``(retry_downloads, review_notes)``; callers decide whether
+        This is the shared download core for both post-review retry stages.
+        Downloads count against the remaining ``max_files`` budget, then go
+        through ``_process_downloads`` (review included when the request
+        configures it). Returns ``(retry_downloads, review_notes)``; callers decide whether
         to surface ``review_notes`` (code-hosting keeps them, JS-shell drops
         them, as before).
         """
@@ -3114,18 +2991,12 @@ class DiscoveryEngine:
             request=request,
             candidates=candidates,
             documents_dir=documents_dir,
-            max_downloads=(
-                min(len(candidates), cap)
-                if cap is not None
-                else len(candidates)
-            ),
+            max_downloads=(min(len(candidates), cap) if cap is not None else len(candidates)),
         )
         if cap is not None:
             self._remaining_downloads = max(0, cap - len(retry_downloads))
         self._retry_errors.extend(errors)
-        retry_downloads, notes, costs = self._process_downloads(
-            request, retry_downloads, notes
-        )
+        retry_downloads, notes, costs = self._process_downloads(request, retry_downloads, notes)
         for key, value in costs.items():
             if isinstance(value, (int, float)):
                 self._retry_costs[key] += value
@@ -3138,7 +3009,6 @@ class DiscoveryEngine:
         download_records: list[dict[str, object]],
         notes: list[str],
         documents_dir: Path,
-        review_cfg: dict[str, object],
         classifier_keywords: list[str] | None,
     ) -> tuple[list[dict[str, object]], list[str]]:
         """Run the post-review retry stages.
@@ -3148,15 +3018,12 @@ class DiscoveryEngine:
         JS-shell browser-crawl retry.
         """
         if self._code_host_domains(request):
-            download_records, notes = (
-                self._retry_failed_targets_on_code_hosting(
-                    request=request,
-                    download_records=download_records,
-                    notes=notes,
-                    documents_dir=documents_dir,
-                    review_cfg=review_cfg,
-                    classifier_keywords=classifier_keywords,
-                )
+            download_records, notes = self._retry_failed_targets_on_code_hosting(
+                request=request,
+                download_records=download_records,
+                notes=notes,
+                documents_dir=documents_dir,
+                classifier_keywords=classifier_keywords,
             )
 
         download_records, notes = self._retry_js_shells_with_digger(
@@ -3164,7 +3031,6 @@ class DiscoveryEngine:
             download_records=download_records,
             notes=notes,
             documents_dir=documents_dir,
-            review_cfg=review_cfg,
         )
         return download_records, notes
 
@@ -3175,13 +3041,15 @@ class DiscoveryEngine:
         Only ``domain_scores`` host entries with a positive score count;
         leading-dot suffix patterns (``.gov``) only adjust ranking.
         """
-        return tuple(dict.fromkeys(
-            pattern
-            for pattern, score in domain_score_patterns(
-                request.link_prioritization_domain_scores
+        return tuple(
+            dict.fromkeys(
+                pattern
+                for pattern, score in domain_score_patterns(
+                    request.link_prioritization_domain_scores
+                )
+                if score > 0 and not pattern.startswith(".")
             )
-            if score > 0 and not pattern.startswith(".")
-        ))
+        )
 
     @staticmethod
     def _matching_code_host(url: str, code_hosts: tuple[str, ...]) -> str | None:
@@ -3190,9 +3058,7 @@ class DiscoveryEngine:
             host = urlparse(url).hostname or ""
         except ValueError:
             return None
-        return next(
-            (d for d in code_hosts if host_matches_domain_pattern(host, d)), None
-        )
+        return next((d for d in code_hosts if host_matches_domain_pattern(host, d)), None)
 
     def _retry_js_shells_with_digger(
         self,
@@ -3201,7 +3067,6 @@ class DiscoveryEngine:
         download_records: list[dict[str, object]],
         notes: list[str],
         documents_dir: Path,
-        review_cfg: dict[str, object],
     ) -> tuple[list[dict[str, object]], list[str]]:
         """Browser-crawl retry for failed targets with JS-shell downloads.
 
@@ -3236,7 +3101,8 @@ class DiscoveryEngine:
 
             for rec in records:
                 if not rec.get("browser_escalated") and rec.get("status") in {
-                    "downloaded", "skipped_unreadable"
+                    "downloaded",
+                    "skipped_unreadable",
                 }:
                     # Check if this is a JS shell from a code-hosting domain
                     url = str(rec.get("url") or "")
@@ -3257,7 +3123,7 @@ class DiscoveryEngine:
 
         digger = HttpDiggerConnector()
         crawled = 0
-        for target_key, url, shell in shell_urls:
+        for _target_key, url, shell in shell_urls:
             di = DiggerInput(
                 sources=[url],
                 max_depth=JS_SHELL_RETRY_MAX_DEPTH,
@@ -3267,15 +3133,9 @@ class DiscoveryEngine:
                 include_link_text_patterns=keywords,
                 extra_params={
                     "ssl_verify": self._downloads_ssl_verify(),
-                    "browser_escalation": self._browser_recovery_enabled(
-                        request
-                    ),
-                    "request_gate": self._network_gate(
-                        request, self._downloads_ssl_verify()
-                    ),
-                    "response_url_gate": self._network_gate(
-                        request, self._downloads_ssl_verify()
-                    ),
+                    "browser_escalation": self._browser_recovery_enabled(request),
+                    "request_gate": self._network_gate(request, self._downloads_ssl_verify()),
+                    "response_url_gate": self._network_gate(request, self._downloads_ssl_verify()),
                     "rate_limiter": self._rate_limiter,
                     "browser_policy_strict": (
                         request.robots_policy_mode == "enforce"
@@ -3288,9 +3148,7 @@ class DiscoveryEngine:
             except (OSError, RuntimeError, ValueError) as exc:
                 # Isolate network, browser, and crawl-input failures.
                 self._retry_errors.append(
-                    build_error_record(
-                        exc, stage="discovery.retry_crawl", provider="http"
-                    )
+                    build_error_record(exc, stage="discovery.retry_crawl", provider="http")
                 )
                 continue
 
@@ -3299,13 +3157,16 @@ class DiscoveryEngine:
 
             # Download and review the found artifacts
             from .models import CandidateScore, DiscoveryCandidate
+
             artifact_candidates = [
                 DiscoveryCandidate(
                     url=a.url,
                     source="browser_crawl_retry",
                     score=CandidateScore(
-                        url_signal=JS_SHELL_RETRY_URL_SIGNAL, anchor_signal=0.0,
-                        content_signal=0.0, trust_signal=JS_SHELL_RETRY_TRUST_SIGNAL,
+                        url_signal=JS_SHELL_RETRY_URL_SIGNAL,
+                        anchor_signal=0.0,
+                        content_signal=0.0,
+                        trust_signal=JS_SHELL_RETRY_TRUST_SIGNAL,
                     ),
                     target_metadata=shell.get("target_metadata"),
                     source_scope=shell.get("source_scope"),
@@ -3316,14 +3177,10 @@ class DiscoveryEngine:
             ]
 
             # JS-shell path discards review notes (matches prior behavior).
-            retry_downloads, retry_notes = (
-                self._download_and_review_retry_candidates(
-                    request=request,
-                    candidates=artifact_candidates,
-                    documents_dir=documents_dir,
-                    review_cfg=review_cfg,
-                    classifier_keywords=keywords,
-                )
+            retry_downloads, retry_notes = self._download_and_review_retry_candidates(
+                request=request,
+                candidates=artifact_candidates,
+                documents_dir=documents_dir,
             )
 
             notes.extend(retry_notes)
@@ -3340,9 +3197,7 @@ class DiscoveryEngine:
         return download_records, notes
 
     @staticmethod
-    def _find_keyword_link_in_rendered(
-        html: str, base_url: str, keywords: list[str]
-    ) -> str | None:
+    def _find_keyword_link_in_rendered(html: str, base_url: str, keywords: list[str]) -> str | None:
         """Find the first link in rendered HTML whose text matches any keyword.
 
         Used after browser escalation renders a TOC page — identifies the
@@ -3381,7 +3236,7 @@ class DiscoveryEngine:
         parser = _LinkFinder()
         try:
             parser.feed(html)
-        except Exception:
+        except Exception:  # noqa: BLE001 - malformed HTML means no link found
             return None
 
         keywords_lower = [k.lower() for k in keywords]
@@ -3398,7 +3253,6 @@ class DiscoveryEngine:
         download_records: list[dict[str, object]],
         notes: list[str],
         documents_dir: Path,
-        review_cfg: dict[str, object],
         classifier_keywords: list[str] | None = None,
     ) -> tuple[list[dict[str, object]], list[str]]:
         """Targeted retry for targets that got 0 curated docs from code-hosting sites.
@@ -3437,7 +3291,11 @@ class DiscoveryEngine:
                     # Extract domain + path prefix for site-scoped retry
                     path_parts = parsed.path.strip("/").split("/")
                     # Keep first 2-3 path segments as the jurisdiction scope
-                    scope = "/".join(path_parts[:3]) if len(path_parts) >= 3 else "/".join(path_parts[:2])
+                    scope = (
+                        "/".join(path_parts[:3])
+                        if len(path_parts) >= 3
+                        else "/".join(path_parts[:2])
+                    )
                     site_prefix = f"{host}/{scope}" if scope else host
                     failed_targets.append((target_key, site_prefix, rec))
                     break
@@ -3456,16 +3314,12 @@ class DiscoveryEngine:
             retry_max_attempts=request.retry_max_attempts,
             retry_initial_backoff_seconds=request.retry_initial_backoff_seconds,
             retry_max_backoff_seconds=request.retry_max_backoff_seconds,
-            min_request_interval_seconds=max(
-                0.0, float(request.min_request_interval_ms) / 1000.0
-            ),
+            min_request_interval_seconds=max(0.0, float(request.min_request_interval_ms) / 1000.0),
             cache_dir=DiscoveryEngine._resolve_seeker_cache_dir(request),
             timeout_seconds=request.timeout_seconds or 45,
             cache_ttl_seconds=max(
                 0.0,
-                float(
-                    getattr(request, "seeker_cache_ttl_minutes", 0.0) or 0.0
-                ),
+                float(getattr(request, "seeker_cache_ttl_minutes", 0.0) or 0.0),
             )
             * 60.0,
             cache_refresh=request.fresh and not request.dry_run,
@@ -3476,10 +3330,8 @@ class DiscoveryEngine:
             query = f"site:{site_prefix} {keyword_or}"
             try:
                 before = seeker.queries_run
-                results = seeker.discover(
-                    SeekerInput(queries=[query], max_results=5)
-                )
-            except Exception as exc:
+                results = seeker.discover(SeekerInput(queries=[query], max_results=5))
+            except Exception as exc:  # noqa: BLE001 - provider isolation: recorded as a retry error
                 self._retry_errors.append(
                     build_error_record(
                         exc,
@@ -3487,9 +3339,7 @@ class DiscoveryEngine:
                         provider="serpapi",
                     )
                 )
-                notes.append(
-                    f"Code-hosting retry: query failed for '{target_key}'."
-                )
+                notes.append(f"Code-hosting retry: query failed for '{target_key}'.")
                 continue
             finally:
                 self._retry_search_calls += seeker.queries_run - before
@@ -3533,22 +3383,16 @@ class DiscoveryEngine:
 
         # Download + review the retry batch via the shared retry core. The
         # code-hosting path keeps the review notes (unlike the JS-shell path).
-        retry_downloads, retry_review_notes = (
-            self._download_and_review_retry_candidates(
-                request=request,
-                candidates=candidates_for_download,
-                documents_dir=documents_dir,
-                review_cfg=review_cfg,
-                classifier_keywords=classifier_keywords,
-            )
+        retry_downloads, retry_review_notes = self._download_and_review_retry_candidates(
+            request=request,
+            candidates=candidates_for_download,
+            documents_dir=documents_dir,
         )
         retry_notes.extend(retry_review_notes)
 
         # Merge into main records
         download_records.extend(retry_downloads)
-        curated_retry = sum(
-            1 for r in retry_downloads if r.get("review_selected")
-        )
+        curated_retry = sum(1 for r in retry_downloads if r.get("review_selected"))
         retry_notes.append(
             f"Code-hosting retry: {len(retry_downloads)} downloaded, "
             f"{curated_retry} curated from retry."
@@ -3557,9 +3401,7 @@ class DiscoveryEngine:
         return download_records, notes
 
     @staticmethod
-    def _replace_recovered_content(
-        path: Path, text: str, record: dict[str, object]
-    ) -> None:
+    def _replace_recovered_content(path: Path, text: str, record: dict[str, object]) -> None:
         """Publish recovery bytes and refresh their identity."""
         raw = text.encode("utf-8")
         atomic_write(path, raw)
@@ -3570,23 +3412,21 @@ class DiscoveryEngine:
         )
 
     def _browser_policy_gate(
-        self, request: DiscoveryRequest, url: str, *, configured: bool = False,
+        self,
+        request: DiscoveryRequest,
+        url: str,
+        *,
+        configured: bool = False,
     ) -> None:
         """Gate navigation, not uncontrolled browser subresources."""
-        if (
-            request.robots_policy_mode == "enforce"
-            or request.tos_policy_mode == "enforce"
-        ):
+        if request.robots_policy_mode == "enforce" or request.tos_policy_mode == "enforce":
             msg = (
-                "Strict policy enforcement cannot cover browser "
-                "subresources; use HTTP acquisition"
+                "Strict policy enforcement cannot cover browser subresources; use HTTP acquisition"
             )
             raise RuntimeError(msg)
         check_url(
             url,
-            self._network_gate(
-                request, self._downloads_ssl_verify(), configured=configured
-            ),
+            self._network_gate(request, self._downloads_ssl_verify(), configured=configured),
         )
         if self._rate_limiter:
             self._rate_limiter.wait()
@@ -3598,17 +3438,11 @@ class DiscoveryEngine:
         notes: list[str],
     ) -> tuple[list[dict[str, object]], list[str], dict[str, object]]:
         """Apply recovery, classification, and review to each batch."""
-        records, notes = self._resolve_code_host_shells(
-            records, notes, request
-        )
-        records, notes = self._escalate_js_shells_to_browser(
-            records, notes, request
-        )
+        records, notes = self._resolve_code_host_shells(records, notes, request)
+        records, notes = self._escalate_js_shells_to_browser(records, notes, request)
         classifier = request.document_classifier or {}
         if classifier:
-            records, notes = self._run_post_download_classifier(
-                records, classifier, notes
-            )
+            records, notes = self._run_post_download_classifier(records, classifier, notes)
         costs: dict[str, object] = {}
         if request.document_review:
             self._seed_recording_transcripts(
@@ -3626,9 +3460,7 @@ class DiscoveryEngine:
         return records, notes, costs
 
     @staticmethod
-    def _seed_recording_transcripts(
-        curated_dir: Path, records: list[dict[str, object]]
-    ) -> None:
+    def _seed_recording_transcripts(curated_dir: Path, records: list[dict[str, object]]) -> None:
         """Seed run copies of recordings with their curated transcript caches.
 
         Review then grades them without transcribing again.
@@ -3666,29 +3498,20 @@ class DiscoveryEngine:
         """
         description = str(review_cfg.get("document_description") or "").strip()
         if not description:
-            notes.append(
-                "Document review skipped (no document_description configured)."
-            )
+            notes.append("Document review skipped (no document_description configured).")
             return downloads, notes, {}
 
         reviewer = DocumentReviewer(
             document_description=description,
-            model=(
-                str(review_cfg["model"]) if review_cfg.get("model") else None
-            ),
+            model=(str(review_cfg["model"]) if review_cfg.get("model") else None),
             models={str(k): str(v) for k, v in (models or {}).items()} or None,
             keep_top=int(review_cfg.get("keep_top", 1) or 1),
             max_chars=int(review_cfg.get("max_chars", 12000) or 12000),
             review_keywords=review_cfg.get("keywords") or classifier_keywords,
-            deduplicate_redundant=bool(
-                review_cfg.get("deduplicate_redundant", True)
-            ),
+            deduplicate_redundant=bool(review_cfg.get("deduplicate_redundant", True)),
             dedup_key_fields=[
                 str(field)
-                for field in (
-                    (review_cfg.get("deduplication") or {}).get("key_fields")
-                    or []
-                )
+                for field in ((review_cfg.get("deduplication") or {}).get("key_fields") or [])
                 if str(field).strip()
             ]
             or None,
@@ -3705,9 +3528,9 @@ class DiscoveryEngine:
             return downloads, notes, reviewer.get_costs()
         except Exception as exc:  # noqa: BLE001 - review is best-effort
             # Failed review protects prior consolidated partitions.
-            for _rec in reviewable:
-                _rec["review_failed"] = True
-                _rec["review_retryable"] = True
+            for failed_record in reviewable:
+                failed_record["review_failed"] = True
+                failed_record["review_retryable"] = True
             notes.append(f"Document review error (skipped): {exc}")
             return downloads, notes, reviewer.get_costs()
 
@@ -3736,8 +3559,7 @@ class DiscoveryEngine:
                     "search unfinished",
                 )
         if not targets and any(
-            metric.get("search_complete") is False
-            for metric in selection_metrics
+            metric.get("search_complete") is False for metric in selection_metrics
         ):
             blocked.add(Path(), "search unfinished")
         return incomplete_keys, blocked
@@ -3757,9 +3579,7 @@ class DiscoveryEngine:
             if key:
                 incomplete_keys.add(key)
             blocked.add(
-                self._partition(
-                    request, candidate.target_id, candidate.target_metadata
-                ),
+                self._partition(request, candidate.target_id, candidate.target_metadata),
                 cause,
             )
 
@@ -3793,7 +3613,8 @@ class DiscoveryEngine:
                     record.get("target_id"),
                     record.get("target_metadata"),
                 ),
-                "retryable review failure" if record.get("review_failed")
+                "retryable review failure"
+                if record.get("review_failed")
                 else "retryable download failure",
             )
 
@@ -3837,16 +3658,11 @@ class DiscoveryEngine:
         if request.dry_run or not request.targets:
             return set()
         attempted_keys = {
-            record["target_id"]
-            for record in download_records
-            if record.get("target_id")
+            record["target_id"] for record in download_records if record.get("target_id")
         }
         empty_parts: set[Path] = set()
         for metric in selection_metrics:
-            if (
-                metric.get("search_complete") is False
-                or metric.get("selected_candidates")
-            ):
+            if metric.get("search_complete") is False or metric.get("selected_candidates"):
                 continue
             target = request.targets[int(metric["target_index"])]
             key = identify_target(target, request.partition_by)
@@ -3858,9 +3674,7 @@ class DiscoveryEngine:
                 "outcome": "empty",
                 "download_count": 0,
             }
-            empty_parts.add(
-                self._partition(request, key, self._target_metadata(target))
-            )
+            empty_parts.add(self._partition(request, key, self._target_metadata(target)))
         return empty_parts
 
     @staticmethod
@@ -3889,27 +3703,19 @@ class DiscoveryEngine:
                 result.download_index_path = paths.run_index
             if download_records:
                 result.curated_dir = paths.run_curated_dir
-                result.review_index_path = (
-                    paths.manifest_path.parent / "review.csv"
-                )
+                result.review_index_path = paths.manifest_path.parent / "review.csv"
                 reviewed = any(
-                    record.get("review_selected") is not None
-                    for record in download_records
+                    record.get("review_selected") is not None for record in download_records
                 )
                 result.curated_count = sum(
-                    record_is_curated(record, review_ran=reviewed)
-                    for record in download_records
+                    record_is_curated(record, review_ran=reviewed) for record in download_records
                 )
             elif empty_parts and request.fresh:
                 result.curated_dir = paths.run_curated_dir
         result.status = discovery_status(
             dry_run=request.dry_run,
             errors=errors,
-            usable=(
-                bool(candidates)
-                if request.dry_run
-                else result.curated_count > 0
-            ),
+            usable=(bool(candidates) if request.dry_run else result.curated_count > 0),
         )
         if not request.dry_run and all_reused and not errors:
             curated_paths = {
@@ -3921,9 +3727,7 @@ class DiscoveryEngine:
                 result.status = "reused"
                 result.curated_dir = paths.domain_dir / "curated"
                 result.curated_count = len(curated_paths)
-                result.download_index_path = (
-                    paths.domain_dir / "download_index.csv"
-                )
+                result.download_index_path = paths.domain_dir / "download_index.csv"
         return result
 
     def _build_completion_manifest(
@@ -3940,7 +3744,7 @@ class DiscoveryEngine:
         notes: list[str],
     ) -> DiscoveryManifest:
         """Combine result metadata and stage evidence."""
-        completed_at = datetime.now(timezone.utc)
+        completed_at = datetime.now(UTC)
         return DiscoveryManifest(
             run_id=result.run_id,
             status=result.status,
@@ -3955,9 +3759,7 @@ class DiscoveryEngine:
             timing={
                 "started_at": started_at.isoformat(),
                 "completed_at": completed_at.isoformat(),
-                "elapsed_seconds": round(
-                    (completed_at - started_at).total_seconds(), 3
-                ),
+                "elapsed_seconds": round((completed_at - started_at).total_seconds(), 3),
             },
             stage_summaries=stage_summaries,
             candidate_summary=self._build_candidate_summary(candidates),
@@ -3978,9 +3780,7 @@ class DiscoveryEngine:
                     else None
                 ),
                 "curated_dir": (
-                    result.curated_dir.as_posix()
-                    if result.curated_dir is not None
-                    else None
+                    result.curated_dir.as_posix() if result.curated_dir is not None else None
                 ),
                 "curated_count": result.curated_count,
             },
@@ -4010,15 +3810,9 @@ class DiscoveryEngine:
         Reuse returns a new snapshot, preserving the editable run.
         Immutable snapshots also provide checkpoint manifest evidence.
         """
-        snapshot_path = (
-            paths.manifest_path.parent / "outcomes" / f"{result.run_id}.json"
-        )
+        snapshot_path = paths.manifest_path.parent / "outcomes" / f"{result.run_id}.json"
         publishes = not request.dry_run and not all_reused
-        with (
-            discovery_publication(paths.domain_dir)
-            if publishes
-            else contextlib.nullcontext()
-        ):
+        with discovery_publication(paths.domain_dir) if publishes else contextlib.nullcontext():
             if publishes:
                 # Blocked partitions are published additively, not replaced.
                 assign_document_names(
@@ -4055,17 +3849,12 @@ class DiscoveryEngine:
                     render_only=True,
                 )
                 metadata_updates[paths.run_index] = index_content
-                metadata_updates[snapshot_path.with_suffix(".index.csv")] = (
-                    index_content
-                )
+                metadata_updates[snapshot_path.with_suffix(".index.csv")] = index_content
                 if result.review_index_path:
-                    metadata_updates[result.review_index_path] = (
-                        self._write_review_index(
-                            request=request,
-                            download_records=manifest.downloads,
-                            run_dir=paths.manifest_path.parent,
-                            render_only=True,
-                        )
+                    metadata_updates[result.review_index_path] = self._write_review_index(
+                        download_records=manifest.downloads,
+                        run_dir=paths.manifest_path.parent,
+                        render_only=True,
                     )
                 if result.curated_dir is not None:
                     publish_manual_curation(
@@ -4098,7 +3887,8 @@ class DiscoveryEngine:
         prior_outcomes: dict[str, dict[str, dict[str, object]]],
     ) -> None:
         """Save completions with published artifact hashes, and the final
-        child outcomes of incomplete targets/sources for the next run."""
+        child outcomes of incomplete targets/sources for the next run.
+        """
         if result.dry_run:
             return
         saved = {
@@ -4125,17 +3915,13 @@ class DiscoveryEngine:
                     continue
                 path = paths.domain_dir / "curated" / str(relative_path)
                 if path.is_file():
-                    curated_paths.setdefault(key, {})[str(path)] = artifact_sha256(
-                        path
-                    )
+                    curated_paths.setdefault(key, {})[str(path)] = artifact_sha256(path)
             for key, entry in entries.items():
                 entry["artifacts"] = evidence
                 entry["curated_paths"] = curated_paths.get(key, {})
             saved.update(entries)
         if saved:
-            self._save_checkpoint_entries(
-                checkpoint_path, saved, fingerprint=fingerprint
-            )
+            self._save_checkpoint_entries(checkpoint_path, saved, fingerprint=fingerprint)
 
     def _incomplete_outcomes(
         self,
@@ -4147,7 +3933,8 @@ class DiscoveryEngine:
     ) -> dict[str, dict[str, dict[str, object]]]:
         """Final child outcomes of owners left incomplete, merged over
         ``prior``: downloads with file evidence, and other non-retryable
-        outcomes. Retryable failures are fetched again."""
+        outcomes. Retryable failures are fetched again.
+        """
         outcomes: dict[str, dict[str, dict[str, object]]] = {}
         for record in download_records:
             key = self._record_completion_key(record)
@@ -4188,7 +3975,8 @@ class DiscoveryEngine:
     ) -> None:
         """Delete an earlier run's copy of each file this run reused; the
         current run now holds it. Consolidated curated files are never
-        touched."""
+        touched.
+        """
         runs_dir = (paths.domain_dir / "runs").resolve()
         current = paths.documents_dir.resolve()
         for record in download_records:
@@ -4262,9 +4050,7 @@ class DiscoveryEngine:
             )
         # Reuse and empty runs keep the prior latest-downloads pointer.
         if download_records:
-            self._refresh_latest_pointer(
-                paths.manifest_path.parent, domain_dir=paths.domain_dir
-            )
+            self._refresh_latest_pointer(paths.manifest_path.parent, domain_dir=paths.domain_dir)
 
     def run(self, request: DiscoveryRequest) -> DiscoveryResult:
         """Execute a full discovery run for the given request.
@@ -4279,29 +4065,21 @@ class DiscoveryEngine:
         DiscoveryResult
             Manifest path, downloaded documents, and acquisition errors.
         """
-        started_at = datetime.now(timezone.utc)
-        self._rate_limiter = _RequestRateLimiter(
-            request.min_request_interval_ms
-        )
+        started_at = datetime.now(UTC)
+        self._rate_limiter = _RequestRateLimiter(request.min_request_interval_ms)
         self._retry_errors = []
         self._retry_costs = Counter()
         self._retry_search_calls = 0
         self._remaining_downloads = request.max_files
         run_id = self._build_run_id(request, started_at)
-        documents_dir, manifest_path = self._resolve_output_paths(
-            request, run_id
-        )
-        paths = resolve_publication_paths(
-            documents_dir, manifest_path, request.domain
-        )
+        documents_dir, manifest_path = self._resolve_output_paths(request, run_id)
+        paths = resolve_publication_paths(documents_dir, manifest_path, request.domain)
         documents_dir, manifest_path = paths.documents_dir, paths.manifest_path
         fingerprint = effective_discovery_fingerprint(request)
         if not request.dry_run:
             with discovery_publication(paths.domain_dir):
                 pass
-        seeker_state, seeker_errors, seeker_notes = (
-            self._resolve_serpapi_state(request)
-        )
+        seeker_state, seeker_errors, seeker_notes = self._resolve_serpapi_state(request)
         all_errors = normalize_error_records(seeker_errors)
         self._emit_progress(
             request,
@@ -4321,13 +4099,9 @@ class DiscoveryEngine:
             completed_checkpoint_keys = self._load_checkpoint(
                 checkpoint_path, fingerprint=fingerprint
             )
-            prior_outcomes = load_prior_outcomes(
-                checkpoint_path, fingerprint=fingerprint
-            )
+            prior_outcomes = load_prior_outcomes(checkpoint_path, fingerprint=fingerprint)
         original_sources = list(request.sources)
-        request, skip_notes = self._skip_completed_inputs(
-            request, completed_checkpoint_keys
-        )
+        request, skip_notes = self._skip_completed_inputs(request, completed_checkpoint_keys)
         seeker_notes.extend(skip_notes)
 
         # Search only active targets with a healthy provider.
@@ -4346,12 +4120,9 @@ class DiscoveryEngine:
                 prioritizer_lineage,
                 target_selection_metrics,
                 seeker_queries_run,
-            ) = self._run_seeker(
-                request, seeker_state, seeker_notes, all_errors
-            )
+            ) = self._run_seeker(request, seeker_state, seeker_notes, all_errors)
             seeker_raw_count = sum(
-                int(metric.get("input_candidates", 0))
-                for metric in target_selection_metrics
+                int(metric.get("input_candidates", 0)) for metric in target_selection_metrics
             )
             self._emit_progress(
                 request,
@@ -4364,8 +4135,7 @@ class DiscoveryEngine:
         configured = self._configured_candidates(request)
         configured_keys = {(c.url, c.target_id) for c in configured}
         candidates = configured + [
-            c for c in seeker_candidates
-            if (c.url, c.target_id) not in configured_keys
+            c for c in seeker_candidates if (c.url, c.target_id) not in configured_keys
         ]
         all_errors, seeker_notes = self._append_discovery_gap_diagnostics(
             request=request,
@@ -4377,26 +4147,23 @@ class DiscoveryEngine:
         candidates_after_seeker = len(candidates)
 
         candidates, crawl_errors, crawl_notes, crawl_state, crawl_unfinished = (
-            self._crawl_candidates(
-                request=request, candidates=candidates, prior=prior_outcomes
-            )
+            self._crawl_candidates(request=request, candidates=candidates, prior=prior_outcomes)
         )
         all_errors = normalize_error_records([*all_errors, *crawl_errors])
         if crawl_state["applied"]:
             # Crawled links obey selection; configured URLs pass through.
-            candidates, post_crawl_notes = (
-                self._apply_post_routing_selection_filters(
-                    request=request, candidates=candidates,
-                )
+            candidates, post_crawl_notes = self._apply_post_routing_selection_filters(
+                request=request,
+                candidates=candidates,
             )
             crawl_notes.extend(post_crawl_notes)
             candidates = [
                 candidate
                 for candidate in candidates
                 if candidate.source == CONFIGURED_SOURCE
-                or self._passes_final_url_selection_guard(
-                    final_url=candidate.url, request=request
-                )[0]
+                or self._passes_final_url_selection_guard(final_url=candidate.url, request=request)[
+                    0
+                ]
             ]
         candidates_after_crawl = len(candidates)
 
@@ -4422,19 +4189,13 @@ class DiscoveryEngine:
         review_only_blocks = set()
         if not request.dry_run and candidates:
             self._emit_progress(request, "run: download stage started")
-            candidates_for_download, gating_notes = (
-                self._filter_candidates_for_download(candidates)
-            )
+            candidates_for_download, gating_notes = self._filter_candidates_for_download(candidates)
             download_notes.extend(gating_notes)
             download_errors: list[dict[str, object]] = []
             if candidates_for_download:
                 download_cap = request.max_files
-                reusable = self._reusable_outcomes(
-                    candidates_for_download, prior_outcomes
-                )
-                _, cut = self._stage_downloads(
-                    candidates_for_download, download_cap, reusable
-                )
+                reusable = self._reusable_outcomes(candidates_for_download, prior_outcomes)
+                _, cut = self._stage_downloads(candidates_for_download, download_cap, reusable)
                 self._block_candidates(
                     request=request,
                     candidates=cut,
@@ -4442,48 +4203,38 @@ class DiscoveryEngine:
                     blocked=blocked_parts,
                     cause=f"budget runtime.max_files={download_cap}",
                 )
-                download_records, download_errors, stage_download_notes = (
-                    self._download_candidates(
-                        request=request,
-                        candidates=candidates_for_download,
-                        documents_dir=documents_dir,
-                        max_downloads=download_cap,
-                        reusable=reusable,
-                    )
+                download_records, download_errors, stage_download_notes = self._download_candidates(
+                    request=request,
+                    candidates=candidates_for_download,
+                    documents_dir=documents_dir,
+                    max_downloads=download_cap,
+                    reusable=reusable,
                 )
                 download_notes.extend(stage_download_notes)
                 if self._remaining_downloads is not None:
                     self._remaining_downloads = max(
                         0,
-                        self._remaining_downloads - sum(
+                        self._remaining_downloads
+                        - sum(
                             record.get("download_method") != REUSED_DOWNLOAD_METHOD
                             for record in download_records
                         ),
                     )
 
-                download_records, download_notes, review_costs = (
-                    self._process_downloads(
-                        request,
-                        download_records,
-                        download_notes,
-                    )
+                download_records, download_notes, review_costs = self._process_downloads(
+                    request,
+                    download_records,
+                    download_notes,
                 )
                 review_cfg = request.document_review
                 if review_cfg and download_records:
-                    classifier_cfg = (
-                        getattr(request, "document_classifier", None) or {}
-                    )
-                    download_records, download_notes = (
-                        self._run_post_review_retries(
-                            request=request,
-                            download_records=download_records,
-                            notes=download_notes,
-                            documents_dir=documents_dir,
-                            review_cfg=review_cfg,
-                            classifier_keywords=classifier_cfg.get(
-                                "nice_to_have_keywords"
-                            ),
-                        )
+                    classifier_cfg = getattr(request, "document_classifier", None) or {}
+                    download_records, download_notes = self._run_post_review_retries(
+                        request=request,
+                        download_records=download_records,
+                        notes=download_notes,
+                        documents_dir=documents_dir,
+                        classifier_keywords=classifier_cfg.get("nice_to_have_keywords"),
                     )
 
                 def record_partition(record: dict[str, object]) -> Path:
@@ -4549,22 +4300,19 @@ class DiscoveryEngine:
                 new_checkpoint_entries[key]["input_digest"] = digest
         for record in download_records:
             if record.get("review_failed"):
-                all_errors.append({
-                    **build_error_record(
-                        RuntimeError(
-                            str(
-                                record.get("review_error")
-                                or "Document review failed"
-                            )
+                all_errors.append(
+                    {
+                        **build_error_record(
+                            RuntimeError(
+                                str(record.get("review_error") or "Document review failed")
+                            ),
+                            stage="discovery.review",
+                            document_path=str(record.get("path") or record.get("url")),
                         ),
-                        stage="discovery.review",
-                        document_path=str(
-                            record.get("path") or record.get("url")
-                        ),
-                    ),
-                    "retryable": is_retryable(record),
-                    "target_label": record.get("target_label"),
-                })
+                        "retryable": is_retryable(record),
+                        "target_label": record.get("target_label"),
+                    }
+                )
         all_errors = normalize_error_records(all_errors)
         all_reused = bool(
             (original_targets or original_sources)
@@ -4604,9 +4352,7 @@ class DiscoveryEngine:
                     "queries_executed": seeker_queries_run,
                     "candidates_discovered": seeker_raw_count,
                     "candidates_after_prioritization": candidates_after_seeker,
-                    "link_prioritization_mode": (
-                        request.link_prioritization_mode
-                    ),
+                    "link_prioritization_mode": (request.link_prioritization_mode),
                     "link_top_k": request.link_top_k,
                 },
                 "crawl": {
@@ -4617,9 +4363,7 @@ class DiscoveryEngine:
                     "candidates_out": candidates_after_crawl,
                 },
                 "downloads": self._build_download_summary(download_records),
-                "document_review": (
-                    {"costs": review_costs} if review_costs else {}
-                ),
+                "document_review": ({"costs": review_costs} if review_costs else {}),
                 "acceptance_metrics": self._build_acceptance_metrics(
                     request=request,
                     seeker_state=seeker_state,
@@ -4629,9 +4373,7 @@ class DiscoveryEngine:
             lineage={
                 "blocked_partitions": [str(part) for part in blocked_parts],
                 "replaced_partitions": [str(part) for part in attempted_parts],
-                "review_only_blocked_partitions": [
-                    str(part) for part in review_only_blocks
-                ],
+                "review_only_blocked_partitions": [str(part) for part in review_only_blocks],
                 "request_fingerprint": fingerprint,
                 "seeker": seeker_state,
                 "crawl": crawl_state,

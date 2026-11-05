@@ -21,12 +21,10 @@ from psweep.security import resolve_tls_verification
 _TEMPLATE_TOKEN = re.compile(r"\{([a-zA-Z0-9_]+)(\?)?\}")
 
 
-class SerpApiSearchTimeout(RuntimeError):
+class SerpApiSearchTimeout(RuntimeError):  # noqa: N818 - public exception name
     """Explicit incomplete search, carrying results from completed queries."""
 
-    def __init__(
-        self, candidates: list[dict[str, Any]], query_errors: list[str]
-    ) -> None:
+    def __init__(self, candidates: list[dict[str, Any]], query_errors: list[str]) -> None:
         self.candidates = candidates
         self.query_errors = query_errors
         super().__init__("; ".join(query_errors))
@@ -71,20 +69,12 @@ class SerpApiSeeker(BaseSeekerConnector):
             If omitted, defaults to env-driven value from
             SERPAPI_SSL_VERIFY / PSWEEP_SSL_VERIFY (verified by default).
         """
-        self.api_key = (
-            api_key or os.getenv("SERPAPI_API_KEY")
-        )
+        self.api_key = api_key or os.getenv("SERPAPI_API_KEY")
         self.ssl_verify = self._resolve_ssl_verify(ssl_verify)
         self.retry_max_attempts = max(1, int(retry_max_attempts))
-        self.retry_initial_backoff_seconds = max(
-            0.0, float(retry_initial_backoff_seconds)
-        )
-        self.retry_max_backoff_seconds = max(
-            0.0, float(retry_max_backoff_seconds)
-        )
-        self.min_request_interval_seconds = max(
-            0.0, float(min_request_interval_seconds)
-        )
+        self.retry_initial_backoff_seconds = max(0.0, float(retry_initial_backoff_seconds))
+        self.retry_max_backoff_seconds = max(0.0, float(retry_max_backoff_seconds))
+        self.min_request_interval_seconds = max(0.0, float(min_request_interval_seconds))
         self._last_request_monotonic = 0.0
         # Live outbound attempts, including retries and failed/time-out requests.
         # Cache hits are free; actual provider billing for failures is unknown.
@@ -125,9 +115,7 @@ class SerpApiSeeker(BaseSeekerConnector):
             max_backoff_seconds=self.retry_max_backoff_seconds,
         )
 
-    def _execute_search_with_retry(
-        self, search_callable, params: dict[str, Any]
-    ) -> dict[str, Any]:
+    def _execute_search_with_retry(self, search_callable, params: dict[str, Any]) -> dict[str, Any]:
         last_exc: BaseException | None = None
 
         for attempt in range(1, self.retry_max_attempts + 1):
@@ -137,10 +125,7 @@ class SerpApiSeeker(BaseSeekerConnector):
                 return search_callable(params)
             except Exception as exc:
                 last_exc = exc
-                if (
-                    attempt >= self.retry_max_attempts
-                    or not self._is_transient_search_error(exc)
-                ):
+                if attempt >= self.retry_max_attempts or not self._is_transient_search_error(exc):
                     raise
                 delay = self._backoff_for_attempt(attempt + 1)
                 if delay > 0:
@@ -159,7 +144,8 @@ class SerpApiSeeker(BaseSeekerConnector):
         """Verify SerpApi credentials are explicitly configured."""
         if not self.api_key:
             raise ValueError(
-                "SerpApi connector requires the SERPAPI_API_KEY environment variable or api_key parameter."
+                "SerpApi connector requires the SERPAPI_API_KEY "
+                "environment variable or api_key parameter."
             )
 
     def discover(self, seeker_input: SeekerInput) -> list[dict[str, Any]]:
@@ -175,9 +161,7 @@ class SerpApiSeeker(BaseSeekerConnector):
         """
         rendered_queries = resolve_search_queries(seeker_input)
         if not rendered_queries:
-            raise ValueError(
-                "No search query could be rendered from the configured templates."
-            )
+            raise ValueError("No search query could be rendered from the configured templates.")
 
         search_callable = self._build_search_callable()
 
@@ -185,15 +169,11 @@ class SerpApiSeeker(BaseSeekerConnector):
         timeout_errors: list[str] = []
         for rendered_query in rendered_queries:
             try:
-                params = self._build_search_params(
-                    seeker_input, rendered_query
-                )
+                params = self._build_search_params(seeker_input, rendered_query)
                 results = self._cache_get(params)
                 cache_hit = results is not None
                 if results is None:
-                    results = self._execute_search_with_retry(
-                        search_callable, params
-                    )
+                    results = self._execute_search_with_retry(search_callable, params)
                 self._validate_response(results)
                 if not cache_hit:
                     self._cache_put(params, results)
@@ -201,17 +181,14 @@ class SerpApiSeeker(BaseSeekerConnector):
                 sanitized_message = self._sanitize_error_message(str(exc))
                 if _is_search_timeout(exc):
                     timeout_errors.append(
-                        f"SerpApi search failed for query '{rendered_query}': "
-                        f"{sanitized_message}"
+                        f"SerpApi search failed for query '{rendered_query}': {sanitized_message}"
                     )
                     continue
                 raise RuntimeError(
                     f"SerpApi search failed for query '{rendered_query}': {sanitized_message}"
                 ) from exc
 
-            normalized = self._normalize_results(
-                results, rendered_query, str(params["engine"])
-            )
+            normalized = self._normalize_results(results, rendered_query, str(params["engine"]))
             per_query: dict[str, dict[str, Any]] = {}
             for candidate in normalized:
                 per_query.setdefault(candidate["url"], candidate)
@@ -344,16 +321,14 @@ class SerpApiSeeker(BaseSeekerConnector):
 
     @staticmethod
     def _build_search_params(
-        seeker_input: SeekerInput, rendered_query: str,
+        seeker_input: SeekerInput,
+        rendered_query: str,
     ) -> dict[str, Any]:
         """Build SerpApi params; ``search.params`` may not override reserved keys."""
         extra = seeker_input.params or {}
         reserved = RESERVED_SEARCH_PARAMS.intersection(extra)
         if reserved:
-            msg = (
-                "SerpApi reserved parameters cannot be overridden: "
-                + ", ".join(sorted(reserved))
-            )
+            msg = "SerpApi reserved parameters cannot be overridden: " + ", ".join(sorted(reserved))
             raise ValueError(msg)
         return {
             "engine": "google",
@@ -399,9 +374,7 @@ class SerpApiSeeker(BaseSeekerConnector):
         if not engine.endswith("_news"):
             news_source += "_news"
         candidates.extend(
-            SerpApiSeeker._normalize_news_results(
-                serpapi_response, query, news_source
-            )
+            SerpApiSeeker._normalize_news_results(serpapi_response, query, news_source)
         )
 
         return candidates
@@ -506,9 +479,7 @@ def render_query_template(template: str, context: dict[str, Any]) -> str:
         if value is None or not str(value).strip():
             if match.group(2):
                 return ""
-            raise ValueError(
-                f"Missing required template token: {match.group(1)}"
-            )
+            raise ValueError(f"Missing required template token: {match.group(1)}")
         return str(value).strip()
 
     rendered = _TEMPLATE_TOKEN.sub(replace_token, template)

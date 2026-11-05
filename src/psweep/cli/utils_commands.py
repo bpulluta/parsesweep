@@ -15,7 +15,6 @@ For core workflow commands (extract, compile), see commands.py
 import json
 import os
 from pathlib import Path
-from typing import Optional
 
 import click
 from dotenv import load_dotenv
@@ -76,25 +75,22 @@ def _cli_repo_root() -> Path:
     is_flag=True,
     help="Prompt for missing starter-schema values",
 )
-@click.option(
-    "--name", "schema_name", help="Base schema name (used for the output file)"
-)
+@click.option("--name", "schema_name", help="Base schema name (used for the output file)")
 @click.option(
     "--reference-schema",
     type=click.Path(exists=True),
     help="Existing schema file used as the closest reference for a lean starter",
 )
-@click.option(
-    "--domain", "domain_name", help="Override the metadata domain label"
-)
-@click.option(
-    "--document-type", help="Override the human-readable document type"
-)
+@click.option("--domain", "domain_name", help="Override the metadata domain label")
+@click.option("--document-type", help="Override the human-readable document type")
 @click.option(
     "--include-field",
     "include_fields",
     multiple=True,
-    help="Limit the starter schema to these main-array item fields; repeat the option to keep multiple fields",
+    help=(
+        "Limit the starter schema to these main-array item "
+        "fields; repeat the option to keep multiple fields"
+    ),
 )
 @click.option(
     "--output",
@@ -115,12 +111,12 @@ def _cli_repo_root() -> Path:
 )
 def init_domain_schema_cmd(
     interactive: bool,
-    schema_name: Optional[str],
-    reference_schema: Optional[str],
-    domain_name: Optional[str],
-    document_type: Optional[str],
+    schema_name: str | None,
+    reference_schema: str | None,
+    domain_name: str | None,
+    document_type: str | None,
     include_fields: tuple[str, ...],
-    output: Optional[str],
+    output: str | None,
     force: bool,
     report_format: str,
 ):
@@ -142,24 +138,24 @@ def init_domain_schema_cmd(
 
         if interactive:
             section("Interactive Domain Schema Setup")
-            console.print(
-                "Answer the prompts to create a lean starter schema.\n"
-            )
+            console.print("Answer the prompts to create a lean starter schema.\n")
 
         if interactive and not schema_name:
             schema_name = ask_text("Schema name")
         if interactive and not reference_schema:
             reference_schema = ask_text("Reference schema path")
-        if interactive and document_type is None:
-            if ask_confirm(
-                "Override the reference document type?", default=False
-            ):
-                document_type = ask_text("Document type")
-        if interactive and domain_name is None:
-            if ask_confirm(
-                "Override the reference domain label?", default=False
-            ):
-                domain_name = ask_text("Domain label")
+        if (
+            interactive
+            and document_type is None
+            and ask_confirm("Override the reference document type?", default=False)
+        ):
+            document_type = ask_text("Document type")
+        if (
+            interactive
+            and domain_name is None
+            and ask_confirm("Override the reference domain label?", default=False)
+        ):
+            domain_name = ask_text("Domain label")
 
         if not schema_name:
             raise ConfigValidationError(
@@ -171,9 +167,7 @@ def init_domain_schema_cmd(
             )
 
         output_path = (
-            Path(output).resolve()
-            if output
-            else default_schema_output_path(repo_root, schema_name)
+            Path(output).resolve() if output else default_schema_output_path(repo_root, schema_name)
         )
         reference_schema_path = Path(reference_schema).resolve()
         selected_fields = list(include_fields)
@@ -195,12 +189,8 @@ def init_domain_schema_cmd(
                 "schema_path": output_path.as_posix(),
                 "reference_schema": reference_schema_path.as_posix(),
                 "domain": schema_data["$metadata"]["domain"],
-                "document_type": schema_data["$metadata"]["extraction"][
-                    "document_type"
-                ],
-                "main_data_array": schema_data["$metadata"]["extraction"][
-                    "main_data_array"
-                ],
+                "document_type": schema_data["$metadata"]["extraction"]["document_type"],
+                "main_data_array": schema_data["$metadata"]["extraction"]["main_data_array"],
                 "selected_fields": main_item_fields,
                 "interactive": interactive,
                 "force": force,
@@ -208,7 +198,9 @@ def init_domain_schema_cmd(
             "next_steps": [
                 {
                     "title": "Validate starter schema",
-                    "command": f"pixi run psweep check-schema {display_cli_path(output_path, repo_root)}",
+                    "command": (
+                        f"pixi run psweep check-schema {display_cli_path(output_path, repo_root)}"
+                    ),
                 },
                 {
                     "title": "Create runtime config from template",
@@ -233,21 +225,14 @@ def init_domain_schema_cmd(
                     "Schema Path": output_path.as_posix(),
                     "Reference Schema": reference_schema_path.as_posix(),
                     "Domain": schema_data["$metadata"]["domain"],
-                    "Document Type": schema_data["$metadata"]["extraction"][
-                        "document_type"
-                    ],
-                    "Main Data Array": schema_data["$metadata"]["extraction"][
-                        "main_data_array"
-                    ],
+                    "Document Type": schema_data["$metadata"]["extraction"]["document_type"],
+                    "Main Data Array": schema_data["$metadata"]["extraction"]["main_data_array"],
                     "Selected Fields": ", ".join(main_item_fields),
                 }
             )
         )
         print_next_steps(
-            [
-                f'{step["title"]}\n     {step["command"]}'
-                for step in result["next_steps"]
-            ]
+            [f"{step['title']}\n     {step['command']}" for step in result["next_steps"]]
         )
         console.print()
     except ConfigValidationError as exc:
@@ -268,7 +253,7 @@ def init_domain_schema_cmd(
         else:
             print_header("Init Domain Schema")
             print_error("Schema scaffold failed", str(exc))
-        raise click.exceptions.Exit(1)
+        raise click.exceptions.Exit(1) from None
 
 
 @click.command()
@@ -292,19 +277,16 @@ def init():
 
     # Check if .env already exists
     env_path = Path.cwd() / ".env"
-    if env_path.exists():
-        if not ask_confirm(
-            f".env file already exists at {env_path}. Overwrite?",
-            default=False,
-        ):
-            print_info("Keeping existing .env file")
-            return
+    if env_path.exists() and not ask_confirm(
+        f".env file already exists at {env_path}. Overwrite?",
+        default=False,
+    ):
+        print_info("Keeping existing .env file")
+        return
 
     # API Provider Selection
     section("Step 1: API Configuration")
-    provider = ask_choice(
-        "Select API provider", choices=["azure", "openai"], default="azure"
-    )
+    provider = ask_choice("Select API provider", choices=["azure", "openai"], default="azure")
 
     env_content = []
 
@@ -334,8 +316,7 @@ def init():
         ]
 
     # Write .env file
-    with open(env_path, "w") as f:
-        f.write("\n".join(env_content) + "\n")
+    Path(env_path).write_text("\n".join(env_content) + "\n", encoding="utf-8")
 
     print_success(f"Created .env file at {env_path}")
 
@@ -355,9 +336,7 @@ def init():
     docs_dir.mkdir(parents=True, exist_ok=True)
 
     print_success("Created directory structure:")
-    console.print(
-        create_file_tree(project_root / "documents", "Project Structure")
-    )
+    console.print(create_file_tree(project_root / "documents", "Project Structure"))
 
     section("Step 4: Schema Selection")
 
@@ -379,7 +358,10 @@ def init():
         [
             f"Add your documents to: {docs_dir}",
             f"Run extraction: psweep extract {docs_dir} --schema {schema_path}",
-            f"Compile results: psweep compile {Workspace(doc_type).extracted} --schema {schema_path}",
+            (
+                "Compile results: psweep compile "
+                f"{Workspace(doc_type).extracted} --schema {schema_path}"
+            ),
         ]
     )
     console.print()
@@ -490,15 +472,13 @@ def preview(document_path: str):
         )
         console.print(f"Run: psweep extract {doc_path} --schema {schema_hint}\n")
 
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 - CLI boundary: report analysis failure
         print_error("Failed to analyze document", str(e))
 
 
 @click.command()
 @click.argument("documents_path", type=click.Path(exists=True))
-@click.option(
-    "--workers", "-w", type=int, default=4, help="Number of parallel workers"
-)
+@click.option("--workers", "-w", type=int, default=4, help="Number of parallel workers")
 @click.option(
     "--pages-csv",
     type=click.Path(exists=True),
@@ -564,13 +544,9 @@ def estimate(documents_path: str, workers: int, pages_csv: str):
                 elif doc.name in page_mappings:
                     page_range_map[doc] = page_mappings[doc.name]
 
-            mapped_count = sum(
-                1 for v in page_range_map.values() if v is not None
-            )
-            print_info(
-                f"Loaded page ranges for {mapped_count} file(s) from CSV"
-            )
-        except Exception as e:
+            mapped_count = sum(1 for v in page_range_map.values() if v is not None)
+            print_info(f"Loaded page ranges for {mapped_count} file(s) from CSV")
+        except Exception as e:  # noqa: BLE001 - CLI boundary: report CSV load failure
             print_error(f"Failed to load page ranges CSV: {e}")
             return
 
@@ -583,7 +559,7 @@ def estimate(documents_path: str, workers: int, pages_csv: str):
             page_range = page_range_map.get(doc) if pages_csv else None
             text = extract_text_from_document(doc, page_range=page_range)
             total_chars += len(text)
-        except Exception:
+        except Exception:  # noqa: BLE001, S110 - unreadable sample documents are skipped
             pass
 
     if total_chars == 0:
@@ -596,9 +572,7 @@ def estimate(documents_path: str, workers: int, pages_csv: str):
     config = get_config()
     model_name = config.llm_config.get("model", DEFAULT_MODEL)
 
-    est = estimate_extraction_cost(
-        estimated_total_chars, model_name, workers=workers
-    )
+    est = estimate_extraction_cost(estimated_total_chars, model_name, workers=workers)
     estimated_tokens = est.input_tokens
     estimated_minutes = est.estimated_minutes
 
@@ -613,13 +587,9 @@ def estimate(documents_path: str, workers: int, pages_csv: str):
 
     # Add page range info if applicable
     if pages_csv and page_range_map:
-        files_with_ranges = sum(
-            1 for v in page_range_map.values() if v is not None
-        )
+        files_with_ranges = sum(1 for v in page_range_map.values() if v is not None)
         if files_with_ranges > 0:
-            doc_info["Page Ranges"] = (
-                f"{files_with_ranges} file(s) with specific ranges"
-            )
+            doc_info["Page Ranges"] = f"{files_with_ranges} file(s) with specific ranges"
 
     doc_table = key_values(doc_info)
     console.print(doc_table)
@@ -675,7 +645,7 @@ def check_schema_cmd(schema_path: str):
 
     # Load schema
     try:
-        with open(schema_file) as f:
+        with Path(schema_file).open(encoding="utf-8") as f:
             schema = json.load(f)
         print_success("Valid JSON syntax")
     except json.JSONDecodeError as e:
@@ -708,19 +678,13 @@ def check_schema_cmd(schema_path: str):
     if "$metadata" in schema:
         metadata = schema["$metadata"]
         extraction_metadata = (
-            metadata.get("extraction")
-            if isinstance(metadata.get("extraction"), dict)
-            else {}
+            metadata.get("extraction") if isinstance(metadata.get("extraction"), dict) else {}
         )
         identity_metadata = (
-            metadata.get("identity")
-            if isinstance(metadata.get("identity"), dict)
-            else {}
+            metadata.get("identity") if isinstance(metadata.get("identity"), dict) else {}
         )
         compilation_metadata = (
-            metadata.get("compilation")
-            if isinstance(metadata.get("compilation"), dict)
-            else {}
+            metadata.get("compilation") if isinstance(metadata.get("compilation"), dict) else {}
         )
         deduplication_metadata = (
             identity_metadata.get("deduplication")
@@ -734,7 +698,8 @@ def check_schema_cmd(schema_path: str):
             status_item("info", f"Main data array: {main_array}")
         else:
             warnings.append(
-                "$metadata.extraction missing 'main_data_array' (required for extraction row generation)"
+                "$metadata.extraction missing 'main_data_array' "
+                "(required for extraction row generation)"
             )
 
         if deduplication_metadata:
@@ -747,32 +712,32 @@ def check_schema_cmd(schema_path: str):
             else:
                 status_item("info", "Deduplication configured")
         else:
-            status_item(
-                "info", "No deduplication config (optional in starter schemas)"
-            )
+            status_item("info", "No deduplication config (optional in starter schemas)")
 
         if isinstance(compilation_metadata.get("deduplication"), dict):
             issues.append(
-                "$metadata.compilation.deduplication is deprecated; move it to $metadata.identity.deduplication"
+                "$metadata.compilation.deduplication is deprecated; "
+                "move it to $metadata.identity.deduplication"
             )
 
         # Enforce a clean ownership boundary to reduce user confusion.
         if isinstance(compilation_metadata.get("output"), dict):
             warnings.append(
-                "$metadata.compilation.output is runtime-owned and should be moved to config/<domain>/run.yaml under compilation.output"
+                "$metadata.compilation.output is runtime-owned and should be "
+                "moved to config/<domain>/run.yaml under compilation.output"
             )
         if isinstance(compilation_metadata.get("normalization"), dict):
             warnings.append(
-                "$metadata.compilation.normalization is runtime-owned and should be moved to config/<domain>/run.yaml under compilation.normalization"
+                "$metadata.compilation.normalization is runtime-owned and should be "
+                "moved to config/<domain>/run.yaml under compilation.normalization"
             )
         if isinstance(compilation_metadata.get("value_typing"), dict):
             warnings.append(
-                "$metadata.compilation.value_typing is deprecated; keep vocabularies in schema properties[*].enum"
+                "$metadata.compilation.value_typing is deprecated; "
+                "keep vocabularies in schema properties[*].enum"
             )
     else:
-        issues.append(
-            "Missing $metadata section (required for the modernized runtime)"
-        )
+        issues.append("Missing $metadata section (required for the modernized runtime)")
 
     # Summary
     rule()
@@ -889,9 +854,7 @@ def config(show_runtime_catalog: bool, output_format: str):
             section(section_name.title())
             grouped = {"required": [], "optional": [], "advanced": []}
             for entry in entries:
-                grouped.setdefault(entry.get("level", "optional"), []).append(
-                    entry
-                )
+                grouped.setdefault(entry.get("level", "optional"), []).append(entry)
 
             for level in ("required", "optional", "advanced"):
                 level_entries = grouped.get(level) or []

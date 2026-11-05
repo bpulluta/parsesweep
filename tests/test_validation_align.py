@@ -268,11 +268,11 @@ def test_reference_headers(tmp_path, caplog):
         cols = check(["State", "AHJ Name", "Online Permitting", "fee", "note", "extra"])
     assert cols.unscored == {"h": ("fee",)}
     assert "Permit Fee" in caplog.text
-    with pytest.raises(ValueError, match="missing key column.*AHJ Name"):
+    with pytest.raises(ValueError, match=r"missing key column.*AHJ Name"):
         check(["State", "ahj", "Online Permitting"])
     with pytest.raises(ValueError, match="no focus column"):
         check(["State", "AHJ Name", "Permit Fee"], fields=["online"])
-    with pytest.raises(ValueError, match="repeated header.*Permit Fee"):
+    with pytest.raises(ValueError, match=r"repeated header.*Permit Fee"):
         check(["State", "AHJ Name", "Permit Fee", "Permit Fee"])
     with pytest.raises(ValueError, match="duplicate roster target"):
         check(
@@ -627,7 +627,7 @@ def test_staging_connection_accepts_writes_while_streaming(tmp_path):
 def test_missing_contender_column_is_an_error(tmp_path):
     metadata = _metadata(tmp_path)
     p = _rows_table(tmp_path, "P", [_rule("lot", "minimum")], header=HEADER[:-1])
-    with pytest.raises(ValueError, match="P: missing column.*source_verbatim"):
+    with pytest.raises(ValueError, match=r"P: missing column.*source_verbatim"):
         _align(metadata, [p])
 
 
@@ -718,7 +718,7 @@ def test_roster_contenders_must_align_in_lockstep(tmp_path):
         _table(tmp_path / "A.csv", ROSTER_HEADER, [rows[1], rows[0], rows[2]]),
         None,
     )
-    with pytest.raises(ValueError, match="A: row 1 is .*Pima County.*recompile"):
+    with pytest.raises(ValueError, match=r"A: row 1 is .*Pima County.*recompile"):
         _align(metadata, [p, swapped], roster=roster, key_fields=(), quote_field=None)
     short = Source("B", "challenger", _table(tmp_path / "B.csv", ROSTER_HEADER, rows[:2]), None)
     with pytest.raises(ValueError, match="B: fewer rows than the roster's 3 targets"):

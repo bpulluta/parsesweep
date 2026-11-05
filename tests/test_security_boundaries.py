@@ -38,14 +38,10 @@ def test_protected_input_path_alias_stays_inside_workspace(tmp_path, monkeypatch
         "http://user:password@example.org/document",
     ],
 )
-def test_nonpublic_or_credential_url_is_rejected_before_connection(
-    url, monkeypatch
-):
+def test_nonpublic_or_credential_url_is_rejected_before_connection(url, monkeypatch):
     """Untrusted URLs must never reach a socket."""
     calls = []
-    monkeypatch.setattr(
-        socket.socket, "connect", lambda *args: calls.append(args)
-    )
+    monkeypatch.setattr(socket.socket, "connect", lambda *args: calls.append(args))
     with pytest.raises(NetworkPolicyError):
         send_get(url, timeout=0.1)
     assert calls == []
@@ -72,7 +68,9 @@ def test_insecure_tls_environment_fails_closed_in_protected_mode(monkeypatch, va
         DiscoveryEngine._downloads_ssl_verify()
 
 
-@pytest.mark.parametrize("setting", ["DISCOVERY_SSL_VERIFY", "SERPAPI_SSL_VERIFY", "PSWEEP_SSL_VERIFY"])
+@pytest.mark.parametrize(
+    "setting", ["DISCOVERY_SSL_VERIFY", "SERPAPI_SSL_VERIFY", "PSWEEP_SSL_VERIFY"]
+)
 def test_public_tls_opt_out_is_explicit_and_warns(monkeypatch, setting):
     from psweep.security import resolve_tls_verification
 
@@ -81,7 +79,9 @@ def test_public_tls_opt_out_is_explicit_and_warns(monkeypatch, setting):
         assert resolve_tls_verification(setting) is False
 
 
-@pytest.mark.parametrize("setting", ["DISCOVERY_SSL_VERIFY", "SERPAPI_SSL_VERIFY", "PSWEEP_SSL_VERIFY"])
+@pytest.mark.parametrize(
+    "setting", ["DISCOVERY_SSL_VERIFY", "SERPAPI_SSL_VERIFY", "PSWEEP_SSL_VERIFY"]
+)
 def test_protected_tls_rejects_even_overridden_or_other_stage_opt_out(monkeypatch, setting):
     from psweep.security import resolve_tls_verification
 
@@ -104,12 +104,8 @@ def test_tls_setting_precedence_and_invalid_values(monkeypatch):
         resolve_tls_verification("DISCOVERY_SSL_VERIFY")
 
 
-@pytest.mark.parametrize(
-    "value", ["=1+1", "+SUM(1,1)", "-SUM(1,1)", "@SUM(1,1)", "\t=1+1"]
-)
-def test_spreadsheet_strings_are_literal_and_numbers_remain_numeric(
-    tmp_path, value
-):
+@pytest.mark.parametrize("value", ["=1+1", "+SUM(1,1)", "-SUM(1,1)", "@SUM(1,1)", "\t=1+1"])
+def test_spreadsheet_strings_are_literal_and_numbers_remain_numeric(tmp_path, value):
     """Both display formats must treat untrusted formulas as evidence."""
     frame = pd.DataFrame({value: [value], "numeric": [-42]})
     xlsx = tmp_path / "evidence.xlsx"
@@ -193,12 +189,8 @@ def test_validated_sockaddr_is_used_without_second_dns_lookup(monkeypatch):
 
 
 @pytest.mark.parametrize("mode", ["warn", "enforce"])
-@pytest.mark.parametrize(
-    "target", ["http://127.0.0.1/private", "https://outside.example/private"]
-)
-def test_robots_redirect_denial_is_not_downgraded_to_warning(
-    monkeypatch, mode, target
-):
+@pytest.mark.parametrize("target", ["http://127.0.0.1/private", "https://outside.example/private"])
+def test_robots_redirect_denial_is_not_downgraded_to_warning(monkeypatch, mode, target):
     """Robots rules cannot bypass destination or configured source restrictions."""
     from types import SimpleNamespace
 
@@ -240,9 +232,7 @@ def test_decoded_response_limit_closes_stream():
         cookies={},
         close=Mock(),
     )
-    response = BoundedResponse(
-        source, max_bytes=6, deadline=time.monotonic() + 10
-    )
+    response = BoundedResponse(source, max_bytes=6, deadline=time.monotonic() + 10)
     with pytest.raises(NetworkPolicyError, match="byte limit"):
         list(response.iter_content())
     source.close.assert_called_once()
@@ -280,8 +270,13 @@ def _stream(monkeypatch, reads, *, stream, **options):
     url = "https://example.org/file"
     patch_socket_stream(monkeypatch, {url: reads})
     response = request_get(
-        url, headers={}, timeout=10, verify=True,
-        stream=stream, allow_redirects=False, **options,
+        url,
+        headers={},
+        timeout=10,
+        verify=True,
+        stream=stream,
+        allow_redirects=False,
+        **options,
     )
     return sum(len(chunk) for chunk in response.iter_content())
 
@@ -326,9 +321,7 @@ def test_file_download_aborts_only_when_bytes_stop_arriving(monkeypatch):
     "endpoint",
     [None, "http://approved.example/v1", "https://other.example/v1"],
 )
-def test_protected_model_requires_exact_approved_https_endpoint(
-    monkeypatch, endpoint
-):
+def test_protected_model_requires_exact_approved_https_endpoint(monkeypatch, endpoint):
     from psweep.extraction.llm_client import LLMClient
 
     monkeypatch.setenv("PSWEEP_SECURITY_MODE", "protected")
@@ -338,9 +331,7 @@ def test_protected_model_requires_exact_approved_https_endpoint(
 
 
 @pytest.mark.parametrize("mode", ["public", "protected"])
-def test_browser_requires_external_isolation_and_is_never_protected(
-    monkeypatch, mode
-):
+def test_browser_requires_external_isolation_and_is_never_protected(monkeypatch, mode):
     from psweep.discovery.browser import (
         BrowserSession,
         BrowserUnavailableError,
@@ -351,9 +342,7 @@ def test_browser_requires_external_isolation_and_is_never_protected(
         monkeypatch.setenv("PSWEEP_BROWSER_ISOLATED", "1")
     else:
         monkeypatch.delenv("PSWEEP_BROWSER_ISOLATED", raising=False)
-    with pytest.raises(
-        BrowserUnavailableError, match="externally network-isolated"
-    ):
+    with pytest.raises(BrowserUnavailableError, match="externally network-isolated"):
         BrowserSession()._start()
 
 
@@ -371,27 +360,22 @@ def test_model_clients_do_not_mutate_shared_credentials(monkeypatch):
     assert os.environ["OPENAI_BASE_URL"] == "https://ambient.example/v1"
 
 
-def test_provider_failures_never_log_credentials_or_document_content(
-    monkeypatch, caplog
-):
+def test_provider_failures_never_log_credentials_or_document_content(monkeypatch, caplog):
     import logging
     from psweep.extraction.llm_client import LLMClient
     from psweep.exceptions import ExtractionError
 
-    secret = "synthetic-secret-document-and-key"
+    secret = "synthetic-secret-document-and-key"  # noqa: S105 - synthetic test value
 
     def fail(**_kwargs):
         raise RuntimeError(secret)
 
     monkeypatch.setattr("psweep.extraction.llm_client.completion", fail)
-    with caplog.at_level(logging.DEBUG):
-        with pytest.raises(ExtractionError) as caught:
-            LLMClient(
-                model="synthetic", base_url="https://approved.example/v1"
-            ).extract(
-                secret,
-                {"type": "object"},
-            )
+    with caplog.at_level(logging.DEBUG), pytest.raises(ExtractionError) as caught:
+        LLMClient(model="synthetic", base_url="https://approved.example/v1").extract(
+            secret,
+            {"type": "object"},
+        )
     assert secret not in caplog.text
     assert secret not in str(caught.value)
     assert caught.value.__suppress_context__
@@ -409,7 +393,6 @@ def test_publication_lock_never_modifies_linked_files(tmp_path, kind):
         lock.symlink_to(original)
     else:
         lock.hardlink_to(original)
-    with pytest.raises(ValueError, match="Unsafe publication lock"):
-        with publication_lock(lock):
-            pytest.fail("A linked data file must not become a lock")
+    with pytest.raises(ValueError, match="Unsafe publication lock"), publication_lock(lock):
+        pytest.fail("A linked data file must not become a lock")
     assert original.read_text() == "KEEP ORIGINAL BYTES"

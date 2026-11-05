@@ -2,7 +2,7 @@
 
 import logging
 import re
-from typing import Any, Dict, List
+from typing import Any
 
 import pandas as pd
 
@@ -33,7 +33,7 @@ def _normalize_field_name_for_matching(value: str) -> str:
     return " ".join(collapsed_tokens)
 
 
-def get_nested_value(obj: Dict[str, Any], dot_path: str) -> Any:
+def get_nested_value(obj: dict[str, Any], dot_path: str) -> Any:
     """
     Get value from nested dictionary using dot-notation path.
 
@@ -77,10 +77,10 @@ def get_nested_value(obj: Dict[str, Any], dot_path: str) -> Any:
 
 def map_key_fields_to_columns(
     df: pd.DataFrame,
-    key_fields: List[str],
+    key_fields: list[str],
     *,
     warn_on_missing: bool = True,
-) -> List[str]:
+) -> list[str]:
     """
     Map schema key_fields to actual DataFrame columns.
 
@@ -111,9 +111,7 @@ def map_key_fields_to_columns(
     mapped_cols = []
 
     # Normalize each DataFrame column once, not once per key field.
-    normalized_columns = [
-        (col, _normalize_field_name_for_matching(col)) for col in df.columns
-    ]
+    normalized_columns = [(col, _normalize_field_name_for_matching(col)) for col in df.columns]
 
     for key_field in key_fields:
         if key_field in df.columns:
@@ -134,8 +132,6 @@ def map_key_fields_to_columns(
         if matching_col:
             mapped_cols.append(matching_col)
         elif warn_on_missing:
-            logger.warning(
-                f"Key field '{key_field}' not found in DataFrame columns"
-            )
+            logger.warning("Key field '%s' not found in DataFrame columns", key_field)
 
     return mapped_cols

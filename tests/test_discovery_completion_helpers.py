@@ -1,6 +1,6 @@
 """Completion helpers preserve whole-target and publication boundaries."""
 
-from datetime import datetime, timezone
+from datetime import datetime, UTC
 from unittest.mock import Mock
 
 import pytest
@@ -27,9 +27,7 @@ def _request(tmp_path, **changes):
 
 def _paths(tmp_path, request):
     run = tmp_path / "domain/runs/current"
-    return resolve_publication_paths(
-        run / "documents", run / "manifest.json", request.domain
-    )
+    return resolve_publication_paths(run / "documents", run / "manifest.json", request.domain)
 
 
 @pytest.mark.parametrize("retryable", [True, False])
@@ -43,13 +41,17 @@ def test_only_retryable_failures_block_completion(tmp_path, retryable):
         request=request,
         download_records=[
             {"status": "downloaded", "target_id": "first", "target_metadata": first},
-            {"status": "failed", "retryable": retryable, "target_id": "second",
-             "target_metadata": second},
+            {
+                "status": "failed",
+                "retryable": retryable,
+                "target_id": "second",
+                "target_metadata": second,
+            },
         ],
         incomplete_keys=set(),
         blocked=blocked,
         run_id="current",
-        started_at=datetime.now(timezone.utc),
+        started_at=datetime.now(UTC),
     )
     if retryable:
         assert not entries
@@ -57,7 +59,8 @@ def test_only_retryable_failures_block_completion(tmp_path, retryable):
     else:
         assert not blocked
         assert {k: v["download_count"] for k, v in entries.items()} == {
-            "first": 1, "second": 0,
+            "first": 1,
+            "second": 0,
         }
 
 
@@ -77,15 +80,17 @@ def test_empty_completion_excludes_incomplete_and_attempted_targets(tmp_path):
             }
             for index in range(len(targets))
         ],
-        download_records=[{
-            "status": "failed",
-            "target_id": identify_target(targets[1]),
-            "target_metadata": targets[1],
-        }],
+        download_records=[
+            {
+                "status": "failed",
+                "target_id": identify_target(targets[1]),
+                "target_metadata": targets[1],
+            }
+        ],
         incomplete_keys={identify_target(targets[2])},
         entries=entries,
         run_id="current",
-        started_at=datetime.now(timezone.utc),
+        started_at=datetime.now(UTC),
     )
     assert set(entries) == {identify_target(targets[0])}
     assert next(iter(entries.values()))["outcome"] == "empty"
@@ -104,23 +109,17 @@ def test_reuse_preview_does_not_render_or_write_artifacts(tmp_path):
         download_records=[],
         errors=[],
         empty_parts=set(),
-        completed_entries={
-            "target": {"curated_paths": {"old/document.pdf": "hash"}}
-        },
+        completed_entries={"target": {"curated_paths": {"old/document.pdf": "hash"}}},
         all_reused=True,
     )
     assert result.status == "reused"
     assert result.curated_count == 1
     assert result.curated_dir == paths.domain_dir / "curated"
-    assert result.download_index_path == (
-        paths.domain_dir / "download_index.csv"
-    )
+    assert result.download_index_path == (paths.domain_dir / "download_index.csv")
     assert not list(tmp_path.iterdir())
 
 
-def test_publication_failure_occurs_before_final_metadata_writes(
-    monkeypatch, tmp_path
-):
+def test_publication_failure_occurs_before_final_metadata_writes(monkeypatch, tmp_path):
     """Rendered indexes and outcome metadata share one transaction."""
     request = _request(tmp_path)
     paths = _paths(tmp_path, request)
@@ -140,16 +139,14 @@ def test_publication_failure_occurs_before_final_metadata_writes(
     manifest = DiscoveryManifest(
         run_id="current",
         status=result.status,
-        started_at=datetime.now(timezone.utc).isoformat(),
+        started_at=datetime.now(UTC).isoformat(),
         input={},
         constraints={},
         lineage={"download_index_csv": str(result.download_index_path)},
         downloads=records,
     )
     publish = Mock(side_effect=OSError("publication failed"))
-    monkeypatch.setattr(
-        "psweep.discovery.engine.publish_manual_curation", publish
-    )
+    monkeypatch.setattr("psweep.discovery.engine.publish_manual_curation", publish)
     with pytest.raises(OSError, match="publication failed"):
         engine._publish_completion(
             request=request,
@@ -168,6 +165,4 @@ def test_publication_failure_occurs_before_final_metadata_writes(
     assert paths.manifest_path in metadata
     assert paths.manifest_path.parent / "outcomes/current.json" in metadata
     # Only the publication lock exists; no metadata was written.
-    assert [p.name for p in tmp_path.rglob("*") if p.is_file()] == [
-        ".discovery-publication.lock"
-    ]
+    assert [p.name for p in tmp_path.rglob("*") if p.is_file()] == [".discovery-publication.lock"]

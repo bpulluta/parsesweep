@@ -32,7 +32,6 @@ class PolicyCheckResult:
 class DiscoveryPolicyEvaluator:
     """Evaluate robots.txt and manual ToS acknowledgement policy controls."""
 
-
     def __init__(self) -> None:
         self._robots_cache: dict[
             tuple[str, str, bool], tuple[RobotFileParser | None, Exception | None]
@@ -59,10 +58,7 @@ class DiscoveryPolicyEvaluator:
         host_lower = (host or "").strip().lower()
         if not host_lower:
             return False
-        return any(
-            host_lower == domain or host_lower.endswith("." + domain)
-            for domain in domains
-        )
+        return any(host_lower == domain or host_lower.endswith("." + domain) for domain in domains)
 
     def _load_robots_parser(
         self,
@@ -99,8 +95,7 @@ class DiscoveryPolicyEvaluator:
                 robots_url,
                 timeout=timeout_seconds,
                 verify=ssl_verify,
-                headers=request_headers
-                or {"User-Agent": USER_AGENT},
+                headers=request_headers or {"User-Agent": USER_AGENT},
                 limiter=rate_limiter,
                 raise_for_status=False,
                 gate=source_gate,
@@ -118,12 +113,13 @@ class DiscoveryPolicyEvaluator:
             parser.parse((getattr(response, "text", "") or "").splitlines())
             result = (parser, None)
             self._robots_cache[cache_key] = result
-            return result
         except NetworkPolicyError:
             raise
         except Exception as exc:  # noqa: BLE001 - record unavailable robots rules
             result = (None, exc)
             self._robots_cache[cache_key] = result
+            return result
+        else:
             return result
         finally:
             if response is not None:
@@ -176,9 +172,7 @@ class DiscoveryPolicyEvaluator:
         host = (parsed.hostname or "").strip().lower()
 
         normalized_tos_mode = self._normalize_mode(tos_policy_mode)
-        normalized_ack_domains = self._normalize_domains(
-            acknowledged_tos_domains
-        )
+        normalized_ack_domains = self._normalize_domains(acknowledged_tos_domains)
         if normalized_tos_mode != "ignore" and not self._host_matches_domains(
             host, normalized_ack_domains
         ):

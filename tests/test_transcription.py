@@ -56,14 +56,8 @@ LLM = {
 
 def _response(text="hello", finish="stop", usage=(1500, 170)):
     return SimpleNamespace(
-        choices=[
-            SimpleNamespace(
-                finish_reason=finish, message=SimpleNamespace(content=text)
-            )
-        ],
-        usage=SimpleNamespace(
-            prompt_tokens=usage[0], completion_tokens=usage[1]
-        ),
+        choices=[SimpleNamespace(finish_reason=finish, message=SimpleNamespace(content=text))],
+        usage=SimpleNamespace(prompt_tokens=usage[0], completion_tokens=usage[1]),
     )
 
 
@@ -82,9 +76,7 @@ def chunked(monkeypatch):
     """Replace ffmpeg: an envelope of ``seconds`` and one file per chunk."""
 
     def install(seconds: float):
-        monkeypatch.setattr(
-            transcription, "_envelope", lambda _src: _levels(seconds)
-        )
+        monkeypatch.setattr(transcription, "_envelope", lambda _src: _levels(seconds))
 
         def split(_source, starts, workdir):
             paths = []
@@ -214,9 +206,7 @@ def test_split_rejects_a_chunk_count_mismatch(monkeypatch, tmp_path):
 # -------------------------------------------------------------- transcriber
 
 
-def test_chunks_are_sent_as_audio_with_reasoning_off(
-    monkeypatch, tmp_path, chunked, priced
-):
+def test_chunks_are_sent_as_audio_with_reasoning_off(monkeypatch, tmp_path, chunked, priced):
     chunked(650)
     sent = []
 
@@ -225,9 +215,7 @@ def test_chunks_are_sent_as_audio_with_reasoning_off(
         return _response(f" text of {_chunk_name(params)} ")
 
     monkeypatch.setattr(LLMClient, "_complete", complete)
-    text = Transcriber(LLM, max_concurrent=2).transcribe(
-        tmp_path / "a.mp3", tmp_path / ".text"
-    )
+    text = Transcriber(LLM, max_concurrent=2).transcribe(tmp_path / "a.mp3", tmp_path / ".text")
     assert text == ("[00:00:00] text of chunk-0\n\n[00:05:00] text of chunk-1")
     params = sent[0]
     assert params["model"] == "openai/gemini-3.5-flash"
@@ -244,9 +232,7 @@ def test_transcriber_names_its_model():
     assert Transcriber(LLM, max_concurrent=1).model == "gemini-3.5-flash"
 
 
-def test_usage_is_accounted_like_extraction(
-    monkeypatch, tmp_path, chunked, priced
-):
+def test_usage_is_accounted_like_extraction(monkeypatch, tmp_path, chunked, priced):
     chunked(650)
     monkeypatch.setattr(LLMClient, "_complete", lambda *_: _response())
     transcriber = Transcriber(LLM, max_concurrent=2)
@@ -261,9 +247,7 @@ def test_usage_is_accounted_like_extraction(
     }
 
 
-def test_proxy_routes_are_priced_as_the_configured_model(
-    monkeypatch, tmp_path, chunked
-):
+def test_proxy_routes_are_priced_as_the_configured_model(monkeypatch, tmp_path, chunked):
     def unmapped(**_):
         raise litellm.exceptions.NotFoundError("unmapped", "openai", "m")
 
@@ -304,9 +288,7 @@ def test_litellm_map_prices_audio_tokens_for_the_recommended_model():
         completion_tokens=170,
         prompt_tokens_details={"audio_tokens": 1500},
     )
-    prompt, completion = litellm.cost_per_token(
-        model="gemini-3.5-flash", usage_object=usage
-    )
+    prompt, completion = litellm.cost_per_token(model="gemini-3.5-flash", usage_object=usage)
     assert prompt > 0
     assert completion > 0
 
@@ -364,15 +346,11 @@ def test_rate_limits_are_retried(monkeypatch, tmp_path, chunked, priced):
         SimpleNamespace(choices=[], usage=None),
     ],
 )
-def test_truncated_or_empty_responses_fail(
-    monkeypatch, tmp_path, chunked, priced, response
-):
+def test_truncated_or_empty_responses_fail(monkeypatch, tmp_path, chunked, priced, response):
     chunked(60)
     monkeypatch.setattr(LLMClient, "_complete", lambda *_: response)
-    with pytest.raises(TranscriptionError, match="truncated|Empty response"):
-        Transcriber(LLM, max_concurrent=1).transcribe(
-            tmp_path / "a.mp3", tmp_path
-        )
+    with pytest.raises(TranscriptionError, match=r"truncated|Empty response"):
+        Transcriber(LLM, max_concurrent=1).transcribe(tmp_path / "a.mp3", tmp_path)
 
 
 def test_silent_chunks_are_left_out(monkeypatch, tmp_path, chunked, priced):
@@ -380,27 +358,19 @@ def test_silent_chunks_are_left_out(monkeypatch, tmp_path, chunked, priced):
     monkeypatch.setattr(
         LLMClient,
         "_complete",
-        lambda _self, params: _response(
-            "" if _chunk_name(params) == "chunk-0" else "words"
-        ),
+        lambda _self, params: _response("" if _chunk_name(params) == "chunk-0" else "words"),
     )
-    text = Transcriber(LLM, max_concurrent=2).transcribe(
-        tmp_path / "a.mp3", tmp_path
-    )
+    text = Transcriber(LLM, max_concurrent=2).transcribe(tmp_path / "a.mp3", tmp_path)
     assert text == "[00:05:00] words"
 
 
 def test_recordings_without_audio_fail(monkeypatch, tmp_path):
     monkeypatch.setattr(transcription, "_envelope", lambda _src: [])
     with pytest.raises(TranscriptionError, match="no decodable audio"):
-        Transcriber(LLM, max_concurrent=1).transcribe(
-            tmp_path / "a.mp3", tmp_path
-        )
+        Transcriber(LLM, max_concurrent=1).transcribe(tmp_path / "a.mp3", tmp_path)
 
 
-def test_concurrency_is_bounded_across_recordings(
-    monkeypatch, tmp_path, chunked, priced
-):
+def test_concurrency_is_bounded_across_recordings(monkeypatch, tmp_path, chunked, priced):
     chunked(3000)
     lock = threading.Lock()
     state = {"active": 0, "peak": 0}
@@ -477,9 +447,7 @@ def test_transcripts_are_cached_by_source_and_model(recording):
     assert transcript(recording, first) == "spoken words"
     assert transcript(recording, first) == "spoken words"
     assert first.calls == 1
-    assert read_text_cache(recording, return_meta=True)[1]["method"] == (
-        "transcript:m1:v1"
-    )
+    assert read_text_cache(recording, return_meta=True)[1]["method"] == ("transcript:m1:v1")
     changed = FakeTranscriber(model="m2", text="other words")
     assert transcript(recording, changed) == "other words"
     assert changed.calls == 1
@@ -522,9 +490,7 @@ def test_audio_is_a_supported_and_downloadable_document(tmp_path):
     assert MIME_TO_EXTENSION["audio/mpeg"] == ".mp3"
     infer = DiscoveryEngine._infer_extension_from_url_or_mime
     assert infer("https://x.example/files/m4", "audio/mpeg") == ".mp3"
-    assert infer("https://x.example/a.MP3", "application/octet-stream") == (
-        ".mp3"
-    )
+    assert infer("https://x.example/a.MP3", "application/octet-stream") == (".mp3")
     assert infer("https://x.example/a", "audio/x-m4a; q=1") == ".m4a"
 
 
@@ -544,12 +510,8 @@ def _config(tmp_path, extraction, models=None) -> Path:
 
 
 def test_transcription_model_flows_to_extraction(tmp_path):
-    config = load_runtime_config_file(
-        _config(tmp_path, {"transcription_model": "transcribe"})
-    )
-    resolved = resolve_command_config(
-        command="extract", cli_values={}, config_data=config
-    )
+    config = load_runtime_config_file(_config(tmp_path, {"transcription_model": "transcribe"}))
+    resolved = resolve_command_config(command="extract", cli_values={}, config_data=config)
     assert resolved["transcription_model"] == "transcribe"
 
 
@@ -579,15 +541,9 @@ def test_transcription_model_is_validated(tmp_path, extraction, message):
 
 
 def test_misspelled_transcription_key_suggests_the_key(tmp_path):
-    config = load_runtime_config_file(
-        _config(tmp_path, {"transcription_modle": "transcribe"})
-    )
-    with pytest.raises(
-        RuntimeConfigError, match="did you mean 'transcription_model'"
-    ):
-        resolve_command_config(
-            command="extract", cli_values={}, config_data=config
-        )
+    config = load_runtime_config_file(_config(tmp_path, {"transcription_modle": "transcribe"}))
+    with pytest.raises(RuntimeConfigError, match="did you mean 'transcription_model'"):
+        resolve_command_config(command="extract", cli_values={}, config_data=config)
 
 
 # ----------------------------------------------------------------- pipeline
@@ -617,9 +573,7 @@ def test_audio_fingerprint_tracks_transcriber_not_cache(tmp_path, recording):
     assert other[note] == before[note] == plain[note]
 
 
-def test_extraction_reads_transcripts_and_bills_transcription(
-    monkeypatch, tmp_path
-):
+def test_extraction_reads_transcripts_and_bills_transcription(monkeypatch, tmp_path):
     docs = tmp_path / "docs"
     docs.mkdir()
     (docs / "meeting.mp3").write_bytes(b"ID3 fake audio")
@@ -650,9 +604,7 @@ def test_extraction_reads_transcripts_and_bills_transcription(
             seen.append(text)
             return SimpleNamespace(data={"items": [{"name": "a"}]}, cost=0.5)
 
-    fake = FakeTranscriber(
-        model="gemini-3.5-flash", text="[00:00:00] I support the project."
-    )
+    fake = FakeTranscriber(model="gemini-3.5-flash", text="[00:00:00] I support the project.")
     fake.usage = {
         "calls": 3,
         "cost": 0.25,
@@ -661,9 +613,7 @@ def test_extraction_reads_transcripts_and_bills_transcription(
         "unknown_cost_calls": 0,
     }
     monkeypatch.setattr("psweep.extraction.DocumentExtractor", Extractor)
-    monkeypatch.setattr(
-        pipeline.transcription, "build_transcriber", lambda _inputs: fake
-    )
+    monkeypatch.setattr(pipeline.transcription, "build_transcriber", lambda _inputs: fake)
     inputs = {
         "path": str(docs),
         "schema": str(schema),
@@ -677,9 +627,7 @@ def test_extraction_reads_transcripts_and_bills_transcription(
     result = pipeline._execute_extraction(pipeline._prepare_extraction(inputs))
     assert result.successful == 1
     assert seen == ["[00:00:00] I support the project."]
-    manifest = json.loads(
-        next((tmp_path / "out" / "run_manifests").glob("*.json")).read_text()
-    )
+    manifest = json.loads(next((tmp_path / "out" / "run_manifests").glob("*.json")).read_text())
     costs = manifest["costs"]
     assert costs["total_cost_usd"] == pytest.approx(0.75)
     assert costs["llm_calls"] == 4

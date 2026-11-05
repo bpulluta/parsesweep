@@ -20,22 +20,24 @@ def record():
             "url": "https://records.example.org/evidence.pdf",
             "record_kind": "submitted_statement",
         },
-        "comments": [{
-            "state": None,
-            "county": None,
-            "locality": None,
-            "geographic_scope": "unspecified",
-            "geography_quote": None,
-            "project_name": "Example Project",
-            "type": "statement",
-            "date": None,
-            "speaker": None,
-            "sentiment": "not_stated",
-            "summary": "The speaker asks about the project.",
-            "evidence_quote": "When will this project begin?",
-            "evidence_locator": "Page 1",
-            "topics": [],
-        }],
+        "comments": [
+            {
+                "state": None,
+                "county": None,
+                "locality": None,
+                "geographic_scope": "unspecified",
+                "geography_quote": None,
+                "project_name": "Example Project",
+                "type": "statement",
+                "date": None,
+                "speaker": None,
+                "sentiment": "not_stated",
+                "summary": "The speaker asks about the project.",
+                "evidence_quote": "When will this project begin?",
+                "evidence_locator": "Page 1",
+                "topics": [],
+            }
+        ],
     }
 
 
@@ -73,9 +75,7 @@ def test_evidence_contract_rejects_invalid_rows(schema_path, record, field, valu
 
 
 @pytest.mark.parametrize(("scope", "field"), [("county", "county"), ("locality", "locality")])
-def test_evidence_contract_requires_explicit_finer_geography(
-    schema_path, record, scope, field
-):
+def test_evidence_contract_requires_explicit_finer_geography(schema_path, record, scope, field):
     record["comments"][0]["geographic_scope"] = scope
     check = validator(schema_path)
     assert list(check.iter_errors(record))
@@ -107,13 +107,21 @@ def test_source_policy_uses_synthetic_config(tmp_path, url, allowed):
     import yaml
 
     path = tmp_path / "run.yaml"
-    path.write_text(yaml.safe_dump({
-        "domain": "synthetic_evidence",
-        "discovery": {"selection": {"exclude_url_patterns": [
-            r"^https?://(?!records\.example\.org(?:/|$))",
-            r"/private/",
-        ]}},
-    }))
+    path.write_text(
+        yaml.safe_dump(
+            {
+                "domain": "synthetic_evidence",
+                "discovery": {
+                    "selection": {
+                        "exclude_url_patterns": [
+                            r"^https?://(?!records\.example\.org(?:/|$))",
+                            r"/private/",
+                        ]
+                    }
+                },
+            }
+        )
+    )
     config = load_runtime_config_file(path)
     selector = CandidateSelector(
         exclude_draft=False,
@@ -129,11 +137,15 @@ def test_synthetic_config_resolves_all_stages_strictly(tmp_path, schema_path):
     import yaml
 
     path = tmp_path / "run.yaml"
-    path.write_text(yaml.safe_dump({
-        "domain": "synthetic_evidence",
-        "discovery": {"targets": [{"name": "Example Target"}]},
-        "schema": str(schema_path),
-    }))
+    path.write_text(
+        yaml.safe_dump(
+            {
+                "domain": "synthetic_evidence",
+                "discovery": {"targets": [{"name": "Example Target"}]},
+                "schema": str(schema_path),
+            }
+        )
+    )
     config = load_runtime_config_file(path)
     for command in ("discover", "extract", "compile"):
         resolve_command_config(command=command, cli_values={}, config_data=config)

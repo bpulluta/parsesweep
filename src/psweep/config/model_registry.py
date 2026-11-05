@@ -60,10 +60,7 @@ class ModelRegistry:
             message = "'models' must be a mapping of alias-name -> model-name"
             raise ModelRegistryError(message)
         registry = cls(
-            tiers={
-                name: ModelDefinition(tier=name, model=model)
-                for name, model in models.items()
-            },
+            tiers={name: ModelDefinition(tier=name, model=model) for name, model in models.items()},
             llm_config=llm_config,
         )
         registry._validate_structure()
@@ -76,14 +73,10 @@ class ModelRegistry:
     def get_model(self, tier_name: str | None) -> ModelDefinition:
         """Resolve an alias, literal, or omitted environment model."""
         if tier_name is not None and not isinstance(tier_name, str):
-            message = (
-                f"Model reference must be a string or None (got {tier_name!r})"
-            )
+            message = f"Model reference must be a string or None (got {tier_name!r})"
             raise ModelRegistryError(message)
         if not tier_name or not tier_name.strip():
-            model = llm_factory.resolve_model_name(
-                None, llm_config=self._llm_config
-            )
+            model = llm_factory.resolve_model_name(None, llm_config=self._llm_config)
             return ModelDefinition(tier=model, model=model)
         if tier_name in self._tiers:
             return self._tiers[tier_name]
@@ -101,26 +94,16 @@ class ModelRegistry:
         """Validate aliases and references."""
         self._validate_structure()
         for ref in references or []:
-            if ref is not None and (
-                not isinstance(ref, str) or not ref.strip()
-            ):
-                message = (
-                    f"Model reference must be a non-empty string (got {ref!r})"
-                )
+            if ref is not None and (not isinstance(ref, str) or not ref.strip()):
+                message = f"Model reference must be a non-empty string (got {ref!r})"
                 raise ModelRegistryError(message)
 
     def _validate_structure(self) -> None:
         for name, definition in self._tiers.items():
             if not isinstance(name, str) or not name.strip():
-                message = (
-                    "Model alias names must be non-empty strings "
-                    f"(got {name!r})"
-                )
+                message = f"Model alias names must be non-empty strings (got {name!r})"
                 raise ModelRegistryError(message)
-            if (
-                not isinstance(definition.model, str)
-                or not definition.model.strip()
-            ):
+            if not isinstance(definition.model, str) or not definition.model.strip():
                 message = (
                     f"Model alias '{name}' must map to a "
                     "non-empty model string; use "

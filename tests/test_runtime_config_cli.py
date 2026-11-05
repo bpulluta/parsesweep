@@ -243,8 +243,13 @@ def test_discover_dry_run_writes_manifest(tmp_path, monkeypatch):
     result = CliRunner().invoke(
         cli,
         [
-            "discover", "--domain", "demo",
-            "--source", "https://example.org/docs", "--dry-run", "-q",
+            "discover",
+            "--domain",
+            "demo",
+            "--source",
+            "https://example.org/docs",
+            "--dry-run",
+            "-q",
         ],
     )
 
@@ -262,8 +267,14 @@ def test_discover_dry_run_preserves_checkpoint(tmp_path, monkeypatch):
         result = CliRunner().invoke(
             cli,
             [
-                "discover", "--domain", "demo",
-                "--source", "https://example.org/docs", "--dry-run", "-q", *extra,
+                "discover",
+                "--domain",
+                "demo",
+                "--source",
+                "https://example.org/docs",
+                "--dry-run",
+                "-q",
+                *extra,
             ],
         )
         assert result.exit_code == 0
@@ -280,9 +291,15 @@ def _run_discover_and_capture_request(extra_args, tmp_path):
 
     def _fake_run(self, request):
         captured["request"] = request
-        (tmp_path / "manifest.json").write_text(json.dumps({
-            "status": "dry_run", "errors": [], "notes": [],
-        }))
+        (tmp_path / "manifest.json").write_text(
+            json.dumps(
+                {
+                    "status": "dry_run",
+                    "errors": [],
+                    "notes": [],
+                }
+            )
+        )
         return DiscoveryResult(
             run_id="test",
             manifest_path=tmp_path / "manifest.json",
@@ -290,9 +307,7 @@ def _run_discover_and_capture_request(extra_args, tmp_path):
             dry_run=True,
         )
 
-    with patch(
-        "psweep.discovery.engine.DiscoveryEngine.run", _fake_run
-    ):
+    with patch("psweep.discovery.engine.DiscoveryEngine.run", _fake_run):
         runner = CliRunner()
         result = runner.invoke(
             cli,
@@ -346,9 +361,15 @@ discovery:
 
     def _fake_run(self, request):
         captured["request"] = request
-        (tmp_path / "manifest.json").write_text(json.dumps({
-            "status": "dry_run", "errors": [], "notes": [],
-        }))
+        (tmp_path / "manifest.json").write_text(
+            json.dumps(
+                {
+                    "status": "dry_run",
+                    "errors": [],
+                    "notes": [],
+                }
+            )
+        )
         return DiscoveryResult(
             run_id="test",
             manifest_path=tmp_path / "manifest.json",
@@ -450,9 +471,15 @@ discovery:
 
     def _fake_run(self, request):
         captured["request"] = request
-        (tmp_path / "manifest.json").write_text(json.dumps({
-            "status": "dry_run", "errors": [], "notes": [],
-        }))
+        (tmp_path / "manifest.json").write_text(
+            json.dumps(
+                {
+                    "status": "dry_run",
+                    "errors": [],
+                    "notes": [],
+                }
+            )
+        )
         return DiscoveryResult(
             run_id="test",
             manifest_path=tmp_path / "manifest.json",
@@ -557,9 +584,15 @@ discovery:
 
     def _fake_run(self, request):
         captured["request"] = request
-        (tmp_path / "manifest.json").write_text(json.dumps({
-            "status": "dry_run", "errors": [], "notes": [],
-        }))
+        (tmp_path / "manifest.json").write_text(
+            json.dumps(
+                {
+                    "status": "dry_run",
+                    "errors": [],
+                    "notes": [],
+                }
+            )
+        )
         return DiscoveryResult(
             run_id="test",
             manifest_path=tmp_path / "manifest.json",
@@ -576,8 +609,6 @@ discovery:
 
     assert result.exit_code == 0
     assert captured["request"].dry_run is True
-
-
 
 
 def test_discover_effective_config_shows_config_key_paths(tmp_path, monkeypatch):
@@ -598,8 +629,12 @@ discovery:
     result = CliRunner().invoke(
         cli,
         [
-            "discover", "--config", str(config_path),
-            "--show-effective-config", "--validate-config", "--dry-run",
+            "discover",
+            "--config",
+            str(config_path),
+            "--show-effective-config",
+            "--validate-config",
+            "--dry-run",
         ],
     )
     assert result.exit_code == 0, result.output
@@ -613,9 +648,7 @@ discovery:
 def test_extract_validate_config_does_not_require_documents(tmp_path, schema_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     config_path = tmp_path / "run.yaml"
-    config_path.write_text(
-        "domain: demo\n", encoding="utf-8"
-    )
+    config_path.write_text("domain: demo\n", encoding="utf-8")
     assert schema_path.parent == tmp_path
     result = CliRunner().invoke(
         cli, ["extract", "--config", str(config_path), "--validate-config", "-q"]
@@ -675,15 +708,26 @@ def test_discover_ignores_downstream_stages_until_a_schema_exists(tmp_path, monk
 def test_validate_config_flag_runs_schema_aware_validation_checks(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     config = _template_domain(tmp_path)
-    (config.parent / "schema.json").write_text(json.dumps({
-        "$metadata": {
-            "extraction": {"main_data_array": "items"},
-            "identity": {"deduplication": {"key_fields": ["feature"]}},
-        },
-        "properties": {"items": {"type": "array", "items": {
-            "type": "object", "properties": {"feature": {"type": "string"}},
-        }}},
-    }), encoding="utf-8")
+    (config.parent / "schema.json").write_text(
+        json.dumps(
+            {
+                "$metadata": {
+                    "extraction": {"main_data_array": "items"},
+                    "identity": {"deduplication": {"key_fields": ["feature"]}},
+                },
+                "properties": {
+                    "items": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {"feature": {"type": "string"}},
+                        },
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
     config.write_text(
         config.read_text(encoding="utf-8").replace(
             "models: [secondary]", "models: [secondary]\n  key_fields: [featur]"

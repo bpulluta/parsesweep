@@ -17,12 +17,13 @@ Selenium/Chrome are optional; :func:`browser_available` reports readiness and
 
 from __future__ import annotations
 
+import contextlib
 import time
 import os
 import re
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Any
+from typing import Any, Self
 
 from requests.structures import CaseInsensitiveDict
 
@@ -45,7 +46,8 @@ class BrowserDownloadError(RuntimeError):
 
 class BrowserNavigationError(RuntimeError):
     """Chrome showed its error page; the message carries the ``net::ERR_*``
-    code so retry classification matches Selenium navigation errors."""
+    code so retry classification matches Selenium navigation errors.
+    """
 
 
 _CHROME_ERROR_CODE = re.compile(r"\bERR_[A-Z_]+\b")
@@ -54,7 +56,7 @@ _CHROME_ERROR_CODE = re.compile(r"\bERR_[A-Z_]+\b")
 def browser_available() -> bool:
     """Return True if Selenium is importable (Chrome resolved lazily)."""
     try:
-        import selenium  # noqa: F401
+        import selenium  # noqa: F401 - availability probe
     except ImportError:
         return False
     return True
@@ -87,7 +89,7 @@ class BrowserSession:
         self._page_load_timeout = page_load_timeout
         self._driver: Any = None
 
-    def __enter__(self) -> BrowserSession:
+    def __enter__(self) -> Self:
         self._start()
         return self
 
@@ -120,30 +122,22 @@ class BrowserSession:
             f"user-agent={self.user_agent}",
         ):
             opts.add_argument(arg)
-        opts.add_experimental_option(
-            "excludeSwitches", ["enable-automation"]
-        )
+        opts.add_experimental_option("excludeSwitches", ["enable-automation"])
         opts.add_experimental_option("useAutomationExtension", False)
 
         try:
-            self._driver = webdriver.Chrome(
-                service=_resolve_chrome_service(), options=opts
-            )
+            self._driver = webdriver.Chrome(service=_resolve_chrome_service(), options=opts)
         except Exception as exc:
             msg = f"Failed to start Chrome for browser discovery: {exc}"
             raise BrowserUnavailableError(msg) from exc
 
         # Hide the webdriver flag some bot managers check.
-        try:
+        # Non-fatal hardening: any failure leaves the driver usable.
+        with contextlib.suppress(Exception):
             self._driver.execute_cdp_cmd(
                 "Page.addScriptToEvaluateOnNewDocument",
-                {
-                    "source": "Object.defineProperty(navigator,"
-                    "'webdriver',{get:()=>undefined})"
-                },
+                {"source": "Object.defineProperty(navigator,'webdriver',{get:()=>undefined})"},
             )
-        except Exception:  # noqa: BLE001 - non-fatal hardening
-            pass
         self._driver.set_page_load_timeout(self._page_load_timeout)
 
     @property
@@ -170,10 +164,8 @@ class BrowserSession:
             try:
                 href = anchor.get_attribute("href") or ""
                 if href:
-                    links.append(
-                        {"url": href, "text": (anchor.text or "").strip()}
-                    )
-            except Exception:  # noqa: BLE001 - stale element, skip
+                    links.append({"url": href, "text": (anchor.text or "").strip()})
+            except Exception:  # noqa: BLE001, S112 - stale element, skip
                 continue
         return links
 
@@ -231,9 +223,7 @@ class BrowserSession:
             status = payload.get("status")
             detail = payload.get("error") or f"HTTP {status}"
             msg = f"Browser download failed for {url}: {detail}"
-            raise BrowserDownloadError(
-                msg, status_code=int(status) if status else None
-            )
+            raise BrowserDownloadError(msg, status_code=int(status) if status else None)
         return (
             base64.b64decode(payload.get("data") or ""),
             payload.get("ct"),
@@ -251,8 +241,7 @@ class BrowserSession:
     def close(self) -> None:
         """Quit the underlying browser driver and release its resources."""
         if self._driver is not None:
-            try:
+            # Driver quit is best-effort cleanup.
+            with contextlib.suppress(Exception):
                 self._driver.quit()
-            except Exception:  # noqa: BLE001
-                pass
             self._driver = None

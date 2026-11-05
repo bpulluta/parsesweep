@@ -71,19 +71,45 @@ def _write(directory, name, url, scope, items):
 def compiled(tmp_path):
     records = tmp_path / "records"
     records.mkdir()
-    _write(records, "a", "https://m.gov/a", "target", [
-        _item("AZ", "Maricopa County", online=_ev("Yes", "Apply online"), stamp=_ev("No")),
-    ])
-    _write(records, "b", "https://m.gov/b", "target", [
-        _item("az", "maricopa county", online=_ev("yes", "Online portal"), stamp=_ev(None, None)),
-    ])
-    _write(records, "c", "https://p.gov", "target", [
-        _item("AZ", "Pima County", online=_ev("No"), note="local"),
-    ])
-    _write(records, "shared", "https://shared.org", "shared", [
-        _item("AZ", "Pima County", online=_ev("Yes"), stamp=_ev("Yes")),
-        _item("TX", "Travis County", online=_ev("Yes")),
-    ])
+    _write(
+        records,
+        "a",
+        "https://m.gov/a",
+        "target",
+        [
+            _item("AZ", "Maricopa County", online=_ev("Yes", "Apply online"), stamp=_ev("No")),
+        ],
+    )
+    _write(
+        records,
+        "b",
+        "https://m.gov/b",
+        "target",
+        [
+            _item(
+                "az", "maricopa county", online=_ev("yes", "Online portal"), stamp=_ev(None, None)
+            ),
+        ],
+    )
+    _write(
+        records,
+        "c",
+        "https://p.gov",
+        "target",
+        [
+            _item("AZ", "Pima County", online=_ev("No"), note="local"),
+        ],
+    )
+    _write(
+        records,
+        "shared",
+        "https://shared.org",
+        "shared",
+        [
+            _item("AZ", "Pima County", online=_ev("Yes"), stamp=_ev("Yes")),
+            _item("TX", "Travis County", online=_ev("Yes")),
+        ],
+    )
     compiler = DataCompiler(_metadata(tmp_path), inputs=INPUTS, verbose=False)
     frame, _ = compiler.compile_from_directory(records)
     return compiler, frame
@@ -98,7 +124,15 @@ def test_one_row_per_target_in_roster_order(compiled):
     assert compiler.mode == "roster"
     assert frame["ahj"].tolist() == ["Maricopa County", "Pima County", "Boulder County"]
     assert frame.columns.tolist() == [
-        "state", "ahj", "online", "stamp", "note", "geo_id", "sources", "confidence", "evidence",
+        "state",
+        "ahj",
+        "online",
+        "stamp",
+        "note",
+        "geo_id",
+        "sources",
+        "confidence",
+        "evidence",
     ]
 
 
@@ -124,7 +158,10 @@ def test_target_scope_wins_conflict_with_low_confidence(compiled):
     evidence = json.loads(row["evidence"])
     assert row["online"] == "No"
     assert evidence["online"] == {
-        "value": "No", "quote": "quoted", "url": "https://p.gov", "conflict": True,
+        "value": "No",
+        "quote": "quoted",
+        "url": "https://p.gov",
+        "conflict": True,
     }
     assert row["stamp"] == "Yes"
     assert row["note"] == "local"
@@ -154,8 +191,15 @@ def test_headers_use_titles_and_metadata_columns_stay_last(compiled):
     compiler, frame = compiled
     output = compiler._prepare_output_dataframe(frame)
     assert output.columns.tolist() == [
-        "State", "AHJ Name", "Online Permitting", "stamp", "note", "geo_id",
-        "sources", "confidence", "evidence",
+        "State",
+        "AHJ Name",
+        "Online Permitting",
+        "stamp",
+        "note",
+        "geo_id",
+        "sources",
+        "confidence",
+        "evidence",
     ]
 
 
@@ -183,8 +227,13 @@ def test_punctuation_keeps_values_distinct(left, right):
 @pytest.mark.parametrize(
     ("left", "right"),
     [
-        ("300", "300.0"), (300, "300.0"), (300.0, 300), ("1,000", 1000), ("-5", -5.0),
-        ("Yes", "  yes "), ("Yes (SolarAPP+)", "yes  (solarapp+)"),
+        ("300", "300.0"),
+        (300, "300.0"),
+        (300.0, 300),
+        ("1,000", 1000),
+        ("-5", -5.0),
+        ("Yes", "  yes "),
+        ("Yes (SolarAPP+)", "yes  (solarapp+)"),
     ],
 )
 def test_numbers_by_value_and_text_by_casefold(left, right):
@@ -199,12 +248,24 @@ def test_number_text_does_not_equal_its_string_lookalike():
 def test_numeric_agreement_and_punctuation_conflict(tmp_path):
     records = tmp_path / "records"
     records.mkdir()
-    _write(records, "a", "https://a.gov", "target", [
-        _item("AZ", "Maricopa County", online=_ev("300"), note="> 100"),
-    ])
-    _write(records, "b", "https://b.gov", "target", [
-        _item("AZ", "Maricopa County", online=_ev("300.0"), note="< 100"),
-    ])
+    _write(
+        records,
+        "a",
+        "https://a.gov",
+        "target",
+        [
+            _item("AZ", "Maricopa County", online=_ev("300"), note="> 100"),
+        ],
+    )
+    _write(
+        records,
+        "b",
+        "https://b.gov",
+        "target",
+        [
+            _item("AZ", "Maricopa County", online=_ev("300.0"), note="< 100"),
+        ],
+    )
     compiler = DataCompiler(_metadata(tmp_path), inputs=INPUTS, verbose=False)
     frame, _ = compiler.compile_from_directory(records)
     evidence = json.loads(_row(frame, "Maricopa County")["evidence"])
@@ -217,17 +278,33 @@ def test_numeric_agreement_and_punctuation_conflict(tmp_path):
 def test_agreeing_cell_cites_the_targets_own_page_over_a_shared_listing(tmp_path):
     records = tmp_path / "records"
     records.mkdir()
-    _write(records, "a_listing", "https://shared.org/list", "shared", [
-        _item("AZ", "Maricopa County", online=_ev("Yes", "Maricopa County AZ")),
-    ])
-    _write(records, "b_own", "https://m.gov/permits", "target", [
-        _item("AZ", "Maricopa County", online=_ev("Yes", "Apply for permits online")),
-    ])
+    _write(
+        records,
+        "a_listing",
+        "https://shared.org/list",
+        "shared",
+        [
+            _item("AZ", "Maricopa County", online=_ev("Yes", "Maricopa County AZ")),
+        ],
+    )
+    _write(
+        records,
+        "b_own",
+        "https://m.gov/permits",
+        "target",
+        [
+            _item("AZ", "Maricopa County", online=_ev("Yes", "Apply for permits online")),
+        ],
+    )
     frame, _ = DataCompiler(
-        _metadata(tmp_path), inputs=INPUTS, verbose=False,
+        _metadata(tmp_path),
+        inputs=INPUTS,
+        verbose=False,
     ).compile_from_directory(records)
     row = _row(frame, "Maricopa County")
     assert json.loads(row["evidence"])["online"] == {
-        "value": "Yes", "quote": "Apply for permits online", "url": "https://m.gov/permits",
+        "value": "Yes",
+        "quote": "Apply for permits online",
+        "url": "https://m.gov/permits",
     }
     assert row["confidence"] == "high"

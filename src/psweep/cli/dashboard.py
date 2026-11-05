@@ -77,9 +77,7 @@ class DiscoveryDashboard:
         self.targets_completed = 0
         self.candidates_seen = 0
         self.download_events = 0
-        self.recent_events: deque[str] = deque(
-            maxlen=self.config.max_recent_events
-        )
+        self.recent_events: deque[str] = deque(maxlen=self.config.max_recent_events)
 
         self.layout = Layout()
         self.layout.split_column(
@@ -222,9 +220,7 @@ class DiscoveryDashboard:
                 ),
             ]
         )
-        self.layout["status"].update(
-            Panel(status, title="Status", border_style="cyan")
-        )
+        self.layout["status"].update(Panel(status, title="Status", border_style="cyan"))
 
         self.layout["events"].update(events_panel(list(self.recent_events)))
 

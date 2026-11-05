@@ -198,9 +198,7 @@ class DiscoveryManifest:
             "stage_summaries": self.stage_summaries,
             "candidate_summary": self.candidate_summary,
             "lineage": self.lineage,
-            "candidates": [
-                candidate.to_dict() for candidate in self.candidates
-            ],
+            "candidates": [candidate.to_dict() for candidate in self.candidates],
             "downloads": self.downloads,
             "errors": self.errors,
             "error_summary": self.error_summary,

@@ -112,10 +112,7 @@ def test_xlsx_workbook_closed_on_success_and_failure(tmp_path, monkeypatch):
 
     wb = Workbook()
     monkeypatch.setattr(openpyxl, "load_workbook", lambda *_a, **_k: wb)
-    assert (
-        _extract_from_xlsx(tmp_path / "a.xlsx")
-        == "\n### Sheet: Sheet1 ###\n\n1 |  | value"
-    )
+    assert _extract_from_xlsx(tmp_path / "a.xlsx") == "\n### Sheet: Sheet1 ###\n\n1 |  | value"
     assert wb.closed
     wb.closed, wb.fail = False, True
     with pytest.raises(RuntimeError, match="bad row"):
@@ -164,8 +161,10 @@ def test_csv_rows_carry_their_header_labels(tmp_path: Path):
     assert extract_text_from_document(path).splitlines() == [
         "SolarAPP+ locations",
         "Jurisdiction Name: Pima County | Latitude: 32.0444 | State: AZ | Solar + Storage: TRUE",
-        "Jurisdiction Name: Town of Gilbert | Latitude: 33.3 | State: AZ | Notes: multi, word"
-        " | Solar + Storage: FALSE | extra",
+        (
+            "Jurisdiction Name: Town of Gilbert | Latitude: 33.3 | State: AZ | Notes: multi, word"
+            " | Solar + Storage: FALSE | extra"
+        ),
         "Jurisdiction Name: Short Town",
     ]
 
@@ -220,41 +219,62 @@ def test_xlsx_sheets_label_rows_with_their_own_header(tmp_path: Path):
                 "objectIdFieldName": "OBJECTID",
                 "fields": [{"name": "NAME", "type": "esriFieldTypeString"}],
                 "features": [
-                    {"attributes": {"NAME": "Pima County", "LEVEL": "Gold"},
-                     "geometry": {"x": -111.7, "y": 32.0}},
+                    {
+                        "attributes": {"NAME": "Pima County", "LEVEL": "Gold"},
+                        "geometry": {"x": -111.7, "y": 32.0},
+                    },
                 ],
             },
             [
                 "objectIdFieldName: OBJECTID",
-                "", "### fields ###", "",
+                "",
+                "### fields ###",
+                "",
                 "name: NAME | type: esriFieldTypeString",
-                "", "### features ###", "",
-                "attributes.NAME: Pima County | attributes.LEVEL: Gold"
-                " | geometry.x: -111.7 | geometry.y: 32.0",
+                "",
+                "### features ###",
+                "",
+                (
+                    "attributes.NAME: Pima County | attributes.LEVEL: Gold"
+                    " | geometry.x: -111.7 | geometry.y: 32.0"
+                ),
             ],
         ),
         (  # GeoJSON: polygon rings carry no text and are skipped
             {
                 "type": "FeatureCollection",
                 "features": [
-                    {"type": "Feature",
-                     "properties": {"name": "Pima County", "tags": ["solar", "pv"],
-                                    "contacts": [{"role": "permits"}]},
-                     "geometry": {"type": "Polygon", "coordinates": [[[0, 0], [1, 1]]]}},
+                    {
+                        "type": "Feature",
+                        "properties": {
+                            "name": "Pima County",
+                            "tags": ["solar", "pv"],
+                            "contacts": [{"role": "permits"}],
+                        },
+                        "geometry": {"type": "Polygon", "coordinates": [[[0, 0], [1, 1]]]},
+                    },
                 ],
             },
             [
                 "type: FeatureCollection",
-                "", "### features ###", "",
-                "type: Feature | properties.name: Pima County | properties.tags: solar, pv"
-                " | properties.contacts.0.role: permits | geometry.type: Polygon",
+                "",
+                "### features ###",
+                "",
+                (
+                    "type: Feature | properties.name: Pima County | properties.tags: solar, pv"
+                    " | properties.contacts.0.role: permits | geometry.type: Polygon"
+                ),
             ],
         ),
         (  # CKAN datastore_search
-            {"success": True,
-             "result": {"records": [{"_id": 1, "County": "Pima"}], "total": 1}},
-            ["success: true | result.total: 1", "", "### result.records ###", "",
-             "_id: 1 | County: Pima"],
+            {"success": True, "result": {"records": [{"_id": 1, "County": "Pima"}], "total": 1}},
+            [
+                "success: true | result.total: 1",
+                "",
+                "### result.records ###",
+                "",
+                "_id: 1 | County: Pima",
+            ],
         ),
         (  # array of arrays: positional table rows
             {"data": [["Pima County", 32.0], ["Yuma County", 32.6]]},

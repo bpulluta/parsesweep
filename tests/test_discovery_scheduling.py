@@ -34,9 +34,7 @@ def test_pending_work_bound_at_one_hundred_thousand(monkeypatch):
         active -= 1
         return done, futures - done
 
-    monkeypatch.setattr(
-        "psweep.discovery.concurrency.ThreadPoolExecutor", Executor
-    )
+    monkeypatch.setattr("psweep.discovery.concurrency.ThreadPoolExecutor", Executor)
     monkeypatch.setattr("psweep.discovery.concurrency.wait", wait)
     results = bounded_results(lambda value: value, range(100_000), workers=4)
     assert sum(results) == sum(range(100_000))

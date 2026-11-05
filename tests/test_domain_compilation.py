@@ -193,19 +193,29 @@ def test_nested_rows_preserve_parents_without_children(tmp_path):
         json.dumps(
             {
                 "type": "object",
-                "properties": {"items": {"type": "array", "items": {
-                    "type": "object", "properties": {
-                        "name": {"type": "string"},
-                        "parts": {"type": "array", "items": {
-                            "type": "object", "properties": {"serial": {"type": "string"}},
-                        }},
-                    },
-                }}},
+                "properties": {
+                    "items": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "name": {"type": "string"},
+                                "parts": {
+                                    "type": "array",
+                                    "items": {
+                                        "type": "object",
+                                        "properties": {"serial": {"type": "string"}},
+                                    },
+                                },
+                            },
+                        },
+                    }
+                },
                 "$metadata": {
                     "extraction": {
                         "main_data_array": "items",
                     },
-                }
+                },
             }
         )
     )
@@ -234,12 +244,8 @@ def test_nested_rows_preserve_parents_without_children(tmp_path):
     assert "parts" not in output.columns
 
 
-@pytest.mark.parametrize(
-    "fuzzy", [[], ["variant"], [{"field": "variant", "normalize": "words"}]]
-)
-def test_fully_populated_keys_do_not_require_pairwise_matching(
-    tmp_path, monkeypatch, fuzzy
-):
+@pytest.mark.parametrize("fuzzy", [[], ["variant"], [{"field": "variant", "normalize": "words"}]])
+def test_fully_populated_keys_do_not_require_pairwise_matching(tmp_path, monkeypatch, fuzzy):
     schema = tmp_path / "schema.json"
     schema.write_text(
         json.dumps(
@@ -250,9 +256,7 @@ def test_fully_populated_keys_do_not_require_pairwise_matching(
                     },
                     "identity": {
                         "deduplication": {
-                            "key_fields": ["name", "variant"]
-                            if fuzzy
-                            else ["name"],
+                            "key_fields": ["name", "variant"] if fuzzy else ["name"],
                             "fuzzy_key_fields": fuzzy,
                         }
                     },
@@ -269,9 +273,7 @@ def test_fully_populated_keys_do_not_require_pairwise_matching(
         }
     )
     normalize = Mock(wraps=compiler.deduplicator._normalize_fuzzy_value)
-    monkeypatch.setattr(
-        compiler.deduplicator, "_normalize_fuzzy_value", normalize
-    )
+    monkeypatch.setattr(compiler.deduplicator, "_normalize_fuzzy_value", normalize)
     result = compiler.deduplicator.deduplicate(frame)
     assert len(result) == (100 if fuzzy else 1)
     assert "More complete" in result["Evidence"].tolist()
@@ -307,12 +309,7 @@ def test_wildcard_fuzzy_matching_preserves_greedy_source_order(tmp_path):
     )
     result = compiler.deduplicator.deduplicate(frame)
     assert result["Variant"].tolist() == ["A", "B"]
-    assert (
-        compiler.deduplicator.preview_deduplication(frame)[
-            "duplicates_removed"
-        ]
-        == 1
-    )
+    assert compiler.deduplicator.preview_deduplication(frame)["duplicates_removed"] == 1
 
 
 def test_fuzzy_index_matches_reference_for_missing_and_populated_keys(
@@ -354,27 +351,21 @@ def test_fuzzy_index_matches_reference_for_missing_and_populated_keys(
                 pairs = zip(
                     frame.loc[anchor, ["Variant", "Mode"]],
                     frame.loc[index, ["Variant", "Mode"]],
+                    strict=True,
                 )
                 if all(
-                    not left or not right or left.lower() == right.lower()
-                    for left, right in pairs
+                    not left or not right or left.lower() == right.lower() for left, right in pairs
                 ):
                     matched.append(index)
                 else:
                     unmatched.append(index)
             expected.append(matched)
             remaining = unmatched
-        actual = list(
-            dedup._match_key_group(
-                frame, list(frame.index), ["Variant", "Mode"], {}
-            )
-        )
+        actual = list(dedup._match_key_group(frame, list(frame.index), ["Variant", "Mode"], {}))
         assert actual == expected
 
 
-@pytest.mark.parametrize(
-    "items", [None, "invalid", {"0": {}}, [{"name": "valid"}, "invalid"]]
-)
+@pytest.mark.parametrize("items", [None, "invalid", {"0": {}}, [{"name": "valid"}, "invalid"]])
 def test_malformed_main_array_never_becomes_empty_success(tmp_path, items):
     schema = tmp_path / "schema.json"
     schema.write_text(
@@ -390,19 +381,13 @@ def test_malformed_main_array_never_becomes_empty_success(tmp_path, items):
     )
     directory = tmp_path / "input"
     directory.mkdir()
-    (directory / "record.json").write_text(
-        json.dumps({"payload": {"items": items}})
-    )
-    with pytest.raises(ValueError, match="record.json.*items"):
-        DataCompiler(
-            SchemaMetadata(schema), verbose=False
-        ).compile_from_directory(directory)
+    (directory / "record.json").write_text(json.dumps({"payload": {"items": items}}))
+    with pytest.raises(ValueError, match=r"record.json.*items"):
+        DataCompiler(SchemaMetadata(schema), verbose=False).compile_from_directory(directory)
 
 
 @pytest.mark.parametrize("missing", ["key_fields", "partition_fields"])
-def test_incomplete_identity_never_deduplicates_on_partial_keys(
-    tmp_path, missing
-):
+def test_incomplete_identity_never_deduplicates_on_partial_keys(tmp_path, missing):
     schema = tmp_path / "schema.json"
     dedup = {"key_fields": ["name"], "partition_fields": []}
     dedup[missing].append("missing_identity")
@@ -428,19 +413,40 @@ def test_incomplete_identity_never_deduplicates_on_partial_keys(
 
 def test_declared_optional_identity_absent_in_all_records_remains_null(tmp_path):
     schema = tmp_path / "schema.json"
-    schema.write_text(json.dumps({"type": "object", "properties": {
-        "items": {"type": "array", "items": {"type": "object", "properties": {
-            "name": {"type": "string"}, "variant": {"type": ["string", "null"]},
-        }}},
-    }, "$metadata": {
-        "extraction": {"main_data_array": "items"},
-        "identity": {"deduplication": {"key_fields": ["name", "variant"]}},
-    }}))
+    schema.write_text(
+        json.dumps(
+            {
+                "type": "object",
+                "properties": {
+                    "items": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "name": {"type": "string"},
+                                "variant": {"type": ["string", "null"]},
+                            },
+                        },
+                    },
+                },
+                "$metadata": {
+                    "extraction": {"main_data_array": "items"},
+                    "identity": {"deduplication": {"key_fields": ["name", "variant"]}},
+                },
+            }
+        )
+    )
     directory = tmp_path / "input"
     directory.mkdir()
-    (directory / "record.json").write_text(json.dumps({"payload": {
-        "items": [{"name": "First"}, {"name": "Second"}],
-    }}))
+    (directory / "record.json").write_text(
+        json.dumps(
+            {
+                "payload": {
+                    "items": [{"name": "First"}, {"name": "Second"}],
+                }
+            }
+        )
+    )
     compiler = DataCompiler(SchemaMetadata(schema), verbose=False)
     frame, _ = compiler.compile_from_directory(directory)
     assert len(frame) == 2

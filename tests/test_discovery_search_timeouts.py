@@ -31,9 +31,7 @@ def _response(name):
 
 def _seeker(monkeypatch, search, **kwargs):
     monkeypatch.setattr(SerpApiSeeker, "_build_search_callable", lambda self: search)
-    return SerpApiSeeker(
-        api_key="fixture-key", retry_initial_backoff_seconds=0, **kwargs
-    )
+    return SerpApiSeeker(api_key="fixture-key", retry_initial_backoff_seconds=0, **kwargs)
 
 
 def _queries(*queries):
@@ -49,7 +47,8 @@ def test_later_query_timeout_retains_results_and_continues(monkeypatch, timeout)
         seeker.discover(_queries("first query", "timeout query", "last query"))
 
     assert [item["url"] for item in caught.value.candidates] == [
-        "https://example.gov/first.pdf", "https://example.gov/last.pdf",
+        "https://example.gov/first.pdf",
+        "https://example.gov/last.pdf",
     ]
     assert len(caught.value.query_errors) == 1
     assert "timeout query" in caught.value.query_errors[0]
@@ -104,11 +103,14 @@ def test_cache_hit_is_retained_without_counting_a_live_attempt(monkeypatch, tmp_
     assert all("fixture-key" not in error for error in caught.value.query_errors)
 
 
-@pytest.mark.parametrize("failure", [
-    HTTPError("401 Unauthorized"),
-    ValueError("invalid configuration"),
-    RuntimeError("invalid timeout configuration field"),
-])
+@pytest.mark.parametrize(
+    "failure",
+    [
+        HTTPError("401 Unauthorized"),
+        ValueError("invalid configuration"),
+        RuntimeError("invalid timeout configuration field"),
+    ],
+)
 def test_non_timeout_failures_remain_strict(monkeypatch, failure):
     search = Mock(side_effect=[_response("first"), failure, _response("unreachable")])
     seeker = _seeker(monkeypatch, search, retry_max_attempts=1)
@@ -145,10 +147,15 @@ def _mock_engine_search(monkeypatch):
     monkeypatch.setenv("SERPAPI_API_KEY", "fixture-key")
     monkeypatch.setattr(SerpApiSeeker, "_build_search_callable", lambda self: search)
     monkeypatch.setattr(
-        DiscoveryEngine, "_resolve_serpapi_state",
-        staticmethod(lambda request: (
-            {"provider": "serpapi", "enabled": True, "available": True}, [], [],
-        )),
+        DiscoveryEngine,
+        "_resolve_serpapi_state",
+        staticmethod(
+            lambda request: (
+                {"provider": "serpapi", "enabled": True, "available": True},
+                [],
+                [],
+            )
+        ),
     )
 
 
@@ -163,17 +170,22 @@ def test_engine_keeps_earlier_and_later_targets_with_explicit_partial_status(mon
     assert manifest["stage_summaries"]["seeker"]["candidates_discovered"] == 5
     assert len(manifest["errors"]) == 1
     assert "partial hearing" in manifest["errors"][0]["message"]
-    metrics = manifest["stage_summaries"]["acceptance_metrics"]["unknown_target_discovery"]["targets"]
+    metrics = manifest["stage_summaries"]["acceptance_metrics"]["unknown_target_discovery"][
+        "targets"
+    ]
     assert metrics[1]["search_complete"] is False
     assert [item["input_candidates"] for item in metrics] == [2, 1, 2]
 
 
 def test_engine_non_timeout_error_does_not_turn_into_partial_success(monkeypatch, tmp_path):
     _mock_engine_search(monkeypatch)
-    search = Mock(side_effect=[
-        _response("first-comments"), _response("first-hearing"),
-        HTTPError("401 Unauthorized"),
-    ])
+    search = Mock(
+        side_effect=[
+            _response("first-comments"),
+            _response("first-hearing"),
+            HTTPError("401 Unauthorized"),
+        ]
+    )
     monkeypatch.setattr(SerpApiSeeker, "_build_search_callable", lambda self: search)
     result = DiscoveryEngine().run(_engine_request(tmp_path))
     manifest = json.loads(result.manifest_path.read_text())
@@ -184,7 +196,9 @@ def test_engine_non_timeout_error_does_not_turn_into_partial_success(monkeypatch
     assert manifest["status"] == "partial_failure"
     assert manifest["stage_summaries"]["seeker"]["queries_executed"] == 4
     assert any("401 Unauthorized" in error["message"] for error in manifest["errors"])
-    metrics = manifest["stage_summaries"]["acceptance_metrics"]["unknown_target_discovery"]["targets"]
+    metrics = manifest["stage_summaries"]["acceptance_metrics"]["unknown_target_discovery"][
+        "targets"
+    ]
     assert metrics[1]["search_complete"] is False
     assert metrics[2]["search_complete"] is False
     assert search.call_count == 4
@@ -200,10 +214,16 @@ def test_partial_target_is_not_checkpointed_as_complete(monkeypatch, tmp_path):
             path = documents_dir / f"record-{idx}.pdf"
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_bytes(b"synthetic document")
-            records.append({"url": candidate.url, "status": "downloaded",
-                            "target_id": candidate.target_id,
-                            "target_metadata": candidate.target_metadata,
-                            "path": str(path), "relative_path": path.name})
+            records.append(
+                {
+                    "url": candidate.url,
+                    "status": "downloaded",
+                    "target_id": candidate.target_id,
+                    "target_metadata": candidate.target_metadata,
+                    "path": str(path),
+                    "relative_path": path.name,
+                }
+            )
         return records, [], []
 
     monkeypatch.setattr(engine, "_download_candidates", download)
@@ -223,6 +243,7 @@ def test_incomplete_shared_partition_publishes_additively(
 ):
     _mock_engine_search(monkeypatch)
     if not partial_hit:
+
         def search(params):
             if params["q"].startswith("partial "):
                 raise ReadTimeout("read timed out")
@@ -251,38 +272,50 @@ def test_incomplete_shared_partition_publishes_additively(
         records = []
         for candidate in candidates:
             relative = (
-                "by_state/" + candidate.target_metadata["state"].lower()
-                + "/" + candidate.url.rsplit("/", 1)[-1]
+                "by_state/"
+                + candidate.target_metadata["state"].lower()
+                + "/"
+                + candidate.url.rsplit("/", 1)[-1]
             )
             path = documents_dir / relative
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_bytes(b"new partial or complete public comments")
-            records.append({
-                "url": candidate.url,
-                "status": "downloaded",
-                "path": str(path),
-                "relative_path": relative,
-                "target_id": candidate.target_id,
-                "target_metadata": candidate.target_metadata,
-                "review_selected": selected,
-            })
+            records.append(
+                {
+                    "url": candidate.url,
+                    "status": "downloaded",
+                    "path": str(path),
+                    "relative_path": relative,
+                    "target_id": candidate.target_id,
+                    "target_metadata": candidate.target_metadata,
+                    "review_selected": selected,
+                }
+            )
         return records, [], []
 
     monkeypatch.setattr(engine, "_download_candidates", download)
     result = engine.run(request)
 
     assert prior.read_bytes() == b"prior completed public comments"
-    assert (result.documents_dir / "by_state/washington/partial-comments.pdf").exists() is partial_hit
+    assert (
+        result.documents_dir / "by_state/washington/partial-comments.pdf"
+    ).exists() is partial_hit
     if selected:
         # A prior owner holds the plain name, so the new file may carry a suffix.
-        assert any((result.curated_dir / "by_state/washington").glob("partial-comments*.pdf")) is partial_hit
+        assert (
+            any((result.curated_dir / "by_state/washington").glob("partial-comments*.pdf"))
+            is partial_hit
+        )
         assert (domain / "curated/by_state/california/last-comments.pdf").exists()
     published = list((domain / "curated/by_state/washington").glob("partial-comments*.pdf"))
     assert len(published) == 1 + (selected and partial_hit)
     with old_index.open() as stream:
         rows = list(csv.DictReader(stream))
     by_path = {row["relative_path"]: row for row in rows}
-    assert by_path["by_state/washington/partial-comments.pdf"]["url"] == "https://example.gov/prior.pdf"
+    assert (
+        by_path["by_state/washington/partial-comments.pdf"]["url"]
+        == "https://example.gov/prior.pdf"
+    )
     checkpoint = json.loads((domain / "checkpoint.json").read_text())
     assert set(checkpoint["entries"]) == {
         identify_target({"label": "last", "state": "California"}, ["state"])
@@ -300,10 +333,11 @@ def test_same_named_counties_keep_independent_review_caps(monkeypatch, tmp_path)
 
     def search(params):
         state = "CO" if " CO " in params["q"] else "PA"
-        return {"organic_results": [
-            {"link": f"https://example.gov/{state}-{number}.pdf"}
-            for number in range(2)
-        ]}
+        return {
+            "organic_results": [
+                {"link": f"https://example.gov/{state}-{number}.pdf"} for number in range(2)
+            ]
+        }
 
     monkeypatch.setattr(SerpApiSeeker, "_build_search_callable", lambda self: search)
     monkeypatch.setattr(
@@ -315,7 +349,12 @@ def test_same_named_counties_keep_independent_review_caps(monkeypatch, tmp_path)
 
     def grade(self, path, *, target_context="", source_url=""):
         contexts.append((path, target_context))
-        return {"is_primary": True, "relevance": 0.9, "doc_kind": "public comment", "reason": "fixture"}
+        return {
+            "is_primary": True,
+            "relevance": 0.9,
+            "doc_kind": "public comment",
+            "reason": "fixture",
+        }
 
     monkeypatch.setattr(DocumentReviewer, "_grade", grade)
     request = _engine_request(tmp_path, dry_run=False)
@@ -339,13 +378,13 @@ def test_same_named_counties_keep_independent_review_caps(monkeypatch, tmp_path)
     assert len(records) == 4
     assert Counter(record["target_metadata"]["state"] for record in selected) == {"CO": 1, "PA": 1}
     assert {record["target_label"] for record in records} == {
-        "CO, Adams County", "PA, Adams County",
+        "CO, Adams County",
+        "PA, Adams County",
     }
     assert all("label" not in record["target_metadata"] for record in records)
     groups = DiscoveryEngine._group_records_by_target(records)
     assert {key: len(value) for key, value in groups.items()} == {
-        identify_target(target, request.partition_by): 2
-        for target in request.targets
+        identify_target(target, request.partition_by): 2 for target in request.targets
     }
     for path, context in contexts:
         state = "CO" if "/CO-" in path else "PA"
@@ -354,13 +393,16 @@ def test_same_named_counties_keep_independent_review_caps(monkeypatch, tmp_path)
     assert result.curated_count == 2
 
 
-@pytest.mark.parametrize("target,expected", [
-    ({"county": "Adams County", "state": "CO"}, "Adams County, CO"),
-    ({"state": "AZ", "ahj": "Pima County", "urls": ["https://pima.gov"]}, "AZ, Pima County"),
-    ({"label": "Chosen label", "county": "Adams County", "state": "CO"}, "Chosen label"),
-    ({"query": "solar permit"}, "solar permit"),
-    ({}, "target-0"),
-])
+@pytest.mark.parametrize(
+    "target,expected",
+    [
+        ({"county": "Adams County", "state": "CO"}, "Adams County, CO"),
+        ({"state": "AZ", "ahj": "Pima County", "urls": ["https://pima.gov"]}, "AZ, Pima County"),
+        ({"label": "Chosen label", "county": "Adams County", "state": "CO"}, "Chosen label"),
+        ({"query": "solar permit"}, "solar permit"),
+        ({}, "target-0"),
+    ],
+)
 def test_target_label_prefers_label_then_identity_fields(target, expected):
     assert DiscoveryEngine._target_label(target, 0) == expected
 
@@ -375,20 +417,32 @@ def test_cli_does_not_label_partial_discovery_complete(monkeypatch, tmp_path, wi
     from psweep.cli.commands_discover import discover
 
     manifest_path = tmp_path / "manifest.json"
-    manifest_path.write_text(json.dumps({
-        "status": "partial_failure" if with_errors else "dry_run",
-        "notes": [],
-        "errors": [{"stage": "discovery.seeker_discover", "message": "query timed out"}] if with_errors else [],
-    }))
-    monkeypatch.setattr(DiscoveryEngine, "run", lambda self, request: SimpleNamespace(
-        manifest_path=manifest_path,
-        documents_dir=tmp_path / "documents",
-        run_id="timeout-cli-test",
-        curated_dir=None,
-        curated_count=0,
-        review_index_path=None,
-    ))
-    result = CliRunner().invoke(discover, ["--domain", "timeout-test", "--query", "test", "--dry-run"])
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "status": "partial_failure" if with_errors else "dry_run",
+                "notes": [],
+                "errors": [{"stage": "discovery.seeker_discover", "message": "query timed out"}]
+                if with_errors
+                else [],
+            }
+        )
+    )
+    monkeypatch.setattr(
+        DiscoveryEngine,
+        "run",
+        lambda self, request: SimpleNamespace(
+            manifest_path=manifest_path,
+            documents_dir=tmp_path / "documents",
+            run_id="timeout-cli-test",
+            curated_dir=None,
+            curated_count=0,
+            review_index_path=None,
+        ),
+    )
+    result = CliRunner().invoke(
+        discover, ["--domain", "timeout-test", "--query", "test", "--dry-run"]
+    )
 
     assert result.exit_code == (3 if with_errors else 0), result.output
     if with_errors:

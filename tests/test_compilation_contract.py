@@ -21,15 +21,24 @@ def contract_schema(tmp_path):
         "type": "object",
         "properties": {
             "source": {"type": "object", "properties": {"url": {"type": "string"}}},
-            "items": {"type": "array", "items": {"type": "object", "properties": {
-                "kind": {"type": "string"}, "summary": {"type": "string"},
-                "quote": {"type": "string"}, "details": {"type": ["array", "object"]},
-            }}},
+            "items": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "kind": {"type": "string"},
+                        "summary": {"type": "string"},
+                        "quote": {"type": "string"},
+                        "details": {"type": ["array", "object"]},
+                    },
+                },
+            },
         },
         "$metadata": {
             "extraction": {"main_data_array": "items", "context_objects": ["source"]},
-            "identity": {"deduplication": {"key_fields": ["quote"],
-                                           "partition_fields": ["source.url"]}},
+            "identity": {
+                "deduplication": {"key_fields": ["quote"], "partition_fields": ["source.url"]}
+            },
         },
     }
     path = tmp_path / "schema.json"
@@ -59,9 +68,7 @@ def test_library_provenance_policy_matches_operating_mode(
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("PSWEEP_SECURITY_MODE", mode)
     warnings = ["missing_schema_id: 1 extraction record has no schema lineage"]
-    monkeypatch.setattr(
-        "psweep.pipeline.analyze_compile_input_provenance", lambda _: warnings
-    )
+    monkeypatch.setattr("psweep.pipeline.analyze_compile_input_provenance", lambda _: warnings)
     compile_records = Mock(return_value=(pd.DataFrame(), {}))
     monkeypatch.setattr(DataCompiler, "compile_from_directory", compile_records)
     output = tmp_path / "output"
@@ -90,8 +97,7 @@ def test_protected_compiler_rejects_external_data_paths(
         if operation == "compile":
             compiler.compile_from_directory(external)
         else:
-            compiler.export(pd.DataFrame({"quote": ["Evidence"]}),
-                            external, "facts", ["csv"])
+            compiler.export(pd.DataFrame({"quote": ["Evidence"]}), external, "facts", ["csv"])
     assert not external.exists()
 
 
@@ -115,7 +121,9 @@ def test_invalid_schema_owned_output_fails_before_fresh_or_calls(
     assert "default_format" in validation.output
 
 
-def test_unknown_output_setting_fails_validation_and_library_before_scanning(tmp_path, contract_schema, monkeypatch):
+def test_unknown_output_setting_fails_validation_and_library_before_scanning(
+    tmp_path, contract_schema, monkeypatch
+):
     cfg = _config(tmp_path, contract_schema, output={"column_orrder": ["quote"]})
     scan = Mock(side_effect=AssertionError("must not scan inputs"))
     monkeypatch.setattr(DataCompiler, "compile_from_directory", scan)
@@ -124,8 +132,9 @@ def test_unknown_output_setting_fails_validation_and_library_before_scanning(tmp
     assert "column_orrder" in result.output
     (tmp_path / "input").mkdir()
     with pytest.raises(ValueError, match="column_orrder"):
-        compile_extractions(tmp_path / "input", contract_schema, config_path=cfg,
-                            output_dir=tmp_path / "output")
+        compile_extractions(
+            tmp_path / "input", contract_schema, config_path=cfg, output_dir=tmp_path / "output"
+        )
     assert not (tmp_path / "output").exists()
     scan.assert_not_called()
 
@@ -135,12 +144,18 @@ def test_schema_format_and_runtime_format_precedence(contract_schema):
     schema["$metadata"]["compilation"] = {"output": {"default_format": "csv"}}
     contract_schema.write_text(json.dumps(schema))
     assert SchemaMetadata.for_compilation(contract_schema, {}).get_output_formats() == ["csv"]
-    assert SchemaMetadata.for_compilation(contract_schema, {
-        "compilation_output": {"default_format": "both"},
-    }).get_output_formats() == ["csv", "excel"]
+    assert SchemaMetadata.for_compilation(
+        contract_schema,
+        {
+            "compilation_output": {"default_format": "both"},
+        },
+    ).get_output_formats() == ["csv", "excel"]
     del schema["$metadata"]["compilation"]
     contract_schema.write_text(json.dumps(schema))
-    assert SchemaMetadata.for_compilation(contract_schema, {}).get_output_formats() == ["csv", "excel"]
+    assert SchemaMetadata.for_compilation(contract_schema, {}).get_output_formats() == [
+        "csv",
+        "excel",
+    ]
 
 
 def test_export_prepares_once_and_checks_excel_limit_before_either_write(
@@ -151,7 +166,9 @@ def test_export_prepares_once_and_checks_excel_limit_before_either_write(
     monkeypatch.setattr(compiler, "_prepare_output_dataframe", prepare)
     validate = Mock(wraps=compiler.validate_export)
     monkeypatch.setattr(compiler, "validate_export", validate)
-    paths, frame = compiler.export(pd.DataFrame({"Quote": ["Evidence"]}), tmp_path, "facts", ["csv", "excel"])
+    paths, frame = compiler.export(
+        pd.DataFrame({"Quote": ["Evidence"]}), tmp_path, "facts", ["csv", "excel"]
+    )
     assert len(paths) == 2
     assert frame.columns.tolist() == ["quote"]
     prepare.assert_called_once()
@@ -175,10 +192,16 @@ def test_compiler_reads_each_input_once_and_skips_internal_sidecars(
 
     directory = tmp_path / "records"
     directory.mkdir()
-    (directory / "record.json").write_text(json.dumps({"payload": {
-        "source": {"url": "https://example.org/a"},
-        "items": [{"quote": "Evidence", "kind": "observation", "summary": "Summary"}],
-    }}))
+    (directory / "record.json").write_text(
+        json.dumps(
+            {
+                "payload": {
+                    "source": {"url": "https://example.org/a"},
+                    "items": [{"quote": "Evidence", "kind": "observation", "summary": "Summary"}],
+                }
+            }
+        )
+    )
     sidecars = directory / "validation"
     sidecars.mkdir()
     (sidecars / "record.json").write_text("must not read")
@@ -194,9 +217,13 @@ def test_compiler_reads_each_input_once_and_skips_internal_sidecars(
 def test_wrapper_volatility_does_not_hide_nested_evidence_conflicts(tmp_path, contract_schema):
     directory = tmp_path / "records"
     directory.mkdir()
-    record = {"payload": {"source": {"url": "https://example.org/a"},
-                         "items": [{"quote": "Evidence", "details": {"amount": 1}}]},
-              "lineage": {"extracted_at": "2024-01-01T00:00:00Z"}}
+    record = {
+        "payload": {
+            "source": {"url": "https://example.org/a"},
+            "items": [{"quote": "Evidence", "details": {"amount": 1}}],
+        },
+        "lineage": {"extracted_at": "2024-01-01T00:00:00Z"},
+    }
     second = json.loads(json.dumps(record))
     second["lineage"]["extracted_at"] = "2024-01-02T00:00:00Z"
     (directory / "first.json").write_text(json.dumps(record))
@@ -210,7 +237,9 @@ def test_wrapper_volatility_does_not_hide_nested_evidence_conflicts(tmp_path, co
     assert compiler.deduplicator.preview_deduplication(frame)["suspicious_groups_count"] == 1
 
 
-def test_excel_cell_overflow_fails_before_fresh_or_any_writer(tmp_path, contract_schema, monkeypatch):
+def test_excel_cell_overflow_fails_before_fresh_or_any_writer(
+    tmp_path, contract_schema, monkeypatch
+):
     compiler = DataCompiler(SchemaMetadata(contract_schema), verbose=False)
     frame = pd.DataFrame({"data": ["x" * 32768]})
     output = tmp_path / "output"
@@ -220,7 +249,7 @@ def test_excel_cell_overflow_fails_before_fresh_or_any_writer(tmp_path, contract
     monkeypatch.setattr(compiler, "_prepare_output_dataframe", lambda df: df)
     csv_write = Mock()
     monkeypatch.setattr(compiler, "save_csv", csv_write)
-    with pytest.raises(ValueError, match="32,767|32767"):
+    with pytest.raises(ValueError, match=r"32,767|32767"):
         compiler.export(frame, output, "facts", ["csv", "excel"], fresh=True)
     csv_write.assert_not_called()
     assert sentinel.read_text() == "previous export"
@@ -229,10 +258,16 @@ def test_excel_cell_overflow_fails_before_fresh_or_any_writer(tmp_path, contract
 def test_cli_dry_run_checks_excel_evidence_limit(tmp_path, contract_schema, workspace):
     directory = workspace.extracted
     directory.mkdir(parents=True)
-    (directory / "record.json").write_text(json.dumps({"payload": {
-        "source": {"url": "https://example.org/a"},
-        "items": [{"quote": "x" * 32768, "kind": "observation", "summary": "Summary"}],
-    }}))
+    (directory / "record.json").write_text(
+        json.dumps(
+            {
+                "payload": {
+                    "source": {"url": "https://example.org/a"},
+                    "items": [{"quote": "x" * 32768, "kind": "observation", "summary": "Summary"}],
+                }
+            }
+        )
+    )
     cfg = _config(tmp_path, contract_schema)
     result = CliRunner().invoke(cli, ["compile", "--config", str(cfg), "--dry-run"])
     assert result.exit_code != 0
@@ -258,13 +293,17 @@ def test_fresh_writer_failure_keeps_prior_output_and_leaves_no_staging(
     link = output / "link.txt"
     link.symlink_to(output / "keep.txt")
     monkeypatch.setattr(
-        compiler, "save_excel",
+        compiler,
+        "save_excel",
         Mock(side_effect=OSError("excel writer blew up")),
     )
     with pytest.raises(ValueError):
         compiler.export(
-            pd.DataFrame({"quote": ["x"]}), output, "facts",
-            ["csv", "excel"], fresh=True,
+            pd.DataFrame({"quote": ["x"]}),
+            output,
+            "facts",
+            ["csv", "excel"],
+            fresh=True,
         )
     assert (output / "facts.csv").read_text() == "OLD CSV BYTES"
     assert (output / "keep.txt").read_text() == "unrelated"
@@ -285,13 +324,17 @@ def test_nonfresh_writer_failure_keeps_requested_and_unrelated_files(
     (output / "facts.xlsx").write_bytes(b"OLD XLSX BYTES")
     (output / "keep.txt").write_text("unrelated")
     monkeypatch.setattr(
-        compiler, "save_excel",
+        compiler,
+        "save_excel",
         Mock(side_effect=OSError("excel writer blew up")),
     )
     with pytest.raises(ValueError):
         compiler.export(
-            pd.DataFrame({"quote": ["x"]}), output, "facts",
-            ["csv", "excel"], fresh=False,
+            pd.DataFrame({"quote": ["x"]}),
+            output,
+            "facts",
+            ["csv", "excel"],
+            fresh=False,
         )
     assert (output / "facts.csv").read_text() == "OLD CSV BYTES"
     assert (output / "facts.xlsx").read_bytes() == b"OLD XLSX BYTES"
@@ -329,8 +372,11 @@ def test_nonfresh_publication_failure_rolls_back_each_requested_file(
     monkeypatch.setattr(pathlib.Path, "replace", failing_replace)
     with pytest.raises(ValueError):
         compiler.export(
-            pd.DataFrame({"quote": ["x"]}), output, "facts",
-            ["csv", "excel"], fresh=False,
+            pd.DataFrame({"quote": ["x"]}),
+            output,
+            "facts",
+            ["csv", "excel"],
+            fresh=False,
         )
     assert (output / "facts.csv").read_text() == "OLD CSV BYTES"
     assert (output / "facts.xlsx").read_bytes() == b"OLD XLSX BYTES"
@@ -364,8 +410,11 @@ def test_rollback_restore_failure_retains_backup_and_reports_it(
     monkeypatch.setattr(pathlib.Path, "replace", failing_replace)
     with pytest.raises(ValueError, match="Recovery details"):
         compiler.export(
-            pd.DataFrame({"quote": ["x"]}), output, "facts",
-            ["csv", "excel"], fresh=False,
+            pd.DataFrame({"quote": ["x"]}),
+            output,
+            "facts",
+            ["csv", "excel"],
+            fresh=False,
         )
     # Restore of the csv failed, so the prior bytes must still be recoverable
     # from the retained stage-owned backup rather than silently lost.
@@ -400,15 +449,12 @@ def test_failed_new_file_cleanup_does_not_abort_other_restores(
     monkeypatch.setattr(Path, "replace", fail_publish)
     monkeypatch.setattr(Path, "unlink", fail_unlink)
     with pytest.raises(ValueError, match="rollback incomplete"):
-        compiler.export(pd.DataFrame({"quote": ["new"]}), output,
-                        "facts", ["csv", "excel"])
+        compiler.export(pd.DataFrame({"quote": ["new"]}), output, "facts", ["csv", "excel"])
     assert (output / "facts.xlsx").read_bytes() == b"OLD XLSX"
     assert (output / "facts.csv").exists()
 
 
-def test_output_dir_named_psweep_old_sibling_is_not_disturbed(
-    tmp_path, contract_schema
-):
+def test_output_dir_named_psweep_old_sibling_is_not_disturbed(tmp_path, contract_schema):
     # Backups are stage-owned, never a fixed sentinel beside the output, so a
     # user file/dir that happens to share such a name is never touched.
     compiler = _compiler(contract_schema)
@@ -419,25 +465,29 @@ def test_output_dir_named_psweep_old_sibling_is_not_disturbed(
     sentinel_dir.mkdir()
     (sentinel_dir / "user.txt").write_text("precious")
     compiler.export(
-        pd.DataFrame({"quote": ["x"]}), output, "facts",
-        ["csv"], fresh=True,
+        pd.DataFrame({"quote": ["x"]}),
+        output,
+        "facts",
+        ["csv"],
+        fresh=True,
     )
     assert (sentinel_dir / "user.txt").read_text() == "precious"
     assert (output / "facts.csv").exists()
     assert _no_staging_leak(tmp_path)
 
 
-def test_nonfresh_success_publishes_both_formats_and_keeps_unrelated(
-    tmp_path, contract_schema
-):
+def test_nonfresh_success_publishes_both_formats_and_keeps_unrelated(tmp_path, contract_schema):
     compiler = _compiler(contract_schema)
     output = tmp_path / "output"
     output.mkdir()
     (output / "facts.csv").write_text("OLD CSV BYTES")
     (output / "keep.txt").write_text("unrelated")
     emitted, _ = compiler.export(
-        pd.DataFrame({"quote": ["x"]}), output, "facts",
-        ["csv", "excel"], fresh=False,
+        pd.DataFrame({"quote": ["x"]}),
+        output,
+        "facts",
+        ["csv", "excel"],
+        fresh=False,
     )
     assert [p.name for p in emitted] == ["facts.csv", "facts.xlsx"]
     assert (output / "facts.csv").exists()
@@ -483,25 +533,31 @@ def test_active_compilation_writer_prevents_second_writer(tmp_path, contract_sch
     from psweep.utils.file_io import publication_lock
 
     output = tmp_path / "output"
-    with publication_lock(tmp_path / ".output-publication.lock"):
-        with pytest.raises(ValueError, match="already active"):
-            _compiler(contract_schema).export(
-                pd.DataFrame({"quote": ["new"]}), output, "facts", ["csv"],
-            )
+    with (
+        publication_lock(tmp_path / ".output-publication.lock"),
+        pytest.raises(ValueError, match="already active"),
+    ):
+        _compiler(contract_schema).export(
+            pd.DataFrame({"quote": ["new"]}),
+            output,
+            "facts",
+            ["csv"],
+        )
     assert not output.exists()
     assert _no_staging_leak(tmp_path)
 
 
-def test_fresh_success_replaces_whole_directory_and_leaves_no_staging(
-    tmp_path, contract_schema
-):
+def test_fresh_success_replaces_whole_directory_and_leaves_no_staging(tmp_path, contract_schema):
     compiler = _compiler(contract_schema)
     output = tmp_path / "output"
     output.mkdir()
     (output / "keep.txt").write_text("unrelated")
     emitted, _ = compiler.export(
-        pd.DataFrame({"quote": ["x"]}), output, "facts",
-        ["csv", "excel"], fresh=True,
+        pd.DataFrame({"quote": ["x"]}),
+        output,
+        "facts",
+        ["csv", "excel"],
+        fresh=True,
     )
     assert sorted(p.name for p in emitted) == ["facts.csv", "facts.xlsx"]
     assert (output / "facts.csv").exists()
@@ -513,7 +569,9 @@ def test_fresh_success_replaces_whole_directory_and_leaves_no_staging(
 def test_fresh_empty_compile_removes_stale_outputs(tmp_path, contract_schema, workspace):
     directory = workspace.extracted
     directory.mkdir(parents=True)
-    (directory / "record.json").write_text(json.dumps({"payload": {"source": {"url": "https://example.org/a"}, "items": []}}))
+    (directory / "record.json").write_text(
+        json.dumps({"payload": {"source": {"url": "https://example.org/a"}, "items": []}})
+    )
     output = workspace.compiled
     output.mkdir(parents=True)
     (output / "stale.csv").write_text("old rows")
@@ -557,7 +615,9 @@ def test_fresh_zero_item_publication_respects_writer_lock(tmp_path, contract_sch
 
 
 @pytest.mark.parametrize("record", [{"payload": []}, {}, [], {"payload": {"items": "invalid"}}])
-def test_invalid_record_preserves_exports_even_with_fresh(tmp_path, contract_schema, record, workspace):
+def test_invalid_record_preserves_exports_even_with_fresh(
+    tmp_path, contract_schema, record, workspace
+):
     directory = workspace.extracted
     directory.mkdir(parents=True)
     (directory / "bad.json").write_text(json.dumps(record))
@@ -566,9 +626,17 @@ def test_invalid_record_preserves_exports_even_with_fresh(tmp_path, contract_sch
     sentinel = output / "previous.csv"
     sentinel.write_text("previous evidence")
     cfg = _config(tmp_path, contract_schema)
-    result = CliRunner().invoke(cli, [
-        "compile", "--config", str(cfg), "--fresh", "--provenance-policy", "fail",
-    ])
+    result = CliRunner().invoke(
+        cli,
+        [
+            "compile",
+            "--config",
+            str(cfg),
+            "--fresh",
+            "--provenance-policy",
+            "fail",
+        ],
+    )
     assert result.exit_code != 0, result.output
     assert "bad.json" in result.output
     assert sentinel.read_text() == "previous evidence"
@@ -577,15 +645,24 @@ def test_invalid_record_preserves_exports_even_with_fresh(tmp_path, contract_sch
 def test_nested_row_expansion_is_schema_owned_and_order_invariant(tmp_path):
     schema = {
         "type": "object",
-        "properties": {"items": {"type": "array", "items": {
-            "type": "object",
-            "properties": {
-                "name": {"type": "string"},
-                "children": {"type": "array", "items": {
-                    "type": "object", "properties": {"value": {"type": "number"}},
-                }},
-            },
-        }}},
+        "properties": {
+            "items": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "name": {"type": "string"},
+                        "children": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {"value": {"type": "number"}},
+                            },
+                        },
+                    },
+                },
+            }
+        },
         "$metadata": {"extraction": {"main_data_array": "items"}},
     }
     schema_path = tmp_path / "schema.json"

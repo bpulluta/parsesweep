@@ -11,19 +11,13 @@ from psweep.extraction.transcription import AUDIO_EXTENSIONS
 
 
 def test_discovery_downloads_exactly_what_extraction_reads():
-    assert (
-        constants.DOWNLOADABLE_EXTENSIONS
-        == document_utils.SUPPORTED_EXTENSIONS
-    )
+    assert constants.DOWNLOADABLE_EXTENSIONS == document_utils.SUPPORTED_EXTENSIONS
     assert constants.DOCUMENT_EXTENSIONS == document_utils.DOCUMENT_EXTENSIONS
     assert AUDIO_EXTENSIONS <= document_utils.DOCUMENT_EXTENSIONS
     assert document_utils.SUPPORTED_EXTENSIONS == (
         document_utils.DOCUMENT_EXTENSIONS | document_utils.WEB_PAGE_EXTENSIONS
     )
-    assert (
-        not document_utils.DOCUMENT_EXTENSIONS
-        & document_utils.WEB_PAGE_EXTENSIONS
-    )
+    assert not document_utils.DOCUMENT_EXTENSIONS & document_utils.WEB_PAGE_EXTENSIONS
 
 
 def test_every_supported_type_has_a_reader():
