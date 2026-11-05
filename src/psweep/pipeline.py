@@ -1045,12 +1045,17 @@ def _execute_extraction(plan: dict, *, on_progress=None) -> ExtractionRunResult:
     if inputs.get("page_targeting", {}).get("save_discovered"):
         for doc, text in sections.items():
             atomic_write(output / ".sections" / f"{doc.name}.txt", text)
-        if ranges:
-            buffer = io.StringIO(newline="")
-            writer = csv.writer(buffer)
-            writer.writerow(["file_path", "start_page", "end_page"])
-            writer.writerows((str(doc), *rng) for doc, rng in ranges.items() if rng)
-            atomic_write(output / "discovered_page_ranges.csv", buffer.getvalue())
+        # A reused record was extracted from the range its coverage recorded.
+        used = {
+            doc: record.get("processing_metrics", {}).get("coverage", {}).get("selected_page_range")
+            for doc, record in plan["reused"].items()
+        }
+        used.update(ranges)
+        buffer = io.StringIO(newline="")
+        writer = csv.writer(buffer)
+        writer.writerow(["file_path", "start_page", "end_page"])
+        writer.writerows((str(doc), *used[doc]) for doc in plan["documents"] if used.get(doc))
+        atomic_write(output / "discovered_page_ranges.csv", buffer.getvalue())
     results = []
     for doc, record in plan["reused"].items():
         results.append(

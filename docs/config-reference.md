@@ -275,7 +275,9 @@ relative to the input folder, or by file name. CSV rows win; leave both pages
 empty to force the full document. `pages.range`
 (or `--pages 615-759`) selects one range for a single file. Located ranges are
 cached in `.pages/` beside the document; any failure falls back to the full
-document.
+document. With `save_discovered`, `extracted/discovered_page_ranges.csv` (the
+`pages.csv` columns) lists the range behind every current record, reused
+records included.
 
 ### LLM calls
 
