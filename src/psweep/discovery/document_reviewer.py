@@ -25,6 +25,7 @@ from threading import Lock
 from typing import Any
 
 from psweep.extraction.transcription import TranscriptionError, is_audio
+from psweep.security import provider_error_category
 from psweep.utils.file_io import atomic_json
 from .targets import target_identity
 from .urls import redact_url, redact_urls_in_text
@@ -575,7 +576,10 @@ class DocumentReviewer:
                 )
             except Exception as exc:
                 self._track_usage()
-                message = f"LLM grade call failed ({type(exc).__name__})"
+                message = (
+                    f"LLM grade call failed: {provider_error_category(exc)} "
+                    f"({type(exc).__name__})"
+                )
                 raise ReviewError(message, usage_unknown=True) from exc
             # Retain returned usage even when the grade data is invalid.
             self._track_usage(result)
@@ -718,7 +722,10 @@ class DocumentReviewer:
             )
         except Exception as exc:  # noqa: BLE001 - isolate dedup failures
             self._track_usage()
-            message = f"LLM dedup call failed ({type(exc).__name__})"
+            message = (
+                f"LLM dedup call failed: {provider_error_category(exc)} "
+                f"({type(exc).__name__})"
+            )
             error = ReviewError(message, usage_unknown=True)
             for record in primaries:
                 self._mark_review_failure(record, error)

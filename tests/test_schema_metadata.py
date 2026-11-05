@@ -19,15 +19,12 @@ def temp_schema_with_metadata(tmp_path):
             "extraction": {
                 "main_data_array": "test_items",
                 "context_objects": ["metadata_obj", "info_obj"],
-                "display_name_template": "{name} - {id}",
                 "document_type": "Test Document"
             },
             "identity": {
                 "deduplication": {
                     "key_fields": ["field1", "field2"],
-                    "ignore_fields": ["notes", "timestamp"],
-                    "strategy": "latest",
-                    "comparison_mode": "fuzzy"
+                    "ignore_fields": ["notes", "timestamp"]
                 }
             },
             "validation": {
@@ -486,8 +483,6 @@ class TestIdentityDeduplicationValidation:
                             "applies_to",
                             {"field": "condition", "normalize": "words"},
                         ],
-                        "strategy": "latest",
-                        "comparison_mode": "fuzzy",
                     }
                 }
             },
@@ -505,7 +500,8 @@ class TestIdentityDeduplicationValidation:
             ({"key_field": ["a"]}, "unknown key"),
             ({"key_fields": "a"}, "key_fields must be"),
             ({"key_fields": [""]}, "must contain only non-empty"),
-            ({"strategy": 5}, "strategy must be a non-empty string"),
+            ({"strategy": "latest"}, "unknown key"),
+            ({"comparison_mode": "exact"}, "unknown key"),
             (
                 {"fuzzy_key_fields": [{"normalize": "words"}]},
                 "require a non-empty string 'field'",

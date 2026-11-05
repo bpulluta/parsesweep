@@ -18,14 +18,14 @@ import shutil
 import uuid
 from dataclasses import dataclass, fields, is_dataclass
 from pathlib import Path, PurePosixPath
-from collections.abc import Iterator, Mapping
+from collections.abc import Iterable, Iterator, Mapping
 
 from psweep.extraction.document_utils import (
     read_text_cache, text_cache_paths, write_text_cache,
 )
 from psweep.utils.file_io import atomic_write, atomic_json, publication_lock, PublicationLockError
 
-from .retry import is_retryable
+from psweep.utils.retry import is_retryable
 
 TOKEN_HEX_LENGTH = 32
 SHA256_HEX_LENGTH = 64
@@ -707,14 +707,19 @@ def _inherit_text_caches(source: Path, curated: Path, replaced: set[Path]) -> No
     for part in replaced:
         if (curated / part).is_dir():
             outgoing.update(_documents(curated / part))
+    inherit_text_caches(new, outgoing)
+
+
+def inherit_text_caches(targets: Iterable[Path], donors: Iterable[Path]) -> None:
+    """Copy a donor's valid text cache to each uncached target with the same SHA-256."""
     cached = {}
-    for old in outgoing:
+    for old in donors:
         hit = read_text_cache(old, return_meta=True) if old.is_file() else None
         if hit:
             cached[hit[1]["source_sha256"]] = hit
     if not cached:
         return
-    for path in new:
+    for path in targets:
         if read_text_cache(path) is None and (
             hit := cached.get(artifact_sha256(path))
         ):

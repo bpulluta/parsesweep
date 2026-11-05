@@ -26,6 +26,26 @@ from psweep.discovery.request_inputs import discovery_request_fields
         ({"search": {"enabled": True}}, "unknown key 'discovery.search.enabled'"),
         ({"selection": {"primary_per_target": 3}}, "discovery.selection.primary_per_target"),
         ({"document_review": {"action": "move"}}, "discovery.document_review.action"),
+        (
+            {"selection": {"target_identity_require_any_templates": ["{name}"]}},
+            "did you mean 'target_require_any'?",
+        ),
+        (
+            {"selection": {"target_identity_require_all_templates": ["{name}"]}},
+            "did you mean 'target_require_all'?",
+        ),
+        (
+            {"selection": {"target_identity_exclude_any_templates": ["x"]}},
+            "unknown key 'discovery.selection.target_identity_exclude_any_templates'",
+        ),
+        (
+            {"selection": {"relevance_require_legal_marker_terms": ["code"]}},
+            "unknown key 'discovery.selection.relevance_require_legal_marker_terms'",
+        ),
+        (
+            {"selection": {"relevance_allowed_domain_patterns": [".gov"]}},
+            "unknown key 'discovery.selection.relevance_allowed_domain_patterns'",
+        ),
     ],
 )
 def test_unknown_keys_fail_with_path_and_suggestion(tmp_path: Path, discovery, message):

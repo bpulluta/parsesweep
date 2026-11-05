@@ -15,7 +15,7 @@ import pytest
 
 from psweep.discovery import document_reviewer
 from psweep.discovery.document_reviewer import DocumentReviewer
-from psweep.discovery.retry import is_retryable
+from psweep.utils.retry import is_retryable
 from psweep.extraction import document_utils, llm_factory
 
 
@@ -317,6 +317,29 @@ def test_llm_exception_is_sanitized_and_usage_is_unknown(tmp_path):
     assert costs["total_input_tokens"] == 0
     assert costs["total_output_tokens"] == 0
     assert costs["usage_unknown_calls"] == 1
+
+
+def test_llm_failure_reports_sanitized_provider_category(tmp_path):
+    """The review error names the provider category, never provider text."""
+    from psweep.extraction.llm_client import LLMClient
+
+    record = _record(tmp_path)
+    provider = RuntimeError(
+        "Rate limit reached for org-synthetic at https://x/?token=secret"
+    )
+
+    class Client:
+        def extract(self, **kwargs):
+            raise LLMClient._provider_error(provider)
+
+    reviewer = DocumentReviewer(document_description="records")
+    reviewer._client = Client()
+    reviewer.review([record], [])
+    assert record["review_error"] == (
+        "LLM grade call failed: rate limit (ExtractionError)"
+    )
+    for leaked in ("org-synthetic", "token", "secret", "https://"):
+        assert leaked not in record["review_error"]
 
 
 def test_pending_grade_futures_are_bounded(tmp_path, monkeypatch):

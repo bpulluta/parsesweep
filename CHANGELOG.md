@@ -7,10 +7,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed (breaking config)
+- Discovery `selection` target rules are renamed:
+  `target_identity_require_any_templates` → `target_require_any`,
+  `target_identity_require_all_templates` → `target_require_all`,
+  `target_identity_exclude_any_templates` → `target_exclude`.
+- Removed `selection.relevance_require_legal_marker_terms` (use
+  `selection.require_any`) and `selection.relevance_allowed_domain_patterns`, a
+  ranking boost (use `link_prioritization.domain_scores`, e.g.
+  `{"example.gov": 0.15}`). Old keys fail as unknown.
+- `extraction.pages.csv` resolves relative to the config file's folder, like
+  `targets` and `validation.references`; `--pages-csv` stays relative to the
+  working directory.
+- `extraction.pages` accepts only `csv`, `auto_locate` and `range`, and
+  `auto_locate` only its documented keys; unknown keys fail.
+- Schema `identity.deduplication.strategy` and `comparison_mode` (never used)
+  are removed and rejected as unknown keys.
+- `config/ADVANCED.yaml` is removed; `config/TEMPLATE.yaml` is a short, valid
+  starter covering all four stages, and every key is documented once in
+  `docs/config-reference.md`.
+
 ### Fixed
-- Configured legal-document markers use source titles and snippets as well as
-  URLs, allowing opaque downloads on unknown hosts without jurisdiction
-  allowlists. Generated query reasons remain excluded from source evidence.
+- `selection.require_any` matches source URLs, titles and snippets, so opaque
+  downloads on unknown hosts remain eligible. Generated query reasons are not
+  source evidence.
+- Recordings found again by a later run are graded by document review: the
+  run's copy inherits the curated transcript (matched by SHA-256), so each file
+  is transcribed once.
+- A fully reused discovery run no longer creates an empty `documents/` folder.
+- Document review errors name the provider error category.
+- Roster state evidence also reads state-labelled table cells and a state code
+  alone after an exact roster-name line, so same-name targets in shared lists
+  resolve to the right state.
+- URLs with suffixes unknown to Python's MIME table (`.php`, `.aspx`, `.cfm`)
+  are server routes decided by the response MIME; only known non-document
+  types or encodings (`.jpg`, `.zip`, `.gz`) are rejected.
+- LLM calls retry every transient provider failure (408/429/5xx, connection
+  errors) through the shared retry helper; TLS failures stay terminal.
+- Sampled bot challenges are retried within a run and final across runs.
 - Confirmed successful SerpApi searches with no Google results no longer abort
   discovery or discard other queries' candidates. Provider failures remain
   explicit; empty queries are recorded with zero results.
@@ -21,8 +55,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Protected operating mode with an approved HTTPS model endpoint, private
   POSIX workspace/cache checks, and an HPC acceptance/runbook checklist.
 - Compilation writer locks and interruption-recovery journals.
-- Short discovery-only starter template, with expanded settings in
-  `config/ADVANCED.yaml` and discovery-first onboarding documentation.
+- Discovery-first onboarding documentation and a source-patterns guide
+  (`docs/sources.md`).
 - Embedded documentation: NumPy docstrings rendered to a Sphinx site
   (autoapi + sphinx-click) and published to GitHub Pages via CI.
 - Provider/model mismatch warning in `llm_factory.build_llm_client()` when
@@ -112,8 +146,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   document-path fallback. Concrete provider/vendor source filters remain
   domain-config choices, not automatic parser-derived settings.
 - Discovery outcomes have verbosity-independent exit codes: error-free
-  `success`/`dry_run`/`reused` return 0, `failed`/`partial_failure` return 1
-  (including failure with zero downloads), and genuinely `empty` returns 2.
+  `success`/`dry_run`/`reused` return 0, `failed` returns 1 (including failure
+  with zero downloads), genuinely `empty` returns 2 and `partial_failure`
+  returns 3; `run` continues past partial stages and exits 3 at the end.
 - Checkpoint v2 reuse requires matching effective discovery config and artifact
   digest evidence, including curated files; changed/missing artifacts and v1
   entries reacquire. Publication locks reject concurrent corpus writers and

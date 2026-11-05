@@ -42,7 +42,6 @@ discovery:
     # Set high so HTML landing pages (which sort below PDFs) survive when
     # crawling is enabled. Document review keep_top is the real gatekeeper.
     max_per_target: 40
-    relevance_require_legal_marker_terms: [ordinance, zoning, code, chapter, bylaw]
     exclude_draft: true
     draft_patterns:
       - '\bdraft\b'
@@ -57,25 +56,10 @@ discovery:
       - '\bobsolete\b'
       - '\barchive[d]?\b'
     # Hard filter: candidate URL/title/snippet MUST mention the jurisdiction
-    target_identity_require_any_templates:
+    target_require_any:
       - "{jurisdiction}"
-    # Minimal relevance filter: just needs to look like legal/government content
-    # (document review handles topic relevance)
-    require_any:
-      - ordinance
-      - zoning
-      - code
-      - compressor
-      - pipeline
-      - natural gas
-      # Restore: These keywords catch mixed O&G/NG ordinances that contain NG rules
-      - oil and gas
-      - gas well
-      - gas facilities
-      - gas utility
-      - bylaw
-      - chapter
-      - title
+    # Must look like legal content; document review handles topic relevance.
+    require_any: [ordinance, zoning, code, chapter, bylaw]
     exclude:
       - press release
       - news article
@@ -107,15 +91,6 @@ discovery:
       - "twitter\\.com/"
       - "x\\.com/"
       - "insideclimatenews\\.org/"
-    relevance_allowed_domain_patterns:
-      - ".gov"
-      - ".us"
-      - municode.com
-      - ecode360.com
-      - codepublishing.com
-      - generalcode.com
-      - zoneomics.com
-      - ".org"
     require_supported_document: false
   # Link following is off (crawl.max_depth: 0) — too slow at this scale. To
   # crawl, set crawl.max_depth (e.g. 2) and crawl.include_link_text_patterns
@@ -139,6 +114,10 @@ discovery:
       "codepublishing.com": 0.15
       "generalcode.com": 0.15
       "amlegal.com": 0.2
+      ".gov": 0.15
+      ".us": 0.15
+      "zoneomics.com": 0.15
+      ".org": 0.15
   document_classifier:
     required_keywords:
       - ordinance

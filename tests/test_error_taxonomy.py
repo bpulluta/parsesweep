@@ -70,3 +70,11 @@ def test_summarize_error_records_aggregates_by_category_and_code() -> None:
         "document_extraction_failed": 1,
         "unexpected_processing_error": 1,
     }
+
+def test_error_taxonomy_has_one_retry_classifier() -> None:
+    import psweep.utils.error_taxonomy as taxonomy
+    import psweep.utils.retry as retry
+
+    assert not hasattr(taxonomy, "_is_retryable")
+    assert not hasattr(retry, "error_record")
+    assert taxonomy.is_transient_error is retry.is_transient_error

@@ -207,28 +207,16 @@ DISCOVERY_SCHEMA: dict[str, Any] = {
         "exclude_draft": _Key(_bool, "selection_exclude_draft"),
         "draft_patterns": _Key(_patterns, "selection_draft_patterns"),
         "require_any": _Key(_strings, "selection_relevance_require_any_terms"),
-        "relevance_require_legal_marker_terms": _Key(
-            _strings, "selection_relevance_require_legal_marker_terms"
-        ),
         "exclude": _Key(_strings, "selection_relevance_exclude_any_terms"),
         "exclude_url_patterns": _Key(_patterns, "selection_exclude_url_patterns"),
         "exclude_text_patterns": _Key(_patterns, "selection_exclude_text_patterns"),
         "max_per_host_per_target": _Key(_int(0), "selection_max_per_host_per_target"),
-        "relevance_allowed_domain_patterns": _Key(
-            _strings, "selection_relevance_allowed_domain_patterns"
-        ),
         "require_supported_document": _Key(
             _bool, "selection_require_supported_document"
         ),
-        "target_identity_require_any_templates": _Key(
-            _strings, "selection_target_identity_require_any_templates"
-        ),
-        "target_identity_require_all_templates": _Key(
-            _strings, "selection_target_identity_require_all_templates"
-        ),
-        "target_identity_exclude_any_templates": _Key(
-            _strings, "selection_target_identity_exclude_any_templates"
-        ),
+        "target_require_any": _Key(_strings, "selection_target_require_any"),
+        "target_require_all": _Key(_strings, "selection_target_require_all"),
+        "target_exclude": _Key(_strings, "selection_target_exclude"),
     },
     "link_prioritization": {
         "mode": _Key(_choice("heuristic", "off"), "link_prioritization_mode"),

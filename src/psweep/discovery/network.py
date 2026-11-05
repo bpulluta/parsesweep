@@ -7,7 +7,7 @@ from collections.abc import Callable
 from typing import Any, Protocol
 from urllib.parse import urljoin, urlparse
 
-from .retry import compute_backoff, may_retry_in_run
+from psweep.utils.retry import compute_backoff, may_retry_in_run
 from .transport import (
     MAX_PAGE_BYTES, NetworkPolicyError, request_get, validate_public_url,
 )

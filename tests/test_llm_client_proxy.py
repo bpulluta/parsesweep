@@ -26,8 +26,10 @@ SCHEMA = {"type": "object", "properties": {}}
 
 
 def test_connection_error_remains_actionable_without_provider_details():
-    message = LLMClient._safe_provider_error(
-        RuntimeError("Connection error. private-endpoint.example synthetic-secret")
+    message = str(
+        LLMClient._provider_error(
+            RuntimeError("Connection error. private-endpoint.example synthetic-secret")
+        )
     )
     assert "connection error" in message
     assert "private-endpoint" not in message

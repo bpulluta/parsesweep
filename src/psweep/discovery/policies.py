@@ -8,7 +8,7 @@ from urllib.robotparser import RobotFileParser
 
 from .constants import ROBOTS_AGENT, USER_AGENT
 from .network import RateLimiter, send_get, URLGate, NetworkPolicyError
-from .retry import is_transient_error
+from psweep.utils.retry import is_transient_error
 
 # Single source of truth for the user-facing policy defaults. Referenced by the
 # ``DiscoveryRequest`` dataclass, the CLI options, the CLI resolution fallbacks,

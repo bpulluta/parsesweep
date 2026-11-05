@@ -9,9 +9,9 @@ import pytest
 import requests
 
 from psweep.discovery.browser import BrowserDownloadError
-from psweep.discovery.retry import (
+from psweep.utils.error_taxonomy import build_error_record
+from psweep.utils.retry import (
     browser_may_recover,
-    error_record,
     is_retryable,
     is_transient_error,
     may_retry_in_run,
@@ -42,11 +42,11 @@ def _http_error(status):
         (BrowserDownloadError("Browser download failed: net::ERR_CERT_DATE_INVALID"), False),
         (BrowserDownloadError("Browser download failed: net::ERR_CONNECTION_RESET"), True),
         (BrowserDownloadError("Browser download failed: script timeout"), True),
-        (BrowserDownloadError("Browser download failed: HTTP 500", status=500), True),
-        (BrowserDownloadError("Browser download failed: HTTP 429", status=429), True),
+        (BrowserDownloadError("Browser download failed: HTTP 500", status_code=500), True),
+        (BrowserDownloadError("Browser download failed: HTTP 429", status_code=429), True),
         (BrowserDownloadError(
             "Browser download failed for https://x.gov/ord-2504.pdf: HTTP 404",
-            status=404,
+            status_code=404,
         ), False),
         (RuntimeError("failed for https://x.gov/timeout-503.pdf: not a document"), False),
     ],
@@ -124,7 +124,7 @@ def test_bot_manager_challenges_retry_in_run_but_are_final(status, header):
     exc.response.headers[header] = "challenge"
     assert may_retry_in_run(exc) is True
     assert is_transient_error(exc) is False
-    assert error_record(exc, stage="download")["retryable"] is False
+    assert build_error_record(exc, stage="download")["retryable"] is False
 
 
 @pytest.mark.parametrize(
@@ -166,11 +166,11 @@ def test_record_retryability(record, expected):
     assert is_retryable(record) is expected
 
 
-def test_error_record_uses_typed_classification():
+def test_build_error_record_uses_typed_classification():
     """Status digits or markers inside a URL never make a failure retryable."""
     exc = _http_error(404)
     exc.args = ("404 Client Error for url: https://x.gov/ord-2504-timeout.pdf",)
-    assert error_record(exc, stage="discovery.download")["retryable"] is False
+    assert build_error_record(exc, stage="discovery.download")["retryable"] is False
 
 
 def test_browser_download_raises_typed_status():
@@ -185,7 +185,7 @@ def test_browser_download_raises_typed_status():
     session._driver = driver
     with pytest.raises(BrowserDownloadError) as caught:
         session.download_bytes("https://x.gov/ord-404.pdf")
-    assert caught.value.status == 503 and is_transient_error(caught.value)
+    assert caught.value.status_code == 503 and is_transient_error(caught.value)
 
 
 class WebDriverException(Exception):
@@ -259,3 +259,24 @@ def test_policy_rejection_is_transient_only_when_caused_by_a_transient_error():
         check_url("https://x.gov/doc.pdf", lambda _url: False)
     assert is_transient_error(transient.value)
     assert not is_transient_error(denied.value)
+
+
+def test_retry_classifier_has_no_discovery_imports():
+    """Extraction imports the classifier, so it must not import discovery."""
+    import ast
+    from pathlib import Path
+
+    import psweep.utils.retry as module
+
+    tree = ast.parse(Path(module.__file__).read_text(encoding="utf-8"))
+    imported = {
+        node.module or ""
+        for node in ast.walk(tree)
+        if isinstance(node, ast.ImportFrom)
+    } | {
+        alias.name
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Import)
+        for alias in node.names
+    }
+    assert not any("discovery" in name for name in imported)

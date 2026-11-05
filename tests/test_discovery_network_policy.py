@@ -9,7 +9,7 @@ import requests
 from psweep.discovery import network
 
 from psweep.discovery.network import NetworkPolicyError, send_get
-from psweep.discovery.retry import is_transient_error
+from psweep.utils.retry import is_transient_error
 from psweep.discovery.policies import (
     DiscoveryPolicyEvaluator,
     PolicyCheckResult,

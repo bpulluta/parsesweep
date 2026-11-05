@@ -47,15 +47,14 @@ class CandidateSelector:
         exclude_draft: bool = True,
         draft_patterns: list[str] | None = None,
         relevance_require_any_terms: list[str] | None = None,
-        relevance_require_legal_marker_terms: list[str] | None = None,
         relevance_exclude_any_terms: list[str] | None = None,
         exclude_url_patterns: list[str] | None = None,
         exclude_text_patterns: list[str] | None = None,
         require_supported_document: bool = True,
         max_per_host_per_target: int = 0,
-        target_identity_require_any_templates: list[str] | None = None,
-        target_identity_require_all_templates: list[str] | None = None,
-        target_identity_exclude_any_templates: list[str] | None = None,
+        target_require_any: list[str] | None = None,
+        target_require_all: list[str] | None = None,
+        target_exclude: list[str] | None = None,
     ) -> None:
         self._exclude_draft = exclude_draft
         self._draft_re: list[re.Pattern[str]] = [
@@ -64,11 +63,6 @@ class CandidateSelector:
         self._relevance_require_any_terms = [
             t.strip().lower()
             for t in (relevance_require_any_terms or [])
-            if t and t.strip()
-        ]
-        self._relevance_require_legal_marker_terms = [
-            t.strip().lower()
-            for t in (relevance_require_legal_marker_terms or [])
             if t and t.strip()
         ]
         self._relevance_exclude_any_terms = [
@@ -88,19 +82,19 @@ class CandidateSelector:
         ]
         self._require_supported_document = require_supported_document
         self._max_per_host_per_target = max(0, int(max_per_host_per_target or 0))
-        self._target_identity_require_any_templates = [
+        self._target_require_any = [
             t.strip()
-            for t in (target_identity_require_any_templates or [])
+            for t in (target_require_any or [])
             if t and t.strip()
         ]
-        self._target_identity_require_all_templates = [
+        self._target_require_all = [
             t.strip()
-            for t in (target_identity_require_all_templates or [])
+            for t in (target_require_all or [])
             if t and t.strip()
         ]
-        self._target_identity_exclude_any_templates = [
+        self._target_exclude = [
             t.strip()
-            for t in (target_identity_exclude_any_templates or [])
+            for t in (target_exclude or [])
             if t and t.strip()
         ]
 
@@ -226,9 +220,9 @@ class CandidateSelector:
 
             # 2. Target identity filter (templated rules from target context)
             if (
-                self._target_identity_require_any_templates
-                or self._target_identity_require_all_templates
-                or self._target_identity_exclude_any_templates
+                self._target_require_any
+                or self._target_require_all
+                or self._target_exclude
             ):
                 identity_filtered = [
                     c
@@ -263,7 +257,6 @@ class CandidateSelector:
             # 3. Relevance filter (strict include/exclude term gates)
             if (
                 self._relevance_require_any_terms
-                or self._relevance_require_legal_marker_terms
                 or self._relevance_exclude_any_terms
             ):
                 relevance_filtered = [
@@ -452,13 +445,6 @@ class CandidateSelector:
             ):
                 return False
 
-        if self._relevance_require_legal_marker_terms:
-            if not any(
-                term in text
-                for term in self._relevance_require_legal_marker_terms
-            ):
-                return False
-
         return True
 
     def _matches_target_identity(
@@ -468,9 +454,9 @@ class CandidateSelector:
     ) -> bool:
         """Return True when candidate matches templated target identity rules."""
         if not (
-            self._target_identity_require_any_templates
-            or self._target_identity_require_all_templates
-            or self._target_identity_exclude_any_templates
+            self._target_require_any
+            or self._target_require_all
+            or self._target_exclude
         ):
             return True
 
@@ -479,15 +465,15 @@ class CandidateSelector:
         text_compact = re.sub(r"[^a-z0-9]+", "", text)
 
         require_any_terms = self._resolve_templates(
-            self._target_identity_require_any_templates,
+            self._target_require_any,
             normalized_context,
         )
         require_all_terms = self._resolve_templates(
-            self._target_identity_require_all_templates,
+            self._target_require_all,
             normalized_context,
         )
         exclude_any_terms = self._resolve_templates(
-            self._target_identity_exclude_any_templates,
+            self._target_exclude,
             normalized_context,
         )
 

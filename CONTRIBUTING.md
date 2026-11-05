@@ -73,9 +73,9 @@ from the live Click objects (sphinx-click), so **the code is the source of
 truth** — write clear docstrings rather than separate prose.
 
 ```bash
-pixi run -e docs docs-build     # sphinx-build -W (warnings are errors)
-pixi run -e docs docs-serve     # serve docs/_build/html at :8000
-pixi run -e docs docs-clean     # remove docs/_build
+pixi run docs-build     # sphinx-build -W (warnings are errors)
+pixi run docs-serve     # serve docs/_build/html at :8000
+pixi run docs-clean     # remove docs/_build
 ```
 
 The build runs with `-W`, so a broken docstring or dead cross-reference fails
@@ -98,8 +98,7 @@ Guidelines:
 - Field descriptions are the LLM's instructions; write them precisely.
 
 See [Schema Authoring](docs/schemas/index.md) for the full best-practices guide
-and [Configuration Reference](docs/config-reference.md) for the annotated
-config template.
+and [Configuration Reference](docs/config-reference.md) for every config key.
 
 ## Code quality standards
 

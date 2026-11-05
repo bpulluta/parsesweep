@@ -13,10 +13,6 @@ from collections.abc import Mapping
 import openai
 import requests
 
-from psweep.utils.error_taxonomy import build_error_record
-
-from .browser import BrowserDownloadError
-from .transport import NetworkPolicyError
 
 # Message markers for untyped transient failures (e.g. Selenium timeouts).
 _TRANSIENT_MARKERS: tuple[str, ...] = (
@@ -87,27 +83,22 @@ def is_transient_error(exc: BaseException) -> bool:
     """Return True when a later attempt of the same request may succeed.
 
     Timeouts, connection errors, truncated streams and HTTP 408/429/5xx are
-    transient unless a bot-manager challenge answered. Status-less browser
-    failures (``Failed to fetch`` also covers CORS and mixed-content
-    rejections) are transient only on network markers; TLS errors (anywhere
-    in the cause chain) and other HTTP 4xx responses are terminal. A policy rejection is transient only when its
-    evaluation failed transiently (e.g. robots.txt timed out) or a transient
-    error caused it. Typed errors (including LLM provider errors) are
-    classified by type and status; only untyped errors fall back to message
-    markers.
+    transient unless a bot-manager challenge answered. TLS errors (anywhere in
+    the cause chain) and other HTTP 4xx responses are terminal. An error that
+    declares a boolean ``retryable`` (policy rejections) is transient when it
+    says so or a transient error caused it. Errors carrying an int
+    ``status_code`` (provider SDKs, browser fetches) are classified by status;
+    status-less errors fall back to message markers (``Failed to fetch`` also
+    covers CORS and mixed-content rejections, so it is not a marker).
     """
-    if isinstance(exc, NetworkPolicyError):
+    declared = getattr(exc, "retryable", None)
+    if isinstance(declared, bool):
         cause = exc.__cause__
-        return bool(getattr(exc.result, "retryable", False)) or (
-            cause is not None and is_transient_error(cause)
-        )
+        return declared or (cause is not None and is_transient_error(cause))
     if _tls_failure(exc):
         return False
     if isinstance(exc, requests.exceptions.HTTPError) and exc.response is not None:
         return _transient_status(exc.response.status_code) and not _is_challenge(exc)
-    if isinstance(exc, BrowserDownloadError) and exc.status is not None:
-        return _transient_status(exc.status)
-    # Provider SDK errors (litellm/openai) carry the HTTP status they map to.
     status = getattr(exc, "status_code", None)
     if isinstance(status, int):
         return _transient_status(status)
@@ -151,11 +142,6 @@ def browser_may_recover(exc: BaseException) -> bool:
     return status in {401, 403, 429, 451} or any(
         marker in str(exc).lower() for marker in ("forbidden", "unauthorized", "access denied")
     )
-
-
-def error_record(exc: BaseException, **context: str | None) -> dict[str, object]:
-    """Build the canonical error record, classified by :func:`is_transient_error`."""
-    return {**build_error_record(exc, **context), "retryable": is_transient_error(exc)}
 
 
 def is_retryable(record: Mapping[str, object]) -> bool:

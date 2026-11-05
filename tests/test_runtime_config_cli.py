@@ -625,3 +625,71 @@ def test_extract_validate_config_does_not_require_documents(tmp_path, schema_pat
     real = CliRunner().invoke(cli, ["extract", "--config", str(config_path), "-q"])
     assert real.exit_code != 0
     assert "Documents path not found" in _panel_text(real.output)
+
+
+def test_target_limit_help_is_worded_once():
+    helps = {
+        name: next(p.help for p in command.params if p.name == "target_limit")
+        for name, command in cli.commands.items()
+        if any(p.name == "target_limit" for p in command.params)
+    }
+    assert {"run", "discover"} <= set(helps)
+    assert set(helps.values()) == {"Use only the first N targets (pilot runs)."}
+
+
+def test_version_comes_from_installed_package_metadata():
+    from importlib.metadata import version
+
+    import psweep
+
+    assert psweep.__version__ == version("psweep")
+    assert not hasattr(psweep, "__author__") and not hasattr(psweep, "__license__")
+    result = CliRunner().invoke(cli, ["--version"])
+    assert result.exit_code == 0 and version("psweep") in result.output
+
+
+def _template_domain(tmp_path):
+    """The shipped four-stage TEMPLATE in a fresh domain without a schema."""
+    from pathlib import Path
+
+    template = Path(__file__).resolve().parents[1] / "config" / "TEMPLATE.yaml"
+    domain = tmp_path / "config" / "my_domain"
+    domain.mkdir(parents=True)
+    (domain / "run.yaml").write_text(template.read_text(encoding="utf-8"), encoding="utf-8")
+    (domain / "targets.csv").write_text("name,state\nAlpha,CO\n", encoding="utf-8")
+    return domain / "run.yaml"
+
+
+def test_discover_ignores_downstream_stages_until_a_schema_exists(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    config = str(_template_domain(tmp_path))
+
+    validated = CliRunner().invoke(cli, ["discover", "--config", config, "--validate-config"])
+    assert validated.exit_code == 0, validated.output
+
+    strict = CliRunner().invoke(cli, ["run", "--config", config, "--validate-config"])
+    assert strict.exit_code == 1
+    assert "needs a schema" in " ".join(strict.output.replace("│", "").split())
+
+
+def test_validate_config_flag_runs_schema_aware_validation_checks(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    config = _template_domain(tmp_path)
+    (config.parent / "schema.json").write_text(json.dumps({
+        "$metadata": {
+            "extraction": {"main_data_array": "items"},
+            "identity": {"deduplication": {"key_fields": ["feature"]}},
+        },
+        "properties": {"items": {"type": "array", "items": {
+            "type": "object", "properties": {"feature": {"type": "string"}},
+        }}},
+    }), encoding="utf-8")
+    config.write_text(
+        config.read_text(encoding="utf-8").replace(
+            "models: [secondary]", "models: [secondary]\n  key_fields: [featur]"
+        ),
+        encoding="utf-8",
+    )
+    result = CliRunner().invoke(cli, ["validate", "--config", str(config), "--validate-config"])
+    assert result.exit_code == 1
+    assert "did you mean 'feature'" in " ".join(result.output.replace("│", "").split())

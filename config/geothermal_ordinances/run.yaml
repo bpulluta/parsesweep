@@ -27,7 +27,6 @@ discovery:
     cache: true
   selection:
     max_per_target: 15
-    relevance_require_legal_marker_terms: [ordinance, zoning, code, chapter, bylaw]
     exclude_draft: true
     draft_patterns:
       - '\bdraft\b'
@@ -41,20 +40,9 @@ discovery:
       - '\bwithdrawn\b'
       - '\bobsolete\b'
       - '\barchive[d]?\b'
-    target_identity_require_any_templates:
+    target_require_any:
       - "{jurisdiction}"
-    require_any:
-      - geothermal
-      - ordinance
-      - zoning
-      - code
-      - regulation
-      - chapter
-      - division
-      - setback
-      - permit
-      - well
-      - energy
+    require_any: [ordinance, zoning, code, chapter, bylaw]
     exclude:
       - press release
       - news article
@@ -64,14 +52,6 @@ discovery:
       - presentation
       - environmental impact report
       - staff report
-    relevance_allowed_domain_patterns:
-      - ".gov"
-      - ".us"
-      - ecode360.com
-      - municode.com
-      - codepublishing.com
-      - amlegal.com
-      - ".org"
     require_supported_document: false
   link_prioritization:
     mode: heuristic
@@ -89,6 +69,9 @@ discovery:
       "municode.com": 0.2
       "codepublishing.com": 0.15
       "amlegal.com": 0.2
+      ".gov": 0.15
+      ".us": 0.15
+      ".org": 0.15
   document_classifier:
     required_keywords:
       - ordinance

@@ -730,3 +730,24 @@ def test_real_ffmpeg_cuts_at_silence(monkeypatch, tmp_path, priced):
     assert max(sizes) == pytest.approx(309 * 4000, rel=0.1)
     assert not list((tmp_path / ".text").glob(".chunks-*"))
     assert document_utils.read_text_cache(source) == text
+
+
+@pytest.mark.parametrize(("status", "retryable"), [(503, True), (401, False)])
+def test_transcription_error_records_keep_provider_retryability(
+    monkeypatch, tmp_path, chunked, priced, status, retryable
+):
+    from psweep.utils.error_taxonomy import build_error_record
+
+    chunked(60)
+    monkeypatch.setattr("psweep.extraction.llm_client.time.sleep", lambda _: 0)
+
+    class ProviderError(RuntimeError):
+        status_code = status
+
+    def fail(_self, _params):
+        raise ProviderError("service unavailable secret-token")
+
+    monkeypatch.setattr(LLMClient, "_complete", fail)
+    with pytest.raises(TranscriptionError) as caught:
+        Transcriber(LLM, max_concurrent=1).transcribe(tmp_path / "a.mp3", tmp_path)
+    assert build_error_record(caught.value, stage="extract")["retryable"] is retryable

@@ -65,7 +65,7 @@ from psweep.discovery.request_inputs import discovery_request_fields
     "-n",
     type=click.IntRange(min=1),
     default=None,
-    help="Use only the first N configured targets.",
+    help="Use only the first N targets (pilot runs).",
 )
 @click.option(
     "--dry-run",
@@ -240,7 +240,7 @@ def discover(
 
     request.progress_callback = _discover_progress
 
-    view.phase("Scanning for document sources...")
+    view.phase("Scanning for document sources")
     try:
         with view.live(discover_live):
             result = DiscoveryEngine().run(request)
@@ -267,7 +267,7 @@ def discover(
             sys.exit(exit_code)
         return
 
-    view.phase("Writing discovery index...")
+    view.phase("Writing discovery index")
     notes = manifest_data.get("notes") or []
     errors = manifest_data.get("errors") or []
     if errors:
@@ -315,10 +315,9 @@ def discover(
             )
         view.warnings(error_lines)
 
-    outputs = {
-        "Run folder": str(result.manifest_path.parent),
-        "Downloads": str(result.documents_dir),
-    }
+    outputs = {"Run folder": str(result.manifest_path.parent)}
+    if result.documents_dir.is_dir():
+        outputs["Downloads"] = str(result.documents_dir)
     if result.curated_dir is not None:
         outputs["Curated"] = (
             f"{result.curated_count} document(s) → {result.curated_dir}"

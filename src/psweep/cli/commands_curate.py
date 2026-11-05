@@ -24,7 +24,7 @@ from psweep.discovery.publication import (
     record_is_curated,
     resolve_publication_paths,
 )
-from psweep.discovery.retry import is_retryable
+from psweep.utils.retry import is_retryable
 from psweep.workspace import Workspace
 
 

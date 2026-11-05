@@ -83,6 +83,12 @@ def default_schema_path(config_path: Path) -> Path:
     return Path(config_path).parent / SCHEMA_FILENAME
 
 
+def config_relative_path(value: str, config_dir: Path) -> Path:
+    """Resolve a path written in a run config against that config's directory."""
+    path = Path(value).expanduser()
+    return path if path.is_absolute() else Path(config_dir) / path
+
+
 def domain_schemas(config_root: Path = CONFIG_ROOT) -> list[Path]:
     """All domain schemas under ``config_root`` (``<domain>/schema.json``)."""
     return sorted(Path(config_root).glob(f"*/{SCHEMA_FILENAME}"))

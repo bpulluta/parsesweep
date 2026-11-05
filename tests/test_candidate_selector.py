@@ -321,37 +321,11 @@ class TestPerTargetSelection:
         selected, _ = sel.select([[private, mirror, keep]], primary_per_target=3)
         assert selected == [keep]
 
-    def test_relevance_legal_marker_gate_requires_structural_legal_terms(self):
-        sel = CandidateSelector(
-            exclude_draft=False,
-            relevance_require_any_terms=["geothermal", "permit"],
-            relevance_require_legal_marker_terms=["ordinance", "code", "chapter", "title", "section"],
-        )
-        non_structural = _candidate("https://example.com/geothermal-permit-guidance-2025.pdf")
-        structural = _candidate("https://example.com/title-9-chapter-22-geothermal-code.pdf")
-        selected, notes = sel.select([[non_structural, structural]], primary_per_target=1)
-        assert selected == [structural]
-        assert any("relevance filter excluded" in n for n in notes)
-
-    def test_relevance_legal_marker_ignores_generated_reason(self):
-        sel = CandidateSelector(
-            exclude_draft=False,
-            relevance_require_legal_marker_terms=["ordinance"],
-        )
-        reason_only = _candidate(
-            "https://example.com/geothermal-update-2025.pdf",
-            reasons=["County ordinance update"],
-        )
-        url_marker = _candidate("https://example.com/geothermal-ordinance-2025.pdf")
-        selected, _ = sel.select([[reason_only, url_marker]], primary_per_target=1)
-        assert selected == [url_marker]
-
     @pytest.mark.parametrize("field", ["title", "snippet"])
-    def test_legal_marker_accepts_source_metadata_on_opaque_urls(self, field):
+    def test_require_any_accepts_source_metadata_on_opaque_urls(self, field):
         sel = CandidateSelector(
             exclude_draft=False,
-            relevance_require_any_terms=["geothermal"],
-            relevance_require_legal_marker_terms=["ordinance"],
+            relevance_require_any_terms=["ordinance"],
         )
         document = _candidate(
             "https://unfamiliar.example/download/12345",
@@ -363,8 +337,7 @@ class TestPerTargetSelection:
     def test_source_type_gate_scales_without_known_hosts_or_seed_urls(self):
         sel = CandidateSelector(
             exclude_draft=False,
-            relevance_require_any_terms=["geothermal"],
-            relevance_require_legal_marker_terms=["ordinance", "zoning"],
+            relevance_require_any_terms=["ordinance", "zoning"],
         )
         documents = [
             _candidate(
@@ -450,10 +423,10 @@ class TestPerTargetSelection:
         assert selected == []
         assert any("unsupported document type" in n for n in notes)
 
-    def test_target_identity_require_any_templates_matches_jurisdiction(self):
+    def test_target_require_any_matches_jurisdiction(self):
         sel = CandidateSelector(
             exclude_draft=False,
-            target_identity_require_any_templates=["{jurisdiction}", "{state}"],
+            target_require_any=["{jurisdiction}", "{state}"],
         )
         off_target = _candidate("https://example.com/inyo-county-geothermal-ordinance.pdf")
         on_target = _candidate("https://example.com/mono-county-title-19-geothermal-ordinance.pdf")
@@ -465,10 +438,10 @@ class TestPerTargetSelection:
         assert selected == [on_target]
         assert any("identity filter excluded" in n for n in notes)
 
-    def test_target_identity_require_all_templates_matches_utility_and_sector(self):
+    def test_target_require_all_matches_utility_and_sector(self):
         sel = CandidateSelector(
             exclude_draft=False,
-            target_identity_require_all_templates=["{utility}", "{sector}"],
+            target_require_all=["{utility}", "{sector}"],
         )
         utility_only = _candidate("https://example.com/pge-rate-schedule-master.pdf")
         full_match = _candidate("https://example.com/pge-residential-rate-schedule-e1.pdf")
@@ -479,11 +452,11 @@ class TestPerTargetSelection:
         )
         assert selected == [full_match]
 
-    def test_target_identity_exclude_any_templates_blocks_wrong_brand(self):
+    def test_target_exclude_blocks_wrong_brand(self):
         sel = CandidateSelector(
             exclude_draft=False,
-            target_identity_require_any_templates=["{manufacturer}"],
-            target_identity_exclude_any_templates=["manual template", "sample"],
+            target_require_any=["{manufacturer}"],
+            target_exclude=["manual template", "sample"],
         )
         blocked = _candidate("https://example.com/generac-manual-template-sample.pdf")
         keep = _candidate("https://example.com/generac-200kw-operator-manual.pdf")
@@ -568,15 +541,15 @@ class TestSelectionConfigMapping:
         assert "selection_primary_per_target" not in resolved
         assert "selection_exclude_draft" not in resolved
 
-    def test_selection_block_maps_target_identity_templates(self):
+    def test_selection_block_maps_target_rules(self):
         from psweep.config.runtime_config_loader import resolve_command_config
 
         config = {
             "discovery": {
                 "selection": {
-                    "target_identity_require_any_templates": ["{jurisdiction}", "{state}"],
-                    "target_identity_require_all_templates": ["{utility}", "{sector}"],
-                    "target_identity_exclude_any_templates": ["draft", "template"],
+                    "target_require_any": ["{jurisdiction}", "{state}"],
+                    "target_require_all": ["{utility}", "{sector}"],
+                    "target_exclude": ["draft", "template"],
                 }
             }
         }
@@ -585,9 +558,9 @@ class TestSelectionConfigMapping:
             cli_values={},
             config_data=config,
         )
-        assert resolved["selection_target_identity_require_any_templates"] == ["{jurisdiction}", "{state}"]
-        assert resolved["selection_target_identity_require_all_templates"] == ["{utility}", "{sector}"]
-        assert resolved["selection_target_identity_exclude_any_templates"] == ["draft", "template"]
+        assert resolved["selection_target_require_any"] == ["{jurisdiction}", "{state}"]
+        assert resolved["selection_target_require_all"] == ["{utility}", "{sector}"]
+        assert resolved["selection_target_exclude"] == ["draft", "template"]
 
     def test_selection_block_maps_max_per_host_per_target(self):
         from psweep.config.runtime_config_loader import resolve_command_config

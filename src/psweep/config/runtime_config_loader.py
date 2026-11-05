@@ -10,244 +10,191 @@ from typing import Any
 
 import yaml
 
-from psweep.workspace import Workspace, default_schema_path, infer_domain
+from psweep.workspace import (
+    Workspace,
+    config_relative_path,
+    default_schema_path,
+    infer_domain,
+)
 
-from .discovery_config import discovery_key_paths, resolve_discovery_section
+from .discovery_config import (
+    DISCOVERY_SCHEMA,
+    discovery_key_paths,
+    resolve_discovery_section,
+)
 from .errors import RuntimeConfigError, reject_unknown_keys
 from .model_registry import ModelRegistry, ModelRegistryError
 
 
-VARIABLE_CATALOG: dict[str, list[dict[str, str]]] = {
-    "global": [
-        {
-            "name": "domain",
-            "level": "optional",
-            "description": (
-                "Domain key; outputs are derived under outputs/<domain>/ "
-                "(default: the config directory name)."
-            ),
-        },
-        {
-            "name": "schema",
-            "level": "optional",
-            "description": (
-                "Schema path for extraction, validation, and compilation "
-                "(default: schema.json beside the config file)."
-            ),
-        },
-    ],
-    "extraction": [
-        {
-            "name": "pages_csv",
-            "level": "optional",
-            "description": "CSV mapping file names to page ranges (from pages.csv or CLI --pages-csv).",
-        },
-        {
-            "name": "pages",
-            "level": "optional",
-            "description": "Single-file page range (for example: 10-35, from pages.range or CLI --pages).",
-        },
-        {
-            "name": "page_targeting",
-            "level": "optional",
-            "description": (
-                "LLM-assisted page selection for large documents "
-                "(from pages.auto_locate)."
-            ),
-        },
-        {
-            "name": "ocr_corrections",
-            "level": "advanced",
-            "description": (
-                "Optional per-domain OCR text-correction rules "
-                "({pattern, replacement, ignore_case}) applied to OCR-derived "
-                "PDF text only."
-            ),
-        },
-        {
-            "name": "provider",
-            "level": "optional",
-            "description": (
-                "LLM provider override "
-                "(openai, azure, anthropic, gemini, auto)."
-            ),
-        },
-        {
-            "name": "model",
-            "level": "optional",
-            "description": "Model override for extraction runs.",
-        },
-        {
-            "name": "transcription_model",
-            "level": "optional",
-            "description": (
-                "models: alias that transcribes audio documents "
-                "(.mp3 .m4a .wav .ogg .flac); required for audio."
-            ),
-        },
-        {
-            "name": "limit",
-            "level": "optional",
-            "description": "Process only the first N files.",
-        },
-        {
-            "name": "max_context",
-            "level": "advanced",
-            "description": "Maximum characters to pass to extraction context.",
-        },
-        {
-            "name": "max_concurrent",
-            "level": "advanced",
-            "description": "Documents extracted in parallel (default: 4).",
-        },
-        {
-            "name": "timeout_seconds",
-            "level": "advanced",
-            "description": (
-                "Per-request LLM timeout for extraction calls (seconds). "
-                "Overrides the default 120s client timeout."
-            ),
-        },
-        {
-            "name": "skip_existing",
-            "level": "advanced",
-            "description": "Skip files that already have output JSON.",
-        },
-    ],
-    "compilation": [
-        {
-            "name": "output",
-            "level": "optional",
-            "description": "Output formatting: column_order, exclude_fields (output headers).",
-        },
-        {
-            "name": "normalization",
-            "level": "optional",
-            "description": "Field normalization (e.g., state abbreviation).",
-        },
-        {
-            "name": "dry_run",
-            "level": "optional",
-            "description": "Preview deduplication without writing files.",
-        },
-        {
-            "name": "report_format",
-            "level": "optional",
-            "description": "Dry-run output format (text or json).",
-        },
-        {
-            "name": "fail_on_suspicious",
-            "level": "advanced",
-            "description": (
-                "Fail threshold for suspicious dedup groups in dry-run."
-            ),
-        },
-        {
-            "name": "provenance_policy",
-            "level": "advanced",
-            "description": (
-                "How compile handles provenance warnings from extraction inputs "
-                "(warn or fail)."
-            ),
-        },
-    ],
-    "validation": [
-        {"name": "models", "level": "optional",
-         "description": "Contender model aliases besides extraction.model."},
-        {"name": "references", "level": "optional",
-         "description": "Human-labelled CSV sheets (config-relative), labelled by file stem."},
-        {"name": "judge", "level": "optional",
-         "description": "Model alias that judges disputed cells for equivalence."},
-        {"name": "fields", "level": "optional",
-         "description": "Focus fields for scoring, judging and review (default: all scorable)."},
-        {"name": "key_fields", "level": "optional",
-         "description": "Row identity in rows mode (required there; rejected in roster mode)."},
-        {"name": "quote_field", "level": "advanced",
-         "description": "Rows mode: each row's verbatim quote; extraction drops rows whose "
-                        "quote is not in the source, validation aligns on it."},
-        {"name": "min_accuracy", "level": "optional",
-         "description": "Gate in (0, 1] on the primary's accuracy against every reference."},
-    ],
-    "discovery": [
-        {"name": "targets", "level": "optional",
-         "description": "Targets: .csv/.json path, inline list, or {cross_product: {dimensions}}."},
-        {"name": "sources", "level": "optional",
-         "description": "Shared document/page URLs downloaded for every run."},
-        {"name": "queries", "level": "optional",
-         "description": "Search query templates ({field} / {field?}); enable search."},
-        {"name": "crawl", "level": "optional",
-         "description": "Link following: provider, max_depth (0 = off), max_pages, allowed_domains, patterns."},
-        {"name": "runtime", "level": "advanced",
-         "description": "max_files, timeout_seconds, max_concurrent_downloads, min_request_interval_ms."},
-        {"name": "selection", "level": "advanced",
-         "description": "Per-target candidate filters and caps."},
-        {"name": "document_classifier", "level": "advanced",
-         "description": "Keyword checks applied to downloaded document content."},
-        {"name": "document_review", "level": "advanced",
-         "description": "LLM curation of downloaded documents."},
-        {"name": "policy", "level": "advanced",
-         "description": "robots_mode / tos_mode: ignore, warn, or enforce."},
-        {"name": "retention", "level": "advanced",
-         "description": "Which downloaded documents to keep (documents: all, curated, none)."},
-    ],
-}
-
-_SECTION_ALIASES = {
-    "discover": "discovery",
-    "discovery": "discovery",
-    "extract": "extraction",
-    "extraction": "extraction",
-    "compile": "compilation",
-    "compilation": "compilation",
-    "validate": "validation",
-    "validation": "validation",
-}
-
-_ALLOWED_TOP_LEVEL = {
-    "domain",
-    "schema",
-    "models",
-    "model_context_windows",
-    "reasoning_models",
-    "discovery",
-    "extraction",
-    "compilation",
-    "validation",
-}
-_ALLOWED_SECTION_FIELDS = {
+# The one registry of user-facing config keys: allowed keys per section derive
+# from it (discovery keys from DISCOVERY_SCHEMA), and ``psweep config`` renders it.
+_KEY_DOCS: dict[str, dict[str, tuple[str, str]]] = {
+    "global": {
+        "domain": (
+            "optional",
+            "Domain key; outputs are derived under outputs/<domain>/ "
+            "(default: the config directory name).",
+        ),
+        "schema": (
+            "optional",
+            "Schema path for extraction, validation, and compilation "
+            "(default: schema.json beside the config file).",
+        ),
+        "models": ("optional", "Model aliases (alias: model name) any stage's model: can use."),
+        "model_context_windows": (
+            "advanced",
+            "Prompt-token window per model name, for fail-fast over-budget checks.",
+        ),
+        "reasoning_models": (
+            "advanced",
+            "Extra model-name markers for reasoning models (no temperature/response_format).",
+        ),
+    },
     "extraction": {
-        "pages",           # unified block (csv + auto_locate); normalized to pages_csv / page_targeting internally
-        "pages_csv",       # internal (set by _normalize_pages_block or CLI --pages-csv)
-        "page_targeting",  # internal (set by _normalize_pages_block)
-        "provider",
-        "model",
-        "limit",
-        "skip_existing",
-        "max_context",
-        "max_concurrent",
-        "timeout_seconds",
-        "ocr_corrections",  # optional per-domain OCR text-correction rules
-        "transcription_model",
+        "pages": (
+            "optional",
+            "Page targeting: csv (config-relative ranges), auto_locate (LLM locator), "
+            "range (single file).",
+        ),
+        "ocr_corrections": (
+            "advanced",
+            "Per-domain OCR text-correction rules ({pattern, replacement, ignore_case}) "
+            "applied to OCR-derived PDF text only.",
+        ),
+        "provider": ("optional", "LLM provider override (openai, azure, anthropic, gemini, auto)."),
+        "model": ("optional", "Model override for extraction runs."),
+        "transcription_model": (
+            "optional",
+            "models: alias that transcribes audio documents "
+            "(.mp3 .m4a .wav .ogg .flac); required for audio.",
+        ),
+        "limit": ("optional", "Process only the first N files."),
+        "max_context": ("advanced", "Maximum characters to pass to extraction context."),
+        "max_concurrent": ("advanced", "Documents extracted in parallel (default: 4)."),
+        "timeout_seconds": (
+            "advanced",
+            "Per-request LLM timeout for extraction calls (seconds). "
+            "Overrides the default 120s client timeout.",
+        ),
+        "skip_existing": ("advanced", "Skip files that already have output JSON."),
     },
     "compilation": {
-        "output",
-        "normalization",
-        "severity_tokens",
-        "dry_run",
-        "report_format",
-        "fail_on_suspicious",
-        "provenance_policy",
+        "output": ("optional", "Output formatting: column_order, exclude_fields (output headers)."),
+        "normalization": ("optional", "Field normalization (e.g., state abbreviation)."),
+        "severity_tokens": (
+            "advanced",
+            "{high: [...], medium: [...]} field-name tokens that rank suspicious dedup groups.",
+        ),
+        "dry_run": ("optional", "Preview deduplication without writing files."),
+        "report_format": ("optional", "Dry-run output format (text or json)."),
+        "fail_on_suspicious": ("advanced", "Fail threshold for suspicious dedup groups in dry-run."),
+        "provenance_policy": (
+            "advanced",
+            "How compile handles provenance warnings from extraction inputs (warn or fail).",
+        ),
     },
     "validation": {
-        "models",
-        "references",
-        "judge",
-        "fields",
-        "key_fields",
-        "quote_field",
-        "min_accuracy",
+        "models": ("optional", "Contender model aliases besides extraction.model."),
+        "references": (
+            "optional",
+            "Human-labelled CSV sheets (config-relative), labelled by file stem.",
+        ),
+        "judge": ("optional", "Model alias that judges disputed cells for equivalence."),
+        "fields": (
+            "optional",
+            "Focus fields for scoring, judging and review (default: all scorable).",
+        ),
+        "key_fields": (
+            "optional",
+            "Row identity in rows mode (required there; rejected in roster mode).",
+        ),
+        "quote_field": (
+            "advanced",
+            "Rows mode: each row's verbatim quote; extraction drops rows whose "
+            "quote is not in the source, validation aligns on it.",
+        ),
+        "min_accuracy": (
+            "optional",
+            "Gate in (0, 1] on the primary's accuracy against every reference.",
+        ),
+    },
+    "discovery": {
+        "targets": (
+            "optional",
+            "Targets: .csv/.json path, inline list, or {cross_product: {dimensions}}.",
+        ),
+        "sources": ("optional", "Shared document/page URLs downloaded for every run."),
+        "queries": ("optional", "Search query templates ({field} / {field?}); enable search."),
+        "partition_by": (
+            "optional",
+            "Target fields that set target identity and the curated by_<field>/<value>/ layout.",
+        ),
+        "crawl": (
+            "optional",
+            "Link following: provider, max_depth (0 = off), max_pages, allowed_domains, patterns.",
+        ),
+        "runtime": (
+            "advanced",
+            "max_files, timeout_seconds, max_concurrent_downloads, min_request_interval_ms.",
+        ),
+        "search": ("advanced", "Search provider: max_results, cache, cache_ttl_minutes, params."),
+        "selection": ("advanced", "Per-target candidate filters and caps."),
+        "link_prioritization": (
+            "advanced",
+            "Candidate ranking: mode, top_k, keywords, domain_scores, shopping_path_keywords.",
+        ),
+        "document_classifier": ("advanced", "Keyword checks applied to downloaded document content."),
+        "document_review": ("advanced", "LLM curation of downloaded documents."),
+        "retry_policy": (
+            "advanced",
+            "Transient-failure retries: max_attempts, initial/max backoff seconds.",
+        ),
+        "policy": ("advanced", "robots_mode / tos_mode: ignore, warn, or enforce."),
+        "retention": (
+            "advanced",
+            "Which downloaded documents to keep (documents: all, curated, none).",
+        ),
     },
 }
+
+
+def _catalog(section: str, keys) -> list[dict[str, str]]:
+    docs = _KEY_DOCS[section]
+    return [
+        {"name": key, "level": docs[key][0], "description": docs[key][1]} for key in keys
+    ]
+
+
+VARIABLE_CATALOG: dict[str, list[dict[str, str]]] = {
+    section: _catalog(section, DISCOVERY_SCHEMA if section == "discovery" else docs)
+    for section, docs in _KEY_DOCS.items()
+}
+
+# Command -> runtime config section it reads.
+_COMMAND_SECTIONS = {
+    "discover": "discovery",
+    "extract": "extraction",
+    "compile": "compilation",
+    "validate": "validation",
+}
+
+_ALLOWED_TOP_LEVEL = {*_KEY_DOCS["global"], *_COMMAND_SECTIONS.values()}
+_ALLOWED_SECTION_FIELDS = {
+    section: frozenset(_KEY_DOCS[section])
+    for section in ("extraction", "compilation", "validation")
+}
+# Internal extraction keys the ``pages`` block (or --pages-csv) expands into.
+_PAGES_INTERNAL_FIELDS = frozenset({"pages_csv", "page_targeting"})
+_PAGES_KEYS = ("csv", "auto_locate", "range")
+_AUTO_LOCATE_KEYS = (
+    "enabled",
+    "section_description",
+    "trigger_chars",
+    "max_selected_pages",
+    "model",
+    "keywords",
+    "save_discovered",
+)
 
 _ALLOWED_PROVENANCE_POLICIES = {"warn", "fail"}
 
@@ -328,13 +275,13 @@ def _validate_reasoning_models_block(markers: Any) -> None:
         )
 
 
-def _normalize_pages_block(extraction: dict[str, Any]) -> None:
+def _normalize_pages_block(extraction: dict[str, Any], config_path: Path) -> None:
     """Normalize the unified ``pages`` block into flat internal keys.
 
     Config format::
 
         pages:
-          csv: path/to/ranges.csv        # manual ranges (wins)
+          csv: path/to/ranges.csv        # manual ranges (wins); config-relative
           auto_locate:                    # LLM fallback for uncovered docs
             section_description: "..."
             trigger_chars: 200000
@@ -342,30 +289,40 @@ def _normalize_pages_block(extraction: dict[str, Any]) -> None:
     Expands to internal keys ``pages_csv`` (str) and ``page_targeting``
     (dict with ``enabled: True``) consumed by the extraction pipeline.
     """
+    where = config_path.as_posix()
+    # Internal keys produced below are not user keys: reject them up front,
+    # before resolve-time validation would accept them.
+    reject_unknown_keys(
+        {key: value for key, value in extraction.items() if key in _PAGES_INTERNAL_FIELDS},
+        _ALLOWED_SECTION_FIELDS["extraction"],
+        "extraction",
+        where,
+    )
     pages = extraction.get("pages")
-
-    if isinstance(pages, dict):
-        extraction.pop("pages")
-        if "csv" in pages:
-            extraction["pages_csv"] = pages["csv"]
-        if "auto_locate" in pages:
-            al = dict(pages["auto_locate"])
-            al.setdefault("enabled", True)  # presence = enabled
-            extraction["page_targeting"] = al
-        if "range" in pages:
-            # Single-file range from config (usually a CLI thing).
-            extraction["pages"] = pages["range"]
-    elif "pages_csv" in extraction or "page_targeting" in extraction:
+    if pages is None:
+        return
+    if not isinstance(pages, dict):
         raise RuntimeConfigError(
-            "'pages_csv' and 'page_targeting' are no longer supported as "
-            "top-level extraction keys. Use the unified 'pages:' block "
-            "instead:\n"
-            "  pages:\n"
-            "    csv: path/to/ranges.csv\n"
-            "    auto_locate:\n"
-            "      section_description: \"...\"\n"
-            "See config/TEMPLATE.yaml for the full reference."
+            "extraction.pages must be a mapping of csv, auto_locate, and/or range"
         )
+    reject_unknown_keys(pages, _PAGES_KEYS, "extraction.pages", where)
+    extraction.pop("pages")
+    if "csv" in pages:
+        csv_path = pages["csv"]
+        if not isinstance(csv_path, str) or not csv_path.strip():
+            raise RuntimeConfigError("extraction.pages.csv must be a path string")
+        extraction["pages_csv"] = config_relative_path(csv_path, config_path.parent).as_posix()
+    if "auto_locate" in pages:
+        auto_locate = pages["auto_locate"]
+        if not isinstance(auto_locate, dict):
+            raise RuntimeConfigError("pages.auto_locate must be an object")
+        reject_unknown_keys(
+            auto_locate, _AUTO_LOCATE_KEYS, "extraction.pages.auto_locate", where
+        )
+        extraction["page_targeting"] = {"enabled": True, **auto_locate}
+    if "range" in pages:
+        # Single-file range from config (usually a CLI thing).
+        extraction["pages"] = pages["range"]
 
 
 def _validate_extraction_section_schema(extraction: dict[str, Any]) -> None:
@@ -636,11 +593,7 @@ def _validation_field_error(
 
 
 def _resolve_validation_section(cfg: dict[str, Any], config_path: Path) -> dict[str, Any]:
-    """Enforce the validation contract at load time; returns the normalized section."""
-    from psweep.discovery.targets import TARGET_INPUT_FIELDS, iter_targets
-    from psweep.extraction.roster import roster_fields
-    from psweep.validation.align import context_fields, item_properties
-
+    """Check the schema-free validation contract at load; return the normalized section."""
     section = cfg["validation"]
     if not isinstance(section, dict) or not section:
         raise RuntimeConfigError("'validation' section must be a non-empty mapping")
@@ -668,14 +621,39 @@ def _resolve_validation_section(cfg: dict[str, Any], config_path: Path) -> dict[
     _check_validation_models(cfg, models, judge)
     paths = []
     for reference in references:
-        path = Path(reference).expanduser()
-        path = path if path.is_absolute() else config_path.parent / path
+        path = config_relative_path(reference, config_path.parent)
         if path.suffix.lower() != ".csv" or not path.is_file():
             raise RuntimeConfigError(
                 f"validation.references: {reference} is not a CSV file ({path.as_posix()})"
             )
         paths.append(path.as_posix())
+    return {
+        "models": list(models),
+        "references": paths,
+        "judge": judge,
+        "fields": list(fields),
+        "key_fields": list(key_fields),
+        "quote_field": quote_field,
+        "min_accuracy": min_accuracy,
+    }
 
+
+def _check_validation_against_schema(cfg: dict[str, Any], section: dict[str, Any]) -> None:
+    """Check the validation section against the schema and compiled table layout.
+
+    Runs when ``extract`` (which reads ``quote_field``) or ``validate`` resolves,
+    and so for ``run``; ``discover`` and ``compile`` never require the schema
+    for it.
+    """
+    from psweep.discovery.targets import TARGET_INPUT_FIELDS, iter_targets
+    from psweep.extraction.roster import roster_fields
+    from psweep.validation.align import context_fields, item_properties
+
+    models = section.get("models") or []
+    paths = section.get("references") or []
+    fields = section.get("fields") or []
+    key_fields = section.get("key_fields") or []
+    quote_field = section.get("quote_field")
     resolved = resolve_command_config(command="compile", cli_values={}, config_data=cfg)
     metadata = resolve_compilation_metadata(resolved)
     if "csv" not in metadata.get_output_formats():
@@ -767,15 +745,6 @@ def _resolve_validation_section(cfg: dict[str, Any], config_path: Path) -> dict[
         [*models, *(Path(p).stem for p in paths)],
         {titles.get(f, f).lower() for f in keys},
     )
-    return {
-        "models": list(models),
-        "references": paths,
-        "judge": judge,
-        "fields": list(fields),
-        "key_fields": list(key_fields),
-        "quote_field": quote_field,
-        "min_accuracy": min_accuracy,
-    }
 
 
 def _read_config_file(path: Path) -> dict[str, Any]:
@@ -929,7 +898,7 @@ def load_runtime_config_file(config_path: Path) -> dict[str, Any]:
         if not isinstance(extraction, dict):
             msg = "'extraction' section must be an object in runtime config"
             raise RuntimeConfigError(msg)
-        _normalize_pages_block(extraction)
+        _normalize_pages_block(extraction, config_path)
         _validate_extraction_section_schema(extraction)
         _check_transcription_model(extraction, config_data.get("models") or {})
     compilation = config_data.get("compilation")
@@ -953,7 +922,7 @@ def load_runtime_config_file(config_path: Path) -> dict[str, Any]:
 
 def catalog_for_command(command: str) -> list[dict[str, str]]:
     """Return catalog entries for a command plus global variables."""
-    section = _SECTION_ALIASES.get(command)
+    section = _COMMAND_SECTIONS.get(command)
     if section is None:
         msg = f"Unsupported command for catalog: {command}"
         raise RuntimeConfigError(msg)
@@ -1024,7 +993,7 @@ _FIELD_MAP: dict[str, str] = {
 
 def config_key_paths(command: str) -> dict[str, str]:
     """Map resolved field names to the config key paths users write."""
-    section_name = _SECTION_ALIASES[command]
+    section_name = _COMMAND_SECTIONS[command]
     if section_name == "discovery":
         return discovery_key_paths()
     return {
@@ -1118,7 +1087,7 @@ def resolve_command_config(
     config_data: dict[str, Any] | None,
 ) -> dict[str, Any]:
     """Resolve command inputs from runtime config and CLI overrides."""
-    section_name = _SECTION_ALIASES.get(command)
+    section_name = _COMMAND_SECTIONS.get(command)
     if section_name is None:
         msg = f"Unsupported command config resolution target: {command}"
         raise RuntimeConfigError(msg)
@@ -1131,9 +1100,10 @@ def resolve_command_config(
 
     config_path = cfg.get("_config_path")
     if section_name in _ALLOWED_SECTION_FIELDS:
-        reject_unknown_keys(
-            section, _ALLOWED_SECTION_FIELDS[section_name], section_name, config_path
-        )
+        allowed = _ALLOWED_SECTION_FIELDS[section_name]
+        if section_name == "extraction":
+            allowed |= _PAGES_INTERNAL_FIELDS
+        reject_unknown_keys(section, allowed, section_name, config_path)
     if section_name == "extraction":
         _validate_extraction_section_schema(section)
     merged, sources = _merge_config_fields(
@@ -1168,6 +1138,9 @@ def resolve_command_config(
         raise RuntimeConfigError(
             _missing_fields_message(section_name, missing, cfg.get("_config_path"))
         )
+    validation = cfg.get("validation")
+    if validation and section_name in ("extraction", "validation"):
+        _check_validation_against_schema(cfg, validation)
 
     # Top-level model alias map is available to every command (process,
     # discover, compile) so any LLM stage can resolve an alias reference.

@@ -239,7 +239,9 @@ class Transcriber:
                     reasoning_effort="none",
                 )
             except ExtractionError as exc:
-                raise TranscriptionError(str(exc)) from None
+                error = TranscriptionError(str(exc))
+                error.retryable = getattr(exc, "retryable", False)
+                raise error from None
         if reply.finish_reason == "length":
             message = "transcription response was truncated"
             raise TranscriptionError(message)
